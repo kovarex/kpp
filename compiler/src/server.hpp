@@ -23,6 +23,12 @@ int runServer(const char* key, CompileFunction compile);
 
 // `kppc --stop-server ARGS`: stops the server for ARGS if one runs.
 int stopServer(int argc, char** argv);
+// The same without a word: whether one ran.
+bool stopServerQuietly(int argc, char** argv);
+// Stops every running server, of any arguments, whose arguments whose accepts (the client that
+// starts a server keeps them in %TEMP%\kppc-server\KEY.args), and returns the arguments of each one
+// it stopped. A record whose server has ended is removed.
+std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>& whose);
 
 // Called by the build when it is done and only freeing what it built is left: a process exits on
 // the spot (freeing costs seconds), a server answers its client first and frees afterwards.

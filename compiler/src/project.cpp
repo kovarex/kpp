@@ -4,6 +4,7 @@
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
+#include <map>
 #include <memory>
 #include <chrono>
 #include <thread>
@@ -1389,18 +1390,72 @@ namespace
     auto commandStart = std::chrono::steady_clock::now(); // (the whole command's time: build.kpp's description too)
     // --stop-server: the compile servers of build.kpp's description and of every cell's builds. The
     // description's first, and the description then computed without a server, so that a build.kpp
-    // that no longer describes stops its server too.
+    // that no longer describes stops its server too. Then every other server whose arguments name a
+    // file of the project: a build with options of its own (--verbose, --toolchain) has a server of
+    // its own, and an earlier build.kpp's cells had theirs.
     if (request.stop)
     {
-      invoke(describeArguments(root, request), true, compile, true);
+      std::vector<std::string> stopped;
+      auto stop = [&](std::vector<std::string> args, const std::string& what)
+      {
+        std::vector<char*> argv;
+        for (std::string& a : args)
+          argv.push_back(a.data());
+        argv.push_back(nullptr);
+        if (stopServerQuietly(int(args.size()), argv.data()))
+          stopped.push_back(what);
+      };
+      stop(describeArguments(root, request), "build.kpp's description");
       Request serverless = request;
       serverless.server = false;
       Description d;
-      if (!describe(root, serverless, d))
-        return 1;
-      for (const Program& p : d.programs)
-        invoke(buildCommand(root, d, p, request), true, compile, true);
-      return 0;
+      bool described = describe(root, serverless, d);
+      std::map<std::string, std::vector<std::string>> commands; // each cell's own arguments, by its executable
+      if (described)
+        for (const Program& p : d.programs)
+        {
+          std::vector<std::string> args = buildCommand(root, d, p, request);
+          stop(args, exeOf(root, p).string());
+          commands[exeOf(root, p).string()].assign(args.begin() + 1, args.end());
+        }
+      std::string prefix = root.string() + "\\";
+      std::transform(prefix.begin(), prefix.end(), prefix.begin(), [](unsigned char c) { return char(tolower(c)); });
+      for (const std::vector<std::string>& args : stopServers([&](const std::vector<std::string>& args)
+           {
+             for (std::string a : args)
+             {
+               std::transform(a.begin(), a.end(), a.begin(), [](unsigned char c) { return char(tolower(c)); });
+               if (a.compare(0, prefix.size(), prefix) == 0)
+                 return true;
+             }
+             return false;
+           }))
+      {
+        // Which one it was: its --exe (or build.kpp's description), and the options by which its
+        // arguments differ from the cell's own today (kpp's --verbose is kppc without --quiet).
+        std::string what = "build.kpp's description", options;
+        for (size_t i = 0; i + 1 < args.size(); ++i)
+          if (args[i] == "--exe")
+            what = args[i + 1];
+        auto own = commands.find(what);
+        if (own != commands.end())
+        {
+          for (const std::string& a : args)
+            if (a.size() > 1 && a[0] == '-' && std::find(own->second.begin(), own->second.end(), a) == own->second.end())
+              options += " " + a;
+          for (const std::string& a : own->second)
+            if (a.size() > 1 && a[0] == '-' && std::find(args.begin(), args.end(), a) == args.end())
+              options += a == "--quiet" ? " --verbose" : " without " + a;
+        }
+        stopped.push_back(what + (own == commands.end()                ? " (a cell build.kpp no longer describes, or other arguments)"
+                                  : options.empty()                    ? " (other arguments)"
+                                                                       : " (started with" + options + ")"));
+      }
+      for (const std::string& what : stopped)
+        printf("kpp: stopped the compile server of %s\n", what.c_str());
+      if (stopped.empty())
+        printf("kpp: no compile server of %s runs\n", root.string().c_str());
+      return described ? 0 : 1;
     }
     Description d;
     if (!describe(root, request, d) || !resolveUses(root, request, d))

@@ -62,7 +62,8 @@ side ran here only with `-DryRun` (its checks against C:\Factorio, which nothing
 edits or touches).
 
 **The leaf edit through `kpp factorio`, phase by phase (2026-11-02).** On a quiet machine (0 to 9% busy
-before each build, but for two rounds before the change at 51 and 94%), master's kppc with LLVM's back end in it (as CI's packages have it), timed
+before each build, but for two rounds before the change at 51 and 94%), master's kppc with LLVM's back end in it (as CI's packages have it; a `--debug-info` build such as
+`kpp factorio debug` still compiles its modules with clang processes, D found), timed
 at each phase from the client's start (a copy with timing points, scratch\build\phase.ps1 and
 instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build with no change:
 
@@ -70,7 +71,7 @@ instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build
 |---|---:|---:|
 | build.kpp (its description cached) and the toolchain | 0.04 s | 0.04 s |
 | the C and C++ libraries' up-to-date check (641 objects) | 1.49 to 2.92 s | 0.11 to 0.13 s |
-| kppc through the server: the server's walks 0.2 s, codegen 0.19 to 0.25 s, the back end (1 of 128 modules) 0.50 to 0.70 s | 0.95 to 1.78 s | 1.00 to 1.09 s |
+| kppc through the server: the server's walks 0.2 s, codegen 0.19 to 0.25 s, clang for 1 of 128 modules 0.50 to 0.70 s | 0.95 to 1.78 s | 1.00 to 1.09 s |
 | the link (link.exe, incremental) | 0.58 to 1.26 s | 0.54 to 1.26 s |
 | build.kpp's after-build step: factorio.exe (108 MB) and its .pdb (218 MB) copied to bin\Debugx64 | 0.57 to 1.03 s | 0.58 to 0.61 s |
 | **wall** | **4.21 to 6.01 s** | **2.29 to 3.04 s** |

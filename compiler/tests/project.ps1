@@ -41,7 +41,13 @@ try
     if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
     { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
   }
-  Kpp @('--stop-server') | Out-Null
+  # A build with an option of its own has a server of its own: kpp --stop-server stops it with the
+  # others and says which (2026-11-02).
+  Kpp @('--verbose', '--run') | Out-Null
+  $output = Kpp @('--stop-server')
+  if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: stopped the compile server of .*\(started with --verbose\)') { Fail "kpp --stop-server after kpp --verbose --run: exit $code`n$($output -join "`n")" }
+  $output = Kpp @('--stop-server')
+  if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: no compile server of .* runs') { Fail "kpp --stop-server again: exit $code`n$($output -join "`n")" }
 
   New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
   Set-Content 'src\main.kpp' "int main()`n{`n  println(`"game `", answer());`n  return 0;`n}"

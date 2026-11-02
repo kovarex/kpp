@@ -44,6 +44,10 @@ namespace
 
   std::string logPath(const std::string& key) { return serverDirectory() + key + ".log"; }
 
+  // KEY.args: what a server builds, its working directory and arguments, each ended by a zero byte,
+  // written by the client that starts it; stopServers finds a project's servers by them.
+  std::string argumentsPath(const std::string& key) { return serverDirectory() + key + ".args"; }
+
   // The server's log: a line per event, with the time. Opened and closed per line, so that a crash
   // loses nothing (and the line about the crash is written from the crash handler).
   std::string serverLog;
@@ -857,7 +861,14 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::string key = serverKey(exe, cwd, args), name = pipeName(key);
   HANDLE pipe = connectPipe(name, 0);
   if (pipe == INVALID_HANDLE_VALUE && startServer(exe, key, cwd))
+  {
+    std::string record = cwd + '\0';
+    for (const std::string& a : args)
+      record += a + '\0';
+    if (FILE* f = fopen(argumentsPath(key).c_str(), "wb"))
+      fwrite(record.data(), 1, record.size(), f), fclose(f);
     pipe = connectPipe(name, 20000);
+  }
   if (pipe == INVALID_HANDLE_VALUE)
   {
     fprintf(stderr, "kppc: no compile server could be reached; building in this process\n");
@@ -993,23 +1004,67 @@ int runServer(const char* key, CompileFunction compile)
   }
 }
 
+namespace
+{
+  // Stops the server of key if one runs (its KEY.args goes with it); false when none does.
+  bool stopKey(const std::string& key)
+  {
+    HANDLE pipe = connectPipe(pipeName(key), 0);
+    DeleteFileA(argumentsPath(key).c_str());
+    if (pipe == INVALID_HANDLE_VALUE)
+      return false;
+    std::string request = requestHeader(stopRequest);
+    writeAll(pipe, request.data(), request.size());
+    // Its process id, then the exit code: read up to the exit code, so that the server's last write
+    // finds the client still there.
+    for (char frame[9]; readAll(pipe, frame, 9) && frame[0] != char(exitFrame);)
+      ;
+    CloseHandle(pipe);
+    return true;
+  }
+}
+
+bool stopServerQuietly(int argc, char** argv)
+{
+  return stopKey(serverKey(modulePath(), currentDirectory(), argumentsOf(argc, argv)));
+}
+
 int stopServer(int argc, char** argv)
 {
-  std::string exe = modulePath(), cwd = currentDirectory();
-  std::string name = pipeName(serverKey(exe, cwd, argumentsOf(argc, argv)));
-  HANDLE pipe = connectPipe(name, 0);
-  if (pipe == INVALID_HANDLE_VALUE)
-  {
-    printf("no compile server runs for these arguments\n");
-    return 0;
-  }
-  std::string request = requestHeader(stopRequest);
-  writeAll(pipe, request.data(), request.size());
-  // Its process id, then the exit code: read up to the exit code, so that the server's last write
-  // finds the client still there.
-  for (char frame[9]; readAll(pipe, frame, 9) && frame[0] != char(exitFrame);)
-    ;
-  CloseHandle(pipe);
-  printf("compile server stopped\n");
+  printf(stopServerQuietly(argc, argv) ? "compile server stopped\n" : "no compile server runs for these arguments\n");
   return 0;
+}
+
+std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>& whose)
+{
+  std::vector<std::vector<std::string>> stopped;
+  WIN32_FIND_DATAA found;
+  HANDLE search = FindFirstFileA((serverDirectory() + "*.args").c_str(), &found);
+  if (search == INVALID_HANDLE_VALUE)
+    return stopped;
+  std::vector<std::string> keys;
+  do
+    keys.push_back(std::string(found.cFileName, strlen(found.cFileName) - 5));
+  while (FindNextFileA(search, &found));
+  FindClose(search);
+  for (const std::string& key : keys)
+  {
+    std::string record;
+    if (FILE* f = fopen(argumentsPath(key).c_str(), "rb"))
+    {
+      char buffer[4096];
+      for (size_t n; (n = fread(buffer, 1, sizeof buffer, f)) > 0;)
+        record.append(buffer, n);
+      fclose(f);
+    }
+    std::vector<std::string> args; // (the working directory first, then the arguments)
+    for (size_t at = 0, end; (end = record.find('\0', at)) != std::string::npos; at = end + 1)
+      args.push_back(record.substr(at, end - at));
+    if (args.empty())
+      continue;
+    args.erase(args.begin());
+    if (whose(args) && stopKey(key))
+      stopped.push_back(std::move(args));
+  }
+  return stopped;
 }
