@@ -880,9 +880,14 @@ As converted (thread C, 2026-11-02; the C libraries' harnesses byte-identical):
   1024*1024` (`x / SIZE` would change), strings (sizeof), bodies naming a variable (the use's local
   in C), macros defined twice, and every header's macro (each library's interface: its home is the
   library's scope, section 16, once the converted libraries are scoped).
-- Not yet: the game's anonymous namespaces and file-level `static` (C++), and declarations the
-  converter's parse does not read (zstd_compress.c's ZSTD_encodeSequences family, after a parse
-  error at `FSE_CTable const*`), which keep their `static`.
+- C++ (the game): a source file's `static` functions and variables at the global namespace's scope
+  and its anonymous namespaces at that scope, unwrapped, their declarations each `private` (Atlas.cpp's
+  helpers, AppManager.cpp's ConfirmationBoxConnectToServer): 93 declarations, the 7 anonymous
+  namespaces. Not in a named namespace (private is no Kpp there) nor in a header (other files
+  include it; a header's `static` goes, as before).
+- Not yet: declarations the converter's parse does not read (zstd_compress.c's
+  ZSTD_encodeSequences family, after a parse error at `FSE_CTable const*`), which keep their
+  `static`.
 
 ### 16. Library scopes: qualified by default, a library may be unscoped (decided 2026-11-01)
 

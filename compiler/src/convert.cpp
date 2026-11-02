@@ -5886,6 +5886,18 @@ namespace
           counts.add("deduction guides removed");
           continue;
         }
+        // C++: a source file's names of its own, a `static` at the global namespace's scope and what
+        // an anonymous namespace there declares, are `private` (design.md 15: a file's names; not in
+        // a named namespace, where private is no Kpp, nor in a header, which other files include).
+        if (!in.c && namespaceScope && !isHeader() && (d->flags & DF_Static) && prefix.empty() &&
+            (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && cDeclName(d).size() &&
+            !(d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1))
+          writePrivate(d);
+        if (!in.c && namespaceScope && !isHeader() && prefix == "::" &&
+            (d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ClassDecl ||
+             d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl) &&
+            !(d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1))
+          writePrivate(d);
         if (namespaceScope && (d->flags & DF_Static) && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && isHeader() &&
             !cGivenHeader)
         {
@@ -5930,6 +5942,12 @@ namespace
           {
             auto* n = static_cast<NamespaceDecl*>(d);
             std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+            if (!in.c && name.empty() && prefix.empty() && !isHeader() && !n->isInline && cUnwrapAnonymousNamespace(n))
+            {
+              // its declarations private, each (convertDecls with the prefix "::")
+              convertDecls(n->decls, true, "::");
+              break;
+            }
             convertDecls(n->decls, true, prefix + name + "::");
             break;
           }
@@ -8215,8 +8233,36 @@ namespace
       bool anonymousEnum = d->kind == NodeKind::EnumDecl && name.empty();
       if (!cPrivate || (name.empty() && !anonymousEnum) || !(anonymousEnum ? cPrivate->count("") : cPrivate->count(name)))
         return;
-      // (not a function's prototype or a type's forward declaration: the conversion removes those,
-      // Kpp needs none)
+      writePrivate(d);
+    }
+    // C++: an anonymous namespace at a source file's global scope (Atlas.cpp's helpers, AppManager.cpp's
+    // ConfirmationBoxConnectToServer): its braces go and its declarations are the file's private ones
+    // (design.md 15), when it holds no namespace (private is for a file's top-level declarations).
+    bool cUnwrapAnonymousNamespace(NamespaceDecl* n)
+    {
+      for (Decl* inner : n->decls)
+        if (inner->kind == NodeKind::NamespaceDecl || inner->kind == NodeKind::UsingDirectiveDecl)
+          return false;
+      uint32_t open = n->token;
+      while (open < toks.size() && !toks[open].is(P::LBrace))
+        ++open;
+      uint32_t close = n->endToken;
+      while (close > open && !toks[close - 1].is(P::RBrace))
+        --close;
+      if (open >= toks.size() || close <= open + 1 || !toks[n->token].is(Kw::namespace_))
+        return false;
+      uint32_t end = endOffset(open);
+      remove(toks[n->token].offset, end - toks[n->token].offset);
+      remove(toks[close - 1].offset, toks[close - 1].length);
+      counts.add("C++ anonymous namespaces unwrapped, their declarations private");
+      return true;
+    }
+    // `private` before a declaration (design.md 15) and its `static` gone, also a `static` a keyword
+    // macro writes (zstd's FORCE_INLINE_TEMPLATE, `static inline`), which drops the word from that
+    // rewrite. Not a function's prototype or a type's forward declaration: the conversion removes
+    // those, Kpp needs none.
+    void writePrivate(Decl* d)
+    {
       if ((d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->body) ||
           (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->isDefinition) ||
           (d->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(d)->isDefinition))
@@ -8261,7 +8307,7 @@ namespace
           break;
         }
       cInsertBefore(start, "private ");
-      counts.add("C names kept to their file written private");
+      counts.add(in.c ? "C names kept to their file written private" : "C++ names kept to their file written private");
     }
     // A rewrite of the token at offset, which another rewrite of it (a keyword macro written out:
     // stb_image_write's `STBIWDEF` as `extern`) would cancel: then it takes that one's place.
