@@ -71,6 +71,18 @@ heading ids on (one run on PC-PRACOVNA).
 `kpp --test` in this directory, or `kppc --test libraries/markdown` anywhere: the library's own
 tests, a few per construct and option (`tests/MarkdownTests.kpp`).
 
+## License
+
+The port is derived from commonmark.js, Copyright (c) 2014, John MacFarlane, under the
+BSD-2-Clause license ([commonmark.js-LICENSE.txt](commonmark.js-LICENSE.txt), its LICENSE file
+verbatim), and its URL encoding from mdurl's `encode`, Copyright (c) 2015 Vitaly Puzrin, Alex
+Kocharin, under the MIT License ([mdurl-LICENSE.txt](mdurl-LICENSE.txt)). Kpp's own part is
+Apache-2.0 WITH LLVM-exception ([LICENSE](../../LICENSE)), so build.kpp's expression is
+`Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND MIT`. `MarkdownEntities.kpp` (the WHATWG
+list of named character references, from the HTML standard, CC BY 4.0) and `MarkdownUnicode.kpp`
+(category ranges of the Unicode Character Database, Unicode License v3) are generated from
+Python's copies of that data; their headers name the source.
+
 ## Conformance
 
 `libraries/markdown/conformance/run.cmd` checks the library against every example of the

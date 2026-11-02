@@ -22,6 +22,8 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [markdown](markdown/README.md) | CommonMark 0.31.2 to HTML, GitHub's tables and heading ids | all 655 CommonMark spec examples and the GFM spec's 8 table examples (conformance/run.cmd, fetched: CC-BY-SA) |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of Kpp ([LICENSE](../LICENSE),
-[CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party test data keeps its
-license: JSONTestSuite's (MIT) in json's tests; the CommonMark and GFM specs' examples (CC-BY-SA)
-are fetched by markdown's conformance check, never committed.
+[CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep
+their license: markdown is a port of commonmark.js (BSD-2-Clause) with mdurl's encoding (MIT), so
+its expression names those too (their texts are next to it); JSONTestSuite's (MIT) in json's
+tests; the CommonMark and GFM specs' examples (CC-BY-SA) are fetched by markdown's conformance
+check, never committed.

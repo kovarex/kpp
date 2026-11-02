@@ -24,6 +24,9 @@ int daysInMonth(long long year, int month)
   return month == 2 && isLeapYear(year) ? 29 : lengths[month - 1];
 }
 
+// daysFromCivil and civilFromDays are Howard Hinnant's days_from_civil and civil_from_days
+// ("chrono-Compatible Low-Level Date Algorithms", https://howardhinnant.github.io/date_algorithms.html),
+// which he donated to the public domain there ("Consider these donated to the public domain").
 // Days from 1970-01-01 to the date (negative before it); month 1 to 12, day 1 to 31.
 long long daysFromCivil(long long year, int month, int day)
 {

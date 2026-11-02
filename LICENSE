@@ -230,13 +230,28 @@ The license above does not cover these; each keeps its own terms:
 - libraries/json/tests/JsonTestSuite.kpp: generated from JSONTestSuite's test
   files, under the MIT License, Copyright (c) 2016 Nicolas Seriot
   (libraries/json/tests/JSONTestSuite-LICENSE.txt).
+- libraries/markdown/src/: a port of commonmark.js, under the BSD-2-Clause
+  license, Copyright (c) 2014, John MacFarlane
+  (libraries/markdown/commonmark.js-LICENSE.txt), with mdurl's URL encoding,
+  under the MIT License, Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin
+  (libraries/markdown/mdurl-LICENSE.txt).
+- stdlib/core/Calendar.kpp: daysFromCivil and civilFromDays are Howard
+  Hinnant's date algorithms, which he donated to the public domain.
 - programs/factorio/: the conversion of Factorio, the game of Wube Software.
   Its overrides/ replace and extend parts of the game's converted source and
   are derived from it; Factorio's source is not open source, and nothing in
   this repository grants rights to it. Its native/ and generated interfaces
   declare third-party libraries the game uses (dear imgui, RE2, open-vcdiff,
-  jc_voronoi, stb, the Logitech LED SDK, DirectX), each under its own terms;
-  overrides/CommonUtil/Math.kpp includes fdlibm code under Sun Microsystems'
-  notice, kept in the file.
+  jc_voronoi, stb, the Logitech LED SDK, DirectX), each under its own terms.
+  Third-party code in it keeps its license:
+  - overrides/added/src/Debug/ImGui.kpp and native/imgui_c.cpp are generated
+    from dear imgui 1.53 and include its inline code: MIT License, Copyright
+    (c) 2014-2017 Omar Cornut and ImGui contributors
+    (programs/factorio/licenses/imgui-LICENSE.txt);
+  - overrides/src/API/glm.kpp is a port of glm 0.9.9.0: MIT License,
+    Copyright (c) 2005 - 2017 G-Truc Creation
+    (programs/factorio/licenses/glm-LICENSE.txt);
+  - overrides/CommonUtil/Math.kpp includes fdlibm code under Sun Microsystems'
+    notice, kept in the file.
 
 A file that carries its own copyright or license notice is under that notice.

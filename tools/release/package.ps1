@@ -1,5 +1,5 @@
 # Packages a built kppc as a Kpp release (docs/build.md, "Installing"): build\release\kpp\ with
-# kpp.exe (compiler\build\kppc.exe under the name users type), stdlib\, projectlib\, the TextMate
+# kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
 # grammar, the VS Code extension kpp.vsix (tools/vscode) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
 # build\release\kpp-<Version>.zip, and kpp-<Version>-setup.exe when Inno Setup's compiler (ISCC) is
@@ -16,6 +16,8 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $kpp | Out-Null
 
 Copy-Item "$repository\compiler\build\kppc.exe" "$kpp\kpp.exe"
+# Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
+Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
 
 # The bundled toolchain, at its paths in llvm-mingw so clang finds the rest relative to its bin\ and
 # kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld,
@@ -60,6 +62,8 @@ Nothing else is needed: kpp brings its own toolchain (bin\: llvm-mingw's clang a
 MinGW-w64, NOTICE-toolchain.txt), and its programs use only DLLs every Windows 10 and 11 has.
 kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on request.
 
+Kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
+
 kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
 offers to install it, or run code --install-extension kpp.vsix. Other editors:
 https://github.com/kovarex/kpp/blob/master/docs/editors.md
@@ -76,7 +80,9 @@ try
   $ErrorActionPreference = 'Continue'
   npm ci --no-audit --no-fund 2>&1 | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
-  npx vsce package $Version --no-git-tag-version --no-update-package-json --skip-license --out "$kpp\kpp.vsix" 2>&1 | Select-Object -Last 2 | Out-Host
+  # vsce puts the extension folder's LICENSE into the .vsix: the repository's, copied (.gitignore'd).
+  Copy-Item "$repository\LICENSE" LICENSE
+  npx vsce package $Version --no-git-tag-version --no-update-package-json --out "$kpp\kpp.vsix" 2>&1 | Select-Object -Last 2 | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
   $ErrorActionPreference = 'Stop'
 }
