@@ -111,6 +111,7 @@ namespace
     std::vector<std::pair<std::string, std::string>> settings;
     std::vector<std::string> passed;         // kppc's own options, given to every build
     bool run = false, test = false, visualStudio = false, vsCode = false, server = true, msvc = false, stop = false;
+    bool verbose = false; // --verbose: kppc's report of each build (its phases' times), not --quiet
     bool options = false; // kpp options: list the libraries' options of the cells asked for
     std::vector<std::string> runArguments;   // --run's: the program's; --test's: the runner's
   };
@@ -984,7 +985,8 @@ namespace
     std::vector<std::string> args = {compilerPath().string()};
     if (request.msvc)
       args.push_back("--msvc-diagnostics");
-    args.push_back("--quiet");
+    if (!request.verbose)
+      args.push_back("--quiet");
     if (p.debugInfo)
       args.push_back("--debug-info");
     args.push_back(p.optimize ? "--optimize" : "--no-optimize");
@@ -1527,6 +1529,8 @@ int runProject(int argc, char** argv, CompileFunction compile)
       request.vsCode = true;
     else if (arg == "--no-server")
       request.server = false;
+    else if (arg == "--verbose")
+      request.verbose = true;
     else if (arg == "--stop-server")
       request.stop = true;
     else if (arg == "--msvc-diagnostics")

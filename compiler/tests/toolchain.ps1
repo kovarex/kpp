@@ -121,7 +121,7 @@ void build(Project& project)
 '@
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp new with a C library, kpp --run did not run: $($run.text)" }
-    # Through the compile server: a C library's change alone (the program's Kpp the same, so kppc
+    # Through the compile server: a C library's change alone (the program's kpp source the same, so kppc
     # replays its build and links nothing) is linked in, by kpp's link after the libraries.
     $run = Run "$inst\kpp.exe" @('--run')
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS + 1; }"

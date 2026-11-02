@@ -122,7 +122,8 @@ namespace
     fprintf(out,
             "usage: kppc [options] <file-or-dir>...\n"
             "       kpp [targets] [configurations] [options] in a project's directory (build.kpp: --run ARGS,\n"
-            "       --test, --set NAME=VALUE and the options below; kpp new, kpp options; docs/build.md)\n"
+            "       --test, --set NAME=VALUE, --verbose (kppc's report of each build) and the options below;\n"
+            "       kpp new, kpp options; docs/build.md)\n"
             "  --version     the version and commit, the compiler, the toolchain a build takes, the standard library\n"
             "  --help        this list\n"
             "  -j N          worker threads (default: hardware threads)\n"
@@ -3347,7 +3348,7 @@ namespace
     {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
     {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
-    {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0},
+    {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1},
     {"--codegen-threads", 1}, {"--lib", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},

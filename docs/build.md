@@ -199,7 +199,8 @@ run_tests.cmd.
     executables, whose builds run `kpp NAME CONFIGURATION --msvc-diagnostics`, so an edit of build.kpp
     needs no new project files;
   - `--set NAME=VALUE` gives a setting; `--no-server` builds without the compile server, and
-    `--stop-server` stops the project's servers;
+    `--stop-server` stops the project's servers; `--verbose` shows kppc's report of each build (its
+    phases' times), which a project's builds otherwise keep quiet;
   - `kpp` alone in a console shows a menu of these, each with its command; `kpp new [DIR]` writes
     build.kpp, `src\main.kpp` and a `.gitignore`.
   An argument that is an existing file or directory makes it a plain build of those sources, as
