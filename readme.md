@@ -1,20 +1,92 @@
-# Lets make C++ great
-The motivation is to create a version of C++ which solves some of the biggest issues we have.
+# kpp - C++, but better
 
-## Issues
- - Stupid slow compilation times.
- - Stupid bloat of #include definitions and forward declarations.
- - The need to re-parse and recompile all the files we touch from scratch as we work.
- - No tight integration (fast and reliable) of the compiled code structure and the editor features.
- - Missing some basic syntactic sugar (mentioned below).
- - No option to be able to edit the code without the need to think about files or cpp/hpp coupling.
- - Limited support of multiplatform compilers (this leads to the never ending clashes between different compiler quirks when doing multiplatform development)
- - const corectness implied code duplication
+kpp aims to be very close to C++, while fixing its biggest shortcomings. Existing C++ programmers
+should feel at home, and existing C++ code should convert to kpp mostly automatically: the whole of
+Factorio already has (see [Status](#status)).
+
+**[Getting started](docs/getting-started.md)**: install kpp, build a first program, build a project.
+
+## What kpp fixes
+
+- **Compile times.** One persistent, multithreaded compiler sees the whole program at once: every
+  file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
+  Factorio converted to kpp, against its own C++ build on the same machine (debug, 32 threads):
+
+  | | C++ (MSVC, FASTBuild) | kpp |
+  |---|---:|---:|
+  | Edit of one function | 22 to 29 s | about 1.5 s |
+  | Edit of an inline function used across the game | 51 to 59 s | about 1.6 s |
+  | Clean build of the game | 57 to 61 s | about 10 to 12 s |
+  | Clean build, every library included | 57 s | 33 s |
+
+  How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
+  [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md).
+- **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
+  build of the same game is about 1.5 GB in all, executable and debug information included, and
+  shrinks further as the compiler keeps more in memory instead of on disk.
+- **Memory.** No translation unit re-parses the same headers, so the compiler holds each declaration
+  once instead of once per file. (Measured comparison to come.)
+- **No includes, no forward declarations.** Every top-level name is visible in every file, in any
+  order; there are no headers, no `.hpp`/`.cpp` pairs, and code can move between files freely.
+  `private` keeps a name inside its file, and libraries keep their names behind their own
+  qualifier (`zlib::compress`) unless they choose otherwise.
+- **The editor knows what the compiler knows.** The compiler itself is the language server
+  (`kpp --lsp`), so completion, errors and navigation in VS Code, Visual Studio and other editors come
+  from the same compilation, in the configuration you build.
+- **One compiler everywhere.** The same compiler and standard library on every platform, no
+  per-compiler quirks. kpp runs on Windows today and builds for Windows, Linux and FreeBSD from there;
+  Linux and macOS as hosts, and macOS as a target, are planned. A release is self-contained: it compiles and links without Visual Studio or a Windows SDK.
+- **No silent surprises.** An unsupported construct is a compile error, never a guess: a `struct` is a
+  checked public value type, a `class` checks access, two declarations of one name are an error,
+  and printing has no format strings to get wrong (`print("x = ", x)`).
+- **Less boilerplate.** Typed unions (an enum with a value of its own type per case), `appendTo` as the
+  one way to turn anything into text, and the rest of [the original proposal](#the-original-proposal)
+  below as it gets decided.
+- **A build described in kpp.** `build.kpp` is ordinary kpp code, run by the compiler: targets,
+  configurations, library options and a hook for the special cases, with no second build language.
+
+## Status
+
+kpp is young, under heavy development, and changes every day; releases are numbered
+`0.MINOR.PATCH`.
+
+- The compiler (lexer, parser, resolver, type checker, templates, compile-time evaluation, code
+  generation through LLVM) and its own standard library work on real programs.
+- **Factorio 2.1.25 is converted to kpp** and runs: its 9,501 unit tests pass with the same results,
+  checked step by step against the C++ build's (CRCs), and its 45 menu maps replay identically, in
+  debug and release. Its C libraries (zlib, zstd, ogg, stb_image, ...) are being converted too.
+- Every construct the compiler supports has a test in `compiler/tests/spec/`; the decided rules are in
+  [docs/design.md](docs/design.md).
+
+## License
+
+kpp, its standard library and its official libraries are Apache-2.0 WITH LLVM-exception
+([LICENSE](LICENSE)): use them freely, also commercially; programs you build with kpp carry no
+obligation from it. Contributions are signed off ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
+# The original proposal
+
+What follows is the proposal kpp started from (October 2026). Some of it is decided and built, some
+changed on the way, some is still open; [docs/design.md](docs/design.md) is the record of what was
+decided.
+
+## The issues
+
+- Very slow compilation.
+- The bloat of `#include` definitions and forward declarations.
+- Re-parsing and recompiling everything a change touches, from scratch, as we work.
+- No tight, fast and reliable integration of the compiled code's structure with the editor.
+- Missing some basic syntactic sugar (below).
+- No way to edit code without thinking about files and `.cpp`/`.hpp` coupling.
+- Limited cross-platform compilers, leading to never-ending clashes between compiler quirks.
+- Code duplication forced by `const` correctness.
 
 ## The goal
-The goal is to make the new version of C++ very simple to pick-up by existing C++ programmers, and to make it reasonably easy to convert existing codebases to it, while being able to use all the existing C++ libraries easily.
 
-# Changes
+The new language should be very simple to pick up for existing C++ programmers, and it should be
+reasonably easy to convert existing codebases to it, while existing libraries stay usable.
+
+## Changes
 - [Compilation changes](compilation/index.md)
 - [Real enum class](#real-enum-class)
 - [*this* is a reference](#this-is-a-reference)
@@ -33,7 +105,7 @@ The goal is to make the new version of C++ very simple to pick-up by existing C+
 - [Test tools](#test-tools)
 - [accumulate](#accumulate)
 
-# The adaptation cost
+## The adaptation cost
 - [Using existing libraries](#using-existing-libraries)
 - [Converting existing code](#converting-existing-code)
 - [IDE support](#ide-support)
