@@ -20,7 +20,7 @@ Factorio already has (see [Status](#status)).
   | Whole build of factorio.exe, every library included | 50 s | 22 s |
   | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 40 s |
 
-  The last row is a whole build including all the C and C++ libraries the game links, both on one
+  The last two rows are whole builds including all the C and C++ libraries the game links, both on one
   machine (kovarex's second one). How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
   [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md).
 - **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
