@@ -11472,6 +11472,191 @@ const std::map<std::string, std::set<std::string>>& paddingHeaderNames()
   return names;
 }
 
+// The namespaces of a kpp text, each by its path (`agui`, `agui::detail`), with the place each
+// opens at and closes at; `holds` says whether one holds anything besides whitespace, comments and
+// other namespaces. A qualified `namespace a::b {` is a and a::b. An anonymous one's path is "".
+struct NamespaceBlock
+{
+  std::string path;
+  size_t begin, open, close; // `namespace`, its `{` and its `}`
+  bool holds = false;
+};
+std::vector<NamespaceBlock> namespaceBlocks(const std::string& text)
+{
+  std::vector<NamespaceBlock> blocks;
+  struct Open
+  {
+    std::vector<size_t> blocks; // the namespace blocks this brace opened (two for `a::b`), or none
+  };
+  std::vector<Open> braces;
+  std::vector<std::string> paths; // the namespaces open here, innermost last
+  auto holdHere = [&]()
+  {
+    for (Open& o : braces)
+      for (size_t b : o.blocks)
+        blocks[b].holds = true;
+  };
+  for (size_t i = 0; i < text.size();)
+  {
+    char c = text[i];
+    if (size_t raw = rawStringEnd(text, i); raw != std::string_view::npos)
+    {
+      holdHere();
+      i = raw;
+      continue;
+    }
+    if (c == '"' || (c == '\'' && !isDigitSeparator(text, i)))
+    {
+      holdHere();
+      for (++i; i < text.size() && text[i] != c && text[i] != '\n'; ++i)
+        i += text[i] == '\\';
+      ++i;
+      continue;
+    }
+    if (text.compare(i, 2, "//") == 0)
+    {
+      i = std::min(text.find('\n', i), text.size());
+      continue;
+    }
+    if (text.compare(i, 2, "/*") == 0)
+    {
+      size_t e = text.find("*/", i + 2);
+      i = e == std::string::npos ? text.size() : e + 2;
+      continue;
+    }
+    if (isspace((unsigned char)c))
+    {
+      ++i;
+      continue;
+    }
+    if (c == '}')
+    {
+      if (!braces.empty())
+      {
+        for (size_t b : braces.back().blocks)
+        {
+          blocks[b].close = i;
+          paths.pop_back();
+        }
+        braces.pop_back();
+      }
+      ++i;
+      continue;
+    }
+    if (text.compare(i, 9, "namespace") == 0 && (i == 0 || !isIdentChar(text[i - 1])) && i + 9 < text.size() && !isIdentChar(text[i + 9]))
+    {
+      // `namespace NAME {`, `namespace a::b {`, `namespace {` (not `using namespace` or an alias)
+      size_t q = i + 9;
+      while (q < text.size() && isspace((unsigned char)text[q]))
+        ++q;
+      size_t nameStart = q;
+      while (q < text.size() && (isIdentChar(text[q]) || text[q] == ':'))
+        ++q;
+      std::string name = text.substr(nameStart, q - nameStart);
+      while (q < text.size() && isspace((unsigned char)text[q]))
+        ++q;
+      bool usingBefore = false;
+      {
+        size_t b = text.find_last_not_of(" \t\r\n", i == 0 ? 0 : i - 1);
+        usingBefore = i > 0 && b != std::string::npos && b >= 4 && text.compare(b - 4, 5, "using") == 0;
+      }
+      if (q < text.size() && text[q] == '{' && !usingBefore)
+      {
+        // (a namespace inside another is no holding of the outer one: its contents are)
+        Open o;
+        std::string path = paths.empty() ? std::string() : paths.back();
+        for (size_t start = 0; start <= name.size();)
+        {
+          size_t sep = name.find("::", start);
+          std::string part = name.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
+          path = path.empty() ? part : path + "::" + part;
+          if (name.empty())
+            path = paths.empty() ? std::string("") : paths.back() + "::";
+          o.blocks.push_back(blocks.size());
+          blocks.push_back({path, i, q, std::string::npos});
+          paths.push_back(path);
+          if (sep == std::string::npos)
+            break;
+          start = sep + 2;
+        }
+        braces.push_back(o);
+        i = q + 1;
+        continue;
+      }
+    }
+    if (c == '{')
+    {
+      holdHere();
+      braces.push_back({});
+      ++i;
+      continue;
+    }
+    holdHere();
+    if (isIdentChar(c))
+      while (i < text.size() && isIdentChar(text[i]))
+        ++i;
+    else
+      ++i;
+  }
+  return blocks;
+}
+
+// The namespaces a text holds something in (namespaceBlocks), the program's by all its files.
+void noteNamespacesHolding(const std::string& text, std::set<std::string>& holding)
+{
+  for (const NamespaceBlock& b : namespaceBlocks(text))
+    if (b.holds)
+      holding.insert(b.path);
+}
+
+// The text without the namespaces that hold nothing (`namespace agui { }`, on one line or on
+// several), which the removals leave (forward declarations, mostly); an outer one an inner one's
+// going empties goes too. One that is the program's only declaration of its namespace stays:
+// `void GuiUtil::f() { g(); }` finds g only through a declared GuiUtil (`holding`: the namespaces
+// some file of the program holds something in). One holding a comment stays too: the comment says
+// something (LuaHelper's `//?` API documentation).
+std::string withoutEmptyNamespaces(std::string text, const std::set<std::string>& holding, size_t& removed, size_t& kept)
+{
+  for (bool again = true; again;)
+  {
+    again = false;
+    std::vector<NamespaceBlock> blocks = namespaceBlocks(text);
+    // innermost (last opened among nested) first: from the end
+    for (size_t k = blocks.size(); k-- > 0;)
+    {
+      const NamespaceBlock& b = blocks[k];
+      if (b.holds || b.close == std::string::npos || text.find_first_not_of(" \t\r\n", b.open + 1) != b.close)
+        continue;
+      if (!b.path.empty() && b.path.back() != ':' && !holding.count(b.path))
+      {
+        ++kept;
+        continue;
+      }
+      // From its line's start, when only indentation is before it, to its closing line's end, when
+      // nothing follows the brace there.
+      size_t from = b.begin;
+      while (from > 0 && (text[from - 1] == ' ' || text[from - 1] == '\t'))
+        --from;
+      bool ownLine = from == 0 || text[from - 1] == '\n';
+      if (!ownLine)
+        from = b.begin;
+      size_t to = b.close + 1, after = to;
+      while (after < text.size() && (text[after] == ' ' || text[after] == '\t' || text[after] == '\r'))
+        ++after;
+      if (ownLine && (after >= text.size() || text[after] == '\n'))
+        to = std::min(after + 1, text.size());
+      // (a qualified `namespace a::b { }`, two blocks at one place, stays: none in the game)
+      if ((k > 0 && blocks[k - 1].begin == b.begin) || (k + 1 < blocks.size() && blocks[k + 1].begin == b.begin))
+        continue;
+      text.erase(from, to - from);
+      ++removed;
+      again = true;
+      break;
+    }
+  }
+  return text;
+}
+
 // The identifiers of a kpp text, outside comments and literals.
 std::set<std::string> identifiersOf(const std::string& text)
 {
@@ -13024,6 +13209,24 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::map<std::string, std::set<std::string>> used; // padding header -> names
   };
   std::map<std::string, LibraryImports> libraryImports;
+  // The namespaces some file holds something in (withoutEmptyNamespaces keeps a file's empty one
+  // that is the only declaration of its namespace): the converted files, their hand-written parts and
+  // the added files.
+  std::set<std::string> holdingNamespaces;
+  for (const auto& [key, pieces] : outputs)
+    for (const Piece& p : pieces)
+      noteNamespacesHolding(p.text, holdingNamespaces);
+  for (const auto& [key, ov] : overrideFiles)
+    if (ov) // (a key without an override file has none)
+      noteNamespacesHolding(ov->appended, holdingNamespaces);
+  if (!overridesDir.empty())
+  {
+    std::error_code ec;
+    if (std::filesystem::is_directory(overridesDir / "added", ec))
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(overridesDir / "added", ec))
+        if (std::string addedText; entry.is_regular_file(ec) && readFile(entry.path(), addedText))
+          noteNamespacesHolding(addedText, holdingNamespaces);
+  }
   auto rootOf = [](const std::string& key) { return key.find('/') == std::string::npos ? std::string() : key.substr(0, key.find('/')); };
   auto noteLibraryText = [&](const std::string& root, const std::string& text)
   {
@@ -13067,6 +13270,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           total.add("hand-written members with no class");
         }
     }
+    size_t namespacesRemoved = 0, namespacesKept = 0;
+    text = withoutEmptyNamespaces(text, holdingNamespaces, namespacesRemoved, namespacesKept);
+    total.add("empty namespaces removed", namespacesRemoved);
+    total.add("empty namespaces kept: the program's only declaration of their namespace", namespacesKept);
     for (const Piece& p : pieces)
       for (const std::string& header : p.cImports)
         if (std::vector<std::string>& imports = libraryImports[rootOf(key)].imports; std::find(imports.begin(), imports.end(), header) == imports.end())
