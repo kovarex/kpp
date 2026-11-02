@@ -1,0 +1,15 @@
+// spec: kpp's names of the number types (u8 ... u64, i8 ... i64, usize, f32, f64) are types to the parser as C's size_t and float are: `(usize)-1` is a cast of -1, as `(size_t)-1` is, not usize minus 1 (and `(u32)+x`, `(i64)-x`, `(f64)-x`); `half_v<f32> * x` is a variable template's value times x, as `half_v<float> * x` is, not two comparisons
+// factorio: the converter's integer names (design.md 13): Agui's UTF8.hpp `size_t n = (size_t)-1` is `usize n = (usize)-1`, Attenuation's `Numbers::pi_v<float> * x` is `Numbers::pi_v<f32> * x`
+template<typename T> constexpr T half_v = T(0.5);
+u32 twice(u32 x) { return x * 2; }
+int main()
+{
+  usize all = (usize)-1;
+  u32 one = 7;
+  i64 back = (i64)-one;
+  u8 small = (u8)-1;
+  f64 half = (f64)-0.5;
+  f32 x = 3.0f;
+  println(all == ~usize(0), " ", (u32)+one, " ", back, " ", small, " ", half, " ", twice((u32)-1), " ", half_v<f32> * x, " ", half_v<f64> - 1.0);
+  return 0;
+}

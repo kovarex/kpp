@@ -654,6 +654,18 @@ namespace
     // Template argument heuristics: see parseQualifiedName.
     // A template argument as parsed that no expression is written as: a type keyword, `const`, a
     // pointer, reference, array or function type, `decltype(...)`, `typename X` (a pack of one).
+    // kpp's names of the number types (design.md 13), built-in names the parser knows as types:
+    // `(usize)-1` is a cast and `pi_v<f32> * x` a template's id, as with `size_t` and `float`.
+    static bool isKppNumberName(std::string_view s)
+    {
+      if (s == "usize")
+        return true;
+      if (s.size() < 2 || s.size() > 3 || (s[0] != 'u' && s[0] != 'i' && s[0] != 'f'))
+        return false;
+      std::string_view bits = s.substr(1);
+      return s[0] == 'f' ? bits == "32" || bits == "64" : bits == "8" || bits == "16" || bits == "32" || bits == "64";
+    }
+
     static bool typeOnlyArgument(Node* n)
     {
       if (!n)
@@ -721,7 +733,9 @@ namespace
         // a comparison, so the arguments are a template-id's whatever follows.
         bool typeOnly = false;
         for (size_t i = mark; i < scratch.size(); ++i)
-          typeOnly = typeOnly || typeOnlyArgument(scratch[i]) || scratch[i]->kind == NodeKind::PackType; // nor is `b...` compared
+          typeOnly = typeOnly || typeOnlyArgument(scratch[i]) || scratch[i]->kind == NodeKind::PackType || // nor is `b...` compared
+                     (scratch[i] && scratch[i]->kind == NodeKind::NamedType && static_cast<NamedType*>(scratch[i])->name.parts.size() == 1 &&
+                      !static_cast<NamedType*>(scratch[i])->name.parts[0].hasTemplateArgs && isKppNumberName(spelling(toks[scratch[i]->token])));
         if (binaryOnly || typeOnly)
           ok = true;
         else if (!plausible || sawLogical)
@@ -4948,8 +4962,9 @@ namespace
       if (!obviousType)
       {
         std::string_view s = spelling(toks[t->token]);
+        // (and kpp's own names of them, design.md 13: `(usize)-1` as `(size_t)-1`)
         obviousType = s == "size_t" || s == "ptrdiff_t" || s == "intptr_t" || s == "uintptr_t" || s.starts_with("__int") ||
-                      ((s.starts_with("int") || s.starts_with("uint")) && s.ends_with("_t"));
+                      ((s.starts_with("int") || s.starts_with("uint")) && s.ends_with("_t")) || isKppNumberName(s);
       }
       if (obviousType)
         return atIdent() || at(TokenKind::Number) || at(TokenKind::String) || at(TokenKind::Char) || at(P::LParen) ||

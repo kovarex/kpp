@@ -10421,7 +10421,212 @@ namespace
           counts.add("std renamed");
         }
       }
-      return squeezed;
+      return in.c ? squeezed : kppNumberNames(squeezed);
+    }
+
+    // kpp's names of the integer and floating types (design.md 13, "What the converter does"):
+    // `uint32_t` is `u32`, `int` `i32`, `unsigned char` `u8`, `size_t` `usize`, `double` `f64`. Each is
+    // the same type under kpp's name, so nothing else changes. Done on the converted C++ file's text,
+    // so that the names the converter writes itself (a printf piece's `uint32_t(x)`) and the macros'
+    // expansions get them too; literals and comments keep their text (a check's `#value`). C's names
+    // stay inside `extern "C"` declarations and blocks, which meet C, and `long` stays: C's long is
+    // a type of its own (32 bits on Windows) that kpp has no other name for. Plain char is the text
+    // character, and stays.
+    std::string kppNumberNames(const std::string& text)
+    {
+      static const std::map<std::string_view, std::string_view> names = {
+        {"uint8_t", "u8"},  {"uint16_t", "u16"}, {"uint32_t", "u32"}, {"uint64_t", "u64"}, {"int8_t", "i8"},     {"int16_t", "i16"},
+        {"int32_t", "i32"}, {"int64_t", "i64"},  {"size_t", "usize"}, {"ptrdiff_t", "i64"}, {"intptr_t", "i64"}, {"uintptr_t", "u64"}};
+      static const std::set<std::string_view> words = {"signed", "unsigned", "short", "long", "int", "char", "float", "double"};
+      auto identStart = [](char c) { return isalpha((unsigned char)c) || c == '_'; };
+      std::string out;
+      out.reserve(text.size());
+      // The last two characters of code written (not of comments): `.` or `->` before a name makes it
+      // a member's (a comment ending with a period before a declaration does not).
+      char last = 0, beforeLast = 0;
+      auto code = [&](std::string_view written)
+      {
+        out.append(written);
+        for (char ch : written)
+          if (!isspace((unsigned char)ch))
+            beforeLast = last, last = ch;
+      };
+      for (size_t i = 0; i < text.size();)
+      {
+        char c = text[i];
+        if (size_t raw = rawStringEnd(text, i); raw != std::string_view::npos)
+        {
+          code(std::string_view(text).substr(i, raw - i));
+          i = raw;
+          continue;
+        }
+        if (c == '"' || (c == '\'' && !isDigitSeparator(text, i)))
+        {
+          size_t e = i + 1;
+          for (; e < text.size() && text[e] != c && text[e] != '\n'; ++e)
+            e += text[e] == '\\';
+          e = std::min(e + 1, text.size());
+          code(std::string_view(text).substr(i, e - i));
+          i = e;
+          continue;
+        }
+        if (text.compare(i, 2, "//") == 0)
+        {
+          size_t e = text.find('\n', i);
+          e = e == std::string::npos ? text.size() : e;
+          out.append(text, i, e - i);
+          i = e;
+          continue;
+        }
+        if (text.compare(i, 2, "/*") == 0)
+        {
+          size_t e = text.find("*/", i + 2);
+          e = e == std::string::npos ? text.size() : e + 2;
+          out.append(text, i, e - i);
+          i = e;
+          continue;
+        }
+        if (isdigit((unsigned char)c))
+        {
+          // (a number's suffix is no name: `1ull`, `0x1fu`)
+          size_t e = i;
+          while (e < text.size() && (isIdentChar(text[e]) || (text[e] == '\'' && isDigitSeparator(text, e)) || text[e] == '.'))
+            ++e;
+          code(std::string_view(text).substr(i, e - i));
+          i = e;
+          continue;
+        }
+        if (!identStart(c))
+        {
+          code(std::string_view(&text[i], 1));
+          ++i;
+          continue;
+        }
+        size_t e = i;
+        while (e < text.size() && isIdentChar(text[e]))
+          ++e;
+        std::string_view word(text.data() + i, e - i);
+        if (word == "extern")
+        {
+          // `extern "C"`: the declaration, or the block, as it is.
+          size_t q = e;
+          while (q < text.size() && isspace((unsigned char)text[q]))
+            ++q;
+          if (text.compare(q, 3, "\"C\"") == 0)
+          {
+            size_t end = q + 3;
+            int depth = 0;
+            for (; end < text.size(); ++end)
+            {
+              if (size_t raw = rawStringEnd(text, end); raw != std::string_view::npos)
+                end = raw - 1;
+              else if (text[end] == '"' || (text[end] == '\'' && !isDigitSeparator(text, end)))
+              {
+                char quote = text[end];
+                for (++end; end < text.size() && text[end] != quote && text[end] != '\n'; ++end)
+                  end += text[end] == '\\';
+              }
+              else if (text.compare(end, 2, "//") == 0)
+                end = std::min(text.find('\n', end), text.size()) - 1;
+              else if (text.compare(end, 2, "/*") == 0)
+                end = std::min(text.find("*/", end + 2), text.size() - 2) + 1;
+              else if (text[end] == '{' || text[end] == '(' || text[end] == '[')
+                ++depth;
+              else if (text[end] == '}' || text[end] == ')' || text[end] == ']')
+              {
+                if (--depth == 0 && text[end] == '}')
+                  break;
+              }
+              else if (text[end] == ';' && depth == 0)
+                break;
+            }
+            end = std::min(end + 1, text.size());
+            code(std::string_view(text).substr(i, end - i));
+            i = end;
+            continue;
+          }
+        }
+        if (words.count(word))
+        {
+          // A run of C's type words: `unsigned long long`, `short int`, `signed char`.
+          int isSigned = 0, isUnsigned = 0, shorts = 0, longs = 0, ints = 0, chars = 0, floats = 0, doubles = 0;
+          size_t runEnd = i, q = i;
+          std::string spelled;
+          while (q < text.size() && identStart(text[q]))
+          {
+            size_t we = q;
+            while (we < text.size() && isIdentChar(text[we]))
+              ++we;
+            std::string_view w(text.data() + q, we - q);
+            if (!words.count(w))
+              break;
+            isSigned += w == "signed", isUnsigned += w == "unsigned", shorts += w == "short", longs += w == "long", ints += w == "int";
+            chars += w == "char", floats += w == "float", doubles += w == "double";
+            spelled += (spelled.empty() ? "" : " ") + std::string(w);
+            runEnd = we;
+            q = we;
+            while (q < text.size() && (text[q] == ' ' || text[q] == '\t'))
+              ++q;
+          }
+          std::string kpp;
+          if (floats == 1 && runEnd == i + 5)
+            kpp = "f32";
+          else if (doubles == 1 && runEnd == i + 6)
+            kpp = "f64";
+          else if (floats || doubles || longs == 1)
+            kpp = ""; // long, long double: as they are
+          else if (chars)
+            kpp = isUnsigned ? "u8" : isSigned ? "i8" : "";
+          else if (shorts)
+            kpp = isUnsigned ? "u16" : "i16";
+          else if (longs == 2)
+            kpp = isUnsigned ? "u64" : "i64";
+          else
+            kpp = isUnsigned ? "u32" : "i32";
+          if (!kpp.empty())
+          {
+            counts.add("C type names written as kpp's: " + spelled + " as " + kpp);
+            code(kpp);
+          }
+          else
+          {
+            if (longs == 1 && !doubles)
+              counts.add("C type names kept: " + spelled);
+            code(std::string_view(text).substr(i, runEnd - i));
+          }
+          i = runEnd;
+          continue;
+        }
+        auto name = names.find(word);
+        char before = last;
+        bool member = before == '.' || (before == '>' && beforeLast == '-');
+        if (name != names.end() && !member)
+        {
+          if (before == ':')
+          {
+            // `::size_t`: kpp's name is a built-in, which no `::` qualifies; `glm::uint32_t` (a
+            // qualified one, another namespace's) stays.
+            size_t colons = out.find_last_not_of(" \t\r\n");
+            size_t prior = colons >= 2 ? out.find_last_not_of(" \t\r\n", colons - 2) : std::string::npos;
+            bool global = colons >= 1 && out[colons - 1] == ':' &&
+                          (prior == std::string::npos || !(isIdentChar(out[prior]) || out[prior] == '>'));
+            if (!global)
+            {
+              code(word);
+              i = e;
+              continue;
+            }
+            out.erase(colons - 1);
+          }
+          counts.add("C type names written as kpp's: " + std::string(word) + " as " + std::string(name->second));
+          code(name->second);
+          i = e;
+          continue;
+        }
+        code(word);
+        i = e;
+      }
+      return out;
     }
   };
 

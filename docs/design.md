@@ -691,6 +691,26 @@ kovarex, 2026-11-01:
 - `char` 5,646, `bool` 34,224 and `wchar_t` 753 stay; `float` 10,553 and `double` 10,175 as
   decided above.
 
+As converted (thread C, 2026-11-02, C:\Factorio 4c178a5b915; the conversion report's counts, the
+converted C++ of src, tests, CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast and UnitTest++):
+- `uint32_t` 16,421 → `u32`; `int32_t` 14,110 → `i32`; `uint8_t` 4,938 → `u8`; `uint64_t` 2,158 →
+  `u64`; `uint16_t` 1,432 → `u16`; `int64_t` 832 → `i64`; `int8_t` 459 → `i8`; `int16_t` 341 → `i16`.
+- `int` 5,626 → `i32`; `unsigned char` 200 → `u8`; `unsigned int` 55 and `unsigned` 24 → `u32`;
+  `long long` 56 (4 of them `long long int`) → `i64`; `unsigned long long` 53 → `u64`; `unsigned short`
+  14 → `u16`; `short` 18 → `i16`.
+- `long` 21 and `unsigned long` 23 stay, all of them: C's long is a type of its own, which kpp has no
+  other name for, so writing `i32` would change the type (an overload, a `long*` for
+  InterlockedIncrement). Whether they meet a C API is not the question until kpp names the type.
+- `size_t` 4,683 → `usize`, `ptrdiff_t` 23 → `i64`, `uintptr_t` 21 → `u64`, `intptr_t` 2 → `i64`.
+- `float` 9,915 → `f32`, `double` 10,122 → `f64`.
+- Kept C's: inside `extern "C"` declarations and blocks, in literals and comments, plain `char`,
+  `long double`; and the C libraries (converted by C's rules: zstd, stb_image, fontstash, zlib, trio,
+  glad, minizip, ogg) and the hand-written or generated bindings (ImGui.kpp, glm.kpp,
+  ComInterfaces.kpp), which are C interop. The names the converter writes itself (a printf piece's
+  `uint32_t(x)`) and macro expansions are renamed too: it is a pass over the converted text.
+- The parser read kpp's names as plain names where C's are known types: `(usize)-1` and
+  `pi_v<f32> * x` (spec language/kpp_number_names_are_types_to_the_parser).
+
 Each rename changes no type, so the IR is unchanged. C's checks are the ones in
 C-integer-names-plan: map the new names back and get the old conversion byte for byte. C names
 stay in the imported headers, the kpp-native shims (C) and `extern "C"` declarations. The standard
