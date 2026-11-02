@@ -389,9 +389,9 @@ namespace
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
-    // Streaming's barrier (docs/codegen-speed.md, step 4): a debug build's module is to be cut into
-    // a program piece, assembled once level 0 is emitted, and an instance piece with the rest. A
-    // program piece declares the functions its definitions name that are defined only later
+    // Streaming's barrier (docs/codegen-speed.md, step 4): a debug build's module is cut into a
+    // program piece, which can be assembled once level 0 is emitted, and an instance piece with the
+    // rest (splitPieces). A program piece declares the functions its definitions name that are defined only later
     // (instances, destructor helpers, lambdas' call operators emitted on demand, the entry point)
     // from requestDeclarations: each one's declaration as its signature gives it when it is first
     // asked for, never as a call site spells it (taking a function's address names no type).
@@ -405,6 +405,27 @@ namespace
     // the end that every name level 0 uses and only a later text defines has a barrier declaration,
     // and that it is its definition's (B's review: test-only until the pieces rely on it).
     bool checkBarrier = getenv("KPP_CHECK_BARRIER") != nullptr;
+    // The pieces: a debug build of several modules (the builds that home their globals) has each
+    // module's text in two, the output's modules being the program pieces (0..M-1), then the instance
+    // pieces (M..2M-1). A module's program piece holds what the functions the program writes (level
+    // 0, by IR name in programFunctions) own (Definition::owner, OwnedEntry::owner): their
+    // definitions, their lambdas' call operators, their catch filters, their static locals. It is
+    // assembled from texts that do not change once written (programPieceText), so it is one text at
+    // level 0's barrier, at the end and in a server's build. The instance piece holds the rest
+    // (moduleText's instancePiece) and declares what the program piece defines.
+    bool splitPieces = false;
+    std::unordered_set<std::string> programFunctions; // (rebuildLLVM: less the removed, with the added)
+    bool programOwned(const std::string& owner) const { return programFunctions.count(owner) != 0; }
+    unsigned outputModules() const { return splitPieces ? 2 * moduleCount : moduleCount; }
+    std::vector<size_t> barrierOwned; // per module: its owned entries at level 0's barrier
+    // KPP_CHECK_BARRIER: each module's program piece as level 0's barrier assembles it, compared with
+    // the one the end assembles; and whether the barrier's is not the whole piece (late): a definition
+    // or owned entry of a program function came after the barrier (a lambda's call operator a caller of
+    // a later level emitted; none in the game), or a type it names had no line yet (a closure a program
+    // function holds, laid out by the lambda's writer at a later level: FusionGeneratorPrototype::
+    // addToDescription's, in 3 of the game's 128 modules).
+    std::vector<std::string> barrierPieces;
+    std::vector<char> latePieces;
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
@@ -490,6 +511,7 @@ namespace
       placedHere.resize(moduleCount);
       placedDecls.resize(moduleCount);
       movedOut.resize(moduleCount);
+      latePieces.resize(moduleCount);
     }
   };
 
@@ -625,6 +647,9 @@ namespace
     NameSet& requested = sh.requested;
     // What this emitter asked for: the next level's functions (the driver gathers them).
     std::vector<Instantiation> worklist;
+    // The program's own functions it emitted (level 0), by IR name: gathered into
+    // Shared::programFunctions at level 0's barrier and after a server's build.
+    std::vector<std::string> programFunctionsNow;
     // Its errors and the functions they left out, gathered once all are emitted.
     std::vector<std::string> errors, failedFunctions;
     std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
@@ -9712,8 +9737,9 @@ namespace
     // the `define` is a redefinition to LLVM (a call site whose definition was not found declares
     // the function as external).
     // The shared declarations as module k carries them; without the type definitions when types is
-    // false (moduleText writes those the module uses).
-    std::string declsFor(unsigned k, bool types = true)
+    // false (moduleText writes those the module uses). An instance piece's (programNames: what its
+    // program piece defines) keep the declarations of those.
+    std::string declsFor(unsigned k, bool types = true, const std::unordered_set<std::string_view>* programNames = nullptr)
     {
       std::string out;
       const std::string& decls = this->decls.text;
@@ -9735,7 +9761,7 @@ namespace
             {
               std::string name(line.substr(at, nameEnd - at));
               const unsigned* in = sh.moduleDefining(name);
-              skip = in && *in == k;
+              skip = in && *in == k && !(programNames && programNames->count(name));
               // --stub-missing: a function of the program used without a definition is defined
               // here as a stub (in every module: linkonce_odr), from its declaration.
               if (!skip && sh.stubMissing && sh.undefinedUses.count(name) && !definedIn.count(name))
@@ -9833,6 +9859,39 @@ namespace
 
     // A type definition line of the shared declarations (`%struct.<hash> = type {...}`, `%closure...`).
     static bool isTypeLine(std::string_view line) { return !line.empty() && line[0] == '%' && line.find(" = type ") != std::string_view::npos; }
+
+    // The name a line defines or declares (`@name = ...`, `$name = comdat any`, `declare ... @name(`,
+    // `define ... @name(`), without its sigil; empty for any other line.
+    static std::string_view definedBy(std::string_view line)
+    {
+      size_t at = line.starts_with("declare ") || line.starts_with("define ") ? line.find('@') : line.starts_with("@") || line.starts_with("$") ? 0 : std::string_view::npos;
+      if (at == std::string_view::npos || at + 1 >= line.size())
+        return {};
+      size_t end = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find_first_of(" (", at + 1);
+      return end == std::string_view::npos || end <= at + 1 ? std::string_view() : line.substr(at + 1, end - at - 1);
+    }
+    // Each line of a module's declarations; a definition (a thunk's) whole, its body with it.
+    template<typename F>
+    static void forEachLine(std::string_view text, F&& f)
+    {
+      for (size_t pos = 0; pos < text.size();)
+      {
+        bool definition = text.substr(pos).starts_with("define ");
+        size_t end = definition ? text.find("\n}", pos) : text.find('\n', pos);
+        if (definition && end != std::string_view::npos)
+          end += 2;
+        if (end == std::string_view::npos)
+          end = text.size();
+        f(text.substr(pos, end - pos));
+        pos = end + 1;
+      }
+    }
+    // A (non-empty) line that defines a name private to its module: an internal or private global or function.
+    static bool localLine(std::string_view line)
+    {
+      return (line[0] == '@' && (line.find(" = private ") != std::string_view::npos || line.find(" = internal ") != std::string_view::npos)) ||
+             line.starts_with("define private ") || line.starts_with("define internal ");
+    }
 
     // Calls found(name) for each class or closure type a text names (`%struct.<hash>`, `%closure.<hash>`).
     template<typename F>
@@ -10018,36 +10077,6 @@ namespace
       unsigned importable = sh.importableModules;
       if (!importable)
         return;
-      // The name a line defines or declares (`@name = ...`, `$name = comdat any`, `declare ... @name(`,
-      // `define ... @name(`), without its sigil; empty for any other line.
-      auto definedBy = [](std::string_view line) -> std::string_view
-      {
-        size_t at = line.starts_with("declare ") || line.starts_with("define ") ? line.find('@') : line.starts_with("@") || line.starts_with("$") ? 0 : std::string_view::npos;
-        if (at == std::string_view::npos || at + 1 >= line.size())
-          return {};
-        size_t end = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find_first_of(" (", at + 1);
-        return end == std::string_view::npos || end <= at + 1 ? std::string_view() : line.substr(at + 1, end - at - 1);
-      };
-      // Each line of a module's declarations; a definition (a thunk's) whole, its body with it.
-      auto forEachLine = [](std::string_view text, auto&& f)
-      {
-        for (size_t pos = 0; pos < text.size();)
-        {
-          bool definition = text.substr(pos).starts_with("define ");
-          size_t end = definition ? text.find("\n}", pos) : text.find('\n', pos);
-          if (definition && end != std::string_view::npos)
-            end += 2;
-          if (end == std::string_view::npos)
-            end = text.size();
-          f(text.substr(pos, end - pos));
-          pos = end + 1;
-        }
-      };
-      auto localLine = [](std::string_view line)
-      {
-        return (line[0] == '@' && (line.find(" = private ") != std::string_view::npos || line.find(" = internal ") != std::string_view::npos)) ||
-               line.starts_with("define private ") || line.starts_with("define internal ");
-      };
       // f(k) for every module, on the threads (what each module's part writes is its own; the parts
       // are joined in module order after).
       auto forModules = [&](auto&& f)
@@ -10371,11 +10400,27 @@ namespace
     }
 
     // Module k's text. Reads only what is finished (the texts) and prepareModuleTexts' lookups, so
-    // the modules are assembled on all threads at once.
-    std::string moduleText(unsigned k, const std::string& prefix)
+    // the modules are assembled on all threads at once. instancePiece: its instance piece
+    // (Shared::splitPieces), without what its program piece holds, which it declares; errors gets a
+    // name private to the program piece (a static local's) that it names.
+    std::string moduleText(unsigned k, const std::string& prefix, bool instancePiece = false, std::string* errors = nullptr)
     {
+      std::unordered_set<std::string_view> programNames, programPrivate; // (an instance piece's: what its program piece defines)
+      if (instancePiece)
+      {
+        for (const Shared::Definition& d : sh.definitions[k])
+          if (sh.programOwned(d.owner))
+            programNames.insert(d.name);
+        for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+          if (sh.programOwned(o.owner))
+            forEachLine(o.text, [&](std::string_view line)
+            {
+              if (!definedBy(line).empty() && localLine(line))
+                programPrivate.insert(line.substr(0, line.find(" = ")));
+            });
+      }
       std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
-      std::string decls = declsFor(k, false);
+      std::string decls = declsFor(k, false, instancePiece ? &programNames : nullptr);
       // The module's own declarations, without the lines placed in another module.
       std::string_view ownDecls = moduleDecls[k].text;
       std::string kept;
@@ -10391,6 +10436,56 @@ namespace
         }
         kept.append(at, end);
         ownDecls = kept;
+      }
+      // An instance piece: only the module's own declarations its texts reach (its definitions, the
+      // shared definitions and declarations it carries, the startup list), closed over what those name;
+      // the program piece has copies of those its own definitions name. Each unit (a line, a thunk's
+      // definition) where it was.
+      std::string reached;
+      if (instancePiece)
+      {
+        std::unordered_map<std::string_view, std::vector<std::string_view>> units;
+        forEachLine(ownDecls, [&](std::string_view unit)
+        {
+          if (std::string_view name = definedBy(unit); !name.empty())
+            units[name].push_back(unit);
+        });
+        std::vector<std::string_view> work; // names, without the sigil
+        auto uses = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { work.push_back(text.substr(at + 1, length - 1)); }); };
+        for (const Shared::Definition& d : sh.definitions[k])
+          if (!sh.placedAway.count(&d) && !sh.programOwned(d.owner))
+            for (auto [at, length] : d.names)
+              work.push_back(std::string_view(d.text).substr(at + 1, length - 1));
+        uses(shared.text);
+        uses(ctors);
+        if (!sh.homeNames.empty())
+          for (std::string_view name : sh.homeNames[k])
+            work.push_back(name.substr(1));
+        for (std::string_view name : sh.namedByShared)
+          work.push_back(name.substr(1));
+        std::unordered_set<std::string_view> seen;
+        std::unordered_set<const char*> keep; // the units reached, by where they start
+        while (!work.empty())
+        {
+          std::string_view name = work.back();
+          work.pop_back();
+          if (!seen.insert(name).second)
+            continue;
+          if (auto it = units.find(name); it != units.end())
+            for (std::string_view unit : it->second)
+              if (keep.insert(unit.data()).second)
+                uses(unit);
+        }
+        reached.reserve(ownDecls.size());
+        forEachLine(ownDecls, [&](std::string_view unit)
+        {
+          if (keep.count(unit.data()))
+          {
+            reached.append(unit);
+            reached += '\n';
+          }
+        });
+        ownDecls = reached;
       }
       std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
       declaredIn(ownDecls, already);
@@ -10412,14 +10507,16 @@ namespace
         if (!seen.insert(name).second)
           return;
         const unsigned* in = sh.moduleDefining(name);
-        if (in && *in != k && !sharedDeclared.count(name) && !already.count(name))
+        if (in && (*in != k || programNames.count(name)) && !sharedDeclared.count(name) && !already.count(name))
           declare(name); // not when a declaration is in the module's text already
+        if (errors && programPrivate.count(name))
+          *errors += "codegen: module " + std::to_string(k) + "'s instance piece names " + name + ", private to its program piece (step 4's pieces)\n";
       };
       auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { consider(text.substr(at, length)); }); };
       // Its definitions: those emitted in it and not placed in another, then those placed in it.
       std::vector<const Shared::Definition*> definitions;
       for (const Shared::Definition& d : sh.definitions[k])
-        if (!sh.placedAway.count(&d))
+        if (!sh.placedAway.count(&d) && !(instancePiece && sh.programOwned(d.owner)))
           definitions.push_back(&d);
       definitions.insert(definitions.end(), sh.placedHere[k].begin(), sh.placedHere[k].end());
       scan(ownDecls);
@@ -10431,7 +10528,7 @@ namespace
       scan(ctors);
       // The functions the shared declarations name: every module but the defining one declares them.
       for (const std::string& name : sh.sharedReferences)
-        if (const unsigned* in = sh.moduleDefining(name); in && *in != k && !already.count(name) && seen.insert(name).second)
+        if (const unsigned* in = sh.moduleDefining(name); in && (*in != k || programNames.count(name)) && !already.count(name) && seen.insert(name).second)
           declare(name);
       if (sh.homeGlobals)
         decls = homedDeclsFor(k, decls, seen);
@@ -18779,6 +18876,11 @@ namespace
         emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth};
         inlinedNow.clear();
         layoutsNow.clear();
+        // One of the program's own functions (a level-0 item): what it owns goes in its module's
+        // program piece (Shared::splitPieces).
+        if (sh.splitPieces && currentDepth == 0 && currentRequestedBy.empty() && args.empty() && !classTy && nameOverride.empty() &&
+            isProgramFunction(original))
+          programFunctionsNow.push_back(currentFunctionName);
       }
       try
       {
@@ -19211,7 +19313,7 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target);
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -19362,9 +19464,14 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
   });
 }
 
+unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
+{
+  return moduleCount > 1 && debug && !optimize ? 2 * moduleCount : moduleCount;
+}
+
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                           CodegenSessionPtr* keep, bool debugInfo, const Target* target)
+                           CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -19383,13 +19490,14 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     CodegenSessionPtr* keep;
     bool debugInfo;
     const Target* target;
+    bool optimize;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
     j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
-                         j->keep, j->debugInfo, j->target);
+                         j->keep, j->debugInfo, j->target, j->optimize);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -19399,7 +19507,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -19536,9 +19644,270 @@ static std::string sharedFunctionIn(const std::string& entry, std::string& heade
   return nameEnd == std::string::npos ? std::string() : header.substr(name + 1, nameEnd - name - 1);
 }
 
+// The program functions the emitters emitted since they were last gathered (Shared::programFunctions).
+static void gatherProgramFunctions(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters)
+{
+  for (auto& em : emitters)
+  {
+    sh.programFunctions.insert(em->programFunctionsNow.begin(), em->programFunctionsNow.end());
+    em->programFunctionsNow.clear();
+  }
+}
+
+// What program pieces are assembled from besides their module's own texts (programPieceText): the
+// units (a line, or a definition with its body: Emitter::forEachLine) of the shared declarations and
+// of the shared definitions every module carries, by the name each defines or declares, and the type
+// lines by type name. At level 0's barrier from the entries written so far, less the shared functions
+// the end homes in one module (pieces declare those); at the end from the finished texts. A unit is
+// one text in both.
+struct PieceSources
+{
+  std::unordered_map<std::string_view, std::vector<std::string_view>> decls, shared;
+  std::unordered_map<std::string_view, std::string_view> types;
+  bool atBarrier = false;
+};
+
+static PieceSources pieceSources(const Shared& sh, bool atBarrier)
+{
+  PieceSources sources;
+  sources.atBarrier = atBarrier;
+  auto add = [&](std::unordered_map<std::string_view, std::vector<std::string_view>>& index, std::string_view text)
+  {
+    Emitter::forEachLine(text, [&](std::string_view unit)
+    {
+      if (Emitter::isTypeLine(unit))
+        sources.types.emplace(unit.substr(0, unit.find(" = type ")), unit);
+      else if (std::string_view name = Emitter::definedBy(unit); !name.empty())
+        index[name].push_back(unit);
+    });
+  };
+  if (atBarrier)
+  {
+    for (const std::string& entry : sh.decls.entries)
+      add(sources.decls, entry);
+    for (const std::string& entry : sh.shared.entries)
+      if (std::string header; sharedFunctionIn(entry, header).empty())
+        add(sources.shared, entry);
+  }
+  else
+  {
+    add(sources.decls, sh.decls.text);
+    add(sources.shared, sh.shared.text);
+  }
+  return sources;
+}
+
+// Module k's program piece (Shared::splitPieces): the definitions its program functions own and their
+// owned entries (with sources.atBarrier, those written before level 0's barrier), and what they name,
+// closed over what that names in turn, each from a text that does not change once written:
+// - a string literal: a copy of its definition from its contents, whether the module or the shared
+//   declarations define it (a module's literal goes to those at the end when another module uses it);
+// - a unit of the module's own declarations, of the shared definitions or of the shared declarations:
+//   copied (a vtable and its thunks, a type descriptor, a declare, an internal constant, `@kpp.dyncast`),
+//   except a global the shared declarations home in one module (an instance piece), declared external;
+// - a function defined in another text (another module, its instance piece, a later level, a shared
+//   function homed at the end) or the runtime's global: its declaration as its definition gives it
+//   (declareLines) or its first request did (requestDeclarations), the same by the barrier check.
+// Then the type lines all of it names, closed over theirs. Each part sorted: one text at the barrier,
+// at the end and in a server's build. A name none of these has is left alone (an '@' inside a string
+// names nothing; LLVM reports a real one). errors gets a name private to the instance piece (one of its
+// static locals) that the piece names; complete is false when a type it names has no line in sources
+// (at the barrier: one laid out only later, Shared::latePieces).
+static std::string programPieceText(const Shared& sh, unsigned k, const std::string& prefix, const PieceSources& sources, std::string* errors,
+                                    bool* complete = nullptr)
+{
+  const bool atBarrier = sources.atBarrier;
+  std::vector<const Shared::Definition*> definitions;
+  const std::vector<Shared::Definition>& all = sh.definitions[k];
+  for (size_t i = 0, n = atBarrier ? sh.barrierCounts[k] : all.size(); i < n; ++i)
+    if (sh.programOwned(all[i].owner))
+      definitions.push_back(&all[i]);
+  std::sort(definitions.begin(), definitions.end(), [](const Shared::Definition* a, const Shared::Definition* b) { return a->text < b->text; });
+  std::vector<std::string_view> owned;
+  const std::vector<Shared::OwnedEntry>& entries = sh.ownedEntries[k];
+  for (size_t i = 0, n = atBarrier ? sh.barrierOwned[k] : entries.size(); i < n; ++i)
+    if (sh.programOwned(entries[i].owner))
+      owned.push_back(entries[i].text);
+  std::sort(owned.begin(), owned.end());
+  // What the piece defines (by name, without the sigil), and the module's own declarations by name.
+  std::unordered_set<std::string_view> defined;
+  for (const Shared::Definition* d : definitions)
+    if (!d->name.empty())
+      defined.insert(std::string_view(d->name).substr(1));
+  for (std::string_view entry : owned)
+    Emitter::forEachLine(entry, [&](std::string_view unit)
+    {
+      if (std::string_view name = Emitter::definedBy(unit); !name.empty())
+        defined.insert(name);
+    });
+  std::unordered_map<std::string_view, std::vector<std::string_view>> own;
+  auto addOwn = [&](std::string_view text)
+  {
+    Emitter::forEachLine(text, [&](std::string_view unit)
+    {
+      if (std::string_view name = Emitter::definedBy(unit); !name.empty())
+        own[name].push_back(unit);
+    });
+  };
+  if (atBarrier)
+    for (const std::string& entry : sh.moduleDecls[k].entries)
+      addOwn(entry);
+  else
+    addOwn(sh.moduleDecls[k].text);
+  std::vector<std::string_view> work, typeWork, lines, declarations;
+  std::deque<std::string> made; // the texts written here (literals, external declarations)
+  auto uses = [&](std::string_view text)
+  {
+    irNamesIn(text, [&](size_t at, size_t length) { work.push_back(text.substr(at, length)); });
+    Emitter::typeNamesIn(text, [&](std::string_view name) { typeWork.push_back(name); });
+  };
+  for (const Shared::Definition* d : definitions)
+  {
+    for (auto [at, length] : d->names)
+      work.push_back(std::string_view(d->text).substr(at, length));
+    for (auto [at, length] : d->types)
+      typeWork.push_back(std::string_view(d->text).substr(at, length));
+  }
+  for (std::string_view entry : owned)
+    uses(entry);
+  std::unordered_set<std::string_view> seen;
+  while (!work.empty())
+  {
+    std::string_view name = work.back(); // `@name` or `@"name"`
+    work.pop_back();
+    if (name.size() < 2 || !seen.insert(name).second || defined.count(name.substr(1)))
+      continue;
+    std::string key(name);
+    if (auto literal = sh.literalContents.find(key); literal != sh.literalContents.end())
+    {
+      std::string_view text = made.emplace_back(Emitter::literalDefinition(key, literal->second));
+      lines.push_back(text.substr(0, text.size() - 1)); // (its comdat and its definition)
+      uses(literal->second);                            // (a constant array's pointers and types)
+      continue;
+    }
+    std::string_view bare = name.substr(1);
+    const std::vector<std::string_view>* units = nullptr;
+    bool fromOwn = false, fromDecls = false;
+    if (auto it = own.find(bare); it != own.end())
+    {
+      units = &it->second;
+      fromOwn = true;
+    }
+    else if (auto it = sources.shared.find(bare); it != sources.shared.end())
+      units = &it->second;
+    else if (auto it = sources.decls.find(bare); it != sources.decls.end())
+    {
+      units = &it->second;
+      fromDecls = true;
+    }
+    if (units)
+    {
+      std::string external; // a homed global of the shared declarations
+      if (fromDecls)
+        for (std::string_view unit : *units)
+          if (std::string_view ignored; external.empty())
+            external = Emitter::externalDeclarationOf(unit, ignored);
+      if (!external.empty())
+      {
+        std::string_view text = made.emplace_back(std::move(external));
+        declarations.push_back(text);
+        Emitter::typeNamesIn(text, [&](std::string_view type) { typeWork.push_back(type); });
+        continue;
+      }
+      for (std::string_view unit : *units)
+      {
+        if (fromOwn && errors && Emitter::localLine(unit))
+          *errors += "codegen: module " + std::to_string(k) + "'s program piece names " + key + ", private to its instance piece (step 4's pieces)\n";
+        lines.push_back(unit);
+        uses(unit);
+      }
+      continue;
+    }
+    const std::string* declaration = nullptr;
+    if (auto it = sh.declareLines.find(key); it != sh.declareLines.end())
+      declaration = &it->second;
+    else if (auto it = sh.requestDeclarations.find(key); it != sh.requestDeclarations.end())
+      declaration = &it->second;
+    if (declaration)
+    {
+      declarations.push_back(*declaration);
+      Emitter::typeNamesIn(*declaration, [&](std::string_view type) { typeWork.push_back(type); });
+    }
+  }
+  std::vector<std::string_view> types;
+  std::unordered_set<std::string_view> typeSeen;
+  while (!typeWork.empty())
+  {
+    std::string_view name = typeWork.back();
+    typeWork.pop_back();
+    if (!typeSeen.insert(name).second)
+      continue;
+    auto it = sources.types.find(name);
+    if (it == sources.types.end())
+    {
+      if (complete)
+        *complete = false;
+      continue;
+    }
+    types.push_back(it->second);
+    Emitter::typeNamesIn(it->second.substr(it->second.find(" = type ")), [&](std::string_view type) { typeWork.push_back(type); });
+  }
+  for (std::vector<std::string_view>* part : {&types, &lines, &declarations})
+  {
+    std::sort(part->begin(), part->end());
+    part->erase(std::unique(part->begin(), part->end()), part->end());
+  }
+  std::string tail = sh.debugInfo ? debugModuleTailFor(sh.target) : std::string();
+  size_t size = prefix.size() + 1 + tail.size();
+  for (const std::vector<std::string_view>* part : {&types, &lines, &owned, &declarations})
+    for (std::string_view text : *part)
+      size += text.size() + 1;
+  for (const Shared::Definition* d : definitions)
+    size += d->text.size();
+  std::string out;
+  out.reserve(size);
+  out += prefix;
+  for (const std::vector<std::string_view>* part : {&types, &lines})
+    for (std::string_view text : *part)
+    {
+      out += text;
+      out += '\n';
+    }
+  for (std::string_view text : owned)
+    out += text;
+  for (std::string_view text : declarations)
+  {
+    out += text;
+    out += '\n';
+  }
+  out += '\n';
+  uint32_t nextDebugId = debugFirstId;
+  for (const Shared::Definition* d : definitions)
+  {
+    size_t at = out.size();
+    out += d->text;
+    if (sh.debugInfo)
+      nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
+  }
+  out += tail;
+  return out;
+}
+
+// Output module i of a build (Shared::outputModules): module i's text, or with pieces, the program piece
+// of module i (i < M) or the instance piece of module i - M.
+static std::string outputText(Emitter& em, unsigned i, const std::string& prefix, const PieceSources* sources, std::string* errors)
+{
+  Shared& sh = em.sh;
+  if (!sh.splitPieces)
+    return em.moduleText(i, prefix);
+  if (i < sh.moduleCount)
+    return programPieceText(sh, i, prefix, *sources, errors);
+  return em.moduleText(i - sh.moduleCount, prefix, true, errors);
+}
+
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target)
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize)
 {
   // The build's state lives in a session (Shared refers to its result), kept for the next build
   // when asked (keep) or freed.
@@ -19557,6 +19926,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // A release build (ThinLTO) puts its short definitions in modules of their own (Emitter::placeShortDefinitions).
   if (!debug && sh.moduleCount >= 2)
     sh.importableModules = sh.moduleCount / 2;
+  // A debug build of several modules, not optimized, has each in two pieces (Shared::splitPieces).
+  sh.splitPieces = codegenOutputModules(sh.moduleCount, debug, optimize) != sh.moduleCount;
+  std::string prefix = "; kpp v0: generated by kppc\n"
+                       "target datalayout = \"" + sh.target.dataLayout + "\"\n"
+                       "target triple = \"" + sh.target.triple + "\"\n\n";
   for (size_t i = 0; i < files.size(); ++i)
     sh.fileModule[files[i].get()] = sh.emissionModule(i);
   // One emitter per thread; the first one also finishes the runtime and assembles the modules.
@@ -19696,8 +20070,13 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         // module (the definitions are only appended to until the end sorts them).
         sh.barrierTaken = true;
         sh.barrierCounts.resize(sh.moduleCount);
+        sh.barrierOwned.resize(sh.moduleCount);
         for (unsigned k = 0; k < sh.moduleCount; ++k)
+        {
           sh.barrierCounts[k] = sh.definitions[k].size();
+          sh.barrierOwned[k] = sh.ownedEntries[k].size();
+        }
+        gatherProgramFunctions(sh, emitters);
         // The shared definitions written so far (destructor helpers, the runtimes' functions): a
         // program piece declares them, never takes their text (homed later, among the instance
         // pieces), by the declarations of their own headers.
@@ -19723,6 +20102,23 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         if (sh.checkBarrier)
           for (const auto& [name, line] : definedNames(sh))
             sh.barrierDefined.insert(name);
+        // The program pieces as the barrier has them, for the check at the end that they are its.
+        if (sh.checkBarrier && sh.splitPieces)
+        {
+          PieceSources sources = pieceSources(sh, true);
+          sh.barrierPieces.assign(sh.moduleCount, {});
+          std::atomic<unsigned> nextPiece{0};
+          auto assemblePieces = [&](unsigned)
+          {
+            for (unsigned k; (k = nextPiece++) < sh.moduleCount;)
+            {
+              bool complete = true;
+              sh.barrierPieces[k] = programPieceText(sh, k, prefix, sources, nullptr, &complete);
+              sh.latePieces[k] = !complete;
+            }
+          };
+          onThreads(threads, assemblePieces);
+        }
       }
     }
   };
@@ -19891,8 +20287,19 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     for (auto& em : emitters)
       sh.erroring.insert(em->erroring.begin(), em->erroring.end());
   bool keepTexts = ((checkRebuild && !failed) || (keep && (!failed || keptAcrossErrors))) && sh.moduleCount > 1;
+  gatherProgramFunctions(sh, emitters);
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
+    // A program piece the barrier does not have whole (Shared::latePieces).
+    if (sh.splitPieces && sh.barrierTaken)
+    {
+      bool late = false;
+      for (size_t i = sh.barrierCounts[k]; i < sh.definitions[k].size() && !late; ++i)
+        late = sh.programOwned(sh.definitions[k][i].owner);
+      for (size_t i = sh.barrierOwned[k]; i < sh.ownedEntries[k].size() && !late; ++i)
+        late = sh.programOwned(sh.ownedEntries[k][i].owner);
+      sh.latePieces[k] = sh.latePieces[k] || late;
+    }
     // The definitions in the order SharedText puts entries: by their text.
     std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
               [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
@@ -19900,12 +20307,10 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     if (keepTexts)
       sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
     for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-      sh.moduleDecls[k].entries.push_back(o.text);
+      if (!sh.programOwned(o.owner)) // (a program function's go in its program piece)
+        sh.moduleDecls[k].entries.push_back(o.text);
     sh.moduleDecls[k].finish();
   }
-  std::string prefix = "; kpp v0: generated by kppc\n"
-                       "target datalayout = \"" + sh.target.dataLayout + "\"\n"
-                       "target triple = \"" + sh.target.triple + "\"\n\n";
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
@@ -19965,18 +20370,25 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // freed as soon as it is assembled.
   e.placeShortDefinitions(threads);
   e.prepareModuleTexts();
-  result.modules.resize(e.moduleCount);
-  std::vector<std::unordered_set<std::string>> stubbedIn(e.moduleCount);
+  const unsigned outputs = sh.outputModules();
+  result.modules.resize(outputs);
+  std::vector<std::unordered_set<std::string>> stubbedIn(outputs);
+  std::vector<std::string> pieceErrors(e.moduleCount);
+  std::optional<PieceSources> sources;
+  if (sh.splitPieces)
+    sources = pieceSources(sh, false);
   std::atomic<unsigned> nextModule{0};
   // (A module's definitions may be placed in another (placeShortDefinitions): they are freed once
-  // every module is assembled; its own declarations as soon as it is.)
+  // every module is assembled; its own declarations as soon as it is, both its pieces with it.)
   bool placed = sh.importableModules != 0;
   auto assemble = [&](unsigned thread)
   {
     Emitter& em = *emitters[thread];
     for (unsigned k = nextModule++; k < em.moduleCount; k = nextModule++)
     {
-      result.modules[k] = em.moduleText(k, prefix);
+      for (unsigned i : {k, k + em.moduleCount})
+        if (i < outputs)
+          result.modules[i] = outputText(em, i, prefix, sources ? &*sources : nullptr, &pieceErrors[k]);
       if (!keepTexts)
       {
         if (!placed)
@@ -19984,10 +20396,44 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         std::string().swap(sh.moduleDecls[k].text);
       }
       if (failed)
-        result.modules[k] += declareUndefined(result.modules[k], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[k]);
+        for (unsigned i : {k, k + em.moduleCount})
+          if (i < outputs)
+            result.modules[i] += declareUndefined(result.modules[i], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[i]);
     }
   };
   onThreads(unsigned(emitters.size()), assemble);
+  // KPP_CHECK_BARRIER: each program piece is the one level 0's barrier assembled, unless it is late.
+  if (sh.splitPieces && !sh.barrierPieces.empty() && !failed)
+    for (unsigned k = 0; k < e.moduleCount; ++k)
+      if (!sh.latePieces[k] && sh.barrierPieces[k] != result.modules[k])
+      {
+        const std::string& early = sh.barrierPieces[k];
+        const std::string& end = result.modules[k];
+        size_t at = std::mismatch(early.begin(), early.end(), end.begin(), end.end()).first - early.begin();
+        auto lineAt = [&](const std::string& text)
+        {
+          size_t start = text.rfind('\n', at);
+          start = start == std::string::npos ? 0 : start + 1;
+          return text.substr(start, std::min(text.find('\n', start), start + 160) - start);
+        };
+        pieceErrors[k] += "codegen: module " + std::to_string(k) + "'s program piece at level 0's barrier is not the end's (step 4's pieces): `" + lineAt(early) +
+                          "` at the barrier, `" + lineAt(end) + "` at the end\n";
+        if (const char* dump = getenv("KPP_CHECK_BARRIER_DUMP")) // a directory: each such piece as the barrier and the end assembled it
+          for (auto [what, text] : {std::pair<const char*, const std::string*>{"barrier", &early}, {"end", &end}})
+            if (FILE* out = fopen((std::string(dump) + "/" + what + "-" + std::to_string(k) + ".ll").c_str(), "wb"))
+            {
+              fwrite(text->data(), 1, text->size(), out);
+              fclose(out);
+            }
+      }
+  sh.barrierPieces.clear();
+  for (const std::string& errors : pieceErrors)
+    for (size_t at = 0; at < errors.size();)
+    {
+      size_t end = errors.find('\n', at);
+      result.errors.push_back(errors.substr(at, end - at));
+      at = end + 1;
+    }
   if (placed && !keepTexts)
     for (unsigned k = 0; k < e.moduleCount; ++k)
       std::vector<Shared::Definition>().swap(sh.definitions[k]);
@@ -20018,11 +20464,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     // The modules it assembled (none, when every function came out the same), then all the others
     // assembled from the state it left: each must be the build's.
     std::vector<std::string> texts(rebuilt ? again.changedModules.size() : 0);
+    std::optional<PieceSources> sourcesNow;
+    if (sh.splitPieces && rebuilt)
+      sourcesNow = pieceSources(sh, false);
     std::atomic<unsigned> nextCheck{0};
     auto assembleAll = [&](unsigned t)
     {
       for (unsigned k; (k = nextCheck++) < texts.size();)
-        texts[k] = again.changedModules[k] ? std::move(again.modules[k]) : emitters[t]->moduleText(k, prefix);
+        texts[k] = again.changedModules[k] ? std::move(again.modules[k]) : outputText(*emitters[t], k, prefix, sourcesNow ? &*sourcesNow : nullptr, nullptr);
     };
     onThreads(unsigned(emitters.size()), assembleAll);
     size_t changed = 0, differ = 0;
@@ -20054,7 +20503,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
             picked.size(), again.emittedAgain, seconds, rebuilt ? "rebuilt" : "declined", changed, texts.size(), differ, again.functions,
             result.functions, first.empty() ? "" : "; first: ", first.c_str());
   }
-  session->usable = keep && keepTexts && !checkRebuild;
+  session->usable = keep && keepTexts && !checkRebuild && result.errors.empty();
   return std::move(result);
 }
 
@@ -20096,7 +20545,10 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     }
   for (FunctionDecl* f : removed)
     if (e.isProgramFunction(f))
+    {
       owners.insert(e.functionName(f, {}, nullptr));
+      sh.programFunctions.erase(e.functionName(f, {}, nullptr)); // (an added one's name comes back with its emission)
+    }
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
       level.push_back(programFunction(f));
@@ -20576,6 +21028,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       }
     collectNextLevel(emitters, level);
   }
+  gatherProgramFunctions(sh, emitters);
   // An error, or a first use that added to the shared declarations (in every module): from scratch.
   // What it was goes to the server's log (the first one, cut).
   auto cut = [](const std::string& text) { return text.substr(0, std::min(text.find('\n'), size_t(240))); };
@@ -20785,7 +21238,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     dropSharedLiterals(sh, kept);
     std::vector<std::string> entries = kept;
     for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-      entries.push_back(o.text);
+      if (!sh.programOwned(o.owner)) // (a program function's go in its program piece)
+        entries.push_back(o.text);
     sh.moduleDecls[k].entries = std::move(entries);
     sh.moduleDecls[k].text.clear();
     sh.moduleDecls[k].finish();
@@ -20853,17 +21307,33 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   std::sort(which.begin(), which.end());
   which.erase(std::unique(which.begin(), which.end()), which.end());
   sh.unassembled.assign(sh.moduleCount, false);
-  out.modules.resize(sh.moduleCount);
-  out.changedModules.assign(sh.moduleCount, false);
+  // A module changed: both its pieces assembled again (the one whose text is the same keeps its object).
+  const unsigned outputs = sh.outputModules();
+  std::vector<unsigned> assembled = which;
+  if (sh.splitPieces)
+    for (unsigned k : which)
+      assembled.push_back(k + sh.moduleCount);
+  out.modules.resize(outputs);
+  out.changedModules.assign(outputs, false);
+  std::optional<PieceSources> sources;
+  if (sh.splitPieces)
+    sources = pieceSources(sh, false);
+  std::vector<std::string> pieceErrors(assembled.size());
   std::atomic<size_t> nextModule{0};
   auto assemble = [&](unsigned t)
   {
-    for (size_t i; (i = nextModule++) < which.size();)
-      out.modules[which[i]] = emitters[t]->moduleText(which[i], session.prefix);
+    for (size_t i; (i = nextModule++) < assembled.size();)
+      out.modules[assembled[i]] = outputText(*emitters[t], assembled[i], session.prefix, sources ? &*sources : nullptr, &pieceErrors[i]);
   };
-  onThreads(std::max(1u, std::min(session.threads, unsigned(which.size()))), assemble);
-  for (unsigned k : which)
-    out.changedModules[k] = true;
+  onThreads(std::max(1u, std::min(session.threads, unsigned(assembled.size()))), assemble);
+  for (const std::string& errors : pieceErrors)
+    if (!errors.empty())
+    {
+      out.declined = errors.substr(0, errors.find('\n')); // (the build from scratch reports them all)
+      return out;
+    }
+  for (unsigned i : assembled)
+    out.changedModules[i] = true;
   out.functions = sh.functions;
   out.structs = session.result.structs;
   session.usable = true;

@@ -11,7 +11,7 @@
 struct CodegenResult
 {
   std::string ir;                   // the whole program as one module (moduleCount == 1)
-  std::vector<std::string> modules; // or one module per group of files, each complete on its own
+  std::vector<std::string> modules; // or one module per group of files, each complete on its own (codegenOutputModules)
   std::vector<std::string> errors; // "file:line: message"
   size_t hiddenErrors = 0;         // failures not in errors: each follows from an error the checker reported (not shown again)
   std::vector<std::string> failedFunctions; // IR names of the functions an error left out
@@ -53,10 +53,18 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
 // debugger steps through the kpp source (docs/debugging.md).
 // target: the platform the IR is for (--target; null: Windows x64).
+// optimize (--optimize): the modules are optimized (ThinLTO), and not split (codegenOutputModules).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
                            bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr,
-                           bool debugInfo = false, const Target* target = nullptr);
+                           bool debugInfo = false, const Target* target = nullptr, bool optimize = false);
+
+// How many modules a build of moduleCount modules writes (CodegenResult::modules): a debug build of
+// several, not optimized, has each in two, its program piece (what the functions the program writes
+// own) and its instance piece (the rest), the program pieces first (docs/codegen-speed.md, step 4).
+// (The pieces are for kppc's -O0 back end; an optimized build's is ThinLTO's link, where twice the
+// modules only cost.)
+unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 
 // An incremental build after the resolver checked the changed bodies again (its steps 3b and 4):
 // emits again the functions whose declarations got new bodies (or were walked again), emits the

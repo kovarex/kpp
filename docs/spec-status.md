@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1030 pass, 12 pending, 0 failing, 0 fixed** (1042 snippets, 41.7 s).
+**1031 pass, 12 pending, 0 failing, 0 fixed** (1043 snippets, 41.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -258,6 +258,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/pointers_arrays.kpp` | pointers, arrays, pointer arithmetic, arrays of arrays | pass |  |  |
 | `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | pass |  |  |
 | `language/printf_format_matching_arguments.kpp` | printf calls (C-variadic calls are not format-checked, design.md 14) pass their arguments as C does: `%d %u %x %c` take an int (a char, a bool, an unscoped enum promoted), `%zu %lld %I64d` 64 bits, `%ld` 32 (LLP64), `%s` a char pointer or array, `%p` any pointer, `%f %g` a float or double, `*` an int, `%%` nothing; clang 19 prints `1 2 ff a 3 4 5 6 x y 2.50 3 7%0` | pass | what the game's ssprintf, Logging and C library calls pass (language/printf_format_must_match_arguments for the mismatches) |  |
+| `language/program_and_instance_pieces.kpp` | a debug build of several modules has each module in two pieces (docs/codegen-speed.md, step 4): its program piece, what the functions the program writes own (their lambdas' call operators, catch filters and static locals with them), and its instance piece, the rest; each piece declares what the other defines (a program function an instance calls, an instance's or a lambda thunk's function), and what both name (a vtable and its thunks, a type descriptor, `dynamic_cast`'s helper, a string literal) each has a copy of (`17 9 3 square count 2 102 caught 9 ok ok 30 6 11`) | pass |  |  |
 | `language/qualifier_names_only_scopes.kpp` | the name before `::` is looked up among namespaces, classes, enumerations, aliases and template parameters only, so a variable of the same name in scope (often the one being declared) does not hide it: `int clock = clock::now();` | pass | RaceChecker's `Thread::id thisThread = thisThread::get_id();` (std::this_thread, converted to the library's thisThread namespace) |  |
 | `language/range_for.kpp` | range-based for | pass | 8577 uses in 1333 files |  |
 | `language/range_for_converts_element_to_class_loop_variable.kpp` | a range-for's loop variable of a class type is initialized from each element by conversion, as a declaration with that initializer would be: `for (String name : {"stone-wall", "transport-belt"})`, over a Vector<const char*>, and a `const String&` bound to the converted temporary | pass | the tests' `for (std::string blockingEntity : {"stone-wall", "transport-belt"})` (TestDragBuilding), `for (std::string entityName : {"assembling-machine-3", ...})` (TestInventory) and the like: each name came out empty, "Unknown entity name: " and "Unknown item name: " (13 failed checks) |  |

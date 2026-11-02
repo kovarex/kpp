@@ -1323,7 +1323,8 @@ namespace
     bool rebuilt = false;
     global.setCodeGenerated(true);
     build.codegenBehind = false;
-    if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
+    const unsigned outputModules = codegenOutputModules(modules, options.debug, options.optimize); // (a debug build's modules in two pieces each)
+    if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == outputModules)
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
                        build.changedGlobals, build.droppedClasses, rebuilt);
@@ -1341,7 +1342,7 @@ namespace
       bool despiteErrors = options.keepGoing && !options.check;
       cg = generateLLVM(parsed, global, symbols, options.debug, modules, despiteErrors, options.codegenThreads ? options.codegenThreads : options.threads,
                         despiteErrors && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
-                        options.debugInfo, &options.target);
+                        options.debugInfo, &options.target, options.optimize);
       cg.changedModules.clear();
     }
     double t = seconds(Clock::now() - start);
@@ -1349,8 +1350,8 @@ namespace
     // build without errors assembled (it assembles the others once the errors are gone).
     if (cg.modules.empty() && cg.failed() && build.codegen)
     {
-      if (build.moduleBytes.size() != modules)
-        build.moduleBytes.assign(modules, 0);
+      if (build.moduleBytes.size() != outputModules)
+        build.moduleBytes.assign(outputModules, 0);
     }
     else if (build.moduleBytes.size() != cg.modules.size())
       build.moduleBytes.assign(cg.modules.size(), 0);

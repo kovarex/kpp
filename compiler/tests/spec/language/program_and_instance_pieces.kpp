@@ -1,0 +1,104 @@
+// spec: a debug build of several modules has each module in two pieces (docs/codegen-speed.md, step 4): its program piece, what the functions the program writes own (their lambdas' call operators, catch filters and static locals with them), and its instance piece, the rest; each piece declares what the other defines (a program function an instance calls, an instance's or a lambda thunk's function), and what both name (a vtable and its thunks, a type descriptor, `dynamic_cast`'s helper, a string literal) each has a copy of (`17 9 3 square count 2 102 caught 9 ok ok 30 6 11`)
+// kppc: --modules 4
+class Shape
+{
+public:
+  int sides = 0;
+  virtual ~Shape() {}
+  virtual int area() const { return 0; }
+};
+class Named
+{
+public:
+  virtual ~Named() {}
+  virtual const char* name() const { return "named"; }
+};
+class Square : public Shape, public Named
+{
+public:
+  int side;
+  Square(int s) : side(s) { this->sides = 4; }
+  int area() const override { return this->side * this->side; }
+  const char* name() const override { return "square"; }
+};
+
+// A program function with a static local, called from an instance.
+int counter()
+{
+  static int calls = 0;
+  calls = calls + 1;
+  return calls;
+}
+template<typename T> int countTwice(T unused)
+{
+  counter();
+  return counter();
+}
+
+// An instance calling the call operator of a lambda a program function writes.
+template<typename F> int applyTo(F f, int x) { return f(x); }
+int withLambda(int base) { return applyTo([base](int x) { return x + base; }, 7); }
+
+// A static local of a lambda: its writer's, with the lambda's call operator.
+int lambdaStatic()
+{
+  auto next = []() {
+    static int n = 100;
+    n = n + 1;
+    return n;
+  };
+  next();
+  return next();
+}
+
+// A lambda as a pointer to a function: its thunk, emitted at its first use, is its own.
+int callThrough(int (*f)(int), int x) { return f(x); }
+
+struct Failure : Exception
+{
+  int code;
+  Failure(int code) : Exception(String("failed")), code(code) {}
+};
+int risky(int n)
+{
+  if (n > 2)
+    throw Failure(n * 3);
+  return n;
+}
+
+// A string literal both pieces name.
+template<typename T> const char* label(T unused) { return "ok"; }
+
+template<typename T> struct Registry
+{
+  static int total;
+};
+template<typename T> int Registry<T>::total = 6;
+
+struct Built
+{
+  int value;
+  Built() : value(11) {}
+};
+Built built;
+
+int main()
+{
+  Square square(3);
+  Shape* shape = &square;
+  Named* named = &square;
+  Square* back = dynamic_cast<Square*>(named);
+  int caught = 0;
+  try
+  {
+    risky(3);
+  }
+  catch (const Failure& f)
+  {
+    caught = f.code;
+  }
+  println(withLambda(10), " ", shape->area(), " ", back->side, " ", StringView(named->name()), " count ", countTwice(1.5), " ", lambdaStatic(),
+          " caught ", caught, " ", StringView(label(2)), " ", StringView("ok"), " ", callThrough([](int x) { return x * 2; }, 15), " ",
+          Registry<int>::total, " ", built.value);
+  return 0;
+}
