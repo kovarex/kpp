@@ -2430,8 +2430,8 @@ namespace
   bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& map, const std::unordered_set<Node*>& skip,
                      const std::unordered_set<const Decl*>& staleSources, const ParsedFile& fresh)
   {
-    // Names the code gives by position: a function's local types (`f::Local@2045`, its lambdas'
-    // closures, which the parser also numbers in the file's order, `__lambda_3_1`), its static
+    // Names the code gives by position: a function's local types (`f::Local@2045`; its lambdas'
+    // closures by the parser's numbers in the file's order alone, `f::__lambda_3_1`), its static
     // locals, catch filters and static initializer lists (by their tokens). A build from scratch of
     // the new text names them by their new places, so a kept function holding one that moves is
     // emitted again (in full, for a local type: codegen's session keeps the types' names; and for a
@@ -2470,8 +2470,10 @@ namespace
           return;
         if (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
         {
+          // (A lambda's closure is named by its file's number, not its place: renamed only.)
           bool renamed = n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n));
-          localType = localType || renamed || moved(n->token);
+          bool closure = n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda;
+          localType = localType || renamed || (!closure && moved(n->token));
         }
         else if ((n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & DF_Static)) || n->kind == NodeKind::TryStmt ||
                  n->kind == NodeKind::BraceInitExpr)

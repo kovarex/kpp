@@ -1301,6 +1301,30 @@ and runs codegen in full when a kept local type moved or was renamed (codegen's 
 types' names) or a template's position-named entity moved (its instances are not emitted again
 alone). The edit test's lambdas.kpp: a lambda added before another moves and renumbers it.
 
+**A lambda's closure named by its number alone; an edited function's closures keep their names
+(2026-11-02, thread A).** F's VS Code test on the game (docs/editors.md): typing `SystemUtil::` in
+Main.kpp's main checked in 0.6 s with its error, the undo in 11.3 s. Not the error: any edit that
+moved a lambda generated the program in full. The closure's name carried its token
+(`main::__lambda_58_0@285`), so a line added above it in its function renamed it, a line added above
+its function made `remapKeptFile` run codegen in full ("a local type moved"), and even an edit that
+left it in place gave the function's new walk a new closure type, which `irTypeName` named `.2` beside
+the old one: a first use added to the shared declarations, `rebuildLLVM` declined. (The error's build
+was fast because its emission stopped before main's lambdas; the undo emitted them.) Now a closure is
+named by the parser's number alone (`main::__lambda_58_0`, unique in its file; `TypeTable::toString`),
+only a renamed one makes `remapKeptFile` run codegen in full, a function emitted again hands its
+closures' names, and those of the types made from them, to its new walk's (`rebuildLLVM`), and a type
+line the shared declarations hold as it is adds nothing. Paired on the game (factorio-in-kpp e4cfd9ba,
+`scratch\resolver\scripts\undopair.py 3`, `kpp factorio --check` through each compiler's server,
+interleaved, the machine shared with other threads): the undo 9.4 to 12.0 s with master 77d13d13
+(rebuildLLVM declined, the program generated in full), 2.3 to 4.3 s with the change (1 module
+assembled again, 2 functions emitted again; the server's build 0.5 to 0.9 s, the rest `kpp`'s project
+mode, which an editor's `kppc --lsp` does not run); the error's check 3.8 to 4.6 s and 2.5 to 4.4 s.
+The edit test (tests\incremental.ps1) gets the steps, each failing with master's compiler: a line
+added above a capturing lambda in its function, a codegen error typed there, the error taken out, and
+an edit above a kept function with a lambda and back. Still from scratch: an edit of a function with a
+generic lambda (`[](auto v)`): its new walk makes a new call operator instance ("the new code
+instantiates what the old did not").
+
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is

@@ -20025,9 +20025,34 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::sort(was.definitions.begin(), was.definitions.end());
     std::sort(was.owned.begin(), was.owned.end());
   }
+  // A closure of a function emitted again: its name goes to the closure the function's new walk makes
+  // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
+  // already in the shared declarations (below).
+  // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
+  std::unordered_set<const Ty*> droppedClosures;
   for (auto& [t, info] : sh.closures)
     if (droppedNames.count(info.functionName))
+    {
       sh.closuresEmitted.erase(t);
+      droppedClosures.insert(t);
+    }
+  if (!droppedClosures.empty())
+  {
+    std::function<bool(const Ty*, int)> mentions = [&](const Ty* t, int depth)
+    {
+      if (!t || depth > 8)
+        return false;
+      if (droppedClosures.count(t) || droppedClosures.count(e.types.unqualified(t)))
+        return true;
+      if (mentions(t->inner, depth + 1))
+        return true;
+      for (const Ty* a : t->args)
+        if (mentions(a, depth + 1))
+          return true;
+      return false;
+    };
+    std::erase_if(sh.irTypeNames, [&](const auto& named) { return mentions(named.second, 0); });
+  }
   for (const std::string& name : droppedNames)
   {
     sh.lambdaInstances.erase(name);
@@ -20180,6 +20205,16 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       out.declined = "the error of " + name + " went without a change to it";
       return out;
     }
+  // A type line the shared declarations hold as it is (a closure laid out again by its function,
+  // emitted again) adds nothing.
+  std::erase_if(sh.decls.entries, [&](const std::string& entry)
+  {
+    size_t is = entry.find(" = type ");
+    if (is == std::string::npos || entry.find('\n') + 1 != entry.size())
+      return false;
+    auto it = sh.typeIndex.find(std::string_view(entry).substr(0, is));
+    return it != sh.typeIndex.end() && sh.typeLines[it->second].line == std::string_view(entry).substr(0, entry.size() - 1);
+  });
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
   {
     std::vector<std::string> added = sh.decls.entries;
