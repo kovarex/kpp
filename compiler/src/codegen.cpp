@@ -9331,8 +9331,7 @@ namespace
     // { name, n, [n x { base descriptor, offset }] }), searching the bases and theirs in order, or -1.
     static std::string baseSearchFunction(const std::string& name)
     {
-      return "$" + name.substr(1) + " = comdat any\n"
-             "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {\n"
+      return "$" + name.substr(1) + " = comdat any\n" + baseSearchHeader(name) + "\n"
              "entry:\n  %same = icmp eq ptr %d, %target\n  br i1 %same, label %yes, label %scan\n"
              "scan:\n  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
              "loop:\n  %i = phi i64 [ 0, %scan ], [ %i1, %next ]\n  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %no\n"
@@ -9539,6 +9538,43 @@ namespace
       sh.ownedEntries[currentModule].push_back({owner.empty() ? currentFunctionName : owner, text});
     }
 
+    // A shared or runtime function's declaration from the header of its definition (declareFromHeader,
+    // without its linkonce_odr: a declaration has no linkage), and its name.
+    static std::string sharedDeclarationOf(const std::string& header, std::string* name = nullptr)
+    {
+      std::string declaration = declareFromHeader(header);
+      if (declaration.starts_with("declare linkonce_odr "))
+        declaration.erase(8, 13);
+      if (name)
+      {
+        size_t at = header.find(" @");
+        size_t end = header[at + 2] == '"' ? header.find('"', at + 3) + 1 : header.find('(', at);
+        *name = header.substr(at + 1, end - at - 1);
+      }
+      return declaration;
+    }
+
+    // The runtime's functions that are written only once every level is emitted (finishExceptionRuntime,
+    // finishAssertRuntime, finishStubRuntime), by the headers of their definitions: each definition
+    // is written from its header here, and level 0's barrier declares them all from the same headers
+    // (Shared::requestDeclarations), for a program piece that calls one.
+    static constexpr const char* kppThrowHeader = "define linkonce_odr void @kpp_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {";
+    static constexpr const char* kppEhRethrowHeader = "define linkonce_odr void @kpp_eh_rethrow(ptr %out) noinline comdat {";
+    static constexpr const char* kppEhPushHeader = "define linkonce_odr void @kpp_eh_push(ptr %record, i32 %handler, i64 %offset) comdat {";
+    static constexpr const char* kppEhBeginHeader = "define linkonce_odr void @kpp_eh_begin(ptr %out) comdat {";
+    static constexpr const char* kppEhEndHeader = "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {";
+    static constexpr const char* kppEhFilterAnyHeader = "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {";
+    static constexpr const char* kppEhUnhandledHeader = "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {";
+    static constexpr const char* kppAssertFailedHeader =
+      "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {";
+    static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
+    static std::string baseSearchHeader(const std::string& name) { return "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {"; }
+    static std::vector<std::string> runtimeHeaders()
+    {
+      return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
+              kppEhFilterAnyHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset")};
+    }
+
     // "declare RET NAME(TYPES)" from a "define RET NAME(TYPE %name, ...) attrs {" header.
     static std::string declareFromHeader(const std::string& text)
     {
@@ -9592,7 +9628,7 @@ namespace
       if (declaredNames.claim("@abort"))
         decls += "declare void @abort()\n";
       shared += sharedComdat("@kpp_missing") +
-                "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {\nentry:\n"
+                std::string(kppMissingHeader) + "\nentry:\n"
                 "  %f = call i32 @fflush(ptr null)\n" + // (every stream first: the program's own output comes before the message)
                 err + "  %r = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %what)\n"
                 "  %f2 = call i32 @fflush(ptr %err)\n  call void @abort()\n  unreachable\n}\n";
@@ -10424,8 +10460,7 @@ namespace
       std::string err = stderrStream();
       if (declaredNames.claim("@abort"))
         decls += "declare void @abort()\n";
-      shared += "$kpp_assert_failed = comdat any\n"
-                "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n" +
+      shared += "$kpp_assert_failed = comdat any\n" + std::string(kppAssertFailedHeader) + "\nentry:\n" +
               err +
               "  %0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %file, i32 %line, i32 %column, ptr %expression)\n"
               "  call void @abort()\n  unreachable\n}\n";
@@ -16852,12 +16887,12 @@ namespace
         shared += baseSearchFunction("@kpp_eh_offset");
         std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_throw") +
-                  "define linkonce_odr void @kpp_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {\nentry:\n"
+                  std::string(kppThrowHeader) + "\nentry:\n"
                   "  %flushed = call i32 @fflush(ptr null)\n" + // (the program's output first: abort writes no buffer out)
                   err +
                   "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
-        shared += sharedComdat("@kpp_eh_rethrow") + "define linkonce_odr void @kpp_eh_rethrow(ptr %out) noinline comdat {\nentry:\n  call void @abort()\n  unreachable\n}\n";
+        shared += sharedComdat("@kpp_eh_rethrow") + std::string(kppEhRethrowHeader) + "\nentry:\n  call void @abort()\n  unreachable\n}\n";
       }
       else if (usesExceptions)
       {
@@ -16874,13 +16909,13 @@ namespace
         shared += sharedComdat("@kpp.eh.stack") + "@kpp.eh.stack = linkonce_odr thread_local global [160 x i64] zeroinitializer, comdat\n" +
                   sharedComdat("@kpp.eh.depth") + "@kpp.eh.depth = linkonce_odr thread_local global i64 0, comdat\n";
         shared += sharedComdat("@kpp_throw") +
-                  "define linkonce_odr void @kpp_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {\nentry:\n"
+                  std::string(kppThrowHeader) + "\nentry:\n"
                   "  %args = alloca [3 x i64]\n  %a1 = getelementptr inbounds i64, ptr %args, i64 1\n  %a2 = getelementptr inbounds i64, ptr %args, i64 2\n"
                   "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n"
                   "  call void @RaiseException(i32 -536870911, i32 1, i32 3, ptr %args)\n  ret void\n}\n";
         shared += baseSearchFunction("@kpp_eh_offset");
         shared += sharedComdat("@kpp_eh_push") +
-                  "define linkonce_odr void @kpp_eh_push(ptr %record, i32 %handler, i64 %offset) comdat {\nentry:\n"
+                  std::string(kppEhPushHeader) + "\nentry:\n"
                   "  %d = load i64, ptr @kpp.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
                   "  %info = getelementptr inbounds i8, ptr %record, i64 32\n  %obj = load i64, ptr %info\n"
                   "  %tip = getelementptr inbounds i8, ptr %record, i64 40\n  %ti = load i64, ptr %tip\n"
@@ -16894,14 +16929,14 @@ namespace
         // the handler around it kept in its sixth word): what `throw;` in a function it calls raises.
         shared += sharedComdat("@kpp.eh.current") + "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat\n";
         shared += sharedComdat("@kpp_eh_begin") +
-                  "define linkonce_odr void @kpp_eh_begin(ptr %out) comdat {\nentry:\n"
+                  std::string(kppEhBeginHeader) + "\nentry:\n"
                   "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
                   "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
                   "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n"
                   "  %outer = load ptr, ptr @kpp.eh.current\n  %op = getelementptr inbounds i8, ptr %out, i64 40\n  store ptr %outer, ptr %op\n"
                   "  store ptr %out, ptr @kpp.eh.current\n  ret void\n}\n";
         shared += sharedComdat("@kpp_eh_end") +
-                  "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {\nentry:\n"
+                  std::string(kppEhEndHeader) + "\nentry:\n"
                   "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
                   "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %done, label %live\n"
                   "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
@@ -16910,17 +16945,17 @@ namespace
                   "release:\n  call void @free(ptr %obj)\n  store ptr null, ptr %out\n  br label %done\n"
                   "done:\n  ret void\n}\n";
         shared += sharedComdat("@kpp_eh_rethrow") +
-                  "define linkonce_odr void @kpp_eh_rethrow(ptr %out) noinline comdat {\nentry:\n"
+                  std::string(kppEhRethrowHeader) + "\nentry:\n"
                   "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
                   "  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n  store ptr null, ptr %out\n"
                   "  call void @kpp_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
         shared += sharedComdat("@kpp.eh.filter.any") +
-                  "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {\nentry:\n"
+                  std::string(kppEhFilterAnyHeader) + "\nentry:\n"
                   "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"
                   "  br i1 %is, label %yes, label %no\nyes:\n  call void @kpp_eh_push(ptr %rec, i32 0, i64 0)\n  ret i32 1\nno:\n  ret i32 0\n}\n";
         std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_eh_unhandled") +
-                  "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {\nentry:\n"
+                  std::string(kppEhUnhandledHeader) + "\nentry:\n"
                   "  %flushed = call i32 @fflush(ptr null)\n" // (the program's output first: abort writes no buffer out)
                   "  %err = call ptr @__acrt_iob_func(i32 2)\n  %name = load ptr, ptr %typeinfo\n"
                   "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
@@ -19365,17 +19400,26 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
   std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
 }
 
-// The destructor helper an entry of the shared definitions defines (`@kpp.dtor.<class>`, from
-// destructorThunk), or empty for any other entry.
-static std::string destructorHelperIn(const std::string& entry)
+// The function an entry of the shared definitions defines, when that is all it holds (its comdat
+// line, then one linkonce_odr definition: a destructor helper `@kpp.dtor.<class>`, a runtime
+// function such as `@kpp_throw`), with its header; an empty name for any other entry.
+static std::string sharedFunctionIn(const std::string& entry, std::string& header)
 {
-  const std::string_view mark = "define linkonce_odr void @kpp.dtor.";
-  size_t at = entry.find(mark);
+  size_t at = entry.starts_with("define ") ? 0 : entry.find("\ndefine ");
   if (at == std::string::npos)
     return {};
-  size_t start = at + mark.size() - std::string_view("@kpp.dtor.").size();
-  size_t end = entry.find('(', start);
-  return end == std::string::npos ? std::string() : entry.substr(start, end - start);
+  at += entry[at] == '\n';
+  if (at != 0 && !(entry[0] == '$' && entry.find('\n') + 1 == at))
+    return {}; // (something before the definition besides its comdat line)
+  if (!std::string_view(entry).substr(at).starts_with("define linkonce_odr ") || entry.find("\ndefine ", at) != std::string::npos ||
+      entry.find("\n@", at) != std::string::npos)
+    return {};
+  header = entry.substr(at, entry.find('\n', at) - at);
+  size_t name = header.find(" @");
+  if (name == std::string::npos)
+    return {};
+  size_t nameEnd = header[name + 2] == '"' ? header.find('"', name + 3) + 1 : header.find('(', name);
+  return nameEnd == std::string::npos ? std::string() : header.substr(name + 1, nameEnd - name - 1);
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
@@ -19549,14 +19593,15 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
           for (size_t at = entry.starts_with("define ") ? 0 : entry.find("\ndefine "); at != std::string::npos; at = entry.find("\ndefine ", at + 1))
           {
             size_t start = entry[at] == '\n' ? at + 1 : at;
-            std::string header = entry.substr(start, entry.find('\n', start) - start);
-            size_t name = header.find(" @");
-            size_t nameEnd = header[name + 2] == '"' ? header.find('"', name + 3) + 1 : header.find('(', name);
-            std::string declaration = Emitter::declareFromHeader(header);
-            if (declaration.starts_with("declare linkonce_odr "))
-              declaration.erase(8, 13); // (a declaration has no linkage)
-            sh.requestDeclarations.emplace(header.substr(name + 1, nameEnd - name - 1), std::move(declaration));
+            std::string name, declaration = Emitter::sharedDeclarationOf(entry.substr(start, entry.find('\n', start) - start), &name);
+            sh.requestDeclarations.emplace(name, std::move(declaration));
           }
+        // The runtime's functions written after the levels, from the headers they are written from.
+        for (const std::string& header : Emitter::runtimeHeaders())
+        {
+          std::string name, declaration = Emitter::sharedDeclarationOf(header, &name);
+          sh.requestDeclarations.emplace(name, std::move(declaration));
+        }
       }
     }
   };
@@ -19632,16 +19677,18 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   if (outOfMemory)
     result.errors.push_back("codegen: out of memory after " + std::to_string(emitted) + " functions");
   result.functions = sh.functions;
-  // Each destructor helper is defined in one home module, hash(name) % moduleCount like a function,
-  // and declared by the modules that use it (moduleText's declares): in every module, they were 843
-  // of the game's 1,760 MB of IR. The home depends only on the helper's name (its class's IR type
-  // name) and the module count, so a helper does not move when other code changes.
+  // Each shared function (a destructor helper, a runtime function) is defined in one home module,
+  // hash(name) % moduleCount like a function, and declared by the modules that use it (moduleText's
+  // declares): in every module, the destructor helpers were 843 of the game's 1,760 MB of IR. The
+  // home depends only on the function's name and the module count, so it does not move when other
+  // code changes. (Streaming's program pieces declare them, never define them: docs/codegen-speed.md.)
   if (sh.moduleCount > 1)
   {
     std::vector<std::string> everywhere;
     for (std::string& entry : sh.shared.entries)
     {
-      std::string name = destructorHelperIn(entry);
+      std::string header;
+      std::string name = sharedFunctionIn(entry, header);
       if (name.empty())
       {
         everywhere.push_back(std::move(entry));
@@ -19649,11 +19696,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       }
       unsigned home = sh.emissionModule(std::hash<std::string>()(name));
       sh.definedIn[name] = home;
-      sh.declareLines[name] = "declare void " + name + "(ptr)";
+      sh.declareLines[name] = Emitter::sharedDeclarationOf(header);
       // weak_odr, not linkonce_odr: the home module's copy is the only one, and a release build's
       // optimizer drops a linkonce_odr definition its own module does not call (the link then
       // missed the helpers the other modules declare).
-      if (size_t at = entry.find("define linkonce_odr void " + name + "("); at != std::string::npos)
+      if (size_t at = entry.find("define linkonce_odr "); at != std::string::npos)
         entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
       sh.definitions[home].push_back(Shared::definitionOf(std::move(entry)));
     }
