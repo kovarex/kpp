@@ -229,13 +229,15 @@ if %SITE_TESTS% neq 0 (
 )
 rem The one line that says whether everything passed, and the exit code that says the same
 rem (explicitly: the batch file's exit code would otherwise be the last check's).
-set SUMMARY=end-to-end %PASS%/%E2E%, checks %CHECKSOK%/%CHECKS%
-if defined SKIPPED set SUMMARY=%SUMMARY%, skipped: %SKIPPED%
+rem (!...!, not %...%: a skip's reason or a check's name may hold parentheses, which would end the
+rem if block below)
+set "SUMMARY=end-to-end %PASS%/%E2E%, checks %CHECKSOK%/%CHECKS%"
+if defined SKIPPED set "SUMMARY=!SUMMARY!, skipped: !SKIPPED!"
 if %FAIL% neq 0 (
-  echo run_tests: %FAIL% FAILED: %FAILED% ^(%SUMMARY%^)
+  echo run_tests: %FAIL% FAILED: !FAILED! ^(!SUMMARY!^)
   exit /b 1
 )
-echo run_tests: ALL PASSED ^(%SUMMARY%^)
+echo run_tests: ALL PASSED ^(!SUMMARY!^)
 exit /b 0
 
 rem A check failed (:fail NAME) or passed (:ok); :failed counts a failure, "e2e NAME" or a check's.
