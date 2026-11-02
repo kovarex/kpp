@@ -1376,7 +1376,7 @@ struct GlobalScope::Impl
     auto inst = std::make_unique<Instantiation>();
     inst->state.store(1);
     inst->owner = std::this_thread::get_id();
-    inst->late = afterResolve.load(std::memory_order_relaxed);
+    inst->late = afterResolve.load(std::memory_order_relaxed) && !rewalking.load(std::memory_order_relaxed); // (a rewalk is the resolve's)
     inst->classTy = classTy;
     inst->counted = true;
     Instantiation* result = inst.get();
@@ -26784,8 +26784,11 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   // build from scratch never makes them. One pass over every unit's recorded uses (in parallel, by
   // shard) gives the roots (every walk, file's new ones too, and the declarations' typing) and what
   // each instance asked for; an instance is used when a root reaches it.
-  (void)file;
   auto isInstance = [](uint8_t kind) { return kind == USE_Instance || kind == USE_ClassInstance; };
+  // (A declaration's typing whose declaration the file no longer has, a local of a body replaced by
+  // its edit, is no root: what it asked for is the old body's.)
+  std::unordered_set<const Node*> current;
+  forEachNode(file.decls, [&](Node* n) { current.insert(n); });
   std::vector<std::vector<const void*>> rootParts(std::size(impl->declDependencies) + 1);
   forEachParallel(std::size(impl->declDependencies), [&](size_t s)
   {
@@ -26801,8 +26804,10 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   });
   {
     std::lock_guard lock(impl->typeDependenciesMutex);
-    for (auto& deps : impl->typeDependencies)
+    for (auto& [owner, deps] : impl->typeDependencyOwners)
     {
+      if (owner->file == &file && !current.count(owner))
+        continue;
       std::lock_guard l(deps->mutex);
       for (auto& [kind, what] : deps->list.uses)
         if (isInstance(kind))
@@ -26864,6 +26869,51 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   for (const void* p : candidates)
     if (!reached.count(p))
       unused.insert(p);
+  // And every instance made for a closure whose lambda the file no longer has (the edit replaced its
+  // body): nothing can name that closure, whether or not a recorded request led to the instance (a
+  // class instance's, `Hold<Hold<...<closure>>>` ten deep, is no one's recorded request).
+  std::unordered_map<const Ty*, bool> goneIn;
+  std::function<bool(const Ty*)> gone = [&](const Ty* t)
+  {
+    if (!t)
+      return false;
+    if (auto known = goneIn.find(t); known != goneIn.end())
+      return known->second;
+    goneIn[t] = false;
+    bool found = t->kind == TyKind::Lambda && t->decl && t->decl->file == &file && t->decl->kind == NodeKind::ClassDecl &&
+                 static_cast<const ClassDecl*>(t->decl)->lambda && !current.count(static_cast<const ClassDecl*>(t->decl)->lambda);
+    found = found || gone(t->inner);
+    for (const Ty* a : t->args)
+      found = found || gone(a);
+    return goneIn[t] = found;
+  };
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, r] : shard.map)
+    {
+      bool forGone = r->of && r->of->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(r->of)->lambda &&
+                     r->of->file == &file && !current.count(static_cast<const ClassDecl*>(r->of)->lambda);
+      if (!forGone && r->recheck)
+      {
+        forGone = gone(r->recheck->thisType) || gone(r->recheck->lambdaTy);
+        for (const Subst::Pair& p : r->recheck->subst.pairs)
+          forGone = forGone || gone(p.type);
+        if (r->recheck->task)
+          for (const Subst::Pair& p : r->recheck->task->full.pairs)
+            forGone = forGone || gone(p.type);
+      }
+      if (forGone)
+        unused.insert(r.get());
+    }
+  }
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [classTy, inst] : shard.classes)
+      if (gone(classTy))
+        unused.insert(inst.get());
+  }
   // A class instance's members' bodies go with it (they are not among its recorded requests).
   std::unordered_set<const Ty*> droppedClassTypes;
   for (Impl::InstShard& shard : impl->instShards)
@@ -26886,18 +26936,19 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   // arguments, a member of such a class instance): the old lambda's, which nothing can name now.
   // Anything else no recorded use asks for may still be what codegen asks for (a use the recorded
   // dependencies do not hold): not dropped, a build from scratch.
-  std::function<bool(const Ty*, int)> closure = [&](const Ty* t, int depth)
+  // (Every type it is made of, each once: the types form a DAG, nested to any depth.)
+  std::unordered_map<const Ty*, bool> closureIn;
+  std::function<bool(const Ty*, int)> closure = [&](const Ty* t, int)
   {
-    if (!t || depth > 8)
+    if (!t)
       return false;
-    if (t->kind == TyKind::Lambda)
-      return true;
-    if (closure(t->inner, depth + 1))
-      return true;
+    if (auto known = closureIn.find(t); known != closureIn.end())
+      return known->second;
+    closureIn[t] = false; // (a cycle, if any, is no closure)
+    bool found = t->kind == TyKind::Lambda || closure(t->inner, 0);
     for (const Ty* a : t->args)
-      if (closure(a, depth + 1))
-        return true;
-    return false;
+      found = found || closure(a, 0);
+    return closureIn[t] = found;
   };
   for (Impl::InstanceShard& shard : impl->instanceShards)
   {

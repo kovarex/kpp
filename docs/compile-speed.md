@@ -1379,6 +1379,13 @@ master (4fc2cf32) 45 to 105 s a check (built from scratch: "the new code instant
 not"); with the change 1.8 to 2.0 s (the server's build 1.6 to 1.8 s, the walks 0.4 to 0.5 s, 2 modules
 assembled again, 12 functions emitted again). The edit test: a line added above a lambda passed to a
 function template and taken out, both incremental (each a build from scratch before).
+B's review: the searches for a closure in a type stopped at 8 levels, codegen's answering "no old
+closure" there (an instance kept and emitted again for a closure that no longer exists). Now each walks
+the type's whole DAG once (memoized, no depth limit), and every instance made for a closure whose lambda
+the edited file no longer has is dropped whether or not a recorded request led to it (a class instance
+ten holders deep is no one's), with codegen's layouts of the types made from it (its struct count is a
+build from scratch's). The edit test: a lambda held ten `Hold<...>` deep, a line added above it and
+taken out (2.1 to 2.3 s a check on the game's ExpansionPlanner edit afterwards).
 
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:

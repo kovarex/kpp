@@ -20269,19 +20269,24 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // An instance made for the closure of a lambda whose writer is emitted again (`applyTo<closure>`):
   // the old lambda's, which no one calls now; dropped, not emitted again (the new lambda's instance is
   // made by its first use).
-  std::function<bool(const Ty*, int)> oldClosure = [&](const Ty* t, int depth)
+  // (Every type the instance is made of, each once: the types form a DAG, a lambda nested in holders
+  // to any depth; none is cut off, which would keep an instance for a closure that no longer exists.)
+  std::unordered_map<const Ty*, bool> oldClosureIn;
+  std::function<bool(const Ty*)> oldClosure = [&](const Ty* t)
   {
-    if (!t || depth > 8)
+    if (!t)
       return false;
+    if (auto known = oldClosureIn.find(t); known != oldClosureIn.end())
+      return known->second;
+    oldClosureIn[t] = false; // (a cycle, if any, holds no old closure through itself)
+    bool found = false;
     if (e.isLambda(t))
       if (auto writer = sh.closureWriters.find(e.types.unqualified(t)); writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))
-        return true;
-    if (oldClosure(t->inner, depth + 1))
-      return true;
+        found = true;
+    found = found || oldClosure(t->inner);
     for (const Ty* a : t->args)
-      if (oldClosure(a, depth + 1))
-        return true;
-    return false;
+      found = found || oldClosure(a);
+    return oldClosureIn[t] = found;
   };
   // Its name released: the new closure's instance has it, and is asked for by its first use (every
   // emitter's answers forget it too).
@@ -20293,26 +20298,29 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   };
   auto forOldClosure = [&](const Instantiation& inst)
   {
-    if (oldClosure(inst.classTy, 0))
+    if (oldClosure(inst.classTy))
       return true;
     for (const auto& pair : inst.args.pairs)
-      if (oldClosure(pair.second, 0))
+      if (oldClosure(pair.second))
         return true;
     return false;
   };
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
-      if (d.emitted && !owners.count(d.owner) &&
-          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; }) ||
-           instanceOfEdited(d) || forOldClosure(*d.emitted) ||
-           (!droppedLayouts.empty() && usesDropped(d))))
+    {
+      if (!d.emitted || owners.count(d.owner))
+        continue;
+      bool forOld = forOldClosure(*d.emitted);
+      if (forOld || std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; }) ||
+          instanceOfEdited(d) || (!droppedLayouts.empty() && usesDropped(d)))
       {
         owners.insert(d.owner);
-        if (!forOldClosure(*d.emitted))
+        if (!forOld)
           holding[d.emitted->depth].push_back(*d.emitted);
         else
           releaseName(d.name);
       }
+    }
   if (!droppedLayouts.empty())
   {
     // A function that used a dropped layout without a record of how it was emitted cannot be emitted
@@ -20424,20 +20432,48 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     }
   if (!droppedClosures.empty())
   {
-    std::function<bool(const Ty*, int)> mentions = [&](const Ty* t, int depth)
+    // (each type once, to any depth: a type that keeps a name it should give back gets `.2` beside it)
+    std::unordered_map<const Ty*, bool> mentionsIn;
+    std::function<bool(const Ty*)> mentions = [&](const Ty* t)
     {
-      if (!t || depth > 8)
+      if (!t)
         return false;
-      if (droppedClosures.count(t) || droppedClosures.count(e.types.unqualified(t)))
-        return true;
-      if (mentions(t->inner, depth + 1))
-        return true;
+      if (auto known = mentionsIn.find(t); known != mentionsIn.end())
+        return known->second;
+      mentionsIn[t] = false;
+      bool found = droppedClosures.count(t) || droppedClosures.count(e.types.unqualified(t)) || mentions(t->inner);
       for (const Ty* a : t->args)
-        if (mentions(a, depth + 1))
-          return true;
-      return false;
+        found = found || mentions(a);
+      return mentionsIn[t] = found;
     };
-    std::erase_if(sh.irTypeNames, [&](const auto& named) { return mentions(named.second, 0); });
+    std::erase_if(sh.irTypeNames, [&](const auto& named) { return mentions(named.second); });
+    // Their layouts go too (`Hold<closure>`, laid out for the old closure): a build from scratch never
+    // lays them out, nor counts them; every answer computed from them with them.
+    std::unordered_set<const StructInfo*> goneLayouts;
+    std::vector<const Ty*> goneKeys;
+    for (auto& [key, info] : sh.structs)
+      if (mentions(key))
+      {
+        goneLayouts.insert(&info);
+        goneKeys.push_back(key);
+      }
+    if (!goneKeys.empty())
+    {
+      for (auto it = sh.structsByType.begin(); it != sh.structsByType.end();)
+        it = goneLayouts.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
+      for (const Ty* key : goneKeys)
+      {
+        if (sh.structs[key].complete)
+          --sh.result.structs;
+        sh.structs.erase(key);
+      }
+      for (auto& em : emitters)
+        em->forgetLayoutAnswers();
+      sh.finalLayouts.clear();
+      sh.finalSizes.clear();
+      sh.finalDestruction.clear();
+      sh.finalBitfields.clear();
+    }
   }
   for (const std::string& name : droppedNames)
   {
