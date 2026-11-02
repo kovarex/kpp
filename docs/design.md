@@ -816,6 +816,37 @@ call's arguments into it, the missing-`appendTo` error); thread C the library si
 throughout the stdlib, `operator<<` and `operator+`, `print`, `toString`, and the formatting objects,
 docs/stdlib/).
 
+As converted (thread C, 2026-11-02):
+- A call of `ssprintf` with a literal format is `toString(pieces)`, a `printf` statement
+  `print(pieces)`: the format's text between its conversions as literals (raw ones for a raw
+  format), each conversion its argument as the piece that writes it (`%u` `uint32_t(x)`, the 32 bits
+  printf read; `%s` `StringView(p)`, or the String a `.c_str()` came from; `%5.2f`
+  `alignRight(fixed(x, 2), 5)`; `%08x` `hex(x, 8)`; `%#010x` `"0x", hex(x, 8)`; `%c` `char(x)`; `%p`
+  `address(p)`), `::` before a library name a member, local or parameter hides (NoiseProgram's
+  `toString()`, Color's `hex()`).
+- **The game's ssprintf is trio's text, not the C runtime's.** CommonUtil's ssprintf formats with
+  `trio_vsnprintf` (StringUtil.cpp), whose floating conversions round as trio does: `%f` of 1.4140625
+  is `1.414063` (a tie away from zero), where the C runtime and `fixed(x, 6)` give `1.414062`; `%.16f`
+  of the double LuaPrintNumbers' 11th random value is `0.6643904868979008`, the exact rounding
+  `...007`. The game's checksums hold that text (two unit tests' map CRCs). So ssprintf's `%f`,
+  `%g` and `%e` are `trioFixed`, `trioSignificant` and `trioScientific`, the game's own pieces
+  (programs/factorio/overrides/added/CommonUtil/TrioPieces.kpp, wrapping the converted trio's
+  snprintf); widths, `+` and the `0` flag are the stdlib's `alignRight`, `withSign` and
+  `zeroPadded`. A `printf` statement prints through the C runtime, whose text `fixed` and
+  `significant` are (1.8 million values compared). The stdlib keeps exact rounding (docs/stdlib/text.md);
+  whether the game switches to it is a change of the game's behaviour and checksums: kovarex's call,
+  later.
+- Counts (C:\Factorio 4c178a5b915): 3,306 ssprintf calls written `toString(pieces)` and 146
+  `printf` statements `print(pieces)`; 605 `trioFixed`, 259 `trioSignificant` and 1 `trioScientific`
+  among them.
+- Left as they are (counted in the conversion report): 8 `*` widths and 2 `*` precisions, 32 calls
+  whose format is chosen at run time (`global->localiseFormat(...).c_str()`, a translated key, a
+  variable), about 460 calls inside macros the converter expands (the unit tests' CHECK macros, whose
+  expansion is text the rewrite does not see), and conversions without a piece (the ' ' and `'` flags,
+  `%E` `%G` `%a`, precision on integers and strings, wide strings: none in these calls). Next: the
+  game's own format functions (Logging, TagWriter, addDebugProperty, makeProperty, AbortException::make)
+  taking a `Text`, std::to_string of a floating value, and the C libraries' printf calls.
+
 ### 15. File-local names: `private` at file scope (decided 2026-11-01)
 
 kovarex, 2026-11-01: "lets keep the private for per file private". A top-level declaration marked

@@ -4401,7 +4401,7 @@ namespace
         bool cast = toks[at].getKind() == TokenKind::Identifier && spelling(at) == "size_t" && toks[at + 1].is(P::LParen);
         if (conversions[n].wide && !cast)
         {
-          castArgument(at, end, "size_t");
+          { size_t before = edits.size(); castArgument(at, end, "size_t"); for (size_t e = before; e < edits.size(); ++e) widenedFormats[i].push_back(e); }
           counts.add("64-bit printf arguments written size_t");
         }
       }
@@ -4506,6 +4506,448 @@ namespace
         case NodeKind::FunctionalCastExpr: return isWideIntegerType(static_cast<FunctionalCastExpr*>(e)->type);
         default: return false;
       }
+    }
+    // design.md 14's printf rewrite: a call of ssprintf, or a printf statement, with a literal format
+    // becomes toString(...) or print(...) of pieces, the text C printed: the format's text between
+    // its conversions as literals, each conversion its argument as the piece that writes it so
+    // (`%u` uint32_t(x), the 32 bits printf reads; `%s` StringView(p), or the String a c_str() came
+    // from; `%5.2f` alignRight(fixed(x, 2), 5); `%08x` hex(x, 8); `%p` address(p)). A conversion
+    // outside that leaves the call as it is (counted): `*` widths, precision on integers and
+    // strings, the ' ' and '#' flags but for `%#0Nx`, %E %G %a %n, wide strings.
+    struct PrintfConversion
+    {
+      std::string flags, length;
+      int width = -1, precision = -1;
+      char conversion = 0;
+    };
+    // The format's raw text (its literals' contents, escapes as written) cut at its conversions:
+    // segments[k] before conversions[k], the last after the last. False when it holds a conversion
+    // the rewrite does not write (unsupported names it).
+    static bool splitPrintfFormat(const std::string& raw, bool rawLiteral, std::vector<std::string>& segments, std::vector<PrintfConversion>& conversions,
+                                  std::string& unsupported)
+    {
+      std::string segment;
+      for (size_t k = 0; k < raw.size(); ++k)
+      {
+        if (raw[k] == '\\' && k + 1 < raw.size() && !rawLiteral)
+        {
+          segment += raw.substr(k, 2);
+          ++k;
+          continue;
+        }
+        if (raw[k] != '%')
+        {
+          segment += raw[k];
+          continue;
+        }
+        if (k + 1 < raw.size() && raw[k + 1] == '%')
+        {
+          segment += '%';
+          ++k;
+          continue;
+        }
+        PrintfConversion c;
+        size_t p = k + 1;
+        while (p < raw.size() && strchr("-+ #0'", raw[p]))
+          c.flags += raw[p++];
+        if (p < raw.size() && raw[p] == '*')
+        {
+          unsupported = "`*` width";
+          return false;
+        }
+        if (p < raw.size() && isdigit((unsigned char)raw[p]))
+        {
+          c.width = 0;
+          while (p < raw.size() && isdigit((unsigned char)raw[p]))
+            c.width = c.width * 10 + (raw[p++] - '0');
+        }
+        if (p < raw.size() && raw[p] == '.')
+        {
+          ++p;
+          if (p < raw.size() && raw[p] == '*')
+          {
+            unsupported = "`*` precision";
+            return false;
+          }
+          c.precision = 0;
+          while (p < raw.size() && isdigit((unsigned char)raw[p]))
+            c.precision = c.precision * 10 + (raw[p++] - '0');
+        }
+        for (const char* length : {"I64", "I32", "hh", "ll", "h", "l", "z", "j", "t", "L", "q"})
+          if (raw.compare(p, strlen(length), length) == 0)
+          {
+            c.length = length;
+            p += strlen(length);
+            break;
+          }
+        if (p >= raw.size())
+        {
+          unsupported = "a format ending in a conversion's middle";
+          return false;
+        }
+        c.conversion = raw[p];
+        k = p;
+        if (!strchr("diuxXocsfegp", c.conversion) || c.flags.find(' ') != std::string::npos || c.flags.find('\'') != std::string::npos ||
+            (c.length == "L") || (c.length == "l" && (c.conversion == 's' || c.conversion == 'c')))
+        {
+          unsupported = std::string("%") + c.flags + (c.length) + c.conversion;
+          return false;
+        }
+        if (c.precision >= 0 && strchr("diuxXocsp", c.conversion))
+        {
+          unsupported = "precision on %" + std::string(1, c.conversion);
+          return false;
+        }
+        if (c.flags.find('#') != std::string::npos && !((c.conversion == 'x' || c.conversion == 'X') && c.flags.find('0') != std::string::npos && c.width > 2))
+        {
+          unsupported = "the # flag";
+          return false;
+        }
+        segments.push_back(segment);
+        segment.clear();
+        conversions.push_back(c);
+      }
+      segments.push_back(segment);
+      return true;
+    }
+    // An integer type's exact name, when the declarations give it: int32_t for int, uint32_t for
+    // unsigned or uint32_t, int64_t for long long, char for char ("" otherwise or when unknown).
+    std::string exactIntegerName(Type* type, int depth = 0)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner
+             : type->kind == NodeKind::LRefType  ? static_cast<LRefType*>(type)->referenced
+                                                 : static_cast<RRefType*>(type)->referenced;
+      if (!type || depth > 8)
+        return {};
+      if (type->kind == NodeKind::BuiltinType)
+      {
+        auto* b = static_cast<BuiltinType*>(type);
+        bool isUnsigned = b->isUnsigned || b->keyword == Kw::unsigned_;
+        if (b->keyword == Kw::char_)
+          return b->isUnsigned || b->isSigned ? std::string() : "char";
+        if (b->keyword == Kw::short_)
+          return isUnsigned ? "uint16_t" : "int16_t";
+        if (b->keyword == Kw::int_ || b->keyword == Kw::unsigned_ || b->keyword == Kw::signed_ || b->keyword == Kw::long_)
+          return std::string(isUnsigned ? "uint" : "int") + (b->longCount >= 2 ? "64_t" : "32_t");
+        return {};
+      }
+      if (type->kind != NodeKind::NamedType)
+        return {};
+      auto* named = static_cast<NamedType*>(type);
+      if (!named->name.parts.empty() && named->name.last().symbol != UINT32_MAX)
+      {
+        static const std::map<std::string_view, std::string> names = {
+          {"int8_t", "int8_t"},   {"uint8_t", "uint8_t"},   {"int16_t", "int16_t"}, {"uint16_t", "uint16_t"}, {"int32_t", "int32_t"},
+          {"uint32_t", "uint32_t"}, {"int64_t", "int64_t"}, {"uint64_t", "uint64_t"}, {"size_t", "size_t"}};
+        if (auto n = names.find(symbols.name(named->name.last().symbol)); n != names.end())
+          return n->second;
+      }
+      Decl* d = named->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return exactIntegerName(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return exactIntegerName(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return {};
+    }
+    // The opening and closing text around an argument that make it the piece a conversion writes.
+    bool printfPiece(const PrintfConversion& c, Expr* arg, uint32_t argEnd, bool trio, std::string& open, std::string& close, uint32_t& cStrDot)
+    {
+      Expr* plain = arg;
+      while (plain && plain->kind == NodeKind::ParenExpr)
+        plain = static_cast<ParenExpr*>(plain)->inner;
+      std::string exact = exactIntegerName(plainTypeOf(arg));
+      // (`int32_t(value)`, which the parse reads as a call of the type's name)
+      if (exact.empty() && plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->args.size() == 1 &&
+          static_cast<CallExpr*>(plain)->callee->kind == NodeKind::NameExpr)
+      {
+        auto* typeName = static_cast<NameExpr*>(static_cast<CallExpr*>(plain)->callee);
+        if (!typeName->resolved || typeName->resolved->kind != NodeKind::FunctionDecl)
+        {
+          NamedType named{};
+          named.kind = NodeKind::NamedType;
+          named.name = typeName->name;
+          named.resolved = typeName->resolved;
+          exact = exactIntegerName(&named);
+        }
+      }
+      bool literalInteger = plain && plain->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(plain)->literalKind == TokenKind::Number &&
+                            isdigit((unsigned char)spelling(plain->token)[0]) && spelling(plain->token).find('.') == std::string_view::npos;
+      auto integerType = [&](bool isSigned)
+      {
+        std::string bits = c.length == "ll" || c.length == "I64" || c.length == "j" || c.length == "q" || c.length == "z" || c.length == "t" ? "64"
+                         : c.length == "h"                                                                                                 ? "16"
+                         : c.length == "hh"                                                                                                ? "8"
+                                                                                                                                           : "32";
+        if (c.length == "z" && !isSigned)
+          return std::string("size_t");
+        return std::string(isSigned ? "int" : "uint") + bits + "_t";
+      };
+      std::string valueOpen, valueClose;
+      switch (c.conversion)
+      {
+        case 'd':
+        case 'i':
+        case 'u':
+        {
+          std::string type = integerType(c.conversion != 'u');
+          if (exact != type && !(literalInteger && (type == "int32_t" || type == "uint32_t")))
+            valueOpen = type + "(", valueClose = ")";
+          break;
+        }
+        case 'x':
+        case 'X':
+        case 'o':
+        {
+          std::string type = integerType(false);
+          std::string name = c.conversion == 'x' ? "hex(" : c.conversion == 'X' ? "hexUpper(" : "octal(";
+          valueOpen = name + (exact == type || literalInteger ? "" : type + "(");
+          valueClose = std::string(exact == type || literalInteger ? "" : ")");
+          if (c.flags.find('0') != std::string::npos && c.width > 0 && c.flags.find('-') == std::string::npos)
+          {
+            bool prefix = c.flags.find('#') != std::string::npos;
+            valueOpen = (prefix ? std::string(c.conversion == 'X' ? "\"0X\", " : "\"0x\", ") : std::string()) + valueOpen;
+            valueClose += ", " + std::to_string(prefix ? c.width - 2 : c.width) + ")";
+            open = valueOpen, close = valueClose;
+            return true;
+          }
+          valueClose += ")";
+          break;
+        }
+        case 'c':
+          if (exact != "char")
+            valueOpen = "char(", valueClose = ")";
+          break;
+        case 's':
+          if (plain && plain->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(plain)->literalKind == TokenKind::String)
+            break;
+          if (plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->args.empty() &&
+              static_cast<CallExpr*>(plain)->callee->kind == NodeKind::MemberExpr)
+          {
+            auto* m = static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee);
+            if (m->op == P::Dot && !m->member.parts.empty() && m->member.parts[0].symbol != UINT32_MAX &&
+                symbols.name(m->member.parts[0].symbol) == "c_str" && isStdStringType(plainTypeOf(m->base)))
+            {
+              // (the String itself: the argument's own `.c_str()`, its last tokens, goes)
+              uint32_t dot = argEnd >= 4 ? argEnd - 4 : 0;
+              if (argEnd >= 4 && toks[dot].is(P::Dot) && spelling(dot + 1) == "c_str" && toks[dot + 2].is(P::LParen) && toks[dot + 3].is(P::RParen))
+              {
+                cStrDot = dot;
+                break;
+              }
+            }
+          }
+          valueOpen = "StringView(", valueClose = ")";
+          break;
+        case 'f':
+        case 'e':
+        case 'g':
+        {
+          int precision = c.precision < 0 ? 6 : c.precision;
+          if (c.conversion == 'g' && precision == 0)
+            precision = 1;
+          // (ssprintf's text is trio's, CommonUtil's StringUtil.cpp: the game's TrioPieces.kpp)
+          if (trio)
+            valueOpen = std::string(c.conversion == 'f' ? "trioFixed(" : c.conversion == 'e' ? "trioScientific(" : "trioSignificant(");
+          else
+            valueOpen = std::string(c.conversion == 'f' ? "fixed(" : c.conversion == 'e' ? "scientific(" : "significant(");
+          valueClose = ", " + std::to_string(precision) + ")";
+          break;
+        }
+        case 'p':
+          valueOpen = "address(", valueClose = ")";
+          break;
+        default: return false;
+      }
+      if (c.flags.find('+') != std::string::npos)
+      {
+        if (!strchr("difeg", c.conversion))
+          return false;
+        valueOpen = "withSign(" + valueOpen, valueClose += ")";
+      }
+      if (c.width > 0)
+      {
+        if (c.flags.find('-') != std::string::npos)
+          valueOpen = "alignLeft(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+        else if (c.flags.find('0') != std::string::npos && strchr("diufeg", c.conversion))
+          valueOpen = "zeroPadded(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+        else
+          valueOpen = "alignRight(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+      }
+      open = valueOpen, close = valueClose;
+      return true;
+    }
+    std::vector<Edit> backEdits; // inserts that go after every other edit at their offset
+    std::map<uint32_t, std::vector<size_t>> widenedFormats; // a format's token: the edits widenFormatArguments made for it
+    std::set<CallExpr*> printfRewritten;
+    bool rewritePrintfCall(CallExpr* call)
+    {
+      if (in.c || call->callee->kind != NodeKind::NameExpr)
+        return false;
+      auto* callee = static_cast<NameExpr*>(call->callee);
+      if (callee->name.parts.size() != 1 || callee->name.parts[0].symbol == UINT32_MAX || call->args.empty())
+        return false;
+      std::string_view name = symbols.name(callee->name.parts[0].symbol);
+      std::string to;
+      if (name == "ssprintf")
+        to = "toString";
+      else if (name == "printf" && !callee->resolved)
+        to = "print";
+      else
+        return false;
+      Expr* format = call->args[0];
+      if (format->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(format)->literalKind != TokenKind::String)
+        return false;
+      // the raw text of the format's literals (and of string macros among them)
+      std::string raw, rawDelimiter;
+      int rawLiterals = 0;
+      uint32_t last = format->token;
+      for (; last < toks.size(); ++last)
+      {
+        std::string piece;
+        if (toks[last].getKind() == TokenKind::String)
+          piece = std::string(spelling(last));
+        else if (auto macro = toks[last].getKind() == TokenKind::Identifier ? objectMacros.find(std::string(spelling(last))) : objectMacros.end();
+                 macro != objectMacros.end() && isStringLiterals(macro->second))
+          piece = macro->second;
+        else
+          break;
+        for (size_t q = 0; q < piece.size();)
+        {
+          if (piece[q] == ' ' || piece[q] == '\t' || piece[q] == '\n' || piece[q] == '\r')
+          {
+            ++q;
+            continue;
+          }
+          if (piece[q] == 'R' && q + 1 < piece.size() && piece[q + 1] == '"')
+          {
+            // a raw literal (`R"(...)"`, the tests' Lua): its pieces are raw literals of its delimiter
+            size_t open = piece.find('(', q + 2);
+            if (open == std::string::npos || (rawLiterals == 0 && !raw.empty()) || (rawLiterals > 0 && piece.substr(q + 2, open - q - 2) != rawDelimiter))
+            {
+              counts.add("printf calls left as they are (raw and plain literals together)");
+              return false;
+            }
+            rawDelimiter = piece.substr(q + 2, open - q - 2);
+            size_t closeAt = piece.find(")" + rawDelimiter + "\"", open + 1);
+            if (closeAt == std::string::npos)
+              return false;
+            raw += piece.substr(open + 1, closeAt - open - 1);
+            q = closeAt + rawDelimiter.size() + 2;
+            ++rawLiterals;
+            continue;
+          }
+          if (piece[q] != '"' || rawLiterals > 0)
+          {
+            counts.add(rawLiterals > 0 ? "printf calls left as they are (raw and plain literals together)" : "printf calls left as they are (a prefixed literal)");
+            return false;
+          }
+          size_t e = q + 1;
+          while (e < piece.size() && piece[e] != '"')
+            e += piece[e] == '\\' ? 2 : 1;
+          raw += piece.substr(q + 1, e - q - 1);
+          q = e + 1;
+        }
+      }
+      --last;
+      std::vector<std::string> segments;
+      std::vector<PrintfConversion> conversions;
+      std::string unsupported;
+      if (!splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported))
+      {
+        counts.add("printf calls left as they are (" + unsupported + ")");
+        return false;
+      }
+      std::vector<std::pair<uint32_t, uint32_t>> ranges =
+        last + 1 < toks.size() && toks[last + 1].is(P::Comma) ? argumentRanges(last + 2) : std::vector<std::pair<uint32_t, uint32_t>>();
+      if (ranges.size() != call->args.size() - 1 || conversions.size() != ranges.size())
+      {
+        counts.add("printf calls left as they are (arguments not one per conversion, or a macro's)");
+        return false;
+      }
+      if (to == "print")
+      {
+        // (a statement: print returns no count)
+        uint32_t first = firstTokenOf(call->callee), close = ranges.empty() ? last + 1 : ranges.back().second;
+        if (first == 0 || !(toks[first - 1].is(P::Semi) || toks[first - 1].is(P::LBrace) || toks[first - 1].is(P::RBrace) || toks[first - 1].is(P::RParen) ||
+                            toks[first - 1].is(Kw::else_) || toks[first - 1].is(P::Colon)) ||
+            !(close < toks.size() && toks[close].is(P::RParen) && close + 1 < toks.size() && toks[close + 1].is(P::Semi)))
+          return false;
+      }
+      std::vector<std::string> opens(conversions.size()), closes(conversions.size());
+      std::vector<uint32_t> cStrDots(conversions.size(), UINT32_MAX);
+      for (size_t k = 0; k < conversions.size(); ++k)
+        if (!printfPiece(conversions[k], call->args[k + 1], ranges[k].second, name == "ssprintf", opens[k], closes[k], cStrDots[k]))
+        {
+          counts.add("printf calls left as they are (a + flag on %" + std::string(1, conversions[k].conversion) + ")");
+          return false;
+        }
+      // widenFormatArguments' casts for this format go: the pieces say the width
+      if (auto widened = widenedFormats.find(format->token); widened != widenedFormats.end())
+        for (size_t index : widened->second)
+        {
+          Edit& e = edits[index];
+          e.text = e.length == 0 ? std::string() : std::string(text.substr(e.offset, e.length));
+        }
+      auto literal = [&](const std::string& s) { return rawLiterals > 0 ? "R\"" + rawDelimiter + "(" + s + ")" + rawDelimiter + "\"" : "\"" + s + "\""; };
+      // (the library's names, `::toString` where the program's own hides it: NoiseProgram's
+      // toString(), Color's hex(), DebugTools' parameter toString)
+      uint32_t callAt = toks[callee->token].offset;
+      auto qualified = [&](std::string text)
+      {
+        static const char* names[] = {"toString", "print", "hex", "hexUpper", "octal", "fixed", "significant", "scientific", "trioFixed",
+                                      "trioSignificant", "trioScientific", "withSign",
+                                      "alignLeft", "alignRight", "zeroPadded", "address", "StringView"};
+        for (const char* name : names)
+          for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, at + 1))
+          {
+            size_t end = at + strlen(name);
+            if ((at > 0 && (isIdentChar(text[at - 1]) || text[at - 1] == ':')) || end >= text.size() || text[end] != '(')
+              continue;
+            if (shadowedAt(name, callAt))
+            {
+              text.insert(at, "::");
+              at += 2;
+            }
+          }
+        return text;
+      };
+      to = qualified(to + "(");
+      to.pop_back();
+      for (std::string& open : opens)
+        open = qualified(open);
+      // the callee (also written `::printf`: InteractiveTestSelect has a printf of its own)
+      uint32_t calleeFirst = firstTokenOf(call->callee), calleeLast = calleeFirst;
+      while (calleeLast + 1 < toks.size() && !toks[calleeLast + 1].is(P::LParen))
+        ++calleeLast;
+      replace(toks[calleeFirst].offset, endOffset(calleeLast) - toks[calleeFirst].offset, to);
+      // The format and the comma and spaces after it become its first segment and the first piece's
+      // opening; each later comma the segment before its piece and that piece's opening. (Before
+      // the argument, not at it: a rewrite of the argument itself, a macro written out or a
+      // variant's access, replaces it and would cancel an insertion there.)
+      uint32_t formatStart = toks[format->token].offset, formatEnd = endOffset(last);
+      if (conversions.empty())
+        replace(formatStart, formatEnd - formatStart, literal(segments[0]));
+      else
+        replace(formatStart, toks[ranges[0].first].offset - formatStart, (segments[0].empty() ? std::string() : literal(segments[0]) + ", ") + opens[0]);
+      for (size_t k = 0; k < conversions.size(); ++k)
+      {
+        if (k > 0)
+        {
+          uint32_t comma = toks[ranges[k - 1].second].offset;
+          replace(comma, toks[ranges[k].first].offset - comma,
+                  closes[k - 1] + ", " + (segments[k].empty() ? std::string() : literal(segments[k]) + ", ") + opens[k]);
+        }
+        // (the last piece's closing after its argument; the others' are in the next comma's text)
+        std::string after = closes[k] + (!segments[k + 1].empty() ? ", " + literal(segments[k + 1]) : std::string());
+        if (k + 1 == conversions.size() && !after.empty())
+          backEdits.push_back({endOffset(ranges[k].second - 1), 0, after});
+        if (cStrDots[k] != UINT32_MAX)
+          remove(toks[cStrDots[k]].offset, endOffset(cStrDots[k] + 3) - toks[cStrDots[k]].offset);
+      }
+      printfRewritten.insert(call);
+      counts.add(name == "ssprintf" ? "ssprintf calls written toString(pieces)" : "printf statements written print(pieces)");
+      return true;
     }
     // Factorio's own format mismatches, made explicit as C++ prints them on x64: an argument the
     // declarations say is 64-bit, read by a 32-bit conversion (`%u` of a UnitNumber or a size_t
@@ -7607,7 +8049,8 @@ namespace
           }
           // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format; its
           // 64-bit arguments read as 32 bits, by the declarations:)
-          narrowFormatArguments(call);
+          if (!rewritePrintfCall(call))
+            narrowFormatArguments(call);
           if (variants && call->callee->kind == NodeKind::NameExpr)
             if (auto v = variants->byDecl.find(static_cast<NameExpr*>(call->callee)->resolved); v != variants->byDecl.end())
               variantConstruction(variants->all[v->second], call->callee->token, call->args);
@@ -9075,6 +9518,8 @@ namespace
         cCastChains();
       }
       removeUnparsedDefinitions();
+      // (the printf rewrite's closings after its arguments: after every other edit there)
+      edits.insert(edits.end(), backEdits.begin(), backEdits.end());
       // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
       auto byOffset = [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; };
       std::stable_sort(edits.begin(), edits.end(), byOffset);
