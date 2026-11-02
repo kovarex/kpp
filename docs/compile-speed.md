@@ -14,6 +14,55 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
+## Measure it yourself
+
+The readme's first three rows (an edit of one function, an edit of an inline function used across
+the game, a clean build of the game) on your own machine, with the kpp you installed: download
+[tools/measure/factorio-edits.ps1](https://github.com/kovarex/kpp/blob/master/tools/measure/factorio-edits.ps1)
+and run it on a factorio-in-kpp checkout your kpp builds, and on your Factorio checkout for the C++
+side (leave out `-Factorio` for kpp alone):
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File factorio-edits.ps1 -Checkout D:\factorio-in-kpp -Factorio D:\Factorio
+```
+
+- **kpp:** `kpp factorio` once (its compile server, the C and C++ libraries), then in each round the
+  leaf edit (a string in `AnimationBank::getAnimation`) and the wide edit (`MapPosition::operator+`'s
+  operands swapped), each built and then undone and built, and the clean build of the game: the
+  server stopped and `build\debug` deleted, the C and C++ libraries (`build\clib`) and the import
+  cache kept, then `kpp factorio` again.
+- **C++** (FASTBuild, `vs2022-Debugx64-factorio-run`), as docs/test-matrix.md's "Build time" measured
+  it: `src\AnimationBank.hpp` touched for the leaf edit and `src\ActionResult.hpp` (the precompiled
+  header includes it) for the wide edit, the time stamp only; the clean build is `FBuild -clean` of
+  every library factorio-run links except the nine factorio-in-kpp builds as C libraries (SDL,
+  curl, re2, imgui and the rest stay built, as kpp's do), then factorio-run.
+- Rounds interleave kpp and C++ (3 by default, `-Rounds N`); each time is the build command's wall
+  time to its exit, the link included, and the script ends with each row's minimum and maximum, the
+  kpp version and the machine. It prints what it edits before it starts, refuses a checkout where
+  those files have changes of their own, and restores them after every build and at the end, also on
+  an error or Ctrl+C. `-DryRun` checks all of it and builds nothing. It needs no administrator rights
+  and runs in Windows PowerShell 5.1; the logs are in the checkout's `build\measure\`.
+
+On PC-PRACOVNA (2026-11-02; kpp 0.2.40 packaged from 8ebb9df8, factorio-in-kpp e4cfd9ba, converted
+from Factorio 4c178a5b915; 3 rounds, the machine 22 to 99% busy with other worktrees' builds and
+Microsoft Defender), kpp alone:
+
+| row | kpp |
+|---|---:|
+| Edit of one function (and its undo) | 5.1 to 8.8 s (4.4 to 8.4 s) |
+| Edit of an inline function used across the game (and its undo) | 5.5 to 10.2 s (5.0 to 10.2 s) |
+| Clean build of the game, libraries built | 23.3 to 60.3 s |
+
+These are `kpp factorio`'s times, as the readme's kpp column is. kpp's own line splits each build:
+in the edits kppc took 1.0 to 3.5 s and the link 0.6 to 1.7 s. About
+2.5 s more is the project build's check of the 641 C and C++ objects (project.cpp's prepareLibrary,
+which runs before kppc starts), and about 1 s comes before and after kpp's total (build.kpp, the
+toolchain, the after-build copies). A clean build in its own process took 45.1 s once on the same
+busy machine (kppc 29.2 s: codegen 14.8 s, clang 8.7 s), against 77 to 94 s through a fresh compile
+server, the server's slower first build; so the clean row is a build without the server. The C++
+side ran here only with `-DryRun` (its checks against C:\Factorio, which nothing on this machine
+edits or touches).
+
 ## The release edit (2026-10-31)
 
 A release build (ThinLTO, 64 modules) of the game took 64 to 88 s for a one-line edit, against
