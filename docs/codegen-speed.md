@@ -9,10 +9,11 @@ LLVM inside kppc, as b1 (LLVM as a library, our own scheduling) and b2 (LLVM cha
 
 ## The answer in brief
 
-- **Today (2026-11-02, section 7): kovarex's clean build, `kpp factorio debug`, is 17.5 s here**
-  (16.8–17.0 s on his machine). It builds with debug info, which steps 1 and 3 below (one home per
-  global, LLVM in kppc) do not reach yet: the back end is 5.4 s through clang, the link 2.4 s, codegen
-  4.9 s. Without debug info the same build is 13.4 s. Section 7 ranks the next steps.
+- **Today (2026-11-02, section 7): kovarex's clean build, `kpp factorio debug`, was 17.5 s here**
+  at master 44d0f0fa (16.8–17.0 s on his machine). It builds with debug info, which steps 1 and 3
+  below (one home per global, LLVM in kppc) did not reach: the back end was 5.4 s through clang, the
+  link 2.4 s, codegen 4.9 s. Both reach it now (item 3 of section 7's ranking): on master's own
+  15.7–16.2 s it takes 13.2–13.6 s. Section 7 ranks the next steps.
 - **When this was written, LLVM was 6 s of a 17 s clean debug build (kppc direct, no debug info); kppc's own codegen was 9 s.** The 9 s is not text
   formatting. kppc's codegen is 23.6 s of work that runs only 2.65 times faster on 32 threads, and
   60% of its samples are threads waiting on its shared locks. Building IR in memory instead of as
@@ -433,18 +434,19 @@ The gains overlap; each line is against the line before. The status column is as
 
 | step | owner | clean | leaf edit | wide edit | status |
 |---|---|---:|---:|---:|---|
-| 1. One home per linkonce global (codegen placement) | D | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | **done**, 0998f157: IR 967 -> 708 MB, clang 3.76–4.13 -> 3.10–3.19 s, link 2.15 -> 1.65 s (section 6). Builds without debug info only |
+| 1. One home per linkonce global (codegen placement) | D | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | **done**, 0998f157: IR 967 -> 708 MB, clang 3.76–4.13 -> 3.10–3.19 s, link 2.15 -> 1.65 s (section 6). With debug info too since 1a8e88c5 (section 7) |
 | 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A (c263459f), **not landed** |
-| 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). Builds without debug info only |
+| 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). With debug info too since 8b5c902c (section 7) |
 | 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **in progress**: design reviewed by B. P0 split the modules offline: IR +1.0%, link unchanged, back end after codegen about 3.0 -> 1.6 s. P1's first hunks are reviewed (declarations at level 0's barrier, the shared functions homed) |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | not started |
 | 6. kppc codegen's lock scaling | D | −4 to −6 s | −0.1 s | −0.1 s | **first round done**, b9dcb7ba, 0303a2fb, 9aaf2cdb: codegen 8.9 -> 5.0 s at -j 32 (its serial start). What remains: 23.6 s of work on 32 threads runs about 4.7x. The lock profile of today's build is in section 7 |
 | 7. Patching instead of relinking (e) | B, E | 0 | −0.4 s | −0.4 s | not started |
 
 Together, steps 1, 3 and 6 took the clean build without debug info (kppc direct) from 17.1 s to about
-9.8 s. **Steps 1 and 3 do not reach kovarex's own build**, `kpp factorio debug`: projectlib's debug
-configuration builds with debug info (`--debug-info`), which keeps every global in every module and
-the back end on clang (section 7). Step 6 reaches it. kovarex measured the whole builds between kpp
+9.8 s. **Steps 1 and 3 did not reach kovarex's own build**, `kpp factorio debug`: projectlib's debug
+configuration builds with debug info (`--debug-info`), which kept every global in every module and
+the back end on clang (section 7). They reach it since 1a8e88c5 and 8b5c902c: −2.6 to −2.9 s on it.
+Step 6 reaches it. kovarex measured the whole builds between kpp
 0.2.13 and 0.2.28 on his machine: factorio.exe 21.6 -> 20.6 s, factorio-test.exe 40.2 -> 36.4 s.
 Today, profiled end to end through kpp, with the next steps ranked: section 7.
 
@@ -628,11 +630,44 @@ gains overlap: 3 and 4 both shorten the back end.
 |---|---|---:|---|---|---|
 | 1 | build.kpp's after-build: a hard link or kpp writing bin\Debugx64 directly, not a copy of the exe and PDB | −0.5 s | one line | factorio-in-kpp's build.kpp, C | 0.55 s measured after the build |
 | 2 | the C-library check: once per header (E's 0418c983, after the measured build), then in parallel if still long | up to −1.3 s | small | E | 1.47 s measured at 44d0f0fa, one thread; to be measured on master |
-| 3 | `--debug-info` builds with homes (each global's debug info stays with its home definition; the external declarations carry none) and the back end in kpp (after its objects are compared with clang's -g) | about −2.3 s (estimate) | medium | D, B reviewing | without debug info, homes cut the back end by 20% and the link by 25%, and in kpp saves 0.6 s (13.4 against 14.0 s here); applied to the 5.4 s back end and 2.4 s link: back end about 3.7 s, link about 1.8 s |
+| 3 | `--debug-info` builds with homes and the back end in kpp | **done**: −2.6 to −2.9 s measured (estimate −2.3 s) | medium | D, B reviewed | 1a8e88c5, 8b5c902c; below |
 | 4 | streaming (step 4: P1's remaining hunks, then P2), with clang's processes too | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
-| 5 | the debug link: `/DEBUG:FASTLINK` | to measure (cg\linkfast.ps1, written, waiting for a quiet slot) | a flag; the PDB keeps pointing into the objects | B, E | the link is 2.43 s with debug info, 1.25 s without |
+| 5 | the debug link: `/DEBUG:FASTLINK` | **none**: this link.exe (MSVC 14.44) no longer supports it ("LNK4315: /DEBUG:FASTLINK is no longer supported. Using /DEBUG:FULL instead"); both links 1.54–1.59 s, the same 207 MB PDB (cg\linkfast.ps1) | — | — | struck |
 | 6 | codegen's locks, second round: short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds |
 | 7 | FastISel lowering Win64 arguments, upstream in LLVM | −0.3 to −0.5 s | an LLVM patch and a release | D | SelectionDAG is 13 s of the back end's 149 s CPU |
+
+**Item 3, done (thread D, 2026-11-02; B reviewed).**
+- **Homes with debug info (1a8e88c5):** kppc's debug info is line tables only (DICompileUnit's
+  LineTablesOnly), and no global's line carries metadata: none of the game's 1,572,280 linkonce_odr
+  global lines in a --debug-info build. So the homes needed only the exclusion lifted.
+  - The game with --debug-info: IR 1,317.8 -> 1,056.4 MB (−19.8%).
+  - cg\homecheck.py against master's modules: 0 problems. Every module's text, its debug metadata
+    included, is the same apart from its global, comdat and type lines. Each of the 61,905 globals
+    is defined once with master's line and declared external elsewhere.
+  - Spec language/homed_globals_with_debug_info.
+- **The back end in kpp with debug info (8b5c902c), B's should-fix (4) of 265df4c2:** each object is
+  clang's apart from what names the compiler in CodeView, object by object (cg\cvcompare.py):
+  - COFF: every section's bytes but .debug$S and .debug$T, every section's relocations, the symbol
+    and string tables are the same.
+  - CodeView (llvm-readobj --codeview) is the same once three things are set aside: S_COMPILE3's
+    BackendVersion (Visual Studio's clang 19.1.5, kppc's LLVM 19.1.7), LF_BUILDINFO's build tool
+    and command line (left empty by kppc, B: tools re-run that line), and S_BUILDINFO's index of it.
+  - The game: 128 of 128 objects. windows-gnu: the 45 end-to-end programs' 3,017 of 3,017.
+- **The game, both changes:**
+  - `--dump-data` 7/7 equal, and the 45 menu maps' checksums equal;
+  - the unit tests built with --debug-info: 9,501/9,501 with 0 CRC mismatches against C++ Debug;
+  - KPP_CHECK_REBUILD=37 and =7 on its --debug-info build: the modules the compile server would
+    assemble again are the build's, 0 of 128 different (2,683 and 13,827 functions emitted again).
+- **Time, kovarex's build** (`kpp factorio debug` in the project copy, a fresh server per round,
+  interleaved, load 0–10%):
+
+  | | wall | kpp's line | back end | link | IR |
+  |---|---:|---|---:|---:|---:|
+  | master ac36aa71 | 15.7, 16.2 s | total 14.8/15.3 s: kpp 12.5/12.9 s | 5.3–5.5 s | 2.2–2.3 s | 1,325 MB |
+  | with item 3 | 13.2, 13.3, 13.6 s | total 12.6–13.0 s: kpp 10.9–11.2 s | 3.8–4.0 s | 1.6 s | 1,064 MB |
+
+  (Master was already below section 7's 17.5 s: P1's homed shared functions and E's 0418c983, the
+  C-library check, landed between.)
 
 Not ranked here: resolve, check and instantiate (1.56 s, 31.5 s CPU: thread A's), and kpp's own
 overhead in the leaf edit (3.6–3.8 s through kpp: thread E's breakdown).
