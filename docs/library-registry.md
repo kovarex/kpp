@@ -697,9 +697,12 @@ also be protected from someone denying me from continuing providing the service.
     software [47].
 - **No NOTICE file**, as LLVM has none. Under section 4(d) every redistributor would have to carry
   a NOTICE file's text.
-- **Contributions** come in under the same license, certified per commit by a `Signed-off-by`
-  line (the Developer Certificate of Origin [48], [CONTRIBUTING.md](../CONTRIBUTING.md)). There is
-  no copyright assignment and no contributor license agreement. The consequence: contributors keep
+- **Contributions** come in under the same license, as GitHub's Terms of Service license every
+  contribution to a repository under the repository's license ("inbound = outbound" [48],
+  [CONTRIBUTING.md](../CONTRIBUTING.md)). There is no sign-off, no copyright assignment and no
+  contributor license agreement: kovarex removed the Developer Certificate of Origin sign-off on
+  2026-11-02 (it had been decided on 2026-11-01), since the Terms already cover it, and a DCO or a
+  CLA can be added later if outside contributions grow. The consequence: contributors keep
   their copyright, so relicensing kpp later (to anything, proprietary included) would need every
   contributor's consent. Apache 2.0 already allows every use, so this blocks nothing kovarex
   asked for.
@@ -738,8 +741,9 @@ also be protected from someone denying me from continuing providing the service.
   - Section 3 grants a patent license from every contributor for their contributions. Anyone who
     sues claiming that kpp infringes a patent loses the patent license they got from kpp. This
     protects against a contributor, or someone building on kpp, attacking it with patents.
-  - The DCO makes every contribution certified as licensable, so no contributor can later claim
-    their code was not licensed.
+  - GitHub's Terms of Service license every contribution under the repository's license, so a
+    contributor cannot later claim their pull request was not licensed. (A per-commit
+    certification, the DCO, was removed on 2026-11-02; see Contributions above.)
 - **It does not:**
   - Section 6 explicitly grants no rights to trademarks. Anyone may fork kpp, but the license
     neither stops nor allows them to call their fork "kpp".
@@ -769,8 +773,8 @@ also be protected from someone denying me from continuing providing the service.
    - possibly defensive registrations of the same name under other top-level domains
      (availability not checked);
    - the GitHub organization or user name the mirror lives under kept in his account.
-5. **The copyright line** in LICENSE and file headers: "the kpp authors" (the convention with a
-   DCO), or his name for the code he and the threads write. Today no file carries a copyright
+5. **The copyright line** in LICENSE and file headers: "the kpp authors" (the convention with many
+   contributors), or his name for the code he and the threads write. Today no file carries a copyright
    line, which is allowed; the license applies either way.
 
 ## Phases and effort
@@ -907,6 +911,6 @@ C source parts, MVS with one version) before any server code is written.
 45. LLVM's LICENSE.TXT (Apache 2.0 with LLVM Exceptions): https://github.com/llvm/llvm-project/blob/main/LICENSE.TXT
 46. SPDX, Apache-2.0 and LLVM-exception texts: https://spdx.org/licenses/Apache-2.0.html, https://spdx.org/licenses/LLVM-exception.html
 47. LLVM relicensing, why the exceptions: https://llvm.org/foundation/relicensing/
-48. Developer Certificate of Origin 1.1: https://developercertificate.org/
+48. GitHub Terms of Service, D.6 "Contributions Under Repository License": https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#6-contributions-under-repository-license
 49. EU trade mark fees per class (third-party summary of EUIPO's schedule): https://tmarkmetric.com/insights/eu-trademark-cost
 50. USPTO trademark fees from 2025-01-18: https://www.fr.com/insights/thought-leadership/blogs/new-uspto-trademark-fees-go-into-effect-january-18-2025/

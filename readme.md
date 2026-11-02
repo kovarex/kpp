@@ -263,4 +263,4 @@ kpp is young, under heavy development, and changes every day; releases are numbe
 
 kpp, its standard library and its official libraries are Apache-2.0 WITH LLVM-exception
 ([LICENSE](LICENSE)): use them freely, also commercially; programs you build with kpp carry no
-obligation from it. Contributions are signed off ([CONTRIBUTING.md](CONTRIBUTING.md)).
+obligation from it. Contributions come in under the same license ([CONTRIBUTING.md](CONTRIBUTING.md)).
