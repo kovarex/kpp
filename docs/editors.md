@@ -8,15 +8,18 @@ an IDE, see [build.md](build.md), "Project files for an IDE".
 Status (2026-10-31):
 - `kppc --lsp` is on master (thread F, ff6054ab), on the interface below. run_tests checks it
   with the smoke client.
-- The VS Code extension is ready. Its protocol is checked; a run inside a real VS Code is not yet,
-  because VS Code is not installed on PC-PRACOVNA.
+- The VS Code extension is ready and checked in a real VS Code 1.144 (2026-11-02, see "VS Code"):
+  errors, completion, go to definition, hover with config:: values, and switching cells, on
+  tests\lsp\cells and on factorio-in-kpp.
 - The Visual Studio extension is not built yet: the VS SDK workload and the .NET 8 SDK are not
   installed.
 
 ## The language server
 
 - **Launch.** `kpp --lsp` (in a checkout: `compiler\build\kppc.exe --lsp`), with no other
-  arguments. `--lsp-log FILE` writes a trace. The standard library is found next to the compiler,
+  arguments. `--stdio`, which vscode-languageclient adds, is taken; `--pipe`, `--socket` and
+  `--node-ipc` are refused. `--lsp-log FILE` writes a trace. A check that fails with no diagnostic
+  (an option the build does not take) is shown as a `window/showMessage` error, once per failure. The standard library is found next to the compiler,
   as for builds.
 - **Project.** The client's root (rootUri, or the first workspace folder) is the starting point.
   The server walks up from it to build.kpp, as `kpp` does. It checks the sources build.kpp
@@ -87,6 +90,20 @@ The extension is in `tools/vscode`; its README covers the details.
   (or *kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
   workspace's `kpp.target` and `kpp.configuration`.
 - **Build, run and debug:** use `kpp --generate-vs-code-files` (build.md).
+- **Checked in VS Code** by `tools\vscode\test\vscode\run.ps1`. It installs kpp.vsix into a profile
+  of its own (`--user-data-dir`, `--extensions-dir`), opens a project in VS Code, and drives the
+  extension through VS Code's commands. `cells.js` runs on a copy of tests\lsp\cells, `game.js` on
+  a copy of factorio-in-kpp. It opens a window and writes `NAME.log` and a screenshot of the window,
+  `NAME.png`, into compiler\build\vscode; the game's copy there is 4.7 GB, to delete afterwards. Results on 2026-11-02 (factorio-in-kpp e4cfd9ba, a copy):
+  - cells: 19 of 19 checks pass. A typed error appears and goes after undo. Completion offers
+    `shared`. Go to definition works. Hover on `config::sound::volume` gives `7`, who set it and
+    the default. The status-bar picker switches between the 6 cells, and the release cell's
+    static_assert comes and goes.
+  - The game, two runs: the first check of `factorio | debug` takes 14.8 and 15.7 s; then go to
+    definition 3 and 6 ms, completion after `SystemUtil::` 0.9 s (43 items). The switch to release
+    takes 16.0 and 15.0 s (its first check), back to debug 0.7 and 1.5 s, to release again 3.7 and
+    5.8 s (kept cells). The check after an erroring one is slow: typing `SystemUtil::` checks in
+    0.6 s with its error, the undo that fixes it in 11.3 s.
 
 ## Visual Studio 2022
 
@@ -191,6 +208,6 @@ Community editions too):
 1. **Installing the tools** (allowed by kovarex, relayed by the coordinator 2026-10-31). E's session
    permissions refused the install commands, so they still need running, by kovarex or on his
    direct instruction in E's session:
-   - VS Code: `winget install --id Microsoft.VisualStudioCode -e --scope user`;
+   - VS Code: installed by kovarex (2026-11-02);
    - the .NET 8 SDK: `winget install --id Microsoft.DotNet.SDK.8 -e`;
    - the "Visual Studio extension development" workload, added with the Visual Studio Installer.

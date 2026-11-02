@@ -1,0 +1,9 @@
+{
+  "name": "kpp-vscode-test",
+  "description": "The test runner of run.ps1: VS Code loads it as the extension under development, NAME.js drives the installed kpp extension.",
+  "publisher": "kovarex",
+  "version": "0.0.1",
+  "private": true,
+  "engines": { "vscode": "^1.82.0" },
+  "main": "./noop.js"
+}
