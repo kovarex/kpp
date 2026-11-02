@@ -886,14 +886,24 @@ design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner,
-or on the runner named by the repository variable `KPP_CI_RUNNER`.
+`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on windows-2022 runners,
+or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel jobs (kovarex,
+2026-11-02: the repository is public, so GitHub's standard runners cost nothing):
+- **build:** kppc, once, with `compiler\build.cmd` through ccache (below), handed to the other
+  jobs as the artifact `kppc` (compiler\build\kppc.exe, kept 3 days).
+- **run_tests:** `compiler\tests\run_tests.cmd`, after build.
+- **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4` in 4 jobs, after build. A shard is
+  every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
+  with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
+  when all of them are.
+- **publish:** on master only, after run_tests and every spec shard are green: the package and the
+  release (below). A pull request packages nothing.
+
 Triggers (kovarex, 2026-10-31, chosen from the costs below):
-- **Every push to master and every pull request:** it builds kppc with `compiler\build.cmd`, then
-  runs `compiler\tests\run_tests.cmd` and `compiler\tests\spec.cmd --no-doc` (debug).
+- **Every push to master and every pull request:** build, run_tests and the debug spec.
 - **Nightly at 03:17 UTC, and when started by hand** (Actions > ci > Run workflow): the same, plus
-  `spec.cmd --no-doc --release` and `spec.cmd --no-doc --debug-info`. The time is outside
-  06:00 to 09:00 Pacific.
+  the spec's `--release` and `--debug-info` configurations, 4 shards each (12 spec jobs). The time
+  is outside 06:00 to 09:00 Pacific.
 - **Every pull request, besides:** the `signoff` job checks that each of its commits (merges
   aside) has a `Signed-off-by` line with the author's e-mail (`tools/ci/check-signoff.sh BASE HEAD`,
   [CONTRIBUTING.md](../CONTRIBUTING.md) "Sign-off"). It runs on an ubuntu-latest runner, whose
@@ -961,9 +971,17 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   code. Each green master run uploads 3 files and latest.json, and runs only as often as the
   concurrency rule lets them. That stays under NFS's limit of one uploaded file per five minutes on
   average (288 a day).
-- **No caches:** checkout gives every source a new time, so Ninja would rebuild a cached CMake build
-  directory anyway, and a clean build takes about a minute. kppc's import cache (%TEMP%\kpp-imports)
-  is not worth a cache action.
+- **Caches** (actions/cache, each keyed on what it holds):
+  - **ccache** (4.10.2, downloaded by the build job and checked against its pinned SHA-256): the
+    compiler's objects, keyed on the hash of compiler/src, CMakeLists.txt and the .cmake files,
+    restored from the newest entry when they changed. A cached CMake build directory would not do:
+    checkout gives every source a new time, so Ninja rebuilds everything. `compiler\build.cmd` takes
+    a launcher from `KPP_CCACHE` when it configures build\. version.cpp is compiled again on every
+    commit (its header names the commit).
+  - **llvm-mingw** (build\llvm-mingw, for run_tests and the package), keyed on
+    tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it.
+  - **The SDL3 zip and headers**, keyed on `SDL_SHA256`.
+  - kppc's import cache (%TEMP%\kpp-imports) is not worth one.
 - **Concurrency:** one run at a time per trigger and branch. A push run on master that has started
   finishes, so a green one publishes; of the pushes meanwhile, only the newest waits (GitHub
   cancels an older waiting run), so at most one run waits. Until 2026-11-02 a newer push cancelled
@@ -975,7 +993,8 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 
 The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mirror (kovarex,
 2026-10-31; thread I designs it). So ci.yml runs on both:
-- every step is a script (Windows PowerShell 5.1 or cmd) except `actions/checkout@v4`;
+- every step is a script (Windows PowerShell 5.1 or cmd) except `actions/checkout@v4`,
+  `actions/cache@v4` and `actions/upload-artifact@v4` / `download-artifact@v4`;
 - it names no repository URL: the forge's API comes from `github.api_url` and the repository from
   `github.repository`;
 - publishing is `tools/release/publish.ps1 -ApiUrl URL -Repository owner/name -Tag T -Commit SHA
@@ -993,6 +1012,9 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
 - What is not portable, or not checked on Forgejo:
   - **`actions/checkout@v4`:** Forgejo fetches it from its own mirror of the actions (its runner's
     default actions URL), not from github.com.
+  - **The artifact `kppc`:** Forgejo's artifact store speaks the protocol of upload-artifact@v3 and
+    download-artifact@v3, not v4's; there the two are written @v3. actions/cache works against the
+    runner's own cache server.
   - **`runs-on`:** a Forgejo runner is self-hosted, with labels of its own, so the repository
     variable `KPP_CI_RUNNER` must name its label. Whether Forgejo expands `vars` in `runs-on` has not
     been checked; if it does not, the label is written in place of the expression.

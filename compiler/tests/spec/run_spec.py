@@ -30,7 +30,11 @@ for what only several files show (a name private to its file); they are no snipp
 A <name>.library.NAME directory is a library of the snippet's program, scoped by NAME (`--library-root
 NAME DIR`, design.md 16), and a <name>.unscoped.NAME directory an unscoped one (`--unscoped-library-root`).
 
-    python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info]
+    python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info] [--shard I/N]
+
+--shard I/N runs the I-th of N parts (1 <= I <= N): every N-th snippet of the sorted list, starting at
+the I-th, so each part gets a share of every area. CI runs the parts as parallel jobs (docs/build.md,
+"Continuous integration"); a part writes no spec-status.md, and its summary line names it.
 
 --release and --debug-info build every snippet with that kppc option too (the release and the
 debug-info configurations, docs/test-matrix.md), into build\\spec-release or build\\spec-debug-info,
@@ -291,7 +295,14 @@ def main():
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
     ap.add_argument("--target", choices=["linux", "windows-gnu"])
+    ap.add_argument("--shard", default="")
     args = ap.parse_args()
+    shard = re.fullmatch(r"(\d+)/(\d+)", args.shard) if args.shard else None
+    if args.shard and not (shard and 1 <= int(shard.group(1)) <= int(shard.group(2))):
+        print("--shard takes I/N with 1 <= I <= N, not", args.shard)
+        print("spec: FAILED: bad --shard"); return 2
+    if shard:
+        args.no_doc = True
     global OUT, TARGET, C_TARGET_FLAGS
     for flag in ("release", "debug_info"):
         if getattr(args, flag):
@@ -327,6 +338,8 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
                    if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
+    if shard:
+        files = files[int(shard.group(1)) - 1::int(shard.group(2))]
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(run_one, files))
@@ -349,7 +362,8 @@ def main():
     # mark must go), and the exit code says the same:
     #   spec: ALL PASSED (898 pass, 2 pending)
     #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
-    summary = f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "")
+    summary = f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
+              (f"; shard {args.shard}" if shard else "")
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
           [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"]
     if bad:

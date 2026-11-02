@@ -1,7 +1,8 @@
-# kpp's tests on a Windows runner (docs/build.md, "Continuous integration"): kppc built by
-# compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd. Every push to
-# master and every pull request runs the debug spec; the nightly run (and one started by hand) adds
-# --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
+# kpp's tests on Windows runners (docs/build.md, "Continuous integration"): kppc built once by
+# compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd in 4 shards, as
+# parallel jobs (kovarex, 2026-11-02: the repository is public, so its runners cost nothing). Every
+# push to master and every pull request runs the debug spec; the nightly run (and one started by
+# hand) adds --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
 # needs C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers
 # the game). Every green run on master (push, nightly or by hand) publishes the package (zip,
 # installer, VS Code extension) as a numbered full release, GitHub's "Latest" (releases/latest and the
@@ -32,8 +33,7 @@ concurrency:
 
 jobs:
   # Every commit of a pull request is signed off by its author (CONTRIBUTING.md, "Sign-off"). On a
-  # Linux runner, whose minutes cost half a Windows runner's; a Forgejo runner's label through the
-  # repository variable KPP_CI_LINUX_RUNNER.
+  # Linux runner; a Forgejo runner's label through the repository variable KPP_CI_LINUX_RUNNER.
   signoff:
     if: github.event_name == 'pull_request'
     runs-on: ${{ vars.KPP_CI_LINUX_RUNNER || 'ubuntu-latest' }}
@@ -47,22 +47,22 @@ jobs:
         shell: sh
         run: sh tools/ci/check-signoff.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
-  windows:
-    # A GitHub-hosted runner by default; a Forgejo runner's label through the repository variable
-    # KPP_CI_RUNNER.
+  # The jobs below run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
+  # the repository variable KPP_CI_RUNNER. kppc is built once (build) and handed to the test jobs as
+  # the artifact "kppc"; run_tests and the spec's shards run at once; package and publish run only
+  # when every one of them is green (docs/build.md, "Continuous integration"). Steps are scripts
+  # (Windows PowerShell 5.1, cmd) except checkout, cache and the artifact's upload and download.
+  build:
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
-    timeout-minutes: 120
+    timeout-minutes: 30
     env:
-      # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
-      # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
-      # comes from kpp.net's mirror (kppnet/registry/layout.md), named by its SHA-256, or from SDL's
-      # release on github.com until it is mirrored there.
-      SDL_NAME: SDL3-devel-3.4.18-VC.zip
-      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
-      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
-      KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
-    # Steps are scripts (Windows PowerShell 5.1, cmd) except the checkout, so the same file runs under
-    # GitHub Actions and Forgejo Actions (docs/build.md, "Continuous integration").
+      # ccache 4.10.2 (pinned, SHA-256 checked) compiles through a cache kept by actions/cache, keyed on
+      # the compiler's sources; a checkout gives every file a new time, so Ninja alone rebuilds all.
+      CCACHE_URL: https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-windows-x86_64.zip
+      CCACHE_SHA256: 6252f081876a9a9f700fae13a5aec5d0d486b28261d7f1f72ac11c7ad9df4da9
+      CCACHE_DIR: ${{ github.workspace }}\..\ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 500M
     steps:
       # The whole history: kpp's version counts the commits since VERSION last changed
       # (compiler/version.cmake; a shallow clone without that commit fails the build).
@@ -70,8 +70,116 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\..\ccache
+          key: ccache-${{ hashFiles('compiler/src/**', 'compiler/CMakeLists.txt', 'compiler/*.cmake') }}
+          restore-keys: ccache-
+
+      - name: ccache
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+          $dir = "${{ github.workspace }}\..\ccache-tool"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest $env:CCACHE_URL -OutFile "$dir\ccache.zip" -UseBasicParsing
+          $hash = (Get-FileHash -Algorithm SHA256 "$dir\ccache.zip").Hash.ToLowerInvariant()
+          if ($hash -ne $env:CCACHE_SHA256) { throw "ccache's zip has SHA-256 $hash, not $env:CCACHE_SHA256" }
+          Expand-Archive -Force "$dir\ccache.zip" $dir
+          $exe = (Resolve-Path "$dir\ccache-4.10.2-windows-x86_64\ccache.exe").Path
+          "KPP_CCACHE=$exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "CPUs: $env:NUMBER_OF_PROCESSORS"
+
+      - name: Build kppc
+        shell: cmd
+        run: |
+          compiler\build.cmd || exit /b 1
+          "%KPP_CCACHE%" --show-stats
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build/kppc.exe
+          retention-days: 3
+          if-no-files-found: error
+
+  run_tests:
+    needs: build
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build
+
+      # llvm-mingw (tests\toolchain.ps1, windowsgnu.ps1; tools\sysroot\llvm-mingw.ps1 pins it by
+      # SHA-256 and checks it), kept unpacked under the script's hash.
+      - name: llvm-mingw cache
+        uses: actions/cache@v4
+        with:
+          path: build/llvm-mingw
+          key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
+
+      # Clang for the C sources (the runner's Visual Studio need not be Community), and Node.js for
+      # the LSP smoke test.
+      - name: Tools
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the Clang component' }
+          "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "CPUs: $env:NUMBER_OF_PROCESSORS"
+          node --version
+          if ($LASTEXITCODE -ne 0) { throw 'no Node.js on the runner' }
+
+      - name: run_tests
+        shell: cmd
+        run: compiler\tests\run_tests.cmd
+
+  # The spec in 4 shards (run_spec.py --shard I/4), debug on every run, and --release and --debug-info
+  # on the nightly and hand-started ones: 4 or 12 jobs at once.
+  spec:
+    needs: build
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    name: spec ${{ matrix.config }} ${{ matrix.shard }}/4
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["debug", "release", "debug-info"]' || '["debug"]') }}
+        shard: [1, 2, 3, 4]
+    env:
+      # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
+      # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
+      # comes from kpp.net's mirror (kppnet/registry/layout.md), named by its SHA-256, or from SDL's
+      # release on github.com until it is mirrored there; actions/cache keeps it under its SHA-256.
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+      KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build
+
+      - name: SDL3 cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\..\sdl
+          key: sdl-${{ env.SDL_SHA256 }}
+
       # kpp.net's registry store is written over SSH by tools/release/publish.ps1 (docs/build.md,
-      # "Continuous integration"), only in the two steps that need it: the secret KPP_NET_SSH_KEY (a
+      # "Continuous integration"), only in the steps that need it: the secret KPP_NET_SSH_KEY (a
       # private key kovarex authorises in NFS's keychain), the repository variables KPP_NET_SSH
       # (user@host) and KPP_NET_KNOWN_HOSTS (the server's host key line). Without the secret, nothing
       # goes to kpp.net and the step says so.
@@ -95,8 +203,8 @@ jobs:
             }
             if (-not (Fetch "https://kpp.net/registry/mirror/$env:SDL_SHA256/$env:SDL_NAME")) {
               if (-not (Fetch $env:SDL_FALLBACK)) { throw 'no SDL3 zip with the expected SHA-256' }
-              # Not mirrored yet: a master run with kpp.net's key puts it there (once; it is kept after).
-              if ('${{ github.event_name }}' -ne 'pull_request' -and '${{ github.ref }}' -eq 'refs/heads/master') {
+              # Not mirrored yet: a master run with kpp.net's key puts it there (once, from one job).
+              if ('${{ github.event_name }}' -ne 'pull_request' -and '${{ github.ref }}' -eq 'refs/heads/master' -and '${{ matrix.config }}/${{ matrix.shard }}' -eq 'debug/1') {
                 tools\release\publish.ps1 -Mirror -KppNet "${{ vars.KPP_NET_SSH }}" -Files $zip
               }
             }
@@ -104,8 +212,6 @@ jobs:
           }
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
 
-      # Clang for the snippets' C sources (the runner's Visual Studio need not be Community), and
-      # Node.js for run_tests' LSP smoke test and the package's VS Code extension (npm ci, vsce).
       - name: Tools
         shell: powershell
         run: |
@@ -113,33 +219,32 @@ jobs:
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
           if (-not $vs) { throw 'no Visual Studio with the Clang component' }
           "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
-          # The runner's CPUs (spec.cmd runs 8 snippets at once, as fast as 4 on 2 CPUs and 13% faster
-          # than 2: docs/build.md, "Continuous integration").
           "CPUs: $env:NUMBER_OF_PROCESSORS"
-          node --version
-          if ($LASTEXITCODE -ne 0) { throw 'no Node.js on the runner' }
-
-      - name: Build kppc
-        shell: cmd
-        run: compiler\build.cmd
-
-      - name: run_tests
-        shell: cmd
-        run: compiler\tests\run_tests.cmd
 
       - name: spec
         shell: cmd
-        run: compiler\tests\spec.cmd --no-doc
+        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
-      - name: spec --release
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        shell: cmd
-        run: compiler\tests\spec.cmd --no-doc --release
+  # Every green run on master packages kpp and publishes it, after every test job above.
+  publish:
+    needs: [run_tests, spec]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: spec --debug-info
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        shell: cmd
-        run: compiler\tests\spec.cmd --no-doc --debug-info
+      - uses: actions/download-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build
+
+      # The bundled toolchain (tools\sysroot\llvm-mingw.ps1), which the package carries.
+      - name: llvm-mingw cache
+        uses: actions/cache@v4
+        with:
+          path: build/llvm-mingw
+          key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
 
       # The package's version is kppc's own (docs/build.md, "Versions": VERSION and the commits since it
       # changed), which package.ps1 takes from kppc --version; never "+dirty" or unknown here. A push
@@ -147,7 +252,6 @@ jobs:
       # already, nightly-<date> (UTC), the day's release, which tools/release/settle.ps1 never deletes (a
       # second nightly run on the same day replaces it).
       - name: Version
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -158,17 +262,18 @@ jobs:
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "KPP_TAG=$tag" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "version $version, tag $tag"
+          "CPUs: $env:NUMBER_OF_PROCESSORS"
+          node --version
+          if ($LASTEXITCODE -ne 0) { throw 'no Node.js on the runner (the package builds kpp.vsix)' }
 
       # Inno Setup's compiler, for the installer package.ps1 makes when it finds ISCC (as release.yml).
       - name: Inno Setup
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { throw 'no Inno Setup' }
 
       - name: Package
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -182,7 +287,6 @@ jobs:
       # and kpp.net's kpp/releases/<version>/ with kpp/latest.json, which installers read (only with
       # KPP_NET_SSH_KEY). It is published without becoming "Latest"; the next step decides that.
       - name: Publish
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         env:
           KPP_FORGE_TOKEN: ${{ github.token }}
@@ -203,22 +307,7 @@ jobs:
       # moves it back; push releases beyond the 20 highest versions are deleted with their tags,
       # nightly ones stay (tools/release/settle.ps1).
       - name: Latest and old releases
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         env:
           KPP_FORGE_TOKEN: ${{ github.token }}
         run: tools\release\settle.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Keep 20
-
-      # The rolling prerelease "dev" (2026-11-02, before every green run made a numbered release):
-      # deleted with its tag while it is still there; a step to remove once it is gone.
-      - name: Retire the old "dev" prerelease
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
-        shell: powershell
-        env:
-          KPP_FORGE_TOKEN: ${{ github.token }}
-        run: |
-          $headers = @{ Authorization = "Bearer $env:KPP_FORGE_TOKEN"; Accept = 'application/vnd.github+json' }
-          $api = "${{ github.api_url }}/repos/${{ github.repository }}"
-          try { $old = Invoke-RestMethod -Headers $headers "$api/releases/tags/dev" } catch { $old = $null }
-          if ($old) { Invoke-RestMethod -Method DELETE -Headers $headers "$api/releases/$($old.id)" | Out-Null; 'deleted the release dev' }
-          try { Invoke-RestMethod -Method DELETE -Headers $headers "$api/git/refs/tags/dev" | Out-Null; 'deleted the tag dev' } catch { 'no tag dev' }
