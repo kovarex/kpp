@@ -1,7 +1,8 @@
 // spec: a local class of a function template is a class of its own in each instance, its vtable and typeinfo too: an object made in one instance calls that instance's overrides (`class InnerResolver : public IDConnectorBase` in LambdaIDConnector::make<Callback>, one per callback)
 // factorio: LambdaIDConnector::make's InnerResolver: the vtables of all instances had one name, the linker kept one of them, and GlobalContext::assignPrototypeIDs ran CollisionMaskConnector's resolver through another instance's callback (`--dump-data` crashed on garbage layer names)
-struct Base
+class Base
 {
+public:
   virtual ~Base() {}
   virtual int run() = 0;
 };

@@ -1,18 +1,21 @@
 // spec: abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members`
 // found in the game's LuaPrototypeTemplate (get, getPtree, getWithQuality: 366 calls), LogisticGroupLogic (`auto&& isUsedBy`), StatisticsPackager (`const auto& counts`)
-struct Prototype
+class Prototype
 {
+public:
   int kind;
   virtual ~Prototype() {}
 };
-struct Belt : Prototype
+class Belt : public Prototype
 {
+public:
   static constexpr int Kind = 1;
   int speed = 15;
   Belt() { this->kind = Kind; }
 };
-struct Inserter : Prototype
+class Inserter : public Prototype
 {
+public:
   static constexpr int Kind = 2;
   int speed = 7;
   double reach = 1.5;

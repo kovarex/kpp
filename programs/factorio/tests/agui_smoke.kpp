@@ -6,8 +6,9 @@
 // property (the game fills the root styles from its Lua prototypes); fillRootStyle plays that part.
 extern "C" int printf(const char* format, ...);
 
-struct SmokeFontLoader : agui::FontLoader
+class SmokeFontLoader : public agui::FontLoader
 {
+public:
   agui::Font* loadFont(const String& fileName, int height, int fontFlags, float borderWidth, const agui::Color& borderColor) override
   {
     return new agui::VoidAguiBackendFont();
@@ -15,8 +16,9 @@ struct SmokeFontLoader : agui::FontLoader
 };
 
 // Agui polls its input through this interface; the smoke test has no events.
-struct SmokeInput : agui::Input
+class SmokeInput : public agui::Input
 {
+public:
   PlayerInputMethod getInputMethod() override { return PlayerInputMethod::KeyboardAndMouse; }
 };
 

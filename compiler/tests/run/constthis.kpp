@@ -5,8 +5,9 @@ extern "C" int printf(const char* format, ...);
 
 struct Style { int pad = 3; };
 
-struct Widget
+class Widget
 {
+public:
   const Style* getStyle() const
   {
     if (Style* s = const_cast<Widget*>(this)->getStyle())
@@ -24,8 +25,9 @@ struct Widget
 };
 Style Widget::fallback;
 
-struct Styled : Widget
+class Styled : public Widget
 {
+public:
   Style own;
   Style* getStyle() override { return &this->own; }
   int kind() const override { return 2; }

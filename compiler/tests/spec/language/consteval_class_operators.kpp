@@ -26,13 +26,15 @@ struct Maybe
   int value = -1;
   constexpr explicit operator bool() const { return value >= 0; }
 };
-struct Shape
+class Shape
 {
+public:
   constexpr virtual int sides() const { return 0; }
   constexpr int doubled() const { return sides() * 2; }
 };
-struct Square : Shape
+class Square : public Shape
 {
+public:
   constexpr int sides() const override { return 4; }
 };
 constexpr int sidesOf(const Shape& s) { return s.sides(); }

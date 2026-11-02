@@ -4,8 +4,9 @@ extern "C" int printf(const char* format, ...);
 
 static int destroyed = 0;
 
-struct Shape
+class Shape
 {
+public:
   int id;
   Shape(int id) : id(id) {}
   virtual ~Shape() { destroyed += 1; }
@@ -14,8 +15,9 @@ struct Shape
   int describe() const { return this->area() * 10 + this->id; }
 };
 
-struct Square : Shape
+class Square : public Shape
 {
+public:
   int side;
   Square(int id, int side) : Shape(id), side(side) {}
   ~Square() override { destroyed += 100; }
@@ -23,8 +25,9 @@ struct Square : Shape
   const char* name() const override { return "square"; }
 };
 
-struct Rect : Shape
+class Rect : public Shape
 {
+public:
   int w;
   int h;
   Rect(int id, int w, int h) : Shape(id), w(w), h(h) {}

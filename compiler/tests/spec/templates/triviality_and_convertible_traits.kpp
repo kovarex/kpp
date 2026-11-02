@@ -7,7 +7,7 @@ struct UserCopy { int a; UserCopy() {} UserCopy(const UserCopy& o) : a(o.a) {} }
 struct UserDtor { int a; ~UserDtor() {} };
 struct Derived : Plain { int c; };
 struct HoldsUserDtor { UserDtor inner; };
-struct Virtual { virtual void f() {} };
+class Virtual { public: virtual void f() {} };
 struct FromInt { int v; implicit FromInt(int v) : v(v) {} };
 struct ToInt { int v; implicit operator int() const { return this->v; } };
 enum class Scoped { A };

@@ -4,15 +4,17 @@ struct Target
 {
   int id = 0;
 };
-struct Base
+class Base
 {
+public:
   virtual ~Base() {}
   Target* target = nullptr;
   Target* operator*() const { return this->target; }
 };
 template<typename T>
-struct Holder : Base
+class Holder : public Base
 {
+public:
   T* operator*() const { return static_cast<T*>(this->target); }
 };
 struct Plain

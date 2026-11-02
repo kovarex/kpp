@@ -29,16 +29,6 @@ public:
 };
 int thief(const Account& a) { return a.balance; }
 int thief2(Account& a) { return a.fee; }
-struct Plain
-{
-  int x = 0;
-private:
-  int y = 0;
-};
-struct Virt { virtual void f() {} };
-struct Hidden : private Plain {};
-struct Poly : Virt { void f() override {} };
-struct Leaf : Poly {};
 int main()
 {
   Account a(3);

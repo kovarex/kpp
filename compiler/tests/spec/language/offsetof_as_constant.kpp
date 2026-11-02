@@ -5,7 +5,7 @@ static_assert(OFF == 8);
 struct Inner { char c; int values[4]; };
 struct Base { double d; char tag; };
 struct Derived : Base { short s; Inner inner; };
-struct Poly { virtual ~Poly() = default; int x; };
+class Poly { public: virtual ~Poly() = default; int x; };
 constexpr size_t A = offsetof(Derived, s);
 constexpr size_t B = offsetof(Derived, inner.values[2]);
 static_assert(A == 16);

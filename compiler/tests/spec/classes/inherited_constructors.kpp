@@ -1,14 +1,16 @@
 // spec: inherited constructors (using Base::Base;) in a class with members of its own
 // factorio: Agui's Filler, Frame and others
-struct Widget
+class Widget
 {
+public:
   int width, height;
   const char* name;
   Widget(int width, int height, const char* name = "widget") : width(width), height(height), name(name) {}
   virtual int kind() const { return 1; }
 };
-struct Filler : Widget
+class Filler : public Widget
 {
+public:
   using Widget::Widget;
   int weight = 7;
   String label = "filler";

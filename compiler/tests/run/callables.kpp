@@ -14,12 +14,14 @@ struct InvertTag {};
 using InvertColors = NamedBool<InvertTag>;
 struct Point { int x; int y; Point(int x, int y) : x(x), y(y) {} };
 struct Dimension { int w; int h; Dimension(int w, int h) : w(w), h(h) {} };
-struct Graphics
+class Graphics
 {
+public:
   virtual void drawScaledImage(const int* bmp, const Point& position, const Dimension& scale, const float& opacity = 1.0f, InvertColors invertColors = InvertColors::False) = 0;
 };
-struct Impl : Graphics
+class Impl : public Graphics
 {
+public:
   int calls = 0;
   void drawScaledImage(const int* bmp, const Point& position, const Dimension& scale, const float& opacity, InvertColors invertColors) override
   {

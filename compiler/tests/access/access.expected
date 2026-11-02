@@ -5,9 +5,5 @@ tests\access\access.kpp:21: note: Account::helper is private, named in Auditor::
 tests\access\access.kpp:23: note: Account::balance is private, named in the function peek, which a friend function declaration allows
 tests\access\access.kpp:30: warning: Account::balance is private, named in the function thief
 tests\access\access.kpp:31: warning: Account::fee is protected, named in the function thief2
-tests\access\access.kpp:32: warning: struct Plain has a private or protected member (a struct is a public value type: make it a class)
-tests\access\access.kpp:38: warning: struct Virt has a virtual function (a struct is a public value type: make it a class)
-tests\access\access.kpp:39: warning: struct Hidden has a base that is not public (a struct is a public value type: make it a class)
-tests\access\access.kpp:40: warning: struct Poly has a virtual function (a struct is a public value type: make it a class)
-tests\access\access.kpp:48: warning: Account::Secret is private, named in the function main
-tests\access\access.kpp:49: warning: Account::balance is private, named in the function main
+tests\access\access.kpp:38: warning: Account::Secret is private, named in the function main
+tests\access\access.kpp:39: warning: Account::balance is private, named in the function main

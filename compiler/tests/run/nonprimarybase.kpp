@@ -8,8 +8,9 @@ struct Base
   int tag = 7;
 };
 
-struct Derived : Base
+class Derived : public Base
 {
+public:
   virtual int kind() const { return 1; }
   int extra = 9;
 };

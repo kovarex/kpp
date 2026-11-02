@@ -5,8 +5,9 @@ private template<typename T> struct Box
   T get() const { return value * 100; }
 };
 private template<typename T> T scale(T x) { return x * 1000; }
-private struct Shape
+private class Shape
 {
+public:
   static int made;
   virtual int sides() const { return 40; }
 };

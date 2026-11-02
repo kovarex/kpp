@@ -2,13 +2,15 @@
 extern "C" int printf(const char* format, ...);
 namespace gui
 {
-  struct Widget
+  class Widget
   {
+  public:
     virtual ~Widget() {}
     virtual int kind() { return 0; }
   };
-  struct Flow : Widget
+  class Flow : public Widget
   {
+  public:
     String name;
     virtual ~Flow();
     int kind() override { return 1; }

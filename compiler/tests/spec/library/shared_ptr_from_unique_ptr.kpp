@@ -1,12 +1,14 @@
 // spec: SharedPtr from a UniquePtr (std::shared_ptr's constructor from unique_ptr&&): `SharedPtr<Base> p = makeUnique<Derived>()` takes the object over
 // found in converted game code (`SharedPtr<T> p = makeUnique<T>()`); before the constructor existed, codegen copied the UniquePtr's bytes into the SharedPtr
-struct Base
+class Base
 {
+public:
   virtual ~Base() { println("destroyed"); }
   virtual int value() const { return 1; }
 };
-struct Derived : Base
+class Derived : public Base
 {
+public:
   int value() const override { return 2; }
 };
 int main()

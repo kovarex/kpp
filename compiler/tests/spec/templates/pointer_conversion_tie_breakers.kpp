@@ -1,8 +1,8 @@
 // spec: overload resolution between pointer (and reference) conversions of one rank takes C++'s tie-breakers: a Spider* picks pick(Entity*) over pick(const Entity*) (a qualification more), nearer(Unit*) over nearer(Entity*) (the nearer base), and a Spider lvalue byRef(Entity&) over byRef(const Entity&)
 // factorio: ItemRequestProxy::getProxyForEntity(const Entity*) / (Entity*) given a SpiderVehicle* (the tests' `Targeter<ItemRequestProxy> proxy(ItemRequestProxy::getProxyForEntity(spiderVehicle))`), and the game's push, get, sizeOf and iterator_to overloads (15 choices in the full source)
-struct Entity { virtual ~Entity() = default; };
-struct Unit : Entity {};
-struct Spider : Unit {};
+class Entity { public: virtual ~Entity() = default; };
+class Unit : public Entity { public:};
+class Spider : public Unit { public:};
 int pick(const Entity* e) { return 1; }
 int pick(Entity* e) { return 2; }
 int nearer(Entity* e) { return 3; }

@@ -67,7 +67,7 @@ namespace
     int showWhy = 0; // --why N
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
     bool accessWarnings = false; // --access-warnings
-    bool structRule = false;     // --struct-rule
+    bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
@@ -141,7 +141,7 @@ namespace
             "                (docs/design.md, \"struct and class\"); no error, no other change\n"
             "  --struct-rule  a struct is a public value type: one with a private or protected section, a base that is not\n"
             "                public or a virtual function, or deriving from a polymorphic class is an error (docs/design.md,\n"
-            "                \"struct and class\"; the default once the converted game has none)\n"
+            "                \"struct and class\"; the default: accepted, it changes nothing)\n"
             "  --c-type-warnings  warn of each C name of an integer type (int, unsigned, short, long, long long, signed\n"
             "                and unsigned char, int32_t, size_t ...) written outside extern \"C\", the C headers and the\n"
             "                standard library, naming kpp's (i32, u64 ...) (docs/design.md, \"Integer types and sizes\"); no error\n"
@@ -1932,7 +1932,7 @@ namespace
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
     if (options.accessWarnings)
       global.enableAccessWarnings();
-    if (options.structRule)
+    if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)
       global.enableStructRule();
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     build.resolveTime = seconds(Clock::now() - start);

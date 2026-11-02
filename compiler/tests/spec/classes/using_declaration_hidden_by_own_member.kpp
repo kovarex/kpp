@@ -1,14 +1,16 @@
 // spec: a member function the class declares hides the base's of the same parameter types and qualifiers that a using-declaration brings in (C++ [namespace.udecl] 15), so a call of it is no ambiguity: ArtilleryTurret's `getInventory(uint8) override` beside `using super::getInventory;`, virtual or not; the base's other overloads stay candidates
-struct Entity
+class Entity
 {
+public:
   virtual int inventory(uint8_t index) { return 1; }
   int inventory(uint8_t index) const { return 2; }
   int name(int x) { return 10; }
   int name(const char* s) { return 11; }
   virtual ~Entity() = default;
 };
-struct Turret : Entity
+class Turret : public Entity
 {
+public:
   int inventory(uint8_t index) override { return 3; }
   using Entity::inventory;
   int name(int x) { return 20; }

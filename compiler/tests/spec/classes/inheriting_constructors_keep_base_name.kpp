@@ -1,7 +1,8 @@
 // spec: `using Base::Base;` (inheriting the base's constructors) introduces no member named Base: inside the derived class `Base::staticInit<Derived>()` still names the base class, and the inherited constructor builds the object
 // factorio: the Lua control behaviours (`using LuaControlBehavior::LuaControlBehavior;` and `LuaControlBehavior::staticInitBaseControlBehaviorMembers<LuaAccumulatorControlBehavior>()`, 34 calls)
-struct Base
+class Base
 {
+public:
   int value;
   explicit Base(int value) : value(value) {}
   static int registered;

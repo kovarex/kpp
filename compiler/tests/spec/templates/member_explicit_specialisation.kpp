@@ -3,8 +3,9 @@
 struct ItemID { int value = 1; };
 struct RecipeID { int value = 2; };
 
-struct Widget
+class Widget
 {
+public:
   virtual ~Widget() {}
   virtual const char* tooltip() = 0;
 };

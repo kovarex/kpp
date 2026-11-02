@@ -2,13 +2,15 @@
 // anything else, a type by name; TypeInfo compares by name.
 extern "C" int printf(const char* format, ...);
 
-struct Base
+class Base
 {
+public:
   virtual ~Base() {}
   virtual int f() { return 1; }
 };
-struct Derived : Base
+class Derived : public Base
 {
+public:
   int f() override { return 2; }
 };
 struct Plain

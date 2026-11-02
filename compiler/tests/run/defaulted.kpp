@@ -1,14 +1,16 @@
 // Members declared `= default`: the memberwise constructor (with the vtable pointer), copy, move, assignment, equality and destructor the compiler writes, and a constructor delegating to a defaulted one.
 extern "C" int printf(const char* format, ...);
 int destroyed = 0;
-struct Widget
+class Widget
 {
+public:
   int id = 1;
   virtual ~Widget() { ++destroyed; }
   virtual int kind() { return 1; }
 };
-struct Clickable : Widget
+class Clickable : public Widget
 {
+public:
   int clicks = 5;
   Clickable() = default;
   int kind() override { return 2; }

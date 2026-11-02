@@ -1,12 +1,12 @@
 // spec: the traits that read a class's members: isClass, isPolymorphic, isAbstract, isFinal, isMove/CopyConstructible, isMove/CopyAssignable (plain, Trivially, Nothrow), isInvocable, isInvocableR
 // factorio: static_assert(isMoveConstructible<T>) on 20 message types, FlatMap's requires (isClass<K>), if constexpr (isInvocable<F, Args>) in SaveLoadHelper and PtreeUtil, isPolymorphic in the prototype explorer
 struct Plain { int x; double y; };
-struct Shape { virtual ~Shape() {} virtual double area() const = 0; };
-struct Square : Shape { double side = 1; double area() const override { return this->side * this->side; } };
-struct Flat final : Square {};
-template<typename T> struct Source { virtual T next(T seed) = 0; };
-struct Counter : Source<int> { int next(int seed) override { return seed + 1; } };
-struct Half : Source<int> { double next(double seed) { return seed / 2; } }; // overloads, does not override
+class Shape { public: virtual ~Shape() {} virtual double area() const = 0; };
+class Square : public Shape { public: double side = 1; double area() const override { return this->side * this->side; } };
+class Flat final : public Square { public:};
+template<typename T> class Source { public: virtual T next(T seed) = 0; };
+class Counter : public Source<int> { public: int next(int seed) override { return seed + 1; } };
+class Half : public Source<int> { public: double next(double seed) { return seed / 2; } }; // overloads, does not override
 struct NoMove { NoMove() {} NoMove(NoMove&&) = delete; };
 struct CopyOnly { CopyOnly() {} CopyOnly(const CopyOnly&) {} }; // no implicit move: the copy constructor moves
 struct Holder { NoMove inner; };

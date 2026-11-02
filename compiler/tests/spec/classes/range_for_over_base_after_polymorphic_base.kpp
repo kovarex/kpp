@@ -1,13 +1,15 @@
 // spec: a range-for over an object whose begin() and end() belong to a base class calls them on that base, wherever it lies in the object (after a polymorphic base, which comes first in the layout)
 // factorio: TipsAndTricks::TriggerList<T>, `class TriggerList : public Vector<TriggerType*>, public TriggerListBase` with a virtual clearBase: registerTriggerSafe's `for (TriggerType* myTrigger : *this)` called Vector's begin() and end() on the object's address, iterated over its vtable, and `--dump-data` crashed in PlayerData's TipsAndTricks::setupTriggers
-struct Clearable
+class Clearable
 {
+public:
   virtual ~Clearable() = default;
   virtual void clearBase() = 0;
 };
 template<class T>
-struct Triggers : public Vector<T>, public Clearable
+class Triggers : public Vector<T>, public Clearable
 {
+public:
   int sum()
   {
     int s = 0;

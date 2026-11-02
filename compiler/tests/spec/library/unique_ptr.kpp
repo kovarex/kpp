@@ -1,8 +1,8 @@
 // spec: UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, a custom deleter called on the object (never on null, not on release; moved and swapped with it), UniqueArray, makeUniqueArrayForOverwrite (std::make_unique_for_overwrite<T[]>)
 // factorio: 3820 uses in 1049 files
 static int alive = 0;
-struct Res { int id; Res(int id) : id(id) { ++alive; } virtual ~Res() { --alive; } };
-struct Sub : Res { Sub() : Res(9) {} };
+class Res { public: int id; Res(int id) : id(id) { ++alive; } virtual ~Res() { --alive; } };
+class Sub : public Res { public: Sub() : Res(9) {} };
 static int closed = 0;
 struct Closer
 {

@@ -1,8 +1,9 @@
 // The library beta of two_libraries_declare_one_name.kpp: alpha's names again, and alpha's qualified.
 int counter = 20;
 int version() { return 2; }
-struct Node
+class Node
 {
+public:
   int id() const;
   virtual int kind() const { return 200; }
 };

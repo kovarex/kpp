@@ -1323,21 +1323,22 @@ the struct rule first (the converter turns the 31 game and test structs into cla
 checks as warnings over the converted game, errors once it is clean; the converter keeps the
 game's 438 friend declarations. The analysis follows.
 
-**As built (thread A, 2026-11-02): the struct rule, behind `kppc --struct-rule` until the converter
-writes the game's breaking structs as classes.** The parser records a `private:` or `protected:`
+**As built (thread A, 2026-11-02): the struct rule, the default since the converter writes the game's
+breaking structs as classes (C's 3e46a07c; `kppc --struct-rule` is accepted and changes nothing).** The parser records a `private:` or `protected:`
 section in a struct ("a struct's members are all public"), a private or protected base ("a struct's
 bases are all public") and a virtual function, pure function, override or virtual destructor ("a
 struct has no virtual functions"); the resolver adds a struct deriving from a polymorphic class
 directly or through a base ("struct Label derives from Widget, a polymorphic class"), each "(a struct
-is a public value type, design.md "struct and class"): make it a class". Under the flag they are
-errors; without it nothing changes (`--access-warnings` still warns of them). Imported C structs,
+is a public value type, design.md "struct and class"): make it a class". They are errors
+(`--access-warnings` warns of them too); a conversion's resolve of the C++ does not check them. Imported C structs,
 unions and typed unions are exempt. Constructors, a destructor, methods, operators, static members,
 nested types, a `public:` label, friend declarations and public bases that are not polymorphic stay
 allowed, in templates and local structs too. The converted game breaks it 37 times (31 in src, 6 in
 its tests: 26 + 5 sections, 1 + 1 virtual functions, 4 polymorphic bases); the standard library's
-ExceptionHolderBase, ExceptionHolder, OutStream and OutFileStream are classes now. When the flag
-becomes the default, 40 spec snippets and 8 of run_tests' programs that use structs with virtual
-functions become classes too. Specs classes/struct_private_member_is_error,
+ExceptionHolderBase, ExceptionHolder, OutStream and OutFileStream are classes now. With the rule the
+default, the 40 spec snippets and 8 of run_tests' programs that had such structs write them as classes
+(`class X { public: ...`, their bases public); the rule's question (does a base declare a virtual
+function) reads the member lists unrecorded, so that a layout edit of a class stays incremental. Specs classes/struct_private_member_is_error,
 struct_virtual_function_is_error, struct_base_not_public_is_error,
 struct_deriving_from_polymorphic_class_is_error and struct_is_a_public_value_type. Friend
 declarations of classes and functions work (classes/friends, friend_declarations).

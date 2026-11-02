@@ -5338,9 +5338,12 @@ struct GlobalScope::Impl
     size_t friends = 0;                                    // friend declarations
   };
 
-  static bool declaresVirtual(ClassDecl* c)
+  // record: false for the struct rule's question, which no data member's edit changes (an edit that
+  // adds or removes a virtual function is a build from scratch): its reads, outside any unit, would
+  // make every layout edit of the class one.
+  static bool declaresVirtual(ClassDecl* c, bool record = true)
   {
-    for (Decl* m : membersRead(c))
+    for (Decl* m : record ? membersRead(c) : c->members)
       if (m && m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)))
         return true;
     return false;
@@ -5349,7 +5352,7 @@ struct GlobalScope::Impl
   bool polymorphicBase(ClassDecl* c, int depth) { return polymorphicBaseOf(c, depth); }
 
   // The base of c (a direct one) that declares a virtual function or has a base that does, or null.
-  ClassDecl* polymorphicBaseOf(ClassDecl* c, int depth)
+  ClassDecl* polymorphicBaseOf(ClassDecl* c, int depth, bool record = true)
   {
     if (depth > 16)
       return nullptr;
@@ -5360,7 +5363,7 @@ struct GlobalScope::Impl
         continue;
       if (Scope* s = scopeOfEntry(Entry{d, nullptr}, 0); s && s->owner && s->owner->kind == NodeKind::ClassDecl)
         d = s->owner;
-      if (declaresVirtual(static_cast<ClassDecl*>(d)) || polymorphicBaseOf(static_cast<ClassDecl*>(d), depth + 1))
+      if (declaresVirtual(static_cast<ClassDecl*>(d), record) || polymorphicBaseOf(static_cast<ClassDecl*>(d), depth + 1, record))
         return static_cast<ClassDecl*>(d);
     }
     return nullptr;
@@ -22683,8 +22686,8 @@ struct GlobalScope::Impl
           // polymorphic class is none (its own virtual functions the parser reports).
           if (impl.structRuleErrors && c->keyword == Kw::struct_ && c->isDefinition && !c->isClosure && !c->isTypedUnion && !activeSubst && !probing && file &&
               !file->isImported &&
-              !Impl::declaresVirtual(c))
-            if (ClassDecl* base = impl.polymorphicBaseOf(c, 0))
+              !Impl::declaresVirtual(c, false))
+            if (ClassDecl* base = impl.polymorphicBaseOf(c, 0, false))
               impl.reportCheckerError(file, c->token, "struct " + (c->name.empty() ? std::string("(anonymous)") : impl.namePartText(c->name.last())) +
                                                           " derives from " + (base->name.empty() ? std::string("a") : impl.namePartText(base->name.last()) + ",") +
                                                           " a polymorphic class (a struct is a public value type, design.md \"struct and class\"): make it a class");

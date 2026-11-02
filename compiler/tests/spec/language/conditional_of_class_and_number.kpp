@@ -20,8 +20,9 @@ struct Value
   T storage;
 };
 template<class T>
-struct Const : Value<T>
+class Const : public Value<T>
 {
+public:
   static Const<T> make(T value) { return Const<T>(value, true); }
 private:
   Const(T value, bool loaded) : Value<T>(value) {}

@@ -1,7 +1,8 @@
 // spec: OutStream, the output streams' base (std::ostream): code that writes to any stream with << (text, a String, a char, int, unsigned, long long, unsigned long long, double, endl) and write (bytes as they are) writes through the derived stream's writeBytes, with std::ostream's default formatting; an OutFileStream is one
 // factorio: UnitTest++'s XmlTestReporter (`explicit XmlTestReporter(std::ostream& ostream)`, which writes the XML report with <<, and which the tests' TestReporter hands an std::ofstream), and the tests' TestBitmapUtil, `dumpBitmap(std::ostream& out, ...)`
-struct Collected : OutStream
+class Collected : public OutStream
 {
+public:
   String text;
   void writeBytes(const char* data, ContainerSize count) override { this->text.append(data, count); }
 };

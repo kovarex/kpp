@@ -1,7 +1,7 @@
 // spec: UniquePtr<Base> from UniquePtr<Derived> (constructor, assignment, argument), and from nullptr
 // factorio: Agui hands derived widgets over as UniquePtr<Widget> (ValueToWidget::makeCollapsibleValue(move(table)), 335 calls)
-struct Widget { virtual ~Widget() { println("~Widget"); } int w = 1; };
-struct Table : Widget { ~Table() override { println("~Table"); } };
+class Widget { public: virtual ~Widget() { println("~Widget"); } int w = 1; };
+class Table : public Widget { public: ~Table() override { println("~Table"); } };
 int describe(UniquePtr<Widget> widget) { return widget->w; }
 int main()
 {

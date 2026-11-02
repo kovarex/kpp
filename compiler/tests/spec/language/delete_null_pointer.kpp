@@ -8,12 +8,14 @@ struct WithDestructor
 {
   ~WithDestructor() { println("destroyed"); }
 };
-struct Virtual
+class Virtual
 {
+public:
   virtual ~Virtual() { println("virtual destroyed"); }
 };
-struct Derived : Virtual
+class Derived : public Virtual
 {
+public:
   ~Derived() { println("derived destroyed"); }
 };
 int main()

@@ -14,8 +14,9 @@ struct Binder
 };
 template<class T>
 typename Binder<T>::PtFunc Binder<T>::reader = nullptr;
-struct Base
+class Base
 {
+public:
   int x = 4;
   int32_t read(lua_State* L) { return this->x * 10; }
 protected:

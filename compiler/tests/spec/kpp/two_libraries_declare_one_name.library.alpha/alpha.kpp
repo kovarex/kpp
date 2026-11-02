@@ -1,8 +1,9 @@
 // The library alpha of two_libraries_declare_one_name.kpp.
 int counter = 10;
 int version() { return 1; }
-struct Node
+class Node
 {
+public:
   int id() const;
   virtual int kind() const { return 100; }
 };

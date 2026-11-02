@@ -1,8 +1,8 @@
 // spec: dynamic_cast
 // factorio: 443 uses in 244 files
-struct Base { virtual ~Base() {} };
-struct A : Base { int a = 1; };
-struct B : Base { int b = 2; };
+class Base { public: virtual ~Base() {} };
+class A : public Base { public: int a = 1; };
+class B : public Base { public: int b = 2; };
 int main()
 {
   Base* x = new A();

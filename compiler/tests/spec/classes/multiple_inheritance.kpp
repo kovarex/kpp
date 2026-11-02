@@ -2,8 +2,9 @@
 // factorio: 264 uses in 261 files
 struct Named { String name; Named(const char* n) : name(n) {} };
 struct Counted { int count = 0; void bump() { ++this->count; } };
-struct Widget : Named, Counted
+class Widget : public Named, public Counted
 {
+public:
   virtual int kind() const { return 1; }
   Widget(const char* n) : Named(n) {}
 };

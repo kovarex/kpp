@@ -2,19 +2,22 @@
 // found by the code generator thread in the converted game: FluidWagon's and ArtilleryWagon's `super::transfer(::move(data))` with RollingStock's `using Vehicle::transfer;` ("binding an unrelated class to a reference (TransferData to Fluid&)")
 struct TransferData { int x = 1; };
 struct Fluid { int f = 0; };
-struct Entity
+class Entity
 {
+public:
   virtual void transfer(TransferData data) { println("entity ", data.x); }
   virtual ~Entity() {}
 };
-struct Vehicle : Entity {};
-struct RollingStock : Vehicle
+class Vehicle : public Entity { public:};
+class RollingStock : public Vehicle
 {
+public:
   virtual void transfer(Fluid&) { println("fluid"); }
   using Vehicle::transfer;
 };
-struct FluidWagon : RollingStock
+class FluidWagon : public RollingStock
 {
+public:
   using super = RollingStock;
   void transfer(TransferData data) override
   {

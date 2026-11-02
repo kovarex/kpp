@@ -1,16 +1,19 @@
 // spec: a member named through a template parameter as its qualifier, `prototype->Super::addValues(result)` with Super a base class of T: the base's member, called without virtual dispatch
 // factorio: PrototypeExplorerWidgets' Values::add<Super, T> (`prototype->Super::addValues(result);`), 325 errors from that one line
-struct Base
+class Base
 {
+public:
   virtual ~Base() {}
   virtual int value() const { return 1; }
 };
-struct Middle : Base
+class Middle : public Base
 {
+public:
   int value() const override { return 10 + this->Base::value(); }
 };
-struct Leaf : Middle
+class Leaf : public Middle
 {
+public:
   int value() const override { return 100; }
 };
 

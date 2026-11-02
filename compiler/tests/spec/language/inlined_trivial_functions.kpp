@@ -9,8 +9,8 @@ struct Counter
   double half() const { return this->count / 2.0; }
   bool same(const Counter& other) const { return this->count == other.count; }
 };
-struct Other { int pad = 7; virtual ~Other() {} };
-struct Both : Other, Counter { };
+class Other { public: int pad = 7; virtual ~Other() {} };
+class Both : public Other, public Counter { public: };
 template<class T>
 struct Holder
 {

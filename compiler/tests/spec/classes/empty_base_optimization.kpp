@@ -7,7 +7,7 @@ struct Two : Empty, Tag { int32_t value = 5; };
 struct Member { Empty e; uint8_t b = 1; };
 struct Same : Empty { Empty first; uint8_t b = 2; };
 struct Derived : Flags { uint8_t more = 4; };
-struct Poly : Empty { virtual ~Poly() {} int32_t x = 6; };
+class Poly : public Empty { public: virtual ~Poly() {} int32_t x = 6; };
 struct Nested : Empty {};
 struct Deep : Nested { uint16_t v = 7; };
 static_assert(sizeof(Empty) == 1, "an empty object is one byte");

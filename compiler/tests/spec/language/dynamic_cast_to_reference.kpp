@@ -1,8 +1,9 @@
 // spec: `dynamic_cast<const T&>(object)` is a reference to the T the object is, whose members are called directly (`dynamic_cast<const Standard&>(*value).get()`), as through `dynamic_cast<const T*>(pointer)->`
 // factorio: cxxopts' `OptionValue::as<T>()`: `return dynamic_cast<const values::standard_value<T>&>(*this->m_value).get();`
-struct Value { virtual ~Value() {} };
-struct Standard : Value
+class Value { public: virtual ~Value() {} };
+class Standard : public Value
 {
+public:
   int stored = 42;
   const int& get() const { return this->stored; }
 };

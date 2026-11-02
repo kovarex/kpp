@@ -1,22 +1,25 @@
 // spec: virtual functions, override, pure virtual, virtual destructor, base calls
 // factorio: 16323 override, 1158 pure virtual
-struct Shape
+class Shape
 {
+public:
   virtual ~Shape() { println("~Shape"); }
   virtual int area() const = 0;
   virtual const char* name() const { return "shape"; }
   int doubled() const { return this->area() * 2; }
 };
-struct Square : Shape
+class Square : public Shape
 {
+public:
   int side;
   Square(int side) : side(side) {}
   ~Square() override { println("~Square"); }
   int area() const override { return this->side * this->side; }
   const char* name() const override { return "square"; }
 };
-struct Unit : Square
+class Unit : public Square
 {
+public:
   Unit() : Square(1) {}
   const char* name() const override { return Square::name(); }
 };
