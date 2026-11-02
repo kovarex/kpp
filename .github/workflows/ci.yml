@@ -3,8 +3,9 @@
 # master and every pull request runs the debug spec; the nightly run (and one started by hand) adds
 # --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
 # needs C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers
-# the game). A green run on master publishes the package as the rolling prerelease "latest", which
-# factorio-in-kpp's CI downloads; release.yml stays for numbered releases.
+# the game). A green run on master publishes the package (zip, installer, VS Code extension) as the
+# rolling prerelease "latest", which factorio-in-kpp's CI downloads; a green nightly run also publishes
+# it as the numbered prerelease v0.1.<date> (kovarex, 2026-11-02). release.yml stays for releases by hand.
 name: ci
 
 on:
@@ -128,13 +129,33 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --debug-info
 
+      # The package's version: the nightly run's is a numbered release, 0.1.<date> (UTC), and it is
+      # also published under its own tag; any other run's is 0.1.0-ci.<run> (semver, which vsce needs).
+      - name: Version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = if ('${{ github.event_name }}' -eq 'schedule') { '0.1.' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { '0.1.0-ci.${{ github.run_number }}' }
+          "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "version $version"
+
+      # Inno Setup's compiler, for the installer package.ps1 makes when it finds ISCC (as release.yml).
+      - name: Inno Setup
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        shell: powershell
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { throw 'no Inno Setup' }
+
       - name: Package
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $started = Get-Date
-          tools\release\package.ps1 -Version "0.1.0-ci.${{ github.run_number }}" -Commit "${{ github.sha }}"
+          tools\release\package.ps1 -Version $env:KPP_VERSION -Commit "${{ github.sha }}"
+          if (-not (Test-Path "build\release\kpp-$env:KPP_VERSION-setup.exe")) { throw 'no installer' }
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
 
       # The package, through tools/release/publish.ps1: the forge's rolling prerelease "latest", replaced
@@ -150,8 +171,24 @@ jobs:
           KPP_NET_KNOWN_HOSTS: ${{ vars.KPP_NET_KNOWN_HOSTS }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $v = $env:KPP_VERSION
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag latest -Commit "${{ github.sha }}" -Prerelease `
-            -Version "0.1.0-ci.${{ github.run_number }}" -KppNet "${{ vars.KPP_NET_SSH }}" `
-            -Title "Kpp latest (0.1.0-ci.${{ github.run_number }})" `
-            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Unzip anywhere; needs Visual Studio 2022 with C++ Clang Compiler for Windows." `
-            -Files "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip", "build\release\kpp\kpp.vsix"
+            -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" `
+            -Title "Kpp latest ($v)" `
+            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs Visual Studio 2022 with C++ Clang Compiler for Windows. kpp.vsix is the VS Code extension." `
+            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp.vsix"
+
+      # The nightly run's package again, as the numbered prerelease v0.1.<date> on the forge (kpp.net
+      # already has it under releases/<version>/ from the step above). No second build or package.
+      - name: Publish numbered
+        if: github.event_name == 'schedule' && github.ref == 'refs/heads/master'
+        shell: powershell
+        env:
+          KPP_FORGE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:KPP_VERSION
+          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag "v$v" -Commit "${{ github.sha }}" -Prerelease `
+            -Version $v -Title "Kpp $v" `
+            -Notes "The nightly build of ${{ github.sha }} (ci run ${{ github.run_number }}), every test green, including the --release and --debug-info spec. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs Visual Studio 2022 with C++ Clang Compiler for Windows. kpp.vsix is the VS Code extension." `
+            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp.vsix"

@@ -714,9 +714,10 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from
   e0ca8975 until the coordinator made it manual (2026-10-31): master gets dozens of commits a day,
-  and no run had been checked. An automatic trigger (per tag, or nightly) comes once kovarex has
-  seen a manual run succeed. The repository is private, so its runs use the account's Actions minutes (Windows
-  minutes count double) and its releases are visible only to its collaborators.
+  and no run had been checked. The automatic releases come from ci.yml (below): "latest" from every
+  green master run, a numbered one from every green nightly run. The repository is private, so its
+  runs use the account's Actions minutes (Windows minutes count double) and its releases are
+  visible only to its collaborators.
 
 ## Continuous integration
 
@@ -743,10 +744,12 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
   runner's Visual Studio is Enterprise. Node.js must be on the runner, for run_tests' LSP smoke test
   and the package's VS Code extension; the step fails without it.
-- **Publishing:** every green run on master (push, nightly or by hand) packages kpp with
-  `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the
-  package's own smoke test. `tools/release/publish.ps1` then publishes the zip and kpp.vsix to two
-  places, each only when its credential is there:
+- **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
+  (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
+  including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
+  kpp.vsix. The nightly run's version is the numbered release `0.1.<date>` (UTC, as `0.1.20261102`);
+  any other run's is `0.1.0-ci.<run>` (semver, which vsce requires). `tools/release/publish.ps1`
+  then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's
     layout in [kppnet/registry/layout.md](../kppnet/registry/layout.md)). Installers and
     factorio-in-kpp's CI read this copy.
@@ -759,7 +762,9 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   - **The forge's prerelease `latest`**, replaced through the forge's REST API with the job's token:
     a convenience copy.
 
-  Numbered releases stay with release.yml.
+  A green nightly run also publishes its package as the forge's numbered prerelease `v0.1.<date>`
+  (kovarex, 2026-11-02), from the same build and package: no second Windows job. A nightly run
+  started again on the same day replaces that day's release. Releases by hand stay with release.yml.
 - **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
   as before. Nothing in the repository holds a secret.
   - the repository secret `KPP_NET_SSH_KEY`: an Ed25519 private key, its public half added to
@@ -771,7 +776,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     `StrictHostKeyChecking=yes`, so a run never trusts a key it has not been given.
 
   Only the SDL3 step and the publish step see the key, not the steps that build and run the pushed
-  code. Each green master run uploads 2 files and latest.json, and runs only as often as the
+  code. Each green master run uploads 3 files and latest.json, and runs only as often as the
   concurrency rule lets them. That stays under NFS's limit of one uploaded file per five minutes on
   average (288 a day).
 - **No caches:** checkout gives every source a new time, so Ninja would rebuild a cached CMake build
