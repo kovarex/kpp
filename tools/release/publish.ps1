@@ -4,7 +4,10 @@
 # - The forge's release (KPP_FORGE_TOKEN, -ApiUrl): the release of -Tag is replaced through the
 #   forge's REST API, not a forge's own CLI or action, so the same step runs under GitHub Actions and
 #   Forgejo Actions. -Forge github is GitHub's API (assets go to uploads.github.com), -Forge forgejo
-#   Forgejo's and Gitea's (https://<host>/api/v1); it defaults from the URL.
+#   Forgejo's and Gitea's (https://<host>/api/v1); it defaults from the URL. On GitHub a release
+#   that exists is updated in place, so a step that fails leaves the old release whole: its tag is
+#   moved to -Commit first, the new files are uploaded under temporary names, and only then are the
+#   old files deleted and the new ones renamed. (A failed delete-then-create once left no release.)
 # - kpp.net's registry store (KPP_NET_SSH_KEY, -KppNet user@host): the files go to
 #   kpp/releases/<-Version>/, files already there are left alone (rsync --ignore-existing's rule), and
 #   kpp/latest.json ({version, commit, zip, sha256}, zip relative to kpp/) is written last, as a
@@ -47,35 +50,65 @@ function PublishForge {
     Invoke-RestMethod @arguments
   }
   function Status($exception) { if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 } }
+  # GitHub refuses the job's token a tag on a commit whose .github/workflows differ from the default
+  # branch's now (403 "Resource not accessible by integration"): a run whose commit is older than a
+  # workflow change pushed meanwhile cannot publish. The release stays as it was; the next run publishes.
+  function Refused($exception, [string]$what) {
+    if ((Status $exception) -eq 403) { throw "forge: $what refused (403): GitHub lets the job's token tag only a commit whose .github/workflows match the default branch's; a workflow change was pushed after $Commit. The release is unchanged; the next run publishes." }
+    throw $exception
+  }
 
-  # The old release and its tag, when there are any.
+  function Upload($release, [string]$file, [string]$name) {
+    if ($forge -eq 'github') {
+      $upload = ($release.upload_url -replace '\{.*\}$', '') + "?name=$([uri]::EscapeDataString($name))"
+      return Invoke-RestMethod -Method POST -Uri $upload -Headers $headers -ContentType 'application/octet-stream' -InFile $file
+    }
+    # multipart/form-data with the file as "attachment", built by hand: Windows PowerShell 5.1 has no -Form.
+    $boundary = [guid]::NewGuid().ToString('N')
+    $encoding = [Text.Encoding]::UTF8
+    $head = $encoding.GetBytes("--$boundary`r`nContent-Disposition: form-data; name=`"attachment`"; filename=`"$name`"`r`nContent-Type: application/octet-stream`r`n`r`n")
+    $tail = $encoding.GetBytes("`r`n--$boundary--`r`n")
+    $content = [IO.File]::ReadAllBytes((Resolve-Path $file).Path)
+    $body = New-Object byte[] ($head.Length + $content.Length + $tail.Length)
+    [Array]::Copy($head, 0, $body, 0, $head.Length)
+    [Array]::Copy($content, 0, $body, $head.Length, $content.Length)
+    [Array]::Copy($tail, 0, $body, $head.Length + $content.Length, $tail.Length)
+    return Invoke-RestMethod -Method POST -Uri "$apiUrl/repos/$Repository/releases/$($release.id)/assets?name=$([uri]::EscapeDataString($name))" -Headers $headers -ContentType "multipart/form-data; boundary=$boundary" -Body $body
+  }
+
   try { $old = Api GET "/releases/tags/$Tag" } catch { if ((Status $_.Exception) -ne 404) { throw } ; $old = $null }
+
+  if ($old -and $forge -eq 'github') {
+    # In place: the tag to the new commit (refused, it throws and the old release stays as it was),
+    # the new files beside the old ones under temporary names, then the old ones out and the new ones
+    # renamed, and last the title and notes.
+    try { Api PATCH "/git/refs/tags/$Tag" @{ sha = $Commit; force = $true } | Out-Null } catch { Refused $_.Exception "moving tag $Tag" }
+    Write-Output "forge: moved tag $Tag to $Commit"
+    $suffix = '.new-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $added = @()
+    foreach ($f in $Files) {
+      $name = Split-Path -Leaf $f
+      $added += [pscustomobject]@{ name = $name; asset = (Upload $old $f ($name + $suffix)) }
+      Write-Output "forge: uploaded $name (as $name$suffix)"
+    }
+    foreach ($a in $old.assets) { Api DELETE "/releases/assets/$($a.id)" | Out-Null; Write-Output "forge: deleted old $($a.name)" }
+    foreach ($a in $added) { Api PATCH "/releases/assets/$($a.asset.id)" @{ name = $a.name } | Out-Null }
+    Api PATCH "/releases/$($old.id)" @{ name = $Title; body = $Notes; prerelease = [bool]$Prerelease } | Out-Null
+    Write-Output "forge: updated release $($old.id) ($Tag at $Commit)"
+    return
+  }
+
+  # A new release (and, on Forgejo, the old one replaced: its API moves no tag).
   if ($old) { Api DELETE "/releases/$($old.id)" | Out-Null; Write-Output "forge: deleted release $($old.id)" }
   $tagPath = if ($forge -eq 'github') { "/git/refs/tags/$Tag" } else { "/tags/$Tag" }
   try { Api DELETE $tagPath | Out-Null; Write-Output "forge: deleted tag $Tag" } catch { if ((Status $_.Exception) -notin 404, 422) { throw } }
 
-  $release = Api POST '/releases' @{ tag_name = $Tag; target_commitish = $Commit; name = $Title; body = $Notes; prerelease = [bool]$Prerelease; draft = $false }
+  try { $release = Api POST '/releases' @{ tag_name = $Tag; target_commitish = $Commit; name = $Title; body = $Notes; prerelease = [bool]$Prerelease; draft = $false } }
+  catch { Refused $_.Exception "creating release $Tag" }
   Write-Output "forge: created release $($release.id) ($Tag at $Commit)"
-
   foreach ($f in $Files) {
-    $name = Split-Path -Leaf $f
-    if ($forge -eq 'github') {
-      $upload = ($release.upload_url -replace '\{.*\}$', '') + "?name=$([uri]::EscapeDataString($name))"
-      Invoke-RestMethod -Method POST -Uri $upload -Headers $headers -ContentType 'application/octet-stream' -InFile $f | Out-Null
-    } else {
-      # multipart/form-data with the file as "attachment", built by hand: Windows PowerShell 5.1 has no -Form.
-      $boundary = [guid]::NewGuid().ToString('N')
-      $encoding = [Text.Encoding]::UTF8
-      $head = $encoding.GetBytes("--$boundary`r`nContent-Disposition: form-data; name=`"attachment`"; filename=`"$name`"`r`nContent-Type: application/octet-stream`r`n`r`n")
-      $tail = $encoding.GetBytes("`r`n--$boundary--`r`n")
-      $content = [IO.File]::ReadAllBytes((Resolve-Path $f).Path)
-      $body = New-Object byte[] ($head.Length + $content.Length + $tail.Length)
-      [Array]::Copy($head, 0, $body, 0, $head.Length)
-      [Array]::Copy($content, 0, $body, $head.Length, $content.Length)
-      [Array]::Copy($tail, 0, $body, $head.Length + $content.Length, $tail.Length)
-      Invoke-RestMethod -Method POST -Uri "$apiUrl/repos/$Repository/releases/$($release.id)/assets?name=$([uri]::EscapeDataString($name))" -Headers $headers -ContentType "multipart/form-data; boundary=$boundary" -Body $body | Out-Null
-    }
-    Write-Output "forge: uploaded $name"
+    Upload $release $f (Split-Path -Leaf $f) | Out-Null
+    Write-Output "forge: uploaded $(Split-Path -Leaf $f)"
   }
 }
 

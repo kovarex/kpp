@@ -760,7 +760,11 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     - It uses OpenSSH's ssh and scp, because Windows runners have no rsync. Every file is sent
       under a temporary name and renamed, so a reader never sees half of one.
   - **The forge's prerelease `latest`**, replaced through the forge's REST API with the job's token:
-    a convenience copy.
+    a convenience copy. On GitHub it is updated in place (its tag moved, the new files uploaded
+    beside the old ones, then the old ones removed), so a failed step leaves the old release whole.
+    GitHub refuses the job's token a tag on a commit whose `.github/workflows` differ from master's
+    at that moment (403 "Resource not accessible by integration"): a run whose commit predates a
+    workflow change pushed while it ran cannot publish, and says so; the next run publishes.
 
   A green nightly run also publishes its package as the forge's numbered prerelease `v0.1.<date>`
   (kovarex, 2026-11-02), from the same build and package: no second Windows job. A nightly run
