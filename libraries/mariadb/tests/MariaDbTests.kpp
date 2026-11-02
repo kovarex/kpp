@@ -1,0 +1,257 @@
+// mariadb without a server: SHA-1 against FIPS 180's examples, mysql_native_password against
+// Python's hashlib, quoting, length-encoded integers, and the protocol against a fake server on a
+// thread (a MariaDB 11 greeting, a result set with a NULL, an OK, an error). live/ runs it against a
+// real MariaDB.
+
+String mariaDbHex(StringView data)
+{
+  const char* digits = "0123456789abcdef";
+  String out;
+  for (ContainerSize i = 0; i < data.size(); ++i)
+  {
+    out.append(digits[(uint8_t)data[i] >> 4]);
+    out.append(digits[(uint8_t)data[i] & 15]);
+  }
+  return out;
+}
+
+test "SHA-1"
+{
+  check(mariaDbHex(mariaDbSha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+  check(mariaDbHex(mariaDbSha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
+  check(mariaDbHex(mariaDbSha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) ==
+        "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
+  check(mariaDbHex(mariaDbSha1(String(1000000, 'a'))) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
+}
+
+String mariaDbTestScramble()
+{
+  String scramble;
+  for (int i = 1; i <= 20; ++i)
+    scramble.append(char(i));
+  return scramble;
+}
+
+test "mysql_native_password"
+{
+  // Python: SHA1(p) XOR SHA1(scramble + SHA1(SHA1(p))) for p = "secret", scramble bytes 1 to 20.
+  check(mariaDbHex(mariaDbNativePassword("secret", mariaDbTestScramble())) == "b32bb3a583e1340c0a1108d58b1be49781ad8c2f");
+  check(mariaDbNativePassword("", mariaDbTestScramble()).empty());
+}
+
+test "quoting"
+{
+  check(mariaDbQuote("plain") == "'plain'");
+  check(mariaDbQuote("it's \"x\"") == "'it\\'s \\\"x\\\"'");
+  check(mariaDbQuote("a\\b") == "'a\\\\b'");
+  check(mariaDbQuote(String("\0\n\r\x1a", 4)) == "'\\0\\n\\r\\Z'");
+  check(mariaDbQuote("Učebnicová") == "'Učebnicová'");
+  check(mariaDbQuoteOrNull(Optional<String>()) == "NULL");
+  check(mariaDbQuoteOrNull(Optional<String>(String("x"))) == "'x'");
+}
+
+test "length-encoded integers"
+{
+  uint64_t values[] = {0, 250, 251, 65535, 65536, 16777215, 16777216, 0xffffffffffffull};
+  for (uint64_t value : values)
+  {
+    String encoded;
+    mariaDbAppendLengthEncoded(encoded, value);
+    MariaDbReader reader(encoded, 0);
+    check(reader.lengthEncoded() == value);
+    check(reader.position == encoded.size());
+  }
+  String bad;
+  bad.append(char(0xff));
+  MariaDbReader reader(bad, 0);
+  bool threw = false;
+  try { reader.lengthEncoded(); } catch (const MariaDbError& e) { threw = true; }
+  check(threw);
+}
+
+// The fake server's side: packets with a sequence number.
+void mariaDbTestWrite(net::TcpStream& stream, int sequence, StringView payload)
+{
+  String packet;
+  packet.append(char(payload.size() & 255));
+  packet.append(char((payload.size() >> 8) & 255));
+  packet.append(char((payload.size() >> 16) & 255));
+  packet.append(char(sequence));
+  packet.append(payload);
+  stream.write(packet);
+}
+
+String mariaDbTestRead(net::TcpStream& stream)
+{
+  String header = stream.readExactly(4);
+  ContainerSize length = ContainerSize((uint8_t)header[0]) | (ContainerSize((uint8_t)header[1]) << 8) |
+                         (ContainerSize((uint8_t)header[2]) << 16);
+  return stream.readExactly((int64_t)length);
+}
+
+String mariaDbTestColumn(StringView name)
+{
+  String out;
+  for (StringView part : {StringView("def"), StringView("gorating"), StringView("t"), StringView("t"), name, name})
+  {
+    mariaDbAppendLengthEncoded(out, part.size());
+    out.append(part);
+  }
+  out.append(char(0x0c));
+  out.append(String("\x2d\x00\x00\x01\x00\x00\xfd\x00\x00\x00\x00\x00", 12));
+  return out;
+}
+
+// What the fake server saw, for the test to check after the thread ends.
+struct MariaDbFakeServer
+{
+  net::TcpListener listener;
+  String user;
+  String auth;
+  String database;
+  Vector<String> queries;
+  bool quit = false;
+  String failure;
+
+  void run()
+  {
+    try
+    {
+      net::TcpStream stream = this->listener.accept();
+      String greeting;
+      greeting.append(char(10));
+      greeting.append("5.5.5-11.7.2-MariaDB");
+      greeting.append(char(0));
+      greeting.append(String("\x07\x00\x00\x00", 4)); // connection id
+      greeting.append(StringView(mariaDbTestScramble()).substr(0, 8));
+      greeting.append(char(0));
+      greeting.append(String("\xfe\xf7", 2)); // capabilities, low word
+      greeting.append(char(45));
+      greeting.append(String("\x02\x00", 2)); // status
+      greeting.append(String("\xff\x81", 2)); // capabilities, high word: PLUGIN_AUTH, MULTI_RESULTS...
+      greeting.append(char(21));
+      greeting.append(String(10, '\0'));
+      greeting.append(StringView(mariaDbTestScramble()).substr(8, 12));
+      greeting.append(char(0));
+      greeting.append("mysql_native_password");
+      greeting.append(char(0));
+      mariaDbTestWrite(stream, 0, greeting);
+
+      String response = mariaDbTestRead(stream);
+      MariaDbReader reader(response, 32);
+      this->user = reader.nulTerminated();
+      this->auth = reader.lengthEncodedString();
+      this->database = reader.nulTerminated();
+      mariaDbTestWrite(stream, 2, String("\x00\x00\x00\x02\x00\x00\x00", 7));
+
+      // A SELECT: two columns, two rows, a NULL.
+      String query = mariaDbTestRead(stream);
+      this->queries.push_back(String(StringView(query).substr(1)));
+      String count;
+      count.append(char(2));
+      mariaDbTestWrite(stream, 1, count);
+      mariaDbTestWrite(stream, 2, mariaDbTestColumn("id"));
+      mariaDbTestWrite(stream, 3, mariaDbTestColumn("name"));
+      String eof("\xfe\x00\x00\x02\x00", 5);
+      mariaDbTestWrite(stream, 4, eof);
+      String row1;
+      mariaDbAppendLengthEncoded(row1, 1);
+      row1.append("1");
+      mariaDbAppendLengthEncoded(row1, 3);
+      row1.append("x'y");
+      mariaDbTestWrite(stream, 5, row1);
+      String row2;
+      mariaDbAppendLengthEncoded(row2, 1);
+      row2.append("2");
+      row2.append(char(0xfb));
+      mariaDbTestWrite(stream, 6, row2);
+      mariaDbTestWrite(stream, 7, eof);
+
+      // An UPDATE: 3 rows, insert id 300.
+      query = mariaDbTestRead(stream);
+      this->queries.push_back(String(StringView(query).substr(1)));
+      mariaDbTestWrite(stream, 1, String("\x00\x03\xfc\x2c\x01\x02\x00\x00\x00", 9));
+
+      // An error.
+      query = mariaDbTestRead(stream);
+      this->queries.push_back(String(StringView(query).substr(1)));
+      String error("\xff\x7a\x04#42S02", 9);
+      error.append("Table 'gorating.nope' doesn't exist");
+      mariaDbTestWrite(stream, 1, error);
+
+      String last = mariaDbTestRead(stream);
+      this->quit = last.size() == 1 && last[0] == 0x01;
+    }
+    catch (const Exception& e)
+    {
+      this->failure = String(StringView(e.what()));
+    }
+  }
+};
+
+void mariaDbRunFakeServer(MariaDbFakeServer* server) { server->run(); }
+
+test "the protocol, against a fake server"
+{
+  MariaDbFakeServer server;
+  server.listener = net::TcpListener::listen("127.0.0.1", 0);
+  MariaDbOptions options;
+  options.port = server.listener.port();
+  options.user = "gorating";
+  options.password = "secret";
+  options.database = "gorating";
+  options.timeoutMilliseconds = 5000;
+  Thread thread(mariaDbRunFakeServer, &server);
+  {
+    MariaDbConnection connection = MariaDbConnection::connect(options);
+    check(connection.serverVersion == "5.5.5-11.7.2-MariaDB");
+
+    MariaDbResult rows = connection.query("SELECT id, name FROM t");
+    check(rows.columns.size() == 2 && rows.columns[1] == "name");
+    check(rows.size() == 2);
+    check(rows.text(0, "id") == "1" && rows.text(0, "name") == "x'y");
+    check(rows.text(1, "id") == "2" && !rows.at(1, "name").has_value());
+    bool threw = false;
+    try { rows.text(1, "name"); } catch (const MariaDbError& e) { threw = true; }
+    check(threw);
+
+    MariaDbResult update = connection.query("UPDATE t SET name = 'z'");
+    check(update.affectedRows == 3 && update.insertId == 300 && update.empty());
+
+    int code = 0;
+    String state;
+    String message;
+    try
+    {
+      connection.query("SELECT * FROM nope");
+    }
+    catch (const MariaDbError& e)
+    {
+      code = e.code;
+      state = e.sqlState;
+      message = String(StringView(e.what()));
+    }
+    check(code == 1146 && state == "42S02");
+    check(message == "MariaDB error 1146 (42S02): Table 'gorating.nope' doesn't exist; the statement: SELECT * FROM nope");
+  }
+  thread.join();
+  check(server.failure.empty());
+  check(server.user == "gorating" && server.database == "gorating");
+  check(mariaDbHex(server.auth) == "b32bb3a583e1340c0a1108d58b1be49781ad8c2f");
+  check(server.queries.size() == 3 && server.queries[0] == "SELECT id, name FROM t");
+  check(server.quit);
+}
+
+test "no server"
+{
+  int port = 0;
+  {
+    net::TcpListener listener = net::TcpListener::listen("127.0.0.1", 0);
+    port = listener.port();
+  }
+  MariaDbOptions options;
+  options.port = port;
+  bool threw = false;
+  try { MariaDbConnection::connect(options); } catch (const net::NetError& e) { threw = true; }
+  check(threw);
+}

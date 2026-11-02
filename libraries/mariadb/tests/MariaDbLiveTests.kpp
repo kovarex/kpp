@@ -1,0 +1,75 @@
+// mariadb against a real server, when MARIADB_TEST_PORT names one on 127.0.0.1 (else it says it
+// skipped). The user (MARIADB_TEST_USER, MARIADB_TEST_PASSWORD) needs all rights on the database
+// MARIADB_TEST_DATABASE, which it fills with its own table and procedure.
+
+String mariaDbEnvironment(const char* name)
+{
+  const char* value = getenv(name);
+  return value == nullptr ? String() : String(StringView(value));
+}
+
+test "a real server"
+{
+  String port = mariaDbEnvironment("MARIADB_TEST_PORT");
+  if (port.empty())
+  {
+    println("skipped: MARIADB_TEST_PORT is not set (tests/MariaDbLiveTests.kpp)");
+    return;
+  }
+  MariaDbOptions options;
+  options.port = (int)stoll(port);
+  options.user = mariaDbEnvironment("MARIADB_TEST_USER");
+  options.password = mariaDbEnvironment("MARIADB_TEST_PASSWORD");
+  options.database = mariaDbEnvironment("MARIADB_TEST_DATABASE");
+  MariaDbConnection connection = MariaDbConnection::connect(options);
+  println(format("server {}", connection.serverVersion));
+
+  connection.query("DROP TABLE IF EXISTS kpp_live");
+  connection.query("CREATE TABLE kpp_live (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64) "
+                   "COLLATE utf8mb4_unicode_ci NULL, rating DOUBLE NULL, data BLOB NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  String tricky = String("O'Brien \"x\" \\ \n Učebnicová ") + String("\0\x1a", 2);
+  MariaDbResult inserted = connection.query(String("INSERT INTO kpp_live (name, rating, data) VALUES (") +
+                                            mariaDbQuote(tricky) + ", 1234.5678, " + mariaDbQuote(String("\0\xff\x01", 3)) + ")");
+  check(inserted.affectedRows == 1 && inserted.insertId == 1);
+  connection.query("INSERT INTO kpp_live (name) VALUES (NULL)");
+
+  MariaDbResult rows = connection.query("SELECT id, name, rating, data, COUNT(*) OVER () AS total FROM kpp_live ORDER BY id");
+  check(rows.size() == 2);
+  check(rows.text(0, "name") == tricky);
+  check(rows.text(0, "rating") == "1234.5678");
+  check(rows.text(0, "data") == String("\0\xff\x01", 3));
+  check(rows.text(1, "total") == "2");
+  check(!rows.at(1, "name").has_value());
+
+  // A procedure's result and the OK after it (MULTI_RESULTS).
+  connection.query("DROP PROCEDURE IF EXISTS kpp_live_count");
+  connection.query("CREATE PROCEDURE kpp_live_count() BEGIN SELECT COUNT(*) AS n FROM kpp_live; END");
+  MariaDbResult called = connection.query("CALL kpp_live_count()");
+  check(called.text(0, "n") == "2");
+  check(*connection.scalar("SELECT COUNT(*) FROM kpp_live") == "2");
+
+  // A transaction rolled back.
+  connection.begin();
+  connection.query("DELETE FROM kpp_live");
+  connection.rollback();
+  check(*connection.scalar("SELECT COUNT(*) FROM kpp_live") == "2");
+
+  // A result larger than one read.
+  MariaDbResult big = connection.query("SELECT REPEAT('x', 100000) AS a, seq FROM seq_1_to_200");
+  check(big.size() == 200 && big.text(199, "a").size() == 100000 && big.text(199, "seq") == "200");
+
+  int code = 0;
+  try { connection.query("SELECT * FROM kpp_no_such_table"); } catch (const MariaDbError& e) { code = e.code; }
+  check(code == 1146);
+  // The connection goes on after an error.
+  check(*connection.scalar("SELECT 1 + 1") == "2");
+
+  connection.query("DROP PROCEDURE kpp_live_count");
+  connection.query("DROP TABLE kpp_live");
+
+  MariaDbOptions wrong = options;
+  wrong.password = "not the password";
+  int denied = 0;
+  try { MariaDbConnection::connect(wrong); } catch (const MariaDbError& e) { denied = e.code; }
+  check(denied == 1045);
+}

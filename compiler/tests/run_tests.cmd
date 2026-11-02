@@ -191,11 +191,15 @@ if errorlevel 1 (
   echo FAIL incremental: the compile server's build differs from a new process's
   call :fail "incremental"
 ) else (call :ok)
-rem The libraries in ..\libraries (libraries\README.md): each one's own tests, kppc --test on its directory.
+rem The libraries in ..\libraries (libraries\README.md): each one's own tests, kpp --test in its
+rem directory (its build.kpp, so the libraries it uses come in: mariadb uses net).
 for /d %%l in (..\libraries\*) do (
-  %KPPC% --no-server --test %%l > build\tests\library-%%~nl.txt 2>&1
-  if errorlevel 1 (
-    echo FAIL library %%~nl: kppc --test %%l
+  pushd %%l
+  ..\..\compiler\%KPPC% --no-server --test > ..\..\compiler\build\tests\library-%%~nl.txt 2>&1
+  set LIBRARY_EXIT=!errorlevel!
+  popd
+  if !LIBRARY_EXIT! neq 0 (
+    echo FAIL library %%~nl: kpp --test in %%l
     type build\tests\library-%%~nl.txt
     call :fail "library %%~nl"
   ) else (

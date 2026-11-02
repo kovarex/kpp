@@ -1,0 +1,3 @@
+// Package: MARIADB
+// A MariaDB and MySQL client over TCP: MariaDbConnection, MariaDbResult, MariaDbOptions, MariaDbError,
+// mariaDbQuote. Documented in libraries/mariadb/README.md.

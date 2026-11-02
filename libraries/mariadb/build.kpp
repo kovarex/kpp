@@ -1,0 +1,11 @@
+// mariadb: a MariaDB and MySQL client (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& mariadb = project.library("mariadb");
+  mariadb.version = "0.1.0";
+  mariadb.license = "Apache-2.0 WITH LLVM-exception";
+  mariadb.minimumKpp = "0.1.0";
+  mariadb.root("src");
+  mariadb.test("tests");
+  mariadb.use("net", local("../net"));
+}

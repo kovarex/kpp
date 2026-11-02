@@ -9,8 +9,8 @@ library project:
 - `src/`: the library, which is what a release contains, with `README.md`;
 - `tests/`: native tests (`test "name" { check(...); }`, docs/design.md 8.6).
 
-`kpp --test` in a library's directory runs its tests, as does `kppc --test libraries/NAME` (which
-leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs every library's.
+`kpp --test` in a library's directory runs its tests, as does `kppc --test libraries/NAME` for a
+library that uses no other (it leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs every library's.
 
 | Library | What | Checked against |
 |---|---|---|
@@ -22,6 +22,7 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [markdown](markdown/README.md) | CommonMark 0.31.2 to HTML, GitHub's tables and heading ids | all 655 CommonMark spec examples and the GFM spec's 8 table examples (conformance/run.cmd, fetched: CC-BY-SA) |
 | [bcrypt](bcrypt/README.md) | the password hash of PHP's `password_hash()`: `$2y$`/`$2b$` hash and verify | crypt_blowfish's vectors, 38 hashes from PHP 8.3's `crypt()` |
 | [net](net/README.md) | TCP connections and listeners (Winsock, BSD sockets) | loopback tests on Windows |
+| [mariadb](mariadb/README.md) | a MariaDB/MySQL client: text queries, `mysql_native_password` (uses net) | a fake server's packets, a live MariaDB 11.7 |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of kpp ([LICENSE](../LICENSE),
 [CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep
