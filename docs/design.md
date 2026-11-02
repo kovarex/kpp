@@ -1260,8 +1260,21 @@ becomes the default, 40 spec snippets and 8 of run_tests' programs that use stru
 functions become classes too. Specs classes/struct_private_member_is_error,
 struct_virtual_function_is_error, struct_base_not_public_is_error,
 struct_deriving_from_polymorphic_class_is_error and struct_is_a_public_value_type. Friend
-declarations of classes and functions work (classes/friends, friend_declarations); a friend function
-defined in its class (a hidden friend) is not found yet (pending classes/hidden_friend_functions).
+declarations of classes and functions work (classes/friends, friend_declarations).
+
+**Hidden friends (thread A, 2026-11-02), as C++ has them.** A friend function defined in its class
+is a function of the class's namespace that no ordinary lookup finds: only argument-dependent lookup,
+through an argument of the class, of a class deriving from it, or of an instance with it as a
+template argument. It takes no object (the compiler treats it as a static member: its body names the
+class's private and static members and member types). Names and operators alike, unary ones
+included; the candidates join the namespaces' functions of the name in one overload set. A class
+template's friend is its instance's, one function per instance; a call whose arguments are of two
+instances of one template, both with friends of the name, is an error ("not supported in one
+call"), not one instance's friend chosen. A defaulted friend comparison (`friend bool
+operator==(const C&, const C&) = default;`, `<=>` too) is the defaulted member comparison. Specs
+classes/hidden_friend_functions, hidden_friend_lookup, hidden_friend_without_class_argument_is_error,
+hidden_friends_of_two_instances_is_error, defaulted_friend_comparison; expressions/free_unary_operator
+(a free unary operator was not emitted before, namespace ones included).
 
 **The question** (kovarex): why are the standard library's types structs (`struct String`), and
 what do two keywords buy when the only difference is that a struct starts public? He uses

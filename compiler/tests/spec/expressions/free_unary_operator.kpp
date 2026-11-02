@@ -1,0 +1,25 @@
+// spec: a unary operator declared as a free function (`Coin operator-(const Coin&)`, `bool operator!(const Flag&)`) is called for a class operand without one of its own, its operand evaluated once
+// factorio: none (the game's unary operators are members); found with hidden friends, which are free functions
+class Coin
+{
+public:
+  int cents;
+  Coin(int c) : cents(c) {}
+};
+Coin operator-(const Coin& c) { return Coin(-c.cents); }
+class Flag
+{
+public:
+  bool on;
+  explicit operator bool() const { return on; }
+};
+bool operator!(const Flag& f) { return true; }
+int calls = 0;
+Coin make() { ++calls; return Coin(4); }
+int main()
+{
+  Coin a(1);
+  Flag f{true};
+  println((-a).cents, " ", (-make()).cents, " ", calls, " ", !f);
+  return 0;
+}

@@ -1,0 +1,15 @@
+// spec: a hidden friend is found only by argument-dependent lookup: a call with no argument of its class does not find it, even one converting to the class
+// factorio: none
+// error: hidden_friend_without_class_argument_is_error.kpp:13: error: 'valueOf' is not declared
+class Coin
+{
+  int cents;
+public:
+  Coin(int c) : cents(c) {}
+  friend int valueOf(const Coin& c) { return c.cents; }
+};
+int main()
+{
+  println(valueOf(5));
+  return 0;
+}

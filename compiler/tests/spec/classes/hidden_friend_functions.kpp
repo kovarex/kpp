@@ -1,6 +1,5 @@
 // spec: a friend function defined in its class (a hidden friend) is a function of the class's namespace that argument-dependent lookup finds through an argument of the class, a name and an operator alike, in a class and in a class template's instances (one function per instance)
 // factorio: Optional's hidden friend operators, which the converter moves out to namespace scope; the C++ libraries' (glm, imgui) idiom
-// pending: neither is found: "'valueOf' is not declared", and an operator "Coin has no operator<" in codegen (A)
 class Coin
 {
   int cents;

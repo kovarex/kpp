@@ -1,0 +1,32 @@
+// spec: a defaulted friend comparison (`friend bool operator==(const C&, const C&) = default;`, `friend auto operator<=>(...) = default;`) compares memberwise as the defaulted member does, `!=` and the relational operators rewritten from it, in a class template too
+// factorio: none (the C++20 idiom of the libraries)
+class Coin
+{
+  int cents;
+public:
+  Coin(int c) : cents(c) {}
+  friend bool operator==(const Coin& a, const Coin& b) = default;
+};
+class Range
+{
+  int from, to;
+public:
+  Range(int f, int t) : from(f), to(t) {}
+  friend auto operator<=>(const Range&, const Range&) = default;
+};
+template<class T>
+class Single
+{
+  T a;
+public:
+  Single(T x) : a(x) {}
+  friend bool operator==(const Single&, const Single&) = default;
+};
+int main()
+{
+  Coin a(1), b(2);
+  Range s(1, 2), t(1, 3);
+  Single<int> p(1), q(1);
+  println(a == b, " ", a == a, " ", a != b, " ", s < t, " ", s == s, " ", s == t, " ", p == q, " ", p != q);
+  return 0;
+}

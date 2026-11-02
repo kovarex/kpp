@@ -510,6 +510,10 @@ public:
   // The same for a free function by name (`begin(range)` and `end(range)` of a range-for over a
   // class without those members).
   FunctionDecl* findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context);
+  // The class a friend function defined in a class (a hidden friend) was found through for these
+  // argument types (an instance of a class template: its arguments are the function's); null for
+  // any other function, or when two instances of its class are among the arguments.
+  const Ty* hiddenFriendClass(FunctionDecl* f, const std::vector<const Ty*>& argTypes);
   // What a class operand converts to for a built-in operator when no operator function takes it
   // (`area < smallBlueprintAreaSize` with a Const<float>): the result type of its one non-explicit
   // conversion operator to a non-class type, its own or inherited; null when it has none or

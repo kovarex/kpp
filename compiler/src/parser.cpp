@@ -3421,6 +3421,25 @@ namespace
       classMembersMark = savedMembersMark;
       implicitEquality(mark);
       c->members = makeSpan<Decl*>(mark);
+      // A friend function defined in its class (a hidden friend) takes no object: a static member,
+      // which only argument-dependent lookup finds (the resolver's hiddenFriends). A defaulted
+      // friend comparison (`friend bool operator==(const C&, const C&) = default;`) compares as
+      // the defaulted member does: it is that member (`bool operator==(const C&) const = default;`).
+      for (Decl* m : c->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Friend))
+          continue;
+        auto* f = static_cast<FunctionDecl*>(m);
+        if (f->name.parts.size() != 1)
+          continue;
+        if (f->body)
+          f->flags |= DF_Static;
+        else if ((f->flags & DF_Default) && f->name.last().special == 2 && f->params.size() == 2)
+        {
+          f->flags = (f->flags & ~DF_Friend) | DF_Const;
+          f->params = Span<Decl*>{f->params.data + 1, 1};
+        }
+      }
       if (keyword == Kw::struct_ && !cMode)
         for (Decl* m : c->members)
           if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)) && !(m->flags & DF_Friend))

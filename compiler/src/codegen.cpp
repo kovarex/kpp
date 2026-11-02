@@ -7255,6 +7255,22 @@ namespace
       emittingShared = false;
     }
 
+    // The class a friend function defined in a class (a hidden friend, a static member to the
+    // compiler) is called through: for one of a class template, the instance among the arguments'
+    // classes whose function it is (its arguments are the function's); null for any other function.
+    const Ty* friendClass(FunctionDecl* f, const std::vector<const Ty*>& argTypes, Node* at)
+    {
+      if (!(f->flags & DF_Friend) || !(f->flags & DF_Static))
+        return nullptr;
+      Decl* owner = global.owningClass(f);
+      if (!owner || owner->templateParams.empty())
+        return nullptr;
+      const Ty* cls = global.hiddenFriendClass(f, argTypes);
+      if (!cls)
+        unsupported(at, "a call of " + qualifiedName(f) + ", a friend function of a class template, whose instance the arguments do not name");
+      return canonicalClass(cls, at);
+    }
+
     // Template arguments for calling f on an object of classTy, with the call's deduced arguments.
     TemplateArgs calleeArgs(FunctionDecl* f, const Ty* classTy, CallExpr* call, Node* at)
     {
@@ -12654,6 +12670,8 @@ namespace
               return {addr, argTy ? argTy : types.unknown(), false};
             }
           }
+          if (!classTy)
+            classTy = friendClass(f, argTypesOf(c->args), c); // `unwrap(holder)`: Holder<int>'s friend
           return callFunction(f, calleeArgs(f, classTy, c, c), classTy, thisArg, sret, c->args, c, indirect);
         }
         if (!d)
@@ -15342,6 +15360,27 @@ namespace
         store(updated, addr, ot, u);
         return u->postfix ? old : convert(updated, ot, u);
       }
+      // A free `Coin operator-(const Coin&)`, a class's friend operator among them, when the class
+      // has no member operator: called with the operand as written.
+      if (const Ty* ct = u->operand->ty && u->operand->ty->isKnown() ? types.unqualified(types.stripRef(u->operand->ty)) : nullptr; ct && isClass(ct))
+      {
+        const Ty* in = nullptr;
+        const Ty* operand = argumentType(u->operand, u->operand->ty, types);
+        if (!findMemberFunction(ct, operatorName(op), {}, ct, u, &in))
+          if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), operand, nullptr, currentFunction))
+          {
+            const Ty* classTy = friendClass(f, {operand}, u);
+            TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
+            if (!f->templateParams.empty())
+            {
+              global.deduceArgs(f, {operand}, fnArgs);
+              if (fnArgs.pairs.size() < f->templateParams.size() + (classTy ? classTy->args.size() : 0))
+                unsupported(u, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
+            }
+            Expr* arg = u->operand;
+            return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{&arg, 1}, u), u);
+          }
+      }
       Value v = rvalue(u->operand);
       if (isClass(v.ty))
       {
@@ -15579,7 +15618,8 @@ namespace
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
           if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction))
           {
-            TemplateArgs fnArgs;
+            const Ty* classTy = friendClass(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, b);
+            TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
             if (!f->templateParams.empty())
             {
               global.deduceArgs(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, fnArgs);
@@ -15587,7 +15627,7 @@ namespace
                 unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
             }
             Expr* args[2] = {b->lhs, b->rhs};
-            return callRvalue(callFunction(f, fnArgs, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
+            return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
           }
         if (std::optional<Value> rewritten = rewrittenComparison(b, op, lt, rt))
           return *rewritten;
@@ -15933,8 +15973,9 @@ namespace
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
           if (FunctionDecl* f = global.findFreeOperator(uint32_t(which), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction); f && f->templateParams.empty())
           {
+            const Ty* classTy = friendClass(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, b);
             Expr* args[2] = {b->lhs, b->rhs};
-            return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
+            return callRvalue(callFunction(f, classTy ? global.classArgsOf(classTy) : TemplateArgs{}, classTy, "", "", Span<Expr*>{args, 2}, b), b);
           }
         return std::nullopt;
       };

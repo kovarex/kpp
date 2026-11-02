@@ -1,0 +1,49 @@
+// spec: a hidden friend takes no object: in its body the class's private and static members and its member types are named as in a static member; argument-dependent lookup finds it from the class's own members, through an argument of a class deriving from it, beside the namespace's functions of its name (overload resolution chooses), and as a unary or compound assignment operator; a class template's friend is its instance's, called from a function template too
+// factorio: none (the converter moves the game's hidden friends out); the C++ libraries' idiom
+namespace money
+{
+  class Coin
+  {
+    int cents;
+    static int made;
+  public:
+    using Amount = int;
+    Coin(int c) : cents(c) { ++made; }
+    friend Amount valueOf(const Coin& c) { return c.cents; }
+    friend int madeSoFar(const Coin&) { return made; }
+    friend Coin operator-(const Coin& c) { return Coin(-c.cents); }
+    friend Coin& operator+=(Coin& a, const Coin& b) { a.cents += b.cents; return a; }
+    friend int describe(const Coin&) { return 1; }
+    int twice() const { return valueOf(*this) * 2; }
+  };
+  int Coin::made = 0;
+  int describe(long) { return 2; }
+  class Gold : public Coin
+  {
+  public:
+    Gold(int c) : Coin(c) {}
+  };
+}
+template<class T>
+class Box
+{
+  T item;
+public:
+  Box(T t) : item(t) {}
+  friend Box operator+(const Box& a, const Box& b) { return Box(a.item + b.item); }
+  friend T get(const Box& b) { return b.item; }
+  T viaFriend() const { return get(*this); }
+};
+template<class T>
+T sum(const Box<T>& a, const Box<T>& b) { return get(a + b); }
+int main()
+{
+  money::Coin a(5), b(7);
+  money::Gold g(9);
+  a += b;
+  println(valueOf(a), " ", valueOf(-a), " ", a.twice(), " ", madeSoFar(a) > 0, " ", valueOf(g), " ", describe(a), " ", money::describe(3L));
+  Box<double> x(1.5), y(2.25);
+  Box<int> i(3);
+  println(get(x + y), " ", sum(x, y), " ", get(i), " ", i.viaFriend());
+  return 0;
+}

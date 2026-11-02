@@ -2675,6 +2675,107 @@ struct GlobalScope::Impl
         associatedNamespaces(a, out, depth + 1);
   }
 
+  // The friend functions defined in a class (hidden friends: static members to the compiler, the
+  // parser's DF_Static) named symbol, which no lookup finds but argument-dependent lookup through an
+  // argument of the class (or of one deriving from it, or of an instance with it as an argument).
+  // Kept per class definition and symbol; a compile server's build that changed the index makes
+  // them again (forgetMergedOverloads).
+  std::mutex hiddenFriendsMutex;
+  std::map<std::pair<const Decl*, uint32_t>, std::unique_ptr<std::vector<Entry>>> hiddenFriendSets;
+  const std::vector<Entry>* hiddenFriendsOf(ClassDecl* def, uint32_t symbol)
+  {
+    recordName(symbol); // (a hidden friend's changed name is read by name: GlobalScope::changedNameOf)
+    std::lock_guard lock(hiddenFriendsMutex);
+    auto [it, added] = hiddenFriendSets.try_emplace({def, symbol});
+    if (added)
+    {
+      std::vector<Entry> found;
+      for (Decl* m : def->members)
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Friend) && (m->flags & DF_Static) &&
+            functionSymbol(static_cast<FunctionDecl*>(m)->name) == symbol)
+          found.push_back({m, nullptr});
+      if (!found.empty())
+        it->second = std::make_unique<std::vector<Entry>>(std::move(found));
+    }
+    return it->second.get();
+  }
+
+  // The hidden friends named symbol that argument-dependent lookup finds through an argument of
+  // type t (its class, the class's bases, the classes of an instance's arguments), each set with
+  // its class's template arguments.
+  struct HiddenFriends
+  {
+    const std::vector<Entry>* entries;
+    const Ty* cls;
+  };
+  void hiddenFriends(const Ty* t, uint32_t symbol, std::vector<HiddenFriends>& out, int depth = 0)
+  {
+    if (!t || depth > 4)
+      return;
+    t = types.unqualified(types.stripRef(t));
+    while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
+      t = t->inner ? types.unqualified(t->inner) : nullptr;
+    ClassDecl* def = t && t->kind == TyKind::Class && !types.isDependent(t) ? classDefinition(t) : nullptr;
+    if (!def)
+      return;
+    if (const std::vector<Entry>* entries = hiddenFriendsOf(def, symbol))
+      if (std::none_of(out.begin(), out.end(), [&](const HiddenFriends& h) { return h.entries == entries && h.cls == t; }))
+        out.push_back({entries, t});
+    std::vector<const Ty*> bases;
+    directBases(t, def, bases);
+    for (const Ty* b : bases)
+      hiddenFriends(b, symbol, out, depth + 1);
+    for (const Ty* a : t->args)
+      hiddenFriends(a, symbol, out, depth + 1);
+  }
+
+  // The hidden friends named symbol the arguments find (hiddenFriends) as one lookup, and in subst
+  // their classes' template arguments; the classes of two found sets being instances of one template
+  // (`Box<int> == Box<long>` with Box's friend operator==), whose parameters would take two
+  // arguments, is said in conflict and nothing is found.
+  Lookup hiddenFriendLookup(uint32_t symbol, const std::vector<const Ty*>& argTypes, Subst& subst, std::string* conflict = nullptr)
+  {
+    Lookup out;
+    std::vector<HiddenFriends> sets;
+    for (const Ty* a : argTypes)
+      hiddenFriends(a, symbol, sets);
+    if (sets.empty())
+      return out;
+    for (const HiddenFriends& h : sets)
+      for (const Subst::Pair& p : substFor(h.cls).pairs)
+        if (const Ty* had = subst.find(p.param); !had)
+          subst.pairs.push_back(p);
+        else if (had != p.type)
+        {
+          if (conflict)
+            for (const HiddenFriends& other : sets)
+              if (other.cls != h.cls && substFor(other.cls).find(p.param) == had)
+              {
+                *conflict = "the friend functions " + std::string(symbols.name(symbol)) + " of two instances of one class template, " +
+                            types.toString(other.cls, &symbols) + " and " + types.toString(h.cls, &symbols) + ", are not supported in one call";
+                break;
+              }
+          subst = {};
+          return out;
+        }
+    for (const HiddenFriends& h : sets)
+    {
+      Lookup one;
+      one.found = Found::Global;
+      one.decl = h.entries->front().decl;
+      one.overloads = h.entries;
+      Scope* own = classScopeOf(h.cls);
+      for (Scope* s = own ? own->parent : nullptr; s; s = s->parent)
+        if (s->kind == ScopeKind::Namespace)
+        {
+          one.foundIn = s; // (a friend is a function of the class's namespace, which no lookup there finds)
+          break;
+        }
+      out = out.decl ? mergeOverloads(out, one) : one;
+    }
+    return out;
+  }
+
   // Two lookups' function overloads as one set (kept for the run: a lookup's overloads outlive it);
   // `a` alone when either found something other than functions.
   std::mutex mergedOverloadsMutex;
@@ -2689,6 +2790,13 @@ struct GlobalScope::Impl
       for (auto& [key, set] : mergedOverloads)
         retiredOverloads.push_back(std::move(set));
       mergedOverloads.clear();
+    }
+    {
+      std::lock_guard lock(hiddenFriendsMutex);
+      for (auto& [key, set] : hiddenFriendSets)
+        if (set)
+          retiredOverloads.push_back(std::move(set));
+      hiddenFriendSets.clear();
     }
     std::lock_guard lock(usingOverloadsMutex);
     for (auto& [key, set] : usingOverloads)
@@ -7641,6 +7749,27 @@ struct GlobalScope::Impl
   // templates: function templates too, their arguments deduced.
   FunctionDecl* constFreeFunction(uint32_t symbol, const std::vector<const Ty*>& argTypes, Scope* scope, bool templates = false)
   {
+    // The arguments' classes' friend functions are candidates too; those of a class template's
+    // instance would need its arguments, which no caller here passes on: none is chosen then.
+    Subst friendArgs;
+    Lookup friends = hiddenFriendLookup(symbol, argTypes, friendArgs);
+    if (!friendArgs.empty())
+      return nullptr;
+    auto choose = [&](const Lookup& look) -> FunctionDecl*
+    {
+      std::vector<FunctionDecl*> candidates;
+      if (look.overloads)
+      {
+        for (const Entry& e : *look.overloads)
+          if (e.decl && e.decl->kind == NodeKind::FunctionDecl && (templates || e.decl->templateParams.empty()))
+            candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+      }
+      else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && (templates || look.decl->templateParams.empty()))
+        candidates.push_back(static_cast<FunctionDecl*>(look.decl));
+      bool ambiguous = false;
+      FunctionDecl* f = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous);
+      return f && !ambiguous ? f : nullptr;
+    };
     std::vector<Scope*> places;
     for (const Ty* a : argTypes)
       if (const Ty* t = a ? types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
@@ -7654,21 +7783,11 @@ struct GlobalScope::Impl
         Lookup look;
         if (!lookupInScope(s, symbol, look, 0))
           continue;
-        std::vector<FunctionDecl*> candidates;
-        if (look.overloads)
-        {
-          for (const Entry& e : *look.overloads)
-            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && (templates || e.decl->templateParams.empty()))
-              candidates.push_back(static_cast<FunctionDecl*>(e.decl));
-        }
-        else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && (templates || look.decl->templateParams.empty()))
-          candidates.push_back(static_cast<FunctionDecl*>(look.decl));
-        bool ambiguous = false;
-        if (FunctionDecl* f = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous); f && !ambiguous)
+        if (FunctionDecl* f = choose(friends.decl && look.decl && look.decl->kind == NodeKind::FunctionDecl ? mergeOverloads(look, friends) : look))
           return f;
         break;
       }
-    return nullptr;
+    return friends.decl ? choose(friends) : nullptr;
   }
 
   // Set when constCallPlace runs a function (constArguments: a call whose result was no place is
@@ -19907,8 +20026,10 @@ struct GlobalScope::Impl
     }
 
     // l, an unqualified call's lookup, with the functions of the name that the namespaces
-    // associated with the argument types declare (Impl::associatedNamespaces) added.
-    void addArgumentDependentCandidates(Lookup& l, uint32_t symbol, const std::vector<const Ty*>& argTypes)
+    // associated with the argument types declare (Impl::associatedNamespaces) added, and the
+    // friend functions their classes define (Impl::hiddenFriendLookup), whose classes' template
+    // arguments go into friendArgs.
+    void addArgumentDependentCandidates(Lookup& l, uint32_t symbol, const std::vector<const Ty*>& argTypes, Subst& friendArgs, uint32_t token)
     {
       std::vector<Scope*> namespaces;
       for (const Ty* a : argTypes)
@@ -19922,6 +20043,24 @@ struct GlobalScope::Impl
           continue;
         l = l.found == Found::No ? found : impl.mergeOverloads(l, found);
       }
+      std::string conflict;
+      Lookup friends = impl.hiddenFriendLookup(symbol, argTypes, friendArgs, &conflict);
+      if (!conflict.empty())
+        reportHere(token, conflict);
+      if (friends.decl)
+        l = l.found == Found::No ? friends : impl.mergeOverloads(l, friends);
+    }
+
+    // An error of the code being walked: in an instance, said with the instance; in a template's
+    // own walk, left to its instances.
+    void reportHere(uint32_t token, const std::string& message)
+    {
+      if (!file || file->isImported || probing)
+        return;
+      if (activeSubst)
+        reportInInstance(token, message);
+      else if (!inGenericTemplate())
+        impl.reportCheckerError(file, token, message);
     }
 
     // Whether d is the only function of its name there (overloads: the entries found with it)
@@ -20973,6 +21112,7 @@ struct GlobalScope::Impl
           }
         }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
         if (l.found == Found::Global)
           l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
         if ((!l.decl || l.decl->kind != NodeKind::FunctionDecl) && l.found != Found::Dependent && n->name.parts.size() > 1 &&
@@ -21027,7 +21167,7 @@ struct GlobalScope::Impl
         // unless ordinary lookup found something else than namespace functions (a member, a local).
         if (n->name.parts.size() == 1 && !c->args.empty() && (l.found == Found::No || (l.found == Found::Global && l.decl && l.decl->kind == NodeKind::FunctionDecl)) &&
             !(l.found == Found::No && impl.builtinByName(n->name.parts[0].symbol)))
-          addArgumentDependentCandidates(l, n->name.parts[0].symbol, argTypesOf(c->args));
+          addArgumentDependentCandidates(l, n->name.parts[0].symbol, argTypesOf(c->args), friendArgs, n->token);
         n->resolved = l.decl;
         for (const NamePart& part : n->name.parts)
           for (Node* arg : part.templateArgs)
@@ -21100,6 +21240,8 @@ struct GlobalScope::Impl
           // `DamageTypeID::fromIndex(i)` with `using DamageTypeID = ID<DamageType, uint8_t>`: a static
           // member named through an instantiation has that instantiation's arguments.
           Subst qualifier = usingArgs;
+          for (const Subst::Pair& p : friendArgs.pairs)
+            qualifier.pairs.push_back(p); // a friend defined in an instance's class: that instance's arguments
           if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
           {
             qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
@@ -21500,7 +21642,25 @@ struct GlobalScope::Impl
         }
       }
       // Free function: look in the namespaces of both operand classes and enums and the current
-      // scope; members are not candidates here (a class's own operator== hides no free one).
+      // scope; members are not candidates here (a class's own operator== hides no free one). The
+      // operands' classes' friend operators are candidates beside them, with their classes'
+      // arguments in subst.
+      std::vector<const Ty*> argTypes{lhs};
+      if (arity == 2)
+        argTypes.push_back(rhs);
+      Subst friendArgs;
+      std::string conflict;
+      Lookup friends = impl.hiddenFriendLookup(symbol, argTypes, friendArgs, &conflict);
+      if (!conflict.empty())
+        reportHere(token, conflict);
+      auto pick = [&](const Lookup& look) -> FunctionDecl*
+      {
+        bool ambiguous;
+        FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, friendArgs.empty() ? nullptr : &friendArgs, nullptr, ambiguous);
+        if (f && (f->flags & DF_Friend) && !friendArgs.empty())
+          subst = friendArgs;
+        return f;
+      };
       std::vector<Scope*> places;
       for (const Ty* t : {l, types.stripRef(rhs)})
         if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
@@ -21516,17 +21676,14 @@ struct GlobalScope::Impl
           if (!impl.lookupInScope(s, symbol, look, 0))
             continue;
           if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
-          {
-            bool ambiguous;
-            std::vector<const Ty*> argTypes{lhs};
-            if (arity == 2)
-              argTypes.push_back(rhs);
-            if (FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, nullptr, nullptr, ambiguous))
+            if (FunctionDecl* f = pick(friends.decl ? impl.mergeOverloads(look, friends) : look))
               return f;
-          }
           break;
         }
       }
+      if (friends.decl)
+        if (FunctionDecl* f = pick(friends))
+          return f;
       if (constViolation)
       {
         // (no other operator takes it: the error, and the operator for the walk to go on with)
@@ -21583,7 +21740,7 @@ struct GlobalScope::Impl
           operands.push_back(lhsOperand ? lhsOperand : lhs);
         if (arity == 2)
           operands.push_back(rhs);
-        return returnTypeOfCall(f, isMember ? &subst : nullptr, none, nullptr, nullptr, &operands);
+        return returnTypeOfCall(f, isMember || !subst.empty() ? &subst : nullptr, none, nullptr, nullptr, &operands);
       }
       if (arity == 2)
       {
@@ -21619,7 +21776,7 @@ struct GlobalScope::Impl
               if (!isMember)
                 operands.push_back(rhs);
               operands.push_back(lhs);
-              return returnTypeOfCall(f, isMember ? &reversed : nullptr, none, nullptr, nullptr, &operands);
+              return returnTypeOfCall(f, isMember || !reversed.empty() ? &reversed : nullptr, none, nullptr, nullptr, &operands);
             }
             break;
           }
@@ -21680,7 +21837,7 @@ struct GlobalScope::Impl
       if (!f || isMember || !impl.takesEnumOperands(f, lhs, rhs))
         return nullptr;
       Span<Expr*> none;
-      return returnTypeOfCall(f, nullptr, none, nullptr);
+      return returnTypeOfCall(f, subst.empty() ? nullptr : &subst, none, nullptr);
     }
 
     // Two rules of design.md 14 on text. A string literal plus or minus an integer is C++'s pointer
@@ -24435,6 +24592,24 @@ FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::ve
 
 FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context)
 {
+  // The arguments' classes' friend functions are candidates beside the namespaces' (hiddenFriendClass
+  // gives the class instance of the one chosen).
+  Subst friendArgs;
+  Lookup friends = impl->hiddenFriendLookup(symbol, argTypes, friendArgs);
+  auto choose = [&](const Lookup& look) -> FunctionDecl*
+  {
+    std::vector<FunctionDecl*> candidates;
+    if (look.overloads)
+    {
+      for (const Entry& e : *look.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
+          candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+    }
+    else
+      candidates.push_back(static_cast<FunctionDecl*>(look.decl));
+    bool ambiguous = false;
+    return impl->chooseAmong(candidates, argTypes, friendArgs.empty() ? nullptr : &friendArgs, nullptr, ambiguous);
+  };
   std::vector<Scope*> places;
   for (const Ty* a : argTypes)
     if (const Ty* t = a ? impl->types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
@@ -24449,23 +24624,31 @@ FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*
       if (!impl->lookupInScope(s, symbol, look, 0))
         continue;
       if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
-      {
-        std::vector<FunctionDecl*> candidates;
-        if (look.overloads)
-        {
-          for (const Entry& e : *look.overloads)
-            if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
-              candidates.push_back(static_cast<FunctionDecl*>(e.decl));
-        }
-        else
-          candidates.push_back(static_cast<FunctionDecl*>(look.decl));
-        bool ambiguous = false;
-        if (FunctionDecl* f = impl->chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous))
+        if (FunctionDecl* f = choose(friends.decl ? impl->mergeOverloads(look, friends) : look))
           return f;
-      }
       break;
     }
-  return nullptr;
+  return friends.decl ? choose(friends) : nullptr;
+}
+
+const Ty* GlobalScope::hiddenFriendClass(FunctionDecl* f, const std::vector<const Ty*>& argTypes)
+{
+  if (!f || !(f->flags & DF_Friend) || !(f->flags & DF_Static) || f->name.empty())
+    return nullptr;
+  std::vector<Impl::HiddenFriends> sets;
+  uint32_t symbol = impl->functionSymbol(f->name);
+  for (const Ty* a : argTypes)
+    impl->hiddenFriends(a, symbol, sets);
+  const Ty* out = nullptr;
+  for (const Impl::HiddenFriends& h : sets)
+    for (const Entry& e : *h.entries)
+      if (e.decl == f)
+      {
+        if (out && out != h.cls)
+          return nullptr; // (two instances: the resolver said so)
+        out = h.cls;
+      }
+  return out;
 }
 
 const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->scalarConversionOf(classType); }

@@ -1,0 +1,18 @@
+// spec: a call whose arguments are of two instances of one class template finds both instances' friends of its name, whose template parameter would take two arguments: an error, not one instance's friend chosen
+// factorio: none
+// error: hidden_friends_of_two_instances_is_error.kpp:16: error: the friend functions same of two instances of one class template, Box<int32> and Box<long>, are not supported in one call
+template<class T>
+class Box
+{
+  T item;
+public:
+  Box(T t) : item(t) {}
+  friend bool same(const Box& a, const Box& b) { return a.item == b.item; }
+};
+int main()
+{
+  Box<int> i(3);
+  Box<long> l(3);
+  println(same(i, l));
+  return 0;
+}
