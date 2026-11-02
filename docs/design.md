@@ -2,8 +2,8 @@
 
 Kpp is a C++-like language with a new compiler built around one idea: **no includes at the
 deepest level of how the compiler works**, so that builds are orders of magnitude faster.
-The original proposal lives in this repository: [readme.md](../readme.md) (language changes)
-and [compilation/index.md](../compilation/index.md) (compilation model).
+The original proposal's compilation model is [compilation/index.md](../compilation/index.md); its
+language changes are in [readme.md](../readme.md), "The language", each with its state.
 
 This file records decisions that have been made. When a decision changes, update it here.
 
