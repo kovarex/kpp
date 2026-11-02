@@ -6552,85 +6552,7 @@ struct GlobalScope::Impl
           return constAssign(b, ctx, depth);
         if (auto* b = static_cast<BinaryExpr*>(e); !b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar))
           return constMemberPointerRead(b, ctx, depth);
-        auto chained = [](Expr* x) {
-          if (!x || x->kind != NodeKind::BinaryExpr)
-            return false;
-          std::optional<P> op = constOperator(static_cast<BinaryExpr*>(x)->op, static_cast<BinaryExpr*>(x)->isKeyword);
-          return op && isConstBinaryOperator(*op);
-        };
-        std::vector<BinaryExpr*> chain;
-        Expr* first = e;
-        for (; chained(first); first = static_cast<BinaryExpr*>(first)->lhs)
-          chain.push_back(static_cast<BinaryExpr*>(first));
-        if (chain.empty())
-          return std::nullopt; // an operator that computes no value of scalars (`.*`)
-        // `(DWORD)-11` from a C header, parsed as a subtraction from a parenthesized type name:
-        // the cast of the negated value.
-        const Ty* castTo = nullptr;
-        if (first && first->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(first)->inner &&
-            static_cast<ParenExpr*>(first)->inner->kind == NodeKind::NameExpr && !chain.back()->isKeyword &&
-            (P(chain.back()->op) == P::Minus || P(chain.back()->op) == P::Plus))
-        {
-          auto* name = static_cast<NameExpr*>(static_cast<ParenExpr*>(first)->inner);
-          Decl* d = name->resolved ? name->resolved : lookupQualified(name->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
-          if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
-          {
-            NamedType named{};
-            named.kind = NodeKind::NamedType;
-            named.token = name->token;
-            named.name = name->name;
-            castTo = convertType(&named, ctx, depth + 1);
-          }
-        }
-        std::optional<ConstValue> value;
-        if (castTo)
-        {
-          std::optional<ConstValue> r = constValue(chain.back()->rhs, ctx, depth + 1);
-          value = r ? constConverted(constArith().unary(P(chain.back()->op), *r), castTo) : std::nullopt;
-          chain.pop_back();
-        }
-        else
-          value = constValue(first, ctx, depth + 1);
-        bool failed = !value;
-        for (size_t i = chain.size(); i-- > 0;)
-        {
-          std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
-          // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
-          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd))
-            if (std::optional<bool> t = constTruth(*value, depth); t && *t == (*op == P::OrOr))
-            {
-              value = ConstValue::integer(*op == P::OrOr, types.boolType());
-              continue;
-            }
-          if (!op || !isConstBinaryOperator(*op))
-            return std::nullopt;
-          // After an operand that is no constant the others are still evaluated: a class's size
-          // one of them needs defers a static_assert to the code generator's layouts
-          // (`sizeof(grid) == 18 && sizeof(TileID) == 2`, layoutNeeded).
-          std::optional<ConstValue> r = constValue(chain[i]->rhs, ctx, depth + 1);
-          if (failed || !r)
-          {
-            failed = true;
-            continue;
-          }
-          // A class operand's operator runs where the operand is: an lvalue's place, a prvalue (an
-          // operator's result too) as a temporary of the full expression, destroyed when it ends.
-          ConstOperand left, right;
-          if (*op != P::Comma && (value->isObject() || r->isObject()))
-          {
-            if (i + 1 == chain.size() && !castTo)
-              left = constOperandOf(first, *value, ctx, depth);
-            else if (value->isObject() && value->type && types.unqualified(types.stripRef(value->type))->kind == TyKind::Class)
-            {
-              left.category = 0; // the previous operator's result
-              left.place = constMaterialize(*value, value->type);
-            }
-            right = constOperandOf(chain[i]->rhs, *r, ctx, depth);
-          }
-          value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth, &left, &right);
-          failed = !value;
-        }
-        return failed ? std::nullopt : value;
+        return constBinaryChain(static_cast<BinaryExpr*>(e), ctx, depth);
       }
       case NodeKind::ThrowExpr:
         constWhy() = constThrown(static_cast<ThrowExpr*>(e), ctx, depth); // (no constant: C++ rejects a throw in one)
@@ -7981,9 +7903,121 @@ struct GlobalScope::Impl
   // arithmetic; a class's member operator, a free one, or what C++20 rewrites (`a != b` as `!(a
   // == b)`, `b == a` reversed, `<` and the others by a defaulted `<=>`, `==` by memberwise
   // comparison where `=` default).
+  // Whether f returns an lvalue reference (`String& operator<<(String&, Text)`).
+  bool constReturnsLRef(FunctionDecl* f, const Subst& subst)
+  {
+    const Ty* ft = declaredTypeOf(f, subst.empty() ? nullptr : &subst, 0);
+    return ft && ft->kind == TyKind::Function && ft->inner && ft->inner->kind == TyKind::LRef;
+  }
+  // The value a call run for its reference result (ran: its outcome, place: where the result
+  // refers to) reads there; nullopt when it did not run or refers to nothing.
+  std::optional<ConstValue> constReferred(const std::optional<ConstValue>& ran, std::optional<ConstPlace>& place)
+  {
+    if (!ran || !place)
+    {
+      place.reset();
+      return std::nullopt;
+    }
+    return constRead(*place);
+  }
+
+  // A chain of binary operators (`1 + 1 + ... + 0`, `out << a << b`), evaluated down the left
+  // operands in a loop, not nested once per term. An operator returning a reference (String's
+  // `<<`) refers to an object: the next operator runs on that object, never on a copy, and place
+  // (when asked for) is where the last one's result refers to.
+  std::optional<ConstValue> constBinaryChain(BinaryExpr* e, const TypeContext& ctx, int depth, std::optional<ConstPlace>* place = nullptr)
+  {
+    auto chained = [](Expr* x) {
+      if (!x || x->kind != NodeKind::BinaryExpr)
+        return false;
+      std::optional<P> op = constOperator(static_cast<BinaryExpr*>(x)->op, static_cast<BinaryExpr*>(x)->isKeyword);
+      return op && isConstBinaryOperator(*op);
+    };
+    std::vector<BinaryExpr*> chain;
+    Expr* first = e;
+    for (; chained(first); first = static_cast<BinaryExpr*>(first)->lhs)
+      chain.push_back(static_cast<BinaryExpr*>(first));
+    if (chain.empty())
+      return std::nullopt; // an operator that computes no value of scalars (`.*`)
+    // `(DWORD)-11` from a C header, parsed as a subtraction from a parenthesized type name:
+    // the cast of the negated value.
+    const Ty* castTo = nullptr;
+    if (first && first->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(first)->inner &&
+        static_cast<ParenExpr*>(first)->inner->kind == NodeKind::NameExpr && !chain.back()->isKeyword &&
+        (P(chain.back()->op) == P::Minus || P(chain.back()->op) == P::Plus))
+    {
+      auto* name = static_cast<NameExpr*>(static_cast<ParenExpr*>(first)->inner);
+      Decl* d = name->resolved ? name->resolved : lookupQualified(name->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+      if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+      {
+        NamedType named{};
+        named.kind = NodeKind::NamedType;
+        named.token = name->token;
+        named.name = name->name;
+        castTo = convertType(&named, ctx, depth + 1);
+      }
+    }
+    std::optional<ConstValue> value;
+    std::optional<ConstPlace> returned; // the last operator's reference result, as a place
+    if (castTo)
+    {
+      std::optional<ConstValue> r = constValue(chain.back()->rhs, ctx, depth + 1);
+      value = r ? constConverted(constArith().unary(P(chain.back()->op), *r), castTo) : std::nullopt;
+      chain.pop_back();
+    }
+    else
+      value = constValue(first, ctx, depth + 1);
+    bool failed = !value;
+    for (size_t i = chain.size(); i-- > 0;)
+    {
+      std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
+      // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
+      if (!failed && op && (*op == P::OrOr || *op == P::AndAnd))
+        if (std::optional<bool> t = constTruth(*value, depth); t && *t == (*op == P::OrOr))
+        {
+          value = ConstValue::integer(*op == P::OrOr, types.boolType());
+          continue;
+        }
+      if (!op || !isConstBinaryOperator(*op))
+        return std::nullopt;
+      // After an operand that is no constant the others are still evaluated: a class's size
+      // one of them needs defers a static_assert to the code generator's layouts
+      // (`sizeof(grid) == 18 && sizeof(TileID) == 2`, layoutNeeded).
+      std::optional<ConstValue> r = constValue(chain[i]->rhs, ctx, depth + 1);
+      if (failed || !r)
+      {
+        failed = true;
+        continue;
+      }
+      // A class operand's operator runs where the operand is: an lvalue's place, a prvalue (an
+      // operator's result too) as a temporary of the full expression, destroyed when it ends.
+      ConstOperand left, right;
+      if (*op != P::Comma && (value->isObject() || r->isObject()))
+      {
+        if (i + 1 == chain.size() && !castTo)
+          left = constOperandOf(first, *value, ctx, depth);
+        else if (returned)
+          left.place = returned; // the previous operator's reference result: the object it refers to (`out << a << b`)
+        else if (value->isObject() && value->type && types.unqualified(types.stripRef(value->type))->kind == TyKind::Class)
+        {
+          left.category = 0; // the previous operator's result
+          left.place = constMaterialize(*value, value->type);
+        }
+        right = constOperandOf(chain[i]->rhs, *r, ctx, depth);
+      }
+      returned.reset();
+      value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth, &left, &right, &returned);
+      failed = !value;
+    }
+    if (place && !failed)
+      *place = returned;
+    return failed ? std::nullopt : value;
+  }
+
   struct ConstOperand; // (after ConstPlace)
   std::optional<ConstValue> constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth,
-                                              const ConstOperand* lo = nullptr, const ConstOperand* ro = nullptr)
+                                              const ConstOperand* lo = nullptr, const ConstOperand* ro = nullptr,
+                                              std::optional<ConstPlace>* returned = nullptr)
   {
     if (l.isUnset() || r.isUnset() || depth > 512)
       return std::nullopt;
@@ -8038,6 +8072,8 @@ struct GlobalScope::Impl
           {
             std::vector<std::optional<ConstPlace>> places{bo->place};
             std::vector<uint8_t> categories{bo->category};
+            if (returned && constReturnsLRef(f, subst))
+              return constReferred(constCallOn(f, subst, {b}, &self, depth + 1, ao->place ? &*ao->place : nullptr, &places, &categories, returned), *returned);
             return constCallOn(f, subst, {b}, &self, depth + 1, ao->place ? &*ao->place : nullptr, &places, &categories);
           }
           return constCallOn(f, subst, {b}, &self, depth + 1);
@@ -8049,6 +8085,8 @@ struct GlobalScope::Impl
         {
           std::vector<std::optional<ConstPlace>> places{ao->place, bo->place};
           std::vector<uint8_t> categories{ao->category, bo->category};
+          if (returned && constReturnsLRef(f, Subst{}))
+            return constReferred(constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1, nullptr, &places, &categories, returned), *returned);
           return constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1, nullptr, &places, &categories);
         }
         return constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1);
@@ -11421,6 +11459,17 @@ struct GlobalScope::Impl
       base->type = at->inner;
       base->bits = 0;
       return base;
+    }
+    if (e->kind == NodeKind::BinaryExpr && calls && e->ty && e->ty->kind == TyKind::LRef && e->ty->inner && !static_cast<BinaryExpr*>(e)->isKeyword &&
+        !isAssignmentOperator(P(static_cast<BinaryExpr*>(e)->op)))
+    {
+      // `out << a`: the object an operator's reference result refers to (String's `<<` returns out).
+      std::optional<ConstPlace> out;
+      if (!constBinaryChain(static_cast<BinaryExpr*>(e), ctx, depth + 1, &out) || !out)
+        return std::nullopt;
+      out->type = e->ty->inner;
+      out->readOnly = out->readOnly || e->ty->inner->isConst;
+      return out;
     }
     if (e->kind == NodeKind::CallExpr && calls && e->ty && e->ty->kind == TyKind::LRef && e->ty->inner && static_cast<CallExpr*>(e)->callee &&
         static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr)

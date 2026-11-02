@@ -1,0 +1,48 @@
+// spec: at compile time a String is built with `<<` as at run time: a chain appends to the String itself (each operator's String& result refers to it, never a copy), a reference can bind the result, and a message so built is what a throw carries (FormatString's checkPieces: "format: 2 {} for 1 piece") (`ab12c 5 / abcd 4`)
+extern "C" int printf(const char* format, ...);
+consteval int chainedLength()
+{
+  String s;
+  s << "ab" << 12 << 'c';
+  return int(s.size());
+}
+consteval int throughReference()
+{
+  String s;
+  String& r = s << "ab";
+  r << "cd";
+  return int(s.size());
+}
+consteval int check(int holes, int pieces)
+{
+  String message("format: ");
+  message << holes << " {} for " << pieces << StringView(pieces == 1 ? " piece" : " pieces");
+  if (holes != pieces)
+    throw LogicError(message);
+  return holes;
+}
+struct Holes
+{
+  int holes;
+  consteval implicit Holes(const char* pattern) : holes(0)
+  {
+    for (const char* p = pattern; *p != 0; ++p)
+      if (p[0] == '{' && p[1] == '}')
+        ++holes;
+  }
+  consteval void checkPieces(ContainerSize pieces) const { check(holes, int(pieces)); }
+};
+int count(Holes pattern, Text pieces) { return int(pieces.count); }
+static_assert(chainedLength() == 5);
+static_assert(throughReference() == 4);
+static_assert(check(2, 2) == 2);
+int main()
+{
+  String s;
+  s << "ab" << 12 << 'c';
+  String t;
+  String& r = t << "ab";
+  r << "cd";
+  printf("%s %d / %s %d\n", s.c_str(), chainedLength(), t.c_str(), count("{} {} {} {}", 1, 2, 3, 4));
+  return 0;
+}

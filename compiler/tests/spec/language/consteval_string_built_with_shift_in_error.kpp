@@ -1,0 +1,24 @@
+// spec: a message built with `<<` in a consteval check is the text the compile error quotes (`format: 2 {} for 1 piece`)
+// error: consteval_string_built_with_shift_in_error.kpp:23: error: Holes does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece") (consteval_string_built_with_shift_in_error.kpp:17) (design.md 14)
+struct Holes
+{
+  int holes;
+  consteval implicit Holes(const char* pattern) : holes(0)
+  {
+    for (const char* p = pattern; *p != 0; ++p)
+      if (p[0] == '{' && p[1] == '}')
+        ++holes;
+  }
+  consteval void checkPieces(ContainerSize pieces) const
+  {
+    String message("format: ");
+    message << holes << " {} for " << int(pieces) << StringView(pieces == 1 ? " piece" : " pieces");
+    if (ContainerSize(holes) != pieces)
+      throw LogicError(message);
+  }
+};
+int count(Holes pattern, Text pieces) { return int(pieces.count); }
+int main()
+{
+  return count("{} {}", 1);
+}
