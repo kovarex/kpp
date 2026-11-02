@@ -825,7 +825,9 @@ namespace
         flags += (gnu ? " -D" : " /D") + quoteArg(d);
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
-      bool flagsChanged = readText(directory / "flags.txt") != flags + cppFlags;
+      // What the objects are built with: the flags and the compiler (another toolchain's are built again).
+      std::string stamp = flags + cppFlags + "\n" + clangPath();
+      bool flagsChanged = readText(directory / "flags.txt") != stamp;
       std::vector<std::string> commands;
       std::vector<fs::path> objects, logs;
       for (size_t n = 0; n < sources.size(); ++n)
@@ -853,7 +855,8 @@ namespace
       fs::path lib = root / "build" / "clib" / (c.name + ".lib");
       if (!commands.empty() || !fs::exists(lib, ec))
       {
-        printf("kpp: %s: compiling %zu of %zu C/C++ files\n", c.name.c_str(), commands.size(), sources.size());
+        printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), commands.size(), sources.size(), clangPath().c_str(),
+               gnu ? "the bundled toolchain, Windows' GNU dialect" : "clang-cl, MSVC's dialect");
         std::atomic<size_t> next = 0;
         std::atomic<bool> failed = false;
         std::vector<std::thread> threads;
@@ -880,7 +883,7 @@ namespace
         }
         FILE* file = _wfopen((directory / "flags.txt").c_str(), L"wb");
         if (file)
-          fwrite((flags + cppFlags).data(), 1, (flags + cppFlags).size(), file), fclose(file);
+          fwrite(stamp.data(), 1, stamp.size(), file), fclose(file);
         std::string response;
         for (const fs::path& object : objects)
           response += quoteArg(object.string()) + "\n";
@@ -922,6 +925,18 @@ namespace
     return true;
   }
 
+  // A program's --toolchain (source.hpp's selectToolchain): the last of build.kpp's arguments and the
+  // command line's, which come after them; empty for the default.
+  std::string toolchainOf(const Program& p, const Request& request)
+  {
+    std::string toolchain;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+        if ((*list)[i] == "--toolchain")
+          toolchain = (*list)[i + 1];
+    return toolchain;
+  }
+
   // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
   // in the order the project, the configuration, the target and configure() set them, so that the
   // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
@@ -935,12 +950,8 @@ namespace
       args.push_back("--debug-info");
     args.push_back(p.optimize ? "--optimize" : "--no-optimize");
     // An unoptimized build links incrementally with Visual Studio's link.exe; the bundled toolchain's
-    // lld-link links whole (the last --toolchain of build.kpp's and the command line's decides).
-    std::string toolchain;
-    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
-      for (size_t i = 0; i + 1 < list->size(); ++i)
-        if ((*list)[i] == "--toolchain")
-          toolchain = (*list)[i + 1];
+    // lld links whole.
+    std::string toolchain = toolchainOf(p, request);
     if (!p.optimize && (toolchain.empty() ? !bundledToolchain() : toolchain != "bundled"))
       args.push_back("--incremental-link");
     for (const std::string& c : p.configs)
@@ -983,6 +994,13 @@ namespace
   {
     fs::path exe = exeOf(root, p);
     std::error_code ec;
+    // The program's toolchain, its C libraries' too (a game that links Visual Studio's C++ libraries
+    // asks for --toolchain msvc): one that is not there is said here, before anything compiles.
+    if (std::string error = selectToolchain(compilerPath(), toolchainOf(p, request)); !error.empty())
+    {
+      fprintf(stderr, "error: %s (%s): %s\n", p.name.c_str(), p.configuration.c_str(), error.c_str());
+      return 1;
+    }
     fs::create_directories(exe.parent_path(), ec);
     if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, p.configuration).c_str()) != 0)
     {

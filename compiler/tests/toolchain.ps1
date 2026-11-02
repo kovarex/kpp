@@ -88,6 +88,15 @@ try
   $r = Probe $Kppc 'gnuvs' @('--target', 'windows-gnu')
   if ($r.code -ne 2 -or $r.report -notmatch 'needs the bundled toolchain') { Fail "--target windows-gnu with Visual Studio's clang was not an error: exit $($r.code), $($r.report)" }
 
+  # The projects are built as from an MSYS2 shell (MSYSTEM, another clang first on PATH: here a
+  # program that is no clang), which must change nothing: kpp's toolchain is its own or Visual Studio's.
+  $decoy = Join-Path $work 'decoy'
+  New-Item -ItemType Directory -Force $decoy | Out-Null
+  Copy-Item "$env:SystemRoot\System32\where.exe" "$decoy\clang.exe"
+  $savedPath = $env:PATH
+  $env:PATH = "$decoy;$env:PATH"
+  $env:MSYSTEM = 'UCRT64'
+
   # A project with a C library (a C and a C++ source, built with clang's own flags and archived by
   # llvm-ar): its debug build links with lld, whole (no --incremental-link), Windows' DLLs alone.
   $project = Join-Path $work 'hello'
@@ -97,7 +106,7 @@ try
   {
     $null = Run "$inst\kpp.exe" @('new')
     New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
-    Set-Content -Encoding ascii 'libs\plus\plus.c' "int plus_one(int value) { return value + PLUS; }"
+    Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS; }"
     Set-Content -Encoding ascii 'libs\plus\twice.cpp' "extern `"C`" int twice(int value) { return value * 2; }"
     Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nextern `"C`" int twice(int value);`nint main()`n{`n  println(`"Hello from Kpp `", twice(plus_one(20)));`n  return 0;`n}"
     Set-Content -Encoding ascii 'build.kpp' @'
@@ -123,6 +132,70 @@ void build(Project& project)
     }
   }
   finally { Pop-Location }
+
+  # A project whose build.kpp asks for Visual Studio's toolchain (as the game does, which links
+  # Visual Studio's C++ libraries): its C library is built by it too (MSVC's dialect, _MSC_VER), not
+  # by the installation's own.
+  $vsProject = Join-Path $work 'withvs'
+  New-Item -ItemType Directory -Force "$vsProject\libs\plus" | Out-Null
+  Push-Location $vsProject
+  try
+  {
+    $null = Run "$inst\kpp.exe" @('new')
+    Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifndef _MSC_VER`n#error --toolchain msvc builds the C libraries with Visual Studio's clang`n#endif`nint plus_one(int value) { return value + 1; }"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nint main()`n{`n  println(`"Hello from Kpp `", plus_one(41));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'build.kpp' @'
+void build(Project& project)
+{
+  CLibrary& plus = project.cLibrary("plus");
+  plus.source("libs/plus");
+  Executable& withvs = project.executable("withvs", {"src"});
+  withvs.link("plus");
+  for (StringView option : {"--toolchain", "msvc"})
+    withvs.argument(option);
+}
+'@
+    $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from Kpp 42') { Fail "a build.kpp asking for --toolchain msvc did not build its C library with it: $($run.text)" }
+    # The same asked for on the command line instead (kpp passes --toolchain and its value on).
+    $withArguments = Get-Content -Raw 'build.kpp'
+    Set-Content -Encoding ascii 'build.kpp' ($withArguments -replace '(?s)  for \(StringView option.*?withvs\.argument\(option\);\r?\n', '')
+    cmd /c rd /s /q build
+    $run = Run "$inst\kpp.exe" @('--no-server', '--toolchain', 'msvc', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from Kpp 42') { Fail "kpp --toolchain msvc did not build the C library with it: $($run.text)" }
+    Set-Content -Encoding ascii 'build.kpp' $withArguments
+  }
+  finally { Pop-Location }
+
+  # That project where Visual Studio lacks its Clang component (kovarex's other machine), and where
+  # there is no Visual Studio: kpp stops at once and says what to install, before any C file compiles
+  # (KPP_VSWHERE: a vswhere that answers so).
+  $noClang = Join-Path $work 'vswhere-noclang.cmd'
+  Set-Content -Encoding ascii $noClang "@echo off`r`necho %* | %SystemRoot%\System32\findstr.exe /c:`"-requires`" >nul && exit /b 0`r`necho C:\Program Files\Microsoft Visual Studio\2022\Community"
+  $noVs = Join-Path $work 'vswhere-none.cmd'
+  Set-Content -Encoding ascii $noVs "@echo off`r`nexit /b 0"
+  Push-Location $vsProject
+  try
+  {
+    foreach ($case in @(@($noClang, 'C\+\+ Clang Compiler for Windows.*does not have: Visual Studio Installer > Modify > Individual components'),
+                        @($noVs, 'none is installed: install it with "Desktop development with C\+\+"')))
+    {
+      $env:KPP_VSWHERE = $case[0]
+      if (Test-Path build) { cmd /c rd /s /q build }
+      $run = Run "$inst\kpp.exe" @('--no-server')
+      if ($run.exit -eq 0 -or $run.text -notmatch $case[1] -or $run.text -match 'compiling') { Fail "--toolchain msvc without Visual Studio's clang ($([IO.Path]::GetFileName($case[0]))): exit $($run.exit), $($run.text)" }
+    }
+    # The repository's kppc (no toolchain of its own) without Visual Studio's clang: the same, said for it.
+    $r = Probe $Kppc 'novs' @()
+    if ($r.code -ne 2 -or $r.report -notmatch 'has no toolchain of its own.*none is installed') { Fail "a kppc without a toolchain and without Visual Studio: exit $($r.code), $($r.report)" }
+  }
+  finally
+  {
+    Pop-Location
+    Remove-Item Env:KPP_VSWHERE -ErrorAction SilentlyContinue
+  }
+  $env:PATH = $savedPath
+  Remove-Item Env:MSYSTEM -ErrorAction SilentlyContinue
 }
 finally
 {

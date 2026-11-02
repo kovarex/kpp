@@ -1,6 +1,7 @@
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 #include <cstdio>
@@ -140,6 +141,7 @@ namespace
   std::filesystem::path bundledClang(const std::filesystem::path& compiler) { return compiler.parent_path() / "bin" / "clang.exe"; }
 
   std::string visualStudioClang();
+  std::string visualStudioMissing();
 }
 
 std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain)
@@ -158,16 +160,21 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
   else if (toolchain == "msvc")
   {
     chosenClang = visualStudioClang();
-    if (!std::filesystem::exists(chosenClang, ec))
-      return "--toolchain msvc: no Visual Studio with its Clang component (\"C++ Clang Compiler for Windows\") was found";
+    if (chosenClang.empty())
+      return "--toolchain msvc " + visualStudioMissing();
   }
   else if (!toolchain.empty())
     return "--toolchain takes bundled or msvc, not '" + toolchain + "'";
-  else if (!getenv("KPP_CLANG") && std::filesystem::exists(bundledClang(compiler), ec))
+  else if (getenv("KPP_CLANG"))
+    ;
+  else if (std::filesystem::exists(bundledClang(compiler), ec))
   {
     chosenClang = bundledClang(compiler).string();
     chosenBundled = true;
   }
+  else if (visualStudioClang().empty())
+    return "this kpp has no toolchain of its own (" + bundledClang(compiler).parent_path().string() + "), and building with Visual Studio's " +
+           visualStudioMissing();
   return "";
 }
 
@@ -193,25 +200,53 @@ std::string clangPath()
 
 namespace
 {
+// vswhere's first line for these arguments: the Visual Studio installer's own (KPP_VSWHERE names
+// another, tests\toolchain.ps1's one that finds nothing).
+std::string vswhere(const std::string& arguments)
+{
+  const char* own = getenv("KPP_VSWHERE");
+  std::string program = own ? own : "%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe";
+  FILE* pipe = _popen(("\"\"" + program + "\" " + arguments + " 2>nul\"").c_str(), "r");
+  if (!pipe)
+    return "";
+  char line[1024] = {};
+  bool read = fgets(line, sizeof(line), pipe) != nullptr;
+  _pclose(pipe);
+  std::string out = read ? line : "";
+  while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
+    out.pop_back();
+  return out;
+}
+
+// The clang of the newest Visual Studio with its Clang component, any edition; empty when there is
+// none (never another one guessed in its place). Asked once per vswhere.
 std::string visualStudioClang()
 {
-  static const std::string found = []
+  static std::mutex mutex;
+  static std::map<std::string, std::string> found;
+  const char* own = getenv("KPP_VSWHERE");
+  std::lock_guard lock(mutex);
+  auto [it, added] = found.try_emplace(own ? own : "");
+  if (added)
   {
-    std::string fallback = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe";
-    FILE* pipe = _popen("\"\"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * "
-                        "-requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath 2>nul\"", "r");
-    if (!pipe)
-      return fallback;
-    char line[1024] = {};
-    bool read = fgets(line, sizeof(line), pipe) != nullptr;
-    _pclose(pipe);
-    std::string installation = read ? line : "";
-    while (!installation.empty() && (installation.back() == '\n' || installation.back() == '\r'))
-      installation.pop_back();
+    std::string installation = vswhere("-latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath");
     std::error_code ec;
     std::filesystem::path clang = std::filesystem::path(installation) / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang.exe";
-    return !installation.empty() && std::filesystem::exists(clang, ec) ? clang.string() : fallback;
-  }();
-  return found;
+    if (!installation.empty() && std::filesystem::exists(clang, ec))
+      it->second = clang.string();
+  }
+  return it->second;
+}
+
+// What a build that needs Visual Studio's clang lacks, and what to install (the end of a sentence
+// that names the build).
+std::string visualStudioMissing()
+{
+  std::string installation = vswhere("-latest -products * -property installationPath");
+  if (!installation.empty())
+    return "needs Visual Studio's \"C++ Clang Compiler for Windows\" (with \"MSVC v143 - VS 2022 C++ x64/x86 build tools\" and a Windows "
+           "SDK), which " + installation + " does not have: Visual Studio Installer > Modify > Individual components";
+  return "needs Visual Studio 2022 or its Build Tools, and none is installed: install it with \"Desktop development with C++\" and, "
+         "under Individual components, \"C++ Clang Compiler for Windows\"";
 }
 }
