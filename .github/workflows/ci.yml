@@ -4,8 +4,9 @@
 # --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
 # needs C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers
 # the game). A green run on master publishes the package (zip, installer, VS Code extension) as the
-# rolling prerelease "latest", which factorio-in-kpp's CI downloads; a green nightly run also publishes
-# it as the numbered prerelease v0.1.<date> (kovarex, 2026-11-02). release.yml stays for releases by hand.
+# rolling prerelease "dev", which factorio-in-kpp's CI downloads; a green nightly run, or one started by
+# hand, publishes it as the numbered full release v0.1.<date>, GitHub's "Latest" (releases/latest and
+# the repository's sidebar; kovarex, 2026-11-02). release.yml stays for releases by hand.
 name: ci
 
 on:
@@ -20,7 +21,7 @@ permissions:
   contents: write
 
 # One run at a time per trigger and branch. A push run that has started finishes, so a green one
-# publishes "latest"; only one more waits, the newest push's (GitHub cancels an older waiting run).
+# publishes "dev"; only one more waits, the newest push's (GitHub cancels an older waiting run).
 # On 2026-11-01 almost every push run was cancelled by the next push before it could publish
 # (kovarex had chosen cancelling on 2026-10-31; the coordinator changed it on 2026-11-02). A pull
 # request's newer push still cancels its older run. The nightly and hand-started runs have groups of
@@ -136,14 +137,15 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --debug-info
 
-      # The package's version: the nightly run's is a numbered release, 0.1.<date> (UTC), and it is
-      # also published under its own tag; any other run's is 0.1.0-ci.<run> (semver, which vsce needs).
+      # The package's version: the nightly run's, or one started by hand, is a numbered release,
+      # 0.1.<date> (UTC), also published under its own tag (a second run on the same day replaces it);
+      # a push run's is 0.1.0-ci.<run> (semver, which vsce needs).
       - name: Version
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = if ('${{ github.event_name }}' -eq 'schedule') { '0.1.' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { '0.1.0-ci.${{ github.run_number }}' }
+          $version = if ('${{ github.event_name }}' -in 'schedule', 'workflow_dispatch') { '0.1.' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { '0.1.0-ci.${{ github.run_number }}' }
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "version $version"
 
@@ -165,11 +167,11 @@ jobs:
           if (-not (Test-Path "build\release\kpp-$env:KPP_VERSION-setup.exe")) { throw 'no installer' }
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
 
-      # The package, through tools/release/publish.ps1: the forge's rolling prerelease "latest", replaced
+      # The package, through tools/release/publish.ps1: the forge's rolling prerelease "dev", replaced
       # at this commit through the forge's API (GitHub's, or Forgejo's when github.api_url ends in
       # /api/v1), and kpp.net's kpp/releases/<version>/ with kpp/latest.json, which installers and
       # factorio-in-kpp's CI read (only with KPP_NET_SSH_KEY).
-      - name: Publish latest
+      - name: Publish dev
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         env:
@@ -179,23 +181,39 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $v = $env:KPP_VERSION
-          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag latest -Commit "${{ github.sha }}" -Prerelease `
+          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag dev -Commit "${{ github.sha }}" -Prerelease -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" `
-            -Title "Kpp latest ($v)" `
+            -Title "Kpp dev ($v)" `
             -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs Visual Studio 2022 with C++ Clang Compiler for Windows. kpp.vsix is the VS Code extension." `
             -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp.vsix"
 
-      # The nightly run's package again, as the numbered prerelease v0.1.<date> on the forge (kpp.net
-      # already has it under releases/<version>/ from the step above). No second build or package.
+      # The nightly (or hand-started) run's package again, as the numbered full release v0.1.<date>,
+      # GitHub's "Latest" (kpp.net already has it under releases/<version>/ from the step above). No
+      # second build or package.
+      - name: Retire the old "latest" prerelease
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        shell: powershell
+        env:
+          KPP_FORGE_TOKEN: ${{ github.token }}
+        run: |
+          # The rolling prerelease was "latest" until 2026-11-02, a name GitHub's own "Latest" made
+          # confusing; it is "dev" now. Deletes the old release and tag when they are still there
+          # (a step to remove once they are gone).
+          $headers = @{ Authorization = "Bearer $env:KPP_FORGE_TOKEN"; Accept = 'application/vnd.github+json' }
+          $api = "${{ github.api_url }}/repos/${{ github.repository }}"
+          try { $old = Invoke-RestMethod -Headers $headers "$api/releases/tags/latest" } catch { $old = $null }
+          if ($old) { Invoke-RestMethod -Method DELETE -Headers $headers "$api/releases/$($old.id)" | Out-Null; 'deleted the release latest' }
+          try { Invoke-RestMethod -Method DELETE -Headers $headers "$api/git/refs/tags/latest" | Out-Null; 'deleted the tag latest' } catch { 'no tag latest' }
+
       - name: Publish numbered
-        if: github.event_name == 'schedule' && github.ref == 'refs/heads/master'
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
         shell: powershell
         env:
           KPP_FORGE_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           $v = $env:KPP_VERSION
-          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag "v$v" -Commit "${{ github.sha }}" -Prerelease `
+          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag "v$v" -Commit "${{ github.sha }}" -MakeLatest true `
             -Version $v -Title "Kpp $v" `
-            -Notes "The nightly build of ${{ github.sha }} (ci run ${{ github.run_number }}), every test green, including the --release and --debug-info spec. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs Visual Studio 2022 with C++ Clang Compiler for Windows. kpp.vsix is the VS Code extension." `
+            -Notes "Built from ${{ github.sha }} (ci run ${{ github.run_number }}), every test green, including the --release and --debug-info spec. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs Visual Studio 2022 with C++ Clang Compiler for Windows. kpp.vsix is the VS Code extension." `
             -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp.vsix"

@@ -15,7 +15,9 @@
 #   instead and nothing else is written. Over OpenSSH's ssh and scp, which Windows has (rsync it has
 #   not); KPP_NET_KNOWN_HOSTS holds the server's host key line.
 #   powershell -File tools\release\publish.ps1 -Files kpp-0.1.0-ci.1.zip -Commit SHA -Version 0.1.0-ci.1
-#     -ApiUrl URL -Repository owner/name -Tag latest -Title T -Notes N -Prerelease -KppNet user@host
+#     -ApiUrl URL -Repository owner/name -Tag dev -Title T -Notes N -Prerelease -KppNet user@host
+# -MakeLatest true makes a full release GitHub's "Latest" (releases/latest, the repository's sidebar);
+# false keeps it from becoming that. A prerelease never is.
 #   powershell -File tools\release\publish.ps1 -Mirror -KppNet user@host -Files SDL3-devel-3.4.18-VC.zip
 param(
   [Parameter(Mandatory)][string[]]$Files,
@@ -27,6 +29,7 @@ param(
   [string]$Title = '',
   [string]$Notes = '',
   [switch]$Prerelease,
+  [ValidateSet('', 'true', 'false')][string]$MakeLatest = '',
   [ValidateSet('', 'github', 'forgejo')][string]$Forge = '',
   [string]$KppNet = '',
   [string]$Registry = '/home/public/registry',
@@ -93,7 +96,9 @@ function PublishForge {
     }
     foreach ($a in $old.assets) { Api DELETE "/releases/assets/$($a.id)" | Out-Null; Write-Output "forge: deleted old $($a.name)" }
     foreach ($a in $added) { Api PATCH "/releases/assets/$($a.asset.id)" @{ name = $a.name } | Out-Null }
-    Api PATCH "/releases/$($old.id)" @{ name = $Title; body = $Notes; prerelease = [bool]$Prerelease } | Out-Null
+    $edit = @{ name = $Title; body = $Notes; prerelease = [bool]$Prerelease }
+    if ($MakeLatest) { $edit.make_latest = $MakeLatest }
+    Api PATCH "/releases/$($old.id)" $edit | Out-Null
     Write-Output "forge: updated release $($old.id) ($Tag at $Commit)"
     return
   }
@@ -103,7 +108,9 @@ function PublishForge {
   $tagPath = if ($forge -eq 'github') { "/git/refs/tags/$Tag" } else { "/tags/$Tag" }
   try { Api DELETE $tagPath | Out-Null; Write-Output "forge: deleted tag $Tag" } catch { if ((Status $_.Exception) -notin 404, 422) { throw } }
 
-  try { $release = Api POST '/releases' @{ tag_name = $Tag; target_commitish = $Commit; name = $Title; body = $Notes; prerelease = [bool]$Prerelease; draft = $false } }
+  $create = @{ tag_name = $Tag; target_commitish = $Commit; name = $Title; body = $Notes; prerelease = [bool]$Prerelease; draft = $false }
+  if ($MakeLatest -and $forge -eq 'github') { $create.make_latest = $MakeLatest }
+  try { $release = Api POST '/releases' $create }
   catch { Refused $_.Exception "creating release $Tag" }
   Write-Output "forge: created release $($release.id) ($Tag at $Commit)"
   foreach ($f in $Files) {
