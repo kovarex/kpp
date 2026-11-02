@@ -235,6 +235,15 @@ replacements, in the order of how much code they remove:
    statement scope on any constant, and at namespace and class scope on conditions of config
    constants and literals (the parser evaluates those, so the other branch is never parsed);
    `requires <condition>;` at the top of a file. `for constexpr` and type lists: not yet.
+   **Discarded branches (2026-11-02, kovarex's decision for the converted game's DEBUG and
+   release code, `if constexpr (config::debug) { ... } else { ... }`).** In a function body the
+   branch a constant condition discards is not checked, in a function that is no template as in a
+   template's instance: it may name what only the other configuration declares (a member, a
+   function, a type), and nothing in it (a local class, a lambda, a static_assert, a call that
+   would instantiate) is checked or emitted. It must still parse. (C++ checks a discarded
+   statement outside templates; kpp does not, so that one source holds both configurations.) A
+   conversion's resolve of the C++ walks both branches, as C++ does (the converter rewrites
+   both). Spec language/discarded_branch_in_plain_function.
 5. Typed unions (`union enum`, section 6).
 6. Real enums with `str()`, `fromStr()`, `count` and iteration (section 6). Done 2026-10-24
    except `fromStr()`, see 8.4.

@@ -1873,6 +1873,7 @@ namespace
     build.global = std::make_unique<GlobalScope>(symbols);
     GlobalScope& global = *build.global;
     global.setLP64(!options.target.windows()); // (long, wchar_t, printf's %ld; docs/design.md, "Targets and hosts")
+    global.setConverting(!options.convertDir.empty());
     for (size_t begin = 0; begin < options.whyAt.size();)
     {
       size_t end = std::min(options.whyAt.find(',', begin), options.whyAt.size());

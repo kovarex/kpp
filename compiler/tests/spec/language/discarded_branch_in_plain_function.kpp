@@ -1,0 +1,39 @@
+// spec: the discarded branch of an `if constexpr` with a constant condition in a function that is no template (`if constexpr (config::debug)` in a release build) is not checked, as a template instance's is not: it may name what only the other configuration declares (a member, a function, a type), in a member function and a free one, with a local class, a lambda and a static_assert in it; its calls instantiate nothing and codegen emits only the taken branch
+// factorio: the converter keeps the game's DEBUG and release code as `if constexpr (config::debug) { ... } else { ... }` (kovarex, 2026-11-02): 273 cases in function bodies name debug-only members
+// kppc: --release
+class Tracker
+{
+public:
+  int count = 0;
+  void bump()
+  {
+    if constexpr (config::debug)
+      this->debugOnlyCounter += 1;
+    else
+      ++this->count;
+  }
+};
+template<class T>
+T debugTwice(T v) { return v.debugOnlyMember * 2; }
+int work(Tracker& t)
+{
+  if constexpr (!config::debug)
+  {
+    t.bump();
+    t.bump();
+    return t.count;
+  }
+  else
+  {
+    struct Local { int f() { return debugOnlyFunction(); } };
+    auto l = [&]() { return debugOnlyFunction() + t.debugOnlyCounter; };
+    static_assert(sizeof(DebugOnlyType) > 0);
+    return Local().f() + l() + debugTwice(t) + undeclaredThing;
+  }
+}
+int main()
+{
+  Tracker t;
+  println(work(t), " ", config::debug);
+  return 0;
+}

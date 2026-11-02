@@ -848,6 +848,7 @@ struct GlobalScope::Impl
   std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceNameErrors;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
+  bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked
   bool cLong64 = false;      // GlobalScope::setCLong64: the target's C long is 64 bits (printf's %ld)
   bool emitted(const FunctionDecl* f) const { return codeGenerated && emittedFunctions.count(f); }
   std::atomic<size_t> scopes{1};
@@ -23120,11 +23121,14 @@ struct GlobalScope::Impl
             break;
           }
           walkNode(i->cond);
-          if (i->isConstexpr && activeSubst && i->cond && uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) &&
+          // In an instantiation, and in a function that is no template (`if constexpr (config::debug)`,
+          // whose discarded branch names what only the other configuration declares: design.md
+          // 7.4, discarded branches); a template's own walk leaves both to its instances.
+          if (i->isConstexpr && (activeSubst || (!inGenericTemplate() && !impl.converting)) && i->cond && uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) &&
               uint8_t(i->cond->kind) >= uint8_t(NodeKind::NameExpr))
             if (std::optional<bool> known = impl.constCondition(static_cast<Expr*>(i->cond), ctx(), 0))
             {
-              // if constexpr in an instantiation: the discarded branch is not checked (nor are
+              // if constexpr with a known condition: the discarded branch is not checked (nor are
               // its calls instantiated), as in C++.  Store the result so codegen can read it
               // without re-evaluating (codegen's TypeContext lacks function-body locals).
               i->constexprKnown = int8_t(*known ? 1 : 0);
@@ -24530,6 +24534,8 @@ void GlobalScope::setCodeGenerated(bool generated)
   std::lock_guard lock(impl->checkerErrorsMutex);
   impl->codeGenerated = generated;
 }
+
+void GlobalScope::setConverting(bool converting) { impl->converting = converting; }
 
 void GlobalScope::setLP64(bool lp64)
 {

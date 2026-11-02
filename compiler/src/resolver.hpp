@@ -261,6 +261,9 @@ public:
   // and hosts"): `long` is 64 bits and `wchar_t` (with L"..." and L'x') 32, printf's `%ld` takes 64
   // bits, and MSVC's lengths (`%I64d`) are no C library's there. Before anything is resolved.
   void setLP64(bool lp64);
+  // A conversion's resolve (kppc --convert): both branches of an `if constexpr` in a function that is no
+  // template are walked, as C++ checks them (the converter rewrites both); a build walks the taken one.
+  void setConverting(bool converting);
   // Whether a checker error at a place in the file at path was reported outside any unit (the
   // index's, a class instance's static_assert): walking the file again would not take it back.
   bool unitlessErrorIn(const std::string& path);
