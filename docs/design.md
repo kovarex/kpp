@@ -878,9 +878,8 @@ unscoped if they wanted."
   they become libraries.
 
 Owners: thread A lookup and the errors; thread E `unscoped` and the qualifier in build.kpp's
-description (the description, `kpp options` and the language server's data are done; kpp passes
-each used library's roots as kppc's `--library-root NAME DIR` or `--unscoped-library-root NAME DIR`
-once thread A's lookup parses them, build.md "Library scopes"); thread C the stdlib marked unscoped and the converter's qualification; thread I the
+description (done: kpp passes each used library's roots as kppc's `--library-root NAME DIR` or
+`--unscoped-library-root NAME DIR`, build.md "Library scopes"); thread C the stdlib marked unscoped and the converter's qualification; thread I the
 registry's docs. This supersedes the "distinct names" answer below for libraries; the package tree
 for browsing stays as proposed.
 

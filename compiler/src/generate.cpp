@@ -399,6 +399,15 @@ int generateProjectFiles(int argc, char** argv)
     }
     else if (arg == "--exe" && i + 1 < argc)
       g.exe = argv[++i];
+    // A Kpp library's root (design.md 16): its files are the project's too, the root absolute.
+    else if ((arg == "--library-root" || arg == "--unscoped-library-root") && i + 2 < argc)
+    {
+      g.roots.push_back(argv[i + 2]);
+      g.arguments.push_back(arg);
+      g.arguments.push_back(argv[i + 1]);
+      g.arguments.push_back(fs::absolute(argv[i + 2]).lexically_normal().string());
+      i += 2;
+    }
     // The configurations' own options, and the ones the project files add themselves.
     else if (arg == "--release" || arg == "--debug-info" || arg == "--incremental-link" || arg == "--server" ||
              arg == "--msvc-diagnostics" || arg == "--quiet")

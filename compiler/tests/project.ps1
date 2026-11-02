@@ -93,7 +93,7 @@ try
 {
   $appBuild = "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n  project.configuration(`"release`").config(`"greet::suffix`", `".`");`n}"
   Set-Content 'build.kpp' $appBuild
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greeting(`"app`"));`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greet::greeting(`"app`"));`n  return 0;`n}"
   $greet = @'
 void build(Project& project)
 {
@@ -115,6 +115,11 @@ void build(Project& project)
   $output = Kpp @('--no-server')
   $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
   if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
+  # greet is scoped: a bare greeting() from the program is an error; text is unscoped (shout bare in greet).
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greeting(`"app`"));`n  return 0;`n}"
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'did you mean greet::greeting') { Fail "a scoped library's name used bare: exit $code`n$output" }
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greet::greeting(`"app`"));`n  return 0;`n}"
   foreach ($case in @(@(@('release'), 'hello! app.'), @(@('--config', 'greet::suffix=?'), 'hello! app?')))
   {
     $output = Kpp ($case[0] + @('--no-server', '--run'))

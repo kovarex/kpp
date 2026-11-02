@@ -931,17 +931,16 @@ namespace
           args.push_back("--lib"), args.push_back(file.string());
     for (const std::string& e : p.excluded)
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
+    // The Kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
+    // kpp --test takes what follows it as the sources.
+    for (const ProjectLibrary& l : p.kppLibraries)
+      for (const std::string& r : l.roots)
+        args.push_back(l.unscoped ? "--unscoped-library-root" : "--library-root"), args.push_back(l.name), args.push_back(r);
     args.insert(args.end(), request.passed.begin(), request.passed.end());
     args.push_back("--exe");
     args.push_back(exeOf(root, p).string());
     for (const std::string& r : p.roots)
       args.push_back(rooted(root, r).string());
-    // The Kpp libraries it uses, their roots after its own. Their names and scopes (design.md 16) are
-    // not passed yet: kppc gets --library-root NAME DIR and --unscoped-library-root NAME DIR with
-    // thread A's lookup, and until then a scoped library's names are bare (build.md, "Library scopes").
-    for (const ProjectLibrary& l : p.kppLibraries)
-      for (const std::string& r : l.roots)
-        args.push_back(r);
     return args;
   }
 

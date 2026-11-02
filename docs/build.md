@@ -261,9 +261,8 @@ void build(Project& project)
      builds and tests on its own;
   3. later, the registry; now a missing library is an error naming where it looked.
 - **What kpp does with it:** it describes the library's build.kpp (the same configuration and
-  `--set` settings), checks the version and minimumKpp, adds its roots to the executable's (as the
-  library's, with its scope, once kppc has the lookup: "Library scopes" below), and does the same
-  for the libraries it uses, depth first. One name in two directories is an error: a
+  `--set` settings), checks the version and minimumKpp, gives kppc its roots as the library's, with
+  its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. One name in two directories is an error: a
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.
@@ -357,21 +356,19 @@ util.unscoped = true;                       // its names are bare everywhere, as
   shows it on the library's page.
 - **Adding a scoped library never changes existing code's meaning.** There is no per-file
   `using`: a name means the same in every file.
-- **What kpp will give kppc** (agreed with thread A; passed once kppc has the lookup, never
-  earlier, so that no build treats a scoped library as unscoped by accepting the option): per root of
-  each library a cell uses, in resolveUses' order, `--library-root NAME DIR` (scoped) or
-  `--unscoped-library-root NAME DIR`; the program's own roots stay plain arguments. A library's own
-  tests (`kpp --test` in its directory) build its roots and test roots as the program, so its names
-  are bare there; the libraries it uses come as library roots. kpp keeps each cell's libraries with
-  their scopes now (`Program::kppLibraries`, project.cpp) and passes their roots as plain roots
-  until then. Visual Studio's project lists the libraries' files too.
+- **What kpp gives kppc,** per root of each library a cell uses, in resolveUses' order:
+  `--library-root NAME DIR` (scoped) or `--unscoped-library-root NAME DIR` (kppc's options, thread
+  A's lookup); the program's own roots stay plain arguments, and the stdlib, which kppc adds itself,
+  is unscoped. A library's own tests (`kpp --test` in its directory) build its roots and test roots
+  as the program, so its names are bare there; the libraries it uses come as library roots. Visual
+  Studio's project lists the libraries' files too. Tested by tests/project.ps1 (a bare use of a
+  scoped library's function is "did you mean greet::greeting").
 - **`kpp options`** lists each cell's libraries, `library zlib, scoped: zlib::NAME` or `library
   util, unscoped: its names are bare`, before their options; the language server gets the same
   (`ProjectCell::libraries`, project.hpp; `libraries` in `kpp/cells`, editors.md).
-- **Not yet:** the lookup (thread A, with the two options' parsing in kppc). Until it lands, a
-  scoped library's names are still bare and `zlib::compress` does not resolve (the owners:
-  design.md 16). Converted C libraries (zlib, ogg, ...) are scoped by their names, with the
-  converter qualifying the game's calls (thread C).
+- **Not yet:** the converted C libraries (zlib, ogg, ...) are still roots of the game in
+  factorio-in-kpp's build.kpp, so their names are bare; each becomes a scoped library of its name,
+  with the converter qualifying the game's calls (thread C).
 
 ### C and C++ libraries (proposed 2026-10-31, not implemented)
 
