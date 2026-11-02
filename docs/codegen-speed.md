@@ -18,6 +18,11 @@ LLVM inside kppc, as b1 (LLVM as a library, our own scheduling) and b2 (LLVM cha
   Defining each constant once cuts clang's wall time by 20% (3.70 -> 2.95 s), the objects in half
   (475 -> 260 MB), and the full link by 36% (1.67 -> 1.07 s). It needs no LLVM integration and is
   the cheapest step.
+- **967 MB of IR is not abnormal for Factorio** (section 3). clang's own -O0 IR for the game's C++
+  alone is about 1.7 GB as the 100 unity files the C++ build compiles, and 4.5 GB as 3,269 separate
+  files. kppc emits fewer instructions for the game and its libraries together (9.8 million against
+  about 15.7 million for the game alone). What is ours to cut is duplication: globals repeated per
+  module are 24% of kppc's IR against 6% of clang's unity IR.
 - **b1 (LLVM in-process) is worth about 1 to 1.5 s by itself:** no text written and parsed again
   (parsing is 20% of LLVM's work) and no processes. Its larger gain is **streaming**: LLVM's back end
   can then run on the cores kppc's codegen leaves idle, which hides most of the 3 to 4 s of clang.
@@ -320,7 +325,103 @@ its largest module. The largest-first order is worth 0.2 s (measured by thread A
 balance becomes a work-stealing queue's job. Home globals also shrink the outliers: module 21's
 bodies are 12.4 MB, the rest being declarations.
 
-## 3. Recommended order, with expected gains
+## 3. The IR's volume: is 967 MB normal?
+
+kovarex's question: is 967 MB of IR normal for 39 MB of Factorio source (31 MB of .cpp, 9.3 MB of
+headers in src, plus the libraries kppc compiles with it)? Each build was measured by `cg\volume.py`:
+kppc's 128 modules, and clang's own `-O0` IR for Factorio's C++.
+
+**The comparison** (`cg\cpp\sample.py`, `cg\cpp\ir.cmd`). Factorio's C++ was compiled by clang-cl
+19.1.5 at `/Od` to textual IR with the game's defines, include paths and forced includes
+(vs2022\factorio.vcxproj; `Common.hpp`, `win_fp_flags.hpp`). Two shapes were measured. One is 40
+random .cpp files of src compiled one by one (seed 20261102), 226 KB of source giving 32.7 MB of IR,
+145 bytes of IR per byte of .cpp. The other is 3 unity files of 33 consecutive .cpp files each, as the
+C++ build's 100 unity files group the game's 3,269 (FASTBuild `UnityNumFiles = 100`): 51.9 MB, about
+17 MB per unity file.
+
+| | kppc, game and libraries, 128 modules | clang, game .cpp one by one (scaled) | clang, game as 100 unity files (scaled) |
+|---|---:|---:|---:|
+| IR | 967 MB | about 4.5 GB | about 1.7 GB |
+| instructions | 9.78 M | | about 15.7 M |
+| function bodies | 55.6% | 70.5% | 79.8% |
+| globals | 24.2% | 8.4% | 5.8% |
+| COMDAT lines | 7.4% | 10.4% | 8.2% |
+| declarations | 6.9% | 1.6% | 0.6% |
+| types | 5.9% | 3.3% | 1.9% |
+| global names, local names | 23.6%, 18.8% | 33.3%, 5.2% | 32.3%, 5.9% |
+| alloca, load, store of the instructions | 10.6%, 21.5%, 13.6% (45.7%) | 15.5%, 22.7%, 17.3% (55.5%) | 14.1%, 23.2%, 15.4% (52.7%) |
+| instructions per function: median, p99 | 17, 376 | 12, 437 | 12, 162 |
+
+So kppc's IR is about half of clang's for the same game built the C++ way, with fewer instructions,
+and a smaller share of -O0's alloca, load and store pattern. The C++ estimates cover the game's src
+alone (100 unity files and one file compiled on its own, `CurrentVersion.cpp`); the libraries kppc
+compiles with the game would add to them. C++ pays for each inline function and template once per translation unit (11,345 repeated
+function definitions in the 40 files); kppc defines each function once in the program, apart from
+57,531 copies of member-pointer thunks (`pmf.*`, a few lines each) and kppc's six runtime helpers in
+every module. kppc emitted 257,250 functions (83,201 function template instances among them, the
+front end's count), median 17 instructions.
+
+**What kppc's 967 MB is made of, and what could be cut:**
+
+| part | MB | cut | also faster |
+|---|---:|---|---|
+| globals: 64,779 names defined 1.57 million times, each in 24 modules on average | 234 | about 224 MB with one home per global | clang −20%, the link −36% (measured above); objects 475 -> 260 MB |
+| COMDAT lines (`$x = comdat any`), mostly the repeated globals' | 71 | most, with the globals | parse only |
+| global names: quoted readable names (`@"FlatMap<...>::binary_private_lower_bound#...::operator()(...)"`) | 229 | perhaps half, with short hashed symbols and the readable name kept for the crash report's map | clang's parse a little; the link's symbol table and the PDB's names (not measured) |
+| local value names (`%v123`, `%self`) | 182 | all, by numbered values; or nothing to cut in memory (b1 discards them) | clang's parse a little |
+| types: 37,000 types defined 681,000 times, each in 18 modules | 57 | none in text (each module needs its types); none in memory per context | |
+| declarations: 218,000 names declared 720,000 times, each in 3.3 modules | 67 | none (needed) | |
+| functions never named anywhere (no call, no address, in no vtable): 8,166 | 7.7 | all; the debug link keeps them (`/OPT:NOREF`) | a little |
+| member-pointer thunks' copies | about 17 | one home each, as the globals | a little |
+
+So about 300 MB (31%) comes off with one home per global and its COMDAT lines. That cut speeds clang
+and the link and needs no LLVM integration. Names are another 20 to 40% of the text, which matters
+only while there is text: in memory (b1) local names cost nothing and global names are needed once.
+The function bodies themselves are not out of line with clang's.
+
+## 4. The integration in three steps
+
+kovarex's order. Each step has its measured or prototyped gain, and the next is tried only after it.
+
+**Step 1: stop writing textual IR (bitcode or another binary form).**
+- Measured: clang processes on bitcode take 3.56 to 3.65 s against 3.68 to 3.70 s on text, about
+  0.1 s of a clean build. For the leaf edit's module it is about 0.03 s (in process: 0.27 -> 0.22 s
+  including the parse; through a process less of it shows). Writing the files is 0.11 s today either way.
+- Cost: kppc would need its own bitcode writer, LLVM's only binary input. That is a binary,
+  abbreviated, value-numbered format, versioned with LLVM; LLVM's own writer is LLVM's library,
+  which is step 2.
+- Needs nothing from before.
+- **Verdict: not worth doing on its own.** Bitcode stays useful for caches and `--emit-llvm`, made by
+  step 2's in-memory module.
+
+**Step 2: LLVM integrated into kppc, everything in memory.**
+- Measured in process (cgproto) on the same modules: 3.70 -> 3.38 s on text, 3.02 s on bitcode. With
+  no format at all, estimated 2.6 to 2.8 s, since the parse is 27 of the 101 thread-seconds.
+  **About −1 s on a clean build.** With one home per global (independent, measured 2.56 s in process
+  on text), about 1.9 to 2.0 s, −1.7 s against today.
+- Leaf edit: its module 0.305 -> about 0.18 s (−0.12 s). Wide edit: one module, the same −0.1 s.
+- The link stays link.exe for the debug game (the PDB). In-process lld is for release and other targets.
+- Cost: LLVM's libraries in kppc (30 to 40 MB, a pinned LLVM version, a 20 to 40 minute LLVM build per
+  version); kppc's emitter writing through the C++ API instead of text (thread B's file, a rewrite of
+  its output layer); kppc's codegen work changes little (text formatting is 10 to 15% of it, and
+  building LLVM's objects costs about as much).
+- Needs nothing from step 1. It makes step 1 unnecessary.
+
+**Step 3: LLVM in kppc's thread model, generating in parallel.**
+- b1 with streaming, the near end. Each worker builds its functions into its own context; a piece
+  goes to the back end on kppc's pool as soon as it is complete, and is cached by the hash of its
+  IR. Estimated **−2.5 to −3 s on a clean build** (the back end on the cores kppc's lock-bound
+  codegen leaves idle; what remains is the last pieces, 0.3 to 0.6 s). The leaf edit's back end
+  becomes one small piece, 0.18 -> about 0.02 s; the wide edit's about 0.2 to 0.5 s less.
+- Cost: piece scheduling and caching in kppc's codegen and driver (thread B's); placement by content
+  for determinism. The first prototype must measure how much the back end slows codegen itself
+  (memory bandwidth, the allocator).
+- Needs step 2's in-memory IR.
+- b2, the far end: one LLVM context shared by all threads, an LLVM fork made thread-safe. It adds
+  little over b1 with streaming (section 2, b2), at the cost of a fork of LLVM's core.
+  **Not recommended**; the upstreamable Win64 FastISel fix is.
+
+## 5. Recommended order, with expected gains
 
 Today: clean debug 17.1 s (quiet machine), leaf edit 1.4 to 1.5 s, wide edit 1.9 s (thread A's
 quiet numbers). The gains overlap; each line is against the line before.
@@ -329,8 +430,8 @@ quiet numbers). The gains overlap; each line is against the line before.
 |---|---|---:|---:|---:|---|
 | 1. One home per linkonce global (codegen placement) | B | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | measured on the prototype's modules |
 | 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A |
-| 3. b1, part 1: LLVM linked in; the IR handed over in memory, still per module; no processes, no parse | B with D | −0.7 to −1 s | −0.1 s | −0.2 s | in-process and bitcode runs bound it |
-| 4. b1, part 2: streaming pieces on kppc's pool | B with D | −2.5 to −3 s | 0 | −0.2 s | estimate; the first prototype must measure codegen's slowdown |
+| 3. Integration step 2: LLVM in kppc, the IR in memory, still per module; no processes, no parse (step 1, bitcode, skipped) | B with D | −0.7 to −1 s | −0.1 s | −0.2 s | in-process and bitcode runs bound it |
+| 4. Integration step 3: streaming pieces on kppc's pool (b1) | B with D | −2.5 to −3 s | 0 | −0.2 s | estimate; the first prototype must measure codegen's slowdown |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | from the leaf module's 0.3 s |
 | 6. kppc codegen's lock scaling | B | −4 to −6 s | −0.1 s | −0.1 s | 23.6 s of work at 2.65x today |
 | 7. Patching instead of relinking (e) | B, E | 0 | −0.4 s | −0.4 s | link 0.45 s -> about 0.05 s |
@@ -354,6 +455,8 @@ All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed)
 | `proto\cgproto.cpp`, `proto\build.cmd` | LLVM through VS's `LLVM-C.dll`; modes `emit`, `spawn`, `tobc`, `home`, `write`; `CGPROTO_PASSES`, `CGPROTO_HOMES`; `-- llvm options` |
 | `measure.ps1 -Rounds N -Threads T -Variants spawn:out,inproc:bc,...` | interleaved runs over the module sets `out`, `bc`, `ident`, `home` |
 | `homes.py` | each linkonce global's home module (homes.txt) |
+| `volume.py DIR` | what a build's IR is made of (section 3) |
+| `cpp\ir.cmd`, `cpp\sample.py` | Factorio's C++ to -O0 IR by clang-cl, the sample and the unity files |
 | `link.ps1`, `linkab.ps1` | the full and incremental link; the two object sets linked interleaved |
 | `sampler\sampler.cpp`, `kppc-pdb.cmd` | the sampling profiler, and kppc with a PDB |
 | `prof-codegen.txt(.stacks)` | the codegen profile |
