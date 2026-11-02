@@ -840,8 +840,15 @@ run is about 130 to 250 billed minutes. With commits every few minutes, the mast
 back to back, about 22 runs a day, which far exceeds an included monthly quota (3,000 minutes on
 Pro) within a day. So each push runs only the debug spec (about 25 to 45 runner minutes), and the
 three configurations run nightly. A larger runner (billed per minute, outside the included
-minutes) is the other option. The numbers get replaced by a real runner's once runs have been
-timed.
+minutes) is the other option.
+
+On the runner (windows-2022, run 41367545233, 2026-11-02): build 123 s, run_tests 304 s, spec
+586 s, about 17 minutes for a push run; the nightly adds two more spec runs. While pushes come
+faster than that, the push queue keeps the runner busy whether runs are cancelled or finished
+(a cancelled run bills the minutes it ran). Running more snippets at once does not shorten spec on
+2 CPUs: spec's library snippets pinned to 2 CPUs took 17.5 / 17.3 s with `--jobs 2`, 15.7 / 15.3 s
+with 4 and 15.5 / 15.6 s with 8 (the default). Splitting spec over several runners would shorten a
+run but bill each runner's checkout and 2-minute kppc build again.
 
 ## Questions for kovarex
 

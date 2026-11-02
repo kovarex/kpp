@@ -108,6 +108,9 @@ jobs:
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
           if (-not $vs) { throw 'no Visual Studio with the Clang component' }
           "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          # The runner's CPUs (spec.cmd runs 8 snippets at once, as fast as 4 on 2 CPUs and 13% faster
+          # than 2: docs/build.md, "Continuous integration").
+          "CPUs: $env:NUMBER_OF_PROCESSORS"
           node --version
           if ($LASTEXITCODE -ne 0) { throw 'no Node.js on the runner' }
 
