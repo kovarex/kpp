@@ -11657,6 +11657,102 @@ std::string withoutEmptyNamespaces(std::string text, const std::set<std::string>
   return text;
 }
 
+// A converted file's text with its blank lines tidied, as the removals (includes, forward
+// declarations, imports, empty namespaces) leave them: a run of blank lines (whitespace only) is
+// one, none at the start of the file, after a line ending with `{` or before one starting with `}`,
+// and the file ends with one line end. A blank line inside a raw string literal is the string's
+// text, and stays. `removed` counts the blank lines taken out.
+std::string withTidyBlankLines(const std::string& text, size_t& removed)
+{
+  // Which line ends are inside a raw string literal.
+  std::vector<bool> inRaw(text.size() + 1, false);
+  for (size_t i = 0; i < text.size();)
+  {
+    if (size_t raw = rawStringEnd(text, i); raw != std::string_view::npos)
+    {
+      for (size_t k = i; k < raw; ++k)
+        inRaw[k] = true;
+      i = raw;
+    }
+    else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
+    {
+      char quote = text[i];
+      for (++i; i < text.size() && text[i] != quote && text[i] != '\n'; ++i)
+        i += text[i] == '\\';
+      ++i;
+    }
+    else if (text.compare(i, 2, "//") == 0)
+      i = std::min(text.find('\n', i), text.size());
+    else if (text.compare(i, 2, "/*") == 0)
+    {
+      size_t e = text.find("*/", i + 2);
+      i = e == std::string::npos ? text.size() : e + 2;
+    }
+    else
+      ++i;
+  }
+  struct Line
+  {
+    std::string_view text;
+    bool blank, raw; // raw: it starts inside a raw string literal
+  };
+  std::vector<Line> lines;
+  for (size_t start = 0; start < text.size();)
+  {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos)
+      end = text.size();
+    std::string_view line(text.data() + start, end - start);
+    lines.push_back({line, line.find_first_not_of(" \t\r") == std::string_view::npos, start > 0 && inRaw[start - 1]});
+    start = end + 1;
+  }
+  auto lastChar = [](std::string_view line)
+  {
+    size_t last = line.find_last_not_of(" \t\r");
+    return last == std::string_view::npos ? '\0' : line[last];
+  };
+  auto firstChar = [](std::string_view line)
+  {
+    size_t first = line.find_first_not_of(" \t\r");
+    return first == std::string_view::npos ? '\0' : line[first];
+  };
+  std::string out;
+  out.reserve(text.size());
+  const Line* previous = nullptr; // the last line kept that is not blank
+  bool pendingBlank = false;
+  for (size_t k = 0; k < lines.size(); ++k)
+  {
+    const Line& line = lines[k];
+    if (line.raw)
+    {
+      out.append(line.text);
+      out += '\n';
+      continue;
+    }
+    if (line.blank)
+    {
+      if (pendingBlank || !previous || lastChar(previous->text) == '{')
+        ++removed;
+      pendingBlank = previous && lastChar(previous->text) != '{';
+      continue;
+    }
+    if (pendingBlank)
+    {
+      if (firstChar(line.text) == '}')
+        ++removed;
+      else
+        out += '\n';
+      pendingBlank = false;
+    }
+    out.append(line.text);
+    out += '\n';
+    previous = &line;
+  }
+  // (a blank line at the end, pending, is dropped: the file ends with its last line's end)
+  removed += pendingBlank;
+  return out;
+}
+
 // The identifiers of a kpp text, outside comments and literals.
 std::set<std::string> identifiersOf(const std::string& text)
 {
@@ -13274,6 +13370,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     text = withoutEmptyNamespaces(text, holdingNamespaces, namespacesRemoved, namespacesKept);
     total.add("empty namespaces removed", namespacesRemoved);
     total.add("empty namespaces kept: the program's only declaration of their namespace", namespacesKept);
+    size_t blankLinesRemoved = 0;
+    text = withTidyBlankLines(text, blankLinesRemoved);
+    total.add("blank lines removed (runs, at the start and end, inside braces)", blankLinesRemoved);
     for (const Piece& p : pieces)
       for (const std::string& header : p.cImports)
         if (std::vector<std::string>& imports = libraryImports[rootOf(key)].imports; std::find(imports.begin(), imports.end(), header) == imports.end())
