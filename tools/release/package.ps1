@@ -1,6 +1,7 @@
 # Packages a built kppc as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
 # kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
-# grammar, the VS Code extension kpp-vscode.vsix (tools/vscode) and the bundled toolchain (design.md 17:
+# grammar, the VS Code extension kpp-vscode.vsix (tools/vscode), the Visual Studio extension
+# kpp-visualstudio.vsix (tools/vs/vsix) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
 # build\release\kpp-<version>.zip, and kpp-<version>-setup.exe when Inno Setup's compiler (ISCC) is
 # found. The CI workflows (ci.yml, release.yml) run it; it runs the same by hand:
@@ -8,11 +9,11 @@
 # (package.cmd runs it with -ExecutionPolicy Bypass: Windows' default policy forbids scripts.)
 # The version and commit are always kppc's own (kppc --version: VERSION and the commits since it
 # changed, docs/build.md "Versions"), never given by hand; they name the files, the README, the
-# installer and the VS Code extension.
+# installer and both editors' extensions.
 # The toolchain comes from tools\sysroot\llvm-mingw.ps1 (pinned, SHA-256 checked, unpacked once into
 # build\llvm-mingw). -IsccPath names Inno Setup's compiler when it is not installed in a usual place.
 # -NoSmokeTest leaves the smoke test out, for iterating by hand; CI always runs it.
-# The VS Code extension builds in a job of its own while the rest is copied and tested (each step's
+# Each editor's extension builds in a job of its own while the rest is copied and tested (each step's
 # time is printed at the end; docs/build.md, "Installing").
 param([string]$IsccPath = '', [switch]$NoSmokeTest, [string]$Version, [string]$Commit)
 $ErrorActionPreference = 'Stop'
@@ -66,6 +67,49 @@ $vsix = if ($npm)
     Copy-Item "$repository\LICENSE" LICENSE
     npx vsce package $Version --no-git-tag-version --no-update-package-json --out $target 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 2
     if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
+  }
+}
+# The Visual Studio extension (tools/vs/vsix, its build.cmd) needs the .NET 8 SDK and Visual Studio's
+# MSBuild. CI's runner has both, and there it is an error without; by hand the package leaves
+# kpp-visualstudio.vsix out and says so.
+$dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+if (-not $dotnet -and (Test-Path "$env:ProgramFiles\dotnet\dotnet.exe")) { $dotnet = "$env:ProgramFiles\dotnet\dotnet.exe" }
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$missing = @()
+if (-not $dotnet -or -not (@(& $dotnet --list-sdks) -match '^8\.')) { $missing += 'the .NET 8 SDK' }
+if (-not (Test-Path $vswhere) -or -not (& $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1)) { $missing += "Visual Studio's MSBuild" }
+$global:LASTEXITCODE = 0
+if ($missing)
+{
+  if ($env:CI -eq 'true') { throw "$($missing -join ' and ') not found: CI builds the Visual Studio extension kpp-visualstudio.vsix" }
+  Write-Output "kpp-visualstudio.vsix skipped: $($missing -join ' and ') not found"
+}
+# Built from a copy whose manifest carries kpp's version (the source keeps its own), at the
+# repository's paths under build\vsix (the project takes the grammar from tools\vs\kpp and the
+# language configuration from tools\vscode), by its build.cmd, which writes tools\vs\kpp-visualstudio.vsix
+# there. A job of its own, waited for before the zip.
+$vsVsix = if (-not $missing)
+{
+  Start-Job -ArgumentList $repository, "$repository\build\vsix", ($Version -replace '\+.*$', ''), "$kpp\kpp-visualstudio.vsix" -ScriptBlock {
+    param($repository, $work, $version, $target)
+    $ErrorActionPreference = 'Stop'
+    foreach ($folder in 'tools\vs\vsix', 'tools\vs\kpp')
+    {
+      robocopy "$repository\$folder" "$work\$folder" /MIR /XD bin obj /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { throw "copying $folder failed (robocopy $LASTEXITCODE)" }
+    }
+    New-Item -ItemType Directory -Force "$work\tools\vscode" | Out-Null
+    Copy-Item "$repository\tools\vscode\language-configuration.json" "$work\tools\vscode"
+    $manifest = "$work\tools\vs\vsix\source.extension.vsixmanifest"
+    $text = [IO.File]::ReadAllText($manifest)
+    if ($text -notmatch '<Identity [^>]*Version="') { throw "$manifest has no <Identity Version>" }
+    [IO.File]::WriteAllText($manifest, [regex]::Replace($text, '(<Identity [^>]*Version=")[^"]*', "`${1}$version"))
+    $built = "$work\tools\vs\kpp-visualstudio.vsix"
+    Remove-Item $built -ErrorAction SilentlyContinue
+    $log = cmd /c "`"$work\tools\vs\vsix\build.cmd`" 2>&1"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $built)) { throw "tools\vs\vsix\build.cmd failed ($LASTEXITCODE):`n$($log -join "`n")" }
+    Copy-Item $built $target
+    $log | Select-Object -Last 1
   }
 }
 # Directories copied by robocopy, many files at once (Copy-Item -Recurse took 10 to 17 s); its exit
@@ -132,12 +176,12 @@ Editors:
 $(if ($npm) { "- VS Code: kpp-vscode.vsix (colouring, and IntelliSense through kpp --lsp). The installer offers to
   install it; or run code --install-extension kpp-vscode.vsix. Not by double-click: Windows opens
   every .vsix in Visual Studio's installer, which does not take a VS Code extension." } else { "- VS Code: the extension (kpp-vscode.vsix) is not in this package: it was made without Node.js." })
-- Visual Studio: the grammar below; Visual Studio's own extension, when a package has it, is
-  kpp-visualstudio.vsix.
+$(if (-not $missing) { "- Visual Studio 2022 (17.14 or later): kpp-visualstudio.vsix (colouring, and IntelliSense through
+  kpp --lsp). The installer offers to install it; or open it (a double-click starts Visual Studio's
+  installer, which takes this one). Restart Visual Studio afterwards." } else { "- Visual Studio: the extension (kpp-visualstudio.vsix) is not in this package: it was made without $($missing -join ' and ').
+  grammar\kpp.tmLanguage.json colours .kpp files: copy it into %USERPROFILE%\.vs\Extensions\kpp\Syntaxes\
+  and restart Visual Studio." })
 - Others: https://github.com/kovarex/kpp/blob/master/docs/editors.md
-
-grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
-%USERPROFILE%\.vs\Extensions\kpp\Syntaxes\ and restart Visual Studio.
 "@ | Set-Content "$kpp\README.txt"
 
 # A smoke test of the package itself: kpp new and kpp --run in a project outside the repository, as on
@@ -196,7 +240,17 @@ if ($vsix)
   if ($state -ne 'Completed' -or $failure -or -not (Test-Path "$kpp\kpp-vscode.vsix")) { throw "the VS Code extension failed:`n$($log -join "`n")`n$failure" }
   $log | Select-Object -Last 2 | Out-Host
 }
-Lap 'kpp-vscode.vsix (wait)'
+# The Visual Studio extension's job likewise.
+if ($vsVsix)
+{
+  Wait-Job $vsVsix | Out-Null
+  $log = Receive-Job $vsVsix -ErrorAction SilentlyContinue -ErrorVariable failure
+  $state = $vsVsix.State
+  Remove-Job $vsVsix
+  if ($state -ne 'Completed' -or $failure -or -not (Test-Path "$kpp\kpp-visualstudio.vsix")) { throw "the Visual Studio extension failed:`n$($log -join "`n")`n$failure" }
+  $log | Out-Host
+}
+Lap 'extensions (wait)'
 
 # The zip and the installer one after the other: at once they took 43 to 49 s against 26 to 29 s
 # (Inno Setup's 8 compression threads already fill the machine). .NET's ZipFile, as small as

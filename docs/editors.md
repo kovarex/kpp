@@ -109,8 +109,9 @@ The extension is in `tools/vscode`; its README covers the details.
 ## Visual Studio 2022
 
 **kpp-visualstudio.vsix** (`tools\vs\vsix`, its README has the details) is the extension: colouring, from the
-TextMate grammar it bundles, and IntelliSense from `kpp --lsp`. Install it by double-clicking
-kpp-visualstudio.vsix (`tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK), then restart Visual
+TextMate grammar it bundles, and IntelliSense from `kpp --lsp`, for Visual Studio 2022 17.14 or later.
+The kpp installer offers it when it finds such a Visual Studio; or double-click kpp-visualstudio.vsix
+from the release (or as `tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK). Then restart Visual
 Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
 - **What it gives:** errors as squiggles and in the Error List, go to definition (F12,
   Edit.GoToDefinition), go to declaration (Ctrl+F12, Edit.GoToDeclaration), hover, completion and

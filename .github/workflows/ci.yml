@@ -323,6 +323,7 @@ jobs:
             build/release/kpp-${{ steps.version.outputs.version }}.zip
             build/release/kpp-${{ steps.version.outputs.version }}-setup.exe
             build/release/kpp/kpp-vscode.vsix
+            build/release/kpp/kpp-visualstudio.vsix
           retention-days: 3
           if-no-files-found: error
           compression-level: 0
@@ -350,7 +351,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp-vscode.vsix") {
+          foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix") {
             if (-not (Test-Path $f)) { throw "no $f in the artifact package" }
             "$f $((Get-Item $f).Length) bytes"
           }
@@ -372,8 +373,8 @@ jobs:
           $tested = if ('${{ github.event_name }}' -in 'schedule', 'workflow_dispatch') { 'every test green, including the --release and --debug-info spec' } else { 'every test green (the debug spec; the nightly adds --release and --debug-info)' }
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $env:KPP_TAG -Commit "${{ github.sha }}" -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" -Title $title `
-            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp-vscode.vsix is the VS Code extension: the installer offers it, or run code --install-extension kpp-vscode.vsix (a double-click opens Visual Studio's installer, which does not take it)." `
-            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp-vscode.vsix"
+            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp-vscode.vsix is the VS Code extension: the installer offers it, or run code --install-extension kpp-vscode.vsix (a double-click opens Visual Studio's installer, which does not take it). kpp-visualstudio.vsix is the Visual Studio 2022 extension (17.14 or later): the installer offers it, or open it." `
+            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix"
 
       # The release of the highest version (compared as numbers) becomes "Latest", so an older commit's
       # run that finishes after a newer one's (triggers have concurrency groups of their own) never

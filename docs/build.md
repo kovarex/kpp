@@ -737,7 +737,7 @@ install. `install.cmd` links it there.
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
 - **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, the
-  bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix and a README. kpp finds `stdlib\`,
+  bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix, kpp-visualstudio.vsix and a README. kpp finds `stdlib\`,
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
@@ -777,7 +777,10 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
   ISCC elsewhere). kpp-vscode.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
   with one line saying so: its README says so too, and its installer does not offer it. In CI
-  (`CI=true`) a missing npm is an error. Every step's failure stops the script.
+  (`CI=true`) a missing npm is an error. kpp-visualstudio.vsix (tools/vs/vsix, its build.cmd) needs the .NET 8
+  SDK and Visual Studio's MSBuild, and is left out likewise without them (an error in CI). It is built
+  from a copy at the repository's paths under `build\vsix` whose manifest carries kpp's version (the
+  source keeps its own). Every step's failure stops the script.
 - **How long it takes** (PC-PRACOVNA, 2026-11-02, `tools\release\package.cmd`, which prints each
   step's time on its last line): about 80 s, from 234 to 332 s before.
 
@@ -819,7 +822,9 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
   it warned when no Visual Studio with the Clang component was found. When VS Code is found
   (`code.cmd` on the PATH, else `%LOCALAPPDATA%\Programs\Microsoft VS Code\bin`, else Program
-  Files'), it offers to install kpp-vscode.vsix into it. Each editor's extension is named for it
+  Files'), it offers to install kpp-vscode.vsix into it; when vswhere finds Visual Studio 2022 17.14
+  or later, it offers kpp-visualstudio.vsix, installed by that Visual Studio's VSIXInstaller
+  (`/quiet`, as the user who started the installer). Each editor's extension is named for it
   (kpp-vscode.vsix, and Visual Studio's kpp-visualstudio.vsix): Windows opens every .vsix in Visual
   Studio's installer, which failed on the VS Code one when it was kpp.vsix (kovarex, 2026-11-02). An
   upgrade deletes an earlier release's kpp.vsix.
@@ -919,7 +924,7 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
   when all of them are.
 - **package:** on master only, after build and beside the tests (kovarex, 2026-11-02): the package
-  (below), handed on as the artifact `package` (zip, installer, kpp-vscode.vsix). It publishes nothing.
+  (below), handed on as the artifact `package` (zip, installer, kpp-vscode.vsix, kpp-visualstudio.vsix). It publishes nothing.
 - **publish:** on master only, and only when every job above is green (run_tests' halves, every
   spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
   no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
@@ -943,7 +948,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
   (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
   including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
-  kpp-vscode.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
+  kpp-vscode.vsix and kpp-visualstudio.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
   checkout fetches the whole history for it). `tools/release/publish.ps1`
   then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's

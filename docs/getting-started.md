@@ -58,7 +58,9 @@ Targets, configurations (`debug`, `release`, your own), library options and the 
 - **VS Code:** the installer offers the extension (`kpp-vscode.vsix`, also in the release); it colours `.kpp`
   files and gives completion, errors and navigation through the compiler's language server
   (`kpp --lsp`).
-- **Visual Studio:** generate a solution with `kpp --generate-visual-studio-files`.
+- **Visual Studio:** the installer offers the extension (`kpp-visualstudio.vsix`, also in the release;
+  Visual Studio 2022 17.14 or later): colouring and IntelliSense through `kpp --lsp`. Generate a
+  solution with `kpp --generate-visual-studio-files`.
 - **Other editors:** anything that speaks the Language Server Protocol, see [editors.md](editors.md).
 
 ## Projects that link Visual Studio-built C++ libraries

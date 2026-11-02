@@ -5,7 +5,9 @@
 ; the system PATH; the uninstaller takes it off again. When VS Code is found (CodeCommand), it offers
 ; to install the VS Code extension kpp-vscode.vsix into it, as the user who started the installer
 ; (named for its editor: Windows opens every .vsix in Visual Studio's installer, which refuses a VS
-; Code extension). Nothing of Visual Studio's is needed, so nothing is checked for.
+; Code extension); when Visual Studio 2022 17.14 or later is found (VSIXInstaller), the Visual Studio
+; extension kpp-visualstudio.vsix likewise. kpp needs nothing of Visual Studio's, so nothing is
+; required.
 ; Its version is kpp's own, which package.ps1 passes (kppc --version; docs/build.md, "Versions").
 #ifndef Version
   #error kpp.iss is built by package.ps1, which passes kpp's version (/DVersion)
@@ -50,6 +52,17 @@ Name: vscode; Description: "Install kpp-vscode.vsix, the kpp extension for VS Co
 
 [Run]
 Filename: "{cmd}"; Parameters: "/c """"{code:CodeCommandOf}"" --install-extension ""{app}\kpp-vscode.vsix"" --force"""; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: vscode; StatusMsg: "Installing the VS Code extension (kpp-vscode.vsix)..."
+#endif
+
+; The Visual Studio extension (tools/vs/vsix), for Visual Studio 2022 17.14 or later, through that
+; Visual Studio's VSIXInstaller (VSIXInstaller), as the user who started the installer: an extension
+; is the user's own.
+#if FileExists(Source + "\kpp-visualstudio.vsix")
+[Tasks]
+Name: visualstudio; Description: "Install kpp-visualstudio.vsix, the kpp extension for Visual Studio (colouring and IntelliSense), into Visual Studio 2022 (restart it afterwards)"; Check: VSIXInstallerFound
+
+[Run]
+Filename: "{code:VSIXInstallerOf}"; Parameters: "/quiet ""{app}\kpp-visualstudio.vsix"""; Flags: runasoriginaluser waituntilterminated; Tasks: visualstudio; StatusMsg: "Installing the Visual Studio extension (kpp-visualstudio.vsix)..."
 #endif
 
 [Registry]
@@ -98,6 +111,43 @@ end;
 function VSCodeFound(): Boolean;
 begin
   Result := CodeCommand() <> '';
+end;
+
+var
+  VSIXInstallerPath: string;
+  VSIXInstallerLooked: Boolean;
+
+// Visual Studio 2022's VSIXInstaller.exe, 17.14 or later (the extension's lowest), as vswhere finds
+// it; '' when there is none. vswhere runs once.
+function VSIXInstaller(): string;
+var
+  VsWhere, Found: string;
+  Lines: TArrayOfString;
+  Code: Integer;
+begin
+  if not VSIXInstallerLooked then
+  begin
+    VSIXInstallerLooked := True;
+    VsWhere := ExpandConstant('{commonpf32}\Microsoft Visual Studio\Installer\vswhere.exe');
+    Found := ExpandConstant('{tmp}\vsixinstaller.txt');
+    if FileExists(VsWhere) and
+       Exec(ExpandConstant('{cmd}'), '/c ""' + VsWhere + '" -latest -version [17.14,18.0) -find Common7\IDE\VSIXInstaller.exe > "' + Found + '""',
+            '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0) and LoadStringsFromFile(Found, Lines) and (GetArrayLength(Lines) > 0) and
+       FileExists(Trim(Lines[0])) then
+      VSIXInstallerPath := Trim(Lines[0]);
+  end;
+  Result := VSIXInstallerPath;
+end;
+
+// (VSIXInstaller for {code:...}, which passes a parameter)
+function VSIXInstallerOf(Param: string): string;
+begin
+  Result := VSIXInstaller();
+end;
+
+function VSIXInstallerFound(): Boolean;
+begin
+  Result := VSIXInstaller() <> '';
 end;
 
 procedure RemoveFromPath(Directory: string);
