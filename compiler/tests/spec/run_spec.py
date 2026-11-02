@@ -54,6 +54,10 @@ is one of its. Output that differs goes in <name>.windows-gnu.expected.
 """
 import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
 
+# Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
+# snippet built here, spec.cmd's or not, until program pieces rely on it.
+os.environ.setdefault("KPP_CHECK_BARRIER", "1")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPILER = os.path.dirname(os.path.dirname(HERE))
 ROOT = os.path.dirname(COMPILER)
