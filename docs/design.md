@@ -1360,8 +1360,8 @@ warnings only (off by default, no other change: the game's IR is the same byte f
 adds 0.06 s to the 1.4 s resolve of the converted game and its tests). It reports every use of a
 private or protected member outside its class and the classes around the use, the classes derived
 from it (protected) and its friends, and every struct with a private or protected member, a base
-that is not public or a virtual function. Constructors are not checked yet: the checker does not
-choose them, codegen does. Run over the converted game with its tests (scratch conversion of
+that is not public or a virtual function. Constructors were not checked then: the checker does not
+choose them, codegen does (step 2 below). Run over the converted game with its tests (scratch conversion of
 165b365) and, during a conversion, over the C++ it reads, whose friends are still declared:
 - *Structs.* The game has 1,016 structs and 5,220 classes; 26 structs would become classes, all
   for a private or protected member (VulkanImpl, Filesystem's Path, InputState's KeyState,
@@ -1409,7 +1409,18 @@ and a class template deriving from its parameter naming the base's protected mem
 instance (DragPaneWidget, agui::Layout's); specs classes/protected_member_through_friend_of_naming_class,
 protected_member_in_instance_with_parameter_base. Next: the converter keeps the friend declarations
 (and, with hidden friends in kpp, Optional's operators as written), then the count over the
-converted code is what is left to decide; constructors are not checked yet.
+converted code is what is left to decide.
+
+**Access warnings, step 2: constructors (thread A, 2026-11-02).** The checker does not choose
+constructors, codegen does, so codegen checks each one it calls (`callFunction`, through
+GlobalScope::checkConstructorAccess) in the code it emits it for: direct initialization, default
+construction, `new`, a base or member initializer. A class's implicit construction emitted where its
+object is made calls its bases' and members' constructors as the class (a protected base constructor
+is the derived class's to call). A copy or move through a user copy constructor is not checked (codegen
+emits those apart). Over the same conversion: 2,169 uses (98 constructors more: EditorAction's private
+constructors in EditorActionTestCreator 81 times, HeatBuffer's, UnitGroup's in Commander, EnumItems'
+iterator's...), each one a friend of the C++ the converter removes; none less. Spec
+classes/constructor_access_warnings.
 
 ## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 

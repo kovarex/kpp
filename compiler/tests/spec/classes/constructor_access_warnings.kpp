@@ -1,0 +1,55 @@
+// spec: the access checks cover the constructors code calls (direct initialization, default construction, `new`): a private or protected constructor named outside its class, its derived classes and its friends is a warning; a static member, a friend class, a derived class's base initializer and the implicit construction of a derived class (its base's protected constructor) may call one
+// factorio: EditorAction's private constructors called by EditorActionTestCreator, UnitGroup's by Commander, EnumItems::iterator's by EnumItems: each a friend in the C++ (98 uses in the converted game and its tests while the converter removes friends)
+// kppc: --access-warnings
+// warning: constructor_access_warnings.kpp:22: note: Secret::Secret is private, named in Keeper::keep, which a friend class declaration allows
+// warning: constructor_access_warnings.kpp:45: warning: Secret::Secret is private, named in the function main
+// warning: constructor_access_warnings.kpp:46: warning: Secret::Secret is private, named in the function main
+// warning: constructor_access_warnings.kpp:47: warning: Secret::Secret is private, named in the function main
+// warning: constructor_access_warnings.kpp:48: warning: Base::Base is protected, named in the function main
+class Secret
+{
+  int v;
+  Secret(int x) : v(x) {}
+  Secret() : v(1) {}
+  friend class Keeper;
+public:
+  static Secret make(int x) { return Secret(x); }
+  int value() const { return v; }
+};
+class Keeper
+{
+public:
+  int keep() { Secret s(5); return s.value(); }
+};
+class Base
+{
+protected:
+  Base(int x) : b(x) {}
+  Base() : b(9) {}
+public:
+  int b;
+};
+class Derived : public Base
+{
+public:
+  Derived() : Base(7) {}
+};
+class Implicit : public Base
+{
+public:
+  int i = 3;
+};
+int main()
+{
+  Secret a = Secret::make(2);
+  Secret b(3);
+  Secret c;
+  Secret* d = new Secret(4);
+  Base e(8);
+  Derived f;
+  Implicit g;
+  Keeper k;
+  println(a.value(), " ", b.value(), " ", c.value(), " ", d->value(), " ", e.b, " ", f.b, " ", g.b, " ", k.keep());
+  delete d;
+  return 0;
+}

@@ -24535,6 +24535,15 @@ void GlobalScope::setCodeGenerated(bool generated)
   impl->codeGenerated = generated;
 }
 
+void GlobalScope::checkConstructorAccess(FunctionDecl* ctor, Decl* in, Node* at)
+{
+  if (!impl->accessWarnings || !ctor || !in || !at || !in->file)
+    return;
+  std::vector<Scope*> context;
+  impl->accessContext(in, context);
+  impl->checkAccessUse(ctor, at, in, in->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(in) : nullptr, context, nullptr);
+}
+
 void GlobalScope::setConverting(bool converting) { impl->converting = converting; }
 
 void GlobalScope::setLP64(bool lp64)
@@ -26861,7 +26870,7 @@ std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*
     summary += "structs (" + group + "): " + std::to_string(n[0]) + " structs and " + std::to_string(n[1]) + " classes; " +
                std::to_string(n[2]) + " structs with a private or protected member, " + std::to_string(n[3]) + " with a base that is not public, " +
                std::to_string(n[4]) + " with a virtual function, " + std::to_string(n[5]) + " more polymorphic through a base only\n";
-  summary += "  (" + std::to_string(structWarnings) + " structs would have to become classes; constructors are not checked yet)";
+  summary += "  (" + std::to_string(structWarnings) + " structs would have to become classes; constructors are checked where code calls them)";
   // By file, then line number, then text, as checkerErrors.
   auto key = [](const std::string& w)
   {

@@ -910,6 +910,9 @@ namespace
     // in it are typed from its declaration (the class's member aliases are in scope there), not
     // from the function that happens to be emitted (none, for a startup function).
     Decl* initializerOf = nullptr;
+    // The class whose implicit construction is being emitted where its object is made (not in a
+    // constructor of its own): the constructors it calls are its to call (--access-warnings).
+    Decl* implicitConstructionOf = nullptr;
     // The closure of the lambda whose body is being emitted, or null: names written in the body
     // are typed from it (the lambda's template parameters, the aliases its body declares), not
     // from the function that happens to emit it (a generic lambda's is the one calling it).
@@ -2984,6 +2987,16 @@ namespace
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at, bool built = false)
     {
       const StructInfo& info = structFor(t, at);
+      struct ImplicitScope
+      {
+        Emitter& e;
+        Decl* saved;
+        ~ImplicitScope() { e.implicitConstructionOf = saved; }
+      } implicitScope{*this, implicitConstructionOf};
+      if (isClass(t) && t->decl)
+        if (Decl* own = currentFunction && (currentFunction->flags & DF_Constructor) ? global.owningClass(currentFunction) : nullptr;
+            !own || classDef(own, at) != classDef(t->decl, at))
+          implicitConstructionOf = classDef(t->decl, at);
       auto builtPart = [&](const std::string& part, const Ty* pt)
       {
         if (built && needsDestruction(pt, at))
@@ -7966,6 +7979,8 @@ namespace
       if (global.isExternC(f))
         if (std::optional<Value> v = atomicBuiltin(f, callArgs, at))
           return *v;
+      if (f->flags & DF_Constructor) // (--access-warnings: the checker does not choose constructors)
+        global.checkConstructorAccess(f, implicitConstructionOf ? implicitConstructionOf : typingContext(), implicitConstructionOf ? implicitConstructionOf : at);
       if (f->flags & DF_Default)
         return defaultedCall(f, classTy, thisArg, callArgs, at);
       if (!conditionHolds(f))
