@@ -334,10 +334,10 @@ public:
   // Those of the instances (the old walks' of file) no walk or used instance asks for now, and what only they asked
   // for, taken out of the tables with their statistics and errors (a server's edit; a build from
   // scratch never makes them): what the report counted of them added to dropped, their templates to
-  // templates (codegen makes their instances anew by their first use). Only those made for a lambda's
-  // closure: false, nothing taken out, when another is among them (codegen may still ask for it).
-  bool dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
-                           std::vector<const Decl*>& templates);
+  // templates. (One codegen still asks for, through a use the recorded dependencies do not hold, it
+  // makes again from its template: the same code, made after the resolve.)
+  void dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
+                           std::vector<const Decl*>& templates, std::vector<const Ty*>& droppedClasses);
   // What the instances a rewalk made (beginRewalk to endRewalk) added to the report's counts.
   InstantiationStats rewalkCounts() const;
 

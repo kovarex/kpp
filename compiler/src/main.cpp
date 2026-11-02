@@ -325,6 +325,9 @@ namespace
     // The globals whose initializers read a changed or edited name: codegen emits their constructors
     // again (rebuildLLVM).
     std::vector<const Decl*> changedGlobals;
+    // The class instances an incremental build took out (no one asks for them now): codegen drops
+    // their layouts (rebuildLLVM).
+    std::vector<const Ty*> droppedClasses;
     bool rebuildCodegen = false;
     // The build generated no code (parse errors, a clash; reportResolve): codegen's kept session has
     // not seen what it changed, which the next build that generates code emits too (incrementalBuild).
@@ -1321,7 +1324,7 @@ namespace
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
-                       build.changedGlobals, rebuilt);
+                       build.changedGlobals, build.droppedClasses, rebuilt);
       logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
                    : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +
                                               std::to_string(cg.emittedAgain) + " function(s) emitted again"
@@ -3030,6 +3033,7 @@ namespace
     kept.changedLayouts.clear();
     kept.instancesOf.clear();
     kept.changedGlobals.clear();
+    kept.droppedClasses.clear();
     kept.positionalCodegenInFull = false;
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::string codegenInFullBecause; // the first reason it is not (the server's log names it)
@@ -3245,8 +3249,7 @@ namespace
       const ParsedFile& file = *kept.parsed[walked[n]];
       std::vector<const void*> after = global.instancesWalksUse(file), dropped;
       std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
-      if (!dropped.empty() && !global.dropUnusedInstances(dropped, file, droppedCounts, droppedTemplates))
-        same = false, why = "an old body's instance nobody else asks for";
+      global.dropUnusedInstances(dropped, file, droppedCounts, droppedTemplates, kept.droppedClasses); // (its declarations' typing too)
     }
     GlobalScope::InstantiationStats made = global.rewalkCounts();
     if (same && (made.classes || made.functions || made.bodies || !droppedTemplates.empty()))

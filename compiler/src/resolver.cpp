@@ -26791,8 +26791,8 @@ GlobalScope::InstantiationStats GlobalScope::rewalkCounts() const
   return out;
 }
 
-bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
-                                      std::vector<const Decl*>& templates)
+void GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
+                                      std::vector<const Decl*>& templates, std::vector<const Ty*>& droppedClasses)
 {
   // The instances the old walks asked for that no one asks for now, and what only they asked for: a
   // build from scratch never makes them. One pass over every unit's recorded uses (in parallel, by
@@ -26804,6 +26804,25 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   std::unordered_set<const Node*> current;
   forEachNode(file.decls, [&](Node* n) { current.insert(n); });
   std::vector<std::vector<const void*>> rootParts(std::size(impl->declDependencies) + 1);
+  std::vector<const void*> staleUses = instances; // the old walks' requests, and those of the declarations they made
+  {
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& [owner, deps] : impl->typeDependencyOwners)
+    {
+      bool stale = owner->file == &file && !current.count(owner);
+      std::lock_guard l(deps->mutex);
+      for (auto& [kind, what] : deps->list.uses)
+        if (isInstance(kind))
+          (stale ? staleUses : rootParts.back()).push_back(what); // (a removed local's: `Boxed extra(2.5)`'s Boxed<double>)
+      if (stale)
+      {
+        deps->list = DependencyList{}; // (taken now: its declaration is gone, a later edit has nothing to find in it)
+        deps->tidied = true;
+      }
+    }
+  }
+  if (staleUses.empty())
+    return; // nothing the old walks or their declarations asked for is gone
   forEachParallel(std::size(impl->declDependencies), [&](size_t s)
   {
     Impl::DeclDependencyShard& shard = impl->declDependencies[s];
@@ -26816,18 +26835,6 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
           rootParts[s].push_back(what);
     }
   });
-  {
-    std::lock_guard lock(impl->typeDependenciesMutex);
-    for (auto& [owner, deps] : impl->typeDependencyOwners)
-    {
-      if (owner->file == &file && !current.count(owner))
-        continue;
-      std::lock_guard l(deps->mutex);
-      for (auto& [kind, what] : deps->list.uses)
-        if (isInstance(kind))
-          rootParts.back().push_back(what);
-    }
-  }
   using Edges = std::vector<std::pair<const void*, std::vector<const void*>>>;
   std::vector<Edges> edgeParts(std::size(impl->instanceShards) + std::size(impl->instShards));
   forEachParallel(edgeParts.size(), [&](size_t s)
@@ -26878,7 +26885,7 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   std::unordered_set<const void*> reached, candidates;
   for (const std::vector<const void*>& part : rootParts)
     spread(part, reached);
-  spread(instances, candidates);
+  spread(staleUses, candidates);
   std::unordered_set<const void*> unused;
   for (const void* p : candidates)
     if (!reached.count(p))
@@ -26946,47 +26953,6 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
             droppedClassTypes.count(impl->types.unqualified(r->recheck->thisType->inner)))
           unused.insert(r.get());
     }
-  // Each one made for a lambda's closure (its call operator, an instance with a closure among its
-  // arguments, a member of such a class instance): the old lambda's, which nothing can name now.
-  // Anything else no recorded use asks for may still be what codegen asks for (a use the recorded
-  // dependencies do not hold): not dropped, a build from scratch.
-  // (Every type it is made of, each once: the types form a DAG, nested to any depth.)
-  std::unordered_map<const Ty*, bool> closureIn;
-  std::function<bool(const Ty*, int)> closure = [&](const Ty* t, int)
-  {
-    if (!t)
-      return false;
-    if (auto known = closureIn.find(t); known != closureIn.end())
-      return known->second;
-    closureIn[t] = false; // (a cycle, if any, is no closure)
-    bool found = t->kind == TyKind::Lambda || closure(t->inner, 0);
-    for (const Ty* a : t->args)
-      found = found || closure(a, 0);
-    return closureIn[t] = found;
-  };
-  for (Impl::InstanceShard& shard : impl->instanceShards)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, r] : shard.map)
-      if (unused.count(r.get()))
-      {
-        bool ofClosure = r->of && r->of->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(r->of)->lambda;
-        if (!ofClosure && r->recheck)
-        {
-          ofClosure = closure(r->recheck->thisType, 0) || closure(r->recheck->lambdaTy, 0);
-          for (const Subst::Pair& p : r->recheck->subst.pairs)
-            ofClosure = ofClosure || closure(p.type, 0);
-          if (r->recheck->task) // a function template's instance: its arguments
-            for (const Subst::Pair& p : r->recheck->task->full.pairs)
-              ofClosure = ofClosure || closure(p.type, 0);
-        }
-        if (!ofClosure)
-          return false;
-      }
-  }
-  for (const Ty* t : droppedClassTypes)
-    if (!closure(t, 0))
-      return false;
   // Out of the tables (kept: their addresses stay theirs), with their statistics and errors; the
   // report's counts lose what each added (not codegen's own, which the report never counted).
   std::unordered_set<const void*> drop;
@@ -27024,6 +26990,8 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
           ++dropped.classes;
         if (c->classTy && c->classTy->decl)
           templates.push_back(c->classTy->decl);
+        if (c->classTy)
+          droppedClasses.push_back(c->classTy);
         drop.insert(c);
         impl->droppedClasses.push_back(std::move(it->second));
         it = shard.classes.erase(it);
@@ -27051,7 +27019,6 @@ bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
       impl->instanceAssertErrors.erase(r->body);
       impl->instanceNameErrors.erase(r->body);
     }
-  return true;
 }
 
 GlobalScope::DependencyStats GlobalScope::dependencyStats()

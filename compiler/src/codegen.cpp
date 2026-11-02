@@ -20008,7 +20008,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -20058,7 +20058,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                          const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals, bool& rebuilt)
+                          const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
+                          const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -20361,6 +20362,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   };
   std::vector<Dropped> dropped(sh.moduleCount);
   std::unordered_set<std::string> droppedNames;
+  std::vector<const Ty*> droppedUses; // the layouts the dropped definitions used (unusedLayouts, below)
   size_t droppedFunctions = 0;
   // The call operators emitted on demand whose writer is emitted again: emitted again on their own
   // (the writer may never make their closure itself).
@@ -20384,6 +20386,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       if (owners.count(defs[i].owner))
       {
         droppedNames.insert(defs[i].name);
+        droppedUses.insert(droppedUses.end(), defs[i].layouts.begin(), defs[i].layouts.end());
         droppedFunctions += defs[i].counted;
         if (defs[i].emitted && forOldClosure(*defs[i].emitted))
           releaseName(defs[i].name); // (an instance for the old lambda's closure)
@@ -20425,15 +20428,22 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
   // already in the shared declarations (below).
   // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
-  std::unordered_set<const Ty*> droppedClosures;
+  std::unordered_set<const Ty*> droppedTypes;
   for (auto& [t, info] : sh.closures)
     if (auto writer = sh.closureWriters.find(t);
         droppedNames.count(info.functionName) || (writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))) // (a generic lambda's operators are instances: by its writer)
     {
       sh.closuresEmitted.erase(t);
-      droppedClosures.insert(t);
+      droppedTypes.insert(t);
     }
-  if (!droppedClosures.empty())
+  // So do the class instances the resolver took out (no one asks for them now: `Boxed<int>` after an
+  // edit made it `Boxed<long long>`): their layouts and names go (a build from scratch has neither).
+  for (const Ty* t : droppedClasses)
+  {
+    droppedTypes.insert(t);
+    droppedTypes.insert(e.types.unqualified(t));
+  }
+  if (!droppedTypes.empty())
   {
     // (each type once, to any depth: a type that keeps a name it should give back gets `.2` beside it)
     std::unordered_map<const Ty*, bool> mentionsIn;
@@ -20444,7 +20454,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       if (auto known = mentionsIn.find(t); known != mentionsIn.end())
         return known->second;
       mentionsIn[t] = false;
-      bool found = droppedClosures.count(t) || droppedClosures.count(e.types.unqualified(t)) || mentions(t->inner);
+      bool found = droppedTypes.count(t) || droppedTypes.count(e.types.unqualified(t)) || mentions(t->inner);
       for (const Ty* a : t->args)
         found = found || mentions(a);
       return mentionsIn[t] = found;
@@ -20631,6 +20641,49 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       out.declined = "the error of " + name + " went without a change to it";
       return out;
     }
+  // The layouts only the dropped definitions used, which no definition uses now (a local `Boxed
+  // extra(2.5)` taken out: Boxed<double>), nor another layout or a closure holds: a build from scratch
+  // never lays them out, nor counts them. (One needed for a use no definition notes is laid out again
+  // by that use.)
+  if (!droppedUses.empty())
+  {
+    std::unordered_set<const Ty*> unusedLayouts;
+    for (const Ty* t : droppedUses)
+      if (sh.structs.count(t))
+        unusedLayouts.insert(t);
+    for (unsigned k = 0; k < sh.moduleCount && !unusedLayouts.empty(); ++k)
+      for (const Shared::Definition& d : sh.definitions[k])
+        for (const Ty* t : d.layouts)
+          unusedLayouts.erase(t);
+    for (auto& [key, info] : sh.structs)
+      for (const Ty* f : info.fieldTypes)
+        if (f)
+          unusedLayouts.erase(e.types.unqualified(f));
+    for (auto& [t, info] : sh.closures)
+      for (const Ty* f : info.fieldTypes)
+        if (f)
+          unusedLayouts.erase(e.types.unqualified(f));
+    if (!unusedLayouts.empty())
+    {
+      std::unordered_set<const StructInfo*> gone;
+      for (const Ty* t : unusedLayouts)
+        gone.insert(&sh.structs[t]);
+      for (auto it = sh.structsByType.begin(); it != sh.structsByType.end();)
+        it = gone.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
+      for (const Ty* t : unusedLayouts)
+      {
+        if (sh.structs[t].complete)
+          --sh.result.structs;
+        sh.structs.erase(t);
+      }
+      for (auto& em : emitters)
+        em->forgetLayoutAnswers();
+      sh.finalLayouts.clear();
+      sh.finalSizes.clear();
+      sh.finalDestruction.clear();
+      sh.finalBitfields.clear();
+    }
+  }
   // A type line the shared declarations hold as it is (a closure laid out again by its function,
   // emitted again) adds nothing.
   std::erase_if(sh.decls.entries, [&](const std::string& entry)
@@ -20641,6 +20694,46 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     auto it = sh.typeIndex.find(std::string_view(entry).substr(0, is));
     return it != sh.typeIndex.end() && sh.typeLines[it->second].line == std::string_view(entry).substr(0, entry.size() - 1);
   });
+  // A type line of a new name (a class instance laid out first by the edit, `Boxed<long long>`): into
+  // the shared declarations' text where it sorts among the type lines (each one entry of one line),
+  // the type index made again. A module takes the type lines it names: only those naming it change.
+  std::vector<std::string> newTypes;
+  std::erase_if(sh.decls.entries, [&](std::string& entry)
+  {
+    size_t is = entry.find(" = type ");
+    if (is == std::string::npos || entry.find('\n') + 1 != entry.size() || !(entry.starts_with("%struct.") || entry.starts_with("%closure.")) ||
+        sh.typeLines.empty() || sh.typeIndex.count(std::string_view(entry).substr(0, is)))
+      return false;
+    newTypes.push_back(std::move(entry));
+    return true;
+  });
+  if (!newTypes.empty())
+  {
+    std::sort(newTypes.begin(), newTypes.end());
+    std::string_view text = sh.decls.text;
+    std::vector<size_t> at; // per new line: the offset it goes in at
+    for (const std::string& line : newTypes)
+    {
+      std::string_view own = std::string_view(line).substr(0, line.size() - 1);
+      auto after = std::upper_bound(sh.typeLines.begin(), sh.typeLines.end(), own, [](std::string_view l, const Shared::TypeLine& t) { return l < t.line; });
+      at.push_back(after != sh.typeLines.end() ? size_t(after->line.data() - text.data())
+                                               : size_t(sh.typeLines.back().line.data() + sh.typeLines.back().line.size() - text.data()) + 1);
+    }
+    std::string merged;
+    merged.reserve(text.size() + newTypes.size() * 64);
+    size_t from = 0;
+    for (size_t i = 0; i < newTypes.size(); ++i)
+    {
+      merged.append(text.substr(from, at[i] - from));
+      merged += newTypes[i];
+      from = at[i];
+    }
+    merged.append(text.substr(from));
+    sh.decls.text = std::move(merged);
+    sh.typeLines.clear();
+    sh.typeIndex.clear();
+    e.prepareModuleTexts();
+  }
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
   {
     std::vector<std::string> added = sh.decls.entries;

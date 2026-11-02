@@ -1387,6 +1387,23 @@ ten holders deep is no one's), with codegen's layouts of the types made from it 
 build from scratch's). The edit test: a lambda held ten `Hold<...>` deep, a line added above it and
 taken out (2.1 to 2.3 s a check on the game's ExpansionPlanner edit afterwards).
 
+**Any instance the old walks made and no one asks for now is dropped; a new type is no first use
+(2026-11-02, thread A).** The restriction to closures' instances went: the edit test's step it was for
+(a class template argument deduction, `Boxed<int>` become `Boxed<long long>`) had failed because a
+class instance made during a rewalk was marked codegen's (`late`), fixed since. So a rewalk drops what
+it no longer asks for whatever it is, and what the old walks' declarations asked for (a removed local's
+typing, `Boxed extra(2.5)`, records with the local, not the walk) counts among the old requests (a
+declaration the file no longer has is no root; its recorded requests are taken). Codegen: the resolver
+hands it the class instances it dropped (their layouts and names go, as an old closure's do); a type
+line of a new name (`Boxed<long long>`, laid out first by the edit) goes into the shared declarations'
+text where it sorts among the type lines and the type index is made again, no longer "first use(s)
+added to the shared declarations, the program generated in full" (a module takes the type lines it
+names: only those naming it change); and a layout only the dropped definitions used, which no
+definition, layout or closure uses now, is dropped (a build from scratch never lays it out, nor counts
+it). The edit test: the class template argument deduction step incremental (it was a build from
+scratch), and a local of a class instance the program did not have added and taken out (codegen in full
+before).
+
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is
