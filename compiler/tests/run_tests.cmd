@@ -180,7 +180,7 @@ if errorlevel 1 (call :fail "lsp") else (call :ok)
 rem What editors' LSP clients rely on (docs/editors.md), against kppc --lsp; skipped without Node.js.
 where node >nul 2>nul
 if errorlevel 1 (
-  set "SKIPPED=lsp-smoke (no Node.js)"
+  if defined SKIPPED (set "SKIPPED=!SKIPPED!, lsp-smoke (no Node.js)") else (set "SKIPPED=lsp-smoke (no Node.js)")
 ) else (
   node ..\tools\vscode\test\lsp-smoke.js %KPPC% --lsp
   if errorlevel 1 (call :fail "lsp-smoke") else (call :ok)
