@@ -977,6 +977,25 @@ As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `k
   `consteval implicit FormatString(const char*)` makes `format(runtimeText, x)` an error, and
   its constructor can reject a malformed pattern.
 
+### 17. A self-contained release (decided 2026-11-02)
+
+kovarex, 2026-11-02, after the first installer asked for Visual Studio's clang: "I definetly want
+self contained package". A Kpp release compiles and links a program on a Windows machine with
+nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
+- The release carries its own back end: LLVM's clang and lld (Apache-2.0 WITH LLVM-exception, the
+  same licence as kpp), and the C headers, import libraries and C runtime a program links against.
+  The candidate for the last is MinGW-w64's UCRT variant (headers and import libraries generated
+  from its .def files, linking the ucrtbase.dll every Windows 10 and 11 has), as Zig does; the
+  Windows SDK's own files are not redistributable.
+- An installed Visual Studio or Windows SDK stays usable, chosen explicitly; never a silent
+  fallback from one to the other.
+- The check: on a clean Windows (Windows Sandbox), the installer, `kpp new hello`, `kpp hello --run`
+  work with nothing else installed; the game's build is the second check (D3D, COM and the
+  SDK-only headers it imports), and any header the bundled set lacks is listed, not guessed.
+- Staged: first clang and lld bundled (the Windows SDK still needed), then the headers, import
+  libraries and runtime. Thread B owns it, with C for the stdlib's C runtime use and E for the
+  installer and package.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
