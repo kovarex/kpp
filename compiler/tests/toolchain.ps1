@@ -121,6 +121,16 @@ void build(Project& project)
 '@
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp new with a C library, kpp --run did not run: $($run.text)" }
+    # Through the compile server: a C library's change alone (the program's Kpp the same, so kppc
+    # replays its build and links nothing) is linked in, by kpp's link after the libraries.
+    $run = Run "$inst\kpp.exe" @('--run')
+    Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS + 1; }"
+    $run = Run "$inst\kpp.exe" @('--run')
+    $null = Run "$inst\kpp.exe" @('--stop-server')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 44') { Fail "a C library's change alone was not linked in through the compile server: $($run.text)" }
+    if ($run.text -notmatch 'total [0-9.]+ s: C libraries [0-9.]+ s alongside kpp [0-9.]+ s, link [0-9.]+ s') { Fail "kpp's build line does not give the whole build's time and its split: $($run.text)" }
+    Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS; }"
+    $null = Run "$inst\kpp.exe" @('--no-server')
     $rsp = Get-ChildItem -Recurse "$project\build" -Filter *.link.rsp | Select-Object -First 1
     if (-not $rsp) { Fail "the project's build left no link response file" }
     else

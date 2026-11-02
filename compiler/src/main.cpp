@@ -106,6 +106,7 @@ namespace
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
+    bool deferLink = false;        // --defer-link: the link command written for kpp to run (project.cpp), not run
     std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
@@ -177,6 +178,8 @@ namespace
             "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
             "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
             "                function is kept (/OPT:NOREF)\n"
+            "  --defer-link  write the link command to EXE.link.command (and EXE.link.pending when this build's\n"
+            "                objects are new) instead of linking: kpp links once the C libraries, built alongside, are there\n"
             "  --toolchain T  bundled: the installation's own llvm-mingw (bin\\, the default where it has one),\n"
             "                which builds windows-gnu with nothing of Visual Studio's; msvc: Visual Studio's clang\n"
             "                and link.exe (the default otherwise, and what --incremental-link needs; design.md 17)\n"
@@ -439,6 +442,25 @@ namespace
     if (lib.empty() || object.empty())
       return "";
     return " \"" + lib + "\" \"" + object + "\"";
+  }
+
+  // --defer-link: the link, written for kpp to run once the program's C libraries, built alongside,
+  // are there (project.cpp's buildProgram): <exe>.link.command, and <exe>.link.pending, which says
+  // this build's objects are new (a replayed build leaves it as it was).
+  void deferLinkCommand(const Options& options, const std::string& command)
+  {
+    for (auto [suffix, text] : {std::pair<const char*, const std::string*>{".link.command", &command}, {".link.pending", nullptr}})
+      if (FILE* f = fopen((options.exe + suffix).c_str(), "wb"))
+      {
+        if (text)
+          fwrite(text->data(), 1, text->size(), f);
+        fclose(f);
+      }
+      else
+      {
+        fprintf(stderr, "cannot write %s%s\n", options.exe.c_str(), suffix);
+        codegenExit = 1;
+      }
   }
 
   std::string linkFlags(const Options& options, bool wideEntry)
@@ -1388,6 +1410,12 @@ namespace
         return;
       std::string command = "\"\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
                             linkFlags(options, definesWideEntryOnly(parsed, symbols)) + "\"";
+      if (options.deferLink) // (one module: its compile goes with the link)
+      {
+        deferLinkCommand(options, command);
+        report("clang:   deferred with the link\n");
+        return;
+      }
       start = Clock::now();
       int rc = system(command.c_str());
       report("clang:   %.3f s (%s, exit %d)\n", seconds(Clock::now() - start), level, rc);
@@ -1539,6 +1567,13 @@ namespace
     std::string link = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
     if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
       link = "\"\"" + clang + "\" @\"" + responsePath + "\" > \"" + options.exe + ".link.txt\" 2>&1\"";
+    if (options.deferLink)
+    {
+      deferLinkCommand(options, link);
+      report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged) + link deferred\n", compileTime, level, cg.modules.size(),
+             options.threads, cached.load());
+      return;
+    }
     int rc = system(link.c_str());
     report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
            options.threads, cached.load(), seconds(Clock::now() - start), rc);
@@ -3465,6 +3500,8 @@ int compile(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--incremental-link")
       options.incrementalLink = true;
+    else if (arg == "--defer-link")
+      options.deferLink = true;
     else if (arg == "--toolchain" && i + 1 < argc)
       options.toolchain = argv[++i];
     else if (arg == "--debug-info")

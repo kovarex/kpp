@@ -4,6 +4,7 @@
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <chrono>
 #include <thread>
 #include <cstdio>
@@ -781,15 +782,29 @@ namespace
     return check();
   }
 
-  // Builds a C library from its sources with clang-cl into build\clib\NAME.lib, compiling only the
-  // objects whose source, headers or flags changed, in parallel; and its resources with llvm-rc.
-  // Prebuilt libraries need nothing. Errors are clang's, at their file and line.
-  bool buildLibrary(const fs::path& root, const CLibrary& c)
+  // A C library's part of a build (prepareLibrary): its objects' compile commands and its resources',
+  // which run in one pool with every other library's of the program (runLibraries), alongside kppc's
+  // own work, and then its archive (finishLibrary). Only the objects whose source, headers or flags
+  // changed are compiled; prebuilt libraries need nothing. Errors are clang's, at their file and line.
+  struct LibraryJob
+  {
+    const CLibrary* library = nullptr;
+    fs::path directory, lib;
+    std::vector<std::string> commands;    // the objects' compiles, then the resources' (llvm-rc)
+    size_t compiles = 0;                  // how many of commands are the objects'
+    std::vector<fs::path> objects, logs, scripts; // scripts: the resources', by command after the compiles
+    std::string stamp;                    // what the objects are built with (flags.txt)
+    bool gnu = false, archive = false;    // archive: the objects changed, or the library is not there
+    std::unique_ptr<std::atomic<bool>[]> failed; // by command
+  };
+
+  bool prepareLibrary(const fs::path& root, const CLibrary& c, LibraryJob& job)
   {
     fs::path tools = fs::path(clangPath()).parent_path();
-    fs::path directory = libraryDirectory(root, c);
+    job.library = &c;
+    job.directory = libraryDirectory(root, c);
     std::error_code ec;
-    fs::create_directories(directory, ec);
+    fs::create_directories(job.directory, ec);
     if (c.prebuilt.empty() && !c.sources.empty())
     {
       std::vector<fs::path> sources;
@@ -809,7 +824,7 @@ namespace
       // library's includes and defines; no warnings, since the code is the library's own. The bundled
       // toolchain (llvm-mingw) builds Windows' GNU dialect (design.md 17): clang's own flags, its
       // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's.
-      bool gnu = bundledToolchain();
+      bool gnu = job.gnu = bundledToolchain();
       std::string flags = gnu ? "-c -O2 -DNDEBUG -w" : "/nologo /c /O2 /MT /DNDEBUG /w";
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
       // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
@@ -826,10 +841,8 @@ namespace
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
-      std::string stamp = flags + cppFlags + "\n" + clangPath();
-      bool flagsChanged = readText(directory / "flags.txt") != stamp;
-      std::vector<std::string> commands;
-      std::vector<fs::path> objects, logs;
+      job.stamp = flags + cppFlags + "\n" + clangPath();
+      bool flagsChanged = readText(job.directory / "flags.txt") != job.stamp;
       for (size_t n = 0; n < sources.size(); ++n)
       {
         const fs::path& source = sources[n];
@@ -837,76 +850,31 @@ namespace
         for (char& ch : stem)
           if (ch == '\\' || ch == '/' || ch == ':' || ch == '.')
             ch = '_';
-        fs::path object = directory / (stem + ".obj"), dependencies = directory / (stem + ".d");
-        objects.push_back(object);
+        fs::path object = job.directory / (stem + ".obj"), dependencies = job.directory / (stem + ".d");
+        job.objects.push_back(object);
         if (!flagsChanged && upToDate(object, dependencies))
           continue;
         bool cpp = source.extension() != ".c";
-        logs.push_back(directory / (stem + ".log"));
+        job.logs.push_back(job.directory / (stem + ".log"));
         // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
         if (gnu)
-          commands.push_back("\"" + quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
-                             " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
+          job.commands.push_back("\"" + quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
+                                 " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
         else
-          commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
-                             " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
-                             " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
+          job.commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
+                                 " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
+                                 " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
       }
-      fs::path lib = root / "build" / "clib" / (c.name + ".lib");
-      if (!commands.empty() || !fs::exists(lib, ec))
-      {
-        printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), commands.size(), sources.size(), clangPath().c_str(),
+      job.compiles = job.commands.size();
+      job.lib = root / "build" / "clib" / (c.name + ".lib");
+      job.archive = !job.commands.empty() || !fs::exists(job.lib, ec);
+      if (job.archive)
+        printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), clangPath().c_str(),
                gnu ? "the bundled toolchain, Windows' GNU dialect" : "clang-cl, MSVC's dialect");
-        std::atomic<size_t> next = 0;
-        std::atomic<bool> failed = false;
-        std::vector<std::thread> threads;
-        unsigned count = std::max(1u, std::thread::hardware_concurrency());
-        for (unsigned t = 0; t < count && t < commands.size(); ++t)
-          threads.emplace_back([&]
-          {
-            for (size_t i; (i = next++) < commands.size();)
-              if (system(commands[i].c_str()) != 0)
-                failed = true;
-          });
-        for (std::thread& t : threads)
-          t.join();
-        for (const fs::path& log : logs)
-        {
-          std::string text = readText(log);
-          if (!text.empty())
-            fprintf(stderr, "%s", text.c_str());
-        }
-        if (failed)
-        {
-          fprintf(stderr, "error: the C library %s did not compile (above)\n", c.name.c_str());
-          return false;
-        }
-        FILE* file = _wfopen((directory / "flags.txt").c_str(), L"wb");
-        if (file)
-          fwrite(stamp.data(), 1, stamp.size(), file), fclose(file);
-        std::string response;
-        for (const fs::path& object : objects)
-          response += quoteArg(object.string()) + "\n";
-        FILE* rsp = _wfopen((directory / "objects.rsp").c_str(), L"wb");
-        if (rsp)
-          fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
-        // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
-        std::string archive = gnu ? "\"" + quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(lib.string()) + " @" +
-                                      quoteArg((directory / "objects.rsp").string()) + "\""
-                                  : "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(lib.string()) + " @" +
-                                      quoteArg((directory / "objects.rsp").string()) + "\"";
-        if (gnu)
-          fs::remove(lib, ec); // (llvm-ar adds to an archive that is there)
-        if (system(archive.c_str()) != 0)
-        {
-          fprintf(stderr, "error: %s could not archive the C library %s\n", gnu ? "llvm-ar" : "llvm-lib", c.name.c_str());
-          return false;
-        }
-      }
     }
     for (const std::string& rc : c.resources)
     {
-      fs::path script = rooted(root, rc), res = directory / (script.stem().string() + ".res");
+      fs::path script = rooted(root, rc), res = job.directory / (script.stem().string() + ".res");
       // A resource script names files next to it (icons, a manifest): rebuilt when any is newer.
       bool fresh = fs::exists(res, ec);
       for (const fs::directory_entry& entry : fs::directory_iterator(script.parent_path(), ec))
@@ -914,15 +882,86 @@ namespace
           fresh = false;
       if (fresh)
         continue;
-      std::string command = "\"cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
-                            " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()) + "\"";
-      if (system(command.c_str()) != 0)
+      job.commands.push_back("\"cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
+                             " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()) + "\"");
+      job.scripts.push_back(script);
+    }
+    job.failed.reset(new std::atomic<bool>[job.commands.size()]());
+    return true;
+  }
+
+  // Every library's commands in one pool on all cores (none waits for another library), then each
+  // one's errors and archive; false when one did not build.
+  bool runLibraries(std::vector<LibraryJob>& jobs)
+  {
+    std::vector<std::pair<size_t, size_t>> work; // (job, command)
+    for (size_t j = 0; j < jobs.size(); ++j)
+      for (size_t k = 0; k < jobs[j].commands.size(); ++k)
+        work.push_back({j, k});
+    std::atomic<size_t> next = 0;
+    std::vector<std::thread> threads;
+    unsigned count = std::max(1u, std::thread::hardware_concurrency());
+    for (unsigned t = 0; t < count && t < work.size(); ++t)
+      threads.emplace_back([&]
       {
-        fprintf(stderr, "%s: error: llvm-rc could not compile it\n", script.string().c_str());
-        return false;
+        for (size_t i; (i = next++) < work.size();)
+          if (system(jobs[work[i].first].commands[work[i].second].c_str()) != 0)
+            jobs[work[i].first].failed[work[i].second] = true;
+      });
+    for (std::thread& t : threads)
+      t.join();
+    bool ok = true;
+    std::error_code ec;
+    for (LibraryJob& job : jobs)
+    {
+      const CLibrary& c = *job.library;
+      for (const fs::path& log : job.logs)
+      {
+        std::string text = readText(log);
+        if (!text.empty())
+          fprintf(stderr, "%s", text.c_str());
+      }
+      bool failed = false;
+      for (size_t k = 0; k < job.compiles; ++k)
+        failed = failed || job.failed[k];
+      for (size_t k = job.compiles; k < job.commands.size(); ++k)
+        if (job.failed[k])
+        {
+          fprintf(stderr, "%s: error: llvm-rc could not compile it\n", job.scripts[k - job.compiles].string().c_str());
+          ok = false;
+        }
+      if (failed)
+      {
+        fprintf(stderr, "error: the C library %s did not compile (above)\n", c.name.c_str());
+        ok = false;
+        continue;
+      }
+      if (!job.archive)
+        continue;
+      FILE* file = _wfopen((job.directory / "flags.txt").c_str(), L"wb");
+      if (file)
+        fwrite(job.stamp.data(), 1, job.stamp.size(), file), fclose(file);
+      std::string response;
+      for (const fs::path& object : job.objects)
+        response += quoteArg(object.string()) + "\n";
+      FILE* rsp = _wfopen((job.directory / "objects.rsp").c_str(), L"wb");
+      if (rsp)
+        fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
+      // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
+      fs::path tools = fs::path(clangPath()).parent_path();
+      std::string archive = job.gnu ? "\"" + quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(job.lib.string()) + " @" +
+                                        quoteArg((job.directory / "objects.rsp").string()) + "\""
+                                    : "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(job.lib.string()) + " @" +
+                                        quoteArg((job.directory / "objects.rsp").string()) + "\"";
+      if (job.gnu)
+        fs::remove(job.lib, ec); // (llvm-ar adds to an archive that is there)
+      if (system(archive.c_str()) != 0)
+      {
+        fprintf(stderr, "error: %s could not archive the C library %s\n", job.gnu ? "llvm-ar" : "llvm-lib", c.name.c_str());
+        ok = false;
       }
     }
-    return true;
+    return ok;
   }
 
   // A program's --toolchain (source.hpp's selectToolchain): the last of build.kpp's arguments and the
@@ -990,6 +1029,15 @@ namespace
     return args;
   }
 
+  // kppc's arguments for a cell's build: buildArguments' with the link left to kpp (buildProgram). The
+  // compile server of a build is the one of these arguments: --stop-server stops it by them too.
+  std::vector<std::string> buildCommand(const fs::path& root, const Description& d, const Program& p, const Request& request)
+  {
+    std::vector<std::string> args = buildArguments(root, d, p, request);
+    args.insert(args.begin() + 1, "--defer-link");
+    return args;
+  }
+
   int buildProgram(const fs::path& root, const Description& d, const Program& p, const Request& request, CompileFunction compile)
   {
     fs::path exe = exeOf(root, p);
@@ -1007,25 +1055,67 @@ namespace
       fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
       return 1;
     }
-    for (const std::string& name : p.links)
+    using Clock = std::chrono::steady_clock;
+    auto since = [](Clock::time_point t) { return std::chrono::duration<double>(Clock::now() - t).count(); };
+    auto start = Clock::now();
+    std::vector<LibraryJob> jobs(p.links.size());
+    for (size_t i = 0; i < p.links.size(); ++i)
     {
-      const CLibrary* c = findLibrary(d, name);
+      const CLibrary* c = findLibrary(d, p.links[i]);
       if (!c)
       {
-        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), name.c_str());
+        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), p.links[i].c_str());
         return 1;
       }
-      if (!buildLibrary(root, *c))
+      if (!prepareLibrary(root, *c, jobs[i]))
         return 1;
     }
-    auto start = std::chrono::steady_clock::now();
-    int code = invoke(buildArguments(root, d, p, request), request.server, compile);
-    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    // The C libraries' files compile in one pool while kppc builds the program (its front end, code
+    // generation and modules need no library); kppc leaves the link (--defer-link), which runs here
+    // once both are done (docs/build.md, "The whole build").
+    bool libraryWork = std::any_of(jobs.begin(), jobs.end(), [](const LibraryJob& j) { return j.archive || !j.commands.empty(); });
+    bool librariesBuilt = true;
+    double librarySeconds = 0;
+    std::thread libraries;
+    if (libraryWork)
+      libraries = std::thread([&] { librariesBuilt = runLibraries(jobs); librarySeconds = since(start); });
+    std::vector<std::string> args = buildCommand(root, d, p, request);
+    auto kppStart = Clock::now();
+    int code = invoke(args, request.server, compile);
+    double kppSeconds = since(kppStart);
+    if (libraries.joinable())
+      libraries.join();
+    if (!librariesBuilt)
+      code = 1;
+    // The link: kppc's command (it marks it pending when it built new objects), also when only a
+    // C library changed (kppc replays an unchanged build, which does not link).
+    double linkSeconds = 0;
+    fs::path pending = exe.string() + ".link.pending", command = exe.string() + ".link.command";
+    bool linkPending = fs::exists(pending, ec);
+    if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
+    {
+      auto linkStart = Clock::now();
+      int rc = system(readText(command).c_str());
+      linkSeconds = since(linkStart);
+      if (rc != 0)
+      {
+        fprintf(stderr, "error: %s (%s): the link failed (exit %d)\n", p.name.c_str(), p.configuration.c_str(), rc);
+        code = 1;
+      }
+      else
+        fs::remove(pending, ec);
+    }
+    double seconds = since(start);
     bool keepGoing = std::find(p.arguments.begin(), p.arguments.end(), "--keep-going") != p.arguments.end();
-    if (code == 0)
-      printf("kpp: built %s (%s, %.1f s)\n", exe.string().c_str(), p.configuration.c_str(), seconds);
+    char split[256];
+    if (libraryWork)
+      snprintf(split, sizeof split, "C libraries %.1f s alongside kpp %.1f s, link %.1f s", librarySeconds, kppSeconds, linkSeconds);
     else
-      fprintf(stderr, "kpp: %s (%s) failed after %.1f s\n", p.name.c_str(), p.configuration.c_str(), seconds);
+      snprintf(split, sizeof split, "kpp %.1f s, link %.1f s", kppSeconds, linkSeconds);
+    if (code == 0)
+      printf("kpp: built %s (%s, total %.1f s: %s)\n", exe.string().c_str(), p.configuration.c_str(), seconds, split);
+    else
+      fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
         system(withExe(p.afterBuild, exe, p.configuration).c_str()) != 0)
     {
@@ -1239,6 +1329,7 @@ namespace
 
   int act(const fs::path& root, const Request& request, CompileFunction compile)
   {
+    auto commandStart = std::chrono::steady_clock::now(); // (the whole command's time: build.kpp's description too)
     // --stop-server: the compile servers of build.kpp's description and of every cell's builds. The
     // description's first, and the description then computed without a server, so that a build.kpp
     // that no longer describes stops its server too.
@@ -1251,7 +1342,7 @@ namespace
       if (!describe(root, serverless, d))
         return 1;
       for (const Program& p : d.programs)
-        invoke(buildArguments(root, d, p, request), true, compile, true);
+        invoke(buildCommand(root, d, p, request), true, compile, true);
       return 0;
     }
     Description d;
@@ -1334,6 +1425,11 @@ namespace
     for (const Program* p : chosen)
       if (int code = buildProgram(root, d, *p, request, compile))
         return code;
+    // The whole command (build.kpp's description, every cell, its C libraries and links), to compare
+    // with another build system's.
+    if (chosen.size() > 1)
+      printf("kpp: built %zu programs, total %.1f s\n", chosen.size(),
+             std::chrono::duration<double>(std::chrono::steady_clock::now() - commandStart).count());
     return request.run ? runProgram(root, *chosen[0], request.runArguments) : 0;
   }
 

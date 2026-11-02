@@ -603,6 +603,23 @@ void configure(Cell& cell)
 5. **Project files for an IDE** (below) are generated from build.kpp's targets, and
    `tools/vs/factorio/generate.cmd` disappears into factorio's build.kpp.
 
+### The whole build (2026-11-02)
+
+A program's build is its C libraries and kppc's work at once, then the link:
+- Every library the program links has its changed files (and resources) compiled in **one pool**
+  on all cores, no library waiting for another, while kppc builds the program (its front end,
+  code generation and modules need no library). Each library is archived once its files are.
+- kppc leaves the link to kpp (`--defer-link`): it writes the link command to `EXE.link.command`,
+  and `EXE.link.pending` when its objects are new. kpp links once both are done, also when only a
+  C library changed (a compile server replays an unchanged program's build, which does not link).
+- kpp's line gives the whole build's time and its split, `kpp: built ...\factorio.exe (debug, total
+  21.2 s: C libraries 18.8 s alongside kpp 18.3 s, link 2.4 s)`, and a command that builds several
+  programs ends with `kpp: built 2 programs, total N s`.
+- Measured on factorio-in-kpp's debug build from scratch (d84869e1, its 641 C/C++ files, PC-PRACOVNA,
+  3 rounds interleaved): 32.8, 39.1, 34.0 s with the libraries one after another before kppc;
+  22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
+  all the time either way: the libraries take as long beside kppc as alone, and so does kppc.
+
 ## Project files for an IDE
 
 These build, run and debug. IntelliSense (errors as you type, hover, go to definition, completion)
