@@ -12,17 +12,17 @@ Factorio already has (see [Status](#status)).
   file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
   Factorio converted to kpp, against its own C++ build on the same machine (debug, 32 threads):
 
-  | | C++ (MSVC, FASTBuild) | kpp |
+  | | C++ (MSVC, FASTBuild) | kpp 0.2.28 |
   |---|---:|---:|
   | Edit of one function | 22 to 29 s | about 1.5 s |
   | Edit of an inline function used across the game | 51 to 59 s | about 1.6 s |
   | Clean build of the game | 57 to 61 s | about 10 to 12 s |
-  | Whole build of factorio.exe, every library included | 50 s | 20.6 s (kpp 0.2.28) |
-  | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 36.4 s (kpp 0.2.28) |
+  | Whole build of factorio.exe, every library included | 50 s | 20.6 s |
+  | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 36.4 s |
 
   The first three rows were measured on the development machine with kpp built from source; the
   last two are whole builds including all the C and C++ libraries the game links, both on one
-  machine (kovarex's second one) with the released kpp named. How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
+  machine (kovarex's second one). How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
   [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md).
 - **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
   build of the same game is about 1.5 GB in all, executable and debug information included, and
