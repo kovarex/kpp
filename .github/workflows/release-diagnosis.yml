@@ -11,22 +11,28 @@ permissions:
 
 jobs:
   diagnose:
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     timeout-minutes: 5
     steps:
-      - name: Release calls
-        shell: bash
+      - uses: actions/checkout@v4
+      - name: publish.ps1 with a throwaway tag, then with latest
+        shell: powershell
         env:
-          TOKEN: ${{ github.token }}
-          API: ${{ github.api_url }}/repos/${{ github.repository }}
-          SHA: ${{ github.sha }}
+          KPP_FORGE_TOKEN: ${{ github.token }}
         run: |
-          call() { echo "== $1 $2"; curl -sS -o out.json -w '%{http_code}\n' -X "$1" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/vnd.github+json' "$API$2" ${3:+-d "$3"}; head -c 300 out.json; echo; }
-          call GET /releases
-          call GET /git/ref/heads/master
-          call POST /git/refs "{\"ref\":\"refs/tags/diagnosis-$GITHUB_RUN_ID\",\"sha\":\"$SHA\"}"
-          call POST /releases "{\"tag_name\":\"diagnosis-$GITHUB_RUN_ID\",\"name\":\"diagnosis\",\"prerelease\":true,\"draft\":true}"
-          call POST /releases "{\"tag_name\":\"diagnosis2-$GITHUB_RUN_ID\",\"target_commitish\":\"$SHA\",\"name\":\"diagnosis2\",\"prerelease\":true}"
-          for id in $(curl -sS -H "Authorization: Bearer $TOKEN" "$API/releases?per_page=100" | python3 -c "import json,sys; [print(r['id']) for r in json.load(sys.stdin) if r['tag_name'].startswith('diagnosis')]"); do call DELETE /releases/$id; done
-          call DELETE /git/refs/tags/diagnosis-$GITHUB_RUN_ID
-          call DELETE /git/refs/tags/diagnosis2-$GITHUB_RUN_ID
+          foreach ($tag in "diagnosis-${{ github.run_id }}", 'latest') {
+            Write-Host "== $tag"
+            try {
+              tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $tag -Commit "${{ github.sha }}" -Prerelease `
+                -Version 0.0.0-diagnosis -Title "diagnosis ($tag)" -Notes "A test of the release calls; deleted at once." -Files README.md
+            } catch { Write-Host "FAILED: $($_.Exception.Message) $($_.ErrorDetails.Message)" }
+          }
+          $headers = @{ Authorization = "Bearer $env:KPP_FORGE_TOKEN"; Accept = 'application/vnd.github+json' }
+          $api = "${{ github.api_url }}/repos/${{ github.repository }}"
+          foreach ($r in (Invoke-RestMethod -Headers $headers "$api/releases?per_page=100")) {
+            if ($r.name -like 'diagnosis*') {
+              Invoke-RestMethod -Method DELETE -Headers $headers "$api/releases/$($r.id)" | Out-Null
+              try { Invoke-RestMethod -Method DELETE -Headers $headers "$api/git/refs/tags/$($r.tag_name)" | Out-Null } catch {}
+              Write-Host "deleted $($r.tag_name)"
+            }
+          }
