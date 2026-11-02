@@ -54,14 +54,33 @@ Microsoft Defender), kpp alone:
 | Clean build of the game, libraries built | 23.3 to 60.3 s |
 
 These are `kpp factorio`'s times, as the readme's kpp column is. kpp's own line splits each build:
-in the edits kppc took 1.0 to 3.5 s and the link 0.6 to 1.7 s. About
-2.5 s more is the project build's check of the 641 C and C++ objects (project.cpp's prepareLibrary,
-which runs before kppc starts), and about 1 s comes before and after kpp's total (build.kpp, the
-toolchain, the after-build copies). A clean build in its own process took 45.1 s once on the same
+in the edits kppc took 1.0 to 3.5 s and the link 0.6 to 1.7 s; the rest was mostly the check of the
+C libraries, now cut (below). A clean build in its own process took 45.1 s once on the same
 busy machine (kppc 29.2 s: codegen 14.8 s, clang 8.7 s), against 77 to 94 s through a fresh compile
 server, the server's slower first build; so the clean row is a build without the server. The C++
 side ran here only with `-DryRun` (its checks against C:\Factorio, which nothing on this machine
 edits or touches).
+
+**The leaf edit through `kpp factorio`, phase by phase (2026-11-02).** On a quiet machine (0 to 9% busy
+before each build, but for two rounds before the change at 51 and 94%), master's kppc with LLVM's back end in it (as CI's packages have it), timed
+at each phase from the client's start (a copy with timing points, scratch\build\phase.ps1 and
+instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build with no change:
+
+| phase | before | after the C libraries' check was cut |
+|---|---:|---:|
+| build.kpp (its description cached) and the toolchain | 0.04 s | 0.04 s |
+| the C and C++ libraries' up-to-date check (641 objects) | 1.49 to 2.92 s | 0.11 to 0.13 s |
+| kppc through the server: the server's walks 0.2 s, codegen 0.19 to 0.25 s, the back end (1 of 128 modules) 0.50 to 0.70 s | 0.95 to 1.78 s | 1.00 to 1.09 s |
+| the link (link.exe, incremental) | 0.58 to 1.26 s | 0.54 to 1.26 s |
+| build.kpp's after-build step: factorio.exe (108 MB) and its .pdb (218 MB) copied to bin\Debugx64 | 0.57 to 1.03 s | 0.58 to 0.61 s |
+| **wall** | **4.21 to 6.01 s** | **2.29 to 3.04 s** |
+| a build with no change | 1.66 to 1.68 s (4.90 s the first, the file cache cold) | 0.31 to 0.74 s |
+
+The check read each object's dependency file and asked the file system for the time of every header
+it names, about 100,000 times for the same few thousand headers (the SDK's, SDL's); it now asks once
+per header per build (project.cpp, upToDate). What is left is kppc and the link (1.5 to 1.7 s, the
+readme's earlier figure was these two alone) and the after-build copies, which hard links instead
+of copies would make nearly free.
 
 ## The release edit (2026-10-31)
 

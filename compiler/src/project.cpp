@@ -7,6 +7,7 @@
 #include <memory>
 #include <chrono>
 #include <thread>
+#include <unordered_map>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -748,8 +749,9 @@ namespace
   }
 
   // Whether object depends only on files older than itself: the source and the headers clang
-  // named in its dependency file (-MD).
-  bool upToDate(const fs::path& object, const fs::path& dependencies)
+  // named in its dependency file (-MD). times keeps each file's time for the build: the 641 objects of
+  // factorio-in-kpp's libraries name the same headers (the SDK's, SDL's) about 100,000 times in all.
+  bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times)
   {
     std::error_code ec;
     if (!fs::exists(object, ec) || !fs::exists(dependencies, ec))
@@ -761,7 +763,12 @@ namespace
     std::string word;
     auto check = [&]
     {
-      bool fresh = word.empty() || modified(word) <= built;
+      if (word.empty())
+        return true;
+      auto [at, added] = times.try_emplace(word);
+      if (added)
+        at->second = modified(word);
+      bool fresh = at->second <= built;
       word.clear();
       return fresh;
     };
@@ -799,7 +806,7 @@ namespace
     std::unique_ptr<std::atomic<bool>[]> failed; // by command
   };
 
-  bool prepareLibrary(const fs::path& root, const CLibrary& c, LibraryJob& job)
+  bool prepareLibrary(const fs::path& root, const CLibrary& c, LibraryJob& job, std::unordered_map<std::string, fs::file_time_type>& times)
   {
     fs::path tools = fs::path(clangPath()).parent_path();
     job.library = &c;
@@ -853,7 +860,7 @@ namespace
             ch = '_';
         fs::path object = job.directory / (stem + ".obj"), dependencies = job.directory / (stem + ".d");
         job.objects.push_back(object);
-        if (!flagsChanged && upToDate(object, dependencies))
+        if (!flagsChanged && upToDate(object, dependencies, times))
           continue;
         bool cpp = source.extension() != ".c";
         job.logs.push_back(job.directory / (stem + ".log"));
@@ -1061,6 +1068,7 @@ namespace
     auto since = [](Clock::time_point t) { return std::chrono::duration<double>(Clock::now() - t).count(); };
     auto start = Clock::now();
     std::vector<LibraryJob> jobs(p.links.size());
+    std::unordered_map<std::string, fs::file_time_type> times; // (each header's time, once: upToDate)
     for (size_t i = 0; i < p.links.size(); ++i)
     {
       const CLibrary* c = findLibrary(d, p.links[i]);
@@ -1069,7 +1077,7 @@ namespace
         fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), p.links[i].c_str());
         return 1;
       }
-      if (!prepareLibrary(root, *c, jobs[i]))
+      if (!prepareLibrary(root, *c, jobs[i], times))
         return 1;
     }
     // The C libraries' files compile in one pool while kppc builds the program (its front end, code
