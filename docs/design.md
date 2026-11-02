@@ -601,6 +601,21 @@ project, a configuration, a target or a cell, or `--config zlib::NAME=VALUE`. An
 option, an undeclared one and a value of the wrong type are errors; `kpp options` lists each cell's
 values and who set them. Details: [build.md](build.md), "Library options".
 
+**The game's DEBUG as config::debug (decided by kovarex, 2026-11-02).** "Obviously we need B the
+proper way, we need to have debug and release configuration working properly." The converter
+preprocessed the game as Factorio's FastDebug (DEBUG and _DEBUG defined), so the kpp release build
+was FastDebug's code without kpp's asserts: 392 DEBUG conditionals compiled in, IsDebug true, a
+HashSet in every TransportLine (found by thread B measuring the release build against C++). Each
+conditional on DEBUG, _DEBUG or NDEBUG becomes `if constexpr (config::debug)` (NDEBUG
+`!config::debug`) at the scope it stands at: function bodies (273), class bodies (61: debug-only
+members) and namespace scope (57). A condition's platform parts fold first (`defined(WIN32) &&
+!defined(DEBUG)` is `!config::debug`). The converter converts the game twice, with DEBUG and without,
+marks each conditional in both, and merges the two texts per file; a difference outside the marks is
+reported, never chosen silently. A discarded config branch in a function body is not name-checked,
+so it may name what only the other configuration declares (spec
+kpp/config_debug_branch_names_debug_only_members). The unit tests' CRCs and the menu maps are checked
+in both configurations, and the release build is checked to hold no DEBUG code.
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".
