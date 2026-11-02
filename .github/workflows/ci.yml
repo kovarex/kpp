@@ -78,6 +78,17 @@ jobs:
           "KPP_CCACHE=$exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "CPUs: $env:NUMBER_OF_PROCESSORS"
 
+      # LLVM's libraries for the back end inside kppc (compiler\llvm.ps1: the pinned release, its
+      # SHA-256 checked, unpacked under that hash outside the workspace); build.cmd links them in
+      # (KPP_LLVM_DIR), and run_tests' "LLVM back end" checks that path.
+      - name: LLVM
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $llvm = powershell -NoProfile -ExecutionPolicy Bypass -File compiler\llvm.ps1 -Out "${{ github.workspace }}\..\llvm" | Select-Object -Last 1
+          if ($LASTEXITCODE -ne 0) { throw 'compiler\llvm.ps1 failed' }
+          "KPP_LLVM_DIR=$llvm" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+
       - name: Build kppc
         shell: cmd
         run: |

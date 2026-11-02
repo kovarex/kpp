@@ -232,6 +232,7 @@ namespace
       printf("toolchain: %s (%s)\n", clang.c_str(), kind);
     else
       printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);
+    printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows (clang otherwise)" : "clang's");
     std::filesystem::path stdlib = defaultStdlib(compiler);
     printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");
     return 0;
@@ -1435,7 +1436,7 @@ namespace
     struct ModuleFailure
     {
       unsigned module;
-      int rc;
+      int rc; // clang's exit code; 0: LLVM's back end in this process
       std::string path, output;
     };
     std::vector<ModuleFailure> moduleFailures;
@@ -1443,11 +1444,14 @@ namespace
     start = Clock::now();
     // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
     // debug build's module compiled from its text in memory, no IR file written, no clang started.
-    // A release build (ThinLTO, lld), another target and --clang-flags stay clang's; so does any build
-    // with KPP_BACKEND=clang (the comparison).
+    // A release build (ThinLTO, lld), another target, --clang-flags and --debug-info (its objects not
+    // yet compared with clang's) stay clang's; so does any build with KPP_BACKEND=clang (the comparison).
     const char* backendChoice = getenv("KPP_BACKEND");
-    bool inProcess = inProcessBackend() && !options.optimize && options.target.msvc() && options.clangFlags.empty() &&
+    bool inProcess = inProcessBackend() && !options.optimize && options.target.msvc() && options.clangFlags.empty() && !options.debugInfo &&
                      !(backendChoice && std::string(backendChoice) == "clang");
+    // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
+    // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
+    const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
     parallelFor(cg.modules.size(), options.threads, [&](size_t k)
     {
       std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
@@ -1457,6 +1461,8 @@ namespace
         ++cached; // not assembled again: its text and object are the last build's (checked before rebuildLLVM ran)
         return;
       }
+      if (brokenModule && std::to_string(k) == brokenModule)
+        cg.modules[k] += "\ndefine void @kpp.test.broken() {\n  %a = add i32 %b, 1\n  %b = add i32 %a, 1\n  ret void\n}\n";
       // A module whose text (and optimisation level) did not change keeps its object file.
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : cg.modules[k])
@@ -1477,15 +1483,19 @@ namespace
       {
         std::string object, error;
         BackendOptions backend;
-        backend.sourceName = std::filesystem::path(llPath).filename().string(); // (the `.file` symbol clang writes)
-        if (!compileModule(cg.modules[k], backend, object, error) || !writeFile(objects[k], object))
+        backend.path = llPath;
+        backend.module = unsigned(k);
+        bool compiled = compileModule(cg.modules[k], backend, object, error);
+        if (compiled && !writeFile(objects[k], object))
+          error = "cannot write " + objects[k];
+        if (!compiled || !error.empty())
         {
           ++failures;
           std::error_code removed;
           std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
           writeFile(llPath, cg.modules[k]); // (the text LLVM rejected, for the report)
           std::lock_guard lock(moduleFailuresMutex);
-          moduleFailures.push_back({unsigned(k), 1, llPath, error});
+          moduleFailures.push_back({unsigned(k), 0, llPath, error});
         }
         else
           writeFile(hashPath, hashText);
@@ -1517,7 +1527,7 @@ namespace
       }
     });
     double compileTime = seconds(Clock::now() - start);
-    // A module clang rejected is an error of the build whatever --quiet says, with what clang said
+    // A module clang or LLVM rejected is an error of the build whatever --quiet says, with what it said
     // (its first lines): with --keep-going the link goes on without its object and reports what it
     // would have defined, which names no cause.
     std::sort(moduleFailures.begin(), moduleFailures.end(), [](const ModuleFailure& a, const ModuleFailure& b) { return a.module < b.module; });
@@ -1539,7 +1549,9 @@ namespace
         said += "\n  " + line;
         ++lines;
       }
-      fprintf(stderr, "%s: error: clang rejected module %u (exit %d)%s\n", f.path.c_str(), f.module, f.rc, said.empty() ? " and said nothing" : said.c_str());
+      std::string who = f.rc ? "clang rejected module " + std::to_string(f.module) + " (exit " + std::to_string(f.rc) + ")"
+                             : "LLVM's back end rejected module " + std::to_string(f.module);
+      fprintf(stderr, "%s: error: %s%s\n", f.path.c_str(), who.c_str(), said.empty() ? " and said nothing" : said.c_str());
     }
     if (failures)
     {

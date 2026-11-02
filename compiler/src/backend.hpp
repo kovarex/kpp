@@ -9,14 +9,16 @@
 
 struct BackendOptions
 {
-  std::string triple;  // the target's (the module's own when empty)
-  bool optimize = false; // -O0 only so far: the release build's ThinLTO stays clang's and lld's
-  std::string sourceName; // the object's `.file` symbol: the name of the IR file clang would have read
+  std::string path;    // the module's IR file, where clang would have read it: its file name is the object's
+                       // `.file` symbol, and the text is written there only when LLVM fails on it
+  unsigned module = 0; // its number, for the messages
 };
 
 // Whether this kppc was built with LLVM's back end in it.
 bool inProcessBackend();
 
 // The object file for module text ir (textual LLVM IR), in object; false with error set when LLVM
-// rejects the IR or the target. Thread-safe: each call has an LLVMContext and a TargetMachine of its own.
+// rejects the IR (the parser or the verifier), the target, or what the back end makes of it (its
+// diagnostics' errors; its warnings go to stderr). A fatal error of LLVM's ends the process after
+// naming the module. Thread-safe: each call has an LLVMContext and a TargetMachine of its own.
 bool compileModule(std::string_view ir, const BackendOptions& options, std::string& object, std::string& error);

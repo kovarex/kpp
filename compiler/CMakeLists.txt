@@ -52,8 +52,8 @@ if (MSVC)
   target_link_options(kppc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
 endif()
 
-# LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names an LLVM
-# release's root (its lib\cmake\llvm and include), the official clang+llvm-19.1.7 archive. Without
+# LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names the
+# official clang+llvm-19.1.7 release's lib and include, as compiler/llvm.ps1 unpacks them. Without
 # it kppc runs clang per module as before.
 set(KPP_LLVM_DIR "" CACHE PATH "LLVM (lib and include) for the in-process back end; empty: none")
 if (KPP_LLVM_DIR)
