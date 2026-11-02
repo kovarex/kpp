@@ -127,10 +127,23 @@ struct TcpListener
   TcpListener(const TcpListener&) = delete;
   TcpListener& operator=(const TcpListener&) = delete;
   TcpListener(TcpListener&& other) : handle(other.handle) { other.handle = -1; }
-  ~TcpListener()
+  TcpListener& operator=(TcpListener&& other)
+  {
+    if (this != &other)
+    {
+      this->close();
+      this->handle = other.handle;
+      other.handle = -1;
+    }
+    return *this;
+  }
+  ~TcpListener() { this->close(); }
+
+  void close()
   {
     if (this->handle != -1)
       netClose(this->handle);
+    this->handle = -1;
   }
 
   // Listens on address ("127.0.0.1", "0.0.0.0", "::1"...) at port; port 0 picks a free one
