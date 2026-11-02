@@ -14,8 +14,8 @@
 #   temporary file renamed into place. With -Mirror, each file goes to mirror/<its sha256>/<name>
 #   instead and nothing else is written. Over OpenSSH's ssh and scp, which Windows has (rsync it has
 #   not); KPP_NET_KNOWN_HOSTS holds the server's host key line.
-#   powershell -File tools\release\publish.ps1 -Files kpp-0.1.0-ci.1.zip -Commit SHA -Version 0.1.0-ci.1
-#     -ApiUrl URL -Repository owner/name -Tag dev -Title T -Notes N -Prerelease -KppNet user@host
+#   powershell -File tools\release\publish.ps1 -Files kpp-0.1.1.zip -Commit SHA -Version 0.1.1
+#     -ApiUrl URL -Repository owner/name -Tag v0.1.1 -Title T -Notes N -KppNet user@host
 # -MakeLatest true makes a full release GitHub's "Latest" (releases/latest, the repository's sidebar);
 # false keeps it from becoming that. A prerelease never is.
 #   powershell -File tools\release\publish.ps1 -Mirror -KppNet user@host -Files SDL3-devel-3.4.18-VC.zip

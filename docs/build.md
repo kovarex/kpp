@@ -725,8 +725,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from
   e0ca8975 until the coordinator made it manual (2026-10-31): master gets dozens of commits a day,
-  and no run had been checked. The automatic releases come from ci.yml (below): the prerelease "dev" from
-  every green master run, a numbered full release from every green nightly run. The repository is private, so its
+  and no run had been checked. The automatic releases come from ci.yml (below): a numbered full release from
+  every green master run. The repository is private, so its
   runs use the account's Actions minutes (Windows minutes count double) and its releases are
   visible only to its collaborators.
 
@@ -788,9 +788,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
   (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
   including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
-  kpp.vsix. The nightly run's version, and a hand-started run's, is the numbered release
-  `0.1.<date>` (UTC, as `0.1.20261102`); a push run's is `0.1.0-ci.<run>` (semver, which vsce
-  requires). `tools/release/publish.ps1`
+  kpp.vsix. The version is `0.1.<run number>` (semver, which vsce requires, and it only rises). `tools/release/publish.ps1`
   then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's
     layout in [kppnet/registry/layout.md](../kppnet/registry/layout.md)). Installers and
@@ -801,21 +799,26 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
       `{"version", "commit", "zip", "sha256"}`, with `zip` relative to `registry/kpp/`.
     - It uses OpenSSH's ssh and scp, because Windows runners have no rsync. Every file is sent
       under a temporary name and renamed, so a reader never sees half of one.
-  - **The forge's prerelease `dev`** ("Kpp dev (<version>)"), replaced through the forge's REST API
-    with the job's token: the newest green build, which factorio-in-kpp's CI downloads
-    (https://github.com/kovarex/kpp/releases/tag/dev). It was the prerelease `latest` until
-    2026-11-02, a name that read as GitHub's own "Latest" but was only under Tags; the run deletes
-    the old one. On GitHub it is updated in place (its tag moved, the new files uploaded
-    beside the old ones, then the old ones removed), so a failed step leaves the old release whole.
-    GitHub refuses the job's token a tag on a commit whose `.github/workflows` differ from master's
-    at that moment (403 "Resource not accessible by integration"): a run whose commit predates a
-    workflow change pushed while it ran cannot publish, and says so; the next run publishes.
+  - **The forge's full release**, made through the forge's REST API with the job's token: every
+    green master run's, push, nightly or by hand (kovarex, 2026-11-02), titled "Kpp <version>",
+    with the three files. A push or hand-started run's tag is `v0.1.<run>`; the nightly run's is
+    `v0.1.<date>` (UTC, as `v0.1.20261103`), titled "Kpp <version> (nightly <date>)", one durable
+    release per day (a second nightly run on the same day replaces it). On GitHub a release that
+    exists is updated in place (its tag moved, the new files uploaded beside the old ones, then the
+    old ones removed), so a failed step leaves the old release whole. GitHub refuses the job's
+    token a tag on a commit whose `.github/workflows` differ from master's at that moment (403
+    "Resource not accessible by integration"): a run whose commit predates a workflow change pushed
+    while it ran cannot publish, and says so; the next run publishes.
 
-  A green nightly run, or a run started by hand (Actions > ci > Run workflow), also publishes its
-  package as the numbered full release `v0.1.<date>` with `make_latest`: GitHub's "Latest", which
-  https://github.com/kovarex/kpp/releases/latest and the repository's sidebar show (kovarex,
-  2026-11-02). It comes from the same build and package: no second Windows job. A second run on
-  the same day replaces that day's release. Releases by hand stay with release.yml.
+  `tools/release/settle.ps1` then makes the release of the highest run number GitHub's "Latest",
+  which https://github.com/kovarex/kpp/releases/latest and the repository's sidebar show, and
+  factorio-in-kpp's CI downloads. It goes by the run number in the release's notes ("ci run <N>"),
+  not by which run finished last: push, nightly and hand-started runs have concurrency groups of
+  their own, so an older run can finish after a newer one, and it then leaves the newer one Latest.
+  It also deletes the push releases (`v0.1.<run>`) beyond the newest 20, each with its tag; the
+  nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
+  prerelease `dev` and only the nightly a numbered release, so a green push left Latest old; the run
+  deletes `dev` now. Releases by hand stay with release.yml.
 - **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
   as before. Nothing in the repository holds a secret.
   - the repository secret `KPP_NET_SSH_KEY`: an Ed25519 private key, its public half added to
@@ -834,7 +837,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   directory anyway, and a clean build takes about a minute. kppc's import cache (%TEMP%\kpp-imports)
   is not worth a cache action.
 - **Concurrency:** one run at a time per trigger and branch. A push run on master that has started
-  finishes, so a green one publishes "dev"; of the pushes meanwhile, only the newest waits (GitHub
+  finishes, so a green one publishes; of the pushes meanwhile, only the newest waits (GitHub
   cancels an older waiting run), so at most one run waits. Until 2026-11-02 a newer push cancelled
   the running one, and while pushes came every few minutes nearly every push run was cancelled
   before it could publish. A pull request's newer push still cancels its older run. The nightly and
