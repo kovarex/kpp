@@ -12,6 +12,7 @@
 #include "server.hpp"
 #include "lsp.hpp"
 #include "source.hpp"
+#include "backend.hpp"
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -1440,6 +1441,13 @@ namespace
     std::vector<ModuleFailure> moduleFailures;
     std::mutex moduleFailuresMutex;
     start = Clock::now();
+    // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
+    // debug build's module compiled from its text in memory, no IR file written, no clang started.
+    // A release build (ThinLTO, lld), another target and --clang-flags stay clang's; so does any build
+    // with KPP_BACKEND=clang (the comparison).
+    const char* backendChoice = getenv("KPP_BACKEND");
+    bool inProcess = inProcessBackend() && !options.optimize && options.target.msvc() && options.clangFlags.empty() &&
+                     !(backendChoice && std::string(backendChoice) == "clang");
     parallelFor(cg.modules.size(), options.threads, [&](size_t k)
     {
       std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
@@ -1463,6 +1471,24 @@ namespace
       if (readWholeFile(hashPath) == hashText && std::filesystem::exists(objects[k], ec))
       {
         ++cached;
+        return;
+      }
+      if (inProcess)
+      {
+        std::string object, error;
+        BackendOptions backend;
+        backend.sourceName = std::filesystem::path(llPath).filename().string(); // (the `.file` symbol clang writes)
+        if (!compileModule(cg.modules[k], backend, object, error) || !writeFile(objects[k], object))
+        {
+          ++failures;
+          std::error_code removed;
+          std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
+          writeFile(llPath, cg.modules[k]); // (the text LLVM rejected, for the report)
+          std::lock_guard lock(moduleFailuresMutex);
+          moduleFailures.push_back({unsigned(k), 1, llPath, error});
+        }
+        else
+          writeFile(hashPath, hashText);
         return;
       }
       if (!writeFile(llPath, cg.modules[k]))

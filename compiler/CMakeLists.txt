@@ -28,6 +28,7 @@ add_executable(kppc
   src/tests.cpp
   src/ast_walk.cpp
   src/version.cpp
+  src/backend.cpp
 )
 target_include_directories(kppc PRIVATE src)
 
@@ -49,4 +50,24 @@ if (MSVC)
   endif()
   target_compile_definitions(kppc PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_options(kppc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
+endif()
+
+# LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names an LLVM
+# release's root (its lib\cmake\llvm and include), the official clang+llvm-19.1.7 archive. Without
+# it kppc runs clang per module as before.
+set(KPP_LLVM_DIR "" CACHE PATH "LLVM (lib and include) for the in-process back end; empty: none")
+if (KPP_LLVM_DIR)
+  # The release's static libraries (not its DLLs' import libraries: LLVM-C, LTO, Remarks); the linker
+  # takes what the back end uses. (Its CMake package names its tools in bin\, which kppc needs not.)
+  file(GLOB kpp_llvm_libs "${KPP_LLVM_DIR}/lib/LLVM*.lib")
+  list(FILTER kpp_llvm_libs EXCLUDE REGEX "LLVM-C[.]lib$")
+  target_include_directories(kppc PRIVATE "${KPP_LLVM_DIR}/include")
+  target_compile_definitions(kppc PRIVATE KPP_WITH_LLVM)
+  # The release's libraries are built against the static C runtime (/MT): so is kppc with them.
+  set_property(TARGET kppc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+  target_link_libraries(kppc PRIVATE ${kpp_llvm_libs} psapi shell32 ole32 uuid advapi32 ws2_32 ntdll)
+  if (MSVC)
+    # (LLVM's headers are not warning-free at /W4.)
+    set_source_files_properties(src/backend.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
+  endif()
 endif()
