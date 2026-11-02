@@ -1,0 +1,22 @@
+// spec: a hidden friend whose parameters are of an enum nested in its class is found by argument-dependent lookup through that enum, as C++ has it (an enumeration's associated classes include the class it is a member of): `Flags::Standard | Flags::Spoiling` calls the class's friend operator|
+// factorio: PostTransferNotifiable.hpp's NotificationData, `Flags friend operator|(Flags a, Flags b)` and `bool friend operator&(...)` for its nested `enum class Flags`; the converter moves them out to namespace scope until this passes
+// pending: argument-dependent lookup goes through an argument of the class only, so the call does not resolve
+class Notification
+{
+public:
+  enum class Flags : unsigned char
+  {
+    Standard = 1,
+    Spoiling = 4
+  };
+  friend Flags operator|(Flags a, Flags b) { return Flags((unsigned char)a | (unsigned char)b); }
+  Notification(Flags flags) : flags(flags) {}
+  Flags flags;
+};
+
+int main()
+{
+  Notification n(Notification::Flags::Standard | Notification::Flags::Spoiling);
+  println((int)n.flags);
+  return 0;
+}

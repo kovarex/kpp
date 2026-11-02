@@ -1,0 +1,30 @@
+// spec: a requirement naming a member is satisfied only where the member is accessible, as in C++ (access is checked in a requires-expression, from where it stands): `requires { &T::luaIndex; }` in another class is false for a private luaIndex, true for a public one
+// factorio: LuaBinder<T>::registerCommonMetaMethods' `if constexpr (requires() { &T::luaIndex; })`: LuaDebugAdapter's luaIndex is private, so C++ registers no __index for it, where kpp took the private member (found by --access-warnings over the converted game)
+// pending: the requirement is satisfied by a private member, so the binder registers it (a silent difference from C++)
+class Hidden
+{
+  int luaIndex() { return 1; }
+};
+class Shown
+{
+public:
+  int luaIndex() { return 2; }
+};
+template<typename T>
+class Binder
+{
+public:
+  static int registered()
+  {
+    if constexpr (requires() { &T::luaIndex; })
+      return 1;
+    else
+      return 0;
+  }
+};
+
+int main()
+{
+  println(Binder<Hidden>::registered(), " ", Binder<Shown>::registered());
+  return 0;
+}
