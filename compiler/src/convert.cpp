@@ -4656,7 +4656,7 @@ namespace
       Expr* plain = arg;
       while (plain && plain->kind == NodeKind::ParenExpr)
         plain = static_cast<ParenExpr*>(plain)->inner;
-      std::string exact = exactIntegerName(plainTypeOf(arg));
+      std::string exact = arg ? exactIntegerName(plainTypeOf(arg)) : std::string();
       // (`int32_t(value)`, which the parse reads as a call of the type's name)
       if (exact.empty() && plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->args.size() == 1 &&
           static_cast<CallExpr*>(plain)->callee->kind == NodeKind::NameExpr)
@@ -4737,7 +4737,30 @@ namespace
               }
             }
           }
-          valueOpen = "StringView(", valueClose = ")";
+          {
+            // (a char pointer, or the converter knows no type: `(const char*)` as printf read it,
+            // glGetString's `const GLubyte*`)
+            Type* type = arg ? plainTypeOf(arg) : nullptr;
+            while (type && type->kind == NodeKind::ConstType)
+              type = static_cast<ConstType*>(type)->inner;
+            bool charPointer = false;
+            if (type && type->kind == NodeKind::PointerType)
+            {
+              Type* pointee = static_cast<PointerType*>(type)->pointee;
+              while (pointee && pointee->kind == NodeKind::ConstType)
+                pointee = static_cast<ConstType*>(pointee)->inner;
+              charPointer = pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::char_ &&
+                            !static_cast<BuiltinType*>(pointee)->isUnsigned && !static_cast<BuiltinType*>(pointee)->isSigned;
+            }
+            bool text = charPointer || (type && isStdStringType(type)) || (plain && plain->kind == NodeKind::ConditionalExpr);
+            if (arg && !text)
+            {
+              valueOpen = "StringView((const char*)(", valueClose = "))";
+              counts.add("printf %s of a pointer of another or unknown type written StringView((const char*)(x))");
+            }
+            else
+              valueOpen = "StringView(", valueClose = ")";
+          }
           break;
         case 'f':
         case 'e':
@@ -4777,27 +4800,461 @@ namespace
       open = valueOpen, close = valueClose;
       return true;
     }
+    // The printf rewrite in a macro's expansion (a local macro's text, written at its use), where
+    // there are no expressions: the calls of ssprintf and of the game's format functions found by
+    // name, each value written with its type (`int32_t(x)` for %d, `StringView(p)` for %s).
+    std::string rewritePrintfText(const std::string& t, int depth = 0)
+    {
+      if (in.c || depth > 8 || (t.find("ssprintf") == std::string::npos && t.find("Logging::") == std::string::npos &&
+                                t.find("addDebugProperty") == std::string::npos && t.find("makeProperty") == std::string::npos &&
+                                t.find("AbortException::make") == std::string::npos && t.find("TagWriter") == std::string::npos))
+        return t;
+      // a literal's end from its opening quote (raw ones too)
+      auto literalEnd = [&](size_t q) -> size_t
+      {
+        if (t[q] == 'R' && q + 1 < t.size() && t[q + 1] == '"')
+        {
+          size_t open = t.find('(', q + 2);
+          if (open == std::string::npos)
+            return std::string::npos;
+          std::string delimiter = t.substr(q + 2, open - q - 2);
+          size_t close = t.find(")" + delimiter + "\"", open);
+          return close == std::string::npos ? close : close + delimiter.size() + 2;
+        }
+        size_t e = q + 1;
+        while (e < t.size() && t[e] != t[q])
+          e += t[e] == '\\' ? 2 : 1;
+        return e < t.size() ? e + 1 : std::string::npos;
+      };
+      std::string out;
+      for (size_t i = 0; i < t.size();)
+      {
+        char c = t[i];
+        if (c == '"' || c == '\'')
+        {
+          size_t e = literalEnd(i);
+          if (e == std::string::npos)
+            return t;
+          out += t.substr(i, e - i);
+          i = e;
+          continue;
+        }
+        if (!(isalpha((unsigned char)c) || c == '_') || (i > 0 && isIdentChar(t[i - 1])))
+        {
+          out += c;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < t.size() && isIdentChar(t[j]))
+          ++j;
+        std::string word = t.substr(i, j - i);
+        size_t open = j;
+        while (open < t.size() && t[open] == ' ')
+          ++open;
+        auto preceded = [&](const std::string& qualifier)
+        { return out.size() >= qualifier.size() && out.compare(out.size() - qualifier.size(), qualifier.size(), qualifier) == 0; };
+        size_t formatIndex = SIZE_MAX;
+        bool member = out.size() >= 1 && (out.back() == '.' || (out.size() >= 2 && out.compare(out.size() - 2, 2, "->") == 0));
+        if (word == "ssprintf" && !member)
+          formatIndex = 0;
+        else if ((word == "log" || word == "logVerbose" || word == "logAndAbortOrThrow") && preceded("Logging::"))
+          formatIndex = 3;
+        else if (word == "addDebugProperty" && member)
+          formatIndex = 1;
+        else if (word == "makeProperty" && preceded("PropertyItem::"))
+          formatIndex = 1;
+        else if (word == "make" && preceded("AbortException::"))
+          formatIndex = 0;
+        else if (word == "_" && preceded("TagWriter "))
+          formatIndex = 2; // (SAVING_TAG's `Serialiser::TagWriter _(output, "tag", format, ...)`)
+        if (formatIndex == SIZE_MAX || open >= t.size() || t[open] != '(')
+        {
+          out += word;
+          i = j;
+          continue;
+        }
+        // the arguments, at depth 0 of the call
+        std::vector<std::pair<size_t, size_t>> args;
+        size_t k = open + 1, start = k;
+        int nest = 0;
+        for (; k < t.size(); ++k)
+        {
+          char d = t[k];
+          if (d == '"' || d == '\'' || (d == 'R' && k + 1 < t.size() && t[k + 1] == '"' && !(k > 0 && isIdentChar(t[k - 1]))))
+          {
+            size_t e = literalEnd(k);
+            if (e == std::string::npos)
+              return t;
+            k = e - 1;
+          }
+          else if (d == '(' || d == '[' || d == '{')
+            ++nest;
+          else if (d == ')' || d == ']' || d == '}')
+          {
+            if (nest-- == 0)
+              break;
+          }
+          else if (d == ',' && nest == 0)
+          {
+            args.push_back({start, k});
+            start = k + 1;
+          }
+        }
+        if (k >= t.size())
+          return t;
+        if (k > start || !args.empty())
+          args.push_back({start, k});
+        auto trimmed = [&](std::pair<size_t, size_t> a)
+        {
+          size_t b = a.first, e = a.second;
+          while (b < e && isspace((unsigned char)t[b]))
+            ++b;
+          while (e > b && isspace((unsigned char)t[e - 1]))
+            --e;
+          return std::pair<size_t, size_t>{b, e};
+        };
+        // the call's arguments, each rewritten inside first
+        std::vector<std::string> texts;
+        for (auto a : args)
+        {
+          auto [b, e] = trimmed(a);
+          texts.push_back(rewritePrintfText(t.substr(b, e - b), depth + 1));
+        }
+        std::string callee = word == "ssprintf" ? "toString" : word;
+        std::string rewritten;
+        bool done = false;
+        if (formatIndex < texts.size())
+        {
+          // the format: literals only (raw ones of one delimiter)
+          const std::string& f = texts[formatIndex];
+          std::string raw, rawDelimiter;
+          int rawLiterals = 0;
+          bool literals = !f.empty();
+          for (size_t q = 0; q < f.size() && literals;)
+          {
+            if (isspace((unsigned char)f[q]))
+            {
+              ++q;
+              continue;
+            }
+            if (f[q] == 'R' && q + 1 < f.size() && f[q + 1] == '"')
+            {
+              size_t o = f.find('(', q + 2);
+              std::string delimiter = o == std::string::npos ? std::string() : f.substr(q + 2, o - q - 2);
+              size_t close = o == std::string::npos ? o : f.find(")" + delimiter + "\"", o);
+              if (close == std::string::npos || (rawLiterals == 0 && !raw.empty()) || (rawLiterals > 0 && delimiter != rawDelimiter))
+              {
+                literals = false;
+                break;
+              }
+              rawDelimiter = delimiter;
+              raw += f.substr(o + 1, close - o - 1);
+              q = close + delimiter.size() + 2;
+              ++rawLiterals;
+              continue;
+            }
+            if (f[q] != '"' || rawLiterals > 0)
+            {
+              literals = false;
+              break;
+            }
+            size_t e = q + 1;
+            while (e < f.size() && f[e] != '"')
+              e += f[e] == '\\' ? 2 : 1;
+            raw += f.substr(q + 1, e - q - 1);
+            q = e + 1;
+          }
+          std::vector<std::string> segments;
+          std::vector<PrintfConversion> conversions;
+          std::string unsupported;
+          size_t following = texts.size() - formatIndex - 1;
+          auto literal = [&](const std::string& x)
+          { return rawLiterals > 0 ? "R\"" + rawDelimiter + "(" + x + ")" + rawDelimiter + "\"" : "\"" + x + "\""; };
+          if (literals && splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported) && conversions.size() == following &&
+              !(word != "ssprintf" && conversions.empty() && following == 0 && raw.find('%') == std::string::npos))
+          {
+            std::vector<std::string> pieces;
+            bool ok = true;
+            for (size_t n = 0; n < conversions.size() && ok; ++n)
+            {
+              std::string o, cl;
+              uint32_t noDot = UINT32_MAX;
+              const std::string& value = texts[formatIndex + 1 + n];
+              PrintfConversion conversion = conversions[n];
+              if (conversion.conversion == 's' && !value.empty() && (value[0] == '"' || (value[0] == 'R' && value.size() > 1 && value[1] == '"')))
+              {
+                // (a literal: itself, aligned as asked)
+                ok = printfPiece(conversion, nullptr, 0, true, o, cl, noDot);
+                if (ok && o.compare(0, 11, "StringView(") == 0)
+                  o.erase(0, 11), cl.erase(0, 1);
+                else if (ok && o.find("StringView(") != std::string::npos)
+                {
+                  size_t at = o.find("StringView(");
+                  o.erase(at, 11);
+                  cl.erase(0, 1);
+                }
+              }
+              else
+                ok = printfPiece(conversion, nullptr, 0, true, o, cl, noDot);
+              if (ok)
+              {
+                if (!segments[n].empty())
+                  pieces.push_back(literal(segments[n]));
+                pieces.push_back(o + value + cl);
+              }
+            }
+            if (ok)
+            {
+              if (!segments.back().empty() || pieces.empty())
+                pieces.push_back(literal(segments.back()));
+              for (size_t a = 0; a < formatIndex; ++a)
+                rewritten += texts[a] + ", ";
+              for (size_t n = 0; n < pieces.size(); ++n)
+                rewritten += (n ? ", " : "") + pieces[n];
+              done = true;
+              counts.add("printf calls in macro expansions written with pieces");
+            }
+          }
+          else if (!literals && word != "ssprintf")
+          {
+            // (a run-time format, as rewritePrintfCall writes it)
+            for (size_t a = 0; a < formatIndex; ++a)
+              rewritten += texts[a] + ", ";
+            if (following == 0)
+              rewritten += "StringView(" + f + ")";
+            else
+            {
+              rewritten += "ssprintf(" + f;
+              for (size_t a = formatIndex + 1; a < texts.size(); ++a)
+                rewritten += ", " + texts[a];
+              rewritten += ")";
+            }
+            done = true;
+            counts.add("format function calls of a run-time format in macro expansions written ssprintf(format, ...)");
+          }
+        }
+        if (!done)
+        {
+          callee = word;
+          rewritten.clear();
+          for (size_t a = 0; a < texts.size(); ++a)
+            rewritten += (a ? ", " : "") + texts[a];
+          if (word != "ssprintf")
+            counts.add("format function calls in macro expansions left as they are");
+        }
+        out += callee + t.substr(j, open - j) + "(" + rewritten + ")";
+        i = k + 1;
+      }
+      return out;
+    }
     std::vector<Edit> backEdits; // inserts that go after every other edit at their offset
     std::map<uint32_t, std::vector<size_t>> widenedFormats; // a format's token: the edits widenFormatArguments made for it
     std::set<CallExpr*> printfRewritten;
+    // The game's own format functions (`..., const char* format, ...)` formatting through
+    // CommonUtil's vssprintf): each takes a Text instead (convertFormatFunction), its calls the
+    // pieces. Recognized alike in every file: C-variadic, the last named parameter `format`, a name of
+    // these.
+    static bool isFormatFunctionName(std::string_view name)
+    {
+      static const std::set<std::string_view> names = {"log", "logVerbose", "logAndAbortOrThrow", "addDebugProperty", "makeProperty",
+                                                       "make", "printf", "TagWriter"};
+      return names.count(name) > 0;
+    }
+    bool isFormatFunction(Decl* d) const
+    {
+      if (!d || d->kind != NodeKind::FunctionDecl || !(d->flags & DF_Variadic))
+        return false;
+      auto* f = static_cast<FunctionDecl*>(d);
+      if (f->name.empty() || f->name.last().symbol == UINT32_MAX || f->params.empty() || !isFormatFunctionName(symbols.name(f->name.last().symbol)))
+        return false;
+      Decl* last = f->params[f->params.size() - 1];
+      return last->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(last)->name != UINT32_MAX &&
+             symbols.name(static_cast<ParamDecl*>(last)->name) == "format";
+    }
+    // A format function's declaration or definition (isFormatFunction): `const char* format, ...` is
+    // `Text text`, and its body's `va_list args; va_start(args, format); X = vssprintf(format, args);
+    // va_end(args);` is `X = toString(text);`, where it was (TagWriter's after its early return: the
+    // text is written only where the C++ wrote it). Another use of the format or its va_list is an
+    // error, not a silent fallback.
+    void convertFormatFunction(FunctionDecl* f)
+    {
+      uint32_t open = f->token;
+      while (open < toks.size() && !toks[open].is(P::LParen))
+        ++open;
+      uint32_t ellipsis = UINT32_MAX, lastComma = UINT32_MAX, beforeFormat = open;
+      for (uint32_t k = open, depth = 0; k < toks.size(); ++k)
+      {
+        if (toks[k].is(P::LParen))
+          ++depth;
+        else if (toks[k].is(P::RParen) && --depth == 0)
+          break;
+        else if (depth == 1 && toks[k].is(P::Comma))
+        {
+          if (lastComma != UINT32_MAX)
+            beforeFormat = lastComma;
+          lastComma = k;
+        }
+        else if (depth == 1 && toks[k].is(P::Ellipsis))
+        {
+          ellipsis = k;
+          break;
+        }
+      }
+      if (ellipsis == UINT32_MAX || lastComma == UINT32_MAX)
+      {
+        todo(toks[f->token].offset, "a format function whose `format, ...` the converter cannot find");
+        return;
+      }
+      replace(toks[beforeFormat + 1].offset, endOffset(ellipsis) - toks[beforeFormat + 1].offset, "Text text");
+      counts.add("format functions taking a Text");
+      if (!f->body || f->endToken <= f->body->token || f->endToken > toks.size())
+        return;
+      uint32_t first = f->body->token, end = f->endToken;
+      // the statements: va_list NAME; va_start(NAME, format); va_end(NAME);
+      std::string list;
+      auto removeStatement = [&](uint32_t from, uint32_t semicolon)
+      {
+        uint32_t start = toks[from].offset, stop = endOffset(semicolon);
+        size_t lineStart = text.rfind('\n', start == 0 ? 0 : start - 1);
+        lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+        if (text.substr(lineStart, start - lineStart).find_first_not_of(" \t") == std::string_view::npos)
+        {
+          size_t lineEnd = text.find('\n', stop);
+          if (lineEnd != std::string_view::npos && text.substr(stop, lineEnd - stop).find_first_not_of(" \t\r") == std::string_view::npos)
+            start = uint32_t(lineStart), stop = uint32_t(lineEnd + 1);
+        }
+        remove(start, stop - start);
+      };
+      bool replaced = false;
+      std::set<uint32_t> handled;
+      for (uint32_t k = first; k + 1 < end; ++k)
+      {
+        std::string_view word = spelling(k);
+        if (word == "va_list" && k + 2 < end && toks[k + 2].is(P::Semi))
+        {
+          list = std::string(spelling(k + 1));
+          removeStatement(k, k + 2);
+          for (uint32_t h = k; h <= k + 2; ++h)
+            handled.insert(h);
+        }
+        else if ((word == "va_start" || word == "va_end") && toks[k + 1].is(P::LParen))
+        {
+          uint32_t semicolon = k + 1;
+          while (semicolon < end && !toks[semicolon].is(P::Semi))
+            ++semicolon;
+          removeStatement(k, semicolon);
+          for (uint32_t h = k; h <= semicolon; ++h)
+            handled.insert(h);
+        }
+        else if (word == "vssprintf" && k + 5 < end && toks[k + 1].is(P::LParen) && spelling(k + 2) == "format" && toks[k + 3].is(P::Comma) &&
+                 spelling(k + 4) == list && toks[k + 5].is(P::RParen))
+        {
+          replace(toks[k].offset, endOffset(k + 5) - toks[k].offset,
+                  std::string(shadowedAt("toString", toks[k].offset) ? "::toString" : "toString") + "(text)");
+          replaced = true;
+          for (uint32_t h = k; h <= k + 5; ++h)
+            handled.insert(h);
+        }
+      }
+      for (uint32_t k = first; k < end; ++k)
+        if (!handled.count(k) && toks[k].getKind() == TokenKind::Identifier && (spelling(k) == "format" || (!list.empty() && spelling(k) == list)))
+        {
+          todo(toks[k].offset, "a format function's body that uses its format otherwise than through vssprintf");
+          return;
+        }
+      if (!replaced)
+        todo(toks[f->token].offset, "a format function's body without its vssprintf");
+    }
     bool rewritePrintfCall(CallExpr* call)
     {
-      if (in.c || call->callee->kind != NodeKind::NameExpr)
+      if (in.c || call->args.empty())
         return false;
-      auto* callee = static_cast<NameExpr*>(call->callee);
-      if (callee->name.parts.size() != 1 || callee->name.parts[0].symbol == UINT32_MAX || call->args.empty())
-        return false;
-      std::string_view name = symbols.name(callee->name.parts[0].symbol);
+      // the callee: ssprintf, a printf statement, a Log macro or SAVING_TAG, or a format function
+      Decl* resolved = call->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(call->callee)->resolved
+                     : call->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(call->callee)->resolved
+                                                                  : nullptr;
+      std::string_view name;
+      if (call->callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(call->callee)->name.parts.size() == 1 &&
+          static_cast<NameExpr*>(call->callee)->name.parts[0].symbol != UINT32_MAX)
+        name = symbols.name(static_cast<NameExpr*>(call->callee)->name.parts[0].symbol);
+      static const std::map<std::string_view, size_t> formatMacros = {
+        {"LOG_INFO", 0},    {"LOG_NOTICE", 0}, {"LOG_WARNING", 0}, {"LOG_ERROR", 0}, {"LOG_DATA", 0},     {"LOG_GRAPHICS", 0}, {"LOG_FUTURE", 0},
+        {"LOG_VERBOSE", 0}, {"LOG_AND_ABORT", 0}, {"LOG_AND_ABORT_NEVER_THROW", 0}, {"LOG", 1}, {"SAVING_TAG", 2}};
       std::string to;
+      size_t formatIndex = 0;
+      bool trio = true; // (formatted through CommonUtil's vssprintf: trio's floating text)
       if (name == "ssprintf")
         to = "toString";
-      else if (name == "printf" && !callee->resolved)
-        to = "print";
+      else if (name == "printf" && !resolved)
+        to = "print", trio = false;
+      else if (auto macro = !resolved && !name.empty() ? formatMacros.find(name) : formatMacros.end(); macro != formatMacros.end())
+        formatIndex = macro->second;
+      else if (isFormatFunction(resolved))
+        formatIndex = static_cast<FunctionDecl*>(resolved)->params.size() - 1;
       else
         return false;
-      Expr* format = call->args[0];
-      if (format->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(format)->literalKind != TokenKind::String)
+      if (formatIndex >= call->args.size())
         return false;
+      // (a format function's call with a format of no conversion and nothing after it: as it is,
+      // the overload of a string takes it)
+      Expr* format = call->args[formatIndex];
+      bool stringMacroFirst = format->kind == NodeKind::NameExpr && format->token < toks.size() &&
+                              toks[format->token].getKind() == TokenKind::Identifier && objectMacros.count(std::string(spelling(format->token))) &&
+                              isStringLiterals(objectMacros.at(std::string(spelling(format->token))));
+      // A format function's (or macro's) format the pieces do not write: one chosen at run time
+      // (TagWriter's `this->statistics ? "true" : "false"`), or literals the rewrite cannot read (a C
+      // header's string macro among them, SDL_HINT_AUDIO_DRIVER's): its text as C++ wrote it,
+      // ssprintf's (trio's) at run time, one piece; with nothing after it, the text itself.
+      auto runtimeFormat = [&]() -> bool
+      {
+        if (!to.empty())
+          return false;
+        // (a std::string there is no format: `LOG_AND_ABORT(ssprintf(...))` took the overload of a
+        // string in C++, as it does here)
+        if (isStdStringExpr(format))
+          return false;
+        uint32_t formatFirst = cFirstToken(format);
+        std::vector<std::pair<uint32_t, uint32_t>> all = argumentRanges(formatFirst);
+        if (all.size() != call->args.size() - formatIndex)
+          return false;
+        uint32_t paren = all.back().second;
+        if (paren >= toks.size() || !toks[paren].is(P::RParen))
+          return false;
+        bool alone = all.size() == 1;
+        if (alone && format->kind == NodeKind::LiteralExpr)
+          return false;
+        // (before the format, not at it: a rewrite of the format itself, ssprintf's of a run-time
+        // format inside, replaces it and would cancel an insertion there)
+        if (formatFirst == 0)
+          return false;
+        uint32_t after = endOffset(formatFirst - 1);
+        Edit* ending = nullptr; // (a rewrite of the token before, a Log macro's name and `(`: the opening goes into its text)
+        for (Edit& e : edits)
+          if (e.length > 0 && e.offset < after && e.offset + e.length == after)
+            ending = &e;
+        if (ending)
+          ending->text += alone ? "StringView(" : "ssprintf(";
+        else if (after < toks[formatFirst].offset)
+          replace(after, toks[formatFirst].offset - after, std::string(" ") + (alone ? "StringView(" : "ssprintf("));
+        else
+          insert(after, alone ? "StringView(" : "ssprintf(");
+        uint32_t at = endOffset(paren - 1);
+        Edit* parenRewrite = nullptr;
+        for (Edit& e : edits)
+          if (e.offset == toks[paren].offset && e.length > 0)
+            parenRewrite = &e;
+        if (parenRewrite && at == toks[paren].offset)
+          parenRewrite->text = ")" + parenRewrite->text;
+        else
+          backEdits.push_back({at, 0, ")"});
+        printfRewritten.insert(call);
+        counts.add(alone ? "format function calls of a run-time format alone written StringView(format)"
+                         : "format function calls of a run-time format written ssprintf(format, ...)");
+        return true;
+      };
+      if (!stringMacroFirst && (format->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(format)->literalKind != TokenKind::String))
+        return runtimeFormat();
       // the raw text of the format's literals (and of string macros among them)
       std::string raw, rawDelimiter;
       int rawLiterals = 0;
@@ -4805,8 +5262,20 @@ namespace
       for (; last < toks.size(); ++last)
       {
         std::string piece;
+        const std::string* blanked = nullptr; // (a C header's string macro the parse read as its text: SDL_HINT_AUDIO_DRIVER)
+        std::string blankedText;
+        if (preprocessed && toks[last].getKind() == TokenKind::Identifier)
+          for (const Preprocessed::Blank& b : preprocessed->blanked)
+            if (b.offset == toks[last].offset && b.length >= toks[last].length)
+            {
+              size_t x = b.replacement.find_first_not_of(" \t"), y = b.replacement.find_last_not_of(" \t");
+              if (x != std::string::npos && isStringLiterals(b.replacement.substr(x, y - x + 1)))
+                blankedText = b.replacement.substr(x, y - x + 1), blanked = &blankedText;
+            }
         if (toks[last].getKind() == TokenKind::String)
           piece = std::string(spelling(last));
+        else if (blanked)
+          piece = *blanked;
         else if (auto macro = toks[last].getKind() == TokenKind::Identifier ? objectMacros.find(std::string(spelling(last))) : objectMacros.end();
                  macro != objectMacros.end() && isStringLiterals(macro->second))
           piece = macro->second;
@@ -4825,6 +5294,8 @@ namespace
             size_t open = piece.find('(', q + 2);
             if (open == std::string::npos || (rawLiterals == 0 && !raw.empty()) || (rawLiterals > 0 && piece.substr(q + 2, open - q - 2) != rawDelimiter))
             {
+              if (runtimeFormat())
+                return true;
               counts.add("printf calls left as they are (raw and plain literals together)");
               return false;
             }
@@ -4839,6 +5310,8 @@ namespace
           }
           if (piece[q] != '"' || rawLiterals > 0)
           {
+            if (runtimeFormat())
+              return true;
             counts.add(rawLiterals > 0 ? "printf calls left as they are (raw and plain literals together)" : "printf calls left as they are (a prefixed literal)");
             return false;
           }
@@ -4855,13 +5328,19 @@ namespace
       std::string unsupported;
       if (!splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported))
       {
+        if (runtimeFormat())
+          return true;
         counts.add("printf calls left as they are (" + unsupported + ")");
         return false;
       }
       std::vector<std::pair<uint32_t, uint32_t>> ranges =
         last + 1 < toks.size() && toks[last + 1].is(P::Comma) ? argumentRanges(last + 2) : std::vector<std::pair<uint32_t, uint32_t>>();
-      if (ranges.size() != call->args.size() - 1 || conversions.size() != ranges.size())
+      if (to.empty() && conversions.empty() && ranges.empty() && raw.find('%') == std::string::npos && call->args.size() == formatIndex + 1)
+        return false;
+      if (ranges.size() != call->args.size() - 1 - formatIndex || conversions.size() != ranges.size())
       {
+        if (runtimeFormat())
+          return true;
         counts.add("printf calls left as they are (arguments not one per conversion, or a macro's)");
         return false;
       }
@@ -4877,8 +5356,10 @@ namespace
       std::vector<std::string> opens(conversions.size()), closes(conversions.size());
       std::vector<uint32_t> cStrDots(conversions.size(), UINT32_MAX);
       for (size_t k = 0; k < conversions.size(); ++k)
-        if (!printfPiece(conversions[k], call->args[k + 1], ranges[k].second, name == "ssprintf", opens[k], closes[k], cStrDots[k]))
+        if (!printfPiece(conversions[k], call->args[k + 1 + formatIndex], ranges[k].second, trio, opens[k], closes[k], cStrDots[k]))
         {
+          if (runtimeFormat())
+            return true;
           counts.add("printf calls left as they are (a + flag on %" + std::string(1, conversions[k].conversion) + ")");
           return false;
         }
@@ -4892,7 +5373,7 @@ namespace
       auto literal = [&](const std::string& s) { return rawLiterals > 0 ? "R\"" + rawDelimiter + "(" + s + ")" + rawDelimiter + "\"" : "\"" + s + "\""; };
       // (the library's names, `::toString` where the program's own hides it: NoiseProgram's
       // toString(), Color's hex(), DebugTools' parameter toString)
-      uint32_t callAt = toks[callee->token].offset;
+      uint32_t callAt = toks[firstTokenOf(call->callee)].offset;
       auto qualified = [&](std::string text)
       {
         static const char* names[] = {"toString", "print", "hex", "hexUpper", "octal", "fixed", "significant", "scientific", "trioFixed",
@@ -4912,15 +5393,22 @@ namespace
           }
         return text;
       };
-      to = qualified(to + "(");
-      to.pop_back();
+      if (!to.empty())
+      {
+        to = qualified(to + "(");
+        to.pop_back();
+      }
       for (std::string& open : opens)
         open = qualified(open);
-      // the callee (also written `::printf`: InteractiveTestSelect has a printf of its own)
-      uint32_t calleeFirst = firstTokenOf(call->callee), calleeLast = calleeFirst;
-      while (calleeLast + 1 < toks.size() && !toks[calleeLast + 1].is(P::LParen))
-        ++calleeLast;
-      replace(toks[calleeFirst].offset, endOffset(calleeLast) - toks[calleeFirst].offset, to);
+      // the callee (also written `::printf`: InteractiveTestSelect has a printf of its own); a
+      // format function's and a macro's stay
+      if (!to.empty())
+      {
+        uint32_t calleeFirst = firstTokenOf(call->callee), calleeLast = calleeFirst;
+        while (calleeLast + 1 < toks.size() && !toks[calleeLast + 1].is(P::LParen))
+          ++calleeLast;
+        replace(toks[calleeFirst].offset, endOffset(calleeLast) - toks[calleeFirst].offset, to);
+      }
       // The format and the comma and spaces after it become its first segment and the first piece's
       // opening; each later comma the segment before its piece and that piece's opening. (Before
       // the argument, not at it: a rewrite of the argument itself, a macro written out or a
@@ -4941,12 +5429,27 @@ namespace
         // (the last piece's closing after its argument; the others' are in the next comma's text)
         std::string after = closes[k] + (!segments[k + 1].empty() ? ", " + literal(segments[k + 1]) : std::string());
         if (k + 1 == conversions.size() && !after.empty())
-          backEdits.push_back({endOffset(ranges[k].second - 1), 0, after});
+        {
+          // (before the call's `)`, which a macro's rewrite may replace: `LOG_ERROR(...)`'s is the
+          // expansion's, which would cancel an insertion there; then into its text)
+          uint32_t at = endOffset(ranges[k].second - 1), paren = toks[ranges[k].second].offset;
+          Edit* parenRewrite = nullptr;
+          for (Edit& e : edits)
+            if (e.offset == paren && e.length > 0)
+              parenRewrite = &e;
+          if (parenRewrite && at == paren)
+            parenRewrite->text = after + parenRewrite->text;
+          else
+            backEdits.push_back({at, 0, after});
+        }
         if (cStrDots[k] != UINT32_MAX)
           remove(toks[cStrDots[k]].offset, endOffset(cStrDots[k] + 3) - toks[cStrDots[k]].offset);
       }
       printfRewritten.insert(call);
-      counts.add(name == "ssprintf" ? "ssprintf calls written toString(pieces)" : "printf statements written print(pieces)");
+      counts.add(name == "ssprintf" ? "ssprintf calls written toString(pieces)"
+                 : to == "print"     ? "printf statements written print(pieces)"
+                 : !resolved         ? "Log and SAVING_TAG macro calls written with pieces"
+                                     : "calls of the game's format functions written with pieces");
       return true;
     }
     // Factorio's own format mismatches, made explicit as C++ prints them on x64: an argument the
@@ -6301,6 +6804,10 @@ namespace
 
     void convertDecls(Span<Decl*> decls, bool namespaceScope, const std::string& prefix = "")
     {
+      if (!in.c)
+        for (Decl* d : decls)
+          if (isFormatFunction(d))
+            convertFormatFunction(static_cast<FunctionDecl*>(d));
       for (Decl* d : decls)
       {
         if (namespaceScope && overridden(d, prefix))
@@ -7207,6 +7714,9 @@ namespace
       if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
           P(static_cast<BinaryExpr*>(e)->op) == P::PlusAssign)
         return isStdStringExpr(static_cast<BinaryExpr*>(e)->lhs);
+      // (`std::string("curl_multi_perform failed - ") + curl_multi_strerror(code)`)
+      if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword && P(static_cast<BinaryExpr*>(e)->op) == P::Plus)
+        return isStdStringExpr(static_cast<BinaryExpr*>(e)->lhs) || isStdStringExpr(static_cast<BinaryExpr*>(e)->rhs);
       if (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr)
       {
         auto* callee = static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee);
@@ -9551,7 +10061,7 @@ namespace
                 args.push_back(applyEdits(edits, b, e, true));
                 spellings.push_back(std::string(text.substr(b, e - b)));
               }
-              edits.push_back({use.begin, use.end - use.begin, expandMacro(*use.macro, args, use.begin, &spellings)});
+              edits.push_back({use.begin, use.end - use.begin, rewritePrintfText(expandMacro(*use.macro, args, use.begin, &spellings))});
             }
           std::stable_sort(edits.begin(), edits.end(), byOffset);
         }
@@ -9568,7 +10078,7 @@ namespace
             args.push_back(applyEdits(edits, b, e));
             spellings.push_back(std::string(text.substr(b, e - b)));
           }
-          edits.push_back({use.begin, use.end - use.begin, expandArguments(*use.replacement, args, spellings)});
+          edits.push_back({use.begin, use.end - use.begin, rewritePrintfText(expandArguments(*use.replacement, args, spellings))});
         }
         std::stable_sort(edits.begin(), edits.end(), byOffset);
       }

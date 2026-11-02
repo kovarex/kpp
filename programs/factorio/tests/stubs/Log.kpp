@@ -5,9 +5,10 @@ extern "C" void abort();
 class Logging
 {
 public:
-  static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const char* format, ...)
+  // (the game's takes the message's pieces: design.md 14's printf rewrite)
+  static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, Text text)
   {
-    println("abort at ", StringView(file), ":", line, ": ", StringView(format));
+    println("abort at ", StringView(file), ":", line, ": ", toString(text));
     abort();
   }
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const String& message)

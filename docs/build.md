@@ -150,7 +150,7 @@ void build(Project& project)
     Executable& game = project.executable("factorio", {"src"});
     game.steps.add(Step::copy(game.output, path(project.setting("GAME", "C:/factorio-in-kpp"), "bin/x64")));
 
-    Executable& tests = project.executable("factorio-tests", {"src", "tests"});
+    Executable& tests = project.executable("factorio-test", {"src", "tests"});
     tests.exclude("src/Main.kpp");
     tests.use("unit-test");
 }
@@ -515,7 +515,7 @@ void build(Project& project)
   Configuration& fast = project.configuration("fastdebug", "debug"); // based on debug
   fast.optimize = true;                                  // asserts in, optimized
   Executable& game = project.executable("factorio", {"src"});
-  Executable& tests = project.executable("factorio-tests", {"src", "tests"});
+  Executable& tests = project.executable("factorio-test", {"src", "tests"});
   tests.config("unit_tests", true);                      // this target, every configuration
 }
 
@@ -563,7 +563,7 @@ void configure(Cell& cell)
   factorio-in-kpp's build.kpp (`kppc --quiet --run-build matrix projectlib build.kpp
   build\kpp\settings.kpp`, 15 interleaved rounds, the machine shared with other builds): 272 ms at
   best with 4 cells (2 targets, debug and release), 299 ms with 6 (fastdebug added).
-- **The command line.** `kpp TARGET CONFIGURATION`, in either order: `kpp factorio-tests release`.
+- **The command line.** `kpp TARGET CONFIGURATION`, in either order: `kpp factorio-test release`.
   A name is a configuration's or a target's, never both (a description naming both is an error).
   No target: every target; no configuration: debug. Several names build every cell they make;
   `--debug` and `--release` still mean `debug` and `release`. `kpp --test [names]` runs the tests
