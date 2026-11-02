@@ -16647,6 +16647,39 @@ struct GlobalScope::Impl
     collectScalarConversions(types.unqualified(types.stripRef(cls)), found, ambiguous, 0);
     return ambiguous ? nullptr : found;
   }
+  // A free operator function f (subst: its class's arguments, for a friend of an instance) against
+  // the built-in operator on the class operands' conversions to scalars, as C++ ranks the two
+  // ([over.match.oper]; the class has no member operator): operand by operand, the one that takes
+  // it without a user-defined conversion is the better there. 1: f is chosen, 0: the built-in is,
+  // -1: neither is better (`-n` with Num's operator double beside `operator-(const Other&)` and
+  // Other's constructor from a Num), an ambiguous call.
+  int freeOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const std::vector<const Ty*>& operands)
+  {
+    const Ty* ft = declaredTypeOf(f, subst, 0);
+    if (!ft || ft->kind != TyKind::Function || ft->args.size() < operands.size())
+      return 1;
+    bool contextualBool = op == P::Bang || op == P::AndAnd || op == P::OrOr; // (an explicit operator bool converts there)
+    bool fBetter = false, builtinBetter = false, anyClass = false;
+    for (size_t i = 0; i < operands.size(); ++i)
+    {
+      const Ty* t = types.unqualified(types.stripRef(operands[i]));
+      bool isClass = t && t->kind == TyKind::Class;
+      if (isClass)
+      {
+        anyClass = true;
+        bool converts = contextualBool ? convertsByOperator(t, types.boolType(), 0, 0, true) : scalarConversionOf(t) != nullptr;
+        if (!converts)
+          return 1; // no built-in operator takes it
+      }
+      bool fUserDefined = conversionRank(operands[i], ft->args[i]) >= 4;
+      fBetter = fBetter || (!fUserDefined && isClass);
+      builtinBetter = builtinBetter || (fUserDefined && !isClass);
+    }
+    if (!anyClass || (fBetter && !builtinBetter))
+      return 1;
+    return builtinBetter && !fBetter ? 0 : -1;
+  }
+
   void collectScalarConversions(const Ty* cls, const Ty*& found, bool& ambiguous, int depth)
   {
     if (!cls || cls->kind != TyKind::Class || depth > 8)
@@ -21657,7 +21690,22 @@ struct GlobalScope::Impl
       {
         bool ambiguous;
         FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, friendArgs.empty() ? nullptr : &friendArgs, nullptr, ambiguous);
-        if (f && (f->flags & DF_Friend) && !friendArgs.empty())
+        if (!f)
+          return nullptr;
+        // Against the built-in operator on the operands' conversions (no member operator here).
+        switch (impl.freeOperatorAgainstBuiltin(f, (f->flags & DF_Friend) && !friendArgs.empty() ? &friendArgs : nullptr, op, argTypes))
+        {
+          case 0:
+            return nullptr;
+          case -1:
+            reportHere(token, "the operator " + std::string(punctuatorSpelling(op)) + " on " + types.toString(types.unqualified(l), &symbols) +
+                                  (arity == 2 ? " and " + types.toString(types.unqualified(types.stripRef(rhs)), &symbols) : std::string()) +
+                                  " is ambiguous: the free operator" +
+                                  std::string(punctuatorSpelling(op)) + " at " + impl.locationOf(f->file, f->token) +
+                                  " takes an operand by a user-defined conversion, as the built-in operator does by a conversion operator");
+            break;
+        }
+        if ((f->flags & DF_Friend) && !friendArgs.empty())
           subst = friendArgs;
         return f;
       };
@@ -24582,7 +24630,14 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
   std::vector<const Ty*> argTypes{lhs};
   if (rhs)
     argTypes.push_back(rhs);
-  return findFree(impl->opSymbols[punctuator], argTypes, context);
+  FunctionDecl* f = findFree(impl->opSymbols[punctuator], argTypes, context);
+  if (!f)
+    return nullptr;
+  // None when the built-in operator on the operands' conversions is the better (the resolver's
+  // operatorFunction; an ambiguous one it reported).
+  const Ty* friendOf = hiddenFriendClass(f, argTypes);
+  Subst friendArgs = friendOf ? impl->substFor(friendOf) : Subst{};
+  return impl->freeOperatorAgainstBuiltin(f, friendArgs.empty() ? nullptr : &friendArgs, P(punctuator), argTypes) == 0 ? nullptr : f;
 }
 
 FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context)

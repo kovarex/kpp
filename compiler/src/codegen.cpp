@@ -12670,7 +12670,7 @@ namespace
               return {addr, argTy ? argTy : types.unknown(), false};
             }
           }
-          if (!classTy)
+          if (!classTy && (f->flags & DF_Friend) && (f->flags & DF_Static))
             classTy = friendClass(f, argTypesOf(c->args), c); // `unwrap(holder)`: Holder<int>'s friend
           return callFunction(f, calleeArgs(f, classTy, c, c), classTy, thisArg, sret, c->args, c, indirect);
         }
@@ -15362,11 +15362,15 @@ namespace
       }
       // A free `Coin operator-(const Coin&)`, a class's friend operator among them, when the class
       // has no member operator: called with the operand as written.
+      bool operatorLooked = false, noOperator = false; // (the class's member and free operators, looked up here)
       if (const Ty* ct = u->operand->ty && u->operand->ty->isKnown() ? types.unqualified(types.stripRef(u->operand->ty)) : nullptr; ct && isClass(ct))
       {
         const Ty* in = nullptr;
         const Ty* operand = argumentType(u->operand, u->operand->ty, types);
+        operatorLooked = true;
         if (!findMemberFunction(ct, operatorName(op), {}, ct, u, &in))
+        {
+          noOperator = true;
           if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), operand, nullptr, currentFunction))
           {
             const Ty* classTy = friendClass(f, {operand}, u);
@@ -15380,12 +15384,13 @@ namespace
             Expr* arg = u->operand;
             return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{&arg, 1}, u), u);
           }
+        }
       }
       Value v = rvalue(u->operand);
       if (isClass(v.ty))
       {
         const Ty* in = nullptr;
-        if (op == P::Bang && !findMemberFunction(v.ty, "operator!", {}, v.ty, u, &in))
+        if (op == P::Bang && (operatorLooked ? noOperator : !findMemberFunction(v.ty, "operator!", {}, v.ty, u, &in)))
         {
           // No operator!: the class's conversion to bool, negated.
           Value b = convert(v, types.boolType(), u);
@@ -15396,8 +15401,7 @@ namespace
         // No operator function: the built-in operator on the class's conversion to a scalar
         // (`-limit` with a Const<double>), as the resolver typed it.
         const Ty* scalar = nullptr;
-        if (!findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in) &&
-            !(u->operand->ty && global.findFreeOperator(uint32_t(op), argumentType(u->operand, u->operand->ty, types), nullptr, currentFunction)))
+        if (operatorLooked ? noOperator : !findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in))
           scalar = global.scalarConversionOf(v.ty);
         if (!scalar)
           return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);

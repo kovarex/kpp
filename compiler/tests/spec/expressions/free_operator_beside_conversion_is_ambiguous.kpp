@@ -1,0 +1,33 @@
+// spec: a free operator taking a class operand only by a user-defined conversion (another class's converting constructor) beside the built-in operator on the class's own conversion operator (an explicit operator bool for `!`) is ambiguous, as C++ ranks the two: an error, neither one called
+// factorio: none; B's review of the free unary operators (778f2ad0), which called the free one
+// error: free_operator_beside_conversion_is_ambiguous.kpp:30: error: the operator - on Num is ambiguous
+// error: free_operator_beside_conversion_is_ambiguous.kpp:31: error: the operator ! on Flag is ambiguous
+class Num
+{
+public:
+  double v;
+  Num(double x) : v(x) {}
+  operator double() const { return v; }
+};
+class Flag
+{
+public:
+  bool on;
+  explicit operator bool() const { return on; }
+};
+class Other
+{
+public:
+  Other(const Num& n) {}
+  Other(const Flag& f) {}
+};
+int operator-(const Other& o) { return 7; }
+bool operator!(const Other& o) { return true; }
+int main()
+{
+  Num n(2.5);
+  Flag f{true};
+  println(-n);
+  println(!f);
+  return 0;
+}

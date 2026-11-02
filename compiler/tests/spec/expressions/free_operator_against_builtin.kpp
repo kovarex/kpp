@@ -1,0 +1,24 @@
+// spec: a free operator competes with the built-in operator on a class operand's conversion as C++ ranks them, operand by operand: `n + 1.0` with `operator+(const Other&, const Other&)` reachable through converting constructors is the built-in addition (its 1.0 needs no conversion), `-n` with `operator-(const Num&)` the free one (it binds n as it is)
+// factorio: none; B's review of the free unary operators (778f2ad0)
+class Num
+{
+public:
+  double v;
+  Num(double x) : v(x) {}
+  operator double() const { return v; }
+};
+class Other
+{
+public:
+  int tag;
+  Other(const Num& n) : tag(7) {}
+  Other(double d) : tag(8) {}
+};
+int operator+(const Other& a, const Other& b) { return a.tag + b.tag; }
+int operator-(const Num& n) { return 42; }
+int main()
+{
+  Num n(2.5);
+  println(n + 1.0, " ", -n);
+  return 0;
+}
