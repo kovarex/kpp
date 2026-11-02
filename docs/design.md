@@ -1344,16 +1344,19 @@ declarations of classes and functions work (classes/friends, friend_declarations
 
 **Hidden friends (thread A, 2026-11-02), as C++ has them.** A friend function defined in its class
 is a function of the class's namespace that no ordinary lookup finds: only argument-dependent lookup,
-through an argument of the class, of a class deriving from it, or of an instance with it as a
-template argument. It takes no object (the compiler treats it as a static member: its body names the
+through an argument of the class, of a class deriving from it, of an instance with it as a
+template argument, of an enumeration or a class nested in it (C++'s associated classes: NotificationData's
+`Flags operator|` for its nested `enum class Flags`). It takes no object (the compiler treats it as a static member: its body names the
 class's private and static members and member types). Names and operators alike, unary ones
 included; the candidates join the namespaces' functions of the name in one overload set. A class
-template's friend is its instance's, one function per instance; a call whose arguments are of two
+template's friend is its instance's, one function per instance, and so is the friend of a class nested
+in one (`RectangleUnionLogic<P>::IntervalPoint`'s operator<); a call whose arguments are of two
 instances of one template, both with friends of the name, is an error ("not supported in one
 call"), not one instance's friend chosen. A defaulted friend comparison (`friend bool
 operator==(const C&, const C&) = default;`, `<=>` too) is the defaulted member comparison. Specs
 classes/hidden_friend_functions, hidden_friend_lookup, hidden_friend_without_class_argument_is_error,
-hidden_friends_of_two_instances_is_error, defaulted_friend_comparison; expressions/free_unary_operator
+hidden_friends_of_two_instances_is_error, defaulted_friend_comparison, hidden_friend_of_nested_enum,
+hidden_friend_in_nested_class_of_template; expressions/free_unary_operator
 (a free unary operator was not emitted before, namespace ones included).
 
 **The question** (kovarex): why are the standard library's types structs (`struct String`), and

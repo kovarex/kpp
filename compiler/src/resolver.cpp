@@ -2736,12 +2736,26 @@ struct GlobalScope::Impl
     t = types.unqualified(types.stripRef(t));
     while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
       t = t->inner ? types.unqualified(t->inner) : nullptr;
+    // An enumeration's associated class is the class it is a member of (NotificationData's `Flags
+    // operator|` for its nested `enum class Flags`), a nested class's the one around it too (C++'s
+    // [basic.lookup.argdep] 3), with the instance's arguments.
+    auto enclosing = [&](const Decl* member)
+    {
+      if (member && member->parent && member->parent->kind == NodeKind::ClassDecl && !types.isDependent(t))
+        hiddenFriends(types.classType(member->parent, t->args), symbol, out, depth + 1);
+    };
+    if (t && t->kind == TyKind::Enum && t->decl)
+    {
+      enclosing(t->decl);
+      return;
+    }
     ClassDecl* def = t && t->kind == TyKind::Class && !types.isDependent(t) ? classDefinition(t) : nullptr;
     if (!def)
       return;
     if (const std::vector<Entry>* entries = hiddenFriendsOf(def, symbol))
       if (std::none_of(out.begin(), out.end(), [&](const HiddenFriends& h) { return h.entries == entries && h.cls == t; }))
         out.push_back({entries, t});
+    enclosing(def);
     std::vector<const Ty*> bases;
     directBases(t, def, bases);
     for (const Ty* b : bases)

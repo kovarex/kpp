@@ -1,6 +1,5 @@
 // spec: a hidden friend of a class nested in a class template, one per instance, as for the template's own hidden friends: `Union<int>::Point`'s friend operator< compares two of its Points, so a sort or Less<void> of them works
 // factorio: RectangleUnion.hpp's `RectangleUnionLogic<PositionType>::IntervalPoint` and its `friend bool operator<(const IntervalPoint&, const IntervalPoint&)`, used by std::lower_bound; the converter writes it as a member operator until this passes
-// pending: the friend's instance is not made for the nested class, and codegen meets its member of the template's parameter type ("the member value (`T value`) has an unknown type yet")
 template<typename T>
 class Union
 {

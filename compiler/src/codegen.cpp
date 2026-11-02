@@ -7452,7 +7452,10 @@ namespace
       if (!(f->flags & DF_Friend) || !(f->flags & DF_Static))
         return nullptr;
       Decl* owner = global.owningClass(f);
-      if (!owner || owner->templateParams.empty())
+      bool templated = false; // (its class's, or a class around it: `Union<T>::Point`'s friend)
+      for (Decl* o = owner; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl); o = o->parent)
+        templated = templated || !o->templateParams.empty();
+      if (!owner || !templated)
         return nullptr;
       const Ty* cls = global.hiddenFriendClass(f, argTypes);
       if (!cls)
