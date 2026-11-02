@@ -1,26 +1,26 @@
-"""Generates dear imgui for Kpp: the game's imgui 1.53 (libraries/imgui) through a thin C interface.
+"""Generates dear imgui for kpp: the game's imgui 1.53 (libraries/imgui) through a thin C interface.
 
 imgui is C++ (namespace ImGui with overloads and default arguments, structs with methods, the
-ImVector template) and Kpp calls C only (docs/design.md, "Interop: C only"). This script reads
+ImVector template) and kpp calls C only (docs/design.md, "Interop: C only"). This script reads
 imgui.h and writes both sides of the interface:
 
 - native/imgui_c.cpp: one extern "C" function per function of namespace ImGui (kppImGui_<Name>,
   numbered from the second overload on; imgui.h's, and those of imgui_internal.h the game calls,
-  INTERNAL_FUNCTIONS) and per method of the structs Kpp mirrors
+  INTERNAL_FUNCTIONS) and per method of the structs kpp mirrors
   (kpp<Struct>_<Name>, kpp<Struct>_construct and kpp<Struct>_destruct), each calling imgui. Classes
   cross by pointer (an ImVec2 argument, a reference, a returned ImVec2 through an out pointer); a C
   variadic function formats through imgui's va_list variant. It also asserts the layout this
-  script gives Kpp: every mirrored struct's size and the offset of each of its fields.
-- overrides/added/src/Debug/ImGui.kpp: imgui's types for Kpp, with imgui's names: the typedefs,
+  script gives kpp: every mirrored struct's size and the offset of each of its fields.
+- overrides/added/src/Debug/ImGui.kpp: imgui's types for kpp, with imgui's names: the typedefs,
   the enums, the structs with imgui's layouts (the game reads and writes ImGuiIO, ImGuiStyle and
   the draw lists imgui owns), ImVec2, ImVec4, ImColor and ImVector written out (their bodies are
   imgui's inline code), the structs' methods and namespace ImGui with imgui's signatures and default
   arguments, calling the C functions, and imgui_internal.h's ImVec2/ImVec4 operators
   (IMGUI_DEFINE_MATH_OPERATORS, which DebugTools.cpp turns on). static_asserts check the sizes.
 
-Structs Kpp declares without a definition (only pointers to them cross): ImDrawListSharedData,
+Structs kpp declares without a definition (only pointers to them cross): ImDrawListSharedData,
 ImGuiContext, ImGuiStorage, ImGuiTextFilter, ImGuiTextBuffer and ImGuiOnceUponAFrame. The va_list
-variants (TextV, ...) are left out: Kpp has no va_list.
+variants (TextV, ...) are left out: kpp has no va_list.
 
     python generate_imgui.py [imgui directory] [--shim FILE] [--kpp FILE]
 """
@@ -44,7 +44,7 @@ while args:
     else:
         IMGUI = a
 
-# The structs Kpp only declares, and the ones written out below instead of generated.
+# The structs kpp only declares, and the ones written out below instead of generated.
 OPAQUE = ['ImDrawListSharedData', 'ImGuiContext', 'ImGuiStorage', 'ImGuiTextFilter', 'ImGuiTextBuffer', 'ImGuiOnceUponAFrame']
 WRITTEN = ['ImVec2', 'ImVec4', 'ImColor', 'ImVector']
 # The macros the shim's build defines, for imgui.h's #if lines (clang-cl, imconfig.h's ImDrawIdx).
@@ -238,7 +238,7 @@ class Param:
             self.type, self.name = normalize(text), 'arg%d' % index
 
     def declarator(self, type_text=None):
-        """The parameter as C++ and Kpp write it, with the given type in place of its own."""
+        """The parameter as C++ and kpp write it, with the given type in place of its own."""
         if self.function:
             return '%s (*%s)(%s)' % (self.function[0], self.name, self.function[1])
         return '%s %s' % (type_text or self.type, self.name)
@@ -422,7 +422,7 @@ NESTED = {n.name: n for s in ALL_STRUCTS for n in s.nested}
 CLASS_NAMES = set(WRITTEN) | {s.name for s in ALL_STRUCTS}
 
 # ---------------------------------------------------------------------------------------------
-# Layouts: C's rules, which Kpp's and clang's both follow.
+# Layouts: C's rules, which kpp's and clang's both follow.
 
 LAYOUTS = {'ImVec2': (8, 4, [('x', 0), ('y', 4)]), 'ImVec4': (16, 4, [('x', 0), ('y', 4), ('z', 8), ('w', 12)]),
            'ImColor': (16, 4, [('Value', 0)])}
@@ -551,12 +551,12 @@ def va_list_variant(f, pool):
 # Writing
 
 shim = []    # C++ definitions
-decls = []   # Kpp's extern "C" declarations
+decls = []   # kpp's extern "C" declarations
 counts = {'functions': 0, 'methods': 0}
 
 
 def emit(f, c_name, pool):
-    """The C function for f, its Kpp declaration, and the Kpp body that calls it."""
+    """The C function for f, its kpp declaration, and the kpp body that calls it."""
     owner = f.owner
     if f.static:
         fail('a static method: %s::%s' % (owner.name, f.name))
@@ -613,7 +613,7 @@ def emit(f, c_name, pool):
                 body.append('return result;')
         shim.append('%s\n{\n%s\n}' % (signature, '\n'.join('  ' + b for b in body)))
     elif f.destructor:
-        # C++'s destructor destroys the members too; cleared, the storage gives the Kpp members'
+        # C++'s destructor destroys the members too; cleared, the storage gives the kpp members'
         # destructors that run next nothing to free.
         shim.append('%s\n{\n  %s;\n  memset((void*)self, 0, sizeof(*self));\n}' % (signature, call))
     elif returns_class(f):
@@ -625,7 +625,7 @@ def emit(f, c_name, pool):
     else:
         shim.append('%s { return %s; }' % (signature, call))
     decls.append('extern "C" %s;' % signature)
-    # The Kpp side.
+    # The kpp side.
     params = []
     for p in f.params:
         if p.variadic:
@@ -703,7 +703,7 @@ def kpp_enum(name, values):
 
 
 def constant(name, value):
-    """An object-like macro of imgui.h as a Kpp constant, or None."""
+    """An object-like macro of imgui.h as a kpp constant, or None."""
     if re.match(r'^"[^"]*"$', value):
         return 'const char* const %s = %s;' % (name, value)
     if re.match(r'^(0x[0-9A-Fa-f]+|\d+)$', value):
@@ -724,22 +724,22 @@ for name, value in MACROS.items():
     c = constant(name, value)
     if c is None:
         if value:
-            fail('the macro %s (%s) has no Kpp constant' % (name, value))
+            fail('the macro %s (%s) has no kpp constant' % (name, value))
         continue
     constants.append(c)
 
 kpp = []
-kpp.append('''// dear imgui 1.53 (C:\\Factorio\\libraries\\imgui, the game's copy) for Kpp. Generated by
-// programs/factorio/native/generate_imgui.py from imgui.h; do not edit. imgui is C++, so Kpp calls it
+kpp.append('''// dear imgui 1.53 (C:\\Factorio\\libraries\\imgui, the game's copy) for kpp. Generated by
+// programs/factorio/native/generate_imgui.py from imgui.h; do not edit. imgui is C++, so kpp calls it
 // through native/imgui_c.cpp, its thin C interface (built into factorio-native.lib with the game's
 // imgui.lib, link.cmd): the functions of namespace ImGui and the structs' methods here are imgui's,
 // with its signatures and default arguments, and each calls its C function. The structs have
 // imgui's layouts (imgui owns ImGuiIO, ImGuiStyle and the draw lists, and the game reads and writes
 // their fields): the C side asserts each field's offset, the static_asserts here the sizes.
-// ImVec2, ImVec4, ImColor and ImVector are imgui's inline code, written in Kpp. Declared only,
+// ImVec2, ImVec4, ImColor and ImVector are imgui's inline code, written in kpp. Declared only,
 // as pointers to them is all that crosses: ImDrawListSharedData, ImGuiContext, ImGuiStorage,
 // ImGuiTextFilter, ImGuiTextBuffer, ImGuiOnceUponAFrame. Left out: the va_list variants (TextV,
-// ...); Kpp has no va_list. imgui.h's function-like macros (IM_COL32, IM_ARRAYSIZE) the converter
+// ...); kpp has no va_list. imgui.h's function-like macros (IM_COL32, IM_ARRAYSIZE) the converter
 // expands where the game uses them (overrides/expand-macros.txt).
 extern "C" import "string.h";''')
 kpp.append('\n'.join('struct %s;' % n for n in OPAQUE))
@@ -905,7 +905,7 @@ for s in ALL_STRUCTS:
     for name, offset in offsets:
         asserts.append('static_assert(offsetof(%s, %s) == %d, "%s::%s");' % (s.qualified(), name, offset, s.qualified(), name))
 
-c = ['''// dear imgui 1.53's thin C interface, for Kpp (overrides/added/src/Debug/ImGui.kpp). Generated by
+c = ['''// dear imgui 1.53's thin C interface, for kpp (overrides/added/src/Debug/ImGui.kpp). Generated by
 // generate_imgui.py from C:\\Factorio\\libraries\\imgui\\imgui.h; do not edit. Built by build.cmd
 // into factorio-native.lib, linked with the game's imgui.lib.
 #include <imgui/imgui.h>

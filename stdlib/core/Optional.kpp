@@ -1,4 +1,4 @@
-// Kpp standard library: Optional<T>, a value that may be absent. Specified in
+// kpp standard library: Optional<T>, a value that may be absent. Specified in
 // docs/stdlib/optional.md. The value lives in storage inside the Optional (a union's, so T's size
 // and alignment): it is constructed when the Optional gets one and destroyed when it gives it up,
 // and an empty Optional holds no T.
@@ -323,7 +323,7 @@ Optional<T> makeOptional(const T& value) { return Optional<T>(value); }
 template<typename T, typename... Args>
 Optional<T> makeOptional(Args&&... args) { return Optional<T>(inPlace, forward<Args>(args)...); }
 
-// The generated `E::fromStr(text)` of a Kpp enum (design.md 8.4): the value whose str() is text,
+// The generated `E::fromStr(text)` of a kpp enum (design.md 8.4): the value whose str() is text,
 // or none. The compiler lowers E::fromStr to this function.
 template<typename E>
 Optional<E> enumFromStr(const char* text)

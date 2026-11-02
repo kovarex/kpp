@@ -1,4 +1,4 @@
-// spec: a constant read before its definition, or from another file (Kpp's symbols are order-independent), is the value of its initializer as a walk of it types it: `pick(3)` in k's initializer is pick(int), in a lambda called there, in a data member's default and in an enumerator's value too, whatever order the files are walked in
+// spec: a constant read before its definition, or from another file (kpp's symbols are order-independent), is the value of its initializer as a walk of it types it: `pick(3)` in k's initializer is pick(int), in a lambda called there, in a data member's default and in an enumerator's value too, whatever order the files are walked in
 // factorio: found by the templates thread checking compile-time lambdas for thread A: with k = pick(3) in another file, `int sized[k]` had 100 or 4 elements by the order the files were walked in and the thread count; the evaluator read the initializer's own nodes, unresolved above their file's walk
 int sized[k];
 int doubled[viaLambda];

@@ -1,7 +1,7 @@
-# Building Kpp programs
+# Building kpp programs
 
-How a Kpp program is built today, where FASTBuild fits in, the build description (`build.kpp` in
-Kpp, decided 2026-10-31: the layout, adding libraries, configurations), and the Visual Studio
+How a kpp program is built today, where FASTBuild fits in, the build description (`build.kpp` in
+kpp, decided 2026-10-31: the layout, adding libraries, configurations), and the Visual Studio
 integration (`tools/vs/`). Open details are the questions at the end.
 
 ## Today
@@ -12,7 +12,7 @@ next to kppc, or `--std DIR`, or none with `--no-std`). It runs the front end an
 on all threads and splits the IR into modules (two per thread by default, `--modules N`). It
 compiles each module with the bundled clang, skipping modules whose IR hash is unchanged (the
 `.N.hash`, `.N.ll` and `.N.o` files next to the executable are the object cache), and links. There
-are no headers, no per-file compile steps and nothing like make: a "build system" for Kpp code is
+are no headers, no per-file compile steps and nothing like make: a "build system" for kpp code is
 only the choice of kppc's arguments.
 
 **What controls a build: command-line options only.**
@@ -59,11 +59,11 @@ write their own kppc line: 6 source roots and 4 (link) or 9 (run) more options.
 
 ## FASTBuild
 
-**FASTBuild plays no part in building Kpp code.** kppc never calls it and has no use for it: there
+**FASTBuild plays no part in building kpp code.** kppc never calls it and has no use for it: there
 is one compile per program, already parallel and cached, so a distributed per-file build tool has
 nothing to schedule. FASTBuild remains Factorio's C++ build (`C:\Factorio\fastbuild\fbuild.bff`).
 
-**What the Kpp game still takes from it:** the C and C++ libraries it links. The 26 `.lib` files in
+**What the kpp game still takes from it:** the C and C++ libraries it links. The 26 `.lib` files in
 `C:\Factorio\vs2022\Releasex64` (SDL, curl, zlib, zstd, ogg/vorbis/opus, re2, imgui, glad,
 minizip...) are outputs of the C++ Release build by FASTBuild, dated 2026-04-21. Nothing in this
 repository rebuilds them. `programs/factorio/native/build.cmd` builds the shims with clang-cl
@@ -78,7 +78,7 @@ them with FASTBuild writes into `C:\Factorio`, which is read-only. See question 
 ## The build description
 
 **Decided by kovarex (2026-10-31):**
-- A project's builds are described in `build.kpp`, a Kpp file at the project's root.
+- A project's builds are described in `build.kpp`, a kpp file at the project's root.
 - The project has `src/` for its code and `libraries/` for its own libraries and forks.
 - One project may build several executables from shared sources. A target leaves files out
   (Factorio's `Main`) instead of having its `main` replaced.
@@ -113,8 +113,8 @@ What the comparison says:
    the code. Swift's `Package.swift` is code, and editing it from a tool came years late, through
    a Swift parser.
 
-Kpp is placed unusually well for point 1. Its compile-time interpreter (design.md,
-"Compile-time evaluation") already runs ordinary Kpp with no I/O and no C calls, under step and
+kpp is placed unusually well for point 1. Its compile-time interpreter (design.md,
+"Compile-time evaluation") already runs ordinary kpp with no I/O and no C calls, under step and
 memory limits: Starlark's sandbox, without a second language.
 
 ### build.kpp
@@ -126,7 +126,7 @@ memory limits: Starlark's sandbox, without a second language.
   library), but it can only describe: it fills in a `Project`, and kppc builds what that says.
 - **It cannot act.** It cannot read a file, start a process or call C. That is the interpreter's
   existing limit, so no separate sandbox is needed.
-- **Its errors are Kpp errors**, with the same Error List, colouring and IDE navigation.
+- **Its errors are kpp errors**, with the same Error List, colouring and IDE navigation.
 - **The program does not see build.kpp's declarations.** What crosses over are the `config::`
   constants the build sets.
 - **Inputs from outside come only from the command line.** `kpp --set FACTORIO=D:\snapshot` is
@@ -176,8 +176,8 @@ void build(Project& project)
   about twice one). `exclude` leaves files out, so each program has exactly one `main`.
 - **Configurations.** `debug` and `release` are built in. `project.configuration("asan", "debug")`
   adds one based on another ("Targets and configurations", below).
-- **Steps** are for what is not compiling Kpp or C: generating code, copying into a game
-  directory. A step is a built-in (`Step::copy`) or a Kpp program in the project
+- **Steps** are for what is not compiling kpp or C: generating code, copying into a game
+  directory. A step is a built-in (`Step::copy`) or a kpp program in the project
   (`Step::run("tools/generate_imgui.kpp", inputs, outputs)`). kppc compiles and runs it with the
   full standard library, and only when its inputs changed. Only the root project declares steps:
   a library's build.kpp may not, so adding a library runs none of its code on your machine
@@ -231,7 +231,7 @@ run_tests.cmd.
   - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
     do not exist yet.
 
-### Kpp libraries (working now, 2026-10-31)
+### kpp libraries (working now, 2026-10-31)
 
 **A library is a project without an executable.** Its build.kpp declares it with
 `project.library(NAME)` instead of `project.executable(...)`, and its sources join the program of
@@ -271,7 +271,7 @@ void build(Project& project)
   its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. A
   library rooted at its own directory (`root(".")`, a converted C library's) keeps its build.kpp out
   of its sources (kpp passes `--exclude`); the cell's kppc options apply to its roots too, so a cell's
-  `--ext .kpp` leaves out the C headers beside a converted library's Kpp. One name in two directories is an error: a
+  `--ext .kpp` leaves out the C headers beside a converted library's kpp. One name in two directories is an error: a
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.
@@ -443,7 +443,7 @@ is the whole act. On the next build kppc does the following:
 
 So there is no separate `kpp add` that has to edit a program. Clicking is a convenience on top of
 the same line: the IDE or `kpp add json` inserts `project.use("json");` after the project's
-last `use` call. kppc parses Kpp, so it knows where that is.
+last `use` call. kppc parses kpp, so it knows where that is.
 
 - **Versions.**
   - `use("json")` takes the newest release the first time, and build.lock pins it from then on.
@@ -702,7 +702,7 @@ install. `install.cmd` links it there.
 
 ## Installing
 
-kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a Kpp release, run
+kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
 - **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, the
   bundled toolchain (below), the TextMate grammar, kpp.vsix and a README. kpp finds `stdlib\`,
@@ -746,7 +746,7 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   ISCC elsewhere). kpp.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
   with one line saying so: its README says so too, and its installer does not offer it. In CI
   (`CI=true`) a missing npm is an error. Every step's failure stops the script.
-- **`tools/release/kpp.iss`** is the installer. It installs into Program Files\Kpp and adds that
+- **`tools/release/kpp.iss`** is the installer. It installs into Program Files\kpp and adds that
   directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
   it warned when no Visual Studio with the Clang component was found.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
@@ -776,7 +776,7 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   set, kernel32...). `config::mingw` is true for it (CWindows.kpp's fpclassify returns MinGW-w64's
   FP_ codes). Two pieces kppc makes once into the import cache with the toolchain's tools: an import
   library of ucrtbase.dll's functions MinGW-w64's leave out (`__uncaught_exceptions`, strtold), and
-  math.h's long double functions on doubles: Kpp's long double is a double, as MSVC's, and
+  math.h's long double functions on doubles: kpp's long double is a double, as MSVC's, and
   libmingwex's are x87's 80 bits.
 - **Which toolchain a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's
   clang, found by vswhere, and its MSVC dialect, `--target windows`), and an error when that one is
@@ -870,10 +870,10 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     - It uses OpenSSH's ssh and scp, because Windows runners have no rsync. Every file is sent
       under a temporary name and renamed, so a reader never sees half of one.
   - **The forge's full release**, made through the forge's REST API with the job's token: every
-    green master run's, push, nightly or by hand (kovarex, 2026-11-02), titled "Kpp <version>",
+    green master run's, push, nightly or by hand (kovarex, 2026-11-02), titled "kpp <version>",
     with the three files. A push or hand-started run's tag is `v<version>`; the nightly run's is
     `nightly-<date>` (UTC, as `nightly-20261103`; it builds a commit a push run has released, so
-    its version is that one's; until 2026-11-02 it was `v0.1.<date>`), titled "Kpp <version>
+    its version is that one's; until 2026-11-02 it was `v0.1.<date>`), titled "kpp <version>
     (nightly <date>)", one durable release per day (a second nightly run on the same day replaces it). On GitHub a release that
     exists is updated in place (its tag moved, the new files uploaded beside the old ones, then the
     old ones removed), so a failed step leaves the old release whole. GitHub refuses the job's
@@ -883,7 +883,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 
   `tools/release/settle.ps1` then makes the release of the highest version GitHub's "Latest",
   which https://github.com/kovarex/kpp/releases/latest and the repository's sidebar show, and
-  factorio-in-kpp's CI downloads. It takes the version from the release's title ("Kpp 0.2.5") and
+  factorio-in-kpp's CI downloads. It takes the version from the release's title ("kpp 0.2.5") and
   compares it as numbers, so 0.2.0 is above 0.1.148 and 0.2.10 above 0.2.3; of a push and a
   nightly release of one version, the push one (`v<version>`) is Latest. It goes by version, not by
   which run finished last: push, nightly and hand-started runs have concurrency groups of their
@@ -979,7 +979,7 @@ run but bill each runner's checkout and 2-minute kppc build again.
 
 ## Questions for kovarex
 
-Answered 2026-10-31: the build description is `build.kpp` in Kpp, with `src/` and `libraries/`
+Answered 2026-10-31: the build description is `build.kpp` in kpp, with `src/` and `libraries/`
 (above); project files for an IDE are generated by kppc.
 
 1. **Release builds with debug info** (a PDB for profiling and crash stacks), or without?

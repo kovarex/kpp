@@ -1,5 +1,5 @@
 // The converter's test of sizes whose width C++ code observes: a std container's size(), length()
-// and count() are size_t (8 bytes) in C++ and int (4) in Kpp's library, so where one is the right
+// and count() are size_t (8 bytes) in C++ and int (4) in kpp's library, so where one is the right
 // operand of a serialiser's <<, which writes sizeof(T) bytes, the converter writes size_t(...). Each
 // line prints the bytes one such << wrote: what this file prints compiled as C++
 // (convert_sizes.expected) is what its conversion must print. The game's own containers keep their

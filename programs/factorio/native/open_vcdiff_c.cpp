@@ -1,5 +1,5 @@
 // open-vcdiff's decoding, which the game's Updater::processDiff applies a patch with, as a C function
-// for Kpp: the library (libraries/open-vcdiff, open-vcdiff.lib in the game's Release builds) is C++.
+// for kpp: the library (libraries/open-vcdiff, open-vcdiff.lib in the game's Release builds) is C++.
 // overrides/added/src/OpenVcdiff.kpp declares the game's open_vcdiff::VCDiffDecoder on this one.
 #include <open-vcdiff/google/vcdecoder.h>
 #include <stdlib.h>

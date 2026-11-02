@@ -95,7 +95,7 @@ O(n). `count` in a multi container: O(log n + number found).
 - `==` and `<=>` (common.md): equal with equal entries in order (keys and values by their `==`),
   ordered lexicographically by the entries (a Pair orders by its first, then its second).
 
-Kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the
+kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the
 camel-case spellings `lowerBound`, `upperBound`.
 
 *Differences from C++*: no `value_comp()`, and no allocator parameter.

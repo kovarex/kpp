@@ -1,4 +1,4 @@
-// Hand-written part of cxxopts: cxxopts matches five fixed patterns with std::regex, and the Kpp
+// Hand-written part of cxxopts: cxxopts matches five fixed patterns with std::regex, and the kpp
 // library has no regex (cxxopts is its only user so far; decided 2026-10-28, see
 // docs/path-to-factorio.md). The converted cxxopts keeps its basic_regex objects and regex_match
 // calls; these give them what std::regex would for exactly those five patterns, with the same

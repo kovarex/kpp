@@ -2,5 +2,5 @@
 # `Suite/Test: why` (convert.cpp, leftOutTests). The test's block (TEST, TEST_FIXTURE, ...) is not
 # converted and a comment in its place says why, so that its suite runs its other tests: a function
 # the code generator leaves out is a stub that stops the whole suite where a test reaches it. Only
-# a test of what Kpp replaces by design belongs here; a gap of the compiler or the library gets a
+# a test of what kpp replaces by design belongs here; a gap of the compiler or the library gets a
 # pending spec and a fix instead. docs/path-to-factorio.md, "The unit tests".

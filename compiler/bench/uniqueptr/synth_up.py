@@ -1,4 +1,4 @@
-# Generates a Kpp program with N owner classes that use UniquePtr<Item_i> the way Factorio does
+# Generates a kpp program with N owner classes that use UniquePtr<Item_i> the way Factorio does
 # (member, Vector of owners, makeUnique, ->, *, bool, get, reset, move in and out), or the same
 # program with plain pointers and the deletes written out (what a built-in owning pointer would
 # lower to, minus its unwinding cleanups): the difference is what the UniquePtr class costs.

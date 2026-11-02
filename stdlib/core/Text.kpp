@@ -1,4 +1,4 @@
-// Kpp standard library: Text, the parameter type that takes a call's arguments as they are
+// kpp standard library: Text, the parameter type that takes a call's arguments as they are
 // (design.md 14). `void log(Text text)` called as `log("Hello ", name, age)`: the compiler packs
 // the arguments from the Text parameter's position on into one Text, each piece with the function
 // that appends it through its type's appendTo, so log is compiled once whatever its callers pass.

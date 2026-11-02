@@ -1,4 +1,4 @@
-// Kpp standard library: Function<R(Args...)>, a callable of any kind (lambda, function pointer,
+// kpp standard library: Function<R(Args...)>, a callable of any kind (lambda, function pointer,
 // object with operator()) behind one type, as std::function. `Function<Signature>` is only a name:
 // the compiler reads the signature and makes `Function<void(int)>` mean FunctionImpl<void, int>,
 // which is what this file defines. The callable is copied to the heap; calls go through one

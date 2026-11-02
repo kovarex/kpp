@@ -1,4 +1,4 @@
-// spec: a C-variadic function defined in Kpp reads its arguments as C does, with <stdarg.h> imported: va_list, va_start, va_arg (an int here), va_end, and a va_list handed on to vsnprintf
+// spec: a C-variadic function defined in kpp reads its arguments as C does, with <stdarg.h> imported: va_list, va_start, va_arg (an int here), va_end, and a va_list handed on to vsnprintf
 // factorio: Lua's luaO_pushvfstring (`va_arg(argp, char *)`, `va_arg(argp, int)`, `va_arg(argp, l_uacNumber)`, `va_arg(argp, void *)`), lua_pushfstring, luaL_error and luaG_runerror, all with `#include <stdarg.h>`; the game's own vssprintf passes a va_list on, with MSVC's from <stdio.h>
 extern "C" import "stdarg.h";
 extern "C" import "stdio.h";

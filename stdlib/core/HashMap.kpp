@@ -1,4 +1,4 @@
-// Kpp standard library: HashMap<K, V> and HashSet<T> (what std::unordered_map and
+// kpp standard library: HashMap<K, V> and HashSet<T> (what std::unordered_map and
 // std::unordered_set convert to), and FastHashMap<K, V> and FastHashSet<T>. Keys are hashed with
 // the Hasher argument and compared with the KeyEqual one, by default Hash<K> (the hashOf overloads,
 // see Hash.kpp) and EqualTo<K> (operator==). Specified in docs/stdlib/hashmap.md.
@@ -661,7 +661,7 @@ struct HashMap
       result.first->second = value;
     return result;
   }
-  // Kpp's shorthand: true when the key was new (an existing value is kept).
+  // kpp's shorthand: true when the key was new (an existing value is kept).
   bool insert(const K& key, const V& value) { return this->try_emplace(key, value).second; }
 
   // The number of entries removed (0 or 1).

@@ -1,5 +1,5 @@
 // The target's own C headers (tests\targets.ps1): stdio.h, stdlib.h and wchar.h as the target's C
-// library declares them. Kpp's long and wchar_t are the target C's (docs/design.md, "Targets and
+// library declares them. kpp's long and wchar_t are the target C's (docs/design.md, "Targets and
 // hosts"): long 32 bits on Windows and 64 on Linux and FreeBSD, read by printf's %ld; wchar_t 16 bits
 // (UTF-16) on Windows and 32 (UTF-32) elsewhere, L"..." in its units, which the C library's wcslen
 // counts (an emoji is two UTF-16 units, one UTF-32 unit).

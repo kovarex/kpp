@@ -1,5 +1,5 @@
 // Hand-written part of Util/Streams/InterruptibleStdioStream: on Windows, read() took a line with
-// std::getline(std::cin, result). Kpp has no iostreams (docs/design.md 4), so the line is read
+// std::getline(std::cin, result). kpp has no iostreams (docs/design.md 4), so the line is read
 // with the C library's fgets on stdin, piece by piece up to its line break, which is left out as
 // getline leaves it; at the end of the input a partial line still counts, an empty one does not.
 // Interrupting is as before: unblock() puts an Enter key press into the console's input, which

@@ -1,5 +1,5 @@
-// spec: a Kpp struct of the name of a struct an imported C header both defines and names with a typedef (`struct X {...}; typedef struct X X;`, `typedef struct X {...} X;`) is a clash: the header's typedef, which names the Kpp struct as well, does not make the two one entity
-// factorio: none; found beside interop/kpp_declaration_of_an_imported_c_name, where checking the header's typedef alone let the Kpp struct take the header's place (sizeof 4, not 40)
+// spec: a kpp struct of the name of a struct an imported C header both defines and names with a typedef (`struct X {...}; typedef struct X X;`, `typedef struct X {...} X;`) is a clash: the header's typedef, which names the kpp struct as well, does not make the two one entity
+// factorio: none; found beside interop/kpp_declaration_of_an_imported_c_name, where checking the header's typedef alone let the kpp struct take the header's place (sizeof 4, not 40)
 // error: kpp_definition_of_a_struct_a_c_header_defines_and_names.kpp:6: error: 'SpecTagContext' is declared here and in the imported C headers
 // error: kpp_definition_of_a_struct_a_c_header_defines_and_names.kpp:7: error: 'SpecBothContext' is declared here and in the imported C headers
 extern "C" import "kpp_definition_of_a_struct_a_c_header_defines_and_names.h";

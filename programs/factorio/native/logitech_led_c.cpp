@@ -1,4 +1,4 @@
-// The functions of the Logitech LED SDK the game calls (src/LED/Logitech), as C functions for Kpp:
+// The functions of the Logitech LED SDK the game calls (src/LED/Logitech), as C functions for kpp:
 // LogitechLEDLib.lib (libraries/Logitech/x64, on the game's link line) is C++, so its functions have
 // C++'s names. overrides/src/LED/Logitech/Includes/LogitechLEDLib.kpp defines the header's
 // functions on these. The enums cross as their int values.

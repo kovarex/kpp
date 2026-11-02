@@ -25,7 +25,7 @@ specification of what kppc can and cannot do yet, with the first compiler compla
 
 A <name>.c next to a snippet is a C library of its own: compiled with clang and linked into the
 snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
-A <name>.files directory next to a snippet holds more Kpp files of its program, compiled with it,
+A <name>.files directory next to a snippet holds more kpp files of its program, compiled with it,
 for what only several files show (a name private to its file); they are no snippets themselves.
 A <name>.library.NAME directory is a library of the snippet's program, scoped by NAME (`--library-root
 NAME DIR`, design.md 16), and a <name>.unscoped.NAME directory an unscoped one (`--unscoped-library-root`).
@@ -83,7 +83,7 @@ AREA_TITLES = {
   "classes": "Classes and objects",
   "templates": "Templates",
   "library": "Standard library (what std:: converts to)",
-  "kpp": "Kpp's own features (design.md sections 7 and 8)",
+  "kpp": "kpp's own features (design.md sections 7 and 8)",
   "interop": "C interop",
 }
 

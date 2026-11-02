@@ -1,6 +1,6 @@
 @echo off
 rem Converts the whole Factorio source (CommonUtil, Agui, src, and the tests with UnitTest++, the
-rem unit-test library they are written in) to Kpp into the factorio-in-kpp checkout (C:\factorio-in-kpp,
+rem unit-test library they are written in) to kpp into the factorio-in-kpp checkout (C:\factorio-in-kpp,
 rem or the directory given as the first argument; commit there by hand), each file at its path in
 rem Factorio's repository (kppc's --convert-base): src\, tests\ and libraries\CommonUtil\ ... With it,
 rem the C and C++ shims the game links (native\) into libraries\kpp-native\. What the game takes from
@@ -47,7 +47,7 @@ for %%d in (libraries\CommonUtil libraries\Agui libraries\cxxopts libraries\Stac
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
-rem with the headers they include from Factorio's src\ (which the checkout has as Kpp only) and the
+rem with the headers they include from Factorio's src\ (which the checkout has as kpp only) and the
 rem manifest and icons factorio.rc names, at paths relative to libraries\kpp-native.
 set NATIVE=%WHOLE%\libraries\kpp-native
 if exist "%NATIVE%" rd /s /q "%NATIVE%"

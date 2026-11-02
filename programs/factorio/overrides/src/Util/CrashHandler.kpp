@@ -1,5 +1,5 @@
 // Hand-written part of Util/CrashHandler: createMinidumpAndTerminate threw to itself inside MSVC's
-// __try/__except, whose filter wrote the minidump with the exception pointers of that moment. Kpp
+// __try/__except, whose filter wrote the minidump with the exception pointers of that moment. kpp
 // has no SEH filters (docs/path-to-factorio.md, "Structured exception handling"), so the dump is
 // written without an exception record (MiniDumpWriteDump takes none); then the process ends as
 // before.
@@ -12,8 +12,8 @@ void CrashHandler::createMinidumpAndTerminate()
 
 // The UCRT's set_terminate and _set_new_handler, which install() and setThreadExceptionHandlers()
 // call: eh.h and new.h are C++ headers, which the import does not take, and ucrtbase exports both
-// under C's names. They reach what runs on the C runtime: Kpp's own uncaught exceptions print and
-// abort (design.md 9) and Kpp's new does not call the new handler, so for Kpp code neither handler
+// under C's names. They reach what runs on the C runtime: kpp's own uncaught exceptions print and
+// abort (design.md 9) and kpp's new does not call the new handler, so for kpp code neither handler
 // runs (docs/path-to-factorio.md, "Structured exception handling").
 typedef void (*terminate_handler)();
 typedef int (*_PNH)(size_t);

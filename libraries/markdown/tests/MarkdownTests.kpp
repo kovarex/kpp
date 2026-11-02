@@ -26,8 +26,8 @@ test "emphasis"
 
 test "links and images"
 {
-  check(markdownToHtml("[Kpp](https://kpp.net \"home\") <https://kpp.net/a> <me@kpp.net>") ==
-        "<p><a href=\"https://kpp.net\" title=\"home\">Kpp</a> <a href=\"https://kpp.net/a\">https://kpp.net/a</a> "
+  check(markdownToHtml("[kpp](https://kpp.net \"home\") <https://kpp.net/a> <me@kpp.net>") ==
+        "<p><a href=\"https://kpp.net\" title=\"home\">kpp</a> <a href=\"https://kpp.net/a\">https://kpp.net/a</a> "
         "<a href=\"mailto:me@kpp.net\">me@kpp.net</a></p>\n");
   check(markdownToHtml("[docs][d] and [d]\n\n[d]: /docs/design.md") == "<p><a href=\"/docs/design.md\">docs</a> and <a href=\"/docs/design.md\">d</a></p>\n");
   check(markdownToHtml("![the *logo*](logo.png)") == "<p><img src=\"logo.png\" alt=\"the logo\" /></p>\n");

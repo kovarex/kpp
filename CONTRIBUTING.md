@@ -1,6 +1,6 @@
-# Contributing to Kpp
+# Contributing to kpp
 
-Kpp is under the Apache License 2.0 with LLVM Exceptions ([LICENSE](LICENSE)): the compiler, the
+kpp is under the Apache License 2.0 with LLVM Exceptions ([LICENSE](LICENSE)): the compiler, the
 standard library, projectlib, the tools, kppnet, the documentation and the official libraries in
 `libraries/`. A contribution is accepted under the same license.
 
@@ -13,7 +13,7 @@ Signed-off-by: Jane Doe <jane@example.com>
 ```
 
 `git commit -s` adds it from `user.name` and `user.email`. With that line the author certifies the
-Developer Certificate of Origin below, which is what keeps every line of Kpp licensable under
+Developer Certificate of Origin below, which is what keeps every line of kpp licensable under
 LICENSE: either it is the author's own work, or it comes from code under a compatible open
 source license that the author may submit. There is no contributor license agreement to sign.
 

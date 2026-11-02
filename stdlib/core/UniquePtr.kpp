@@ -1,4 +1,4 @@
-// Kpp standard library: UniquePtr<T, D>, sole ownership of a heap object: given to the deleter D
+// kpp standard library: UniquePtr<T, D>, sole ownership of a heap object: given to the deleter D
 // (by default deleted) when the pointer goes away or is reset, moved but never copied; the shape
 // of std::unique_ptr. It is one pointer: the deleter is a class without state, constructed for each
 // call (`D()(object)`), so there is no constructor taking a deleter object. Specified in

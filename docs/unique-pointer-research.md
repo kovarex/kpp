@@ -239,7 +239,7 @@ compiler.
 6. **Borrowing.** `get()` (1,108 calls), also inside `dynamic_cast<D*>(p.get())` (36) and
    `static_cast<D*>(p.get())` (80). A built-in could convert an lvalue owner to `T*` implicitly and
    refuse a temporary owner (it would be deleted at the end of the statement): that removes most
-   `.get()` calls but is not C++'s rule (and Kpp is explicit by default). The class could offer the
+   `.get()` calls but is not C++'s rule (and kpp is explicit by default). The class could offer the
    same with a conversion operator for lvalues only, so this is a choice, not a reason.
 7. **Custom deleters.** 12 uses, 6 deleters (1.1), plus CommonUtil's UniquePointer with
    ChartDeleter and the throwing variant. A built-in has no place for a deleter type, so these need
@@ -266,7 +266,7 @@ compiler.
     diagnostics print them; a built-in needs its own printed form everywhere.
 14. **Incomplete types.** C++'s rule that `unique_ptr<T>`'s destructor needs T complete (575 uses
     in 242 files with T forward-declared there, each needing an out-of-line destructor) does not
-    exist in Kpp, which has no forward declarations. Neither form has to deal with it.
+    exist in kpp, which has no forward declarations. Neither form has to deal with it.
 15. **Size and C.** 8 bytes, the layout of a `T*` (C++ guarantees nothing but every implementation
     does this for the default deleter). An owner in an `extern "C"` signature would need a rule
     (refused, since C has no destructors).
@@ -418,20 +418,20 @@ kovarex asked for this comparison too. From the languages' own documentation (so
 | Cpp2 (cppfront) | `std::unique_ptr<T>`, made with `unique.new<T>(args)` or just `new<T>(args)` (`shared.new<T>` for shared_ptr) | library type, new creation syntax | nullable |
 | Safe C++ (P3390) | `std2::box<T>`; there `T^` is a borrow (a checked reference, `const T^` a shared one) and `rel x` a destructive move | library type | never empty |
 
-What this says for Kpp:
+What this says for kpp:
 
 - No current language with destructors makes the sole owner a built-in pointer type. The two that
   did went back: Rust replaced `~T` with `Box<T>` before 1.0 (RFC 59, 2014: `~T` could not take an
   allocator, two spellings did one thing, `Box` documents itself where `~` does not, and sigils
   invite adding them until the compiler is quiet), and Nim left its `owned ref` for ARC/ORC. Rust
-  kept compiler support for Box, which is option E. The allocator reason does not apply to Kpp
+  kept compiler support for Box, which is option E. The allocator reason does not apply to kpp
   (allocators are passed at run time, design.md section 4); the reading reasons are the opposite of
   the reason kovarex gives, so this is a judgement of taste, not a fact.
 - What languages do add is syntax around library types: spellings (Swift's `T?` and `[T]`, C#'s
   `int?`), creation (Cpp2's `new<T>(args)`) and moves (Mojo's `x^`, Swift's `consume x`, Safe C++'s
   `rel x`). All of these leave the type a library class, as `T^` as sugar would.
 - `^` already means three things: a garbage-collected handle (C++/CLI), a borrow (Safe C++) and a
-  move (Mojo, in expressions). The Safe C++ meaning is the one nearest Kpp: if Kpp ever adds checked
+  move (Mojo, in expressions). The Safe C++ meaning is the one nearest kpp: if kpp ever adds checked
   borrows, `^` would be the natural spelling, and it would be taken.
 - A non-null owner with Optional for the empty case (Rust, Safe C++, Carbon's pointers) is a
   different design; converted code needs the nullable owner (section 2, item 2), so it could only

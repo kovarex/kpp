@@ -1,6 +1,6 @@
 """Writes OUT/CommonMarkSpec.kpp: the examples of the CommonMark spec (spec.txt of
 https://github.com/commonmark/commonmark-spec) and the table examples of the GFM spec
-(test/spec.txt of https://github.com/github/cmark-gfm), both CC-BY-SA 4.0, as Kpp data for
+(test/spec.txt of https://github.com/github/cmark-gfm), both CC-BY-SA 4.0, as kpp data for
 CommonMarkTests.kpp.in. The examples are copied unchanged, so the generated file is under the
 specs' license, which is why run.cmd writes it outside the repository.
 

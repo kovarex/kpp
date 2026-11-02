@@ -143,9 +143,9 @@ modules.py, oldnew.py), interleaved:
   does not reproduce on today's machine with the compiler and tree that measured it.
 - Today's build, phase by phase (the two quieter rounds): read, lex, imports (cached), parse and
   index 0.5 s; resolve 0.8 s (instantiation 17 s of CPU in it); codegen 9.6 to 9.9 s (967 MB of IR,
-  against 7.5 to 7.8 s for 739 MB then: the 8 C libraries compiled as Kpp and the program's growth);
+  against 7.5 to 7.8 s for 739 MB then: the 8 C libraries compiled as kpp and the program's growth);
   clang 4.0 s (128 modules; 5.2 to 6.0 s for 64 then); the link 2.3 to 3.0 s; the harness's .cmd
-  steps (link-settings, c-libraries) 0.1 s. Kpp's own part is 11 s, LLVM's (clang and the link) 6.5 s.
+  steps (link-settings, c-libraries) 0.1 s. kpp's own part is 11 s, LLVM's (clang and the link) 6.5 s.
 
 **The rebuild times after one home module per global, against FASTBuild (2026-11-02, thread A).**
 Paired and interleaved, 09:12 to 09:35: kppc at 96daf50d (base) and at 0998f157 (step2: a debug
@@ -183,7 +183,7 @@ The control took 18.0 to 29.5 s for what took 10.7 s on 10-30 (its link fails to
 externals, so its link time is short): the machine, not the compiler, sets these numbers, and the
 pairs differ by less than the rounds do. The quietest, step2 through the server, 15.0 s: read, lex,
 imports (cached), parse and index 1.1 s, resolve 1.3 s (instantiation 27 s of CPU), codegen 6.6 s,
-clang 3.6 s, the link 2.0 s; Kpp's part 9.0 s, LLVM's 5.6 s. Clang per module (scratch\resolver\scripts\clangmod.py:
+clang 3.6 s, the link 2.0 s; kpp's part 9.0 s, LLVM's 5.6 s. Clang per module (scratch\resolver\scripts\clangmod.py:
 each module of round 1 compiled again on 32 threads, timed): base 150.9 s summed, step2 137.8 s, the
 largest module 3.1 s in both (module 18, 16 MB, 14 MB with step 2), the pool's wall time 5.6 and
 5.3 s; the 10-30 build's 64 modules 95.5 s summed, the largest 5.6 s.
@@ -194,11 +194,11 @@ setup). Here, in the same window: factorio-in-kpp's build.kpp (a sparse clone of
 data\, scratch\resolver\fik; build\clib and build\debug emptied first, `kppc factorio --no-server`,
 scratch\resolver\scripts\fikclean.py), which compiles 10 C and C++ libraries from libraries\ with
 clang-cl (641 files: SDL, SDL_Mixer, curl, vorbis, opus, opusfile, RE2, imgui, open-vcdiff and the
-native shims) and the game with its 9 converted libraries as Kpp, and FASTBuild's
+native shims) and the game with its 9 converted libraries as kpp, and FASTBuild's
 `FBuild.exe -clean -summary vs2022-Debugx64-factorio-run` in C:\Factorio\fastbuild (25 libraries,
 862 objects; nothing else built with FASTBuild then):
 
-| | total | C/C++ libraries | Kpp |
+| | total | C/C++ libraries | kpp |
 |---|---|---|---|
 | kpp base | 52.9, 34.9, 37.4 s | 34.7, 16.5, 18.3 s | 18.2, 18.4, 19.1 s |
 | kpp step2 | 33.3, 33.1, 45.5 s | 17.0, 16.7, 24.3 s | 16.3, 16.4, 21.2 s |
@@ -1906,7 +1906,7 @@ fontstash, glad, imgui, trio, open-vcdiff, stack-walker) passed with `--lib`.
 What the numbers depend on:
 
 - **One function is most of the backend.** `ControlSettings::ControlSettings(const PropertyTree&,
-  KeyboardLayout)`, about 1,400 lines of Kpp (key bindings, one after another), becomes 875 k lines
+  KeyboardLayout)`, about 1,400 lines of kpp (key bindings, one after another), becomes 875 k lines
   of IR, 70 MB, with 481,672 destructor calls. Every one of its 981 cleanup pads destroys all the
   objects alive at that point, so the cleanups grow with the square of the number of objects.
   Cleanups chained scope by scope (each pad destroys what its scope added and unwinds to the

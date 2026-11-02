@@ -1,11 +1,11 @@
 # Libraries
 
-Kpp libraries written for the registry (docs/library-registry.md): first the ones that the
+kpp libraries written for the registry (docs/library-registry.md): first the ones that the
 kpp.net website and registry need, in the order of "Hosting on kpp.net". Each directory is a
 library project:
 
 - `build.kpp`: `project.library(NAME)` with its version, license and roots (docs/build.md,
-  "Kpp libraries");
+  "kpp libraries");
 - `src/`: the library, which is what a release contains, with `README.md`;
 - `tests/`: native tests (`test "name" { check(...); }`, docs/design.md 8.6).
 
@@ -21,7 +21,7 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [url](url/README.md) | URLs (RFC 3986): parsing, resolving, percent-encoding, query strings | RFC 3986's 42 resolution examples, Python's urllib.parse |
 | [markdown](markdown/README.md) | CommonMark 0.31.2 to HTML, GitHub's tables and heading ids | all 655 CommonMark spec examples and the GFM spec's 8 table examples (conformance/run.cmd, fetched: CC-BY-SA) |
 
-**License**: Apache-2.0 WITH LLVM-exception, as all of Kpp ([LICENSE](../LICENSE),
+**License**: Apache-2.0 WITH LLVM-exception, as all of kpp ([LICENSE](../LICENSE),
 [CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep
 their license: markdown is a port of commonmark.js (BSD-2-Clause) with mdurl's encoding (MIT), so
 its expression names those too (their texts are next to it); JSONTestSuite's (MIT) in json's

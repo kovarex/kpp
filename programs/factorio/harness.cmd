@@ -74,7 +74,7 @@ rem (a driver in C: the library's C++ standard flag is no C one)
 if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
 "%CLANGCL%" %FLAGS% /I"%CONVERSION%\libraries" %CLINC% -fuse-ld=lld /Fo%OUT%\ /Fe%OUT%\c.exe %DRIVER% "%CLIBRARY%" %CLINKS% > %OUT%\c-build.txt 2>&1 || (type %OUT%\c-build.txt& exit /b 1)
 
-rem The Kpp build: the driver and the library converted together, then compiled.
+rem The kpp build: the driver and the library converted together, then compiled.
 copy /y %DRIVER% %OUT%\driver\ > nul
 %KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 %KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)

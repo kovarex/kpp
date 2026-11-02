@@ -1,4 +1,4 @@
-"""Generates a large synthetic Kpp program to measure the backend at scale.
+"""Generates a large synthetic kpp program to measure the backend at scale.
 
 Usage: python synth_program.py <modules> <out-dir>
 
@@ -7,7 +7,7 @@ that do arithmetic over the fields and call methods of classes in other modules,
 method overriding a shared base, and a function using Vector<int>. The shape follows Factorio's
 averages (about 9 function bodies per 1,000 lines of declarations... roughly 170 lines per file,
 15-line methods), so N modules ~ N * 300 lines. main() touches one object per class so nothing
-is dead code. Everything stays inside the Kpp v0 subset codegen supports today.
+is dead code. Everything stays inside the kpp v0 subset codegen supports today.
 """
 import os, sys
 

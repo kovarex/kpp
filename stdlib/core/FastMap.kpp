@@ -1,4 +1,4 @@
-// Kpp standard library: FastMap<K, V> and FastSet<T>, ordered by operator< and kept in a
+// kpp standard library: FastMap<K, V> and FastSet<T>, ordered by operator< and kept in a
 // B-tree: nodes of up to 15 entries in key order, interior nodes with 16 children around them,
 // every node but the root at least half full. Wide nodes keep lookups cache-friendly (a few nodes
 // per search instead of a pointer per level), inserting and erasing are O(log n), and iterating

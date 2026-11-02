@@ -64,7 +64,7 @@ library/unsigned_size_traps:
   wrapping `needed + 1` to 0 (library/size_limits_growth), and HashMap's load checks divide the
   slot count instead of multiplying the entry count.
 
-The index forms that are Kpp's own (Vector's `insert(index, value)` and `erase(index)`, String's
+The index forms that are kpp's own (Vector's `insert(index, value)` and `erase(index)`, String's
 `erase(index)`) take an index of any integer type, so that a literal 0 is the index and not a null
 position (with a ContainerSize parameter the call was ambiguous).
 
@@ -93,7 +93,7 @@ specification snippets cannot check their types yet: a written variadic function
 its `...` (language/variadic_function_pointer_type, pending). 2026-10-30.
 
 **throw_with_nested** (core/Error.kpp): throws its argument without the exception being handled
-attached to it, since Kpp has no std::current_exception to capture that one (nor
+attached to it, since kpp has no std::current_exception to capture that one (nor
 std::nested_exception and rethrow_if_nested, which no converted code uses). Its one user is
 UnitTest++'s Test::HandleDesync, which only needs the RuntimeError it throws. 2026-10-29.
 

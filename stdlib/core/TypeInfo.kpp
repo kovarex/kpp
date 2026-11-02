@@ -1,4 +1,4 @@
-// Kpp standard library: TypeInfo, what `typeid(x)` yields. The compiler fills in the type's name:
+// kpp standard library: TypeInfo, what `typeid(x)` yields. The compiler fills in the type's name:
 // for an object of a polymorphic class its dynamic type (the name lives in the vtable), otherwise
 // the static type; `typeid(T)` names the type itself. Compared by name.
 struct TypeInfo

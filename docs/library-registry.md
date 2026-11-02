@@ -1,14 +1,14 @@
-# A library registry for Kpp (proposed 2026-10-30; hosting decided 2026-10-31)
+# A library registry for kpp (proposed 2026-10-30; hosting decided 2026-10-31)
 
-**The ask** (kovarex): a package installer for Kpp libraries, like Factorio's mods: a service
-written in Kpp where libraries are registered, from which a library is added to a project in one
+**The ask** (kovarex): a package installer for kpp libraries, like Factorio's mods: a service
+written in kpp where libraries are registered, from which a library is added to a project in one
 step. This document is research and a proposal. Decided so far: where it lives ([Hosting on
 kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day), kovarex 2026-10-31) and, in
 [build.md](build.md), how a project adds a library (`project.use("json")` in build.kpp, versions
 pinned in build.lock). The open decisions are listed at the end
 ([Decisions for kovarex](#decisions-for-kovarex)).
 
-**The proposal in one paragraph.** A library is a directory of Kpp source (a top-level code
+**The proposal in one paragraph.** A library is a directory of kpp source (a top-level code
 package, [design.md](design.md) "Code packages") with its own build.kpp
 ([build.md](build.md)); C code it needs ships as C/C++
 source that kppc compiles with its bundled clang, and only prebuilt binaries that cannot be built
@@ -16,17 +16,17 @@ from source (Steam SDK, Logitech LED) ship as files, flagged. Every release is a
 archive identified by a SHA-256 of its file tree (Zig's model), so any mirror, a cache or a
 vendored copy is as good as the registry. Versions are three numbers as in Factorio; a program
 holds exactly one version of each library (the one global scope allows no other), chosen by Go's
-minimal version selection, and build.lock records the hashes. Because Kpp compile-time code runs
+minimal version selection, and build.lock records the hashes. Because kpp compile-time code runs
 in the interpreter and cannot call C, **adding a library never runs its code on your machine
 until you run your program**: no build scripts, no install hooks, the attack surface npm and
 cargo have. A library's names are qualified by its name (`json::Value`) unless the library declares itself
 unscoped, as the standard library is; for an unscoped one, `kpp add` reports a name clash with
 your program or another library before it changes anything. Everything is
 hosted on kpp.net at NearlyFreeSpeech.NET (decided): canonical git repositories there, GitHub as
-the mirror where pull requests happen, and the website and the registry written in Kpp, first as
-static files that Kpp programs generate on Windows, then as Kpp CGI programs and a Kpp HTTP
+the mirror where pull requests happen, and the website and the registry written in kpp, first as
+static files that kpp programs generate on Windows, then as kpp CGI programs and a kpp HTTP
 daemon on FreeBSD; the libraries those need are the first ones the registry hosts. The service in
-Kpp (accounts, web pages, publishing API) comes
+kpp (accounts, web pages, publishing API) comes
 after, as a dogfooding target, when the standard library has networking.
 
 ## Contents
@@ -35,7 +35,7 @@ after, as a dogfooding target, when the standard library has networking.
   [cargo and crates.io](#cargo-and-cratesio), [Go modules](#go-modules),
   [vcpkg and Conan](#vcpkg-and-conan), [Zig](#zigs-package-manager), [npm](#npm-and-its-incidents),
   [lessons](#lessons-for-kpp)
-- [Design for Kpp](#design-for-kpp): [what a library is](#what-a-library-is),
+- [Design for kpp](#design-for-kpp): [what a library is](#what-a-library-is),
   [names](#names-library-scopes-decided-2026-11-01), [C dependencies](#c-dependencies),
   [versions and the lockfile](#versions-resolution-and-the-lockfile),
   [the commands](#the-commands-and-the-project-description), [library options](#library-options-kovarex-2026-11-01),
@@ -93,17 +93,17 @@ The closest model, and the one kovarex named.
   the save; it can also sync startup settings [6][7]. In multiplayer every peer must have exactly
   the same mods, compared by checksum when joining [8], and a joining client downloads the
   server's mods from the portal.
-- What it gets right for Kpp: one version of a mod per game (Kpp: one version of a library per
-  program), the game version as a dependency (Kpp: the compiler version), the exact mod set
+- What it gets right for kpp: one version of a mod per game (kpp: one version of a library per
+  program), the game version as a dependency (kpp: the compiler version), the exact mod set
   recorded in the artifact (a save) so it can be restored, and one account system for players and
-  authors. What it does not need and Kpp does: content hashes stronger than SHA-1, a lockfile for
+  authors. What it does not need and kpp does: content hashes stronger than SHA-1, a lockfile for
   source control, offline and mirrored use.
 
 ### cargo and crates.io
 - Manifest `Cargo.toml`, versions are semver, `foo = "1.2"` means `>=1.2.0, <2.0.0`; the resolver
   picks the *newest* compatible version, and `Cargo.lock` records exact versions and checksums.
   Several major versions of one crate can coexist in a program (they are distinct crates by
-  symbol mangling); Kpp keeps one version per program ([below](#names-library-scopes-decided-2026-11-01)).
+  symbol mangling); kpp keeps one version per program ([below](#names-library-scopes-decided-2026-11-01)).
 - **Yank, not delete**: a yanked version cannot be newly locked, but a project whose lockfile
   already has it still downloads and builds it [9]. Nothing is ever deleted except malware.
 - `build.rs` and procedural macros run arbitrary code at build time: the surface used by
@@ -136,7 +136,7 @@ The two C++ package managers, both built around compiling native code for many c
   on top of versions, binaries per settings/options hash, lockfiles that pin versions and
   revisions [19].
 - Lesson: most of their complexity is configuration explosion (compiler, runtime, flags, static
-  or shared) and running a foreign build system. Kpp avoids both for Kpp code: one compiler,
+  or shared) and running a foreign build system. kpp avoids both for kpp code: one compiler,
   whole-program compilation from source, a configuration that is just `config` constants. It
   still meets that problem for C libraries, which is why the proposal below compiles C source
   with kppc's own clang rather than running anyone's CMake.
@@ -166,9 +166,9 @@ The two C++ package managers, both built around compiling native code for many c
   that were in git [25]. A release must be exactly what the repository holds, and nothing in it
   may run at build time.
 
-### Lessons for Kpp
+### Lessons for kpp
 
-| Lesson | Where from | What Kpp does |
+| Lesson | Where from | What kpp does |
 |---|---|---|
 | Code that runs at install/build time is the main attack surface | npm scripts, build.rs, Conan recipes, xz's m4 | Nothing runs: libraries are source, compile-time code is interpreted and cannot call C or do I/O ([design.md](design.md) "Compile-time evaluation"). A C part is compiled by kppc, not built by the library's script |
 | Never delete a published version; yank | left-pad, crates.io | Releases are immutable; yanking hides from new resolution only; admins remove malware |
@@ -181,12 +181,12 @@ The two C++ package managers, both built around compiling native code for many c
 | The platform/compiler is a dependency | Factorio `base`, `factorio_version` | A library states the minimum kppc version |
 | One version per program | Factorio | Forced by the global scope; same as Factorio's one version per mod |
 
-## Design for Kpp
+## Design for kpp
 
 ### What a library is
-- **A directory of Kpp source**, which becomes a top-level code package when added (its
+- **A directory of kpp source**, which becomes a top-level code package when added (its
   `package.kpp` names it in the tree: *JSON*, *Lua*, *Steamworks*). Subdirectories are child
-  packages as usual. No prebuilt Kpp objects: the persistent compiler parses a library once and
+  packages as usual. No prebuilt kpp objects: the persistent compiler parses a library once and
   keeps it, and the front end handles the whole Factorio benchmark corpus in 0.32 s of wall time
   ([prototype-results.md](prototype-results.md)), so a few libraries are noise for it. Instantiations
   and inlining across the library boundary work as for the program's own code, which binary
@@ -251,7 +251,7 @@ declarations, renaming at the point of use) are in this file's git history befor
 date.
 
 ### C dependencies
-C is the only interop, so many useful libraries are a Kpp face over C code. Three kinds:
+C is the only interop, so many useful libraries are a kpp face over C code. Three kinds:
 1. **System libraries** (`kernel32`, `user32`, `ws2_32`): named in the manifest, no files.
 2. **C or C++ source compiled by kppc** (proposed default): the release includes the C/C++ files
    and headers (zlib, Lua, imgui with its C interface, re2 with its C interface: today's
@@ -266,7 +266,7 @@ C is the only interop, so many useful libraries are a Kpp face over C code. Thre
    first publication of a binary goes through human review.
 
 **C names are global too**: two libraries each bundling zlib would clash (or worse, link one copy
-over the other). Rule: a C library is a registry library of its own (`zlib`, `lua`), and the Kpp
+over the other). Rule: a C library is a registry library of its own (`zlib`, `lua`), and the kpp
 faces depend on it, so a program has one zlib. Its version is the upstream version with a
 packaging suffix if needed (decision 6).
 
@@ -281,7 +281,7 @@ packaging suffix if needed (decision 6).
   constants today). The library states its minimum kppc version, as Factorio's
   `factorio_version`.
 - **Resolution: minimal version selection** (Go): each library gets the highest of the minimums
-  required anywhere in the graph. One version per library is what Kpp needs anyway; MVS needs no
+  required anywhere in the graph. One version per library is what kpp needs anyway; MVS needs no
   solver, is deterministic, and a new release upstream changes nothing until someone runs
   `kppc update`. A conflict (a minimum `>= 2.0` against a `< 2.0`, or a `!`) is an error that
   names the chain of requirements.
@@ -318,7 +318,7 @@ next build resolves, checks clashes and writes build.lock); `use("json", "1.4")`
 registry (forks); a library is a project whose build.kpp says `project.library(...)` and may not
 declare build steps. So `kppc add` above is `kpp add`, which only inserts the `use` line.
 `project.library(...)` with its version, license, minimum kpp, source and test roots, `use`
-from `libraries/` and local paths, and `kpp --test` work since 2026-10-31 (build.md, "Kpp
+from `libraries/` and local paths, and `kpp --test` work since 2026-10-31 (build.md, "kpp
 libraries"). What the registry still needs from E's format: the rest of the manifest fields listed
 in [What a library is](#what-a-library-is) (authors, summary, homepage, release paths, C parts),
 and build.lock recording, per library, name, version, the tree hash (`sha256-tree:...`, defined by
@@ -358,12 +358,12 @@ what config values should be provided to the library, with defaults". So the reg
   writes the index file and the library's page, and uploads them to kpp.net write-once
   ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only kpp.net's static
   files.
-- **Phase 2, the service in Kpp** (dogfooding): an HTTP API (index, search, publish, yank,
+- **Phase 2, the service in kpp** (dogfooding): an HTTP API (index, search, publish, yank,
   tokens), web pages (library page with readme, versions, dependencies, exported names, options, license, "unscoped" mark,
   "binary" mark, download counts, clash list), a small database (SQLite through C interop), and
   the archive store. It needs from the standard library what it lacks today: sockets, an HTTP
   server, JSON, a SQLite face, time; TLS stays outside (a reverse proxy such as Caddy or
-  Cloudflare in front, or Windows' http.sys through C), which keeps the Kpp program small. It
+  Cloudflare in front, or Windows' http.sys through C), which keeps the kpp program small. It
   exercises threads, I/O, strings and containers under real load, which the game does not
   (the game exercises everything else). The index stays a set of static files the service
   writes, so kppc's client code does not change and a CDN serves the reads.
@@ -373,12 +373,12 @@ what config values should be provided to the library, with defaults". So the reg
 
 ### Hosting on kpp.net (decided 2026-10-31, revised the same day)
 **The decisions** (kovarex, 2026-10-31):
-- Official Kpp libraries, and later kpp itself, are in repositories owned and hosted on kpp.net.
+- Official kpp libraries, and later kpp itself, are in repositories owned and hosted on kpp.net.
   GitHub may be used only as a mirror: nothing may depend on it existentially, and moving to
   another host must stay possible. His words were "I prefer to build A right away", option A being
   a self-hosted forge.
 - **Revised the same day:** kpp.net is his, at NearlyFreeSpeech.NET (NFS), and the site is hosted
-  there too. The kpp.net website and the library provider are written in Kpp: "I find it nicely
+  there too. The kpp.net website and the library provider are written in kpp: "I find it nicely
   poetic, and even practical", and "one of the first libraries we should host on the site, would
   be those needed to run actual web page by kpp."
 - **Scope** (2026-11-01): "kpp.net and its repositories will first mainly provide the compiler
@@ -421,7 +421,7 @@ check those over SSH or by asking NFS support.
 
 **Cost of the plan**, estimated (assumptions in brackets):
 - the site: $0.05 a day, $1.50 a month;
-- a Kpp daemon using 30 MB all day: 43 RAU a day, about $0.30 a month [resident memory billed in
+- a kpp daemon using 30 MB all day: 43 RAU a day, about $0.30 a month [resident memory billed in
   full];
 - 2 GiB of archives and site files: $2 a month;
 - membership: up to $5 a month.
@@ -525,7 +525,7 @@ The obstacles:
 
 Verdict: **feasible enough to try later, not needed now.** The plan above works without it.
 Trying means building Forgejo on NFS and running it for a week as a non-production site ($0.01 a
-day) to watch the RAU bill. The alternative forge is one written in Kpp, a far larger job than
+day) to watch the RAU bill. The alternative forge is one written in kpp, a far larger job than
 the registry.
 
 #### Where NFS is not enough
@@ -544,24 +544,24 @@ bbf5cf61) is kept only as the answer to these cases:
 Everything else (the website, the registry, the archive store, the canonical repositories if
 pushes are allowed, and backups) fits NFS.
 
-#### The website and the library provider in Kpp
+#### The website and the library provider in kpp
 **The blocker:** kppc produces Windows x64 programs only. The FreeBSD target is thread B's
 ([design.md](design.md) "Targets and hosts": `--target freebsd`, `x86_64-unknown-freebsd14`,
 ELF, ld.lld). So the plan has a stage that needs no FreeBSD at all.
 
-**Stage 1: static, built by Kpp on Windows (possible now).** NFS's Apache serves files. The
-website and the registry's public part can be all files, written by Kpp programs that run on
+**Stage 1: static, built by kpp on Windows (possible now).** NFS's Apache serves files. The
+website and the registry's public part can be all files, written by kpp programs that run on
 PC-PRACOVNA:
-- `kppsite`, a static site generator in Kpp. It turns the pages' sources (Markdown, the docs in
+- `kppsite`, a static site generator in kpp. It turns the pages' sources (Markdown, the docs in
   this repository, the generated library pages) into HTML, and uploads by rsync over SSH, which
   is allowed as an upload.
 - The registry's index and archives are static files too
   ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). A publish is run by a maintainer
-  with a Kpp tool (`kpp publish` in its first form). It packs, hashes, checks names and clashes,
+  with a kpp tool (`kpp publish` in its first form). It packs, hashes, checks names and clashes,
   writes the index file and the library's page, and uploads.
 - Search runs in the browser over a JSON list of libraries, which is small for years.
 
-This stage already needs the first libraries in Kpp: JSON, SHA-256, Markdown, HTML templating,
+This stage already needs the first libraries in kpp: JSON, SHA-256, Markdown, HTML templating,
 zip with deflate, and file system walking.
 
 **Stage 2: dynamic, as CGI (once the FreeBSD target runs a program).** CGI is the smallest step
@@ -576,10 +576,10 @@ State lives in files plus SQLite (the SQLite amalgamation is one C file, compile
 SQLite is cheaper than a MariaDB process and needs no server. One unconfirmed point: whether
 SQLite's file locking is safe on NFS's file storage. If it is not, a MariaDB process is free.
 
-**Stage 3: a daemon (once the target has sockets and threads).** A Kpp HTTP/1.1 server runs as
+**Stage 3: a daemon (once the target has sockets and threads).** A kpp HTTP/1.1 server runs as
 an NFS daemon (user `web`), and NFS's proxy forwards to its port and terminates TLS. It holds
 the index in memory, keeps connections alive and needs no process per request. It is what makes
-"a web server in Kpp" true, and the libraries it needs are the ones others will want.
+"a web server in kpp" true, and the libraries it needs are the ones others will want.
 
 **Libraries, in the order the stages need them.** Each one is a registry library, the first ones
 hosted. Each is scoped by its name (`json::`, `html::`), as design.md section 16 makes the norm.
@@ -594,7 +594,7 @@ hosted. Each is scoped by its name (`json::`, `html::`), as design.md section 16
    interpreter, so a broken template is a compile error.
 6. `url`: percent-encoding, query strings and paths.
 7. `cgi`: Request and Response over the CGI environment and standard streams.
-8. `sqlite`: the C amalgamation and a Kpp face (statements, binding, rows into structs).
+8. `sqlite`: the C amalgamation and a kpp face (statements, binding, rows into structs).
 9. `http`: an HTTP/1.1 parser and server, a router and a static file handler (stage 3).
 10. `base64`, and `time` formatting (RFC 3339, HTTP dates), if the standard library does not have
     them.
@@ -685,11 +685,11 @@ want other programmers/Ai coders to be able to freely use everything as much as 
 also be protected from someone denying me from continuing providing the service."
 
 **What is under which license.**
-- **Kpp:** the compiler, the standard library, projectlib, the tools, kppnet, the documentation and
+- **kpp:** the compiler, the standard library, projectlib, the tools, kppnet, the documentation and
   the official libraries in `libraries/` are under **Apache-2.0 WITH LLVM-exception**, as LLVM and
   clang are. The canonical text is [LICENSE](../LICENSE): LLVM's LICENSE.TXT [45], whose Apache
   part is word for word SPDX's Apache-2.0 [46].
-  - The exception's first paragraph is why this variant was chosen. A program compiled with Kpp
+  - The exception's first paragraph is why this variant was chosen. A program compiled with kpp
     contains compiled parts of the standard library, and the exception lets those be distributed
     without Apache's conditions 4(a), 4(b) and 4(d). So users owe no copy of the license, no
     notices and no attribution for the programs they build.
@@ -700,14 +700,14 @@ also be protected from someone denying me from continuing providing the service.
 - **Contributions** come in under the same license, certified per commit by a `Signed-off-by`
   line (the Developer Certificate of Origin [48], [CONTRIBUTING.md](../CONTRIBUTING.md)). There is
   no copyright assignment and no contributor license agreement. The consequence: contributors keep
-  their copyright, so relicensing Kpp later (to anything, proprietary included) would need every
+  their copyright, so relicensing kpp later (to anything, proprietary included) would need every
   contributor's consent. Apache 2.0 already allows every use, so this blocks nothing kovarex
   asked for.
 - **Third-party code keeps its license and notices:** the JSONTestSuite data in the json
   library's tests (MIT, with its license file next to it), and converted C libraries such as
   zlib, SDL, curl, ogg, vorbis, opus, re2, imgui and stb.
 - **factorio-in-kpp** is Factorio's source, Wube's, and gets no open license. It stays private
-  and off kpp.net. kovarex would like it available one day as an example program in Kpp, which is
+  and off kpp.net. kovarex would like it available one day as an example program in kpp, which is
   Wube's decision when the time comes ("Hosting on kpp.net"). In this repository,
   `programs/factorio/` (the overrides derived from the game's source, and the interfaces to its
   libraries) stays entirely unlicensed, all of it, scripts and tests included, excluded like
@@ -718,7 +718,7 @@ also be protected from someone denying me from continuing providing the service.
   contains the license texts (`LICENSE`, `COPYING` or a `LICENSES/` directory). Publishing checks
   the expression against the SPDX list and refuses a release without the text.
 - **Official libraries** (`libraries/`, maintained by the project) are Apache-2.0 WITH
-  LLVM-exception. A Kpp face over a third-party C library is ours. The bundled upstream code keeps
+  LLVM-exception. A kpp face over a third-party C library is ours. The bundled upstream code keeps
   its license, so such a library's expression names both, e.g.
   `Zlib AND Apache-2.0 WITH LLVM-exception`.
 - **Other libraries** may use any OSI-approved license, or one equivalent to the public domain
@@ -732,21 +732,21 @@ also be protected from someone denying me from continuing providing the service.
 
 **What the license protects, and what it does not ("denying me from continuing").**
 - **It does:**
-  - Section 2 grants every recipient a perpetual, irrevocable copyright license. Once Kpp is
+  - Section 2 grants every recipient a perpetual, irrevocable copyright license. Once kpp is
     published, nobody can take away kovarex's or anyone's right to use, change and distribute the
     published code, and kovarex keeps his own rights as an author too.
   - Section 3 grants a patent license from every contributor for their contributions. Anyone who
-    sues claiming that Kpp infringes a patent loses the patent license they got from Kpp. This
-    protects against a contributor, or someone building on Kpp, attacking it with patents.
+    sues claiming that kpp infringes a patent loses the patent license they got from kpp. This
+    protects against a contributor, or someone building on kpp, attacking it with patents.
   - The DCO makes every contribution certified as licensable, so no contributor can later claim
     their code was not licensed.
 - **It does not:**
-  - Section 6 explicitly grants no rights to trademarks. Anyone may fork Kpp, but the license
-    neither stops nor allows them to call their fork "Kpp".
+  - Section 6 explicitly grants no rights to trademarks. Anyone may fork kpp, but the license
+    neither stops nor allows them to call their fork "kpp".
   - The name is protected only by trademark law, which is strongest with a registration.
   - kpp.net is protected by its registration (kovarex's, at NFS, paid until 2030-01-03), and the
     service by his accounts at NFS and GitHub.
-  - The license also does not stop someone from registering "Kpp" as a trademark first, in some
+  - The license also does not stop someone from registering "kpp" as a trademark first, in some
     country and class, and contesting his use of the name there.
 
 **Steps kovarex might take** (none taken; listed for him to decide):
@@ -755,13 +755,13 @@ also be protected from someone denying me from continuing providing the service.
    Brand Database. KPP is a common abbreviation, so earlier marks in those classes are possible.
    A trademark attorney's search is the reliable version.
 2. **Register the word mark**, and later a logo. The owner could be him personally, Wube, or a
-   foundation if Kpp should outlive any one owner.
+   foundation if kpp should outlive any one owner.
    - EU trade mark (EUIPO): €850 online for one class, €50 for the second, €150 for each further
      class [49].
    - US (USPTO): $350 per class since 2025-01-18 [50].
    - Other countries through WIPO's Madrid system.
-3. **A short trademark policy** on kpp.net. Forks and products may say "for Kpp", "based on Kpp"
-   or "compatible with Kpp", but may not be called Kpp or look like the official site; the stdlib
+3. **A short trademark policy** on kpp.net. Forks and products may say "for kpp", "based on kpp"
+   or "compatible with kpp", but may not be called kpp or look like the official site; the stdlib
    and official libraries keep their names in forks. This is what Rust, Python and others
    publish.
 4. **Domain hygiene:**
@@ -769,7 +769,7 @@ also be protected from someone denying me from continuing providing the service.
    - possibly defensive registrations of the same name under other top-level domains
      (availability not checked);
    - the GitHub organization or user name the mirror lives under kept in his account.
-5. **The copyright line** in LICENSE and file headers: "the Kpp authors" (the convention with a
+5. **The copyright line** in LICENSE and file headers: "the kpp authors" (the convention with a
    DCO), or his name for the code he and the threads write. Today no file carries a copyright
    line, which is allowed; the license applies either way.
 
@@ -780,17 +780,17 @@ Estimates are in weeks of one thread, assuming thread E's project description ex
 |---|---|---|
 | 0. Local libraries | `--path`/`--git` dependencies in the project description, cache, lockfile with SHA-256, `kppc add/remove/sync/vendor`, `kppc --exports` and the clash pre-check, C source parts compiled by kppc (moving `programs/factorio/native`'s build into this is the test) | 2 to 3 |
 | H. Hosting | kpp.net on NFS: bare repositories, the mirror to GitHub, the static store, daily backups ([kppnet/RUNBOOK.md](../kppnet/RUNBOOK.md)) | half a day of kovarex's time |
-| S1. Static site and registry in Kpp | `kppsite` and `kpp publish` running on Windows, with the libraries json, sha256, zlib/zip, markdown, html | 4 to 6 |
+| S1. Static site and registry in kpp | `kppsite` and `kpp publish` running on Windows, with the libraries json, sha256, zlib/zip, markdown, html | 4 to 6 |
 | S2. CGI on FreeBSD | `registry.cgi`, `site.cgi`, libraries url, cgi, sqlite; needs thread B's FreeBSD target (CGI subset) | 3 to 4 after the target |
-| S3. Kpp HTTP daemon | the `http` library and the site as an NFS daemon; needs sockets and threads on FreeBSD | 3 to 5 after the target |
-| 1. Registry without a service | index repository and archives on kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
-| 2. The service in Kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
+| S3. kpp HTTP daemon | the `http` library and the site as an NFS daemon; needs sockets and threads on FreeBSD | 3 to 5 after the target |
+| 1. Registry without a service | index repository and archives on kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a kpp face over sockets | 2 to 3, plus porting the first libraries |
+| 2. The service in kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
 | 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue | 4 to 6 |
 | 4. Tools | IDE Libraries view, VS commands, generated documentation pages per library from reflection, more targets for binary parts, private registry setup | with threads E and F |
 
 The minimal first version is phases 0, 1 and S1 on the hosting of phase H: about 10 weeks, no
 server program of its own,
-usable by Wube and early users, and it proves the parts that are Kpp-specific (clash pre-check,
+usable by Wube and early users, and it proves the parts that are kpp-specific (clash pre-check,
 C source parts, MVS with one version) before any server code is written.
 
 ## Risks
@@ -804,7 +804,7 @@ C source parts, MVS with one version) before any server code is written.
 - **C libraries are most of the value and most of the risk.** Compiling their source with fixed
   flags will not cover every C library (configure-time generated headers, assembly); some will
   need a pre-generated config header committed by the packager.
-- **The service in Kpp depends on stdlib work** (networking, HTTP, TLS strategy) that does not
+- **The service in kpp depends on stdlib work** (networking, HTTP, TLS strategy) that does not
   exist yet; doing it before the game runs fully competes with the headline. Phase 1 does not
   depend on it.
 - **Moderation load** grows with users; phase 1's pull-request model does not scale past a few
@@ -829,11 +829,11 @@ C source parts, MVS with one version) before any server code is written.
    evaluation without I/O)? Proposed: yes.
 6. **C libraries as their own registry entries** (one zlib per program), versioned with upstream's
    number? Proposed: yes.
-7. **The service written in Kpp** (dogfooding, needs stdlib networking) or a conventional stack
-   with Kpp only in the client? Proposed: Kpp, from phase 2; phase 1 needs no service.
+7. **The service written in kpp** (dogfooding, needs stdlib networking) or a conventional stack
+   with kpp only in the client? Proposed: kpp, from phase 2; phase 1 needs no service.
 8. **Hosting**: decided 2026-10-31 ([Hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day)): kpp.net at
    NearlyFreeSpeech.NET; canonical bare git repositories there, GitHub as the mirror for pull
-   requests and issues; the website and the registry written in Kpp; a forge only later and only
+   requests and issues; the website and the registry written in kpp; a forge only later and only
    if NFS runs it.
 9. **Accounts**: none of kpp.net's own in stages S1 and S2 (maintainers' SSH keys, API tokens);
    GitHub sign-in or factorio.com accounts are a question for the dynamic stages.

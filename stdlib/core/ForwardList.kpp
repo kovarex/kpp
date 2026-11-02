@@ -1,4 +1,4 @@
-// Kpp standard library: ForwardList<T>, a singly linked list (what std::forward_list converts
+// kpp standard library: ForwardList<T>, a singly linked list (what std::forward_list converts
 // to). Specified in docs/stdlib/list.md: each element in a node of its own, so inserting and
 // erasing never move or invalidate other elements. Operations work after a position, since a node
 // only knows the next one; before_begin() is the position before the first element.

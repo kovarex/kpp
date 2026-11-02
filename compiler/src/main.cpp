@@ -1,4 +1,4 @@
-// kppc: the Kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
+// kppc: the kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
 #include "lexer.hpp"
 #include "codegen.hpp"
 #include "convert.hpp"
@@ -95,7 +95,7 @@ namespace
     int optimize = -1;             // --optimize 1, --no-optimize 0, unset -1: clang -O2 (ThinLTO, a whole link) when !debug
     unsigned modules = 0;          // --modules N: IR modules compiled in parallel (0: 2 per thread, 1: one module)
     unsigned codegenThreads = 0;   // --codegen-threads N: threads emitting IR (0: --threads)
-    std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
+    std::string convertDir;        // --convert DIR: write the inputs as kpp sources there
     const SourceConfiguration* configuration = nullptr; // converting: the #if branches the front end and the converter keep
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     std::string convertBase;       // --convert-base DIR: --convert writes each file at its path below DIR
@@ -141,7 +141,7 @@ namespace
             "                \"struct and class\"; the default once the converted game has none)\n"
             "  --c-type-warnings  warn of each C name of an integer type (int, unsigned, short, long, long long, signed\n"
             "                and unsigned char, int32_t, size_t ...) written outside extern \"C\", the C headers and the\n"
-            "                standard library, naming Kpp's (i32, u64 ...) (docs/design.md, \"Integer types and sizes\"); no error\n"
+            "                standard library, naming kpp's (i32, u64 ...) (docs/design.md, \"Integer types and sizes\"); no error\n"
             "  --quiet       no statistics\n"
             "  --msvc-diagnostics  diagnostics at path(line) instead of path:line, the form Visual Studio's\n"
             "                Error List reads (docs/build.md)\n"
@@ -181,12 +181,12 @@ namespace
             "                which builds windows-gnu with nothing of Visual Studio's; msvc: Visual Studio's clang\n"
             "                and link.exe (the default otherwise, and what --incremental-link needs; design.md 17)\n"
             "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
-            "                steps through the Kpp source (docs/debugging.md)\n"
+            "                steps through the kpp source (docs/debugging.md)\n"
             "  --target T    build for T: windows (the default), linux, freebsd, or a triple (docs/design.md,\n"
             "                \"Targets and hosts\"); sets config::platform\n"
             "  --sysroot D   the target's C headers and libraries, for a target other than the host\n"
             "                (tools/sysroot/ makes one for Linux from WSL)\n"
-            "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
+            "  --convert D   rewrite the C++ inputs as kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --convert-base B  with --convert: each file at its input's path below B, not below its input\n"
             "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
             "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"
@@ -197,7 +197,7 @@ namespace
             "                other arguments describe, debug and release, listing every source file, instead of\n"
             "                building (build\\visual-studio\\, .vscode\\; docs/build.md, \"Project files for an IDE\")\n"
             "  --run F ARGS  build F (a file or directory) with the options before --run and run it with ARGS;\n"
-            "                the exit code is the program's (docs/design.md, \"Running and testing Kpp code\");\n"
+            "                the exit code is the program's (docs/design.md, \"Running and testing kpp code\");\n"
             "                it builds through the compile server unless --no-server is among the options\n"
             "  --tests       build the program's `test \"name\" { }` declarations with the test runner as main\n"
             "                (config::tests is true; docs/design.md 8.6)\n"
@@ -366,14 +366,14 @@ namespace
   // hash of what they are made from (another compiler making one at once makes the same):
   // - an import library of ucrtbase.dll's functions that MinGW-w64's leave out: the UCRT's C++
   //   runtime's (its own is libc++'s) and its long double ones, which are doubles as MSVC's are;
-  // - those of math.h's long double functions on doubles: Kpp's long double is a double, as MSVC's
+  // - those of math.h's long double functions on doubles: kpp's long double is a double, as MSVC's
   //   (docs/build.md, "The toolchain"), and libmingwex's are x87's 80 bits.
   // The files, quoted for the link; empty, with an error printed, when one cannot be made.
   std::string gnuRuntime(const Options& options)
   {
     static const char* def = "LIBRARY ucrtbase.dll\nEXPORTS\n__uncaught_exceptions\nstrtold\nwcstold\n_strtold_l\n";
     static const char* longDouble =
-      "/* Kpp's long double is a double, as MSVC's: MinGW-w64's long double functions on doubles. */\n"
+      "/* kpp's long double is a double, as MSVC's: MinGW-w64's long double functions on doubles. */\n"
       "#define F1(f) long double f##l(long double x) { return __builtin_##f(x); }\n"
       "#define F2(f) long double f##l(long double x, long double y) { return __builtin_##f(x, y); }\n"
       "F1(acos) F1(acosh) F1(asin) F1(asinh) F1(atan) F1(atanh) F1(cbrt) F1(ceil) F1(cos) F1(cosh) F1(erf) F1(erfc)\n"
@@ -553,13 +553,13 @@ namespace
     return v;
   }
 
-  // The `config` namespace as Kpp source, one constant per --config value.
+  // The `config` namespace as kpp source, one constant per --config value.
   std::string configSource(const ConfigValues& values)
   {
     std::string s = "// Build configuration, generated by kppc from --config name=value and --release.\n"
                     "enum class Platform { Windows, Linux, Mac, FreeBSD };\n"
                     "namespace config\n{\n";
-    // A library's constant, LIB::NAME (docs/build.md, "Kpp libraries": its options), is NAME in the
+    // A library's constant, LIB::NAME (docs/build.md, "kpp libraries": its options), is NAME in the
     // namespace config::LIB; the map's order keeps one library's together.
     std::string open;
     for (const auto& [qualified, value] : values)
@@ -770,7 +770,7 @@ namespace
     return out;
   }
 
-  // Turns `#define NAME body` lines (clang -dM output) into Kpp constant declarations where the
+  // Turns `#define NAME body` lines (clang -dM output) into kpp constant declarations where the
   // body looks like a constant: numbers, string literals, operators, parentheses and names. A body
   // that calls function-like macros is taken as clang expanded it (expansions).
   std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions)
@@ -1571,7 +1571,7 @@ namespace
   // --c-type-warnings: C's names of the integer types (int, unsigned, short, long, long long, signed
   // and unsigned char, int32_t, size_t ...) are for C interop only (design.md, "Integer types and
   // sizes"): each one written outside an extern "C" declaration, the C headers and the standard
-  // library is a warning naming Kpp's type (u32, i64 ...). No error: the exit code stays.
+  // library is a warning naming kpp's type (u32, i64 ...). No error: the exit code stays.
   void warnCTypeNames(const std::vector<SourceFile>& files, const std::vector<LexResult>& lexed, const std::vector<std::unique_ptr<ParsedFile>>& parsed)
   {
     static const std::map<std::string_view, const char*> named = {
@@ -1755,7 +1755,7 @@ namespace
     if (options.cTypeWarnings)
       warnCTypeNames(files, lexed, parsed);
     // --convert reads C++, whose macro uses the parser does not expand (the converter expands them
-    // in the text it writes): its parse errors are shown, and the converted Kpp is what must parse.
+    // in the text it writes): its parse errors are shown, and the converted kpp is what must parse.
     if (build.parseErrors && options.convertDir.empty())
       codegenExit = 1;
     int shown = 0;
@@ -1821,7 +1821,7 @@ namespace
     build.indexEntries = global.entryCount();
     build.finishTime = finishTime;
     report("%s", indexLine);
-    // (Kpp's one global scope: not the rule of the C++ a conversion reads, whose names local to their file are)
+    // (kpp's one global scope: not the rule of the C++ a conversion reads, whose names local to their file are)
     if (options.convertDir.empty())
       build.clashes = global.topLevelClashes();
     for (const std::string& clash : build.clashes)

@@ -1,4 +1,4 @@
-// Kpp standard library: the algorithms over ranges [first, last) given by iterators (what std::sort,
+// kpp standard library: the algorithms over ranges [first, last) given by iterators (what std::sort,
 // std::find and the rest of <algorithm> convert to), and the reverse iterators and comparator
 // objects they use. Specified in docs/stdlib/algorithms.md. Each algorithm takes any iterator of
 // the category it needs (common.md): input iterators for the scans, forward iterators for the

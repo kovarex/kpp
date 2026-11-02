@@ -162,7 +162,7 @@ int runProgram(int argc, char** argv, int runIndex)
   if (test)
     options.push_back("--tests");
   // Through the compile server unless --no-server: it is faster after an edit too since 6812a62
-  // (docs/design.md, "Running and testing Kpp code").
+  // (docs/design.md, "Running and testing kpp code").
   auto noServer = std::find(options.begin(), options.end(), "--no-server");
   if (noServer != options.end())
     options.erase(noServer);

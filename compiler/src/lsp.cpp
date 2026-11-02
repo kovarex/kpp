@@ -1171,7 +1171,7 @@ namespace
         log("kpp/cells: %s", error.c_str());
       for (const ProjectCell& c : cells)
       {
-        Json libraries = Json::array(); // its Kpp libraries, each scoped (NAME::x) or unscoped (design.md 16)
+        Json libraries = Json::array(); // its kpp libraries, each scoped (NAME::x) or unscoped (design.md 16)
         for (const ProjectLibrary& l : c.libraries)
           libraries.push(Json::object().set("name", l.name).set("unscoped", l.unscoped));
         list.push(Json::object().set("target", c.target).set("configuration", c.configuration).set("visualStudio", c.visualStudio)
@@ -2654,7 +2654,7 @@ namespace
         std::string error;
         if (!chooseArguments(self, wanted, error))
         {
-          showMessage(1, "Kpp: " + error + "; nothing is checked.");
+          showMessage(1, "kpp: " + error + "; nothing is checked.");
           checkArguments.clear();
         }
         initialized = true;
@@ -2689,7 +2689,7 @@ namespace
         if (_wcsicmp(uriToPath(params["textDocument"]["uri"].text).filename().c_str(), L"build.kpp") == 0 &&
             !chooseArguments(self, project, error)) // the project described again
         {
-          showMessage(1, "Kpp: " + error + "; nothing is checked.");
+          showMessage(1, "kpp: " + error + "; nothing is checked.");
           checkArguments.clear();
           enterCell("");
         }
@@ -2700,7 +2700,7 @@ namespace
         readOptions(params["settings"]["kpp"], wanted);
         std::string error;
         if (!chooseArguments(self, wanted, error))
-          showMessage(1, "Kpp: " + error + "; still checking " + cellName(project) + ".");
+          showMessage(1, "kpp: " + error + "; still checking " + cellName(project) + ".");
         dirty = true;
       }
       else if (method == "kpp/cells")

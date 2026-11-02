@@ -1,6 +1,6 @@
 # After ci.yml has published a run's release (docs/build.md, "Continuous integration"): makes the
 # release of the highest version GitHub's "Latest", and deletes the push releases beyond the newest
-# -Keep, each with its tag. A release's version is the one its title names ("Kpp 0.2.5", kpp's
+# -Keep, each with its tag. A release's version is the one its title names ("kpp 0.2.5"; older releases capitalise it, which is read too; kpp's
 # version: docs/build.md, "Versions"); prereleases and drafts (release.yml's build-<N>) are left alone.
 # - Latest goes by version, compared as numbers (0.2.0 above 0.1.148), not by which run finished
 #   last: runs of different triggers run at once, and an older commit's run that publishes after a
@@ -38,8 +38,8 @@ for ($page = 1; ; ++$page) {
   $releases += $batch
   if ($batch.Count -lt 50) { break }
 }
-$runs = @($releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.name -match '^Kpp (\d+\.\d+\.\d+)\b' } |
-  ForEach-Object { [pscustomobject]@{ Version = [version]([regex]::Match($_.name, '^Kpp (\d+\.\d+\.\d+)').Groups[1].Value); Push = $_.tag_name -like 'v*'; Release = $_ } } |
+$runs = @($releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.name -match '^kpp (\d+\.\d+\.\d+)\b' } |
+  ForEach-Object { [pscustomobject]@{ Version = [version]([regex]::Match($_.name, '(?i)^kpp (\d+\.\d+\.\d+)').Groups[1].Value); Push = $_.tag_name -like 'v*'; Release = $_ } } |
   Sort-Object Version, Push -Descending)
 if (-not $runs) { 'settle: no release with a version'; exit 0 }
 

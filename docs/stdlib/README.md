@@ -1,10 +1,10 @@
-# Kpp standard library specification
+# kpp standard library specification
 
-This directory specifies the Kpp standard library: what every type and function does, what it
+This directory specifies the kpp standard library: what every type and function does, what it
 guarantees and what it costs. It is meant to be complete on its own. It started from the
 guarantees of the C++ standard library, because programs converted from C++ rely on them, but it
-does not refer to the C++ standard or any other outside text: where Kpp behaves like C++, that
-behaviour is written out here in full. When Kpp deliberately differs, the difference is stated
+does not refer to the C++ standard or any other outside text: where kpp behaves like C++, that
+behaviour is written out here in full. When kpp deliberately differs, the difference is stated
 here as the rule, and marked as a difference from C++ so that converted code can be checked.
 
 Where the implementation (stdlib/) does not meet this specification yet, docs/stdlib-conformance.md

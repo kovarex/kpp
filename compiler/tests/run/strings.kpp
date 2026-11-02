@@ -5,12 +5,12 @@ int main()
 {
   String greeting("Hello");
   greeting << String(", ");
-  greeting.append("Kpp");
+  greeting.append("kpp");
   greeting.append('!');
   greeting << '?';
   String copy = greeting;
   String head = copy.substr(0, 5) + String("...");
-  printf("%s|%s|%zu|%zu|%d\n", greeting.c_str(), head.c_str(), greeting.size(), greeting.find('K'), greeting == copy ? 1 : 0);
+  printf("%s|%s|%zu|%zu|%d\n", greeting.c_str(), head.c_str(), greeting.size(), greeting.find('k'), greeting == copy ? 1 : 0);
 
   Vector<String> words;
   words.push_back(String("alpha"));

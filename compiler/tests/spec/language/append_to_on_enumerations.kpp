@@ -1,4 +1,4 @@
-// spec: an enumeration's appendTo writes its enumerator's name, or for a value that is no enumerator the enumeration's name and the value (design.md 14), for a C++ enum class, an unscoped enum and a Kpp enum, at run time and at compile time; an enum with its own appendTo method uses that; an enum is a piece of a Text (`North Dark Gate Direction(7) own [East is 2]`)
+// spec: an enumeration's appendTo writes its enumerator's name, or for a value that is no enumerator the enumeration's name and the value (design.md 14), for a C++ enum class, an unscoped enum and a kpp enum, at run time and at compile time; an enum with its own appendTo method uses that; an enum is a piece of a Text (`North Dark Gate Direction(7) own [East is 2]`)
 extern "C" import "stdio.h";
 enum class Direction { North, East, South };
 enum Shade { Dark, Light };

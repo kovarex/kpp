@@ -1,4 +1,4 @@
-// Kpp standard library: the Win32 functions the library calls, in namespace win32 and called
+// kpp standard library: the Win32 functions the library calls, in namespace win32 and called
 // qualified, so that a program which also imports windows.h does not meet them as other overloads
 // of its names. Their types are windows.h's own, so that both declare the same C function the same
 // way: its handles are void*, its BOOL int, its DWORD and ULONG unsigned long, its BOOLEAN

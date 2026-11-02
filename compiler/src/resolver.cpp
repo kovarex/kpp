@@ -5317,7 +5317,7 @@ struct GlobalScope::Impl
   }
 
   // The value of a declaration used as a constant: a const/constexpr variable with an initializer
-  // (converted to its declared type), an enumerator, a Kpp enum's count, or a non-type template
+  // (converted to its declared type), an enumerator, a kpp enum's count, or a non-type template
   // parameter under the substitution. classSubst: the arguments of the class template
   // instantiation a static member was named through (`Bits<uint64_t>::count`).
   std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
@@ -5379,7 +5379,7 @@ struct GlobalScope::Impl
     {
       auto* v = static_cast<VariableDecl*>(d);
       if (v->builtin == BUILTIN_EnumCount && v->parent && v->parent->kind == NodeKind::EnumDecl)
-        return ConstValue::integer(int64_t(enumeratorCount(v->parent)), types.intType()); // a Kpp enum's count
+        return ConstValue::integer(int64_t(enumeratorCount(v->parent)), types.intType()); // a kpp enum's count
       if (v->parent && v->parent->kind == NodeKind::ClassDecl && !(v->flags & DF_Static))
         return std::nullopt; // a data member: its value is an object's, not its initializer
       // A member of a class template: under the instantiation's arguments, the ones it was named
@@ -7760,7 +7760,7 @@ struct GlobalScope::Impl
 
   // The declaration whose body a call of f runs: f, or its definition outside the class
   // (`Rectangle::Rectangle(int x, ...)` after the class: the game's .cpp half); null when none
-  // has a body the evaluator sees (a C function, a declaration defined in no Kpp source).
+  // has a body the evaluator sees (a C function, a declaration defined in no kpp source).
   // A call the evaluator cannot run, the reason kept (why): the function has no body it sees (a C
   // function: `printf`, `puts`; one declared and defined nowhere in the program).
   std::optional<ConstValue> constNoBody(FunctionDecl* f)
@@ -17680,7 +17680,7 @@ struct GlobalScope::Impl
     for (const Candidate* c : tied)
       if (total(*c) < total(*pick) || (total(*c) == total(*pick) && c->f->templateParams.empty() && !pick->f->templateParams.empty()))
         pick = c;
-    // A C function a header defines (static inline: no symbol of its own) and Kpp declares: the
+    // A C function a header defines (static inline: no symbol of its own) and kpp declares: the
     // definition, which the call compiles, not the declaration's external symbol.
     if (!ambiguous && !pick->f->body && isCFunction(pick->f))
       for (const Candidate* c : tied)
@@ -18088,7 +18088,7 @@ struct GlobalScope::Impl
     }
 
     // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
-    // `f(long)` beside `f(int)`, one function in Kpp, design.md "Types") is an error at the later
+    // `f(long)` beside `f(int)`, one function in kpp, design.md "Types") is an error at the later
     // definition, as in C++ ([basic.def.odr]); the code generator would emit both. Not templates
     // (their specialisations and instances have bodies of their own) nor a `conditional(...)` one
     // (alternatives of which one exists).
@@ -20839,7 +20839,7 @@ struct GlobalScope::Impl
         return false;
       if (t->kind == TyKind::Enum)
       {
-        // (a Kpp enum's own appendTo method, in its scope, is called as written)
+        // (a kpp enum's own appendTo method, in its scope, is called as written)
         Decl* e = t->decl;
         Lookup own;
         return e && !(e->ownScope && impl.lookupInScope(e->ownScope, symbol, own, 0) && own.decl && own.decl->kind == NodeKind::FunctionDecl);
@@ -23663,7 +23663,7 @@ struct GlobalScope::Impl
 
   // The body a constant evaluation runs for def (a function's definition) under subst: the copy
   // its instance's walk typed, made now or waited for, through the record the checker's instance
-  // checks use, never def's own nodes, which its file's walk may not have reached yet (Kpp's order
+  // checks use, never def's own nodes, which its file's walk may not have reached yet (kpp's order
   // independence: a constant above the function, or in a file walked first) or may be writing on
   // another thread meanwhile. For a template's function (its own, or its class's) the instance's;
   // there a call with a type-dependent argument names what the instance's types choose (C++

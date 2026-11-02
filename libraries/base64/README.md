@@ -1,7 +1,7 @@
 # base64
 
 Base64 and base64url ([RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) sections 4 and 5) for
-Kpp. Decoding is strict, so one byte string has exactly one encoding that decodes.
+kpp. Decoding is strict, so one byte string has exactly one encoding that decodes.
 
 ```cpp
 String text = base64Encode("foobar");      // Zm9vYmFy

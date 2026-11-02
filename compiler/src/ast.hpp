@@ -1,5 +1,5 @@
 #pragma once
-// AST for the Kpp subset (tolerant of C++ so the Factorio corpus can be used as a benchmark).
+// AST for the kpp subset (tolerant of C++ so the Factorio corpus can be used as a benchmark).
 // Nodes live in a per-file arena and are never freed individually.
 #include "lexer.hpp"
 #include <atomic>
@@ -228,7 +228,7 @@ struct ClassDecl : Decl
   // `union enum` (design.md 8.5): a tag and one live alternative. The parser desugars it to the
   // members below; the compiler adds the tag-aware operations.
   bool isTypedUnion = false;
-  Decl* tagEnum = nullptr;        // the nested Kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
+  Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
 };
@@ -240,8 +240,8 @@ struct EnumDecl : Decl
   bool isDefinition = false;
   Type* underlying = nullptr;
   Span<Decl*> enumerators;
-  Span<Decl*> members; // Kpp: methods inside enums.
-  bool isKpp = false;  // Kpp enum (values in their own brace block): count, values, str(), exhaustive switch.
+  Span<Decl*> members; // kpp: methods inside enums.
+  bool isKpp = false;  // kpp enum (values in their own brace block): count, values, str(), exhaustive switch.
 };
 struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; };
 struct FunctionDecl : Decl

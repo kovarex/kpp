@@ -1,4 +1,4 @@
-# Kpp
+# kpp
 
 A C++-like language and its compiler, designed for order-of-magnitude faster builds:
 no includes, order-independent symbols, one multithreaded persistent compiler,
@@ -12,13 +12,13 @@ simple templates, own standard library, C-only interop.
   design decision), `docs/stdlib-conformance.md`: where stdlib/ does not meet it yet.
 - `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kppc.exe` (CMake + Ninja +
   clang-cl from VS 2022). Benchmarks live in `compiler/bench/`, test inputs in `compiler/tests/`.
-- `stdlib/`: the standard library, written in Kpp and compiled from source with every program
+- `stdlib/`: the standard library, written in kpp and compiled from source with every program
   (`kppc` finds it next to the compiler; `--std DIR` or `--no-std` override that).
-- `programs/`: real Kpp programs, one directory each (`kpplex`: the lexer in Kpp, with its C++
+- `programs/`: real kpp programs, one directory each (`kpplex`: the lexer in kpp, with its C++
   transliteration and `run.cmd` timing both on the Factorio corpus).
 - `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads);
-  `kppnet/site/`: kppsite, the static site generator in Kpp.
-- `libraries/`: the official Kpp libraries (json, sha256, base64, html, markdown, url), each a
+  `kppnet/site/`: kppsite, the static site generator in kpp.
+- `libraries/`: the official kpp libraries (json, sha256, base64, html, markdown, url), each a
   library project with its tests; run_tests.cmd tests them all.
 - `tools/`: editor integration (VS, VS Code), release packaging. `projectlib/`: build.kpp's package.
 
@@ -28,7 +28,7 @@ simple templates, own standard library, C-only interop.
 - Factorio source (benchmark corpus) is at C:\Factorio. Never modify its sources or commit there; building
   it with its own FASTBuild command line (C++ Debug/Release, its libraries) is allowed (kovarex, 2026-10-31).
 - Repositories: this one is C:\kpp (github.com/kovarex/kpp; it replaced C:\kov and
-  github.com/wube/kov, which are no longer worked in). The Factorio source converted to Kpp is
+  github.com/wube/kov, which are no longer worked in). The Factorio source converted to kpp is
   C:\factorio-in-kpp (github.com/kovarex/factorio-in-kpp, private: it is game source), written by
   `programs\factorio\convert.cmd`; commit and push it there when a converter change alters it.
 - Several threads may work in this same clone (C:\kpp): commit small, push promptly, pull before
@@ -61,6 +61,10 @@ Decided by kovarex; every thread follows them.
   promptly. Never `git stash`: the stash is shared across worktrees. Commit with `git commit -s`
   (kovarex's DCO sign-off, which he authorised for threads' commits on 2026-11-01; CONTRIBUTING.md)
   besides the Co-Authored-By line.
+- kpp is written in lower case everywhere: docs, prose, comments, user-visible messages, the
+  installer (`C:\Program Files\kpp`), release titles, the VS Code extension (kovarex, 2026-11-02). Only
+  code style keeps a capital, in identifiers (`KppDescription`); file names and `.kpp` never change.
+  run_tests' lower case check (tests\lowercase.ps1) fails on a capitalised one.
 - Licence: kpp and libraries/ are Apache-2.0 WITH LLVM-exception (LICENSE). Not under it, and never
   relicensed by a thread: programs/factorio/ (game-derived) and factorio-in-kpp (Wube's game source).
   Third-party code keeps its own licence and notice.
@@ -88,7 +92,7 @@ Decided by kovarex; every thread follows them.
 
 ## Current phase
 Front end (lexer, parser, resolver, type checker, template instantiation) is done and measured
-(docs/prototype-results.md). Code generation for the Kpp v0 subset works through textual LLVM IR
+(docs/prototype-results.md). Code generation for the kpp v0 subset works through textual LLVM IR
 and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run the end-to-end
 tests with `compiler\tests\run_tests.cmd` and the specification suite `compiler\tests\spec.cmd`
 (one snippet per construct, pass/pending, writes docs/spec-status.md) after every compiler

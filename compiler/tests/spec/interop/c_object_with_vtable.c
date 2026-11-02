@@ -1,5 +1,5 @@
 /* The C side of c_object_with_vtable.kpp: an object with a table of functions, and calls through
-   any object's table (a Kpp object's too). */
+   any object's table (a kpp object's too). */
 #include <stdlib.h>
 #include "c_object_with_vtable.h"
 

@@ -1,4 +1,4 @@
-// Kpp standard library: Vector<T>. A growable array. When elements shift for an insert or erase,
+// kpp standard library: Vector<T>. A growable array. When elements shift for an insert or erase,
 // they are relocated (move constructor, then destructor); when the buffer grows, as in
 // std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
 // is copied. Appending grows the capacity geometrically, reserve() exactly.

@@ -1,5 +1,5 @@
 // bench.kpp over the C++ standard library, line for line: std::vector, std::string,
-// std::unordered_map, std::map, std::sort. (Kpp's FastHashMap rows run std::unordered_map again.) Built with clang -O2 against whichever standard library the
+// std::unordered_map, std::map, std::sort. (kpp's FastHashMap rows run std::unordered_map again.) Built with clang -O2 against whichever standard library the
 // target uses (MSVC STL on Windows; libstdc++ or libc++ under WSL, see run.cmd).
 #include <algorithm>
 #include <chrono>

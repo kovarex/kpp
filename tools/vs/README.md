@@ -1,4 +1,4 @@
-# Kpp in Visual Studio 2022 and VS Code
+# kpp in Visual Studio 2022 and VS Code
 
 Background and measurements: [docs/build.md](../../docs/build.md), "Project files for an IDE".
 

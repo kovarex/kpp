@@ -23,11 +23,11 @@ def build():
     if len(sys.argv) > 1:
         std = os.path.abspath(sys.argv[1])
         subprocess.run([kppc, '--quiet', '--release', '--std', std, '--exe', os.path.join(out, 'kpp_other.exe'), 'bench.kpp'], cwd=here, check=True)
-        programs['Kpp, ' + os.path.basename(os.path.normpath(std))] = [os.path.join(out, 'kpp_other.exe')]
+        programs['kpp, ' + os.path.basename(os.path.normpath(std))] = [os.path.join(out, 'kpp_other.exe')]
     subprocess.run([kppc, '--quiet', '--release', '--exe', os.path.join(out, 'kpp.exe'), 'bench.kpp'], cwd=here, check=True)
-    programs['Kpp'] = [os.path.join(out, 'kpp.exe')]
+    programs['kpp'] = [os.path.join(out, 'kpp.exe')]
     subprocess.run([kppc, '--quiet', '--release', '--modules', '1', '--exe', os.path.join(out, 'kpp1.exe'), 'bench.kpp'], cwd=here, check=True)
-    programs['Kpp, 1 module'] = [os.path.join(out, 'kpp1.exe')]
+    programs['kpp, 1 module'] = [os.path.join(out, 'kpp1.exe')]
     subprocess.run(['clang++', '-O2', '-std=c++20', 'bench.cpp', '-o', os.path.join(out, 'msvc.exe')], cwd=here, check=True)
     programs['MSVC STL'] = [os.path.join(out, 'msvc.exe')]
     if shutil.which('wsl') and subprocess.run(['wsl', '-e', 'sh', '-c', 'command -v clang++ && command -v g++'], capture_output=True).returncode == 0:
@@ -63,7 +63,7 @@ def main():
         print('running', name, file=sys.stderr)
         columns[name] = measure(command)
     names = list(programs)
-    rows = columns['Kpp']
+    rows = columns['kpp']
     print('| benchmark | ' + ' | '.join(names) + ' |')
     print('|---|' + '---:|' * len(names))
     for i, (bench, _, checksum) in enumerate(rows):

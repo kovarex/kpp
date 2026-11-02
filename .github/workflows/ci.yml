@@ -191,11 +191,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $v = $env:KPP_VERSION
-          $title = if ('${{ github.event_name }}' -eq 'schedule') { "Kpp $v (nightly $($env:KPP_TAG.Substring(8)))" } else { "Kpp $v" }
+          $title = if ('${{ github.event_name }}' -eq 'schedule') { "kpp $v (nightly $($env:KPP_TAG.Substring(8)))" } else { "kpp $v" }
           $tested = if ('${{ github.event_name }}' -in 'schedule', 'workflow_dispatch') { 'every test green, including the --release and --debug-info spec' } else { 'every test green (the debug spec; the nightly adds --release and --debug-info)' }
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $env:KPP_TAG -Commit "${{ github.sha }}" -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" -Title $title `
-            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp.vsix is the VS Code extension." `
+            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp.vsix is the VS Code extension." `
             -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp.vsix"
 
       # The release of the highest version (compared as numbers) becomes "Latest", so an older commit's

@@ -3,7 +3,7 @@
 Threads of execution and what keeps their work apart (what `std::thread`, `std::this_thread`,
 `std::mutex`, `std::recursive_mutex`, `std::shared_mutex`, `std::lock_guard`, `std::scoped_lock`,
 `std::unique_lock`, `std::shared_lock` and `std::condition_variable` convert to), on the Windows
-API. Values shared without a lock: [Atomic](atomic.md). The members have Kpp names, and the
+API. Values shared without a lock: [Atomic](atomic.md). The members have kpp names, and the
 standard names as well where converted code calls them (`getId` and `get_id`).
 
 ## Thread

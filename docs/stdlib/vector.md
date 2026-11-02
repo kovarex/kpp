@@ -82,7 +82,7 @@ Adding and removing:
 Comparison: `==` and `<=>` (common.md): equal with equal elements in order, ordered
 lexicographically.
 
-Kpp additions (not in C++): `insert(index, value)`, `erase(index)` taking an index of any integer
+kpp additions (not in C++): `insert(index, value)`, `erase(index)` taking an index of any integer
 type (so that a literal 0 is the index, not a null position),
 `contains(value)` (linear search with `==`). A Vector converts to `Span<T>` of its elements.
 

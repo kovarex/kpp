@@ -1,7 +1,7 @@
 # sha256
 
 SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) and HMAC-SHA-256
-([RFC 2104](https://www.rfc-editor.org/rfc/rfc2104)) for Kpp, with a constant-time compare for
+([RFC 2104](https://www.rfc-editor.org/rfc/rfc2104)) for kpp, with a constant-time compare for
 MACs and tokens. The registry's tree hash (kppnet/registry/tree_hash.py) and its API tokens use
 it.
 
@@ -39,4 +39,4 @@ if (Sha256::constantTimeEqual(mac.view(), given)) ...
 
 ## Not yet
 
-- Speed: one block at a time in plain Kpp, no SHA-NI instructions.
+- Speed: one block at a time in plain kpp, no SHA-NI instructions.

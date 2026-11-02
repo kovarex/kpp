@@ -1,4 +1,4 @@
-// kpplex: the Kpp lexer, written in Kpp. The first real program.
+// kpplex: the kpp lexer, written in kpp. The first real program.
 //
 // Lexes every .cpp/.hpp/.h file under the directories given on the command line and prints the
 // same counts as `kppc --lex-only`: files, bytes, lines, tokens, distinct identifiers, errors,

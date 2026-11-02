@@ -1,7 +1,7 @@
 # Factorio build baseline
 
-The reference numbers Kpp is measured against: Factorio's real C++ build on the same machine the
-Kpp prototype runs on. Measured 2026-10-23 on the Factorio `master` checkout at commit
+The reference numbers kpp is measured against: Factorio's real C++ build on the same machine the
+kpp prototype runs on. Measured 2026-10-23 on the Factorio `master` checkout at commit
 `d0495ebfd8a`.
 
 ## Machine and toolchain

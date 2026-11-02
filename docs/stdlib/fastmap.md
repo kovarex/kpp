@@ -5,7 +5,7 @@ entries are stored many to a block and move between blocks as others are inserte
 That makes them faster and smaller than Map and Set (fewer allocations, lookups touch fewer cache
 lines), and it is why they are separate types: code that keeps iterators, pointers or references
 across modifications must use Map or Set. The converter never produces them; choosing one is a
-decision made in Kpp code.
+decision made in kpp code.
 
 ## Invalidation
 

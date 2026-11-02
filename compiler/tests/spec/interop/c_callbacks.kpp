@@ -1,4 +1,4 @@
-// spec: Kpp functions as C callbacks (function pointers with C signatures) and C function pointers stored in Kpp
+// spec: kpp functions as C callbacks (function pointers with C signatures) and C function pointers stored in kpp
 typedef int (*BinaryOp)(int, int);
 static int add(int a, int b) { return a + b; }
 static int mul(int a, int b) { return a * b; }

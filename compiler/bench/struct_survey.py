@@ -1,4 +1,4 @@
-"""struct and class in the game's C++ sources, their Kpp conversion and the Kpp standard library
+"""struct and class in the game's C++ sources, their kpp conversion and the kpp standard library
 (docs/design.md, "struct and class"): definitions by keyword and what the structs hold (access
 sections, constructors, virtual functions, bases), plus the game's structs that a "struct is public
 data" rule would make classes. A regex survey with brace matching: right in proportion, not exact.
@@ -11,8 +11,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 GAME = r"C:\Factorio"
 ROOTS = {
     "game C++ (src, CommonUtil, Agui)": ([os.path.join(GAME, "src"), os.path.join(GAME, "libraries", "CommonUtil"), os.path.join(GAME, "libraries", "Agui")], (".cpp", ".hpp", ".h")),
-    "game converted to Kpp (the same)": ([os.path.join(REPO, "programs", "factorio", "kpp", d) for d in ("src", "CommonUtil", "Agui")], (".kpp",)),
-    "Kpp standard library": ([os.path.join(REPO, "stdlib")], (".kpp",)),
+    "game converted to kpp (the same)": ([os.path.join(REPO, "programs", "factorio", "kpp", d) for d in ("src", "CommonUtil", "Agui")], (".kpp",)),
+    "kpp standard library": ([os.path.join(REPO, "stdlib")], (".kpp",)),
 }
 HEAD = re.compile(r"(?<![\w:])(?<!enum )(?<!enum  )(struct|class)\s+(?:\[\[[^\]]*\]\]\s*)?(?:alignas\([^)]*\)\s*)?([A-Za-z_]\w*)(\s*<[^;{()]*?>)?\s*(final\s*)?(:[^;{]*)?\{")
 COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)

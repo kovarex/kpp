@@ -1,4 +1,4 @@
-// spec: a C function's struct by value, argument and result, passed as the target's C passes it (MS x64: a struct of 1, 2, 4 or 8 bytes in a register, others through memory; SysV x86-64: up to 16 bytes in INTEGER or SSE registers by its eightbytes, others on the stack, and on the stack whole when its registers ran out), against clang's C (c_structs_by_value.c); before 2026-11-01 Kpp passed every struct as a pointer to a copy, MS x64's way only above 8 bytes
+// spec: a C function's struct by value, argument and result, passed as the target's C passes it (MS x64: a struct of 1, 2, 4 or 8 bytes in a register, others through memory; SysV x86-64: up to 16 bytes in INTEGER or SSE registers by its eightbytes, others on the stack, and on the stack whole when its registers ran out), against clang's C (c_structs_by_value.c); before 2026-11-01 kpp passed every struct as a pointer to a copy, MS x64's way only above 8 bytes
 // factorio: the C libraries' small structs by value (SDL_Color, SDL_FPoint, lua_Debug fields are pointers)
 struct S1 { char a; };
 struct S2 { short a; };

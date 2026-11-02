@@ -1,4 +1,4 @@
-# Kpp in editors
+# kpp in editors
 
 IntelliSense comes from one place: the compiler's language server, `kpp --lsp`. It speaks the
 Language Server Protocol over stdin and stdout, so any editor with an LSP client can use it. This
@@ -47,7 +47,7 @@ Status (2026-10-31):
   - `kpp/cells` (request, no parameters) answers
     `{ "cells": [{ "target", "configuration", "visualStudio", "libraries": [{ "name", "unscoped" }] }], "active": { "target", "configuration" } }`:
     every target in every configuration, in build.kpp's order; `visualStudio` is the
-    configuration's name in the generated Visual Studio files (`Debug`); `libraries` the Kpp
+    configuration's name in the generated Visual Studio files (`Debug`); `libraries` the kpp
     libraries the cell uses, each scoped (its names are `NAME::x`) or unscoped (design.md 16).
     Without a build.kpp the list is empty and `active` null.
   - `kpp/selectCell` (request) `{ "target", "configuration" }` makes that cell the checked one and
@@ -76,7 +76,7 @@ Status (2026-10-31):
 ## VS Code
 
 The extension is in `tools/vscode`; its README covers the details.
-- **Install:** the Kpp installer offers to install it into VS Code. By hand, run
+- **Install:** the kpp installer offers to install it into VS Code. By hand, run
   `code --install-extension kpp.vsix`, with `kpp.vsix` from the release or from `npm run package`
   in tools\vscode.
 - **What it adds:** colouring, from the same TextMate grammar Visual Studio uses, and a language
@@ -84,7 +84,7 @@ The extension is in `tools/vscode`; its README covers the details.
 - **Settings:** `kpp.path`, `kpp.configuration`, `kpp.target` (`kpp.executable`, its old name, is
   still read), `kpp.settings` and `kpp.trace.server`.
 - **The cell:** the status bar shows the target and configuration the code is checked in; a click
-  (or *Kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
+  (or *kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
   workspace's `kpp.target` and `kpp.configuration`.
 - **Build, run and debug:** use `kpp --generate-vs-code-files` (build.md).
 
@@ -125,8 +125,8 @@ vim.lsp.config('kpp', {
 vim.lsp.enable('kpp')
 ```
 
-There is no tree-sitter grammar for Kpp yet. `vim.treesitter.language.register('cpp', 'kpp')`
-gives C++ colouring, which fits most Kpp code.
+There is no tree-sitter grammar for kpp yet. `vim.treesitter.language.register('cpp', 'kpp')`
+gives C++ colouring, which fits most kpp code.
 
 **Helix**, in languages.toml (Helix sends `config` as the initializationOptions):
 
@@ -163,13 +163,13 @@ grammar = "cpp"
 ```
 
 - Open a `.kpp` file and choose *View > Syntax > Open all with current extension as... > C++*.
-- Until Kpp has a `.sublime-syntax` of its own, the client also attaches to C++ files. Enable it
+- Until kpp has a `.sublime-syntax` of its own, the client also attaches to C++ files. Enable it
   per project (in the project's settings), not globally.
 
 **Emacs** (eglot, built in since Emacs 29):
 
 ```elisp
-(define-derived-mode kpp-mode c++-mode "Kpp")
+(define-derived-mode kpp-mode c++-mode "kpp")
 (add-to-list 'auto-mode-alist '("\\.kpp\\'" . kpp-mode))
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs

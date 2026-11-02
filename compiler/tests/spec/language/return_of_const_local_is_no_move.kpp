@@ -1,4 +1,4 @@
-// spec: `return t;` of a const local (or one converted to the result's class) never moves from it: the implicit move's `const T&&` binds the copy constructor ([class.copy.elision]/3), whether or not the copy is elided (NRVO, which C++ leaves to the compiler; Kpp copies); the moves counted are 0 either way (clang 19 prints `0 0 7`)
+// spec: `return t;` of a const local (or one converted to the result's class) never moves from it: the implicit move's `const T&&` binds the copy constructor ([class.copy.elision]/3), whether or not the copy is elided (NRVO, which C++ leaves to the compiler; kpp copies); the moves counted are 0 either way (clang 19 prints `0 0 7`)
 // factorio: InputActionList::tryDemangleName's `const String normal = name; ... return normal;`, WireAddedUndoAction::getWire's `const Wire wire(...)` returned as an Optional<Wire>: moved from (found by the templates thread comparing object lifetimes against clang 19)
 int moves = 0;
 struct Tracked

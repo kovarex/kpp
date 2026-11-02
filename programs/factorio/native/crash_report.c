@@ -101,7 +101,7 @@ static void walk(CONTEXT context, DWORD code)
   TerminateProcess(GetCurrentProcess(), code);
 }
 
-/* KPP_TRACE_THROW set: each Kpp throw (exception code 0xE0000001, kpp_throw's) prints its stack
+/* KPP_TRACE_THROW set: each kpp throw (exception code 0xE0000001, kpp_throw's) prints its stack
    when it is raised, caught or not, up to 50 of them: where the errors the game catches and reports
    come from ("Map loading failed: Invalid bool loaded"). */
 static LONG WINAPI traceThrow(EXCEPTION_POINTERS* e)

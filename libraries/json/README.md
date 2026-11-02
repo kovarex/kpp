@@ -1,6 +1,6 @@
 # json
 
-JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)) for Kpp: parse text into a `JsonValue`,
+JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)) for kpp: parse text into a `JsonValue`,
 build or change one, and write it back. Strict: text that is not JSON is an error with its line
 and column. Numbers round-trip exactly.
 
@@ -81,7 +81,7 @@ value. `tests/JsonTestSuite.kpp` is generated from a clone by `tests/generate_su
 ## Not yet
 
 - Typed (de)serialization of structs by compile-time iteration over their fields
-  (docs/library-registry.md, "The website and the library provider in Kpp").
+  (docs/library-registry.md, "The website and the library provider in kpp").
 - Objects look a member up by a linear search, which is fine for configuration and registry
   files and slow for objects with thousands of members.
 - Parsing a stream; the text is one `StringView`.

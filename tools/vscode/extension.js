@@ -1,4 +1,4 @@
-// The Kpp extension (tools/vscode/README.md): the language, its grammar, and a language client
+// The kpp extension (tools/vscode/README.md): the language, its grammar, and a language client
 // that starts `kpp --lsp` (docs/editors.md, "The language server") for the workspace.
 const vscode = require('vscode');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
@@ -23,7 +23,7 @@ function options()
 function showCell(cell)
 {
   status.text = `$(gear) ${cell.target || 'every target'} | ${cell.configuration}`;
-  status.tooltip = 'Kpp: the target and configuration IntelliSense checks the code in. Click to change.';
+  status.tooltip = 'kpp: the target and configuration IntelliSense checks the code in. Click to change.';
   status.show();
 }
 
@@ -33,13 +33,13 @@ async function selectCell()
 {
   if (!client)
   {
-    vscode.window.showWarningMessage('Kpp: the language server is not running.');
+    vscode.window.showWarningMessage('kpp: the language server is not running.');
     return;
   }
   const answer = await client.sendRequest('kpp/cells', {});
   if (!answer || !answer.cells || answer.cells.length === 0)
   {
-    vscode.window.showInformationMessage('Kpp: there is no build.kpp, so there are no targets and configurations to pick.');
+    vscode.window.showInformationMessage('kpp: there is no build.kpp, so there are no targets and configurations to pick.');
     return;
   }
   const items = [];
@@ -80,7 +80,7 @@ async function start(context)
 {
   const command = serverCommand();
   const server = { command, args: ['--lsp'], transport: TransportKind.stdio };
-  client = new LanguageClient('kpp', 'Kpp', { run: server, debug: server }, {
+  client = new LanguageClient('kpp', 'kpp', { run: server, debug: server }, {
     documentSelector: [{ scheme: 'file', language: 'kpp' }],
     initializationOptions: options(),
     outputChannel: output,
@@ -98,8 +98,8 @@ async function start(context)
   {
     const open = 'Settings';
     const choice = await vscode.window.showErrorMessage(
-      `Kpp: the language server did not start (${command} --lsp): ${error.message || error}. ` +
-      'Install Kpp, or set kpp.path to kpp.exe.', open);
+      `kpp: the language server did not start (${command} --lsp): ${error.message || error}. ` +
+      'Install kpp, or set kpp.path to kpp.exe.', open);
     if (choice === open)
       vscode.commands.executeCommand('workbench.action.openSettings', 'kpp.path');
     client = undefined;
@@ -118,7 +118,7 @@ async function stop()
 
 async function activate(context)
 {
-  output = vscode.window.createOutputChannel('Kpp');
+  output = vscode.window.createOutputChannel('kpp');
   context.subscriptions.push(output);
   context.subscriptions.push(vscode.commands.registerCommand('kpp.restartServer', async () =>
   {

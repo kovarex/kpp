@@ -1,4 +1,4 @@
-// Kpp standard library: Tuple, one or more values of any types together (what std::tuple converts
+// kpp standard library: Tuple, one or more values of any types together (what std::tuple converts
 // to), and what goes with it: get<I>, TupleSize, TupleElement, makeTuple, tie, forwardAsTuple, and
 // IndexSequence (std::index_sequence). Specified in docs/stdlib/tuple.md.
 

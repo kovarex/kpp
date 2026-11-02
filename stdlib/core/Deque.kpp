@@ -1,4 +1,4 @@
-// Kpp standard library: Deque<T>, Queue<T> and Stack<T> (what std::deque, std::queue and
+// kpp standard library: Deque<T>, Queue<T> and Stack<T> (what std::deque, std::queue and
 // std::stack convert to). Specified in docs/stdlib/deque.md.
 //
 // A Deque keeps its elements in fixed-size blocks and a map of pointers to them. Element i is at

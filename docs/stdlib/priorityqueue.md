@@ -14,4 +14,4 @@ O(1) allocation with a Vector; `pop()`: removes the top element, O(log n); `swap
 
 Push and pop invalidate references to elements. There is no iteration.
 
-Kpp addition: `clear()`.
+kpp addition: `clear()`.

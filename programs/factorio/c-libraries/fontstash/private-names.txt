@@ -2,7 +2,7 @@
 # (stb_truetype_stbrp_init_target): stb_truetype.h's fallback rect packer, which it defines without
 # STB_RECT_PACK_VERSION, private to fontstash.cpp's translation unit in the C++ build, beside the game's
 # stb_rect_pack (kpp-native's header_only.c, which TextureProcessor imports): other types, other
-# functions of the same names, which Kpp's C import makes the program's. And the three public
+# functions of the same names, which kpp's C import makes the program's. And the three public
 # functions that take the fallback's stbrp_rect, whose import declares them with stb_rect_pack's (the
 # game calls none of them).
 stbrp_coord

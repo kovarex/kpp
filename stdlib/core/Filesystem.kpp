@@ -1,4 +1,4 @@
-// Kpp standard library: the file system, what std::filesystem converts to (namespace filesystem,
+// kpp standard library: the file system, what std::filesystem converts to (namespace filesystem,
 // std's names). Windows only, over the Win32 wide-character API; paths are UTF-16 as Windows
 // keeps them. Specified in docs/stdlib/filesystem.md.
 
@@ -667,7 +667,7 @@ namespace filesystem
     directories_only = 0x1000,
     create_symlinks = 0x2000,
     create_hard_links = 0x4000,
-    inRecursiveCopy = 0x10000, // Kpp: copy's own mark for the entries of a directory it copies
+    inRecursiveCopy = 0x10000, // kpp: copy's own mark for the entries of a directory it copies
   };
   copy_options operator|(copy_options a, copy_options b) { return copy_options((unsigned int)a | (unsigned int)b); }
   copy_options operator&(copy_options a, copy_options b) { return copy_options((unsigned int)a & (unsigned int)b); }

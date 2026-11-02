@@ -1,4 +1,4 @@
-// Kpp's container sizes are int (docs/stdlib/common.md) where C++'s are size_t, and the game hands
+// kpp's container sizes are int (docs/stdlib/common.md) where C++'s are size_t, and the game hands
 // `vector.size()` to saveSpaceOptimizedSize, whose asserts want an unsigned input at least as wide
 // as FullType ("don't pre-cast the input value"). An int size is a count, never negative, that
 // widens to any FullType, so it is accepted as C++'s size_t is; every other input keeps the

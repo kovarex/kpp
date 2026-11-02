@@ -1,9 +1,9 @@
 # C headers whose function-like macros the converter expands at their uses in converted code
-# (convert.cpp, readHeaderMacros): the imported headers give Kpp their functions and constants, not
+# (convert.cpp, readHeaderMacros): the imported headers give kpp their functions and constants, not
 # their macros.
 # An object-like macro that is another name is written as that name: glad's OpenGL functions
 # (`#define glGenTextures glad_glGenTextures`, the function pointers gladLoadGL fills).
-# imgui.h is C++, not imported (overrides/added/src/Debug/ImGui.kpp declares imgui for Kpp, with its
+# imgui.h is C++, not imported (overrides/added/src/Debug/ImGui.kpp declares imgui for kpp, with its
 # object-like macros as constants), but its function-like macros are C's: IM_COL32, IM_ARRAYSIZE.
 C:\Factorio\libraries\glad\include\glad\glad.h
 C:\Factorio\libraries\imgui\imgui.h

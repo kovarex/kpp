@@ -39,5 +39,5 @@ constant expressions; `has_denorm`, `has_denorm_loss`, `round_style`, `traps` an
 ## Endian
 
 `Endian` (std::endian) is an enumeration of the byte orders of scalar types: `Endian::little`,
-`Endian::big` and `Endian::native`, the order of the target. Every target Kpp builds for is
+`Endian::big` and `Endian::native`, the order of the target. Every target kpp builds for is
 little-endian, so `native` equals `little`; it is a constant, usable in `static_assert`.

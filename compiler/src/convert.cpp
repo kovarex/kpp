@@ -825,7 +825,7 @@ namespace
     return out;
   }
 
-  // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
+  // Known object-like and function-like macros of the corpus that have a direct kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
@@ -900,7 +900,7 @@ namespace
                                                                   {"LOG_STACKTRACE", "Logging::logStackTrace()"}, {"FLUSH_LOG", "Logging::flush()"},
                                                                   // The debug C runtime's report settings (the tests' Main.cpp sends assertion
                                                                   // reports to stderr), as crtdbg.h has them without _DEBUG: nothing to set,
-                                                                  // Kpp's asserts report themselves.
+                                                                  // kpp's asserts report themselves.
                                                                   {"_CrtSetReportMode", "((int)0)"}, {"_CrtSetReportFile", "((void*)0)"},
                                                                   {"LOG_AND_ABORT", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
@@ -928,11 +928,11 @@ namespace
     {"SKIP_VALUE", "if constexpr (isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
     {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"},
     // Util.hpp's `verify(x)`: x evaluated in every build, asserted only where asserts are (its #ifndef
-    // NDEBUG branch is `assert(x)`, which Kpp's release build compiles out with x:
+    // NDEBUG branch is `assert(x)`, which kpp's release build compiles out with x:
     // TransitionalRequestBuffers' `verify(set.erase(silo))` erased nothing there).
     {"verify", "[&] { if constexpr (config::debug) { assert($1); } else { (void)($1); } }()"},
     // Windows' wingdi.h and winnt.h, as knownFunctionMacros above (with `(DWORD)((BYTE)(x))` where
-    // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
+    // wingdi.h has `(DWORD)(BYTE)(x)`, which kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
     {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"},
     {"FD_SET", "kppFdSet((SOCKET)($1), (fd_set*)($2))"},
@@ -1079,7 +1079,7 @@ namespace
     return out;
   }
 
-  // std:: names and their Kpp library spelling. Names not here keep their name and are counted.
+  // std:: names and their kpp library spelling. Names not here keep their name and are counted.
   // C library functions become `::name`: inside a namespace with its own `sqrt`, `std::sqrt` meant the C one.
   const std::map<std::string, std::string> stdNames = {
     {"string", "String"}, {"string_view", "StringView"}, {"wstring", "WString"}, {"vector", "Vector"}, {"pair", "Pair"},
@@ -1308,7 +1308,7 @@ namespace
 
   // The aliases the program declares (`using X = ...;` and typedefs), at any scope: their name,
   // the file, and whether at namespace scope (in C++ a .cpp file's namespace-scope alias is its
-  // own; in Kpp every namespace-scope name is the program's).
+  // own; in kpp every namespace-scope name is the program's).
   struct AliasDeclaration
   {
     std::string name;
@@ -2252,7 +2252,7 @@ namespace
   }
 
   // What a spliced macro (isSplicedMacroBody) is written out as: its body without comments and
-  // without calling conventions, which Kpp has none of (SSE.hpp's `#define VCALL __vectorcall` is
+  // without calling conventions, which kpp has none of (SSE.hpp's `#define VCALL __vectorcall` is
   // nothing), the spliced and string macros it names (in objects) written out in turn
   // (lobject.h's ClosureHeader begins with CommonHeader).
   std::string splicedMacroText(std::string body, const std::map<std::string, std::string>& objects, int depth = 0)
@@ -2412,7 +2412,7 @@ namespace
     // and so is the namespace's own name of the library's (that Set, written `Set`:
     // `TestMigrationHelpers::Set`). A directive outside any block of a source file (not a header)
     // goes, its namespace's names written qualified instead: C++ limits it to its translation
-    // unit, Kpp has none, and the global namespace it is in is every file's (DeferredTestReporter's
+    // unit, kpp has none, and the global namespace it is in is every file's (DeferredTestReporter's
     // `using namespace UnitTest;` put UnitTest's TestReporter beside the tests' own everywhere).
     struct DirectiveRange
     {
@@ -2562,7 +2562,7 @@ namespace
         auto* v = static_cast<VariableDecl*>(n);
         if (v->name.parts.size() == 1 && v->name.parts[0].symbol != UINT32_MAX)
           localNames[std::string(symbols.name(v->name.parts[0].symbol))].push_back({toks[v->token].offset, end});
-        // A local named `_`, which the parser makes unnamed (`_<offset>`), as Kpp does.
+        // A local named `_`, which the parser makes unnamed (`_<offset>`), as kpp does.
         for (uint32_t k = v->token; k < v->endToken && k < toks.size() && !toks[k].is(P::Semi); ++k)
           if (toks[k].getKind() == TokenKind::Identifier && spelling(k) == "_")
           {
@@ -2572,7 +2572,7 @@ namespace
       }
     }
     // The locals named `_` (where each declaration starts, where its function ends, its name's
-    // token): in Kpp `_` is an unnamed variable, so one the code reads after all gets a name.
+    // token): in kpp `_` is an unnamed variable, so one the code reads after all gets a name.
     struct UnderscoreLocal
     {
       uint32_t declared, end, nameToken;
@@ -2669,14 +2669,14 @@ namespace
     std::map<std::string, std::vector<LocalMacro>> localMacros;
     // Function-like macros of the C headers the program imports (Lua's lua_pop and the rest, from the
     // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
-    // headers give Kpp their functions and constants, not their macros.
+    // headers give kpp their functions and constants, not their macros.
     const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
     // The imported C headers' object-like macros that are another name (glad's glGenTextures is
     // glad_glGenTextures): a use is written as that name.
     const std::map<std::string, std::string>* headerAliases = nullptr;
     // This .cpp file's namespace-scope aliases that another file declares too, with their own
     // names (`using MyBinder = LuaBinder<LuaRocketSiloControlBehavior>;` is
-    // MyBinderOfLuaRocketSiloControlBehavior): file-local in C++, program-wide in Kpp.
+    // MyBinderOfLuaRocketSiloControlBehavior): file-local in C++, program-wide in kpp.
     std::map<std::string, std::string> fileAliasRenames;
     // The function-like macros of the game's headers this file includes, directly or through other
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
@@ -2701,7 +2701,7 @@ namespace
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
     // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
-    // std::ostream;`), by their Kpp names: its later unqualified uses are the library's.
+    // std::ostream;`), by their kpp names: its later unqualified uses are the library's.
     std::map<std::string, std::string> stdUsingNames;
     // Every function-like macro's name (callsFunction): an object-like macro that calls something else
     // is written out at its uses.
@@ -2760,7 +2760,7 @@ namespace
     // A fixture test's body (UnitTest++'s TEST_FIXTURE, whose expansion ends with the
     // `Fixture##Name##Helper::Run()` of a class deriving from the fixture): the parse does not see it
     // (a macro's use with a block), so the names it uses of the fixture's members get their `this->`
-    // here, which Kpp requires (TestArithmeticCombinator's `combinator->setParameters(params);`). From
+    // here, which kpp requires (TestArithmeticCombinator's `combinator->setParameters(params);`). From
     // its `{` token to its `}`, the fixture's member names, and the locals declared in it (a name, the
     // token declaring it, the end of its block), which hide members of their names.
     struct FixtureBody
@@ -3526,7 +3526,7 @@ namespace
           if (directXHeaders.count(lowered))
           {
             // DirectX, DXGI, WIC, WMI and the COM headers: programs/factorio/native/include/kpp_directx.h,
-            // which leaves out the C structs of the interfaces Kpp declares as classes
+            // which leaves out the C structs of the interfaces kpp declares as classes
             // (overrides/added/src/Graphics/DX11/ComInterfaces.kpp, generate_com.py). Once per file.
             if (importedDirectX)
             {
@@ -3893,7 +3893,7 @@ namespace
       return this->renameOutsideArguments(withFileAndLine(untagged(rescanMacros(expandMacroOnce(m, args, spellings, useOffset), useOffset), true), useOffset));
     }
     // C's `assert(c)` where an expression stands (llimits.h's `#define check_exp(c,e)
-    // (lua_assert(c), (e))`): Kpp's assert is a statement, so the assert goes in a lambda called on
+    // (lua_assert(c), (e))`): kpp's assert is a statement, so the assert goes in a lambda called on
     // the spot, which asserts as the statement does.
     static bool expressionPosition(const std::string& before)
     {
@@ -4383,7 +4383,7 @@ namespace
     }
     // A printf-style format at token i (a string literal, or adjacent ones, that is an argument and
     // has a `%`): each argument a 64-bit conversion reads (%zu, %llu, %I64u and their d/x kin) is
-    // written size_t(...), the size_t C++ passes there, which a container size's int (Kpp's
+    // written size_t(...), the size_t C++ passes there, which a container size's int (kpp's
     // library) is not: the vararg would carry 32 bits where printf reads 64. By the format, not by
     // types, so that it holds where the converter has none (templates' instances, fixtures'
     // members). Returns the last token of the literal.
@@ -5039,7 +5039,7 @@ namespace
             spelling(i).substr(spelling(i).size() - 4) == "NULL" && !memberAccessAt(i))
           if (auto macro = preprocessed->defined.find(std::string(spelling(i))); macro != preprocessed->defined.end() && macro->second == "0")
           {
-            // C's null pointer by another name (zlib.h's `#define Z_NULL 0`): Kpp imports the macro
+            // C's null pointer by another name (zlib.h's `#define Z_NULL 0`): kpp imports the macro
             // as an int constant, which is no null pointer.
             replace(t.offset, t.length, "nullptr");
             counts.add("C null pointer macros written as nullptr");
@@ -5077,16 +5077,16 @@ namespace
           }
         if (in.c && t.getKind() == TokenKind::Identifier && spelling(i) == "config" && !memberAccessAt(i) && !inClassBody(t.offset))
         {
-          // Kpp's build configuration is the namespace `config` (config::debug): zlib's
+          // kpp's build configuration is the namespace `config` (config::debug): zlib's
           // `typedef struct config_s {...} config;` and opus's locals named so are renamed. A member
           // keeps its name (it is reached through `.` or `->`).
           replace(t.offset, t.length, "config_");
-          counts.add("C names `config` renamed (Kpp's configuration namespace)");
+          counts.add("C names `config` renamed (kpp's configuration namespace)");
           continue;
         }
         if (in.c && t.getKind() == TokenKind::Identifier && lookupKeyword(spelling(i)) != UINT32_MAX)
         {
-          // A C name that is a C++ keyword (trio's `class`, curl's `new`): Kpp has the keyword.
+          // A C name that is a C++ keyword (trio's `class`, curl's `new`): kpp has the keyword.
           replace(t.offset, t.length, std::string(spelling(i)) + "_");
           counts.add("C names that are C++ keywords renamed");
           continue;
@@ -5175,7 +5175,7 @@ namespace
             !(i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket) ||
                         toks[i - 1].is(P::Greater) || callsWithParenthesis(i - 1))))
         {
-          // `(LPWSTR)&msg`, a C type's cast of an address or a dereference: Kpp reads `(NAME) & x`
+          // `(LPWSTR)&msg`, a C type's cast of an address or a dereference: kpp reads `(NAME) & x`
           // without knowing that NAME is a type, as a binary `&`, so the operand is parenthesized,
           // `(LPWSTR)(&msg)`, which is a cast. A name in capitals is taken for a C type (the
           // Windows typedefs), as C++ code does not write `(CONSTANT) & x`.
@@ -5213,7 +5213,7 @@ namespace
                         toks[i - 1].is(P::Greater) || callsWithParenthesis(i - 1))))
         {
           // `(HANDLE) -1`, a C type's cast of a negative number (StackWalker's invalid snapshot
-          // handle), which Kpp reads as a subtraction from NAME, as above: `(HANDLE)(-1)`.
+          // handle), which kpp reads as a subtraction from NAME, as above: `(HANDLE)(-1)`.
           insert(toks[i + 3].offset, "(");
           insert(endOffset(i + 4), ")");
           counts.add("casts of a negative number parenthesized");
@@ -5221,7 +5221,7 @@ namespace
         // `X::value_type` (reference, pointer, difference_type, iterator_category) of an iterator type
         // X is IteratorTraits<X>'s, as std::iterator_traits gives them: CreatableEntityTypeIterator's
         // `using value_type = ListIterator::value_type;` with ListIterator a std::vector's const_iterator,
-        // a pointer in Kpp.
+        // a pointer in kpp.
         static const std::set<std::string_view> iteratorMemberTypes = {"value_type", "reference", "pointer", "difference_type", "iterator_category"};
         if (t.getKind() == TokenKind::Identifier && i + 2 < toks.size() && toks[i + 1].is(P::ColonColon) && iteratorMemberTypes.count(spelling(i + 2)) &&
             !toks[i + 3].is(P::ColonColon) && !(i > 0 && (toks[i - 1].is(P::ColonColon) || toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow))) &&
@@ -5426,7 +5426,7 @@ namespace
             i += 4;
             continue;
           }
-          todo(t.offset, "using std::" + name + ": a std name the converter has no Kpp name for");
+          todo(t.offset, "using std::" + name + ": a std name the converter has no kpp name for");
         }
         if (t.getKind() == TokenKind::Identifier && !stdUsingNames.empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
@@ -5468,42 +5468,42 @@ namespace
         if (t.getKind() == TokenKind::Identifier &&
             (spelling(i) == "__FILE__" || spelling(i) == "__LINE__" || ((spelling(i) == "__FUNCTION__" || spelling(i) == "__func__") && functionNameAt(t.offset))))
         {
-          // The preprocessor's file name and line: the literal values, since Kpp has no preprocessor.
+          // The preprocessor's file name and line: the literal values, since kpp has no preprocessor.
           replace(t.offset, endOffset(i) - t.offset, withFileAndLine(std::string(spelling(i)), t.offset));
           counts.add("__FILE__, __LINE__, __FUNCTION__ replaced");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
-          // The game's own 2D `Vector` class is Vector2D in Kpp, where Vector is the library's std::vector.
+          // The game's own 2D `Vector` class is Vector2D in kpp, where Vector is the library's std::vector.
           replace(t.offset, endOffset(i) - t.offset, "Vector2D");
           counts.add("Vector renamed to Vector2D");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Map" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
-          // The game's `class Map` is GameMap in Kpp, where Map<K,V> is the library's std::map.
+          // The game's `class Map` is GameMap in kpp, where Map<K,V> is the library's std::map.
           replace(t.offset, endOffset(i) - t.offset, "GameMap");
           counts.add("Map renamed to GameMap");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Optional" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
-          // The game's sentinel-based `Optional<T, empty>` is GameOptional in Kpp, where Optional<T> is the library's std::optional.
+          // The game's sentinel-based `Optional<T, empty>` is GameOptional in kpp, where Optional<T> is the library's std::optional.
           replace(t.offset, endOffset(i) - t.offset, "GameOptional");
           counts.add("Optional renamed to GameOptional");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Pair" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
-          // The game's `Pair<K,V>` is GamePair in Kpp, where Pair<A,B> is the library's std::pair.
+          // The game's `Pair<K,V>` is GamePair in kpp, where Pair<A,B> is the library's std::pair.
           replace(t.offset, endOffset(i) - t.offset, "GamePair");
           counts.add("Pair renamed to GamePair");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "RuntimeError" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
-          // The game's `class RuntimeError : public std::runtime_error` is GameRuntimeError in Kpp,
+          // The game's `class RuntimeError : public std::runtime_error` is GameRuntimeError in kpp,
           // where RuntimeError is the library's std::runtime_error.
           replace(t.offset, endOffset(i) - t.offset, "GameRuntimeError");
           counts.add("RuntimeError renamed to GameRuntimeError");
@@ -5530,7 +5530,7 @@ namespace
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
         {
-          // `value.~vector()`: the destructor of a std class, by the class's Kpp name.
+          // `value.~vector()`: the destructor of a std class, by the class's kpp name.
           auto it = stdNames.find(std::string(spelling(i)));
           if (it != stdNames.end() && it->second.find("::") == std::string::npos && isupper((unsigned char)it->second[0]))
           {
@@ -5543,7 +5543,7 @@ namespace
         {
           // `std::pair<const K, V>`, a map's entry as C++ spells it (AsteroidCollectorNavmesh's
           // `for (const std::pair<const ChunkPosition, std::unique_ptr<...>>& entry : records)`): a
-          // Kpp Map's entries are Pair<K, V> (docs/stdlib/map.md), so the key's const goes. A const
+          // kpp Map's entries are Pair<K, V> (docs/stdlib/map.md), so the key's const goes. A const
           // that belongs to a pointer's or a reference's target (`std::pair<const T*, float>`) stays.
           uint32_t k = i + 5;
           for (int depth = 0; k < toks.size(); ++k)
@@ -5573,7 +5573,7 @@ namespace
               toks[i + 5].is(P::LParen) && toks[i + 6].is(P::RParen))
           {
             // `std::source_location loc = std::source_location::current()` as a default argument:
-            // Kpp's caller location, which the compiler fills at each call (design.md section 7).
+            // kpp's caller location, which the compiler fills at each call (design.md section 7).
             replace(t.offset, endOffset(i + 6) - t.offset, "caller");
             counts.add("source_location::current() to caller");
             i += 6;
@@ -5603,7 +5603,7 @@ namespace
           {
             // `std::locale::global(std::locale::classic());` (Main.cpp): the library's text conversion is
             // the classic ("C") locale's always, so making it the global one changes nothing.
-            replace(t.offset, endOffset(i + 14) - t.offset, "/* std::locale::global(std::locale::classic()): Kpp converts text as the classic locale */");
+            replace(t.offset, endOffset(i + 14) - t.offset, "/* std::locale::global(std::locale::classic()): kpp converts text as the classic locale */");
             counts.add("std::locale::global(classic) removed");
             i += 14;
             continue;
@@ -5820,7 +5820,7 @@ namespace
           if (name.compare(0, 3, "is_") == 0 && variable != stdNames.end() && i + 3 < toks.size() && toks[i + 3].is(P::Less))
           {
             // `std::is_member_function_pointer<T>()` and `std::is_const<T>::value`: the trait's
-            // value, which is the compiler's isMemberFunctionPointer<T>; Kpp has no class form.
+            // value, which is the compiler's isMemberFunctionPointer<T>; kpp has no class form.
             uint32_t j = i + 4;
             int depth = 0;
             for (; j < toks.size(); ++j)
@@ -5862,7 +5862,7 @@ namespace
               isIdentChar(to.back()))
           {
             // The class's constructors by its name: `using std::string::string;` inherits them
-            // (TestFlatMap's MoveOnlyString), `using String::String;` in Kpp.
+            // (TestFlatMap's MoveOnlyString), `using String::String;` in kpp.
             replace(toks[i + 4].offset, toks[i + 4].length, to.substr(to.rfind(':') == std::string::npos ? 0 : to.rfind(':') + 1));
             counts.add("std constructor name renamed");
             i += 4;
@@ -5942,7 +5942,7 @@ namespace
           }
           if (name == "__try")
           {
-            // Structured exception handling: Kpp's exceptions are SEH underneath, so `try` catches
+            // Structured exception handling: kpp's exceptions are SEH underneath, so `try` catches
             // what `__try` did; the filter expression is lost (a todo).
             replace(t.offset, t.length, "try");
             counts.add("SEH __try to try");
@@ -6311,26 +6311,26 @@ namespace
         }
         if ((d->flags & DF_Friend) && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && !classStack.empty())
         {
-          // A hidden friend, defined inside the class: Kpp has no friends, so it becomes a member
+          // A hidden friend, defined inside the class: kpp has no friends, so it becomes a member
           // operator or moves out to namespace scope, body and all.
           if (!convertHiddenFriend(static_cast<FunctionDecl*>(d)))
             continue;
         }
         else if ((d->flags & DF_Friend) && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::FunctionDecl))
         {
-          removeDecl(d); // no friends in Kpp; `friend class X;` would read as a nested class
+          removeDecl(d); // no friends in kpp; `friend class X;` would read as a nested class
           counts.add("friend declarations removed");
           continue;
         }
         if (d->kind == NodeKind::DeductionGuideDecl)
         {
-          removeDecl(d); // Kpp deduces class arguments from constructors
+          removeDecl(d); // kpp deduces class arguments from constructors
           counts.add("deduction guides removed");
           continue;
         }
         // C++: a source file's names of its own, a `static` at the global namespace's scope and what
         // an anonymous namespace there declares, are `private` (design.md 15: a file's names; not in
-        // a named namespace, where private is no Kpp, nor in a header, which other files include).
+        // a named namespace, where private is no kpp, nor in a header, which other files include).
         if (!in.c && namespaceScope && !isHeader() && (d->flags & DF_Static) && prefix.empty() &&
             (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && cDeclName(d).size() &&
             !(d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1))
@@ -6344,7 +6344,7 @@ namespace
             !cGivenHeader)
         {
           // `static` at namespace scope in a header gives every C++ file that includes it a copy
-          // of its own; in Kpp a header and its source are one file and a `static` name stays in
+          // of its own; in kpp a header and its source are one file and a `static` name stays in
           // it, so the other files would not find it (EMPTY_CARGO_STATION_ID): the `static` goes.
           // (Not in a C header given alone: it is the implementation's one file, and its statics
           // are its own, stb_truetype.h's fallback stbrp_init_target and stbrp_pack_rects beside
@@ -6497,7 +6497,7 @@ namespace
             auto* f = static_cast<FunctionDecl*>(d);
             if (f->templateParams.empty() && !f->body && !f->name.empty() && f->name.last().hasTemplateArgs && !(f->flags & DF_Specialization))
             {
-              removeDecl(d); // an explicit instantiation: templates compile from source in Kpp
+              removeDecl(d); // an explicit instantiation: templates compile from source in kpp
               counts.add("explicit instantiations removed");
               break;
             }
@@ -6561,7 +6561,7 @@ namespace
             recordVariantDeclaration(d, false);
             // `using path = path;` in a namespace that a using-directive opens to the other path
             // (Filesystem.hpp: `using namespace __fs;`): in C++ the alias's own name is not in
-            // scope in its type, in Kpp it would name the alias itself; the type is qualified
+            // scope in its type, in kpp it would name the alias itself; the type is qualified
             // with the namespace the directive names (with `::` when there is none).
             auto* a = static_cast<UsingAliasDecl*>(d);
             Type* t = a->type;
@@ -6886,7 +6886,7 @@ namespace
       return name == "GUID" || name == "IID" || name == "CLSID" || name == "WICPixelFormatGUID";
     }
     // `output << this->tagsByTagNumber.size()`: a std container's size() is a size_t in C++ and an
-    // int in Kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
+    // int in kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
     // of 8: the game's complete-mode saves (its CRCs, desync reports) came out other than the C++
     // build's (TagManager::save, 4 bytes short per force). Written `size_t(...)` where it is the
     // right operand of a <<, the place where C++ code sends a size on by its type (a printf-style
@@ -7119,7 +7119,7 @@ namespace
       return name.parts.size() == 2 && isStdContainerType(memberAlias(c, name.parts[0].symbol));
     }
     // The game's class whose size() (or length(), count()) returns its std container's size_type: a
-    // size_t in C++, the library's int in Kpp, as a std container's own.
+    // size_t in C++, the library's int in kpp, as a std container's own.
     bool returnsStdSizeType(Type* type, std::string_view function)
     {
       while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType))
@@ -7168,7 +7168,7 @@ namespace
       return typeOfExpr(e, 0).type;
     }
     // Whether a type is C++'s std::string (or wstring, u16string, u32string, basic_string, or an alias of
-    // one): Kpp's String and WString, which append with `<<` (design.md 14: String has no +=).
+    // one): kpp's String and WString, which append with `<<` (design.md 14: String has no +=).
     bool isStdStringType(Type* type, int depth = 0)
     {
       while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
@@ -7223,7 +7223,7 @@ namespace
       return isStdStringType(plainTypeOf(e));
     }
     // Whether a type is an integer other than char, which C++ appends to a std::string as one char and
-    // Kpp's `<<` as its digits (unsigned char, uint8_t, int...).
+    // kpp's `<<` as its digits (unsigned char, uint8_t, int...).
     bool isNonCharInteger(Type* type, int depth = 0)
     {
       while (type && type->kind == NodeKind::ConstType)
@@ -7257,7 +7257,7 @@ namespace
     }
     // A std container's iterator type, as the code at owner names it: `std::vector<T>::iterator`, or
     // `WidgetArray::iterator` where WidgetArray is an alias of one in owner or a class or namespace
-    // around it (Agui's visible_iterator). Its operator* and operator-> are a pointer's in Kpp.
+    // around it (Agui's visible_iterator). Its operator* and operator-> are a pointer's in kpp.
     bool isStdIteratorType(Type* type, Decl* owner)
     {
       while (type && type->kind == NodeKind::ConstType)
@@ -8026,7 +8026,7 @@ namespace
               counts.add("GUIDs passed by address");
             }
           // `it.operator*()` and `it.operator->()` on an iterator: a std::vector's is a class in the
-          // game's library and a pointer in Kpp's, which has no member call for them (Agui's
+          // game's library and a pointer in kpp's, which has no member call for them (Agui's
           // visible_iterator), so they are written `(*it)` and `toAddress(it)`, which C++ gives the
           // same meaning for an iterator. Only where the declarations say a std iterator: any other
           // keeps the member call (PrototypeIDWithQualityIterator's `this->idIterator.operator->()`
@@ -8069,7 +8069,7 @@ namespace
           auto* binary = static_cast<BinaryExpr*>(e);
           if (P(binary->op) == P::Shl)
             sizeAsSizeT(binary->rhs);
-          // C++'s `text += x` on a std::string: Kpp's String appends with `<<` (design.md 14), the right
+          // C++'s `text += x` on a std::string: kpp's String appends with `<<` (design.md 14), the right
           // side in parentheses where `<<` would bind otherwise (`text += ok ? "a" : "b"`), and an
           // integer that C++ appends as one char written char(x) (PropertyTreeJson's UTF-8 encoder:
           // `buffer += (unsigned char)(0xc0 | (c >> 6))`).
@@ -8354,7 +8354,7 @@ namespace
 
     // --- C's rules (ConvertInput::c, kppc --c-sources) ---
     // C converts a void* to any object pointer implicitly (`unsigned char* p = malloc(n);`,
-    // `b->buffer = ret;`), Kpp only with a cast: the converter writes the cast. The types come from
+    // `b->buffer = ret;`), kpp only with a cast: the converter writes the cast. The types come from
     // the declarations the converted files and their headers make; a C library function that
     // returns void* is known by name, as the converter does not read the C library's headers.
 
@@ -8398,7 +8398,7 @@ namespace
       Type* pointee = cWithoutQualifiers(cUnaliased(static_cast<PointerType*>(bare)->pointee));
       return pointee && pointee->kind != NodeKind::FunctionType;
     }
-    // A type as Kpp source: what a cast to it writes. Empty for a type this does not spell (a
+    // A type as kpp source: what a cast to it writes. Empty for a type this does not spell (a
     // function pointer).
     std::string cSpelling(Type* t) const
     {
@@ -8703,7 +8703,7 @@ namespace
     // `private` before a declaration (design.md 15) and its `static` gone, also a `static` a keyword
     // macro writes (zstd's FORCE_INLINE_TEMPLATE, `static inline`), which drops the word from that
     // rewrite. Not a function's prototype or a type's forward declaration: the conversion removes
-    // those, Kpp needs none.
+    // those, kpp needs none.
     void writePrivate(Decl* d)
     {
       if ((d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->body) ||
@@ -8993,7 +8993,7 @@ namespace
       return &cOwnConstants[name];
     }
     // C's `U32 const x`, `ZSTD_window_t const window`, `struct S const* s` (zstd writes its consts
-    // after the type): `const U32 x`, the const first, as Kpp's parse reads it after a type's name
+    // after the type): `const U32 x`, the const first, as kpp's parse reads it after a type's name
     // only so (language/east_const_after_type_name, pending).
     void cWestConst()
     {
@@ -9015,7 +9015,7 @@ namespace
       }
     }
     // C's array parameters are pointers (`U32 rep[ZSTD_REP_NUM]` is `U32* rep`): written so, in
-    // function declarations and in function types (zstd's ZSTD_blockCompressor), where Kpp keeps the
+    // function declarations and in function types (zstd's ZSTD_blockCompressor), where kpp keeps the
     // array (language/array_parameter_is_pointer, pending).
     void cArrayParameter(Decl* param)
     {
@@ -9078,7 +9078,7 @@ namespace
     }
     // C's typedef of a function type, `typedef void stbi_write_func(void *context, void *data, int size);`
     // (stb_image_write's): `using stbi_write_func = void(void *context, void *data, int size);`, the
-    // form Kpp resolves (language/typedef_of_function_type, pending).
+    // form kpp resolves (language/typedef_of_function_type, pending).
     void cFunctionTypedefs()
     {
       for (uint32_t i = 0; i + 4 < toks.size(); ++i)
@@ -9110,7 +9110,7 @@ namespace
       }
     }
     // C's `(U64)(size_t)(oend-op)`, a cast of a cast of a parenthesized expression that the parse
-    // may not have read as casts (size_t is no declared name for it): Kpp reads `(T)(x)` before `(`
+    // may not have read as casts (size_t is no declared name for it): kpp reads `(T)(x)` before `(`
     // as a cast of the whole postfix expression, so the inner cast gets parentheses of its own:
     // `(U64)((size_t)(oend-op))`.
     void cCastChains()
@@ -9148,7 +9148,7 @@ namespace
       return innermost && innermost->classBody;
     }
     // value converted to target as C converts it on assignment: a void* to an object pointer
-    // gets the cast Kpp needs.
+    // gets the cast kpp needs.
     void cConvert(Expr* value, Type* target)
     {
       if (!value || !target || !cIsObjectPointer(target) || !cIsVoidPointer(cTypeOf(value)))
@@ -9388,11 +9388,11 @@ namespace
           cWalkStmt(static_cast<FunctionDecl*>(d)->body, static_cast<FunctionDecl*>(d));
           // A function C code calls by its name (vorbis calls ogg's): C linkage, as every function
           // a C file defines without static has. (Its own flags may say C already: the resolver
-          // gives it the linkage of the header's extern "C" declaration, which Kpp imports.)
+          // gives it the linkage of the header's extern "C" declaration, which kpp imports.)
           bool written = d->token >= 2 && toks[d->token - 1].getKind() == TokenKind::String && toks[d->token - 2].is(Kw::extern_);
           // A function that takes or returns a struct by value, which no interface header of the
           // library declares (cover.c's COVER_computeEpochs): the converted files are its only
-          // callers, and it keeps Kpp's linkage (Kpp's C-callable functions pass no struct values).
+          // callers, and it keeps kpp's linkage (kpp's C-callable functions pass no struct values).
           auto byValue = [&](Type* t)
           {
             t = cWithoutQualifiers(cUnaliased(t));
@@ -9406,17 +9406,17 @@ namespace
           if (structValue && !f->name.empty() && f->name.last().symbol != UINT32_MAX &&
               !(cInterfaceNames && cInterfaceNames->count(std::string(symbols.name(f->name.last().symbol)))))
           {
-            counts.add("C functions passing structs by value the interface does not declare kept Kpp's linkage");
+            counts.add("C functions passing structs by value the interface does not declare kept kpp's linkage");
             written = true;
           }
           // A function whose declaration names one of the library's private names (private-names.txt):
           // its C view, which the game imports, has the program's type of that name, another one
           // (stb_truetype's stbtt_PackFontRangesGatherRects takes its fallback's stbrp_rect, the
           // imported fontstash.h stb_rect_pack's), which C allows only across translation units: it
-          // keeps Kpp's linkage.
+          // keeps kpp's linkage.
           if (cPrivate && cPrivate->count(cDeclName(d)) && !written)
           {
-            counts.add("C functions kept to their file kept Kpp's linkage");
+            counts.add("C functions kept to their file kept kpp's linkage");
             written = true;
           }
           if (cPrivateNames && !cPrivateNames->empty() && !written)
@@ -9427,19 +9427,19 @@ namespace
             for (; k < toks.size() && !toks[k].is(P::LBrace); ++k)
               if (toks[k].getKind() == TokenKind::Identifier && cPrivateNames->count(std::string(spelling(k))))
               {
-                counts.add("C functions taking the library's private types kept Kpp's linkage");
+                counts.add("C functions taking the library's private types kept kpp's linkage");
                 written = true;
                 break;
               }
           }
           // A C++ overload of an interface function (fontstash.h, which the game compiles as C++, defines
           // a fonsAddFontSdf of three parameters besides the interface's of four): C++'s linkage there,
-          // Kpp's here, as C has one function of a name.
+          // kpp's here, as C has one function of a name.
           if (!f->name.empty() && f->name.last().symbol != UINT32_MAX && cInterfaceNames)
             if (auto declared = cInterfaceNames->find(std::string(symbols.name(f->name.last().symbol)));
                 declared != cInterfaceNames->end() && !declared->second.count(f->params.size()) && !written)
             {
-              counts.add("C++ overloads of the interface's functions kept Kpp's linkage");
+              counts.add("C++ overloads of the interface's functions kept kpp's linkage");
               written = true;
             }
           if (!(d->flags & DF_Static) && !written && toks[d->token].is(Kw::extern_))
@@ -9489,8 +9489,8 @@ namespace
         return;
       if (several)
       {
-        // (C code naming one of them fails to link: Kpp's names differ)
-        counts.add("C variables of several declarators kept Kpp's linkage");
+        // (C code naming one of them fails to link: kpp's names differ)
+        counts.add("C variables of several declarators kept kpp's linkage");
         return;
       }
       cInsertBefore(toks[v->token].offset, "extern \"C\" ");
@@ -10747,7 +10747,7 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
     // Names the library keeps to its own files that another part of the program declares too, one a
     // line: stb_truetype.h's fallback rect packer (stbrp_context, stbrp_init_target, ... without
     // STB_RECT_PACK_VERSION), private to fontstash.cpp's translation unit, beside the game's
-    // stb_rect_pack, which Kpp's C import makes one program's names.
+    // stb_rect_pack, which kpp's C import makes one program's names.
     if (!overridesDir.empty())
       if (FILE* f = fopen((overridesDir / "private-names.txt").string().c_str(), "rb"))
       {
@@ -10863,7 +10863,7 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
     // `TRIO_PUBLIC int trio_printf`, whose own definitions the define leaves out.)
     impl->cMacros = collectCMacros(configured, impl->cEmptyDefines);
     // C's restrict qualifies a pointer for the optimizer only (xxhash.c's `XXH32_state_t* restrict
-    // dstState`): nothing, as Kpp has no restrict
+    // dstState`): nothing, as kpp has no restrict
     for (const char* restrictWord : {"restrict", "__restrict", "__restrict__"})
       impl->cMacros.empty.insert(restrictWord);
   }
@@ -11029,7 +11029,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   std::set<std::string> cInterfaceHeaders;
   // `zstd.h kpp_zstd.h`: an include of zstd.h imports kpp_zstd.h, a header of the overrides that
   // configures it as the library's files do before their includes (`#define
-  // ZSTD_STATIC_LINKING_ONLY`), written beside the converted files: Kpp's import has no defines.
+  // ZSTD_STATIC_LINKING_ONLY`), written beside the converted files: kpp's import has no defines.
   std::map<std::string, std::string> cConfiguredImports;
   if (!overridesDir.empty())
   {
@@ -11233,7 +11233,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   // The headers that no file includes, directly or through other headers, from the sources the
   // build compiles, the files given alone and the force-included headers: the C++ build never
-  // compiles them, so they are left out. Dead code that Kpp, compiling every file, would compile:
+  // compiles them, so they are left out. Dead code that kpp, compiling every file, would compile:
   // ShaderProgram.hpp (the OpenGL renderer's) names the namespace VertexLayout as a type,
   // ItemStackChangeWatcher.hpp assigns an ItemWithQualityID to an ItemID. The includes are read
   // from the text, those in dropped #if branches too, so no header that may be included goes.
@@ -11332,7 +11332,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     }
   }
   // C: every macro constant of a C library is written out at its uses, in the files that see it,
-  // as the preprocessor does. A C macro holds in one translation unit, a Kpp constant is a name of
+  // as the preprocessor does. A C macro holds in one translation unit, a kpp constant is a name of
   // the whole program: gzguts.h's `#define COPY 1` met inflate.h's enumerator COPY, inftrees.h's
   // MAXBITS Lua's, crc32.c's W the game's.
   std::set<std::string> cWrittenOutMacros;
@@ -11770,7 +11770,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   // A source file's static function named as one of the library's free functions (ltablib.c's
   // `static int sort (lua_State *L)`, beside the library's sort): file-local in C and C++, a
-  // program-wide name in Kpp, which the library's has already, so it gets its file's name after it.
+  // program-wide name in kpp, which the library's has already, so it gets its file's name after it.
   std::set<std::string> libraryNames = libraryFunctionNames(libraryDir);
   std::set<std::string> libraryTypes = libraryTypeNames(libraryDir);
   for (const ConvertInput& in : inputs)

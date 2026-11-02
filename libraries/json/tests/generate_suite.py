@@ -1,5 +1,5 @@
 """Writes JsonTestSuite.kpp: the parsing cases of Nicolas Seriot's JSONTestSuite
-(https://github.com/nst/JSONTestSuite, MIT license, test_parsing/), as Kpp data for
+(https://github.com/nst/JSONTestSuite, MIT license, test_parsing/), as kpp data for
 JsonSuiteTests.kpp.
 
     python generate_suite.py PATH-TO-A-JSONTestSuite-CLONE

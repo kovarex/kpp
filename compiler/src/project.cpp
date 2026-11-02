@@ -18,11 +18,11 @@ namespace
 {
   namespace fs = std::filesystem;
 
-  // The version a library's minimum-kpp is compared with (docs/build.md, "Kpp libraries"); raised
+  // The version a library's minimum-kpp is compared with (docs/build.md, "kpp libraries"); raised
   // with each release.
   const char* const kppVersion = "0.1.0";
 
-  // A Kpp library used (Project.kpp's Dependency): its lowest version ("" for any) and its directory
+  // A kpp library used (Project.kpp's Dependency): its lowest version ("" for any) and its directory
   // ("" for libraries/NAME), relative to the directory of the build.kpp that uses it.
   struct Use
   {
@@ -30,7 +30,7 @@ namespace
     std::vector<std::string> configs; // its options' values given here (use(...).config): NAME=VALUE
   };
 
-  // An option a Kpp library declares (Project.kpp's LibraryOption).
+  // An option a kpp library declares (Project.kpp's LibraryOption).
   struct Option
   {
     std::string name, type, defaultValue, description;
@@ -70,10 +70,10 @@ namespace
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
-    std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the Kpp libraries it uses
+    std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the kpp libraries it uses
   };
 
-  // A Kpp library the project is (Project.kpp's Library). After resolveUses, kppLibraries holds the
+  // A kpp library the project is (Project.kpp's Library). After resolveUses, kppLibraries holds the
   // libraries it uses.
   struct KppLibrary
   {
@@ -973,7 +973,7 @@ namespace
           args.push_back("--lib"), args.push_back(file.string());
     for (const std::string& e : p.excluded)
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
-    // The Kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
+    // The kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
     // kpp --test takes what follows it as the sources.
     for (const ProjectLibrary& l : p.kppLibraries)
     {
@@ -1217,7 +1217,7 @@ namespace
     write(directory / "src" / "main.kpp",
           "int main()\n"
           "{\n"
-          "  println(\"Hello from Kpp\");\n"
+          "  println(\"Hello from kpp\");\n"
           "  return 0;\n"
           "}\n");
     write(directory / ".gitignore", "build/\n.vscode/\n");

@@ -1,4 +1,4 @@
-// spec: no most vexing parse (design.md, Kpp v0 rules 2 and 4): at namespace scope `Type(args)` and `Type{args}` inside a declarator's parentheses are expressions, so `Widget copied(Size(base));` and `Widget fresh(Size());` are variables; parameter lists still declare functions, a parenthesised declarator among them only when a parameter list or an array bound follows (`int (*f)(int)`)
+// spec: no most vexing parse (design.md, kpp v0 rules 2 and 4): at namespace scope `Type(args)` and `Type{args}` inside a declarator's parentheses are expressions, so `Widget copied(Size(base));` and `Widget fresh(Size());` are variables; parameter lists still declare functions, a parenthesised declarator among them only when a parameter list or an array bound follows (`int (*f)(int)`)
 // factorio: the direct-initialised constants in headers (language/direct_init_functional_cast) next to the function declarations there
 struct Size { int w; };
 struct Widget

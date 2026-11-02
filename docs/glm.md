@@ -1,9 +1,9 @@
-# glm for Kpp: the subset the game uses
+# glm for kpp: the subset the game uses
 
 The game's rendering code (11 files: DrawCommandBatch, BlurEffectDrawOrder, StarfieldEffectLogic,
 GraphicsInterface, LightningDrawEngine, PrimitiveHelper, RenderParameters, SimplexNoiseUtil,
-DebugTools) uses glm 0.9.9.0, a C++ header-only template library. Kpp calls only C, and a header of
-templates has nothing to wrap, so the part the game uses is ported to Kpp:
+DebugTools) uses glm 0.9.9.0, a C++ header-only template library. kpp calls only C, and a header of
+templates has nothing to wrap, so the part the game uses is ported to kpp:
 `programs/factorio/overrides/src/API/glm.kpp`, appended to the conversion of the game's
 `API/glm.hpp`. Everything is in namespace `glm` with glm's names, so converted code (`glm::vec2`,
 `using namespace glm;` then `mat4`, `translate`, ..., `floor(v)` and `dot(a, b)` found through the

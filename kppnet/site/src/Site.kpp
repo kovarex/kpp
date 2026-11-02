@@ -23,7 +23,7 @@ constexpr html::HtmlTemplate sitePage(R"(<!DOCTYPE html>
 <link rel="stylesheet" href="{{root}}style.css">
 </head>
 <body>
-<header><a class="home" href="{{root}}index.html">Kpp</a> <nav><a href="{{root}}index.html#documentation">Documentation</a> <a href="{{root}}libraries/index.html">Libraries</a> <a href="{{source}}">Source</a></nav></header>
+<header><a class="home" href="{{root}}index.html">kpp</a> <nav><a href="{{root}}index.html#documentation">Documentation</a> <a href="{{root}}libraries/index.html">Libraries</a> <a href="{{source}}">Source</a></nav></header>
 <main>
 {{content}}
 </main>
@@ -35,7 +35,7 @@ constexpr html::HtmlTemplate sitePage(R"(<!DOCTYPE html>
 constexpr html::HtmlTemplate siteDocumentItem(R"(<li><a href="{{link}}">{{title}}</a> <span class="path">{{path}}</span></li>
 )");
 
-constexpr html::HtmlTemplate siteHome(R"(<h1>Kpp</h1>
+constexpr html::HtmlTemplate siteHome(R"(<h1>kpp</h1>
 <p>A C++-like language and its compiler, designed for order-of-magnitude faster builds.</p>
 <h2 id="documentation">Documentation</h2>
 <ul class="documents">
@@ -68,7 +68,7 @@ constexpr html::HtmlTemplate siteLibraryPage(R"(<p class="breadcrumb"><a href="i
 )");
 
 constexpr html::HtmlTemplate siteReleaseTable(R"(<table class="releases">
-<thead><tr><th>Version</th><th>Published</th><th>Kpp</th><th>Files</th><th>Tree hash</th><th>Yanked</th></tr></thead>
+<thead><tr><th>Version</th><th>Published</th><th>kpp</th><th>Files</th><th>Tree hash</th><th>Yanked</th></tr></thead>
 <tbody>
 {{rows}}</tbody>
 </table>
@@ -184,7 +184,7 @@ struct Site
   String pageHtml(StringView sitePath, StringView title, const html::SafeHtml& content)
   {
     return sitePage
-      .render({{"title", String(title) + " - Kpp"},
+      .render({{"title", String(title) + " - kpp"},
                {"root", siteRootOf(sitePath)},
                {"source", this->options.sourceUrl},
                {"content", content},
@@ -222,7 +222,7 @@ struct Site
       if (page.startsWith("docs/"))
         documents.append(siteDocumentItem.render({{"link", url::urlEncodePath(html)}, {"title", title}, {"path", page}}));
     }
-    this->write("index.html", this->pageHtml("index.html", "Kpp", siteHome.render({{"documents", documents}})));
+    this->write("index.html", this->pageHtml("index.html", "kpp", siteHome.render({{"documents", documents}})));
     this->write("style.css", siteStyle);
     this->libraries();
     this->checkAnchors();

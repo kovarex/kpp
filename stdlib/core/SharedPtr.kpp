@@ -1,4 +1,4 @@
-// Kpp standard library: SharedPtr<T> and WeakPtr<T>, shared ownership of a heap object through a
+// kpp standard library: SharedPtr<T> and WeakPtr<T>, shared ownership of a heap object through a
 // control block of two atomic counts, and EnableSharedFromThis<T>, the base that lets an object
 // owned by SharedPtrs make another one from `this`. Specified in docs/stdlib/sharedptr.md.
 

@@ -1,4 +1,4 @@
-// Kpp standard library: the C memory and string primitives everything else is built on.
+// kpp standard library: the C memory and string primitives everything else is built on.
 // These are the only external symbols the core library needs.
 extern "C" void* malloc(size_t size);
 extern "C" void free(void* p);

@@ -1,11 +1,11 @@
 # markdown
 
-[CommonMark](https://spec.commonmark.org/0.31.2/) 0.31.2 to HTML for Kpp, with GitHub's tables
+[CommonMark](https://spec.commonmark.org/0.31.2/) 0.31.2 to HTML for kpp, with GitHub's tables
 and heading ids as options. Its output is the spec's, byte for byte: all 655 examples of the
 CommonMark spec pass, as do the 8 table examples of the GFM spec ([Conformance](#conformance)).
 
 ```cpp
-String html = markdownToHtml("# Kpp\n\nFast *builds*.\n");  // <h1>Kpp</h1>\n<p>Fast <em>builds</em>.</p>\n
+String html = markdownToHtml("# kpp\n\nFast *builds*.\n");  // <h1>kpp</h1>\n<p>Fast <em>builds</em>.</p>\n
 
 MarkdownOptions options;
 options.tables = true;      // | a | b |
@@ -52,7 +52,7 @@ Text is UTF-8; line ends are `\n`, `\r\n` or `\r`; a zero byte becomes U+FFFD, a
 ## How it is built
 
 A port of the spec's reference parser, commonmark.js (its `blocks.js`, `inlines.js` and HTML
-renderer), to Kpp:
+renderer), to kpp:
 - `MarkdownNode.kpp`: one node type for blocks and inlines, linked as commonmark.js links them,
   in a Deque the document owns;
 - `MarkdownBlocks.kpp`: the line-by-line block parser, HTML block and raw HTML matching
@@ -76,7 +76,7 @@ tests, a few per construct and option (`tests/MarkdownTests.kpp`).
 The port is derived from commonmark.js, Copyright (c) 2014, John MacFarlane, under the
 BSD-2-Clause license ([commonmark.js-LICENSE.txt](commonmark.js-LICENSE.txt), its LICENSE file
 verbatim), and its URL encoding from mdurl's `encode`, Copyright (c) 2015 Vitaly Puzrin, Alex
-Kocharin, under the MIT License ([mdurl-LICENSE.txt](mdurl-LICENSE.txt)). Kpp's own part is
+Kocharin, under the MIT License ([mdurl-LICENSE.txt](mdurl-LICENSE.txt)). kpp's own part is
 Apache-2.0 WITH LLVM-exception ([LICENSE](../../LICENSE)), so build.kpp's expression is
 `Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND MIT`. `MarkdownEntities.kpp` (the WHATWG
 list of named character references, from the HTML standard, CC BY 4.0) and `MarkdownUnicode.kpp`
@@ -92,7 +92,7 @@ the CommonMark examples again with tables on. All pass. The specs are under
 repository's (Apache-2.0 WITH LLVM-exception) does not take in, so the examples are not kept here:
 run.cmd fetches [commonmark-spec](https://github.com/commonmark/commonmark-spec) and
 [cmark-gfm](https://github.com/github/cmark-gfm) at fixed commits into
-`%TEMP%\kpp-conformance\markdown`, `generate_spec.py` turns their examples into Kpp data there,
+`%TEMP%\kpp-conformance\markdown`, `generate_spec.py` turns their examples into kpp data there,
 and `kppc --test` runs `CommonMarkTests.kpp.in` on them. It needs git, Python and the network the
 first time.
 
@@ -100,6 +100,6 @@ first time.
 
 `src/MarkdownEntities.kpp` (by `generate_entities.py`, from Python's `html.entities.html5`, which
 is the WHATWG HTML standard's list of named character references) and `src/MarkdownUnicode.kpp`
-(by `generate_unicode.py`, from Python's `unicodedata`) are facts about HTML and Unicode in Kpp's
+(by `generate_unicode.py`, from Python's `unicodedata`) are facts about HTML and Unicode in kpp's
 form: the names and the characters they stand for, and which code points are punctuation and how
 they case-fold.

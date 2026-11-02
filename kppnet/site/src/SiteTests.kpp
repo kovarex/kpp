@@ -16,7 +16,7 @@ test "titles and summaries"
 {
   check(siteTitle("intro\n# The `json` library\n## more", "x.md") == "The json library");
   check(siteTitle("no heading", "docs/x.md") == "docs/x.md");
-  check(siteSummary("# json\n\nJSON ([RFC 8259](https://x)) for *Kpp*:\nparse it.\n\nMore.") == "JSON (RFC 8259) for Kpp: parse it.");
+  check(siteSummary("# json\n\nJSON ([RFC 8259](https://x)) for *kpp*:\nparse it.\n\nMore.") == "JSON (RFC 8259) for kpp: parse it.");
 }
 
 test "a library's releases"

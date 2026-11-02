@@ -1,4 +1,4 @@
-// Recursive-descent parser for the Kpp subset, tolerant of C++ so that real C++ code bases can
+// Recursive-descent parser for the kpp subset, tolerant of C++ so that real C++ code bases can
 // be used as benchmark input. Where C++ needs semantic knowledge to disambiguate (declaration vs.
 // expression, template-id vs. less-than), this parser uses purely syntactic heuristics; the
 // resolver later checks the guesses. Unknown macros are recognised by their ALL_CAPS spelling.
@@ -271,7 +271,7 @@ namespace
         error("a line splice in this string is not supported");
     }
 
-    // In the body of a struct written in Kpp (design.md "struct and class": a public value type);
+    // In the body of a struct written in kpp (design.md "struct and class": a public value type);
     // C's structs (imported headers) are C's.
     bool inStruct() const
     {
@@ -1226,7 +1226,7 @@ namespace
 
     // Parses one declaration (possibly producing several Decl nodes, e.g. `int a, b;`) and pushes
     // the results onto scratch.
-    // Generated members of a Kpp enum: `static const int count`, `static const E values[]`,
+    // Generated members of a kpp enum: `static const int count`, `static const E values[]`,
     // `const char* str() const` and `static Optional<E> fromStr(const char* text)` (unless written
     // by hand). Their bodies and initializers come from the compiler (Decl::builtin), not from the
     // AST.
@@ -2366,7 +2366,7 @@ namespace
     // At the `(` after a declarator's name: whether what starts inside is an expression, so that
     // `constexpr ID EMPTY(ID(-1));` declares a variable. A parameter is a type followed by a
     // declarator, a default argument, `,` or `)`. `Type(args)` and `Type{args}` are expressions
-    // (design.md, Kpp v0 rule 2: no most vexing parse, so `Widget w(Size(s));` is a variable),
+    // (design.md, kpp v0 rule 2: no most vexing parse, so `Widget w(Size(s));` is a variable),
     // except a parenthesised declarator followed by a parameter list or an array bound
     // (`int (*f)(int)`, `T (&a)[3]`, rule 4).
     bool firstParameterIsExpression()
@@ -3020,7 +3020,7 @@ namespace
     // that the caller should parse as a normal declaration (`struct X* p;`).
     // `union enum Property : u8 { { {int, Integer}, {double, Double}, {String, Text} } members... };`
     // (design.md 8.5): a class holding a tag and one alternative at a time. Desugared here into a
-    // class with a nested Kpp enum `Tag` of the alternatives' names (unscoped, so `Property::Integer`
+    // class with a nested kpp enum `Tag` of the alternatives' names (unscoped, so `Property::Integer`
     // names the tag value), a `tag` member and an anonymous union of one storage member per
     // alternative; the type checker and code generator add the tag-aware operations (p[Integer],
     // p == Integer, switch (p), construction, copying, destruction).
@@ -3547,7 +3547,7 @@ namespace
         skipAttributes();
         if (at(P::LBrace))
         {
-          // Kpp enum: the values in their own block, then members.
+          // kpp enum: the values in their own block, then members.
           e->isKpp = true;
           advance();
           while (!at(P::RBrace) && !at(TokenKind::End))
@@ -3597,7 +3597,7 @@ namespace
         }
         if (accept(P::Semi))
           continue;
-        // Kpp: member declarations inside an enum.
+        // kpp: member declarations inside an enum.
         parseDeclaration(Scope::Enum);
         if (inRecovery)
           break;
@@ -5142,7 +5142,7 @@ namespace
           l->keyword = Kw::Count;
           while (at(TokenKind::String) || (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1)))
           {
-            // In Kpp only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's
+            // In kpp only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's
             // macro pasting (valid in the C++ the converter reads), whose pieces the literal would lose.
             if (!at(TokenKind::String) && kppSource)
               error("a name next to a string literal (only string literals concatenate)");

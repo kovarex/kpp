@@ -1,4 +1,4 @@
-// Kpp standard library: Map<K, V>, Set<T>, MultiMap<K, V> and MultiSet<T> (what std::map,
+// kpp standard library: Map<K, V>, Set<T>, MultiMap<K, V> and MultiSet<T> (what std::map,
 // std::set, std::multimap and std::multiset convert to), ordered by a comparator: the last
 // template argument, Less<K> (operator<) unless given.
 //
@@ -968,7 +968,7 @@ struct Map
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }
-  // Kpp's shorthand: true when the key was new.
+  // kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1).
   ContainerSize erase(const K& key)

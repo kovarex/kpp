@@ -49,10 +49,10 @@ That is why factorio-in-kpp is laid out as Factorio's repository (src\, tests\, 
 root). What it implies:
 
 1. **Until the switch, the branch tracks Factorio's master.** The conversion can be run again
-   against any Factorio commit: convert.cmd for the Kpp, resources.cmd for the rest, and every
+   against any Factorio commit: convert.cmd for the kpp, resources.cmd for the rest, and every
    factorio-in-kpp commit names the Factorio commit it came from. The branch follows master by
    converting each new commit and committing the result.
-2. **At the switch, development moves to the Kpp sources.** The C++ stops being the source, and the
+2. **At the switch, development moves to the kpp sources.** The C++ stops being the source, and the
    converter becomes a migration tool that runs once more, at the switch. What stays C or C++
    then is libraries\ that are not converted yet, built by build.kpp as their own C++ build builds
    them.
@@ -67,7 +67,7 @@ root). What it implies:
    Still missing for that:
    - the Linux and macOS targets (B is on them: `--target linux` runs hello world under WSL);
    - the console platforms;
-   - the C libraries converted to Kpp, or kept as C deliberately ("Converting the C libraries"
+   - the C libraries converted to kpp, or kept as C deliberately ("Converting the C libraries"
      below);
    - the measurements of build and edit times on the whole game against the C++ build.
 
@@ -77,11 +77,11 @@ root). What it implies:
   the member accesses in 0.32 s on 32 threads. What it cannot type is the standard library
   (54 k `std::` references), macro-generated code and a tail of resolver gaps (templated
   aliases, dependent members through templated bases).
-- **Code generation.** The Kpp v0 subset runs end to end: classes with constructors, destructors,
+- **Code generation.** The kpp v0 subset runs end to end: classes with constructors, destructors,
   copies and operators, single inheritance with virtual functions, templates with full
   specialisation and parameter packs, lambdas, `if constexpr`, the own library (`String`,
   `Vector`, `HashMap`, `Optional`, `format`), C headers imported straight from `windows.h` and
-  the UCRT. 15 end-to-end tests; the lexer written in Kpp runs as fast as its C++ version.
+  the UCRT. 15 end-to-end tests; the lexer written in kpp runs as fast as its C++ version.
 - **Backend.** One IR module per group of files, clang in parallel, unchanged modules cached: a
   program with Factorio's number of function bodies builds in 1.7 s (debug), 1.25 s after a
   one-line change, 3.8 s of LLVM for release.
@@ -114,7 +114,7 @@ machinery, FASTBuild.
 
 ## The converter, first run (2026-10-24)
 
-`kppc --convert OUT <dirs>` rewrites the parsed and resolved C++ into Kpp: preprocessor lines
+`kppc --convert OUT <dirs>` rewrites the parsed and resolved C++ into kpp: preprocessor lines
 evaluated for Windows/MSVC/debug (`#include` of C headers becomes `extern "C" import`, the rest
 goes), constant macros become `const auto`, other macros stay as `// TODO(kpp)` comments,
 forward declarations go, converting constructors get `implicit`, members get `this->`, a case
@@ -123,7 +123,7 @@ names map to the library's spelling (`std::string` to `String`, `std::vector` to
 names). A header and its source of the same stem merge into one `.kpp` file; `CONVERSION.md` in
 the output lists what was done and what is left per file.
 
-On `libraries/CommonUtil` (29 files, 4,140 lines): 21 Kpp files, 1,008 `std::` names renamed,
+On `libraries/CommonUtil` (29 files, 4,140 lines): 21 kpp files, 1,008 `std::` names renamed,
 109 forward declarations removed, 26 macros turned into constants, 4 kept as comments. kppc
 parses the result 100% clean and types 88% of its expressions with the current library; the
 unresolved rest is the library worklist, in order: `Pair` (350 uses), `StringView` (38),
@@ -205,7 +205,7 @@ literals (`L"..."`), and SDL as a linked library for the few CommonUtil function
 
 ## Towards Agui (2026-10-25, later)
 
-`libraries/Agui` (235 files, 132 Kpp files after conversion) parses 100% clean and types 92.6%
+`libraries/Agui` (235 files, 132 kpp files after conversion) parses 100% clean and types 92.6%
 of its expressions; code generation started at 1,208 complaints and stands at 249 after one
 pass over the biggest categories (`compiler\build\tests\agui` is the scratch directory; the
 scouting command is the check step of convert.cmd pointed at the Agui output):
@@ -263,7 +263,7 @@ matter beyond Agui:
   another instantiation of the same template as a conversion, and takes the callable's
   parameters into account when a `Function<R(Args...)>` is built from a lambda
   (`onSliderMove(Function<void()>)` next to `onSliderMove(Function<void(double)>)`).
-- **Code generation**: calls through function pointers use the Kpp calling convention
+- **Code generation**: calls through function pointers use the kpp calling convention
   (classes and references by pointer, sret); casts to references are lvalues (a `forward`
   returning a scalar reference used to return the address of a dead temporary); `?:` with two
   objects yields one of them; brace lists as arguments (`push_back({a, b, c})`,
@@ -441,23 +441,23 @@ checked against the suite, the 40 end-to-end tests and the CommonUtil and Agui s
    in the class's instantiation and the class), `m.name` is a string constant, `m.offset` the
    field's offset, and `object.[m]` the member itself (an lvalue, so save and load loops can
    read and write it). Spec: `kpp/reflection_members`, `kpp/reflection_bases_offsets`.
-9. **`E::fromStr(text)`** (design.md 8.4): generated on every Kpp enum as `static Optional<E>
-   fromStr(const char*)` and lowered to the library's `enumFromStr<E>`, written in Kpp over
+9. **`E::fromStr(text)`** (design.md 8.4): generated on every kpp enum as `static Optional<E>
+   fromStr(const char*)` and lowered to the library's `enumFromStr<E>`, written in kpp over
    `E::values` and `str()`. Found on the way: a qualified name through a template parameter
    bound to an enum (`E::values`, `E::count` with E = Direction) stayed dependent; the lookup now
    follows enum substitutions as it did class ones. Spec: `kpp/enum_from_str`,
    `templates/enum_through_parameter`.
 10. **Typed unions** (design.md 8.5), the shape of `InputAction` and `std::variant` uses. The
     parser desugars `union enum Property : u8 { { {int, Integer}, {String, Text} } ... }` to a
-    class with a nested Kpp enum `Tag` (unscoped, so `Property::Integer` is the tag value), a `tag`
+    class with a nested kpp enum `Tag` (unscoped, so `Property::Integer` is the tag value), a `tag`
     member and an anonymous union of one storage member per alternative; the type checker gives
     `p[Property::Integer]` the alternative's type and `p == Property::Integer` bool; the code
     generator makes `p[E] = v` destroy the alternative held, set the tag and construct the value,
     checks the tag on every other `p[E]` (release_assert), switches on the tag for `switch (p)`
-    (exhaustive like a Kpp enum), and copies, assigns and destroys by the tag. Spec:
+    (exhaustive like a kpp enum), and copies, assigns and destroys by the tag. Spec:
     `kpp/typed_unions`, `kpp/typed_unions_switch_copy`.
 11. **`case` labels from `for constexpr`** (the third example of design.md 8.2): a switch body
-    walks its `for constexpr` statements once per element to collect the labels (the Kpp enum
+    walks its `for constexpr` statements once per element to collect the labels (the kpp enum
     exhaustiveness check sees them too) and once more to emit them. **Pointers to member
     functions** (3 Factorio uses): `int (Calc::*op)(int) const = &Calc::mul;` parses as a
     declaration whose type keeps the class and the function type, `&Calc::mul` is the function's
@@ -482,7 +482,7 @@ section 8: `m.type`, `enumerators(E)`, `alternatives(U)`, and the `--tests` runn
 ## src/Util through the converter: the first run (2026-10-25, night)
 
 With the suite's compiler-side list empty, the next module of the roadmap is the game's `Util`
-(370 files, 47k lines; 144 .cpp and 226 .hpp merged into 304 Kpp files). The first run, with
+(370 files, 47k lines; 144 .cpp and 226 .hpp merged into 304 kpp files). The first run, with
 CommonUtil and Agui as context and nothing hand-written yet:
 
 ```
@@ -517,7 +517,7 @@ The second pass, the same night, closed every parse error. Parser: specifiers af
 (`float static f()`, `void inline g()`, `const static int x[]`), array and function types as
 alias targets, operator functions called by name, calling conventions dropped from the tokens of
 every source (as the C importer already did), the `requires` clause before a body no longer read
-as a braced construction, and deduction guides parsed (and dropped by the converter: Kpp deduces
+as a braced construction, and deduction guides parsed (and dropped by the converter: kpp deduces
 from constructors). Converter: a carried default argument is the text after its `=` with std
 names mapped (`= std::string()` had become `= ()`), a removed friend or declaration takes the
 `template<...>` header and `[[attributes]]` written above it, `FORMAT_ATTR(4, 5)` goes with its
@@ -638,7 +638,7 @@ decided rather than after the compiler is "complete".
 ## Full-src baseline (2026-10-28)
 
 The compiled subset now includes everything: CommonUtil (29 files), Agui (235 files), and the
-entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the code generator,
+entire `src/` directory (3,779 files), plus tests. 4,043 kpp files through the code generator,
 86,115 template instantiations before the OOM cap (5,172 remaining), 32,884 codegen errors.
 (The command behind this first figure was not recorded; it is superseded by the definition below.)
 
@@ -670,7 +670,7 @@ imports trio.h.
   since 2026-10-29. Until Lua's switch, later that day, it held only `LuaCPPUtilities.kpp`, the
   game's C++ overloads of Lua's API (`lua_pushstring` of a String, ...), while Lua itself was
   imported as C. Since the switch it holds Lua, converted ("Converting Lua" below), and the game
-  reaches Lua's API and internals as Kpp code. `kpp\StackWalker` is in since 2026-10-29 (see "StackWalker" below): the
+  reaches Lua's API and internals as kpp code. `kpp\StackWalker` is in since 2026-10-29 (see "StackWalker" below): the
   crash handler's stack walker, converted with the game; it came in with 1 error line and took the
   game's 8 StackWalkerToStream lines ("a base class names 'StackWalker'") with it.
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
@@ -870,7 +870,7 @@ interface: an RE2 object behind a pointer, a match with its submatches as offset
 GlobalReplace, and RE2's own parsers of submatches into numbers (so FullMatch's parsing is RE2's,
 not a copy). `native\build.cmd` compiles it with clang-cl as the game's Release builds are made
 (/MT, /O2, against libraries\re2) into `native\build\factorio-native.lib`; a link of the converted
-game passes it with `--lib`, next to `C:\Factorio\vs2022\Releasex64\re2.lib`. The Kpp side is the
+game passes it with `--lib`, next to `C:\Factorio\vs2022\Releasex64\re2.lib`. The kpp side is the
 RE2 class and re2::StringPiece (a StringView with RE2's ToString, CopyToString, AppendToString) in
 `overrides/src/Util/RegexUtil.kpp`, appended to the converted RegexUtil; the game's RegexUtil
 itself converts as written. Headline 22,558 -> 22,529 (paired on de36765): the 20 MacroReplacer
@@ -879,8 +879,8 @@ layout lines, the 8 "RE2 is not declared" and the StringPiece calls go.
 ### DirectX through generated COM classes (2026-10-29)
 
 The DirectX 11 backend calls COM interfaces C++-style (`device->CreateBuffer(...)`) and keeps
-them in ATL's CComPtr. Kpp's single-inheritance vtables are MSVC's since 8b63e33, so a COM object
-the system hands out is called through a Kpp class whose virtual functions are the interface's
+them in ATL's CComPtr. kpp's single-inheritance vtables are MSVC's since 8b63e33, so a COM object
+the system hands out is called through a kpp class whose virtual functions are the interface's
 methods in vtable order. `programs/factorio/native/generate_com.py` reads that order and the C
 signatures from the Windows SDK headers' C definitions (each interface's `IFooVtbl`), the bases
 from their C++ ones, and writes:
@@ -1233,7 +1233,7 @@ UniqueArray one pointer).
 26. The main menu's background is a menu simulation chosen at random, so runs differ from here on.
     One run's map failed to load with "Invalid bool loaded from input file" (a read before it took
     the wrong number of bytes; not found yet). For such errors, which the game catches and reports,
-    `set KPP_TRACE_THROW=1` before run.cmd makes the crash report print the stack of every Kpp throw
+    `set KPP_TRACE_THROW=1` before run.cmd makes the crash report print the stack of every kpp throw
     as it is raised. Another run stopped at the game's "Already linked" in
     ActiveEntitiesList::makeActive: EntityAndIndex's reference member `UpdatableEntity& entity`,
     bound to an InfinityContainer (LogisticContainer first, then UpdatableEntity), held the
@@ -1287,7 +1287,7 @@ fields the game reads and writes (ImGuiIO, ImGuiStyle, the draw lists). In the m
 interface:
 
 - `native/imgui_c.cpp`: an extern "C" function for each of the 320 functions of namespace ImGui
-  and for the 127 methods, constructors and destructors of the 17 structs Kpp mirrors. Classes
+  and for the 127 methods, constructors and destructors of the 17 structs kpp mirrors. Classes
   cross by pointer (an ImVec2 argument, a reference, an ImVec2 result through an out pointer); a
   variadic function (Text, TreeNode, ...) formats through imgui's va_list variant (LogText, which
   has none, formats first and passes "%s"). It also asserts the layouts the script computes: every
@@ -1296,10 +1296,10 @@ interface:
   object-like macros (as constants), the structs with their fields in imgui's order, their methods
   and namespace ImGui with imgui's signatures and default arguments, each calling its C function
   (a variadic one is a template forwarding its pack to the C one); ImVec2, ImVec4, ImColor and
-  ImVector are imgui's inline code written in Kpp, and imgui_internal.h's ImVec2 operators are
+  ImVector are imgui's inline code written in kpp, and imgui_internal.h's ImVec2 operators are
   there too. static_asserts check the sizes. Only declared, as only pointers to them cross:
   ImDrawListSharedData, ImGuiContext, ImGuiStorage, ImGuiTextFilter, ImGuiTextBuffer and
-  ImGuiOnceUponAFrame. The va_list variants are left out (Kpp has no va_list).
+  ImGuiOnceUponAFrame. The va_list variants are left out (kpp has no va_list).
 
 The converter needs nothing beyond `imgui.h` in `overrides/expand-macros.txt`, for IM_COL32 at its
 four uses. `native\build.cmd` builds the shim into factorio-native.lib, which link.cmd already
@@ -1315,7 +1315,7 @@ pending).
 
 glm is C++ header-only templates, so the part of it the game uses (vec2, vec3, vec4, mat4, the
 component functions, translate, scale, rotate, ortho, inverse, value_ptr; 11 game files) is ported
-to Kpp instead of wrapped: `overrides/src/API/glm.kpp`, appended to the conversion of the game's
+to kpp instead of wrapped: `overrides/src/API/glm.kpp`, appended to the conversion of the game's
 `API/glm.hpp`, specified in [glm.md](glm.md). Its rule is glm's results to the bit (the same
 operations in the same order, and the C library's float functions for floats); convert.cmd's fifth
 smoke test, `tests/glm_smoke.kpp`, prints vector, noise and matrix results in hex, equal to
@@ -1350,7 +1350,7 @@ a userdata's bound object), and its output equals `tests/lua_internals_smoke.cpp
 against the game's Lua headers compiled as C++.
 
 All of this went when Lua itself was converted (step 3 of the plan below): the game's code uses
-Lua's types and macros as Kpp code, and kpp_lua_internals.h, lua_internals.c, the `included` lines
+Lua's types and macros as kpp code, and kpp_lua_internals.h, lua_internals.c, the `included` lines
 and the internals smoke test are deleted. The record above stays for how the C side was bridged.
 
 ### Converting Lua: the plan (2026-10-29, done: the game runs on the converted Lua)
@@ -1410,7 +1410,7 @@ converter takes `libraries\Lua` itself (no copies), and the build is the headlin
 headers added. 564 error lines to 48, one parse error left, and each of the 48 is a compiler gap
 with a pending spec: a union's pointer member initialized from nullptr in a brace list
 (luaO_nilobject_ and dummynode_, behind 36 lines; classes/union_pointer_member_from_brace_list),
-C varargs read in a function defined in Kpp (6; interop/c_varargs_definition), offsetof (4;
+C varargs read in a function defined in kpp (6; interop/c_varargs_definition), offsetof (4;
 language/offsetof), sizeof of a string literal (LUAC_HEADERSIZE; language/sizeof_string_literal)
 and `b < ((i >> 8) & 3)` parsed as template arguments (ldebug.c; language/less_than_parenthesized_shift).
 The converter's part was C's macros as the preprocessor reads them (member lists, types, storage
@@ -1452,7 +1452,7 @@ expected", one commit switches the game from Lua as C to the converted Lua:
    converted headers as every included header's do. overrides\expand-macros.txt loses its Lua
    lines: luaconf.h, lua.h, lauxlib.h and the seven `included` internals.
 3. *native.* include\kpp_lua_internals.h and lua_internals.c are deleted, with build.cmd's
-   lua_internals.obj: the game reaches Lua's internals as Kpp code, under Kpp names, so there is
+   lua_internals.obj: the game reaches Lua's internals as kpp code, under kpp names, so there is
    no C++ mangling left to bridge. link-settings.cmd drops lua.lib and keeps trio.lib.
 4. *Tests.* convert.cmd's Lua internals smoke test is replaced by the compatibility check on
    kpp\Lua, the same tests\lua_compat.kpp built with the game's kpp\Lua; the old test checked the
@@ -1461,7 +1461,7 @@ expected", one commit switches the game from Lua as C to the converted Lua:
    own.
 5. *Errors.* Lua raises its errors as C++ exceptions (ldo.c's LUAI_THROW: `throw(c)` caught by
    `catch(...)`, as the C++ build compiles it). Today lua.lib's MSVC exceptions cross the converted
-   game's frames. After the switch they are Kpp exceptions through Kpp frames, including the
+   game's frames. After the switch they are kpp exceptions through kpp frames, including the
    game's own calls of lua_error and luaL_error. The check covers pcall, error, xpcall and the
    messages.
 6. *Measuring.* The headline and the link before and after, paired: kpp\Lua then holds Lua's own
@@ -1500,9 +1500,9 @@ expansions the converter writes all the same.
 
 ### Structured exception handling (2026-10-29)
 
-Kpp has exceptions (design.md 9: try/catch on Windows SEH underneath) but no SEH filters, so
+kpp has exceptions (design.md 9: try/catch on Windows SEH underneath) but no SEH filters, so
 `__try { A } __except (filter) { B }` becomes `try { A } catch (...) { B }` with the filter dropped
-(a todo per use). A `catch (...)` catches Kpp exceptions only (the try's filter looks for Kpp's
+(a todo per use). A `catch (...)` catches kpp exceptions only (the try's filter looks for kpp's
 exception code), not a crash in a C function, so the game's four uses get no protection from it:
 
 - SystemUtil's thread naming raises the debugger's MS_VC_EXCEPTION only on Windows before 10 and
@@ -1518,7 +1518,7 @@ exception code), not a crash in a C function, so the game's four uses get no pro
 
 ### Standard input (2026-10-29)
 
-Kpp has no iostreams (design.md 4), and the game reads std::cin in one place: the Windows path of
+kpp has no iostreams (design.md 4), and the game reads std::cin in one place: the Windows path of
 InterruptibleStdioStream::read, the dedicated server's console, `std::getline(std::cin, result)`.
 `overrides/src/Util/Streams/InterruptibleStdioStream.kpp` reads the line with the C library's
 fgets on stdin instead, piece by piece up to its line break (left out, as getline leaves it); a
@@ -1543,7 +1543,7 @@ directory, the same name to Windows.)
 
 The game's IStream implementation (WindowsWriteStream, which GDI+ writes the encoded image to)
 compares the interface id it is asked for with `iid == __uuidof(IUnknown)`. C++ compares the ids'
-values there (guiddef.h's operator==); in Kpp a REFIID is a pointer, as in C and the COM classes,
+values there (guiddef.h's operator==); in kpp a REFIID is a pointer, as in C and the COM classes,
 so the converter writes `(memcmp(iid, &IID_IUnknown, sizeof(IID)) == 0)`, C's IsEqualIID, for an
 id compared with `__uuidof`, and REFIID itself as `const IID*`.
 
@@ -1574,7 +1574,7 @@ needed:
 
 Its last line went with 1806a0d: USED_CONTEXT_FLAGS is CONTEXT_FULL, which the import writes
 before the constants it is made of (language/auto_global_from_later_global). `(HANDLE) -1` is
-written `(HANDLE)(-1)` by the converter (a subtraction from HANDLE to Kpp, which codegen turned into
+written `(HANDLE)(-1)` by the converter (a subtraction from HANDLE to kpp, which codegen turned into
 IR clang rejected, losing a whole module at link time; language/c_style_cast_of_negative_number).
 
 ### UnitTest++ (2026-10-29)
@@ -1623,7 +1623,7 @@ happened in and its caller (the frames after the exception's dispatch: the game'
 access violation into abort(), and a function the linker folded with identical ones, like
 `ID<AchievementPrototype, uint16>::operator bool()`, says little alone).
 
-A test of what Kpp replaces by design is left out of the conversion rather than left to stop its
+A test of what kpp replaces by design is left out of the conversion rather than left to stop its
 suite at a stub: `programs\factorio\overrides\left-out-tests.txt` lists them, one per line as
 `Suite/Test: why`, and the converter writes a comment saying why in place of the test's block (it
 reports an entry that matches no test). The first: MapDeserialiser/SaveLoadStdVariant, the
@@ -1730,7 +1730,7 @@ config whose write-data is outside C:\Factorio. Paired runs, interleaved, `--ben
 menu-simulation-train-junction.zip --benchmark-ticks 600` (the same map file, the same mods: core, base
 and the three Space Age ones; prototype list checksum 2335390327 in all three):
 
-| Round | Kpp debug (-O0) | C++ debug | Kpp release (ThinLTO -O2) |
+| Round | kpp debug (-O0) | C++ debug | kpp release (ThinLTO -O2) |
 |---|---|---|---|
 | 1 | 439.4 ms (avg 0.732 ms) | 729.6 ms (avg 1.216 ms) | 282.5 ms (avg 0.471 ms) |
 | 2 | 433.8 ms (avg 0.723 ms) | 731.9 ms (avg 1.220 ms) | 258.4 ms (avg 0.431 ms) |
@@ -1739,21 +1739,21 @@ and the three Space Age ones; prototype list checksum 2335390327 in all three):
 None of the columns is a release number, and the two debug ones are not like for like. C++ debug is
 the game's Debug configuration (fbuild.bff's BuildDebug): /Od, no optimisation, and the debug
 runtime /MTd, so MSVC's library runs with _ITERATOR_DEBUG_LEVEL 2 (checked iterators, container
-debugging) and the debug heap. Kpp debug is -O0 with config::debug's asserts, and Kpp's containers
-check nothing (Vector's operator[] indexes unchecked). Both Kpp builds come from one conversion,
+debugging) and the debug heap. kpp debug is -O0 with config::debug's asserts, and kpp's containers
+check nothing (Vector's operator[] indexes unchecked). Both kpp builds come from one conversion,
 which reads the game as FastDebug (_DEBUG, DEBUG, LUA_USE_APICHECK: the game's debug-only code is in
-all three columns), and Kpp release turns off only the asserts. All three end with the same checksum
+all three columns), and kpp release turns off only the asserts. All three end with the same checksum
 of the game's complete-mode save, 3172640117 after 600 ticks (2920833374 after 1, 2982388606 right
 after the load). Two differences from the C++ build had to go first, found by diffing the saves
 `--add-tags` writes: a std container's size() sent to a serialiser (`output <<
-this->tagsByTagNumber.size()`, 4 bytes in Kpp where C++ writes a size_t: the converter writes
+this->tagsByTagNumber.size()`, 4 bytes in kpp where C++ writes a size_t: the converter writes
 `size_t(...)` there since c97380f), and quiet_NaN() as 0.0 / 0.0, the processor's negative NaN in a
 debug build (Train::lastSpeed; the library now builds it from its bits).
 
 ### The menu simulations against the C++ build (2026-10-30)
 
 Every menu simulation the game ships, 45 maps (base 19, space-age 23, elevated-rails 3), ran
-`--benchmark MAP --benchmark-ticks 600` in the Kpp release build and in the C++ Debug build above,
+`--benchmark MAP --benchmark-ticks 600` in the kpp release build and in the C++ Debug build above,
 and the checksums they print at the end were compared. 40 matched. Five did not: brutal-defeat,
 lab, mining-defense, nauvis-biolab and nauvis-rocket-factory. All five matched right after the
 load, and every run of a map gave the same checksum in either build.
@@ -1768,10 +1768,10 @@ are compared; the zips themselves differ even for the same state, because the co
 The checksums first differ after 45 ticks (lab), 15 (mining-defense), 82 (nauvis-biolab), 91
 (nauvis-rocket-factory) and 103 (brutal-defeat). In the first four the two saves differ in one byte:
 a tree's TreeData, `uint8_t color : 4; uint8_t greyProgress : 4;`. In lab the byte was 0x12 before
-the tick, C++ wrote 0x22 and Kpp 0x13. In nauvis-biolab 0x45 became 0x55 against 0x46, in
+the tick, C++ wrote 0x22 and kpp 0x13. In nauvis-biolab 0x45 became 0x55 against 0x46, in
 nauvis-rocket-factory 0x05 became 0x15 against 0x06, and in mining-defense 0x06 became 0x16 against
 0x07 (which the C++ loader wraps to color 0). The code is Tree::damageByPollution's
-`this->treeData.greyProgress++`: Kpp's code generator incremented the field's storage unit
+`this->treeData.greyProgress++`: kpp's code generator incremented the field's storage unit
 unshifted, so the tree's color changed instead of its grey progress. In brutal-defeat many trees
 change in that one tick (an explosion), and the differing grey progress takes the map's random
 generators and more trees apart within it (44 differing ranges). Spec
@@ -1846,17 +1846,17 @@ poke.exe starts the game suspended and sets a bool global found through the PDB:
 GlobalContext::dumpHeuristicEveryTick writes each tick's heuristic state as a file, and with
 dumpKeepCount only the last one stays, which gives a replay's length.
 
-The first replay, of a C++ Debug recording in the Kpp build of 4c178a5b915, failed at the first
+The first replay, of a C++ Debug recording in the kpp build of 4c178a5b915, failed at the first
 check, crcTick 59. `--until-tick` saves of the same map were byte-identical in both builds at
 ticks 1, 30 and 59, but they have no connected player. The per-tick heuristic dumps differed from
 tick 0 by 4 bytes, in the player's `<custom-gui-mod-owners>`: CustomGui::save writes a std::set's
-size(), a size_t, while Kpp's Set::size() is an int. The converter now writes such a size() as
+size(), a size_t, while kpp's Set::size() is an int. The converter now writes such a size() as
 size_t (8d7be404). Other unwrapped `output << X.size()` writes in the game are of its own
 containers (BlueprintEntities, CompactDeque, IntrusiveSet: uint32_t; SmallVector, UndoItemStack:
 size_t), which have the same width in both builds.
 
 With that one site fixed, a C++ Debug recording of 18,001 ticks (walking, the technology screen, the
-inventory, one entity built) replays in the Kpp build with exit 0. A Kpp recording of 18,002 ticks
+inventory, one entity built) replays in the kpp build with exit 0. A kpp recording of 18,002 ticks
 (walking) replays with exit 0 in both C++ Debug exes of 2.1.25, the first one and H's final one.
 Each run passes about 300 heuristic checks.
 
@@ -1870,7 +1870,7 @@ clone, debug and release both match C++ on the 45 menu maps, and the unit tests 
 A cold build takes 35.6 s (debug) and 85.2 s (release); the 18 libraries are about 20 s of either. A
 debug rebuild after no change takes 1.8 s with the compile server, 1.9 s after touching one zlib file.
 
-**Then into Kpp** (kovarex: "we should start converting them to kpp"), one library at a time:
+**Then into kpp** (kovarex: "we should start converting them to kpp"), one library at a time:
 1. crc32fast, ogg, zlib, trio;
 2. zstd, minizip, glad, stb, fontstash;
 3. opus, opusfile, vorbis, sdl-mixer;
@@ -1922,7 +1922,7 @@ of them.
 rules come as the libraries need them; ogg needed three:
 - C++'s keywords that C does not have are names: they lex as identifiers and are written with `_`
   (`class_`).
-- A void* converted to an object pointer gets the cast Kpp needs (`(unsigned char*)malloc(n)`). The
+- A void* converted to an object pointer gets the cast kpp needs (`(unsigned char*)malloc(n)`). The
   types come from the declarations: variables, parameters, members, typedefs and functions'
   results. A C library function that returns void* (malloc, realloc, memchr...) is known by name,
   also through a header's name macro (ogg's `#define _ogg_malloc malloc`).
@@ -1979,7 +1979,7 @@ The converter's C mode grew with them:
   (`Assert`, `Tracev`), their other arguments in parentheses (trio's K&R `TRIO_ARGS2`) or a pointer
   (glad's `APIENTRYP`).
 - **Macro constants are written out at their uses,** after `.` and inside macro expansions too, as
-  the preprocessor does. A C macro holds in one translation unit; a Kpp constant is a name of the
+  the preprocessor does. A C macro holds in one translation unit; a kpp constant is a name of the
   whole program. As constants, gzguts.h's `COPY 1` met inflate.h's enumerator COPY, inftrees.h's
   MAXBITS met Lua's, and crc32.c's W met the game's.
 
@@ -1990,7 +1990,7 @@ The converter's C mode grew with them:
 - **Smaller rules:**
   - `#  include` is an include;
   - a `#define` inside a struct is global;
-  - names `config` (Kpp's configuration namespace) are renamed;
+  - names `config` (kpp's configuration namespace) are renamed;
   - `Z_NULL` is `nullptr`;
   - Windows' TCHAR names are the narrow ones (the C libraries build without UNICODE);
   - calls through function pointers, and the C library's typed pointer parameters (`wcslen`,
@@ -2019,7 +2019,7 @@ not reach glad; its harness does.
 - **The library's include directories are the conversion's too:** zstd's files include `"mem.h"`
   from `common\`.
 - **A configured import:** `c-headers.txt` says `zstd.h kpp_zstd.h`. zstd's files define
-  `ZSTD_STATIC_LINKING_ONLY` before including zstd.h, and Kpp's import has no defines. So an
+  `ZSTD_STATIC_LINKING_ONLY` before including zstd.h, and kpp's import has no defines. So an
   include of zstd.h imports `kpp_zstd.h`, which defines the macro and includes zstd.h.
   `c-libraries/zstd` holds that header, and the converter writes it beside zstd.h. The builds add
   the converted directory to their C includes, and resources.cmd keeps `kpp_*.h` there.
@@ -2036,8 +2036,8 @@ not reach glad; its harness does.
   declares gets its file's name (cover.c's and fastcover.c's `g_displayLevel`).
 - **Includes of the library's own converted headers are removed, whatever their name:** the game's
   rule took zstd_internal.h for zstd's interface by its prefix.
-- **A function passing structs by value keeps Kpp's linkage** if no interface header declares it
-  (COVER_computeEpochs). Kpp's C-callable functions pass no struct values yet.
+- **A function passing structs by value keeps kpp's linkage** if no interface header declares it
+  (COVER_computeEpochs). kpp's C-callable functions pass no struct values yet.
 - **Two compiler gaps the converter works around, each with a pending spec:**
   - consts after a type's name (`U32 const x`) are written first, for
     `language/east_const_after_type_name` (A);
@@ -2078,8 +2078,8 @@ compiles that as C++ and imports fontstash.h as C. So the conversion takes the t
 (`sources.txt`) with the implementation's defines (`defines.txt`), and the C mode grew:
 - a header given alone is the library's interface, as c-headers.txt's are: the functions it
   declares get C linkage, also those taking a struct by value (`fonsAddFontSdfMem`'s
-  FONSsdfSettings, 12 bytes, which MS x64 passes as a pointer to a copy, as Kpp does);
-- a C++ overload of an interface function keeps Kpp's linkage (fontstash.h's three-parameter
+  FONSsdfSettings, 12 bytes, which MS x64 passes as a pointer to a copy, as kpp does);
+- a C++ overload of an interface function keeps kpp's linkage (fontstash.h's three-parameter
   `fonsAddFontSdf`, outside its `extern "C"`).
 
 Its harness (`harness/fontstash.c`) covers every font of data\core\fonts, plain and with the
@@ -2098,17 +2098,17 @@ rules (their globals now have C linkage).
 c4039685 made it a link error). stb_truetype.h, without STB_RECT_PACK_VERSION, defines a fallback
 rect packer of its own: the types stbrp_coord, stbrp_context, stbrp_node and stbrp_rect, and static
 stbrp_init_target and stbrp_pack_rects, private to fontstash.cpp's translation unit. The conversion
-dropped the statics' `static` (a C++ header's statics are copies in every includer), and Kpp lets a
-Kpp declaration take the place of an imported C one of the same name in every file
+dropped the statics' `static` (a C++ header's statics are copies in every includer), and kpp lets a
+kpp declaration take the place of an imported C one of the same name in every file
 (`interop/kpp_declaration_of_an_imported_c_name`, pending, A). So TextureProcessor, which imports
 imgui's stb_rect_pack.h, had stb_truetype's stbrp_context (20 bytes, not 72) and stbrp_node (1 byte,
 not 16) for the GPU compression's staging rects, which only a game with graphics reaches. Now:
 - a C header given alone keeps its statics' `static` (it is the implementation's one file);
 - `c-libraries\fontstash\private-names.txt` names the six, which the conversion renames with their
   file's name in each file that uses them (stb_truetype_stbrp_context), types inside structs too;
-- a function whose declaration names a private name keeps Kpp's linkage: stb_truetype's
+- a function whose declaration names a private name keeps kpp's linkage: stb_truetype's
   stbtt_PackFontRanges* take the fallback's stbrp_rect, and their C view in the imported fontstash.h
-  takes stb_rect_pack's (C allows two types across translation units, Kpp has one program).
+  takes stb_rect_pack's (C allows two types across translation units, kpp has one program).
 The game's IR now allocates stb_rect_pack's 72-byte stbrp_context and 16-byte nodes and calls its C
 stbrp_init_target and stbrp_pack_rects (kpp-native's header_only.c, the same C object as the C++
 build's). TextureProcessor's own packing stays unchecked against C++: it runs only when the game
@@ -2129,7 +2129,7 @@ functions take the fallback's stbrp_rect and join the private names. The others:
 
 **stb_image is converted** (it waited for the compiler). Its implementation is in stb_image.hpp and
 stb_image_write.h, which stb_image.cpp compiles as C++ with its PNG writer deflating through zlib
-(`zlib_compress_stb_adapter`, hand-written in Kpp: `c-libraries/stb_image/added`). The conversion
+(`zlib_compress_stb_adapter`, hand-written in kpp: `c-libraries/stb_image/added`). The conversion
 takes the two headers like fontstash's, and the C mode grew:
 - a typedef of a function type, `typedef void stbi_write_func(...)`, is written
   `using stbi_write_func = void(...)` (`language/typedef_of_function_type`, A);
@@ -2142,7 +2142,7 @@ takes the two headers like fontstash's, and the C mode grew:
 Its harness (`harness/stb_image.c`) decodes the 524 core images and their truncated copies and
 writes them as PNG, TGA, BMP and JPEG. Not HDR, and no copy with a byte changed: this stb's
 stbi_write_hdr_core reads row i at `data + comp*x*i*x`, past the image, and its zlib reads zeros
-past the end of its data, so a changed byte in an IDAT can decode for hours (in C as in Kpp; the
+past the end of its data, so a changed byte in an IDAT can decode for hours (in C as in kpp; the
 game does neither). B's c06cec46 took the two specs it waited for (`language/nullptr_cast_to_integer`,
 stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places; `language/conditional_of_two_arrays`,
 stbiw__encode_png_line's `y ? mapping : firstmap`). The harness then found TGA's and BMP's headers
@@ -2210,7 +2210,7 @@ No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
-What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
+What the game takes from C++ headers around C libraries and Windows, each given to kpp the way
 the headers' C would be:
 
 - **WIC and WMI.** The sprite loader decodes with WIC (IWICStream, IWICBitmapDecoder,
@@ -2234,8 +2234,8 @@ the headers' C would be:
 - **The UCRT's handlers.** CrashHandler installs set_terminate and _set_new_handler, which eh.h
   and new.h (C++ headers) declare and ucrtbase exports under C's names:
   `overrides/src/Util/CrashHandler.kpp` declares them. They reach what runs on the C runtime only:
-  Kpp's own uncaught exceptions print and abort (design.md 9) and its new does not call the new
-  handler, so for Kpp code neither runs.
+  kpp's own uncaught exceptions print and abort (design.md 9) and its new does not call the new
+  handler, so for kpp code neither runs.
 - **Smaller ones**, in the converter's tables: d3d11.h's C++-only inline D3D11CalcSubresource
   (`mip + slice * mipLevels`), luaconf.h's LUA_NUMBER_FMT (a string the import makes no constant
   of), WriteConsoleInput as WriteConsoleInputA. The game's class names the converter renames (Map,
@@ -2268,7 +2268,7 @@ compile-speed.md), against the game's own Release builds of its C libraries. Wha
     four more).
 - **10,915 unresolved symbols at the link:**
   - 9,650 functions a codegen error left out (the headline);
-  - 1,079 Kpp functions declared and called but never defined anywhere codegen saw: the
+  - 1,079 kpp functions declared and called but never defined anywhere codegen saw: the
     InputAction family (314), GuiStyle's style getters (205), EditorAction (136), Filesystem (49,
     stdlib declarations without definitions), PrototypeInfo and PrototypeMigrationList (42 each),
     ID (42), Serialiser (28), and the methods of classes declared inside function bodies (the code
@@ -2288,7 +2288,7 @@ compile-speed.md), against the game's own Release builds of its C libraries. Wha
 **The functions defined nowhere (2026-10-29).** Counted over the 64 emitted modules (`kppc
 --keep-going --exe`; with most modules rejected by clang the link lists nothing, so a script
 compares the modules' `declare`s with their `define`s and leaves out the functions a codegen error
-names): on master d1ccfb8, 1,345 Kpp functions are called and defined nowhere. Most of them were
+names): on master d1ccfb8, 1,345 kpp functions are called and defined nowhere. Most of them were
 X-macro expansions: InputAction's 316 constructors, GuiStyle's 312 style getters, EditorAction's
 136, PrototypeMigrationList's and PrototypeInfo's, Serialiser's counters. Their .cpp writes
 `CALL_ON_EVERY_INPUT_ACTION_DATA_TYPE(CREATE_INPUT_ACTION_CONSTRUCTOR)`, but the list macro is
@@ -2306,7 +2306,7 @@ to be replaced by a real std::filesystem subset).
 ### cxxopts (2026-10-28)
 
 The command-line parser the game uses (`libraries/cxxopts`, one header) converts like game code:
-it is in the conversion and in the headline inputs. Its one standard header without a Kpp
+it is in the conversion and in the headline inputs. Its one standard header without a kpp
 counterpart is `<regex>`, for five fixed patterns matched with `std::regex_match`: an integer,
 `true`, `false`, an option (`--name=value` or `-abc`) and an option specifier (`s,long`).
 Decided: no stdlib Regex while cxxopts would be its only user (about 500 lines for five

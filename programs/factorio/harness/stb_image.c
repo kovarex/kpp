@@ -172,7 +172,7 @@ static void image(const char* path, int index)
     int cut = 8 + (int)(nextRandom() % (unsigned)(size - 8));
     load("truncated", copy, cut, 4, 0);
     /* (No copy with a byte changed: this stb_image's zlib reads zeros past the end of its data
-       instead of failing, so a changed byte in a PNG's IDAT can decode for hours, in C as in Kpp:
+       instead of failing, so a changed byte in a PNG's IDAT can decode for hours, in C as in kpp:
        left-arrow.png's 387 bytes.) */
     free(copy);
   }

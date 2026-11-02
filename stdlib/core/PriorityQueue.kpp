@@ -64,7 +64,7 @@ struct PriorityQueue
     ::swap(this->heap, other.heap);
     ::swap(this->compare, other.compare);
   }
-  // Kpp addition: removes every element.
+  // kpp addition: removes every element.
   void clear() { this->heap.clear(); }
 
   // Internals.

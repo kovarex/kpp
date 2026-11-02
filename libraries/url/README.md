@@ -1,6 +1,6 @@
 # url
 
-URLs for Kpp, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) defines URI references:
+URLs for kpp, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) defines URI references:
 parsing into components, resolving a link against the page it is on, percent-encoding, and query
 strings as browsers send them.
 

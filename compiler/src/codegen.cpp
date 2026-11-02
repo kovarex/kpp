@@ -427,7 +427,7 @@ namespace
     };
     std::vector<TypeLine> typeLines;                     // the type definitions, in `decls` order (prepareModuleTexts)
     std::unordered_map<std::string_view, uint32_t> typeIndex; // a type's name -> its line
-    std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
+    std::map<std::string, FunctionDecl*> undefinedUses;  // kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
     bool despiteErrors = false;                          // --keep-going: the IR assembled despite errors
@@ -1748,7 +1748,7 @@ namespace
     // The definitions of class key's vtables, with a thunk for each slot whose function belongs to a
     // class at another place than the subobject whose vtable pointer leads to the slot. A vtable
     // pointer points at the first function's slot, the functions following in declaration order
-    // (MSVC's layout and COM's: a C object's table of functions is called as a Kpp class's, and the
+    // (MSVC's layout and COM's: a C object's table of functions is called as a kpp class's, and the
     // reverse). Slot -1 is the class's descriptor (typeid, dynamic_cast), slot -2 the offset of the
     // subobject holding the pointer within the whole object (delete and dynamic_cast find the whole
     // object with it).
@@ -3139,7 +3139,7 @@ namespace
 
     // An anonymous struct or union member of a class being constructed, at addr, of type t (c its
     // declaration). A struct: its members as the class's own (initializeMembers). A union: zeroed
-    // (members are zero-initialised in Kpp), then the member a constructor initializer names, or
+    // (members are zero-initialised in kpp), then the member a constructor initializer names, or
     // else the one with a default member initializer, is initialised: C++ initialises one member.
     void initializeAnonymous(const std::string& addr, const Ty* t, ClassDecl* c, Span<FunctionDecl::CtorInit> inits, Node* at)
     {
@@ -6575,7 +6575,7 @@ namespace
     };
 
     // --- C calling conventions (docs/design.md, "Targets and hosts") ---
-    // A Kpp function passes a class as a pointer to a copy and returns one through a result slot,
+    // A kpp function passes a class as a pointer to a copy and returns one through a result slot,
     // on every target. A C function (extern "C", or an imported header's) passes a struct by value
     // as the target's C does: MS x64 a struct of 1, 2, 4 or 8 bytes as one integer and any other
     // as a pointer to a copy, a result of 1, 2, 4 or 8 bytes in RAX and any other through the slot;
@@ -7091,7 +7091,7 @@ namespace
     {
       if (f->builtin == BUILTIN_EnumFromStr)
       {
-        // The generated `E::fromStr(text)` of a Kpp enum: the library's enumFromStr<E>(text),
+        // The generated `E::fromStr(text)` of a kpp enum: the library's enumFromStr<E>(text),
         // which has the same signature (an Optional<E> result slot, the text).
         Decl* lib = global.enumFromStrDecl();
         if (!lib || lib->templateParams.size() != 1 || !f->parent || f->parent->kind != NodeKind::EnumDecl)
@@ -7234,7 +7234,7 @@ namespace
       return {r, charPointer};
     }
 
-    // The generated `const char* str() const` of a Kpp enum: a switch over the enumerators.
+    // The generated `const char* str() const` of a kpp enum: a switch over the enumerators.
     void emitEnumStr(FunctionDecl* f, const std::string& name)
     {
       emittingShared = true;
@@ -7944,7 +7944,7 @@ namespace
           return {resultAddr, ret, sret.empty()};
         }
       }
-      bool mayThrow = !global.isExternC(f); // C functions do not throw Kpp exceptions
+      bool mayThrow = !global.isExternC(f); // C functions do not throw kpp exceptions
       if (s.returnType == "void")
       {
         emitCall("", sig + name + "(" + argText + ")", mayThrow);
@@ -12074,7 +12074,7 @@ namespace
       VariableDecl* def = variableDefinition(v, classTy); // `static double scale;` in the class, `double Gui::scale = 1.0;` outside
       if (def == v && (v->flags & DF_Extern) && !v->init && !classTy && !t->isReference())
       {
-        // `extern int counter;` that no Kpp source defines: a C library's variable (its header
+        // `extern int counter;` that no kpp source defines: a C library's variable (its header
         // declares it), defined and initialised there. A definition here would be a second one
         // (a duplicate in the link) or, where the library's is not linked, a zero read as its value.
         // Declared once, however many declarations name it.
@@ -12916,7 +12916,7 @@ namespace
       return callIndirect(fnValue.text, ft, "", c->args, sret, c);
     }
 
-    // A call through a function pointer, with the same calling convention as a declared Kpp
+    // A call through a function pointer, with the same calling convention as a declared kpp
     // function: the object first for a member function (thisArg), the caller's result slot for a
     // class result, classes by pointer (a copy the callee owns), references as addresses.
     Value callIndirect(const std::string& fnText, const Ty* ft, const std::string& thisArg, Span<Expr*> callArgs, const std::string& sret, Node* c)
@@ -18255,7 +18255,7 @@ namespace
       else
       {
         cond = rvalue(static_cast<Expr*>(sw->cond));
-        switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a Kpp enum's switch names every value
+        switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a kpp enum's switch names every value
       }
       if (ClassDecl* c = typedUnionOf(cond.ty, sw))
       {
@@ -18331,7 +18331,7 @@ namespace
         auto* e = def && def->kind == NodeKind::EnumDecl ? static_cast<EnumDecl*>(def) : nullptr;
         if (e && e->isKpp)
         {
-          // A Kpp enum: every value needs a case, and a value outside them aborts.
+          // A kpp enum: every value needs a case, and a value outside them aborts.
           std::string missing;
           for (Decl* d : e->enumerators)
             if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d))))
@@ -18504,14 +18504,14 @@ namespace
       try
       {
         Signature s = signatureOf(original);
-        // A C-callable function defined in Kpp takes a struct by value as Kpp passes it (a pointer to
+        // A C-callable function defined in kpp takes a struct by value as kpp passes it (a pointer to
         // a copy): what C passes otherwise (cPassing) is not received yet.
         if (isCFunction(original))
         {
           const Ty* cft = declType(original);
           for (size_t i = 0; i <= cft->args.size(); ++i)
             if (const Ty* t = i < cft->args.size() ? cft->args[i] : cft->inner; t && isAggregate(t) && (!sh.target.windows() || !cPassing(t, f).inMemory))
-              unsupported(f, "a C-callable function (extern \"C\") defined in Kpp that takes or returns a struct by value (" + irString(t) +
+              unsupported(f, "a C-callable function (extern \"C\") defined in kpp that takes or returns a struct by value (" + irString(t) +
                                  "), which C passes " + (sh.target.windows() ? "in a register" : "by its target's convention") + " (docs/design.md, \"Targets and hosts\")");
         }
         std::string params;
@@ -19492,7 +19492,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.moduleDecls[k].entries.push_back(o.text);
     sh.moduleDecls[k].finish();
   }
-  std::string prefix = "; Kpp v0: generated by kppc\n"
+  std::string prefix = "; kpp v0: generated by kppc\n"
                        "target datalayout = \"" + sh.target.dataLayout + "\"\n"
                        "target triple = \"" + sh.target.triple + "\"\n\n";
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling

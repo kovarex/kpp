@@ -1,5 +1,5 @@
 // spec: a class template's partial specialization for its default argument (`struct Owner<T, Del<T>>`, with `template<class T, class D = Del<T>> struct Owner`) is one type wherever `Owner<int>` is reached: written directly, or returned by a function template as `Owner<T>`
-// factorio: std::unique_ptr<T, D> with a std::default_delete specialization that stays one pointer (the library's UniquePtr was written to call stateless deleters instead, since Kpp has no empty-base optimization)
+// factorio: std::unique_ptr<T, D> with a std::default_delete specialization that stays one pointer (the library's UniquePtr was written to call stateless deleters instead, since kpp has no empty-base optimization)
 template<typename T>
 struct Del
 {

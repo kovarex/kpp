@@ -1,7 +1,7 @@
 @echo off
-rem The C libraries converted to Kpp by C's rules (kppc --c-sources; docs/path-to-factorio.md,
+rem The C libraries converted to kpp by C's rules (kppc --c-sources; docs/path-to-factorio.md,
 rem "Converting the C libraries"), each once its differential harness (harness.cmd NAME) was
-rem byte-identical: the game compiles their Kpp instead of linking the C library. Each has its
+rem byte-identical: the game compiles their kpp instead of linking the C library. Each has its
 rem directory c-libraries\NAME: the conversion's overrides (expand-macros.txt) and includes.txt, the
 rem directories below FACTORIO\libraries\NAME of its headers, which stay C: the converted files and
 rem the C libraries that use it (vorbis uses ogg) import them.

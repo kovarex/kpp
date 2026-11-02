@@ -1,4 +1,4 @@
-// Kpp standard library: List<T>, a doubly linked list (what std::list converts to). Specified in
+// kpp standard library: List<T>, a doubly linked list (what std::list converts to). Specified in
 // docs/stdlib/list.md: each element in a node of its own, so inserting, erasing and splicing
 // never move or invalidate other elements.
 //

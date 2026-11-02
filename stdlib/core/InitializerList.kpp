@@ -1,4 +1,4 @@
-// Kpp standard library: InitializerList<T>, what a brace list `{a, b, c}` passed to a function
+// kpp standard library: InitializerList<T>, what a brace list `{a, b, c}` passed to a function
 // becomes: a view of the elements, which live in the caller until the end of the full expression.
 // The compiler builds it directly (a pointer, then a count: keep these two fields first).
 template<typename T>

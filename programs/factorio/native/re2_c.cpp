@@ -1,6 +1,6 @@
 // The thin C interface the converted game calls RE2 through (design.md: C++ libraries get a thin C
 // wrapper): an RE2 object behind a pointer, a match with its submatches as offsets into the text,
-// Replace and GlobalReplace, and RE2's own parsers of submatches into numbers. The Kpp side is the
+// Replace and GlobalReplace, and RE2's own parsers of submatches into numbers. The kpp side is the
 // RE2 class in overrides/src/Util/RegexUtil.kpp. Built by build.cmd into factorio-native.lib,
 // linked with the game's re2.lib.
 #include <re2/re2.h>

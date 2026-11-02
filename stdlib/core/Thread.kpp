@@ -1,4 +1,4 @@
-// Kpp standard library: threads and what keeps them apart, on the Windows API (what std::thread,
+// kpp standard library: threads and what keeps them apart, on the Windows API (what std::thread,
 // std::this_thread, std::mutex, std::lock_guard, std::unique_lock, std::condition_variable and
 // std::atomic convert to). Specified in docs/stdlib/thread.md (Atomic: docs/stdlib/atomic.md).
 // Mutex is an SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed;

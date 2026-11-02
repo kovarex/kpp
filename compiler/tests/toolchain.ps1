@@ -108,7 +108,7 @@ try
     New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS; }"
     Set-Content -Encoding ascii 'libs\plus\twice.cpp' "extern `"C`" int twice(int value) { return value * 2; }"
-    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nextern `"C`" int twice(int value);`nint main()`n{`n  println(`"Hello from Kpp `", twice(plus_one(20)));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nextern `"C`" int twice(int value);`nint main()`n{`n  println(`"Hello from kpp `", twice(plus_one(20)));`n  return 0;`n}"
     Set-Content -Encoding ascii 'build.kpp' @'
 void build(Project& project)
 {
@@ -120,7 +120,7 @@ void build(Project& project)
 }
 '@
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
-    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from Kpp 42') { Fail "kpp new with a C library, kpp --run did not run: $($run.text)" }
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp new with a C library, kpp --run did not run: $($run.text)" }
     $rsp = Get-ChildItem -Recurse "$project\build" -Filter *.link.rsp | Select-Object -First 1
     if (-not $rsp) { Fail "the project's build left no link response file" }
     else
@@ -143,7 +143,7 @@ void build(Project& project)
   {
     $null = Run "$inst\kpp.exe" @('new')
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifndef _MSC_VER`n#error --toolchain msvc builds the C libraries with Visual Studio's clang`n#endif`nint plus_one(int value) { return value + 1; }"
-    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nint main()`n{`n  println(`"Hello from Kpp `", plus_one(41));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nint main()`n{`n  println(`"Hello from kpp `", plus_one(41));`n  return 0;`n}"
     Set-Content -Encoding ascii 'build.kpp' @'
 void build(Project& project)
 {
@@ -156,13 +156,13 @@ void build(Project& project)
 }
 '@
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
-    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from Kpp 42') { Fail "a build.kpp asking for --toolchain msvc did not build its C library with it: $($run.text)" }
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "a build.kpp asking for --toolchain msvc did not build its C library with it: $($run.text)" }
     # The same asked for on the command line instead (kpp passes --toolchain and its value on).
     $withArguments = Get-Content -Raw 'build.kpp'
     Set-Content -Encoding ascii 'build.kpp' ($withArguments -replace '(?s)  for \(StringView option.*?withvs\.argument\(option\);\r?\n', '')
     cmd /c rd /s /q build
     $run = Run "$inst\kpp.exe" @('--no-server', '--toolchain', 'msvc', '--run')
-    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from Kpp 42') { Fail "kpp --toolchain msvc did not build the C library with it: $($run.text)" }
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp --toolchain msvc did not build the C library with it: $($run.text)" }
     Set-Content -Encoding ascii 'build.kpp' $withArguments
   }
   finally { Pop-Location }

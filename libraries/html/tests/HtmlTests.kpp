@@ -34,9 +34,9 @@ test "holes in a URL"
 test "SafeHtml goes in as it is, and a page nests templates"
 {
   SafeHtml body = SafeHtml::trusted("<p>made by <b>markdown</b></p>");
-  SafeHtml page = htmlTestPage.render({{"title", "Kpp & you"}, {"content", body}});
-  check(page.html == "<!DOCTYPE html>\n<html><head><title>Kpp &amp; you</title><style>p { color: red; }</style></head><body><!-- a comment --><p>made by "
-                     "<b>markdown</b></p><br><img src=\"logo.png\" alt=\"Kpp &amp; you\"/></body></html>");
+  SafeHtml page = htmlTestPage.render({{"title", "kpp & you"}, {"content", body}});
+  check(page.html == "<!DOCTYPE html>\n<html><head><title>kpp &amp; you</title><style>p { color: red; }</style></head><body><!-- a comment --><p>made by "
+                     "<b>markdown</b></p><br><img src=\"logo.png\" alt=\"kpp &amp; you\"/></body></html>");
   SafeHtml list;
   for (const char* name : {"json", "sha256"})
     list.append(htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}}));

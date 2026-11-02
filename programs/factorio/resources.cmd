@@ -4,7 +4,7 @@ rem checkout (C:\factorio-in-kpp, or the directory given as the first argument; 
 rem hand), at the paths it has in Factorio's repository: data\, shaders\, version.txt, libraries\
 rem (the C and C++ libraries the game imports and links, as Factorio has them) and tests\ (the saves,
 rem images and mods the tests read). The converted libraries' and the tests' own C and C++ sources
-rem are left out: convert.cmd writes their Kpp conversion there. Run after convert.cmd when the
+rem are left out: convert.cmd writes their kpp conversion there. Run after convert.cmd when the
 rem Factorio source changes. The files are git archive's of FACTORIO's HEAD, with its checkout's line
 rem endings (core.autocrlf), as the game's working tree has them; FACTORIO must be a git checkout.
 setlocal
@@ -12,7 +12,7 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 set WHOLE=C:\factorio-in-kpp
 if not "%~1"=="" set WHOLE=%~1
 rem The libraries convert.cmd converts, and the shims it copies (libraries\kpp-native). Of a C library
-rem converted to Kpp (c-libraries.cmd) only the .c and .cpp files are left out: its headers stay C.
+rem converted to kpp (c-libraries.cmd) only the .c and .cpp files are left out: its headers stay C.
 call "%~dp0c-libraries.cmd"
 set CONVERTED=CommonUtil Agui cxxopts StackWalker Lua crc32fast UnitTest++ %CLIBRARIES%
 rem Fresh every run: a file Factorio no longer has would stay. Every file of these directories but

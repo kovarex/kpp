@@ -1,4 +1,4 @@
-// Kpp standard library: Array and Span. (Deque, Queue and Stack are in Deque.kpp, Map and Set in
+// kpp standard library: Array and Span. (Deque, Queue and Stack are in Deque.kpp, Map and Set in
 // Map.kpp.)
 
 // A fixed-size array that knows its size (what std::array converts to).

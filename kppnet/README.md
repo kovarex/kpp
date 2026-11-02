@@ -4,7 +4,7 @@ kovarex's decisions (2026-10-31):
 - kpp.net is his, at NearlyFreeSpeech.NET (NFS), and it hosts the site.
 - The canonical git repositories live on kpp.net, and GitHub is the mirror where pull requests and
   issues happen.
-- The website and the library registry are written in Kpp.
+- The website and the library registry are written in kpp.
 
 The design, with what NFS offers and its sources, is in
 [docs/library-registry.md](../docs/library-registry.md), "Hosting on kpp.net". This directory holds
@@ -15,7 +15,7 @@ the operational part. **Nothing here has been run against kpp.net.**
 | [RUNBOOK.md](RUNBOOK.md) | the steps, in order, with who does each |
 | [git/post-receive](git/post-receive) | the hook on kpp.net that pushes every update to GitHub (if NFS allows outbound connections) |
 | [backup/pull-backup.ps1](backup/pull-backup.ps1) | the daily pull of kpp.net's repositories and registry files to PC-PRACOVNA (NFS allows automated SSH for one backup a day) |
-| [site/](site/README.md) | kppsite, the site generator in Kpp: docs and library pages as static files (stage 1) |
+| [site/](site/README.md) | kppsite, the site generator in kpp: docs and library pages as static files (stage 1) |
 | [registry/layout.md](registry/layout.md), [registry/tree_hash.py](registry/tree_hash.py) | the hash-addressed store under https://kpp.net/registry/ and the reference tree hash that build.lock records |
 
 An earlier version of this directory held a self-hosted Forgejo kit for a rented VM. It was

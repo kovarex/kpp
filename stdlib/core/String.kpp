@@ -1,4 +1,4 @@
-// Kpp standard library: String. A growable sequence of UTF-8 code units, always zero-terminated
+// kpp standard library: String. A growable sequence of UTF-8 code units, always zero-terminated
 // so that c_str() is free. One plain class: no character traits, no allocator parameter.
 //
 // 24 bytes with 32-bit sizes (32 with 64-bit ones, core/Sizes.kpp). Up to 22 (30) characters live

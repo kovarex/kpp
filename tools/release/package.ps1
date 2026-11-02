@@ -1,4 +1,4 @@
-# Packages a built kppc as a Kpp release (docs/build.md, "Installing"): build\release\kpp\ with
+# Packages a built kppc as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
 # kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
 # grammar, the VS Code extension kpp.vsix (tools/vscode) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
@@ -53,7 +53,7 @@ Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"
 The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 20250114
 (https://github.com/mstorsjo/llvm-mingw), unchanged. Its parts keep their own licences:
 - LLVM (clang, lld, the LLVM tools, libc++, libunwind, compiler-rt): Apache-2.0 WITH LLVM-exception,
-  as Kpp; LICENSE-llvm-mingw.txt.
+  as kpp; LICENSE-llvm-mingw.txt.
 - MinGW-w64's headers and runtime: public domain or ZPL 2.1; the DirectX headers taken from Wine are
   LGPL-2.1 or later. x86_64-w64-mingw32\share\mingw32\COPYING*.
 - llvm-mingw's own scripts: ISC.
@@ -73,7 +73,7 @@ Copy-Item -Recurse "$repository\projectlib" "$kpp\projectlib"
 New-Item -ItemType Directory -Force "$kpp\grammar" | Out-Null
 Copy-Item "$repository\tools\vs\kpp\Syntaxes\kpp.tmLanguage.json" "$kpp\grammar"
 @"
-Kpp $Version$(if ($Commit) { " ($Commit)" })
+kpp $Version$(if ($Commit) { " ($Commit)" })
 
 kpp.exe is the compiler. In a project's directory (one with build.kpp), run kpp for a menu, or
 kpp (every target, debug), kpp release, kpp TARGET CONFIGURATION, kpp TARGET --run,
@@ -83,7 +83,7 @@ Nothing else is needed: kpp brings its own toolchain (bin\: llvm-mingw's clang a
 MinGW-w64, NOTICE-toolchain.txt), and its programs use only DLLs every Windows 10 and 11 has.
 kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on request.
 
-Kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
+kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
 
 $(if ($npm) { "kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
 offers to install it, or run code --install-extension kpp.vsix." } else { "The VS Code extension (kpp.vsix) is not in this package: it was made without Node.js." }) Other editors:
@@ -128,7 +128,7 @@ try
   & "$kpp\kpp.exe" new | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "the packaged kpp new failed ($LASTEXITCODE)" }
   $output = (& "$kpp\kpp.exe" --no-server --run 2>&1 | ForEach-Object { "$_" }) -join "`n"
-  if ($LASTEXITCODE -ne 0 -or $output -notmatch 'Hello from Kpp') { throw "the packaged kpp did not build a new project:`n$output" }
+  if ($LASTEXITCODE -ne 0 -or $output -notmatch 'Hello from kpp') { throw "the packaged kpp did not build a new project:`n$output" }
   # A project build is --quiet (no toolchain line); its link names the target, which only the bundled
   # toolchain builds (Visual Studio's clang with windows-gnu is an error).
   $rsp = Get-ChildItem -Recurse "$smoke\build" -Filter *.link.rsp | Select-Object -First 1

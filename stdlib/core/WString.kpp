@@ -1,4 +1,4 @@
-// Kpp standard library: WString, a string of wchar_t for the Windows API (UTF-16 code units),
+// kpp standard library: WString, a string of wchar_t for the Windows API (UTF-16 code units),
 // always zero-terminated: what std::wstring converts to. String's interface over wchar_t;
 // specified in docs/stdlib/string.md, "WString". Conversions to and from UTF-8 live in StringUtil
 // of the program using it (and in Filesystem's path).

@@ -1,4 +1,4 @@
-// glm 0.9.9.0 (C:\Factorio\libraries\glm), the part of it the game uses, ported to Kpp: the float
+// glm 0.9.9.0 (C:\Factorio\libraries\glm), the part of it the game uses, ported to kpp: the float
 // vectors vec2, vec3 and vec4, the 4x4 float matrix mat4 (four vec4 columns, m[column][row]), and
 // the functions the game calls, with glm's semantics and glm's formulas: the same floating-point
 // operations in the same order, so the results are glm's to the bit (tests/glm_smoke.kpp checks

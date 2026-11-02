@@ -399,7 +399,7 @@ int generateProjectFiles(int argc, char** argv)
     }
     else if (arg == "--exe" && i + 1 < argc)
       g.exe = argv[++i];
-    // A Kpp library's root (design.md 16): its files are the project's too, the root absolute.
+    // A kpp library's root (design.md 16): its files are the project's too, the root absolute.
     else if ((arg == "--library-root" || arg == "--unscoped-library-root") && i + 2 < argc)
     {
       g.roots.push_back(argv[i + 2]);

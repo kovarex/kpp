@@ -3,7 +3,7 @@
 Functions over UTF-8 text in a `StringView` (a `String` converts to one): validating it, decoding
 and iterating its code points, encoding a code point, counting code points. C++ has no
 equivalent worth keeping (std::codecvt is deprecated, char8_t brings no functions), so these are
-Kpp's own. json, html, markdown and url use them.
+kpp's own. json, html, markdown and url use them.
 
 ## Terms
 

@@ -4,8 +4,8 @@ rem as a snapshot of an older commit taken with git archive. Its prebuilt librar
 rem (vs2022\, bin\) are always C:\Factorio's.
 if not defined FACTORIO set FACTORIO=C:\Factorio
 rem Builds the C and C++ shims the converted game links with into native\build\factorio-native.lib:
-rem re2_c.cpp, RE2's thin C interface (overrides/src/Util/RegexUtil.kpp is its Kpp side),
-rem imgui_c.cpp, dear imgui's (generate_imgui.py writes it and its Kpp side,
+rem re2_c.cpp, RE2's thin C interface (overrides/src/Util/RegexUtil.kpp is its kpp side),
+rem imgui_c.cpp, dear imgui's (generate_imgui.py writes it and its kpp side,
 rem overrides/added/src/Debug/ImGui.kpp), header_only.c and jc_voronoi.cpp, the header-only C
 rem libraries the game implements inside its own .cpp files, logitech_led_c.cpp,
 rem the Logitech LED SDK's C++ functions as C ones, open_vcdiff_c.cpp,

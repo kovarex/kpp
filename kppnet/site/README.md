@@ -1,8 +1,8 @@
 # kppsite: kpp.net's site generator
 
-A Kpp program that writes kpp.net's website as static files: stage 1 of
+A kpp program that writes kpp.net's website as static files: stage 1 of
 [docs/library-registry.md](../../docs/library-registry.md), "The website and the library provider
-in Kpp". It runs on Windows today; NFS's Apache serves what it writes. It uses the official
+in kpp". It runs on Windows today; NFS's Apache serves what it writes. It uses the official
 libraries: [markdown](../../libraries/markdown/README.md), [html](../../libraries/html/README.md),
 [json](../../libraries/json/README.md) and [url](../../libraries/url/README.md).
 
@@ -16,7 +16,7 @@ It writes into `--out`:
 
 | Path | What |
 |---|---|
-| `index.html` | the home page: what Kpp is, the list of documents, the libraries |
+| `index.html` | the home page: what kpp is, the list of documents, the libraries |
 | `docs/**.html`, `libraries/<name>/README.html` | every `.md` under the `--pages` directories (`docs` and `libraries` when none is given), as a page |
 | `libraries/index.html` | every library: the repository's `libraries/` and the registry's index, with its latest release and its README's first paragraph; a search box filters the table in the browser |
 | `libraries/<name>.html` | a library's releases (newest first, with the archive, tree hash and yank reason) and its README |

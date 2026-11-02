@@ -1,4 +1,4 @@
-# A Kpp release, started by hand (Actions > release > Run workflow; docs/build.md, "Installing"):
+# A kpp release, started by hand (Actions > release > Run workflow; docs/build.md, "Installing"):
 # kppc built on a Windows runner, packaged by tools/release/package.ps1 (which builds a new project
 # with the package as its smoke test), the installer made with Inno Setup, and both published as a
 # prerelease named after the run: build-<run number>. Manual only until a run has been checked: master
@@ -51,11 +51,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Kpp ${{ env.KPP_VERSION }}
+          name: kpp ${{ env.KPP_VERSION }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           body: |
-            Built from ${{ github.sha }}. Install with kpp-${{ env.KPP_VERSION }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-${{ env.KPP_VERSION }}.zip anywhere.
+            Built from ${{ github.sha }}. Install with kpp-${{ env.KPP_VERSION }}-setup.exe (Program Files\kpp, on PATH), or unzip kpp-${{ env.KPP_VERSION }}.zip anywhere.
             Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs.
             kpp.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp.vsix).
           files: |

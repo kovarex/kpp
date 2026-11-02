@@ -1,6 +1,6 @@
 #pragma once
-// Code generation for the Kpp v0 subset: textual LLVM IR for the whole program, compiled to
-// machine code by the bundled clang. See docs/design.md, "Kpp v0".
+// Code generation for the kpp v0 subset: textual LLVM IR for the whole program, compiled to
+// machine code by the bundled clang. See docs/design.md, "kpp v0".
 #include "ast.hpp"
 #include "resolver.hpp"
 #include "target.hpp"
@@ -47,7 +47,7 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // keep: hand the session back (a build of several modules) instead of freeing it: one with errors only
 // when each came from a program function's own emission (none assembled then).
 // debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
-// debugger steps through the Kpp source (docs/debugging.md).
+// debugger steps through the kpp source (docs/debugging.md).
 // target: the platform the IR is for (--target; null: Windows x64).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,

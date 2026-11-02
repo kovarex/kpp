@@ -1,4 +1,4 @@
-// Kpp standard library: hashing. HashMap<K, V> hashes with Hash<K>, which calls hashOf(key); add
+// kpp standard library: hashing. HashMap<K, V> hashes with Hash<K>, which calls hashOf(key); add
 // an overload for your own key types. HashMap indexes by the low bits of the hash, so every bit of
 // the result has to depend on the whole key.
 

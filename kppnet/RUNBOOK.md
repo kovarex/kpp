@@ -135,7 +135,7 @@ Without these settings it skips kpp.net and says so.
 
 ## Running it
 - **Realm upgrades:** NFS's "late" setting upgrades about every six months. Before switching, run
-  the site's Kpp programs (stage 2 on) against the upcoming realm, unless they are statically
+  the site's kpp programs (stage 2 on) against the upcoming realm, unless they are statically
   linked.
 - **Leaving NFS:** the repositories are plain bare git repositories (and every clone has them), and
   the registry and site are files. Copy them to the new host with rsync, then move the DNS.

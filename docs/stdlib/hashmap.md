@@ -70,7 +70,7 @@ O(n), amortized O(1) per insert.
   this map), in the fast tables they are moved. The rest stay in other.
 - `swap(other)`: exchanges the contents in O(1).
 - `clear()`, `reserve(n)`.
-- Kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
+- kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
   value is kept), `forEach(f)` calling f(key, value) for every entry.
 
 The hash a key's slot and tag come from is the hasher's result, mixed once more unless the hasher

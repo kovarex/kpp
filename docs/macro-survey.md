@@ -1,4 +1,4 @@
-# Macros in Factorio, and what replaces them in Kpp
+# Macros in Factorio, and what replaces them in kpp
 
 Survey date: 2026-10-23. Corpus: `C:\Factorio\src`, `tests`, `libraries\CommonUtil`,
 `libraries\Agui`: 8,056 files, 1.33 M lines, the same corpus as [prototype-results.md](prototype-results.md).
@@ -23,12 +23,12 @@ Every number below comes from `compiler\bench\macro_survey.py` and `macro_catego
   `ZoneScoped`, ...) and a further group are enumerators and typedefs that only exist inside
   macro expansions (`normalQuality` 577, `Nothing` 268, `PrototypeType` 267, `Success` 235).
 - **Every use falls into one of eleven cases, and none of them needs textual substitution.**
-  Eight language or library features cover all eleven; the table in "What Kpp needs" ranks
-  them by how much code they remove. Kpp can have no preprocessor at all.
+  Eight language or library features cover all eleven; the table in "What kpp needs" ranks
+  them by how much code they remove. kpp can have no preprocessor at all.
 
 ## The eleven cases
 
-| case | own macros | use sites | Kpp answer |
+| case | own macros | use sites | kpp answer |
 |---|---:|---:|---|
 | A. assert, abort, log with source location | 39 | 9,487 | built-in `assert`, implicit caller location, conditionally compiled functions |
 | B. test suite | 37 (+UnitTest++) | 1,880 (+55,800) | tests and `check` in the compiler |
@@ -54,7 +54,7 @@ builds), `LOG_D3D_ERROR`/`LOG_METAL_ERROR`/`OPENGL_INTERFACE_CHECK_ERRORS` (`__f
 Three things are needed, and they are the same three everywhere: the text of an expression, the
 caller's location, and "compile to nothing in this configuration, do not evaluate the arguments".
 
-Kpp answers with three parts that work together; they are not alternatives, each covers a
+kpp answers with three parts that work together; they are not alternatives, each covers a
 different part of the list above:
 - For `assert` and `release_assert` (6,229 uses): `assert(expr)` and `release_assert(expr)` are
   statements of the language. The compiler has the
@@ -79,7 +79,7 @@ the expression text, the location and the operand values. Factorio adds 37 helpe
 (`CHECK_BUILDABILITY` 712, `CHECK_LUA_NUMBER_EQUALS` 707, `SETUP_MUSIC_*` 110,
 `TEST_GENERATOR(Name)` with `class TestGenerator_##Name`), all of them wrapping `CHECK_EQUAL`.
 
-Kpp: the proposal's "test tools" item. `test "name" { ... }` is a declaration the compiler
+kpp: the proposal's "test tools" item. `test "name" { ... }` is a declaration the compiler
 collects and the standard runner selects by name, file or suite; fixtures are ordinary classes;
 `check(a == b)` is built in and reports like `assert` does (text, location, operand values), with
 `check` failures recorded instead of aborting. With that, the 55,800 library uses and all 37 helper
@@ -98,7 +98,7 @@ Smaller versions of the same idea: `SAVE_UTILITY_CONSTANT(stream, KEY)` writes `
 This is reflection written by hand, and it is also what the serialisation (`save`/`load`,
 the proposal's `accumulate`) and the Lua binding registration do with ordinary code today.
 
-Kpp: compile-time reflection over members. `for constexpr (m : members(T))` iterates the
+kpp: compile-time reflection over members. `for constexpr (m : members(T))` iterates the
 members of a class with `m.name`, `m.type` and `object.[m]` for the value; the loop body is
 instantiated once per member like a template body. `nameof(x)` gives the spelling of a single
 expression. The prototype explorer becomes one generic function instead of 4,300 lines of
@@ -136,7 +136,7 @@ Each expansion passes a per-entry macro that generates one of: an enumerator (`E
 `EXPLICIT_INSTANTIATION`, `EXPLICIT_COUNTS_AS_BUTTONS`; Factorio has 612 `template class` and 111
 `template function` instantiation lines in total, most of them behind these macros).
 
-Kpp, four pieces:
+kpp, four pieces:
 - A list is a compile-time value: `const auto idTypes = types<CustomInputID, EquipmentGridID, ...>;`
   or a `const` array of structs for lists with data (`{ItemID, "item"}`), and `for constexpr`
   iterates it. The loop is allowed at **every scope**: in a function it generates statements
@@ -157,7 +157,7 @@ Kpp, four pieces:
 `ENUM(Name, Type, A, B, C)` can produce a class with `isValid()`, `str()`, `fromStr()`, `count` and
 iteration for up to 16 enumerators; `BITFIELD(Name, ...)` (20 uses) does the same for flag sets.
 
-Kpp: the proposal's real `enum class` with methods, `str()`, `fromStr()`, `count`, iteration and
+kpp: the proposal's real `enum class` with methods, `str()`, `fromStr()`, `count`, iteration and
 exhaustive switches makes the whole file unnecessary; a library `Flags<E>` built on enum
 reflection (`count(E)`, `enumerators(E)`) replaces `BITFIELD`.
 
@@ -168,7 +168,7 @@ a guard object that writes on construction and destruction; `SAVING_STATISTICS` 
 Tracy's `ZoneScoped` is the same pattern from a library. `INIT_SPRITE_DRAWING`/`PUSH_TO_*` in
 `DrawQueue.cpp` (127) are a local protocol: one macro declares `sortOrder_`, the others use it.
 
-Kpp: `_` is a name that may be declared any number of times in a scope; each declaration is a
+kpp: `_` is a name that may be declared any number of times in a scope; each declaration is a
 distinct object that lives to the end of the scope: `TagWriter _(output, "item");` (C++26 adopts the
 same placeholder). The `DrawQueue` protocol is a lambda or a small local class.
 
@@ -180,10 +180,10 @@ same placeholder). The `DrawQueue` protocol is a lambda or a small local class.
 (`__attribute__((format(printf)))` and MSVC's `__format_string`, 43), `NO_INLINE`, `SUPPRESS_UBSAN`,
 `ALWAYS_INLINE`, `IMGUI_API`, `_SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING`.
 
-Kpp: attributes (`[[noinline]]`, `[[forceinline]]`, `[[vectorcall]]`, `[[optimize]]`,
+kpp: attributes (`[[noinline]]`, `[[forceinline]]`, `[[vectorcall]]`, `[[optimize]]`,
 `[[no_sanitize]]`) on declarations. The format attributes are replaced by the type-safe
 `format`; the conversion-warning pragmas have nothing to suppress in a language that is explicit by
-default; the portability shims exist because there are three compilers, and Kpp has one.
+default; the portability shims exist because there are three compilers, and kpp has one.
 
 ### H. Configuration flags and platform conditionals (36 flag macros, 2,098 `#if` blocks)
 
@@ -196,7 +196,7 @@ are empty defines read by `#ifdef`, or `0`/`1` constants (`DEBUG_BAD_SHIFTINGS 0
 `CRC_CHECK_SAVE_LOAD 0`). The blocks wrap whole classes and members (`class InNintendoNetworkPrepare`
 exists only on Switch), single statements, and `#include`s.
 
-Kpp: the configuration is a set of typed compile-time constants given by the build (the "global
+kpp: the configuration is a set of typed compile-time constants given by the build (the "global
 macros" of design.md, made typed): `config::platform == Platform::Switch`, `config::debug`,
 `config::steam`, `config::graphics == Graphics::Metal`. `if constexpr` on them is allowed at every
 scope, so a class, a member or a function can exist only on one platform without a preprocessor,
@@ -208,8 +208,8 @@ around the declaration.
 
 `UTF8_BULLET "\xE2\x80\xA2"` and 20 more UTF-8 strings, `M_1_2_PI`, `INSET_COLOR_SHIFT 4`,
 `C565_5_MASK 0xF8`, `BUILD_MODE "steamdemo"`, `RZRESULT_*` from a vendor SDK, key names.
-Kpp: `const` globals. They are macros today because a constant in a header needs the header included
-everywhere; in Kpp every global is visible everywhere.
+kpp: `const` globals. They are macros today because a constant in a header needs the header included
+everywhere; in kpp every global is visible everywhere.
 
 ### J. Aliases and library workarounds (3,691 uses)
 
@@ -219,7 +219,7 @@ defines `min`/`max` as function-like macros and breaks everything that follows; 
 function pointers (`VulkanImpl::`, `OpenCLImpl::`); `load_m128i` casts for an intrinsic;
 `toCStr(x)` is `toStr(x).c_str()`; `STR(x)`/`ARG_STRING_TYPE` paste `L` onto string literals.
 
-Kpp: C import brings in declarations and constants, not function-like macros, so `min`/`max` cannot
+kpp: C import brings in declarations and constants, not function-like macros, so `min`/`max` cannot
 be hijacked; the rest are functions, `if constexpr` on `config::platform`, and String conversions.
 
 ### K. Inline code snippets (224 uses)
@@ -229,13 +229,13 @@ be hijacked; the rest are functions, `if constexpr` on `config::platform`, and S
 `SET_LOW_WORD`, `APPLY_FLIP_FLAGS`, `AVG_COLORS8`. Written as macros for speed in debug builds or
 because the result must be a compile-time constant.
 
-Kpp: `[[forceinline]]` functions and lambdas; the constexpr interpreter evaluates
+kpp: `[[forceinline]]` functions and lambdas; the constexpr interpreter evaluates
 `R_SHUFFLE_D(3, 2, 1, 0)` at compile time where an immediate is required.
 
 ### Library macros
 
 - UnitTest++ (55,800): case B.
-- Tracy (`ZoneScoped` 126): cases A and F; Tracy is C++, so it needs a thin C wrapper or a Kpp port.
+- Tracy (`ZoneScoped` 126): cases A and F; Tracy is C++, so it needs a thin C wrapper or a kpp port.
 - Lua (about 850): `lua_pop(L, n)` is `lua_settop(L, -(n)-1)`, `lua_newtable(L)` is
   `lua_createtable(L, 0, 0)`, `lua_isnil(L, n)` is a comparison; `LUA_T*` and `luaL_*` are constants
   and functions. The constants come through C import already. For the function-like ones the
@@ -244,7 +244,7 @@ Kpp: `[[forceinline]]` functions and lambdas; the constexpr interpreter evaluate
   `FAILED`) alike. Macros that are statements or declare things stay out.
 - `M_PI`, `INT32_MAX`, `SDL_*`, `GL_*`, `MTL*` constants: imported as constants today.
 
-## What Kpp needs, by payoff
+## What kpp needs, by payoff
 
 | | feature | removes | status in the proposal |
 |---|---|---:|---|
@@ -266,7 +266,7 @@ X-macro lists that are the most visible.
 
 ## Consequence for the design
 
-Kpp needs no preprocessor. The conditional compilation goes through typed constants and
+kpp needs no preprocessor. The conditional compilation goes through typed constants and
 `if constexpr`; the two code-generation uses (member iteration and type lists) go through
 `for constexpr` with reflection; everything else is a function, an attribute or a built-in
 statement. The "file-local macros" kept open in design.md have no use in this corpus and can be

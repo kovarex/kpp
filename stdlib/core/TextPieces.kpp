@@ -1,4 +1,4 @@
-// Kpp standard library: the formatting pieces of design.md 14, small objects whose appendTo writes a
+// kpp standard library: the formatting pieces of design.md 14, small objects whose appendTo writes a
 // value in a chosen form. Each is a piece of a text (`out << hex(x)`, `print(...)`), and each is what a
 // converted printf specifier becomes:
 //   hex(x), hex(x, digits)            %x, %08x        hexUpper(x), hexUpper(x, digits)   %X, %08X

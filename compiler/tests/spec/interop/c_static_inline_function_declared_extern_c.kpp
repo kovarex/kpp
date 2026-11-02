@@ -1,4 +1,4 @@
-// spec: a C function a header defines static inline and Kpp declares extern "C" with its parameters is one function (C11 6.2.2p4: an extern declaration after a visible static one takes its linkage), not two overloads whose calls are ambiguous; the stdlib's CTime.kpp declares time, localtime, gmtime and mktime so, which MSVC 14.44's time.h defines static inline
+// spec: a C function a header defines static inline and kpp declares extern "C" with its parameters is one function (C11 6.2.2p4: an extern declaration after a visible static one takes its linkage), not two overloads whose calls are ambiguous; the stdlib's CTime.kpp declares time, localtime, gmtime and mktime so, which MSVC 14.44's time.h defines static inline
 // factorio: Lua's lstate.kpp `time(nullptr)`, PerformanceLogger's `::time(nullptr)` and localtime, minizip's mktime: "ambiguous between int64(int64*) (stdlib\clib\CTime.kpp:18) and int64(int64*) (<imported C headers>)" (headline 15) whenever the C imports read MSVC 14.44's headers (a VsDevCmd environment)
 extern "C" import "c_static_inline_function_declared_extern_c.h";
 extern "C" long long specClock(long long* out);

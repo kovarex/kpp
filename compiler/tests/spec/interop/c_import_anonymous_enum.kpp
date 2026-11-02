@@ -1,4 +1,4 @@
-// spec: a C header's anonymous enum behind a typedef, `typedef enum { ... } CURLcode;`, as a type in Kpp, also inside a struct's anonymous union (curl's CURLMsg.data.result)
+// spec: a C header's anonymous enum behind a typedef, `typedef enum { ... } CURLcode;`, as a type in kpp, also inside a struct's anonymous union (curl's CURLMsg.data.result)
 // found in the game's HttpSharedState (curlStatusCode): the typedef named an enum without a name, so the type was unknown
 extern "C" import "c_anonymous_enum.h";
 struct Request

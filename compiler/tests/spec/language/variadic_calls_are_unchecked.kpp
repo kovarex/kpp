@@ -1,4 +1,4 @@
-// spec: a C-variadic call is never format-checked (design.md 14, kovarex 2026-11-01: Kpp prints through print/toString and the converter rewrites printf-family calls; what stays variadic is the C boundary): more arguments than the format's conversions compile, the extra ones unread as in C (`1 2|7`)
+// spec: a C-variadic call is never format-checked (design.md 14, kovarex 2026-11-01: kpp prints through print/toString and the converter rewrites printf-family calls; what stays variadic is the C boundary): more arguments than the format's conversions compile, the extra ones unread as in C (`1 2|7`)
 // factorio: replaces language/printf_format_must_match_arguments and scanf_format_must_match_arguments, the retired check's specs
 extern "C" import "stdio.h";
 int main()

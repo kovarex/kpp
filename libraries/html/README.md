@@ -1,6 +1,6 @@
 # html
 
-HTML for Kpp: escaping, and templates whose holes are escaped by where they are, checked when the
+HTML for kpp: escaping, and templates whose holes are escaped by where they are, checked when the
 program is compiled.
 
 ```cpp

@@ -1,6 +1,6 @@
-# Kpp design
+# kpp design
 
-Kpp is a C++-like language with a new compiler built around one idea: **no includes at the
+kpp is a C++-like language with a new compiler built around one idea: **no includes at the
 deepest level of how the compiler works**, so that builds are orders of magnitude faster.
 The original proposal's compilation model is [compilation/index.md](../compilation/index.md); its
 language changes are in [readme.md](../readme.md), "The language", each with its state.
@@ -103,7 +103,7 @@ builds win less unless machine code is cached per function.
   Templates as computation are dropped (above), so deep recursion is not expected.
 
 ### 4. Our own standard library
-- No C++ std. A smaller, saner library written in Kpp: one UTF-8 `String` with small-string
+- No C++ std. A smaller, saner library written in kpp: one UTF-8 `String` with small-string
   optimization (no traits/char-type/allocator template parameters; allocators passed at
   runtime), Vector, SmallVector, HashMap, Optional, Span, UniquePtr, Function, formatting,
   sorting, file/OS wrappers. No iostreams.
@@ -178,7 +178,7 @@ builds win less unless machine code is cached per function.
   base at offset 0, as C++ has it, so the layout is C's and its members are the struct's; anywhere
   else it is a member with a name of its own (the layout stays right; its members by their names
   are an error). (2026-10-29, spec interop/c_anonymous_member_of_named_type.)
-- A C function a header declares or defines and Kpp declares `extern "C"` with its parameters is one
+- A C function a header declares or defines and kpp declares `extern "C"` with its parameters is one
   function, its `static` included: a later extern declaration takes a visible static one's linkage
   (C11 6.2.2p4). A call reaches the header's definition when it has one. MSVC 14.44's time.h defines
   time, localtime, gmtime and mktime `static __inline` (14.51's plain `__inline`) and the stdlib's
@@ -211,7 +211,7 @@ methods (the Factorio survey suggests generating save/load from the class may be
 
 ### 7. No preprocessor; what replaces macros (decided 2026-10-23)
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
-into eleven cases and none of them needs textual substitution, so Kpp has no preprocessor. The
+into eleven cases and none of them needs textual substitution, so kpp has no preprocessor. The
 replacements, in the order of how much code they remove:
 1. Tests and `check` in the compiler: `test "name" { ... }` declarations the compiler collects
    and the standard runner selects; `check(expr)` reports the text, the location and the operand
@@ -321,7 +321,7 @@ Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `va
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
 compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++
 `enum class` without the inner block keeps the C++ rules. Done 2026-10-25: `fromStr(const char*
-text)` returns `Optional<E>`; the compiler declares it on every Kpp enum and lowers it to the
+text)` returns `Optional<E>`; the compiler declares it on every kpp enum and lowers it to the
 library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
 
@@ -342,9 +342,9 @@ Alternatives are listed by `alternatives(Property)` for reflection. `InputAction
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
 Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (destroys the alternative held, sets
 the tag, constructs the value), `p[Integer]` (a release_assert on another tag), `p == Integer`,
-`switch (p)` (exhaustive, as for a Kpp enum), copying, assignment and destruction following the
+`switch (p)` (exhaustive, as for a kpp enum), copying, assignment and destruction following the
 tag. Decided on the way: a default-constructed union holds its first alternative,
-default-constructed; the tag type is the nested Kpp enum `Property::Tag` (so `tag.str()` and
+default-constructed; the tag type is the nested kpp enum `Property::Tag` (so `tag.str()` and
 `Property::Tag::count` exist), and the alternatives' names are in the union's scope, as unscoped
 enumerators. The parser desugars the union to a class with the tag member and an anonymous union
 of the alternatives; the compiler adds the tag-aware operations. Not yet: a generated `str()`.
@@ -407,7 +407,7 @@ sees private members). `check(expr)` records a failure with the expression text,
 and the operand values and continues; `require(expr)` ends the test. Tests are compiled only
 with `kppc --tests`, which generates the runner (`--run-test <name or file>` selects); without
 the switch they cost nothing. Fixtures are ordinary classes constructed in the test.
-Done 2026-10-30 (thread G; the runner's details in "Running and testing Kpp code"): `kppc --test
+Done 2026-10-30 (thread G; the runner's details in "Running and testing kpp code"): `kppc --test
 FILES [-- runner arguments]` builds and runs them, `--tests` builds them (with `--exe`). The
 selection is the runner's `--filter TEXT` (repeatable, `*` matches anything) instead of
 `--run-test`, plus `--list` and `--report FILE`. `check` and `require` are statements inside a
@@ -422,7 +422,7 @@ Spec snippets: kpp/tests_in_compiler, kpp/test_runner, kpp/test_check_values, kp
 kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_build_error.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
-- Kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
+- kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
   unwinding (the Windows personality); the non-throwing path costs nothing. Factorio's 3,198
   `throw` sites convert as they are.
 - `dynamic_cast` and `typeid` work for the whole hierarchy (Factorio's 647 casts): a type
@@ -439,7 +439,7 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   The type descriptor is the slot just before the first function (where MSVC keeps its RTTI
   locator), and the slot before it holds the offset of the subobject whose vtable pointer it is
   within the whole object (0 for the first one). So a COM interface (ID3D11Device) can be declared
-  as a Kpp class with its virtual functions in the header's order, and a C table of functions
+  as a kpp class with its virtual functions in the header's order, and a C table of functions
   called through one (spec interop/c_object_with_vtable). Not MSVC's: a virtual destructor's slot
   is a plain destructor (MSVC's takes a flag; COM interfaces declare none), overloaded virtual
   functions keep declaration order (MSVC groups them; COM has no overloads), and a class argument
@@ -524,7 +524,7 @@ which downstream phases (codegen, template instantiation) can use when the defin
 
 ### 11. Evaluation order: C++17's rules (decided 2026-10-30)
 
-Kpp evaluates operands in the order C++17 sequences them, so that converted code means what it
+kpp evaluates operands in the order C++17 sequences them, so that converted code means what it
 meant:
 
 - An assignment, `=` and every compound one, built-in or a class's or a free operator function,
@@ -540,7 +540,7 @@ meant:
   operator new or operator delete is not supported yet, and declaring one is an error:
   classes/class_operator_new_is_not_supported_yet.)
 - Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
-  of `+`), and so does Kpp: code must not depend on it.
+  of `+`), and so does kpp: code must not depend on it.
 
 An assignment used as an lvalue (`int& r = (a[i++] = v);`) is the place it stored to; its left
 operand is evaluated once. Specs: expressions/assignment_evaluates_right_operand_first,
@@ -556,17 +556,17 @@ language/const_value_incremented, language/volatile_is_not_const,
 classes/non_const_method_on_const_object_is_error.
 
 ### 12. The build description: build.kpp (decided 2026-10-31)
-A project's builds are described in `build.kpp` at its root: Kpp, run by the compile-time
+A project's builds are described in `build.kpp` at its root: kpp, run by the compile-time
 interpreter, so it can compute but only describes (no I/O, no processes, no C). The project's code
 is in `src/`, its own libraries and forks in `libraries/`; registry libraries stay in a shared
 cache, pinned in `build.lock`. One project may build several executables from shared sources, a
 target leaving files out (Factorio's `Main`) rather than having its `main` replaced. With no
 build.kpp, `src/` is one executable with debug and release. Writing `project.use("json")` adds a
 library: the next build finds it (`libraries/`, cache, registry) and records it in build.lock. In
-the project's directory the compiler alone builds it (`kpp`, `kpp --release`). A Kpp library is a
+the project's directory the compiler alone builds it (`kpp`, `kpp --release`). A kpp library is a
 project without an executable: its build.kpp says `project.library(NAME)` with its version,
 license, minimum kpp, source roots and test roots, its sources join the program of whatever uses
-it, and `kpp --test` runs its tests (build.md, "Kpp libraries"). Details, the research behind it
+it, and `kpp --test` runs its tests (build.md, "kpp libraries"). Details, the research behind it
 and what it needs: [build.md](build.md), "The build description".
 
 **Targets and configurations (decided 2026-11-01).** kovarex: "One axis is built targets, libraries
@@ -605,8 +605,8 @@ kovarex, 2026-11-01:
   have one String/Vector". It made none: sizes are u64 (below).
 
 **The rule.**
-- **Kpp's integer and floating types are the built-in names** `u8 u16 u32 u64 i8 i16 i32 i64` and
-  `f32 f64`. They are the standard way to write a number in Kpp. Each is one of C++'s types under
+- **kpp's integer and floating types are the built-in names** `u8 u16 u32 u64 i8 i16 i32 i64` and
+  `f32 f64`. They are the standard way to write a number in kpp. Each is one of C++'s types under
   another name (`u32` is `unsigned int`, `i64` is `long long`, `u8` is `unsigned char`, `f64` is
   `double`), so C interop, layouts and overloads are C++'s: a converted `f(int)` beside
   `f(int32_t)` is one function.
@@ -615,10 +615,10 @@ kovarex, 2026-11-01:
   `ptrdiff_t`, `intptr_t` and `uintptr_t`. They are kept, with C++'s meanings, for the imported C
   headers and `extern "C"` declarations and blocks (a binding's aliases and C struct mirrors go
   there too). Elsewhere they are deprecated: `kppc --c-type-warnings` warns at each one, naming
-  Kpp's type, and is never an error. It is opt-in until the converter and the standard library
+  kpp's type, and is never an error. It is opt-in until the converter and the standard library
   have moved, then on by default; whether it later becomes an error is kovarex's call.
 - **The types are C++'s, distinct** ("Distinct fixed types, deprecate long"). `char`, `signed char`
-  and `unsigned char` are three types, and `int`, `long` and `long long` are three (the Kpp v0
+  and `unsigned char` are three types, and `int`, `long` and `long long` are three (the kpp v0
   section's "Types" has the rules and specs). `long` is as wide as the target's C `long`: 32 bits
   on Windows, 64 on LP64 targets.
 - **Plain `char` (proposed, kovarex to confirm).** It stays as the text character type (a UTF-8
@@ -636,8 +636,8 @@ kovarex, 2026-11-01:
   call compiler-rt (`__divti3`, `__udivti3`, `__modti3`): tens of cycles, as in C. clang accepts
   `__int128` on Windows x64 too, where MSVC has none. Tested here with clang 19 (`clang-cl`):
   division and remainder are right, but the link needs VS's `clang_rt.builtins-x86_64.lib`, which
-  kppc would add to the link line. No Windows C API takes one, so calls between Kpp functions are
-  Kpp's own. On Windows x64 clang passes an i128 argument by pointer and returns it in xmm0, and
+  kppc would add to the link line. No Windows C API takes one, so calls between kpp functions are
+  kpp's own. On Windows x64 clang passes an i128 argument by pointer and returns it in xmm0, and
   LLVM's own library calls followed another convention until recent fixes (LLVM issue 136428).
   So kppc calls compiler-rt only through clang's lowering, never declares such calls itself, and a
   spec covers each operation on every target.
@@ -689,7 +689,7 @@ a one-line switch, removed with the decision).
   iOS since iOS 11, and Google Play has required 64-bit since 2019. The 32-bit ones left:
   - WebAssembly's wasm32. Memory64 shipped in Chrome 133 and Firefox 134 (early 2025); Safari's
     status is unclear, and browsers cap a memory at 16 GB.
-  - Microcontrollers (Cortex-M) and old 32-bit ARM Linux, which Kpp does not target.
+  - Microcontrollers (Cortex-M) and old 32-bit ARM Linux, which kpp does not target.
 - **What 64-bit sizes cost.**
   - Memory: a Vector is {pointer, size, capacity}, 24 bytes with u64 against 16 with u32. Small
     containers inside hot objects (an entity's vectors) cost a third more, and so does cache.
@@ -707,13 +707,13 @@ a one-line switch, removed with the decision).
   - 32-bit signed: C# and Java (`int` lengths).
   - C++ is the pointer-sized unsigned `size_t`, regretted by many (Stroustrup, Sutter, Carruth),
     hence C++20's `std::ssize`.
-- **Unsigned traps, and how Kpp can help.**
+- **Unsigned traps, and how kpp can help.**
   - `for (u32 i = n - 1; i >= 0; --i)` never ends.
   - `size() - 1` of an empty container is the largest value.
   - `a.size() - b.size() < 0` is never true.
   - A signed/unsigned comparison converts the signed side.
 
-  Kpp can warn of each: a comparison that is always true or false on an unsigned (`x >= 0`,
+  kpp can warn of each: a comparison that is always true or false on an unsigned (`x >= 0`,
   `x < 0`), an unsigned subtraction compared against 0, and a mixed comparison (as C++20's
   `std::cmp_less` exists for it). Debug builds could trap a size subtraction that wraps.
 - **What a decision changes.**
@@ -746,12 +746,12 @@ a one-line switch, removed with the decision).
 
 kovarex, 2026-11-01: format strings (`printf`'s `%d`, `format`'s `{}`) are fragile, because a text
 that is not a literal can contain `%` or `{}` ("someone just does printf(someText)"), and C++
-streams are not ideal either. Kpp takes the form most languages chose (Pascal's `writeln`,
+streams are not ideal either. kpp takes the form most languages chose (Pascal's `writeln`,
 Python's and Lua's `print`, Go's `fmt.Print`, Nim's `echo`, Abseil's `StrCat`): the pieces as
 arguments, one after another, with nothing parsed.
 
 - **Calls:** `print("Hello ", name, " you are ", age, " years old");`. `print(someText)` prints the
-  text as it is, always. `println` is `print` with a line end. There is no `printf` in Kpp's
+  text as it is, always. `println` is `print` with a line end. There is no `printf` in kpp's
   standard library (kovarex, 2026-11-01); C's `printf` exists only as the imported C function that
   converted C code calls.
 - **`Text`, the parameter type** (kovarex chose the name): a function that takes text from its
@@ -805,7 +805,7 @@ arguments, one after another, with nothing parsed.
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
   later localisation library with its own tools (kovarex). `format("{}", ...)` stays only with a
   compile-time literal format; a non-literal format is a compile error.
-- **Converted code is Kpp too** (kovarex, 2026-11-01: "converting code to kpp is getting kpp code"):
+- **Converted code is kpp too** (kovarex, 2026-11-01: "converting code to kpp is getting kpp code"):
   the converter rewrites every printf-family call, in the game (`ssprintf`, `printf`) and in
   converted C libraries, into `print`/`println`/`toString`/`<<` with the formatting objects for
   the specifiers; where C++ read a value narrower than its type (`%u` of a 64-bit value) it writes
@@ -921,7 +921,7 @@ As converted (thread C, 2026-11-02; the C libraries' harnesses byte-identical):
 - C++ (the game): a source file's `static` functions and variables at the global namespace's scope
   and its anonymous namespaces at that scope, unwrapped, their declarations each `private` (Atlas.cpp's
   helpers, AppManager.cpp's ConfirmationBoxConnectToServer): 93 declarations, the 7 anonymous
-  namespaces. Not in a named namespace (private is no Kpp there) nor in a header (other files
+  namespaces. Not in a named namespace (private is no kpp there) nor in a header (other files
   include it; a header's `static` goes, as before).
 - Not yet: declarations the converter's parse does not read (zstd_compress.c's
   ZSTD_encodeSequences family, after a parse error at `FSE_CTable const*`), which keep their
@@ -1061,7 +1061,7 @@ As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `k
 ### 17. A self-contained release (decided 2026-11-02)
 
 kovarex, 2026-11-02, after the first installer asked for Visual Studio's clang: "I definetly want
-self contained package". A Kpp release compiles and links a program on a Windows machine with
+self contained package". A kpp release compiles and links a program on a Windows machine with
 nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
 - The release carries its own back end: LLVM's clang and lld (Apache-2.0 WITH LLVM-exception, the
   same licence as kpp), and the C headers, import libraries and C runtime a program links against.
@@ -1220,7 +1220,7 @@ extended to the library.
 
 ### Compared with C++ namespaces and Java packages
 
-| | C++ nested namespaces | Java packages | Kpp code packages |
+| | C++ nested namespaces | Java packages | kpp code packages |
 |---|---|---|---|
 | Part of a name | yes, `std::chrono::seconds` | yes, `java.util.List` | no, only `Vector` |
 | Needs context to use a short name | `using namespace` / `using` | `import` per file | never |
@@ -1230,7 +1230,7 @@ extended to the library.
 | A snippet means the same in any file | no (depends on usings and the enclosing namespace) | no (depends on imports) | yes |
 
 C++ namespaces and Java packages solve name clashes by making names longer and then let each
-file shorten them again, so the meaning of a short name depends on the file it is in. Kpp
+file shorten them again, so the meaning of a short name depends on the file it is in. kpp
 packages keep the hierarchy those systems give for browsing and drop the part that makes names
 contextual; clashes are prevented by the compiler refusing them instead.
 
@@ -1268,7 +1268,7 @@ what do two keywords buy when the only difference is that a struct starts public
 `struct` as a hint to the reader that a type is small, mostly data, and `class` for a real object.
 
 **Today** the two differ only as in C++: a class's members and bases start private, a struct's
-public. Kpp records access but checks it nowhere (its one use is class argument deduction's
+public. kpp records access but checks it nowhere (its one use is class argument deduction's
 aggregate test), so today the keywords mean the same thing. The library is written with
 `struct` because all its members were public anyway and `public:` would have been noise. Nobody
 decided that.
@@ -1338,7 +1338,7 @@ choose them, codegen does. Run over the converted game with its tests (scratch c
   implementation partners: EnergyStorage's members named by ElectricSubNetwork 97 times,
   LogisticCell's by LogisticNetwork 53, TargeterBase's by Targeters 49, EditorController's by
   GunLogic 47, LinkedContainer's by LinkedInventory 39, IntrusiveList's Hook by its List 32,
-  MinHeap's items by the heap 24. The converter removes every friend declaration today ("Kpp has
+  MinHeap's items by the heap 24. The converter removes every friend declaration today ("kpp has
   no friends"), so the converted program has 1,808 uses that `class` access checks would reject:
   - 1,802 that a removed friend declaration allows: 1,765 through friend classes and 7 friend
     functions in the game, 23 in the tests, which reach the privates of what they test only
@@ -1351,7 +1351,7 @@ choose them, codegen does. Run over the converted game with its tests (scratch c
   resolves it right), 7 protected corner cases.
 - *What option 3 would make the converter rewrite:* the 31 structs (game and tests) as classes
   with `public:` first; the library's 4 structs with virtual functions; and the friends. With
-  `friend` in Kpp (friend classes; friend functions are used twice) the converter keeps the 438
+  `friend` in kpp (friend classes; friend functions are used twice) the converter keeps the 438
   declarations as written and the program checks clean but for the 2 operators, which become
   members. Without it, each of the 259 relationships becomes something else (public members, an
   accessor, the partner nested in the class), in 177 classes, by hand.
@@ -1485,7 +1485,7 @@ have loops. The library's gcd and lcm had to be rewritten as single recursive re
 **Proposal.** One interpreter, used by every place that needs a constant; "compile-time
 computation is ordinary code run by an interpreter" (section 3) made true.
 
-*What it evaluates.* Ordinary Kpp, on the typed tree (an instantiation's own typed copy, so
+*What it evaluates.* Ordinary kpp, on the typed tree (an instantiation's own typed copy, so
 templates need nothing special):
 - Values: integers, enumerations, bool and char of every width (wrapping as their types do),
   float and double (IEEE, as the target computes them), nullptr, a function or member pointer (to
@@ -1501,7 +1501,7 @@ templates need nothing special):
 - Statements: local declarations, assignment and compound assignment, `++`/`--`, `if`/`else`,
   `switch`, `for`, `while`, `do`, range-for over arrays and over objects with begin/end, `break`,
   `continue`, `return`, `if constexpr`, `for constexpr`, `static_assert`.
-- Not evaluated: what has no Kpp body (C functions, intrinsics, the C library's math), `new` and
+- Not evaluated: what has no kpp body (C functions, intrinsics, the C library's math), `new` and
   `delete`, inline assembly, reading a global that is not a constant, exceptions. The library's
   own constexpr code (Limits, Array, StringView, Span) is ordinary code under these rules, with no
   case in the compiler.
@@ -1516,7 +1516,7 @@ error names the constant and the limit.
 *Errors.* A constant that a context needs (static_assert, a template argument, an array bound, an
 enumerator's value, `if constexpr`, a requires clause, a `constexpr` variable) and that does not
 evaluate is a compile error naming the first thing that stopped it: "calls printf, which has no
-Kpp body", "reads the global gameTick, which is not a constant", "divides by zero (Math.kpp:12)",
+kpp body", "reads the global gameTick, which is not a constant", "divides by zero (Math.kpp:12)",
 "indexes element 4 of an array of 4", "reads the local x before it is set", "signed overflow in
 int32 (question 2)". Never a silent pass, a guessed 0 or a fallback to run time. A `const` global
 that is not needed as a constant and does not evaluate keeps today's run-time initialisation.
@@ -1713,7 +1713,7 @@ consteval_converting_constructors, consteval_sv_literals.
 Left: addresses of the run's own locals (no use in the game's constant contexts); the code
 generator's lowering (its thread's); lambdas that capture, and a table of lambdas as function
 pointers (TransportBelt's); the 21 non-allocating tables left are one of a kind (a default
-constructor that is not constant, Debug tools' values); `sqrt` (the library's has no Kpp body
+constructor that is not constant, Debug tools' values); `sqrt` (the library's has no kpp body
 yet); float template arguments. The library's gcd and lcm can go back to loops. A namespace-scope
 `Pair<int, Mode> five(a, m);` with variables as arguments is parsed as a function declaration
 (the parser's guess there; the walk and the code generator see no variable either). The game's 9
@@ -1855,14 +1855,14 @@ executable together:
 
 (The first estimate here was 2 to 4 minutes; the measurement replaced it.) A 10x win therefore
 means a clean debug build in about 6 s and a one-line change, in any header, in under 2 s.
-Where Kpp stands (see [prototype-results.md](prototype-results.md)): the whole front end over
+Where kpp stands (see [prototype-results.md](prototype-results.md)): the whole front end over
 Factorio's own code runs in 0.32 s on 32 threads, and for a generated program with Factorio's
 number of function bodies a debug build is 1.7 s from source to executable and 1.25 s after a
 one-line change, release 3.8 s of LLVM; the converter will show what the real code costs.
 
-## Kpp v0: the first runnable subset (proposed 2026-10-23, not yet reviewed by kovarex)
+## kpp v0: the first runnable subset (proposed 2026-10-23, not yet reviewed by kovarex)
 
-The smallest language that is still Kpp, as the target of the first code generator:
+The smallest language that is still kpp, as the target of the first code generator:
 
 - **Files and scope.** No `#include`; the project is the set of files given to the compiler.
   Every top-level declaration is visible in every file, in any order. Namespaces as in C++.
@@ -1889,7 +1889,7 @@ The smallest language that is still Kpp, as the target of the first code generat
   Ts::operator()...`, the overload-set idiom) is an error where such a class is laid out, until
   something needs it (2026-10-31, templates/pack_of_base_classes_is_not_supported_yet).
 - **The literal 0 is a null pointer constant** (C++'s rule; for kovarex's review, who may prefer
-  Kpp to require `nullptr`): an integer literal 0 (`0`, `0u`, `0L`, ..., and only a literal, not a
+  kpp to require `nullptr`): an integer literal 0 (`0`, `0u`, `0L`, ..., and only a literal, not a
   constant that is 0) converts to any pointer and member pointer type, ranked as a standard
   conversion: `CoInitializeEx(0, COINIT_MULTITHREADED)`, `Entity* e = 0`, `pick(0)` choosing
   `pick(Entity*)` over `pick(const String&)`, while `take(0)` stays `take(int)`. Converted C and C++
@@ -1907,7 +1907,7 @@ The smallest language that is still Kpp, as the target of the first code generat
   expressions/pointer_of_other_type_is_error, expressions/pointer_conversions_without_cast,
   expressions/function_pointer_of_other_type_is_error.
 - **A C-variadic call is never format-checked** (2026-11-01, kovarex, section 14; it replaced
-  "a printf-like call's format matches its arguments", decided 2026-10-31): Kpp code prints through
+  "a printf-like call's format matches its arguments", decided 2026-10-31): kpp code prints through
   `print`/`toString`, the converter rewrites printf-family calls into them, and what stays variadic
   is a call at the C boundary or of a converted library's own variadic interface (trio, zlib's
   gzprintf, stb's writef), passed as written. Specs: language/variadic_with_own_format,
@@ -1939,7 +1939,7 @@ The smallest language that is still Kpp, as the target of the first code generat
      there `(HANDLE)(LONG_PTR)-1` is two casts as well.
   No `typename` or `template` disambiguators (as in the proposal).
 - **Types.** `bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64`, `f32/f64`, `char` (UTF-8 code unit),
-  pointers, references, arrays, `const`. The fixed-size names are what Kpp code writes; each is
+  pointers, references, arrays, `const`. The fixed-size names are what kpp code writes; each is
   one of C++'s types under another name: `i8` is `signed char` (`int8_t`), `u8` `unsigned char`
   (`uint8_t`), `i16`/`u16` `short`, `i32`/`u32` `int` (`int32_t`), `i64`/`u64` `long long`
   (`int64_t`), `f32` `float`, `f64` `double`; `size_t`/`usize` is `u64` (the integer names since
@@ -1961,7 +1961,7 @@ The smallest language that is still Kpp, as the target of the first code generat
     that cover it (`toString(long)`, as `std::to_string` has). Its size follows the target's C ABI:
     32 bits on Windows, 64 on LP64 targets (`TypeTable::longBits`, set from the target).
     Elsewhere it is deprecated, as all of C's integer names are (section 13: `kppc
-    --c-type-warnings`). Kpp code writes `i32`/`i64` and `f64` for `long double`.
+    --c-type-warnings`). kpp code writes `i32`/`i64` and `f64` for `long double`.
 
   Specs language/integer_types_are_distinct (the overloads, identities, literals and conversions
   of every C++ integer type, against clang's and MSVC's output for the same program) and
@@ -1982,18 +1982,18 @@ The smallest language that is still Kpp, as the target of the first code generat
 - **Statements and expressions.** The C++ set, with the proposal's rules: required `this->`,
   explicit by default, no implicit fallthrough, exhaustive `switch`, `?->` and `?:`.
 - **C interop.** `extern "C"` declarations of functions and structs; those are the only
-  externally linked names (nothing is mangled across Kpp code, since everything is one program).
+  externally linked names (nothing is mangled across kpp code, since everything is one program).
 - **Not in v0:** exceptions, RTTI, virtual inheritance, `both_const`/`class_const`, typed
   unions (plain C unions exist, for interop), `accumulate`, coroutines.
 
 **Backend plan.** The compiler writes textual LLVM IR for the whole program and runs the
 bundled clang on it (`clang -O2 program.ll`). This needs no LLVM development libraries on the
-machine (only the clang binaries exist here) and keeps every codegen decision in Kpp's own
+machine (only the clang binaries exist here) and keeps every codegen decision in kpp's own
 code; moving to the LLVM C++ API in-process is a later optimisation. Names in IR are the
-qualified Kpp names with parameter types, quoted, so there is no mangling scheme to design.
+qualified kpp names with parameter types, quoted, so there is no mangling scheme to design.
 
-## Running and testing Kpp code (proposed 2026-10-30, thread G; the open choices are kovarex's)
-The goal: write some Kpp and see it run, and write tests for Kpp code, with no ceremony. The test
+## Running and testing kpp code (proposed 2026-10-30, thread G; the open choices are kovarex's)
+The goal: write some kpp and see it run, and write tests for kpp code, with no ceremony. The test
 syntax is already decided (8.6: `test "name" { }`, `check`, `require`); what follows is the rest
 of the mechanism, what is done, and the choices left to kovarex (marked **Q**).
 
@@ -2039,10 +2039,10 @@ default). When the build reports an error, nothing runs. A small program or test
 - **The spec suite** (`compiler/tests/spec.cmd`, `run_spec.py`): one program per construct,
   compiled, run, stdout compared with `.expected`; headers `// spec:`, `// pending:`, `// error:`,
   and now `// run:` / `// exit:` (built and run in one step through `kppc --run`). It checks
-  output, not assertions: it is the compiler's specification, not a test framework for Kpp code.
+  output, not assertions: it is the compiler's specification, not a test framework for kpp code.
 - **`compiler/tests/run_tests.cmd`**: the same shape for `tests/run/*.kpp`, plus the access,
   determinism and incremental checks.
-- **The converted game's unit tests** (`programs/factorio/tests.cmd`): UnitTest++ converted to Kpp
+- **The converted game's unit tests** (`programs/factorio/tests.cmd`): UnitTest++ converted to kpp
   with the game, built into one `factorio-test.exe` with `--keep-going --stub-missing`, 9006
   tests passing (2026-10-29); `suites.py` runs one suite per process because a stub or a failed
   assertion ends the process.
@@ -2130,9 +2130,9 @@ Spec snippet: `kpp/run_command`.
   the game's code, compared with the C++ build's run (9006 passing). **Q4**: should the converter
   (thread C) later turn `SUITE`/`TEST`/`CHECK`/`CHECK_EQUAL` into `test` and `check`, so the game's
   tests run under the native runner (a suite becomes a filter)? Proposed: not now; the native
-  runner first serves new Kpp code and the standard library.
+  runner first serves new kpp code and the standard library.
 - **Spec snippets stay** output comparisons: they specify the compiler (the pass/pending table);
-  tests check Kpp code. Each test construct (declaration, check values, require, the failure
+  tests check kpp code. Each test construct (declaration, check values, require, the failure
   format, filtering) gets its spec snippet first, as every feature does.
 
 ### (c) Visual Studio (thread E) and the IDE (thread F)
@@ -2173,7 +2173,7 @@ human output.
 3. Codegen (B's file, a dozen lines): a failing check calls `kpp_check_failed(file, line, column,
    text, kind)` and goes on. For a require, the call may throw (an invoke), so the test's objects
    are destroyed.
-4. The runner is Kpp source the driver adds as one more file, `<tests>.kpp`
+4. The runner is kpp source the driver adds as one more file, `<tests>.kpp`
    (`compiler/src/tests.cpp`), as it adds `<config>`: its `main`, `kpp_check_failed`, a
    `kpp_assert_failed` that fails the running test, and the comparison templates. The standard
    library is untouched.
@@ -2193,7 +2193,7 @@ the standard library's modules once.
 ## Targets and hosts (decided 2026-10-31; the design proposed by thread B, Q1 to Q6 kovarex's)
 
 **Decision (kovarex, 2026-10-31):** "kpp will have to work obviously in all reasonable platforms, so
-windows/mac/linux is minimum." kpp.net, the website and library registry written in Kpp, is hosted
+windows/mac/linux is minimum." kpp.net, the website and library registry written in kpp, is hosted
 on NearlyFreeSpeech.NET, which runs FreeBSD. That decision has two axes:
 
 - **Targets:** what kppc emits and links for. The minimum is Windows x64 (the default), Linux x86-64
@@ -2213,7 +2213,7 @@ byte for byte unless a difference is shown to be a fix.
 | Target | Triple | Object, linker | C calling convention | Exceptions | Tested on |
 |---|---|---|---|---|---|
 | Windows x64 (default) | `x86_64-pc-windows-msvc` | COFF, lld-link | MS x64 | SEH (today's) | this machine, CI |
-| Linux x86-64 | `x86_64-unknown-linux-gnu` | ELF, ld.lld | SysV AMD64 | Itanium tables, Kpp's personality | WSL here, CI ubuntu |
+| Linux x86-64 | `x86_64-unknown-linux-gnu` | ELF, ld.lld | SysV AMD64 | Itanium tables, kpp's personality | WSL here, CI ubuntu |
 | FreeBSD x86-64 | `x86_64-unknown-freebsd14` | ELF, ld.lld | SysV AMD64 | the same | NFS, or a FreeBSD VM (Q3) |
 | Linux arm64 | `aarch64-unknown-linux-gnu` | ELF, ld.lld | AAPCS64 | the same | CI ubuntu arm64, qemu-user in WSL |
 | macOS arm64 | `arm64-apple-macosx11.0.0` | Mach-O, ld64 (or ld64.lld) | Apple's AAPCS64 | the same, compact unwind | CI macOS arm64 (Q5) |
@@ -2282,13 +2282,13 @@ byte for byte unless a difference is shown to be a fix.
 
 | | Windows (today) | ELF, Mach-O, AArch64 | Proposal |
 |---|---|---|---|
-| Calls between Kpp functions | Kpp's convention: a class through a pointer to a copy, the result slot after `this` | the same | Unchanged everywhere. Scalars get the platform's convention from LLVM's `ccc` and the triple, with no codegen change. A class result keeps its slot after `this`. On AArch64, LLVM's `sret` attribute puts the slot in x8 for C functions only. |
-| `extern "C"` calls with a struct by value | the pointer to a copy (wrong at 8 bytes or less) | SysV: classified into INTEGER/SSE registers up to 16 bytes, larger on the stack (`byval`). AAPCS64: up to 16 bytes in x0-x7, a homogeneous float aggregate of up to 4 members in v0-v3, larger through a pointer to a copy, a result in memory through x8. | A C ABI lowering per target in codegen (MS x64, SysV, AAPCS64), for calls to C and for Kpp functions C calls back. It fixes Windows' small-struct gap too. Specs for each size class on every target. |
-| Varargs | LLVM lowers the calls; `va_list` is `char*` | SysV: `__va_list_tag[1]`. Linux AArch64: a 32-byte struct. Apple arm64: every variadic argument on the stack, `va_list` is `char*`. | LLVM lowers the calls for each triple. `va_list` comes from the target's headers through the C import. Kpp defines no C variadic functions. |
+| Calls between kpp functions | kpp's convention: a class through a pointer to a copy, the result slot after `this` | the same | Unchanged everywhere. Scalars get the platform's convention from LLVM's `ccc` and the triple, with no codegen change. A class result keeps its slot after `this`. On AArch64, LLVM's `sret` attribute puts the slot in x8 for C functions only. |
+| `extern "C"` calls with a struct by value | the pointer to a copy (wrong at 8 bytes or less) | SysV: classified into INTEGER/SSE registers up to 16 bytes, larger on the stack (`byval`). AAPCS64: up to 16 bytes in x0-x7, a homogeneous float aggregate of up to 4 members in v0-v3, larger through a pointer to a copy, a result in memory through x8. | A C ABI lowering per target in codegen (MS x64, SysV, AAPCS64), for calls to C and for kpp functions C calls back. It fixes Windows' small-struct gap too. Specs for each size class on every target. |
+| Varargs | LLVM lowers the calls; `va_list` is `char*` | SysV: `__va_list_tag[1]`. Linux AArch64: a 32-byte struct. Apple arm64: every variadic argument on the stack, `va_list` is `char*`. | LLVM lowers the calls for each triple. `va_list` comes from the target's headers through the C import. kpp defines no C variadic functions. |
 | `long` | 32 bits | 64 bits in C (LP64) | Q1 below (decided): C's size on each target. |
 | `wchar_t` | 16 bits, UTF-16 | 32 bits | Q2 below. |
-| plain `char` | signed | unsigned on Linux AArch64, signed on Apple arm64 and x86-64 | Kpp's `char` stays signed on every target (Kpp's meaning does not change with the target). An imported C `char` is the same type; a C function that relies on unsigned `char` sees the same bits. |
-| `long double` | = double | x87 80-bit on x86-64 SysV, 128-bit on Linux AArch64, = double on Apple arm64 | Kpp's stays double. An imported C function that takes or returns `long double` is an error where the C type differs. |
+| plain `char` | signed | unsigned on Linux AArch64, signed on Apple arm64 and x86-64 | kpp's `char` stays signed on every target (kpp's meaning does not change with the target). An imported C `char` is the same type; a C function that relies on unsigned `char` sees the same bits. |
+| `long double` | = double | x87 80-bit on x86-64 SysV, 128-bit on Linux AArch64, = double on Apple arm64 | kpp's stays double. An imported C function that takes or returns `long double` is an error where the C type differs. |
 | Bit fields | MSVC's rules | SysV's (Itanium): a unit straddles less, and types of different sizes may share one | The target's C rules for every class (a struct shared with C must match). Windows is unchanged. Specs on each target. |
 | Memory ordering | x86's: stores are seen in order | AArch64 is weakly ordered | The library's atomics are LLVM atomics with explicit orderings, so they hold. Lock-free code that relies on x86's ordering through plain loads and stores is a bug on AArch64. The library is audited for it in the AArch64 stage. |
 | Symbol names | quoted IR names (`@"twice(int32)"`), C names unmangled | the same names are valid in ELF and Mach-O; Mach-O prefixes `_`, which LLVM adds through the data layout's `m:o` | Unchanged in the IR. No `dllimport` off Windows. |
@@ -2300,24 +2300,24 @@ byte for byte unless a difference is shown to be a fix.
 | Signing | none needed | macOS arm64 runs only signed code | ld64 and ld64.lld sign ad hoc on arm64 by default. A program shipped to others needs a Developer ID signature and notarization (packaging, thread E). |
 | The runtime's stderr and errno | `__acrt_iob_func(2)`, `_errno()` | `write(2, ...)`; `__errno_location()` on glibc, `__error()` on FreeBSD and macOS | The runtime's few calls go through the platform layer (3). |
 
-- **Q1, `long`: decided** (kovarex, 2026-11-01, "Distinct fixed types, deprecate long"; the Kpp v0
+- **Q1, `long`: decided** (kovarex, 2026-11-01, "Distinct fixed types, deprecate long"; the kpp v0
   section's "Types" has the rule): `long` is a distinct type with C++'s overload behaviour, for C
-  interop only, as wide as the target's C `long` (option (b) for its size), and deprecated in Kpp
+  interop only, as wide as the target's C `long` (option (b) for its size), and deprecated in kpp
   code, which writes the fixed-size names. The options as they were put:
 
   On LP64 targets (every target but Windows), C's `long` is 64 bits:
-  - **(a) Kpp's `long` stays 32 bits everywhere.** C's `long` follows the target: the C import
+  - **(a) kpp's `long` stays 32 bits everywhere.** C's `long` follows the target: the C import
     types an imported header's `long` as 64 bits on LP64, and hand-written bindings say `CLong` or
-    `CULong` (stdlib/clib: int32 on Windows, int64 elsewhere). A Kpp program means the same on
-    every target, and the library's 93 lines and the game's 232 stay right. The cost is that Kpp's
+    `CULong` (stdlib/clib: int32 on Windows, int64 elsewhere). A kpp program means the same on
+    every target, and the library's 93 lines and the game's 232 stay right. The cost is that kpp's
     `long` differs from C's off Windows, so code ported from POSIX C must use `CLong` for C's.
   - **(b) `long` follows the target's C.** This matches C and C++. Code that meant 32 bits (the
     library's atomics, MSVC code like the game's) changes meaning off Windows, so the converter
     would map MSVC's `long` to `int32_t`, and portable code must not say `long`.
-  - **(c) No `long` in Kpp.** It is an error, leaving int, int64_t and the rest, plus `CLong` for C.
+  - **(c) No `long` in kpp.** It is an error, leaving int, int64_t and the rest, plus `CLong` for C.
     The converter maps it, and so must the 93 library lines.
 
-  **Recommended: (a).** Kpp's types mean one thing everywhere, and only the C boundary follows the
+  **Recommended: (a).** kpp's types mean one thing everywhere, and only the C boundary follows the
   platform, which is where the difference lives. It is needed before the first target's C import:
   `ssize_t`, `off_t` and `time_t` are `long` in glibc's, FreeBSD's and Apple's headers.
 - **Q2, `wchar_t`: decided** (kovarex, 2026-11-01): (a), the target's C size; UTF-8 String is the portable text.
@@ -2325,7 +2325,7 @@ byte for byte unless a difference is shown to be a fix.
     The library's portable text is UTF-8 (String). The UTF-16 APIs (WString, conversions) exist on
     Windows only, and a path's native form is per platform, as in std::filesystem: UTF-16 on
     Windows, UTF-8 bytes elsewhere.
-  - **(b)** `wchar_t` is 16 bits everywhere. C's `wchar_t` then differs off Windows, and Kpp code
+  - **(b)** `wchar_t` is 16 bits everywhere. C's `wchar_t` then differs off Windows, and kpp code
     that passes one to a C function there is wrong.
 
   The game's 394 lines are Windows code.
@@ -2346,8 +2346,8 @@ The semantics of section 9 hold on every target:
   `.eh_frame` on ELF, and compact unwind with `__eh_frame` on Mach-O; LLVM writes both. A call
   that may throw is an `invoke` whose unwind edge goes to a `landingpad`. LLVM writes the LSDA from
   the landing pads' clauses: the call-site table, the action table, and a type table of pointers to
-  Kpp's type descriptors.
-  - **The personality** is Kpp's own, `__kpp_personality_v0`, a runtime function codegen emits as
+  kpp's type descriptors.
+  - **The personality** is kpp's own, `__kpp_personality_v0`, a runtime function codegen emits as
     IR text (as it emits `kpp_throw` today). It works over the platform unwinder's `_Unwind_*`
     API: libgcc_s on Linux and in FreeBSD's base system, and libunwind in macOS's libSystem.
     - Phase 1 walks the LSDA. A catch clause matches when `kpp_eh_offset` (the base search SEH's
@@ -2356,7 +2356,7 @@ The semantics of section 9 hold on every target:
   - **`throw`** allocates `{_Unwind_Exception header; object; descriptor; destructor}` and calls
     `_Unwind_RaiseException`.
   - **Not `__gxx_personality_v0`:** that would need C++ `std::type_info` objects and a C++ runtime's
-    `__cxa_*` (libcxxrt, libsupc++, libc++abi). Kpp's personality keeps Kpp's descriptors and links
+    `__cxa_*` (libcxxrt, libsupc++, libc++abi). kpp's personality keeps kpp's descriptors and links
     only the unwinder. On x86-64 and AArch64 the personality is the same code.
 - **The lowering is split along one interface.** codegen's EH has three parts:
   1. Which calls become invokes, and what each unwinds through (the destruction state and the
@@ -2378,7 +2378,7 @@ The semantics of section 9 hold on every target:
 
 ### 3. The standard library's platform layer (with thread C)
 
-- **The portable files keep the Kpp API.** Thread, Time, Filesystem, Error, the streams, and the
+- **The portable files keep the kpp API.** Thread, Time, Filesystem, Error, the streams, and the
   new sockets call a `platform::` namespace of thin functions:
   - threads (create, join, id, sleep, yield, the processor count);
   - a mutex and a condition variable as storage of the target's size;
@@ -2550,7 +2550,7 @@ All of this goes through the coordinator.
   - a C header import.
 - **The standard library's first platform split:**
   - `clib/CStdioWindows.kpp`, `CStdioLinux.kpp` and `CStdioFreeBSD.kpp` define stdin, stdout and
-    stderr. Each is chosen by the file-level `requires config::platform == ...` Kpp already had,
+    stderr. Each is chosen by the file-level `requires config::platform == ...` kpp already had,
     which may serve the platform layer instead of directories.
   - Library functions that call Win32 or the UCRT (`_errno` in `stod`, Filesystem, Thread) link
     only while unused: a program for Linux that calls one fails to link, by name.
@@ -2601,7 +2601,7 @@ All of this goes through the coordinator.
     stack (`byval`), as clang does. Larger, packed or unaligned ones go on the stack, and their
     results through the slot.
 
-  The `declare` lines carry the same types. A Kpp *definition* of a C-callable function that takes
+  The `declare` lines carry the same types. A kpp *definition* of a C-callable function that takes
   or returns a struct where C passes it differently is an error until it is needed.
 - **Spec:** interop/c_structs_by_value, against clang's C for every size class both ways,
   including registers running out. It passes on Windows and on Linux.
@@ -2618,7 +2618,7 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   reads glibc's own `stdio.h`, `stdlib.h` and `string.h`. They give 20 parse errors (GNU
   extensions), ignored as Windows' are.
   - **`long`:** on an LP64 target each C `long` became `long long` in the imported text (`widenCLong`,
-    gone with the next section: Kpp's `long` is C's now).
+    gone with the next section: kpp's `long` is C's now).
   - **`va_list`:** clang's `__builtin_va_list` becomes SysV's `__va_list_tag[1]`, 24 bytes of
     register save area (`vaListForSysV`). Codegen's `va_start`, `va_copy` and `va_end` take its
     address, or the pointer a parameter holds, and `va_arg` is LLVM's `va_arg` there.
@@ -2653,7 +2653,7 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   a signed 32-bit int (UTF-32) off Windows, as glibc, FreeBSD and macOS have it; unsigned 16 bits on
   Windows. `GlobalScope::setLP64` sets both, and printf's `%ld`, for the target.
 - **What follows from it:**
-  - An imported header's `long` is Kpp's `long` again (no `widenCLong`).
+  - An imported header's `long` is kpp's `long` again (no `widenCLong`).
   - The library's C declarations say `long` again (`fseek`, `ftell`, `strtol`, `strtoul`,
     `lround`).
   - `CLong` and `CULong` are gone.
@@ -2671,7 +2671,7 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   `pointer_bitwise_operator_is_an_error`'s expected error no longer names wchar_t's type. The suite
   on Linux: 855 pass, 3 pending, 23 skipped, and 37 failing, every one stage 3's (20 throws) or
   stage 4's (17 Win32 links).
-- **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: Kpp
+- **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: kpp
   types a string literal as a pointer.
 ### Questions for kovarex
 
@@ -2690,7 +2690,7 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
   or a template to parse `a * b;` or `f < a > (b)`. In the index-then-resolve model the parser
-  runs before any name is known, so Kpp should make these cases unambiguous by grammar
+  runs before any name is known, so kpp should make these cases unambiguous by grammar
   (candidates: a different template-argument bracket or a required disambiguation, no
   most-vexing-parse, declaration statements recognisable from their first tokens). The prototype
   parser uses heuristics that work on 99.2% of Factorio files; the resolver can flag misparses
@@ -2703,12 +2703,12 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   The proposal in "Code packages" above answers it with distinct names checked by the compiler.
 
 - **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
-  LSP adapter first, then an editor written in Kpp with a DbgEng debugger and hot reload. Its eight
+  LSP adapter first, then an editor written in kpp with a DbgEng debugger and hot reload. Its eight
   decisions are listed at the end of ide.md. **Decided 2026-10-31 (kovarex): integrate with the
   Language Server Protocol**, so that IntelliSense works in most editors: `kppc --lsp` (ide.md, "The
   language server as built"). Whether to build an own editor on top stays open.
 
-- **Running and testing Kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
+- **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
@@ -2743,13 +2743,13 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
    6. Overload resolution with conversion ranking (done 2026-10-23; the library's `append`
       overloads depend on it). Later: members through templated bases, constexpr evaluation,
       per-instantiation diagnostics and expression types.
-3. Compiler that runs real Kpp programs via LLVM (started 2026-10-23: the v0 subset compiles
+3. Compiler that runs real kpp programs via LLVM (started 2026-10-23: the v0 subset compiles
    through textual IR and clang, see prototype-results.md "Stage 4"; constructors, destructors,
    copies, operators, templates and the standard library seed `stdlib/core` with `String` and
    `Vector<T>`, virtual functions, lambdas, `HashMap`, `Optional` and `toString`/`println`
    and variadic templates with a type-safe `format` followed the same day, then the C header
    importer: `extern "C" import` of the UCRT and `windows.h`, see "C header import" in
-   prototype-results.md; the first real program, `programs/kpplex`, the Kpp lexer in Kpp, runs
+   prototype-results.md; the first real program, `programs/kpplex`, the kpp lexer in kpp, runs
    as fast as its C++ transliteration on the Factorio corpus, 2026-10-24). Real programs live
    under `programs/<name>/`.
 4. Macro replacements (section 7), the small ones first because real programs and the converter
@@ -2765,10 +2765,10 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
    writing). Next: write the IR in parallel too; cross-module inlining; in-process LLVM instead
    of clang.exe when the textual round trip shows up in the numbers.
 6. Persistent compiler + IDE integration: the one-line-change rebuild (16 s in Factorio today).
-7. Converter from Factorio-style C++ to Kpp (needs 4).
+7. Converter from Factorio-style C++ to kpp (needs 4).
 8. Precise const typing (scheduled 2026-10-29 for after the converted game's first run reaches
    the main menu): a const value is never assigned, as in C++ (spec language/const_value_assigned,
-   pending; Kpp accepts and stores `r = 5` through a `const int&` today). A checker error at every
+   pending; kpp accepts and stores `r = 5` through a `const int&` today). A checker error at every
    built-in assignment to a const value flagged about 60 valid lines of the game and the library,
    which is how imprecise the walk's constness is: Array<const char, N>::fill (instantiated,
    where C++ instantiates only the members used), DrawCommandBatch's and SpriteDrawOrder's vertex

@@ -1,4 +1,4 @@
-# A Kpp IDE (proposal, 2026-10-30; decision 1 taken 2026-10-31)
+# A kpp IDE (proposal, 2026-10-30; decision 1 taken 2026-10-31)
 
 **Decided (kovarex, 2026-10-31):** "Integrate with the Language Server Protocol
 (https://microsoft.github.io/language-server-protocol/) which will allow intellisense to work in
@@ -6,17 +6,17 @@ most editors." That is decision 1 below (the query layer and the LSP adapter), b
 see "The language server as built" at the end. Decisions 2 to 8 (an own editor, its language, the
 debugger, hot reload, ownership beyond the language server) stay open.
 
-kovarex asked whether Kpp should have its own IDE: compatible with the compiler features still to
-come, made for Kpp, without bloat. This is the design proposal; no code. It ends with the decisions
+kovarex asked whether kpp should have its own IDE: compatible with the compiler features still to
+come, made for kpp, without bloat. This is the design proposal; no code. It ends with the decisions
 it needs (last section).
 
-The short answer: the part that makes a Kpp IDE better than anything else is not the editor, it is
+The short answer: the part that makes a kpp IDE better than anything else is not the editor, it is
 the **query layer in the compile server**: the server already holds the whole resolved program
 between builds, so navigation, references, hover types and errors for the whole of Factorio are
 lookups, not analyses. That layer is worth building now whatever editor sits on it, and an LSP
 adapter on it gives VS Code and Visual Studio the same navigation for one more week of work. The
 own editor pays off later, and only through what VS cannot do with our output: edit-to-running-game
-in one keystroke, a debugger that shows Kpp values from the compiler's own types, and hot reload of
+in one keystroke, a debugger that shows kpp values from the compiler's own types, and hot reload of
 changed function bodies into the running game. Until those exist it is a nicer editor with the same
 queries as VS + LSP.
 
@@ -68,7 +68,7 @@ falls back to it on a keystroke.
 ## What the IDE must do better than VS + a language server
 
 1. **Edit to running game.** The C++ loop is 16 s for an ordinary one-line edit, 55 s for one in a
-   header the PCH includes (factorio-build-baseline.md), then the game's start. The Kpp server's
+   header the PCH includes (factorio-build-baseline.md), then the game's start. The kpp server's
    pieces add up to about **1.2 to 1.8 s** for a body edit to a linked game (resolve 0.1, codegen
    0.1 to 0.26, one module 0.55 to 0.8, incremental link 0.45 to 0.6). That sum is a projection:
    the server and the incremental link have been measured separately, not yet together in one
@@ -85,7 +85,7 @@ falls back to it on a keystroke.
    today. The IDE asks for a check, not a build: resolve only, against the unsaved buffer, results
    per file. See "Errors as you type" below for what the server must change for this to hold while
    the code is half typed.
-4. **Debugging with Kpp's types.** The compiler knows every class's layout (codegen computes it), so
+4. **Debugging with kpp's types.** The compiler knows every class's layout (codegen computes it), so
    the debugger can show `String`, `Vector<T>`, `HashMap`, typed unions and enums as values without
    hand-written visualisers, and can evaluate constant expressions with the compiler's own
    interpreter (design.md, "Compile-time evaluation: one interpreter").
@@ -116,7 +116,7 @@ was considered and rejected:
   an edit's incremental build serves both.
 - **Crashes stay apart.** A compiler crash (the server logs its stack and the next client restarts
   it) must not take the unsaved text with it.
-- **The editor can be written in Kpp** (below) while kppc stays C++: the pipe is the boundary.
+- **The editor can be written in kpp** (below) while kppc stays C++: the pipe is the boundary.
 - **Cost:** 15 to 30 us a round trip, against a 16 ms frame. Large answers (a type's 17,796
   references) are streamed in pages.
 
@@ -196,10 +196,10 @@ is 0.07 to 0.13 s today, which includes per-build overhead a check does not have
 Yes, as an adapter: `kppc --lsp` speaks JSON-RPC on stdio to VS Code or Visual Studio and translates
 to the server's requests (definition, references, hover, document and workspace symbols,
 diagnostics, rename, semantic tokens all have LSP forms). It keeps VS and VS Code working for anyone
-who does not use the Kpp IDE, it is how thread E's VS integration gets navigation (VS 2022 hosts
+who does not use the kpp IDE, it is how thread E's VS integration gets navigation (VS 2022 hosts
 language servers through an extension), and it costs about a week once the query layer exists.
 
-The Kpp IDE itself does not go through LSP: LSP is file-and-position oriented and has no form for
+The kpp IDE itself does not go through LSP: LSP is file-and-position oriented and has no form for
 the package tree, build-and-run, hot reload, `layout` for the debugger or `dependents`; the IDE uses
 the server's own requests. One query layer, two front doors.
 
@@ -207,9 +207,9 @@ the server's own requests. One query layer, two front doors.
 
 | option | for | against |
 |---|---|---|
-| **Written in Kpp, Win32 and GDI text through the C import** (recommended) | dogfooding: the second real Kpp program after the game, every gap it hits becomes a spec snippet; the C import already takes `windows.h` and imgui's C interface (convert.cmd's smoke tests); no runtime but ours | a compiler gap can block editor work for a day; GDI text (ClearType through `ExtTextOutW`) is enough for monospaced code, but DirectWrite and Direct2D, if ever needed, have C++-only headers: a thin C shim or their vtables declared in Kpp |
+| **Written in kpp, Win32 and GDI text through the C import** (recommended) | dogfooding: the second real kpp program after the game, every gap it hits becomes a spec snippet; the C import already takes `windows.h` and imgui's C interface (convert.cmd's smoke tests); no runtime but ours | a compiler gap can block editor work for a day; GDI text (ClearType through `ExtTextOutW`) is enough for monospaced code, but DirectWrite and Direct2D, if ever needed, have C++-only headers: a thin C shim or their vtables declared in kpp |
 | The same in C++ | no compiler risk | no dogfooding; another C++ codebase beside kppc |
-| Scintilla as the text core | a mature editing control, driven by window messages (`SCI_*`), so usable from Kpp through the C import | a 1 MB third-party component whose model (styled bytes, its own undo) we would work around for semantic colouring and overlays |
+| Scintilla as the text core | a mature editing control, driven by window messages (`SCI_*`), so usable from kpp through the C import | a 1 MB third-party component whose model (styled bytes, its own undo) we would work around for semantic colouring and overlays |
 | An existing IDE framework (Theia, a VS Code fork, Lapce, Zed) | features at once | the bloat kovarex wants to avoid; a second language runtime; their extension model, not ours |
 
 The core is small: a piece table per buffer (undo is its history), line starts, GDI text drawn into
@@ -222,10 +222,10 @@ panels for references, diagnostics, output and the debugger. Windows only, as th
 `--debug-info` (thread B, landing: CodeView in the objects, a PDB from the link) makes the game
 debuggable by any Windows debugger, Visual Studio's included; thread E gets that for free.
 
-For the Kpp IDE: **DbgEng first** (dbgeng.dll, the engine WinDbg runs on, part of Windows): process
+For the kpp IDE: **DbgEng first** (dbgeng.dll, the engine WinDbg runs on, part of Windows): process
 start and attach, breakpoints, stepping, threads, call stacks and source lines from the PDB through
 dbghelp, all through a COM interface whose header declares a C form (the C import must take its
-`DECLARE_INTERFACE` vtables: a spec snippet first). What the Kpp IDE adds is **values from
+`DECLARE_INTERFACE` vtables: a spec snippet first). What the kpp IDE adds is **values from
 the compiler**: the server's `layout` gives every class's fields, a typed union's active member from
 its tag, a `Vector`'s elements from its buffer and size, without natvis files; `evaluate` runs
 constant expressions in the interpreter. A debugger of our own (the Win32 debug API plus our own
@@ -233,7 +233,7 @@ PDB reading) is not proposed: months of work for what DbgEng does, until DbgEng 
 the bottleneck (stepping speed, conditional breakpoints in a hot loop).
 
 A side product for thread E: the server can write a `.natvis` from the same layouts, so the VS
-debugger shows Kpp values too.
+debugger shows kpp values too.
 
 **Hot reload** (phase 4, research): rebuilding a changed body is already exactly the server's fast
 path, and `rebuildLLVM` knows exactly which functions' code changed (inlined callers included,
@@ -248,15 +248,15 @@ running map without restarting and reloading the save.
 ## Compared with thread E's Visual Studio integration
 
 Thread E (build model, docs/build.md, tools/vs/; nothing pushed yet at the time of writing) gives VS
-a Kpp project: build through kppc (through the server), errors in the error list, and with
+a kpp project: build through kppc (through the server), errors in the error list, and with
 `--debug-info` the VS debugger. What it does not give is any understanding of `.kpp` in the
-editor: VS's C++ IntelliSense parses headers and translation units, and Kpp has neither, so it would
+editor: VS's C++ IntelliSense parses headers and translation units, and kpp has neither, so it would
 report every cross-file name as undefined.
 
-| | VS + E's integration | + LSP adapter (phase 1) | Kpp IDE |
+| | VS + E's integration | + LSP adapter (phase 1) | kpp IDE |
 |---|---|---|---|
 | build, errors after a build | yes | yes | yes |
-| debugger | VS's, raw structs (natvis from the server: Kpp values) | same | DbgEng + the server's types and interpreter |
+| debugger | VS's, raw structs (natvis from the server: kpp values) | same | DbgEng + the server's types and interpreter |
 | go to definition, references, symbols, rename | no | yes | yes, plus package tree and `dependents` |
 | errors as you type | no | yes | yes |
 | edit to running game | VS build + start | same | one keystroke, buffer not saved, game started or hot-reloaded |
@@ -265,13 +265,13 @@ report every cross-file name as undefined.
 
 **Where the IDE starts paying off:** phases 0 and 1 serve everyone, VS included, and should be done
 first whatever is decided about the editor. The own editor starts paying off at **phase 3** (the
-debugger with Kpp values, which VS gets only partly through natvis) and clearly at **phase 4** (hot
+debugger with kpp values, which VS gets only partly through natvis) and clearly at **phase 4** (hot
 reload, which nothing else gives). Phase 2 alone is a leaner editor with the same answers as VS +
 LSP; its value is the dogfooding and the foundation for 3 and 4.
 
-One more honest limit: today the game's source of truth is C++ in C:\Factorio, and the Kpp tree is
+One more honest limit: today the game's source of truth is C++ in C:\Factorio, and the kpp tree is
 generated by the converter, so editing converted code is an experiment that the next conversion
-overwrites. On the game itself the IDE pays off from the day development moves to the Kpp sources;
+overwrites. On the game itself the IDE pays off from the day development moves to the kpp sources;
 until then its users are the stdlib, the spec snippets, `programs/` and the compiler threads.
 
 ## Compiler features to anticipate
@@ -283,7 +283,7 @@ the editor.
   paths. Until decided, the tree is the directories.
 - **Tests in the compiler** (design.md 8: `test "name" { ... }`, `kppc --tests`, `--run-test`):
   run the test under the cursor, a package's tests, failures with their operand values as
-  diagnostics. Thread G's work on testing Kpp code defines the runner's output; the IDE consumes it.
+  diagnostics. Thread G's work on testing kpp code defines the runner's output; the IDE consumes it.
 - **Configurations** (thread H, debug and release) and `config` constants with `if constexpr` at
   every scope: inactive branches shown as inactive per configuration, a configuration switch that
   picks which server is queried.
@@ -310,8 +310,8 @@ the ranges are honest, the upper ends assume compiler gaps found on the way.
 |---|---|---:|---|
 | 0 | **Query layer** in the server: pipe instances and the reader/writer lock, overlays, structured diagnostics, `at`, `definition`, `references` (index with instance copies), `symbols`, `search`, speculative `check` for body edits; `kppc --query` on the command line for tests and measurement; tests in run_tests (answers on tests/ programs) | 2 to 3 | the metrics below measured on the full game, the determinism rule holding |
 | 1 | **LSP adapter** `kppc --lsp` and a minimal VS Code extension (grammar for colouring before semantic tokens, the language client); a note to thread E on hosting it in VS | 1 | navigation and diagnostics in VS Code on the full game |
-| 2 | **Minimal Kpp IDE** in Kpp: window, buffers, rendering, file/package tree, go to definition and symbol, references panel, diagnostics as you type, build and run through the server, output panel | 4 to 6 | kovarex can open the game, navigate, edit and run it from the IDE |
-| 3 | **Debugger**: DbgEng, breakpoints, stepping, call stack, locals and watches with the server's `layout`, `evaluate`; `.natvis` export for VS | 3 to 5 (after `--debug-info` lands) | a crash in the game stops in the IDE with Kpp values shown |
+| 2 | **Minimal kpp IDE** in kpp: window, buffers, rendering, file/package tree, go to definition and symbol, references panel, diagnostics as you type, build and run through the server, output panel | 4 to 6 | kovarex can open the game, navigate, edit and run it from the IDE |
+| 3 | **Debugger**: DbgEng, breakpoints, stepping, call stack, locals and watches with the server's `layout`, `evaluate`; `.natvis` export for VS | 3 to 5 (after `--debug-info` lands) | a crash in the game stops in the IDE with kpp values shown |
 | 4 | **Rename and refactors, test runner, hot reload** (research spike first: one body patched into the running game) | 2 for rename and tests; 4 to 8 for hot reload, with a real chance the spike says no | an edited body takes effect in the running game without a restart |
 
 Minimal first version: phases 0 to 2, **7 to 10 thread-weeks**, of which phases 0 and 1 (3 to 4)
@@ -347,7 +347,7 @@ don't guess"), on the full converted game.
    will allow intellisense to work in most editors"). Recommended: yes. It serves VS, VS Code and any later IDE, and the server is where the value is.
 2. **Build an own editor at all**, and when? Recommended: yes, starting phase 2 once phase 1 is in
    use, accepting that it pays off only with phases 3 and 4.
-3. **Written in Kpp** (dogfooding, compiler gaps become spec snippets) **or C++**? Recommended: Kpp.
+3. **Written in kpp** (dogfooding, compiler gaps become spec snippets) **or C++**? Recommended: kpp.
 4. **Editor core**: own (piece table, GDI text) or Scintilla through its messages? Recommended:
    own; it is small, and Scintilla's model fights semantic colouring and overlays.
 5. **Debugger**: DbgEng with the compiler's types, or our own debugger? Recommended: DbgEng; own only

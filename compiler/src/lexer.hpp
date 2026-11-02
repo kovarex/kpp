@@ -17,7 +17,7 @@ enum class TokenKind : uint8_t
   Error,
 };
 
-// C++ keywords. Kpp-only keywords (implicit, fallthrough, both_const, class_const, accumulate)
+// C++ keywords. kpp-only keywords (implicit, fallthrough, both_const, class_const, accumulate)
 // are contextual and recognised by the parser, so C++ code using them as names still parses.
 #define KPP_KEYWORDS(X) \
   X(alignas) X(alignof) X(and) X(and_eq) X(asm) X(auto) X(bitand) X(bitor) X(bool) X(break) \

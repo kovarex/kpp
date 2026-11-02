@@ -1,5 +1,5 @@
-// spec: a single-inheritance class's vtable is laid out as MSVC's and COM's: the object's first word points at the first virtual function's slot, the slots follow in declaration order, `this` is the first argument; so Kpp calls a C object's table of functions through a class declaring the same virtual functions, and C calls a Kpp object's through its table
-// asked for by the converter thread (DirectX: ID3D11Device and the other COM interfaces as Kpp classes); Kpp's table had the class descriptor in slot 0 and the functions after it
+// spec: a single-inheritance class's vtable is laid out as MSVC's and COM's: the object's first word points at the first virtual function's slot, the slots follow in declaration order, `this` is the first argument; so kpp calls a C object's table of functions through a class declaring the same virtual functions, and C calls a kpp object's through its table
+// asked for by the converter thread (DirectX: ID3D11Device and the other COM interfaces as kpp classes); kpp's table had the class descriptor in slot 0 and the functions after it
 extern "C" import "c_object_with_vtable.h";
 class Counter
 {

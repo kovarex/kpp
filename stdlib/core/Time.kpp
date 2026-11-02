@@ -1,4 +1,4 @@
-// Kpp standard library: time (what std::chrono converts to). A Duration<Rep, Period> is a count of
+// kpp standard library: time (what std::chrono converts to). A Duration<Rep, Period> is a count of
 // ticks of Period seconds (a Ratio); Nanoseconds to Hours are the usual ones. A TimePoint<Clock> is
 // a Duration since the clock's epoch. SteadyClock never goes back (QueryPerformanceCounter);
 // SystemClock is the wall clock (UTC, since 1970, in 100 ns ticks). Specified in

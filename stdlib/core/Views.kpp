@@ -1,4 +1,4 @@
-// Kpp standard library: views, ranges computed on the fly from what they view (what std::views and
+// kpp standard library: views, ranges computed on the fly from what they view (what std::views and
 // std::ranges::subrange convert to): Subrange (an iterator pair), iotaView (a run of numbers),
 // transformView (f of each element) and reverseView (backwards). A view is cheap to copy: it holds
 // iterators, numbers, a function, or a pointer to the container it views (a view of a view holds a

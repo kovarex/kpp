@@ -1,8 +1,8 @@
-# Debugging Kpp programs
+# Debugging kpp programs
 
 `kppc --debug-info` puts line tables (CodeView) into the objects and links with `/DEBUG`, so a
-`.pdb` lands next to the executable: a debugger maps every instruction to the Kpp line it came from,
-breakpoints go on Kpp lines, and stepping walks the Kpp source.
+`.pdb` lands next to the executable: a debugger maps every instruction to the kpp line it came from,
+breakpoints go on kpp lines, and stepping walks the kpp source.
 
 ```
 compiler\build\kppc.exe --debug-info --exe out.exe program.kpp
@@ -55,7 +55,7 @@ language/throw_from_handler_cleans_up_enclosing_scope builds with `--debug-info`
 ## The crash report
 
 The game's crash report (programs\factorio\native\crash_report.c, linked by run.cmd) names each frame
-from the PDB and, when the objects carry line tables, its Kpp file and line:
+from the PDB and, when the objects carry line tables, its kpp file and line:
 
 ```
 kpp crash report: exception 0xc0000005 at 00007FF7D21B135E (writing 0x0)

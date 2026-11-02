@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Kpp",
+  "name": "kpp",
   "scopeName": "source.kpp",
   "fileTypes": ["kpp"],
   "patterns": [

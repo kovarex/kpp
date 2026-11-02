@@ -1,7 +1,7 @@
 // PropertyTree's string value shares a union with its list value, so the C++ sizes its string type
 // as the list: `ImmutableStringTemplate<sizeof(std::vector<PropertyTree>)>`. With MSVC's vector
 // (24 bytes in release, 32 in debug) that is also big enough for what an ImmutableString holds:
-// a shared string (16 bytes) and its flag byte. Kpp's Vector is 16 bytes (a pointer and two int
+// a shared string (16 bytes) and its flag byte. kpp's Vector is 16 bytes (a pointer and two int
 // counts), too small for that, so the size says both things it needs: at least the list's, and
 // room for the shared string and the flag (17). PropertyTree grows by the byte; nothing in the
 // game depends on its size in a debug build (its `sizeof == 50` assert is for release builds).

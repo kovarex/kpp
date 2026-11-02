@@ -1,6 +1,6 @@
 #include "tests.hpp"
 
-// The runner, in Kpp. What the compiler generates calls into it:
+// The runner, in kpp. What the compiler generates calls into it:
 // - `int __kpp_test_registered_N = __kppRegisterTest(&__kpp_test_N, "name");` per test (the call's
 //   caller location is the test's);
 // - `check(a OP b)` evaluates `__kppEqual(a, b)` (or NotEqual, Less...), which notes the operands'

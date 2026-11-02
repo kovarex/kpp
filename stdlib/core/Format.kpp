@@ -1,4 +1,4 @@
-// Kpp standard library: text conversion and output (design.md 14). A text is pieces one after
+// kpp standard library: text conversion and output (design.md 14). A text is pieces one after
 // another, nothing parsed: print("Hello ", name, " you are ", age), out << a << ", " << b,
 // toString(x), a + b; format("{} of {}", a, b) puts them at a literal pattern's {}s.
 extern "C" int snprintf(char* buffer, size_t size, const char* format, ...);

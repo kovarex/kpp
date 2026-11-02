@@ -164,6 +164,9 @@ if errorlevel 1 (call :fail "generate") else (call :ok)
 rem A project's build.kpp (tests\project.ps1, docs/build.md): kpp new, two executables, settings, errors.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\project.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "project") else (call :ok)
+rem kpp in lower case (tests\lowercase.ps1, CLAUDE.md): no capitalised "kpp" outside identifiers.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\lowercase.ps1
+if errorlevel 1 (call :fail "lower case") else (call :ok)
 rem The language server (tests\lsp.ps1, docs/ide.md): a scripted editor session, every message it sends.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\lsp.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "lsp") else (call :ok)

@@ -1,4 +1,4 @@
-// Kpp standard library: the floating-point classification functions, which C's math.h only
+// kpp standard library: the floating-point classification functions, which C's math.h only
 // provides as macros.
 
 // The C math library, as std::sqrt and friends convert to `::sqrt`.

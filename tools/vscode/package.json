@@ -1,7 +1,7 @@
 {
   "name": "kpp",
-  "displayName": "Kpp",
-  "description": "The Kpp language: colouring, and IntelliSense from the Kpp compiler's language server (kpp --lsp).",
+  "displayName": "kpp",
+  "description": "The kpp language: colouring, and IntelliSense from the kpp compiler's language server (kpp --lsp).",
   "version": "0.1.0",
   "publisher": "kovarex",
   "license": "Apache-2.0 WITH LLVM-exception",
@@ -14,7 +14,7 @@
     "languages": [
       {
         "id": "kpp",
-        "aliases": ["Kpp", "kpp"],
+        "aliases": ["kpp"],
         "extensions": [".kpp"],
         "configuration": "./language-configuration.json"
       }
@@ -23,22 +23,22 @@
       { "language": "kpp", "scopeName": "source.kpp", "path": "./syntaxes/kpp.tmLanguage.json" }
     ],
     "configuration": {
-      "title": "Kpp",
+      "title": "kpp",
       "properties": {
         "kpp.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The Kpp compiler that serves IntelliSense (`kpp.exe` or `kppc.exe`). Empty: `kpp` on the PATH, as the installer puts it."
+          "markdownDescription": "The kpp compiler that serves IntelliSense (`kpp.exe` or `kppc.exe`). Empty: `kpp` on the PATH, as the installer puts it."
         },
         "kpp.configuration": {
           "type": "string",
           "default": "debug",
-          "markdownDescription": "The build.kpp configuration the language server checks the code in (`debug`, `release`, or another of build.kpp's). *Kpp: Select the Target and Configuration* in the status bar sets it."
+          "markdownDescription": "The build.kpp configuration the language server checks the code in (`debug`, `release`, or another of build.kpp's). *kpp: Select the Target and Configuration* in the status bar sets it."
         },
         "kpp.target": {
           "type": ["string", "null"],
           "default": null,
-          "markdownDescription": "The build.kpp target (executable) the language server checks the code in. Null: every target's sources together. *Kpp: Select the Target and Configuration* in the status bar sets it."
+          "markdownDescription": "The build.kpp target (executable) the language server checks the code in. Null: every target's sources together. *kpp: Select the Target and Configuration* in the status bar sets it."
         },
         "kpp.executable": {
           "type": ["string", "null"],
@@ -56,14 +56,14 @@
           "type": "string",
           "enum": ["off", "messages", "verbose"],
           "default": "off",
-          "description": "Log the messages between VS Code and the language server in the Kpp output."
+          "description": "Log the messages between VS Code and the language server in the kpp output."
         }
       }
     },
     "commands": [
-      { "command": "kpp.selectCell", "title": "Kpp: Select the Target and Configuration" },
-      { "command": "kpp.restartServer", "title": "Kpp: Restart the Language Server" },
-      { "command": "kpp.showOutput", "title": "Kpp: Show the Language Server's Output" }
+      { "command": "kpp.selectCell", "title": "kpp: Select the Target and Configuration" },
+      { "command": "kpp.restartServer", "title": "kpp: Restart the Language Server" },
+      { "command": "kpp.showOutput", "title": "kpp: Show the Language Server's Output" }
     ]
   },
   "scripts": {

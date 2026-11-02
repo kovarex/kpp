@@ -16,7 +16,7 @@ string); `value_type` is wchar_t.
 Construction (implicit, except the two-pointer forms): from a WString, a `const wchar_t*`, or a
 `[first, last)` range of wchar_t; from a String, a `const char*`, a StringView or a range of char,
 read as UTF-8. *Difference from C++*: on Windows C++ reads a narrow string in the ANSI code page;
-Kpp always reads UTF-8 (what Factorio's own Path does with its widen). Assignment from the same
+kpp always reads UTF-8 (what Factorio's own Path does with its widen). Assignment from the same
 types.
 
 The parts of a path, by example (`C:\a\b.txt`):
@@ -150,7 +150,7 @@ the reason, as std's does); exists clears ec when the status is known.
 
 `filesystem_error` is a SystemError with `path1()` and `path2()`; what() is the message given,
 `: `, the error code's message, then the paths in brackets: `remove: Access is denied.
-[C:\x.txt]`. *Difference from C++*: the format of what() is Kpp's own.
+[C:\x.txt]`. *Difference from C++*: the format of what() is kpp's own.
 
 The following are not provided: `last_write_time` and `file_time_type`,
 `hard_link_count`, `resize_file`, links (`read_symlink`, `create_symlink`, ...),

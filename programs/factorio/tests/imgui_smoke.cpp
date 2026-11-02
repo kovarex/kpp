@@ -43,7 +43,7 @@ int main()
     ImGui::SetNextWindowPos(ImVec2(10, 10));
     ImGui::SetNextWindowSize(ImVec2(400, 300));
     bool open = true;
-    if (ImGui::Begin("Kpp window", &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar))
+    if (ImGui::Begin("kpp window", &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar))
     {
       ImGui::Text("Frame %d of %s, %.2f", frame, "imgui", 1.5f);
       ImGui::TextColored(ImVec4(1, 0.5f, 0, 1), "colored %u", 42u);

@@ -27,7 +27,7 @@ try
 {
   Kpp @('new') | Out-Null
   $output = Kpp @('--run')
-  if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from Kpp') { Fail "kpp new, then kpp --run: $output" }
+  if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp') { Fail "kpp new, then kpp --run: $output" }
   Kpp @('--stop-server') | Out-Null
 
   New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
@@ -79,7 +79,7 @@ void build(Project& project)
 }
 finally { Pop-Location }
 
-# Kpp libraries (docs/build.md, "Kpp libraries"): app uses greet from its libraries\, greet uses text
+# kpp libraries (docs/build.md, "kpp libraries"): app uses greet from its libraries\, greet uses text
 # next to it there; kpp --test in greet runs its tests and its test roots' with the runner's
 # arguments; a minimum version above greet's, a missing library and a minimum kpp above this one
 # are errors. greet's option suffix (config::greet::suffix): its default, a configuration's value,
@@ -161,11 +161,11 @@ void build(Project& project)
   $output = (Kpp @('--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
   # A converted library's shape: root(".") (its own build.kpp is not one of its sources) and C
-  # headers beside its Kpp, which the cell's --ext .kpp leaves out of the library's roots too.
+  # headers beside its kpp, which the cell's --ext .kpp leaves out of the library's roots too.
   New-Item -ItemType Directory -Force 'libraries\conv' | Out-Null
   Set-Content 'libraries\conv\build.kpp' "void build(Project& project)`n{`n  Library& conv = project.library(`"conv`");`n  conv.version = `"1.0.0`";`n  conv.root(`".`");`n}"
   Set-Content 'libraries\conv\conv.kpp' "int twice(int x) { return 2 * x; }"
-  Set-Content 'libraries\conv\conv.h' "this is a C header, not Kpp"
+  Set-Content 'libraries\conv\conv.h' "this is a C header, not kpp"
   Set-Content 'src\main.kpp' "int main()`n{`n  println(conv::twice(21));`n  return 0;`n}"
   $convApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"conv`");`n  app.argument(`"--ext`");`n  app.argument(`".kpp`");`n}"
   Set-Content 'build.kpp' $convApp

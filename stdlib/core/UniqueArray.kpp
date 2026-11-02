@@ -1,4 +1,4 @@
-// Kpp standard library: UniqueArray<T>, sole ownership of a heap array (what std::unique_ptr<T[]>
+// kpp standard library: UniqueArray<T>, sole ownership of a heap array (what std::unique_ptr<T[]>
 // converts to): indexed, destroyed and freed when the owner goes away or is reset, moved but never
 // copied. One pointer, as std's: every array it holds is laid out as `new T[n]` makes it (the
 // count in a cookie before the elements when T needs destroying), its own made by `new T[n]` too,

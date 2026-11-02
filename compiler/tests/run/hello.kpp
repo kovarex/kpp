@@ -1,4 +1,4 @@
-// First Kpp program: C interop, functions, control flow, structs with methods.
+// First kpp program: C interop, functions, control flow, structs with methods.
 // Expected output (see hello.expected): three lines.
 extern "C" int printf(const char* format, ...);
 
