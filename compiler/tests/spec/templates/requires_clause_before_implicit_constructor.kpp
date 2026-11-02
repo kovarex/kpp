@@ -26,6 +26,6 @@ int main()
 {
   Derived d;
   Other o;
-  println("{} {}", use(&d), use(&o));
+  println(use(&d), " ", use(&o));
   return 0;
 }

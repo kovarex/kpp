@@ -18,6 +18,6 @@ int main()
   seen.insert(4);
   HashMap<Key, const char*> byKey;
   byKey[Key{1, 2}] = "one-two";
-  println("{} {} {} {} {} {} {}", counts.size(), *found, counts.contains(String("z")), total, seen.size(), seen.contains(4), byKey[Key{1, 2}]);
+  println(counts.size(), " ", *found, " ", counts.contains(String("z")), " ", total, " ", seen.size(), " ", seen.contains(4), " ", StringView(byKey[Key{1, 2}]));
   return 0;
 }

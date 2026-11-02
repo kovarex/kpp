@@ -35,6 +35,6 @@ int main()
   CompressionState compression;
   compression = create(5);
   CompressionState direct = create(3);
-  println("{} {} {}", mipmap.id(), compression.id(), direct.id());
+  println(mipmap.id(), " ", compression.id(), " ", direct.id());
   return 0;
 }

@@ -11,7 +11,7 @@ struct UrlError : RuntimeError
   UrlError(const String& message, int offset) : RuntimeError(message), offset(offset) {}
 };
 
-void urlFail(int offset, const char* what) { throw UrlError(format("{}: {}", offset, what), offset); }
+void urlFail(int offset, const char* what) { throw UrlError(format("{}: {}", offset, StringView(what)), offset); }
 
 // A URI reference's components, as written (percent-encoded). The has* flags tell an empty
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
@@ -127,7 +127,7 @@ void urlCheckComponent(StringView text, int from, int to, const char* allowed, c
       if (allowed[k] == c)
         ok = true;
     if (!ok)
-      urlFail(i, format("a character that may not stand in a URL's {} (percent-encode it)", component).c_str());
+      urlFail(i, format("a character that may not stand in a URL's {} (percent-encode it)", StringView(component)).c_str());
   }
 }
 

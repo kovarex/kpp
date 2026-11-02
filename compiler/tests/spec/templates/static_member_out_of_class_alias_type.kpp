@@ -17,6 +17,6 @@ const typename Search<T>::Iterator Search<T>::endIterator = Iter<T>();
 int main()
 {
   Search<int> s;
-  println("{}", s.end().at == nullptr);
+  println(s.end().at == nullptr);
   return 0;
 }

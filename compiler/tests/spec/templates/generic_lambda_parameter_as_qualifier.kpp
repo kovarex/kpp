@@ -27,6 +27,6 @@ int main()
   int input = 7;
   int a = apply(false, [&]<class T>(T) { return int(T::loadExplicit(input).index); });
   int b = apply(true, [&]<class T>(T) { return int(T::unknown().index) + int(sizeof(typename T::IndexType)); });
-  println("{} {}", a, b);
+  println(a, " ", b);
   return 0;
 }

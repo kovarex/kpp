@@ -33,6 +33,6 @@ namespace Usage
 }
 int main()
 {
-  println("{} {}", Usage::combined(), Usage::sameX());
+  println(Usage::combined(), " ", Usage::sameX());
   return 0;
 }

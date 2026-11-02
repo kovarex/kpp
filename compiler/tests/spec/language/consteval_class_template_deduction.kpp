@@ -23,6 +23,6 @@ static_assert(infos[2].mode == Mode::A && !infos[1].shown && infos.size() == 3);
 static_assert(words[1][0] == 'd');
 int main()
 {
-  println("{} {} {}", named[0].first, infos[1].name, words[0]);
+  println(StringView(named[0].first), " ", StringView(infos[1].name), " ", StringView(words[0]));
   return 0;
 }

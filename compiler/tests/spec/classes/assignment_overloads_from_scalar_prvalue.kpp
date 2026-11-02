@@ -30,6 +30,6 @@ int main()
   Sink u;
   char lvalue = 'y';
   u = lvalue;
-  println("{} {} {} {}", s.got, t.got, transfer(source, Sink()), u.got);
+  println(s.got, " ", t.got, " ", transfer(source, Sink()), " ", u.got);
   return 0;
 }

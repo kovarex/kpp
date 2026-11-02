@@ -38,6 +38,6 @@ int main()
   bool flag = sum > 0;
   Map<String, int> chosen = flag ? makeMap() : Map<String, int>();
   chosen[String("three")] = 3;
-  println("{} {} {} {}", sum, int(chosen.size()), kept, consume(make(9)));
+  println(sum, " ", int(chosen.size()), " ", kept, " ", consume(make(9)));
   return 0;
 }

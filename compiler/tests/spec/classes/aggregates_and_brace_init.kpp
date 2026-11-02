@@ -9,6 +9,6 @@ int main()
   Line l{{1, 2}, {3, 4}, 1};
   Named table[] = {{String("a"), 1}, {String("b"), 2}};
   int grid[2][2] = {{1, 2}, {3, 4}};
-  println("{} {} {} {} {} {} {}", p.x + p.y, zero.y, l.to.x, l.width, table[1].name, table[0].score, grid[1][0]);
+  println(p.x + p.y, " ", zero.y, " ", l.to.x, " ", l.width, " ", table[1].name, " ", table[0].score, " ", grid[1][0]);
   return 0;
 }

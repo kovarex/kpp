@@ -1,6 +1,6 @@
 // spec: exceptions: throw, catch by reference and base, rethrow, cleanup of locals
 // factorio: 3118 throw sites in 853 files, 457 try blocks
-struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~{}", this->text); } };
+struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this->text)); } };
 struct Failure : Exception { int code; Failure(int code) : Exception(String("failed")), code(code) {} };
 int risky(int n)
 {
@@ -19,13 +19,13 @@ int main()
   }
   catch (const Exception& e)
   {
-    println("caught {}", e.what());
+    println("caught ", StringView(e.what()));
   }
   try
   {
     try { throw RuntimeError(String("inner")); }
     catch (const RuntimeError&) { println("rethrowing"); throw; }
   }
-  catch (const Exception& e) { println("outer {}", e.what()); }
+  catch (const Exception& e) { println("outer ", StringView(e.what())); }
   return 0;
 }

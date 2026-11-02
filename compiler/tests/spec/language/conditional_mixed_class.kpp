@@ -4,6 +4,6 @@ String name(int value) { return value < 0 ? "_" : toString(value); }
 String other(int value) { return value < 0 ? String("neg") : "pos"; }
 int main()
 {
-  println("{} {} {} {}", name(-1), name(42), other(-1), other(1));
+  println(name(-1), " ", name(42), " ", other(-1), " ", other(1));
   return 0;
 }

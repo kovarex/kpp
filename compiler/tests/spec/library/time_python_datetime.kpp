@@ -625,9 +625,9 @@ int main()
     if (!same)
     {
       ++differ;
-      println("{}: {} {}", p.rfc3339, rfc, http);
+      println(StringView(p.rfc3339), ": ", rfc, " ", http);
     }
   }
-  println("{} instants, {} differ", int(sizeof(pythonInstants) / sizeof(pythonInstants[0])), differ);
+  println(int(sizeof(pythonInstants) / sizeof(pythonInstants[0])), " instants, ", differ, " differ");
   return 0;
 }

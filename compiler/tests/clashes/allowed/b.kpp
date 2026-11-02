@@ -3,6 +3,6 @@ const auto half = 0.5;
 Count fromB() { return Count(half * 4); }
 int main()
 {
-  println("{} {}", fromA(), fromB());
+  println(fromA(), " ", fromB());
   return 0;
 }

@@ -10,6 +10,6 @@ int main()
     buffer[i] = squared<i>();
     sum += buffer[i];
   }
-  println("{}", sum);
+  println(sum);
   return 0;
 }

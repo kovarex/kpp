@@ -9,6 +9,6 @@ int main()
 {
   Acc a;
   int (Acc::*t)() = &Acc::toText;
-  println("{}", (a.*t)());
+  println((a.*t)());
   return 0;
 }

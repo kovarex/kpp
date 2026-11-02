@@ -30,6 +30,6 @@ int main()
   int sum = 0;
   for (auto it = Board::const_iterator(board); !it.ended(); ++it)
     sum += it.value();
-  println("{}", sum);
+  println(sum);
   return 0;
 }

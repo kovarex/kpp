@@ -6,6 +6,6 @@ int main()
 {
   const char* text = "local a = 1;\
    local b = 2";
-  println("[{}] {} [{}] {}", text, strlen(text), constant, strlen(constant));
+  println("[", StringView(text), "] ", strlen(text), " [", StringView(constant), "] ", strlen(constant));
   return 0;
 }

@@ -15,6 +15,6 @@ static_assert(held.kind() == 2);
 int sized[which(1.5)];
 int main()
 {
-  println("{} {} {} {}", which(1.5), which(1), held.kind(), int(sizeof(sized) / sizeof(int)));
+  println(which(1.5), " ", which(1), " ", held.kind(), " ", int(sizeof(sized) / sizeof(int)));
   return 0;
 }

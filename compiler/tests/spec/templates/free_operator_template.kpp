@@ -15,6 +15,6 @@ int main()
   a.base = 3;
   Opt<int> b;
   b.base = 4;
-  println("{} {} {}", 3 == a, 4 == a, a != b);
+  println(3 == a, " ", 4 == a, " ", a != b);
   return 0;
 }

@@ -3,7 +3,7 @@ extern "C" import "stdio.h";
 struct Digit
 {
   int d = 0;
-  void appendTo(String& out) const { out += char('0' + d); }
+  void appendTo(String& out) const { out << char('0' + d); }
 };
 void show(Text text)
 {

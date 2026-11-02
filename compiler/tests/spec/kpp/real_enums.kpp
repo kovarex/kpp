@@ -20,10 +20,10 @@ int main()
   String all;
   for (Direction d : Direction::values)
   {
-    all += d.str();
-    all += d.isVertical() ? "|" : "-";
+    all << StringView(d.str());
+    all << StringView(d.isVertical() ? "|" : "-");
   }
   Direction d = Direction::East;
-  println("{} {} {} {} {}", Direction::count, all, d.opposite().str(), nameof(Direction), (int)sizeof(Direction));
+  println(Direction::count, " ", all, " ", StringView(d.opposite().str()), " ", StringView(nameof(Direction)), " ", (int)sizeof(Direction));
   return 0;
 }

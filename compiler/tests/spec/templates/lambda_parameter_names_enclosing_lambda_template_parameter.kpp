@@ -18,10 +18,10 @@ int main()
     Control control;
     control.clickSelect<Button<IDType>>([&](Button<IDType>*) { ++seen; return true; });
     auto inner = [](Button<IDType>* b) { return b->id == IDType(); };
-    println("{} {} {} {}", type, control.clicks, pick<Button<IDType>>(inner), int(value));
+    println(StringView(type), " ", control.clicks, " ", pick<Button<IDType>>(inner), " ", int(value));
   };
   test(3, "int");
   test(short(4), "short");
-  println("{}", seen);
+  println(seen);
   return 0;
 }

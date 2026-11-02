@@ -13,6 +13,6 @@ int main()
   h.value = 5;
   int& r = h.value;
   r += 1;
-  println("{} {}", a, sizeof(Holder<int&>));
+  println(a, " ", sizeof(Holder<int&>));
   return 0;
 }

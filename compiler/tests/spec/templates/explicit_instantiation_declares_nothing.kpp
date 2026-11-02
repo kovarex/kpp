@@ -20,6 +20,6 @@ int main()
   Vector<double> b;
   b.push_back(1.5);
   Box<int> box{4};
-  println("{} {} {}", twice(a), twice(b, 2), box.get());
+  println(twice(a), " ", twice(b, 2), " ", box.get());
   return 0;
 }

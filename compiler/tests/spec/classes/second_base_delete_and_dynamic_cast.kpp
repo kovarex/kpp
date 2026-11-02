@@ -1,5 +1,6 @@
 // spec: through a second polymorphic base: delete runs the whole object's destructors and frees it from its start, dynamic_cast goes down and across (the pointer moved by the bases' offsets), typeid names the whole object's class
 // factorio: dynamic_cast from a second base (PostTransferNotifiable, Targetable) to the entity classes; unique pointers to an interface that is a second base
+extern "C" int printf(const char* format, ...);
 class Shape
 {
 public:

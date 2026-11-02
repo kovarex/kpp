@@ -13,6 +13,6 @@ int main()
 {
   Array<int, 3> lists = {};
   Order::update(lists);
-  println("{} {} {}", lists[0], lists[1], lists[2]);
+  println(lists[0], " ", lists[1], " ", lists[2]);
   return 0;
 }

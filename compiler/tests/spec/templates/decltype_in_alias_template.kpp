@@ -8,6 +8,6 @@ int main()
 {
   Sum<int, double> s = 2.5;
   auto x = add(1, 2.5);
-  println("{} {}", s, x);
+  println(s, " ", x);
   return 0;
 }

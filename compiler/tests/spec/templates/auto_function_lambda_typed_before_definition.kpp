@@ -42,6 +42,6 @@ int main()
 {
   Unit u;
   u.box.rightBottom = Pos(2, 1);
-  println("{} {}", u.check(12), u.check(13));
+  println(u.check(12), " ", u.check(13));
   return 0;
 }

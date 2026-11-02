@@ -13,6 +13,6 @@ int main()
   f.level = 5;
   f.rest = 0;
   f.level += 1;
-  println("{} {} {} {}", (int)f.visible, (int)f.level, (int)f.rest, (int)sizeof(Flags));
+  println((int)f.visible, " ", (int)f.level, " ", (int)f.rest, " ", (int)sizeof(Flags));
   return 0;
 }

@@ -26,6 +26,6 @@ int main()
   float neg = -limit;
   float scaled = area * limit;
   area += limit;
-  println("{} {} {} {} {} {}", d, small, sum, neg, scaled, area);
+  println(d, " ", small, " ", sum, " ", neg, " ", scaled, " ", area);
   return 0;
 }

@@ -16,7 +16,7 @@ int main()
 {
   Holder h;
   h.changed.connect([]() { println("changed"); });
-  h.valued.connect([](int v) { println("value {}", v); });
+  h.valued.connect([](int v) { println("value ", v); });
   h.changed();
   h.valued(4);
   return 0;

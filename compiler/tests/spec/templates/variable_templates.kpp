@@ -7,14 +7,14 @@ template<typename T>
 void describe()
 {
   if constexpr (isInt<T>)
-    println("int of {} bytes", bytes<T>);
+    println("int of ", bytes<T>, " bytes");
   else
-    println("other of {} bytes", bytes<T>);
+    println("other of ", bytes<T>, " bytes");
 }
 int main()
 {
-  println("{} {} {}", bytes<double>, isInt<int>, isInt<double>);
-  println("{} {}", canBuild<String, const char*>, canBuild<int, String>);
+  println(bytes<double>, " ", isInt<int>, " ", isInt<double>);
+  println(canBuild<String, const char*>, " ", canBuild<int, String>);
   describe<int>();
   describe<char>();
   return 0;

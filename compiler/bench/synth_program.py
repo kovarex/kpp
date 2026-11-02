@@ -83,7 +83,7 @@ for m in range(modules):
 main = ["int main()", "{", "  int total = 0;"]
 for m in range(modules):
     main.append("  total = mix(total, runModule%d(%d));" % (m, m))
-main.append('  println("{}", total);')
+main.append('  println(total);')
 main.append("  return 0;")
 main.append("}")
 main.append("")

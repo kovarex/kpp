@@ -29,6 +29,6 @@ int main()
   Vector<int> v;
   v.push_back(7);
   h.it = v.begin();
-  println("{} {}", h.size(), *h.it);
+  println(h.size(), " ", *h.it);
   return 0;
 }

@@ -6,6 +6,6 @@ int main()
   static const char name[] = {"kpp"};
   char one[] = {'x'};
   const char* pointers[] = {"abc"};
-  println("{} {} {} {} | {} {} {}", int(sizeof(text)), int(text[0]), int(text[2]), int(text[3]), int(sizeof(name)), int(sizeof(one)), int(sizeof(pointers) / sizeof(pointers[0])));
+  println(int(sizeof(text)), " ", int(text[0]), " ", int(text[2]), " ", int(text[3]), " | ", int(sizeof(name)), " ", int(sizeof(one)), " ", int(sizeof(pointers) / sizeof(pointers[0])));
   return 0;
 }

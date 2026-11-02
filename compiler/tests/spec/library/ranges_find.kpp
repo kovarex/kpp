@@ -14,6 +14,6 @@ int main()
   auto missing = ::findIf(names, [&](const auto& item) { return item.first > 2; });
   int colors[3] = {7, 9, 11};
   int* nine = ::find(colors, 9);
-  println("{} {} {} {} {} {}", (int)(eight - list.begin()), none == list.end(), two->first, missing == names.end(), (int)(nine - colors), ::find(colors, 1) == end(colors));
+  println((int)(eight - list.begin()), " ", none == list.end(), " ", two->first, " ", missing == names.end(), " ", (int)(nine - colors), " ", ::find(colors, 1) == end(colors));
   return 0;
 }

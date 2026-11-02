@@ -7,6 +7,6 @@ int main()
   dashes.insert(0, 1, '[');
   String digits = "123456";
   dashes.append(digits, 1, 3);
-  println("{} {}", dashes, dashes.size());
+  println(dashes, " ", dashes.size());
   return 0;
 }

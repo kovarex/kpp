@@ -150,7 +150,7 @@ bool jsonNumberRoundTrips(double value)
   JsonValue back = parseJson(text);
   if (back.type == JsonType::number && bitCast<uint64_t>(back.numberValue) == bitCast<uint64_t>(value))
     return true;
-  println("{} does not round-trip", text);
+  println(text, " does not round-trip");
   return false;
 }
 

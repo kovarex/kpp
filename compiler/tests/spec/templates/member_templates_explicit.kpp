@@ -10,6 +10,6 @@ int main()
   Reader r;
   int a = r.read<int>();
   char b = r.read<char>();
-  println("{} {} {} {} {}", a, (int)b, r.position, Reader::label<int>(), Reader::label<double>());
+  println(a, " ", (int)b, " ", r.position, " ", StringView(Reader::label<int>()), " ", StringView(Reader::label<double>()));
   return 0;
 }

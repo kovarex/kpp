@@ -17,10 +17,10 @@ int main()
   Label x{"x"};
   LabelRef w = x;
   const Label& direct = w;
-  println("[{}]", direct.text);
+  println("[", direct.text, "]");
   Vector<LabelRef> all;
   all.push_back(w);
   for (const Label& l : all)
-    println("[{}]", l.text);
+    println("[", l.text, "]");
   return 0;
 }

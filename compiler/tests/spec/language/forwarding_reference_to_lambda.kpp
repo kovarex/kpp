@@ -4,6 +4,6 @@ int main()
 {
   int base = 40;
   auto&& add = [&](int x) { return base + x; };
-  println("{}", add(2));
+  println(add(2));
   return 0;
 }

@@ -47,7 +47,7 @@ index, replace and assign return the String (`return s.append(x);`, `s.append(a)
 forms that take a position return a position:
 - `append(text)`, `append(text, count)`, `append(first, last)` (the bytes of a pointer range),
   `append(count, c)`, `append(other, index, count)` (count bytes of other from index, fewer when
-  other ends first), `push_back(c)`, `+=`.
+  other ends first), `push_back(c)`, `out << x` (any text piece, text.md; String has no `+=`).
 - `insert(index, text)`, `insert(index, count, c)`, `insert(position, first, last)`: index past
   the end inserts at the end. O(size() + inserted).
 - `erase(index, count)`: removes count bytes from index (to the end when count is negative or
@@ -111,8 +111,8 @@ Members, as String's of the same name but in units of wchar_t:
 - Access: `size()`, `length()`, `empty()`, `operator[](i)`, `at(i)` (throws OutOfRange), `front()`,
   `back()`, `data()`, `c_str()`, `begin()`, `end()`, `rbegin()`, `rend()`.
 - Changing: `append(text, count)`, `append(text)`, `append(other)`, `append(count, c)` (each
-  returns the WString), `push_back(c)`, `pop_back()`, `+=` (a WString, a `const wchar_t*` or a
-  wchar_t), `resize(n)`, `resize(n, c)`, `reserve(n)`, `clear()`, `erase(index, count)` (returns
+  returns the WString), `push_back(c)`, `pop_back()`, `<<` (a WString, a `const wchar_t*` or a
+  wchar_t; no `+=`, as String), `resize(n)`, `resize(n, c)`, `reserve(n)`, `clear()`, `erase(index, count)` (returns
   the WString). A text argument may point into this WString.
 - Searching: `find(text, from)`, `find(c, from)` (text: a WString or a `const wchar_t*`),
   `rfind(c, from)`, `find_first_of(set, from)`, `find_last_of(set)`, `find_last_of(c)`.

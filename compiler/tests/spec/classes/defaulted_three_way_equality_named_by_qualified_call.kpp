@@ -33,6 +33,6 @@ int main()
   Derived x(4, 0, 4);
   Derived y(4, 1, 4);
   Base base(4, 1);
-  println("{} {} {} {} {}", x == y ? 1 : 0, x == x ? 1 : 0, y == base ? 1 : 0, x < y ? 1 : 0, Base(4, 0) == Base(4, 1) ? 1 : 0);
+  println(x == y ? 1 : 0, " ", x == x ? 1 : 0, " ", y == base ? 1 : 0, " ", x < y ? 1 : 0, " ", Base(4, 0) == Base(4, 1) ? 1 : 0);
   return 0;
 }

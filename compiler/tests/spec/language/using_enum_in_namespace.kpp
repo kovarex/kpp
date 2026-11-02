@@ -15,6 +15,6 @@ namespace Layer
 int main()
 {
   Layer::Enum e = Layer::GROUND;
-  println("{} {} {} {}", int(e), int(Layer::WATER), e > Layer::FIRST, Layer::distance(Layer::WATER));
+  println(int(e), " ", int(Layer::WATER), " ", e > Layer::FIRST, " ", Layer::distance(Layer::WATER));
   return 0;
 }

@@ -24,6 +24,6 @@ int main()
   Holder<short, Furnace> h{short(40)};
   auto byHolder = Helpers::Set("holder", h, 2);
   auto byMember = Helpers::Set("member", &Furnace::size, short(7));
-  println("{} {} {} {}", byHolder.stored, int(sizeof(byHolder.stored)), byMember.stored, int(sizeof(byMember.stored)));
+  println(byHolder.stored, " ", int(sizeof(byHolder.stored)), " ", byMember.stored, " ", int(sizeof(byMember.stored)));
   return 0;
 }

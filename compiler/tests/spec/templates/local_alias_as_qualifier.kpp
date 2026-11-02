@@ -3,7 +3,7 @@
 template<class T1, class T2>
 void failed(T1 value, T2 min, T2 max)
 {
-  println("{} out of {}..{}", value, min, max);
+  println(value, " out of ", min, "..", max);
 }
 template<class T1, class T2>
 void rangeCheck(T2 value)

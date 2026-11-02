@@ -29,6 +29,6 @@ int main()
   TrainStop* a = &static_cast<TrainStop&>(builder.station());
   TrainStop& b = builder.station();
   Rail* c = &static_cast<Rail&>(builder);
-  println("{} {} {} {}", a == &stop ? 1 : 0, &b == &stop ? 1 : 0, c == &rail ? 1 : 0, a->id);
+  println(a == &stop ? 1 : 0, " ", &b == &stop ? 1 : 0, " ", c == &rail ? 1 : 0, " ", a->id);
   return 0;
 }

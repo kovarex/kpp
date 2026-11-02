@@ -34,6 +34,6 @@ size_t size()
 }
 int main()
 {
-  println("{} {} {} {}", settings(), derived(), local(), size());
+  println(settings(), " ", derived(), " ", local(), " ", size());
   return 0;
 }

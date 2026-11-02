@@ -34,6 +34,6 @@ int main()
   int inThread = 0;
   Thread worker([&]() { inThread = counter(); });
   worker.join();
-  println("{} {} {} {}", a, b, counter(), inThread);
+  println(a, " ", b, " ", counter(), " ", inThread);
   return 0;
 }

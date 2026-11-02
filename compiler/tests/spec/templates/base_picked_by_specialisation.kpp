@@ -16,6 +16,6 @@ static_assert(isBox<Box<int>> && !isBox<int>);
 int main()
 {
   auto direct = Direct::value;
-  println("{} {} {} {} {}", direct, ThroughAlias::value, InTemplate<int>::value, IsSpec<Box<char>, Box>::value, isBox<Vector<int>>);
+  println(direct, " ", ThroughAlias::value, " ", InTemplate<int>::value, " ", IsSpec<Box<char>, Box>::value, " ", isBox<Vector<int>>);
   return 0;
 }

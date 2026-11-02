@@ -17,6 +17,6 @@ int main()
   Derived d;
   Derived e(1, 2);
   Derived f(5);
-  println("{} {} {} | {} {} {} | {} {} {}", d.a, d.b, d.extra, e.a, e.b, e.extra, f.a, f.b, f.extra);
+  println(d.a, " ", d.b, " ", d.extra, " | ", e.a, " ", e.b, " ", e.extra, " | ", f.a, " ", f.b, " ", f.extra);
   return 0;
 }

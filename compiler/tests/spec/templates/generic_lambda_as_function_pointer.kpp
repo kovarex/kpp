@@ -32,7 +32,7 @@ int main()
   Item item = registerLoader<Thing>();
   Params p;
   Base* b = item.load(p, 5);
-  println("{} {}", b->value(), int(item.flag));
+  println(b->value(), " ", int(item.flag));
   delete b;
   return 0;
 }

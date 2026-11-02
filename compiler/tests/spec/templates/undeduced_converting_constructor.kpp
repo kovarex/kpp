@@ -14,6 +14,6 @@ int main()
   bool loaded = true;
   UniquePtr<Widget> table = makeUnique<Widget>();
   UniquePtr<Widget> other = makeUnique<Widget>();
-  println("{} {}", collapsible(loaded ? "..." : "<empty>", move(table)), collapsible(move(other)));
+  println(collapsible(loaded ? "..." : "<empty>", move(table)), " ", collapsible(move(other)));
   return 0;
 }

@@ -20,6 +20,6 @@ int main()
   Function<void()> f = c.bump();
   f();
   f();
-  println("{} {} {} {} {}", addBase(1), base, next(), immediate, c.count);
+  println(addBase(1), " ", base, " ", next(), " ", immediate, " ", c.count);
   return 0;
 }

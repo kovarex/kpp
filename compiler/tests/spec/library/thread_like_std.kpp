@@ -17,7 +17,7 @@ void consume(UniquePtr<int> value, int* out)
 int main()
 {
   Thread none;
-  println("{} {}", none.joinable(), none.getId() == Thread::Id());
+  println(none.joinable(), " ", none.getId() == Thread::Id());
   Thread t1(add, 1, 2, 3, 4, 5, 6, 7);
   t1.join();
   Worker worker;
@@ -27,38 +27,38 @@ int main()
   Thread t3(consume, makeUnique<int>(42), &out); // (ref(out) for an int&: classes/reference_bound_through_conversion_operator)
   Thread::Id id3 = t3.get_id();
   t3.join();
-  println("{} {} {} {} {}", sum.load(), worker.result.load(), out, seen.load() == id3, id3 != thisThread::get_id());
-  println("{} {}", t3.joinable(), t3.getId() == Thread::id());
+  println(sum.load(), " ", worker.result.load(), " ", out, " ", seen.load() == id3, " ", id3 != thisThread::get_id());
+  println(t3.joinable(), " ", t3.getId() == Thread::id());
   HashSet<Thread::Id> ids;
   ids.insert(thisThread::getId());
   ids.insert(id3);
   ids.insert(thisThread::getId());
-  println("{} {}", ids.size(), (id3 < thisThread::getId()) != (thisThread::getId() < id3));
+  println(ids.size(), " ", (id3 < thisThread::getId()) != (thisThread::getId() < id3));
   try
   {
     t3.join();
   }
   catch (const SystemError& e)
   {
-    println("join: {}", e.code() == Errc::invalid_argument);
+    println("join: ", e.code() == Errc::invalid_argument);
   }
   Mutex m;
   UniqueLock<Mutex> deferred(m, deferLock);
-  println("{}", deferred.owns_lock());
+  println(deferred.owns_lock());
   deferred.lock();
   UniqueLock<Mutex> tried(m, tryToLock);
-  println("{} {}", deferred.owns_lock(), tried.owns_lock());
+  println(deferred.owns_lock(), " ", tried.owns_lock());
   try
   {
     tried.unlock();
   }
   catch (const SystemError& e)
   {
-    println("unlock: {}", e.code() == Errc::operation_not_permitted);
+    println("unlock: ", e.code() == Errc::operation_not_permitted);
   }
   Mutex* released = deferred.release();
   UniqueLock<Mutex> adopted(*released, adoptLock);
-  println("{} {} {}", deferred.owns_lock(), adopted.owns_lock(), adopted.mutex() == &m);
+  println(deferred.owns_lock(), " ", adopted.owns_lock(), " ", adopted.mutex() == &m);
   ConditionVariable cv;
   CvStatus status = cv.wait_for(adopted, Milliseconds(5));
   bool ready = false;
@@ -66,9 +66,9 @@ int main()
   bool woken = cv.wait_until(adopted, SteadyClock::now() + Seconds(10), [&]() { return ready; });
   adopted.unlock();
   t4.join();
-  println("{} {}", status == CvStatus::timeout, woken);
+  println(status == CvStatus::timeout, " ", woken);
   auto start = SteadyClock::now();
   thisThread::sleep_for(Milliseconds(3));
-  println("{}", SteadyClock::now() - start >= Milliseconds(3));
+  println(SteadyClock::now() - start >= Milliseconds(3));
   return 0;
 }

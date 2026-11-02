@@ -29,6 +29,6 @@ bool fluidRegistered = Registry::add("fluid");
 int main()
 {
   for (const String& name : Registry::names())
-    println("{}", name);
+    println(name);
   return 0;
 }

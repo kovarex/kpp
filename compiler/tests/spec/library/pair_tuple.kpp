@@ -5,6 +5,6 @@ int main()
   Pair<String, int> p = makePair(String("a"), 1);
   Pair<int, int> q(2, 3);
   Tuple<int, String, double> t = makeTuple(1, String("two"), 3.0);
-  println("{} {} {} {} {}", p.first, p.second + q.first * q.second, get<0>(t), get<1>(t), q < Pair<int, int>(2, 4));
+  println(p.first, " ", p.second + q.first * q.second, " ", get<0>(t), " ", get<1>(t), " ", q < Pair<int, int>(2, 4));
   return 0;
 }

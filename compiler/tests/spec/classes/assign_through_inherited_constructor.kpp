@@ -23,6 +23,6 @@ int main()
 {
   Array<SpriteState, 2> states;
   states[1] = make();
-  println("{} {}", states[0].get(), states[1].get());
+  println(states[0].get(), " ", states[1].get());
   return 0;
 }

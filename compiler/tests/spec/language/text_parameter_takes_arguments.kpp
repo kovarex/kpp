@@ -6,17 +6,17 @@ struct Point
   int y = 0;
   void appendTo(String& out) const
   {
-    out += "(";
-    out += char('0' + x);
-    out += ",";
-    out += char('0' + y);
-    out += ")";
+    out << "(";
+    out << char('0' + x);
+    out << ",";
+    out << char('0' + y);
+    out << ")";
   }
 };
 struct Color
 {
   bool green = false;
-  void appendTo(String& out) const { out += green ? "green" : "red"; }
+  void appendTo(String& out) const { out << StringView(green ? "green" : "red"); }
 };
 void show(Text text)
 {

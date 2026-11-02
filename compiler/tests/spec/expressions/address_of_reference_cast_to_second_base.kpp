@@ -21,6 +21,6 @@ int main()
   const B& cb = static_cast<const B&>(d);
   A& a = static_cast<A&>(d);
   B* viaAddress = &static_cast<B&>(d);
-  println("{} {} {} {} {} {}", b.b, &back == &d ? 1 : 0, cb.b, a.a, viaAddress == &b ? 1 : 0, &static_cast<D&>(b) == &d ? 1 : 0);
+  println(b.b, " ", &back == &d ? 1 : 0, " ", cb.b, " ", a.a, " ", viaAddress == &b ? 1 : 0, " ", &static_cast<D&>(b) == &d ? 1 : 0);
   return 0;
 }

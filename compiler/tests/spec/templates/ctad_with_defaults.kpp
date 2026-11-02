@@ -19,6 +19,6 @@ int main()
   int id = 7;
   auto t = Quad(m, gap, id);
   Quad<int, double> p = Quad(1, 2.5);
-  println("{} {} {} {}", t.first.bits, int(t.second), t.third, p.second);
+  println(t.first.bits, " ", int(t.second), " ", t.third, " ", p.second);
   return 0;
 }

@@ -12,6 +12,6 @@ struct Checked
 int main()
 {
   Checked<int> c{5};
-  println("{}", c.value);
+  println(c.value);
   return 0;
 }

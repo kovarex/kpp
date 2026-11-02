@@ -7,6 +7,6 @@ int main()
   int value = f.get();
   Future<void> g = async(Launch::deferred, []() {});
   g.get();
-  println("{} {} {} {}", before, value, f.valid(), g.valid());
+  println(before, " ", value, " ", f.valid(), " ", g.valid());
   return 0;
 }

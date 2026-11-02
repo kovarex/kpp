@@ -24,6 +24,6 @@ int main()
   Proto p;
   ItemList<Proto> l;
   l.itemIterator.idIterator.current = &p;
-  println("{}", l.group());
+  println(l.group());
   return 0;
 }

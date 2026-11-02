@@ -32,6 +32,6 @@ int main()
     for (Thread& worker : workers)
       worker.join();
   }
-  println("{} {} {}", runs.load() == rounds, wrong.load(), thrown.load());
+  println(runs.load() == rounds, " ", wrong.load(), " ", thrown.load());
   return 0;
 }

@@ -18,6 +18,6 @@ constexpr auto names = Array {
 static_assert(names[0].second.size() == 6 && names[1].first == 2);
 int main()
 {
-  println("{} {}", names[0].second, names[1].first);
+  println(names[0].second, " ", names[1].first);
   return 0;
 }

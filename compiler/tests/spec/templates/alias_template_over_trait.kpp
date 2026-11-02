@@ -4,6 +4,6 @@ int main()
 {
   Plain<int&> y = 3;
   Plain<const int&> z = 4;
-  println("{}", y + z);
+  println(y + z);
   return 0;
 }

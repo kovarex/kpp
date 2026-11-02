@@ -24,6 +24,6 @@ int main()
   Holder<Point> h{Point{3, 4}};
   Holder<int> n{parse<int>(5)};
   n.save();
-  println("{} {} {}", h.value.y, h.size(), n.value);
+  println(h.value.y, " ", h.size(), " ", n.value);
   return 0;
 }

@@ -10,7 +10,6 @@ int main()
   size_t two = eraseIf(names, [](const Pair<const int, String>& entry) { return entry.first != 2; });
   HashMap<int, int> squares = {{1, 1}, {2, 4}, {3, 9}};
   size_t small = eraseIf(squares, [](const auto& entry) { return entry.second < 5; });
-  println("{} {} {} {} | {} {} | {} {} | {} {}", odd, numbers[0], numbers[1], numbers[2], big, list.size(), two, names.begin()->second, small,
-          squares.begin()->first);
+  println(odd, " ", numbers[0], " ", numbers[1], " ", numbers[2], " | ", big, " ", list.size(), " | ", two, " ", names.begin()->second, " | ", small, " ", squares.begin()->first);
   return 0;
 }

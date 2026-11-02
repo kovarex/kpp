@@ -8,6 +8,6 @@ int main()
   auto mixed = fmod(a, 2);
   auto both = fmod(5.5, 2.0);
   float next = nextafter(2147483520.0f, 3.0e38f);
-  println("{} {} {} {} {} {}", sizeof(r), r, sizeof(mixed), sizeof(both), next == 2147483648.0f, sizeof(nextafter(1.0, 2.0)));
+  println(sizeof(r), " ", r, " ", sizeof(mixed), " ", sizeof(both), " ", next == 2147483648.0f, " ", sizeof(nextafter(1.0, 2.0)));
   return 0;
 }

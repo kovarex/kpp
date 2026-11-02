@@ -10,8 +10,8 @@
 void kppConfig(Vector<String>& to, StringView name, StringView value)
 {
   String item = name;
-  item += "=";
-  item += value;
+  item << "=";
+  item << value;
   to.push_back(item);
 }
 
@@ -356,10 +356,10 @@ void kppLine(String& out, StringView key, StringView value)
 {
   if (value.size() == 0)
     return;
-  out += key;
-  out += ' ';
-  out += value;
-  out += '\n';
+  out << key;
+  out << ' ';
+  out << value;
+  out << '\n';
 }
 
 void kppLines(String& out, StringView key, const Vector<String>& values)
@@ -384,11 +384,11 @@ void kppConfigs(String& out, StringView source, const Vector<String>& configs)
 {
   for (const String& c : configs)
   {
-    out += "config ";
-    out += source;
-    out += ' ';
-    out += c;
-    out += '\n';
+    out << "config ";
+    out << source;
+    out << ' ';
+    out << c;
+    out << '\n';
   }
 }
 
@@ -473,11 +473,11 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   Cell cell{resolved, target}; // (not assigned: tests/spec/language/consteval_struct_copy_assignment)
   configure(cell);
   const Executable& e = cell.target;
-  out += "cell ";
-  out += e.name;
-  out += ' ';
-  out += resolved.name;
-  out += '\n';
+  out << "cell ";
+  out << e.name;
+  out << ' ';
+  out << resolved.name;
+  out << '\n';
   kppConfigurationLines(out, project, cell.configuration);
   kppConfigs(out, "target", e.configs);
   kppConfigs(out, "cell", cell.configs);
@@ -498,7 +498,7 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   kppLines(out, "link", e.links);
   kppUses(out, project.uses);
   kppUses(out, e.uses);
-  out += "end\n";
+  out << "end\n";
 }
 
 // One line per fact, which kpp reads (project.cpp): per configuration (debug, release, then the
@@ -535,7 +535,7 @@ String describe(const Project& project)
     kppConfigurationLines(out, project, c);
     kppLines(out, "argument", project.arguments);
     kppLines(out, "argument", c.arguments);
-    out += "end\n";
+    out << "end\n";
   }
   if (project.executables.empty() && project.kppLibraries.empty())
   {
@@ -558,7 +558,7 @@ String describe(const Project& project)
     kppLines(out, "prebuilt", c.prebuilt);
     kppLines(out, "resource", c.resources);
     kppLine(out, "language", c.cppStandard);
-    out += "end\n";
+    out << "end\n";
   }
   for (const Library& l : project.kppLibraries)
   {
@@ -579,19 +579,19 @@ String describe(const Project& project)
       kppLine(out, "option", o.name);
       kppLine(out, "option-type", o.type);
       if (o.required)
-        out += "option-required 1\n";
+        out << "option-required 1\n";
       else
       {
-        out += "option-default ";
-        out += o.defaultValue;
-        out += '\n';
+        out << "option-default ";
+        out << o.defaultValue;
+        out << '\n';
       }
       kppLines(out, "option-value", o.allowed);
       kppLine(out, "option-description", o.description);
     }
     kppUses(out, project.uses);
     kppUses(out, l.uses);
-    out += "end\n";
+    out << "end\n";
   }
   return out;
 }

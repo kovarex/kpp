@@ -30,6 +30,6 @@ int main()
     hits += 10000 * b.v;
   if (Box c(1); c.v == 1)
     hits += 100000;
-  println("{} {}", hits, count);
+  println(hits, " ", count);
   return 0;
 }

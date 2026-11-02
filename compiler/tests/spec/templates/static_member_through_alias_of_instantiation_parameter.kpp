@@ -22,6 +22,6 @@ int main()
 {
   horizontalRoot() += 1;
   VerticalScrollBar vertical;
-  println("{} {} {}", HorizontalScrollBar::PolicyType::defaultStyle, VerticalScrollBar::PolicyType::defaultStyle, vertical.style());
+  println(HorizontalScrollBar::PolicyType::defaultStyle, " ", VerticalScrollBar::PolicyType::defaultStyle, " ", vertical.style());
   return 0;
 }

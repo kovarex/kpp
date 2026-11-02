@@ -31,9 +31,9 @@ try
   Kpp @('--stop-server') | Out-Null
 
   New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"game {}`", answer());`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"game `", answer());`n  return 0;`n}"
   Set-Content 'src\answer.kpp' "int answer() { return GREETING_NUMBER; }"
-  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests {}`", plus_one(answer()));`n  return 0;`n}"
+  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests `", plus_one(answer()));`n  return 0;`n}"
   Set-Content 'include\greeting.h' "#define GREETING_NUMBER 41`nint plus_one(int value);"
   # A C library built from its sources: plus.c, and broken.c left out by exclude.
   New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
@@ -93,7 +93,7 @@ try
 {
   $appBuild = "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n  project.configuration(`"release`").config(`"greet::suffix`", `".`");`n}"
   Set-Content 'build.kpp' $appBuild
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greet::greeting(`"app`"));`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(greet::greeting(`"app`"));`n  return 0;`n}"
   $greet = @'
 void build(Project& project)
 {
@@ -111,15 +111,15 @@ void build(Project& project)
   Set-Content 'libraries\greet\tests\more.kpp' "test `"greeting twice`"`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
   $text = "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n  text.unscoped = true;`n}"
   Set-Content 'libraries\text\build.kpp' $text
-  Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r += `"! `"; return r; }"
+  Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r << `"! `"; return r; }"
   $output = Kpp @('--no-server')
   $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
   if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
   # greet is scoped: a bare greeting() from the program is an error; text is unscoped (shout bare in greet).
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greeting(`"app`"));`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(greeting(`"app`"));`n  return 0;`n}"
   $output = (Kpp @('--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'did you mean greet::greeting') { Fail "a scoped library's name used bare: exit $code`n$output" }
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greet::greeting(`"app`"));`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(greet::greeting(`"app`"));`n  return 0;`n}"
   foreach ($case in @(@(@('release'), 'hello! app.'), @(@('--config', 'greet::suffix=?'), 'hello! app?')))
   {
     $output = Kpp ($case[0] + @('--no-server', '--run'))
@@ -166,7 +166,7 @@ void build(Project& project)
   Set-Content 'libraries\conv\build.kpp' "void build(Project& project)`n{`n  Library& conv = project.library(`"conv`");`n  conv.version = `"1.0.0`";`n  conv.root(`".`");`n}"
   Set-Content 'libraries\conv\conv.kpp' "int twice(int x) { return 2 * x; }"
   Set-Content 'libraries\conv\conv.h' "this is a C header, not Kpp"
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", conv::twice(21));`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(conv::twice(21));`n  return 0;`n}"
   $convApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"conv`");`n  app.argument(`"--ext`");`n  app.argument(`".kpp`");`n}"
   Set-Content 'build.kpp' $convApp
   $output = Kpp @('--no-server', '--run')
@@ -186,8 +186,8 @@ New-Item -ItemType Directory -Force "$matrix\src", "$matrix\tests" | Out-Null
 Push-Location $matrix
 try
 {
-  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"main {} {} {}`", config::debug, config::level, config::steam);`n  return 0;`n}"
-  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests {} {}`", config::level, config::unit);`n  return 0;`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"main `", config::debug, `" `", config::level, `" `", config::steam);`n  return 0;`n}"
+  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests `", config::level, `" `", config::unit);`n  return 0;`n}"
   $matrixBuild = @'
 void build(Project& project)
 {

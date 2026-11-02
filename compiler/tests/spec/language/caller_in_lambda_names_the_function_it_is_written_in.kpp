@@ -11,6 +11,6 @@ const char* first() { return forEach(outer(), 1); }
 const char* second() { return forEach(outer(), 2.0); }
 int main()
 {
-  println("{} {}", first(), second());
+  println(StringView(first()), " ", StringView(second()));
   return 0;
 }

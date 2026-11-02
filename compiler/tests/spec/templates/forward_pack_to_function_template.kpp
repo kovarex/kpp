@@ -19,6 +19,6 @@ int main()
 {
   Outer<String> outer;
   outer.emplace(3, 'x');
-  println("{}", outer.inner.value);
+  println(outer.inner.value);
   return 0;
 }

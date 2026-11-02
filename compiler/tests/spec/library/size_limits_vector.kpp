@@ -23,18 +23,18 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("insert: {}, {} {} {}", e.what(), numbers.size(), numbers[0], numbers[2]);
+    println("insert: ", StringView(e.what()), ", ", numbers.size(), " ", numbers[0], " ", numbers[2]);
   }
   // A range that runs backwards: its length is negative, checked before an element is read.
   const char* first = "abc";
   try
   {
     Vector<char> range(first + 3, first);
-    println("constructed {}", range.size());
+    println("constructed ", range.size());
   }
   catch (const LengthError& e)
   {
-    println("range: {}", e.what());
+    println("range: ", StringView(e.what()));
   }
   // 2^40 elements of 4 KB: 4 PB, which no malloc returns; 2^64 - 2 of them, more bytes than a
   // size_t counts.
@@ -47,7 +47,7 @@ int main()
   }
   catch (const BadAlloc& e)
   {
-    println("reserve: {}", e.what());
+    println("reserve: ", StringView(e.what()));
   }
   try
   {
@@ -58,7 +58,7 @@ int main()
   }
   catch (const BadAlloc& e)
   {
-    println("reserve: {}", e.what());
+    println("reserve: ", StringView(e.what()));
   }
   try
   {
@@ -68,8 +68,8 @@ int main()
   }
   catch (const BadAlloc& e)
   {
-    println("construct: {}", e.what());
+    println("construct: ", StringView(e.what()));
   }
-  println("{}", numbers.size());
+  println(numbers.size());
   return 0;
 }

@@ -34,6 +34,6 @@ int main()
   reporter.list.push_back({true, 5});
   reporter.list.push_back({false, 7});
   reporter.list.push_back({true, 9});
-  println("{}", reporter.failedIds());
+  println(reporter.failedIds());
   return 0;
 }

@@ -15,9 +15,9 @@ int main()
 {
   Collected out;
   report(out, 42, 0.125);
-  println("{}", out.text);
+  println(out.text);
   OutFileStream file; // never opened: it writes nothing
   report(file, 1, 2.5);
-  println("{}", file.is_open());
+  println(file.is_open());
   return 0;
 }

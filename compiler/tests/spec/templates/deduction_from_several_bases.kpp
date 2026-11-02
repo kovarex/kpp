@@ -53,14 +53,14 @@ struct Both : Holder<0, int>, Holder<1, double>
 int main()
 {
   Row<int, double, String> r(1, 2.5, String("three"));
-  println("{} {} {}", get<0>(r), get<1>(r), get<2>(r));
+  println(get<0>(r), " ", get<1>(r), " ", get<2>(r));
   auto& [a, b, c] = r;
   a = 10;
   auto [x, y, z] = make(7);
   const Row<int, double, String>& cr = r;
   const auto& [ca, cb, cc] = cr;
-  println("{} {} {} {} {} {} {} {}", get<0>(r), b, c, x, y, z, ca + int(cb), cc.size());
+  println(get<0>(r), " ", b, " ", c, " ", x, " ", y, " ", z, " ", ca + int(cb), " ", cc.size());
   Both both;
-  println("{} {}", holderOf<0>(both), holderOf<1>(both));
+  println(holderOf<0>(both), " ", holderOf<1>(both));
   return 0;
 }

@@ -9,6 +9,6 @@ int main()
 {
   Mask tile(false);
   Mask entity(true);
-  println("{} {}", tile.type == Mask::Type::Tile, entity.type == Mask::Type::Entity);
+  println(tile.type == Mask::Type::Tile, " ", entity.type == Mask::Type::Entity);
   return 0;
 }

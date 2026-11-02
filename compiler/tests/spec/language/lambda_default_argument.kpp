@@ -10,6 +10,6 @@ int main()
   auto plain = [&](int a, bool load = true) { if (load) calls += 10 * a; };
   plain(3);
   plain(4, false);
-  println("{}", calls);
+  println(calls);
   return 0;
 }

@@ -18,6 +18,6 @@ constexpr Option decal{Flags::Enum::Mip, Group::Decal};
 static_assert(decal.flags.bits == 2 && decal.group == Group::Decal);
 int main()
 {
-  println("{}", decal.flags.bits);
+  println(decal.flags.bits);
   return 0;
 }

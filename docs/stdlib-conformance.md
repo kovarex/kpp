@@ -104,6 +104,10 @@ std::to_string of a floating value, C++'s text exactly, with the printf rewrite 
 then the game's 7 functions that do so (all debug drawing and a debug preset file) print the
 shortest text.
 
+**String and WString have no `+=`; `<<` appends** (docs/stdlib/text.md, 2026-11-01, kovarex:
+design.md 14). The converter writes a std::string's `+=` as `<<`: an integer that C++ appends as one
+char as `char(x)`, C text as `StringView(x)`. Not silent: a `+=` left on a String fails to compile.
+
 ## Missing types and API
 
 None of the members specified in docs/stdlib/ are missing (2026-10-29). One works only for

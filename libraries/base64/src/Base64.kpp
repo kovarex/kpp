@@ -94,7 +94,7 @@ int base64Value(char c, bool url)
   return -1;
 }
 
-void base64Fail(int offset, const char* what) { throw Base64Error(format("{}: {}", offset, what), offset); }
+void base64Fail(int offset, const char* what) { throw Base64Error(format("{}: {}", offset, StringView(what)), offset); }
 
 String base64DecodeWith(StringView text, bool url)
 {

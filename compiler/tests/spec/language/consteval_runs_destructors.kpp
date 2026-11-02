@@ -75,6 +75,6 @@ constexpr long long objects()
 template<long long N> struct Show { static constexpr long long value = N; };
 int main()
 {
-  println("{} {} {} {}", scopes(), objects(), Show<scopes()>::value, Show<objects()>::value);
+  println(scopes(), " ", objects(), " ", Show<scopes()>::value, " ", Show<objects()>::value);
   return 0;
 }

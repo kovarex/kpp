@@ -38,10 +38,10 @@ auto firstAbove(int limit)
 int main()
 {
   AIState s = Attacking{7};
-  println("{}", visitUnion([](const auto& x) { return describe(x); }, s));
+  println(visitUnion([](const auto& x) { return describe(x); }, s));
   s = Patrolling{3};
-  println("{}", visitUnion([](const auto& x) { return describe(x) * 2; }, s));
-  println("{} {}", sizeOfFirstBig<short>(), sizeOfFirstBig<int>());
-  println("{} {}", firstAbove(4), firstAbove(10));
+  println(visitUnion([](const auto& x) { return describe(x) * 2; }, s));
+  println(sizeOfFirstBig<short>(), " ", sizeOfFirstBig<int>());
+  println(firstAbove(4), " ", firstAbove(10));
   return 0;
 }

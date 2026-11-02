@@ -30,8 +30,8 @@ int main()
   Kind other;
   Strong minimum(0.5);
   double scale = 0.25;
-  println("{} {} {} {}", k == Kind::Second, k != Kind::First, k == other, k < Kind::Count);
+  println(k == Kind::Second, " ", k != Kind::First, " ", k == other, " ", k < Kind::Count);
   bool less = scale < minimum, greater = scale > minimum, lessEqual = 0.5 <= minimum, greaterEqual = 1.0 >= minimum;
-  println("{} {} {} {}", less, greater, lessEqual, greaterEqual);
+  println(less, " ", greater, " ", lessEqual, " ", greaterEqual);
   return 0;
 }

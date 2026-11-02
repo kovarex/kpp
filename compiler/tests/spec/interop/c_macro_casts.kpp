@@ -6,6 +6,6 @@ int main()
 {
   HANDLE h = INVALID_HANDLE_VALUE;
   void* minusOne = (void*)-1;
-  println("{} {}", h == minusOne, (unsigned long long)h == 18446744073709551615ull);
+  println(h == minusOne, " ", (unsigned long long)h == 18446744073709551615ull);
   return 0;
 }

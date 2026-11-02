@@ -17,6 +17,6 @@ int main()
   static_assert(isSame<decltype(Holder::accessors), const Array<int S::*, 2>>);
   static_assert(isSame<decltype(numbers), const Array<int, 3>>);
   S s;
-  println("{} {} {} {} {} {}", Holder::get(s, 1), Holder::accessors.size(), local[2], numbers[0], half, Holder::limit);
+  println(Holder::get(s, 1), " ", Holder::accessors.size(), " ", local[2], " ", numbers[0], " ", half, " ", Holder::limit);
   return 0;
 }

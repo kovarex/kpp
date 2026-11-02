@@ -22,6 +22,6 @@ int main()
 {
   Slot slot;
   load(slot, 7);
-  println("{} {}", slot == Slot::Full, slot[Slot::Full].value);
+  println(slot == Slot::Full, " ", slot[Slot::Full].value);
   return 0;
 }

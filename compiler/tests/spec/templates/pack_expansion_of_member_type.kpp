@@ -16,6 +16,6 @@ int main()
   static_assert(isSame<decltype(viaMember(1, 2.5)), Types<int, double>>);
   static_assert(isSame<decltype(viaAlias(1, 2.5)), Types<int, double>>);
   Types<int, double> both = viaAlias(1, 2.5);
-  println("{} {}", both.count, viaMember('a').count);
+  println(both.count, " ", viaMember('a').count);
   return 0;
 }

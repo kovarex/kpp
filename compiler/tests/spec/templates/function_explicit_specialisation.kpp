@@ -34,9 +34,9 @@ template<> int Box::put<double>(double value) { return 2; }
 
 int main()
 {
-  println("{} {}", Helper::parse<ForceID>(4).value, Helper::parse<FluidID>(5, "fluid").value);
-  println("{} {} {}", Helper::kind(1), Helper::kind(true), Helper::kind('c'));
+  println(Helper::parse<ForceID>(4).value, " ", Helper::parse<FluidID>(5, "fluid").value);
+  println(StringView(Helper::kind(1)), " ", StringView(Helper::kind(true)), " ", StringView(Helper::kind('c')));
   Box box;
-  println("{} {}", box.put(1), box.put(2.5));
+  println(box.put(1), " ", box.put(2.5));
   return 0;
 }

@@ -5,7 +5,7 @@ struct Loud
   int id = 0;
   Loud() {}
   Loud(int id) : id(id) {}
-  ~Loud() { if (this->id) println("-{}", this->id); }
+  ~Loud() { if (this->id) println("-", this->id); }
 };
 int main()
 {
@@ -13,17 +13,17 @@ int main()
   o.emplace(5);
   o.emplace(6);
   o.reset();
-  println("reset: {}", o.has_value());
+  println("reset: ", o.has_value());
   Optional<UniquePtr<int>> p = makeUnique<int>(4);
-  println("move-only: {} {}", **p, p == nullopt);
+  println("move-only: ", **p, " ", p == nullopt);
   Optional<int> empty;
   bool threw = false;
   try { empty.value(); } catch (const BadOptionalAccess& e) { threw = true; }
   Optional<int> one = 1;
-  println("value() throws {}, order {} {}", threw, empty < one, one < empty);
+  println("value() throws ", threw, ", order ", empty < one, " ", one < empty);
   Function<int(int)> f;
   bool called = false;
   try { f(3); } catch (const BadFunctionCall& e) { called = true; }
-  println("empty call throws {}", called);
+  println("empty call throws ", called);
   return 0;
 }

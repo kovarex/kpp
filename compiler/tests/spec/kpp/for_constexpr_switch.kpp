@@ -12,6 +12,6 @@ const char* nameOf(int kind)
 }
 int main()
 {
-  println("{} {} {}", nameOf(1), nameOf(2), nameOf(3));
+  println(StringView(nameOf(1)), " ", StringView(nameOf(2)), " ", StringView(nameOf(3)));
   return 0;
 }

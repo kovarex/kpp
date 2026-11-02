@@ -22,15 +22,15 @@ int main()
   nauvis.index = 7;
   GamePair<int, Surface&> one(1, nauvis);
   const auto& [location, surface] = one;
-  print("binding {}; ", surface.index);
+  print("binding ", surface.index, "; ");
   auto& [l2, s2] = one;
-  print("non-const binding {}; ", s2.index);
+  print("non-const binding ", s2.index, "; ");
   Vector<GamePair<int, Surface&>> list = {{1, nauvis}};
-  print("vector {}; ", list[0].second.index);
+  print("vector ", list[0].second.index, "; ");
   for (const auto& entry : list)
-    print("loop {}; ", entry.second.index);
+    print("loop ", entry.second.index, "; ");
   for (const auto& [l, s] : list)
-    print("loop binding {}; ", s.index);
+    print("loop binding ", s.index, "; ");
   println("");
   return 0;
 }

@@ -19,6 +19,6 @@ int main()
   d[Integer] = 5;
   Entry e1{1, a};
   Entry e2{1, c};
-  println("{} {} {} {} {} {} {}", a == d, a == b, a < b, b < c, c < a, e1 < e2, e2 == e2);
+  println(a == d, " ", a == b, " ", a < b, " ", b < c, " ", c < a, " ", e1 < e2, " ", e2 == e2);
   return 0;
 }

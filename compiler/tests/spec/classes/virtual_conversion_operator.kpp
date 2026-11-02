@@ -20,6 +20,6 @@ int main()
   Line a;
   Line b;
   b.valid = false;
-  println("{} {}", check(a), check(b));
+  println(check(a), " ", check(b));
   return 0;
 }

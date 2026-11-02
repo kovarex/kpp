@@ -5,6 +5,6 @@ int main()
 n";
   char c = '\
 A';
-  println("{} {} {}", strlen(a), int(a[1]), c);
+  println(strlen(a), " ", int(a[1]), " ", c);
   return 0;
 }

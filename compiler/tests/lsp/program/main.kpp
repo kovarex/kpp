@@ -5,6 +5,6 @@ int main()
   square.width = 3;
   square.height = 3;
   shapes.push_back(square);
-  println("{}", totalArea(shapes));
+  println(totalArea(shapes));
   return 0;
 }

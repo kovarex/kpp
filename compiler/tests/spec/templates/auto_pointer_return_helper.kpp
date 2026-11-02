@@ -13,6 +13,6 @@ int main()
   const Map<String, int>& cm = m;
   int* p = getMapOrNull(m, String("a"));
   const int* q = getMapOrNull(cm, String("b"));
-  println("{} {}", *p, q == nullptr);
+  println(*p, " ", q == nullptr);
   return 0;
 }

@@ -5,9 +5,9 @@ struct Point
   int x = 0;
   void appendTo(String& out) const
   {
-    out += "(";
-    out += char('0' + x);
-    out += ")";
+    out << "(";
+    out << char('0' + x);
+    out << ")";
   }
 };
 constexpr int length(Text text)

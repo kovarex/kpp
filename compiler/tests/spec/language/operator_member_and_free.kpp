@@ -21,6 +21,6 @@ int main()
   auto diff = a - b;
   P negated = -a.x < 0 ? P{1} : P{0};
   P sum = c + d;
-  println("{} {} {} {}", diff.x, (-a).x, negated.x, sum.x);
+  println(diff.x, " ", (-a).x, " ", negated.x, " ", sum.x);
   return 0;
 }

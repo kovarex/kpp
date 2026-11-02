@@ -4,6 +4,6 @@ int main()
 {
   Index<true> a = 1;
   Index<false> b = 2;
-  println("{} {} {}", (int)sizeof(a), (int)sizeof(b), (int)(a + b));
+  println((int)sizeof(a), " ", (int)sizeof(b), " ", (int)(a + b));
   return 0;
 }

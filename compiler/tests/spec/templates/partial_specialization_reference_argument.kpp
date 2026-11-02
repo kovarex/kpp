@@ -16,7 +16,6 @@ template<typename T>
 struct Unwrap<Wrapped<T>> { static constexpr int which = 1; };
 int main()
 {
-  println("{} {} {} {} {} {}", Row<double>::which, Row<double&>::which, Row<const double&, int>::which, Two<double&, int>::which, Row<double&&>::which,
-          Unwrap<Wrapped<int&>>::which);
+  println(Row<double>::which, " ", Row<double&>::which, " ", Row<const double&, int>::which, " ", Two<double&, int>::which, " ", Row<double&&>::which, " ", Unwrap<Wrapped<int&>>::which);
   return 0;
 }

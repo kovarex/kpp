@@ -19,10 +19,10 @@ int main()
   Array layers = {Layer::Ground, Layer::Object, Layer::Air};
   static_assert(layers.size() == size_t(Layer::Count));
   static_assert(Limits<uint8_t>::max() == 255 && Limits<int16_t>::max() == 32767 && Limits<int32_t>::min() == -2147483647 - 1);
-  println("{}", Count<Limits<uint8_t>::max() + 1>::value);
-  println("{}", Count<max(sizeof(int), sizeof(double))>::value);
-  println("{}", Count<clampTo(17, 0, 10)>::value);
-  println("{}", Count<static_cast<size_t>(Layer::Air)>::value);
-  println("{}", Count<layers.size()>::value);
+  println(Count<Limits<uint8_t>::max() + 1>::value);
+  println(Count<max(sizeof(int), sizeof(double))>::value);
+  println(Count<clampTo(17, 0, 10)>::value);
+  println(Count<static_cast<size_t>(Layer::Air)>::value);
+  println(Count<layers.size()>::value);
   return 0;
 }

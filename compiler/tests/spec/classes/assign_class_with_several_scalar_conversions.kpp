@@ -23,6 +23,6 @@ int main()
   c = attempt(1);
   Result::Enum e = Result::Enum::Fail;
   e = attempt(1);
-  println("{} {} {} {}", int(a), int(b), int(c), int(e));
+  println(int(a), " ", int(b), " ", int(c), " ", int(e));
   return 0;
 }

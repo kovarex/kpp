@@ -13,6 +13,6 @@ static_assert(pick("debug") == 1 && pick("x") == 3 && Settings().get() == 3);
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println("{} {} {} {} {}", mode == "release", mode == other, Show<pick("debug")>::value, Show<pick("x")>::value, Show<Settings().get()>::value);
+  println(mode == "release", " ", mode == other, " ", Show<pick("debug")>::value, " ", Show<pick("x")>::value, " ", Show<Settings().get()>::value);
   return 0;
 }

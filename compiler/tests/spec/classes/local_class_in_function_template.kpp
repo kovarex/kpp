@@ -23,6 +23,6 @@ int describe(T value)
 
 int main()
 {
-  println("{} {}", describe(21), describe(short(4)));
+  println(describe(21), " ", describe(short(4)));
   return 0;
 }

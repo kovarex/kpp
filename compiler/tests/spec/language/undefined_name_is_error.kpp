@@ -6,6 +6,6 @@ int main()
 {
   int a = undefinedThing + 1;
   int b = undefinedCall(a);
-  println("{}", square(b));
+  println(square(b));
   return 0;
 }

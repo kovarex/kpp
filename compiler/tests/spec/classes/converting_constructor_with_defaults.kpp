@@ -23,6 +23,6 @@ int main()
 {
   const Drag drag{true};
   Parameters parameters(drag, Mode::Forced);
-  println("{} {} {} {}", startOf(drag), parameters.start, parameters.on, int(parameters.mode));
+  println(startOf(drag), " ", parameters.start, " ", parameters.on, " ", int(parameters.mode));
   return 0;
 }

@@ -11,6 +11,6 @@ int main()
   names.push("a");
   Vector<String> direct;
   direct.emplace_back("bc");
-  println("{} {}", names.items[0], direct[0]);
+  println(names.items[0], " ", direct[0]);
   return 0;
 }

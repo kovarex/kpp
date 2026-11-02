@@ -26,6 +26,6 @@ int limitOf() { return int(P::IDLimit); }
 int main()
 {
   Layer l;
-  println("{} {} {} {} {} {}", int(Layer::IDLimit), limitOf<Layer>(), int(l.index), int(l.next()), sizeof(Layer::IDLimit), int(Prototype<LayerID>::IDLimit));
+  println(int(Layer::IDLimit), " ", limitOf<Layer>(), " ", int(l.index), " ", int(l.next()), " ", sizeof(Layer::IDLimit), " ", int(Prototype<LayerID>::IDLimit));
   return 0;
 }

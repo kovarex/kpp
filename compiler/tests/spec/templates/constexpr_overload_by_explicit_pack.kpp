@@ -26,6 +26,6 @@ public:
 int main()
 {
   Container<A, B, C> c;
-  println("{} {} {}", c.get<A>(), c.get<B>(), c.get<C>());
+  println(c.get<A>(), " ", c.get<B>(), " ", c.get<C>());
   return 0;
 }

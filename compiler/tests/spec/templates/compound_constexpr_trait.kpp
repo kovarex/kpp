@@ -33,6 +33,6 @@ auto main() -> int32_t
   // Make=FromPtree, value_type=int32_t (arithmetic)
   // !true || !true = false || false = false -> 0
   int32_t c = classify<Vec<int32_t>, FromPtree>();
-  println("{}{}{}", a, b, c);
+  println(a, b, c);
   return 0;
 }

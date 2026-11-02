@@ -24,7 +24,7 @@ int main()
   p.signedPart = 5;
   p.flag = true;
   p.rest = 1000;
-  println("{} {} {} {}", int(p.low), int(p.signedPart), p.flag, int(p.rest));
-  println("{} {} {} {}", int(made.low), int(made.signedPart), made.flag, int(made.rest));
+  println(int(p.low), " ", int(p.signedPart), " ", p.flag, " ", int(p.rest));
+  println(int(made.low), " ", int(made.signedPart), " ", made.flag, " ", int(made.rest));
   return 0;
 }

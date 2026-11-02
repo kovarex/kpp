@@ -17,8 +17,8 @@ template<typename T>
 const char* bySign(T) { return pick(Constant<bool, isSigned<T>>()); }
 int main()
 {
-  println("{} {} {}", pick(Yes()), pick(No()), pick(IsSmall()));
-  println("{} {}", pick(IsPtr<int>()), pick(IsPtr<int*>()));
-  println("{} {}", bySign(-1), bySign(1u));
+  println(StringView(pick(Yes())), " ", StringView(pick(No())), " ", StringView(pick(IsSmall())));
+  println(StringView(pick(IsPtr<int>())), " ", StringView(pick(IsPtr<int*>())));
+  println(StringView(bySign(-1)), " ", StringView(bySign(1u)));
   return 0;
 }

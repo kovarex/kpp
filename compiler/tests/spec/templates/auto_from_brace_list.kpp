@@ -17,6 +17,6 @@ int main()
   double total = 0;
   for (double h : halves)
     total += h;
-  println("{} {} {} {}", sum, int(entityNames.size()), letters, total);
+  println(sum, " ", int(entityNames.size()), " ", letters, " ", total);
   return 0;
 }

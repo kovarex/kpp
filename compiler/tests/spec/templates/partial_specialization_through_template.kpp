@@ -27,6 +27,6 @@ int main()
   int value = 7;
   Owner<int> direct(&value);
   Owner<int> made = make(&value);
-  println("{} {} {} {}", direct.which(), made.which(), make(&value).which(), *made.pointer);
+  println(direct.which(), " ", made.which(), " ", make(&value).which(), " ", *made.pointer);
   return 0;
 }

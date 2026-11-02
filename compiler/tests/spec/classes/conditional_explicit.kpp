@@ -13,8 +13,8 @@ int main()
 {
   Fixed<int, false> a(1.5);
   a = 2.5;
-  println("{} {}", a.toDouble(), diff(a, 0.5));
+  println(a.toDouble(), " ", diff(a, 0.5));
   Fixed<int, true> strict(3.0);
-  println("{}", strict.toDouble());
+  println(strict.toDouble());
   return 0;
 }

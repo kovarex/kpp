@@ -20,7 +20,7 @@ Set-Content -Encoding ascii "$work\probe.kpp" @'
 extern "C" import "kpp_cache_probe.h";
 int main()
 {
-  println("{}", KPP_CACHE_PROBE);
+  println(KPP_CACHE_PROBE);
   return 0;
 }
 '@

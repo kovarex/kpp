@@ -16,6 +16,6 @@ UniquePtr<Base> make()
 }
 int main()
 {
-  println("{}", make()->id());
+  println(make()->id());
   return 0;
 }

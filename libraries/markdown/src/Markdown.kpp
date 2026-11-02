@@ -192,11 +192,11 @@ struct MarkdownRenderer
         if (node->ordered && node->start != 1)
           this->literal(format("<ol start=\"{}\">", node->start));
         else
-          this->literal(format("<{}>", tag));
+          this->literal(format("<{}>", StringView(tag)));
         this->newline();
         this->children(node);
         this->newline();
-        this->literal(format("</{}>", tag));
+        this->literal(format("</{}>", StringView(tag)));
         this->newline();
         break;
       }
@@ -252,9 +252,9 @@ struct MarkdownRenderer
           {
             const char* tag = row->header ? "th" : "td";
             const char* align[] = {"", " align=\"left\"", " align=\"center\"", " align=\"right\""};
-            this->literal(format("<{}{}>", tag, align[cell->alignment]));
+            this->literal(format("<{}{}>", StringView(tag), StringView(align[cell->alignment])));
             this->children(cell);
-            this->literal(format("</{}>", tag));
+            this->literal(format("</{}>", StringView(tag)));
             this->newline();
           }
           this->literal("</tr>");

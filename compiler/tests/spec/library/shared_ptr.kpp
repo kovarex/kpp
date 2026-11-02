@@ -7,6 +7,6 @@ int main()
   SharedPtr<Node> b = a;
   WeakPtr<Node> w = a;
   a = nullptr;
-  println("{} {} {}", b->v, w.lock() != nullptr, b.use_count()); // the lock() temporary lives to the end of the line: 2 owners
+  println(b->v, " ", w.lock() != nullptr, " ", b.use_count()); // the lock() temporary lives to the end of the line: 2 owners
   return 0;
 }

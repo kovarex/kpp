@@ -23,6 +23,6 @@ int main()
   static_assert(isBaseOf<Shape, Square> && !isBaseOf<Square, Shape>);
   Holder<DragTag> drag;
   Holder<BeltTag> belt;
-  println("{} {}", pick(&drag), pick(&belt));
+  println(pick(&drag), " ", pick(&belt));
   return 0;
 }

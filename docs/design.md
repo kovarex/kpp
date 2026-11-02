@@ -1883,7 +1883,7 @@ the arguments after the file; the exit code is the program's.
 // hello.kpp
 int main(int argc, char** argv)
 {
-  println("hello, {} arguments", argc - 1);
+  println("hello, ", argc - 1, " arguments");
   return 0;
 }
 ```

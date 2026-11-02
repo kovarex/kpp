@@ -34,8 +34,8 @@ template<class T> constexpr bool fits<T, 0> = false;
 
 int main()
 {
-  println("{} {} {} {}", mode<int>(), mode<Plain>(), mode<Forced>(), mode<int*>());
-  println("{} {} {} {} {}", rank<int>, rank<Two<char, double>>, rank<Two<char, char>>, rank<Two<char, int>>, rank<Two<int, int>>);
-  println("{} {} {}", fits<int, 4>, fits<double, 4>, fits<char, 0>);
+  println(mode<int>(), " ", mode<Plain>(), " ", mode<Forced>(), " ", mode<int*>());
+  println(rank<int>, " ", rank<Two<char, double>>, " ", rank<Two<char, char>>, " ", rank<Two<char, int>>, " ", rank<Two<int, int>>);
+  println(fits<int, 4>, " ", fits<double, 4>, " ", fits<char, 0>);
   return 0;
 }

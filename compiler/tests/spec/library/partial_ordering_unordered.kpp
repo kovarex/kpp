@@ -4,6 +4,6 @@ int main()
 {
   partial_ordering u = partial_ordering::unordered;
   partial_ordering g = partial_ordering::greater;
-  println("{} {} {} {} {} {} {} {}", u < 0, u > 0, u <= 0, u >= 0, u == 0, u == partial_ordering::less, g > 0, g >= 0);
+  println(u < 0, " ", u > 0, " ", u <= 0, " ", u >= 0, " ", u == 0, " ", u == partial_ordering::less, " ", g > 0, " ", g >= 0);
   return 0;
 }

@@ -4,6 +4,6 @@ struct Sprite { int frame = 0; };
 int main()
 {
   Sprite sprite;
-  println("{} {} {}", nameof(sprite), nameof(sprite.frame), nameof(Sprite));
+  println(StringView(nameof(sprite)), " ", StringView(nameof(sprite.frame)), " ", StringView(nameof(Sprite)));
   return 0;
 }

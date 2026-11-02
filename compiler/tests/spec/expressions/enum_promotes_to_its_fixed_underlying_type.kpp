@@ -8,6 +8,6 @@ const char* take(int32_t value) { return "int32"; }
 const char* take(uint8_t value) { return "uint8"; }
 int main()
 {
-  println("{} {} {} {}", push(WideValue), push(PlainValue), take(SmallValue), take(PlainValue));
+  println(StringView(push(WideValue)), " ", StringView(push(PlainValue)), " ", StringView(take(SmallValue)), " ", StringView(take(PlainValue)));
   return 0;
 }

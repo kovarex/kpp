@@ -13,6 +13,6 @@ int main()
   Chunk viaOperator = maker(5);
   Chunk assigned;
   assigned = maker(7);
-  println("{}{} {}{} {}{}", viaCall.x, viaCall.y, viaOperator.x, viaOperator.y, assigned.x, assigned.y);
+  println(viaCall.x, viaCall.y, " ", viaOperator.x, viaOperator.y, " ", assigned.x, assigned.y);
   return 0;
 }

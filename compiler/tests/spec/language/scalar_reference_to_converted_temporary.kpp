@@ -22,6 +22,6 @@ int main()
   i = 9;
   int minusOne = -1;
   C c;
-  println("{} {} {} {} {} {} {} {}", v.x, v.y, twice(i), d, widen(minusOne), asFloat(i), withDefault(), fromB(&c));
+  println(v.x, " ", v.y, " ", twice(i), " ", d, " ", widen(minusOne), " ", asFloat(i), " ", withDefault(), " ", fromB(&c));
   return 0;
 }

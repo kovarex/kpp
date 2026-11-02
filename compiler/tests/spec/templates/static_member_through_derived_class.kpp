@@ -15,6 +15,6 @@ template<class T>
 int hashOf(int seed) { return T::computeHash(seed); }
 int main()
 {
-  println("{} {} {}", hashOf<WithOperation<Basis>>(1), hashOf<Quick>(2), WithOperation<Basis>::computeHash(3));
+  println(hashOf<WithOperation<Basis>>(1), " ", hashOf<Quick>(2), " ", WithOperation<Basis>::computeHash(3));
   return 0;
 }

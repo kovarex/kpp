@@ -36,11 +36,11 @@ int main()
   {
     Guard g;
   }
-  print("{} ", destroyed);
+  print(destroyed, " ");
   destroyed = 0;
   {
     Lambdas l;
   }
-  println("{}", destroyed);
+  println(destroyed);
   return 0;
 }

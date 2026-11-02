@@ -6,6 +6,6 @@ template<typename T> requires (!isIntegral<T>)
 String twice(T v) { return String("not integral"); }
 int main()
 {
-  println("{} {}", twice(21), twice(1.5));
+  println(twice(21), " ", twice(1.5));
   return 0;
 }

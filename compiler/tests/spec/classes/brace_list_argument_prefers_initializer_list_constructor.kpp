@@ -28,6 +28,6 @@ int sizeOf(const Sorted<Cell>& s) { return s.size(); }
 int main()
 {
   Sorted<Cell> direct({{-1, -1}, {0, -1}});
-  println("{} {} {} {}", direct.size(), direct.data[1].x, sizeOf(Sorted<Cell>({{1, 1}, {2, 2}, {3, 3}})), Sorted<Cell>({{4, 5}}).data[0].y);
+  println(direct.size(), " ", direct.data[1].x, " ", sizeOf(Sorted<Cell>({{1, 1}, {2, 2}, {3, 3}})), " ", Sorted<Cell>({{4, 5}}).data[0].y);
   return 0;
 }

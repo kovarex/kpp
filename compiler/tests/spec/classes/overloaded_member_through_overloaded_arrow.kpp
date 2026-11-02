@@ -38,6 +38,6 @@ int main()
   bits->set(7);
   int set = int(bits->count());
   bits->reset();
-  println("{} {} {} {} {}", four, six, w->count, set, int(bits->count()));
+  println(four, " ", six, " ", w->count, " ", set, " ", int(bits->count()));
   return 0;
 }

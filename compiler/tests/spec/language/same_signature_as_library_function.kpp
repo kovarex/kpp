@@ -13,6 +13,6 @@ long long gcd(long long a, long long b)
 int gcd(int a, int b, int c) { return int(gcd(gcd(a, b), c)); }
 int main()
 {
-  println("{} {}", gcd(12, 18), gcd(4, 6, 8));
+  println(gcd(12, 18), " ", gcd(4, 6, 8));
   return 0;
 }

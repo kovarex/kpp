@@ -51,7 +51,7 @@ int main()
   ones.push_back(One::Item());
   Vector<Two::Item> twos;
   twos.push_back(Two::Item());
-  println("{} {} {} {} {} {}", a.lines[0].b, b.lines[0].z, a.byName["x"].b, b.byName["x"].z, ones[0].x, twos[0].w);
-  println("{} {} {} {}", first(), second(), sumTwice(21), sumTwice(1.25));
+  println(a.lines[0].b, " ", b.lines[0].z, " ", a.byName["x"].b, " ", b.byName["x"].z, " ", ones[0].x, " ", twos[0].w);
+  println(first(), " ", second(), " ", sumTwice(21), " ", sumTwice(1.25));
   return 0;
 }

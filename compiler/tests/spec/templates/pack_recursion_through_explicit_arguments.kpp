@@ -21,7 +21,7 @@ struct Finder
 
 int main()
 {
-  println("{} {} {} {}", Finder::typeIndex<A, A, B, C>(), Finder::typeIndex<B, A, B, C>(), Finder::typeIndex<C, A, B, C>(), Finder::typeIndex<int, A, B, C>());
-  println("{} {} {}", Finder::assignIf<0, A, B, C>(1), Finder::assignIf<0, A, B, C>(2), Finder::assignIf<0, A, B, C>(7));
+  println(Finder::typeIndex<A, A, B, C>(), " ", Finder::typeIndex<B, A, B, C>(), " ", Finder::typeIndex<C, A, B, C>(), " ", Finder::typeIndex<int, A, B, C>());
+  println(Finder::assignIf<0, A, B, C>(1), " ", Finder::assignIf<0, A, B, C>(2), " ", Finder::assignIf<0, A, B, C>(7));
   return 0;
 }

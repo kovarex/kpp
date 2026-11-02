@@ -13,21 +13,21 @@ int main(int argc, char** argv)
   try
   {
     Page* pages = new Page[count];
-    println("allocated {}", pages != nullptr);
+    println("allocated ", pages != nullptr);
   }
   catch (const BadAlloc& e)
   {
-    println("pages: {}", e.what());
+    println("pages: ", StringView(e.what()));
   }
   long long wrapping = 0x4000000000000000LL + argc; // 2^62 + 1 ints: 4 * that wraps to 4 bytes
   try
   {
     int* ints = new int[wrapping];
-    println("allocated {}", ints != nullptr);
+    println("allocated ", ints != nullptr);
   }
   catch (const BadAlloc& e)
   {
-    println("ints: {}", e.what());
+    println("ints: ", StringView(e.what()));
   }
   return 0;
 }

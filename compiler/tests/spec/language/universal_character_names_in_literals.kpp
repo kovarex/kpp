@@ -7,7 +7,6 @@ int main()
   wchar_t letter = L'\u00d6';
   wchar_t replacement = L'\uFFFD';
   String octal = "\101\60";
-  println("{} {} {} {} | {} {} {} | {} {}", word.size(), (int)word[0], (int)word[1], narrow.size(), (int)(unsigned char)narrow[0], (int)letter, (int)replacement,
-          (int)octal[0], (int)octal[1]);
+  println(word.size(), " ", (int)word[0], " ", (int)word[1], " ", narrow.size(), " | ", (int)(unsigned char)narrow[0], " ", (int)letter, " ", (int)replacement, " | ", (int)octal[0], " ", (int)octal[1]);
   return 0;
 }

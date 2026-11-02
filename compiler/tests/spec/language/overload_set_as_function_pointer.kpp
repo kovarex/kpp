@@ -27,6 +27,6 @@ int main()
   Vector<Konst> two;
   two.push_back(Konst{});
   two.push_back(Konst{});
-  println("{} {} {}", n.compute(two).v, apply(Unary::computeConstant, 4), apply(&Unary::computeConstant, 5));
+  println(n.compute(two).v, " ", apply(Unary::computeConstant, 4), " ", apply(&Unary::computeConstant, 5));
   return 0;
 }

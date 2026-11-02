@@ -24,6 +24,6 @@ int main()
   fromC->add(4);
   Twice t;
   int added = specCallAdd(reinterpret_cast<SpecCounter*>(&t), 5);
-  println("{} {} {} {}", fromC->get(), added, specCallGet(reinterpret_cast<SpecCounter*>(&t)), t.get());
+  println(fromC->get(), " ", added, " ", specCallGet(reinterpret_cast<SpecCounter*>(&t)), " ", t.get());
   return 0;
 }

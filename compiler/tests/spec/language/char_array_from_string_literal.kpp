@@ -4,6 +4,6 @@ int main()
 {
   char text[16] = "edit me";
   static const char alphanum[] = "0123456789ABCDEF";
-  println("[{}] {} {} [{}] {} {}", (const char*)text, (int)text[6], (int)text[15], (const char*)alphanum, sizeof(alphanum), (int)alphanum[10]);
+  println("[", StringView((const char*)text), "] ", (int)text[6], " ", (int)text[15], " [", StringView((const char*)alphanum), "] ", sizeof(alphanum), " ", (int)alphanum[10]);
   return 0;
 }

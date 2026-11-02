@@ -7,6 +7,6 @@ unknownword "name"
 }
 int main()
 {
-  println("{}", square(4));
+  println(square(4));
   return 0;
 }

@@ -7,10 +7,10 @@ int main()
 {
   UniquePtr<Table> table = makeUnique<Table>();
   int w = describe(move(table));
-  println("passed {} {}", w, table.get() == nullptr);
+  println("passed ", w, " ", table.get() == nullptr);
   UniquePtr<Widget> holder;
   holder = makeUnique<Table>();
   UniquePtr<Widget> empty = nullptr;
-  println("assigned {} {}", holder->w, empty.get() == nullptr);
+  println("assigned ", holder->w, " ", empty.get() == nullptr);
   return 0;
 }

@@ -28,6 +28,6 @@ int main()
   pieces.push_back(piece);
   pieces.push_back(piece);
   Holder holder;
-  println("{} {} {} {} {}", TimeUtil::format(4.5), measure(piece), measure(pieces), measure(5), holder.use(piece));
+  println(TimeUtil::format(4.5), " ", measure(piece), " ", measure(pieces), " ", measure(5), " ", holder.use(piece));
   return 0;
 }

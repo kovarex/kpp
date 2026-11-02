@@ -6,6 +6,6 @@ int main()
 {
   counter() += 1;
   counter() += 1;
-  println("{} {} {}", counter(), table().size(), &table() == &table());
+  println(counter(), " ", table().size(), " ", &table() == &table());
   return 0;
 }

@@ -5,6 +5,6 @@ int twice(Meters m) { return m.value * 2; }
 int exact(Exact e) { return e.value; }
 int main()
 {
-  println("{} {}", twice(21), exact(Exact(5)));
+  println(twice(21), " ", exact(Exact(5)));
   return 0;
 }

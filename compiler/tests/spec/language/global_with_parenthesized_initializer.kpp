@@ -19,6 +19,6 @@ namespace MainLoop
 }
 int main()
 {
-  println("{} {} {}", int(MainLoop::box.mode), int(MainLoop::other.mode), MainLoop::other.count);
+  println(int(MainLoop::box.mode), " ", int(MainLoop::other.mode), " ", MainLoop::other.count);
   return 0;
 }

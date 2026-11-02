@@ -31,6 +31,6 @@ int main()
   Str b = move(a);
   Str c = Str(b);
   Str d(b);
-  println("{} {} {} {} {} {}", b.copies, b.moves, c.copies, c.moves, d.copies, d.moves);
+  println(b.copies, " ", b.moves, " ", c.copies, " ", c.moves, " ", d.copies, " ", d.moves);
   return 0;
 }

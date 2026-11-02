@@ -44,6 +44,6 @@ int main()
   bool before = bool(port);
   Entity entity;
   port.aim(&entity);
-  println("{} {} {}", int(raw), before, bool(port));
+  println(int(raw), " ", before, " ", bool(port));
   return 0;
 }

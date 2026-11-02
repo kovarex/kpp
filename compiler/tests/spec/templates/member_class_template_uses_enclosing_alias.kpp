@@ -55,6 +55,6 @@ int main()
   int sum = 0;
   for (Node& n : heap)
     sum = sum * 10 + n.value;
-  println("{}", sum);
+  println(sum);
   return 0;
 }

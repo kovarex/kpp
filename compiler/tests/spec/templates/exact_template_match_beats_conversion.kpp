@@ -9,6 +9,6 @@ int main()
 {
   int i = 3;
   double l = 4;
-  println("{} {} {}", pick(i), pick(l), same(i));
+  println(pick(i), " ", pick(l), " ", same(i));
   return 0;
 }

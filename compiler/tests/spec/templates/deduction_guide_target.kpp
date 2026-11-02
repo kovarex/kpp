@@ -31,6 +31,6 @@ int main()
   Holder h{&x};
   Tagged direct("abc");
   Tagged copied = "abc";
-  println("{} {} {} {} {}", b.value.size(), n.value, *h.value, direct.value.size(), copied.value);
+  println(b.value.size(), " ", n.value, " ", *h.value, " ", direct.value.size(), " ", StringView(copied.value));
   return 0;
 }

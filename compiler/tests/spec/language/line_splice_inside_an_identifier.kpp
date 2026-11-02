@@ -3,7 +3,7 @@
 int main()
 {
   int count = 3;
-  println("{}", coun\
+  println(coun\
 t);
   return 0;
 }

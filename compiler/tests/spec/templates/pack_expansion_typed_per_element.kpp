@@ -17,8 +17,8 @@ struct Pair2
 int main()
 {
   String s = "x";
-  println("{} {} {}", call(5), call(1, s), call(1.5, 2.5));
+  println(call(5), " ", call(1, s), " ", call(1.5, 2.5));
   SharedPtr<Pair2> p = makeShared<Pair2>(7, s);
-  println("{} {}", p->a, p->b);
+  println(p->a, " ", p->b);
   return 0;
 }

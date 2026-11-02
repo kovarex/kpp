@@ -41,6 +41,6 @@ int main()
   Plain plain;
   Direct direct;
   direct.p = &x;
-  println("{} {} {} {} {}", item.parent() == &x, item.linked(), plain.parent() == nullptr, direct.parent() == &x, sizeof(Item) > sizeof(Plain));
+  println(item.parent() == &x, " ", item.linked(), " ", plain.parent() == nullptr, " ", direct.parent() == &x, " ", sizeof(Item) > sizeof(Plain));
   return 0;
 }

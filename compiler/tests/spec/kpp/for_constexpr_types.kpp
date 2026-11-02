@@ -6,7 +6,7 @@ int main()
 {
   String names;
   for constexpr (typename T : types<A, B>)
-    names += T::name();
-  println("{}", names);
+    names << StringView(T::name());
+  println(names);
   return 0;
 }

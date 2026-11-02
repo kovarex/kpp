@@ -23,6 +23,6 @@ int main()
 {
   Ring<Point> ring;
   ring.put(Point{3, 4});
-  println("{}", ring.front().x + ring.front().y);
+  println(ring.front().x + ring.front().y);
   return 0;
 }

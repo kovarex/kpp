@@ -17,6 +17,6 @@ int main()
   Node::Link* l = &link;
   Node** pp = &p;
   const Node* c = p;
-  println("{} {} {} {} {} {}", p->value, r.value, m.value, l->weight, (*pp)->value, c->value);
+  println(p->value, " ", r.value, " ", m.value, " ", l->weight, " ", (*pp)->value, " ", c->value);
   return 0;
 }

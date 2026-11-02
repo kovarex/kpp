@@ -20,6 +20,6 @@ int main()
   Vector<int> numbers;
   Vector<Point> points;
   Vector<int*> pointers;
-  println("{} {} {}", loadVector(numbers), loadVector(points), loadVector(pointers));
+  println(loadVector(numbers), " ", loadVector(points), " ", loadVector(pointers));
   return 0;
 }

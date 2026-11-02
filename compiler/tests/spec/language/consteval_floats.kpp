@@ -15,7 +15,7 @@ int main()
 {
   if constexpr (half > 0.25)
     println("half is more than a quarter");
-  println("{}", Show<int(half * 10)>::value);
-  println("{}", Show<(third * 3 == 1.0f) ? 1 : 0>::value);
+  println(Show<int(half * 10)>::value);
+  println(Show<(third * 3 == 1.0f) ? 1 : 0>::value);
   return 0;
 }

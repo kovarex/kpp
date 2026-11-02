@@ -5,6 +5,6 @@ int main()
   int x = 5;
   Ref<int&> r = x;
   r += 1;
-  println("{}", x);
+  println(x);
   return 0;
 }

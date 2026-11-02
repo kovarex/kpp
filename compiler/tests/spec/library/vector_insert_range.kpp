@@ -32,7 +32,7 @@ int main()
   const int* second = v.cbegin() + 1;
   v.erase(second);
   for (int x : v)
-    print("{} ", x);
+    print(x, " ");
   println("");
   Vector<UniquePtr<int>> from;
   from.push_back(makeUnique<int>(5));
@@ -41,6 +41,6 @@ int main()
   to.push_back(makeUnique<int>(4));
   to.insert(to.end(), MoveIterator<UniquePtr<int>*>(from.begin()), MoveIterator<UniquePtr<int>*>(from.end()));
   MoveIterator<int*> a(extra), b(extra + 2);
-  println("{} {} {} {} {} {}", to.size(), *to[0], *to[2], from[0] == nullptr, b - a, (a + 1)[0]);
+  println(to.size(), " ", *to[0], " ", *to[2], " ", from[0] == nullptr, " ", b - a, " ", (a + 1)[0]);
   return 0;
 }

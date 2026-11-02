@@ -4,7 +4,7 @@ struct Tracked
 {
   int id;
   Tracked(int id) : id(id) {}
-  ~Tracked() { println("~Tracked {}", this->id); }
+  ~Tracked() { println("~Tracked ", this->id); }
 };
 Tracked make(bool fail)
 {
@@ -17,12 +17,12 @@ int main()
 {
   try
   {
-    println("{}", idOf(make(true)));
+    println(idOf(make(true)));
   }
   catch (const Exception& e)
   {
-    println("caught {}", e.what());
+    println("caught ", StringView(e.what()));
   }
-  println("{}", idOf(make(false)));
+  println(idOf(make(false)));
   return 0;
 }

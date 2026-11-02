@@ -7,6 +7,6 @@ int main()
   bool a = IsPtr<int>();
   bool b = IsPtr<int*>();
   bool c = IsPtr2<int>();
-  println("{} {} {}", a, b, c);
+  println(a, " ", b, " ", c);
   return 0;
 }

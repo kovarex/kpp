@@ -29,7 +29,7 @@ int main()
 {
   EditForceGui* gui = new EditForceGui(0, &EditorAction::SetForceFriend, String("friends"));
   EditorAction action = gui->apply(5);
-  println("{} {} {}", action.kind, action.forces, gui->title);
+  println(action.kind, " ", action.forces, " ", gui->title);
   delete gui;
   return 0;
 }

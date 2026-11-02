@@ -36,6 +36,6 @@ static_assert(areInOrder<List8, List25>());
 static_assert(Lists::indexOf<List84>() == 84);
 int main()
 {
-  println("{} {} {}", Lists::indexOf<List8>(), Lists::indexOf<List84>(), areInOrder<List25, List8>());
+  println(Lists::indexOf<List8>(), " ", Lists::indexOf<List84>(), " ", areInOrder<List25, List8>());
   return 0;
 }

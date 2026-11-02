@@ -3,6 +3,6 @@
 static_assert(Endian::native == Endian::little, "little endian");
 int main()
 {
-  println("{} {}", Endian::native == Endian::little, Endian::native != Endian::big);
+  println(Endian::native == Endian::little, " ", Endian::native != Endian::big);
   return 0;
 }

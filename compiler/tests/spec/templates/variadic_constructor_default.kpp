@@ -22,6 +22,6 @@ int main()
   OnHeap<Counter> given(Counter{3});
   Vector<OnHeap<Counter>> many;
   many.resize(2);
-  println("{} {} {} {}", (*local).count, (*holder.counter).count, (*given).count, (*many[1]).count);
+  println((*local).count, " ", (*holder.counter).count, " ", (*given).count, " ", (*many[1]).count);
   return 0;
 }

@@ -33,6 +33,6 @@ int pick(long l) { return 20; }
 int main()
 {
   const TooFar::Enum e = TooFar::True;
-  println("{} {} {} {}", take(TooFar::False), take(e), pick(5), pick(Opt<Strict>(5)));
+  println(take(TooFar::False), " ", take(e), " ", pick(5), " ", pick(Opt<Strict>(5)));
   return 0;
 }

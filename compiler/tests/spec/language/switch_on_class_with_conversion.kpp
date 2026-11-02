@@ -25,6 +25,6 @@ const char* name(Dimension dimension)
 }
 int main()
 {
-  println("{} {}", name(Dimension::X), name(Dimension(Dimension::Y)));
+  println(StringView(name(Dimension::X)), " ", StringView(name(Dimension(Dimension::Y))));
   return 0;
 }

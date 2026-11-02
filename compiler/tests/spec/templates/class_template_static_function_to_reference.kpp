@@ -21,6 +21,6 @@ int main()
 {
   Vector<Tech<AmmoTag>::Location> all = {{3}, {1}, {2}};
   Tech<AmmoTag>::sortAll(all);
-  println("{} {} {}", all[0].depth, all[1].depth, all[2].depth);
+  println(all[0].depth, " ", all[1].depth, " ", all[2].depth);
   return 0;
 }

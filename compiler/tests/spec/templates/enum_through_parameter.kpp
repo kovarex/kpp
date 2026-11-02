@@ -7,12 +7,12 @@ template<typename E> String joined()
 {
   String all;
   for (E v : E::values)
-    all += v.str();
+    all << StringView(v.str());
   return all;
 }
 template<typename E> int countOf() { return E::count; }
 int main()
 {
-  println("{} {}", joined<Dir>(), countOf<Dir>());
+  println(joined<Dir>(), " ", countOf<Dir>());
   return 0;
 }

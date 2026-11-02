@@ -27,6 +27,6 @@ int main()
     outside += v;
   int inside = l.sum();
   l.clearBase();
-  println("{} {} {}", outside, inside, l.size());
+  println(outside, " ", inside, " ", l.size());
   return 0;
 }

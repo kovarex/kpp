@@ -12,8 +12,8 @@ else
 }
 int main()
 {
-  print("{} {} {} ", config::zlib::debug, config::zlib::level, checks());
+  print(config::zlib::debug, " ", config::zlib::level, " ", StringView(checks()), " ");
   trace();
-  println("{}", config::zlib::mode);
+  println(StringView(config::zlib::mode));
   return 0;
 }

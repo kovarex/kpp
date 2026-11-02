@@ -22,6 +22,6 @@ int main()
   c += -a;
   ++c;
   String text = format("({}, {})", c.x, c.y);
-  println("{} {} {} {} {} {} {}", text, c[0], c[1], c(2), a == Vec(1, 2), a < b, bool(Vec(0, 0)));
+  println(text, " ", c[0], " ", c[1], " ", c(2), " ", a == Vec(1, 2), " ", a < b, " ", bool(Vec(0, 0)));
   return 0;
 }

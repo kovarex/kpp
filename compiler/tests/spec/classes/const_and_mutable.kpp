@@ -17,6 +17,7 @@ int main()
   cc.get();
   cc.get();
   c.ref() = 8;
-  println("{} {} {} {} {}", cc.hits, c.which(), cc.which(), cc.ref(), c.get());
+  int hits = cc.hits; // (a piece reads its object when the text is written, after c.get() below)
+  println(hits, " ", StringView(c.which()), " ", StringView(cc.which()), " ", cc.ref(), " ", c.get());
   return 0;
 }

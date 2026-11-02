@@ -14,6 +14,6 @@ int main()
 {
   char buf[offsetof(LX, l)];
   char upToInner[offsetof(Derived, inner)];
-  println("{} {} {} {} {} {} {}", OFF, int(sizeof(buf)), A, B, offsetof(Derived, d), offsetof(Poly, x), int(sizeof(upToInner)));
+  println(OFF, " ", int(sizeof(buf)), " ", A, " ", B, " ", offsetof(Derived, d), " ", offsetof(Poly, x), " ", int(sizeof(upToInner)));
   return 0;
 }

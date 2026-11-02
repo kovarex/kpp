@@ -31,6 +31,6 @@ int main()
   static_assert(false, "in a function");
   static_assert(counter == 3, "a variable");
   Box<int*> b;
-  println("{}", describe<float>());
+  println(describe<float>());
   return 0;
 }

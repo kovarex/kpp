@@ -21,6 +21,6 @@ int main()
   Cache dummy({}, {});
   Vector<Reference> some;
   some.push_back(Reference(1));
-  println("{} {} {}", countOf("ab"), countOf("abc", move(some)), dummy.count);
+  println(countOf("ab"), " ", countOf("abc", move(some)), " ", dummy.count);
   return 0;
 }

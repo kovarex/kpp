@@ -26,15 +26,15 @@ enum class Answer
 
 int main()
 {
-  println("{} values of {}", Direction::count, nameof(Direction));
+  println(Direction::count, " values of ", StringView(nameof(Direction)));
   for (Direction d : Direction::values)
-    println("{} {} {}", d.str(), d.isVertical(), d.opposite().str());
+    println(StringView(d.str()), " ", d.isVertical(), " ", StringView(d.opposite().str()));
   Direction e = Direction::East;
-  println("{} {} {}", nameof(e), nameof(Direction::West), e.opposite().isVertical());
-  println("{} {} {}", Answer::count, Answer::Yes.str(), Answer::Maybe.str());
+  println(StringView(nameof(e)), " ", StringView(nameof(Direction::West)), " ", e.opposite().isVertical());
+  println(Answer::count, " ", StringView(Answer::Yes.str()), " ", StringView(Answer::Maybe.str()));
   int sum = 0;
   for (Answer a : Answer::values)
     sum += (int)a;
-  println("{}", sum);
+  println(sum);
   return 0;
 }

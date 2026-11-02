@@ -18,6 +18,6 @@ struct Proto : public Base<T, K>
 };
 int main()
 {
-  println("{} {}", Proto<int, Kind::B, float>::call(5), Proto<char, Kind::A, double>::call(1));
+  println(Proto<int, Kind::B, float>::call(5), " ", Proto<char, Kind::A, double>::call(1));
   return 0;
 }

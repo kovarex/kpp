@@ -39,6 +39,6 @@ int main()
   lists[2].value = 3;
   int sum = 0;
   Order::update(lists, sum);
-  println("{} {}", sum, int(Order::getIndex<C>()));
+  println(sum, " ", int(Order::getIndex<C>()));
   return 0;
 }

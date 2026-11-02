@@ -4,7 +4,7 @@ struct TransferData { int x = 1; };
 struct Fluid { int f = 0; };
 struct Entity
 {
-  virtual void transfer(TransferData data) { println("entity {}", data.x); }
+  virtual void transfer(TransferData data) { println("entity ", data.x); }
   virtual ~Entity() {}
 };
 struct Vehicle : Entity {};
@@ -31,7 +31,7 @@ struct Store
 template<typename T>
 struct LabelledStore : Store<T>
 {
-  void put(const char* label) { println("label {}", label); }
+  void put(const char* label) { println("label ", StringView(label)); }
   using Store<T>::put;
 };
 struct IntStore : LabelledStore<int>
@@ -53,6 +53,6 @@ int main()
   r.transfer(f);
   IntStore s;
   s.put(21);
-  println("{}", s.stored);
+  println(s.stored);
   return 0;
 }

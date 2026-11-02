@@ -17,6 +17,6 @@ constexpr Vec2D unit = Vec2D(0, -1);
 static_assert(unit.x == 0 && unit.y == -1);
 int main()
 {
-  println("{}", int(unit.y));
+  println(int(unit.y));
   return 0;
 }

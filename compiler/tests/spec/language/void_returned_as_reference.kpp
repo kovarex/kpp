@@ -13,6 +13,6 @@ Counter& bumped(Counter& c)
 int main()
 {
   Counter c;
-  println("{}", bumped(c).n);
+  println(bumped(c).n);
   return 0;
 }

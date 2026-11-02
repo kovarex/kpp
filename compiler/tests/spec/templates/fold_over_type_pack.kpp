@@ -25,6 +25,6 @@ int main()
 {
   int calls = 0;
   TypeList<int, Small, Large>::forEach([&](auto value) { calls += int(sizeof(value)); });
-  println("{} {} {} {}", calls, TypeList<int, Small, Large>::hasType<Small>(), TypeList<int, Small, Large>::hasType<double>(), TypeList<int, Small, Large>::totalSize());
+  println(calls, " ", TypeList<int, Small, Large>::hasType<Small>(), " ", TypeList<int, Small, Large>::hasType<double>(), " ", TypeList<int, Small, Large>::totalSize());
   return 0;
 }

@@ -3,15 +3,15 @@
 int main()
 {
   String s = "hello";
-  s += ' ';
-  s += String("world");
+  s << ' ';
+  s << String("world");
   String t = s + "!";
   int spaces = 0;
   for (char c : t)
     if (c == ' ')
       ++spaces;
   String sub(t.c_str() + 6, 5);
-  println("{} {} {} {} {} {}", t, t.size(), t.find("world"), s == "hello world", sub, spaces);
-  println("{} {} {} {}", t.endsWith(String("!")), String("b") < String("c"), t[0], toString(42) + "x");
+  println(t, " ", t.size(), " ", t.find("world"), " ", s == "hello world", " ", sub, " ", spaces);
+  println(t.endsWith(String("!")), " ", String("b") < String("c"), " ", t[0], " ", toString(42) + "x");
   return 0;
 }

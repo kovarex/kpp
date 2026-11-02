@@ -22,6 +22,6 @@ using Order = TypeList<A, B, C>;
 static_assert(Order::indexOf<C>() == 2);
 int main()
 {
-  println("{} {} {} {}", Order::indexOf<A>(), Order::indexOf<B>(), IndexInTemplateList<C, A, B, C>::value, Count<int, char, A>::value);
+  println(Order::indexOf<A>(), " ", Order::indexOf<B>(), " ", IndexInTemplateList<C, A, B, C>::value, " ", Count<int, char, A>::value);
   return 0;
 }

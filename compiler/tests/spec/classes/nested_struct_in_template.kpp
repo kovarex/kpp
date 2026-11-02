@@ -10,6 +10,6 @@ int main()
   Holder<int> h;
   h.head.value = 9;
   Holder<int>::Node* n = &h.head;
-  println("{} {}", n->value, n->next == nullptr);
+  println(n->value, " ", n->next == nullptr);
   return 0;
 }

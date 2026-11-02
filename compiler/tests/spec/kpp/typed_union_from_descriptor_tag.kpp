@@ -17,6 +17,6 @@ int main()
   V text = load(1);
   V comment = load(2);
   V none = load(7);
-  println("{} {} {} {}", number == V::Number, text == V::Text, comment == V::Comment, none[V::Number]);
+  println(number == V::Number, " ", text == V::Text, " ", comment == V::Comment, " ", none[V::Number]);
   return 0;
 }

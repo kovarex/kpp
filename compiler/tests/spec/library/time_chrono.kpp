@@ -18,17 +18,17 @@ int main()
   long long epochSeconds = SystemClock::to_time_t(now);
   auto back = SystemClock::from_time_t(epochSeconds);
   Hours day(24);
-  println("{} {} {} {} {}", ns.count(), whole.count(), asSeconds.count(), sum.count(), elapsed >= Nanoseconds::zero());
-  println("{} {} {} {} {}", elapsedMs >= 0, ordered, fraction.count(), epochSeconds > 1700000000, back <= now);
-  println("{} {} {} {} {}", durationCast<Minutes>(day).count(), Milliseconds(two) / ms, (ms * 2).count(), (ms * 0.5).count(), floor<Seconds>(Milliseconds(-1500)).count());
-  println("{} {}", (3 * ms).count(), (0.5 * two).count());
+  println(ns.count(), " ", whole.count(), " ", asSeconds.count(), " ", sum.count(), " ", elapsed >= Nanoseconds::zero());
+  println(elapsedMs >= 0, " ", ordered, " ", fraction.count(), " ", epochSeconds > 1700000000, " ", back <= now);
+  println(durationCast<Minutes>(day).count(), " ", Milliseconds(two) / ms, " ", (ms * 2).count(), " ", (ms * 0.5).count(), " ", floor<Seconds>(Milliseconds(-1500)).count());
+  println((3 * ms).count(), " ", (0.5 * two).count());
   auto mixed = two + ms;
   auto sixths = Duration<int, Ratio<1, 2>>(3) + Duration<int, Ratio<1, 3>>(2);
   TimePoint<SystemClock, Seconds> second = timePointCast<Seconds>(now);
   auto plus = second + ms;
-  println("{} {} {} {} {} {}", mixed.count(), (ms - two).count(), sixths.count(), Minutes(1) / ms, (plus - second).count(), (Minutes(1) % Seconds(7)).count());
-  println("{} {} {} {}", isSame<decltype(mixed), Milliseconds>, isSame<decltype(sixths), Duration<int, Ratio<1, 6>>>, isSame<decltype(plus), TimePoint<SystemClock, Milliseconds>>, isSame<decltype(start + ms), TimePoint<SteadyClock, Nanoseconds>>);
-  println("{} {} {}", Ratio<2, -4>::num, Ratio<2, -4>::den, Duration<int, Ratio<1, 2>>(1) < Duration<int, Ratio<1, 3>>(2));
+  println(mixed.count(), " ", (ms - two).count(), " ", sixths.count(), " ", Minutes(1) / ms, " ", (plus - second).count(), " ", (Minutes(1) % Seconds(7)).count());
+  println(isSame<decltype(mixed), Milliseconds>, " ", isSame<decltype(sixths), Duration<int, Ratio<1, 6>>>, " ", isSame<decltype(plus), TimePoint<SystemClock, Milliseconds>>, " ", isSame<decltype(start + ms), TimePoint<SteadyClock, Nanoseconds>>);
+  println(Ratio<2, -4>::num, " ", Ratio<2, -4>::den, " ", Duration<int, Ratio<1, 2>>(1) < Duration<int, Ratio<1, 3>>(2));
   thisThread::sleepFor(Milliseconds(1));
   return 0;
 }

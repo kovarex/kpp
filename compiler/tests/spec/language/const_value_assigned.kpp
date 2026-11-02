@@ -21,6 +21,6 @@ int main()
   c += 1;
   const volatile int cv = 3;
   cv = 4;
-  println("{} {} {}", x, b.value, c);
+  println(x, " ", b.value, " ", c);
   return 0;
 }

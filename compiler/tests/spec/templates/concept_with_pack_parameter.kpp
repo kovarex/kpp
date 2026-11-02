@@ -31,6 +31,6 @@ int main()
   Thing t;
   Other o;
   WithArg w;
-  println("{} {} {} {}", how(t), how(o), how(w), how(w, 3));
+  println(StringView(how(t)), " ", StringView(how(o)), " ", StringView(how(w)), " ", StringView(how(w, 3)));
   return 0;
 }

@@ -102,6 +102,6 @@ int main()
     total += a + b;
   }
   const auto& [ca, cb] = c;
-  println("{} {} {} {} {} {} {} {} {} {} {} {} {}", c.a, c.b, copy, px, py, pz, g.sum(p), o, i, total, counters[0].a, ca + cb, firstOf(c));
+  println(c.a, " ", c.b, " ", copy, " ", px, " ", py, " ", pz, " ", g.sum(p), " ", o, " ", i, " ", total, " ", counters[0].a, " ", ca + cb, " ", firstOf(c));
   return 0;
 }

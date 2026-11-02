@@ -15,6 +15,6 @@ int main()
   Entity entity;
   Entity& ref = entity;
   const Entity& view = entity;
-  println("{} {} {} {}", which(&ref), which(&view), Proxy::forEntity(&ref), Proxy::forEntity(&view));
+  println(which(&ref), " ", which(&view), " ", Proxy::forEntity(&ref), " ", Proxy::forEntity(&view));
   return 0;
 }

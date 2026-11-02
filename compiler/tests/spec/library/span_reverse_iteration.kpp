@@ -19,6 +19,6 @@ int main()
     sum += x * weight;
     weight *= 10;
   }
-  println("{} {}", sum, *rbegin(s));
+  println(sum, " ", *rbegin(s));
   return 0;
 }

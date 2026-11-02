@@ -31,7 +31,6 @@ int main()
   assigned = move(source);
   const String text = "plate";
   String textCopy(move(text));
-  println("{} {} {} | {} {} {} {} | {} {}", inFlight[7].key, inFlight[7].parameters.size(), entries[0].localised.key, source.key,
-          source.parameters.size(), constructed.key, assigned.key, text, textCopy);
+  println(inFlight[7].key, " ", inFlight[7].parameters.size(), " ", entries[0].localised.key, " | ", source.key, " ", source.parameters.size(), " ", constructed.key, " ", assigned.key, " | ", text, " ", textCopy);
   return 0;
 }

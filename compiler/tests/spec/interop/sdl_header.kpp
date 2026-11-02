@@ -4,6 +4,6 @@ extern "C" import "SDL3/SDL.h";
 int main()
 {
   SDL_Rect r{0, 0, 640, 480};
-  println("{} {}", r.w, SDL_INIT_VIDEO != 0);
+  println(r.w, " ", SDL_INIT_VIDEO != 0);
   return 0;
 }

@@ -9,26 +9,25 @@ template<typename C>
 void probe(const char* name, C& c, const typename C::key_type& key)
 {
   const C& constant = c;
-  println("{}: {} {} {} {}", name, which(*c.begin()), which(*constant.begin()), which(*c.find(key)), which(*constant.find(key)));
+  println(StringView(name), ": ", StringView(which(*c.begin())), " ", StringView(which(*constant.begin())), " ", StringView(which(*c.find(key))), " ", StringView(which(*constant.find(key))));
   typename C::const_iterator position = c.find(key); // an iterator converts to a const_iterator
-  println("{}: equal {} erased {}", name, position == c.find(key), c.erase(position) == c.end());
+  println(StringView(name), ": equal ", position == c.find(key), " erased ", c.erase(position) == c.end());
 }
 
 template<typename C>
 void probeSequence(const char* name, C& c)
 {
   const C& constant = c;
-  println("{}: {} {} {} {} {} {}", name, which(*c.begin()), which(*constant.begin()), which(c.front()), which(constant.front()),
-          which(*c.rbegin()), which(*constant.rbegin()));
+  println(StringView(name), ": ", StringView(which(*c.begin())), " ", StringView(which(*constant.begin())), " ", StringView(which(c.front())), " ", StringView(which(constant.front())), " ", StringView(which(*c.rbegin())), " ", StringView(which(*constant.rbegin())));
   typename C::const_iterator position = c.begin();
-  println("{}: equal {} erased {}", name, position == c.begin(), *c.erase(position));
+  println(StringView(name), ": equal ", position == c.begin(), " erased ", *c.erase(position));
 }
 
 int main()
 {
   Map<int, int> map = {{1, 10}};
   map.find(1)->second = 11; // a mutable Map's entry is written through its iterator
-  println("map value {}", map.at(1));
+  println("map value ", map.at(1));
   probe("Map", map, 1);
   MultiMap<int, int> multiMap;
   multiMap.insert(1, 10);
@@ -49,7 +48,7 @@ int main()
   Deque<int> deque = {1, 2};
   probeSequence("Deque", deque);
   const Deque<int>& constDeque = deque;
-  println("Deque: [] {} {} at {} back {}", which(deque[0]), which(constDeque[0]), which(constDeque.at(0)), which(constDeque.back()));
+  println("Deque: [] ", StringView(which(deque[0])), " ", StringView(which(constDeque[0])), " at ", StringView(which(constDeque.at(0))), " back ", StringView(which(constDeque.back())));
   List<int> list = {1, 2};
   probeSequence("List", list);
   // extract takes the position begin() gives, a set's const one included (ForkLogic's
@@ -60,6 +59,6 @@ int main()
   auto multiSetNode = multiExtracting.extract(multiExtracting.begin());
   Map<int, int> mapExtracting = {{7, 70}};
   auto mapNode = mapExtracting.extract(mapExtracting.begin());
-  println("extract: {} {} {} {} {}", setNode.value(), extracting.size(), multiSetNode.value(), mapNode.key(), mapNode.mapped());
+  println("extract: ", setNode.value(), " ", extracting.size(), " ", multiSetNode.value(), " ", mapNode.key(), " ", mapNode.mapped());
   return 0;
 }

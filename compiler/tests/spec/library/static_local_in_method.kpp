@@ -26,6 +26,6 @@ int main()
   Tokenizer t;
   bool a = t.step('+');
   bool b = t.step('x');
-  println("{} {} {} {}", a, b, (int)t.current.type, t.position);
+  println(a, " ", b, " ", (int)t.current.type, " ", t.position);
   return 0;
 }

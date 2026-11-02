@@ -7,6 +7,6 @@ template<typename F>
 Decay<F> keep(F&& f) { return f; }
 int main()
 {
-  println("{} {}", call(add, 2, 3), keep(add)(4, 5));
+  println(call(add, 2, 3), " ", keep(add)(4, 5));
   return 0;
 }

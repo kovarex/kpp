@@ -56,10 +56,10 @@ int main()
   auto biggest = maxElement(map.begin(), map.end(), [](const Pair<String, int>& a, const Pair<String, int>& b) { return a.second < b.second; });
   String text;
   for (int x : digits)
-    text += toString(x);
-  println("{} {} {} {} {} {} {}", deque[0], kept, *found, ones, *atLeast25, *after30, keys.size());
-  println("{} {} {} {} {} {}", total, *faster, text, *newFirst, *rotated.begin(), perm[1]);
-  println("{} {} {} {} {} {}", merged.size(), merged[1], repeats.size(), difference.size(), entries[1].name, biggest->first);
-  println("{} {} {}", isSorted(merged.begin(), merged.end()), isSorted(list.begin(), list.end()), equal(odd.begin(), odd.end(), merged.begin()));
+    text << toString(x);
+  println(deque[0], " ", kept, " ", *found, " ", ones, " ", *atLeast25, " ", *after30, " ", keys.size());
+  println(total, " ", *faster, " ", text, " ", *newFirst, " ", *rotated.begin(), " ", perm[1]);
+  println(merged.size(), " ", merged[1], " ", repeats.size(), " ", difference.size(), " ", entries[1].name, " ", biggest->first);
+  println(isSorted(merged.begin(), merged.end()), " ", isSorted(list.begin(), list.end()), " ", equal(odd.begin(), odd.end(), merged.begin()));
   return 0;
 }

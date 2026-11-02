@@ -55,7 +55,7 @@ String describe(int x)
   try
   {
     String prefix = "value ";
-    prefix += (char)(depth1(x) + 48);
+    prefix << (char)(depth1(x) + 48);
     return prefix;
   }
   catch (const Error& e)

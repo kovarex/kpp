@@ -38,6 +38,6 @@ int migrate(int count)
 int main()
 {
   Layer l(2);
-  println("{} {}", l.total, migrate(4));
+  println(l.total, " ", migrate(4));
   return 0;
 }

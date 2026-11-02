@@ -1,6 +1,6 @@
-// Kpp standard library: text conversion and output. format("{} and {}", a, b) replaces every {}
-// with the next argument through toString(); print/println take either a String or a pattern.
-extern "C" int printf(const char* format, ...);
+// Kpp standard library: text conversion and output (design.md 14). A text is pieces one after
+// another, nothing parsed: print("Hello ", name, " you are ", age), out << a << ", " << b,
+// toString(x), a + b; format("{} of {}", a, b) puts them at a literal pattern's {}s.
 extern "C" int snprintf(char* buffer, size_t size, const char* format, ...);
 
 String toString(long long value)
@@ -96,62 +96,123 @@ String toString(char c)
   return result;
 }
 
-void print(const String& text) { printf("%s", text.c_str()); }
-void println(const String& text) { printf("%s\n", text.c_str()); }
+// The pieces of a text, written to the standard output; println ends the line.
+void print(Text text)
+{
+  String out;
+  text.appendTo(out);
+  fwrite(out.data(), 1, out.size(), stdout);
+}
 
-// Appends the pattern text up to each {} and the argument that replaces it.
-struct Formatter
+void println(Text text)
+{
+  String out;
+  text.appendTo(out);
+  out.append('\n');
+  fwrite(out.data(), 1, out.size(), stdout);
+}
+
+// The pieces of a text as a new String: toString(x) for one value, toString(a, " = ", b) for several.
+String toString(Text text)
+{
+  String out;
+  text.appendTo(out);
+  return out;
+}
+
+// Appends the pieces to out, and returns out for the next `<<`: out << left << " = " << right. The
+// only append on String (design.md 14: String has no +=).
+String& operator<<(String& out, Text text)
+{
+  text.appendTo(out);
+  return out;
+}
+// The same on a temporary String, which it returns: `String(name) << '_'` (C++'s `std::string(name) +=
+// '_'`, TileGraphicsSet's layer prefixes).
+String operator<<(String&& out, Text text)
+{
+  text.appendTo(out);
+  return move(out);
+}
+
+// a + b, one side a String or a StringView: a new String of both texts.
+String operator+(const String& left, Text right)
+{
+  String out = left;
+  right.appendTo(out);
+  return out;
+}
+
+String operator+(StringView left, Text right)
+{
+  String out;
+  out.append(left.data(), left.size());
+  right.appendTo(out);
+  return out;
+}
+
+template<typename T>
+  requires (!isSame<T, String> && !isSame<T, StringView>)
+String operator+(const T& left, const String& right)
+{
+  String out;
+  out << left;
+  out.append(right);
+  return out;
+}
+
+template<typename T>
+  requires (!isSame<T, String> && !isSame<T, StringView>)
+String operator+(const T& left, StringView right)
+{
+  String out;
+  out << left;
+  out.append(right.data(), right.size());
+  return out;
+}
+
+// format's pattern: a compile-time literal (design.md 14: a format that is not a literal is no
+// format), each {} the place of the next piece; a { without its } or a } alone is a compile error.
+struct FormatString
 {
   const char* pattern;
-  int position = 0;
-  String result;
 
-  Formatter(const char* pattern) : pattern(pattern) {}
-
-  template<typename T>
-  void next(const T& value)
+  consteval implicit FormatString(const char* pattern) : pattern(pattern)
   {
-    while (this->pattern[this->position] != 0)
+    for (const char* p = pattern; *p != 0; ++p)
     {
-      if (this->pattern[this->position] == '{' && this->pattern[this->position + 1] == '}')
+      if (*p == '{')
       {
-        this->position += 2;
-        this->result.append(toString(value));
-        return;
+        if (p[1] != '}')
+          throw LogicError("format: a { without its }");
+        ++p;
       }
-      this->result.append(this->pattern[this->position]);
-      ++this->position;
-    }
-    this->result.append(toString(value));
-  }
-
-  void finish()
-  {
-    while (this->pattern[this->position] != 0)
-    {
-      this->result.append(this->pattern[this->position]);
-      ++this->position;
+      else if (*p == '}')
+        throw LogicError("format: a } without its {");
     }
   }
 };
 
-template<typename... Args>
-String format(const char* pattern, Args... args)
+// The pattern with each {} replaced by the next piece's text. A {} without a piece, or a piece
+// without its {}, throws LogicError (no silent text: CLAUDE.md).
+String format(FormatString pattern, Text args)
 {
-  Formatter formatter(pattern);
-  (formatter.next(args), ...);
-  formatter.finish();
-  return formatter.result;
-}
-
-template<typename... Args>
-void print(const char* pattern, Args... args)
-{
-  print(format(pattern, args...));
-}
-
-template<typename... Args>
-void println(const char* pattern, Args... args)
-{
-  println(format(pattern, args...));
+  String out;
+  ContainerSize next = 0;
+  for (const char* p = pattern.pattern; *p != 0; ++p)
+  {
+    if (p[0] == '{' && p[1] == '}')
+    {
+      if (next == args.count)
+        throw LogicError("format: more {} than pieces");
+      args.pieces[next].append(args.pieces[next].object, out);
+      ++next;
+      ++p;
+    }
+    else
+      out.append(*p);
+  }
+  if (next != args.count)
+    throw LogicError("format: more pieces than {}");
+  return out;
 }

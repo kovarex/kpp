@@ -4,6 +4,6 @@ int main()
 {
   Pairs<int> pairs;
   pairs.push_back(makePair(1, 2));
-  println("{} {}", pairs.size(), pairs[0].second);
+  println(pairs.size(), " ", pairs[0].second);
   return 0;
 }

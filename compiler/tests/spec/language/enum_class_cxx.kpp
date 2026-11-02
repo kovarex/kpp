@@ -18,6 +18,6 @@ int main()
 {
   Color c = Color::Blue;
   Mask m = Mask::A | Mask::C;
-  println("{} {} {} {} {} {}", name(c), int(c), (int)sizeof(Color), has(m, Mask::C), has(m, Mask::B), c == Color::Blue);
+  println(StringView(name(c)), " ", int(c), " ", (int)sizeof(Color), " ", has(m, Mask::C), " ", has(m, Mask::B), " ", c == Color::Blue);
   return 0;
 }

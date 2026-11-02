@@ -44,6 +44,6 @@ int main()
   Vector<String> words;
   words.push_back(String("ab"));
   words.push_back(String("cde"));
-  println("{} {} {}", h.count(), h.keys(), joinedSize(words));
+  println(h.count(), " ", h.keys(), " ", joinedSize(words));
   return 0;
 }

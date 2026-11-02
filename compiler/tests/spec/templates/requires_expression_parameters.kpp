@@ -12,6 +12,6 @@ int main()
 {
   Vector<int> v;
   Reversed<Vector<int>> r{&v};
-  println("{} {} {} {}", hasBegin<Vector<int>>, hasBegin<int>, which(v), which(r));
+  println(hasBegin<Vector<int>>, " ", hasBegin<int>, " ", which(v), " ", which(r));
   return 0;
 }

@@ -20,6 +20,6 @@ int main()
   Optional<SetupData> setup = parameters ? Optional<SetupData>(*parameters) : Optional<SetupData>();
   Optional<String> text = "abc";
   Optional<double> fromInt = 4;
-  println("{} {} {} {} {} {}", some.hasValue() ? (*some)->id : -1, none.hasValue(), *widened, setup->size, text->size(), *fromInt);
+  println(some.hasValue() ? (*some)->id : -1, " ", none.hasValue(), " ", *widened, " ", setup->size, " ", text->size(), " ", *fromInt);
   return 0;
 }

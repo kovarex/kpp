@@ -17,6 +17,6 @@ int main()
     a.push(i * 10);
   s.push(String("x"));
   Ring<int, 3>::Value v = a.at(0);
-  println("{} {} {} {}", Ring<int, 3>::capacity(), v, a.items[0], s.items[0]);
+  println(Ring<int, 3>::capacity(), " ", v, " ", a.items[0], " ", s.items[0]);
   return 0;
 }

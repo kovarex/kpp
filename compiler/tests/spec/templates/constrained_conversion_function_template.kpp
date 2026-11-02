@@ -34,6 +34,6 @@ int main()
   Owner<Entity> owner(make(&belt));
   UniquePtr<Entity> owned(make(new Belt()));
   Entity* plain = make(&belt);
-  println("{} {} {} {}", owner.e->id, owned ? 1 : 0, plain->id, speedOf(make(&belt)));
+  println(owner.e->id, " ", owned ? 1 : 0, " ", plain->id, " ", speedOf(make(&belt)));
   return 0;
 }

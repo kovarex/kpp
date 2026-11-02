@@ -15,6 +15,6 @@ int main()
 {
   Kind k;
   Kind b = Kind::B;
-  println("{} {} {} {} {}", k == Kind::COUNT, b == Kind::A, b != Kind::A, Kind::B == b, b < Kind::COUNT);
+  println(k == Kind::COUNT, " ", b == Kind::A, " ", b != Kind::A, " ", Kind::B == b, " ", b < Kind::COUNT);
   return 0;
 }

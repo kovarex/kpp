@@ -8,6 +8,6 @@ int main()
 {
   Both b;
   Base& r = b;
-  println("{}", r.id);
+  println(r.id);
   return 0;
 }

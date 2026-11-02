@@ -6,7 +6,7 @@ struct Serialiser
   String out;
   struct TagWriter
   {
-    TagWriter(Serialiser& serialiser, const char* tag) : tag(tag), serialiser(serialiser) { this->serialiser.out += format("<{}>", tag); }
+    TagWriter(Serialiser& serialiser, const char* tag) : tag(tag), serialiser(serialiser) { this->serialiser.out << format("<{}>", StringView(tag)); }
     TagWriter(Serialiser& serialiser, const char* tag, const char* fmt, ...) : tag(tag), serialiser(serialiser)
     {
       char buffer[64];
@@ -14,9 +14,9 @@ struct Serialiser
       va_start(args, fmt);
       vsnprintf(buffer, sizeof(buffer), fmt, args);
       va_end(args);
-      this->serialiser.out += format("<{} {}>", tag, buffer);
+      this->serialiser.out << format("<{} {}>", StringView(tag), StringView(buffer));
     }
-    ~TagWriter() { this->serialiser.out += format("</{}>", this->tag); }
+    ~TagWriter() { this->serialiser.out << format("</{}>", StringView(this->tag)); }
     const char* tag;
     Serialiser& serialiser;
   };
@@ -25,12 +25,12 @@ void save(Serialiser& output, int id)
 {
   Serialiser::TagWriter _(output, "entity", "id=%d name=%s", id, "pipe");
   Serialiser::TagWriter _(output, "body");
-  output.out += "data";
+  output.out << "data";
 }
 int main()
 {
   Serialiser output;
   save(output, 7);
-  println("{}", output.out);
+  println(output.out);
   return 0;
 }

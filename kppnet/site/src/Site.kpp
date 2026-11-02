@@ -444,7 +444,7 @@ int main(int argc, char** argv)
     site.run();
     for (const String& w : site.warnings)
       fprintf(stderr, "kppsite: warning: %s\n", w.c_str());
-    printf("kppsite: %d files in %s (%zu pages), %zu warnings\n", site.written, options.out.c_str(), site.pages.size(), site.warnings.size());
+    println("kppsite: ", site.written, " files in ", options.out, " (", site.pages.size(), " pages), ", site.warnings.size(), " warnings");
     return 0;
   }
   catch (const Exception& e)

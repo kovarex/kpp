@@ -11,6 +11,6 @@ int main()
   MyStack<int>& inner = nested.push();
   int seven = 7;
   inner.push(seven);
-  println("{} {}", nested.items.size(), nested.items[0].items[0]);
+  println(nested.items.size(), " ", nested.items[0].items[0]);
   return 0;
 }

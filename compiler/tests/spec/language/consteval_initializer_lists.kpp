@@ -47,6 +47,6 @@ static_assert(sum({1, 2, 3}) == 6);
 static_assert(arrays() == 118);
 int main()
 {
-  println("{} {} {}", common.bits, sum({4, 5}), arrays());
+  println(common.bits, " ", sum({4, 5}), " ", arrays());
   return 0;
 }

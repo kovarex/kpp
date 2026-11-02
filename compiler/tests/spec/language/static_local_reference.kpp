@@ -13,6 +13,6 @@ int lookup(const String& key)
 }
 int main()
 {
-  println("{} {}", lookup("b"), lookup("z"));
+  println(lookup("b"), " ", lookup("z"));
   return 0;
 }

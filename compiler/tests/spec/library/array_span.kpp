@@ -8,7 +8,7 @@ int main()
   Vector<int> v;
   v.push_back(4);
   v.push_back(5);
-  println("{} {} {} {}", a.size(), a[2], total(a), total(v));
+  println(a.size(), " ", a[2], " ", total(a), " ", total(v));
   v.push_back(6);
   Span<int> all = v;
   all[0] = 10;
@@ -19,6 +19,6 @@ int main()
   Span<const int> widened = fixed;
   int raw[2] = {7, 8};
   Span<const int, 2> fixedRaw = raw;
-  println("{} {} {} {} {} {}", three(fixed), three(fromVector), total(fromSub), total(widened), fixedRaw.size() + total(fixedRaw), Span<const int, 3>::extent == 3 && Span<int>::extent == dynamicExtent);
+  println(three(fixed), " ", three(fromVector), " ", total(fromSub), " ", total(widened), " ", fixedRaw.size() + total(fixedRaw), " ", Span<const int, 3>::extent == 3 && Span<int>::extent == dynamicExtent);
   return 0;
 }

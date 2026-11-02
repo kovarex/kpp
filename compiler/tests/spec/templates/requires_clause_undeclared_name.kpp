@@ -7,6 +7,6 @@ const char* pick(...) { return "fallback"; }
 
 int main()
 {
-  println("{}", pick(5));
+  println(pick(5));
   return 0;
 }

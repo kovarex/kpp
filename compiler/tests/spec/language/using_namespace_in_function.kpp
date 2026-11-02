@@ -24,6 +24,6 @@ int insideBlock(int x)
 }
 int main()
 {
-  println("{} {}", useHelpers(1), insideBlock(2));
+  println(useHelpers(1), " ", insideBlock(2));
   return 0;
 }

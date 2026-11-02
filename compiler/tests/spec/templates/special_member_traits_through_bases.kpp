@@ -30,6 +30,6 @@ static_assert(!isMoveConstructible<Message>);
 static_assert(isTriviallyCopyConstructible<Color> && isTriviallyMoveAssignable<Color>);
 int main()
 {
-  println("{} {} {} {}", isMoveConstructible<HeartbeatMessage>, isMoveConstructible<Message>, isTriviallyCopyConstructible<Color>, isTriviallyCopyAssignable<Color>);
+  println(isMoveConstructible<HeartbeatMessage>, " ", isMoveConstructible<Message>, " ", isTriviallyCopyConstructible<Color>, " ", isTriviallyCopyAssignable<Color>);
   return 0;
 }

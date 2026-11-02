@@ -10,7 +10,7 @@ int main()
   b[0] = 'y';
   int* block = (int*)malloc(4 * sizeof(int));
   block[3] = 11;
-  println("{} {} {} {}", (int)::strlen(a), ::memcmp(a, b, 8) != 0, b[1] == 'x', block[3]);
+  println((int)::strlen(a), " ", ::memcmp(a, b, 8) != 0, " ", b[1] == 'x', " ", block[3]);
   free(block);
   return 0;
 }

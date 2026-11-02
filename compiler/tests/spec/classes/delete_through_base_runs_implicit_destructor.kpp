@@ -5,7 +5,7 @@ class Noisy
 public:
   int id;
   Noisy(int id) : id(id) {}
-  ~Noisy() { println("~Noisy {}", this->id); }
+  ~Noisy() { println("~Noisy ", this->id); }
 };
 class Base
 {

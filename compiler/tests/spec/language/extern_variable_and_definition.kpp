@@ -14,6 +14,6 @@ int main()
   Store::bump();
   int now = Store::counter;
   int next = Store::bump();
-  println("{} {} {} {}", now, next, Store::label, Store::describe());
+  println(now, " ", next, " ", Store::label, " ", Store::describe());
   return 0;
 }

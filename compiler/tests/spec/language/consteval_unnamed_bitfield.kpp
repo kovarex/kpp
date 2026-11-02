@@ -16,6 +16,6 @@ struct Show
 };
 int main()
 {
-  println("{}", Show<spaced.a + spaced.b + spaced.c>::value);
+  println(Show<spaced.a + spaced.b + spaced.c>::value);
   return 0;
 }

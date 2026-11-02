@@ -19,6 +19,6 @@ int limitOf() { return int(PrototypeType::limit) + PrototypeType::instances; }
 int main()
 {
   Item::instances = 10;
-  println("{} {} {} {}", int(Layer::limit), int(Item::limit), limitOf<Layer>(), limitOf<Item>());
+  println(int(Layer::limit), " ", int(Item::limit), " ", limitOf<Layer>(), " ", limitOf<Item>());
   return 0;
 }

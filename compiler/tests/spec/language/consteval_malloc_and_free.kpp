@@ -54,13 +54,13 @@ constexpr int string()
 {
   String s = "abc";
   String t = s;
-  t += "de";
+  t << "de";
   String u = move(t);
   return u.size();
 }
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println("{} {} {} {} {} {}", Show<grow()>::value, Show<placed()>::value, Show<chars()>::value, Show<vector()>::value, Show<string()>::value, chars());
+  println(Show<grow()>::value, " ", Show<placed()>::value, " ", Show<chars()>::value, " ", Show<vector()>::value, " ", Show<string()>::value, " ", chars());
   return 0;
 }

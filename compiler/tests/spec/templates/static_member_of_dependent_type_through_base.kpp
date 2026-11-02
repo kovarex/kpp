@@ -12,6 +12,6 @@ template<typename T> struct IsPointerLike : No {};
 template<typename T> struct IsPointerLike<T*> : Yes {};
 int main()
 {
-  println("{} {} {} {}", IsSmall::value, IsPointerLike<int*>::value, IsPointerLike<int>::value, Constant<int, 5>::value);
+  println(IsSmall::value, " ", IsPointerLike<int*>::value, " ", IsPointerLike<int>::value, " ", Constant<int, 5>::value);
   return 0;
 }

@@ -27,6 +27,6 @@ struct Table
 int main()
 {
   Table t;
-  println("{}", t.run());
+  println(t.run());
   return 0;
 }

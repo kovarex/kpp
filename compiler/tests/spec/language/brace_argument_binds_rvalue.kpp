@@ -11,6 +11,6 @@ int main()
 {
   Box box;
   box.take({1, makeUnique<int>(5)});
-  println("{} {}", box.copies, box.moves);
+  println(box.copies, " ", box.moves);
   return 0;
 }

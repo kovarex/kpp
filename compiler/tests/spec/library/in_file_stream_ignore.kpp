@@ -12,9 +12,9 @@ int main()
   in.ignore(Limits<StreamSize>::max(), '>');
   String header;
   getline(in, header, '>');
-  println("{}", header);
+  println(header);
   in.ignore(2);
-  println("{}", char(in.get()));
+  println(char(in.get()));
   in.close();
   remove(path.c_str());
   return 0;

@@ -22,6 +22,6 @@ int main()
     v.back().anim.frames.push_back(i * 2);
   }
   Element moved = move(v[19]);
-  println("{} {} {} {}", v.size(), v[18].id, v[18].anim.frames[0], moved.anim.frames[0]);
+  println(v.size(), " ", v[18].id, " ", v[18].anim.frames[0], " ", moved.anim.frames[0]);
   return 0;
 }

@@ -11,6 +11,6 @@ namespace wrap
 }
 int main()
 {
-  println("{} {}", wrap::size(1), wrap::size(1, 2));
+  println(wrap::size(1), " ", wrap::size(1, 2));
   return 0;
 }

@@ -16,6 +16,6 @@ int main()
   Vector<Vector<int>> grid(2);
   grid[1].push_back(9);
   Vector<int> moved = ::move(v);
-  println("{} {} {} {} {} {} {}", moved.size(), moved[0], moved.back(), items[0].name, grid[1][0], v.size(), moved.contains(9));
+  println(moved.size(), " ", moved[0], " ", moved.back(), " ", items[0].name, " ", grid[1][0], " ", v.size(), " ", moved.contains(9));
   return 0;
 }

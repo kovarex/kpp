@@ -11,6 +11,6 @@ int main()
   int sum = 0;
   for (const Chunk& c : lineByLine(Chunk{1, 1}, Chunk{2, 2}))
     sum += c.x * 10 + c.y;
-  println("{}", sum);
+  println(sum);
   return 0;
 }

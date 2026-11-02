@@ -12,7 +12,6 @@ struct Holder
 };
 int main()
 {
-  println("{} {} {} {} {}", int(isNothrowMoveConstructible<Throwing>), int(isNothrowMoveConstructible<Quiet>), int(isNothrowMoveConstructible<BySize>),
-          int(isNothrowMoveConstructible<Holder<Throwing>>), int(isNothrowMoveConstructible<Holder<Quiet>>));
+  println(int(isNothrowMoveConstructible<Throwing>), " ", int(isNothrowMoveConstructible<Quiet>), " ", int(isNothrowMoveConstructible<BySize>), " ", int(isNothrowMoveConstructible<Holder<Throwing>>), " ", int(isNothrowMoveConstructible<Holder<Quiet>>));
   return 0;
 }

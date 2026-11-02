@@ -38,6 +38,6 @@ int main()
   v.push_back(5);
   Vector<Pair<int, double>> p;
   p.push_back(Pair<int, double>(4, 0.5));
-  println("{} {} {}", d.keys(), sum(v), firsts(p));
+  println(d.keys(), " ", sum(v), " ", firsts(p));
   return 0;
 }

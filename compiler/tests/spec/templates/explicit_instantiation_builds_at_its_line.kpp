@@ -20,7 +20,7 @@ template struct Registry<Alpha>;
 int main()
 {
   for (int id : order)
-    print("{} ", id);
+    print(id, " ");
   println("");
   return 0;
 }

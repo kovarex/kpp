@@ -16,6 +16,6 @@ int main()
   n = "abc";
   Name m;
   m = String("def");
-  println("{} {}", n.text, m.text);
+  println(n.text, " ", m.text);
   return 0;
 }

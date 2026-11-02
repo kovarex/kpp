@@ -18,6 +18,6 @@ const char* kind()
 }
 int main()
 {
-  println("{} {} {} {} {}", isTypedUnion<Shape>, isTypedUnion<Plain>, isTypedUnion<int>, kind<Shape>(), kind<Plain>());
+  println(isTypedUnion<Shape>, " ", isTypedUnion<Plain>, " ", isTypedUnion<int>, " ", StringView(kind<Shape>()), " ", StringView(kind<Plain>()));
   return 0;
 }

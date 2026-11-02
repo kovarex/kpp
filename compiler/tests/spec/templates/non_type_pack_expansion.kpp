@@ -24,6 +24,6 @@ int main()
   Array<int, 3> values = {1, 2, 3};
   Array<int, 2> two = {4, 5};
   Holder h(two, Seq<1, 0>());
-  println("{} {} {} {}", sumOf(values, Seq<0, 1, 2>()), h.p.x, h.p.y, count(Seq<4, 5, 6, 7>()));
+  println(sumOf(values, Seq<0, 1, 2>()), " ", h.p.x, " ", h.p.y, " ", count(Seq<4, 5, 6, 7>()));
   return 0;
 }

@@ -6,6 +6,6 @@ int main()
   double a = floorl(2.5);
   double b = ceill(2.5);
   float c = fabsf(-1.5f);
-  println("{} {} {}", a, b, c);
+  println(a, " ", b, " ", c);
   return 0;
 }

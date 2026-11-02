@@ -20,6 +20,6 @@ int main()
   all.push_back(Ref(b));
   int first = all[0];
   int second = all[1];
-  println("{} {} {} {}", int(moved), all.size(), first, second);
+  println(int(moved), " ", all.size(), " ", first, " ", second);
   return 0;
 }

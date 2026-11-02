@@ -11,6 +11,6 @@ int main()
   auto* ptr = &box;
   auto text = String("text");
   ptr->width += 1;
-  println("{} {} {} {} {}", n, int(d * 2), ref.width, text.size(), sizeof(n) == sizeof(int));
+  println(n, " ", int(d * 2), " ", ref.width, " ", text.size(), " ", sizeof(n) == sizeof(int));
   return 0;
 }

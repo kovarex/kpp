@@ -10,6 +10,6 @@ int main()
 {
   auto a = widen(Small::A);
   auto b = widen(Big::C);
-  println("{} {} {} {}", a, b, sizeof(a), sizeof(b));
+  println(a, " ", b, " ", sizeof(a), " ", sizeof(b));
   return 0;
 }

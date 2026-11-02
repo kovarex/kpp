@@ -14,6 +14,6 @@ int main()
   Widths parenthesised = Widths({{120, 0}});
   Vector<Pair<int, int>> pairs{{1, 2}};
   Optional<Pair<int, int>> wrapped{{3, 4}};
-  println("{} {} {} {} {}", first(Widths({{120, 0}})), parenthesised.data.size(), pairs.size(), pairs[0].second, wrapped->first);
+  println(first(Widths({{120, 0}})), " ", parenthesised.data.size(), " ", pairs.size(), " ", pairs[0].second, " ", wrapped->first);
   return 0;
 }

@@ -32,6 +32,6 @@ int main()
   int grid[2][3] = {};
   int nums[3] = {1, 2, 3};
   Atlas a;
-  println("{} {} {} {} {} {} {}", a.fill(2), points(3), prefixesSize(), sizeof(nums[1]), sizeof(grid[1]), sizeof(grid[1][2]), sizeof nums[0]);
+  println(a.fill(2), " ", points(3), " ", prefixesSize(), " ", sizeof(nums[1]), " ", sizeof(grid[1]), " ", sizeof(grid[1][2]), " ", sizeof nums[0]);
   return 0;
 }

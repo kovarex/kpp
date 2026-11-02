@@ -37,7 +37,7 @@ void grow(const char* name)
   copies = 0;
   moves = 0;
   values.reserve(100);
-  println("{}: {} copies, {} moves, {} {}", name, copies, moves, values[0].v, values[2].v);
+  println(StringView(name), ": ", copies, " copies, ", moves, " moves, ", values[0].v, " ", values[2].v);
   // An insert before the end that grows the block moves the elements whatever their move (MSVC's
   // std::vector: the standard guarantees nothing there).
   copies = 0;
@@ -47,7 +47,7 @@ void grow(const char* name)
   full.emplace_back(2);
   copies = 0;
   full.emplace(full.begin(), 0);
-  println("{} inserted before: {} copies, {} {} {}", name, copies, full[0].v, full[1].v, full[2].v);
+  println(StringView(name), " inserted before: ", copies, " copies, ", full[0].v, " ", full[1].v, " ", full[2].v);
 }
 
 int main()

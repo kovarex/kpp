@@ -23,7 +23,7 @@ int main()
     add(6);
     auto count = [&list]() { return list.size(); };
     auto first = [list]() { return list[0]; };
-    println("{} {} {}", list.size(), count(), first());
+    println(list.size(), " ", count(), " ", first());
   }
   return 0;
 }

@@ -43,6 +43,6 @@ int main()
   ConditionDragPane pane;
   agui::Widget* widget = &pane;
   widget->paintBackgroundGlow(3);
-  println("{} {}", pane.glow, pane.mode);
+  println(pane.glow, " ", pane.mode);
   return 0;
 }

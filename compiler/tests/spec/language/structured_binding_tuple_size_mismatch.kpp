@@ -35,6 +35,6 @@ int main()
 {
   Triple t;
   auto [x, y] = t;
-  println("{} {}", x, y);
+  println(x, " ", y);
   return 0;
 }

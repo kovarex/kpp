@@ -9,6 +9,6 @@ int main()
 {
   MyStack<String> names;
   names.items.push_back(String("a"));
-  println("{}", *names.first());
+  println(*names.first());
   return 0;
 }

@@ -17,8 +17,8 @@ int main()
   String out;
   for (int i = 0; i < 6; ++i)
   {
-    out += describe(i);
-    out += ' ';
+    out << StringView(describe(i));
+    out << ' ';
   }
   int acc = 0;
   for (int i = 0; i < 4; ++i)
@@ -28,6 +28,6 @@ int main()
       case 2: acc += 100; // falls through
       case 3: acc += 1000; break;
     }
-  println("{}{}", out, acc);
+  println(out, acc);
   return 0;
 }

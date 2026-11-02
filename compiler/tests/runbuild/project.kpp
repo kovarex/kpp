@@ -6,24 +6,24 @@ struct Project
   Vector<String> roots;
   Vector<String> includes;
   void root(StringView r) { roots.push_back(String(r)); }
-  void include(StringView first, StringView second) { String s = String(first); s += second; includes.push_back(move(s)); }
+  void include(StringView first, StringView second) { String s = String(first); s << second; includes.push_back(move(s)); }
 };
 String describe(const Project& project)
 {
   String text = "configuration ";
-  text += project.configuration == Configuration::debug ? "debug" : "release";
-  text += "\n";
+  text << StringView(project.configuration == Configuration::debug ? "debug" : "release");
+  text << "\n";
   for (const String& r : project.roots)
   {
-    text += "root ";
-    text += r;
-    text += "\n";
+    text << "root ";
+    text << r;
+    text << "\n";
   }
   for (const String& i : project.includes)
   {
-    text += "cinclude ";
-    text += i;
-    text += "\n";
+    text << "cinclude ";
+    text << i;
+    text << "\n";
   }
   return text;
 }

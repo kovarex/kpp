@@ -21,6 +21,6 @@ int main()
   MoveOnly direct("abc");
   int converted = take("hello");
   MoveOnly moved(static_cast<MoveOnly&&>(direct));
-  println("{} {} {}", int(moved.value.size()), converted, moved.value);
+  println(int(moved.value.size()), " ", converted, " ", moved.value);
   return 0;
 }

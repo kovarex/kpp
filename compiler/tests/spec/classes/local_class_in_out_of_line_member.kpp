@@ -41,6 +41,6 @@ int Migration::load(int count)
 }
 int main()
 {
-  println("{}", Migration::load(4));
+  println(Migration::load(4));
   return 0;
 }

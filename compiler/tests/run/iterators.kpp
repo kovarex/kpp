@@ -58,7 +58,7 @@ int main()
   printf("%d %d %d %d\n", sum, numbers[1], numbers[2], numbers[7]);
   String digits;
   for (int v : Countdown{5})
-    digits += (char)('0' + v);
+    digits << (char)('0' + v);
   printf("%s\n", digits.c_str());
   return 0;
 }

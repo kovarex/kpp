@@ -6,6 +6,6 @@ int main()
   SharedPtr<Holder> h = makeShared<Holder>();
   UniquePtr<int> p = makeUnique<int>(3);
   h->fn = [q = move(p)]() mutable { return *q; };
-  println("{}", h->fn());
+  println(h->fn());
   return 0;
 }

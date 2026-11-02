@@ -22,12 +22,12 @@ struct WithConstructor
 int main()
 {
   Flags f;
-  println("{} {} {} {}", (int)f.reserved, (int)f.known, (int)f.count, (int)f.level);
+  println((int)f.reserved, " ", (int)f.known, " ", (int)f.count, " ", (int)f.level);
   f.level += 1;
-  println("{}", (int)f.level);
+  println((int)f.level);
   Packed p{3, 5, 7};
-  println("{} {} {}", (int)p.a, (int)p.b, p.c);
+  println((int)p.a, " ", (int)p.b, " ", p.c);
   WithConstructor w;
-  println("{} {}", (int)w.on, (int)w.level);
+  println((int)w.on, " ", (int)w.level);
   return 0;
 }

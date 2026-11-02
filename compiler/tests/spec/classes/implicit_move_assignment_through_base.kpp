@@ -31,6 +31,6 @@ int main()
   v[1].history.push_back(5.0f);
   Stats moved = move(v[2]);
   v[0] = move(v[1]);
-  println("{} {} {} {}", v[0].current, v[0].history.size(), moved.current, isMoveAssignable<Stats>);
+  println(v[0].current, " ", v[0].history.size(), " ", moved.current, " ", isMoveAssignable<Stats>);
   return 0;
 }

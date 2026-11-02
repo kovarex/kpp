@@ -14,7 +14,7 @@ int main()
   Base* bp = rp;
   int Base::* mp = &Base::id;
   int Right::* rmp = &Base::id;
-  println("{} {} {} {} {} {}", static_cast<Right&>(b).id, rr.id, rp->id, bp->id, rr.*mp, b.*rmp);
-  println("{} {} {}", rp->rid(), viaBase(rr), b.Right::get());
+  println(static_cast<Right&>(b).id, " ", rr.id, " ", rp->id, " ", bp->id, " ", rr.*mp, " ", b.*rmp);
+  println(rp->rid(), " ", viaBase(rr), " ", b.Right::get());
   return 0;
 }

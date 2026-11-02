@@ -23,6 +23,6 @@ int main()
   Query sent = addAuth(move(query));
   addAuth(query);
   const Query fixed;
-  println("{} {} {} {} {} {}", sent.fields, query.fields, kind(query), kind(fixed), kind(move(query)), kind(Query{}));
+  println(sent.fields, " ", query.fields, " ", kind(query), " ", kind(fixed), " ", kind(move(query)), " ", kind(Query{}));
   return 0;
 }

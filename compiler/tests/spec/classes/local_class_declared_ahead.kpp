@@ -29,6 +29,6 @@ int plan(int count)
 }
 int main()
 {
-  println("{}", plan(4));
+  println(plan(4));
   return 0;
 }

@@ -19,6 +19,6 @@ int main()
   U v = {};
   U w;
   Holder h;
-  println("{} {} {} {} {}", u.first.a, v.raw, w.raw, h.u.raw, h.after);
+  println(u.first.a, " ", v.raw, " ", w.raw, " ", h.u.raw, " ", h.after);
   return 0;
 }

@@ -44,6 +44,6 @@ int main()
   bool first = true;
   (first ? a : b) = 10;
   Params p;
-  println("{} {} {} {} {}", pick(true, s), pick(false, s), a, b, widths(p));
+  println(pick(true, s), " ", pick(false, s), " ", a, " ", b, " ", widths(p));
   return 0;
 }

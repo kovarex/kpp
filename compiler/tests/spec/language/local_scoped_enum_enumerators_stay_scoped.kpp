@@ -16,6 +16,6 @@ int load(MapVersion input)
 }
 int main()
 {
-  println("{} {}", load(MapVersion(1, 0)), load(MapVersion(3, 0)));
+  println(load(MapVersion(1, 0)), " ", load(MapVersion(3, 0)));
   return 0;
 }

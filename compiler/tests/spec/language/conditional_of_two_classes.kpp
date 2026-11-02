@@ -26,6 +26,6 @@ int main()
   const Shape& picked = on ? square : shape;
   static_assert(isSame<decltype(on ? Undo(Location{}, Location{}) : a), Optional<Undo>>);
   static_assert(isSame<decltype(on ? a : Undo(Location{}, Location{})), Optional<Undo>>);
-  println("{} {} {} {} {}", both->start.x, both->end.x, one->start.x, merge(none, none).hasValue(), picked.sides);
+  println(both->start.x, " ", both->end.x, " ", one->start.x, " ", merge(none, none).hasValue(), " ", picked.sides);
   return 0;
 }

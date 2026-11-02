@@ -10,6 +10,6 @@ int main()
   Id id{3};
   const char* text = "abc";
   StringView view(text);
-  println("{} {} {} {} {}", 3 == id, 4 != id, id == 3, text == view, "abd" != view);
+  println(3 == id, " ", 4 != id, " ", id == 3, " ", text == view, " ", "abd" != view);
   return 0;
 }

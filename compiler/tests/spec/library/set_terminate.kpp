@@ -5,6 +5,6 @@ int main()
 {
   setTerminate(first);
   TerminateHandlerFunction previous = setTerminate([]() { abort(); });
-  println("{}", previous == &first);
+  println(previous == &first);
   return 0;
 }

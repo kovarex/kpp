@@ -29,6 +29,6 @@ int main()
   Outer<int, float> a;
   Outer<double, float> b;
   a.inner.set(2, 0.5f);
-  println("{} {} {}", a.inner.load(), b.inner.load(), a.inner.stored);
+  println(a.inner.load(), " ", b.inner.load(), " ", a.inner.stored);
   return 0;
 }

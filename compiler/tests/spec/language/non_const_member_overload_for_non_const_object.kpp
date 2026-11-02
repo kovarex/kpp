@@ -5,12 +5,12 @@ class History
 public:
   const int& operator[](StringView key) const
   {
-    println("lookup {}", key);
+    println("lookup ", key);
     return this->value;
   }
   int& operator[](const String& key)
   {
-    println("insert {}", key);
+    println("insert ", key);
     return this->value;
   }
   int value = 0;
@@ -21,7 +21,7 @@ public:
   History history;
   static const char* const type;
   void add() { this->history[Manager::type] = 1; }
-  void read() const { println("{}", this->history[Manager::type]); }
+  void read() const { println(this->history[Manager::type]); }
 };
 const char* const Manager::type = "font";
 int main()

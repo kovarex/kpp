@@ -14,6 +14,6 @@ int main()
   theExpr.v = 7;
   Vector<Pair<Reg*, const Expr*>> pairs;
   pairs.emplace_back(&reg, Parsed());
-  println("{} {}", pairs[0].first->index, pairs[0].second->v);
+  println(pairs[0].first->index, " ", pairs[0].second->v);
   return 0;
 }

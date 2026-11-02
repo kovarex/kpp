@@ -25,8 +25,8 @@ int main()
   data.color = 5;
   data.greyProgress = 7;
   const uint8_t& bound = data.progress;
-  println("{} {} {} {}", checkEqual(data.progress, 0) ? 1 : 0, show(data.progress), (int)bound, show(data.greyProgress));
+  println(checkEqual(data.progress, 0) ? 1 : 0, " ", show(data.progress), " ", (int)bound, " ", show(data.greyProgress));
   data.progress = 1;
-  println("{} {}", checkEqual(data.progress, 1) ? 1 : 0, show(data.progress));
+  println(checkEqual(data.progress, 1) ? 1 : 0, " ", show(data.progress));
   return 0;
 }

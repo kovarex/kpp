@@ -21,6 +21,6 @@ int main()
   Token a;
   Token b;
   b.special = Token::Special::Unary;
-  println("{} {}", classify(a), classify(b));
+  println(classify(a), " ", classify(b));
   return 0;
 }

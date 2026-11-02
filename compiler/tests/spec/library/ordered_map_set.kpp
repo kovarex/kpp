@@ -8,10 +8,10 @@ int main()
   m[2] = "b";
   String order;
   for (auto& [k, v] : m)
-    order += v;
+    order << v;
   Set<int> s;
   s.insert(5);
   s.insert(1);
-  println("{} {} {}", order, m.size(), *s.begin());
+  println(order, " ", m.size(), " ", *s.begin());
   return 0;
 }

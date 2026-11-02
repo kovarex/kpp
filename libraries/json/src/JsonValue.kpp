@@ -191,7 +191,7 @@ struct JsonValue
   void expect(JsonType wanted, const char* what) const
   {
     if (this->type != wanted)
-      throw JsonTypeError(format("JSON value is {}, not {}", jsonTypeName(this->type), what));
+      throw JsonTypeError(format("JSON value is {}, not {}", StringView(jsonTypeName(this->type)), StringView(what)));
   }
 };
 

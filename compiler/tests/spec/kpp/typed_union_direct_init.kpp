@@ -22,6 +22,6 @@ int main()
   Vector<Shape> shapes;
   shapes.emplace_back(s);
   shapes.emplace_back(3);
-  println("{} {} {} {} {}", a == Shape::Box, b[Circle], h.shape[Box].side, shapes[0] == Shape::Box, shapes[1][Circle]);
+  println(a == Shape::Box, " ", b[Circle], " ", h.shape[Box].side, " ", shapes[0] == Shape::Box, " ", shapes[1][Circle]);
   return 0;
 }

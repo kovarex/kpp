@@ -14,6 +14,6 @@ int main()
     auto& loader = Loader<IDType>::instance();
     total += loader.count;
   });
-  println("{}", total);
+  println(total);
   return 0;
 }

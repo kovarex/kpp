@@ -27,6 +27,6 @@ struct Plain
 bool Plain::loaded = Plain::staticInit();
 int main()
 {
-  println("{}", counter);
+  println(counter);
   return 0;
 }

@@ -44,6 +44,6 @@ int main()
   bool d = current > latest;
   bool e = current > none;
   bool f = version(1, 2) >= latest;
-  println("{} {} {} {} {} {}", a, b, c, d, e, f);
+  println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
   return 0;
 }

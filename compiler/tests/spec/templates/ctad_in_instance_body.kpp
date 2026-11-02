@@ -38,6 +38,6 @@ public:
 int main()
 {
   SelectList<int> list([](int id) -> Result { return id > 2 ? Result::Fail : Result::Success; });
-  println("{}", list.count(5));
+  println(list.count(5));
   return 0;
 }

@@ -21,6 +21,6 @@ int count(Args... args)
 int main()
 {
   Container<int, double, char> c;
-  println("{} {}", c.data.capacity(), count(1, 2, 3, 4));
+  println(c.data.capacity(), " ", count(1, 2, 3, 4));
   return 0;
 }

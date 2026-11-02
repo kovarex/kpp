@@ -8,7 +8,7 @@ void save(const T& t)
   if constexpr (requires { t.save(); })
     t.save();
   else
-    println("plain {}", sizeof(t));
+    println("plain ", sizeof(t));
 }
 int main()
 {

@@ -23,6 +23,6 @@ int main()
     return format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
   };
   uint64_t packed = (uint64_t(31) << 48) | (uint64_t(0) << 32) | (uint64_t(101) << 16) | 4000;
-  println("{} {}", describeDirect(packed), describe(packed));
+  println(describeDirect(packed), " ", describe(packed));
   return 0;
 }

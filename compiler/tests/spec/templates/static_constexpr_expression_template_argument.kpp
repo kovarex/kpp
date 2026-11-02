@@ -10,6 +10,6 @@ int main()
 {
   Array<int, Bits<uint64_t>::valueBits + 1> forces;
   Array<int, Bits<int16_t>::valueBits> shorts;
-  println("{} {}", forces.size(), shorts.size());
+  println(forces.size(), " ", shorts.size());
   return 0;
 }

@@ -13,6 +13,6 @@ struct Token
 };
 int main()
 {
-  println("{} {} {}", (int)Token::classify('+'), (int)Token::classify('-'), (int)Token::classify('x'));
+  println((int)Token::classify('+'), " ", (int)Token::classify('-'), " ", (int)Token::classify('x'));
   return 0;
 }

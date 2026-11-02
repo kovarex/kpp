@@ -40,6 +40,6 @@ int main()
 {
   Opt<UniquePtr<int>> a = makeUnique<int>(4);
   Opt<UniquePtr<int>> b = move(a);
-  println("{}", **&b.storage.value);
+  println(**&b.storage.value);
   return 0;
 }

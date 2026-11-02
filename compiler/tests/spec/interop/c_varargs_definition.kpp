@@ -23,6 +23,6 @@ String formatted(const char* format, ...)
 }
 int main()
 {
-  println("{} {}", sumOf(3, 1, 2, 3), formatted("%d-%s", 7, "x"));
+  println(sumOf(3, 1, 2, 3), " ", formatted("%d-%s", 7, "x"));
   return 0;
 }

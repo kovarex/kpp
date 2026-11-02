@@ -8,6 +8,6 @@ int main()
   const Array<int, 3>& c = a;
   a.front() = 10;
   a.back() = 30;
-  println("{} {} {} {} {} {}", which(c.front()), which(c.back()), which(a.front()), which(a.back()), c.front(), c.back());
+  println(StringView(which(c.front())), " ", StringView(which(c.back())), " ", StringView(which(a.front())), " ", StringView(which(a.back())), " ", c.front(), " ", c.back());
   return 0;
 }

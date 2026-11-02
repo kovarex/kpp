@@ -20,7 +20,7 @@ const char* kind()
 }
 int main()
 {
-  println("{} {} {} {}", kind<Optional<int>>(), kind<int>(), is_optional<Optional<char>>::value, is_optional<char>::value);
-  println("{} {} {} {}", Table<char>::kind, Table<char*>::kind, Table<int>::kind, Table<int, Vector<char>>::kind);
+  println(StringView(kind<Optional<int>>()), " ", StringView(kind<int>()), " ", is_optional<Optional<char>>::value, " ", is_optional<char>::value);
+  println(Table<char>::kind, " ", Table<char*>::kind, " ", Table<int>::kind, " ", Table<int, Vector<char>>::kind);
   return 0;
 }

@@ -22,6 +22,6 @@ int main()
   for (Thread& t : waiters)
     t.join();
   worker.join();
-  println("{} {} {}", ready.load(), stage.load(), woken.load());
+  println(ready.load(), " ", stage.load(), " ", woken.load());
   return 0;
 }

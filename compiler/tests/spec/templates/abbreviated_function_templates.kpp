@@ -28,7 +28,7 @@ struct Reader
   {
     if (this->prototype->kind != T::Kind)
       return false;
-    println("{}", static_cast<const T*>(this->prototype)->*member);
+    println(static_cast<const T*>(this->prototype)->*member);
     return true;
   }
 
@@ -54,9 +54,9 @@ int main()
   Belt belt;
   Inserter inserter;
   Reader a{&belt}, b{&inserter};
-  println("{}", a.get(&Belt::speed, &Inserter::speed));
+  println(a.get(&Belt::speed, &Inserter::speed));
   b.get(&Belt::speed, &Inserter::reach);
   b.get(&Belt::speed);
-  println("{} {}", twice(21), anyOf(4, [](int v) { return v > 3; }));
+  println(twice(21), " ", anyOf(4, [](int v) { return v > 3; }));
   return 0;
 }

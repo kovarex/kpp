@@ -26,7 +26,7 @@ int main()
   shapes.push_back(new Square(3));
   shapes.push_back(new Unit());
   for (Shape* s : shapes)
-    println("{} {} {}", s->name(), s->area(), s->doubled());
+    println(StringView(s->name()), " ", s->area(), " ", s->doubled());
   for (Shape* s : shapes)
     delete s;
   return 0;

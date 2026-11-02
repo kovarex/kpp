@@ -4,6 +4,6 @@ int main()
 {
   const String& s = "text";
   const String& t = s;
-  println("{} {} {}", s.size(), s, t.size());
+  println(s.size(), " ", s, " ", t.size());
   return 0;
 }

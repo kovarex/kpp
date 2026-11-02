@@ -55,7 +55,6 @@ int main()
   Many m;
   m.items[19] = Tracked(19);
   Many n = m;
-  println("{} {} {} {} {} {} {} {} {}", *a.items[0].data, *b.items[2].data, *c.items[0].data, *d.items[2].data, *k.cells[1][0].data,
-          h.cells[1][0].data == nullptr, b.items[1].data == nullptr, *n.items[19].data, copies);
+  println(*a.items[0].data, " ", *b.items[2].data, " ", *c.items[0].data, " ", *d.items[2].data, " ", *k.cells[1][0].data, " ", h.cells[1][0].data == nullptr, " ", b.items[1].data == nullptr, " ", *n.items[19].data, " ", copies);
   return 0;
 }

@@ -22,6 +22,6 @@ int main()
   Holder hc(move(h));
   Holder ha;
   ha = move(h);
-  println("{} {} {} {} {} {}", a.how, b.how, source.value, hc.t.how, ha.t.how, byValue(move(source)));
+  println(a.how, " ", b.how, " ", source.value, " ", hc.t.how, " ", ha.t.how, " ", byValue(move(source)));
   return 0;
 }

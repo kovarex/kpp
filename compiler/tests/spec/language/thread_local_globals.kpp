@@ -27,6 +27,6 @@ int main()
   int other = 0;
   Thread worker([&]() { other = bump(); });
   worker.join();
-  println("{} {} {}", mine, other, bump());
+  println(mine, " ", other, " ", bump());
   return 0;
 }

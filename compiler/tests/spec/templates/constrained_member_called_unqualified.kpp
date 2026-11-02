@@ -12,6 +12,6 @@ int main()
 {
   Holder<int> i;
   Holder<double> d;
-  println("{} {}", i.describe(), d.describe());
+  println(i.describe(), " ", d.describe());
   return 0;
 }

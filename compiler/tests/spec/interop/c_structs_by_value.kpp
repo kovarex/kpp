@@ -43,11 +43,10 @@ extern "C" S24 makeS24(long long a);
 
 int main()
 {
-  println("{} {} {} {} {}", takeS1(S1{7}), takeS2(S2{300}), takeS3(S3{1, 2, 3}), takeS4(S4{40000}), takeS8(S8{4, 5}));
-  println("{} {} {} {} {} {} {}", takeF2(F2{1.5f, 2.5f}), takeD1(D1{3.25}), takeS12(S12{1, 2, 3}), takeDI(DI{1.5, 7}), takeF3(F3{1, 2, 3}), takeD2(D2{4, 5}),
-          takeIF(IF{6, 0.5f}));
-  println("{} {} {}", takeS24(S24{1, 2, 3}), afterFive(1, 2, 3, 4, 5, S12{6, 7, 8}, 9), afterSeven(1, 2, 3, 4, 5, 6, 7, D2{8, 9}));
-  println("{}", mixed(1, DI{2, 3}, 4.0f, S8{5, 6}));
+  println(takeS1(S1{7}), " ", takeS2(S2{300}), " ", takeS3(S3{1, 2, 3}), " ", takeS4(S4{40000}), " ", takeS8(S8{4, 5}));
+  println(takeF2(F2{1.5f, 2.5f}), " ", takeD1(D1{3.25}), " ", takeS12(S12{1, 2, 3}), " ", takeDI(DI{1.5, 7}), " ", takeF3(F3{1, 2, 3}), " ", takeD2(D2{4, 5}), " ", takeIF(IF{6, 0.5f}));
+  println(takeS24(S24{1, 2, 3}), " ", afterFive(1, 2, 3, 4, 5, S12{6, 7, 8}, 9), " ", afterSeven(1, 2, 3, 4, 5, 6, 7, D2{8, 9}));
+  println(mixed(1, DI{2, 3}, 4.0f, S8{5, 6}));
   S1 s1 = makeS1(9);
   S3 s3 = makeS3(10);
   S8 s8 = makeS8(11);
@@ -58,8 +57,8 @@ int main()
   D2 d2 = makeD2(6);
   IF i2 = makeIF(8);
   S24 s24 = makeS24(13);
-  println("{} {} {} {} {} {} {} {}", int(s1.a), int(s3.a), int(s3.b), int(s3.c), s8.a, s8.b, f2.x, f2.y);
-  println("{} {} {} {} {} {} {} {} {} {} {}", s12.a, s12.b, s12.c, di.x, di.y, f3.x, f3.y, f3.z, d2.x, d2.y, i2.b);
-  println("{} {} {} {}", i2.a, s24.a, s24.b, s24.c);
+  println(int(s1.a), " ", int(s3.a), " ", int(s3.b), " ", int(s3.c), " ", s8.a, " ", s8.b, " ", f2.x, " ", f2.y);
+  println(s12.a, " ", s12.b, " ", s12.c, " ", di.x, " ", di.y, " ", f3.x, " ", f3.y, " ", f3.z, " ", d2.x, " ", d2.y, " ", i2.b);
+  println(i2.a, " ", s24.a, " ", s24.b, " ", s24.c);
   return 0;
 }

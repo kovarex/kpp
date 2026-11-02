@@ -50,6 +50,6 @@ int main()
     auto& loader = Loader<IDType>::instance();
     result = describe<IDType>() * 100 + local.value * 10 + loader.item.value;
   });
-  println("{}", result);
+  println(result);
   return 0;
 }

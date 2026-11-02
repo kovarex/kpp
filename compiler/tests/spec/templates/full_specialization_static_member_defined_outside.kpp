@@ -20,6 +20,6 @@ int Flag<false>::counter = 200;
 int main()
 {
   Flag<true>::counter += 1;
-  println("{} {}", Flag<true>::counter, Flag<false>::counter);
+  println(Flag<true>::counter, " ", Flag<false>::counter);
   return 0;
 }

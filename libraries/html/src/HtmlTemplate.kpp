@@ -61,7 +61,7 @@ void htmlTemplateFail(const char* text, int offset, const char* what)
     else
       ++column;
   }
-  throw HtmlTemplateError(format("{}:{}: {}", line, column, what));
+  throw HtmlTemplateError(format("{}:{}: {}", line, column, StringView(what)));
 }
 
 struct HtmlTemplate
@@ -126,9 +126,9 @@ struct HtmlTemplate
         ++index;
       }
       if (!argument)
-        throw HtmlTemplateError(format("render: no value for {{{}}}", String(name)));
+        throw HtmlTemplateError(toString("render: no value for {{", String(name), "}}"));
       if (argument->safe && part.kind != HtmlHole::text)
-        throw HtmlTemplateError(format("render: {{{}}} is SafeHtml, which goes only in an element's text", String(name)));
+        throw HtmlTemplateError(toString("render: {{", String(name), "}} is SafeHtml, which goes only in an element's text"));
       if (part.kind == HtmlHole::text && argument->safe)
         out.append(argument->value);
       else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
@@ -136,8 +136,8 @@ struct HtmlTemplate
       else if (part.kind == HtmlHole::urlStart)
       {
         if (!htmlUrlIsSafe(argument->value))
-          throw HtmlTemplateError(format("render: {{{}}} is a URL with a scheme other than http, https and mailto: {}", String(name),
-                                         argument->value));
+          throw HtmlTemplateError(toString("render: {{", String(name), "}} is a URL with a scheme other than http, https and mailto: ",
+                                           argument->value));
         htmlAppendEscaped(out, argument->value);
       }
       else
@@ -147,7 +147,7 @@ struct HtmlTemplate
     for (const HtmlArgument& a : arguments)
     {
       if (!used[index])
-        throw HtmlTemplateError(format("render: a value for {}, which the template has no hole for", a.name));
+        throw HtmlTemplateError(format("render: a value for {}, which the template has no hole for", StringView(a.name)));
       ++index;
     }
   }

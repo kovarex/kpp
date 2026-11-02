@@ -19,7 +19,6 @@ int main()
   int sum = 0;
   for (char c : text)
     sum += c - 'a';
-  println("{} {} {} {} {} {} {} {} {}", countIf(a.cbegin(), a.cend(), [](int x) { return x != 0; }), anyOf(cd.cbegin(), cd.cend(), [](int x) { return x == 0; }),
-          m.cbegin()->second, m.crbegin()->first, *s.crbegin(), h.cbegin()->second, *l.crbegin(), *(text.cend() - 1), sum + (view.cend() - view.cbegin()));
+  println(countIf(a.cbegin(), a.cend(), [](int x) { return x != 0; }), " ", anyOf(cd.cbegin(), cd.cend(), [](int x) { return x == 0; }), " ", m.cbegin()->second, " ", m.crbegin()->first, " ", *s.crbegin(), " ", h.cbegin()->second, " ", *l.crbegin(), " ", *(text.cend() - 1), " ", sum + (view.cend() - view.cbegin()));
   return 0;
 }

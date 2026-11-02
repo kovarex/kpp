@@ -5,7 +5,7 @@ int main()
   Future<int> now = async(Launch::async, []() -> int { return 6; });
   int ran = 0;
   Future<int> later = async(Launch::deferred, [&ran]() -> int { ++ran; return 7; });
-  println("before get: {}", ran);
-  println("{} {} {}", now.get(), later.get(), ran);
+  println("before get: ", ran);
+  println(now.get(), " ", later.get(), " ", ran);
   return 0;
 }

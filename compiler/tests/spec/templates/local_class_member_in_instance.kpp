@@ -23,6 +23,6 @@ int dispatch(int count, Func fn)
 }
 int main()
 {
-  println("{}", dispatch(3, [](int item, int order) { return item * 10 + order; }));
+  println(dispatch(3, [](int item, int order) { return item * 10 + order; }));
   return 0;
 }

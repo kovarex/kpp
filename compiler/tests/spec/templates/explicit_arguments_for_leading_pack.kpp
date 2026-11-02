@@ -40,6 +40,6 @@ int main()
   Input input;
   dummyLoad<char, int>(input);
   Dummy<short, double> d(input);
-  println("{}", input.loaded);
+  println(input.loaded);
   return 0;
 }

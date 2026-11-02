@@ -17,6 +17,6 @@ int main()
   Wrapper c(move(a));
   Wrapper d(a);
   Wrapper e = move(c);
-  println("{} {} {} {} {} {} {} {}", b.value, b.via, c.value, c.via, d.value, d.via, e.value, e.via);
+  println(b.value, " ", b.via, " ", c.value, " ", c.via, " ", d.value, " ", d.via, " ", e.value, " ", e.via);
   return 0;
 }

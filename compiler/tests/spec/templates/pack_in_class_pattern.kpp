@@ -9,7 +9,7 @@ struct Derived : TList<char, double> {};
 
 int main()
 {
-  println("{} {} {}", Count<TList<int, float, char>>::get(), Count<int>::get(), Count<TList<>>::get());
-  println("{} {} {} {}", countOf(TList<int, float>()), countOf(TList<>()), countOf(Derived()), afterInt(TList<int, char, bool>()));
+  println(Count<TList<int, float, char>>::get(), " ", Count<int>::get(), " ", Count<TList<>>::get());
+  println(countOf(TList<int, float>()), " ", countOf(TList<>()), " ", countOf(Derived()), " ", afterInt(TList<int, char, bool>()));
   return 0;
 }

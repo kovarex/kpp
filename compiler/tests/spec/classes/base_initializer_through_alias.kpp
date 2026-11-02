@@ -21,6 +21,6 @@ int main()
 {
   Const<int> number(7);
   Const<Point> point(Point(3));
-  println("{} {}", number.value, point.x);
+  println(number.value, " ", point.x);
   return 0;
 }

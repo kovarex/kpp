@@ -28,6 +28,6 @@ int main()
 {
   Instance<int> i;
   i.filters.push_back(Instance<int>::Filter([](const int& x) { return x > 2; }));
-  println("{} {}", i.filters[0].predicate(5), i.filters[0].predicate(1));
+  println(i.filters[0].predicate(5), " ", i.filters[0].predicate(1));
   return 0;
 }

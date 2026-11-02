@@ -24,13 +24,12 @@ int main()
   while (RE2::Consume(&input, header, &line))
   {
     ++lines;
-    seen += "<" + line.ToString() + ">";
+    seen << "<" << line.ToString() << ">";
   }
   String text = "a-b-c";
   bool replaced = RE2::Replace(&text, RE2("-"), "+");
   String words = "a-b-c";
   int replacedCount = RE2::GlobalReplace(&words, RE2("(\\w)"), "[\\1]");
-  println("{} {} | {} {} {} {} {} | {} {} | {} {} | {} {} {} | {} {} {} {}", skipped, time, all, done, total, seconds, count, partial, minor, absent, number,
-          lines, seen, input.as_string(), replaced, text, replacedCount, words);
+  println(skipped, " ", time, " | ", all, " ", done, " ", total, " ", seconds, " ", count, " | ", partial, " ", minor, " | ", absent, " ", number, " | ", lines, " ", seen, " ", input.as_string(), " | ", replaced, " ", text, " ", replacedCount, " ", words);
   return 0;
 }

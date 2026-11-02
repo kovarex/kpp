@@ -6669,6 +6669,119 @@ namespace
         }
       return false;
     }
+    // An expression's type for the std::string rewrites: a cast's own type (`std::string(name) += '_'`),
+    // a call's function's return type, else what the declarations say.
+    Type* plainTypeOf(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e)
+        return nullptr;
+      if (e->kind == NodeKind::CastExpr)
+        return static_cast<CastExpr*>(e)->type;
+      if (e->kind == NodeKind::NamedCastExpr)
+        return static_cast<NamedCastExpr*>(e)->type;
+      if (e->kind == NodeKind::FunctionalCastExpr)
+        return static_cast<FunctionalCastExpr*>(e)->type;
+      if (e->kind == NodeKind::CallExpr)
+      {
+        Expr* callee = static_cast<CallExpr*>(e)->callee;
+        Decl* f = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+                : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                       : nullptr;
+        if (f && f->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(f)->returnType)
+          return static_cast<FunctionDecl*>(f)->returnType;
+      }
+      return typeOfExpr(e, 0).type;
+    }
+    // Whether a type is C++'s std::string (or wstring, u16string, u32string, basic_string, or an alias of
+    // one): Kpp's String and WString, which append with `<<` (design.md 14: String has no +=).
+    bool isStdStringType(Type* type, int depth = 0)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner
+             : type->kind == NodeKind::LRefType  ? static_cast<LRefType*>(type)->referenced
+                                                 : static_cast<RRefType*>(type)->referenced;
+      if (!type || depth > 8 || type->kind != NodeKind::NamedType)
+        return false;
+      auto* named = static_cast<NamedType*>(type);
+      const QualifiedName& name = named->name;
+      for (const NamePart& part : name.parts)
+        if (part.symbol == UINT32_MAX)
+          return false;
+      if (name.parts.size() == 2 && symbols.name(name.parts[0].symbol) == "std")
+      {
+        static const std::set<std::string_view> strings = {"string", "wstring", "u16string", "u32string", "basic_string"};
+        if (strings.count(symbols.name(name.parts[1].symbol)))
+          return true;
+      }
+      Decl* d = named->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return isStdStringType(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return isStdStringType(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return false;
+    }
+    // Whether an expression is a std::string: of such a type, a temporary made by naming the type
+    // (`std::string(name) += '_'`, a call of the class or an alias of it), or a `+=` on one, which
+    // returns it (`(key += '_') += name`).
+    bool isStdStringExpr(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e)
+        return false;
+      if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
+          P(static_cast<BinaryExpr*>(e)->op) == P::PlusAssign)
+        return isStdStringExpr(static_cast<BinaryExpr*>(e)->lhs);
+      if (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr)
+      {
+        auto* callee = static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee);
+        if (!callee->resolved || callee->resolved->kind != NodeKind::FunctionDecl)
+        {
+          NamedType named{};
+          named.kind = NodeKind::NamedType;
+          named.name = callee->name;
+          named.resolved = callee->resolved;
+          if (isStdStringType(&named))
+            return true;
+        }
+      }
+      return isStdStringType(plainTypeOf(e));
+    }
+    // Whether a type is an integer other than char, which C++ appends to a std::string as one char and
+    // Kpp's `<<` as its digits (unsigned char, uint8_t, int...).
+    bool isNonCharInteger(Type* type, int depth = 0)
+    {
+      while (type && type->kind == NodeKind::ConstType)
+        type = static_cast<ConstType*>(type)->inner;
+      if (!type || depth > 8)
+        return false;
+      if (type->kind == NodeKind::BuiltinType)
+      {
+        auto* b = static_cast<BuiltinType*>(type);
+        if (b->keyword == Kw::char_)
+          return b->isUnsigned || b->isSigned;
+        return b->keyword == Kw::int_ || b->keyword == Kw::short_ || b->keyword == Kw::long_ || b->keyword == Kw::unsigned_ ||
+               b->keyword == Kw::signed_ || b->keyword == Kw::bool_;
+      }
+      if (type->kind != NodeKind::NamedType)
+        return false;
+      auto* named = static_cast<NamedType*>(type);
+      if (!named->name.parts.empty() && named->name.last().symbol != UINT32_MAX)
+      {
+        static const std::set<std::string_view> integers = {"uint8_t", "int8_t", "uint16_t", "int16_t", "uint32_t", "int32_t", "uint64_t",
+                                                            "int64_t", "size_t", "u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64"};
+        if (integers.count(symbols.name(named->name.last().symbol)))
+          return true;
+      }
+      Decl* d = named->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return isNonCharInteger(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return isNonCharInteger(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return false;
+    }
     // A std container's iterator type, as the code at owner names it: `std::vector<T>::iterator`, or
     // `WidgetArray::iterator` where WidgetArray is an alias of one in owner or a class or namespace
     // around it (Agui's visible_iterator). Its operator* and operator-> are a pointer's in Kpp.
@@ -7482,6 +7595,92 @@ namespace
           auto* binary = static_cast<BinaryExpr*>(e);
           if (P(binary->op) == P::Shl)
             sizeAsSizeT(binary->rhs);
+          // C++'s `text += x` on a std::string: Kpp's String appends with `<<` (design.md 14), the right
+          // side in parentheses where `<<` would bind otherwise (`text += ok ? "a" : "b"`), and an
+          // integer that C++ appends as one char written char(x) (PropertyTreeJson's UTF-8 encoder:
+          // `buffer += (unsigned char)(0xc0 | (c >> 6))`).
+          if (!in.c && !binary->isKeyword && P(binary->op) == P::PlusAssign && binary->rhs &&
+              isStdStringExpr(binary->lhs))
+          {
+            // (the operator's token: the first `+=` outside brackets after the left side's first token,
+            // past an inner one in `(key += '_') += name`)
+            uint32_t op = firstTokenOf(binary->lhs);
+            for (int depth = 0; op < toks.size() && !(depth == 0 && toks[op].is(P::PlusAssign)); ++op)
+              if (toks[op].is(P::LParen) || toks[op].is(P::LBracket) || toks[op].is(P::LBrace))
+                ++depth;
+              else if (toks[op].is(P::RParen) || toks[op].is(P::RBracket) || toks[op].is(P::RBrace))
+                --depth;
+            uint32_t rhsFirst = op + 1;
+            if (op < toks.size() && toks[op].is(P::PlusAssign))
+            {
+              // the end of the right side: the `;`, `)` or `,` that ends the expression
+              uint32_t end = rhsFirst;
+              for (int depth = 0; end < toks.size(); ++end)
+              {
+                if (toks[end].is(P::LParen) || toks[end].is(P::LBracket) || toks[end].is(P::LBrace))
+                  ++depth;
+                else if (toks[end].is(P::RParen) || toks[end].is(P::RBracket) || toks[end].is(P::RBrace))
+                {
+                  if (depth == 0)
+                    break;
+                  --depth;
+                }
+                else if (depth == 0 && (toks[end].is(P::Semi) || toks[end].is(P::Comma)))
+                  break;
+              }
+              Expr* rhs = binary->rhs;
+              while (rhs->kind == NodeKind::ParenExpr)
+                rhs = static_cast<ParenExpr*>(rhs)->inner;
+              Type* rhsType = plainTypeOf(rhs);
+              bool asChar = isNonCharInteger(rhsType);
+              // C text that is no literal or array: a char pointer, or a conditional of literals (`ok ?
+              // "yes" : "no"`, whose type the parse may not know), is no piece of a text (design.md 14):
+              // StringView(...)
+              auto isCharPointer = [&](Type* t)
+              {
+                while (t && t->kind == NodeKind::ConstType)
+                  t = static_cast<ConstType*>(t)->inner;
+                if (!t || t->kind != NodeKind::PointerType)
+                  return false;
+                Type* pointee = static_cast<PointerType*>(t)->pointee;
+                while (pointee && pointee->kind == NodeKind::ConstType)
+                  pointee = static_cast<ConstType*>(pointee)->inner;
+                return pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::char_ &&
+                       !static_cast<BuiltinType*>(pointee)->isUnsigned && !static_cast<BuiltinType*>(pointee)->isSigned;
+              };
+              auto isStringLiteral = [&](Expr* x)
+              {
+                while (x && x->kind == NodeKind::ParenExpr)
+                  x = static_cast<ParenExpr*>(x)->inner;
+                return x && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::String;
+              };
+              bool cText = !asChar && !isStringLiteral(rhs) &&
+                           (isCharPointer(rhsType) ||
+                            // (a std::string's c_str(), whose type the parse does not know without the library)
+                            (rhs->kind == NodeKind::CallExpr && static_cast<CallExpr*>(rhs)->args.empty() &&
+                             static_cast<CallExpr*>(rhs)->callee->kind == NodeKind::MemberExpr &&
+                             static_cast<MemberExpr*>(static_cast<CallExpr*>(rhs)->callee)->member.parts.size() == 1 &&
+                             static_cast<MemberExpr*>(static_cast<CallExpr*>(rhs)->callee)->member.parts[0].symbol != UINT32_MAX &&
+                             (symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(rhs)->callee)->member.parts[0].symbol) == "c_str" ||
+                              symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(rhs)->callee)->member.parts[0].symbol) == "what")) ||
+                            (rhs->kind == NodeKind::ConditionalExpr && static_cast<ConditionalExpr*>(rhs)->then &&
+                             (isStringLiteral(static_cast<ConditionalExpr*>(rhs)->then) || isStringLiteral(static_cast<ConditionalExpr*>(rhs)->else_))));
+              bool loose = binary->rhs->kind == NodeKind::ConditionalExpr ||
+                           (binary->rhs->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(binary->rhs)->isKeyword &&
+                            P(static_cast<BinaryExpr*>(binary->rhs)->op) != P::Plus && P(static_cast<BinaryExpr*>(binary->rhs)->op) != P::Minus &&
+                            P(static_cast<BinaryExpr*>(binary->rhs)->op) != P::Star && P(static_cast<BinaryExpr*>(binary->rhs)->op) != P::Slash &&
+                            P(static_cast<BinaryExpr*>(binary->rhs)->op) != P::Percent);
+              replace(toks[op].offset, toks[op].length, "<<");
+              if (asChar || cText || loose)
+              {
+                insert(toks[rhsFirst].offset, asChar ? "char(" : cText ? "StringView(" : "(");
+                insert(toks[end].offset, ")");
+              }
+              counts.add(asChar  ? "std::string += of an integer written << char(x)"
+                         : cText ? "std::string += of C text written << StringView(x)"
+                                 : "std::string += written <<");
+            }
+          }
           walkExpr(binary->lhs, owner);
           walkExpr(binary->rhs, owner);
           break;

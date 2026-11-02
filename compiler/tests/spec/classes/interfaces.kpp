@@ -16,6 +16,6 @@ int main()
   bus.listeners.push_back(&even);
   for (int i = 1; i <= 4; ++i)
     bus.emit(i);
-  println("{} {}", log.seen.size(), even.sum);
+  println(log.seen.size(), " ", even.sum);
   return 0;
 }

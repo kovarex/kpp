@@ -14,6 +14,6 @@ int main()
   int x = 0;
   if (h)
     h(x);
-  println("{} {} {} {}", bool(f), bool(g), bool(h), x);
+  println(bool(f), " ", bool(g), " ", bool(h), " ", x);
   return 0;
 }

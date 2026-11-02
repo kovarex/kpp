@@ -18,6 +18,6 @@ int main()
   Optional<Point> point;
   point = {1, 2};
   Optional<Pair<int, int>> p = both(3, 4);
-  println("{} {} {} {} {}", tag->text, tag->icon, point->x + point->y, p->first, p->second);
+  println(tag->text, " ", tag->icon, " ", point->x + point->y, " ", p->first, " ", p->second);
   return 0;
 }

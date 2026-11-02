@@ -13,6 +13,6 @@ namespace Game
 }
 int main()
 {
-  println("{}", Game::f());
+  println(Game::f());
   return 0;
 }

@@ -4,12 +4,12 @@ int main()
 {
   String joined;
   for (String name : {"stone-wall", "transport-belt"})
-    joined += name + ";";
+    joined << name + ";";
   Vector<const char*> list = {"a", "bb"};
   for (String name : list)
-    joined += name + ";";
+    joined << name + ";";
   for (const String& name : {"ref"})
-    joined += name;
-  println("{}", joined);
+    joined << name;
+  println(joined);
   return 0;
 }

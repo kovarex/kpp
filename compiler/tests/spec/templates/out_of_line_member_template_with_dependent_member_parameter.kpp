@@ -16,6 +16,6 @@ int main()
   Vector<int*> v;
   int x = 5;
   auto it = v.begin();
-  println("{}", g.visit(&x, it));
+  println(g.visit(&x, it));
   return 0;
 }

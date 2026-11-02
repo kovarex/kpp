@@ -4,6 +4,6 @@ struct Point { int x = 0; int y = 0; int z = 0; };
 int main()
 {
   Point p{.x = 1, .z = 3};
-  println("{} {} {}", p.x, p.y, p.z);
+  println(p.x, " ", p.y, " ", p.z);
   return 0;
 }

@@ -18,6 +18,6 @@ int main()
   Const<Map<String, int>> shifts(Map<String, int>{{"inserter", 4}});
   int shift = 0;
   shift = getMapOrDefault(shifts, "inserter");
-  println("{}", shift);
+  println(shift);
   return 0;
 }

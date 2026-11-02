@@ -20,6 +20,6 @@ static bool check(int x, int y)
 }
 int main()
 {
-  println("{} {}", check(1, 2), check(3, 2));
+  println(check(1, 2), " ", check(3, 2));
   return 0;
 }

@@ -25,6 +25,6 @@ struct Beacon
 int main()
 {
   Beacon b;
-  println("{}", b.describe());
+  println(b.describe());
   return 0;
 }

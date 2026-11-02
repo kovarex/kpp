@@ -15,6 +15,6 @@ int main()
   SpecView empty;
   empty.data = "";
   empty.size = 0;
-  println("{}", specReadVarargs(2, slot, view, other, empty));
+  println(specReadVarargs(2, slot, view, other, empty));
   return 0;
 }

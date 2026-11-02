@@ -3,7 +3,7 @@ extern "C" import "stdio.h";
 struct Point
 {
   int x = 0;
-  void appendTo(String& out) const { out += "p"; }
+  void appendTo(String& out) const { out << "p"; }
 };
 struct Wrapped
 {

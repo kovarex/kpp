@@ -51,6 +51,6 @@ auto Network::scaled(int value) const
 int main()
 {
   Network network;
-  println("{} {} {} {} {}", network.countOn<true>(1), network.countOn<false>(1), network.countOn<false>(0), network.scaled<true>(2), network.scaled<false>(2));
+  println(network.countOn<true>(1), " ", network.countOn<false>(1), " ", network.countOn<false>(0), " ", network.scaled<true>(2), " ", network.scaled<false>(2));
   return 0;
 }

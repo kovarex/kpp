@@ -25,9 +25,9 @@ int local()
 }
 int main()
 {
-  println("{} {} {}", sizeof(Imm<4>), plain(), local());
+  println(sizeof(Imm<4>), " ", plain(), " ", local());
   Named a;
   a.data[3] = 'x';
-  println("{}", sizeof(Named));
+  println(sizeof(Named));
   return 0;
 }

@@ -11,13 +11,13 @@ int main()
   names.push_back(String("a"));
   names.push_back(String("b"));
   for (String& n : names)
-    n += "!";
+    n << "!";
   String joined;
   for (const String& n : names)
-    joined += n;
+    joined << n;
   int count = 0;
   for (int v : {10, 20, 30})
     count += v;
-  println("{} {} {}", sum, joined, count);
+  println(sum, " ", joined, " ", count);
   return 0;
 }

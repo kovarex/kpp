@@ -8,6 +8,6 @@ int main()
 {
   shapes::Circle c;
   Square s;
-  println("{}", describeIt(c) + describeIt(s));
+  println(describeIt(c) + describeIt(s));
   return 0;
 }

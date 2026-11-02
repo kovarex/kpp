@@ -13,7 +13,6 @@ constexpr int viaLambda = [](int v) { return pick(v) * 2; }(3);
 enum class Size : int { Small = pick(5) };
 int main()
 {
-  println("{} {} {} {} {} {}", int(sizeof(sized) / sizeof(int)), k, int(sizeof(doubled) / sizeof(int)), viaLambda, int(sizeof(heldSized) / sizeof(int)),
-          int(sizeof(enumSized) / sizeof(int)));
+  println(int(sizeof(sized) / sizeof(int)), " ", k, " ", int(sizeof(doubled) / sizeof(int)), " ", viaLambda, " ", int(sizeof(heldSized) / sizeof(int)), " ", int(sizeof(enumSized) / sizeof(int)));
   return 0;
 }

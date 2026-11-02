@@ -25,6 +25,6 @@ int drawSecond(const Parameters& parameters)
 int main()
 {
   Parameters parameters;
-  println("{} {}", drawFirst(parameters), drawSecond(parameters));
+  println(drawFirst(parameters), " ", drawSecond(parameters));
   return 0;
 }

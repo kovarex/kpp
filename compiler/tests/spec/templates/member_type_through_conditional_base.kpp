@@ -32,6 +32,6 @@ int main()
   Plain::mapped_type y = 4;
   const char* a = "a";
   const char* b = "b";
-  println("{} {} {} {}", x, y, getOr(c, a), getOr(c, b));
+  println(x, " ", y, " ", getOr(c, a), " ", getOr(c, b));
   return 0;
 }

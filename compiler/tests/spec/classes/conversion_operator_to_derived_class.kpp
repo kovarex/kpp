@@ -29,6 +29,6 @@ int main()
 {
   Prototype p;
   Signal same(7), other(8);
-  println("{} {} {}", same != p.defaultSignal, other != p.defaultSignal, same == p.defaultSignal);
+  println(same != p.defaultSignal, " ", other != p.defaultSignal, " ", same == p.defaultSignal);
   return 0;
 }

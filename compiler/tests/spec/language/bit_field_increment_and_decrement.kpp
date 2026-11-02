@@ -23,7 +23,7 @@ public:
 };
 void show(const char* what, const TreeData& data)
 {
-  println("{}: {} {} {} {}", what, (int)data.treeVariation, (int)data.progress, (int)data.color, (int)data.greyProgress);
+  println(StringView(what), ": ", (int)data.treeVariation, " ", (int)data.progress, " ", (int)data.color, " ", (int)data.greyProgress);
 }
 int main()
 {
@@ -43,9 +43,9 @@ int main()
   --data.color;
   show("prefix --", data);
   int old = data.greyProgress++;
-  println("postfix value: {} then {}", old, (int)data.greyProgress);
+  println("postfix value: ", old, " then ", (int)data.greyProgress);
   int now = ++data.progress;
-  println("prefix value: {} then {}", now, (int)data.progress);
+  println("prefix value: ", now, " then ", (int)data.progress);
   data.greyProgress = 15;
   data.greyProgress++;
   show("wraps above", data);
@@ -70,6 +70,6 @@ int main()
   wide.middle++;
   --wide.high;
   wide.low++;
-  println("wide: {} {} {}", (int)wide.low, (int)wide.middle, (int)wide.high);
+  println("wide: ", (int)wide.low, " ", (int)wide.middle, " ", (int)wide.high);
   return 0;
 }

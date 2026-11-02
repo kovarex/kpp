@@ -2,7 +2,7 @@
 // factorio: ExportResultGui::loadAndAttachInternal (a handler's calls in a scope of their own, a FloatingGuiWindow local around the try)
 // kppc: --debug-info
 // (LLVM's verifier rejects a handler's cleanup that unwinds elsewhere than its catchswitch only in a module with debug info.)
-struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~{}", this->text); } };
+struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this->text)); } };
 void fail(const char* what) { throw RuntimeError(String(what)); }
 void handle()
 {
@@ -14,7 +14,7 @@ void handle()
   catch (const RuntimeError& e)
   {
     Note inner("inner");
-    println("caught {}", e.what());
+    println("caught ", StringView(e.what()));
     fail("second");
   }
   println("not reached");
@@ -36,7 +36,7 @@ void nested()
   }
   catch (const RuntimeError& e)
   {
-    println("nested caught {}", e.what());
+    println("nested caught ", StringView(e.what()));
   }
 }
 int main()
@@ -47,7 +47,7 @@ int main()
   }
   catch (const Exception& e)
   {
-    println("main caught {}", e.what());
+    println("main caught ", StringView(e.what()));
   }
   nested();
   return 0;

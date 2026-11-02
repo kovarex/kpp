@@ -4,4 +4,4 @@ struct S { int v = 3; };
 extern "C" int peek(S* s, int idx);
 int caller(S* s) { return peek(s, 1); }
 int peek(S* s, int idx) { return s->v + idx; }
-int main() { S s; println("{}", caller(&s)); return 0; }
+int main() { S s; println(caller(&s)); return 0; }

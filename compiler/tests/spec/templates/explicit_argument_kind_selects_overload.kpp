@@ -14,6 +14,6 @@ struct Fn
 
 int main()
 {
-  println("{} {} {}", Fn::create<Mode::Cell>({"value"}), Fn::create<Abs>({"value"}), Fn::create<Mode::Distance>({"x", "y"}));
+  println(Fn::create<Mode::Cell>({"value"}), " ", Fn::create<Abs>({"value"}), " ", Fn::create<Mode::Distance>({"x", "y"}));
   return 0;
 }

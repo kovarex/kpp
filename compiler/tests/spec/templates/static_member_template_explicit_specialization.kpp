@@ -9,12 +9,12 @@ public:
 template<typename T>
 void Defines::setKey(int* stack, const char* key, T value)
 {
-  println("{} {} {}", *stack, key, int(value));
+  println(*stack, " ", StringView(key), " ", int(value));
 }
 template<>
 void Defines::setKey<const String&>(int* stack, const char* key, const String& value)
 {
-  println("{} {} {}", *stack, key, value);
+  println(*stack, " ", StringView(key), " ", value);
 }
 int main()
 {

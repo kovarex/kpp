@@ -4,17 +4,17 @@
 struct Guard
 {
   const char* name;
-  Guard(const char* name) : name(name) { println("enter {}", name); }
-  ~Guard() { println("leave {}", this->name); }
+  Guard(const char* name) : name(name) { println("enter ", StringView(name)); }
+  ~Guard() { println("leave ", StringView(this->name)); }
 };
 
 void note(const char* text, CallerLocation here = caller)
 {
-  println("{} at line {} column {} in {}", text, int(here.line()), int(here.column()), here.function_name());
+  println(StringView(text), " at line ", int(here.line()), " column ", int(here.column()), " in ", StringView(here.function_name()));
 }
 
-conditional(config::debug) void debugOnly(const char* text) { println("debug: {}", text); }
-conditional(!config::debug) void releaseOnly(const char* text) { println("release: {}", text); }
+conditional(config::debug) void debugOnly(const char* text) { println("debug: ", StringView(text)); }
+conditional(!config::debug) void releaseOnly(const char* text) { println("release: ", StringView(text)); }
 
 if constexpr (config::debug)
 {
@@ -40,7 +40,7 @@ int main()
     println("windows");
   else
     println("elsewhere");
-  println("build kind {}", buildKind());
+  println("build kind ", buildKind());
   {
     Guard _("a");
     Guard _("b");

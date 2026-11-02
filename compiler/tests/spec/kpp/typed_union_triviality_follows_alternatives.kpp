@@ -29,13 +29,13 @@ Optional<State> maybe(int step)
 }
 int main()
 {
-  println("{} {} {} {}", isTriviallyCopyable<State>, isTriviallyDestructible<State>, isTriviallyCopyable<Attacking>, isTriviallyDestructible<Attacking>);
+  println(isTriviallyCopyable<State>, " ", isTriviallyDestructible<State>, " ", isTriviallyCopyable<Attacking>, " ", isTriviallyDestructible<Attacking>);
   {
     State state = Patrolling{0};
     if (const Optional<State> s = maybe(1))
       state = *s;
-    println("inside: live {}", live);
+    println("inside: live ", live);
   }
-  println("live {}", live);
+  println("live ", live);
   return 0;
 }

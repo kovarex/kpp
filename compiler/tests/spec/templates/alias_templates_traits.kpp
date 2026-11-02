@@ -5,8 +5,8 @@ template<typename T> const char* describe(const T&) { if constexpr (isPointer<T>
 int main()
 {
   Big b;
-  println("{}", describe(&b));
-  println("{}", describe(b));
-  println("{}", describe(1));
+  println(StringView(describe(&b)));
+  println(StringView(describe(b)));
+  println(StringView(describe(1)));
   return 0;
 }

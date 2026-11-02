@@ -23,6 +23,6 @@ int main()
   int* fromClass = toAddress(holder);
   Outer outer{holder};
   int* fromChain = toAddress(outer);
-  println("{} {} {} {} {}", *fromVector, *(it + 1), *fromClass, *fromChain, *holder);
+  println(*fromVector, " ", *(it + 1), " ", *fromClass, " ", *fromChain, " ", *holder);
   return 0;
 }

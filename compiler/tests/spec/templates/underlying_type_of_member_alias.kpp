@@ -19,6 +19,6 @@ struct Helper
 int main()
 {
   AlertType::Enum e = AlertType::Enum::B;
-  println("{}", Helper<int>::loadEnum(e));
+  println(Helper<int>::loadEnum(e));
   return 0;
 }

@@ -10,6 +10,6 @@ int main()
   int called = twice<int>(4);              // `(` follows: a template-id
   bool equal = scaled<3> == 30;            // `==` follows: a template-id
   int product = (scaled<2>) * 2;           // parenthesised: the template-id, then the product
-  println("{} {} {} {}", chain, called, equal, product);
+  println(chain, " ", called, " ", equal, " ", product);
   return 0;
 }

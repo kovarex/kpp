@@ -11,6 +11,6 @@ int main()
   Territory local[2];
   Territory big[200];
   Grid g;
-  println("{} {} {} {} {} {}", local[1].id, big[199].id, big[0].weight, g.cells[2].id, g.many[63].id, g.many[10].weight);
+  println(local[1].id, " ", big[199].id, " ", big[0].weight, " ", g.cells[2].id, " ", g.many[63].id, " ", g.many[10].weight);
   return 0;
 }

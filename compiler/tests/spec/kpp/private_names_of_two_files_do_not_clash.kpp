@@ -11,7 +11,7 @@ int fromHere()
 }
 int main()
 {
-  println("{} {}", fromHere(), fromThere());
-  println("{} {}", fromHere(), fromThere());
+  println(fromHere(), " ", fromThere());
+  println(fromHere(), " ", fromThere());
   return 0;
 }

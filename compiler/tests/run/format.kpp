@@ -21,9 +21,9 @@ String joinWith(const char* separator, T first, Rest... rest)
 
 int main()
 {
-  println("{} + {} = {}", 2, 3, 2 + 3);
-  println("name={} pi={} ok={} ch={}", String("kpp"), 3.25, true, 'x');
-  println("count={} sum={}", countArgs(1, 2.0, "three"), sumAll(1, 2, 3, 4));
+  println(2, " + ", 3, " = ", 2 + 3);
+  println("name=", String("kpp"), " pi=", 3.25, " ok=", true, " ch=", 'x');
+  println("count=", countArgs(1, 2.0, "three"), " sum=", sumAll(1, 2, 3, 4));
   println(joinWith(", ", 1, 2, 3));
   println(format("{}{}", "no", " args") + String("!"));
   println("plain string without arguments");

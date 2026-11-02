@@ -17,6 +17,6 @@ int main()
   Buffer b(::move(a));
   int&& r = x + 1;
   r += 1;
-  println("{} {} {} {} {} {}", x, y, length(String("abc") + "d"), b.data.size(), a.data.size(), r);
+  println(x, " ", y, " ", length(String("abc") + "d"), " ", b.data.size(), " ", a.data.size(), " ", r);
   return 0;
 }

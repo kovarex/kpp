@@ -21,7 +21,7 @@ int main()
   local.tail = 9;
   Outer* p = new Outer;
   *p = local;
-  println("{} {} {}", p->n, (int)p->inner.buffered[65535], p->tail);
+  println(p->n, " ", (int)p->inner.buffered[65535], " ", p->tail);
   delete p;
   return 0;
 }

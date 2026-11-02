@@ -44,6 +44,6 @@ bool take(Focus f) { return f.asBool(); }
 int main()
 {
   const Focus::Enum& r = Focus::True;
-  println("{} {} {} {} {} {}", Focus::fromBool(true).asBool(), Focus::code(Focus::True), Focus::code(Focus::False), take(Focus::True), OldBool<FocusTag>::fromBool(true).asBool(), r == Focus::Enum::True);
+  println(Focus::fromBool(true).asBool(), " ", Focus::code(Focus::True), " ", Focus::code(Focus::False), " ", take(Focus::True), " ", OldBool<FocusTag>::fromBool(true).asBool(), " ", r == Focus::Enum::True);
   return 0;
 }

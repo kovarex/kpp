@@ -3,6 +3,6 @@
 struct alignas(16) Aligned { float v[3]; };
 int main()
 {
-  println("{} {}", (int)sizeof(Aligned), (int)alignof(Aligned));
+  println((int)sizeof(Aligned), " ", (int)alignof(Aligned));
   return 0;
 }

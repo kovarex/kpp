@@ -20,6 +20,6 @@ public:
 int main()
 {
   CharacterModifiers modifiers;
-  println("{} {}", modifiers.speed.maximum > 1e300, modifiers.reach.value);
+  println(modifiers.speed.maximum > 1e300, " ", modifiers.reach.value);
   return 0;
 }

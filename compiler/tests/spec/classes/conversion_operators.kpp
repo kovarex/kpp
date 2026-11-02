@@ -10,6 +10,6 @@ int main()
 {
   Vec v{1, 2};
   String text = v;
-  println("{} {}", text, bool(v));
+  println(text, " ", bool(v));
   return 0;
 }

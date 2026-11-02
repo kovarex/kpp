@@ -15,6 +15,6 @@ extern "C" double plainValue() { return 2.5; }
 
 int main()
 {
-  println("{} {}", cachedValue(), plainValue());
+  println(cachedValue(), " ", plainValue());
   return 0;
 }

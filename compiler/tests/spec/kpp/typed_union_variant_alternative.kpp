@@ -18,6 +18,6 @@ static_assert(isSame<VariantAlternative<RestIndex, State>, Resting>);
 int main()
 {
   VariantAlternative<0, State> w;
-  println("{} {}", w.speed, sizeof(VariantAlternative<1, State>));
+  println(w.speed, " ", sizeof(VariantAlternative<1, State>));
   return 0;
 }

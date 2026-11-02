@@ -9,6 +9,6 @@ int main()
   int B::* p = &B::b;
   C* pc = &c;
   pc->*p = 7;
-  println("{} {} {}", c.b, int(&(c.*p) == &c.b), c.a);
+  println(c.b, " ", int(&(c.*p) == &c.b), " ", c.a);
   return 0;
 }

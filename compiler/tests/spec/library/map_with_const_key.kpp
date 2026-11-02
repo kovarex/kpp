@@ -13,7 +13,6 @@ int main()
   Set<const int> numbers;
   numbers.insert(4);
   auto found = tracks.find(Id{3});
-  println("{} {} {} {} {} {}", found != tracks.end() ? found->second : -1, tracks.contains(Id{1}), tracks.count(Id{2}),
-          tracks.lower_bound(Id{2})->second, numbers.contains(4), numbers.count(5));
+  println(found != tracks.end() ? found->second : -1, " ", tracks.contains(Id{1}), " ", tracks.count(Id{2}), " ", tracks.lower_bound(Id{2})->second, " ", numbers.contains(4), " ", numbers.count(5));
   return 0;
 }

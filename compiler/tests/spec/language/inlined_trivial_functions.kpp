@@ -47,7 +47,7 @@ int main()
   hc->set(9);
   int target = 0;
   store(target, h[2]);
-  println("{} {} {} {} {} {} {} {} {}", c.get(), c.half(), both.get(), both.pad, h[1] + h.size(), bool(h), h.empty(), cs[0].count, target);
-  println("{} {} {}", pick(next(), next()), c.same(both), h.describe());
+  println(c.get(), " ", c.half(), " ", both.get(), " ", both.pad, " ", h[1] + h.size(), " ", bool(h), " ", h.empty(), " ", cs[0].count, " ", target);
+  println(pick(next(), next()), " ", c.same(both), " ", h.describe());
   return 0;
 }

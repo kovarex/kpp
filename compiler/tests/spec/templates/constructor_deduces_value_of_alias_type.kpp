@@ -23,6 +23,6 @@ int main()
 {
   int raw[3] = {1, 2, 3};
   View<int> view = raw;
-  println("{} {} {}", countOf(raw), view.length, view.items[2]);
+  println(countOf(raw), " ", view.length, " ", view.items[2]);
   return 0;
 }

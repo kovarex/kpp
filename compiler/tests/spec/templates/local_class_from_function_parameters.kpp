@@ -30,6 +30,6 @@ int count(const PrototypeType* prototype)
 int main()
 {
   int seven = 7;
-  println("{} {}", describe(21), count(&seven));
+  println(describe(21), " ", count(&seven));
   return 0;
 }

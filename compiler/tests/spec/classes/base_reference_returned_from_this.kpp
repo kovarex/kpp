@@ -38,6 +38,6 @@ int main()
   static_cast<Hook<Robot, TagA>&>(r).id = 20;
   static_cast<Hook<Robot, TagB>&>(r).id = 30;
   Hook<Robot, TagA>* a = &r;
-  println("{} {} {} {} {}", r.asPlain().id, r.asA().id, r.asB().id, plainOf(r).id, &r.asA() == a);
+  println(r.asPlain().id, " ", r.asA().id, " ", r.asB().id, " ", plainOf(r).id, " ", &r.asA() == a);
   return 0;
 }

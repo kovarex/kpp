@@ -19,6 +19,6 @@ int main()
   bump(3);
   bump(4);
   c.threshold = 5;
-  println("{} {} {}", f(3), f(6), counter);
+  println(f(3), " ", f(6), " ", counter);
   return 0;
 }

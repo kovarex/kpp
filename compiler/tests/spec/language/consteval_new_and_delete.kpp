@@ -38,6 +38,6 @@ static_assert(array(4) == 14);
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println("{} {} {}", Show<single()>::value, Show<array(5)>::value, Show<destructors()>::value);
+  println(Show<single()>::value, " ", Show<array(5)>::value, " ", Show<destructors()>::value);
   return 0;
 }

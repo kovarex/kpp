@@ -227,17 +227,18 @@ struct WString
     return this->insert(index, units.chars, units.unitCount);
   }
 
-  WString& operator+=(const WString& other)
+  // `<<` appends, as on String (design.md 14: no +=): a WString, wide C text or a wchar_t.
+  WString& operator<<(const WString& other)
   {
     this->append(other);
     return *this;
   }
-  WString& operator+=(const wchar_t* text)
+  WString& operator<<(const wchar_t* text)
   {
     this->append(text);
     return *this;
   }
-  WString& operator+=(wchar_t c)
+  WString& operator<<(wchar_t c)
   {
     this->push_back(c);
     return *this;

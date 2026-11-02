@@ -38,6 +38,6 @@ int main()
 {
   ClonedFilters::Option::BuilderMapping result;
   CommonFilters::registerOptions<ClonedFilters>(result);
-  println("{} {}", result["ghost"].first, result["ghost"].second);
+  println(result["ghost"].first, " ", result["ghost"].second);
   return 0;
 }

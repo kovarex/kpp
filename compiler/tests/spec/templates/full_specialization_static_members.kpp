@@ -25,6 +25,6 @@ int main()
   Flag<true>::counter += 1;
   const int* t = &Flag<true>::value;
   const int* f = &Flag<false>::value;
-  println("{} {} {} {} {} {}", *t, *f, Flag<true>::counter, Flag<false>::counter, Flag<true>::get(), Flag<false>::get());
+  println(*t, " ", *f, " ", Flag<true>::counter, " ", Flag<false>::counter, " ", Flag<true>::get(), " ", Flag<false>::get());
   return 0;
 }

@@ -20,6 +20,6 @@ int main()
   Holder<int*> b(0);
   Holder<int> c(0, 5);
   Leading<int> d(7);
-  println("{} {} {} {}", a.value, b.value == nullptr, c.value, d.value);
+  println(a.value, " ", b.value == nullptr, " ", c.value, " ", d.value);
   return 0;
 }

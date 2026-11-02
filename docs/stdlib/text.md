@@ -49,3 +49,23 @@ Each is a small value whose `appendTo` writes the text described; the names are 
   only way to print a pointer: a pointer is no piece by itself.
 
 Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every platform.
+
+## Appending and printing
+
+- `out << x << y`: appends the pieces' texts to a String and returns it. It is String's only append
+  of a text: String has no `+=` (design.md 14). On a temporary String it returns the String:
+  `String(name) << '_'` (C++'s `std::string(name) += '_'`).
+- `print(pieces...)`, `println(pieces...)` (a newline after): the text on standard output.
+  `toString(pieces...)`: the text as a String. `format(pattern, pieces...)`: each `{}` of the
+  pattern replaced by the next piece, the pattern checked when compiling (a `{` without its `}`
+  is an error), as many `{}` as pieces or LogicError; `{{` and `}}` are no escapes: a text with
+  braces of its own is written in pieces.
+- `a + b`, one side a String or a StringView: a new String of both texts.
+- C text is no piece: `StringView(p)` is a `const char*`'s text, `address(p)` its address.
+- **A piece refers to its object; it is read when the text is written**, after every argument of
+  the call is evaluated, as std::format reads its arguments (by reference), and unlike printf's
+  copies. `println(cache.hits, " ", cache.get())`, where get() increments the mutable `hits`, prints
+  the count after that get(): 3, not 2, after two earlier calls (compiler/tests/spec/classes/
+  const_and_mutable). To print the value before the call, read it into a local first. C++ leaves
+  the order of a call's arguments unspecified, so code relying on printf's copy for this was
+  already unspecified.

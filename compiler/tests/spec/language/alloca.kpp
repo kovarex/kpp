@@ -43,11 +43,11 @@ int touch(int value)
 
 int main()
 {
-  println("{}", fillAndCheck(8, 100));
-  println("{}", fillAndCheck(1, 1));
+  println(fillAndCheck(8, 100));
+  println(fillAndCheck(1, 1));
   long long total = 0;
   for (int i = 0; i < 1000000; ++i)
     total += touch(i % 50);
-  println("{}", total);
+  println(total);
   return 0;
 }

@@ -5,6 +5,6 @@ struct Big { int v = 2; };
 int main()
 {
   Ptr<Big> p = makeUnique<Big>();
-  println("{}", p->v);
+  println(p->v);
   return 0;
 }

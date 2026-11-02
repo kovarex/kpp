@@ -14,6 +14,6 @@ int main()
 {
   Acc a;
   int (Acc::*t)() = &Acc::toText;
-  println("{} {} {}", (a.*t)(), a.toText(), viaPointer(a));
+  println((a.*t)(), " ", a.toText(), " ", viaPointer(a));
   return 0;
 }

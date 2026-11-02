@@ -24,9 +24,8 @@ int main()
   U d(U::Where, 1, 2);
   U e(U::First, 9);
   U f = NoDefault(4);
-  println("{} {} | {} {} | {} {} | {} {} | {} {}", a == U::Text, a[U::Text], b == U::Int2, b[U::Int2], c == U::Comment, c[U::Comment], d[U::Where].x,
-          d[U::Where].y, e[U::First].v, f[U::First].v);
+  println(a == U::Text, " ", a[U::Text], " | ", b == U::Int2, " ", b[U::Int2], " | ", c == U::Comment, " ", c[U::Comment], " | ", d[U::Where].x, " ", d[U::Where].y, " | ", e[U::First].v, " ", f[U::First].v);
   b = U(U::Int1, 3);
-  println("{} {}", b == U::Int1, b[U::Int1]);
+  println(b == U::Int1, " ", b[U::Int1]);
   return 0;
 }

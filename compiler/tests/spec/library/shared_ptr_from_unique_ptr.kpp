@@ -14,10 +14,10 @@ int main()
   {
     SharedPtr<Base> shared = makeUnique<Derived>();
     SharedPtr<Base> second = shared;
-    println("{} {}", shared->value(), shared.useCount());
+    println(shared->value(), " ", shared.useCount());
   }
   UniquePtr<Derived> owner = makeUnique<Derived>();
   SharedPtr<Derived> taken(move(owner));
-  println("{} {} {}", taken->value(), taken.useCount(), owner.get() == nullptr);
+  println(taken->value(), " ", taken.useCount(), " ", owner.get() == nullptr);
   return 0;
 }

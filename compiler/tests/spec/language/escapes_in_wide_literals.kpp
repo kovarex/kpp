@@ -7,7 +7,6 @@ int main()
   WString source = L"é";
   wchar_t letter = L'é';
   const char narrow[] = "\08\1010";
-  println("{} {} {} | {} {} {} | {} {} | {} {} {} {} {}", hex.size(), (int)hex[0], (int)hex[1], octal.size(), (int)octal[0], (int)octal[1], (int)source[0], (int)letter,
-          int(sizeof(narrow)), (int)narrow[0], (int)narrow[1], (int)narrow[2], (int)narrow[3]);
+  println(hex.size(), " ", (int)hex[0], " ", (int)hex[1], " | ", octal.size(), " ", (int)octal[0], " ", (int)octal[1], " | ", (int)source[0], " ", (int)letter, " | ", int(sizeof(narrow)), " ", (int)narrow[0], " ", (int)narrow[1], " ", (int)narrow[2], " ", (int)narrow[3]);
   return 0;
 }

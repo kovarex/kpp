@@ -20,7 +20,7 @@ int main()
   char pad = 1;
   alignas(32) unsigned int local[4] = {0, 0, 0, 0};
   Holder<Wide> h;
-  println("{} {} {} {}", ((size_t)table) % 64, ((size_t)local) % 32, alignof(Plain), sizeof(Plain));
-  println("{} {} {}", alignof(Holder<Wide>), sizeof(Holder<Wide>), ((size_t)&h.storage) % 16);
+  println(((size_t)table) % 64, " ", ((size_t)local) % 32, " ", alignof(Plain), " ", sizeof(Plain));
+  println(alignof(Holder<Wide>), " ", sizeof(Holder<Wide>), " ", ((size_t)&h.storage) % 16);
   return pad - 1;
 }

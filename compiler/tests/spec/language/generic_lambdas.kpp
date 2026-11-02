@@ -3,6 +3,6 @@
 int main()
 {
   auto twice = [](auto x) { return x + x; };
-  println("{} {}", twice(21), twice(String("ab")));
+  println(twice(21), " ", twice(String("ab")));
   return 0;
 }

@@ -17,6 +17,6 @@ int main()
   Map<int, int> m = {{1, 10}, {2, 20}};
   Vector<int> more = {4, 5};
   appendAll(v, more);
-  println("{} {} {} {} {} {} {} {} {}", sum, csum, *current, size(v), ssize(text), empty(m), *data(v), rbegin(m)->first, *rbegin(v));
+  println(sum, " ", csum, " ", *current, " ", size(v), " ", ssize(text), " ", empty(m), " ", *data(v), " ", rbegin(m)->first, " ", *rbegin(v));
   return 0;
 }

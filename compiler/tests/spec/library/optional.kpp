@@ -16,9 +16,9 @@ int main()
   if (a)
     sum += *a;
   bool cleared = (b = nullopt, !b.hasValue());
-  println("{} {} {} {} {} {} {}", a.hasValue(), b.hasValue(), sum, name->size(), a == 7, cleared, name.value());
+  println(a.hasValue(), " ", b.hasValue(), " ", sum, " ", name->size(), " ", a == 7, " ", cleared, " ", name.value());
   Optional<Built> built = makeOptional<Built>(3, "x");
   Optional<int> seven = makeOptional(7);
-  println("{} {} {} {}", built->a, built->b, *seven, *makeOptional<uint32_t>(5000000000ll / 10));
+  println(built->a, " ", built->b, " ", *seven, " ", *makeOptional<uint32_t>(5000000000ll / 10));
   return 0;
 }

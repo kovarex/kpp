@@ -40,7 +40,7 @@ int main()
   const Params p;
   UniquePtr<Behavior> b;
   Helper<Input>::loadValue(in, b, m, p);
-  println("{}", b->sum);
+  println(b->sum);
   return 0;
 }
 

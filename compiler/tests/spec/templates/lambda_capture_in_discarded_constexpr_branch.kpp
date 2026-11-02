@@ -48,6 +48,6 @@ int main()
   };
   add(1);
   add(2.0);
-  println("{} {} {} {}", box.findOtherEnd(surface, 3), box.findOtherEnd(surface, 5), box.findOtherEnd(blueprint, 9), total);
+  println(box.findOtherEnd(surface, 3), " ", box.findOtherEnd(surface, 5), " ", box.findOtherEnd(blueprint, 9), " ", total);
   return 0;
 }

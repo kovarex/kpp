@@ -25,6 +25,6 @@ int main()
   int (*none)() = a > 0 ? make<Two> : make<One>;
   Unary u = Unary::create<Two>();
   Binary b = Binary::create<One, const int&, const int&>();
-  println("{} {} {} {} {} {}", direct.f(a, a), single(a), three(a, a, a), none(), u.f(a), b.f(a, a));
+  println(direct.f(a, a), " ", single(a), " ", three(a, a, a), " ", none(), " ", u.f(a), " ", b.f(a, a));
   return 0;
 }

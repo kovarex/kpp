@@ -3,6 +3,6 @@ int sum() { return 0; }
 template<typename T, typename... Rest> int sum(T first, Rest... rest) { return first + sum(rest...); }
 int main()
 {
-  println("{} {}", sum(1, 2, 3, 4), sum(5));
+  println(sum(1, 2, 3, 4), " ", sum(5));
   return 0;
 }

@@ -19,6 +19,6 @@ int main()
   const Derived* cd = &d;
   int array[2] = {1, 2};
   const char* text = "x";
-  println("{} {} {} {} {}", toVoid(&d), fromArray(array), toBase(cd), member(&Base::x), constChars(text));
+  println(toVoid(&d), " ", fromArray(array), " ", toBase(cd), " ", member(&Base::x), " ", constChars(text));
   return 0;
 }

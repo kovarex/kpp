@@ -17,6 +17,6 @@ Grid grid(Mode::Off, 9);
 Array<int, 2> pair;
 int main()
 {
-  println("{} {} {} {}", int(box.mode), box.count, grid.cells, pair.size());
+  println(int(box.mode), " ", box.count, " ", grid.cells, " ", pair.size());
   return 0;
 }

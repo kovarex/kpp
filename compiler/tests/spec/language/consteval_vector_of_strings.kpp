@@ -6,7 +6,7 @@ constexpr int includes()
   for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
   {
     String path = "C:/Factorio/libraries/";
-    path += lib;
+    path << lib;
     paths.push_back(path);
   }
   int total = 0;
@@ -17,6 +17,6 @@ constexpr int includes()
 static_assert(includes() == 4132);
 int main()
 {
-  println("{}", includes());
+  println(includes());
   return 0;
 }

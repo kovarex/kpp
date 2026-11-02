@@ -15,6 +15,6 @@ int main()
   static_assert(isSame<decltype(asIs(i, 2.5)), Types<int&, double>>);
   static_assert(isSame<decltype(stripped(i, 2.5)), Types<int, double>>);
   static_assert(isSame<decltype(decayed(i, text)), Types<int, const char*>>);
-  println("{} {}", stripped(i, 2.5, 'c').count, decayed(text).count);
+  println(stripped(i, 2.5, 'c').count, " ", decayed(text).count);
   return 0;
 }

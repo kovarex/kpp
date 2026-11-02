@@ -1,7 +1,7 @@
 // spec: assert and release_assert statements, config constants with if constexpr, conditional functions, CallerLocation
 // design.md section 7; replaces assert/debug macros
-conditional(config::debug) void debugTrace(const char* text) { println("debug {}", text); }
-conditional(!config::debug) void releaseTrace(const char* text) { println("release {}", text); }
+conditional(config::debug) void debugTrace(const char* text) { println("debug ", StringView(text)); }
+conditional(!config::debug) void releaseTrace(const char* text) { println("release ", StringView(text)); }
 int where(CallerLocation here = caller) { return (int)here.line(); }
 if constexpr (config::debug)
 {
@@ -19,7 +19,7 @@ int main()
   debugTrace("on");
   releaseTrace("off");
   if constexpr (config::platform == Platform::Windows)
-    println("windows {}", buildName());
-  println("{}", where());
+    println("windows ", StringView(buildName()));
+  println(where());
   return 0;
 }

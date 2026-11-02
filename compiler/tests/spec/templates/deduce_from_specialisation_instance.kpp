@@ -31,6 +31,6 @@ int main()
 {
   int value = 5;
   Owner<int> owner{&value};
-  println("{} {}", valueOf(owner), deleterKind(owner));
+  println(valueOf(owner), " ", deleterKind(owner));
   return 0;
 }

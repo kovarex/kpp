@@ -52,6 +52,6 @@ int main()
   SRWLOCK lock = {};
   win32::AcquireSRWLockExclusive(&lock);
   win32::ReleaseSRWLockExclusive(&lock);
-  println("{} {}", count.QuadPart > 0, lock.Ptr == nullptr);
+  println(count.QuadPart > 0, " ", lock.Ptr == nullptr);
   return 0;
 }

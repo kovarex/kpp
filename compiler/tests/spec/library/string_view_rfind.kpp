@@ -3,10 +3,10 @@
 int main()
 {
   StringView line = "ghostShimmerConfig.tint: 1:2:3:4";
-  println("{} {}", line.rfind("ghostShimmerConfig.tint", 0), line.rfind("tint", 0));
-  println("{} {} {}", line.rfind(":"), line.rfind(":", 26), line.rfind(':', 26));
-  println("{} {} {}", line.rfind("missing"), line.rfind("", 5), line.rfind(String("Config")));
+  println(line.rfind("ghostShimmerConfig.tint", 0), " ", line.rfind("tint", 0));
+  println(line.rfind(":"), " ", line.rfind(":", 26), " ", line.rfind(':', 26));
+  println(line.rfind("missing"), " ", line.rfind("", 5), " ", line.rfind(String("Config")));
   StringView empty;
-  println("{} {} {}", empty.rfind("x"), empty.rfind(""), empty.rfind('x', 3));
+  println(empty.rfind("x"), " ", empty.rfind(""), " ", empty.rfind('x', 3));
   return 0;
 }

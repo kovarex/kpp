@@ -40,6 +40,6 @@ int main()
 {
   int table[LIMIT];
   table[0] = 7;
-  println("{} {} {}", (int)F20, (int)F30, table[0] + (int)LIMIT);
+  println((int)F20, " ", (int)F30, " ", table[0] + (int)LIMIT);
   return 0;
 }

@@ -20,6 +20,6 @@ int main()
   {
     Scoped guard(make());
   }
-  println("{} {} {} {}", is_std_function<Function<void()>>::value, is_std_function<int>::value, is_std_function<Function<int(double)>>::value, counter);
+  println(is_std_function<Function<void()>>::value, " ", is_std_function<int>::value, " ", is_std_function<Function<int(double)>>::value, " ", counter);
   return 0;
 }

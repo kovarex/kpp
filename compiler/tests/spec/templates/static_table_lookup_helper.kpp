@@ -27,6 +27,6 @@ const Map<StringView, Table::Entry> Table::ENTRIES = {{"abs", Entry{1}}, {"log",
 int main()
 {
   Table t;
-  println("{} {} {}", t.lookup("abs"), t.lookup("log"), t.lookup("sin"));
+  println(t.lookup("abs"), " ", t.lookup("log"), " ", t.lookup("sin"));
   return 0;
 }

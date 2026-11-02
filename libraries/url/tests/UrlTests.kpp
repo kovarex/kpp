@@ -23,7 +23,7 @@ test "RFC 3986 5.4: resolving references"
     String resolved = resolveUrl(base, c[0]);
     if (resolved != c[1])
     {
-      println("\"{}\" resolved to {}, not {}", c[0], resolved, c[1]);
+      println("\"", StringView(c[0]), "\" resolved to ", resolved, ", not ", StringView(c[1]));
       ++failed;
     }
   }

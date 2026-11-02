@@ -27,7 +27,7 @@ int main()
   l = { 8 };
   FastSet<int> fs;
   fs = { 3, 1 };
-  println("{} {} {} {} {} {} {} {} {}", ids.size(), *ids.begin(), chunks.begin()->x, v.size(), names.size(), seen.size(), counts.size(), d.size(), l.size());
+  println(ids.size(), " ", *ids.begin(), " ", chunks.begin()->x, " ", v.size(), " ", names.size(), " ", seen.size(), " ", counts.size(), " ", d.size(), " ", l.size());
   HashSet<int> pool = {5, 6, 7};
   Vector<int> sorted(pool.begin(), pool.end());
   Vector<int> base = {1, 2, 3, 4};
@@ -37,6 +37,6 @@ int main()
   Vector<int> counted(3, 5);
   int raw[3] = {7, 8, 9};
   Vector<int> fromArray(raw, raw + 3);
-  println("{} {} {} {} {} {} {}", sorted.size(), queue.size(), queue.back(), fromSet[0], fromSet[2], counted[2], fromArray[1]);
+  println(sorted.size(), " ", queue.size(), " ", queue.back(), " ", fromSet[0], " ", fromSet[2], " ", counted[2], " ", fromArray[1]);
   return 0;
 }

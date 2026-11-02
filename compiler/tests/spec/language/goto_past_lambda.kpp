@@ -21,6 +21,6 @@ int main()
 {
   Vector<int> a = {1, 2, -3, 4};
   Vector<int> b = {1, 60, -3};
-  println("{} {}", firstNegative(a), firstNegative(b));
+  println(firstNegative(a), " ", firstNegative(b));
   return 0;
 }

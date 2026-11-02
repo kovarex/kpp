@@ -13,6 +13,6 @@ int main()
 {
   Fixed<int, 8> f(1.5);
   Fixed<long long, 10> g(2.25);
-  println("{} {} {} {} {}", Fixed<int, 8>::ValuesPerOne, f.value, f.toDouble(), g.value, scaled(0.5));
+  println(Fixed<int, 8>::ValuesPerOne, " ", f.value, " ", f.toDouble(), " ", g.value, " ", scaled(0.5));
   return 0;
 }

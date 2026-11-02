@@ -34,6 +34,6 @@ int main()
   MultiMap<int, RailNode> multi;
   multi.emplace(2, 20);
   multi.emplace(2, 21);
-  println("{} {} {} {} {} {} {} {}", first->second.rail, added, again->second.rail, addedAgain, nodes.size(), second, multi.size(), alive);
+  println(first->second.rail, " ", added, " ", again->second.rail, " ", addedAgain, " ", nodes.size(), " ", second, " ", multi.size(), " ", alive);
   return 0;
 }

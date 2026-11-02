@@ -14,6 +14,6 @@ int main()
   auto first = seen.insert(-1).first;
   for (int i = 0; i < 1000; ++i)
     seen.insert(i);
-  println("{} {} {}", fibonacci(80), memo.size(), *first);
+  println(fibonacci(80), " ", memo.size(), " ", *first);
   return 0;
 }

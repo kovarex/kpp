@@ -14,6 +14,6 @@ int main()
   Target a = make();
   Source s;
   Target b = move(s);
-  println("{} {} {} {}", a.tag, a.v, b.tag, b.v);
+  println(a.tag, " ", a.v, " ", b.tag, " ", b.v);
   return 0;
 }

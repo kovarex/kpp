@@ -4,6 +4,6 @@ struct Line { Point from; Point to; int width = 1; };
 int main()
 {
   Line l{{1, 2}, {3, 4}};
-  println("{} {}", l.to.y, l.width);
+  println(l.to.y, " ", l.width);
   return 0;
 }

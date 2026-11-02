@@ -5,7 +5,7 @@ struct Item
   int id;
   Item(int id) : id(id) {}
   Item(Item&& other) : id(other.id) { other.id = 0; }
-  ~Item() { println("~Item {}", this->id); }
+  ~Item() { println("~Item ", this->id); }
 };
 // Recursive, not in tail position, to a depth -O2 cannot know: both calls stay out of line.
 Item make(int depth, bool fail)
@@ -25,7 +25,7 @@ int sink(int depth, Item&& item)
   if (depth == 0)
     return item.id;
   int result = sink(depth - 1, ::move(item));
-  println("sink {}", depth);
+  println("sink ", depth);
   return result + depth;
 }
 int use(int depth, bool fail)
@@ -36,8 +36,8 @@ int use(int depth, bool fail)
 int main()
 {
   int depth = getenv("KPP_SPEC_NEVER_SET") ? 1 : 3;
-  try { println("{}", use(depth, true)); }
-  catch (const Exception& e) { println("caught {}", e.what()); }
-  println("{}", use(depth, false));
+  try { println(use(depth, true)); }
+  catch (const Exception& e) { println("caught ", StringView(e.what())); }
+  println(use(depth, false));
   return 0;
 }

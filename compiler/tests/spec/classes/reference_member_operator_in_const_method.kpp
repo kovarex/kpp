@@ -27,18 +27,18 @@ int main()
   Id id;
   id.v = 1;
   h.put(id);
-  print("{} ", c.stored.v);
+  print(c.stored.v, " ");
   h.putMember(2);
-  print("{} ", c.stored.v);
+  print(c.stored.v, " ");
   id.v = 3;
   const Holder& constHolder = h;
   constHolder.container[0] = id;
-  print("{} ", c.stored.v);
+  print(c.stored.v, " ");
   id.v = 4;
   h.putThroughAt(id);
-  print("{} ", c.stored.v);
+  print(c.stored.v, " ");
   id.v = 5;
   c[0] = id;
-  println("{}", c.stored.v);
+  println(c.stored.v);
   return 0;
 }

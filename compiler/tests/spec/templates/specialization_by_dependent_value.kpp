@@ -18,6 +18,6 @@ template<typename T>
 const char* byTrait(T value) { return pick(IntegralConstant<bool, isSigned<T>>()); }
 int main()
 {
-  println("{} {} {} {}", bySign(-1), bySign(1u), byTrait(-1), byTrait(1u));
+  println(StringView(bySign(-1)), " ", StringView(bySign(1u)), " ", StringView(byTrait(-1)), " ", StringView(byTrait(1u)));
   return 0;
 }

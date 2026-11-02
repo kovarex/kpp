@@ -36,6 +36,6 @@ static_assert(d19() == 11);
 static_assert(Limits<int32_t>::max() == d19() * 0 + 2147483647);
 int main()
 {
-  println("{}", d19());
+  println(d19());
   return 0;
 }

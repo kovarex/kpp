@@ -36,6 +36,6 @@ int main()
   {
     b = classify();
   }
-  println("{} {}", a, b);
+  println(a, " ", b);
   return 0;
 }

@@ -13,6 +13,6 @@ int main()
   Vector<int> v = {1, 2, 3};
   Holder<Vector<int>> h{v};
   h.ref.push_back(4);
-  println("{} {} {} {}", x, h.ref[1], second(h), v.size());
+  println(x, " ", h.ref[1], " ", second(h), " ", v.size());
   return 0;
 }

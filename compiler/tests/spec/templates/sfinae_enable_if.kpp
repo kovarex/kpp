@@ -4,6 +4,6 @@ template<typename T, typename = EnableIf<isIntegral<T>>> const char* kind(T) { r
 template<typename T, typename = EnableIf<isFloatingPoint<T>>, typename = void> const char* kind(T) { return "floating"; }
 int main()
 {
-  println("{} {}", kind(1), kind(1.0));
+  println(StringView(kind(1)), " ", StringView(kind(1.0)));
   return 0;
 }

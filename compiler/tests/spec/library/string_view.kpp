@@ -18,6 +18,6 @@ int main()
   StringView view = owner;
   int eq = view.find('=');
   StringView key = view.substr(0, eq), value = view.substr(eq + 1);
-  println("{} {} {} {} {} {}", key, value, key == "key", view.startsWith("ke"), view.endsWith(StringView("lue")), countWords("a bb  ccc"));
+  println(key, " ", value, " ", key == "key", " ", view.startsWith("ke"), " ", view.endsWith(StringView("lue")), " ", countWords("a bb  ccc"));
   return 0;
 }

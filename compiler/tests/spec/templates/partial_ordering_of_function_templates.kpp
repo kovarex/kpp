@@ -38,9 +38,9 @@ int main()
   Vector<int> v;
   int i = 0;
   Pair2<int, float> p;
-  println("{} {} {} {} {} {}", f(v), g(i), g(&i), h(p), contains(v, 2), contains(v, [](int x) { return x == 2; }));
+  println(f(v), " ", g(i), " ", g(&i), " ", h(p), " ", contains(v, 2), " ", contains(v, [](int x) { return x == 2; }));
   const Vector<int>& cv = v;
-  println("{} {} {} {}", first(v), first(cv), wrap(i), wrap(3));
-  println("{} {} {} {}", emplace(0, 1), emplace(0, 1, 2), load(i), load(i, 2));
+  println(first(v), " ", first(cv), " ", wrap(i), " ", wrap(3));
+  println(emplace(0, 1), " ", emplace(0, 1, 2), " ", load(i), " ", load(i, 2));
   return 0;
 }

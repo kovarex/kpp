@@ -17,6 +17,6 @@ int main()
   ptrdiff_t count = distance(IstreambufIterator<>(again), IstreambufIterator<>());
   again.close();
   remove(path.c_str());
-  println("{} {} {}", buffer, buffer.size(), count);
+  println(buffer, " ", buffer.size(), " ", count);
   return 0;
 }

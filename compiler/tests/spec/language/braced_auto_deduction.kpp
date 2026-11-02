@@ -7,6 +7,6 @@ int main()
   auto copyOf = [value{value + 1}] { return value; };
   String name("abc");
   auto sized = [length{name.size()}] { return length * 10; };
-  println("{} {} {}", direct + 1, copyOf(), sized());
+  println(direct + 1, " ", copyOf(), " ", sized());
   return 0;
 }

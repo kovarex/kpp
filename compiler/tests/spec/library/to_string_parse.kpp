@@ -8,6 +8,6 @@ int main()
   long long n = strtoll("1234", nullptr, 10);
   long long hex = strtoll("ff", nullptr, 16);
   double d = strtod("2.5", nullptr);
-  println("{} {} {} {}", s, n, hex, d == 2.5);
+  println(s, " ", n, " ", hex, " ", d == 2.5);
   return 0;
 }

@@ -17,6 +17,6 @@ int main()
     const Sorted& r = p;
     seen = r.v + destroyed;
   }
-  println("{} {}", seen, destroyed);
+  println(seen, " ", destroyed);
   return 0;
 }

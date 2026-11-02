@@ -12,7 +12,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("append: {}, size {}", e.what(), text.size() == before);
+    println("append: ", StringView(e.what()), ", size ", text.size() == before);
   }
   try
   {
@@ -21,7 +21,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("append count: {}, size {}", e.what(), text.size() == before);
+    println("append count: ", StringView(e.what()), ", size ", text.size() == before);
   }
   try
   {
@@ -30,18 +30,18 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("insert: {}, size {}", e.what(), text.size() == before);
+    println("insert: ", StringView(e.what()), ", size ", text.size() == before);
   }
   // A range that runs backwards: its length is negative, checked before a byte is read.
   try
   {
     String range(bytes + 3, bytes);
-    println("constructed {}", range.size());
+    println("constructed ", range.size());
   }
   catch (const LengthError& e)
   {
-    println("range: {}", e.what());
+    println("range: ", StringView(e.what()));
   }
-  println("{}", text);
+  println(text);
   return 0;
 }

@@ -13,6 +13,6 @@ int main()
   fputs("to stdout through FILE*\n", out.fp);
   fflush(out.fp);
   Stream err(stderr);
-  println("{}", err.fp != out.fp ? 1 : 0);
+  println(err.fp != out.fp ? 1 : 0);
   return 0;
 }

@@ -11,6 +11,6 @@ int main()
   int fromDouble = (int)3.99;
   unsigned back = (unsigned)-1;
   bool truthy = 42;
-  println("{} {} {} {} {} {} {} {} {}", (int)a, (int)b, (int)c, d, e == 9223372036854775808ull, (int)n, fromDouble, back == 4294967295u, truthy);
+  println((int)a, " ", (int)b, " ", (int)c, " ", d, " ", e == 9223372036854775808ull, " ", (int)n, " ", fromDouble, " ", back == 4294967295u, " ", truthy);
   return 0;
 }

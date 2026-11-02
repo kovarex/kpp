@@ -3,8 +3,8 @@
 struct E
 {
   int id;
-  E(int i) : id(i) { if (i == 3) throw i; println("E{}", i); }
-  ~E() { println("~E{}", id); }
+  E(int i) : id(i) { if (i == 3) throw i; println("E", i); }
+  ~E() { println("~E", id); }
 };
 int main()
 {
@@ -14,7 +14,7 @@ int main()
   }
   catch (int e)
   {
-    println("caught {}", e);
+    println("caught ", e);
   }
   return 0;
 }

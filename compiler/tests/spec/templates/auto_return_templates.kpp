@@ -6,6 +6,6 @@ int main()
 {
   P p;
   firstOf(p) += 1;
-  println("{} {} {}", p.first, twice(20), twice(String("ab")));
+  println(p.first, " ", twice(20), " ", twice(String("ab")));
   return 0;
 }

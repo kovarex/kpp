@@ -16,6 +16,6 @@ int main()
   Territory* first = &all.front();
   Territory* last = &all.back();
   last->id = 30;
-  println("{} {} {} {}", first->id, last->id, first == territories[0].get(), territories[2]->id);
+  println(first->id, " ", last->id, " ", first == territories[0].get(), " ", territories[2]->id);
   return 0;
 }

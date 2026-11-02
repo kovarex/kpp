@@ -35,7 +35,7 @@ int main()
   catch (const Exception&)
   {
   }
-  print("local {}; ", live);
+  print("local ", live, "; ");
   try
   {
     UniquePtr<Derived> p(new Derived(true));
@@ -43,7 +43,7 @@ int main()
   catch (const Exception&)
   {
   }
-  print("new {}; ", live);
+  print("new ", live, "; ");
   try
   {
     Later later;
@@ -51,6 +51,6 @@ int main()
   catch (const Exception&)
   {
   }
-  println("member {}", live);
+  println("member ", live);
   return 0;
 }

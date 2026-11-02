@@ -83,6 +83,6 @@ int main()
     found = item.index;
   Zoom zoom(2.5);
   double screen = toScreen(4.0, Scale(zoom));
-  println("{} {} {} {} {}", direct.number, viaTemplate.number, cast.number, found, screen);
+  println(direct.number, " ", viaTemplate.number, " ", cast.number, " ", found, " ", screen);
   return 0;
 }

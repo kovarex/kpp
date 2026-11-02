@@ -12,6 +12,6 @@ int main()
 {
   Box<int, Extra> b;
   b.value = 5;
-  println("{}", b.value);
+  println(b.value);
   return 0;
 }

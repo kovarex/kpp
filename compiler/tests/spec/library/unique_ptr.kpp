@@ -23,13 +23,13 @@ int main()
   b.reset();
   UniqueArray<int> arr(3);
   arr[2] = 7;
-  println("{} {} {} {} {}", ids, a == nullptr, alive, (bool)c, arr[2]);
+  println(ids, " ", a == nullptr, " ", alive, " ", (bool)c, " ", arr[2]);
   c = nullptr;
-  println("{}", alive);
+  println(alive);
   UniqueArray<char> buffer = makeUniqueArrayForOverwrite<char>(16);
   buffer[15] = 'z';
   UniqueArray<String> names = makeUniqueArrayForOverwrite<String>(2);
-  println("{} {} {}", int(sizeof(UniqueArray<char>)), buffer[15], names[1].size());
+  println(int(sizeof(UniqueArray<char>)), " ", buffer[15], " ", names[1].size());
   {
     UniquePtr<Res, Closer> d(new Res(1));
     UniquePtr<Res, Closer> e = ::move(d);
@@ -40,6 +40,6 @@ int main()
     f.swap(e);
     UniquePtr<Res, Closer> empty;
   }
-  println("{} {} {}", closed, alive, sizeof(UniquePtr<Res>));
+  println(closed, " ", alive, " ", sizeof(UniquePtr<Res>));
   return 0;
 }

@@ -12,6 +12,6 @@ static_assert(five.first == 5);
 int main()
 {
   Point p = makePoint(origin, origin);
-  println("{} {} {} {}", five.first, int(five.second), origin.y, p.x);
+  println(five.first, " ", int(five.second), " ", origin.y, " ", p.x);
   return 0;
 }

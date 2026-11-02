@@ -17,6 +17,6 @@ int deep(int v)
 int main()
 {
   println("before");
-  println("{}", deep(5));
+  println(deep(5));
   return 0;
 }

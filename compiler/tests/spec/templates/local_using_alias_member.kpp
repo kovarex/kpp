@@ -3,6 +3,6 @@ int main()
 {
   using Match = Pair<int, uint32_t>;
   Match m = Match(42, 7u);
-  println("{} {}", m.first, m.second);
+  println(m.first, " ", m.second);
   return 0;
 }

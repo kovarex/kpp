@@ -22,6 +22,6 @@ int main()
   char other[8] = {'o', 0};
   auto& sameType = on ? other : buffer;
   static_assert(sizeof(sameType) == 8);
-  println("{} {} {} {} {}", name, text, (const char*)sameType, base->sides, anything == (void*)&square);
+  println(StringView(name), " ", StringView(text), " ", StringView((const char*)sameType), " ", base->sides, " ", anything == (void*)&square);
   return 0;
 }

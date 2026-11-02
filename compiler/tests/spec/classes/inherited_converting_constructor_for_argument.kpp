@@ -45,6 +45,6 @@ int main()
   Holder holder(SignalId(base, 2), 3);
   Array<SignalFilter, 2> filters;
   filters[1] = SignalId(base, 6);
-  println("{} {} {} {} {} {}", direct.quality, holder.filter.baseId.value, holder.filter.quality, holder.count, quality(SignalId(base, 5)), filters[1].quality);
+  println(direct.quality, " ", holder.filter.baseId.value, " ", holder.filter.quality, " ", holder.count, " ", quality(SignalId(base, 5)), " ", filters[1].quality);
   return 0;
 }

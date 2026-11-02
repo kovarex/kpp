@@ -15,6 +15,6 @@ int main()
   names.add(String("bc"));
   Meters m;
   int s = scaled(m);
-  println("{} {} {}", names.size(), names.items[1], s);
+  println(names.size(), " ", names.items[1], " ", s);
   return 0;
 }

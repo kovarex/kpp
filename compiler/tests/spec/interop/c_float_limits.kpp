@@ -3,6 +3,6 @@
 extern "C" import "float.h";
 int main()
 {
-  println("{} {} {} {}", FLT_MAX > 3.4e38f, FLT_EPSILON < 1.2e-7f && FLT_EPSILON > 1.1e-7f, DBL_MAX > 1.7e308, DBL_EPSILON < 2.3e-16);
+  println(FLT_MAX > 3.4e38f, " ", FLT_EPSILON < 1.2e-7f && FLT_EPSILON > 1.1e-7f, " ", DBL_MAX > 1.7e308, " ", DBL_EPSILON < 2.3e-16);
   return 0;
 }

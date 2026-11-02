@@ -9,6 +9,6 @@ int readThrough(Opaque* p) { return ((Storage*)p)->value; }
 int main()
 {
   Storage s;
-  println("{}", readThrough((Opaque*)&s));
+  println(readThrough((Opaque*)&s));
   return 0;
 }

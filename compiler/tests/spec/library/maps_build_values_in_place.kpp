@@ -32,6 +32,6 @@ int main()
   owned.try_emplace(1, new int(5));
   UniquePtr<int> spare(new int(7));
   bool replaced = owned.try_emplace(1, move(spare)).second;
-  println("{} {} {} {} {} {} {} {} {}", shaders.size(), added, seven.id, seven.kind, open[1].refCount, files[3].refCount, byId.find(5)->second.id, *owned.find(1)->second, replaced ? 0 : *spare);
+  println(shaders.size(), " ", added, " ", seven.id, " ", seven.kind, " ", open[1].refCount, " ", files[3].refCount, " ", byId.find(5)->second.id, " ", *owned.find(1)->second, " ", replaced ? 0 : *spare);
   return 0;
 }

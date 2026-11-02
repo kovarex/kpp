@@ -83,6 +83,6 @@ static_assert(sidesOf(Square{}) == 4 && Square{}.doubled() == 8 && Shape{}.doubl
 static_assert(references() == 24 && game() == 11111);
 int main()
 {
-  println("{} {}", Show<game()>::value, Show<references()>::value);
+  println(Show<game()>::value, " ", Show<references()>::value);
   return 0;
 }

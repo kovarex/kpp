@@ -52,6 +52,6 @@ static_assert(codeCount() == 7);
 static_assert(*optionals[1] == A && !optionals[2].has_value() && *five == 5);
 int main()
 {
-  println("{} {} {} {} {} {} {}", pi, named[1].first, lookup[1][1], int(table[2]), shift.y, int(*optionals[1]), *five);
+  println(pi, " ", named[1].first, " ", lookup[1][1], " ", int(table[2]), " ", shift.y, " ", int(*optionals[1]), " ", *five);
   return 0;
 }

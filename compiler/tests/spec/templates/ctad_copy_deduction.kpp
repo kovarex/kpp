@@ -17,6 +17,6 @@ int main()
 {
   Pairish p = Pairish<int, double>(1, 2.5);
   Duration budget = Milliseconds(5);
-  println("{} {} {} {}", p.a, p.b, budget.count(), Budget::limit.count());
+  println(p.a, " ", p.b, " ", budget.count(), " ", Budget::limit.count());
   return 0;
 }

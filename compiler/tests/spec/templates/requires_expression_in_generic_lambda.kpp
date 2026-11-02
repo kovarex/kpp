@@ -29,7 +29,6 @@ int main()
   {
     return requires(const T& value) { value.getIconSprite(); };
   };
-  println("{} {} {} | {} {} | {} {}", requires(const WithIcon& v) { v.getIconSprite(); }, viaTemplate<ListOf<WithIcon>>(), viaTemplate<ListOf<WithoutIcon>>(),
-          viaLambda(ListOf<WithIcon>()), viaLambda(ListOf<WithoutIcon>()), direct(WithIcon()), direct(WithoutIcon()));
+  println(requires(const WithIcon& v) { v.getIconSprite(); }, " ", viaTemplate<ListOf<WithIcon>>(), " ", viaTemplate<ListOf<WithoutIcon>>(), " | ", viaLambda(ListOf<WithIcon>()), " ", viaLambda(ListOf<WithoutIcon>()), " | ", direct(WithIcon()), " ", direct(WithoutIcon()));
   return 0;
 }

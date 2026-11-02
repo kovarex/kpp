@@ -29,10 +29,10 @@ int main()
 {
   BinaryOperation<OpType::Add, Functions::add> plus;
   BinaryOperation<OpType::Mul, &Functions::mul, 5> times;
-  println("{} {} {} {}", plus.apply(2, 3), times.apply(2, 3), plus.cost(), times.cost());
+  println(plus.apply(2, 3), " ", times.apply(2, 3), " ", plus.cost(), " ", times.cost());
   Folder<Functions::add> a;
   Folder<Folding::add> b;
   Folder<> none;
-  println("{} {} {}", a.apply(1, 2), b.apply(1, 2), none.apply(1, 2));
+  println(a.apply(1, 2), " ", b.apply(1, 2), " ", none.apply(1, 2));
   return 0;
 }

@@ -21,8 +21,8 @@ namespace Game
 }
 int main()
 {
-  println("{} {} {} {} {} {}", int(Red), Game::green(), shade, Pen{}.width, mix(1), mix(1.5));
+  println(int(Red), " ", Game::green(), " ", shade, " ", Pen{}.width, " ", mix(1), " ", mix(1.5));
   shade = 8;
-  println("{}", Colors::shade);
+  println(Colors::shade);
   return 0;
 }

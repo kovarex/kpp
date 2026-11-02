@@ -9,13 +9,13 @@ int main()
   int atZero = 0;
   for constexpr (auto m : members(Derived))
   {
-    names += m.name;
-    names += ",";
+    names << StringView(m.name);
+    names << ",";
     if (m.offset == 0)
       atZero += 1;
   }
   for constexpr (auto m : members(Base))
     d.[m] = 9;
-  println("{} {} {}", names, d.id, atZero);
+  println(names, " ", d.id, " ", atZero);
   return 0;
 }

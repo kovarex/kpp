@@ -59,6 +59,6 @@ int main()
   const double* at = &shifted.items[0];
   shifted.insertFront(7) = *at;
   int t7 = int(shifted.items[0]);
-  println("{} {} {} {} {} {} {}", t1, t2, t3, t4, t5, t6, t7);
+  println(t1, " ", t2, " ", t3, " ", t4, " ", t5, " ", t6, " ", t7);
   return 0;
 }

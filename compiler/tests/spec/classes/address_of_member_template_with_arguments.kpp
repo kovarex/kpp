@@ -11,6 +11,6 @@ int main()
 {
   Bindable b;
   int (Bindable::*p)(int) = &Bindable::debugChildren<Ten>;
-  println("{} {}", (b.*p)(3), (b.*(&Bindable::debugChildren<Ten>))(4));
+  println((b.*p)(3), " ", (b.*(&Bindable::debugChildren<Ten>))(4));
   return 0;
 }

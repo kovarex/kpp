@@ -9,6 +9,6 @@ int main(int argc, char** argv)
   int sum = 0;
   for (int s : squares)
     sum += s;
-  println("hello, {}! {} argument(s), sum {}, {}", who, argc - 1, sum, config::platform == Platform::Windows ? "windows" : "posix");
+  println("hello, ", who, "! ", argc - 1, " argument(s), sum ", sum, ", ", StringView(config::platform == Platform::Windows ? "windows" : "posix"));
   return 3;
 }

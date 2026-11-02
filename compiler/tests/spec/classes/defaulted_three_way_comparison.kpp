@@ -14,13 +14,13 @@ struct Position
 int main()
 {
   Fixed a(3), b(5);
-  println("{} {} {} {} {} {}", a < b, a > b, a <= b, a >= b, a == b, a != b);
+  println(a < b, " ", a > b, " ", a <= b, " ", a >= b, " ", a == b, " ", a != b);
   Position p{1, 2}, q{1, 3};
-  println("{} {} {}", p < q, p == q, p == Position{1, 2});
+  println(p < q, " ", p == q, " ", p == Position{1, 2});
   Map<Position, int> order;
   order[q] = 2;
   order[p] = 1;
   for (auto& [position, index] : order)
-    println("{} {} -> {}", position.x, position.y, index);
+    println(position.x, " ", position.y, " -> ", index);
   return 0;
 }

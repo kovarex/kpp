@@ -30,11 +30,10 @@ int widthOf()
 
 int main()
 {
-  println("{} {} {} {} {} {}", describe<int>(), describe<char*>(), describe<Color>(), describe<double>(), describe<unsigned int>(),
-          describe<Base>());
-  println("{} {}", widthOf<const long long&>(), widthOf<Derived>());
-  println("{} {} {}", isSame<RemoveConst<const int>, int>, isSame<RemoveReference<Base&>, Base>, isSame<int, long long>);
-  println("{} {} {}", isBaseOf<Base, Derived>, isBaseOf<Derived, Base>, isConvertible<Derived*, Base*>);
-  println("{} {}", isSame<UnderlyingType<Color>, uint8_t>, isNullPointer<nullptr_t>);
+  println(StringView(describe<int>()), " ", StringView(describe<char*>()), " ", StringView(describe<Color>()), " ", StringView(describe<double>()), " ", StringView(describe<unsigned int>()), " ", StringView(describe<Base>()));
+  println(widthOf<const long long&>(), " ", widthOf<Derived>());
+  println(isSame<RemoveConst<const int>, int>, " ", isSame<RemoveReference<Base&>, Base>, " ", isSame<int, long long>);
+  println(isBaseOf<Base, Derived>, " ", isBaseOf<Derived, Base>, " ", isConvertible<Derived*, Base*>);
+  println(isSame<UnderlyingType<Color>, uint8_t>, " ", isNullPointer<nullptr_t>);
   return 0;
 }

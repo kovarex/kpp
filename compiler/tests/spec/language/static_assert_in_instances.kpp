@@ -27,6 +27,6 @@ int main()
 {
   static_assert(isSame<int, int32_t>);
   Box<int> b;
-  println("{} {} {}", b.value, describe<int>(), describe<double>());
+  println(b.value, " ", describe<int>(), " ", describe<double>());
   return 0;
 }

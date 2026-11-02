@@ -20,10 +20,10 @@ int main()
   int sum = 0;
   for (const auto& [name, count] : items)
   {
-    names += name;
+    names << name;
     sum += count;
   }
   PairList<int, int> list = {{2, 3}, {4, 5}};
-  println("{} {} {}", names, sum, list.sum);
+  println(names, " ", sum, " ", list.sum);
   return 0;
 }

@@ -8,6 +8,6 @@ int main()
   uint32_t fb;
   memcpy(&db, &d, 8);
   memcpy(&fb, &f, 4);
-  println("{} {} {}", db == 0x7FF8000000000000ull ? "double ok" : "double negative", fb == 0x7FC00000u ? "float ok" : "float negative", d != d ? "nan" : "not nan");
+  println(StringView(db == 0x7FF8000000000000ull ? "double ok" : "double negative"), " ", StringView(fb == 0x7FC00000u ? "float ok" : "float negative"), " ", StringView(d != d ? "nan" : "not nan"));
   return 0;
 }

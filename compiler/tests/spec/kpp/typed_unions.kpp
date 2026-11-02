@@ -10,6 +10,6 @@ int main()
   p[Property::Integer] = 5;
   bool wasInt = p == Property::Integer;
   p[Property::Text] = String("t");
-  println("{} {} {}", wasInt, p == Property::Text, p[Property::Text]);
+  println(wasInt, " ", p == Property::Text, " ", p[Property::Text]);
   return 0;
 }

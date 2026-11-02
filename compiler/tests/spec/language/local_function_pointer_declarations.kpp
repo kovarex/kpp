@@ -9,6 +9,6 @@ int main()
   funcPtr();
   int (*op)(int) = twice;
   int value = int(7.5);
-  println("{} {}", op(value), int(op != nullptr));
+  println(op(value), " ", int(op != nullptr));
   return 0;
 }

@@ -13,6 +13,6 @@ int main()
 {
   Joined j;
   Joined::Id id = Joined::count();
-  println("{} {} {} {} {}", id, int(Joined::First), j.both(), j.left, j.right);
+  println(id, " ", int(Joined::First), " ", j.both(), " ", j.left, " ", j.right);
   return 0;
 }

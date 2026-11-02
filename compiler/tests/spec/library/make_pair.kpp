@@ -8,6 +8,6 @@ int main()
   Pair<String, const char*> b = makePair(s, "literal");
   int x = 1;
   static_assert(isSame<decltype(makePair(ref(x), 2)), Pair<int&, int>>);
-  println("{} {} {} {} {} {}", a.first, *a.second, p == nullptr, b.first, b.second, s);
+  println(a.first, " ", *a.second, " ", p == nullptr, " ", b.first, " ", StringView(b.second), " ", s);
   return 0;
 }

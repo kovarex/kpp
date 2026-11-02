@@ -13,9 +13,9 @@ struct Task
     auto properties = makeUnique<Instance>();
     auto f = [this, properties { move(properties) }]() mutable { this->finish(move(properties)); };
     auto g = [this, properties = makeUnique<Instance>()]() mutable { this->finish(move(properties)); };
-    print("{} {} ", isCopyConstructible<decltype(f)>, isCopyConstructible<decltype(g)>);
+    print(isCopyConstructible<decltype(f)>, " ", isCopyConstructible<decltype(g)>, " ");
     f();
-    println("{}", this->done);
+    println(this->done);
   }
 };
 int main()

@@ -35,6 +35,6 @@ int main()
 {
   int registered = Derived::init();
   Derived d;
-  println("{} {}", (d.*Binder<Derived>::reader)(nullptr), registered);
+  println((d.*Binder<Derived>::reader)(nullptr), " ", registered);
   return 0;
 }

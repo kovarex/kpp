@@ -24,6 +24,6 @@ int main()
   auto mixed = add(1, 0.5);
   Vector<int> v = {4, 5};
   firstOf(v) = 9;
-  println("{} {} {} {} {} {}", d, s, sizeof(sum), mixed, v[0], sizeof(call([]() -> char { return 'x'; })));
+  println(d, " ", s, " ", sizeof(sum), " ", mixed, " ", v[0], " ", sizeof(call([]() -> char { return 'x'; })));
   return 0;
 }

@@ -27,11 +27,11 @@ int main()
 {
   Holder h;
   h.setText("hello");
-  println("{} {}", h.kind, h.text);
+  println(h.kind, " ", h.text);
   h.setList();
   h.list.push_back(3);
-  println("{} {}", h.kind, h.list.size());
+  println(h.kind, " ", h.list.size());
   h.setText("again");
-  println("{} {}", h.kind, h.text);
+  println(h.kind, " ", h.text);
   return 0;
 }

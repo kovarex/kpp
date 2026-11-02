@@ -28,6 +28,6 @@ int main()
   {
     stringThrew = true;
   }
-  println("{} {} {} {} {} {} {} {}", first, rest, none, StringView(buffer, 7), fromString, StringView(more, 2), threw, stringThrew);
+  println(first, " ", rest, " ", none, " ", StringView(buffer, 7), " ", fromString, " ", StringView(more, 2), " ", threw, " ", stringThrew);
   return 0;
 }

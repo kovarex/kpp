@@ -39,6 +39,6 @@ static_assert(StringView("hello").size() == 5 && StringView("").empty());
 static_assert(Names::names[1].size() == 5 && totalLength() == 14);
 int main()
 {
-  println("{} {} {}", Show<primes[3]>::value, Show<squares[3] + pairs[0].a>::value, Show<totalLength()>::value);
+  println(Show<primes[3]>::value, " ", Show<squares[3] + pairs[0].a>::value, " ", Show<totalLength()>::value);
   return 0;
 }

@@ -38,6 +38,6 @@ int main()
   rc = 30;
   Plain p;
   auto [x, y] = p;
-  println("{} {} {} {} {} {}", a, b, c, t.rest.third, x, y);
+  println(a, " ", b, " ", c, " ", t.rest.third, " ", x, " ", y);
   return 0;
 }

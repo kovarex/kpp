@@ -18,6 +18,6 @@ int main()
 {
   Item<Mode> a(Mode::A);
   Item<Mode> b(Mode::A, Mode::B);
-  println("{} {}", a.text, b.text);
+  println(a.text, " ", b.text);
   return 0;
 }

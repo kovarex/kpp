@@ -29,6 +29,6 @@ int cast()
 }
 int main()
 {
-  println("{} {} {} {}", direct(), aggregate(), braced(), cast());
+  println(direct(), " ", aggregate(), " ", braced(), " ", cast());
   return 0;
 }

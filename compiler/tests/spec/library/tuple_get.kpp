@@ -5,8 +5,8 @@ int main()
 {
   Vector<int> words = {10, 20, 30};
   auto indexOffset = split(130);
-  println("{} {} {}", get<0>(indexOffset), get<1>(indexOffset), words[get<0>(indexOffset)]);
+  println(get<0>(indexOffset), " ", get<1>(indexOffset), " ", words[get<0>(indexOffset)]);
   get<1>(indexOffset) += 1;
-  println("{}", get<1>(indexOffset));
+  println(get<1>(indexOffset));
   return 0;
 }

@@ -27,12 +27,12 @@ int main()
   AIState state;
   state[AIState::Attacking] = Attacking{7};
   const AIState& constState = state;
-  println("{} {}", holdsAlternative<Attacking>(state), holdsAlternative<Patrolling>(state));
+  println(holdsAlternative<Attacking>(state), " ", holdsAlternative<Patrolling>(state));
   get<Attacking>(state).target = 9;
-  println("{} {}", get<Attacking>(constState).target, getIf<Patrolling>(&state) == nullptr);
-  println("{}", getIf<Attacking>(&constState)->target);
+  println(get<Attacking>(constState).target, " ", getIf<Patrolling>(&state) == nullptr);
+  println(getIf<Attacking>(&constState)->target);
   Tuple<int, char> tuple(4, 'x');
   Pair<int, int> pair(5, 6);
-  println("{} {} {}", get<0>(tuple), get<1>(tuple), get<1>(pair));
+  println(get<0>(tuple), " ", get<1>(tuple), " ", get<1>(pair));
   return 0;
 }

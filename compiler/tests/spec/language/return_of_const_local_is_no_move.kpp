@@ -29,6 +29,6 @@ int main()
   Tracked a = same();
   int afterSame = moves;
   Wrapper w = converted();
-  println("{} {} {}", afterSame, moves, w.held.value);
+  println(afterSame, " ", moves, " ", w.held.value);
   return 0;
 }

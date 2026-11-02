@@ -26,6 +26,6 @@ int main()
   Frame<int> f;
   int seen = 0;
   f.merged([&](int v) { seen = v + 10; });
-  println("{} {}", seen, f.scaled(3.5));
+  println(seen, " ", f.scaled(3.5));
   return 0;
 }

@@ -20,6 +20,6 @@ int extended(int raw)
 }
 int main()
 {
-  println("{} {} {} {}", kindOf(2), kindOf(5), extended(1), extended(2));
+  println(kindOf(2), " ", kindOf(5), " ", extended(1), " ", extended(2));
   return 0;
 }

@@ -16,6 +16,6 @@ int main()
   Counted* c = new Counted(3);
   int v = c->value;
   delete c;
-  println("{} {} {}", allocations, deletions, v);
+  println(allocations, " ", deletions, " ", v);
   return 0;
 }

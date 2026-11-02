@@ -3,7 +3,7 @@
 struct Item
 {
   int value = 0;
-  ~Item() { println("drop {}", this->value); }
+  ~Item() { println("drop ", this->value); }
 };
 int main()
 {
@@ -14,17 +14,17 @@ int main()
     items[2].value = 3;
     items.reset(new Item[2]);
     items[1].value = 5;
-    println("{} {}", (bool)items, items != nullptr);
+    println((bool)items, " ", items != nullptr);
   }
   UniqueArray<float> values(new float[4]());
   values[3] = 2.5f;
-  println("{} {}", values[0], values[3]);
+  println(values[0], " ", values[3]);
   values = nullptr;
-  println("{}", values == nullptr);
+  println(values == nullptr);
   UniqueArray<Item> made = makeUniqueArray<Item>(2);
   made[0].value = 7;
   Item* raw = made.release();
-  println("{}", made == nullptr);
+  println(made == nullptr);
   delete[] raw;
   return 0;
 }

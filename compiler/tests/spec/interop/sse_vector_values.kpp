@@ -59,9 +59,9 @@ int main()
   Wide made = make<Wide>(_mm_set1_ps(2.5f));
   float madeOut[4];
   _mm_storeu_ps(madeOut, made);
-  println("{} {} {} {} {}", mask, doubled[0], doubled[1], doubled[2], doubled[3]);
-  println("{} {} {} {}", tens[0], tens[1], tens[2], tens[3]);
-  println("{} {} {} {}", fromInts[0], fromInts[1], fromInts[2], fromInts[3]);
-  println("{} {} {} {} {}", masked[0], masked[1], masked[2], masked[3], madeOut[3]);
+  println(mask, " ", doubled[0], " ", doubled[1], " ", doubled[2], " ", doubled[3]);
+  println(tens[0], " ", tens[1], " ", tens[2], " ", tens[3]);
+  println(fromInts[0], " ", fromInts[1], " ", fromInts[2], " ", fromInts[3]);
+  println(masked[0], " ", masked[1], " ", masked[2], " ", masked[3], " ", madeOut[3]);
   return 0;
 }

@@ -17,6 +17,6 @@ struct Grid
 int main()
 {
   Grid g;
-  println("{}", g.width(3));
+  println(g.width(3));
   return 0;
 }

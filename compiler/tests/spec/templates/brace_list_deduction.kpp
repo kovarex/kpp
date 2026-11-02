@@ -27,8 +27,8 @@ int totalLength(const Args&... args) { return 100; }
 int main()
 {
   String text = "cde";
-  println("{} {}", pick({1, 2}), pick(5));
-  println("{} {}", sum({1, 2, 3}), sum({0.5, 0.25}));
-  println("{} {}", totalLength({"ab", text}), totalLength("ab", text));
+  println(pick({1, 2}), " ", pick(5));
+  println(sum({1, 2, 3}), " ", sum({0.5, 0.25}));
+  println(totalLength({"ab", text}), " ", totalLength("ab", text));
   return 0;
 }

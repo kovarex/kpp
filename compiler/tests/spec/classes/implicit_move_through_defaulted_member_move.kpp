@@ -41,6 +41,6 @@ int main()
     c.animation.speed = float(i);
     w.push_back(move(c));
   }
-  println("{} {} {} {}", v.size(), v[3].animation.speed, v[4].animation.frames.size(), w[3].animation.speed);
+  println(v.size(), " ", v[3].animation.speed, " ", v[4].animation.frames.size(), " ", w[3].animation.speed);
   return 0;
 }

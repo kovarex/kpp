@@ -10,6 +10,6 @@ int main()
   for (Thread& t : threads)
     t.join();
   thisThread::sleepFor(Milliseconds(1));
-  println("{} {}", counter.load(), Thread::hardwareConcurrency() >= 1);
+  println(counter.load(), " ", Thread::hardwareConcurrency() >= 1);
   return 0;
 }

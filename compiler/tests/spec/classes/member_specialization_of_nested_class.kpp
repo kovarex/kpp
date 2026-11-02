@@ -21,6 +21,6 @@ int main()
   b.value = String("abc");
   Outer<int> c;
   Outer<char> d;
-  println("{} {} {} {}", a.f(), b.f(), c.g(), d.g());
+  println(a.f(), " ", b.f(), " ", c.g(), " ", d.g());
   return 0;
 }

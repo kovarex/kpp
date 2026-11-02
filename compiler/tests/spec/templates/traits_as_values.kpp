@@ -2,6 +2,6 @@
 int main()
 {
   bool same = isSame<RemoveReference<int&>, int>;
-  println("{} {}", same, isPointer<int*>);
+  println(same, " ", isPointer<int*>);
   return 0;
 }

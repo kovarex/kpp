@@ -16,11 +16,9 @@ template<typename T> bool copyable() { return isTriviallyCopyable<T>; }
 
 int main()
 {
-  println("copyable {} {} {} {} {} {} {} {} {}", copyable<int>(), copyable<Plain>(), copyable<WithString>(), copyable<WithInit>(),
-          copyable<UserCopy>(), copyable<UserDtor>(), copyable<Derived>(), copyable<HoldsUserDtor>(), copyable<Virtual>());
-  println("destructible {} {} {}", isTriviallyDestructible<Plain>, isTriviallyDestructible<WithString>, isTriviallyDestructible<HoldsUserDtor>);
-  println("default {} {} {}", isTriviallyDefaultConstructible<Plain>, isTriviallyDefaultConstructible<WithInit>, isTriviallyDefaultConstructible<WithString>);
-  println("convertible {} {} {} {} {} {}", isConvertible<int, FromInt>, isConvertible<ToInt, int>, isConvertible<const char*, String>,
-          isConvertible<Scoped, int>, isConvertible<Derived*, Plain*>, isConvertible<int, int&>);
+  println("copyable ", copyable<int>(), " ", copyable<Plain>(), " ", copyable<WithString>(), " ", copyable<WithInit>(), " ", copyable<UserCopy>(), " ", copyable<UserDtor>(), " ", copyable<Derived>(), " ", copyable<HoldsUserDtor>(), " ", copyable<Virtual>());
+  println("destructible ", isTriviallyDestructible<Plain>, " ", isTriviallyDestructible<WithString>, " ", isTriviallyDestructible<HoldsUserDtor>);
+  println("default ", isTriviallyDefaultConstructible<Plain>, " ", isTriviallyDefaultConstructible<WithInit>, " ", isTriviallyDefaultConstructible<WithString>);
+  println("convertible ", isConvertible<int, FromInt>, " ", isConvertible<ToInt, int>, " ", isConvertible<const char*, String>, " ", isConvertible<Scoped, int>, " ", isConvertible<Derived*, Plain*>, " ", isConvertible<int, int&>);
   return 0;
 }

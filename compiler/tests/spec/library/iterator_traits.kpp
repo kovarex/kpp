@@ -13,7 +13,6 @@ int main()
   list.push_back(text);
   IteratorTraits<Vector<String>::iterator>::pointer first = list.data();
   IteratorTraits<VectorIterator>::reference element = list[0];
-  println("{} {} {} {} {} {} {}", text, number, *first, element, isSame<IteratorTraits<VectorIterator>::iterator_category, RandomAccessIteratorTag>,
-          isSame<IteratorTraits<VectorIterator>::value_type, String>, isSame<IteratorTraits<VectorIterator>::difference_type, ptrdiff_t>);
+  println(text, " ", number, " ", *first, " ", element, " ", isSame<IteratorTraits<VectorIterator>::iterator_category, RandomAccessIteratorTag>, " ", isSame<IteratorTraits<VectorIterator>::value_type, String>, " ", isSame<IteratorTraits<VectorIterator>::difference_type, ptrdiff_t>);
   return 0;
 }

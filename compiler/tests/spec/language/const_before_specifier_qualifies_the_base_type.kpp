@@ -10,6 +10,6 @@ int main()
   static_assert(isSame<decltype(name), const char*>, "const static char*");
   p = nullptr;
   name = "y";
-  println("{} {}", int(p == nullptr), name);
+  println(int(p == nullptr), " ", StringView(name));
   return 0;
 }

@@ -18,12 +18,12 @@ int main()
   for (const auto& c : InitializerList<Case>{{"a", 1}, {"bb", 20}, {"ccc", 300}})
   {
     sum += c.value;
-    names += c.name;
+    names << c.name;
   }
   for (int n : InitializerList<int>{4})
     sum += n;
   const Vector<ID> ids{ { ID(1), ID(2), ID(3) } };
   Vector<int> plain{ { 4, 5 } };
-  println("{} {} {} {} {}", sum, names, int(ids.size()), ids[2].value, int(plain.size()));
+  println(sum, " ", names, " ", int(ids.size()), " ", ids[2].value, " ", int(plain.size()));
   return 0;
 }

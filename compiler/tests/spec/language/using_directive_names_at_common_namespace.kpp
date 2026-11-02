@@ -19,6 +19,6 @@ namespace Other
 }
 int main()
 {
-  println("{} {}", Game::a(), Other::c());
+  println(Game::a(), " ", Other::c());
   return 0;
 }

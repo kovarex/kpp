@@ -19,6 +19,6 @@ struct [[packed]] Immutable
 int main()
 {
   Immutable value;
-  println("{} {}", (int)sizeof(Immutable), (int)((char*)&value.flag - (char*)&value));
+  println((int)sizeof(Immutable), " ", (int)((char*)&value.flag - (char*)&value));
   return 0;
 }

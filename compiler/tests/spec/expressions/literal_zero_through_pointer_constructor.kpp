@@ -11,6 +11,6 @@ int f(FromText t) { return 2; }
 int g(FromText t) { return t.isNull; }
 int main()
 {
-  println("{} {}", f(0), g(0));
+  println(f(0), " ", g(0));
   return 0;
 }

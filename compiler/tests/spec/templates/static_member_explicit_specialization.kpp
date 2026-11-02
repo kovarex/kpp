@@ -28,6 +28,6 @@ int main()
   Electric::Precision electric;
   Items i;
   Electric e;
-  println("{} {} {} {} | {} {} | {}", Items::smoothingTicks, Electric::smoothingTicks, items.historySize(1), electric.historySize(1), i.ticks(), e.ticks(), twice);
+  println(Items::smoothingTicks, " ", Electric::smoothingTicks, " ", items.historySize(1), " ", electric.historySize(1), " | ", i.ticks(), " ", e.ticks(), " | ", twice);
   return 0;
 }

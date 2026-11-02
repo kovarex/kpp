@@ -22,6 +22,6 @@ int main()
   store(&holder);
   Plain object;
   Plain* address = &object;
-  println("{} {} {}", holder.p == &shared, holder.pad, address->x);
+  println(holder.p == &shared, " ", holder.pad, " ", address->x);
   return 0;
 }

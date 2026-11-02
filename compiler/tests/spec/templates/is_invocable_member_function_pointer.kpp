@@ -17,8 +17,7 @@ int main()
 {
   Widget w;
   String s = "x";
-  println("{} {}", invoke<Widget>(&Widget::click, &w), invoke<Widget>(&Widget::press, &w, s));
-  println("{} {} {} {}", isInvocable<bool (Widget::*)(int), Widget&, int>, isInvocableR<bool, bool (Widget::*)(int), Widget&, int>,
-          isInvocableR<bool, bool (Widget::*)(int), Widget&>, isInvocable<bool (Widget::*)(int), int>);
+  println(invoke<Widget>(&Widget::click, &w), " ", invoke<Widget>(&Widget::press, &w, s));
+  println(isInvocable<bool (Widget::*)(int), Widget&, int>, " ", isInvocableR<bool, bool (Widget::*)(int), Widget&, int>, " ", isInvocableR<bool, bool (Widget::*)(int), Widget&>, " ", isInvocable<bool (Widget::*)(int), int>);
   return 0;
 }

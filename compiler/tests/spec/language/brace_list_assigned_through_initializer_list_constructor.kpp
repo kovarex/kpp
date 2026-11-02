@@ -28,6 +28,6 @@ int main()
   assigned = {Mode::MinLinear, Mode::MagLinear};
   Mode one;
   one = {Mode::Enum::MipLinear};
-  println("{} {} {}", int(declared.bits), int(assigned.bits), int(one.bits));
+  println(int(declared.bits), " ", int(assigned.bits), " ", int(one.bits));
   return 0;
 }

@@ -101,7 +101,7 @@ void calendarAppendDigits(String& out, long long value, int digits)
 void calendarAppendYear(String& out, int year, const char* what)
 {
   if (year < 0 || year > 9999)
-    throw OutOfRange(format("{}: the year {} has no four-digit form", what, year));
+    throw OutOfRange(format("{}: the year {} has no four-digit form", StringView(what), year));
   calendarAppendDigits(out, year, 4);
 }
 

@@ -16,6 +16,6 @@ using ConstProgram = const Program;
 int main()
 {
   const Program x(1, 2);
-  println("{} {}", build(ConstProgram(3, 4)), build(move(x)));
+  println(build(ConstProgram(3, 4)), " ", build(move(x)));
   return 0;
 }

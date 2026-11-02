@@ -22,6 +22,6 @@ int main()
   byValue(::move(b));
   Vector<Tracker> v;
   v.push_back(::move(a));
-  println("{} {} {} {}", Tracker::copies, Tracker::moves >= 2, v[0].data.size(), a.data.size());
+  println(Tracker::copies, " ", Tracker::moves >= 2, " ", v[0].data.size(), " ", a.data.size());
   return 0;
 }

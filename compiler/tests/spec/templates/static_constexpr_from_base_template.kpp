@@ -15,6 +15,6 @@ struct MyLimits<unsigned int> : IntegerLimits<unsigned int, false, 32> {};
 int main()
 {
   static_assert(MyLimits<int>::digits == 31);
-  println("{} {} {} {}", MyLimits<int>::is_signed, MyLimits<int>::digits, MyLimits<unsigned int>::is_signed, MyLimits<unsigned int>::digits);
+  println(MyLimits<int>::is_signed, " ", MyLimits<int>::digits, " ", MyLimits<unsigned int>::is_signed, " ", MyLimits<unsigned int>::digits);
   return 0;
 }

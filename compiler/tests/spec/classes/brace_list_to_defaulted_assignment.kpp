@@ -29,6 +29,6 @@ int main()
   data.previewIcons = {Signal(4), Signal(5)};
   data.cleared = {Signal(1)};
   data.cleared = {};
-  println("{} {}", int(data.previewIcons.icons.size()), int(data.cleared.icons.size()));
+  println(int(data.previewIcons.icons.size()), " ", int(data.cleared.icons.size()));
   return 0;
 }

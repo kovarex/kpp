@@ -20,6 +20,6 @@ auto main() -> int32_t
   // Unsigned -> uint32 -> isUnsigned = true -> 1
   // Signed   -> int32  -> isUnsigned = false -> 0
   // result = 10
-  println("{}", r);
+  println(r);
   return 0;
 }

@@ -12,6 +12,6 @@ int main()
   const Derived* p = &d;
   const Derived*& r = p;
   int x = 3;
-  println("{} {} {} {}", info(p), other(r), info(&x), other(&d));
+  println(StringView(info(p)), " ", StringView(other(r)), " ", StringView(info(&x)), " ", StringView(other(&d)));
   return 0;
 }

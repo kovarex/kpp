@@ -35,6 +35,6 @@ int main()
   deque.push_back(1);
   Vector<int> values = {4, 1, 3};
   PriorityQueue<int> fromRange(values.begin(), values.end());
-  println("{} {} {} {} {} {} {} {} {}", w.count(), w.items[0], d, m, k, *r, open.top(), deque.size(), fromRange.top());
+  println(w.count(), " ", w.items[0], " ", d, " ", m, " ", k, " ", *r, " ", open.top(), " ", deque.size(), " ", fromRange.top());
   return 0;
 }

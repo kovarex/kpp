@@ -6,11 +6,11 @@ String describe(const T& object)
 {
   String result;
   for constexpr (auto m : members(T))
-    result += format("{}={} ", m.name, object.[m]);
+    result << format("{}={} ", StringView(m.name), object.[m]);
   return result;
 }
 int main()
 {
-  println("{}", describe(Settings()));
+  println(describe(Settings()));
   return 0;
 }

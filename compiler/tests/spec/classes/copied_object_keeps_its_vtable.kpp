@@ -36,6 +36,6 @@ int main()
   Fancy other;
   Plain& viaBase = other;
   viaBase = target;
-  println("{} {} {}", r.f(), sliced.g(), viaBase.g());
+  println(r.f(), " ", sliced.g(), " ", viaBase.g());
   return 0;
 }

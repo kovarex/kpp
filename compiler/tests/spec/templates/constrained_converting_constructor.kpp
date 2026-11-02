@@ -6,8 +6,8 @@ struct Wrapper
   template<typename F>
   implicit Wrapper(F f) requires(!isPointer<F>) : kind(1) {}
 };
-void take(const String& text) { println("string {}", text); }
-void take(Wrapper wrapper) { println("wrapper {}", wrapper.kind); }
+void take(const String& text) { println("string ", text); }
+void take(Wrapper wrapper) { println("wrapper ", wrapper.kind); }
 int main()
 {
   take("text");

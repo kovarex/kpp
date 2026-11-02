@@ -33,6 +33,6 @@ int local()
 }
 int main()
 {
-  println("{} {}", dispatch(3, [](int item, int order) { return item * 10 + order; }), local());
+  println(dispatch(3, [](int item, int order) { return item * 10 + order; }), " ", local());
   return 0;
 }

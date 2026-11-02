@@ -29,7 +29,7 @@ int main()
   f.inner = 2.5;
   g.inner = 2.5;
   h.inner = 2.5;
-  println("{} {} {} {}", e.inner, f.inner, g.inner, h.inner);
-  println("{} {} {} {}", bare(1, 2.0), bare(2.0, 1), inBody(1, 2.0), inBody(2.0, 1));
+  println(e.inner, " ", f.inner, " ", g.inner, " ", h.inner);
+  println(bare(1, 2.0), " ", bare(2.0, 1), " ", inBody(1, 2.0), " ", inBody(2.0, 1));
   return 0;
 }

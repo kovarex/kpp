@@ -25,6 +25,6 @@ int main()
   Dialog<long> d;
   d.mapping.first.first = 3;
   d.mapping.first.second = 40;
-  println("{} {}", d.get()->first, d.get()->second);
+  println(d.get()->first, " ", d.get()->second);
   return 0;
 }

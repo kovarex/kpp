@@ -10,10 +10,10 @@ int main()
   String log;
   for (int i : {-1, 5, 10})
   {
-    try { check(i); log += "ok "; }
-    catch (const OutOfRange& e) { log += "range:"; log += e.what(); log += ' '; }
-    catch (const Exception& e) { log += "other:"; log += e.what(); log += ' '; }
+    try { check(i); log << "ok "; }
+    catch (const OutOfRange& e) { log << "range:"; log << StringView(e.what()); log << ' '; }
+    catch (const Exception& e) { log << "other:"; log << StringView(e.what()); log << ' '; }
   }
-  println("{}", log);
+  println(log);
   return 0;
 }

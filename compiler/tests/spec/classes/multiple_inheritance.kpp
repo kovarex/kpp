@@ -16,6 +16,6 @@ int main()
   Counted* asCounted = &w;
   Named* asNamed = &w;
   Widget* back = static_cast<Widget*>(asCounted);
-  println("{} {} {} {} {}", w.name, total(&w), asCounted->count, asNamed->name, back == &w);
+  println(w.name, " ", total(&w), " ", asCounted->count, " ", asNamed->name, " ", back == &w);
   return 0;
 }

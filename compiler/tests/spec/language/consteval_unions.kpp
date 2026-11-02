@@ -48,7 +48,6 @@ static_assert(stored() == 7);
 static_assert(navigation.zooms.closest.data.tag() == Zoom::Data::ByScale && navigation.zooms.furthest.data.tag() == Zoom::Data::ByDistance);
 int main()
 {
-  println("{} {} {} {} {} {}", int(Small().chars[15]), Small(9).length, Small(9).capacity, stored(), navigation.zooms.closest.data[Zoom::Data::ByScale].s,
-          navigation.zooms.furthest.data[Zoom::Data::ByDistance].near);
+  println(int(Small().chars[15]), " ", Small(9).length, " ", Small(9).capacity, " ", stored(), " ", navigation.zooms.closest.data[Zoom::Data::ByScale].s, " ", navigation.zooms.furthest.data[Zoom::Data::ByDistance].near);
   return 0;
 }

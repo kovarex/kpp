@@ -10,6 +10,6 @@ int main()
   String before = exchange(text, next);
   int counter = 5;
   int was = exchange(counter, 6);
-  println("{} {} {} {} {} {} {}", *old, *buffer, before, text, next, was, counter);
+  println(*old, " ", *buffer, " ", before, " ", text, " ", next, " ", was, " ", counter);
   return 0;
 }

@@ -15,6 +15,6 @@ int main()
   Vector<Reference> one;
   one.push_back(Reference(4));
   Vector<Reference> none = {};
-  println("{} {} {}", count(), count(::move(one)), int(none.size()));
+  println(count(), " ", count(::move(one)), " ", int(none.size()));
   return 0;
 }

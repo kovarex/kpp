@@ -17,6 +17,6 @@ struct Show
 };
 int main()
 {
-  println("{} {}", Show<Expr<add, 3>::apply(1, 1)>::value, Expr<mul, 1>::FOLD(4, 5));
+  println(Show<Expr<add, 3>::apply(1, 1)>::value, " ", Expr<mul, 1>::FOLD(4, 5));
   return 0;
 }

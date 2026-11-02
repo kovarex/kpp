@@ -17,6 +17,6 @@ int main()
 {
   Box box;
   box.value = 10;
-  println("{}", sum(3, &box));
+  println(sum(3, &box));
   return 0;
 }

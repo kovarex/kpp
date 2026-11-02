@@ -5,9 +5,9 @@ int main()
 {
   float singles[] = {2.5f, 3.5f, -2.5f, 1.75f, -1.75f, 3e9f};
   for (float f : singles)
-    println("{} {} {} {}", _mm_cvtss_si32(_mm_set_ss(f)), _mm_cvttss_si32(_mm_set_ss(f)), _mm_cvtss_si64(_mm_set_ss(f)), _mm_cvttss_si64(_mm_set_ss(f)));
+    println(_mm_cvtss_si32(_mm_set_ss(f)), " ", _mm_cvttss_si32(_mm_set_ss(f)), " ", _mm_cvtss_si64(_mm_set_ss(f)), " ", _mm_cvttss_si64(_mm_set_ss(f)));
   double doubles[] = {2.5, 3.5, -2.5, 1.75, -1.75, 3e9, 1e20};
   for (double d : doubles)
-    println("{} {} {} {}", _mm_cvtsd_si32(_mm_load_sd(&d)), _mm_cvttsd_si32(_mm_set_sd(d)), _mm_cvtsd_si64(_mm_set_sd(d)), _mm_cvttsd_si64(_mm_set_sd(d)));
+    println(_mm_cvtsd_si32(_mm_load_sd(&d)), " ", _mm_cvttsd_si32(_mm_set_sd(d)), " ", _mm_cvtsd_si64(_mm_set_sd(d)), " ", _mm_cvttsd_si64(_mm_set_sd(d)));
   return 0;
 }

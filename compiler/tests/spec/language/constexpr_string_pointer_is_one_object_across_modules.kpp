@@ -25,6 +25,6 @@ int main()
   catch (int)
   {
   }
-  println("{}", stored == *where());
+  println(stored == *where());
   return 0;
 }

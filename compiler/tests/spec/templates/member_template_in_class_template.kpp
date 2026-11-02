@@ -10,6 +10,6 @@ int main()
   MyStack<String> names;
   names.add("a");
   names.add(StringView("bc"));
-  println("{} {}", names.items.size(), names.items[1]);
+  println(names.items.size(), " ", names.items[1]);
   return 0;
 }

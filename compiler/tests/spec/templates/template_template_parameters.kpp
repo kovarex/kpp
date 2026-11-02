@@ -6,6 +6,6 @@ int main()
   Vector<int> v;
   v.push_back(1);
   v.push_back(2);
-  println("{}", countAll(v));
+  println(countAll(v));
   return 0;
 }

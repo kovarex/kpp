@@ -3,6 +3,6 @@
 int main()
 {
   Range r{2, 9};
-  println("{} {} {}", clampTo(12, r), clampTo(-1, r), LIMIT);
+  println(clampTo(12, r), " ", clampTo(-1, r), " ", LIMIT);
   return 0;
 }

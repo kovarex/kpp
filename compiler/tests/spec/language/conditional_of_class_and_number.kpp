@@ -52,6 +52,6 @@ int main()
   uint32_t workers = threadCount == 0 ? maxThreads : threadCount;
   threadCount = 40;
   uint32_t other = threadCount == 0 ? maxThreads : threadCount;
-  println("{} {} {} {} {} {}", withForce, without, scaled, plain, workers, other);
+  println(withForce, " ", without, " ", scaled, " ", plain, " ", workers, " ", other);
   return 0;
 }

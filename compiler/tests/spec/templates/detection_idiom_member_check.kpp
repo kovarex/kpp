@@ -55,7 +55,6 @@ int probeInBody()
 int main()
 {
   bool local = decltype(check<WithQuality>(nullptr))::value;
-  println("{} {} {} {} {} {} {}", probe<WithQuality>(), probe<Without>(), probeInBody<WithQuality>(), probeInBody<Without>(), has_get_quality_id<WithQuality>,
-          has_get_quality_id<Without>, local);
+  println(probe<WithQuality>(), " ", probe<Without>(), " ", probeInBody<WithQuality>(), " ", probeInBody<Without>(), " ", has_get_quality_id<WithQuality>, " ", has_get_quality_id<Without>, " ", local);
   return 0;
 }

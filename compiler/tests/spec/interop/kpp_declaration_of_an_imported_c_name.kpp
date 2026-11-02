@@ -12,6 +12,6 @@ typedef struct { int width, height, x, y, bottom; } SpecPackContext;
 void specPackInit(SpecPackContext* context, int width, int height) { context->width = width; context->height = height; context->bottom = -1; }
 int main()
 {
-  println("{}", usesTheHeader());
+  println(usesTheHeader());
   return 0;
 }

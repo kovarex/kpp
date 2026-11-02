@@ -20,6 +20,6 @@ int main()
   int acc = 1;
   for (Function<int(int)>& op : ops)
     acc = op(acc);
-  println("{} {} {} {} {} {}", f(4), g(1), h(2), (bool)empty, clicks, acc);
+  println(f(4), " ", g(1), " ", h(2), " ", (bool)empty, " ", clicks, " ", acc);
   return 0;
 }

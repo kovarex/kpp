@@ -14,6 +14,6 @@ int main()
   Value v;
   double d = v;
   int i = v;
-  println("{} {} {} {}", d, i, v.as<double>(), v.as<int>());
+  println(d, " ", i, " ", v.as<double>(), " ", v.as<int>());
   return 0;
 }

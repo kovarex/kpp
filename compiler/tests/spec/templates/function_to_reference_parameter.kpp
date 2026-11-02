@@ -27,7 +27,7 @@ int main()
   v.push_back(&b);
   v.push_back(&c);
   Util::sort(v, Group::ascending);
-  println("{} {}", byRef(less), byValue(less));
-  println("{} {} {}", v[0]->index, v[1]->index, v[2]->index);
+  println(byRef(less), " ", byValue(less));
+  println(v[0]->index, " ", v[1]->index, " ", v[2]->index);
   return 0;
 }

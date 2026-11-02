@@ -16,24 +16,24 @@ int main()
     Tracker t;
     auto byCopy = [t]() {};
   }
-  print("a {} ", live);
+  print("a ", live, " ");
   {
     Tracker t2;
     auto byCopy2 = [t2]() {};
     auto copied = byCopy2;
   }
-  print("b {} ", live);
+  print("b ", live, " ");
   {
     auto initCapture = [u = Tracker()]() {};
     Function<void()> fn = initCapture;
   }
-  print("c {} ", live);
+  print("c ", live, " ");
   store([w = Tracker()]() {});
-  print("d {} ", live);
+  print("d ", live, " ");
   {
     Function<void()> fn = [w = Tracker()]() {};
     Function<void()> copy = fn;
   }
-  println("e {} copies {}", live, copies);
+  println("e ", live, " copies ", copies);
   return 0;
 }

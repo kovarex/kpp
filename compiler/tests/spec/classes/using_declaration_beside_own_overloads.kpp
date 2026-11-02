@@ -39,6 +39,6 @@ int main()
   Tree t2;
   Serialiser s2;
   spec.center.saveBoth(t2, s2);
-  println("{} {} {} {}", t.n, s.n, t2.n, s2.n);
+  println(t.n, " ", s.n, " ", t2.n, " ", s2.n);
   return 0;
 }

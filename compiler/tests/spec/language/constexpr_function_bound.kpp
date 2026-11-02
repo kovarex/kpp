@@ -3,6 +3,6 @@ constexpr int cells() { return 8; }
 int main()
 {
   int table[cells()];
-  println("{}", (int)(sizeof(table) / sizeof(int)));
+  println((int)(sizeof(table) / sizeof(int)));
   return 0;
 }

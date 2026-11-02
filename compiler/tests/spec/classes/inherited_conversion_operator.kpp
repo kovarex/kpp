@@ -12,7 +12,7 @@ int main()
 {
   bool no = ViaParam<false>();
   bool yes = ViaParam<true>();
-  println("{} {}", no, yes);
+  println(no, " ", yes);
   if (ViaParam<false>())
     println("wrong");
   else

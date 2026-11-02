@@ -10,6 +10,6 @@ int main()
 {
   Counted<int> a, b;
   Counted<String> c;
-  println("{} {}", Counted<int>::instances, Counted<String>::instances);
+  println(Counted<int>::instances, " ", Counted<String>::instances);
   return 0;
 }

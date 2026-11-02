@@ -32,7 +32,7 @@ void tryEmplace(const char* name)
   m.try_emplace(m.end(), move(b), 6);
   Key c(1);
   bool inserted = m.try_emplace(move(c), 7).second;
-  print("{}: {} {} {}; ", name, copies, inserted, m.size());
+  print(StringView(name), ": ", copies, " ", inserted, " ", m.size(), "; ");
 }
 int main()
 {
@@ -45,9 +45,9 @@ int main()
   moves = 0;
   entries.emplace(entries.end(), Key(1), Value());
   entries.emplace(entries.end(), Key(3), Value());
-  print("Vector at the end: {} {}; ", copies, moves);
+  print("Vector at the end: ", copies, " ", moves, "; ");
   copies = 0;
   entries.emplace(entries.begin() + 1, Key(2), Value());
-  println("before another: {} {}{}{}", copies, entries[0].first.v, entries[1].first.v, entries[2].first.v);
+  println("before another: ", copies, " ", entries[0].first.v, entries[1].first.v, entries[2].first.v);
   return 0;
 }

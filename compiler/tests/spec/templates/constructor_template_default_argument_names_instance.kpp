@@ -11,6 +11,6 @@ struct Item {};
 int main()
 {
   Filter<Item> filter(StringView("abcd"));
-  println("{}", filter.value);
+  println(filter.value);
   return 0;
 }

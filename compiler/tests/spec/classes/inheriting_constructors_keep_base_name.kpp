@@ -24,6 +24,6 @@ int main()
 {
   Derived d(5);
   bool ok = Derived::setUp();
-  println("{} {} {}", d.value, ok, Base::registered);
+  println(d.value, " ", ok, " ", Base::registered);
   return 0;
 }

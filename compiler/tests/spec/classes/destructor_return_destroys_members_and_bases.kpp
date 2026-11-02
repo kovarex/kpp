@@ -27,12 +27,12 @@ int main()
   {
     Guard g;
   }
-  print("{} ", destroyed);
+  print(destroyed, " ");
   destroyed = 0;
   {
     Guard g;
     g.early = true;
   }
-  println("{}", destroyed);
+  println(destroyed);
   return 0;
 }

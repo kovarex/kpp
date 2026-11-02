@@ -4,10 +4,10 @@ int moves = 0;
 struct T
 {
   int id;
-  T(int v) : id(v) { println("T{}", id); }
-  T(const T& o) : id(o.id * 10) { println("T{} copy", id); }
-  T(T&& o) : id(o.id * 100) { ++moves; println("T{} move", id); }
-  ~T() { println("~T{}", id); }
+  T(int v) : id(v) { println("T", id); }
+  T(const T& o) : id(o.id * 10) { println("T", id, " copy"); }
+  T(T&& o) : id(o.id * 100) { ++moves; println("T", id, " move"); }
+  ~T() { println("~T", id); }
 };
 int main()
 {
@@ -15,6 +15,6 @@ int main()
   {
     T a = c ? T(1) : T(2);
   }
-  println("{}", moves);
+  println(moves);
   return 0;
 }

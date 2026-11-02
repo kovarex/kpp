@@ -30,6 +30,6 @@ int main()
   static_assert(isSame<Decay<decltype(Fast::True)>, Fast::Enum> && !isSame<Decay<decltype(Loud::True)>, Fast::Enum>);
   Settings settings(Fast::True, Loud::False);
   Fast::Enum e = Fast::Enum::True;
-  println("{} {} {} {} {}", pick(Fast::True), pick(Loud::False), settings.fast, settings.loud, pick(e));
+  println(pick(Fast::True), " ", pick(Loud::False), " ", settings.fast, " ", settings.loud, " ", pick(e));
   return 0;
 }

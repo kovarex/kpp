@@ -5,7 +5,7 @@ struct Mod
   static inline const char* const CORE_MOD = "core";
   String name = "base";
 };
-void show(const String& name) { print("[{}] ", name); }
+void show(const String& name) { print("[", name, "] "); }
 int main()
 {
   Mod mod;
@@ -14,8 +14,8 @@ int main()
   show(none ? none->name : Mod::CORE_MOD);
   show(some ? some->name : Mod::CORE_MOD);
   String a = none ? none->name : Mod::CORE_MOD;
-  auto lambda = [&](const String& modName) { print("<{}> ", modName); };
+  auto lambda = [&](const String& modName) { print("<", modName, "> "); };
   lambda(none ? none->name : Mod::CORE_MOD);
-  println("{}", a);
+  println(a);
   return 0;
 }

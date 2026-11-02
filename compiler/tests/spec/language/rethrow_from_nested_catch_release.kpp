@@ -7,6 +7,6 @@ int main()
     try { throw RuntimeError(String("inner")); }
     catch (const RuntimeError&) { println("rethrowing"); throw; }
   }
-  catch (const Exception& e) { println("outer {}", e.what()); }
+  catch (const Exception& e) { println("outer ", StringView(e.what())); }
   return 0;
 }

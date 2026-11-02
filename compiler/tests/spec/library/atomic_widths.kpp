@@ -34,8 +34,7 @@ int main()
   counter.fetchSub(3);
   Atomic<uint64_t> big = 1ull << 40;
   big++;
-  println("{} {} {} {} {} {} {} {} {} {} {} {} {}", f.a.load(), f.b, f.c, f.d.load(), f.e, (int)f.mode.load(), f.progress.load(), f.fraction.load(),
-          f.pair.load().b, *f.pointer.load(), swapped, (int)expected, counter.load());
-  println("{} {}", big.load(), sizeof(Atomic<bool>));
+  println(f.a.load(), " ", f.b, " ", f.c, " ", f.d.load(), " ", f.e, " ", (int)f.mode.load(), " ", f.progress.load(), " ", f.fraction.load(), " ", f.pair.load().b, " ", *f.pointer.load(), " ", swapped, " ", (int)expected, " ", counter.load());
+  println(big.load(), " ", sizeof(Atomic<bool>));
   return 0;
 }

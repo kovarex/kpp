@@ -32,6 +32,6 @@ int main()
   Robot r;
   static_cast<Hook<Robot, TagA>&>(r).id = 10;
   static_cast<Hook<Robot, TagB>&>(r).id = 20;
-  println("{} {} {} {} | {} {}", r.Hook<Robot, TagA>::getId(), r.Hook<Robot, TagB>::getId(), r.HookB::getId(), r.Middle::getId(), r.idOfB(), r.callB());
+  println(r.Hook<Robot, TagA>::getId(), " ", r.Hook<Robot, TagB>::getId(), " ", r.HookB::getId(), " ", r.Middle::getId(), " | ", r.idOfB(), " ", r.callB());
   return 0;
 }

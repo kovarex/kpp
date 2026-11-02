@@ -22,6 +22,6 @@ static_assert(quietNan != quietNan);
 static_assert(arrays() == 130 && bits() == 3);
 int main()
 {
-  println("{} {} {}", quietNan != quietNan, arrays(), bits());
+  println(quietNan != quietNan, " ", arrays(), " ", bits());
   return 0;
 }

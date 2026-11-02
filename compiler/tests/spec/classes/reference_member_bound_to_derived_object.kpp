@@ -34,6 +34,6 @@ int main()
   Holder held(c);
   ConstHolder constHeld(c);
   BracedHolder braced{c};
-  println("{} {} {}", held.ref.b, constHeld.ref.b, braced.ref.b);
+  println(held.ref.b, " ", constHeld.ref.b, " ", braced.ref.b);
   return 0;
 }

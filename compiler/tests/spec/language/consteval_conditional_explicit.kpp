@@ -12,6 +12,6 @@ constexpr int raw(Fixed<int, false> f) { return f.raw; }
 static_assert(raw(2) == 512);
 int main()
 {
-  println("{}", raw(1));
+  println(raw(1));
   return 0;
 }

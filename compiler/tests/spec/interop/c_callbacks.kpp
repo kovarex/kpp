@@ -10,6 +10,6 @@ int main()
   t.ops[0] = add;
   t.ops[1] = &mul;
   BinaryOp chosen = t.ops[1];
-  println("{} {} {}", apply(add, 2, 3), t.ops[1](4, 5), chosen == mul);
+  println(apply(add, 2, 3), " ", t.ops[1](4, 5), " ", chosen == mul);
   return 0;
 }

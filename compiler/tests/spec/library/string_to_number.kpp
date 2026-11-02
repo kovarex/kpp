@@ -4,24 +4,24 @@ int main()
 {
   size_t pos = 99;
   int scancode = stoi("42", &pos);
-  println("{} {}", scancode, pos);
-  println("{} {}", stoi(" -17abc", &pos), pos);
-  println("{} {} {}", stoi("ff", nullptr, 16), stol("-0x10", nullptr, 16), stoi("777", nullptr, 8));
+  println(scancode, " ", pos);
+  println(stoi(" -17abc", &pos), " ", pos);
+  println(stoi("ff", nullptr, 16), " ", stol("-0x10", nullptr, 16), " ", stoi("777", nullptr, 8));
   size_t processed = 0;
   unsigned long id = stoul("4000000000 rest", &processed);
-  println("{} {}", id, processed);
+  println(id, " ", processed);
   unsigned long long steamId = stoull("76561198000000000", &processed);
-  println("{} {}", steamId, processed);
-  println("{} {}", stoll("-9000000000"), stoi("12", nullptr));
-  println("{} {} {}", stof("2.5"), stod("1e3x", &pos), pos);
-  println("{}", double(stold("0.125")));
+  println(steamId, " ", processed);
+  println(stoll("-9000000000"), " ", stoi("12", nullptr));
+  println(stof("2.5"), " ", stod("1e3x", &pos), " ", pos);
+  println(double(stold("0.125")));
   try
   {
     stoi("keycode", &pos);
   }
   catch (const InvalidArgument& e)
   {
-    println("InvalidArgument: {} (pos still {})", e.what(), pos);
+    println("InvalidArgument: ", StringView(e.what()), " (pos still ", pos, ")");
   }
   try
   {
@@ -29,7 +29,7 @@ int main()
   }
   catch (const OutOfRange& e)
   {
-    println("OutOfRange: {}", e.what());
+    println("OutOfRange: ", StringView(e.what()));
   }
   try
   {
@@ -37,7 +37,7 @@ int main()
   }
   catch (const OutOfRange& e)
   {
-    println("OutOfRange: {}", e.what());
+    println("OutOfRange: ", StringView(e.what()));
   }
   return 0;
 }

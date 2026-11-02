@@ -25,6 +25,6 @@ int main()
   struct Point { int x = 1; int y = 2; Color c = Color::Green; };
   Point p;
   Point q{5, 6, Color::Red};
-  println("{} {} {} {}", countPairs(2, 3), p.x + p.y, int(p.c), q.x * q.y + int(q.c));
+  println(countPairs(2, 3), " ", p.x + p.y, " ", int(p.c), " ", q.x * q.y + int(q.c));
   return 0;
 }

@@ -67,12 +67,19 @@ int __kppRegisterTest(void (*run)(), const char* name, CallerLocation here = cal
   return 0;
 }
 
-// The value as text, when toString or a str() method can say it.
+// The value as text, when its appendTo or a str() method can say it.
 template<typename T> bool __kppShow(const T& value, String& text)
 {
-  if constexpr (requires { toString(value); })
+  if constexpr (requires { value.appendTo(text); })
   {
-    text = toString(value);
+    text = String();
+    value.appendTo(text);
+    return true;
+  }
+  else if constexpr (isConvertible<const T&, const char*>)
+  {
+    // C text (`s == "abd"`'s literal), which is no piece of a Text (design.md 14)
+    text = String(StringView((const char*)value));
     return true;
   }
   else if constexpr (requires { value.str(); })
@@ -113,10 +120,11 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   {
     failure.left = state.left;
     failure.right = state.right;
-    println("{}:{}:{}: {}: {} ({} {} {})", file, line, column, message, text, state.left, state.op, state.right);
+    println(StringView(file), ":", line, ":", column, ": ", StringView(message), ": ", StringView(text), " (", state.left, " ",
+            StringView(state.op), " ", state.right, ")");
   }
   else
-    println("{}:{}:{}: {}: {}", file, line, column, message, text);
+    println(StringView(file), ":", line, ":", column, ": ", StringView(message), ": ", StringView(text));
   state.hasValues = false;
   state.failures.push_back(failure);
 }
@@ -132,7 +140,7 @@ extern "C" void kpp_assert_failed(const char* file, int line, int column, const 
 {
   if (!__kppTestState().running)
   {
-    println("{}:{}:{}: assertion failed: {}", file, line, column, text);
+    println(StringView(file), ":", line, ":", column, ": assertion failed: ", StringView(text));
     abort();
   }
   __kppFail(file, line, column, "assert", text, "assertion failed");
@@ -187,17 +195,18 @@ String __kppJson(const String& text)
 
 String __kppJsonTest(const __KppTest& test, bool passed, const Vector<__KppTestFailure>& failures)
 {
-  String line = format("{\"test\":{},\"file\":{},\"line\":{},\"status\":\"{}\",\"failures\":[", __kppJson(test.fullName),
-                       __kppJson(String(test.where.file_name())), int(test.where.line()), passed ? "pass" : "fail");
+  String line;
+  line << "{\"test\":" << __kppJson(test.fullName) << ",\"file\":" << __kppJson(String(test.where.file_name())) << ",\"line\":"
+       << int(test.where.line()) << ",\"status\":\"" << StringView(passed ? "pass" : "fail") << "\",\"failures\":[";
   for (int i = 0; i < int(failures.size()); ++i)
   {
     const __KppTestFailure& f = failures[i];
     if (i > 0)
       line.append(",");
-    line.append(format("{\"file\":{},\"line\":{},\"column\":{},\"kind\":\"{}\",\"expression\":{}", __kppJson(f.file), f.line, f.column,
-                       f.kind, __kppJson(f.expression)));
+    line << "{\"file\":" << __kppJson(f.file) << ",\"line\":" << f.line << ",\"column\":" << f.column << ",\"kind\":\""
+         << StringView(f.kind) << "\",\"expression\":" << __kppJson(f.expression);
     if (f.hasValues)
-      line.append(format(",\"values\":[{},{}]", __kppJson(f.left), __kppJson(f.right)));
+      line << ",\"values\":[" << __kppJson(f.left) << "," << __kppJson(f.right) << "]";
     line.append("}");
   }
   line.append("]}\n");
@@ -219,7 +228,7 @@ int main(int argc, char** argv)
       report = argv[++i];
     else
     {
-      println("unknown test runner argument {}; the runner takes --filter TEXT, --list, --report FILE (- for stdout)", argv[i]);
+      println("unknown test runner argument ", StringView(argv[i]), "; the runner takes --filter TEXT, --list, --report FILE (- for stdout)");
       return 2;
     }
   }
@@ -230,7 +239,7 @@ int main(int argc, char** argv)
     reportFile = fopen(report, "w");
     if (!reportFile)
     {
-      println("cannot write the report {}", report);
+      println("cannot write the report ", StringView(report));
       return 2;
     }
   }
@@ -266,10 +275,10 @@ int main(int argc, char** argv)
       continue;
     if (list)
     {
-      println("{} ({}:{})", test.fullName, test.where.file_name(), int(test.where.line()));
+      println(test.fullName, " (", StringView(test.where.file_name()), ":", int(test.where.line()), ")");
       if (report)
-        writeReport(format("{\"test\":{},\"file\":{},\"line\":{}}\n", __kppJson(test.fullName), __kppJson(String(test.where.file_name())),
-                           int(test.where.line())));
+        writeReport(toString("{\"test\":", __kppJson(test.fullName), ",\"file\":", __kppJson(String(test.where.file_name())), ",\"line\":",
+                             int(test.where.line()), "}\n"));
       continue;
     }
     ++run;
@@ -284,7 +293,7 @@ int main(int argc, char** argv)
     }
     catch (const Exception& e)
     {
-      String text = format("an exception left the test: {}", e.message);
+      String text = toString("an exception left the test: ", e.message);
       __kppFail(test.where.file_name(), int(test.where.line()), int(test.where.column()), "exception", text.c_str(), "test failed");
     }
     catch (...)
@@ -297,7 +306,7 @@ int main(int argc, char** argv)
     if (!passed)
     {
       ++failed;
-      println("failed: {}", test.fullName);
+      println("failed: ", test.fullName);
     }
     writeReport(__kppJsonTest(test, passed, state.failures));
   }
@@ -307,10 +316,10 @@ int main(int argc, char** argv)
       fclose(reportFile);
     return 0;
   }
-  writeReport(format("{\"summary\":{\"tests\":{},\"failed\":{}}}\n", run, failed));
+  writeReport(toString("{\"summary\":{\"tests\":", run, ",\"failed\":", failed, "}}\n"));
   if (reportFile)
     fclose(reportFile);
-  println("{} {}, {} failed", run, run == 1 ? "test" : "tests", failed);
+  println(run, " ", StringView(run == 1 ? "test" : "tests"), ", ", failed, " failed");
   return failed ? 1 : 0;
 }
 )kpp";

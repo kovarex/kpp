@@ -6,6 +6,6 @@ int main()
 {
   const char* joined = "a" "b" "c";
   const char* wrong = "x" BULLET "y";
-  println("{} {}", joined, wrong);
+  println(joined, " ", wrong);
   return 0;
 }

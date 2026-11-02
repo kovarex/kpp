@@ -13,6 +13,6 @@ String describe(const T& value)
 int main()
 {
   int n = 3;
-  println("{} / {} / {}", describe(n), describe(&n), describe(2.5));
+  println(describe(n), " / ", describe(&n), " / ", describe(2.5));
   return 0;
 }

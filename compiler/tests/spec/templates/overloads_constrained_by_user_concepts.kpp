@@ -40,6 +40,6 @@ int main()
 {
   Named named;
   Bag bag;
-  println("{} {} {} {}", describe(named), describe(bag), kind(named), kind(bag));
+  println(describe(named), " ", describe(bag), " ", StringView(kind(named)), " ", StringView(kind(bag)));
   return 0;
 }

@@ -7,7 +7,7 @@ void parse(const char* text)
   using US = MakeUnsigned<T>;
   constexpr auto umax = Limits<US>::max();
   constexpr bool is_signed = Limits<T>::is_signed;
-  println("{} {} {}", (unsigned long long)umax, is_signed, Limits<T>::digits);
+  println((unsigned long long)umax, " ", is_signed, " ", Limits<T>::digits);
 }
 int main()
 {
@@ -17,12 +17,12 @@ int main()
   parse<int16_t>("1");
   parse<uint32_t>("1");
   parse<long long>("1");
-  println("{} {} {} {} {}", Limits<int>::min(), Limits<int>::max(), Limits<int8_t>::min(), (int)Limits<char>::max(), (int)Limits<unsigned char>::max());
-  println("{} {} {} {}", Limits<unsigned long long>::max(), Limits<long long>::min(), Limits<bool>::max(), Limits<bool>::digits);
-  println("{} {} {} {}", Limits<float>::max(), Limits<double>::lowest(), Limits<float>::epsilon(), Limits<double>::min());
+  println(Limits<int>::min(), " ", Limits<int>::max(), " ", Limits<int8_t>::min(), " ", (int)Limits<char>::max(), " ", (int)Limits<unsigned char>::max());
+  println(Limits<unsigned long long>::max(), " ", Limits<long long>::min(), " ", Limits<bool>::max(), " ", Limits<bool>::digits);
+  println(Limits<float>::max(), " ", Limits<double>::lowest(), " ", Limits<float>::epsilon(), " ", Limits<double>::min());
   double inf = Limits<double>::infinity();
   double nan = Limits<double>::quiet_NaN();
-  println("{} {} {} {} {}", inf > Limits<double>::max(), nan != nan, Limits<float>::digits10, Limits<int>::digits10, Limits<Color>::is_specialized);
-  println("{} {} {}", bits.size(), Limits<wchar_t>::max(), Limits<char32_t>::is_signed);
+  println(inf > Limits<double>::max(), " ", nan != nan, " ", Limits<float>::digits10, " ", Limits<int>::digits10, " ", Limits<Color>::is_specialized);
+  println(bits.size(), " ", (unsigned)(unsigned)Limits<wchar_t>::max(), " ", Limits<char32_t>::is_signed);
   return 0;
 }

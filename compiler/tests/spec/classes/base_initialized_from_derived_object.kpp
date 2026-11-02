@@ -30,6 +30,6 @@ int main()
   Derived d;
   d.v = 5;
   Derived e(d);
-  println("{} {}", c.value, e.v);
+  println(c.value, " ", e.v);
   return 0;
 }

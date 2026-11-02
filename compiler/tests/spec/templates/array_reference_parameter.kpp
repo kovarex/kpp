@@ -8,6 +8,6 @@ int main()
 {
   int values[5] = {1, 2, 3, 4, 5};
   const char* names[] = {"a", "b"};
-  println("{} {} {}", countOf(values), *firstOf(values), countOf(names));
+  println(countOf(values), " ", *firstOf(values), " ", countOf(names));
   return 0;
 }

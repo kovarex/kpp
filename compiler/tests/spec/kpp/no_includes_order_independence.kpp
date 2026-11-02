@@ -5,7 +5,7 @@ int main()
   n.value = 2;
   Leaf l;
   l.owner = &n;
-  println("{} {}", describe(l), twice(n.value));
+  println(describe(l), " ", twice(n.value));
   return 0;
 }
 int twice(int x) { return x * 2; }

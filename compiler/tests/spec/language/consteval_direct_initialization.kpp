@@ -36,6 +36,6 @@ struct Show
 };
 int main()
 {
-  println("{} {}", Show<int(flags.bits.value)>::value, Show<holder.base.a + int(holder.bits.value)>::value);
+  println(Show<int(flags.bits.value)>::value, " ", Show<holder.base.a + int(holder.bits.value)>::value);
   return 0;
 }

@@ -12,17 +12,17 @@ int main()
   WString params = L"--run-test x";
   WString exe = L"C:\\factorio.exe";
   params.insert(0, exe + L" ");
-  println("{} {}", narrow(params), params.size());
+  println(narrow(params), " ", params.size());
   params.insert(params.size(), L" 2>&1");
   params.insert(3, 2, L'_');
-  println("{}", narrow(params));
+  println(narrow(params));
   WString self = L"abc";
   self.insert(1, self);
-  println("{} {}", narrow(self), self.size());
+  println(narrow(self), " ", self.size());
   WString empty;
   empty.insert(0, L"");
   empty.insert(0, L"z");
-  println("{}", narrow(empty));
+  println(narrow(empty));
   try
   {
     self.insert(99, L"x");

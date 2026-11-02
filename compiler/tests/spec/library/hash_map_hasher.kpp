@@ -22,7 +22,6 @@ int main()
   byPointer[p] = 9;
   FastHashMap<Point, int, PointHash> fast;
   fast[Point{5, 6}] = 56;
-  println("{} {} {} {} {} {} {} {}", grid[Point{1, 2}], grid.size(), grid.contains(Point{3, 4}), byDouble[0.0], byColor[Color::Green], byPointer[p],
-          fast[Point{5, 6}], Hash<int>()(5) == hashOf(5));
+  println(grid[Point{1, 2}], " ", grid.size(), " ", grid.contains(Point{3, 4}), " ", byDouble[0.0], " ", byColor[Color::Green], " ", byPointer[p], " ", fast[Point{5, 6}], " ", Hash<int>()(5) == hashOf(5));
   return 0;
 }

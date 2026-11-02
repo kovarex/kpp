@@ -21,7 +21,7 @@ int main()
   Holder g = h;
   g.named.count = 5;
   h = g;
-  println("{} {} {} {}", b->name, b->count, h.named.count, g.named.name);
+  println(b->name, " ", b->count, " ", h.named.count, " ", g.named.name);
   delete b;
   return 0;
 }

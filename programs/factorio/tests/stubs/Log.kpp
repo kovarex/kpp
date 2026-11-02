@@ -7,18 +7,18 @@ class Logging
 public:
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const char* format, ...)
   {
-    println("abort at {}:{}: {}", file, line, format);
+    println("abort at ", StringView(file), ":", line, ": ", StringView(format));
     abort();
   }
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const String& message)
   {
-    println("abort at {}:{}: {}", file, line, message);
+    println("abort at ", StringView(file), ":", line, ": ", message);
     abort();
   }
   template<typename EnumType>
   static void logEnumAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, EnumType value)
   {
-    println("abort at {}:{}: unknown enum value {}", file, line, int(value));
+    println("abort at ", StringView(file), ":", line, ": unknown enum value ", int(value));
     abort();
   }
 };

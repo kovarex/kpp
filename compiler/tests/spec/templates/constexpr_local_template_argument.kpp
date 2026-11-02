@@ -27,6 +27,6 @@ int byCode(T value)
 
 int main()
 {
-  println("{} {} {} {}", bySign(-1), bySign(1u), byCode(-1), byCode(1u));
+  println(StringView(bySign(-1)), " ", StringView(bySign(1u)), " ", byCode(-1), " ", byCode(1u));
   return 0;
 }

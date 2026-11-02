@@ -13,6 +13,6 @@ int f(int x) { return x; }
 int main()
 {
   int data = 0;
-  println("{} {} {} {}", describe(WithStr()), describe(Plain()), call(&f), call(&data));
+  println(StringView(describe(WithStr())), " ", StringView(describe(Plain())), " ", StringView(call(&f)), " ", StringView(call(&data)));
   return 0;
 }

@@ -45,6 +45,6 @@ int main()
   ItemPrototype::IDType id = iron.getID();
   const ItemPrototype* found = PrototypeList<ItemPrototype>::getSafe(id);
   id.index = 5;
-  println("{} {}", found ? found->stackSize : 0, PrototypeList<ItemPrototype>::getSafe(id) == nullptr);
+  println(found ? found->stackSize : 0, " ", PrototypeList<ItemPrototype>::getSafe(id) == nullptr);
   return 0;
 }

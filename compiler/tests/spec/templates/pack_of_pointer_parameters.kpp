@@ -7,6 +7,6 @@ int main()
 {
   int a = 0;
   short b = 0;
-  println("{}", countPointers("xy", &a, &b));
+  println(countPointers("xy", &a, &b));
   return 0;
 }

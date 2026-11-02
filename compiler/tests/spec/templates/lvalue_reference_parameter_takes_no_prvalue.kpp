@@ -54,7 +54,7 @@ int main()
   Gui gui;
   Helper helper;
   helper.tryDownload(gui);
-  println("{} {} {}", gui.filled, pick(3), pick(makePoint()));
-  println("{} {}", pick(Callable()), pick([]() { return 1; }));
+  println(gui.filled, " ", pick(3), " ", pick(makePoint()));
+  println(pick(Callable()), " ", pick([]() { return 1; }));
   return 0;
 }

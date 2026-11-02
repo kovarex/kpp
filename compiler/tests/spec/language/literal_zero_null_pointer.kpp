@@ -8,6 +8,6 @@ int take(Entity* e) { return e ? 50 : 60; }
 int main()
 {
   Entity* none = 0;
-  println("{} {} {} {}", pick(0), take(0), take(none), none == 0 ? 1 : 0);
+  println(pick(0), " ", take(0), " ", take(none), " ", none == 0 ? 1 : 0);
   return 0;
 }

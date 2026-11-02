@@ -10,8 +10,8 @@ int main()
   int pre = ++b, post = b++;                  // 3, 3; b == 4
   int neg = -a, inv = !a ? 1 : 0;
   long long big = 1ll << 40;
-  println("{} {} {} {} {} {} {} {} {}", a, c, u >> 31, pre, post, b, neg, inv, big / (1ll << 30));
-  println("{} {} {}", 7 / 2, -7 / 2, -7 % 3);
-  println("{} {}", 7.0 / 2, 1e3 == 1000.0);
+  println(a, " ", c, " ", u >> 31, " ", pre, " ", post, " ", b, " ", neg, " ", inv, " ", big / (1ll << 30));
+  println(7 / 2, " ", -7 / 2, " ", -7 % 3);
+  println(7.0 / 2, " ", 1e3 == 1000.0);
   return 0;
 }

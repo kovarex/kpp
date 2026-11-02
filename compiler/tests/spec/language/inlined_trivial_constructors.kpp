@@ -59,43 +59,43 @@ struct Box
 struct Counted
 {
   int value;
-  Counted(int v) : value(v) { print("(counted {}) ", v); }
+  Counted(int v) : value(v) { print("(counted ", v, ") "); }
 };
 int counter = 0;
 int next() { return ++counter; }
 Id globalId(9);
-void show(Id id) { print("{} ", id.getIndex()); }
+void show(Id id) { print(id.getIndex(), " "); }
 int main()
 {
   Flag yes = Answer::Yes;
   Flag no(Answer::No);
   Flag none;
-  println("{} {} {}", yes.asBool(), no.asBool(), none.asBool());
+  println(yes.asBool(), " ", no.asBool(), " ", none.asBool());
   Id empty;
   Id five(5);
   show(Id(7));
   show(empty);
-  println("{} {}", five.getIndex(), globalId.getIndex());
+  println(five.getIndex(), " ", globalId.getIndex());
   Two two(next(), next());
-  println("{} {} {}", two.a, two.b, counter);
+  println(two.a, " ", two.b, " ", counter);
   Node node(3);
   Outer outer;
-  println("{} {} {} {}", node.value, node.self == &node, outer.node.value, outer.node.self == &outer.node);
+  println(node.value, " ", node.self == &node, " ", outer.node.value, " ", outer.node.self == &outer.node);
   int x = 11;
   Ref byVariable(x);
   Ref byTemporary(x + 1);
-  println("{} {} {}", byVariable.value, byVariable.address == &x, byTemporary.value);
+  println(byVariable.value, " ", byVariable.address == &x, " ", byTemporary.value);
   Narrow narrow(300, 200, 7);
-  println("{} {} {}", narrow.small, narrow.wide, narrow.real);
+  println(narrow.small, " ", narrow.wide, " ", narrow.real);
   Box<int> boxed(4);
   Box<double> real(2.5);
   Box<int> zero;
-  println("{} {} {}", boxed.value, real.value, zero.value);
+  println(boxed.value, " ", real.value, " ", zero.value);
   Counted counted(8);
   Counted* onHeap = new Counted(9);
   Id* heapId = new Id(12);
   Id ids[3] = {Id(1), Id(2), Id(3)};
-  println("{} {} {} {}", counted.value, onHeap->value, heapId->getIndex(), ids[0].getIndex() + ids[1].getIndex() + ids[2].getIndex());
+  println(counted.value, " ", onHeap->value, " ", heapId->getIndex(), " ", ids[0].getIndex() + ids[1].getIndex() + ids[2].getIndex());
   delete onHeap;
   delete heapId;
   return 0;

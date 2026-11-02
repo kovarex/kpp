@@ -16,6 +16,6 @@ int main()
 {
   const Proto p;
   Proto q;
-  println("{} {} {} {}", castTo<Proto>(&p)->id, which(&p), which(&q), which2(&p));
+  println(castTo<Proto>(&p)->id, " ", StringView(which(&p)), " ", StringView(which(&q)), " ", StringView(which2(&p)));
   return 0;
 }

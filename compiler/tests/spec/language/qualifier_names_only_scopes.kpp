@@ -12,6 +12,6 @@ int main()
 {
   int clock = clock::now();
   int Pair2 = Pair2::first();
-  println("{} {}", clock, Pair2);
+  println(clock, " ", Pair2);
   return 0;
 }

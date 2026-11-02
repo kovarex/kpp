@@ -17,22 +17,19 @@ struct Adder { int operator()(int a, int b) const { return a + b; } };
 int twice(int x) { return 2 * x; }
 int main()
 {
-  println("class: {} {} {}", isClass<int>, isClass<Plain>, isClass<Plain*>);
-  println("polymorphic: {} {} {} {}", isPolymorphic<Plain>, isPolymorphic<Shape>, isPolymorphic<Flat>, isPolymorphic<int>);
-  println("abstract: {} {} {} {} {}", isAbstract<Shape>, isAbstract<Square>, isAbstract<Counter>, isAbstract<Half>, isAbstract<Plain>);
-  println("final: {} {}", isFinal<Flat>, isFinal<Square>);
-  println("move constructible: {} {} {} {} {} {}", isMoveConstructible<Plain>, isMoveConstructible<NoMove>, isMoveConstructible<CopyOnly>,
-          isMoveConstructible<Holder>, isMoveConstructible<Shape>, isMoveConstructible<int&>);
-  println("copy constructible: {} {}", isCopyConstructible<Plain>, isCopyConstructible<Logged>);
-  println("move assignable: {} {} {} {}", isMoveAssignable<Plain>, isMoveAssignable<WithRef>, isMoveAssignable<WithConst>, isMoveAssignable<const int>);
-  println("trivially: {} {} {} {}", isTriviallyMoveConstructible<Plain>, isTriviallyMoveConstructible<Logged>, isTriviallyMoveAssignable<Plain>,
-          isTriviallyMoveConstructible<Square>);
-  println("nothrow: {} {} {}", isNothrowMoveConstructible<Logged>, isNothrowMoveAssignable<Logged>, isNothrowMoveConstructible<CopyOnly>);
+  println("class: ", isClass<int>, " ", isClass<Plain>, " ", isClass<Plain*>);
+  println("polymorphic: ", isPolymorphic<Plain>, " ", isPolymorphic<Shape>, " ", isPolymorphic<Flat>, " ", isPolymorphic<int>);
+  println("abstract: ", isAbstract<Shape>, " ", isAbstract<Square>, " ", isAbstract<Counter>, " ", isAbstract<Half>, " ", isAbstract<Plain>);
+  println("final: ", isFinal<Flat>, " ", isFinal<Square>);
+  println("move constructible: ", isMoveConstructible<Plain>, " ", isMoveConstructible<NoMove>, " ", isMoveConstructible<CopyOnly>, " ", isMoveConstructible<Holder>, " ", isMoveConstructible<Shape>, " ", isMoveConstructible<int&>);
+  println("copy constructible: ", isCopyConstructible<Plain>, " ", isCopyConstructible<Logged>);
+  println("move assignable: ", isMoveAssignable<Plain>, " ", isMoveAssignable<WithRef>, " ", isMoveAssignable<WithConst>, " ", isMoveAssignable<const int>);
+  println("trivially: ", isTriviallyMoveConstructible<Plain>, " ", isTriviallyMoveConstructible<Logged>, " ", isTriviallyMoveAssignable<Plain>, " ", isTriviallyMoveConstructible<Square>);
+  println("nothrow: ", isNothrowMoveConstructible<Logged>, " ", isNothrowMoveAssignable<Logged>, " ", isNothrowMoveConstructible<CopyOnly>);
   auto add = [](int a, int b) { return a + b; };
   auto any = [](const auto& v) { return v; };
-  println("invocable: {} {} {} {} {} {}", isInvocable<decltype(add), int, int>, isInvocable<decltype(add), int>, isInvocable<decltype(any), Plain&>,
-          isInvocable<int (*)(int), long>, isInvocable<Adder, int, int>, isInvocable<Adder, Plain&, int>);
-  println("invocable r: {} {}", isInvocableR<long, int (*)(int), int>, isInvocableR<Plain, Adder, int, int>);
+  println("invocable: ", isInvocable<decltype(add), int, int>, " ", isInvocable<decltype(add), int>, " ", isInvocable<decltype(any), Plain&>, " ", isInvocable<int (*)(int), long>, " ", isInvocable<Adder, int, int>, " ", isInvocable<Adder, Plain&, int>);
+  println("invocable r: ", isInvocableR<long, int (*)(int), int>, " ", isInvocableR<Plain, Adder, int, int>);
   static_assert(isMoveConstructible<Plain> && !isMoveConstructible<NoMove> && !isClass<int>);
   return twice(0);
 }

@@ -16,6 +16,6 @@ namespace Strings
 int main()
 {
   String middle = "cde";
-  println("{}", Strings::totalLength("ab", middle, StringView("f")));
+  println(Strings::totalLength("ab", middle, StringView("f")));
   return 0;
 }

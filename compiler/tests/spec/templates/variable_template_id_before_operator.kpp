@@ -7,6 +7,6 @@ int lengths[two_v<int> * 3];
 float scale(float x) { return Numbers::pi_v<float> * x; }
 int main()
 {
-  println("{} {} {}", two_v<int> - 1, int(sizeof(lengths) / sizeof(int)), int(scale(1000.0f)));
+  println(two_v<int> - 1, " ", int(sizeof(lengths) / sizeof(int)), " ", int(scale(1000.0f)));
   return 0;
 }

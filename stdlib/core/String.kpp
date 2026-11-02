@@ -603,21 +603,7 @@ struct String
     return *this;
   }
 
-  String& operator+=(const char* text)
-  {
-    this->append(text);
-    return *this;
-  }
-  String& operator+=(const String& other)
-  {
-    this->append(other);
-    return *this;
-  }
-  String& operator+=(char c)
-  {
-    this->append(c);
-    return *this;
-  }
+  // (No +=: `<<` is String's one append, design.md 14, Format.kpp's operator<<.)
   String operator+(const String& other) const
   {
     String result;
@@ -632,14 +618,6 @@ struct String
     result.reserve(sizeSum(this->size(), strlen(text), "string too long"));
     result.append(*this);
     result.append(text);
-    return result;
-  }
-  String operator+(char c) const
-  {
-    String result;
-    result.reserve(sizeSum(this->size(), 1, "string too long"));
-    result.append(*this);
-    result.append(c);
     return result;
   }
 
@@ -788,14 +766,6 @@ String operator+(const char* left, const String& right)
   String result;
   result.reserve(sizeSum(leftLength, right.size(), "string too long"));
   result.append(left, leftLength);
-  result.append(right);
-  return result;
-}
-String operator+(char left, const String& right)
-{
-  String result;
-  result.reserve(sizeSum(1, right.size(), "string too long"));
-  result.append(left);
   result.append(right);
   return result;
 }

@@ -19,7 +19,7 @@ public:
 int main()
 {
   Proto* p = new Proto(7, nullptr);
-  println("{}", p->viaSuper());
+  println(p->viaSuper());
   delete p;
   return 0;
 }

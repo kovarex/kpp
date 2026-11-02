@@ -10,7 +10,7 @@ void describe(const U& u)
 {
   for constexpr (auto a : alternatives(U))
     if (u == a.tag)
-      println("{} {} {}", int(a.tag), a.name, u[a]);
+      println(int(a.tag), " ", StringView(a.name), " ", u[a]);
 }
 
 template<class U>
@@ -31,10 +31,10 @@ int main()
   Value v;
   v[Value::Ratio] = 0.5;
   describe(v);
-  println("{} {}", int(v.tag()), int(Value::Tag::count));
+  println(int(v.tag()), " ", int(Value::Tag::count));
   Value w = defaultAt<Value>(2);
-  println("{} {}", w == Value::Text, w[Value::Text].size());
+  println(w == Value::Text, " ", w[Value::Text].size());
   for constexpr (auto a : alternatives(Value))
-    println("{}", a.name);
+    println(StringView(a.name));
   return 0;
 }

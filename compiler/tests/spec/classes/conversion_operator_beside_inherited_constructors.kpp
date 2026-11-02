@@ -33,6 +33,6 @@ int main()
   Prototype p;
   Signal s = p.output;
   Signal fromName("abc");
-  println("{} {} {}", defaultOutput(&p).base, s.base, fromName.base);
+  println(defaultOutput(&p).base, " ", s.base, " ", fromName.base);
   return 0;
 }

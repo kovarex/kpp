@@ -18,8 +18,8 @@ int main()
   int mode = 1;
   {
     Guard g(mode, 5);
-    println("{} {} {}", both.a, both.b, mode);
+    println(both.a, " ", both.b, " ", mode);
   }
-  println("{}", mode);
+  println(mode);
   return 0;
 }

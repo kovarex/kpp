@@ -17,6 +17,6 @@ int main()
   Proto none;
   Proto some;
   some.spoil.id = 5;
-  println("{} {}", follow(none), follow(some));
+  println(follow(none), " ", follow(some));
   return 0;
 }

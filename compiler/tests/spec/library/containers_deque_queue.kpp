@@ -13,6 +13,6 @@ int main()
   q.push(String("second"));
   String head = q.front();
   q.pop();
-  println("{} {} {} {} {} {}", front, d.size(), d.back(), head, q.size(), q.front());
+  println(front, " ", d.size(), " ", d.back(), " ", head, " ", q.size(), " ", q.front());
   return 0;
 }

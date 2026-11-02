@@ -17,6 +17,6 @@ int main()
   w.context = &total;
   Writer* p = &w;
   p->func(p->context, 3);
-  println("{} {}", total, sizeof(WriteFunc*) == sizeof(void*));
+  println(total, " ", sizeof(WriteFunc*) == sizeof(void*));
   return 0;
 }

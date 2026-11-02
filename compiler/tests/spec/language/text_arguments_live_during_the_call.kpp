@@ -7,8 +7,8 @@ struct Loud
   ~Loud() { printf("~%d ", id); }
   void appendTo(String& out) const
   {
-    out += "loud";
-    out += char('0' + id);
+    out << "loud";
+    out << char('0' + id);
   }
 };
 Loud make(int id) { return Loud(id); }

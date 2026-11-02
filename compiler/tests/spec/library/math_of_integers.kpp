@@ -7,7 +7,6 @@ int main()
   auto up = ceil(7);
   auto down = floor((short)3);
   auto nearest = round(5u);
-  println("{} {} {} {} {} {} {}", isSame<decltype(root), double>, root == sqrt(2.0), rootOfLong == 100000000.0, isSame<decltype(up), double>, up + down + nearest,
-          isnan(3) || isinf(3), isfinite(3));
+  println(isSame<decltype(root), double>, " ", root == sqrt(2.0), " ", rootOfLong == 100000000.0, " ", isSame<decltype(up), double>, " ", up + down + nearest, " ", isnan(3) || isinf(3), " ", isfinite(3));
   return 0;
 }

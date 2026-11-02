@@ -14,6 +14,6 @@ int main()
 {
   Holder a;
   Holder b(::move(a));
-  println("{} {}", a == nullptr, b->id);
+  println(a == nullptr, " ", b->id);
   return 0;
 }

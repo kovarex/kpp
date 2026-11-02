@@ -31,6 +31,6 @@ int main()
   tint.g = 0.25f;
   ViaParam<false> v;
   ViaParam<true> w;
-  println("{} {} {} {} {} {}", number.value(), tint.r, redOf(tint), greenOf(&tint), v.value, w.value);
+  println(number.value(), " ", tint.r, " ", redOf(tint), " ", greenOf(&tint), " ", v.value, " ", w.value);
   return 0;
 }

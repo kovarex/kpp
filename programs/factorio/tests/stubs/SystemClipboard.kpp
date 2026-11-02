@@ -13,11 +13,11 @@ namespace SystemClipboard
     {
       char c = contents[i];
       if (c == '\t')
-        result += "    ";
+        result << "    ";
       else if (c == '\n' && filterNewlines)
-        result += ' ';
+        result << ' ';
       else if (c != '\r')
-        result += c;
+        result << c;
     }
     return result;
   }

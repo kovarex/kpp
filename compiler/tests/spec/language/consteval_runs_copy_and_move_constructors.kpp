@@ -39,6 +39,6 @@ constexpr int parts()
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println("{} {} {} {}", run(), parts(), Show<run()>::value, Show<parts()>::value);
+  println(run(), " ", parts(), " ", Show<run()>::value, " ", Show<parts()>::value);
   return 0;
 }

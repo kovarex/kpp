@@ -26,6 +26,6 @@ int main()
   auto next = makeCounter(count);
   next();
   next();
-  println("{} {} {} {} {}", add(4), scale(2.0), count, makeConstant()(), apply(makeAdder(10), 1));
+  println(add(4), " ", scale(2.0), " ", count, " ", makeConstant()(), " ", apply(makeAdder(10), 1));
   return 0;
 }

@@ -29,7 +29,6 @@ Vector<int> FrameBuffer::generate()
 }
 int main()
 {
-  println("{} {} {} {} {}", UpdateBuffer::values[0], FrameBuffer::values.size(), FrameBuffer::values[1], UpdateBuffer::generate().size(),
-          FrameBuffer::generate().size());
+  println(UpdateBuffer::values[0], " ", FrameBuffer::values.size(), " ", FrameBuffer::values[1], " ", UpdateBuffer::generate().size(), " ", FrameBuffer::generate().size());
   return 0;
 }

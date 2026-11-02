@@ -32,7 +32,7 @@ int main()
   Vector<LoadHelper*> helpers;
   helpers.push_back(new DeleteHelper(old.release()));
   DeleteHelper local(new OldData());
-  println("{} {} {}", helpers[0]->size(), local.size(), old == nullptr);
+  println(helpers[0]->size(), " ", local.size(), " ", old == nullptr);
   delete helpers[0];
   return 0;
 }

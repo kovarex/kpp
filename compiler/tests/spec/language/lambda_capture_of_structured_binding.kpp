@@ -21,6 +21,6 @@ int main()
         ++found;
     sums += both() + byRef();
   }
-  println("{} {}", found, sums);
+  println(found, " ", sums);
   return 0;
 }

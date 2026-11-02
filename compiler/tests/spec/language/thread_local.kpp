@@ -5,6 +5,6 @@ thread_local int perThread = 5;
 int main()
 {
   perThread += 1;
-  println("{}", perThread);
+  println(perThread);
   return 0;
 }

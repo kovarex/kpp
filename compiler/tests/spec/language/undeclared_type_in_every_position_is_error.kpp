@@ -36,6 +36,6 @@ int main()
 {
   Settings s;
   Derived d;
-  println("{} {}", s.count, d.value);
+  println(s.count, " ", d.value);
   return 0;
 }

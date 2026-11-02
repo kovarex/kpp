@@ -9,7 +9,7 @@ const char* category(T&&) { return isSame<T, int&> ? "lvalue" : "rvalue"; }
 int main()
 {
   int x = 1;
-  println("{}", isSame<decltype(asRvalue(x)), int&&>);
-  println("{}", category(asRvalue(x)));
+  println(isSame<decltype(asRvalue(x)), int&&>);
+  println(StringView(category(asRvalue(x))));
   return 0;
 }

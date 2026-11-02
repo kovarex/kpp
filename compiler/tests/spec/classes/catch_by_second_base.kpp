@@ -27,7 +27,7 @@ int main()
   }
   catch (const Context& c)
   {
-    println("context {} {}", c.where(), c.line);
+    println("context ", c.where(), " ", c.line);
   }
   try
   {
@@ -35,7 +35,7 @@ int main()
   }
   catch (const Error& e)
   {
-    println("error {}", e.code);
+    println("error ", e.code);
   }
   return 0;
 }

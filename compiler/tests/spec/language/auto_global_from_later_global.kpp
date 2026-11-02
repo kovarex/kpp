@@ -8,6 +8,6 @@ const auto INTEGER = (AMD64 | 0x00000002L);
 
 int main()
 {
-  println("{} {} {}", unsigned(CONTROL), unsigned(INTEGER), unsigned(FULL));
+  println(unsigned(CONTROL), " ", unsigned(INTEGER), " ", unsigned(FULL));
   return 0;
 }

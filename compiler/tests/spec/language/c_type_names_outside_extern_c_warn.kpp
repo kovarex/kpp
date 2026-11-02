@@ -26,6 +26,6 @@ char letter = 'k';
 u32 fine = 8;
 i32 main()
 {
-  println("{} {} {} {} {} {} {} {} {} {} {} {}", labs(-5), twice(4), big, wide, counted, small, byte, named, length, half, letter, fine);
+  println(labs(-5), " ", twice(4), " ", big, " ", wide, " ", counted, " ", small, " ", byte, " ", named, " ", length, " ", half, " ", letter, " ", fine);
   return 0;
 }

@@ -5,6 +5,6 @@ int main()
   auto where = [](int offset, CallerLocation here = caller) { return (int)here.line() + offset; };
   int first = where(0);
   int second = where(100);
-  println("{} {}", first, second);
+  println(first, " ", second);
   return 0;
 }

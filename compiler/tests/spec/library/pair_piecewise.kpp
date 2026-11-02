@@ -22,7 +22,6 @@ int main()
   owners.emplace_back(piecewiseConstruct, Tuple{&entity}, Tuple<UniquePtr<int>, int>(makeUnique<int>(8), 3));
   int seed = 6;
   Pair<String, int> named(piecewiseConstruct, forwardAsTuple("abc", 2), forwardAsTuple(seed));
-  println("{} {} {} {} {} {} {}", targets[0].first.entity->id, targets[0].second, owners[0].first.entity->id, *owners[0].second.value, owners[0].second.extra,
-          named.first, named.second);
+  println(targets[0].first.entity->id, " ", targets[0].second, " ", owners[0].first.entity->id, " ", *owners[0].second.value, " ", owners[0].second.extra, " ", named.first, " ", named.second);
   return 0;
 }

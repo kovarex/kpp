@@ -13,7 +13,7 @@ int main()
   Vector<int> v = {1, 2, 3};
   String order;
   for (int x : backwards(v))
-    order += toString(x);
-  println("{}", order);
+    order << toString(x);
+  println(order);
   return 0;
 }

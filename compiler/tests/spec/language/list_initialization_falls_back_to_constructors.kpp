@@ -7,6 +7,6 @@ int main()
   Set<int*> set = {&a, &b};
   Vector<int*> v{set.begin(), set.end()};
   Vector<int> w{3, 5};
-  println("{} {} {}", v.size(), w.size(), w[1]);
+  println(v.size(), " ", w.size(), " ", w[1]);
   return 0;
 }

@@ -14,6 +14,6 @@ int main()
   int* newEnd = ::removeIf(v.begin(), v.end(), [](int x) { return x < 3; });
   v.erase(newEnd, v.end());
   ::reverse(v.begin(), v.end());
-  println("{} {} {} {} {} {} {} {} {}", firstBig, evens, allPositive, anyTen, (int)(pos - v.begin()), v.size(), v[0], ::max(3, 7), ::clamp(15, 0, 10));
+  println(firstBig, " ", evens, " ", allPositive, " ", anyTen, " ", (int)(pos - v.begin()), " ", v.size(), " ", v[0], " ", ::max(3, 7), " ", ::clamp(15, 0, 10));
   return 0;
 }

@@ -11,7 +11,7 @@ int main()
   map.insert(entries);
   String joined;
   for (const String& s : missing)
-    joined += s;
-  println("{} {} {} {} {}", joined, counts.size(), counts.count(3), map["x"], map.size());
+    joined << s;
+  println(joined, " ", counts.size(), " ", counts.count(3), " ", map["x"], " ", map.size());
   return 0;
 }

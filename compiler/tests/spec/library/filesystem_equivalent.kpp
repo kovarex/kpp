@@ -28,6 +28,6 @@ int main()
     thrown = true;
   }
   filesystem::remove_all(dir);
-  println("{} {} {} {} {} {}", same, other, directory, missing, reported, thrown);
+  println(same, " ", other, " ", directory, " ", missing, " ", reported, " ", thrown);
   return 0;
 }

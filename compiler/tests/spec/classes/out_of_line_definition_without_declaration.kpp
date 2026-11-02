@@ -13,6 +13,6 @@ int Box::get(float scale) const
 int main()
 {
   Box b;
-  println("{}", b.get(2));
+  println(b.get(2));
   return 0;
 }

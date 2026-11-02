@@ -48,6 +48,6 @@ int main()
   NamedFunction function = create<QuickMultioctaveNoise>();
   ConstructedFunction constructed = construct<QuickMultioctaveNoise>();
   Vector<int> args = {3, 4};
-  println("{} {}", function.computeConstant(args), constructed.computeConstant(args));
+  println(function.computeConstant(args), " ", constructed.computeConstant(args));
   return 0;
 }

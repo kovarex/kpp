@@ -26,6 +26,6 @@ int main()
   {
     threw = true;
   }
-  println("{} {} {} {} {} {}", e.constants.size(), a.empty(), a.begin() == a.end(), visited, threw, a == b);
+  println(e.constants.size(), " ", a.empty(), " ", a.begin() == a.end(), " ", visited, " ", threw, " ", a == b);
   return 0;
 }

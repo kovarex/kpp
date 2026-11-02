@@ -2,24 +2,24 @@
 // factorio: none known; sizeSum and grownCapacity are what every container's growth path uses (core/Sizes.kpp)
 int main()
 {
-  println("{} {} {}", grownCapacity(0, 1, 4), grownCapacity(100, 101, 4), grownCapacity(100, 500, 4));
-  println("{} {}", grownCapacity(maxContainerSize / 2 + 2, maxContainerSize / 2 + 3, 4) == maxContainerSize, grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
-  println("{}", sizeSum(maxContainerSize - 1, 1, "sum") == maxContainerSize);
+  println(grownCapacity(0, 1, 4), " ", grownCapacity(100, 101, 4), " ", grownCapacity(100, 500, 4));
+  println(grownCapacity(maxContainerSize / 2 + 2, maxContainerSize / 2 + 3, 4) == maxContainerSize, " ", grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
+  println(sizeSum(maxContainerSize - 1, 1, "sum") == maxContainerSize);
   try
   {
-    println("{}", sizeSum(maxContainerSize, 1, "sum too long"));
+    println(sizeSum(maxContainerSize, 1, "sum too long"));
   }
   catch (const LengthError& e)
   {
-    println("sum: {}", e.what());
+    println("sum: ", StringView(e.what()));
   }
   try
   {
-    println("{}", grownCapacity(maxContainerSize, maxContainerSize + 1, 4));
+    println(grownCapacity(maxContainerSize, maxContainerSize + 1, 4));
   }
   catch (const LengthError& e)
   {
-    println("grow: {}", e.what());
+    println("grow: ", StringView(e.what()));
   }
   HashMap<int, int> map;
   try
@@ -29,7 +29,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("hash map: {}, {}", e.what(), map.size());
+    println("hash map: ", StringView(e.what()), ", ", map.size());
   }
   HashSet<int> set;
   try
@@ -39,7 +39,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("hash set: {}", e.what());
+    println("hash set: ", StringView(e.what()));
   }
   WString wide = L"wide";
   try
@@ -49,7 +49,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("wstring: {}, {}", e.what(), wide.size());
+    println("wstring: ", StringView(e.what()), ", ", wide.size());
   }
   try
   {
@@ -58,7 +58,7 @@ int main()
   }
   catch (const LengthError& e)
   {
-    println("wstring npos: {}, {}", e.what(), wide.size());
+    println("wstring npos: ", StringView(e.what()), ", ", wide.size());
   }
   return 0;
 }

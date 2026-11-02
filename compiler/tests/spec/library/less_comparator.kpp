@@ -13,6 +13,6 @@ int main()
   Ordered<int> p{1, 2};
   Ordered<int, Greater<int>> q{1, 2};
   Less<String> byString;
-  println("{} {} {} {}", p.ordered(), q.ordered(), byString(String("a"), String("b")), Less<>()(3, 2));
+  println(p.ordered(), " ", q.ordered(), " ", byString(String("a"), String("b")), " ", Less<>()(3, 2));
   return 0;
 }
