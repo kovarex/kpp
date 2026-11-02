@@ -1093,7 +1093,12 @@ namespace
     // C library changed (kppc replays an unchanged build, which does not link).
     double linkSeconds = 0;
     fs::path pending = exe.string() + ".link.pending", command = exe.string() + ".link.command";
-    bool linkPending = fs::exists(pending, ec);
+    // Also when what the link writes is gone (the executable, a debug build's .pdb beside it, deleted
+    // while the compile server kept the build): kppc's objects are all there (it replays a build only
+    // then), so the link makes them again.
+    fs::path pdb = fs::path(exe).replace_extension(".pdb");
+    bool linked = fs::exists(exe, ec) && !(p.debugInfo && exe.extension() == ".exe" && !fs::exists(pdb, ec));
+    bool linkPending = fs::exists(pending, ec) || (code == 0 && !linked);
     if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
     {
       auto linkStart = Clock::now();
@@ -1106,6 +1111,13 @@ namespace
       }
       else
         fs::remove(pending, ec);
+    }
+    // Built means written: never "built" for an executable that is not there.
+    if (code == 0 && !fs::exists(exe, ec))
+    {
+      fprintf(stderr, "error: %s (%s): %s was not written (kppc reported success; no link command to make it)\n", p.name.c_str(),
+              p.configuration.c_str(), exe.string().c_str());
+      code = 1;
     }
     double seconds = since(start);
     bool keepGoing = std::find(p.arguments.begin(), p.arguments.end(), "--keep-going") != p.arguments.end();

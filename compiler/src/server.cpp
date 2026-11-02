@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <regex>
 #include <sys/stat.h>
@@ -288,6 +289,7 @@ namespace
     std::vector<std::string> notes; // its logBuildNote lines (a local build has no log of its own)
     uint64_t fingerprint = 0;
     std::vector<std::string> outputs;
+    std::function<std::vector<std::string>()> left; // the files the build leaves (replayBuild's)
   };
   Session* session = nullptr;
   size_t builds = 0;
@@ -378,7 +380,8 @@ namespace
     uint64_t fingerprint = 0;
     std::string out, err;
     int exitCode = 0;
-    std::vector<std::string> outputs, stamps;
+    std::vector<std::string> outputs;
+    std::vector<std::string> left, stamps; // every file it left, and each one's stamp then
   };
   KeptBuild kept;
   bool replayOff = false; // --verify-incremental's build from scratch
@@ -401,8 +404,9 @@ namespace
     kept.err = s.captured[1];
     kept.exitCode = exitCode;
     kept.outputs = s.outputs;
+    kept.left = s.left ? s.left() : s.outputs;
     kept.stamps.clear();
-    for (const std::string& o : s.outputs)
+    for (const std::string& o : kept.left)
       kept.stamps.push_back(stampOf(o));
   }
 
@@ -798,18 +802,24 @@ std::string environmentBlock()
   return out;
 }
 
-bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, bool headersUnchanged, int& exitCode)
+bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, const std::function<std::vector<std::string>()>& left,
+                 bool headersUnchanged, int& exitCode)
 {
   if (!session || replayOff)
     return false;
+  // Every file the kept build left, as it left it: one removed (an output directory deleted under a
+  // live server, one module's object) is built again, never reported built (kovarex, 2026-11-02).
   bool same = kept.valid && kept.fingerprint == fingerprint && headersUnchanged && kept.outputs == outputs;
-  for (size_t i = 0; same && i < outputs.size(); ++i)
-    same = stampOf(outputs[i]) == kept.stamps[i];
+  if (same)
+    same = (left ? left() : outputs) == kept.left;
+  for (size_t i = 0; same && i < kept.left.size(); ++i)
+    same = stampOf(kept.left[i]) == kept.stamps[i];
   if (!same)
   {
     session->keep = true; // this build's result is what the next one compares with
     session->fingerprint = fingerprint;
     session->outputs = outputs;
+    session->left = left;
     return false;
   }
   fwrite(kept.out.data(), 1, kept.out.size(), stdout);

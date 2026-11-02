@@ -3873,9 +3873,37 @@ int compile(int argc, char** argv)
     for (const std::string& o : {options.emitLLVM, options.exe})
       if (!o.empty())
         outputs.push_back(std::filesystem::absolute(o).string());
+    // What the build leaves: its outputs, but under --defer-link the link command in place of the
+    // executable, which kpp links (and links again when it is missing, project.cpp), and the modules'
+    // objects and hashes beside it.
+    std::function<std::vector<std::string>()> left = [emitLLVM = options.emitLLVM, exe = options.exe, deferLink = options.deferLink]
+    {
+      std::vector<std::string> files;
+      if (!emitLLVM.empty())
+        files.push_back(std::filesystem::absolute(emitLLVM).string());
+      if (exe.empty())
+        return files;
+      std::filesystem::path program = std::filesystem::absolute(exe);
+      files.push_back(program.string() + (deferLink ? ".link.command" : ""));
+      std::string prefix = program.filename().string() + ".";
+      std::vector<std::string> modules; // <exe>.<k>.o and <exe>.<k>.hash
+      std::error_code ec;
+      for (std::filesystem::directory_iterator i(program.parent_path(), ec), end; !ec && i != end; i.increment(ec))
+      {
+        std::string name = i->path().filename().string();
+        if (name.size() <= prefix.size() || name.compare(0, prefix.size(), prefix) != 0)
+          continue;
+        size_t digits = name.find_first_not_of("0123456789", prefix.size());
+        if (digits != prefix.size() && digits != std::string::npos && (name.compare(digits, std::string::npos, ".o") == 0 || name.compare(digits, std::string::npos, ".hash") == 0))
+          modules.push_back(i->path().string());
+      }
+      std::sort(modules.begin(), modules.end());
+      files.insert(files.end(), modules.begin(), modules.end());
+      return files;
+    };
     int replayed = 0;
     bool headersSame = lastImportStamps.empty() || headersUnchanged(lastImportStamps);
-    if (replayBuild(h, outputs, headersSame, replayed))
+    if (replayBuild(h, outputs, left, headersSame, replayed))
       return replayed;
     // Step 3b: the kept build with the changed function bodies checked again, when that is all
     // that changed.

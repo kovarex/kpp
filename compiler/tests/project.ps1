@@ -28,6 +28,19 @@ try
   Kpp @('new') | Out-Null
   $output = Kpp @('--run')
   if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp') { Fail "kpp new, then kpp --run: $output" }
+  # Outputs deleted under the live compile server (kovarex, 2026-11-02): the unchanged program's
+  # build makes them again, never "built" for an executable that is not there. The output directory,
+  # then one module's object, the executable, the .pdb.
+  $program = (Get-ChildItem 'build\debug\*.exe').FullName
+  $pdb = [IO.Path]::ChangeExtension($program, '.pdb')
+  foreach ($removed in @(@('the output directory', 'build\debug'), @("one module's object", "$program.0.o"), @('the executable', $program), @('the .pdb', $pdb)))
+  {
+    if ($removed[1] -eq 'build\debug') { cmd /c rd /s /q build\debug } else { Remove-Item -LiteralPath $removed[1] }
+    $output = Kpp @('--run')
+    $missing = @($program, "$program.0.o", $pdb) | Where-Object { -not (Test-Path -LiteralPath $_) }
+    if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
+    { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
+  }
   Kpp @('--stop-server') | Out-Null
 
   New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
