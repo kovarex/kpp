@@ -1,0 +1,18 @@
+// std::to_string's text, for the converted calls whose argument's type the conversion does not know
+// or is one kpp's toString writes otherwise (convert.cpp's stdToString). C++'s overloads take an
+// integer, which a bool, a char and an unscoped enumeration are promoted to (true is "1"), or a
+// floating value, written as C's %f, six decimals ("0.100000"); kpp's toString writes a bool as
+// true, a char as the character, an enumeration as its enumerator's name and a floating value as
+// its shortest text.
+template<typename T>
+String toStringAsStd(T value)
+{
+  if constexpr (isFloatingPoint<T>)
+    return toString(fixed(value, 6));
+  else if constexpr (isEnum<T>)
+    return toStringAsStd(static_cast<UnderlyingType<T>>(value));
+  else if constexpr (isSame<T, bool> || isSame<T, char>)
+    return toString(i32(value));
+  else
+    return toString(value);
+}

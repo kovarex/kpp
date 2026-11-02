@@ -5230,6 +5230,86 @@ namespace
       if (!replaced)
         todo(toks[f->token].offset, "a format function's body without its vssprintf");
     }
+    // How std::to_string writes a value of a type, by the overload C++ calls for it: 'i' an integer's
+    // digits, as kpp's toString writes them; 'f' a floating value; '?' a bool, a plain char, an
+    // enumeration (each promoted to int, where kpp's toString writes true, the character, the
+    // enumerator's name) or a type the declarations do not resolve.
+    char toStringKind(Type* type, int depth = 0)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner
+             : type->kind == NodeKind::LRefType  ? static_cast<LRefType*>(type)->referenced
+                                                 : static_cast<RRefType*>(type)->referenced;
+      if (!type || depth > 8)
+        return '?';
+      if (type->kind == NodeKind::BuiltinType)
+      {
+        auto* builtin = static_cast<BuiltinType*>(type);
+        if (builtin->keyword == Kw::float_ || builtin->keyword == Kw::double_)
+          return 'f';
+        if (builtin->keyword == Kw::char_ && !builtin->isSigned && !builtin->isUnsigned)
+          return '?';
+        return builtin->keyword == Kw::int_ || builtin->keyword == Kw::char_ || builtin->keyword == Kw::short_ || builtin->keyword == Kw::long_ ||
+                   builtin->keyword == Kw::signed_ || builtin->keyword == Kw::unsigned_
+                 ? 'i'
+                 : '?';
+      }
+      if (type->kind != NodeKind::NamedType)
+        return '?';
+      Decl* d = static_cast<NamedType*>(type)->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return toStringKind(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return toStringKind(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return '?';
+    }
+    // std::to_string(x) by x's type (toStringKind): an integer's is toString(x) (the std:: rename); a
+    // floating value's is C's %f, six decimals (`0.100000`), where kpp's toString is the shortest
+    // text (docs/stdlib/text.md), so toString(fixed(x, 6)), the fixed inside the call's own
+    // parentheses; the rest's is toStringAsStd(x) (overrides/added/CommonUtil/ToStringAsStd.kpp),
+    // which picks among those by the type the compiler knows.
+    void stdToString(CallExpr* call)
+    {
+      if (in.c || call->args.size() != 1 || call->callee->kind != NodeKind::NameExpr)
+        return;
+      const QualifiedName& name = static_cast<NameExpr*>(call->callee)->name;
+      if (name.parts.size() != 2 || name.parts[0].symbol == UINT32_MAX || name.parts[1].symbol == UINT32_MAX ||
+          symbols.name(name.parts[0].symbol) != "std" || symbols.name(name.parts[1].symbol) != "to_string")
+        return;
+      char kind = toStringKind(plainTypeOf(call->args[0]));
+      if (kind == 'i')
+      {
+        counts.add("std::to_string of an integer written toString(x)");
+        return;
+      }
+      uint32_t first = firstTokenOf(call->callee);
+      uint32_t open = first;
+      while (open < toks.size() && !toks[open].is(P::LParen))
+        ++open;
+      std::vector<std::pair<uint32_t, uint32_t>> ranges = open < toks.size() ? argumentRanges(open + 1) : std::vector<std::pair<uint32_t, uint32_t>>();
+      if (ranges.size() != 1 || !toks[ranges[0].second].is(P::RParen))
+      {
+        todo(toks[first].offset, "std::to_string whose argument the converter does not find");
+        return;
+      }
+      if (kind == 'f')
+      {
+        std::string fixed = shadowedAt("fixed", toks[open].offset) ? "::fixed(" : "fixed(";
+        replace(toks[open].offset, toks[open].length, "(" + fixed);
+        replace(toks[ranges[0].second].offset, toks[ranges[0].second].length, ", 6))");
+        counts.add("std::to_string of a floating value written toString(fixed(x, 6))");
+        return;
+      }
+      // (the std:: rename's edit, `toString`, gets the name)
+      for (Edit& e : edits)
+        if (e.offset == toks[first].offset && e.length && e.text.size() >= 8 && e.text.compare(e.text.size() - 8, 8, "toString") == 0)
+        {
+          e.text += "AsStd";
+          counts.add("std::to_string of a bool, char, enumeration or unknown type written toStringAsStd(x)");
+          return;
+        }
+      todo(toks[first].offset, "std::to_string without the std:: rename's edit");
+    }
     bool rewritePrintfCall(CallExpr* call)
     {
       if (in.c || call->args.empty())
@@ -8623,6 +8703,7 @@ namespace
           }
           // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format; its
           // 64-bit arguments read as 32 bits, by the declarations:)
+          stdToString(call);
           if (!rewritePrintfCall(call))
             narrowFormatArguments(call);
           if (variants && call->callee->kind == NodeKind::NameExpr)

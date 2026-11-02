@@ -894,7 +894,16 @@ As converted (thread C, 2026-11-02):
   `makeProperty(x)` keeps `makeProperty(String)`. Left: 20 format calls in macro expansions whose
   arguments the text-level rewrite does not split (they compile as they are: strings, no
   conversions).
-- Next: std::to_string of a floating value (`fixed(x, 6)`), and the C libraries' printf calls.
+- A `%s` of a `.c_str()` or `.what()` call is C text whatever the class (kpp dd480a7c): 810 of the
+  1,084 `StringView((const char*)(x))` became `StringView(x)`, 274 left.
+- std::to_string, by the overload C++ calls for its argument: an integer's is `toString(x)` (9 the
+  converter's types show), a floating value's `toString(fixed(x, 6))` (8; std::to_string writes C's
+  `%f` through the C runtime, not trio), and the rest's `toStringAsStd(x)` (307: a bool, a char or an
+  enumeration, which C++ promotes to int, and the many arguments whose type the converter does not
+  know: members, calls' results, locals), the game's template
+  (programs/factorio/overrides/added/CommonUtil/ToStringAsStd.kpp) that picks among those by the type
+  the compiler knows.
+- Next: the C libraries' printf calls.
 
 ### 15. File-local names: `private` at file scope (decided 2026-11-01)
 
