@@ -69,7 +69,7 @@
   "scripts": {
     "grammar": "node -e \"require('fs').mkdirSync('syntaxes',{recursive:true});require('fs').copyFileSync('../vs/kpp/Syntaxes/kpp.tmLanguage.json','syntaxes/kpp.tmLanguage.json')\"",
     "vscode:prepublish": "npm run grammar",
-    "package": "vsce package --out kpp.vsix --skip-license",
+    "package": "vsce package --out kpp-vscode.vsix --skip-license",
     "smoke": "node test/lsp-smoke.js node test/stub-server.js"
   },
   "dependencies": {

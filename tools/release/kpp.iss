@@ -2,9 +2,10 @@
 ; ISCC /DVersion=X /DSource=<build\release\kpp> /O<output> kpp.iss
 ; Installs kpp.exe, stdlib\ and projectlib\, and the bundled toolchain (bin\, include\, lib\,
 ; x86_64-w64-mingw32\: llvm-mingw, design.md 17) into Program Files\kpp and puts that directory on
-; the system PATH; the uninstaller takes it off again. When VS Code is found (`code` on the PATH), it
-; offers to install the extension kpp.vsix into it, as the user who started the installer. Nothing
-; of Visual Studio's is needed, so nothing is checked for.
+; the system PATH; the uninstaller takes it off again. When VS Code is found (CodeCommand), it offers
+; to install the VS Code extension kpp-vscode.vsix into it, as the user who started the installer
+; (named for its editor: Windows opens every .vsix in Visual Studio's installer, which refuses a VS
+; Code extension). Nothing of Visual Studio's is needed, so nothing is checked for.
 ; Its version is kpp's own, which package.ps1 passes (kppc --version; docs/build.md, "Versions").
 #ifndef Version
   #error kpp.iss is built by package.ps1, which passes kpp's version (/DVersion)
@@ -36,13 +37,19 @@ UninstallDisplayName=kpp {#Version}
 [Files]
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
-; Only a package with kpp.vsix offers it (package.ps1 leaves it out by hand without Node.js).
-#if FileExists(Source + "\kpp.vsix")
+; Earlier releases' name for the VS Code extension, which opened in Visual Studio's installer.
+[InstallDelete]
+Type: files; Name: "{app}\kpp.vsix"
+
+; Only a package with kpp-vscode.vsix offers it (package.ps1 leaves it out by hand without Node.js).
+; cmd /c ""...\code.cmd" --install-extension "...\kpp-vscode.vsix" --force": cmd takes off the outer
+; quotes and keeps the inner ones.
+#if FileExists(Source + "\kpp-vscode.vsix")
 [Tasks]
-Name: vscode; Description: "Install the kpp extension into VS Code (colouring and IntelliSense)"; Check: VSCodeFound
+Name: vscode; Description: "Install kpp-vscode.vsix, the kpp extension for VS Code (colouring and IntelliSense), into VS Code"; Check: VSCodeFound
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c code --install-extension ""{app}\kpp.vsix"" --force"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: vscode; StatusMsg: "Installing the VS Code extension..."
+Filename: "{cmd}"; Parameters: "/c """"{code:CodeCommandOf}"" --install-extension ""{app}\kpp-vscode.vsix"" --force"""; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: vscode; StatusMsg: "Installing the VS Code extension (kpp-vscode.vsix)..."
 #endif
 
 [Registry]
@@ -59,11 +66,38 @@ begin
     Result := Pos(';' + Uppercase(Directory) + ';', ';' + Uppercase(Path) + ';') = 0;
 end;
 
-function VSCodeFound(): Boolean;
+// VS Code's command line, bin\code.cmd: on the PATH, else where VS Code's user installer puts it
+// (%LOCALAPPDATA%\Programs), else its system installer's (Program Files); '' when there is none.
+function CodeCommand(): string;
 var
-  Code: Integer;
+  Path, Dir: string;
+  At: Integer;
 begin
-  Result := Exec(ExpandConstant('{cmd}'), '/c where code.cmd', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  Result := '';
+  Path := GetEnv('PATH') + ';';
+  while (Result = '') and (Path <> '') do
+  begin
+    At := Pos(';', Path);
+    Dir := RemoveQuotes(Trim(Copy(Path, 1, At - 1)));
+    Delete(Path, 1, At);
+    if (Dir <> '') and FileExists(AddBackslash(Dir) + 'code.cmd') then
+      Result := AddBackslash(Dir) + 'code.cmd';
+  end;
+  if (Result = '') and FileExists(ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')) then
+    Result := ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd');
+  if (Result = '') and FileExists(ExpandConstant('{commonpf64}\Microsoft VS Code\bin\code.cmd')) then
+    Result := ExpandConstant('{commonpf64}\Microsoft VS Code\bin\code.cmd');
+end;
+
+// (CodeCommand for {code:...}, which passes a parameter)
+function CodeCommandOf(Param: string): string;
+begin
+  Result := CodeCommand();
+end;
+
+function VSCodeFound(): Boolean;
+begin
+  Result := CodeCommand() <> '';
 end;
 
 procedure RemoveFromPath(Directory: string);

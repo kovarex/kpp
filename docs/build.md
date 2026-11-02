@@ -731,7 +731,7 @@ install. `install.cmd` links it there.
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
 - **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, the
-  bundled toolchain (below), the TextMate grammar, kpp.vsix and a README. kpp finds `stdlib\`,
+  bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix and a README. kpp finds `stdlib\`,
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
@@ -769,7 +769,7 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
     not shipped).
 
   It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
-  ISCC elsewhere). kpp.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
+  ISCC elsewhere). kpp-vscode.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
   with one line saying so: its README says so too, and its installer does not offer it. In CI
   (`CI=true`) a missing npm is an error. Every step's failure stops the script.
 - **How long it takes** (PC-PRACOVNA, 2026-11-02, `tools\release\package.cmd`, which prints each
@@ -779,7 +779,7 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   |---|---|---|
   | toolchain (llvm-mingw, unpacked once into build\llvm-mingw) | 0.0 s | 0.2-0.4 s |
   | copying (Copy-Item -Recurse, now robocopy /MT:16) | 10-17 s | 3-6 s |
-  | kpp.vsix (npm ci 15 s, vsce 6 s) | 34-40 s | 3.5-13 s waited for (a job of its own; npm ci skipped while package-lock.json is unchanged) |
+  | kpp-vscode.vsix (npm ci 15 s, vsce 6 s) | 34-40 s | 3.5-13 s waited for (a job of its own; npm ci skipped while package-lock.json is unchanged) |
   | smoke test | 1-3 s | 3-6 s |
   | zip (Compress-Archive, now .NET ZipFile) | 118-193 s | 35-58 s |
   | installer (lzma2 solid, now in 8 threads) | 60-84 s | 16-17 s |
@@ -811,7 +811,12 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   - **Sizes:** zip 75.6 MB, installer 47.4 MB (46.9 MB in one thread).
 - **`tools/release/kpp.iss`** is the installer. It installs into Program Files\kpp and adds that
   directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
-  it warned when no Visual Studio with the Clang component was found.
+  it warned when no Visual Studio with the Clang component was found. When VS Code is found
+  (`code.cmd` on the PATH, else `%LOCALAPPDATA%\Programs\Microsoft VS Code\bin`, else Program
+  Files'), it offers to install kpp-vscode.vsix into it. Each editor's extension is named for it
+  (kpp-vscode.vsix, and Visual Studio's kpp-visualstudio.vsix): Windows opens every .vsix in Visual
+  Studio's installer, which failed on the VS Code one when it was kpp.vsix (kovarex, 2026-11-02). An
+  upgrade deletes an earlier release's kpp.vsix.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, named by kppc's version. It ran on every master commit from
@@ -908,7 +913,7 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
   when all of them are.
 - **package:** on master only, after build and beside the tests (kovarex, 2026-11-02): the package
-  (below), handed on as the artifact `package` (zip, installer, kpp.vsix). It publishes nothing.
+  (below), handed on as the artifact `package` (zip, installer, kpp-vscode.vsix). It publishes nothing.
 - **publish:** on master only, and only when every job above is green (run_tests' halves, every
   spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
   no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
@@ -932,7 +937,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
   (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
   including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
-  kpp.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
+  kpp-vscode.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
   checkout fetches the whole history for it). `tools/release/publish.ps1`
   then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's

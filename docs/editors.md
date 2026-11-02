@@ -81,7 +81,7 @@ Status (2026-10-31):
 
 The extension is in `tools/vscode`; its README covers the details.
 - **Install:** the kpp installer offers to install it into VS Code. By hand, run
-  `code --install-extension kpp.vsix`, with `kpp.vsix` from the release or from `npm run package`
+  `code --install-extension kpp-vscode.vsix`, with `kpp-vscode.vsix` from the release or from `npm run package`
   in tools\vscode.
 - **What it adds:** colouring, from the same TextMate grammar Visual Studio uses, and a language
   client that starts `kpp --lsp` for the open folder.
@@ -91,7 +91,7 @@ The extension is in `tools/vscode`; its README covers the details.
   (or *kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
   workspace's `kpp.target` and `kpp.configuration`.
 - **Build, run and debug:** use `kpp --generate-vs-code-files` (build.md).
-- **Checked in VS Code** by `tools\vscode\test\vscode\run.ps1`. It installs kpp.vsix into a profile
+- **Checked in VS Code** by `tools\vscode\test\vscode\run.ps1`. It installs kpp-vscode.vsix into a profile
   of its own (`--user-data-dir`, `--extensions-dir`), opens a project in VS Code, and drives the
   extension through VS Code's commands. `cells.js` runs on a copy of tests\lsp\cells, `game.js` on
   a copy of factorio-in-kpp. It opens a window and writes `NAME.log` and a screenshot of the window,
@@ -226,5 +226,5 @@ Community editions too):
    - Mappings: file name pattern `*.kpp`.
    - Configuration: initialization options `{ "configuration": "debug" }`.
 2. For colouring: *Settings > Editor > TextMate Bundles*, then *+*. Pick tools\vscode after
-   `npm run grammar`, or the `extension` directory of kpp.vsix unzipped. JetBrains reads a VS Code
+   `npm run grammar`, or the `extension` directory of kpp-vscode.vsix unzipped. JetBrains reads a VS Code
    extension's grammar from it.

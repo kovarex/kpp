@@ -22,7 +22,7 @@ https://kpp.net/registry/
     <sha256>/<file name>      third-party files CI and builds download (SDL3-devel-3.4.18-VC.zip...),
                               named by the SHA-256 of the file itself
   kpp/
-    releases/<version>/       kpp's own packages: kpp-<version>.zip, kpp-<version>-setup.exe, kpp.vsix
+    releases/<version>/       kpp's own packages: kpp-<version>.zip, kpp-<version>-setup.exe, kpp-vscode.vsix
     latest.json               {"version", "commit", "zip", "sha256"}: what GitHub's "latest" prerelease is today;
                               "zip" is relative to registry/kpp/ (releases/<version>/kpp-<version>.zip)
 ```

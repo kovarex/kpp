@@ -1,6 +1,6 @@
 # Packages a built kppc as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
 # kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
-# grammar, the VS Code extension kpp.vsix (tools/vscode) and the bundled toolchain (design.md 17:
+# grammar, the VS Code extension kpp-vscode.vsix (tools/vscode) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
 # build\release\kpp-<version>.zip, and kpp-<version>-setup.exe when Inno Setup's compiler (ISCC) is
 # found. The CI workflows (ci.yml, release.yml) run it; it runs the same by hand:
@@ -37,18 +37,18 @@ New-Item -ItemType Directory -Force $kpp | Out-Null
 Lap 'clean'
 
 # The VS Code extension needs Node.js (npm). CI's runner has it, and there it is an error without; by
-# hand the package leaves kpp.vsix out and says so.
+# hand the package leaves kpp-vscode.vsix out and says so.
 $npm = [bool](Get-Command npm -ErrorAction SilentlyContinue)
 if (-not $npm)
 {
-  if ($env:CI -eq 'true') { throw 'Node.js (npm) not found: CI builds the VS Code extension kpp.vsix' }
-  Write-Output 'kpp.vsix skipped: Node.js (npm) not found; install Node.js LTS to build it'
+  if ($env:CI -eq 'true') { throw 'Node.js (npm) not found: CI builds the VS Code extension kpp-vscode.vsix' }
+  Write-Output 'kpp-vscode.vsix skipped: Node.js (npm) not found; install Node.js LTS to build it'
 }
 # The VS Code extension (tools/vscode), versioned as the release, with its dependencies from
 # package-lock.json: a job of its own, waited for before the zip.
 $vsix = if ($npm)
 {
-  Start-Job -ArgumentList "$repository\tools\vscode", $repository, $Version, "$kpp\kpp.vsix" -ScriptBlock {
+  Start-Job -ArgumentList "$repository\tools\vscode", $repository, $Version, "$kpp\kpp-vscode.vsix" -ScriptBlock {
     param($folder, $repository, $Version, $target)
     $ErrorActionPreference = 'Continue'
     Set-Location $folder
@@ -128,9 +128,13 @@ kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on 
 
 kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
 
-$(if ($npm) { "kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
-offers to install it, or run code --install-extension kpp.vsix." } else { "The VS Code extension (kpp.vsix) is not in this package: it was made without Node.js." }) Other editors:
-https://github.com/kovarex/kpp/blob/master/docs/editors.md
+Editors:
+$(if ($npm) { "- VS Code: kpp-vscode.vsix (colouring, and IntelliSense through kpp --lsp). The installer offers to
+  install it; or run code --install-extension kpp-vscode.vsix. Not by double-click: Windows opens
+  every .vsix in Visual Studio's installer, which does not take a VS Code extension." } else { "- VS Code: the extension (kpp-vscode.vsix) is not in this package: it was made without Node.js." })
+- Visual Studio: the grammar below; Visual Studio's own extension, when a package has it, is
+  kpp-visualstudio.vsix.
+- Others: https://github.com/kovarex/kpp/blob/master/docs/editors.md
 
 grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
 %USERPROFILE%\.vs\Extensions\kpp\Syntaxes\ and restart Visual Studio.
@@ -189,10 +193,10 @@ if ($vsix)
   $log = Receive-Job $vsix -ErrorAction SilentlyContinue -ErrorVariable failure
   $state = $vsix.State
   Remove-Job $vsix
-  if ($state -ne 'Completed' -or $failure -or -not (Test-Path "$kpp\kpp.vsix")) { throw "the VS Code extension failed:`n$($log -join "`n")`n$failure" }
+  if ($state -ne 'Completed' -or $failure -or -not (Test-Path "$kpp\kpp-vscode.vsix")) { throw "the VS Code extension failed:`n$($log -join "`n")`n$failure" }
   $log | Select-Object -Last 2 | Out-Host
 }
-Lap 'kpp.vsix (wait)'
+Lap 'kpp-vscode.vsix (wait)'
 
 # The zip and the installer one after the other: at once they took 43 to 49 s against 26 to 29 s
 # (Inno Setup's 8 compression threads already fill the machine). .NET's ZipFile, as small as

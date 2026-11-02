@@ -57,8 +57,8 @@ jobs:
           body: |
             Built from ${{ github.sha }}. Install with kpp-${{ env.KPP_VERSION }}-setup.exe (Program Files\kpp, on PATH), or unzip kpp-${{ env.KPP_VERSION }}.zip anywhere.
             Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs.
-            kpp.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp.vsix).
+            kpp-vscode.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp-vscode.vsix).
           files: |
             build/release/kpp-${{ env.KPP_VERSION }}.zip
             build/release/kpp-${{ env.KPP_VERSION }}-setup.exe
-            build/release/kpp/kpp.vsix
+            build/release/kpp/kpp-vscode.vsix

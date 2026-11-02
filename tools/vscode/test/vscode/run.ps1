@@ -1,4 +1,4 @@
-# The kpp extension in a real VS Code (docs/editors.md, "VS Code"): installs kpp.vsix into a profile of
+# The kpp extension in a real VS Code (docs/editors.md, "VS Code"): installs kpp-vscode.vsix into a profile of
 # its own, copies a project, opens it in VS Code with this directory as the test runner, and prints the
 # checks NAME.js logged. Opens a window; the screenshot NAME.png is of that window only.
 #   run.ps1 -Name cells -Project compiler\tests\lsp\cells -Target game
@@ -9,14 +9,14 @@ param(
   [string]$Target = $null,
   [string]$Configuration = 'debug',
   [string]$Kppc, # default: the checkout's compiler\build\kppc.exe
-  [string]$Vsix, # default: tools\vscode\kpp.vsix (npm run package)
+  [string]$Vsix, # default: tools\vscode\kpp-vscode.vsix (npm run package)
   [string]$Work, # default: compiler\build\vscode: the profile, the project's copy, the log
   [string]$Code = "$env:LOCALAPPDATA\Programs\Microsoft VS Code"
 )
 $ErrorActionPreference = 'Stop'
 $checkout = "$PSScriptRoot\..\..\..\.."
 if (-not $Kppc) { $Kppc = "$checkout\compiler\build\kppc.exe" }
-if (-not $Vsix) { $Vsix = "$PSScriptRoot\..\..\kpp.vsix" }
+if (-not $Vsix) { $Vsix = "$PSScriptRoot\..\..\kpp-vscode.vsix" }
 if (-not $Work) { $Work = "$checkout\compiler\build\vscode" }
 New-Item -ItemType Directory -Force "$Work\user", "$Work\ext" | Out-Null
 $Work = (Resolve-Path $Work).Path

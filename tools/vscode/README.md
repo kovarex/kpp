@@ -10,11 +10,12 @@ builds it: build.kpp's sources for one configuration, or with no build.kpp, ever
 folder.
 
 ## Install
-- **From a kpp release:** the installer offers to install `kpp.vsix` into VS Code. By hand, run
-  `code --install-extension "C:\Program Files\kpp\kpp.vsix"`, or use *Extensions > ... > Install from
-  VSIX*.
+- **From a kpp release:** the installer offers to install `kpp-vscode.vsix` into VS Code. By hand,
+  run `code --install-extension "C:\Program Files\kpp\kpp-vscode.vsix"`, or use *Extensions > ... >
+  Install from VSIX*. (Opening a .vsix by double-click starts Visual Studio's installer, which
+  takes no VS Code extension.)
 - **From the repository:** in `tools\vscode`, run `npm ci`, then `npm run package`, then
-  `code --install-extension kpp.vsix`.
+  `code --install-extension kpp-vscode.vsix`.
 
 ## Settings
 - `kpp.path`: the compiler, when `kpp` is not on the PATH (`C:\kpp\compiler\build\kppc.exe` in a

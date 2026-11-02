@@ -55,7 +55,7 @@ Targets, configurations (`debug`, `release`, your own), library options and the 
 
 ## Editors
 
-- **VS Code:** the installer offers the extension (`kpp.vsix`, also in the release); it colours `.kpp`
+- **VS Code:** the installer offers the extension (`kpp-vscode.vsix`, also in the release); it colours `.kpp`
   files and gives completion, errors and navigation through the compiler's language server
   (`kpp --lsp`).
 - **Visual Studio:** generate a solution with `kpp --generate-visual-studio-files`.
