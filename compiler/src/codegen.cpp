@@ -371,6 +371,18 @@ namespace
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
+    // Streaming's barrier (docs/codegen-speed.md, step 4): a debug build's module is to be cut into
+    // a program piece, assembled once level 0 is emitted, and an instance piece with the rest. A
+    // program piece declares the functions its definitions name that are defined only later
+    // (instances, destructor helpers, lambdas' call operators emitted on demand, the entry point)
+    // from requestDeclarations: each one's declaration as its signature gives it when it is first
+    // asked for, never as a call site spells it (taking a function's address names no type).
+    // barrierDefined and barrierCounts are level 0's barrier, for the check at the end that every
+    // such name has a declaration and that it is its definition's (checkRequestDeclarations).
+    std::unordered_map<std::string, std::string> requestDeclarations; // under definitionsMutex
+    std::unordered_set<std::string> barrierDefined;
+    std::vector<size_t> barrierCounts; // per module: its definitions at level 0's barrier
+    bool barrierTaken = false;
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
@@ -6065,8 +6077,9 @@ namespace
       currentClassTy = info.enclosingClass;
       try
       {
+        Signature s = lambdaSignatureOf(callTy, l);
         std::string params = "ptr %closure";
-        bool hasSret = returnsInMemory(currentReturn);
+        bool hasSret = s.hasSret;
         if (hasSret)
         {
           params += ", ptr %sret";
@@ -6075,12 +6088,11 @@ namespace
         std::vector<std::string> paramNames;
         for (size_t i = 0; i < callTy->args.size(); ++i)
         {
-          const Ty* pt = callTy->args[i];
           std::string pn = "%p" + std::to_string(i);
           paramNames.push_back(pn);
-          params += ", " + std::string(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, l)) + " " + pn;
+          params += ", " + s.paramTypes[i + (hasSret ? 2 : 1)] + " " + pn;
         }
-        std::string retType = hasSret ? "void" : currentReturn->isReference() ? "ptr" : llType(currentReturn, l);
+        std::string retType = s.returnType;
         std::string header = "define " + retType + " " + name + "(" + params + ") {\nentry:\n";
         pushScope();
         // Captures become locals: by-value captures live in the closure, references point out.
@@ -6344,6 +6356,16 @@ namespace
           auto lock = sharedLock();
           sh.closureCalls.emplace(functionName, t);
         }
+        // Declared by the call, for a program piece whose function calls an operator its writer (an
+        // instance) emits at a later level (Shared::requestDeclarations).
+        if (recordingRequests())
+          try
+          {
+            recordRequestDeclaration(functionName, declarationText(lambdaSignatureOf(callTy, at), functionName));
+          }
+          catch (...)
+          {
+          }
         emitCallOperatorOnDemand(t, callTy, functionName);
       }
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
@@ -6593,6 +6615,54 @@ namespace
       std::vector<const Ty*> paramTys; // null for this/sret
       bool hasThis = false, hasSret = false, variadic = false;
     };
+
+    // A lambda's call operator's signature, as emitLambda writes its header and a caller declares it
+    // (callClosure): the closure, the result's slot when it returns in memory, then the call type's
+    // parameters; an unknown result is a pointer, as emitLambda emits its body.
+    Signature lambdaSignatureOf(const Ty* callTy, Node* at)
+    {
+      Signature s;
+      const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
+      if (!ret->isKnown())
+        ret = types.pointer(types.voidType());
+      s.hasThis = true;
+      s.paramTypes.push_back("ptr");
+      s.paramTys.push_back(nullptr);
+      if (returnsInMemory(ret))
+      {
+        s.hasSret = true;
+        s.paramTypes.push_back("ptr");
+        s.paramTys.push_back(nullptr);
+      }
+      for (const Ty* pt : callTy->args)
+      {
+        s.paramTypes.push_back(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, at));
+        s.paramTys.push_back(pt);
+      }
+      s.returnType = s.hasSret ? "void" : ret->isReference() ? "ptr" : llType(ret, at);
+      return s;
+    }
+
+    // `declare RET NAME(TYPES)`, as declareFromHeader reads it from the header of the definition.
+    static std::string declarationText(const Signature& s, const std::string& name)
+    {
+      std::string text = "declare " + s.returnType + " " + name + "(";
+      for (size_t i = 0; i < s.paramTypes.size(); ++i)
+        text += (i ? ", " : "") + s.paramTypes[i];
+      if (s.variadic)
+        text += s.paramTypes.empty() ? "..." : ", ...";
+      return text + ")";
+    }
+
+    // Whether the declarations of requests are recorded (Shared::requestDeclarations): a debug
+    // build's modules, until level 0's barrier.
+    bool recordingRequests() const { return !sh.barrierTaken && sh.moduleCount > 1 && sh.importableModules == 0; }
+
+    void recordRequestDeclaration(const std::string& name, std::string declaration)
+    {
+      std::lock_guard lock(sh.definitionsMutex);
+      sh.requestDeclarations.emplace(name, std::move(declaration));
+    }
 
     // --- C calling conventions (docs/design.md, "Targets and hosts") ---
     // A kpp function passes a class as a pointer to a copy and returns one through a result slot,
@@ -6995,8 +7065,44 @@ namespace
                         " requested by " + shortened(item.requestedBy));
     }
 
+    // The declaration of a function queued now and defined at a later level, as emitFunction will
+    // write its header (the same signatureOf, under the same arguments and class, emitFunction's
+    // state set for it and restored), for a debug build's program pieces (Shared::requestDeclarations).
+    // Only until level 0's barrier: what level 0 names is all a program piece declares. Nothing is
+    // recorded when the signature fails here; the definition reports that, and the check at the end
+    // finds a name without a declaration.
+    void noteRequestDeclaration(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name)
+    {
+      if (!recordingRequests())
+        return;
+      const TemplateArgs* savedArgs = currentArgs;
+      const Ty* savedClassTy = currentClassTy;
+      ParsedFile* savedFile = currentFile;
+      std::string declaration;
+      try
+      {
+        currentFile = f->file;
+        currentArgs = args.empty() ? nullptr : &args;
+        currentClassTy = classTy;
+        if (!currentClassTy)
+          if (Decl* cls = global.owningClass(f))
+            currentClassTy = cls->kind == NodeKind::EnumDecl ? types.enumType(cls) : canonicalClass(types.classType(cls, {}), f);
+        declaration = declarationText(signatureOf(f), name);
+      }
+      catch (...)
+      {
+        declaration.clear();
+      }
+      currentArgs = savedArgs;
+      currentClassTy = savedClassTy;
+      currentFile = savedFile;
+      if (!declaration.empty())
+        recordRequestDeclaration(name, std::move(declaration));
+    }
+
     void queueInstantiation(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name)
     {
+      noteRequestDeclaration(f, args, classTy, name);
       // In the module its name hashes to: spread evenly, and the same module whoever asks first (the
       // first requester's module piled most of the library's instantiations into one module that
       // clang then took 7 s at -O0 and 224 s at -O2 on, alone).
@@ -19426,6 +19532,32 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       onThreads(head + level.size() < 64 ? 1 : threads, work);
       emitted += level.size();
       nextLevel();
+      if (!sh.barrierTaken && sh.moduleCount > 1 && sh.importableModules == 0 && !outOfMemory)
+      {
+        // Level 0's barrier (Shared::requestDeclarations): what is defined at it, by name and per
+        // module (the definitions are only appended to until the end sorts them).
+        sh.barrierTaken = true;
+        for (auto& [name, module] : sh.definedIn)
+          sh.barrierDefined.insert(name);
+        sh.barrierCounts.resize(sh.moduleCount);
+        for (unsigned k = 0; k < sh.moduleCount; ++k)
+          sh.barrierCounts[k] = sh.definitions[k].size();
+        // The shared definitions written so far (destructor helpers, the runtimes' functions): a
+        // program piece declares them, never takes their text (homed later, among the instance
+        // pieces), by the declarations of their own headers.
+        for (const std::string& entry : sh.shared.entries)
+          for (size_t at = entry.starts_with("define ") ? 0 : entry.find("\ndefine "); at != std::string::npos; at = entry.find("\ndefine ", at + 1))
+          {
+            size_t start = entry[at] == '\n' ? at + 1 : at;
+            std::string header = entry.substr(start, entry.find('\n', start) - start);
+            size_t name = header.find(" @");
+            size_t nameEnd = header[name + 2] == '"' ? header.find('"', name + 3) + 1 : header.find('(', name);
+            std::string declaration = Emitter::declareFromHeader(header);
+            if (declaration.starts_with("declare linkonce_odr "))
+              declaration.erase(8, 13); // (a declaration has no linkage)
+            sh.requestDeclarations.emplace(header.substr(name + 1, nameEnd - name - 1), std::move(declaration));
+          }
+      }
     }
   };
   emitLevels();
@@ -19526,6 +19658,33 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.definitions[home].push_back(Shared::definitionOf(std::move(entry)));
     }
     sh.shared.entries = std::move(everywhere);
+  }
+  // Streaming's barrier check (Shared::requestDeclarations), with every function defined (the
+  // destructor helpers homed just above): each function a level-0 definition names that was defined
+  // only after level 0 has the declaration of its request, and each request's declaration is its
+  // definition's. A difference is kppc's error, never a program piece assembled from it.
+  if (sh.barrierTaken && result.errors.empty())
+  {
+    std::map<std::string, std::string> unknown; // a name -> the first level-0 definition naming it
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      for (size_t i = 0; i < sh.barrierCounts[k] && i < sh.definitions[k].size(); ++i)
+      {
+        const Shared::Definition& d = sh.definitions[k][i];
+        for (auto [at, length] : d.names)
+        {
+          std::string name = d.text.substr(at, length);
+          if (sh.definedIn.count(name) && !sh.barrierDefined.count(name) && !sh.requestDeclarations.count(name))
+            unknown.emplace(name, d.name);
+        }
+      }
+    for (auto& [name, by] : unknown)
+      result.errors.push_back("codegen: " + name + " is named in level 0 (by " + by + ") and defined after it, but its request gave it no declaration (step 4's barrier)");
+    std::vector<std::string> different;
+    for (auto& [name, declaration] : sh.requestDeclarations)
+      if (auto line = sh.declareLines.find(name); line != sh.declareLines.end() && line->second != declaration)
+        different.push_back("codegen: the declaration " + name + "'s request gave, `" + declaration + "`, is not its definition's, `" + line->second + "` (step 4's barrier)");
+    std::sort(different.begin(), different.end());
+    result.errors.insert(result.errors.end(), different.begin(), different.end());
   }
   sh.decls.finish();
   sh.shared.finish();
