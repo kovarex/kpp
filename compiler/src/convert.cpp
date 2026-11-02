@@ -5222,6 +5222,100 @@ namespace
       if (!replaced)
         todo(toks[f->token].offset, "a format function's body without its vssprintf");
     }
+    // design.md "struct and class" (option 3, kovarex 2026-11-01): a struct is a public value type. A
+    // struct of the C++ with a private or protected member, a base that is not public, a virtual
+    // function or a polymorphic base is a class: `class`, then `public:` first so that its members
+    // keep the C++'s access, and `public` before each base written without an access (a class's bases
+    // start private). Its friends stay.
+    static bool declaresVirtualFunction(const ClassDecl* c)
+    {
+      for (Decl* m : c->members)
+        if (m && m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)))
+          return true;
+      return false;
+    }
+    bool polymorphicClass(const ClassDecl* c, int depth)
+    {
+      if (!c || depth > 16)
+        return false;
+      if (declaresVirtualFunction(c))
+        return true;
+      for (const ClassDecl::Base& b : c->bases)
+        if (b.type && b.type->kind == NodeKind::NamedType)
+          if (Decl* d = static_cast<NamedType*>(b.type)->resolved)
+          {
+            Decl* def = global.definitionOf(d);
+            if (def && def->kind == NodeKind::ClassDecl && polymorphicClass(static_cast<ClassDecl*>(def), depth + 1))
+              return true;
+          }
+      return false;
+    }
+    void structAsClass(ClassDecl* c)
+    {
+      if (in.c || c->keyword != Kw::struct_ || !c->isDefinition || c->isClosure || (c->flags & DF_Friend))
+        return;
+      bool privateMember = false, privateBase = false, polymorphicBase = false;
+      for (Decl* m : c->members)
+        privateMember = privateMember || (m && !(m->flags & DF_Friend) && (m->access == Access::Private || m->access == Access::Protected));
+      for (const ClassDecl::Base& b : c->bases)
+      {
+        privateBase = privateBase || b.access == Access::Private || b.access == Access::Protected;
+        if (b.type && b.type->kind == NodeKind::NamedType)
+          if (Decl* d = static_cast<NamedType*>(b.type)->resolved)
+            if (Decl* def = global.definitionOf(d); def && def->kind == NodeKind::ClassDecl)
+              polymorphicBase = polymorphicBase || polymorphicClass(static_cast<ClassDecl*>(def), 1);
+      }
+      bool isVirtual = declaresVirtualFunction(c);
+      if (!privateMember && !privateBase && !isVirtual && !polymorphicBase)
+        return;
+      // The keyword, after any `template<...>`.
+      uint32_t k = c->token;
+      while (k < toks.size() && !toks[k].is(Kw::struct_) && !toks[k].is(P::LBrace))
+        ++k;
+      if (k >= toks.size() || !toks[k].is(Kw::struct_))
+        return;
+      // The bases written without an access, and the body's `{`.
+      uint32_t brace = k;
+      bool inBases = false;
+      for (int depth = 0; ++brace < toks.size();)
+      {
+        const Token& t = toks[brace];
+        if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::Less))
+          ++depth;
+        else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::Greater))
+          --depth;
+        else if (t.is(P::Shr))
+          depth -= 2;
+        else if (depth <= 0 && t.is(P::LBrace))
+          break;
+        else if (depth <= 0 && (t.is(P::Colon) || (inBases && t.is(P::Comma))))
+        {
+          inBases = true;
+          uint32_t first = brace + 1;
+          while (first < toks.size() && toks[first].is(Kw::virtual_))
+            ++first;
+          if (first < toks.size() && !toks[first].is(Kw::public_) && !toks[first].is(Kw::private_) && !toks[first].is(Kw::protected_))
+          {
+            insert(toks[first].offset, "public ");
+            counts.add("struct bases written public (structs written as classes)");
+          }
+        }
+      }
+      if (brace >= toks.size())
+        return;
+      replace(toks[k].offset, toks[k].length, "class");
+      if (!(brace + 2 < toks.size() && toks[brace + 1].is(Kw::public_) && toks[brace + 2].is(P::Colon)))
+      {
+        size_t lineStart = text.rfind('\n', toks[k].offset);
+        lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+        size_t indentEnd = text.find_first_not_of(" \t", lineStart);
+        std::string indent(text.substr(lineStart, indentEnd - lineStart));
+        insert(endOffset(brace), "\n" + indent + "public:");
+      }
+      counts.add(std::string("structs written as classes (design.md \"struct and class\"): ") +
+                 (isVirtual ? "a virtual function" : privateMember ? "a private or protected member" : privateBase ? "a base that is not public" : "a polymorphic base"));
+    }
+
     // How std::to_string writes a value of a type, by the overload C++ calls for it: 'i' an integer's
     // digits, as kpp's toString writes them; 'f' a floating value; '?' a bool, a plain char, an
     // enumeration (each promoted to int, where kpp's toString writes true, the character, the
@@ -7088,6 +7182,7 @@ namespace
               }
               break;
             }
+            structAsClass(c);
             if (carriedTemplateDefaults)
               if (auto cd = carriedTemplateDefaults->find(c); cd != carriedTemplateDefaults->end())
                 for (auto& [index, value] : cd->second)
@@ -8518,6 +8613,8 @@ namespace
               walkExpr(static_cast<VariableDecl*>(d)->init, owner);
             else if (d->kind == NodeKind::UsingAliasDecl)
               recordVariantDeclaration(d, false); // a block's `using V = std::variant<...>;`
+            else if (d->kind == NodeKind::ClassDecl)
+              structAsClass(static_cast<ClassDecl*>(d)); // a local struct (MainLoop's `struct : ProgressObserver { ... }`)
           break;
         case NodeKind::IfStmt:
         {
