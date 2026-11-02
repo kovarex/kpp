@@ -14,7 +14,10 @@ compiles each module, skipping modules whose IR hash is unchanged (the `.N.hash`
 next to the executable are the object cache), and links. A debug build for Windows (windows or
 windows-gnu) compiles its modules in kppc, with LLVM's back end linked in (src/backend.cpp,
 docs/codegen-speed.md), when kppc was built with it; every other build runs the bundled clang per
-module on its `.N.ll` file. There
+module on its `.N.ll` file. Either way LLVM's verifier checks every module first (clang with
+`-fverify-intermediate-code`, which a release clang leaves off: it compiled an IR bug of kppc's at
+-O0 and hung on it at -O2; tests\verifier.ps1), at no measurable cost (the game's release modules
+compiled in 9.3 to 10.2 s with it, 9.3 to 9.7 s without). There
 are no headers, no per-file compile steps and nothing like make: a "build system" for kpp code is
 only the choice of kppc's arguments.
 

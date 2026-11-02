@@ -137,6 +137,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\backend.ps1 -Kppc %KPP
 if errorlevel 3 (
   if defined SKIPPED (set "SKIPPED=!SKIPPED!, LLVM back end (none in this kppc)") else (set "SKIPPED=LLVM back end (none in this kppc)")
 ) else if errorlevel 1 (call :fail "LLVM back end") else (call :ok)
+rem And through clang (tests\verifier.ps1): its -fverify-intermediate-code rejects the same IR bug, in a
+rem release build and a debug build, for windows and windows-gnu, never compiling it or hanging on it.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\verifier.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "verifier") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

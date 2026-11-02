@@ -1395,7 +1395,11 @@ namespace
     // the libraries they would need): a program pays only for what it uses.
     // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
     // /fp:strict, design.md section 2)
-    const char* compileFlags = "-ffunction-sections -fdata-sections -ffp-contract=off";
+    // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kppc does
+    // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
+    // bug of kppc's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
+    // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
+    const char* compileFlags = "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code";
     // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
     // linked; the functions errors left out are listed next to the executable for the link's report.
     bool stop = codegenExit && !options.keepGoing;
