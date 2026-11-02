@@ -44,10 +44,10 @@ jobs:
       # ccache 4.10.2 (pinned, SHA-256 checked) compiles through a cache kept by actions/cache, keyed on
       # the compiler's sources; a checkout gives every file a new time, so Ninja alone rebuilds all.
       # (Cached directories are under runner.workspace, the checkout's parent: actions/cache refuses a
-      # path with "..".)
+      # path with "..". The runner context exists only in steps, not in a job's env, so CCACHE_DIR and
+      # KPP_SDL_INCLUDE are set by a step.)
       CCACHE_URL: https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-windows-x86_64.zip
       CCACHE_SHA256: 6252f081876a9a9f700fae13a5aec5d0d486b28261d7f1f72ac11c7ad9df4da9
-      CCACHE_DIR: ${{ runner.workspace }}\ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_MAXSIZE: 500M
     steps:
@@ -78,6 +78,7 @@ jobs:
           Expand-Archive -Force "$dir\ccache.zip" $dir
           $exe = (Resolve-Path "$dir\ccache-4.10.2-windows-x86_64\ccache.exe").Path
           "KPP_CCACHE=$exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "CCACHE_DIR=${{ runner.workspace }}\ccache" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "CPUs: $env:NUMBER_OF_PROCESSORS"
 
       # compiler\llvm.ps1's directory for the pinned release (lib\LLVM*.lib and LLVM's headers, 256 MB of
@@ -180,7 +181,6 @@ jobs:
       SDL_NAME: SDL3-devel-3.4.18-VC.zip
       SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
       SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
-      KPP_SDL_INCLUDE: ${{ runner.workspace }}\sdl\SDL3-3.4.18\include
     steps:
       - uses: actions/checkout@v4
 
@@ -208,6 +208,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = "${{ runner.workspace }}\sdl"
+          $env:KPP_SDL_INCLUDE = "$dir\SDL3-3.4.18\include"
+          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
             New-Item -ItemType Directory -Force $dir | Out-Null
             [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
