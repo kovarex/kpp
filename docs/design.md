@@ -932,7 +932,18 @@ As converted (thread C, 2026-11-02):
   know: members, calls' results, locals), the game's template
   (programs/factorio/overrides/added/CommonUtil/ToStringAsStd.kpp) that picks among those by the type
   the compiler knows.
-- Next: the C libraries' printf calls.
+- printf is retired (kovarex, 2026-11-02: converted code is kpp). The C libraries' calls are
+  pieces too: zstd's 104 `fprintf(stderr, ...)` (its dictBuilder's DISPLAYLEVEL messages, in macro
+  expansions) `print(stderr, pieces)`, the stdlib's print(FILE*, Text) as C++23's std::print(FILE*,
+  ...) (docs/stdlib/text.md); minizip's 5 printf statements `print(pieces)`. A `*` width is the
+  argument before the value, the piece's width (alignRight and alignLeft take a negative width as
+  printf does, aligned left): LuaHelper's 8 `printf("%*c...", depth, ' ', ...)` are
+  `print(alignRight(char(' '), depth), ...)`. The C libraries' own variadic interfaces keep C's `...`
+  (trio's printf family, zlib's gzprintf, stb's writef), and a write into a buffer has no piece. The
+  exceptions, left as C writes them: minizip's 5 `_snprintf`, zlib's 3 `snprintf` and gzprintf's
+  `vsnprintf`, stb_image's `sprintf`; in the game, PropertyTreeJson's `snprintf(buffer, ..., "u%04x",
+  c)`, StringUtil's `sprintf(s, "%.14g", value)` and PerformanceLogger's 2 `snprintf(buffer, N,
+  format, ...)` of a run-time format.
 
 ### 15. File-local names: `private` at file scope (decided 2026-11-01)
 

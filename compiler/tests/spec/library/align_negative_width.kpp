@@ -1,0 +1,7 @@
+// spec: alignRight and alignLeft with a negative width align left in that many characters, as printf's `*` width taken from an argument does (`printf("%*d", -4, 7)` is "7   "); a positive width is as before
+// factorio: LuaHelper's `printf("%*c{\n", depth, ' ')`, written alignRight(char(' '), depth) by the printf rewrite (design.md 14)
+int main()
+{
+  println("[", alignRight(7, -4), "] [", alignRight(7, 4), "] [", alignLeft("ab", -6, '.'), "] [", alignRight(' ', 3), "{]");
+  return 0;
+}

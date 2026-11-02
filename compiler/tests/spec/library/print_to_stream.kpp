@@ -1,0 +1,18 @@
+// spec: print(stream, pieces...) and println(stream, pieces...) write a text's pieces to a C stream (stdout, stderr, a file fopen opened), as C++23's std::print(FILE*, ...); print(pieces...) with no stream is standard output's, and a stream is no piece
+// factorio: zstd's 104 `fprintf(stderr, ...)` (its dictBuilder's DISPLAYLEVEL messages), converted to pieces as the game's printf calls are (design.md 14, "the C libraries")
+int main()
+{
+  FILE* f = fopen("print_to_stream.txt", "wb");
+  print(f, "a ", 1, " ");
+  println(f, fixed(2.5, 1), " b");
+  fclose(f);
+  f = fopen("print_to_stream.txt", "rb");
+  char line[32] = {};
+  fread(line, 1, sizeof(line) - 1, f);
+  fclose(f);
+  remove("print_to_stream.txt");
+  print(stdout, StringView(line));
+  println(stdout, "to stdout ", 3);
+  println("plain ", 4);
+  return 0;
+}

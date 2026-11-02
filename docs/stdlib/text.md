@@ -43,6 +43,8 @@ Each is a small value whose `appendTo` writes the text described; the names are 
   `withSign(fixed(1.25, 1))` is `+1.2`.
 - `alignRight(x, width)`, `alignRight(x, width, fill)`, `alignLeft(...)`: the text of any piece `x`
   in `width` characters, `fill` (a space by default) before it or after it (`%5d`, `%8s`, `%-8s`).
+  A negative width is that many characters aligned left, as printf's `*` width taken from an
+  argument: `alignRight(7, -4)` is `7   ` (`printf("%*d", -4, 7)`).
 - `zeroPadded(x, width)`: the text of `x` zero-padded to `width` after its sign (C's `0` flag):
   `zeroPadded(-5, 4)` is `-005`, `zeroPadded(withSign(3), 4)` `+003`.
 - `address(p)`: a pointer as 16 uppercase hexadecimal digits, no prefix, as MSVC's `%p`. It is the
@@ -56,6 +58,8 @@ Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every
   of a text: String has no `+=` (design.md 14). On a temporary String it returns the String:
   `String(name) << '_'` (C++'s `std::string(name) += '_'`).
 - `print(pieces...)`, `println(pieces...)` (a newline after): the text on standard output.
+  `print(stream, pieces...)`, `println(stream, pieces...)`: on a C stream (`stderr`, a file `fopen`
+  opened), as C++23's `std::print(FILE*, ...)`; the stream is no piece.
   `toString(pieces...)`: the text as a String. `format(pattern, pieces...)`: each `{}` of the
   pattern replaced by the next piece, the pattern checked when compiling (a `{` without its `}`
   is an error), and so is a call whose pieces are not one per `{}` (`format("{} has {}", name)`:

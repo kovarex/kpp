@@ -35,5 +35,10 @@ int main()
   set.data = {1, 2, 3};
   std::vector<int> vector = {4, 5};
   printf("sizes %u %u\n", set.size(), vector.size());
+  // A `*` width, the argument before the value (LuaHelper's `%*c`), negative aligning left
+  int depth = 3;
+  printf("%*c{\n", depth, ' ');
+  printf("[%-*s]\n", 6, "ab");
+  printf("[%*d]\n", -4, 7);
   return 0;
 }

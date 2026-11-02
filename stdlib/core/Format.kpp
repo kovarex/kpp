@@ -112,6 +112,22 @@ void println(Text text)
   fwrite(out.data(), 1, out.size(), stdout);
 }
 
+// The same, written to a C stream (stderr, a file fopen opened), as C++23's std::print(FILE*, ...).
+void print(FILE* stream, Text text)
+{
+  String out;
+  text.appendTo(out);
+  fwrite(out.data(), 1, out.size(), stream);
+}
+
+void println(FILE* stream, Text text)
+{
+  String out;
+  text.appendTo(out);
+  out.append('\n');
+  fwrite(out.data(), 1, out.size(), stream);
+}
+
 // The pieces of a text as a new String: toString(x) for one value, toString(a, " = ", b) for several.
 String toString(Text text)
 {

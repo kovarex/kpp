@@ -4553,11 +4553,13 @@ namespace
     // (`%u` uint32_t(x), the 32 bits printf reads; `%s` StringView(p), or the String a c_str() came
     // from; `%5.2f` alignRight(fixed(x, 2), 5); `%08x` hex(x, 8); `%p` address(p)). A conversion
     // outside that leaves the call as it is (counted): `*` widths, precision on integers and
-    // strings, the ' ' and '#' flags but for `%#0Nx`, %E %G %a %n, wide strings.
+    // strings, the ' ' and '#' flags but for `%#0Nx`, %E %G %a %n, wide strings. A `*` width is
+    // the argument before the value, which the piece takes as its width (LuaHelper's `%*c`).
     struct PrintfConversion
     {
       std::string flags, length;
       int width = -1, precision = -1;
+      bool starWidth = false; // the width is an argument (`%*c`), read before the value
       char conversion = 0;
     };
     // The format's raw text (its literals' contents, escapes as written) cut at its conversions:
@@ -4592,8 +4594,8 @@ namespace
           c.flags += raw[p++];
         if (p < raw.size() && raw[p] == '*')
         {
-          unsupported = "`*` width";
-          return false;
+          c.starWidth = true;
+          ++p;
         }
         if (p < raw.size() && isdigit((unsigned char)raw[p]))
         {
@@ -4691,8 +4693,12 @@ namespace
       return {};
     }
     // The opening and closing text around an argument that make it the piece a conversion writes.
-    bool printfPiece(const PrintfConversion& c, Expr* arg, uint32_t argEnd, bool trio, std::string& open, std::string& close, uint32_t& cStrDot)
+    bool printfPiece(const PrintfConversion& c, Expr* arg, uint32_t argEnd, bool trio, std::string& open, std::string& close, uint32_t& cStrDot,
+                     const std::string& widthText = std::string())
     {
+      // (a `*` width: its argument's text; with the `0` flag, which pads after a sign, none)
+      if (c.starWidth && (widthText.empty() || c.flags.find('0') != std::string::npos))
+        return false;
       Expr* plain = arg;
       while (plain && plain->kind == NodeKind::ParenExpr)
         plain = static_cast<ParenExpr*>(plain)->inner;
@@ -4834,14 +4840,16 @@ namespace
           return false;
         valueOpen = "withSign(" + valueOpen, valueClose += ")";
       }
-      if (c.width > 0)
+      // (a `*` width's argument as the width: negative, it aligns left, as printf's does)
+      std::string width = c.starWidth ? widthText : c.width > 0 ? std::to_string(c.width) : std::string();
+      if (!width.empty())
       {
         if (c.flags.find('-') != std::string::npos)
-          valueOpen = "alignLeft(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+          valueOpen = "alignLeft(" + valueOpen, valueClose += ", " + width + ")";
         else if (c.flags.find('0') != std::string::npos && strchr("diufeg", c.conversion))
-          valueOpen = "zeroPadded(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+          valueOpen = "zeroPadded(" + valueOpen, valueClose += ", " + width + ")";
         else
-          valueOpen = "alignRight(" + valueOpen, valueClose += ", " + std::to_string(c.width) + ")";
+          valueOpen = "alignRight(" + valueOpen, valueClose += ", " + width + ")";
       }
       open = valueOpen, close = valueClose;
       return true;
@@ -4851,7 +4859,7 @@ namespace
     // name, each value written with its type (`int32_t(x)` for %d, `StringView(p)` for %s).
     std::string rewritePrintfText(const std::string& t, int depth = 0)
     {
-      if (in.c || depth > 8 || (t.find("ssprintf") == std::string::npos && t.find("Logging::") == std::string::npos &&
+      if (depth > 8 || (t.find("ssprintf") == std::string::npos && t.find("Logging::") == std::string::npos && t.find("printf") == std::string::npos &&
                                 t.find("addDebugProperty") == std::string::npos && t.find("makeProperty") == std::string::npos &&
                                 t.find("AbortException::make") == std::string::npos && t.find("TagWriter") == std::string::npos))
         return t;
@@ -4902,7 +4910,14 @@ namespace
         { return out.size() >= qualifier.size() && out.compare(out.size() - qualifier.size(), qualifier.size(), qualifier) == 0; };
         size_t formatIndex = SIZE_MAX;
         bool member = out.size() >= 1 && (out.back() == '.' || (out.size() >= 2 && out.compare(out.size() - 2, 2, "->") == 0));
-        if (word == "ssprintf" && !member)
+        // (printf and fprintf print through the C runtime, not trio; zstd's DISPLAY macro's
+        // `fprintf(stderr, ...)`)
+        bool printLike = (word == "printf" || word == "fprintf") && !member && !preceded("::");
+        if (in.c && !printLike)
+          formatIndex = SIZE_MAX;
+        else if (printLike)
+          formatIndex = word == "fprintf" ? 1 : 0;
+        else if (word == "ssprintf" && !member)
           formatIndex = 0;
         else if ((word == "log" || word == "logVerbose" || word == "logAndAbortOrThrow") && preceded("Logging::"))
           formatIndex = 3;
@@ -4967,9 +4982,20 @@ namespace
           auto [b, e] = trimmed(a);
           texts.push_back(rewritePrintfText(t.substr(b, e - b), depth + 1));
         }
-        std::string callee = word == "ssprintf" ? "toString" : word;
+        std::string callee = word == "ssprintf" ? "toString" : printLike ? "print" : word;
         std::string rewritten;
         bool done = false;
+        // (print returns no count: only a statement's printf, after `;`, `{`, `}` or `)` and before `;`)
+        if (printLike)
+        {
+          size_t before = out.find_last_not_of(" \t\r\n"), after = t.find_first_not_of(" \t", k + 1);
+          bool statement = (before == std::string::npos || strchr(";{}):", out[before])) && after != std::string::npos && t[after] == ';';
+          if (!statement)
+          {
+            counts.add("printf calls in macro expansions left as they are (no statement)");
+            formatIndex = SIZE_MAX;
+          }
+        }
         if (formatIndex < texts.size())
         {
           // the format: literals only (raw ones of one delimiter)
@@ -5015,23 +5041,26 @@ namespace
           std::vector<PrintfConversion> conversions;
           std::string unsupported;
           size_t following = texts.size() - formatIndex - 1;
+          size_t starsHere = 0;
           auto literal = [&](const std::string& x)
           { return rawLiterals > 0 ? "R\"" + rawDelimiter + "(" + x + ")" + rawDelimiter + "\"" : "\"" + x + "\""; };
-          if (literals && splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported) && conversions.size() == following &&
-              !(word != "ssprintf" && conversions.empty() && following == 0 && raw.find('%') == std::string::npos))
+          if (literals && splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported) &&
+              conversions.size() + (starsHere = size_t(std::count_if(conversions.begin(), conversions.end(), [](const PrintfConversion& c) { return c.starWidth; }))) == following &&
+              !(word != "ssprintf" && !printLike && conversions.empty() && following == 0 && raw.find('%') == std::string::npos))
           {
             std::vector<std::string> pieces;
             bool ok = true;
-            for (size_t n = 0; n < conversions.size() && ok; ++n)
+            for (size_t n = 0, a = formatIndex + 1; n < conversions.size() && ok; ++n)
             {
               std::string o, cl;
               uint32_t noDot = UINT32_MAX;
-              const std::string& value = texts[formatIndex + 1 + n];
+              std::string widthText = conversions[n].starWidth ? texts[a++] : std::string();
+              const std::string& value = texts[a++];
               PrintfConversion conversion = conversions[n];
               if (conversion.conversion == 's' && !value.empty() && (value[0] == '"' || (value[0] == 'R' && value.size() > 1 && value[1] == '"')))
               {
                 // (a literal: itself, aligned as asked)
-                ok = printfPiece(conversion, nullptr, 0, true, o, cl, noDot);
+                ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
                 if (ok && o.compare(0, 11, "StringView(") == 0)
                   o.erase(0, 11), cl.erase(0, 1);
                 else if (ok && o.find("StringView(") != std::string::npos)
@@ -5042,7 +5071,7 @@ namespace
                 }
               }
               else
-                ok = printfPiece(conversion, nullptr, 0, true, o, cl, noDot);
+                ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
               if (ok)
               {
                 if (!segments[n].empty())
@@ -5062,7 +5091,7 @@ namespace
               counts.add("printf calls in macro expansions written with pieces");
             }
           }
-          else if (!literals && word != "ssprintf")
+          else if (!literals && word != "ssprintf" && !printLike)
           {
             // (a run-time format, as rewritePrintfCall writes it)
             for (size_t a = 0; a < formatIndex; ++a)
@@ -5086,7 +5115,9 @@ namespace
           rewritten.clear();
           for (size_t a = 0; a < texts.size(); ++a)
             rewritten += (a ? ", " : "") + texts[a];
-          if (word != "ssprintf")
+          if (printLike)
+            counts.add("printf calls in macro expansions left as they are");
+          else if (word != "ssprintf")
             counts.add("format function calls in macro expansions left as they are");
         }
         out += callee + t.substr(j, open - j) + "(" + rewritten + ")";
@@ -5388,7 +5419,7 @@ namespace
     }
     bool rewritePrintfCall(CallExpr* call)
     {
-      if (in.c || call->args.empty())
+      if (call->args.empty())
         return false;
       // the callee: ssprintf, a printf statement, a Log macro or SAVING_TAG, or a format function
       Decl* resolved = call->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(call->callee)->resolved
@@ -5404,10 +5435,17 @@ namespace
       std::string to;
       size_t formatIndex = 0;
       bool trio = true; // (formatted through CommonUtil's vssprintf: trio's floating text)
+      // (C: printf and fprintf, the converted C libraries' too; their own variadic interfaces,
+      // trio's, gzprintf, stb's writef, keep C's `...`, and a write into a buffer, snprintf and its
+      // relatives, has no piece)
+      if (in.c && name != "printf" && name != "fprintf")
+        return false;
       if (name == "ssprintf")
         to = "toString";
       else if (name == "printf" && !resolved)
         to = "print", trio = false;
+      else if (name == "fprintf" && !resolved)
+        to = "print", trio = false, formatIndex = 1; // print(stream, pieces...), as C++23's std::print(FILE*, ...)
       else if (auto macro = !resolved && !name.empty() ? formatMacros.find(name) : formatMacros.end(); macro != formatMacros.end())
         formatIndex = macro->second;
       else if (isFormatFunction(resolved))
@@ -5557,7 +5595,38 @@ namespace
         last + 1 < toks.size() && toks[last + 1].is(P::Comma) ? argumentRanges(last + 2) : std::vector<std::pair<uint32_t, uint32_t>>();
       if (to.empty() && conversions.empty() && ranges.empty() && raw.find('%') == std::string::npos && call->args.size() == formatIndex + 1)
         return false;
-      if (ranges.size() != call->args.size() - 1 - formatIndex || conversions.size() != ranges.size())
+      // (a `*` width reads an argument before its value: the value's range, and the width's text,
+      // one name or number, which the piece takes)
+      size_t stars = 0;
+      for (const PrintfConversion& c : conversions)
+        stars += c.starWidth;
+      std::vector<std::pair<uint32_t, uint32_t>> all = ranges;
+      std::vector<size_t> valueArgument(conversions.size());
+      std::vector<std::string> widthTexts(conversions.size());
+      bool widthsKnown = all.size() == conversions.size() + stars;
+      if (stars && widthsKnown)
+      {
+        ranges.clear();
+        for (size_t k = 0, r = 0; k < conversions.size(); ++k)
+        {
+          if (conversions[k].starWidth)
+          {
+            auto [b, e] = all[r++];
+            if (e == b + 1 && (toks[b].getKind() == TokenKind::Identifier || toks[b].getKind() == TokenKind::Number))
+              widthTexts[k] = std::string(spelling(b));
+            else if (e == b + 2 && toks[b].is(P::Minus) && toks[b + 1].getKind() == TokenKind::Number)
+              widthTexts[k] = "-" + std::string(spelling(b + 1));
+            else
+              widthsKnown = false;
+          }
+          valueArgument[k] = r;
+          ranges.push_back(all[r++]);
+        }
+      }
+      else
+        for (size_t k = 0; k < conversions.size(); ++k)
+          valueArgument[k] = k;
+      if (all.size() != call->args.size() - 1 - formatIndex || !widthsKnown || conversions.size() != ranges.size())
       {
         if (runtimeFormat())
           return true;
@@ -5576,7 +5645,8 @@ namespace
       std::vector<std::string> opens(conversions.size()), closes(conversions.size());
       std::vector<uint32_t> cStrDots(conversions.size(), UINT32_MAX);
       for (size_t k = 0; k < conversions.size(); ++k)
-        if (!printfPiece(conversions[k], call->args[k + 1 + formatIndex], ranges[k].second, trio, opens[k], closes[k], cStrDots[k]))
+        if (!printfPiece(conversions[k], call->args[valueArgument[k] + 1 + formatIndex], ranges[k].second, trio, opens[k], closes[k], cStrDots[k],
+                         widthTexts[k]))
         {
           if (runtimeFormat())
             return true;
