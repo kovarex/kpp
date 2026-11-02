@@ -11,9 +11,13 @@
 # installer and the VS Code extension.
 # The toolchain comes from tools\sysroot\llvm-mingw.ps1 (pinned, SHA-256 checked, unpacked once into
 # build\llvm-mingw). -IsccPath names Inno Setup's compiler when it is not installed in a usual place.
-param([string]$IsccPath = '', [string]$Version, [string]$Commit)
+# -NoSmokeTest leaves the smoke test out, for iterating by hand; CI always runs it.
+# The VS Code extension builds in a job of its own while the rest is copied and tested (each step's
+# time is printed at the end; docs/build.md, "Installing").
+param([string]$IsccPath = '', [switch]$NoSmokeTest, [string]$Version, [string]$Commit)
 $ErrorActionPreference = 'Stop'
 if ($Version -or $Commit) { throw "package.ps1 takes no -Version or -Commit: they are kppc's own (kpp --version; docs/build.md, `"Versions`")" }
+if ($NoSmokeTest -and $env:CI -eq 'true') { throw 'package.ps1 -NoSmokeTest is for local runs: CI always runs the smoke test' }
 $repository = (Resolve-Path "$PSScriptRoot\..\..").Path
 $out = Join-Path $repository 'build\release'
 $kpp = Join-Path $out 'kpp'
@@ -23,9 +27,55 @@ if ($LASTEXITCODE -ne 0 -or $printed[0] -notmatch '^kpp (\d+\.\d+\.\d+(?:\+dirty
 $Version = $Matches[1]
 $Commit = $Matches[2]
 Write-Output "packaging kpp $Version, commit $Commit"
+# Each step's time, printed at the end (docs/build.md, "Installing").
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$times = [ordered]@{}
+function Lap([string]$step) { $script:times[$step] = $script:clock.Elapsed.TotalSeconds; $script:clock.Restart() }
 
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $kpp | Out-Null
+Lap 'clean'
+
+# The VS Code extension needs Node.js (npm). CI's runner has it, and there it is an error without; by
+# hand the package leaves kpp.vsix out and says so.
+$npm = [bool](Get-Command npm -ErrorAction SilentlyContinue)
+if (-not $npm)
+{
+  if ($env:CI -eq 'true') { throw 'Node.js (npm) not found: CI builds the VS Code extension kpp.vsix' }
+  Write-Output 'kpp.vsix skipped: Node.js (npm) not found; install Node.js LTS to build it'
+}
+# The VS Code extension (tools/vscode), versioned as the release, with its dependencies from
+# package-lock.json: a job of its own, waited for before the zip.
+$vsix = if ($npm)
+{
+  Start-Job -ArgumentList "$repository\tools\vscode", $repository, $Version, "$kpp\kpp.vsix" -ScriptBlock {
+    param($folder, $repository, $Version, $target)
+    $ErrorActionPreference = 'Continue'
+    Set-Location $folder
+    # node_modules as npm ci made it from this package-lock.json (its SHA-256 kept beside it) is used
+    # again: npm ci takes 15 s. CI's checkout is new each run.
+    $lock = (Get-FileHash -Algorithm SHA256 package-lock.json).Hash
+    if ((Get-Content node_modules\.kpp-lock-sha256 -ErrorAction SilentlyContinue) -ne $lock)
+    {
+      npm ci --no-audit --no-fund 2>&1 | ForEach-Object { "$_" }
+      if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
+      Set-Content node_modules\.kpp-lock-sha256 $lock
+    }
+    else { 'node_modules: as npm ci made it from this package-lock.json' }
+    # vsce puts the extension folder's LICENSE into the .vsix: the repository's, copied (.gitignore'd).
+    Copy-Item "$repository\LICENSE" LICENSE
+    npx vsce package $Version --no-git-tag-version --no-update-package-json --out $target 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 2
+    if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
+  }
+}
+# Directories copied by robocopy, many files at once (Copy-Item -Recurse took 10 to 17 s); its exit
+# codes below 8 are success.
+function CopyTree([string]$from, [string]$to)
+{
+  robocopy $from $to /E /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "copying $from to $to failed (robocopy $LASTEXITCODE)" }
+  $global:LASTEXITCODE = 0
+}
 
 Copy-Item "$repository\compiler\build\kppc.exe" "$kpp\kpp.exe"
 # Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
@@ -37,17 +87,18 @@ Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
 # and builtins; the x86_64 import libraries and runtime. Not the i686, armv7 and aarch64 trees,
 # python, lldb, clangd or clang-tidy.
 $llvmMingw = & "$repository\tools\sysroot\llvm-mingw.ps1" | Select-Object -Last 1
+Lap 'toolchain'
 New-Item -ItemType Directory -Force "$kpp\bin", "$kpp\lib\clang\19\lib\windows", "$kpp\x86_64-w64-mingw32\share" | Out-Null
 foreach ($file in 'clang.exe', 'clang-19.exe', 'ld.lld.exe', 'llvm-ar.exe', 'llvm-rc.exe', 'llvm-dlltool.exe', 'libLLVM-19.dll',
   'libclang-cpp.dll', 'libc++.dll', 'libunwind.dll', 'x86_64-w64-windows-gnu.cfg', 'mingw32-common.cfg')
 {
   Copy-Item "$llvmMingw\bin\$file" "$kpp\bin"
 }
-Copy-Item -Recurse "$llvmMingw\include" "$kpp\include"
-Copy-Item -Recurse "$llvmMingw\lib\clang\19\include" "$kpp\lib\clang\19\include"
+CopyTree "$llvmMingw\include" "$kpp\include"
+CopyTree "$llvmMingw\lib\clang\19\include" "$kpp\lib\clang\19\include"
 Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a" "$kpp\lib\clang\19\lib\windows"
-Copy-Item -Recurse "$llvmMingw\x86_64-w64-mingw32\lib" "$kpp\x86_64-w64-mingw32\lib"
-Copy-Item -Recurse "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\share\mingw32"
+CopyTree "$llvmMingw\x86_64-w64-mingw32\lib" "$kpp\x86_64-w64-mingw32\lib"
+CopyTree "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\share\mingw32"
 Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"
 @"
 The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 20250114
@@ -59,19 +110,11 @@ The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 
 - llvm-mingw's own scripts: ISC.
 "@ | Set-Content "$kpp\NOTICE-toolchain.txt"
 
-# The VS Code extension needs Node.js (npm). CI's runner has it, and there it is an error without; by
-# hand the package leaves kpp.vsix out and says so.
-$npm = [bool](Get-Command npm -ErrorAction SilentlyContinue)
-if (-not $npm)
-{
-  if ($env:CI -eq 'true') { throw 'Node.js (npm) not found: CI builds the VS Code extension kpp.vsix' }
-  Write-Output 'kpp.vsix skipped: Node.js (npm) not found; install Node.js LTS to build it'
-}
-
-Copy-Item -Recurse "$repository\stdlib" "$kpp\stdlib"
-Copy-Item -Recurse "$repository\projectlib" "$kpp\projectlib"
+CopyTree "$repository\stdlib" "$kpp\stdlib"
+CopyTree "$repository\projectlib" "$kpp\projectlib"
 New-Item -ItemType Directory -Force "$kpp\grammar" | Out-Null
 Copy-Item "$repository\tools\vs\kpp\Syntaxes\kpp.tmLanguage.json" "$kpp\grammar"
+Lap 'copy'
 @"
 kpp $Version$(if ($Commit) { " ($Commit)" })
 
@@ -93,29 +136,13 @@ grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
 %USERPROFILE%\.vs\Extensions\kpp\Syntaxes\ and restart Visual Studio.
 "@ | Set-Content "$kpp\README.txt"
 
-# The VS Code extension (tools/vscode), versioned as the release, with its dependencies from
-# package-lock.json.
-if ($npm)
-{
-Push-Location "$repository\tools\vscode"
-try
-{
-  $ErrorActionPreference = 'Continue'
-  npm ci --no-audit --no-fund 2>&1 | Out-Host
-  if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
-  # vsce puts the extension folder's LICENSE into the .vsix: the repository's, copied (.gitignore'd).
-  Copy-Item "$repository\LICENSE" LICENSE
-  npx vsce package $Version --no-git-tag-version --no-update-package-json --out "$kpp\kpp.vsix" 2>&1 | Select-Object -Last 2 | Out-Host
-  if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
-  $ErrorActionPreference = 'Stop'
-}
-finally { $ErrorActionPreference = 'Stop'; Pop-Location }
-}
-
 # A smoke test of the package itself: kpp new and kpp --run in a project outside the repository, as on
 # a machine without Visual Studio: PATH cut to Windows' own directories, no INCLUDE, LIB or KPP_CLANG
 # (CI sets it for the tests). It must build with the bundled toolchain for windows-gnu, and the
 # program must import only Windows' own DLLs (llvm-objdump from the unpacked llvm-mingw, not shipped).
+if ($NoSmokeTest) { Write-Output 'smoke test skipped (-NoSmokeTest)' }
+else
+{
 $smoke = Join-Path $out 'smoke'
 New-Item -ItemType Directory -Force $smoke | Out-Null
 $saved = @{}
@@ -152,9 +179,28 @@ finally
   Pop-Location
 }
 Remove-Item -Recurse -Force $smoke
+}
+Lap 'smoke test'
 
-Compress-Archive -Path "$kpp\*" -DestinationPath "$out\kpp-$Version.zip"
+# The VS Code extension's job (started at the beginning): only the wait is this step's.
+if ($vsix)
+{
+  Wait-Job $vsix | Out-Null
+  $log = Receive-Job $vsix -ErrorAction SilentlyContinue -ErrorVariable failure
+  $state = $vsix.State
+  Remove-Job $vsix
+  if ($state -ne 'Completed' -or $failure -or -not (Test-Path "$kpp\kpp.vsix")) { throw "the VS Code extension failed:`n$($log -join "`n")`n$failure" }
+  $log | Select-Object -Last 2 | Out-Host
+}
+Lap 'kpp.vsix (wait)'
+
+# The zip and the installer one after the other: at once they took 43 to 49 s against 26 to 29 s
+# (Inno Setup's 8 compression threads already fill the machine). .NET's ZipFile, as small as
+# Compress-Archive's zip and ten times faster (10 against 104 s).
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Compression.ZipFile]::CreateFromDirectory($kpp, "$out\kpp-$Version.zip", [IO.Compression.CompressionLevel]::Optimal, $false)
 Write-Output "wrote $out\kpp-$Version.zip"
+Lap 'zip'
 
 $iscc = @($IsccPath, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { $_ } |
   Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -165,3 +211,5 @@ if ($iscc)
   Write-Output "wrote $out\kpp-$Version-setup.exe"
 }
 else { Write-Output 'no Inno Setup: no installer (the zip is complete)' }
+Lap 'installer'
+Write-Output ("times: " + (($times.GetEnumerator() | ForEach-Object { '{0} {1:N1} s' -f $_.Key, $_.Value }) -join ', '))

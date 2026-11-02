@@ -764,6 +764,43 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   ISCC elsewhere). kpp.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
   with one line saying so: its README says so too, and its installer does not offer it. In CI
   (`CI=true`) a missing npm is an error. Every step's failure stops the script.
+- **How long it takes** (PC-PRACOVNA, 2026-11-02, `tools\release\package.cmd`, which prints each
+  step's time on its last line): about 80 s, from 234 to 332 s before.
+
+  | step | before (2 runs) | after (3 runs) |
+  |---|---|---|
+  | toolchain (llvm-mingw, unpacked once into build\llvm-mingw) | 0.0 s | 0.2-0.4 s |
+  | copying (Copy-Item -Recurse, now robocopy /MT:16) | 10-17 s | 3-6 s |
+  | kpp.vsix (npm ci 15 s, vsce 6 s) | 34-40 s | 3.5-13 s waited for (a job of its own; npm ci skipped while package-lock.json is unchanged) |
+  | smoke test | 1-3 s | 3-6 s |
+  | zip (Compress-Archive, now .NET ZipFile) | 118-193 s | 35-58 s |
+  | installer (lzma2 solid, now in 8 threads) | 60-84 s | 16-17 s |
+  | total | 234-332 s | 77-86 s |
+
+  - **The installer:** compression settings measured on the 322 MB folder:
+
+    | setting | time | size |
+    |---|---|---|
+    | lzma2 (its best), solid, 1 thread (before) | 68 s | 44.7 MB |
+    | the same in 4, 8 or 16 threads | 16-28 s | 45.2 MB |
+    | lzma2/normal | 11 s | 48.1 MB |
+    | lzma2/fast | 8 s | 62.3 MB |
+    | not solid | 48 s | 50.5 MB |
+    | zip | 15 s | 69.7 MB |
+
+    lzma2/ultra64 runs out of memory in ISCC. Chosen: the best in 8 threads, 45.2 MB.
+  - **The zip:** alone, .NET's ZipFile takes 8-13 s for the same 72.1 MB as Compress-Archive's
+    104 s. tar -a is 6 s, and ZipFile's Fastest is 5 s at 83 MB. In the package it takes 35-58 s,
+    because the zip is the first to read the freshly copied files: a fresh copy zipped at once took
+    37 s, and then 8 s twice. That is most likely the antivirus scanning new files on their first
+    read. Hard links to the unpacked llvm-mingw instead of copies zipped in 9 s against 21 s, but
+    only once the cache itself had been scanned (21 s both on the first round), and never in CI,
+    whose files are all new; not done.
+  - **Not parallel:** the zip and the installer at once took 43-49 s against 26-29 s one after the
+    other, since the installer's 8 threads already fill the machine.
+  - **`-NoSmokeTest`** leaves the smoke test out when iterating by hand. In CI (`CI=true`) it is an
+    error.
+  - **Sizes:** zip 75.6 MB, installer 47.4 MB (46.9 MB in one thread).
 - **`tools/release/kpp.iss`** is the installer. It installs into Program Files\kpp and adds that
   directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
   it warned when no Visual Studio with the Clang component was found.

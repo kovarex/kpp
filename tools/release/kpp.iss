@@ -22,7 +22,10 @@ DefaultDirName={code:InstallDir}
 UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 OutputBaseFilename=kpp-{#Version}-setup
+; lzma2's best, solid, in 8 threads: 16 to 28 s and 45.2 MB on PC-PRACOVNA against 68 s and 44.7 MB
+; in one thread (docs/build.md, "Installing", 2026-11-02; ultra64 runs out of memory in ISCC).
 Compression=lzma2
+LZMANumBlockThreads=8
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
