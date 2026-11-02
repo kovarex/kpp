@@ -1595,6 +1595,27 @@ the file's uses become the library's OutStream, a new base of the library's outp
 (XmlTestReporter writes its report to the stream it is given); WString::insert, setTerminate and
 throw_with_nested in the library; crtdbg.h's report settings as they are without _DEBUG.
 
+The check macros as calls (2026-11-02). CHECK, CHECK_EQUAL and the rest all expand to
+CHECK_INTERNAL, which wrote a try and three catches out at each of the tests' checks. The converter
+now gives CHECK_INTERNAL a definition of its own (convert.cpp's replacedMacroBodies): one call of
+UnitTest::checkInternal (overrides/added/UnitTest++/CheckInternal.kpp), which has the try and the
+catches once. The condition is a lambda the call evaluates inside its try, and the check's id is
+another, written only when the check fails, as the macro evaluates them. The location stays the
+use's, the expression text stays the macro's `#value`, and an exception is caught as UnitTest++
+catches it. 50,113 checks without an id call the overload without one, and 2,721 `*_SIGNED` ones pass
+it. The macros' padding (the spaces before the continuation backslashes) is gone from every
+expansion. Measured on factorio-test (tests.cmd's build alone, the same kppc, clean, two rounds
+alternating; before is C:\Factorio 4c178a5b915 converted by kpp dd480a7c, after by the same with
+this and the five converter changes after it, the type names, the imports and the cleanups among
+them, which change little of the IR):
+- IR: 1,685 MB to 1,181 MB. The converted tests' text went from 210 MB to 35 MB.
+- clang: 10.4-11.4 s to 6.5-6.6 s. The link: 4.9-5.9 s to 4.4-4.6 s.
+- Code generation: 13.1 s to 14.9 s, because the functions went from 325,409 to 508,654 (each
+  check's lambda and its call's thunk).
+- The whole build: 32.3-41.2 s to 28.8-30.4 s.
+- factorio-test.exe: 229 MB to 136 MB.
+- The game's IR is unchanged (559 MB). The 9,501 tests' CRCs are the same.
+
 The tests package, measured with the game and its tests converted together and built the
 headline's way (CommonUtil, Agui, cxxopts, StackWalker, Lua, UnitTest++, src and tests), paired on
 12a7ee2: 213 error lines with 204 in the tests without UnitTest++ -> 155 with 137 in the tests

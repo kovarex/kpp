@@ -144,6 +144,41 @@ namespace
     return text;
   }
 
+  // A macro's body with each run of spaces and tabs one space, outside literals: the padding before
+  // the continuations' backslashes (UnitTest++'s CHECK_INTERNAL aligns them in column 80) is no
+  // text of the expansion.
+  std::string collapsedSpaces(const std::string& body)
+  {
+    std::string out;
+    for (size_t i = 0; i < body.size();)
+    {
+      if (size_t raw = rawStringEnd(body, i); raw != std::string_view::npos)
+      {
+        out += body.substr(i, raw - i);
+        i = raw;
+      }
+      else if (body[i] == '"' || (body[i] == '\'' && !isDigitSeparator(body, i)))
+      {
+        char quote = body[i];
+        size_t e = i + 1;
+        for (; e < body.size() && body[e] != quote; ++e)
+          e += body[e] == '\\';
+        e = std::min(e + 1, body.size());
+        out += body.substr(i, e - i);
+        i = e;
+      }
+      else if (body[i] == ' ' || body[i] == '\t')
+      {
+        out += ' ';
+        while (i < body.size() && (body[i] == ' ' || body[i] == '\t'))
+          ++i;
+      }
+      else
+        out += body[i++];
+    }
+    return out;
+  }
+
   // Whether a block comment is open at the end of text, given whether one was at its start: a `/*`
   // without its `*/`, outside literals and line comments.
   bool blockCommentOpenAfter(std::string_view text, bool open)
@@ -945,6 +980,19 @@ namespace
     {"_countof", "(sizeof($1) / sizeof(($1)[0]))"},
     // d3d11.h's inline function, which it has only for C++ (the import's C has none).
     {"D3D11CalcSubresource", "((UINT)($1) + (UINT)($2) * (UINT)($3))"}};
+
+  // Header macros the conversion defines its own way, wherever a header defines them. UnitTest++'s
+  // CHECK_INTERNAL, which every check macro (CHECK, CHECK_EQUAL, ...) expands to, wrote a try and three
+  // catches out at each check; its replacement is one call of UnitTest::checkInternal
+  // (overrides/added/UnitTest++/CheckInternal.kpp), which has them once, with the condition and the
+  // id in lambdas, evaluated where the macro evaluates them (the condition inside the try, the id
+  // only when the check fails). An id of nullptr, the checks' other than *_SIGNED, calls the
+  // overload without one (checkInternalWithoutId).
+  const std::map<std::string, std::string> replacedMacroBodies = {
+    {"CHECK_INTERNAL", "UnitTest::checkInternal([&](UnitTest::MemoryOutStream& CHECK_INTERNAL_stream) -> bool { return (condition); }, (filename), "
+                       "(line), [&](UnitTest::MemoryOutStream& UNIT_TEST_ID_OUT_stream) { UNIT_TEST_ID_OUT_stream << (id); })"}};
+  const std::string checkInternalWithoutId =
+    "UnitTest::checkInternal([&](UnitTest::MemoryOutStream& CHECK_INTERNAL_stream) -> bool { return (condition); }, (filename), (line))";
 
   // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
   std::string stringize(std::string_view spelling)
@@ -2958,6 +3006,11 @@ namespace
           m.body = macro.second;
           localMacros[name].push_back(m);
         }
+      auto replaced = [&](const std::string& name, const std::string& body) -> const std::string&
+      {
+        auto r = replacedMacroBodies.find(name);
+        return r == replacedMacroBodies.end() ? body : r->second;
+      };
       for (const auto* macros : includedMacros)
         for (const auto& [name, macro] : *macros)
         {
@@ -2970,7 +3023,7 @@ namespace
             continue;
           LocalMacro m;
           m.params = macro.first;
-          m.body = macro.second;
+          m.body = replaced(name, macro.second);
           localMacros[name].push_back(m);
         }
     }
@@ -3180,7 +3233,7 @@ namespace
               break;
             start = comma + 1;
           }
-          m.body = continuationsAsSpaces(body.substr(close + 1));
+          m.body = collapsedSpaces(continuationsAsSpaces(body.substr(close + 1)));
           while (!m.body.empty() && isspace((unsigned char)m.body.front()))
             m.body.erase(m.body.begin());
           while (!m.body.empty() && isspace((unsigned char)m.body.back()))
@@ -3712,7 +3765,12 @@ namespace
       // For each parenthesis open in the body, whether it is a macro's argument list.
       std::vector<bool> macroCalls;
       std::string out;
-      const std::string& b = m.body;
+      bool withoutId = args.size() == 4 && m.body == replacedMacroBodies.at("CHECK_INTERNAL") &&
+                       args[3].find_first_not_of(" \t") != std::string::npos &&
+                       args[3].substr(args[3].find_first_not_of(" \t"), args[3].find_last_not_of(" \t") + 1 - args[3].find_first_not_of(" \t")) == "nullptr";
+      const std::string& b = withoutId ? checkInternalWithoutId : m.body;
+      if (m.body == replacedMacroBodies.at("CHECK_INTERNAL"))
+        counts.add(withoutId ? "checks written as a call of UnitTest::checkInternal" : "checks with an id written as a call of UnitTest::checkInternal");
       auto variadicOf = [&](const std::vector<std::string>& list)
       {
         std::string joined;
@@ -11206,7 +11264,7 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       }
       std::string body = line.substr(close + 1);
       size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
-      body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+      body = a == std::string::npos ? std::string() : collapsedSpaces(body.substr(a, b - a + 1));
       // C's NULL is a cast of 0 to void*, not a constant the import makes.
       for (size_t at = body.find("NULL"); at != std::string::npos; at = body.find("NULL", at + 1))
         if ((at == 0 || !(isalnum((unsigned char)body[at - 1]) || body[at - 1] == '_')) &&
