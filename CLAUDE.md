@@ -58,9 +58,9 @@ Decided by kovarex; every thread follows them.
   (kpp\tests-errors.txt: every one is a stubbed test function) and every smoke test. A gate passed
   only when each script's last line says `ALL PASSED` and its exit code is 0 (run_tests, spec and
   convert end with one summary line; grepping one part's count missed a red targets check). Commit small, push
-  promptly. Never `git stash`: the stash is shared across worktrees. Commit with `git commit -s`
-  (kovarex's DCO sign-off, which he authorised for threads' commits on 2026-11-01; CONTRIBUTING.md)
-  besides the Co-Authored-By line.
+  promptly. Never `git stash`: the stash is shared across worktrees. No DCO sign-off (kovarex removed
+  it on 2026-11-02); keep the Co-Authored-By line. Stage explicit paths (`git add PATH`, never `-a` or
+  `.`) and check `git show --stat` against the message before pushing.
 - kpp is written in lower case everywhere: docs, prose, comments, user-visible messages, the
   installer (`C:\Program Files\kpp`), release titles, the VS Code extension (kovarex, 2026-11-02). Only
   code style keeps a capital, in identifiers (`KppDescription`); file names and `.kpp` never change.
