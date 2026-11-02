@@ -140,6 +140,9 @@ if errorlevel 1 (call :fail "targets") else (call :ok)
 rem --toolchain: an installation's bin\ by default, Visual Studio's on request (tests\toolchain.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\toolchain.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "toolchain") else (call :ok)
+rem The end-to-end programs in Windows' GNU dialect, with llvm-mingw (tests\windowsgnu.ps1, design.md 17).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\windowsgnu.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "windows-gnu") else (call :ok)
 rem The C import cache keys an import on the toolchain's environment (tests\importcache.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\importcache.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "import cache") else (call :ok)

@@ -42,6 +42,11 @@ glibc sysroot (KPP_SYSROOT_LINUX, else build\\sysroots\\linux-x86_64, which test
 WSL) and runs it under WSL, into build\\spec-linux, writing no spec-status.md. Skipped: the `run:` and
 `test:` snippets (kppc runs those itself, on this machine) and those with another `target:`. Output
 that differs on Linux goes in <name>.linux.expected.
+
+--target windows-gnu builds every snippet for Windows in the GNU dialect (design.md 17: MinGW-w64's
+headers and import libraries, the bundled toolchain's) with the llvm-mingw clang KPP_CLANG names, into
+build\\spec-windows-gnu, and runs it here, `run:` and `test:` snippets too; a `target: windows` snippet
+is one of its. Output that differs goes in <name>.windows-gnu.expected.
 """
 import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
 
@@ -125,7 +130,9 @@ def run_one(path):
         expected_path = os.path.splitext(path)[0] + f".{TARGET}.expected"
     result = {"area": area, "name": name, "info": info, "note": ""}
     target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
-    if TARGET and (info["run"] is not None or info["test"] is not None or (target or TARGET) != TARGET):
+    # (windows-gnu is Windows: a snippet about Windows is about it too, and its programs run here)
+    on_target = (target or TARGET) == TARGET or (TARGET == "windows-gnu" and target == "windows")
+    if TARGET and (not on_target or (TARGET != "windows-gnu" and (info["run"] is not None or info["test"] is not None))):
         result["status"] = "skip"; return result
     if not TARGET and target not in (None, "windows"):
         result["status"] = "skip"; return result
@@ -283,7 +290,7 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
-    ap.add_argument("--target", choices=["linux"])
+    ap.add_argument("--target", choices=["linux", "windows-gnu"])
     args = ap.parse_args()
     global OUT, TARGET, C_TARGET_FLAGS
     for flag in ("release", "debug_info"):
@@ -292,7 +299,17 @@ def main():
             EXTRA.append(option)
             OUT += option[1:]
             args.no_doc = True
-    if args.target:
+    if args.target == "windows-gnu":
+        # Windows in the GNU dialect (design.md 17): the bundled toolchain's llvm-mingw, named by KPP_CLANG.
+        TARGET = args.target
+        if "KPP_CLANG" not in os.environ:
+            print("--target windows-gnu: KPP_CLANG names no llvm-mingw clang")
+            print("spec: FAILED: no llvm-mingw"); return 2
+        EXTRA.extend(["--target", "windows-gnu"])
+        C_TARGET_FLAGS = ["--target=x86_64-w64-windows-gnu"]
+        OUT += "-" + TARGET
+        args.no_doc = True
+    elif args.target:
         TARGET = args.target
         if not os.path.exists(os.path.join(SYSROOT_LINUX, "usr", "lib", "x86_64-linux-gnu", "libc.so.6")):
             print("no Linux sysroot at", SYSROOT_LINUX, "(tests\\targets.ps1 makes one from WSL)")

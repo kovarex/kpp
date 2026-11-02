@@ -17,8 +17,13 @@ struct Target
   std::string name = "windows"; // the short name (--target's, the reports')
   std::string triple = "x86_64-pc-windows-msvc";
   std::string dataLayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  // Windows in the GNU dialect (windows-gnu, design.md 17): the same ABI, data layout and SEH as
+  // MSVC's, but MinGW-w64's headers and import libraries (the C runtime is the UCRT's ucrtbase.dll)
+  // and lld's GNU driver: what the bundled toolchain (llvm-mingw) builds, with no Visual Studio.
+  bool gnu = false;
 
   bool windows() const { return os == Os::Windows; }
+  bool msvc() const { return os == Os::Windows && !gnu; } // Visual Studio's headers, libraries and link.exe
   bool posix() const { return os != Os::Windows; }
   // ELF's data layout differs from COFF's only in the name mangling (`m:e`).
   static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
@@ -30,6 +35,14 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
   Target t;
   if (name == "windows" || name == "x86_64-pc-windows-msvc")
   {
+    out = t;
+    return true;
+  }
+  if (name == "windows-gnu" || name == "x86_64-w64-windows-gnu" || name == "x86_64-w64-mingw32")
+  {
+    t.name = "windows-gnu";
+    t.triple = "x86_64-w64-windows-gnu";
+    t.gnu = true;
     out = t;
     return true;
   }
@@ -55,6 +68,6 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
   if (name == "linux-arm64" || name.starts_with("aarch64") || name.starts_with("arm64") || name == "macos" || name == "macos-x64" || name.find("apple") != std::string_view::npos)
     why = "comes with a later stage (docs/design.md, \"Targets and hosts\": AArch64 is stage 7, macOS stage 8)";
   else
-    why = "is no target kppc knows (windows, linux, freebsd)";
+    why = "is no target kppc knows (windows, windows-gnu, linux, freebsd)";
   return false;
 }

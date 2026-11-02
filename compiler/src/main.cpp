@@ -20,6 +20,7 @@
 #include <cctype>
 #include <cstring>
 #include <exception>
+#include <functional>
 #include <set>
 #include <cstdarg>
 #include <cstdlib>
@@ -109,6 +110,7 @@ namespace
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
     Target target;                 // --target: the platform the program is built for (Windows x64 by default)
+    bool targetChosen = false;     // --target was given (else the toolchain's own: windows-gnu for the bundled one)
     std::string sysroot;           // --sysroot: the target's headers and libraries, for another platform than the host
   };
   // Whether the build generates code: an executable, the IR, or --check's errors from codegen.
@@ -321,15 +323,113 @@ namespace
   // them for the other. --incremental-link keeps every function instead (/OPT:NOREF, which
   // /INCREMENTAL needs) and relinks only the objects that changed (docs/compile-speed.md, "The link in
   // the edit loop").
-  // What makes clang compile for the target: nothing for Windows (clang's default here), the triple
-  // otherwise (a module's own triple does not decide clang's: clang overrides it with its default).
+  // What makes clang compile for the target: nothing for Windows' MSVC dialect (Visual Studio's
+  // clang's default), the triple otherwise (a module's own triple does not decide clang's: clang
+  // overrides it with its default).
   std::string targetFlags(const Options& options)
   {
-    return options.target.windows() ? std::string() : " --target=" + options.target.triple;
+    return options.target.msvc() ? std::string() : " --target=" + options.target.triple;
+  }
+
+  // What a program in Windows' GNU dialect (windows-gnu) links besides MinGW-w64's libraries, made
+  // once by the tools next to clang into the import cache (%TEMP%\kpp-imports), under a name with the
+  // hash of what they are made from (another compiler making one at once makes the same):
+  // - an import library of ucrtbase.dll's functions that MinGW-w64's leave out: the UCRT's C++
+  //   runtime's (its own is libc++'s) and its long double ones, which are doubles as MSVC's are;
+  // - those of math.h's long double functions on doubles: Kpp's long double is a double, as MSVC's
+  //   (docs/build.md, "The toolchain"), and libmingwex's are x87's 80 bits.
+  // The files, quoted for the link; empty, with an error printed, when one cannot be made.
+  std::string gnuRuntime(const Options& options)
+  {
+    static const char* def = "LIBRARY ucrtbase.dll\nEXPORTS\n__uncaught_exceptions\nstrtold\nwcstold\n_strtold_l\n";
+    static const char* longDouble =
+      "/* Kpp's long double is a double, as MSVC's: MinGW-w64's long double functions on doubles. */\n"
+      "#define F1(f) long double f##l(long double x) { return __builtin_##f(x); }\n"
+      "#define F2(f) long double f##l(long double x, long double y) { return __builtin_##f(x, y); }\n"
+      "F1(acos) F1(acosh) F1(asin) F1(asinh) F1(atan) F1(atanh) F1(cbrt) F1(ceil) F1(cos) F1(cosh) F1(erf) F1(erfc)\n"
+      "F1(exp) F1(exp2) F1(expm1) F1(fabs) F1(floor) F1(lgamma) F1(log) F1(log10) F1(log1p) F1(log2) F1(logb)\n"
+      "F1(nearbyint) F1(rint) F1(round) F1(sin) F1(sinh) F1(sqrt) F1(tan) F1(tanh) F1(tgamma) F1(trunc)\n"
+      "F2(atan2) F2(copysign) F2(fdim) F2(fmax) F2(fmin) F2(fmod) F2(hypot) F2(nextafter) F2(pow) F2(remainder)\n"
+      "long double fmal(long double x, long double y, long double z) { return __builtin_fma(x, y, z); }\n"
+      "long double frexpl(long double x, int* e) { return __builtin_frexp(x, e); }\n"
+      "long double ldexpl(long double x, int e) { return __builtin_ldexp(x, e); }\n"
+      "long double modfl(long double x, long double* i) { double d; double r = __builtin_modf(x, &d); *i = d; return r; }\n"
+      "long double nanl(const char* tag) { return __builtin_nan(tag); }\n"
+      "long double nexttowardl(long double x, long double y) { return __builtin_nextafter(x, y); }\n"
+      "long double remquol(long double x, long double y, int* q) { return __builtin_remquo(x, y, q); }\n"
+      "long double scalblnl(long double x, long n) { return __builtin_scalbln(x, n); }\n"
+      "long double scalbnl(long double x, int n) { return __builtin_scalbn(x, n); }\n"
+      "int ilogbl(long double x) { return __builtin_ilogb(x); }\n"
+      "long lrintl(long double x) { return __builtin_lrint(x); }\n"
+      "long lroundl(long double x) { return __builtin_lround(x); }\n"
+      "long long llrintl(long double x) { return __builtin_llrint(x); }\n"
+      "long long llroundl(long double x) { return __builtin_llround(x); }\n"
+      "long double _chgsignl(long double x) { return -x; }\n";
+    std::filesystem::path tools = std::filesystem::path(clangPath()).parent_path();
+    std::error_code ec;
+    std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
+    std::filesystem::create_directories(dir, ec);
+    // Makes `stem-HASH.ext` from text (written to `stem-PID.in`) with command(input, output).
+    auto made = [&](const std::string& stem, const std::string& ext, const std::string& text,
+                    const std::function<std::string(const std::string&, const std::string&)>& command) -> std::string
+    {
+      uint64_t hash = 1469598103934665603ull;
+      for (unsigned char c : text + command("", "")) // (the tools' path and flags too)
+        hash = (hash ^ c) * 1099511628211ull;
+      char hex[32];
+      snprintf(hex, sizeof hex, "%016llx", (unsigned long long)hash);
+      std::filesystem::path file = dir / (stem + "-" + hex + ext);
+      if (std::filesystem::exists(file, ec))
+        return file.string();
+      std::string own = std::to_string(_getpid());
+      std::filesystem::path input = dir / (stem + "-" + own + ".in"), output = dir / (stem + "-" + own + ext);
+      if (FILE* f = fopen(input.string().c_str(), "wb"))
+      {
+        fputs(text.c_str(), f);
+        fclose(f);
+      }
+      int rc = system(("\"" + command(input.string(), output.string()) + "\"").c_str());
+      std::filesystem::remove(input, ec);
+      if (rc != 0 || !std::filesystem::exists(output, ec))
+      {
+        fprintf(stderr, "error: could not make %s for windows-gnu (exit %d): %s\n", (stem + ext).c_str(), rc, command(input.string(), output.string()).c_str());
+        return "";
+      }
+      std::filesystem::rename(output, file, ec);
+      return ec ? output.string() : file.string();
+    };
+    std::string lib = made("libkpp_ucrt", ".a", def, [&](const std::string& in, const std::string& out)
+    {
+      return "\"" + (tools / "llvm-dlltool.exe").string() + "\" -m i386:x86-64 -d \"" + in + "\" -l \"" + out + "\"";
+    });
+    std::string object = made("kpp_long_double", ".o", longDouble, [&](const std::string& in, const std::string& out)
+    {
+      return "\"" + clangPath() + "\"" + targetFlags(options) + " -c -O2 -mlong-double-64 -w -x c \"" + in + "\" -o \"" + out + "\"";
+    });
+    if (lib.empty() || object.empty())
+      return "";
+    return " \"" + lib + "\" \"" + object + "\"";
   }
 
   std::string linkFlags(const Options& options, bool wideEntry)
   {
+    // Windows' GNU dialect (windows-gnu): lld's GNU driver, unused sections dropped as /OPT:REF
+    // drops them, the Windows libraries programs commonly reach, ucrtbase's functions MinGW-w64's
+    // import libraries leave out, -municode for a wmain, --lib files.
+    if (options.target.gnu)
+    {
+      std::string flags = targetFlags(options).substr(1) + " -fuse-ld=lld -Wl,--gc-sections -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
+      flags += gnuRuntime(options);
+      if (!options.sysroot.empty())
+        flags += " \"--sysroot=" + options.sysroot + "\"";
+      if (wideEntry)
+        flags += " -municode";
+      if (options.debugInfo)
+        flags += " -g -Wl,--pdb=";
+      for (const std::string& lib : options.libs)
+        flags += " \"" + lib + "\"";
+      return flags;
+    }
     // Another target (ELF): ld.lld with the target's sysroot, unused sections dropped as /OPT:REF
     // drops them, the C library's math and threads (libm and pthreads are libraries of their own
     // there), --lib files.
@@ -988,15 +1088,15 @@ namespace
                  "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n";
     // malloc.h's alloca is `#define alloca _alloca` (only where __STDC__ is not defined, as it is
     // here), which the import does not carry: declared as the function, the code generator's
-    // stack allocation like _alloca.
+    // stack allocation like _alloca. MinGW-w64's malloc.h has _alloca a macro too (`__builtin_alloca`).
     if (std::find(headers.begin(), headers.end(), "malloc.h") != headers.end())
-      wrapper += "#undef alloca\nvoid* alloca(size_t);\n";
+      wrapper += "#undef alloca\nvoid* alloca(size_t);\n#undef _alloca\nvoid* _alloca(size_t);\n";
     // The include directories as absolute paths, in the key and on clang's command line: a relative
     // `--cinclude native\include` names another directory in every worktree.
     std::error_code ec;
     // Another target's headers: clang preprocesses them for it, from its sysroot (in the key too).
     std::string includeArgs = targetFlags(options);
-    if (!options.target.windows() && !options.sysroot.empty())
+    if (!options.target.msvc() && !options.sysroot.empty())
       includeArgs += " \"--sysroot=" + options.sysroot + "\"";
     for (const std::string& dir : options.cIncludeDirs)
     {
@@ -1227,9 +1327,9 @@ namespace
       return true;
     };
     std::string clang = clangPath();
-    report("toolchain: %s (%s)\n", clang.c_str(), bundledToolchain()            ? "bundled: links with lld-link"
-                                                               : options.target.windows() ? "Visual Studio's: links with link.exe, with lld-link under ThinLTO"
-                                                                                          : "links with ld.lld");
+    report("toolchain: %s (%s, %s: links with %s)\n", clang.c_str(),
+           bundledToolchain() ? "bundled" : getenv("KPP_CLANG") ? "KPP_CLANG" : "Visual Studio's", options.target.name.c_str(),
+           !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
     // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
     // link optimises them in parallel with what each needs from the others imported, so that calls
     // into another module's instantiations inline as they do in one module (optimised separately,
@@ -1386,7 +1486,7 @@ namespace
       // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
       // modules that did not change (the cache next to the executable).
       response += "-fuse-ld=lld\n-flto=thin\n-O2\n";
-      if (options.target.windows())
+      if (options.target.msvc())
       {
         response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
         response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
@@ -3305,6 +3405,7 @@ int compile(int argc, char** argv)
         fprintf(stderr, "--target %s %s\n", argv[i], why.c_str());
         return 2;
       }
+      options.targetChosen = true;
     }
     else if (arg == "--sysroot" && i + 1 < argc)
       options.sysroot = argv[++i];
@@ -3514,6 +3615,36 @@ int compile(int argc, char** argv)
       fprintf(stderr, "--config sizeBits: the library's sizes are always 64 bits (ContainerSize is u64)\n");
       return 2;
     }
+    if (std::string error = selectToolchain(argv[0], options.toolchain); !error.empty())
+    {
+      fprintf(stderr, "%s\n", error.c_str());
+      return 2;
+    }
+    // The bundled toolchain (llvm-mingw) builds Windows programs in the GNU dialect: it has no Visual
+    // Studio's headers and libraries for the MSVC one, and Visual Studio's clang has no MinGW-w64's.
+    if (bundledToolchain() && options.target.msvc())
+    {
+      if (options.targetChosen)
+      {
+        fprintf(stderr, "--target windows (the MSVC dialect) needs Visual Studio's headers and libraries, which the bundled toolchain "
+                        "does not have: --toolchain msvc, or --target windows-gnu\n");
+        return 2;
+      }
+      std::string why;
+      targetNamed("windows-gnu", options.target, why);
+    }
+    if (options.target.gnu && !bundledToolchain() && !getenv("KPP_CLANG"))
+    {
+      fprintf(stderr, "--target windows-gnu needs the bundled toolchain's MinGW-w64 (llvm-mingw): --toolchain bundled, or KPP_CLANG "
+                      "naming such a clang\n");
+      return 2;
+    }
+    if (options.incrementalLink && bundledToolchain())
+    {
+      fprintf(stderr, "--incremental-link is Visual Studio's link.exe's, which the bundled toolchain does not have (its lld-link "
+                      "links whole): add --toolchain msvc\n");
+      return 2;
+    }
     // config::platform is the target's.
     const char* platform = options.target.os == Target::Os::Linux ? "Linux" : options.target.os == Target::Os::FreeBSD ? "FreeBSD" : "Windows";
     if (!options.configValues.count("platform"))
@@ -3523,6 +3654,14 @@ int compile(int argc, char** argv)
       fprintf(stderr, "--config platform=%s: the platform is the target's (--target), %s\n", options.configValues["platform"].text.c_str(), platform);
       return 2;
     }
+    // config::mingw: Windows' GNU dialect (windows-gnu), whose C runtime's headers are MinGW-w64's
+    // (math.h's FP_ codes, its fpclassify: CWindows.kpp), the target's too.
+    if (options.configValues.count("mingw") && (options.configValues["mingw"].number != 0) != options.target.gnu)
+    {
+      fprintf(stderr, "--config mingw=%s: it is the target's (--target %s)\n", options.configValues["mingw"].text.c_str(), options.target.name.c_str());
+      return 2;
+    }
+    options.configValues["mingw"] = parseConfigValue(options.target.gnu ? "true" : "false");
     options.debug = options.configValues["debug"].number != 0;
     if (options.optimize < 0)
       options.optimize = !options.debug;
@@ -3534,17 +3673,6 @@ int compile(int argc, char** argv)
     if (options.incrementalLink && !options.target.windows())
     {
       fprintf(stderr, "--incremental-link is link.exe's, for --target windows\n");
-      return 2;
-    }
-    if (std::string error = selectToolchain(argv[0], options.toolchain); !error.empty())
-    {
-      fprintf(stderr, "%s\n", error.c_str());
-      return 2;
-    }
-    if (options.incrementalLink && bundledToolchain())
-    {
-      fprintf(stderr, "--incremental-link is Visual Studio's link.exe's, which the bundled toolchain does not have (its lld-link "
-                      "links whole): add --toolchain msvc\n");
       return 2;
     }
     SourceFile config;

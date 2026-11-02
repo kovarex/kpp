@@ -730,35 +730,49 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   runs use the account's Actions minutes (Windows minutes count double) and its releases are
   visible only to its collaborators.
 
-### The toolchain (design.md 17, stage 1)
+### The toolchain (design.md 17)
 
-A release is to carry its own back end (design.md 17, decided 2026-11-02). Stage 1 is clang and
-lld; the Windows SDK and MSVC's libraries still come from an installed Visual Studio or Build Tools.
-- **The bundled toolchain** is `bin\` next to kpp.exe, from the official LLVM 19.1.7 release
-  (clang+llvm-19.1.7-x86_64-pc-windows-msvc, Apache-2.0 WITH LLVM-exception): clang.exe, lld-link.exe,
-  ld.lld.exe (other targets), llvm-lib.exe and llvm-rc.exe (a project's C libraries and resources),
-  and `lib\clang\19\` (clang's headers, clang_rt.builtins-x86_64.lib). About 215 MB unpacked.
-  clang-cl is `clang --driver-mode=cl`.
-- **Which one a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's clang,
-  found by vswhere), and an error when that one is not there, never the other in its place.
-  Without it: KPP_CLANG, else the installation's `bin\` when it has one, else Visual Studio's. The
-  build's report says which (`toolchain: ...`). A compile server takes `bin\` next to its client's
-  kpp.exe.
-- **The link:** the bundled toolchain links with lld-link, debug builds too. `--incremental-link`
+A release carries its own back end (design.md 17, decided 2026-11-02): it builds and runs a program
+on a Windows with no Visual Studio, Build Tools or Windows SDK.
+- **The bundled toolchain** is llvm-mingw 20250114 (github.com/mstorsjo/llvm-mingw, the UCRT
+  variant for x86-64): clang and lld of LLVM 19.1.7 with MinGW-w64's headers and import libraries,
+  which link the UCRT's ucrtbase.dll that every Windows 10 and 11 has. Its `bin\` is next to kpp.exe
+  in an installation. `tools\sysroot\llvm-mingw.ps1` downloads the pinned release once (SHA-256
+  checked) into build\llvm-mingw, for the tests and the package. Licences: LLVM's Apache-2.0 WITH
+  LLVM-exception, MinGW-w64's headers and libraries public domain or ZPL (the DirectX headers from
+  Wine LGPL-2.1+), llvm-mingw's own scripts ISC.
+- **Windows' GNU dialect** (`--target windows-gnu`, the bundled toolchain's own): the same ABI, data
+  layout and SEH exceptions as MSVC's, MinGW-w64's headers in the C import (their `__attribute__`,
+  `__extension__` and `__restrict__` taken as MSVC's are), lld's GNU driver (`--gc-sections`,
+  `-municode` for a wmain). A program imports only Windows' own DLLs (ucrtbase, the api-ms-win-crt
+  set, kernel32...). `config::mingw` is true for it (CWindows.kpp's fpclassify returns MinGW-w64's
+  FP_ codes). Two pieces kppc makes once into the import cache with the toolchain's tools: an import
+  library of ucrtbase.dll's functions MinGW-w64's leave out (`__uncaught_exceptions`, strtold), and
+  math.h's long double functions on doubles: Kpp's long double is a double, as MSVC's, and
+  libmingwex's are x87's 80 bits.
+- **Which toolchain a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's
+  clang, found by vswhere, and its MSVC dialect, `--target windows`), and an error when that one is
+  not there, never the other in its place. Without it: KPP_CLANG, else the installation's `bin\`
+  when it has one, else Visual Studio's. The bundled toolchain with `--target windows` (it has no
+  MSVC headers) and Visual Studio's clang with `--target windows-gnu` are errors. The build's report
+  says which (`toolchain: ... (bundled, windows-gnu: links with lld)`). A compile server takes `bin\`
+  next to its client's kpp.exe. A project's C libraries compile with clang's own flags under the
+  bundled toolchain, with clang-cl's (`clang --driver-mode=cl`) under Visual Studio's.
+- **The link:** the bundled toolchain links with lld, debug builds too. `--incremental-link`
   (link.exe `/INCREMENTAL`, the debug edit loop's link) is Visual Studio's: with the bundled
   toolchain it is an error, and a project's debug build leaves it out. Measured on the converted
   game (2026-11-02, the compile server's leaf and wide edits and each link alone, interleaved):
-  lld-link's debug link with a PDB takes 5.7 to 9.7 s,
-  80% of it merging the 5.2 M type records of the Visual Studio-built libraries' debug information
-  (the PDB 485 MB, link.exe's 77 MB), against 0.4 to 1.5 s for link.exe's incremental relink; without
-  a PDB lld-link takes 1.1 to 1.4 s. So the game keeps `--toolchain msvc` and `--incremental-link`.
-  The release link (ThinLTO, lld-link either way) is the same with 19.1.5 and 19.1.7: 52.9 to 66.6
-  against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
-- **A limit of stage 1:** the bundled clang has no Visual Studio of its own, so a project's C++
-  sources (a C library's .cpp) take the newest MSVC's STL, which may want a newer clang (Build
-  Tools 18's wants clang 20). C sources and Kpp programs are not affected.
-- tests\toolchain.ps1 builds through an installation made of kppc and Visual Studio's clang and
-  lld-link: `bin\` by default, `--toolchain msvc`, the errors, and a project's debug link.
+  lld-link's debug link with a PDB takes 5.7 to 9.7 s, 80% of it merging the 5.2 M type records of
+  the Visual Studio-built libraries' debug information (the PDB 485 MB, link.exe's 77 MB), against
+  0.4 to 1.5 s for link.exe's incremental relink; without a PDB lld-link takes 1.1 to 1.4 s. The
+  game, which links Visual Studio-built C++ libraries, keeps `--toolchain msvc` and
+  `--incremental-link`. The release link (ThinLTO) is the same with lld 19.1.5 and 19.1.7: 52.9 to
+  66.6 against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
+- **Checked:** tests\toolchain.ps1 (an installation made of llvm-mingw and this kppc: its default,
+  `--toolchain msvc`, the errors, a project's debug link, and that its programs import Windows' DLLs
+  alone), tests\windowsgnu.ps1 (the 45 end-to-end programs in the GNU dialect), and
+  `run_spec.py --target windows-gnu` (KPP_CLANG naming llvm-mingw's clang; 2026-11-02: every
+  snippet the default target passes).
 
 ## Continuous integration
 

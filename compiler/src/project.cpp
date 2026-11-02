@@ -806,22 +806,25 @@ namespace
         return false;
       }
       // The flags of every object: Factorio's prebuilt libraries' (/O2 /MT, no assertions), the
-      // library's includes and defines; no warnings, since the code is the library's own.
-      std::string flags = "/nologo /c /O2 /MT /DNDEBUG /w";
+      // library's includes and defines; no warnings, since the code is the library's own. The bundled
+      // toolchain (llvm-mingw) builds Windows' GNU dialect (design.md 17): clang's own flags, its
+      // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's.
+      bool gnu = bundledToolchain();
+      std::string flags = gnu ? "-c -O2 -DNDEBUG -w" : "/nologo /c /O2 /MT /DNDEBUG /w";
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
-      // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20). The
-      // bundled clang has no Visual Studio of its own: it takes the newest (design.md 17, stage 1).
+      // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
       fs::path installation = tools.parent_path().parent_path().parent_path().parent_path().parent_path();
-      std::string version = bundledToolchain() ? std::string() : readText(installation / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt");
+      std::string version = gnu ? std::string() : readText(installation / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt");
       while (!version.empty() && (version.back() == '\n' || version.back() == '\r' || version.back() == ' '))
         version.pop_back();
       if (!version.empty() && fs::is_directory(installation / "VC" / "Tools" / "MSVC" / version, ec))
         flags += " /vctoolsdir " + quoteArg((installation / "VC" / "Tools" / "MSVC" / version).string());
       for (const std::string& i : c.includes)
-        flags += " /I" + quoteArg(rooted(root, i).string());
+        flags += (gnu ? " -I" : " /I") + quoteArg(rooted(root, i).string());
       for (const std::string& d : c.defines)
-        flags += " /D" + quoteArg(d);
-      std::string cppFlags = " /EHsc /std:" + (c.language.empty() ? std::string("c++17") : c.language);
+        flags += (gnu ? " -D" : " /D") + quoteArg(d);
+      std::string language = c.language.empty() ? std::string("c++17") : c.language;
+      std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       bool flagsChanged = readText(directory / "flags.txt") != flags + cppFlags;
       std::vector<std::string> commands;
       std::vector<fs::path> objects, logs;
@@ -838,10 +841,14 @@ namespace
           continue;
         bool cpp = source.extension() != ".c";
         logs.push_back(directory / (stem + ".log"));
-        // clang-cl is clang in its cl mode (the bundled toolchain has clang.exe alone).
-        commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
-                           " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
-                           " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
+        // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
+        if (gnu)
+          commands.push_back("\"" + quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
+                             " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
+        else
+          commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
+                             " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
+                             " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
       }
       fs::path lib = root / "build" / "clib" / (c.name + ".lib");
       if (!commands.empty() || !fs::exists(lib, ec))
@@ -880,11 +887,16 @@ namespace
         FILE* rsp = _wfopen((directory / "objects.rsp").c_str(), L"wb");
         if (rsp)
           fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
-        std::string archive = "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(lib.string()) +
-                              " @" + quoteArg((directory / "objects.rsp").string()) + "\"";
+        // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
+        std::string archive = gnu ? "\"" + quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(lib.string()) + " @" +
+                                      quoteArg((directory / "objects.rsp").string()) + "\""
+                                  : "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(lib.string()) + " @" +
+                                      quoteArg((directory / "objects.rsp").string()) + "\"";
+        if (gnu)
+          fs::remove(lib, ec); // (llvm-ar adds to an archive that is there)
         if (system(archive.c_str()) != 0)
         {
-          fprintf(stderr, "error: llvm-lib could not archive the C library %s\n", c.name.c_str());
+          fprintf(stderr, "error: %s could not archive the C library %s\n", gnu ? "llvm-ar" : "llvm-lib", c.name.c_str());
           return false;
         }
       }

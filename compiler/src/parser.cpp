@@ -455,6 +455,18 @@ namespace
           expect(P::RParen, "expected ')' after __declspec(align(...)");
           expect(P::RParen, "expected ')' after __declspec(align(...)");
         }
+        else if (atIdent() && spelling() == "__attribute__" && at(P::LParen, 1) && at(P::LParen, 2) && atIdent(3) &&
+                 (spelling(3) == "aligned" || spelling(3) == "__aligned__" || spelling(3) == "align") && at(P::LParen, 4))
+        {
+          // `__attribute__((aligned(16)))`, MinGW-w64's DECLSPEC_ALIGN (and its `__declspec(align(16))`,
+          // which it spells `__attribute__((align(16)))`): as __declspec(align(16)) above.
+          for (int i = 0; i < 5; ++i)
+            advance();
+          pendingAlignment = parseExpression();
+          expect(P::RParen, "expected ')' after __attribute__((aligned(...)))");
+          expect(P::RParen, "expected ')' after __attribute__((aligned(...)))");
+          expect(P::RParen, "expected ')' after __attribute__((aligned(...)))");
+        }
         else if (atIdent() && (spelling() == "__declspec" || spelling() == "__attribute__" || spelling() == "__pragma" ||
                                spelling() == "alignas") && at(P::LParen, 1))
         {
@@ -5805,6 +5817,51 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
              s == "__unaligned";
     };
     tokens.erase(std::remove_if(tokens.begin(), tokens.end(), isNoise), tokens.end());
+  }
+  if (cMode)
+  {
+    // C headers in the GNU dialect (MinGW-w64's, windows-gnu): `__extension__` before a declaration,
+    // `__restrict__` (MSVC's `__restrict`), and `__attribute__((...))` where MSVC's put a calling convention, between a declaration's type
+    // and its name and inside a declarator (`typedef int (__attribute__((__cdecl__)) *f)(int)`).
+    // Both go, except the attributes that say something about a type (vector_size, aligned, packed,
+    // mode), which stay where the declaration grammar takes them.
+    auto spelled = [&](const Token& t) { return std::string_view(text.data() + t.offset, t.length); };
+    auto identifier = [&](const Token& t, std::string_view s) { return TokenKind(t.kind) == TokenKind::Identifier && spelled(t) == s; };
+    std::vector<Token> kept;
+    kept.reserve(tokens.size());
+    for (size_t i = 0; i < tokens.size(); ++i)
+    {
+      if (identifier(tokens[i], "__extension__") || identifier(tokens[i], "__restrict__"))
+        continue;
+      if (identifier(tokens[i], "__attribute__") && i + 2 < tokens.size() && spelled(tokens[i + 1]) == "(" && spelled(tokens[i + 2]) == "(")
+      {
+        size_t end = i + 1;
+        bool typeAttribute = false;
+        for (int depth = 0; end < tokens.size(); ++end)
+        {
+          std::string_view s = spelled(tokens[end]);
+          if (s == "(")
+            ++depth;
+          else if (s == ")" && --depth == 0)
+            break;
+          else if (TokenKind(tokens[end].kind) == TokenKind::Identifier)
+          {
+            std::string_view a = s;
+            if (a.size() > 4 && a.starts_with("__") && a.ends_with("__"))
+              a = a.substr(2, a.size() - 4);
+            if (a == "vector_size" || a == "aligned" || a == "align" || a == "packed" || a == "mode")
+              typeAttribute = true;
+          }
+        }
+        if (!typeAttribute && end < tokens.size())
+        {
+          i = end; // past its closing ')'
+          continue;
+        }
+      }
+      kept.push_back(tokens[i]);
+    }
+    tokens = std::move(kept);
   }
   out.tokens = &tokens;
   out.text = text;
