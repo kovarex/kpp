@@ -905,8 +905,11 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
   when all of them are.
-- **publish:** on master only, after run_tests and every spec shard are green: the package and the
-  release (below). A pull request packages nothing.
+- **package:** on master only, after build and beside the tests (kovarex, 2026-11-02): the package
+  (below), handed on as the artifact `package` (zip, installer, kpp.vsix). It publishes nothing.
+- **publish:** on master only, and only when every job above is green (run_tests' halves, every
+  spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
+  no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
 
 Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Every push to master and every pull request:** build, run_tests and the debug spec.

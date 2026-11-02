@@ -34,8 +34,9 @@ concurrency:
 jobs:
   # The jobs run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
   # the repository variable KPP_CI_RUNNER. kppc is built once (build) and handed to the test jobs as
-  # the artifact "kppc"; run_tests' 2 halves and the spec's shards run at once; package and publish run only
-  # when every one of them is green (docs/build.md, "Continuous integration"). Steps are scripts
+  # the artifact "kppc"; run_tests' 2 halves, the spec's shards and (on master) package run at once;
+  # publish runs only when every one of them is green, so a red run publishes nothing
+  # (docs/build.md, "Continuous integration"). Steps are scripts
   # (Windows PowerShell 5.1, cmd) except checkout, cache and the artifact's upload and download.
   build:
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
@@ -251,12 +252,16 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
-  # Every green run on master packages kpp and publishes it, after every test job above.
-  publish:
-    needs: [run_tests, spec]
+  # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
+  # the artifact "package". Packaging publishes nothing.
+  package:
+    needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -278,6 +283,7 @@ jobs:
       # already, nightly-<date> (UTC), the day's release, which tools/release/settle.ps1 never deletes (a
       # second nightly run on the same day replaces it).
       - name: Version
+        id: version
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -287,6 +293,8 @@ jobs:
           $tag = if ('${{ github.event_name }}' -eq 'schedule') { 'nightly-' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { "v$version" }
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "KPP_TAG=$tag" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "version=$version" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
+          "tag=$tag" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
           "version $version, tag $tag"
           "CPUs: $env:NUMBER_OF_PROCESSORS"
           node --version
@@ -307,6 +315,45 @@ jobs:
           tools\release\package.ps1
           if (-not (Test-Path "build\release\kpp-$env:KPP_VERSION-setup.exe")) { throw 'no installer' }
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: |
+            build/release/kpp-${{ steps.version.outputs.version }}.zip
+            build/release/kpp-${{ steps.version.outputs.version }}-setup.exe
+            build/release/kpp/kpp.vsix
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
+  # Publishes the package, only when every job above is green: run_tests' halves, every spec shard
+  # and package. A red run, or a cancelled one, publishes nothing: no release, no tag, no kpp.net
+  # upload, and Latest stays where it was.
+  publish:
+    needs: [run_tests, spec, package]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 30
+    env:
+      KPP_VERSION: ${{ needs.package.outputs.version }}
+      KPP_TAG: ${{ needs.package.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: build/release
+
+      - name: The package's files
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp.vsix") {
+            if (-not (Test-Path $f)) { throw "no $f in the artifact package" }
+            "$f $((Get-Item $f).Length) bytes"
+          }
 
       # The package, through tools/release/publish.ps1: the forge's full release $KPP_TAG, made at this
       # commit through the forge's API (GitHub's, or Forgejo's when github.api_url ends in /api/v1),
