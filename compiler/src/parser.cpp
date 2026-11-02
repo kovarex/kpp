@@ -866,8 +866,8 @@ namespace
             b->isUnsigned = true;
           else if (k == Kw::signed_)
             b->isSigned = true;
-          else
-            b->keyword = k;
+          else if (k != Kw::int_)
+            b->keyword = k; // (`int` is the default: `short int` and `int short` are short)
           any = true;
           advance();
         }

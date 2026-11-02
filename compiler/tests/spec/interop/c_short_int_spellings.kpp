@@ -1,0 +1,8 @@
+// spec: a C header's `short int`, `unsigned short int` and `signed short int` are 16 bits, in a typedef, a struct's members and an inline function's parameter, result and cast (`long int` stays 4 bytes, as MSVC's long)
+// factorio: none; glibc's `typedef unsigned short int uint16_t`, so ntohs and htons returned 32 bits on Linux (thread G, libraries/net)
+extern "C" import "c_short_int_spellings.h";
+int main()
+{
+  println((int)sizeof(ShortPair), " ", (int)sizeof(u16), " ", (int)swap16((u16)0x1234), " ", (int)swap16((u16)0x12345), " ", (int)sizeLongInt());
+  return 0;
+}

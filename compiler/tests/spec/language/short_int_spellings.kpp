@@ -1,11 +1,17 @@
-// spec: `short int`, `signed short int` and `unsigned short int` are the 16-bit short and unsigned short, as `short` and `int short` already are; through a C import too (glibc's uint16_t is `unsigned short int`, so ntohs and htons returned 32 bits on Linux)
+// spec: `short int`, `signed short int` and `unsigned short int` are the 16-bit short and unsigned short, as `short` and `int short` already are; through a C import too (glibc's uint16_t is `unsigned short int`, so ntohs and htons returned 32 bits on Linux); every multi-word spelling, in any order, is its type (`int` beside another keyword names nothing more): long int, long long int, unsigned long long int, int unsigned long, signed char, long double
 // factorio: none; found by thread G for libraries/net on Linux (ntohs gave port 16809728)
-// pending: `short int` and `unsigned short int` are 4-byte ints, in kpp source and in C imports (`declare i32 @ntohs(i32)`)
 int main()
 {
   short int a = (short int)40000;
   signed short int b = (signed short int)40000;
   unsigned short int c = (unsigned short int)70000;
   println(format("{} {} {} {} {} {}", (int)sizeof(short int), (int)sizeof(signed short int), (int)sizeof(unsigned short int), (int)a, (int)b, (int)c));
+  println((int)sizeof(int short), " ", (int)sizeof(short unsigned int), " ", (int)sizeof(int signed short), " ", (int)sizeof(int unsigned short));
+  println((int)sizeof(long int), " ", (int)sizeof(long long int), " ", (int)sizeof(unsigned long long int), " ", (int)sizeof(int unsigned long), " ", (int)sizeof(int long long), " ", (int)sizeof(long unsigned long int));
+  println((int)sizeof(signed char), " ", (int)sizeof(char signed), " ", (int)sizeof(long double), " ", (int)sizeof(double long), " ", (int)sizeof(signed), " ", (int)sizeof(signed int));
+  signed char s = (signed char)200;
+  int unsigned long u = (int unsigned long)-1;
+  long long int big = (long long int)1 << 40;
+  println((int)s, " ", u == 4294967295u, " ", big == 1099511627776);
   return 0;
 }
