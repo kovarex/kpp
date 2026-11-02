@@ -169,6 +169,15 @@ builds win less unless machine code is cached per function.
   declared, not compiled: the library provides them (the link line adds
   `legacy_stdio_definitions` for the UCRT's inline printf/scanf family). `--cinclude DIR` adds
   include directories for the imports.
+- **Converted code imports once per library (kovarex, 2026-11-02).** An import is the whole program's
+  wherever it is written, so the converter writes no import into a converted file: each library's
+  (each converted root's) C headers are imported once, in its `c-imports.kpp` (src/c-imports.kpp for
+  the game), in the include order of its files, not sorted (a Windows header may need another
+  before it: dbghelp.h and psapi.h need windows.h). stdlib.h, string.h and stdio.h, which C++'s
+  standard headers bring in, are imported only where a file uses a name of theirs without including
+  them, the names in a comment. The tree imported string.h 827 times, stdlib.h 800, stdio.h 778 and
+  stdint.h 400, 3,378 imports in all; it now has 225 in 17 files. Hand-written files keep their own
+  (a binding's import is part of it).
 - C constructs accepted for this: unions (one block of storage, every member at offset 0),
   anonymous struct/union members, `typedef struct { ... } Name;`, `(void)` parameter lists,
   MSVC's `__intN`, calling conventions and `__declspec`. Imported declarations never appear in
