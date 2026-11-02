@@ -897,7 +897,10 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 2026-11-02: the repository is public, so GitHub's standard runners cost nothing):
 - **build:** kppc, once, with `compiler\build.cmd` through ccache (below), handed to the other
   jobs as the artifact `kppc` (compiler\build\kppc.exe, kept 3 days).
-- **run_tests:** `compiler\tests\run_tests.cmd`, after build.
+- **run_tests:** `compiler\tests\run_tests.cmd --part 1` and `--part 2` in 2 jobs, after build:
+  part 2 is determinism, concurrency, generate and project, part 1 everything else (about 2
+  minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part 2/2:
+  checks 4/4)`; without `--part` it runs both, as by hand.
 - **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4` in 4 jobs, after build. A shard is
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only

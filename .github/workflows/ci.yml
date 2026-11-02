@@ -34,7 +34,7 @@ concurrency:
 jobs:
   # The jobs run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
   # the repository variable KPP_CI_RUNNER. kppc is built once (build) and handed to the test jobs as
-  # the artifact "kppc"; run_tests and the spec's shards run at once; package and publish run only
+  # the artifact "kppc"; run_tests' 2 halves and the spec's shards run at once; package and publish run only
   # when every one of them is green (docs/build.md, "Continuous integration"). Steps are scripts
   # (Windows PowerShell 5.1, cmd) except checkout, cache and the artifact's upload and download.
   build:
@@ -124,10 +124,17 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+  # run_tests in 2 halves at once (run_tests.cmd --part 1|2: part 2 is determinism, concurrency,
+  # generate and project, about 2 minutes either way).
   run_tests:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
+    name: run_tests ${{ matrix.part }}/2
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -159,7 +166,7 @@ jobs:
 
       - name: run_tests
         shell: cmd
-        run: compiler\tests\run_tests.cmd
+        run: compiler\tests\run_tests.cmd --part ${{ matrix.part }}
 
   # The spec in 4 shards (run_spec.py --shard I/4), debug on every run, and --release and --debug-info
   # on the nightly and hand-started ones: 4 or 12 jobs at once.

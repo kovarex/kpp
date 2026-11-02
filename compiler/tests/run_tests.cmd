@@ -4,16 +4,28 @@ rem then the other checks below. The last line sums up every part, and the exit 
 rem   run_tests: ALL PASSED (end-to-end 45/45, checks 27/27)                      exit 0
 rem   run_tests: 2 FAILED: e2e enums, targets (end-to-end 44/45, checks 26/27)     exit 1
 rem A check that cannot run here (lsp-smoke without Node.js) is added as ", skipped: ...".
+rem --part 1 or --part 2 runs one half, for CI's two parallel jobs (docs/build.md, "Continuous
+rem integration"): part 2 is determinism, concurrency, generate and project, part 1 the rest; its
+rem line names it: run_tests: ALL PASSED (part 2/2: checks 4/4).
 setlocal EnableDelayedExpansion
+set PART=
+if "%~1"=="--part" set "PART=%~2"
+if not "%~1"=="" if not "%PART%"=="1" if not "%PART%"=="2" (
+  echo run_tests.cmd takes --part 1 or --part 2, or nothing
+  echo run_tests: FAILED: bad arguments %*
+  exit /b 2
+)
 cd /d "%~dp0.."
 set KPPC=build\kppc.exe
 if not exist build\tests mkdir build\tests
 set FAIL=0
 set PASS=0
+set E2E=0
 set CHECKS=0
 set CHECKSOK=0
 set FAILED=
 set SKIPPED=
+if "%PART%"=="2" goto :part2
 for %%f in (tests\run\*.kpp) do (
   set NAME=%%~nf
   %KPPC% --quiet --exe build\tests\!NAME!.exe %%f > build\tests\!NAME!.compile.txt 2>&1
@@ -157,6 +169,8 @@ if errorlevel 1 (call :fail "windows-gnu") else (call :ok)
 rem The C import cache keys an import on the toolchain's environment (tests\importcache.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\importcache.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "import cache") else (call :ok)
+if "%PART%"=="1" goto :afterpart2
+:part2
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (
@@ -175,6 +189,8 @@ if errorlevel 1 (call :fail "generate") else (call :ok)
 rem A project's build.kpp (tests\project.ps1, docs/build.md): kpp new, two executables, settings, errors.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\project.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "project") else (call :ok)
+if "%PART%"=="2" goto :summary
+:afterpart2
 rem kpp in lower case (tests\lowercase.ps1, CLAUDE.md): no capitalised "kpp" outside identifiers.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\lowercase.ps1
 if errorlevel 1 (call :fail "lower case") else (call :ok)
@@ -239,7 +255,10 @@ rem The one line that says whether everything passed, and the exit code that say
 rem (explicitly: the batch file's exit code would otherwise be the last check's).
 rem (!...!, not %...%: a skip's reason or a check's name may hold parentheses, which would end the
 rem if block below)
+:summary
 set "SUMMARY=end-to-end %PASS%/%E2E%, checks %CHECKSOK%/%CHECKS%"
+if "%PART%"=="1" set "SUMMARY=part 1/2: !SUMMARY!"
+if "%PART%"=="2" set "SUMMARY=part 2/2: checks %CHECKSOK%/%CHECKS%"
 if defined SKIPPED set "SUMMARY=!SUMMARY!, skipped: !SKIPPED!"
 if %FAIL% neq 0 (
   echo run_tests: %FAIL% FAILED: !FAILED! ^(!SUMMARY!^)
