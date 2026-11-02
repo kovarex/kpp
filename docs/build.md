@@ -874,13 +874,15 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     "Resource not accessible by integration"): a run whose commit predates a workflow change pushed
     while it ran cannot publish, and says so; the next run publishes.
 
-  `tools/release/settle.ps1` then makes the release of the highest run number GitHub's "Latest",
+  `tools/release/settle.ps1` then makes the release of the highest version GitHub's "Latest",
   which https://github.com/kovarex/kpp/releases/latest and the repository's sidebar show, and
-  factorio-in-kpp's CI downloads. It goes by the run number in the release's notes ("ci run <N>"),
-  not by which run finished last: push, nightly and hand-started runs have concurrency groups of
-  their own, so an older run can finish after a newer one, and it then leaves the newer one Latest.
-  It also deletes the push releases (`v<version>`) beyond the newest 20, each with its tag; the
-  nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
+  factorio-in-kpp's CI downloads. It takes the version from the release's title ("Kpp 0.2.5") and
+  compares it as numbers, so 0.2.0 is above 0.1.148 and 0.2.10 above 0.2.3; of a push and a
+  nightly release of one version, the push one (`v<version>`) is Latest. It goes by version, not by
+  which run finished last: push, nightly and hand-started runs have concurrency groups of their
+  own, so an older commit's run can finish after a newer one's, and it then leaves the newer one
+  Latest. It also deletes the push releases (`v<version>`) beyond the 20 highest versions, each
+  with its tag; the nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
   prerelease `dev` and only the nightly a numbered release, so a green push left Latest old; the run
   deletes `dev` now. Releases by hand stay with release.yml.
 - **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
