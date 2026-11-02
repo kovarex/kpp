@@ -130,31 +130,13 @@ if not errorlevel 1 (
     call :ok
   )
 )
-rem The same through LLVM's back end in kppc (src\backend.cpp), when this kppc has it (kppc --version):
-rem an IR bug of kppc's (KPP_TEST_BROKEN_MODULE=0: module 0 gets a use its definition does not
-rem dominate) is the verifier's message for module 0 and a failed build, never a crash or an object.
-%KPPC% --version | %SystemRoot%\System32\findstr.exe /c:"back end: LLVM's" > nul
-if errorlevel 1 (
-  if defined SKIPPED (set "SKIPPED=!SKIPPED!, rejected module in kppc (no LLVM back end)") else (set "SKIPPED=rejected module in kppc (no LLVM back end)")
-) else (
-  set KPP_TEST_BROKEN_MODULE=0
-  %KPPC% --quiet --keep-going --exe build\tests\rejected-llvm.exe tests\debuginfo\lines.kpp > nul 2> build\tests\rejected-llvm.errors.txt
-  set RC=!errorlevel!
-  set KPP_TEST_BROKEN_MODULE=
-  if !RC! equ 0 (
-    echo FAIL rejected module in kppc: the build exited 0
-    call :fail "rejected module in kppc"
-  ) else (
-    %SystemRoot%\System32\findstr.exe /c:"error: LLVM's back end rejected module 0" build\tests\rejected-llvm.errors.txt > nul && %SystemRoot%\System32\findstr.exe /c:"Instruction does not dominate all uses" build\tests\rejected-llvm.errors.txt > nul
-    if errorlevel 1 (
-      echo FAIL rejected module in kppc: build\tests\rejected-llvm.errors.txt does not report module 0 with the verifier's message
-      call :fail "rejected module in kppc"
-    ) else (
-      echo ok   rejected module in kppc reported
-      call :ok
-    )
-  )
-)
+rem The same through LLVM's back end in kppc (tests\backend.ps1), when this kppc has it: an IR bug
+rem (the verifier) or what the back end rejects (LLVM's diagnostics) fails its module with LLVM's
+rem message, for windows and windows-gnu.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\backend.ps1 -Kppc %KPPC%
+if errorlevel 3 (
+  if defined SKIPPED (set "SKIPPED=!SKIPPED!, LLVM back end (none in this kppc)") else (set "SKIPPED=LLVM back end (none in this kppc)")
+) else if errorlevel 1 (call :fail "LLVM back end") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

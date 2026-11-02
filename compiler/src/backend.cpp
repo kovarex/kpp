@@ -177,19 +177,32 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   }
   // As clang -O0 -c -ffunction-sections -fdata-sections -ffp-contract=off sets them for its back end
   // (the driver's own compile line; `clang -###` shows the cc1 flags): sections per function and per
-  // global, address-significance tables, strict floating-point contraction, objects an incremental
-  // link can patch, position-independent code, the generic x86-64 CPU.
+  // global, address-significance tables, strict floating-point contraction, position-independent
+  // code, the generic x86-64 CPU; and per target what Visual Studio's clang (windows) and llvm-mingw's
+  // (windows-gnu, the same LLVM 19.1.7) set apart.
+  llvm::Triple parsed(triple);
   llvm::TargetOptions targetOptions;
   targetOptions.FunctionSections = true;
   targetOptions.DataSections = true;
   targetOptions.EmitAddrsig = true;
   targetOptions.AllowFPOpFusion = llvm::FPOpFusion::Strict;
-  targetOptions.MCOptions.MCIncrementalLinkerCompatible = true;
-  // Constructors run in the order llvm.global_ctors lists them, as clang sets it: LLVM's default
-  // (false: the legacy .ctors section, run backwards) emitted the list reversed, so the globals were
-  // built at startup in the opposite order (found comparing the game's objects with clang's).
-  targetOptions.UseInitArray = true;
-  llvm::Triple parsed(triple);
+  if (parsed.isWindowsGNUEnvironment())
+  {
+    // llvm-mingw's: -fno-use-init-array (MinGW-w64's runtime runs the .ctors section, which LLVM
+    // writes in reverse so that it runs in llvm.global_ctors' order), -exception-model=seh, and no
+    // -mincremental-linker-compatible (lld links it, not link.exe /INCREMENTAL).
+    targetOptions.UseInitArray = false;
+    targetOptions.ExceptionModel = llvm::ExceptionHandling::WinEH;
+  }
+  else
+  {
+    // Visual Studio's: objects link.exe /INCREMENTAL can patch, and constructors run in the order
+    // llvm.global_ctors lists them (.CRT$XCU). LLVM's default (UseInitArray false: the legacy .ctors
+    // section) emitted the list reversed, so the globals were built at startup in the opposite order
+    // (found comparing the game's objects with clang's).
+    targetOptions.MCOptions.MCIncrementalLinkerCompatible = true;
+    targetOptions.UseInitArray = true;
+  }
   const char* cpu = parsed.getArch() == llvm::Triple::x86_64 ? "x86-64" : parsed.isAArch64() ? "generic" : "";
   std::unique_ptr<llvm::TargetMachine> machine(
     target->createTargetMachine(triple, cpu, "", targetOptions, llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::None));

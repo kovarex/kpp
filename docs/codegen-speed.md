@@ -508,12 +508,20 @@ Debug's CRCs 9,501/9,501 with 0 mismatches (1,115.7 s).
 fetches them: the archive's SHA-256 checked, 256 MB of it unpacked). A debug build's module goes from
 its text in memory to its object on kppc's own threads: the same -O0 pipeline and target options as
 clang's cc1 (`UseInitArray`, without which the constructor list came out reversed; the `.file` name
-clang writes), no IR file written, no clang started. A release build (ThinLTO), another target,
+clang writes), no IR file written, no clang started. A release build (ThinLTO), Linux,
 `--clang-flags` and `--debug-info` stay clang's; `KPP_BACKEND=clang` gives clang's path for comparing.
 Thread B's review added: each module's LLVM errors fail that module with LLVM's message (a handler on
 its context), a fatal error names the module before LLVM ends the process, the verifier checks
-every module after the parse (run_tests' "rejected module in kppc"), and the triple and data layout
-are compared with LLVM's, never replaced.
+every module after the parse, and the triple and data layout are compared with LLVM's, never
+replaced. run_tests' "LLVM back end" (tests\backend.ps1) breaks module 0 for the verifier and for
+LLVM's diagnostics (an instruction the assembler rejects), on windows and on windows-gnu.
+- windows-gnu, the self-contained release's default, is compiled in kppc too, with llvm-mingw's cc1
+  settings where they differ from Visual Studio's clang (`clang -###`): `-fno-use-init-array` (the
+  `.ctors` section, which LLVM writes reversed for MinGW-w64's runtime), `-exception-model=seh`, and
+  no `-mincremental-linker-compatible`; llvm-mingw's clang is the same LLVM 19.1.7. Equivalence
+  (`cg\gnu-ab.ps1`, `cg\objtree.py`): built through llvm-mingw's clang and in kppc, every object is
+  the same apart from the COFF timestamp: the 45 end-to-end programs' 3,017, kppsite's 85 and the
+  spec suite's 61,056 (`spec.cmd --target windows-gnu`, 1,005 pass and 9 pending both ways).
 - Equivalence: the 128 objects are clang's byte for byte, apart from the COFF timestamp
   (`cg\objcompare.py`), and the same at 1, 8 and 32 threads. The game: `--dump-data` 7/7 equal, the 45
   menu maps' checksums equal, the unit tests 9,501/9,501 with 0 CRC mismatches (1,254.4 s).
@@ -543,7 +551,7 @@ All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed)
 | `sampler\sampler.cpp`, `kppc-pdb.cmd` | the sampling profiler, and kppc with a PDB |
 | `paired.ps1`, `determinism.ps1`, `disk.ps1`, `homecheck.py` | paired builds against master; 1/8/32 threads; disk use; step 2's equivalence |
 | `timeline.py`, `inflate.py`, `lockprobe.py`, `lockrank.py` | a profile's timeline; thread time at 1 and 32 threads; a temporary lock probe (never committed) |
-| `objcompare.py A B`, `backend-ab.ps1`, `backend-four.ps1`, `backendprobe.py` | two builds' objects compared (the COFF timestamp masked); the back end in kppc against clang, interleaved; a temporary probe of each module's CPU time per back-end phase (never committed) |
+| `objcompare.py A B`, `objtree.py A B`, `backend-ab.ps1`, `backend-four.ps1`, `gnu-ab.ps1`, `backendprobe.py` | two builds' objects compared (the COFF timestamp masked), flat or by tree; the back end in kppc against clang, interleaved; windows-gnu built both ways (end-to-end, kppsite, spec); a temporary probe of each module's CPU time per back-end phase (never committed) |
 | `game.cmd`, `bench-menu.py` | a build of the game run from a scratch game directory (data by junction); the 45 menu maps |
 | `prof-codegen.txt(.stacks)` | the codegen profile |
 | `tp1.err` | `-time-passes` over all modules |

@@ -232,7 +232,7 @@ namespace
       printf("toolchain: %s (%s)\n", clang.c_str(), kind);
     else
       printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);
-    printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows (clang otherwise)" : "clang's");
+    printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows or windows-gnu (clang otherwise)" : "clang's");
     std::filesystem::path stdlib = defaultStdlib(compiler);
     printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");
     return 0;
@@ -1443,15 +1443,19 @@ namespace
     std::mutex moduleFailuresMutex;
     start = Clock::now();
     // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
-    // debug build's module compiled from its text in memory, no IR file written, no clang started.
-    // A release build (ThinLTO, lld), another target, --clang-flags and --debug-info (its objects not
-    // yet compared with clang's) stay clang's; so does any build with KPP_BACKEND=clang (the comparison).
+    // debug build's module for Windows (windows or windows-gnu) compiled from its text in memory, no
+    // IR file written, no clang started. A release build (ThinLTO, lld), Linux, --clang-flags and
+    // --debug-info (their objects not yet compared with clang's) stay clang's; so does any build with
+    // KPP_BACKEND=clang (the comparison).
     const char* backendChoice = getenv("KPP_BACKEND");
-    bool inProcess = inProcessBackend() && !options.optimize && options.target.msvc() && options.clangFlags.empty() && !options.debugInfo &&
+    bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() && !options.debugInfo &&
                      !(backendChoice && std::string(backendChoice) == "clang");
     // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
     // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
+    // KPP_TEST_BROKEN_ASM=K: module K gets an instruction the assembler rejects, which the verifier
+    // passes and only the back end finds (LLVM's diagnostics, not its verifier).
     const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
+    const char* brokenAsm = getenv("KPP_TEST_BROKEN_ASM");
     parallelFor(cg.modules.size(), options.threads, [&](size_t k)
     {
       std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
@@ -1463,6 +1467,8 @@ namespace
       }
       if (brokenModule && std::to_string(k) == brokenModule)
         cg.modules[k] += "\ndefine void @kpp.test.broken() {\n  %a = add i32 %b, 1\n  %b = add i32 %a, 1\n  ret void\n}\n";
+      if (brokenAsm && std::to_string(k) == brokenAsm)
+        cg.modules[k] += "\nmodule asm \"kpp_no_such_instruction\"\n";
       // A module whose text (and optimisation level) did not change keeps its object file.
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : cg.modules[k])

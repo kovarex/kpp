@@ -10,8 +10,11 @@ integration (`tools/vs/`). Open details are the questions at the end.
 in one process. It takes every `.kpp` under the given roots plus the standard library (`stdlib/`
 next to kppc, or `--std DIR`, or none with `--no-std`). It runs the front end and code generation
 on all threads and splits the IR into modules (two per thread by default, `--modules N`). It
-compiles each module with the bundled clang, skipping modules whose IR hash is unchanged (the
-`.N.hash`, `.N.ll` and `.N.o` files next to the executable are the object cache), and links. There
+compiles each module, skipping modules whose IR hash is unchanged (the `.N.hash` and `.N.o` files
+next to the executable are the object cache), and links. A debug build for Windows (windows or
+windows-gnu) compiles its modules in kppc, with LLVM's back end linked in (src/backend.cpp,
+docs/codegen-speed.md), when kppc was built with it; every other build runs the bundled clang per
+module on its `.N.ll` file. There
 are no headers, no per-file compile steps and nothing like make: a "build system" for kpp code is
 only the choice of kppc's arguments.
 
