@@ -1,14 +1,12 @@
 # Getting started with kpp
 
 kpp is a C++-like language and its compiler. This page covers installing it, making a first program
-and building a project. The decided language rules are in [design.md](design.md), the build
-description in [build.md](build.md).
+and building a project. The decided language rules are in [design.md](design.md).
 
 ## Install
 
-kpp runs on 64-bit Windows 10 and 11. Linux, macOS and FreeBSD hosts are planned
-([design.md](design.md), "Targets and hosts"); kpp on Windows can already build programs for Linux
-and FreeBSD with `--target`.
+kpp runs on 64-bit Windows 10 and 11, and builds programs for Linux and FreeBSD too (`--target`);
+other hosts are [planned](../readme.md#planned).
 
 1. Download the newest release from
    [github.com/kovarex/kpp/releases/latest](https://github.com/kovarex/kpp/releases/latest):

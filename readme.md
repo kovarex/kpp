@@ -35,47 +35,29 @@ Factorio already has (see [Status](#status)).
   (`kpp --lsp`), so completion, errors and navigation in VS Code, Visual Studio and other editors come
   from the same compilation, in the configuration you build.
 - **One compiler everywhere.** The same compiler and standard library on every platform, no
-  per-compiler quirks. kpp runs on Windows today and builds for Windows, Linux and FreeBSD from there;
-  Linux and macOS as hosts, and macOS as a target, are planned. A release is self-contained: it compiles and links without Visual Studio or a Windows SDK.
+  per-compiler quirks. kpp runs on Windows today and builds for Windows, Linux and FreeBSD from there.
+  A release is self-contained: it compiles and links without Visual Studio or a Windows SDK.
 - **No silent surprises.** An unsupported construct is a compile error, never a guess: a `struct` is a
-  checked public value type, a `class` checks access, two declarations of one name are an error,
-  and printing has no format strings to get wrong (`print("x = ", x)`).
-- **Less boilerplate.** Enums with methods, typed unions, reflection, tests in the language and
-  `appendTo` as the one way to turn anything into text: see [The language](#the-language).
+  checked public value type, a `class` checks access, two declarations of one name are an error.
 - **A build described in kpp.** `build.kpp` is ordinary kpp code, run by the compiler: targets,
   configurations, library options and a hook for the special cases, with no second build language.
 
 ## The language
 
-kpp is C++ with a few rules changed and a few things added. Everything below is marked by where it
-stands today: **works** (in today's compiler, with a test in `compiler/tests/spec/`), **planned**
-(decided, with the syntax shown, not built yet) or **open** (not decided). The decided rules are in
-[docs/design.md](docs/design.md).
+kpp is C++ with a few rules changed and a few things added. Everything in this section works today;
+what is decided but not built yet is under [Planned](#planned).
 
 ### Safer by default
 
-- **Exhaustive `switch` on an enum** (works). A `switch` without `default` must name every value,
-  or it does not compile; a value outside them (a corrupted byte, a bad cast) aborts at run time
-  instead of falling out of the switch.
-- **No implicit fallthrough** (planned). Every `case` ends with an implicit `break`; falling
-  through to the next case is written `fallthrough;`. Today `switch` still has C++'s rules, and
-  `fallthrough;` is accepted as C++'s `[[fallthrough]];`.
-- **Explicit by default** (planned). A constructor converts implicitly only when it is marked
-  `implicit`: `implicit Celsius(double degrees)`. The keyword works today; a constructor without it
-  still converts implicitly, as in C++, until the rule is turned on. Conversion operators get the
-  same rule.
-- **Required `this->`** (planned). A member is always written `this->x`, so adding a local or a
-  global never silently changes what an existing line means.
-- **Required `override`** (planned). A function that overrides a virtual function must say
-  `override`; today `override` is optional, as in C++.
-- **`this` is a reference** (planned): `this[7]`, `!this`, `this.x`, since `this` can be neither
-  changed nor null. Inside an enum's methods `this` already is the value (`this == North`, below).
-- **No format strings** (works). `println("x = ", x)` prints its arguments in sequence; a type
-  becomes text through its `appendTo`, and a pointer prints only through `address(p)`.
+- **Exhaustive `switch` on an enum.** A `switch` without `default` must name every value, or it does
+  not compile; a value outside them (a corrupted byte, a bad cast) aborts at run time instead of
+  falling out of the switch.
+- **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
+  through its `appendTo`, and a pointer prints only through `address(p)`.
 
 ### Less boilerplate
 
-- **Enums with methods** (works). The values go in an inner block; the enum also has `count`,
+- **Enums with methods.** The values go in an inner block; the enum also has `count`,
   `values` (for iteration), `str()` and `fromStr()`, generated, or written by hand to replace them.
 
   ```cpp
@@ -85,7 +67,7 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     bool isVertical() const { return this == North || this == South; }
     Direction opposite() const
     {
-      switch (this) // no default: every value is named, and a value outside them aborts
+      switch (this) // no default
       {
         case North: return South;
         case East: return West;
@@ -103,7 +85,7 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     return 0;
   }
   ```
-- **Typed unions** (works). `union enum` is an enum whose every value carries a value of its own
+- **Typed unions.** `union enum` is an enum whose every value carries a value of its own
   type, without std::variant's templates: constructed from a value of one of its types, read with
   `p[Name]` (checked against the tag), switched on exhaustively, compared and copied as
   std::variant is.
@@ -133,7 +115,7 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     return 0;
   }
   ```
-- **Reflection** (works). `for constexpr` over `members(T)` (or a typed union's
+- **Reflection.** `for constexpr` over `members(T)` (or a typed union's
   `alternatives(U)`) writes code once for every member, which replaces the macros and the
   hand-written lists that save, load or show a class:
 
@@ -161,7 +143,7 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
   ```
   The same `for constexpr` iterates a list of types (`types<A, B, C>`) or of constants. There is no
   preprocessor: `config` constants with `if constexpr`, `assert`, and these loops replace macros.
-- **No `typename` or `template` disambiguators** (works): the compiler knows what a dependent name
+- **No `typename` or `template` disambiguators**: the compiler knows what a dependent name
   is.
 
   ```cpp
@@ -176,25 +158,10 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     return 0;
   }
   ```
-- **The safe navigation `?->` and the Elvis `?:`** (planned). `a?->b?->foo()` calls `foo` only
-  when `a` and `a->b` are set, and as an expression gives the last member's default value (null for
-  a pointer) when one is not; `a ?: b` is `a ? a : b` with `a` evaluated once. The parser already
-  reads both; code generation does not yet.
-- **One definition for const and non-const** (planned). `both_const` writes a getter once for both
-  constnesses (`both_const B* getB() both_const`), and `class_const` a class once for both, so an
-  iterator and a const iterator are one definition (`iterator` and `iterator::const`). The exact
-  rules are not written down yet.
-- **Named arguments** (planned): passing only the default arguments you want to change, by
-  name. The syntax is not decided yet. Choosing among default arguments by the argument's type
-  (`foo(B(3), C(4))` for `foo(A a = ..., B b = ..., C c = ...)`) is open.
-- **Accumulated virtual functions** (open). A virtual function that runs every level of the
-  hierarchy without calling `super::` (`save`, `load`) was proposed as `accumulate`; reflection
-  (above) now writes save and load once for every class, and whether `accumulate` is still needed
-  is open.
 
 ### Tests
 
-- **Tests in the language** (works). A `test` sits next to the code it tests, inside a class too
+- **Tests in the language.** A `test` sits next to the code it tests, inside a class too
   (where it sees private members); `check` reports the expression, where it is and its operands'
   values, and goes on; `require` ends the test. Without `--test` tests cost nothing.
 
@@ -213,12 +180,11 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     return 0;
   }
   ```
-  `kpp --test` builds and runs them (`--filter TEXT`, `--list`, `--report FILE`). Code coverage in
-  the compiler is open.
+  `kpp --test` builds and runs them (`--filter TEXT`, `--list`, `--report FILE`).
 
 ### Existing code
 
-- **C libraries** (works). `extern "C" import "header.h";` anywhere in the program imports a C
+- **C libraries.** `extern "C" import "header.h";` anywhere in the program imports a C
   header, its constants included. C++ libraries are used through a thin C wrapper or converted:
   kpp calls only C.
 
@@ -231,39 +197,54 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
     return 0;
   }
   ```
-- **Converting C++** (works for the C++ that Factorio uses). The compiler's `--convert DIR`
-  rewrites C++ sources as kpp: the includes go, macros are replaced by kpp's constructs or
-  expanded, and the rest stays as it was. Factorio,
-  its tests and its own libraries convert this way and run (see [Status](#status)); C libraries
-  convert with `--c-sources`.
-- **Editors** (works). The compiler is the language server (`kpp --lsp`), so VS Code, Visual
-  Studio and any editor speaking the Language Server Protocol get completion, errors and navigation
-  from the same compilation that builds the program ([docs/editors.md](docs/editors.md)).
+- **Converting C++.** The compiler's `--convert DIR` rewrites C++ sources as kpp: the includes go,
+  macros are replaced by kpp's constructs or expanded, and the rest stays as it was; C sources
+  convert with `--c-sources`. It handles the C++ Factorio is written in (see [Status](#status)).
 
 ## Planned
 
-Decided or intended, and not built yet; none of it works today.
+Decided, and not built yet:
 
-- **Language rules** (planned, above): required `this->`, required `override`, `this` as a
-  reference, explicit by default, no implicit fallthrough, `?->` and `?:`, `both_const` and
-  `class_const`, named arguments.
-- **Linux and macOS as hosts, macOS as a target** (planned). kpp runs on Windows and builds for
-  Windows, Linux and FreeBSD today ([design.md](docs/design.md), "Targets and hosts").
-- **Factorio on the bundled toolchain** (planned). The game still builds with an installed Visual
-  Studio (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves
-  to kpp's own toolchain as they are converted or rebuilt (design.md 17).
-- **Streaming code generation** (planned). LLVM inside the compiler, each thread handing its
-  functions straight to the back end, instead of writing IR text for clang to read again;
-  estimated at a few seconds off a clean debug build of the game
-  ([docs/codegen-speed.md](docs/codegen-speed.md)).
-- **The library registry on kpp.net** (planned): `kpp add zlib`, versions locked by content
-  hash, library options listed when you add one ([docs/library-registry.md](docs/library-registry.md)).
-- **A localisation library** (planned), with its own tools, for text whose word order changes per
-  language.
-- **kpp's own IDE** (under consideration). Editors get kpp through the language server today;
-  whether to build an editor of its own on top is open ([docs/ide.md](docs/ide.md)).
-- **Access levels between `private` and public** (under consideration), for example a member
-  visible to its own directory or subsystem, where C++ code uses `friend` today.
+- **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is
+  written `fallthrough;` (accepted today as C++'s `[[fallthrough]];`, while `switch` keeps C++'s
+  rules).
+- **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
+  `implicit` (`implicit Celsius(double degrees)`). The keyword is accepted today, but an unmarked
+  constructor still converts, as in C++.
+- **Required `this->`**, so that adding a local or a global never changes what an existing line
+  means.
+- **Required `override`** on every function that overrides a virtual one.
+- **`this` is a reference**: `this[7]`, `!this`, `this.x`. (Inside an enum's methods `this` already
+  is the value.)
+- **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
+  `a->b` are set, and as an expression gives the last member's default value when one is not;
+  `a ?: b` is `a ? a : b` with `a` evaluated once.
+- **One definition for const and non-const**: `both_const` writes a getter once for both
+  constnesses (`both_const B* getB() both_const`), `class_const` a class once for both (an iterator
+  and its const iterator). The exact rules are not written down yet.
+- **Named arguments**, passing only the defaults you change, by name; the syntax is not chosen yet.
+- **Linux and macOS as hosts, macOS as a target** ([design.md](docs/design.md), "Targets and
+  hosts").
+- **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio
+  (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves to
+  kpp's own toolchain as they are converted or rebuilt (design.md 17).
+- **Streaming code generation**: LLVM inside the compiler, each thread handing its functions
+  straight to the back end instead of writing IR text for clang to read again; estimated at a few
+  seconds off a clean debug build of the game ([docs/codegen-speed.md](docs/codegen-speed.md)).
+- **The library registry on kpp.net**: `kpp add zlib`, versions locked by content hash, library
+  options listed when you add one ([docs/library-registry.md](docs/library-registry.md)).
+- **A localisation library**, with its own tools, for text whose word order changes per language.
+
+Under consideration, not decided:
+
+- **kpp's own IDE** on top of the language server ([docs/ide.md](docs/ide.md)).
+- **Access levels between `private` and public**, for example a member visible to its own
+  directory or subsystem, where C++ code uses `friend` today.
+- **Choosing a default argument by its type**: `foo(B(3), C(4))` for `foo(A a = ..., B b = ...,
+  C c = ...)`.
+- **`accumulate`**: a virtual function that runs every level of the hierarchy without calling
+  `super::`. Reflection already writes save and load once for every class.
+- **Code coverage** in the compiler.
 
 ## Status
 
