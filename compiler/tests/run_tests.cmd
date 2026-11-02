@@ -16,6 +16,9 @@ if not "%~1"=="" if not "%PART%"=="1" if not "%PART%"=="2" (
   exit /b 2
 )
 cd /d "%~dp0.."
+rem Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
+rem build here until program pieces rely on it.
+set KPP_CHECK_BARRIER=1
 set KPPC=build\kppc.exe
 if not exist build\tests mkdir build\tests
 set FAIL=0

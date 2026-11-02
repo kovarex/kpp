@@ -380,9 +380,13 @@ namespace
     // barrierDefined and barrierCounts are level 0's barrier, for the check at the end that every
     // such name has a declaration and that it is its definition's (checkRequestDeclarations).
     std::unordered_map<std::string, std::string> requestDeclarations; // under definitionsMutex
-    std::unordered_set<std::string> barrierDefined;
+    std::unordered_set<std::string> barrierDefined; // every name a text defines at the barrier (only with checkBarrier)
     std::vector<size_t> barrierCounts; // per module: its definitions at level 0's barrier
     bool barrierTaken = false;
+    // KPP_CHECK_BARRIER (set by run_tests and spec until program pieces are assembled): the check at
+    // the end that every name level 0 uses and only a later text defines has a barrier declaration,
+    // and that it is its definition's (B's review: test-only until the pieces rely on it).
+    bool checkBarrier = getenv("KPP_CHECK_BARRIER") != nullptr;
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
@@ -6359,13 +6363,7 @@ namespace
         // Declared by the call, for a program piece whose function calls an operator its writer (an
         // instance) emits at a later level (Shared::requestDeclarations).
         if (recordingRequests())
-          try
-          {
-            recordRequestDeclaration(functionName, declarationText(lambdaSignatureOf(callTy, at), functionName));
-          }
-          catch (...)
-          {
-          }
+          withoutFailing([&] { recordRequestDeclaration(functionName, declarationText(lambdaSignatureOf(callTy, at), functionName)); });
         emitCallOperatorOnDemand(t, callTy, functionName);
       }
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
@@ -6662,6 +6660,33 @@ namespace
     {
       std::lock_guard lock(sh.definitionsMutex);
       sh.requestDeclarations.emplace(name, std::move(declaration));
+    }
+
+    // Runs f, a computation for a request's declaration, not part of what is being emitted: when it
+    // fails (Unsupported), what fail() recorded is taken back (the error, the erroring mark of the
+    // function being emitted, the last failure), and false is returned. The definition then fails
+    // the same way where it is emitted, and reports it there.
+    template<typename F>
+    bool withoutFailing(F&& f)
+    {
+      size_t errorsBefore = errors.size(), erroringBefore = erroring.size();
+      bool unattributedBefore = unattributedErrors, shownBefore = lastFailureShown;
+      std::string failureBefore = lastFailure;
+      try
+      {
+        f();
+        return true;
+      }
+      catch (Unsupported&)
+      {
+        errors.resize(errorsBefore);
+        if (erroring.size() != erroringBefore)
+          erroring.erase(owner);
+        unattributedErrors = unattributedBefore;
+        lastFailure = std::move(failureBefore);
+        lastFailureShown = shownBefore;
+        return false;
+      }
     }
 
     // --- C calling conventions (docs/design.md, "Targets and hosts") ---
@@ -7079,7 +7104,7 @@ namespace
       const Ty* savedClassTy = currentClassTy;
       ParsedFile* savedFile = currentFile;
       std::string declaration;
-      try
+      withoutFailing([&]
       {
         currentFile = f->file;
         currentArgs = args.empty() ? nullptr : &args;
@@ -7088,11 +7113,7 @@ namespace
           if (Decl* cls = global.owningClass(f))
             currentClassTy = cls->kind == NodeKind::EnumDecl ? types.enumType(cls) : canonicalClass(types.classType(cls, {}), f);
         declaration = declarationText(signatureOf(f), name);
-      }
-      catch (...)
-      {
-        declaration.clear();
-      }
+      });
       currentArgs = savedArgs;
       currentClassTy = savedClassTy;
       currentFile = savedFile;
@@ -9569,6 +9590,9 @@ namespace
       "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {";
     static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
     static std::string baseSearchHeader(const std::string& name) { return "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {"; }
+    // The runtime's global that function bodies read (a `throw;` outside a handler), written after the
+    // levels too: one line, in the shared declarations (homed in a debug build), declared at the barrier.
+    static constexpr const char* kppEhCurrentLine = "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat";
     static std::vector<std::string> runtimeHeaders()
     {
       return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
@@ -16883,7 +16907,7 @@ namespace
                     fmt3 = cStringConstant(" (exceptions do not unwind on this target yet: docs/design.md, \"Targets and hosts\", stage 3)\n");
         emittingShared = false;
         std::string err = stderrStream();
-        shared += sharedComdat("@kpp.eh.current") + "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat\n";
+        decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
         shared += baseSearchFunction("@kpp_eh_offset");
         std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_throw") +
@@ -16927,7 +16951,7 @@ namespace
                   "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n  ret void\n}\n";
         // A handler's record is the current exception while it runs (kpp.eh.current, the record of
         // the handler around it kept in its sixth word): what `throw;` in a function it calls raises.
-        shared += sharedComdat("@kpp.eh.current") + "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat\n";
+        decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
         shared += sharedComdat("@kpp_eh_begin") +
                   std::string(kppEhBeginHeader) + "\nentry:\n"
                   "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
@@ -19400,6 +19424,43 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
   std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
 }
 
+// Every name the build's texts define so far, each with the line defining it (a global's) or empty
+// (a function's): the functions defined (definedIn), and the globals the shared declarations, the
+// shared definitions and each module's own declarations define (not `external` ones). For the
+// barrier check (Shared::checkBarrier), at the barrier and at the end.
+static std::unordered_map<std::string, std::string> definedNames(const Shared& sh)
+{
+  std::unordered_map<std::string, std::string> names;
+  for (const auto& [name, module] : sh.definedIn)
+    names.emplace(name, std::string());
+  auto globalsIn = [&](std::string_view text)
+  {
+    for (size_t pos = 0; pos < text.size();)
+    {
+      size_t end = text.find('\n', pos);
+      if (end == std::string_view::npos)
+        end = text.size();
+      std::string_view line = text.substr(pos, end - pos);
+      pos = end + 1;
+      size_t eq = line.find(" = ");
+      if (line.empty() || line[0] != '@' || eq == std::string_view::npos || line.substr(eq + 3).starts_with("external "))
+        continue;
+      names.emplace(std::string(line.substr(0, eq)), std::string(line));
+    }
+  };
+  for (const std::string& entry : sh.decls.entries)
+    globalsIn(entry);
+  for (const std::string& entry : sh.shared.entries)
+    globalsIn(entry);
+  for (const SharedText& own : sh.moduleDecls)
+    for (const std::string& entry : own.entries)
+      globalsIn(entry);
+  for (const std::vector<Shared::OwnedEntry>& owned : sh.ownedEntries)
+    for (const Shared::OwnedEntry& o : owned)
+      globalsIn(o.text);
+  return names;
+}
+
 // The function an entry of the shared definitions defines, when that is all it holds (its comdat
 // line, then one linkonce_odr definition: a destructor helper `@kpp.dtor.<class>`, a runtime
 // function such as `@kpp_throw`), with its header; an empty name for any other entry.
@@ -19581,8 +19642,6 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         // Level 0's barrier (Shared::requestDeclarations): what is defined at it, by name and per
         // module (the definitions are only appended to until the end sorts them).
         sh.barrierTaken = true;
-        for (auto& [name, module] : sh.definedIn)
-          sh.barrierDefined.insert(name);
         sh.barrierCounts.resize(sh.moduleCount);
         for (unsigned k = 0; k < sh.moduleCount; ++k)
           sh.barrierCounts[k] = sh.definitions[k].size();
@@ -19596,12 +19655,21 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
             std::string name, declaration = Emitter::sharedDeclarationOf(entry.substr(start, entry.find('\n', start) - start), &name);
             sh.requestDeclarations.emplace(name, std::move(declaration));
           }
-        // The runtime's functions written after the levels, from the headers they are written from.
+        // The runtime's functions and global written after the levels, from the headers and the
+        // line they are written from.
         for (const std::string& header : Emitter::runtimeHeaders())
         {
           std::string name, declaration = Emitter::sharedDeclarationOf(header, &name);
           sh.requestDeclarations.emplace(name, std::move(declaration));
         }
+        {
+          std::string_view name;
+          std::string declaration = Emitter::externalDeclarationOf(Emitter::kppEhCurrentLine, name);
+          sh.requestDeclarations.emplace(std::string(name), std::move(declaration));
+        }
+        if (sh.checkBarrier)
+          for (const auto& [name, line] : definedNames(sh))
+            sh.barrierDefined.insert(name);
       }
     }
   };
@@ -19689,7 +19757,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     {
       std::string header;
       std::string name = sharedFunctionIn(entry, header);
-      if (name.empty())
+      // (A release build's ThinLTO has every other shared function in every module, as before.)
+      if (name.empty() || (sh.importableModules != 0 && !name.starts_with("@kpp.dtor.")))
       {
         everywhere.push_back(std::move(entry));
         continue;
@@ -19706,12 +19775,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     }
     sh.shared.entries = std::move(everywhere);
   }
-  // Streaming's barrier check (Shared::requestDeclarations), with every function defined (the
-  // destructor helpers homed just above): each function a level-0 definition names that was defined
-  // only after level 0 has the declaration of its request, and each request's declaration is its
-  // definition's. A difference is kppc's error, never a program piece assembled from it.
-  if (sh.barrierTaken && result.errors.empty())
+  // Streaming's barrier check (Shared::checkBarrier), every text written (the shared functions homed
+  // just above): each name a level-0 definition uses that only a text written after level 0
+  // defines (an instance, a destructor helper, the runtime's functions and global) has a barrier
+  // declaration, and each barrier declaration is its definition's (a function's declare line, a
+  // global's external declaration). A difference is kppc's error, never a program piece assembled from it.
+  if (sh.barrierTaken && sh.checkBarrier && result.errors.empty())
   {
+    std::unordered_map<std::string, std::string> defined = definedNames(sh);
     std::map<std::string, std::string> unknown; // a name -> the first level-0 definition naming it
     for (unsigned k = 0; k < sh.moduleCount; ++k)
       for (size_t i = 0; i < sh.barrierCounts[k] && i < sh.definitions[k].size(); ++i)
@@ -19720,16 +19791,27 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         for (auto [at, length] : d.names)
         {
           std::string name = d.text.substr(at, length);
-          if (sh.definedIn.count(name) && !sh.barrierDefined.count(name) && !sh.requestDeclarations.count(name))
+          if (defined.count(name) && !sh.barrierDefined.count(name) && !sh.requestDeclarations.count(name))
             unknown.emplace(name, d.name);
         }
       }
     for (auto& [name, by] : unknown)
-      result.errors.push_back("codegen: " + name + " is named in level 0 (by " + by + ") and defined after it, but its request gave it no declaration (step 4's barrier)");
+      result.errors.push_back("codegen: " + name + " is named in level 0 (by " + by + ") and defined after it, but has no declaration from the barrier (step 4's barrier)");
     std::vector<std::string> different;
     for (auto& [name, declaration] : sh.requestDeclarations)
-      if (auto line = sh.declareLines.find(name); line != sh.declareLines.end() && line->second != declaration)
-        different.push_back("codegen: the declaration " + name + "'s request gave, `" + declaration + "`, is not its definition's, `" + line->second + "` (step 4's barrier)");
+    {
+      auto it = defined.find(name);
+      if (it == defined.end())
+        continue; // (never defined: a function left out by its failure, reported where it failed)
+      std::string_view ignored;
+      std::string actual;
+      if (!it->second.empty())
+        actual = Emitter::externalDeclarationOf(it->second, ignored);
+      else if (auto line = sh.declareLines.find(name); line != sh.declareLines.end())
+        actual = line->second;
+      if (actual != declaration)
+        different.push_back("codegen: the barrier's declaration of " + name + ", `" + declaration + "`, is not its definition's, `" + actual + "` (step 4's barrier)");
+    }
     std::sort(different.begin(), different.end());
     result.errors.insert(result.errors.end(), different.begin(), different.end());
   }
