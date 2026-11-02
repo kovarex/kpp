@@ -16,7 +16,7 @@ Factorio already has (see [Status](#status)).
   |---|---:|---:|
   | Edit of one function | 22 to 29 s | 3.6 to 3.8 s |
   | Edit of an inline function used across the game | 51 to 59 s | (being measured) |
-  | Clean build of the game, libraries already built | 57 to 61 s | 17.0 s |
+  | Clean build of the game, libraries already built | 57 to 61 s | 16.8 to 17.0 s |
   | Whole build of factorio.exe, every library included | 50 s | 20.6 s |
   | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 36.4 s |
 
