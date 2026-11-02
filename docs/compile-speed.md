@@ -99,6 +99,54 @@ which module assembly would need to scale to first).
   1.51 s** (clang 0.29 to 0.30), 256 1.28 to 1.41 s (clang 0.19 to 0.21); the clean build 11.6, 11.4
   and 14.5 s. A release build keeps two (more made its ThinLTO link slower).
 
+**The wide edit built from scratch again, and fixed (2026-11-02, thread A).** Measured on master
+773e5ad7 through the server (scratch\resolver\scripts\edloop.py: the game as run.cmd builds it,
+edbuild.cmd, on a frozen copy of the conversion of 4c178a5b915 by 6d1e029f, scratch\resolver\ftree;
+the leaf and wide edits above, each and its undo, rounds interleaved): the leaf edit stayed
+incremental, but the wide edit was a build from scratch, front end and codegen, 19.1 to 87.9 s
+(codegen 13.6 to 70.6 s on a loaded machine). The server's log: "not incremental: an instance of a
+changed template that only codegen made". a5afc850 (2026-10-31, an hour after the 1.9 s above)
+checks the evaluator's copy of an edited plain function again; a copy codegen's evaluator made (a
+constant an initializer or a body folds, here one calling MapPosition::operator+) cannot be, and the
+build gave up. Bisected on a three-line program (a global `const Pos origin = Pos(1) + Pos(2);`,
+then an edit of `Pos::operator+`): a5afc850's parent incremental, a5afc850 and master not. Since
+975355ac such a copy is dropped and codegen makes it anew, as for a late instance that read a
+change; incremental.ps1 has the step, and each of its steps now fails when the server's log says
+it built from scratch or ran codegen in full for a reason the step does not name. After the fix,
+3 rounds, the machine 20 to 100% busy (Microsoft Defender scanning the outputs on about 7 cores, two
+other worktrees' test runs):
+
+| edit | wall | server: read + parse + walks + report | codegen | clang | link |
+|---|---:|---|---:|---:|---:|
+| leaf | 2.13 to 4.32 s | 0.05-0.08 + 0.01 + 0.12-0.21 + 0.09-0.20 s | 0.33 to 0.70 s | 0.43 to 0.79 s | 0.75 to 1.37 s |
+| leaf undo | 2.54 to 4.82 s | 0.04-0.08 + 0.01-0.02 + 0.17-0.23 + 0.12-0.17 s | 0.41 to 0.76 s | 0.59 to 0.84 s | 0.83 to 0.99 s |
+| wide | 4.54 to 7.67 s | 0.04-0.28 + 0.01-0.02 + 0.61-0.96 + 0.11-0.38 s | 0.54 to 0.69 s | 0.72 to 1.19 s | 1.17 to 2.13 s |
+| wide undo | 2.98 to 8.43 s | 0.05 + 0.01-0.02 + 0.28-0.33 + 0.12-0.14 s | 0.50 to 0.54 s | 0.79 to 0.99 s | 0.82 to 2.14 s |
+
+The wide edit emits 457 functions in 1 module again. The phases add up to 2 to 5 s less than the
+wall time in the loaded rounds (the client, the report, the outputs written and scanned): the
+documented 1.4 to 1.9 s were measured on a quiet machine, and the rounds here are not one.
+
+**The clean debug build: 18 s, not 10.7, and mostly the machine (2026-11-02, thread A).** The full
+build through a fresh server took 40.1 s once (the first build of the edit loop above, with other
+worktrees' tests running). Clean builds into new output directories (scratch\resolver\scripts\clean.py,
+modules.py, oldnew.py), interleaved:
+- In its own process and through a fresh server, 3 rounds: 19.6, 19.3, 31.2 s and 18.1, 26.2, 31.9 s
+  (the third round under load in both). Instantiation's CPU through the server 22.1, 26.6 and 34.4 s
+  against 16.8, 17.2 and 25.5 s in its own process: the first server build's extra cost (docs/test-matrix.md)
+  shows, but not as the 2 to 3 times recorded there.
+- `--modules 64` (the 10.7 s run's) against the default 128, in its own process: 20.1 and 16.5 s
+  against 18.4 and 18.0 s (IR 794 MB against 967 MB).
+- The 10.7 s build itself (089dcce5, its standard library, factorio-in-kpp d9080751, the C libraries
+  then prebuilt .libs: scratch\resolver\scripts\oldbuild.cmd) against master today, in their own
+  processes: 18.0 and 16.5 s against 18.0 and 19.2 s (a third round at 96% load left out). So 10.7 s
+  does not reproduce on today's machine with the compiler and tree that measured it.
+- Today's build, phase by phase (the two quieter rounds): read, lex, imports (cached), parse and
+  index 0.5 s; resolve 0.8 s (instantiation 17 s of CPU in it); codegen 9.6 to 9.9 s (967 MB of IR,
+  against 7.5 to 7.8 s for 739 MB then: the 8 C libraries compiled as Kpp and the program's growth);
+  clang 4.0 s (128 modules; 5.2 to 6.0 s for 64 then); the link 2.3 to 3.0 s; the harness's .cmd
+  steps (link-settings, c-libraries) 0.1 s. Kpp's own part is 11 s, LLVM's (clang and the link) 6.5 s.
+
 ## A clean build, phase by phase, and what scales (2026-10-30, night)
 
 A clean build of the game as run.cmd builds it, in a new process and a new output directory (no
