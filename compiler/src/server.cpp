@@ -185,14 +185,20 @@ namespace
   // The key of a server: the kppc binary (path, size and time: a rebuilt kppc is another server),
   // the working directory and the arguments. A server only ever builds its own key's arguments,
   // so a changed flag or input list goes to another server, never to one holding older state.
+  // A file's size and time of writing (or that it is missing): what tells a rebuilt or reinstalled
+  // kppc from the one before, a changed output of a kept build from the one it left.
+  std::string stampOf(const std::string& path)
+  {
+    WIN32_FILE_ATTRIBUTE_DATA a{};
+    if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &a))
+      return "missing";
+    return std::to_string(a.nFileSizeLow) + " " + std::to_string(a.nFileSizeHigh) + " " + std::to_string(a.ftLastWriteTime.dwLowDateTime) + " " +
+           std::to_string(a.ftLastWriteTime.dwHighDateTime);
+  }
+
   std::string serverKey(const std::string& exe, const std::string& cwd, const std::vector<std::string>& args)
   {
-    std::string text = "kppc server 1\n" + exe + "\n";
-    WIN32_FILE_ATTRIBUTE_DATA a{};
-    if (GetFileAttributesExA(exe.c_str(), GetFileExInfoStandard, &a))
-      text += std::to_string(a.nFileSizeLow) + " " + std::to_string(a.nFileSizeHigh) + " " + std::to_string(a.ftLastWriteTime.dwLowDateTime) + " " +
-              std::to_string(a.ftLastWriteTime.dwHighDateTime);
-    text += "\n";
+    std::string text = "kppc server 1\n" + exe + "\n" + stampOf(exe) + "\n";
     for (char c : cwd)
       text += char(tolower(static_cast<unsigned char>(c)));
     for (const std::string& arg : args)
@@ -242,7 +248,9 @@ namespace
       if (!MoveFileA(part.c_str(), copy.c_str()))
         DeleteFileA(part.c_str()); // another client put it there first
     }
-    std::string command = "\"" + copy + "\" --serve " + key;
+    // The kppc it was started from and that kppc's stamp, as the key has it: the server exits once
+    // they differ (runServer).
+    std::string command = "\"" + copy + "\" --serve " + key + " \"" + exe + "\" \"" + stampOf(exe) + "\"";
     STARTUPINFOA si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
@@ -389,16 +397,6 @@ namespace
   };
   KeptBuild kept;
   bool replayOff = false; // --verify-incremental's build from scratch
-
-  // A file's size and time of writing (or that it is missing).
-  std::string stampOf(const std::string& path)
-  {
-    WIN32_FILE_ATTRIBUTE_DATA a{};
-    if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &a))
-      return "missing";
-    return std::to_string(a.nFileSizeLow) + " " + std::to_string(a.nFileSizeHigh) + " " + std::to_string(a.ftLastWriteTime.dwLowDateTime) + " " +
-           std::to_string(a.ftLastWriteTime.dwHighDateTime);
-  }
 
   void keepBuild(Session& s, int exitCode)
   {
@@ -942,7 +940,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   return compile(argc, argv);
 }
 
-int runServer(const char* key, CompileFunction compile)
+int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
 {
   std::string name = pipeName(key);
   HANDLE pipe = CreateNamedPipeA(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
@@ -974,14 +972,23 @@ int runServer(const char* key, CompileFunction compile)
   freopen("NUL", "wb", stderr);
   setvbuf(stdout, nullptr, _IONBF, 0);
   lastActivity = nowSeconds();
-  static std::mutex idleMutex; // the idle check and the start of a client's service exclude each other
-  std::thread([]
+  static std::mutex idleMutex; // the checks and the start of a client's service exclude each other
+  // Between builds: exits once idle for an hour, or once the kppc it was started from has changed (a
+  // rebuild, an install), whose clients have another key: nothing would reach this server again.
+  std::thread([origin = std::string(origin), stamp = std::string(stamp)]
   {
     for (;;)
     {
-      Sleep(60 * 1000);
+      Sleep(2000);
       std::lock_guard lock(idleMutex);
-      if (!busy && nowSeconds() - lastActivity > idleSeconds)
+      if (busy)
+        continue;
+      if (stampOf(origin) != stamp)
+      {
+        logLine("the kppc it was started from (%s) changed: exiting", origin.c_str());
+        ExitProcess(0);
+      }
+      if (nowSeconds() - lastActivity > idleSeconds)
       {
         logLine("idle for an hour: exiting");
         ExitProcess(0);
@@ -1032,6 +1039,33 @@ bool stopServerQuietly(int argc, char** argv)
 int stopServer(int argc, char** argv)
 {
   printf(stopServerQuietly(argc, argv) ? "compile server stopped\n" : "no compile server runs for these arguments\n");
+  return 0;
+}
+
+int stopAllServers()
+{
+  // Every server runs from its copy, KEY.exe (startServer), whatever kppc started it and whether its
+  // KEY.args is there or not.
+  std::vector<std::string> keys;
+  WIN32_FIND_DATAA found;
+  HANDLE search = FindFirstFileA((serverDirectory() + "*.exe").c_str(), &found);
+  if (search != INVALID_HANDLE_VALUE)
+  {
+    do
+    {
+      std::string name = found.cFileName;
+      if (name.size() == 20 && name.compare(16, 4, ".exe") == 0)
+        keys.push_back(name.substr(0, 16));
+    } while (FindNextFileA(search, &found));
+    FindClose(search);
+  }
+  size_t stopped = 0;
+  for (const std::string& key : keys)
+    stopped += stopKey(key);
+  if (stopped == 0)
+    printf("no compile server runs\n");
+  else
+    printf("%zu compile server%s stopped\n", stopped, stopped == 1 ? "" : "s");
   return 0;
 }
 

@@ -54,7 +54,9 @@ fastdebug is `config::debug` true, optimized):
 **The compile server.** `--server` anywhere on the line makes kppc a client. The server is keyed by
 kppc's path, the working directory and the argument list, so every distinct argument list has its
 own server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
-and ends after an hour idle. `--stop-server` with the same arguments stops it. A Visual Studio
+and ends after an hour idle, or as soon as the kppc it was started from changes (a rebuild, an
+install). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kppc's or
+kpp's) stops every compile server of this user. A Visual Studio
 build (`--msvc-diagnostics`) therefore has a server of its own, apart from the command line's.
 
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets

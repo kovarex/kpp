@@ -853,7 +853,9 @@ set (they are in its key, or hashed and checked per build).
 ### The compile server: protocol (step 1, as built)
 
 - `kppc --server ARGS` is a client; `kppc ARGS` without it builds in its own process as before.
-  `kppc --stop-server ARGS` stops the server of ARGS.
+  `kppc --stop-server ARGS` stops the server of ARGS; `kppc --stop-all-servers` (`kpp
+  --stop-all-servers`, in a project's directory too) stops every server of this user, of any
+  arguments and any kppc: each runs from its `%TEMP%\kppc-server\KEY.exe`, which it finds them by.
 - **Key:** FNV-1a of the kppc binary's path, size and write time, the working directory
   (lowercased) and the arguments. One server per key, on the named pipe
   `\\.\pipe\kppc-server-KEY` (one instance, local clients only). Another binary, directory or
@@ -862,7 +864,8 @@ set (they are in its key, or hashed and checked per build).
   checked by hash on every build.
 - **Starting:** a client that finds no pipe copies kppc to `%TEMP%\kppc-server\KEY.exe` (Windows
   locks a running executable, and kppc must stay rebuildable) and starts the copy as
-  `KEY.exe --serve KEY` in a new process group with a console of its own and no window
+  `KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kppc the client ran, STAMP its size and write
+  time, as the key has them) in a new process group with a console of its own and no window
   (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
   up to 20 s for the pipe. (It was started without a console, DETACHED_PROCESS, until a small
   program's edit through the server measured slower than a new process: every cmd, clang and link a
@@ -885,7 +888,10 @@ set (they are in its key, or hashed and checked per build).
   state (the resolver's, the evaluator's) starts as in a new process. When the build is done
   (where a process now exits without freeing), the server sends the exit code and lets the client
   go, then frees what the build made; a client arriving meanwhile waits for the pipe.
-- **Lifetime:** the server exits after an hour without a request, on a stop request, or when it
+- **Lifetime:** the server exits after an hour without a request, once ORIGIN's size or write
+  time differs from STAMP or ORIGIN is gone (a rebuild or an install: its clients have another key,
+  so nothing reaches the old server again, and it would hold its memory for the rest of the hour;
+  checked every 2 s between builds, a build under way is finished), on a stop request, or when it
   crashes. It logs each of these, and each build's start and exit code, to
   `%TEMP%\kppc-server\KEY.log` (a crash's exception code and address from its crash handler).
   The processes a build starts are in a job that ends with the server (kill on close), so nothing
@@ -900,7 +906,9 @@ set (they are in its key, or hashed and checked per build).
 - **Checked by** tests/incremental.ps1 (in run_tests): a copy of tests/incremental is built through
   one server and by a new process after each edit (a body, a signature, a class's layout, a new
   file, the file removed); stdout, stderr (timings masked) and the IR must be identical and the
-  server's program must print what the step expects.
+  server's program must print what the step expects. tests/servers.ps1 (in run_tests): a server
+  exits within 20 s of its kppc being written again, and --stop-all-servers stops two servers of
+  two programs (the servers of a TEMP of the test's own).
 
 Step 1's numbers (full game as run.cmd builds it, frozen tree, no-change rebuild, three
 alternating pairs on the shared machine): fresh process 19.4, 23.1, 19.2 s; through the server

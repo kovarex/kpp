@@ -198,6 +198,8 @@ namespace
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
+            "  --stop-all-servers  alone: stop every compile server of this user (a server also exits by\n"
+            "                itself once the kppc it was started from changes, or after an idle hour)\n"
             "  --generate-visual-studio-files, --generate-vs-code-files  write project files for the build the\n"
             "                other arguments describe, debug and release, listing every source file, instead of\n"
             "                building (build\\visual-studio\\, .vscode\\; docs/build.md, \"Project files for an IDE\")\n"
@@ -3466,12 +3468,15 @@ int main(int argc, char** argv)
   // argv[0] as the executable's full path, also when found on PATH: a compile server, which runs
   // from a copy of kppc, finds the standard library next to the client's (source.hpp).
   static std::string self = compilerPath().string();
-  if (argc > 0 && !(argc == 3 && std::string(argv[1]) == "--serve"))
+  if (argc > 0 && !(argc == 5 && std::string(argv[1]) == "--serve"))
     argv[0] = self.data();
   // The compile server (server.hpp): `--server` anywhere makes this a client, `--stop-server`
-  // stops the server of the same arguments, `--serve KEY` is the server a client started.
-  if (argc == 3 && std::string(argv[1]) == "--serve")
-    return runServer(argv[2], compile);
+  // stops the server of the same arguments, `--serve KEY ORIGIN STAMP` is the server a client
+  // started, `--stop-all-servers` alone stops every server (in a project's directory too).
+  if (argc == 5 && std::string(argv[1]) == "--serve")
+    return runServer(argv[2], argv[3], argv[4], compile);
+  if (argc == 2 && std::string(argv[1]) == "--stop-all-servers")
+    return stopAllServers();
   // `--version` and `--help` alone, in a project's directory too; with other arguments, an error
   // (optionError).
   if (argc == 2 && std::string(argv[1]) == "--version")

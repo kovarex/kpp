@@ -17,14 +17,18 @@ using CompileFunction = int (*)(int argc, char** argv);
 // server ends without an answer.
 int runClient(int argc, char** argv, CompileFunction compile);
 
-// The server: serves builds for its key until it has been idle for an hour or a client asks it to
-// stop (--stop-server).
-int runServer(const char* key, CompileFunction compile);
+// The server (`--serve KEY ORIGIN STAMP`): serves builds for its key until it has been idle for an
+// hour, the kppc it was started from (ORIGIN) no longer has the size and time STAMP, or a client asks
+// it to stop (--stop-server, --stop-all-servers).
+int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile);
 
 // `kppc --stop-server ARGS`: stops the server for ARGS if one runs.
 int stopServer(int argc, char** argv);
 // The same without a word: whether one ran.
 bool stopServerQuietly(int argc, char** argv);
+// `kppc --stop-all-servers` (and `kpp --stop-all-servers`): stops every compile server of this user
+// (of this %TEMP%), of any arguments and any kppc.
+int stopAllServers();
 // Stops every running server, of any arguments, whose arguments whose accepts (the client that
 // starts a server keeps them in %TEMP%\kppc-server\KEY.args), and returns the arguments of each one
 // it stopped. A record whose server has ended is removed.

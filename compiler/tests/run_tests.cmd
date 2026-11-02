@@ -193,6 +193,9 @@ if errorlevel 1 (call :fail "windows-gnu") else (call :ok)
 rem The C import cache keys an import on the toolchain's environment (tests\importcache.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\importcache.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "import cache") else (call :ok)
+rem A compile server exits once its kppc changes; --stop-all-servers stops them all (tests\servers.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\servers.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "servers") else (call :ok)
 if "%PART%"=="1" goto :afterpart2
 :part2
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
