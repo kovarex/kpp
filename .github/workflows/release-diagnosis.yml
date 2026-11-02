@@ -1,0 +1,32 @@
+# Thread H, 2026-11-02 (temporary): which release call the job's token is refused. ci.yml's and
+# release.yml's runs get 403 "Resource not accessible by integration" creating a release, although
+# the token has Contents: write. Started by hand; deleted once the cause is known.
+name: release-diagnosis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Release calls
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+          API: ${{ github.api_url }}/repos/${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          call() { echo "== $1 $2"; curl -sS -o out.json -w '%{http_code}\n' -X "$1" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/vnd.github+json' "$API$2" ${3:+-d "$3"}; head -c 300 out.json; echo; }
+          call GET /releases
+          call GET /git/ref/heads/master
+          call POST /git/refs "{\"ref\":\"refs/tags/diagnosis-$GITHUB_RUN_ID\",\"sha\":\"$SHA\"}"
+          call POST /releases "{\"tag_name\":\"diagnosis-$GITHUB_RUN_ID\",\"name\":\"diagnosis\",\"prerelease\":true,\"draft\":true}"
+          call POST /releases "{\"tag_name\":\"diagnosis2-$GITHUB_RUN_ID\",\"target_commitish\":\"$SHA\",\"name\":\"diagnosis2\",\"prerelease\":true}"
+          for id in $(curl -sS -H "Authorization: Bearer $TOKEN" "$API/releases?per_page=100" | python3 -c "import json,sys; [print(r['id']) for r in json.load(sys.stdin) if r['tag_name'].startswith('diagnosis')]"); do call DELETE /releases/$id; done
+          call DELETE /git/refs/tags/diagnosis-$GITHUB_RUN_ID
+          call DELETE /git/refs/tags/diagnosis2-$GITHUB_RUN_ID
