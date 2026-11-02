@@ -11722,6 +11722,18 @@ namespace
         decls += name + " = internal constant " + llType(t, at) + " [" + elements + "]\n";
         return name;
       }
+      if (v->builtin == BUILTIN_EnumCount && v->parent && v->parent->kind == NodeKind::EnumDecl)
+      {
+        // E::count: a constant holding the number of enumerators, the value a read of it folds to;
+        // never the zero a global without an initializer holds (`println(Direction::count)` read 0).
+        size_t n = 0;
+        for (Decl* d : static_cast<EnumDecl*>(v->parent)->enumerators)
+          n += d->kind == NodeKind::EnumeratorDecl;
+        decls += name + " = internal constant " + llType(types.stripRef(t), at) + " " + std::to_string(n) + "\n";
+        return name;
+      }
+      if (v->builtin)
+        unsupported(at, "the object of the generated member " + qualifiedName(v)); // its value is the compiler's, not an initializer's
       std::string init = "zeroinitializer";
       bool constructed = false;
       const Ty* st = types.stripRef(t);

@@ -1,8 +1,16 @@
-// spec: a constant given as a Text piece is the value the same expression has everywhere else: kept in a variable, bound to a const reference, read through its address (a variable template's object, one per argument list) and checked by static_assert, each also the value written here, for builtin traits, variable templates (a requires-expression's, a sizeof's, a pack's), config:: constants, a constexpr global and an enumerator (`15 same`)
+// spec: a constant given as a Text piece is the value the same expression has everywhere else: kept in a variable, bound to a const reference, read through its address (a variable template's object, one per argument list) and checked by static_assert, each also the value written here, for builtin traits, variable templates (a requires-expression's, a sizeof's, a pack's), config:: constants, a constexpr global, an enumerator and a real enum's generated count and values (`19 same`)
 // kppc: --config zlib::debug=true --config zlib::level=7
 extern "C" import "stdio.h";
 struct Plain { int a; };
 enum class Shade { light, dark };
+enum class Direction : uint8_t
+{
+  { North, East, South, West, None }
+};
+enum class Letter
+{
+  { A, B, C }
+};
 template<typename... T> constexpr int countOf = sizeof...(T);
 template<typename T> constexpr bool hasBegin = requires (T& t) { t.begin(); };
 template<typename T> constexpr unsigned long long bytes = sizeof(T);
@@ -33,6 +41,7 @@ void compare(const char* expected, T kept, const T& bound, const T* object, Text
 static_assert(isSame<int, int> && !isSame<int, long> && hasBegin<Vector<int>> && !hasBegin<int> && fits<int> && !fits<double>);
 static_assert(countOf<int, char, double> == 3 && countOf<> == 0 && bytes<double> == 8 && bytes<Plain> == 4 && answer == 42);
 static_assert(config::zlib::debug && config::zlib::level == 7);
+static_assert(Direction::count == 5 && Letter::count == 3);
 int main()
 {
   bool same = isSame<int, int>;
@@ -54,6 +63,10 @@ int main()
   check("7", written(level), written<int>(config::zlib::level), written(*&level), config::zlib::level);
   Shade shade = Shade::dark;
   check("dark", written(shade), written<Shade>(Shade::dark), written(*&shade), Shade::dark);
+  compare<int>("5", Direction::count, Direction::count, &Direction::count, Direction::count);
+  compare<int>("3", Letter::count, Letter::count, &Letter::count, Letter::count);
+  compare<Direction>("South", Direction::values[2], Direction::values[2], &Direction::values[2], Direction::values[2]);
+  compare<Letter>("C", Letter::values[Letter::count - 1], Letter::values[2], &Letter::values[2], Letter::values[2]);
   // (two instances, two objects; the same instance, one)
   check("true", written(&hasBegin<int> != (const bool*)&hasBegin<Vector<int>>), written(&countOf<int> == &countOf<int>), written(&bytes<char> != &bytes<short>), true);
   printf("%d same\n", compared);
