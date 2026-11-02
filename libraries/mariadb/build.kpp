@@ -7,5 +7,5 @@ void build(Project& project)
   mariadb.minimumKpp = "0.1.0";
   mariadb.root("src");
   mariadb.test("tests");
-  mariadb.use("net", local("../net"));
+  mariadb.use("net");
 }

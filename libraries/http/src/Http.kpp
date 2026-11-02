@@ -1,0 +1,464 @@
+// HTTP requests and responses for web programs: the request as CGI (HttpCgi.kpp) or the built-in
+// server (HttpServer.kpp) gives it, cookies, urlencoded and multipart forms, and the response with
+// its status, headers, cookies and body. README.md has the API.
+
+// A request that is not HTTP as this library reads it, or a response it will not write (a header
+// with a line break, a cookie value with a ';').
+struct HttpError : RuntimeError
+{
+  int status = 400; // what the server answers when the request was the problem
+  HttpError() {}
+  HttpError(const String& message, int status = 400) : RuntimeError(message), status(status) {}
+};
+
+struct HttpHeader
+{
+  String name;  // lower case in a request; as written in a response
+  String value;
+};
+
+// A part of a multipart/form-data body: a field, or a file when filename is given.
+struct HttpPart
+{
+  String name;
+  Optional<String> filename;
+  String contentType; // empty when the part says none
+  String data;
+};
+
+struct HttpRequest
+{
+  String method;                              // "GET", "POST"...
+  String target;                              // as sent: "/player?id=5"
+  String path;                                // decoded: "/player"
+  String query;                               // as sent: "id=5"
+  Vector<url::UrlQueryParameter> parameters;  // the query's, decoded
+  Vector<HttpHeader> headers;                 // names in lower case
+  String body;
+  String remoteAddress;
+
+  // The first header of that name (any case), or nullptr.
+  const String* header(StringView name) const
+  {
+    String lower = httpLower(name);
+    for (const HttpHeader& h : this->headers)
+      if (h.name == lower)
+        return &h.value;
+    return nullptr;
+  }
+
+  // The query's first parameter of that name, or nullptr.
+  const String* parameter(StringView name) const { return url::findUrlQueryParameter(this->parameters, name); }
+
+  // The value of the cookie of that name, or nullptr.
+  Optional<String> cookie(StringView name) const
+  {
+    const String* header = this->header("cookie");
+    if (header == nullptr)
+      return Optional<String>();
+    for (const HttpHeader& c : httpParseCookies(*header))
+      if (c.name == name)
+        return Optional<String>(c.value);
+    return Optional<String>();
+  }
+
+  // The body's fields when it is application/x-www-form-urlencoded or multipart/form-data (files
+  // left out: multipart() has them); another body throws HttpError (415).
+  Vector<url::UrlQueryParameter> form() const
+  {
+    String type = this->contentType();
+    if (type == "application/x-www-form-urlencoded")
+      return url::parseUrlQuery(this->body);
+    if (type == "multipart/form-data")
+    {
+      Vector<url::UrlQueryParameter> fields;
+      for (const HttpPart& part : this->multipart())
+        if (!part.filename.has_value())
+        {
+          url::UrlQueryParameter p;
+          p.name = part.name;
+          p.value = part.data;
+          fields.push_back(p);
+        }
+      return fields;
+    }
+    if (this->body.empty())
+      return Vector<url::UrlQueryParameter>();
+    throw HttpError(format("a form cannot be read from a body of type \"{}\"", type), 415);
+  }
+
+  // The parts of a multipart/form-data body; another type throws HttpError (415).
+  Vector<HttpPart> multipart() const
+  {
+    const String* header = this->header("content-type");
+    if (header == nullptr || this->contentType() != "multipart/form-data")
+      throw HttpError("the body is not multipart/form-data", 415);
+    return httpParseMultipart(this->body, httpBoundary(*header));
+  }
+
+  // The Content-Type's media type in lower case, without its parameters; empty without one.
+  String contentType() const
+  {
+    const String* header = this->header("content-type");
+    if (header == nullptr)
+      return String();
+    StringView type = *header;
+    ContainerSize semicolon = type.find(';');
+    if (semicolon != StringView::npos)
+      type = type.substr(0, semicolon);
+    return httpLower(httpTrim(type));
+  }
+};
+
+// How a cookie is kept (Set-Cookie's attributes). The defaults suit a session: the whole site,
+// not readable from JavaScript, sent on same-site requests and top-level links from elsewhere.
+struct HttpCookieOptions
+{
+  Optional<int64_t> maxAgeSeconds; // none: until the browser closes; 0: delete it now
+  String path = "/";
+  bool httpOnly = true;
+  bool secure = false;             // true on HTTPS, so it is never sent in clear
+  String sameSite = "Lax";         // "Strict", "Lax", "None" or empty for none
+};
+
+struct HttpResponse
+{
+  int status = 200;
+  Vector<HttpHeader> headers;
+  String body;
+
+  HttpResponse() { this->setHeader("Content-Type", "text/html; charset=utf-8"); }
+
+  // Sets the header, replacing any of that name (any case).
+  void setHeader(StringView name, StringView value)
+  {
+    httpCheckHeader(name, value);
+    String lower = httpLower(name);
+    for (ContainerSize i = 0; i < this->headers.size(); ++i)
+      if (httpLower(this->headers[i].name) == lower)
+      {
+        this->headers[i].value = String(value);
+        return;
+      }
+    this->addHeader(name, value);
+  }
+
+  // Adds the header, keeping others of that name (Set-Cookie).
+  void addHeader(StringView name, StringView value)
+  {
+    httpCheckHeader(name, value);
+    HttpHeader h;
+    h.name = String(name);
+    h.value = String(value);
+    this->headers.push_back(h);
+  }
+
+  const String* header(StringView name) const
+  {
+    String lower = httpLower(name);
+    for (const HttpHeader& h : this->headers)
+      if (httpLower(h.name) == lower)
+        return &h.value;
+    return nullptr;
+  }
+
+  void setCookie(StringView name, StringView value, const HttpCookieOptions& options = HttpCookieOptions())
+  {
+    httpCheckCookie(name, value);
+    String header = String(name) + "=" + String(value);
+    if (options.maxAgeSeconds.has_value())
+      header.append(format("; Max-Age={}", *options.maxAgeSeconds));
+    if (!options.path.empty())
+      header.append(String("; Path=") + options.path);
+    if (options.httpOnly)
+      header.append("; HttpOnly");
+    if (options.secure)
+      header.append("; Secure");
+    if (!options.sameSite.empty())
+      header.append(String("; SameSite=") + options.sameSite);
+    this->addHeader("Set-Cookie", header);
+  }
+
+  // Tells the browser to forget the cookie (at that path).
+  void deleteCookie(StringView name, StringView path = "/")
+  {
+    HttpCookieOptions options;
+    options.maxAgeSeconds = Optional<int64_t>(0);
+    options.path = String(path);
+    this->setCookie(name, "", options);
+  }
+
+  // A redirect to location: 303 See Other (after a form's POST, the browser GETs it) unless said.
+  void redirect(StringView location, int status = 303)
+  {
+    this->status = status;
+    this->setHeader("Location", location);
+    this->body.clear();
+  }
+
+  // The status line's text and the headers, each line ending in CRLF, as CGI writes them
+  // ("Status: 200 OK") or HTTP/1.1 ("HTTP/1.1 200 OK"); the blank line and the body follow.
+  String head(bool cgi) const
+  {
+    String out = cgi ? format("Status: {} {}\r\n", this->status, httpStatusText(this->status))
+                     : format("HTTP/1.1 {} {}\r\n", this->status, httpStatusText(this->status));
+    for (const HttpHeader& h : this->headers)
+      out.append(h.name + ": " + h.value + "\r\n");
+    return out;
+  }
+};
+
+StringView httpStatusText(int status)
+{
+  switch (status)
+  {
+  case 200: return "OK";
+  case 201: return "Created";
+  case 204: return "No Content";
+  case 301: return "Moved Permanently";
+  case 302: return "Found";
+  case 303: return "See Other";
+  case 304: return "Not Modified";
+  case 307: return "Temporary Redirect";
+  case 308: return "Permanent Redirect";
+  case 400: return "Bad Request";
+  case 401: return "Unauthorized";
+  case 403: return "Forbidden";
+  case 404: return "Not Found";
+  case 405: return "Method Not Allowed";
+  case 411: return "Length Required";
+  case 413: return "Content Too Large";
+  case 415: return "Unsupported Media Type";
+  case 431: return "Request Header Fields Too Large";
+  case 500: return "Internal Server Error";
+  case 501: return "Not Implemented";
+  case 503: return "Service Unavailable";
+  }
+  return "Unknown";
+}
+
+String httpLower(StringView text)
+{
+  String out(text);
+  for (ContainerSize i = 0; i < out.size(); ++i)
+    if (out[i] >= 'A' && out[i] <= 'Z')
+      out[i] = char(out[i] - 'A' + 'a');
+  return out;
+}
+
+StringView httpTrim(StringView text)
+{
+  ContainerSize start = 0;
+  ContainerSize end = text.size();
+  while (start < end && (text[start] == ' ' || text[start] == '\t'))
+    ++start;
+  while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\t'))
+    --end;
+  return text.substr(start, end - start);
+}
+
+// A header a response may carry: a token for a name, no line break or zero byte in the value
+// (which would let the value write headers of its own).
+void httpCheckHeader(StringView name, StringView value)
+{
+  if (name.empty())
+    throw HttpError("a header with no name", 500);
+  for (ContainerSize i = 0; i < name.size(); ++i)
+    if (!httpIsToken(name[i]))
+      throw HttpError(format("the header name \"{}\" has a character a header name cannot have", name), 500);
+  for (ContainerSize i = 0; i < value.size(); ++i)
+    if (value[i] == '\r' || value[i] == '\n' || value[i] == 0)
+      throw HttpError(format("the value of the header {} has a line break or a zero byte", name), 500);
+}
+
+bool httpIsToken(char c)
+{
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+    return true;
+  for (const char* p = "!#$%&'*+-.^_`|~"; *p != 0; ++p)
+    if (*p == c)
+      return true;
+  return false;
+}
+
+// RFC 6265: a token for a name; a value of printable ASCII without space, '"', ',', ';' or '\'.
+void httpCheckCookie(StringView name, StringView value)
+{
+  if (name.empty())
+    throw HttpError("a cookie with no name", 500);
+  for (ContainerSize i = 0; i < name.size(); ++i)
+    if (!httpIsToken(name[i]))
+      throw HttpError(format("the cookie name \"{}\" is not a token", name), 500);
+  for (ContainerSize i = 0; i < value.size(); ++i)
+  {
+    unsigned char c = (unsigned char)value[i];
+    if (c <= 0x20 || c >= 0x7f || c == '"' || c == ',' || c == ';' || c == '\\')
+      throw HttpError(format("the value of the cookie {} has a character a cookie cannot have (encode it)", name), 500);
+  }
+}
+
+// "a=1; b=2": the cookies in order (names and values as sent); a piece without '=' is skipped.
+Vector<HttpHeader> httpParseCookies(StringView header)
+{
+  Vector<HttpHeader> cookies;
+  ContainerSize at = 0;
+  while (at < header.size())
+  {
+    ContainerSize end = header.find(';', at);
+    if (end == StringView::npos)
+      end = header.size();
+    StringView piece = httpTrim(header.substr(at, end - at));
+    ContainerSize equals = piece.find('=');
+    if (equals != StringView::npos && equals > 0)
+    {
+      HttpHeader c;
+      c.name = String(httpTrim(piece.substr(0, equals)));
+      StringView value = httpTrim(piece.substr(equals + 1));
+      if (value.size() >= 2 && value[0] == '"' && value[value.size() - 1] == '"')
+        value = value.substr(1, value.size() - 2);
+      c.value = String(value);
+      cookies.push_back(c);
+    }
+    at = end + 1;
+  }
+  return cookies;
+}
+
+// The boundary parameter of a multipart Content-Type, quoted or not; none throws.
+String httpBoundary(StringView contentType)
+{
+  ContainerSize at = httpLower(contentType).find("boundary=");
+  if (at == String::npos)
+    throw HttpError("a multipart body without a boundary");
+  StringView value = contentType.substr(at + 9);
+  if (!value.empty() && value[0] == '"')
+  {
+    ContainerSize close = value.find('"', 1);
+    if (close == StringView::npos)
+      throw HttpError("a multipart boundary's quote is not closed");
+    return String(value.substr(1, close - 1));
+  }
+  ContainerSize end = value.find(';');
+  return String(httpTrim(end == StringView::npos ? value : value.substr(0, end)));
+}
+
+// The parts of a multipart/form-data body (RFC 7578); a body that does not follow it throws.
+Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
+{
+  if (boundary.empty() || boundary.size() > 70)
+    throw HttpError("a multipart boundary is 1 to 70 characters");
+  String delimiter = String("--") + String(boundary);
+  Vector<HttpPart> parts;
+  ContainerSize at = body.find(delimiter);
+  if (at == StringView::npos)
+    throw HttpError("a multipart body without its first boundary");
+  at += delimiter.size();
+  for (;;)
+  {
+    if (body.substr(at, 2) == "--")
+      return parts; // the closing delimiter
+    if (body.substr(at, 2) != "\r\n")
+      throw HttpError("a multipart boundary not followed by CRLF");
+    at += 2;
+    ContainerSize headersEnd = body.find("\r\n\r\n", at);
+    if (headersEnd == StringView::npos)
+      throw HttpError("a multipart part whose headers do not end");
+    HttpPart part;
+    bool named = false;
+    StringView headers = body.substr(at, headersEnd - at);
+    ContainerSize line = 0;
+    while (line <= headers.size())
+    {
+      ContainerSize lineEnd = headers.find("\r\n", line);
+      if (lineEnd == StringView::npos)
+        lineEnd = headers.size();
+      StringView text = headers.substr(line, lineEnd - line);
+      ContainerSize colon = text.find(':');
+      if (colon != StringView::npos)
+      {
+        String name = httpLower(httpTrim(text.substr(0, colon)));
+        StringView value = httpTrim(text.substr(colon + 1));
+        if (name == "content-disposition")
+        {
+          Optional<String> fieldName = httpDispositionParameter(value, "name");
+          if (fieldName.has_value())
+          {
+            part.name = *fieldName;
+            named = true;
+          }
+          part.filename = httpDispositionParameter(value, "filename");
+        }
+        else if (name == "content-type")
+          part.contentType = String(value);
+      }
+      line = lineEnd + 2;
+    }
+    if (!named)
+      throw HttpError("a multipart part without a Content-Disposition name");
+    ContainerSize dataStart = headersEnd + 4;
+    String next = String("\r\n") + delimiter;
+    ContainerSize dataEnd = body.find(next, dataStart);
+    if (dataEnd == StringView::npos)
+      throw HttpError("a multipart part that does not end in a boundary");
+    part.data = String(body.substr(dataStart, dataEnd - dataStart));
+    parts.push_back(part);
+    at = dataEnd + next.size();
+  }
+}
+
+// A parameter of a Content-Disposition value (`form-data; name="x"; filename="a.sgf"`), unquoted.
+Optional<String> httpDispositionParameter(StringView value, StringView parameter)
+{
+  ContainerSize at = 0;
+  while (at < value.size())
+  {
+    ContainerSize end = at;
+    bool quoted = false;
+    while (end < value.size() && (quoted || value[end] != ';'))
+    {
+      if (value[end] == '"')
+        quoted = !quoted;
+      else if (value[end] == '\\' && quoted)
+        ++end;
+      ++end;
+    }
+    StringView piece = httpTrim(value.substr(at, end - at));
+    ContainerSize equals = piece.find('=');
+    if (equals != StringView::npos && httpLower(httpTrim(piece.substr(0, equals))) == parameter)
+    {
+      StringView raw = httpTrim(piece.substr(equals + 1));
+      if (raw.size() >= 2 && raw[0] == '"' && raw[raw.size() - 1] == '"')
+      {
+        String out;
+        for (ContainerSize i = 1; i + 1 < raw.size(); ++i)
+        {
+          if (raw[i] == '\\' && i + 2 < raw.size())
+            ++i;
+          out.append(raw[i]);
+        }
+        return Optional<String>(out);
+      }
+      return Optional<String>(String(raw));
+    }
+    at = end + 1;
+  }
+  return Optional<String>();
+}
+
+// The request target split: path (decoded; a malformed %XX throws HttpError) and query (as sent).
+void httpSetTarget(HttpRequest& request, StringView target)
+{
+  request.target = String(target);
+  ContainerSize question = target.find('?');
+  StringView path = question == StringView::npos ? target : target.substr(0, question);
+  request.query = question == StringView::npos ? String() : String(target.substr(question + 1));
+  try
+  {
+    request.path = url::urlDecode(path);
+    request.parameters = url::parseUrlQuery(request.query);
+  }
+  catch (const url::UrlError& e)
+  {
+    throw HttpError(format("a malformed request target: {}", StringView(e.what())));
+  }
+}

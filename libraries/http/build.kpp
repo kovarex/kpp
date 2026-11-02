@@ -1,0 +1,13 @@
+// http: requests and responses for web programs, as CGI or a small server (README.md). `kpp --test`
+// here runs its tests.
+void build(Project& project)
+{
+  Library& http = project.library("http");
+  http.version = "0.1.0";
+  http.license = "Apache-2.0 WITH LLVM-exception";
+  http.minimumKpp = "0.1.0";
+  http.root("src");
+  http.test("tests");
+  http.use("net");
+  http.use("url");
+}

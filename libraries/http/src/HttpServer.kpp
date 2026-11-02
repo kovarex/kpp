@@ -1,0 +1,135 @@
+// A small HTTP/1.1 server for trying a web program on one's own machine: one connection at a time,
+// each closed after its response (Connection: close), bodies by Content-Length only. The handler is
+// the one CGI calls (HttpCgi.kpp), so a program runs the same under both. Not for the internet: no
+// TLS, no keep-alive, no limits on slow clients.
+
+struct HttpServerOptions
+{
+  String address = "127.0.0.1";
+  int port = 8080;
+  int64_t maxRequests = -1;       // stop after this many (tests); -1: serve until the process ends
+  int64_t maxBodyBytes = 64 * 1024 * 1024;
+  bool log = true;                // a line per request on stdout: method, target, status
+};
+
+// Reads one request from stream; HttpError for one this server does not read (its status is the
+// answer: 400, 411, 413, 431, 501).
+HttpRequest httpReadRequest(net::TcpStream& stream)
+{
+  String data;
+  ContainerSize headEnd = String::npos;
+  char buffer[8192];
+  while (headEnd == String::npos)
+  {
+    if (data.size() > 64 * 1024)
+      throw HttpError("the request's headers are over 64 KB", 431);
+    int64_t got = stream.read(buffer, 8192);
+    if (got == 0)
+      throw HttpError("the connection closed before the request's headers ended");
+    data.append(StringView(buffer, (ContainerSize)got));
+    headEnd = data.find("\r\n\r\n");
+  }
+  StringView head = StringView(data).substr(0, headEnd);
+  ContainerSize lineEnd = head.find("\r\n");
+  StringView requestLine = lineEnd == StringView::npos ? head : head.substr(0, lineEnd);
+  ContainerSize space1 = requestLine.find(' ');
+  ContainerSize space2 = space1 == StringView::npos ? StringView::npos : requestLine.find(' ', space1 + 1);
+  if (space2 == StringView::npos || requestLine.substr(space2 + 1, 7) != "HTTP/1.")
+    throw HttpError(format("not an HTTP/1.x request line: \"{}\"", requestLine));
+  HttpRequest request;
+  request.method = String(requestLine.substr(0, space1));
+  httpSetTarget(request, requestLine.substr(space1 + 1, space2 - space1 - 1));
+  ContainerSize at = lineEnd == StringView::npos ? head.size() : lineEnd + 2;
+  while (at < head.size())
+  {
+    ContainerSize end = head.find("\r\n", at);
+    if (end == StringView::npos)
+      end = head.size();
+    StringView line = head.substr(at, end - at);
+    ContainerSize colon = line.find(':');
+    if (colon == StringView::npos || colon == 0)
+      throw HttpError(format("a header line without a name: \"{}\"", line));
+    HttpHeader h;
+    h.name = httpLower(line.substr(0, colon));
+    h.value = String(httpTrim(line.substr(colon + 1)));
+    request.headers.push_back(h);
+    at = end + 2;
+  }
+  if (request.header("transfer-encoding") != nullptr)
+    throw HttpError("a chunked request body (only Content-Length is read)", 501);
+  const String* length = request.header("content-length");
+  int64_t n = length == nullptr ? 0 : httpParseLength(*length);
+  request.body = String(StringView(data).substr(headEnd + 4));
+  if ((int64_t)request.body.size() > n)
+    throw HttpError("more bytes than the Content-Length (pipelining is not read)");
+  if (n > 64 * 1024 * 1024)
+    throw HttpError(format("a body of {} bytes", n), 413);
+  if ((int64_t)request.body.size() < n)
+    request.body.append(stream.readExactly(n - (int64_t)request.body.size()));
+  return request;
+}
+
+void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
+{
+  String out = response.head(false);
+  if (response.header("Content-Length") == nullptr)
+    out.append(format("Content-Length: {}\r\n", (int64_t)response.body.size()));
+  out.append("Connection: close\r\n\r\n");
+  out.append(response.body);
+  stream.write(out);
+}
+
+// Serves requests with handler until options.maxRequests have been answered. An exception from
+// handler is a 500 whose body has the message (this server is for one's own machine).
+void httpServe(const HttpServerOptions& options, const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+{
+  net::TcpListener listener = net::TcpListener::listen(options.address, options.port);
+  if (options.log)
+    println(format("serving http://{}:{}/", options.address, listener.port()));
+  httpServeOn(listener, options, handler);
+}
+
+void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
+                 const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+{
+  for (int64_t served = 0; options.maxRequests < 0 || served < options.maxRequests; ++served)
+  {
+    net::TcpStream stream = listener.accept();
+    stream.setTimeout(30000);
+    HttpResponse response;
+    String what = "?";
+    try
+    {
+      HttpRequest request = httpReadRequest(stream);
+      what = request.method + " " + request.target;
+      handler(request, response);
+    }
+    catch (const HttpError& e)
+    {
+      response = httpErrorResponse(e.status);
+      response.body.append(String(StringView(e.what())) + "\n");
+    }
+    catch (const net::NetError& e)
+    {
+      if (options.log)
+        println(format("{}: {}", what, StringView(e.what())));
+      continue;
+    }
+    catch (const Exception& e)
+    {
+      response = httpErrorResponse(500);
+      response.body.append(String(StringView(e.what())) + "\n");
+    }
+    if (options.log)
+      println(format("{} {}", what, response.status));
+    try
+    {
+      httpWriteResponse(stream, response);
+    }
+    catch (const net::NetError& e)
+    {
+      if (options.log)
+        println(format("{}: {}", what, StringView(e.what())));
+    }
+  }
+}

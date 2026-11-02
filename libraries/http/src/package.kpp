@@ -1,0 +1,3 @@
+// Package: HTTP
+// HTTP for web programs: HttpRequest, HttpResponse, cookies and forms, httpCgi() for CGI and
+// httpServe() for a server on one's own machine. Documented in libraries/http/README.md.

@@ -1,0 +1,176 @@
+// http: cookies, forms (urlencoded and multipart), responses as CGI and HTTP/1.1 write them, the
+// checks that keep a value from writing headers of its own, and the built-in server on the
+// loopback (a thread serves, the test is the browser).
+
+test "cookies"
+{
+  Vector<HttpHeader> cookies = httpParseCookies("gorating_id=abc123; theme=\"dark\";  empty=; =skipped; flag");
+  check(cookies.size() == 3);
+  check(cookies[0].name == "gorating_id" && cookies[0].value == "abc123");
+  check(cookies[1].name == "theme" && cookies[1].value == "dark");
+  check(cookies[2].name == "empty" && cookies[2].value.empty());
+
+  HttpRequest request;
+  HttpHeader h;
+  h.name = "cookie";
+  h.value = "a=1; gorating_id=xyz";
+  request.headers.push_back(h);
+  check(*request.cookie("gorating_id") == "xyz");
+  check(!request.cookie("missing").has_value());
+
+  HttpResponse response;
+  HttpCookieOptions options;
+  options.maxAgeSeconds = Optional<int64_t>(604800);
+  options.secure = true;
+  response.setCookie("gorating_id", "xyz", options);
+  response.deleteCookie("old");
+  check(response.head(true) == "Status: 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                               "Set-Cookie: gorating_id=xyz; Max-Age=604800; Path=/; HttpOnly; Secure; SameSite=Lax\r\n"
+                               "Set-Cookie: old=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax\r\n");
+}
+
+bool httpThrows(void (*f)())
+{
+  try
+  {
+    f();
+  }
+  catch (const HttpError& e)
+  {
+    return true;
+  }
+  return false;
+}
+
+test "values that would write headers of their own"
+{
+  check(httpThrows([]() { HttpResponse r; r.setHeader("Location", "/x\r\nSet-Cookie: a=b"); }));
+  check(httpThrows([]() { HttpResponse r; r.setHeader("Bad Name", "x"); }));
+  check(httpThrows([]() { HttpResponse r; r.setCookie("a", "x; Domain=evil"); }));
+  check(httpThrows([]() { HttpResponse r; r.setCookie("a", "caf\xc3\xa9"); }));
+  check(httpThrows([]() { HttpResponse r; r.redirect("/a\nb"); }));
+}
+
+test "responses"
+{
+  HttpResponse response;
+  response.redirect("/player?id=5&message=Saved+it");
+  check(response.status == 303);
+  check(response.head(false) == "HTTP/1.1 303 See Other\r\nContent-Type: text/html; charset=utf-8\r\n"
+                                "Location: /player?id=5&message=Saved+it\r\n");
+  response.setHeader("content-type", "text/plain");
+  check(*response.header("Content-Type") == "text/plain");
+  check(response.headers.size() == 2);
+}
+
+HttpRequest httpFormRequest(StringView contentType, StringView body)
+{
+  HttpRequest request;
+  request.method = "POST";
+  httpSetTarget(request, "/report_action?redirect=%2Fplayer");
+  HttpHeader h;
+  h.name = "content-type";
+  h.value = String(contentType);
+  request.headers.push_back(h);
+  request.body = String(body);
+  return request;
+}
+
+test "forms"
+{
+  HttpRequest request = httpFormRequest("application/x-www-form-urlencoded", "username=kovarex&password=a%26b+c&empty=");
+  check(request.path == "/report_action" && *request.parameter("redirect") == "/player");
+  Vector<url::UrlQueryParameter> form = request.form();
+  check(form.size() == 3 && form[1].value == "a&b c" && form[2].value.empty());
+
+  String body = "--XyZ\r\n"
+                "Content-Disposition: form-data; name=\"winner\"\r\n\r\n"
+                "Jan \"Honza\" Novák\r\n"
+                "--XyZ\r\n"
+                "Content-Disposition: form-data; name=\"sgf\"; filename=\"game 1.sgf\"\r\n"
+                "Content-Type: application/x-go-sgf\r\n\r\n"
+                "(;GM[1]\r\n;B[pd])\r\n"
+                "--XyZ\r\n"
+                "Content-Disposition: form-data; name=\"empty\"; filename=\"\"\r\n\r\n"
+                "\r\n"
+                "--XyZ--\r\n";
+  HttpRequest multipart = httpFormRequest("multipart/form-data; boundary=XyZ", body);
+  Vector<HttpPart> parts = multipart.multipart();
+  check(parts.size() == 3);
+  check(parts[0].name == "winner" && parts[0].data == "Jan \"Honza\" Novák" && !parts[0].filename.has_value());
+  check(parts[1].name == "sgf" && *parts[1].filename == "game 1.sgf" && parts[1].contentType == "application/x-go-sgf");
+  check(parts[1].data == "(;GM[1]\r\n;B[pd])");
+  check(parts[2].filename.has_value() && parts[2].filename->empty() && parts[2].data.empty());
+  Vector<url::UrlQueryParameter> fields = multipart.form();
+  check(fields.size() == 1 && fields[0].name == "winner");
+
+  check(httpBoundary("multipart/form-data; boundary=\"a b\"") == "a b");
+  bool threw = false;
+  try { httpParseMultipart("--XyZ\r\nno blank line", "XyZ"); } catch (const HttpError& e) { threw = true; }
+  check(threw);
+  threw = false;
+  try { httpFormRequest("application/json", "{}").form(); } catch (const HttpError& e) { threw = e.status == 415; }
+  check(threw);
+}
+
+void httpTestHandler(const HttpRequest& request, HttpResponse& response)
+{
+  if (request.path == "/fail")
+    throw RuntimeError(String("the handler failed"));
+  if (request.method == "POST")
+  {
+    response.redirect(String("/done?name=") + url::urlEncode(request.form()[0].value));
+    return;
+  }
+  response.body = format("{} {} cookie={} id={}", request.method, request.path,
+                         request.cookie("session").has_value() ? *request.cookie("session") : String("none"),
+                         request.parameter("id") == nullptr ? String("none") : *request.parameter("id"));
+}
+
+struct HttpTestServer
+{
+  net::TcpListener listener;
+  HttpServerOptions options;
+};
+
+void httpRunTestServer(HttpTestServer* server)
+{
+  server->options.log = false;
+  server->options.maxRequests = 5;
+  httpServeOn(server->listener, server->options, httpTestHandler);
+}
+
+String httpTestFetch(int port, StringView request)
+{
+  net::TcpStream stream = net::TcpStream::connect("127.0.0.1", port);
+  stream.setTimeout(5000);
+  stream.write(request);
+  return stream.readAll();
+}
+
+test "the built-in server"
+{
+  HttpTestServer server;
+  server.listener = net::TcpListener::listen("127.0.0.1", 0);
+  int port = server.listener.port();
+  Thread thread(httpRunTestServer, &server);
+
+  String get = httpTestFetch(port, "GET /player%20page?id=5 HTTP/1.1\r\nHost: x\r\nCookie: session=s1\r\n\r\n");
+  check(get == "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 31\r\nConnection: close\r\n\r\n"
+               "GET /player page cookie=s1 id=5");
+
+  String post = httpTestFetch(port, "POST /login HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+                                    "Content-Length: 16\r\n\r\nname=a%2Fb+c&x=1");
+  check(post.find("HTTP/1.1 303 See Other\r\n") == 0);
+  check(post.find("Location: /done?name=a%2Fb%20c\r\n") != String::npos);
+
+  String failed = httpTestFetch(port, "GET /fail HTTP/1.1\r\n\r\n");
+  check(failed.find("HTTP/1.1 500 Internal Server Error\r\n") == 0 && failed.find("the handler failed") != String::npos);
+
+  String chunked = httpTestFetch(port, "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
+  check(chunked.find("HTTP/1.1 501 Not Implemented\r\n") == 0);
+
+  String garbage = httpTestFetch(port, "hello\r\n\r\n");
+  check(garbage.find("HTTP/1.1 400 Bad Request\r\n") == 0);
+  thread.join();
+}

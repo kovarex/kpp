@@ -23,6 +23,7 @@ library that uses no other (it leaves the directory's build.kpp out); and `compi
 | [bcrypt](bcrypt/README.md) | the password hash of PHP's `password_hash()`: `$2y$`/`$2b$` hash and verify | crypt_blowfish's vectors, 38 hashes from PHP 8.3's `crypt()` |
 | [net](net/README.md) | TCP connections and listeners (Winsock, BSD sockets) | loopback tests on Windows |
 | [mariadb](mariadb/README.md) | a MariaDB/MySQL client: text queries, `mysql_native_password` (uses net) | a fake server's packets, a live MariaDB 11.7 |
+| [http](http/README.md) | requests and responses, cookies, urlencoded and multipart forms; CGI and a small server (uses net, url) | its own tests, the server on the loopback |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of kpp ([LICENSE](../LICENSE),
 [CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep
