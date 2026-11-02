@@ -715,7 +715,12 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
     none has the component. It runs vswhere through ExecAndCaptureOutput (Inno Setup 6.4 or later),
     with no cmd and no temporary file: ci.120's check, through `cmd /c` with a redirection,
     warned for kovarex although the same query finds 2022 Community on PC-PRACOVNA (2026-11-02).
-  Not yet built or run on PC-PRACOVNA, which has no Inno Setup.
+    A /SUPPRESSMSGBOXES install answers the warning Yes (SuppressibleMsgBox) and logs its text.
+  Tested on PC-PRACOVNA (2026-11-02) with Inno Setup 6.7.4 installed portable in a thread's
+  scratch, through a copy with lowest privileges whose setup aborts after the check: the check
+  passes (2022 Community), and with a component name that does not exist it lists the three
+  installations. ci.120's old check passed there too, unelevated; the elevated run kovarex saw
+  warn is not reproduced.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from

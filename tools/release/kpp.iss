@@ -130,11 +130,12 @@ begin
       end;
     end;
   end;
-  Result := MsgBox('Kpp compiles and links with the clang of a Visual Studio that has the component ' +
+  // Suppressible: a /SUPPRESSMSGBOXES install answers Yes and goes on (its log has the text).
+  Result := SuppressibleMsgBox('Kpp compiles and links with the clang of a Visual Studio that has the component ' +
                    '"C++ Clang Compiler for Windows" (Microsoft.VisualStudio.Component.VC.Llvm.Clang). ' +
                    'Setup looked for one with ' + Locator + ':' + #13#10#13#10 + Found + #13#10#13#10 +
                    'Add the component with the Visual Studio Installer (Modify, Individual components) to ' +
-                   'Visual Studio 2022 or its Build Tools. Install Kpp anyway?', mbConfirmation, MB_YESNO) = IDYES;
+                   'Visual Studio 2022 or its Build Tools. Install Kpp anyway?', mbConfirmation, MB_YESNO, IDYES) = IDYES;
 end;
 
 procedure RemoveFromPath(Directory: string);
