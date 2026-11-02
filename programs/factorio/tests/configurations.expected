@@ -1,0 +1,5 @@
+debug IsDebug true
+release IsDebug false
+TransportLine's referenceSet (an unordered_set in every TransportLine): config::debug only
+Rcu's writeLockCount (an atomic counter): config::debug only
+BuildConstants' IsDebug = config::debug ? true : false: chosen by the configuration

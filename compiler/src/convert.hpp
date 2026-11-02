@@ -73,6 +73,19 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
 // written qualified in the converted program, zstd::ZSTD_compress, and an include of its headers
 // (zstd/zstd.h) imports nothing.
 void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::path>> libraries);
+// The configuration a conversion preprocesses the game as (kppc --convert-release): Release's
+// defines (NDEBUG) instead of FastDebug's; and whether it marks each #if group (--convert-marks), for
+// convertMerge. Set before the configuration is built.
+void setConvertRelease();
+void setConvertMarks();
+// kppc --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
+// OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
+// Returns 1 when they differ where no group can say so (reported, with the debug text written).
+// choicesFile lists the groups no `if constexpr` can choose between, each taken from one
+// configuration: `FILE GROUP debug|release  why` (programs/factorio/overrides/configuration-choices.txt).
+int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::path& releaseDir, const std::filesystem::path& outDir,
+                 const std::filesystem::path& choicesFile = {});
+
 // The errors the last convertToKpp found that leave its output wrong, which it printed: C, an #if
 // name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kppc
 // exits 1.

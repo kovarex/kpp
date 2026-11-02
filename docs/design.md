@@ -625,6 +625,46 @@ so it may name what only the other configuration declares (spec
 kpp/config_debug_branch_names_debug_only_members). The unit tests' CRCs and the menu maps are checked
 in both configurations, and the release build is checked to hold no DEBUG code.
 
+As converted (thread C, 2026-11-02):
+- `kppc --convert --convert-marks [--convert-release]` converts the game as FastDebug or as Release
+  preprocesses it (Release: NDEBUG for _DEBUG and DEBUG, no DISABLE_EXPRESSION_ID, as fbuild.bff's
+  .BuildVanillaRelease), each #if group marked where its first and last directive stood, and each use
+  of a macro of the file marked too (a macro may be defined otherwise in the other configuration: Lua's
+  api_check, GameRenderer's CHECK_AND_ADVANCE_STATE). `kppc --convert-merge DEBUG RELEASE OUT CHOICES`
+  makes the two one text. A group whose two texts are the same is written once, whatever its condition:
+  so the platform parts of a condition fold, and a macro that a configuration's #if defines is
+  followed to its uses, with no condition parsed. A group whose texts differ, where a statement,
+  member or declaration stands, is written by section 19: each declaration of one configuration as
+  `when (config::debug)` (`when (!config::debug)`), a local, member, static or namespace-scope one alike,
+  so it is the enclosing scope's (a later group's use sees it, an object lives to the end of its block,
+  a member is in the layout where the configuration has it); one declaration in each that differs only
+  in its initializer as one choosing, `static constexpr u32 ITERATIONS = config::debug ? 16 : 128;`;
+  and the statements between as `if constexpr (config::debug) { ... }` blocks, in order. A macro's use
+  as a statement is `if constexpr (config::debug) { debug; } else { release; }`. A difference anywhere
+  else is reported, and fails convert.cmd.
+- A group whose debug text is its release text with asserts (Lua's check_exp, `(lua_assert(c), (e))`
+  in debug and `(e)` in release) is written as the debug one: kpp's assert is the configuration's own
+  (nothing, its expression unchecked, where config::debug is false).
+- overrides/configuration-choices.txt takes a group no `if constexpr` can choose between from one
+  configuration for both, with the reason: Main.cpp's create-console option, a part of a cxxopts
+  call chain that exists in Release only.
+- The converter's own rewrite of a header's macro now stands over the header's definition (C++ files):
+  AlwaysInline.hpp's ALWAYS_INLINE, nothing under DEBUG and `__forceinline` otherwise, is
+  `[[forceinline]]` in both. A function-like macro that is nothing (CHECK_AND_ADVANCE_STATE in
+  Release) is expanded to nothing at its uses, where its uses were left as calls before.
+- Counts (C:\Factorio 4c178a5b915, the whole conversion): 4,811 files, 554 groups whose
+  configurations differ, in them 159 declarations written `when` and 5 initializers choosing; 459 groups
+  whose configurations differ by asserts alone, 1 chosen.
+- convert.cmd checks it (tests\configurations.kpp and debug-only.py, "configurations"): the converted
+  BuildConstants' IsDebug is true in debug and false in release (`IsDebug = config::debug ? true :
+  false`), and TransportLine's referenceSet and Rcu's writeLockCount occur only where config::debug is
+  true, in a `when (config::debug)` declaration or an `if constexpr (config::debug)`.
+- The scope question (2026-11-02) is answered by section 19: TestNoisePerformance's ITERATIONS chooses
+  its value; FogShaderRenderLogic's ROW_STEP is two `when` constants of one name (its release one has a
+  comment of its own, which one choosing would lose), and the `static_assert` after them names the one
+  that exists; LogisticManager's neighbors, DeliverJob's point, LatencyOneTimeEffect's itTick and
+  TextureCopyHelperDX11's sourceWidth are `when` locals.
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".

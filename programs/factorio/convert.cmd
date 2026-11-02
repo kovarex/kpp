@@ -20,7 +20,7 @@ rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rule
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
 rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
-rem errors 0, smoke tests 11/11, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
+rem errors 0, smoke tests 12/12, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
 rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -78,7 +78,14 @@ rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and 
 rem conversion's files only: tests\ and the libraries keep resources.cmd's (saves, READMEs).
 if exist "%WHOLE%\src" rd /s /q "%WHOLE%\src"
 for %%d in (libraries\CommonUtil libraries\Agui libraries\cxxopts libraries\StackWalker libraries\Lua libraries\crc32fast libraries\UnitTest++ tests) do if exist "%WHOLE%\%%d" del /s /q "%WHOLE%\%%d\*.kpp" >nul
-%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+rem Both configurations (docs/design.md 12, "The game's DEBUG as config::debug"): the game as its
+rem FastDebug and its Release preprocess it, each #if group marked, made one text by --convert-merge,
+rem a group whose two texts differ written as `if constexpr (config::debug)`
+rem (overrides\configuration-choices.txt: the few no `if constexpr` can choose between).
+for %%c in (debug release) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%c
+%KPPC% --no-std --quiet --convert-marks --convert kpp\whole-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-release --convert kpp\whole-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --convert-merge kpp\whole-debug kpp\whole-release %WHOLE% overrides\configuration-choices.txt || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
@@ -97,7 +104,10 @@ set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libr
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
-%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
+for %%c in (debug release) do if exist kpp\conv-%%c rd /s /q kpp\conv-%%c
+%KPPC% --no-std --quiet --convert-marks --convert kpp\conv-debug %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-release --convert kpp\conv-release %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
+%KPPC% --convert-merge kpp\conv-debug kpp\conv-release kpp overrides\configuration-choices.txt || goto :failed
 type kpp\CONVERSION.md | findstr /B "Files -"
 set CINC=%CINC% %CLIBINC%
 rem (and their own headers: the configured imports, minizip's)
@@ -206,6 +216,14 @@ if exist kpp\convert_formats rd /s /q kpp\convert_formats
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
+set "STEP=configurations check"
+echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug in debug and in release, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --release --exe kpp\configurations-release.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+kpp\configurations-debug.exe > kpp\configurations.out.txt
+kpp\configurations-release.exe >> kpp\configurations.out.txt
+python -I debug-only.py kpp >> kpp\configurations.out.txt
+fc /w kpp\configurations.out.txt tests\configurations.expected > nul && (echo configurations: output as expected& set /a SMOKES+=1) || (echo configurations: OUTPUT DIFFERS & fc /w kpp\configurations.out.txt tests\configurations.expected & goto :failed)
 set "STEP=C rules"
 echo == C rules: tests\convert_c\rules.c, where C and C++ differ (void* conversions, designated initializers, compound literals, C++ keywords as names...), converted as C and run, prints what its C build prints (tests\convert_c.expected)
 rem Pending until the converter's C mode exists (docs/path-to-factorio.md, "Converting the C libraries"):
@@ -219,7 +237,7 @@ set CRULESOK=0
 if exist kpp\convert_c.exe (kpp\convert_c.exe > kpp\convert_c.out.txt 2>&1 && fc /w kpp\convert_c.out.txt tests\convert_c.expected > nul && set CRULESOK=1)
 if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& goto :failed) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& goto :failed))
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/11, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/12, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)

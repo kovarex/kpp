@@ -1,0 +1,8 @@
+// The game's DEBUG code is config::debug's (docs/design.md 12, "The game's DEBUG as config::debug"):
+// built with the converted BuildConstants in debug and in release (convert.cmd), each prints its
+// configuration's IsDebug, which C++'s `#ifdef DEBUG` chose.
+int main()
+{
+  println(StringView(config::debug ? "debug" : "release"), " IsDebug ", BuildConstants::IsDebug);
+  return 0;
+}

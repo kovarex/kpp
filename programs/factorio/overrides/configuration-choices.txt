@@ -1,0 +1,4 @@
+# The #if groups whose debug and release texts kppc --convert-merge cannot write as one
+# `if constexpr (config::debug)` (a part of an expression), each taken from one configuration for
+# both builds: FILE GROUP debug|release  why. (design.md 12, "The game's DEBUG as config::debug")
+src/Main.kpp Main.cpp:26 release  the create-console option (cxxopts' add_options chain) exists in Release only; declared in both, the debug build reads it nowhere (its use is `if constexpr (!config::debug)`), where C++'s debug build rejects it as unknown

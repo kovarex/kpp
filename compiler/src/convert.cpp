@@ -222,7 +222,7 @@ namespace
   // game tests (sdkddkver.h's version numbers; ENABLE_VIRTUAL_TERMINAL_PROCESSING,
   // DISABLE_NEWLINE_AUTO_RETURN and GUID_DEFINED, which consoleapi.h and guiddef.h define). Name ->
   // body. docs/path-to-factorio.md, "The configuration".
-  const std::map<std::string, std::string> buildDefines = {
+  const std::map<std::string, std::string> fastDebugDefines = {
     // .defines (Windows)
     {"WIN32_LEAN_AND_MEAN", ""}, {"CRT_NONSTDC_NO_DEPRECATE", ""}, {"_CRT_SECURE_NO_WARNINGS", ""}, {"_SCL_SECURE_NO_WARNINGS", ""},
     {"_WINDOWS", ""}, {"_USE_MATH_DEFINES", ""}, {"USE_THREADS", ""}, {"WIN32", ""}, {"_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", ""},
@@ -258,6 +258,26 @@ namespace
     {"ENABLE_VIRTUAL_TERMINAL_PROCESSING", "0x0004"}, {"DISABLE_NEWLINE_AUTO_RETURN", "0x0008"}, {"GUID_DEFINED", ""},
     // (fileapi.h: StackWalker.cpp defines it `#ifndef INVALID_FILE_ATTRIBUTES`, for VC5/6)
     {"INVALID_FILE_ATTRIBUTES", "((DWORD)-1)"}};
+  // The game is converted in two configurations and the two made one (design.md 12, "The game's
+  // DEBUG as config::debug"): FastDebug's defines above, and with kppc --convert-release Release's,
+  // which have NDEBUG for _DEBUG and DEBUG and no DISABLE_EXPRESSION_ID (fbuild.bff's
+  // .BuildVanillaRelease). With --convert-marks each #if group is marked where its first and last
+  // directive stood (`/*kpp:if FILE:N*/`, `/*kpp:endif FILE:N*/`), and convertMerge writes a group
+  // whose two texts differ as `if constexpr (config::debug)`.
+  bool convertRelease = false;
+  bool convertMarks = false;
+  const std::map<std::string, std::string>& buildDefines()
+  {
+    static const std::map<std::string, std::string> release = []
+    {
+      std::map<std::string, std::string> d = fastDebugDefines;
+      for (const char* name : {"_DEBUG", "DEBUG", "DISABLE_EXPRESSION_ID"})
+        d.erase(name);
+      d["NDEBUG"] = "";
+      return d;
+    }();
+    return convertRelease ? release : fastDebugDefines;
+  }
   // The build a C library converted as C (kppc --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's
   // global defines (its fromSource); no C++ and no debug build's names. MSVC's x64 predefines, and
@@ -266,7 +286,7 @@ namespace
   // library's own defines come from its c-libraries\NAME\defines.txt (zlib's verbose=-1).
   std::map<std::string, std::string> cLibraryDefines()
   {
-    std::map<std::string, std::string> d = buildDefines;
+    std::map<std::string, std::string> d = fastDebugDefines;
     for (const char* name : {"_DEBUG", "DEBUG", "DISABLE_EXPRESSION_ID", "__cplusplus", "__cpp_lib_optional", "NOMINMAX", "BUILDING_WARNLESS_C",
                              "CURL_STATICLIB", "SDL_MAIN_HANDLED", "SDL_SENSOR_DISABLED", "LUA_COMPAT_ALL", "LUA_CORE", "LUA_LIB", "lobject_c",
                              "lvm_c", "ltable_c", "__has_include"})
@@ -648,7 +668,7 @@ namespace
   {
     Preprocessed out;
     out.configured = std::string(text);
-    const MacroTable& baseDefines = base ? *base : buildDefines; // (C sources: cLibraryDefines)
+    const MacroTable& baseDefines = base ? *base : buildDefines(); // (C sources: cLibraryDefines)
     MacroTable table = baseDefines;
     auto blank = [&](size_t from, size_t to)
     {
@@ -3090,6 +3110,10 @@ namespace
     // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).
     std::map<uint32_t, std::string> droppedAllocators;
     Counts counts;
+    // This file's #if groups (convertMarks): the next one's number, and those open, each with whether
+    // its #if line is written out.
+    uint32_t nextIfGroup = 0;
+    std::vector<std::pair<uint32_t, bool>> openIfGroups;
     // The C headers this file imports, in its include order: written once per library, in its
     // c-imports.kpp (writeLibraryImports), not in the file.
     std::vector<std::string> cImports;
@@ -3391,14 +3415,13 @@ namespace
             m.body.erase(m.body.begin());
           while (!m.body.empty() && isspace((unsigned char)m.body.back()))
             m.body.pop_back();
-          if (!m.body.empty())
-          {
-            endLocalMacro(name, offset); // a redefinition without #undef replaces the earlier one
-            m.from = offset;
-            localMacros[name].push_back(m);
-            counts.add("local function-like macro");
-            return "";
-          }
+          // (one that is nothing, too: GameRenderer.cpp's CHECK_AND_ADVANCE_STATE in Release; its uses
+          // go)
+          endLocalMacro(name, offset); // a redefinition without #undef replaces the earlier one
+          m.from = offset;
+          localMacros[name].push_back(m);
+          counts.add(m.body.empty() ? "local function-like macros that are nothing" : "local function-like macro");
+          return "";
         }
       }
       if (!functionLike)
@@ -3677,7 +3700,27 @@ namespace
           if (ch == '\\' || ch == '\r')
             ch = ' ';
         if (word == "if" || word == "ifdef" || word == "ifndef")
+        {
           counts.add("#if");
+          // (written where the text around it is: a drop its own condition starts begins at it)
+          bool around = active || (nextDrop < decided.dropped.size() && decided.dropped[nextDrop].first == offset);
+          openIfGroups.push_back({nextIfGroup++, around});
+          if (convertMarks && around)
+          {
+            replace(offset, length, "/*kpp:if " + in.path.filename().string() + ":" + std::to_string(openIfGroups.back().first) + "*/");
+            continue;
+          }
+        }
+        else if (word == "endif" && !openIfGroups.empty())
+        {
+          auto [group, written] = openIfGroups.back();
+          openIfGroups.pop_back();
+          if (convertMarks && written)
+          {
+            replace(offset, length, "/*kpp:endif " + in.path.filename().string() + ":" + std::to_string(group) + "*/");
+            continue;
+          }
+        }
         else if (word == "elif" || word == "else" || word == "endif")
         {
         }
@@ -10428,7 +10471,15 @@ namespace
                 args.push_back(applyEdits(edits, b, e, true));
                 spellings.push_back(std::string(text.substr(b, e - b)));
               }
-              edits.push_back({use.begin, use.end - use.begin, rewritePrintfText(expandMacro(*use.macro, args, use.begin, &spellings))});
+              std::string expansion = rewritePrintfText(expandMacro(*use.macro, args, use.begin, &spellings));
+              // (marked: the macro may be defined otherwise in the other configuration, Lua's api_check
+              // an assert in one and a check that aborts in the other; the use's offset is its id)
+              if (convertMarks)
+              {
+                std::string id = in.path.filename().string() + ":@" + std::to_string(use.begin);
+                expansion = "/*kpp:if " + id + "*/" + expansion + "/*kpp:endif " + id + "*/";
+              }
+              edits.push_back({use.begin, use.end - use.begin, expansion});
             }
           std::stable_sort(edits.begin(), edits.end(), byOffset);
         }
@@ -13541,6 +13592,12 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     {
       fc.includedMacros = visibleMacros(ip->second);
       fc.objectMacros = visibleObjectMacros(ip->second);
+      // The converter's own rewrite of a name stands over a header's definition of it, which may
+      // differ by configuration: AlwaysInline.hpp's ALWAYS_INLINE is nothing in DEBUG and
+      // __forceinline in Release, [[forceinline]] in both (design.md 12).
+      if (!in.c)
+        for (const auto& [name, value] : knownMacros)
+          fc.objectMacros.erase(name);
       // C: a header holds in the files that include it, with what they define before it (trees.h's
       // tables are D_CODES long, deflate.h's macro, which trees.c includes first).
       if (in.c && fc.isHeader())
@@ -13849,4 +13906,834 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fclose(f);
   }
   return summary;
+}
+
+// --- the game's two configurations made one (design.md 12, "The game's DEBUG as config::debug") ---
+
+void setConvertRelease()
+{
+  convertRelease = true;
+}
+
+void setConvertMarks()
+{
+  convertMarks = true;
+}
+
+namespace
+{
+  // A converted text cut at its #if groups' marks (convertMarks): text parts, and groups of parts.
+  struct MarkedPart
+  {
+    std::string text;              // a text part's text, without its marks' lines
+    std::string group;             // a group's id (FILE:N); empty for a text part
+    std::vector<MarkedPart> parts; // a group's contents
+  };
+
+  void addText(std::vector<MarkedPart>& parts, std::string_view text)
+  {
+    if (text.empty())
+      return;
+    if (!parts.empty() && parts.back().group.empty())
+      parts.back().text += text;
+    else
+      parts.push_back({std::string(text), {}, {}});
+  }
+
+  // The parts from `at` to the end mark of `group`, or to the text's end for the whole text (group
+  // ""). A mark alone on its line takes the line with it. A mark the conversion lost (an #if line
+  // inside a macro's use, which the expansion replaced) is lost in both configurations alike: an end
+  // mark without its start is left out, and one that closes an outer group ends the inner ones.
+  bool parseMarked(const std::string& text, size_t& at, const std::string& group, std::vector<MarkedPart>& parts,
+                   std::vector<std::string>& openGroups)
+  {
+    static const std::string open = "/*kpp:if ", close = "/*kpp:endif ";
+    for (;;)
+    {
+      size_t o = text.find(open, at), c = text.find(close, at);
+      size_t mark = std::min(o, c);
+      if (mark == std::string::npos)
+      {
+        addText(parts, std::string_view(text).substr(at));
+        at = text.size();
+        return true;
+      }
+      bool opening = mark == o;
+      size_t idStart = mark + (opening ? open.size() : close.size());
+      size_t end = text.find("*/", idStart);
+      if (end == std::string::npos)
+        return false;
+      std::string id = text.substr(idStart, end - idStart);
+      end += 2;
+      size_t from = mark;
+      while (from > at && (text[from - 1] == ' ' || text[from - 1] == '\t'))
+        --from;
+      size_t to = end;
+      while (to < text.size() && (text[to] == ' ' || text[to] == '\t' || text[to] == '\r'))
+        ++to;
+      if ((from == 0 || text[from - 1] == '\n') && (to == text.size() || text[to] == '\n'))
+        to = std::min(to + 1, text.size());
+      else
+        from = mark, to = end;
+      addText(parts, std::string_view(text).substr(at, from - at));
+      if (!opening && id != group && std::find(openGroups.begin(), openGroups.end(), id) != openGroups.end())
+      {
+        at = from; // (the outer group's end: this one's was lost)
+        return true;
+      }
+      at = to;
+      if (!opening)
+      {
+        if (id == group)
+          return true;
+        continue; // (an end without its start)
+      }
+      MarkedPart g;
+      g.group = id;
+      openGroups.push_back(id);
+      bool nested = parseMarked(text, at, id, g.parts, openGroups);
+      openGroups.pop_back();
+      if (!nested)
+        return false;
+      parts.push_back(std::move(g));
+    }
+  }
+
+  std::string flattened(const std::vector<MarkedPart>& parts)
+  {
+    std::string out;
+    for (const MarkedPart& p : parts)
+      out += p.group.empty() ? p.text : flattened(p.parts);
+    return out;
+  }
+
+  struct MergeReport
+  {
+    size_t conditional = 0;
+    size_t byAsserts = 0; // groups whose debug text is the release one with asserts (differsByAsserts)
+    size_t when = 0; // declarations of one configuration written `when (config::debug)` (design.md 19)
+    size_t perConfiguration = 0; // declarations whose initializer alone differs, `= config::debug ? a : b`
+    size_t aliases = 0; // aliases of one configuration written in both (conditionalGroup)
+    std::map<std::string, std::string> choices; // "FILE GROUP" -> the configuration whose text both get
+    std::set<std::string> chosen;
+    std::vector<std::string> problems;
+  };
+
+  // The last character of code in a text, comments and white space left out (0 for none).
+  char lastCodeChar(std::string_view text)
+  {
+    char last = 0;
+    for (size_t i = 0; i < text.size();)
+    {
+      if (text.compare(i, 2, "//") == 0)
+        i = std::min(text.find('\n', i), text.size());
+      else if (text.compare(i, 2, "/*") == 0)
+      {
+        size_t e = text.find("*/", i + 2);
+        i = e == std::string_view::npos ? text.size() : e + 2;
+      }
+      else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
+      {
+        char quote = text[i];
+        for (++i; i < text.size() && text[i] != quote && text[i] != '\n'; ++i)
+          i += text[i] == '\\';
+        last = quote;
+        ++i;
+      }
+      else
+      {
+        if (!isspace((unsigned char)text[i]))
+          last = text[i];
+        ++i;
+      }
+    }
+    return last;
+  }
+
+  std::string firstLine(const std::string& text)
+  {
+    size_t first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+      return "";
+    size_t end = text.find_first_of("\r\n", first);
+    std::string line = text.substr(first, end == std::string::npos ? std::string::npos : end - first);
+    return line.size() > 90 ? line.substr(0, 90) + "..." : line;
+  }
+
+  bool blankText(const std::string& text) { return text.find_first_not_of(" \t\r\n") == std::string::npos; }
+
+  // Whether a statement or declaration may start after a text: after `;`, `{`, `}`, the `:` of an
+  // access specifier or a label, the `)` of a condition, `else` or `do`, or at the start.
+  bool statementAfter(std::string_view before)
+  {
+    std::string_view tail = before.substr(before.size() > 4096 ? before.size() - 4096 : 0);
+    char previous = lastCodeChar(tail);
+    if (previous == 0 || previous == ';' || previous == '{' || previous == '}' || previous == ':' || previous == ')')
+      return true;
+    size_t end = tail.find_last_not_of(" \t\r\n");
+    for (std::string_view word : {"else", "do"})
+      if (end != std::string_view::npos && end + 1 >= word.size() && tail.substr(end + 1 - word.size(), word.size()) == word &&
+          (end + 1 == word.size() || !isIdentChar(tail[end - word.size()])))
+        return true;
+    return false;
+  }
+
+  std::string_view codeStart(std::string_view item);
+  bool definesType(std::string_view item);
+
+  // The items of a group's text where declarations and statements stand: each a statement or a
+  // declaration, ending with its `;` at depth 0 or with the `}` that closes a body at depth 0 (one
+  // followed by `;`, `else`, `while`, `catch` or a name, `struct S {...} s;`, runs on). Comments and
+  // blank lines before an item are its own.
+  std::vector<std::string> groupItems(const std::string& text)
+  {
+    std::vector<std::string> items;
+    size_t start = 0;
+    int depth = 0;
+    auto nextCode = [&](size_t i)
+    {
+      for (;;)
+      {
+        while (i < text.size() && isspace((unsigned char)text[i]))
+          ++i;
+        if (text.compare(i, 2, "//") == 0)
+          i = std::min(text.find('\n', i), text.size());
+        else if (text.compare(i, 2, "/*") == 0)
+        {
+          size_t e = text.find("*/", i + 2);
+          i = e == std::string::npos ? text.size() : e + 2;
+        }
+        else
+          return i;
+      }
+    };
+    for (size_t i = 0; i < text.size();)
+    {
+      if (text.compare(i, 2, "//") == 0)
+      {
+        i = std::min(text.find('\n', i), text.size());
+        continue;
+      }
+      if (text.compare(i, 2, "/*") == 0)
+      {
+        size_t e = text.find("*/", i + 2);
+        i = e == std::string::npos ? text.size() : e + 2;
+        continue;
+      }
+      char c = text[i];
+      if (c == '"' || (c == '\'' && !isDigitSeparator(text, i)))
+      {
+        for (++i; i < text.size() && text[i] != c && text[i] != '\n'; ++i)
+          i += text[i] == '\\';
+        ++i;
+        continue;
+      }
+      if (c == '(' || c == '[' || c == '{')
+        ++depth;
+      else if (c == ')' || c == ']' || c == '}')
+        --depth;
+      ++i;
+      bool end = depth == 0 && c == ';';
+      if (depth == 0 && c == '}')
+      {
+        size_t n = nextCode(i);
+        auto word = [&](std::string_view w)
+        { return text.compare(n, w.size(), w) == 0 && (n + w.size() >= text.size() || !isIdentChar(text[n + w.size()])); };
+        end = !(n < text.size() && (text[n] == ';' || text[n] == ',' || word("else") || word("while") || word("catch") ||
+                                    (isIdentChar(text[n]) && !isdigit((unsigned char)text[n]) && lastCodeChar(text.substr(start, i - start)) == '}' &&
+                                     definesType(text.substr(start, i - start)))));
+      }
+      if (end)
+      {
+        // (the rest of its line, a trailing comment, is its own)
+        size_t e = i;
+        while (e < text.size() && (text[e] == ' ' || text[e] == '\t'))
+          ++e;
+        if (text.compare(e, 2, "//") == 0)
+          e = std::min(text.find('\n', e), text.size());
+        if (e < text.size() && text[e] == '\r')
+          ++e;
+        if (e < text.size() && text[e] == '\n')
+          ++e;
+        items.push_back(text.substr(start, e - start));
+        start = i = e;
+      }
+    }
+    if (start < text.size())
+      items.push_back(text.substr(start));
+    return items;
+  }
+
+  // The first words of an item's code, comments and attributes left out.
+  std::string_view codeStart(std::string_view item)
+  {
+    size_t i = 0;
+    for (;;)
+    {
+      while (i < item.size() && isspace((unsigned char)item[i]))
+        ++i;
+      if (item.compare(i, 2, "//") == 0)
+        i = std::min(item.find('\n', i), item.size());
+      else if (item.compare(i, 2, "/*") == 0)
+      {
+        size_t e = item.find("*/", i + 2);
+        i = e == std::string_view::npos ? item.size() : e + 2;
+      }
+      else if (item.compare(i, 2, "[[") == 0)
+      {
+        size_t e = item.find("]]", i + 2);
+        i = e == std::string_view::npos ? item.size() : e + 2;
+      }
+      else
+        return item.substr(i);
+    }
+  }
+
+  // Whether an item defines a class, union or enumeration (`struct S {...} s;` runs on after its `}`).
+  bool definesType(std::string_view item)
+  {
+    std::string_view code = codeStart(item);
+    for (std::string_view w : {"typedef", "struct", "class", "union", "enum"})
+      if (code.substr(0, w.size()) == w && (code.size() == w.size() || !isIdentChar(code[w.size()])))
+        return true;
+    return false;
+  }
+
+  // Whether an item declares a name (a local, a member, a namespace's variable, function, class or
+  // alias), as `when` takes it (design.md 19), or is a statement or something else (an access
+  // specifier, static_assert): a declaration starts with a type, its words (const, static,
+  // constexpr...) or a class's keyword, and names something after the type: `int x = 3;`,
+  // `std::vector<Cell*> neighbors;`, `Timer timer("x");`, `void dump() const {...}`; not `x = 3;`,
+  // `f(x);`, `obj.f();`, `return x;`, `++x;`, `f<int>(x);`.
+  bool declaresName(std::string_view item)
+  {
+    std::string_view code = codeStart(item);
+    if (code.empty() || !(isalpha((unsigned char)code[0]) || code[0] == '_' || code[0] == ':'))
+      return false;
+    size_t i = 0;
+    auto skipSpace = [&] { while (i < code.size() && isspace((unsigned char)code[i])) ++i; };
+    auto word = [&]() -> std::string_view
+    {
+      skipSpace();
+      size_t b = i;
+      while (i < code.size() && isIdentChar(code[i]))
+        ++i;
+      return code.substr(b, i - b);
+    };
+    static const std::set<std::string_view> statements = {"return", "if", "for", "while", "switch", "do", "delete", "throw", "break",
+                                                         "continue", "goto", "case", "default", "else", "try", "static_assert",
+                                                         "public", "private", "protected", "using", "namespace", "friend", "template",
+                                                         "assert", "release_assert", "co_return", "co_yield", "co_await"};
+    static const std::set<std::string_view> leading = {"const", "static", "constexpr", "inline", "thread_local", "mutable", "volatile",
+                                                      "extern", "virtual", "explicit", "unsigned", "signed", "long", "short",
+                                                      "struct", "class", "union", "enum", "typename", "consteval", "constinit"};
+    std::string_view first = word();
+    if (first == "using")
+    {
+      // an alias, `using MapType = HashMap<...>;` (a debug-only one used by a later `when`), not
+      // `using namespace` or a using-declaration
+      std::string_view alias = word();
+      skipSpace();
+      return !alias.empty() && alias != "namespace" && i < code.size() && code[i] == '=';
+    }
+    if (first.empty() || statements.count(first))
+      return false;
+    if (first == "typedef")
+      return true;
+    while (leading.count(first))
+    {
+      size_t save = i;
+      std::string_view next = word();
+      if (next.empty())
+      {
+        i = save;
+        break;
+      }
+      first = next;
+    }
+    // the type's name: NAME(::NAME)*(<...>)?, with `*`, `&` and const after it
+    for (;;)
+    {
+      skipSpace();
+      if (i < code.size() && code[i] == '<')
+      {
+        int depth = 0;
+        for (; i < code.size(); ++i)
+        {
+          depth += code[i] == '<' ? 1 : code[i] == '>' ? -1 : 0;
+          if (depth == 0)
+            break;
+          if (code[i] == ';' || code[i] == '{')
+            return false;
+        }
+        ++i;
+        skipSpace();
+      }
+      if (code.compare(i, 2, "::") == 0)
+      {
+        i += 2;
+        if (word().empty())
+          return false;
+        continue;
+      }
+      break;
+    }
+    for (;;)
+    {
+      skipSpace();
+      if (i < code.size() && (code[i] == '*' || code[i] == '&'))
+        ++i;
+      else if (code.compare(i, 5, "const") == 0 && (i + 5 >= code.size() || !isIdentChar(code[i + 5])))
+        i += 5;
+      else
+        break;
+    }
+    // then the declared name (an operator is a member function too)
+    skipSpace();
+    if (code.compare(i, 8, "operator") == 0)
+      return true;
+    std::string_view name = word();
+    if (name.empty())
+      return false; // (`f(x);`, `x = 3;`; a constructor declared in one configuration stays `if constexpr`)
+    skipSpace();
+    return i < code.size() && strchr("=;({[,:", code[i]);
+  }
+
+  // A declaration that differs per configuration only in its initializer (`constexpr i32 ROW_STEP = 4;`
+  // in debug, `= 2;` in release): one declaration choosing by the configuration, design.md 19's
+  // `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`. "" when the two are not so.
+  std::string perConfigurationInitializer(const std::string& debug, const std::string& release)
+  {
+    auto split = [](const std::string& item, std::string& head, std::string& value, std::string& tail)
+    {
+      size_t semicolon = item.rfind(';');
+      size_t equals = item.find(" = ");
+      if (semicolon == std::string::npos || equals == std::string::npos || equals > semicolon)
+        return false;
+      head = item.substr(0, equals);
+      value = item.substr(equals + 3, semicolon - equals - 3);
+      tail = item.substr(semicolon);
+      return head.find_first_of("({") == std::string::npos && value.find_first_of(";{") == std::string::npos;
+    };
+    // (each value a literal: a choice's both arms are compiled in both configurations, so a name of one
+    // configuration's, SpiderLeg's `this->debugDraw`, is two `when`s instead)
+    auto literal = [](const std::string& value)
+    {
+      for (size_t i = 0; i < value.size();)
+        if (isalpha((unsigned char)value[i]) || value[i] == '_')
+        {
+          size_t e = i;
+          while (e < value.size() && isIdentChar(value[e]))
+            ++e;
+          std::string word = value.substr(i, e - i);
+          if (word != "true" && word != "false" && word != "nullptr")
+            return false;
+          i = e;
+        }
+        else if (isdigit((unsigned char)value[i]))
+        {
+          while (i < value.size() && (isIdentChar(value[i]) || value[i] == '.'))
+            ++i;
+        }
+        else if (strchr(" \t+-()", value[i]))
+          ++i;
+        else
+          return false;
+      return true;
+    };
+    std::string dh, dv, dt, rh, rv, rt;
+    if (!split(debug, dh, dv, dt) || !split(release, rh, rv, rt) || dh != rh || dv == rv || !literal(dv) || !literal(rv))
+      return "";
+    return dh + " = config::debug ? " + dv + " : " + rv + dt;
+  }
+
+  // A group whose configurations' texts differ, where declarations and statements stand (after `;`,
+  // `{`, `}` or the `:` of an access specifier or label), each text whole ones (ending with `;` or
+  // `}`), in a block, a class or a namespace (design.md 19):
+  // - a declaration of one configuration is a `when (config::debug)` (`when (!config::debug)`) one:
+  //   it is the enclosing scope's, so a later group's use sees it, an object lives to the end of
+  //   the block, a member is in the class's layout where the configuration has it;
+  // - one declaration in each that differs only in its initializer is one, choosing:
+  //   `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`;
+  // - the other items, statements, are `if constexpr (config::debug) { ... }` blocks, in order.
+  // Anywhere else (an initializer list, a parameter list, an expression) is a problem, reported.
+  std::string conditionalGroup(const std::string& debug, const std::string& release, std::string_view before, const std::string& where,
+                               MergeReport& report)
+  {
+    auto whole = [](const std::string& text)
+    {
+      char last = lastCodeChar(text);
+      return last == 0 || last == ';' || last == '}';
+    };
+    if (!statementAfter(before) || !whole(debug) || !whole(release))
+    {
+      report.problems.push_back(where + ": the configurations differ where no statement or declaration stands (debug `" + firstLine(debug) +
+                                "`, release `" + firstLine(release) + "`)");
+      return debug;
+    }
+    ++report.conditional;
+    const std::string& sample = blankText(debug) ? release : debug;
+    size_t first = sample.find_first_not_of(" \t\r\n");
+    size_t lineStart = sample.rfind('\n', first);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    std::string indent = sample.substr(lineStart, first - lineStart);
+    auto block = [&](const std::string& text)
+    {
+      std::string out = indent + "{\n";
+      for (size_t start = 0; start < text.size();)
+      {
+        size_t e = text.find('\n', start);
+        if (e == std::string::npos)
+          e = text.size();
+        std::string line = text.substr(start, e - start);
+        out += (line.find_first_not_of(" \t\r") == std::string::npos ? std::string() : "  " + line) + "\n";
+        start = e + 1;
+      }
+      return out + indent + "}\n";
+    };
+    std::vector<std::string> debugItems = groupItems(debug), releaseItems = groupItems(release);
+    auto onlyCode = [&](const std::vector<std::string>& items)
+    {
+      std::vector<std::string> code;
+      for (const std::string& item : items)
+        if (!blankText(item) && lastCodeChar(item) != 0)
+          code.push_back(item);
+      return code;
+    };
+    if (std::vector<std::string> d = onlyCode(debugItems), r = onlyCode(releaseItems); d.size() == 1 && r.size() == 1 && declaresName(d[0]))
+      if (std::string chosen = perConfigurationInitializer(d[0], r[0]); !chosen.empty())
+      {
+        ++report.perConfiguration;
+        return chosen;
+      }
+    // An alias's name (`using MapType = ...;`, ""): an alias of one configuration is written in both,
+    // as it has no storage and no constructor (a `when` in a block declares a variable alone), its
+    // type checked in both (a type of one configuration's in it is an error in the other, never a
+    // wrong one), unless the other configuration declares the name too: then the two are `when`s.
+    auto aliasName = [&](const std::string& item) -> std::string
+    {
+      std::string_view code = codeStart(item);
+      if (code.substr(0, 6) != "using " || !declaresName(item))
+        return "";
+      size_t b = code.find_first_not_of(" \t", 6), e = b;
+      while (e < code.size() && isIdentChar(code[e]))
+        ++e;
+      return std::string(code.substr(b, e - b));
+    };
+    std::set<std::string> debugAliases, releaseAliases;
+    for (const std::string& item : debugItems)
+      if (std::string name = aliasName(item); !name.empty())
+        debugAliases.insert(name);
+    for (const std::string& item : releaseItems)
+      if (std::string name = aliasName(item); !name.empty())
+        releaseAliases.insert(name);
+    // One configuration's items: each declaration a `when`, each run of statements one block.
+    auto items = [&](const std::vector<std::string>& list, const char* condition, const std::set<std::string>& otherAliases)
+    {
+      std::string out, statements;
+      auto flush = [&]
+      {
+        if (!blankText(statements))
+          out += indent + "if constexpr (" + condition + ")\n" + block(statements);
+        else
+          out += statements;
+        statements.clear();
+      };
+      for (const std::string& item : list)
+        if (std::string alias = aliasName(item); !alias.empty() && !otherAliases.count(alias))
+        {
+          flush();
+          out += item;
+          ++report.aliases;
+        }
+        else if (declaresName(item))
+        {
+          flush();
+          // (its comments and blank lines before it stay before it)
+          std::string_view code = codeStart(item);
+          size_t at = item.size() - code.size();
+          out += item.substr(0, at) + "when (" + condition + ") " + std::string(code);
+          ++report.when;
+        }
+        else
+          statements += item;
+      flush();
+      return out;
+    };
+    return items(debugItems, "config::debug", releaseAliases) + items(releaseItems, "!config::debug", debugAliases);
+  }
+
+  // Whether a group's debug text is its release text with asserts (Lua's check_exp, `(lua_assert(c),
+  // (e))` in debug and `(e)` in release; its lua_assert, `assert(c)` and `((void)0)`): kpp's assert
+  // is the configuration's own (nothing where config::debug is false), so the debug text is right in
+  // both. Compared with the asserts taken out of the debug text, `(void)0` out of the release one,
+  // and parentheses, commas and white space out of both.
+  bool differsByAsserts(const std::string& debug, const std::string& release)
+  {
+    if (debug.find("assert(") == std::string::npos)
+      return false;
+    std::string stripped;
+    for (size_t i = 0; i < debug.size();)
+    {
+      // `([&] { assert(...); }())`, the converter's assert in an expression, or `assert(...)`
+      size_t lambda = debug.compare(i, 14, "([&] { assert(") == 0 ? i : std::string::npos;
+      size_t call = lambda == std::string::npos && debug.compare(i, 7, "assert(") == 0 && (i == 0 || !isIdentChar(debug[i - 1])) ? i : std::string::npos;
+      if (lambda == std::string::npos && call == std::string::npos)
+      {
+        stripped += debug[i++];
+        continue;
+      }
+      size_t open = lambda != std::string::npos ? lambda : i + 6;
+      int depth = 0;
+      size_t k = open;
+      for (; k < debug.size(); ++k)
+      {
+        if (debug[k] == '"' || (debug[k] == '\'' && !isDigitSeparator(debug, k)))
+        {
+          char quote = debug[k];
+          for (++k; k < debug.size() && debug[k] != quote; ++k)
+            k += debug[k] == '\\';
+          continue;
+        }
+        depth += debug[k] == '(';
+        depth -= debug[k] == ')';
+        if (depth == 0)
+          break;
+      }
+      i = k + 1;
+    }
+    auto normal = [](const std::string& text)
+    {
+      std::string out;
+      for (size_t i = 0; i < text.size(); ++i)
+      {
+        if (text.compare(i, 2, "//") == 0)
+          i = std::min(text.find('\n', i), text.size());
+        else if (text.compare(i, 2, "/*") == 0)
+          i = std::min(text.find("*/", i + 2), text.size() - 2) + 1;
+        else if (!isspace((unsigned char)text[i]) && text[i] != '(' && text[i] != ')' && text[i] != ',' && text[i] != ';')
+          out += text[i];
+      }
+      for (size_t at = out.find("void0"); at != std::string::npos; at = out.find("void0"))
+        out.erase(at, 5);
+      return out;
+    };
+    // (an `else` whose statement is an assert, PlayerInputSource's `#ifdef DEBUG else assert(false);
+    // #endif`: an empty else in release)
+    std::string releaseText = normal(release), debugText = normal(stripped);
+    return debugText == releaseText || (releaseText.empty() && debugText == "else");
+  }
+
+  // The two configurations' parts as one text: their text parts the same, each group the same (its
+  // text once) or written by conditionalGroup. False where a text part differs or the parts do not
+  // match (a mark the conversion lost in one of them).
+  bool mergeParts(const std::vector<MarkedPart>& debug, const std::vector<MarkedPart>& release, std::string& out, const std::string& file,
+                  MergeReport& report)
+  {
+    if (debug.size() != release.size())
+      return false;
+    size_t conditionalBefore = report.conditional, problemsBefore = report.problems.size();
+    std::string merged;
+    size_t skipSemicolon = std::string::npos; // the next text part's `;`, which a statement's group took
+    for (size_t i = 0; i < debug.size(); ++i)
+    {
+      const MarkedPart& d = debug[i];
+      const MarkedPart& r = release[i];
+      bool same = d.group == r.group && (!d.group.empty() || d.text == r.text);
+      if (!same)
+      {
+        report.conditional = conditionalBefore;
+        report.problems.resize(problemsBefore);
+        return false;
+      }
+      if (d.group.empty())
+      {
+        merged += skipSemicolon == std::string::npos ? d.text : d.text.substr(0, skipSemicolon) + d.text.substr(skipSemicolon + 1);
+        skipSemicolon = std::string::npos;
+        continue;
+      }
+      std::string inner;
+      if (mergeParts(d.parts, r.parts, inner, file, report))
+        merged += inner;
+      else if (auto choice = report.choices.find(file + " " + d.group); choice != report.choices.end())
+      {
+        merged += flattened(choice->second == "release" ? r.parts : d.parts);
+        report.chosen.insert(choice->first);
+      }
+      else
+      {
+        std::string dt = flattened(d.parts), rt = flattened(r.parts);
+        if (differsByAsserts(dt, rt))
+        {
+          merged += dt;
+          ++report.byAsserts;
+          continue;
+        }
+        // A macro's use within a line (its id `FILE:@OFFSET`): as a statement, the `;` after it
+        // closes it, `if constexpr (config::debug) { debug; } else { release; }`.
+        bool inLine = dt.find('\n') == std::string::npos && rt.find('\n') == std::string::npos;
+        const MarkedPart* next = i + 1 < debug.size() && debug[i + 1].group.empty() ? &debug[i + 1] : nullptr;
+        size_t semicolon = next ? next->text.find_first_not_of(" \t") : std::string::npos;
+        if (inLine && semicolon != std::string::npos && next->text[semicolon] == ';' && statementAfter(out + merged))
+        {
+          auto statement = [](const std::string& text) { return blankText(text) ? std::string() : " " + text + ";"; };
+          merged += blankText(dt) ? "if constexpr (!config::debug) {" + statement(rt) + " }"
+                                  : "if constexpr (config::debug) {" + statement(dt) + " }" + (blankText(rt) ? "" : " else {" + statement(rt) + " }");
+          ++report.conditional;
+          skipSemicolon = semicolon;
+        }
+        else
+          merged += conditionalGroup(dt, rt, out + merged, file + " (#if group " + d.group + ")", report);
+      }
+    }
+    out += merged;
+    return true;
+  }
+
+  std::string mergedConfigurations(const std::string& file, const std::string& debug, const std::string& release, MergeReport& report)
+  {
+    std::vector<MarkedPart> d, r;
+    size_t a = 0, b = 0;
+    std::vector<std::string> openD, openR;
+    if (!parseMarked(debug, a, "", d, openD) || !parseMarked(release, b, "", r, openR))
+    {
+      report.problems.push_back(file + ": its #if marks do not nest");
+      return debug;
+    }
+    std::string out;
+    if (mergeParts(d, r, out, file, report))
+      return out;
+    // (the first line where they differ)
+    std::string fd = flattened(d), fr = flattened(r);
+    size_t at = 0, line = 1;
+    while (at < fd.size() && at < fr.size() && fd[at] == fr[at])
+      line += fd[at++] == '\n';
+    size_t lineStart = fd.rfind('\n', at == 0 ? 0 : at - 1);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    report.problems.push_back(file + ":" + std::to_string(line) + ": the configurations differ outside an #if group (debug `" +
+                              firstLine(fd.substr(lineStart)) + "`, release `" + firstLine(fr.substr(lineStart)) + "`)");
+    return fd;
+  }
+
+  // A library's c-imports.kpp: the debug one's imports, then the release one's it lacks (an import is
+  // harmless where nothing uses it).
+  std::string mergedImports(const std::string& debug, const std::string& release)
+  {
+    std::string out = debug;
+    if (!out.empty() && out.back() != '\n')
+      out += '\n';
+    for (size_t start = 0; start < release.size();)
+    {
+      size_t e = release.find('\n', start);
+      if (e == std::string::npos)
+        e = release.size();
+      std::string line = release.substr(start, e - start);
+      if (line.rfind("extern \"C\" import", 0) == 0 && debug.find(line) == std::string::npos)
+        out += line + "\n";
+      start = e + 1;
+    }
+    return out;
+  }
+}
+
+int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::path& releaseDir, const std::filesystem::path& outDir,
+                 const std::filesystem::path& choicesFile)
+{
+  MergeReport report;
+  // The groups whose texts no `if constexpr` can choose between (an expression's part), each taken
+  // from one configuration for both: `FILE GROUP debug|release  why`, reviewed by hand.
+  if (!choicesFile.empty())
+  {
+    std::string text;
+    if (!readFile(choicesFile, text))
+      report.problems.push_back(choicesFile.generic_string() + ": cannot be read");
+    for (size_t start = 0; start < text.size();)
+    {
+      size_t e = text.find('\n', start);
+      if (e == std::string::npos)
+        e = text.size();
+      std::string line = text.substr(start, e - start);
+      start = e + 1;
+      if (line.empty() || line[0] == '#')
+        continue;
+      char file[512], group[256], configuration[16];
+      if (sscanf(line.c_str(), "%511s %255s %15s", file, group, configuration) == 3 &&
+          (std::string(configuration) == "debug" || std::string(configuration) == "release"))
+        report.choices[std::string(file) + " " + group] = configuration;
+      else
+        report.problems.push_back(choicesFile.generic_string() + ": not `FILE GROUP debug|release why`: " + line);
+    }
+  }
+  std::map<std::string, std::string> merged; // the converted files, by path below outDir
+  size_t files = 0;
+  std::error_code ec;
+  auto write = [&](const std::string& rel, const std::string& text)
+  {
+    std::filesystem::path target = outDir / rel;
+    std::filesystem::create_directories(target.parent_path(), ec);
+    if (FILE* f = fopen(target.string().c_str(), "wb"))
+    {
+      fwrite(text.data(), 1, text.size(), f);
+      fclose(f);
+    }
+  };
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(debugDir, ec))
+  {
+    if (!entry.is_regular_file(ec))
+      continue;
+    std::string rel = entry.path().lexically_relative(debugDir).generic_string();
+    std::string debug, release;
+    readFile(entry.path(), debug);
+    if (entry.path().extension() != ".kpp")
+    {
+      write(rel, debug); // CONVERSION.md, the configured headers
+      continue;
+    }
+    ++files;
+    if (!readFile(releaseDir / rel, release))
+    {
+      report.problems.push_back(rel + ": only the debug configuration writes it");
+      merged[rel] = debug;
+    }
+    else if (debug == release && debug.find("/*kpp:") == std::string::npos)
+      write(rel, debug); // (a hand-written file, or one without an #if)
+    else
+      merged[rel] = entry.path().filename() == "c-imports.kpp" ? mergedImports(debug, release) : mergedConfigurations(rel, debug, release, report);
+  }
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(releaseDir, ec))
+    if (entry.is_regular_file(ec) && entry.path().extension() == ".kpp" &&
+        !std::filesystem::exists(debugDir / entry.path().lexically_relative(releaseDir), ec))
+      report.problems.push_back(entry.path().lexically_relative(releaseDir).generic_string() + ": only the release configuration writes it");
+  // The cleanups again, now that the marks are gone: an #if group's marks held a namespace open, and
+  // their lines stood between blank ones.
+  std::set<std::string> holding;
+  for (const auto& [rel, text] : merged)
+    noteNamespacesHolding(text, holding);
+  size_t namespacesRemoved = 0, namespacesKept = 0, blankLines = 0;
+  for (auto& [rel, text] : merged)
+    write(rel, withTidyBlankLines(withoutEmptyNamespaces(text, holding, namespacesRemoved, namespacesKept), blankLines));
+  for (const auto& [key, configuration] : report.choices)
+    if (!report.chosen.count(key))
+      report.problems.push_back(choicesFile.generic_string() + ": `" + key + "` chooses for no group whose configurations differ");
+  std::string summary = "\n## The two configurations made one (kppc --convert-merge)\n\n- files: " + std::to_string(files) +
+                        "\n- #if groups whose configurations differ, written with `when (config::debug)` and `if constexpr (config::debug)` (design.md 19): " + std::to_string(report.conditional) +
+                        "\n- their declarations, each `when (config::debug)` or `when (!config::debug)`: " + std::to_string(report.when) +
+                        "\n- their declarations whose initializer alone differs, `= config::debug ? a : b`: " + std::to_string(report.perConfiguration) +
+                        "\n- their aliases of one configuration, written in both (no storage; their types checked in both): " + std::to_string(report.aliases) +
+                        "\n- groups whose configurations differ by asserts alone, written as the debug one (kpp's assert is the configuration's): " +
+                        std::to_string(report.byAsserts) + "\n- groups taken from one configuration (" + choicesFile.filename().string() + "): " +
+                        std::to_string(report.chosen.size()) + "\n- empty namespaces removed once the marks were gone: " + std::to_string(namespacesRemoved) +
+                        "\n- problems: " + std::to_string(report.problems.size()) + "\n";
+  for (const std::string& p : report.problems)
+    summary += "  - " + p + "\n";
+  if (FILE* f = fopen((outDir / "CONVERSION.md").string().c_str(), "ab"))
+  {
+    fwrite(summary.data(), 1, summary.size(), f);
+    fclose(f);
+  }
+  printf("convert-merge: %zu files, %zu groups whose configurations differ (%zu declarations when, %zu initializers config::debug ? a : b), %zu differing by asserts alone, %zu problems\n",
+         files, report.conditional, report.when, report.perConfiguration, report.byAsserts, report.problems.size());
+  for (const std::string& p : report.problems)
+    fprintf(stderr, "convert-merge: %s\n", p.c_str());
+  return report.problems.empty() ? 0 : 1;
 }
