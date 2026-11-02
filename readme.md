@@ -239,6 +239,31 @@ stands today: **works** (in today's compiler, with a test in `compiler/tests/spe
   Studio and any editor speaking the Language Server Protocol get completion, errors and navigation
   from the same compilation that builds the program ([docs/editors.md](docs/editors.md)).
 
+## Planned
+
+Decided or intended, and not built yet; none of it works today.
+
+- **Language rules** (planned, above): required `this->`, required `override`, `this` as a
+  reference, explicit by default, no implicit fallthrough, `?->` and `?:`, `both_const` and
+  `class_const`, named arguments.
+- **Linux and macOS as hosts, macOS as a target** (planned). kpp runs on Windows and builds for
+  Windows, Linux and FreeBSD today ([design.md](docs/design.md), "Targets and hosts").
+- **Factorio on the bundled toolchain** (planned). The game still builds with an installed Visual
+  Studio (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves
+  to kpp's own toolchain as they are converted or rebuilt (design.md 17).
+- **Streaming code generation** (planned). LLVM inside the compiler, each thread handing its
+  functions straight to the back end, instead of writing IR text for clang to read again;
+  estimated at a few seconds off a clean debug build of the game
+  ([docs/codegen-speed.md](docs/codegen-speed.md)).
+- **The library registry on kpp.net** (planned): `kpp add zlib`, versions locked by content
+  hash, library options listed when you add one ([docs/library-registry.md](docs/library-registry.md)).
+- **A localisation library** (planned), with its own tools, for text whose word order changes per
+  language.
+- **kpp's own IDE** (under consideration). Editors get kpp through the language server today;
+  whether to build an editor of its own on top is open ([docs/ide.md](docs/ide.md)).
+- **Access levels between `private` and public** (under consideration), for example a member
+  visible to its own directory or subsystem, where C++ code uses `friend` today.
+
 ## Status
 
 kpp is young, under heavy development, and changes every day; releases are numbered
