@@ -1,0 +1,97 @@
+// bcrypt against Solar Designer's crypt_blowfish vectors (PHP's crypt() gives the same) and 38
+// hashes PHP 8.3's crypt() wrote (BcryptPhpVectors.kpp, generate_vectors.php): passwords of 0 to
+// 255 bytes, ASCII and not, costs 4 and 5.
+
+String bcryptFromHex(const char* hex)
+{
+  String out;
+  for (int i = 0; hex[i] != 0; i += 2)
+  {
+    auto digit = [](char c) -> int { return c <= '9' ? c - '0' : c - 'a' + 10; };
+    out.append(char(digit(hex[i]) * 16 + digit(hex[i + 1])));
+  }
+  return out;
+}
+
+bool bcryptThrows(StringView password, StringView hash)
+{
+  try
+  {
+    bcryptVerify(password, hash);
+  }
+  catch (const BcryptError& e)
+  {
+    return true;
+  }
+  return false;
+}
+
+test "crypt_blowfish's vectors"
+{
+  check(bcryptVerify("U*U", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptVerify("U*U*", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.VGOzA784oUp/Z0DY336zx7pLYAy0lwK"));
+  check(bcryptVerify("U*U*U", "$2a$05$XXXXXXXXXXXXXXXXXXXXXOAcXxm9kjPGEMsLznoKqmqw7tc8WCx4a"));
+  check(bcryptVerify("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789chars after 72 are ignored",
+                     "$2a$05$abcdefghijklmnopqrstuu5s2v8.iXieOjg/.AySBTTZIIVFJeBui"));
+  check(bcryptVerify("", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.7uG0VCzI2bS7j6ymqJi9CdcdxiRTWNy"));
+  check(bcryptVerify("U*U", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptVerify("U*U", "$2b$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(!bcryptVerify("U*V", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  // The salt's last character carries 2 bits: '/' reads as '.'.
+  check(bcryptVerify("U*U", "$2y$05$CCCCCCCCCCCCCCCCCCCCC/E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+}
+
+test "PHP's hashes"
+{
+  for (int i = 0; i < bcryptPhpVectorCount; ++i)
+  {
+    String password = bcryptFromHex(bcryptPhpVectors[i][0]);
+    StringView hash = bcryptPhpVectors[i][1];
+    check(bcryptVerify(password, hash));
+    // bcryptHash writes the same string from the same salt.
+    String salt = bcryptDecode(hash.substr(7, 22), 16);
+    check(bcryptHash(password, bcryptCost(hash), salt) == hash);
+    // A changed password fails.
+    String other = password;
+    other.append('x');
+    if (password.size() < 72)
+      check(!bcryptVerify(other, hash));
+  }
+}
+
+test "the 72-byte limit"
+{
+  String salt = "0123456789abcdef";
+  String a(72, 'a');
+  String b = a;
+  b.append("anything");
+  check(bcryptHash(a, 4, salt) == bcryptHash(b, 4, salt));
+  String c(71, 'a');
+  check(bcryptHash(a, 4, salt) != bcryptHash(c, 4, salt));
+}
+
+test "errors"
+{
+  String salt = "0123456789abcdef";
+  check(bcryptThrows("x", ""));
+  check(bcryptThrows("x", "$2x$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptThrows("x", "$2y$03$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptThrows("x", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOe!"));
+  check(bcryptThrows("x", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOe"));
+  check(bcryptThrows(String("a\0b", 3), "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptThrows("\xc3\xa9", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(!bcryptThrows("\xc3\xa9", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  bool threw = false;
+  try { bcryptHash("x", 32, salt); } catch (const BcryptError& e) { threw = true; }
+  check(threw);
+  threw = false;
+  try { bcryptHash("x", 4, "short"); } catch (const BcryptError& e) { threw = true; }
+  check(threw);
+  check(bcryptCost("$2y$10$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW") == 10);
+}
+
+test "PHP's default cost"
+{
+  // PHP 8.3: crypt("gorating", "$2y$10$abcdefghijklmnopqrstuu"), as password_hash() writes at cost 10.
+  check(bcryptVerify("gorating", "$2y$10$abcdefghijklmnopqrstuu3kmhZHmQpLdSS8HTNKGJgR7U1ufMYXy"));
+}

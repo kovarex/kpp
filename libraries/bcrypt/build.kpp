@@ -1,0 +1,10 @@
+// bcrypt: the password hash of PHP's password_hash() (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& bcrypt = project.library("bcrypt");
+  bcrypt.version = "0.1.0";
+  bcrypt.license = "Apache-2.0 WITH LLVM-exception";
+  bcrypt.minimumKpp = "0.1.0";
+  bcrypt.root("src");
+  bcrypt.test("tests");
+}
