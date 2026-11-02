@@ -445,6 +445,63 @@ gap is.
 Release builds are not covered here: their time is ThinLTO's link (compile-speed.md, "The release
 edit"), where b1's in-process back ends and a per-function cache key are a separate study.
 
+## 6. What was built, step by step (thread D, from 2026-11-02)
+
+Each step: paired clean builds of the game against master, interleaved (`cg\paired.ps1`, the game as
+run.cmd builds it, `cg\build.cmd`, from C:\factorio-in-kpp), on a quiet machine unless marked; the
+disk use of the build's output directory (`cg\disk.ps1`); and the gate. The gate is run_tests and
+spec (`ALL PASSED`, exit 0), the game's modules compared with master's, determinism at 1, 8 and 32
+threads, and, for a step that changes the IR, the game itself: `--dump-data`, the 45 menu maps and
+the unit tests against C++ Debug's CRCs.
+
+**Step 1: codegen's serial start (b9dcb7ba, 0303a2fb, 9aaf2cdb).** The lock was not the cause. A
+timeline of the sampling profile showed the first 4.5 s of the 9 s on one thread: the driver defined
+the program's startup globals one by one before any function, nearly all of it the evaluator folding
+their initializers.
+- Now the startup globals are the head of level 0's queue, on all threads. A global's initializer is
+  evaluated before codegen's shared lock is taken (it held the lock 6.2 s of codegen). A global being
+  evaluated is claimed, and a second user waits for it instead of evaluating it again. The errors the
+  early evaluation records are reported when its value is taken (B's review; spec
+  language/global_initializer_with_failing_layout_is_error).
+- The evaluator reads a const global's value once per evaluation, not at every read: the game's
+  `InputActionList::luaNameToEditableActionMapping` rebuilt a 700-entry table per element, 1.6 s of
+  the critical path.
+- Tried and left out, no gain measured: buffering each emitter's definitions until the end of a level
+  (4.92 to 4.97 s without, 4.96 to 5.21 s with); publishing layouts at any lock depth.
+
+| | master | step 1 |
+|---|---:|---:|
+| codegen at -j 32 | 8.86 to 9.03 s | 4.72 to 4.84 s |
+| codegen at 1 / 8 / 32 threads | 23.6 / 9.7 / 8.9 s | 23.1 / 5.7 / 4.9 s |
+| clean debug build, wall | 17.0 to 17.1 s | 12.8 to 13.2 s |
+| IR, objects | unchanged: the 128 modules byte-identical to master's | |
+
+**Step 2: one home module per global (debug builds).** Each linkonce_odr global of the shared
+declarations is defined in one module (a hash of its name) and declared `external` in the modules
+that name it. Release builds are unchanged (ThinLTO imports constants), and so are `--debug-info`
+builds. Paired against master with step 1, 3 rounds:
+
+| | master | step 2 |
+|---|---:|---:|
+| IR | 967 MB | 708 MB |
+| clang -O0, 128 modules | 3.76 to 4.13 s | 3.10 to 3.19 s |
+| link (link.exe, full) | 2.15 s | 1.65 s |
+| clean debug build, wall | 12.9 to 15.1 s | 12.0 to 12.2 s |
+
+Equivalence (`cg\homecheck.py`): every module's text apart from its global, comdat and type lines
+is the same as master's; every linkonce_odr global is defined at least once and no more often than
+master defines it, with master's line; every external declaration names a known global. The game:
+`--dump-data` checksums 7/7 equal; the 45 menu maps' checksums all equal; the unit tests against C++
+Debug's CRCs 9,501/9,501 with 0 mismatches (1,115.7 s).
+
+**Disk use of a build** (the output directory of `cg\build.cmd`):
+
+| | total | .ll | .o | exe | PDB | .ilk | ThinLTO cache |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| debug, master (step 1) | 2,095 MB | 924 MB | 510 MB | 101 MB | 116 MB | 444 MB | |
+| debug, step 2 | 1,457 MB | 675 MB | 313 MB | 101 MB | 116 MB | 252 MB | |
+| release (unchanged by steps 1 and 2) | 1,674 MB | 775 MB | 195 MB (bitcode) | 62 MB | 441 MB | | 201 MB |
+
 ## Reproduce
 
 All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed):
@@ -459,6 +516,9 @@ All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed)
 | `cpp\ir.cmd`, `cpp\sample.py` | Factorio's C++ to -O0 IR by clang-cl, the sample and the unity files |
 | `link.ps1`, `linkab.ps1` | the full and incremental link; the two object sets linked interleaved |
 | `sampler\sampler.cpp`, `kppc-pdb.cmd` | the sampling profiler, and kppc with a PDB |
+| `paired.ps1`, `determinism.ps1`, `disk.ps1`, `homecheck.py` | paired builds against master; 1/8/32 threads; disk use; step 2's equivalence |
+| `timeline.py`, `inflate.py`, `lockprobe.py`, `lockrank.py` | a profile's timeline; thread time at 1 and 32 threads; a temporary lock probe (never committed) |
+| `game.cmd`, `bench-menu.py` | a build of the game run from a scratch game directory (data by junction); the 45 menu maps |
 | `prof-codegen.txt(.stacks)` | the codegen profile |
 | `tp1.err` | `-time-passes` over all modules |
 
