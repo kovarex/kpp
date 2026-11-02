@@ -24,6 +24,7 @@ library that uses no other (it leaves the directory's build.kpp out); and `compi
 | [net](net/README.md) | TCP connections and listeners (Winsock, BSD sockets) | loopback tests on Windows; a loopback program on Linux (WSL) |
 | [mariadb](mariadb/README.md) | a MariaDB/MySQL client: text queries, `mysql_native_password` (uses net) | a fake server's packets, a live MariaDB 11.7 |
 | [http](http/README.md) | requests and responses, cookies, urlencoded and multipart forms; CGI and a small server (uses net, url) | its own tests, the server on the loopback |
+| [httpclient](httpclient/README.md) | HTTP and HTTPS requests through the system's client (WinHTTP) | a loopback server; EGD over HTTPS and an expired certificate |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of kpp ([LICENSE](../LICENSE),
 [CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep

@@ -1,0 +1,234 @@
+requires config::platform == Platform::Windows;
+// WinHTTP: Windows' HTTP client, with its TLS, certificate store and proxy settings. Its functions are
+// looked up in winhttp.dll when first needed (a kpp library cannot add a link library yet).
+extern "C" import "windows.h";
+
+using HttpClientHandle = void*;
+using WinHttpOpenFunction = HttpClientHandle (*)(const wchar_t*, unsigned long, const wchar_t*, const wchar_t*, unsigned long);
+using WinHttpConnectFunction = HttpClientHandle (*)(HttpClientHandle, const wchar_t*, unsigned short, unsigned long);
+using WinHttpOpenRequestFunction = HttpClientHandle (*)(HttpClientHandle, const wchar_t*, const wchar_t*, const wchar_t*,
+                                                        const wchar_t*, const wchar_t**, unsigned long);
+using WinHttpSetTimeoutsFunction = int (*)(HttpClientHandle, int, int, int, int);
+using WinHttpSetOptionFunction = int (*)(HttpClientHandle, unsigned long, void*, unsigned long);
+using WinHttpSendRequestFunction = int (*)(HttpClientHandle, const wchar_t*, unsigned long, void*, unsigned long, unsigned long,
+                                           unsigned long long);
+using WinHttpReceiveResponseFunction = int (*)(HttpClientHandle, void*);
+using WinHttpQueryHeadersFunction = int (*)(HttpClientHandle, unsigned long, const wchar_t*, void*, unsigned long*, unsigned long*);
+using WinHttpReadDataFunction = int (*)(HttpClientHandle, void*, unsigned long, unsigned long*);
+using WinHttpCloseHandleFunction = int (*)(HttpClientHandle);
+
+struct WinHttp
+{
+  HMODULE module = nullptr;
+  WinHttpOpenFunction open = nullptr;
+  WinHttpConnectFunction connect = nullptr;
+  WinHttpOpenRequestFunction openRequest = nullptr;
+  WinHttpSetTimeoutsFunction setTimeouts = nullptr;
+  WinHttpSetOptionFunction setOption = nullptr;
+  WinHttpSendRequestFunction sendRequest = nullptr;
+  WinHttpReceiveResponseFunction receiveResponse = nullptr;
+  WinHttpQueryHeadersFunction queryHeaders = nullptr;
+  WinHttpReadDataFunction readData = nullptr;
+  WinHttpCloseHandleFunction closeHandle = nullptr;
+};
+
+void* httpClientFunction(HMODULE module, const char* name)
+{
+  void* function = (void*)GetProcAddress(module, name);
+  if (function == nullptr)
+    throw HttpClientError(format("winhttp.dll has no {}", StringView(name)));
+  return function;
+}
+
+const WinHttp& winHttp()
+{
+  static WinHttp functions;
+  if (functions.module != nullptr)
+    return functions;
+  HMODULE module = LoadLibraryW(L"winhttp.dll");
+  if (module == nullptr)
+    throw HttpClientError("winhttp.dll cannot be loaded");
+  functions.open = (WinHttpOpenFunction)httpClientFunction(module, "WinHttpOpen");
+  functions.connect = (WinHttpConnectFunction)httpClientFunction(module, "WinHttpConnect");
+  functions.openRequest = (WinHttpOpenRequestFunction)httpClientFunction(module, "WinHttpOpenRequest");
+  functions.setTimeouts = (WinHttpSetTimeoutsFunction)httpClientFunction(module, "WinHttpSetTimeouts");
+  functions.setOption = (WinHttpSetOptionFunction)httpClientFunction(module, "WinHttpSetOption");
+  functions.sendRequest = (WinHttpSendRequestFunction)httpClientFunction(module, "WinHttpSendRequest");
+  functions.receiveResponse = (WinHttpReceiveResponseFunction)httpClientFunction(module, "WinHttpReceiveResponse");
+  functions.queryHeaders = (WinHttpQueryHeadersFunction)httpClientFunction(module, "WinHttpQueryHeaders");
+  functions.readData = (WinHttpReadDataFunction)httpClientFunction(module, "WinHttpReadData");
+  functions.closeHandle = (WinHttpCloseHandleFunction)httpClientFunction(module, "WinHttpCloseHandle");
+  functions.module = module;
+  return functions;
+}
+
+// The WinHTTP handles of one request, closed in reverse order.
+struct HttpClientHandles
+{
+  HttpClientHandle session = nullptr;
+  HttpClientHandle connection = nullptr;
+  HttpClientHandle request = nullptr;
+  ~HttpClientHandles()
+  {
+    const WinHttp& w = winHttp();
+    if (this->request != nullptr)
+      w.closeHandle(this->request);
+    if (this->connection != nullptr)
+      w.closeHandle(this->connection);
+    if (this->session != nullptr)
+      w.closeHandle(this->session);
+  }
+};
+
+WString httpClientWide(StringView text)
+{
+  if (text.empty())
+    return WString();
+  int count = MultiByteToWideChar(65001, 0, text.data(), (int)text.size(), nullptr, 0);
+  WString wide;
+  wide.resize((ContainerSize)count);
+  MultiByteToWideChar(65001, 0, text.data(), (int)text.size(), wide.data(), count);
+  return wide;
+}
+
+String httpClientNarrow(const wchar_t* text, int length)
+{
+  if (length == 0)
+    return String();
+  int count = WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
+  String narrow(count, '\0');
+  WideCharToMultiByte(65001, 0, text, length, narrow.data(), count, nullptr, nullptr);
+  return narrow;
+}
+
+// The last error's text: WinHTTP's own codes (12000 to 12199) are in winhttp.dll.
+[[noreturn]] void httpClientFail(StringView what, StringView url)
+{
+  unsigned long code = GetLastError();
+  char buffer[512];
+  unsigned long flags = FORMAT_MESSAGE_IGNORE_INSERTS | (code >= 12000 && code < 12200 ? FORMAT_MESSAGE_FROM_HMODULE : FORMAT_MESSAGE_FROM_SYSTEM);
+  unsigned long length = FormatMessageA(flags, code >= 12000 && code < 12200 ? (void*)winHttp().module : nullptr, code, 0, buffer, 512, nullptr);
+  while (length > 0 && (buffer[length - 1] == '\n' || buffer[length - 1] == '\r' || buffer[length - 1] == ' ' || buffer[length - 1] == '.'))
+    --length;
+  if (code == 12002)
+    throw HttpClientError(format("{} {}: timed out", what, url));
+  throw HttpClientError(format("{} {}: {} (error {})", what, url, StringView(buffer, (ContainerSize)length), (int64_t)code));
+}
+
+// The parts WinHTTP takes: secure, host, port, and the path with its query.
+struct HttpClientTarget
+{
+  bool secure = false;
+  String host;
+  unsigned short port = 0;
+  String path;
+};
+
+HttpClientTarget httpClientTarget(StringView url)
+{
+  HttpClientTarget target;
+  target.secure = url.starts_with("https://");
+  StringView rest = url.substr(target.secure ? 8 : 7);
+  ContainerSize slash = rest.find('/');
+  ContainerSize question = rest.find('?');
+  ContainerSize end = slash < question ? slash : question;
+  StringView authority = end == StringView::npos ? rest : rest.substr(0, end);
+  target.path = end == StringView::npos ? String("/") : String(rest.substr(end));
+  if (!target.path.starts_with("/"))
+    target.path = String("/") + target.path;
+  if (authority.find('@') != StringView::npos)
+    throw HttpClientError(format("an address with a user name: {}", url));
+  ContainerSize colon = authority.rfind(':');
+  bool bracketed = authority.starts_with("[");
+  if (colon != StringView::npos && (!bracketed || authority.find(']') < colon))
+  {
+    StringView port = authority.substr(colon + 1);
+    int value = 0;
+    for (char c : port)
+    {
+      if (c < '0' || c > '9' || value > 65535)
+        throw HttpClientError(format("the port of {} is not a number", url));
+      value = value * 10 + (c - '0');
+    }
+    if (port.empty() || value == 0 || value > 65535)
+      throw HttpClientError(format("the port of {} is not a port", url));
+    target.port = (unsigned short)value;
+    authority = authority.substr(0, colon);
+  }
+  else
+    target.port = target.secure ? 443 : 80;
+  if (bracketed)
+    authority = authority.substr(1, authority.size() - 2);
+  if (authority.empty())
+    throw HttpClientError(format("an address without a host: {}", url));
+  target.host = String(authority);
+  return target;
+}
+
+HttpClientResponse httpClientFetch(const HttpClientRequest& request)
+{
+  const WinHttp& w = winHttp();
+  HttpClientTarget target = httpClientTarget(request.url);
+  HttpClientHandles handles;
+  // WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY (4): the system's proxy settings.
+  handles.session = w.open(L"kpp-httpclient/0.1", 4, nullptr, nullptr, 0);
+  if (handles.session == nullptr)
+    httpClientFail("WinHttpOpen for", request.url);
+  int timeout = request.timeoutMilliseconds;
+  if (!w.setTimeouts(handles.session, timeout, timeout, timeout, timeout))
+    httpClientFail("WinHttpSetTimeouts for", request.url);
+  // WINHTTP_OPTION_REDIRECT_POLICY (88): never (0), or not from https to http (1).
+  unsigned long policy = request.followRedirects ? 1 : 0;
+  w.setOption(handles.session, 88, &policy, sizeof(policy));
+  WString host = httpClientWide(target.host);
+  handles.connection = w.connect(handles.session, host.c_str(), target.port, 0);
+  if (handles.connection == nullptr)
+    httpClientFail("WinHttpConnect to", request.url);
+  WString method = httpClientWide(request.method);
+  WString path = httpClientWide(target.path);
+  // WINHTTP_FLAG_SECURE (0x00800000) for https; WINHTTP_FLAG_ESCAPE_DISABLE (0x40): the path as given.
+  handles.request = w.openRequest(handles.connection, method.c_str(), path.c_str(), nullptr, nullptr, nullptr,
+                                  (target.secure ? 0x00800000u : 0u) | 0x40u);
+  if (handles.request == nullptr)
+    httpClientFail("WinHttpOpenRequest for", request.url);
+  String headerText;
+  for (const HttpClientHeader& h : request.headers)
+    headerText.append(h.name + ": " + h.value + "\r\n");
+  WString headers = httpClientWide(headerText);
+  if (!w.sendRequest(handles.request, headers.empty() ? nullptr : headers.c_str(), headers.empty() ? 0 : (unsigned long)-1,
+                     request.body.empty() ? nullptr : (void*)request.body.data(), (unsigned long)request.body.size(),
+                     (unsigned long)request.body.size(), 0))
+    httpClientFail("sending", request.url);
+  if (!w.receiveResponse(handles.request, nullptr))
+    httpClientFail("receiving", request.url);
+
+  HttpClientResponse response;
+  // WINHTTP_QUERY_STATUS_CODE (19) | WINHTTP_QUERY_FLAG_NUMBER (0x20000000).
+  unsigned long status = 0;
+  unsigned long size = sizeof(status);
+  if (!w.queryHeaders(handles.request, 19 | 0x20000000u, nullptr, &status, &size, nullptr))
+    httpClientFail("the status of", request.url);
+  response.status = (int)status;
+  // WINHTTP_QUERY_RAW_HEADERS_CRLF (22): first its size, then the text.
+  unsigned long bytes = 0;
+  w.queryHeaders(handles.request, 22, nullptr, nullptr, &bytes, nullptr);
+  if (bytes > 0)
+  {
+    WString raw;
+    raw.resize((ContainerSize)(bytes / sizeof(wchar_t) + 1));
+    if (!w.queryHeaders(handles.request, 22, nullptr, raw.data(), &bytes, nullptr))
+      httpClientFail("the headers of", request.url);
+    response.headers = httpClientParseHeaders(httpClientNarrow(raw.data(), (int)(bytes / sizeof(wchar_t))));
+  }
+  char buffer[65536];
+  for (;;)
+  {
+    unsigned long got = 0;
+    if (!w.readData(handles.request, buffer, sizeof(buffer), &got))
+      httpClientFail("reading", request.url);
+    if (got == 0)
+      break;
+    response.body.append(StringView(buffer, (ContainerSize)got));
+  }
+  return response;
+}

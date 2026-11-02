@@ -1,0 +1,113 @@
+// HTTP and HTTPS requests through the operating system's client, which brings TLS, certificates and
+// proxies (HttpClientWindows.kpp: WinHTTP). README.md has the API.
+
+// A request that did not get a response: no connection, a timeout, a certificate that is not valid,
+// an address that is not http or https. A response with any status is not an error.
+struct HttpClientError : RuntimeError
+{
+  HttpClientError() {}
+  HttpClientError(const String& message) : RuntimeError(message) {}
+};
+
+struct HttpClientHeader
+{
+  String name;
+  String value;
+};
+
+struct HttpClientRequest
+{
+  String method = "GET";
+  String url;                       // http://... or https://...
+  Vector<HttpClientHeader> headers; // besides the ones the client adds (Host, Content-Length...)
+  String body;
+  int timeoutMilliseconds = 30000;  // for connecting, sending and each read
+  bool followRedirects = true;      // to the same scheme or from http to https
+};
+
+struct HttpClientResponse
+{
+  int status = 0;
+  Vector<HttpClientHeader> headers; // names as the server sent them
+  String body;
+
+  // The first header of that name (any case), or nullptr.
+  const String* header(StringView name) const
+  {
+    for (const HttpClientHeader& h : this->headers)
+      if (httpClientEqualIgnoringCase(h.name, name))
+        return &h.value;
+    return nullptr;
+  }
+};
+
+bool httpClientEqualIgnoringCase(StringView a, StringView b)
+{
+  if (a.size() != b.size())
+    return false;
+  for (ContainerSize i = 0; i < a.size(); ++i)
+  {
+    char x = a[i] >= 'A' && a[i] <= 'Z' ? char(a[i] - 'A' + 'a') : a[i];
+    char y = b[i] >= 'A' && b[i] <= 'Z' ? char(b[i] - 'A' + 'a') : b[i];
+    if (x != y)
+      return false;
+  }
+  return true;
+}
+
+// The request's response, whatever its status.
+HttpClientResponse fetch(const HttpClientRequest& request)
+{
+  if (!(request.url.starts_with("http://") || request.url.starts_with("https://")))
+    throw HttpClientError(format("not an http or https address: {}", request.url));
+  for (const HttpClientHeader& h : request.headers)
+    for (char c : h.name + h.value)
+      if (c == '\r' || c == '\n' || c == 0)
+        throw HttpClientError(format("the header {} has a line break or a zero byte", h.name));
+  return httpClientFetch(request);
+}
+
+// A GET of url.
+HttpClientResponse fetch(StringView url)
+{
+  HttpClientRequest request;
+  request.url = String(url);
+  return fetch(request);
+}
+
+// A POST of an urlencoded form (name=value&..., as url::writeUrlQuery writes it).
+HttpClientResponse postForm(StringView url, StringView form)
+{
+  HttpClientRequest request;
+  request.method = "POST";
+  request.url = String(url);
+  request.headers.push_back(HttpClientHeader{String("Content-Type"), String("application/x-www-form-urlencoded")});
+  request.body = String(form);
+  return fetch(request);
+}
+
+// Parses "Name: value" lines (the status line and blank lines skipped).
+Vector<HttpClientHeader> httpClientParseHeaders(StringView text)
+{
+  Vector<HttpClientHeader> headers;
+  ContainerSize at = 0;
+  while (at < text.size())
+  {
+    ContainerSize end = text.find('\n', at);
+    if (end == StringView::npos)
+      end = text.size();
+    StringView line = text.substr(at, end - at);
+    if (!line.empty() && line[line.size() - 1] == '\r')
+      line = line.substr(0, line.size() - 1);
+    ContainerSize colon = line.find(':');
+    if (colon != StringView::npos && colon > 0 && !line.starts_with("HTTP/"))
+    {
+      StringView value = line.substr(colon + 1);
+      while (!value.empty() && (value[0] == ' ' || value[0] == '\t'))
+        value = value.substr(1);
+      headers.push_back(HttpClientHeader{String(line.substr(0, colon)), String(value)});
+    }
+    at = end + 1;
+  }
+  return headers;
+}

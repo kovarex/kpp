@@ -1,0 +1,13 @@
+// httpclient: HTTP and HTTPS requests through the system's client (README.md). `kpp --test` here
+// runs its tests.
+void build(Project& project)
+{
+  Library& httpclient = project.library("httpclient");
+  httpclient.version = "0.1.0";
+  httpclient.license = "Apache-2.0 WITH LLVM-exception";
+  httpclient.minimumKpp = "0.1.0";
+  httpclient.root("src");
+  httpclient.test("tests");
+  // Its tests answer the requests they make over the loopback with net.
+  httpclient.use("net");
+}

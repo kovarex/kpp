@@ -1,0 +1,140 @@
+// httpclient against a server on the loopback (a thread answers with canned responses and keeps
+// what it was sent), and against a real HTTPS site when HTTPCLIENT_TEST_HTTPS is set.
+
+struct HttpClientTestServer
+{
+  net::TcpListener listener;
+  Vector<String> requests; // each request as received: head and body
+  Vector<String> answers;  // the response to each, in order
+  String failure;
+
+  void run()
+  {
+    try
+    {
+      for (const String& answer : this->answers)
+      {
+        net::TcpStream stream = this->listener.accept();
+        stream.setTimeout(5000);
+        String received;
+        char buffer[4096];
+        ContainerSize headEnd = String::npos;
+        while (headEnd == String::npos)
+        {
+          int64_t got = stream.read(buffer, 4096);
+          if (got == 0)
+            break;
+          received.append(StringView(buffer, (ContainerSize)got));
+          headEnd = received.find("\r\n\r\n");
+        }
+        ContainerSize length = 0;
+        ContainerSize at = received.find("Content-Length: ");
+        if (at != String::npos && at < headEnd)
+          length = (ContainerSize)stoll(received.substr(at + 16, received.find("\r\n", at) - at - 16));
+        while (received.size() < headEnd + 4 + length)
+        {
+          int64_t got = stream.read(buffer, 4096);
+          if (got == 0)
+            break;
+          received.append(StringView(buffer, (ContainerSize)got));
+        }
+        this->requests.push_back(received);
+        stream.write(answer);
+      }
+    }
+    catch (const Exception& e)
+    {
+      this->failure = String(StringView(e.what()));
+    }
+  }
+};
+
+void httpClientRunTestServer(HttpClientTestServer* server) { server->run(); }
+
+test "GET, POST, headers, a redirect, statuses"
+{
+  HttpClientTestServer server;
+  server.listener = net::TcpListener::listen("127.0.0.1", 0);
+  String base = format("http://127.0.0.1:{}", server.listener.port());
+  server.answers.push_back("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Test: one two\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
+  server.answers.push_back("HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+  server.answers.push_back(String("HTTP/1.1 302 Found\r\nLocation: ") + base + "/there\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+  server.answers.push_back("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nthere");
+  server.answers.push_back("HTTP/1.1 404 Not Found\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnone");
+  Thread thread(httpClientRunTestServer, &server);
+
+  HttpClientResponse got = fetch(base + "/path%20x?a=1&b=%C3%A9");
+  check(got.status == 200 && got.body == "hello");
+  check(*got.header("x-test") == "one two" && *got.header("Content-Type") == "text/plain");
+
+  HttpClientResponse posted = postForm(base + "/form", "name=Nov%C3%A1k&x=1");
+  check(posted.status == 201 && posted.body == "ok");
+
+  HttpClientResponse redirected = fetch(base + "/here");
+  check(redirected.status == 200 && redirected.body == "there");
+
+  HttpClientResponse missing = fetch(base + "/missing");
+  check(missing.status == 404 && missing.body == "none");
+  thread.join();
+
+  check(server.failure.empty());
+  check(server.requests.size() == 5);
+  check(server.requests[0].starts_with("GET /path%20x?a=1&b=%C3%A9 HTTP/1.1\r\n"));
+  check(server.requests[1].starts_with("POST /form HTTP/1.1\r\n"));
+  check(server.requests[1].find("Content-Type: application/x-www-form-urlencoded\r\n") != String::npos);
+  check(server.requests[1].ends_with("\r\n\r\nname=Nov%C3%A1k&x=1"));
+  check(server.requests[2].starts_with("GET /here HTTP/1.1\r\n"));
+  check(server.requests[3].starts_with("GET /there HTTP/1.1\r\n"));
+}
+
+bool httpClientThrows(StringView url, StringView expected)
+{
+  try
+  {
+    HttpClientRequest request;
+    request.url = String(url);
+    request.timeoutMilliseconds = 2000;
+    fetch(request);
+  }
+  catch (const HttpClientError& e)
+  {
+    return String(StringView(e.what())).find(expected) != String::npos;
+  }
+  return false;
+}
+
+test "errors"
+{
+  int port = 0;
+  {
+    net::TcpListener listener = net::TcpListener::listen("127.0.0.1", 0);
+    port = listener.port();
+  }
+  check(httpClientThrows(format("http://127.0.0.1:{}/", port), "127.0.0.1"));
+  check(httpClientThrows("ftp://example.test/", "not an http or https address"));
+  check(httpClientThrows("http://user@example.test/", "user name"));
+  check(httpClientThrows("http://example.test:99999/", "port"));
+  HttpClientRequest bad;
+  bad.url = "http://127.0.0.1/";
+  bad.headers.push_back(HttpClientHeader{String("X"), String("a\r\nInjected: yes")});
+  bool threw = false;
+  try { fetch(bad); } catch (const HttpClientError& e) { threw = true; }
+  check(threw);
+  // A server that accepts and never answers: the timeout.
+  net::TcpListener silent = net::TcpListener::listen("127.0.0.1", 0);
+  check(httpClientThrows(format("http://127.0.0.1:{}/", silent.port()), "timed out"));
+}
+
+test "HTTPS, when asked for"
+{
+  const char* asked = getenv("HTTPCLIENT_TEST_HTTPS");
+  if (asked == nullptr)
+  {
+    println("skipped: HTTPCLIENT_TEST_HTTPS is not set (tests/HttpClientTests.kpp)");
+    return;
+  }
+  HttpClientResponse egd = fetch("https://www.europeangodatabase.eu/EGD/EGD_2_0/downloads/tlist.html");
+  check(egd.status == 200 && egd.body.size() > 1000);
+  bool rejected = httpClientThrows("https://expired.badssl.com/", "expired.badssl.com");
+  check(rejected);
+}

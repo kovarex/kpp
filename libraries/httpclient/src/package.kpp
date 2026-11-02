@@ -1,0 +1,3 @@
+// Package: HTTPCLIENT
+// HTTP and HTTPS requests through the system's client (WinHTTP on Windows): fetch(),
+// HttpClientRequest, HttpClientResponse, HttpClientError. Documented in libraries/httpclient/README.md.

@@ -1,0 +1,6 @@
+requires config::platform != Platform::Windows;
+// FreeBSD and Linux have no client here yet: fetch(3) (FreeBSD's base system) and libcurl are the
+// plans (README.md). A program using httpclient is an error on them until one is written and tested.
+static_assert(config::platform == Platform::Windows, "httpclient has no HTTP client for this platform yet (libraries/httpclient/README.md)");
+
+HttpClientResponse httpClientFetch(const HttpClientRequest& request);
