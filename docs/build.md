@@ -677,7 +677,7 @@ build runs in-process, with no MSBuild.exe start. That measurement is still to d
 dialog (a sign-in prompt) that only kovarex can answer. After he has signed in once:
 
 ```
-powershell -File tools\vs\measure.ps1 -Project <a generated .vcxproj> -EditFile <one of its sources>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\vs\measure.ps1 -Project <a generated .vcxproj> -EditFile <one of its sources>
 ```
 
 **Debugging.** F5 starts the executable under Visual Studio's debugger. The Debug configuration
@@ -702,6 +702,15 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
+- **`kpp --version`** prints the release's version and commit (`version.txt` next to kpp.exe, which
+  package.ps1 writes; "a development build" without it), the compiler's path, the toolchain a build
+  takes without `--toolchain`, and the standard library. `kpp --help` lists the options. Both work
+  only alone; in a project's directory they print and build nothing.
+- **Options** (2026-11-02, after `kpp --version` built kovarex's project): an option that is neither
+  kpp's (`--run`, `--test`, `--set`, `--no-server`...) nor kppc's is an error with a hint at
+  `kpp --help`, and so is one missing its value. It is never passed on or ignored. A project's
+  command line passes kppc's options on to each cell's build with their values (the table
+  `compileOptions` in main.cpp, which kppc's own parsing must match).
 - **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, so
   clang finds the rest from its `bin\`: `bin\` (clang.exe, clang-19.exe, ld.lld.exe, llvm-ar.exe,
   llvm-rc.exe, llvm-dlltool.exe, libLLVM-19.dll, libclang-cpp.dll, libc++.dll, libunwind.dll and the
@@ -711,8 +720,10 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
   part's licence. The i686, armv7 and aarch64 trees, python, lldb, clangd and clang-tidy are left
   out.
-- **`tools/release/package.ps1 -Version V`** packages a built kppc into `build\release\`. It takes
-  the toolchain from `tools\sysroot\llvm-mingw.ps1` (pinned, SHA-256 checked, unpacked once into
+- **`tools\release\package.cmd -Version V`** packages a built kppc into `build\release\`. It runs
+  package.ps1 with `-ExecutionPolicy Bypass`, because Windows' default policy forbids running
+  scripts (kovarex's other PC, 2026-11-02). `tools\sysroot\llvm-mingw.cmd` does the same for its
+  script. It takes the toolchain from `tools\sysroot\llvm-mingw.ps1` (pinned, SHA-256 checked, unpacked once into
   build\llvm-mingw). Its smoke test runs `kpp new` and `kpp --no-server --run` with the packaged kpp
   outside the repository, as on a machine without Visual Studio: PATH cut to System32 and the
   Windows directory, with no INCLUDE, LIB, LIBPATH or KPP_CLANG. It checks three things:

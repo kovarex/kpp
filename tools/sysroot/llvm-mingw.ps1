@@ -3,7 +3,8 @@
 # Windows programs in the GNU dialect (kppc --target windows-gnu) with nothing of Visual Studio's.
 # Downloads the pinned release once, checks its SHA-256, and unpacks it into -Out; prints the
 # toolchain's root (bin\clang.exe under it). tests\toolchain.ps1 and tools\release\package.ps1 use it.
-#   powershell -File tools\sysroot\llvm-mingw.ps1 [-Out build\llvm-mingw]
+#   tools\sysroot\llvm-mingw.cmd [-Out build\llvm-mingw]
+# (llvm-mingw.cmd runs it with -ExecutionPolicy Bypass: Windows' default policy forbids scripts.)
 param([string]$Out = "$PSScriptRoot\..\..\build\llvm-mingw")
 $ErrorActionPreference = 'Stop'
 $name = 'llvm-mingw-20250114-ucrt-x86_64'

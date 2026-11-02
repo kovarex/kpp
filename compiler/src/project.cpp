@@ -1392,6 +1392,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
   Request request;
   request.options = options;
   bool runner = false; // after --test's `--`: the test runner's arguments
+  std::string badOption; // the first argument that is no option of kpp's or kppc's, or lacks its value
   for (int i = 1; i < argc; ++i)
   {
     std::string arg = argv[i];
@@ -1416,8 +1417,13 @@ int runProject(int argc, char** argv, CompileFunction compile)
       request.stop = true;
     else if (arg == "--msvc-diagnostics")
       request.msvc = true;
-    else if (arg == "--set" && i + 1 < argc)
+    else if (arg == "--set")
     {
+      if (i + 1 >= argc)
+      {
+        fprintf(stderr, "error: --set needs NAME=VALUE\n");
+        return 2;
+      }
       std::string item = argv[++i];
       size_t equals = item.find('=');
       if (equals == std::string::npos)
@@ -1427,10 +1433,22 @@ int runProject(int argc, char** argv, CompileFunction compile)
       }
       request.settings.push_back({item.substr(0, equals), item.substr(equals + 1)});
     }
+    else if (arg == "--server")
+      request.server = true;
     else if (arg[0] == '-')
     {
+      // kppc's options go on to each cell's build with their values; any other is an error, never
+      // passed on or ignored (`kpp --version` among others built the project). The error waits for
+      // the end: a source among the arguments makes them a plain build's (`kppc --server ... build.kpp`).
+      int values = compileOptionValues(arg);
+      if (values < 0 || i + values >= argc)
+      {
+        if (badOption.empty())
+          badOption = arg;
+        continue;
+      }
       request.passed.push_back(arg);
-      if (takesValue(arg) && i + 1 < argc)
+      for (int v = 0; v < values; ++v)
         request.passed.push_back(argv[++i]);
     }
     else if (fs::exists(arg, ec))
@@ -1438,6 +1456,8 @@ int runProject(int argc, char** argv, CompileFunction compile)
     else
       request.names.push_back(arg);
   }
+  if (!badOption.empty())
+    return optionError(badOption);
   SetCurrentDirectoryW(root.c_str());
   return act(root, request, compile);
 }

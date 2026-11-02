@@ -100,7 +100,7 @@ ruleset; the merge button is left alone by convention.
 1. On PC-PRACOVNA: run `ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\kppnet-backup` and add the
    `.pub` to the keychain.
 2. Create a scheduled task, daily at 05:00:
-   `powershell -File C:\kpp\kppnet\backup\pull-backup.ps1 -SshTarget kpp_kovarex@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net`
+   `powershell -NoProfile -ExecutionPolicy Bypass -File C:\kpp\kppnet\backup\pull-backup.ps1 -SshTarget kpp_kovarex@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net`
    Point the destination at a disk that is itself backed up. A second copy elsewhere (Wube's NAS,
    cloud storage) is cheap insurance.
 3. Run it once by hand and check that it ends with "backup ... done".

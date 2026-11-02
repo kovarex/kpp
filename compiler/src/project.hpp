@@ -13,6 +13,12 @@
 // project. Returns -1 when the arguments are no project's (a build of the sources they name).
 int runProject(int argc, char** argv, CompileFunction compile);
 
+// How many values kppc's option arg takes, -1 when kppc has no such option (main.cpp). A project's
+// command line passes kppc's options on and rejects every other.
+int compileOptionValues(const std::string& arg);
+// An option that is not kppc's, or lacks its value: the error, a hint at `kpp --help`, exit code 2.
+int optionError(const std::string& arg);
+
 // The arguments a check of the project whose build.kpp is in directory or above it (or is
 // buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one cell, an executable
 // in a configuration (by its name or its Visual Studio name: fastdebug or Fastdebug), or every

@@ -4,7 +4,8 @@
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
 # build\release\kpp-<Version>.zip, and kpp-<Version>-setup.exe when Inno Setup's compiler (ISCC) is
 # found. The CI workflows (ci.yml, release.yml) run it; it runs the same by hand:
-#   powershell -File tools\release\package.ps1 -Version 0.0.0
+#   tools\release\package.cmd -Version 0.0.0
+# (package.cmd runs it with -ExecutionPolicy Bypass: Windows' default policy forbids scripts.)
 # The toolchain comes from tools\sysroot\llvm-mingw.ps1 (pinned, SHA-256 checked, unpacked once into
 # build\llvm-mingw). -IsccPath names Inno Setup's compiler when it is not installed in a usual place.
 param([Parameter(Mandatory)][string]$Version, [string]$Commit = '', [string]$IsccPath = '')
@@ -18,6 +19,8 @@ New-Item -ItemType Directory -Force $kpp | Out-Null
 Copy-Item "$repository\compiler\build\kppc.exe" "$kpp\kpp.exe"
 # Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
 Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
+# What kpp --version prints: the version, then the commit (main.cpp, printVersion).
+@($Version) + @($Commit | Where-Object { $_ }) | Set-Content -Encoding ascii "$kpp\version.txt"
 
 # The bundled toolchain, at its paths in llvm-mingw so clang finds the rest relative to its bin\ and
 # kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld,
@@ -115,6 +118,11 @@ try
   $foreign = @($dlls | Where-Object { $_ -notmatch '^(ucrtbase|api-ms-win-crt-[a-z0-9-]+|kernel32|user32|advapi32|shell32|ole32|ws2_32|ntdll)\.dll$' })
   if (-not $dlls -or $foreign.Count) { throw "the smoke program imports $($foreign -join ', '), which Windows does not have (all: $($dlls -join ', '))" }
   Write-Output "smoke test: built with the bundled toolchain for windows-gnu; the program imports $($dlls -join ', ')"
+  # In the project's directory, as kovarex ran it: the version, never a build.
+  $printed = (& "$kpp\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  if ($LASTEXITCODE -ne 0 -or $printed -notmatch "^kpp $([regex]::Escape($Version))" -or
+      $printed -notmatch [regex]::Escape("toolchain: $kpp\bin\clang.exe (bundled") -or $printed -notmatch "(?m)^stdlib: $([regex]::Escape("$kpp\stdlib"))$") { throw "kpp --version printed:`n$printed" }
+  Write-Output $printed
 }
 finally
 {

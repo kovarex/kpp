@@ -116,10 +116,14 @@ namespace
   // Whether the build generates code: an executable, the IR, or --check's errors from codegen.
   bool generatesCode(const Options& o) { return !o.emitLLVM.empty() || !o.exe.empty() || o.check; }
 
-  void usage()
+  void usage(FILE* out = stderr)
   {
-    fprintf(stderr,
+    fprintf(out,
             "usage: kppc [options] <file-or-dir>...\n"
+            "       kpp [targets] [configurations] [options] in a project's directory (build.kpp: --run ARGS,\n"
+            "       --test, --set NAME=VALUE and the options below; kpp new, kpp options; docs/build.md)\n"
+            "  --version     the version and commit, the compiler, the toolchain a build takes, the standard library\n"
+            "  --help        this list\n"
             "  -j N          worker threads (default: hardware threads)\n"
             "  --ext .x,.y   file extensions to pick up (default .cpp,.hpp,.h,.kpp)\n"
             "  --repeat N    lex the corpus N times, report the best time\n"
@@ -173,10 +177,9 @@ namespace
             "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
             "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
             "                function is kept (/OPT:NOREF)\n"
-            "  --toolchain T  bundled: the installation's own clang and lld-link (bin\\, the default where it has\n"
-            "                one); msvc: Visual Studio's clang and link.exe (the default otherwise, and what\n"
-            "                --incremental-link needs). The Windows SDK and MSVC's libraries are Visual\n"
-            "                Studio's either way (design.md 17, stage 1)\n"
+            "  --toolchain T  bundled: the installation's own llvm-mingw (bin\\, the default where it has one),\n"
+            "                which builds windows-gnu with nothing of Visual Studio's; msvc: Visual Studio's clang\n"
+            "                and link.exe (the default otherwise, and what --incremental-link needs; design.md 17)\n"
             "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
             "                steps through the Kpp source (docs/debugging.md)\n"
             "  --target T    build for T: windows (the default), linux, freebsd, or a triple (docs/design.md,\n"
@@ -200,6 +203,45 @@ namespace
             "                (config::tests is true; docs/design.md 8.6)\n"
             "  --test F... [-- ARGS]  build the tests of F (files or directories) with the options before --test\n"
             "                and run them; ARGS go to the runner: --filter TEXT, --list, --report FILE\n");
+  }
+
+  // `kpp --version` (docs/build.md, "Installing"): the release's version and commit (version.txt next
+  // to the compiler, which tools/release/package.ps1 writes; none in a development build), the
+  // compiler, the toolchain a build takes without --toolchain, and the standard library.
+  int printVersion()
+  {
+    std::filesystem::path compiler = compilerPath();
+    std::string lines[2];
+    if (FILE* file = _wfopen((compiler.parent_path() / "version.txt").c_str(), L"r"))
+    {
+      char line[256];
+      for (std::string& text : lines)
+        if (fgets(line, sizeof line, file))
+        {
+          text = line;
+          while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+            text.pop_back();
+        }
+      fclose(file);
+    }
+    if (lines[0].empty())
+      printf("kpp: a development build (no version.txt next to it)\n");
+    else
+      printf("kpp %s%s%s\n", lines[0].c_str(), lines[1].empty() ? "" : ", commit ", lines[1].c_str());
+    printf("compiler: %s\n", compiler.string().c_str());
+    selectToolchain(compiler, "");
+    std::string clang = clangPath();
+    const char* kind = bundledToolchain()      ? "bundled: builds windows-gnu by default"
+                       : getenv("KPP_CLANG") ? "KPP_CLANG's"
+                                             : "Visual Studio's: builds windows by default";
+    std::error_code ec;
+    if (std::filesystem::exists(clang, ec))
+      printf("toolchain: %s (%s)\n", clang.c_str(), kind);
+    else
+      printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);
+    std::filesystem::path stdlib = defaultStdlib(compiler);
+    printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");
+    return 0;
   }
 
   struct FileStats
@@ -3273,6 +3315,44 @@ void putKeptState(std::shared_ptr<KeptState> state)
   }
 }
 
+// compile's options and how many values each takes, which a project's command line passes on to it
+// (project.cpp); compile's own loop below reads them. An option compile reads and this table lacks is
+// an error in a project's build.
+namespace
+{
+  const std::pair<const char*, int> compileOptions[] = {
+    {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
+    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
+    {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
+    {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0},
+    {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
+    {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1},
+    {"--codegen-threads", 1}, {"--lib", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
+    {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
+    {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}};
+}
+
+int compileOptionValues(const std::string& arg)
+{
+  for (const auto& [name, values] : compileOptions)
+    if (arg == name)
+      return values;
+  return -1;
+}
+
+int optionError(const std::string& arg)
+{
+  int values = compileOptionValues(arg);
+  if (arg == "--version" || arg == "--help")
+    fprintf(stderr, "error: %s takes no other arguments\n", arg.c_str());
+  else if (values > 0)
+    fprintf(stderr, "error: %s needs %s\n", arg.c_str(), values == 1 ? "a value" : "two values");
+  else
+    fprintf(stderr, "error: unknown option %s\n", arg.c_str());
+  fprintf(stderr, "kpp --help lists the options\n");
+  return 2;
+}
+
 int main(int argc, char** argv)
 {
   setvbuf(stdout, nullptr, _IONBF, 0); // progress lines survive a crash
@@ -3296,6 +3376,12 @@ int main(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
+  // `--version` and `--help` alone, in a project's directory too; with other arguments, an error
+  // (optionError).
+  if (argc == 2 && std::string(argv[1]) == "--version")
+    return printVersion();
+  if (argc == 2 && std::string(argv[1]) == "--help")
+    return usage(stdout), 0;
   // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")
@@ -3454,10 +3540,7 @@ int compile(int argc, char** argv)
     else if (arg == "--c-sources")
       options.cSources = true;
     else if (arg[0] == '-')
-    {
-      usage();
-      return 2;
-    }
+      return optionError(arg);
     else
       options.roots.push_back(arg);
   }

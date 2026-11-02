@@ -237,7 +237,44 @@ void configure(Cell& cell)
   Set-Content 'build.kpp' $matrixBuild
   $output = (Kpp @('nosuch', '--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'describes no target or configuration nosuch \(its configurations: debug release fastdebug\)') { Fail "an unknown name: exit $code`n$output" }
+
+  # In a project's directory, --version and --help print and build nothing, and an option kppc does
+  # not have is an error, never passed on or ignored (kovarex's `kpp --version` built the project).
+  cmd /c rd /s /q build
+  $output = (Kpp @('--version')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch '^kpp: a development build' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($Kppc))$" -or
+      $output -notmatch '(?m)^toolchain: ' -or $output -notmatch '(?m)^stdlib: .*stdlib$') { Fail "kpp --version in a project: exit $code`n$output" }
+  $output = (Kpp @('--help')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch '^usage: kppc' -or $output -notmatch '--version') { Fail "kpp --help in a project: exit $code`n$output" }
+  foreach ($case in @(
+      @(@('--frobnicate'), 'error: unknown option --frobnicate'),
+      @(@('main', '--no-server', '--versoin'), 'error: unknown option --versoin'),
+      @(@('--release', '--version'), 'error: --version takes no other arguments'),
+      @(@('main', '--exe'), 'error: --exe needs a value'),
+      @(@('--library-root', 'x'), 'error: --library-root needs two values'),
+      @(@('--set'), 'error: --set needs NAME=VALUE')))
+  {
+    $output = (Kpp $case[0]) -join "`n"
+    if ($code -ne 2 -or $output -notmatch [regex]::Escape($case[1])) { Fail "kpp $($case[0] -join ' '): exit $code, not 2 with '$($case[1])'`n$output" }
+  }
+  if (Test-Path 'build') { Fail 'kpp --version, --help or an option error built the project' }
+  # kppc's options with their values go on to the cells' builds: --toolchain's value is no target name.
+  $output = (Kpp @('main', '--no-server', '--toolchain', 'nosuch')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch "--toolchain takes bundled or msvc, not 'nosuch'") { Fail "kpp main --toolchain nosuch: exit $code`n$output" }
 }
 finally { Pop-Location }
+
+# Outside a project: an unknown option of kppc is the same error, and a release's version.txt (next to
+# kpp.exe, tools/release/package.ps1) names its version and commit.
+$output = (Kpp @('--frobnicate', "$work\src")) -join "`n"
+if ($code -ne 2 -or $output -notmatch 'error: unknown option --frobnicate') { Fail "kppc --frobnicate: exit $code`n$output" }
+$installation = Join-Path $work 'installation'
+New-Item -ItemType Directory -Force $installation | Out-Null
+Copy-Item $Kppc "$installation\kpp.exe"
+Set-Content -Encoding ascii "$installation\version.txt" "0.1.999`n0123456789abcdef"
+$ErrorActionPreference = 'Continue'
+$output = (& "$installation\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
+$ErrorActionPreference = 'Stop'
+if ($output -notmatch '^kpp 0\.1\.999, commit 0123456789abcdef' -or $output -notmatch '(?m)^stdlib: .*\(missing\)$') { Fail "an installation's kpp --version:`n$output" }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed
