@@ -1,0 +1,85 @@
+// spec: a requires-expression checks access from where it is written, as in C++: a private member satisfies it only in its class or a friend of it, a protected one also in a class derived from it, a concept's requirements (at namespace scope) only a public one; so for a member named through a parameter (`t.secret()`), a qualified name (`&T::secret`) and a type requirement (`typename T::Inner`) (`0 1 1 1 1 0 1 0 1`)
+class Box
+{
+  friend class Inspector;
+  int secret() { return 1; }
+  struct Inner
+  {
+  };
+
+protected:
+  int guarded() { return 2; }
+
+public:
+  int open() { return 3; }
+  static int selfCheck()
+  {
+    if constexpr (requires(Box b) { b.secret(); })
+      return 1;
+    else
+      return 0;
+  }
+};
+
+class Derived : public Box
+{
+public:
+  static int guardedCheck()
+  {
+    if constexpr (requires(Derived d) { d.guarded(); })
+      return 1;
+    else
+      return 0;
+  }
+};
+
+class Inspector
+{
+public:
+  template<typename T>
+  static int secretCheck()
+  {
+    if constexpr (requires(T t) { t.secret(); })
+      return 1;
+    else
+      return 0;
+  }
+};
+
+template<typename T>
+struct Outside
+{
+  static int secret()
+  {
+    if constexpr (requires(T t) { t.secret(); })
+      return 1;
+    else
+      return 0;
+  }
+  static int open()
+  {
+    if constexpr (requires { &T::open; })
+      return 1;
+    else
+      return 0;
+  }
+  static int inner()
+  {
+    if constexpr (requires { typename T::Inner; })
+      return 1;
+    else
+      return 0;
+  }
+};
+
+template<typename T>
+concept HasSecret = requires(T t) { t.secret(); };
+template<typename T>
+concept HasOpen = requires(T t) { t.open(); };
+
+int main()
+{
+  println(Outside<Box>::secret(), " ", Outside<Box>::open(), " ", Inspector::secretCheck<Box>(), " ", Box::selfCheck(), " ", Derived::guardedCheck(), " ",
+          HasSecret<Box> ? 1 : 0, " ", HasOpen<Box> ? 1 : 0, " ", Outside<Box>::inner(), " ", Outside<Derived>::open());
+  return 0;
+}

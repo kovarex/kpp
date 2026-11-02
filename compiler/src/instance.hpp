@@ -26,6 +26,14 @@ public:
     return copy;
   }
 
+  // One type on its own (a requires-expression's type requirement, probed on its copy).
+  Type* typeAlone(const Type* t)
+  {
+    Type* copy = type(t);
+    fixReferences(copy);
+    return copy;
+  }
+
   // A generic lambda's parameters, return type and body for one instantiation of its call
   // operator. The captures and the closure stay the lambda's own, so that the copy's body names
   // the variables the closure was laid out with.

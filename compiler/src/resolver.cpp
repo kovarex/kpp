@@ -5146,51 +5146,79 @@ struct GlobalScope::Impl
     return path.find("\\tests\\") != std::string::npos || path.find("\\unittest++\\") != std::string::npos ? "tests" : "game";
   }
 
-  // A use of the declaration used at node at, in the code of d (fn: the function it is in, if any)
-  // whose context classes are context: a warning when used is private or protected and the code
-  // is neither in its class (or one around the code), nor in a class derived from it (protected),
-  // nor a friend of its class or, for a protected member, of the class naming names it through
-  // (`stock->driver` with a RollingStock* names Vehicle's driver as RollingStock's, C++
-  // [class.access.base] 5).
-  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self = nullptr)
+  // Whether the code of fn (null: code outside functions) in the classes whose scopes context holds
+  // may name used, C++ [class.access]: used is no private or protected member, or the code is in its
+  // class (or one around the code), in a class derived from it (protected), or a friend of its class
+  // or, for a protected member, of the class naming names it through (`stock->driver` with a
+  // RollingStock* names Vehicle's driver as RollingStock's, [class.access.base] 5); self: the class
+  // template instance the code is in, whose bases its arguments choose. member is set when the
+  // answer took the friends (allowed then by grantedBy, else denied), for a warning's message.
+  struct AccessDecision
   {
+    bool allowed = true;
+    Decl* member = nullptr; // what used is a member as (an enumerator: its enum)
+    Decl* owner = nullptr;  // its class
+    bool isProtected = false;
+    Decl* grantedBy = nullptr; // the friend declaration that allows it
+  };
+  AccessDecision accessOf(Decl* used, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self)
+  {
+    AccessDecision a;
     Decl* member = used;
     if (member->kind == NodeKind::EnumeratorDecl && member->parent && member->parent->kind == NodeKind::EnumDecl)
       member = member->parent; // an enumerator is as accessible as its enum
     if ((member->access != Access::Private && member->access != Access::Protected) || (member->flags & DF_Friend))
-      return;
+      return a;
     Decl* owner = owningClassOf(member);
     if (!owner || owner->kind != NodeKind::ClassDecl || !owner->ownScope || static_cast<ClassDecl*>(owner)->isClosure)
-      return;
+      return a;
     if (member != used && !static_cast<EnumDecl*>(member)->name.empty())
       for (Decl* m : membersRead(static_cast<ClassDecl*>(owner)))
         if (m && m->kind == NodeKind::UsingNameDecl && static_cast<UsingNameDecl*>(m)->isEnum && !static_cast<UsingNameDecl*>(m)->name.empty() &&
             static_cast<UsingNameDecl*>(m)->name.last().symbol == static_cast<EnumDecl*>(member)->name.last().symbol && m->access == Access::Public)
-          return; // `enum class Enum {...}; public: using enum Enum;`: the enumerators are public members
+          return a; // `enum class Enum {...}; public: using enum Enum;`: the enumerators are public members
     for (Scope* s : context)
       if (s == owner->ownScope)
-        return;
+        return a;
     bool isProtected = member->access == Access::Protected;
     if (isProtected)
       for (Scope* s : context)
       {
         if (isBaseScope(owner->ownScope, s))
-          return;
+          return a;
         // A base reached through a class template's instance, which the scopes do not link
         // (`class ConditionDragPane : public DragPaneWidget<...>` naming Widget's members): as types.
         if (s->owner && s->owner->kind == NodeKind::ClassDecl && s->owner->templateParams.empty() && owner->templateParams.empty() &&
             isBaseClass(types.classType(owner, {}), types.classType(s->owner, {})))
-          return;
+          return a;
       }
     // In an instance of a class template whose base its arguments choose (`class DragPaneWidget :
     // public WidgetType` naming agui::Layout's members as an instance with WidgetType a Table).
     if (isProtected && self && !types.isDependent(self) && isBaseClass(types.classType(owner, {}), self))
-      return;
+      return a;
+    a.member = member;
+    a.owner = owner;
+    a.isProtected = isProtected;
+    a.grantedBy = grantingFriend(owner, fn, context);
+    if (!a.grantedBy && isProtected && naming && naming != owner->ownScope && naming->owner && naming->owner->kind == NodeKind::ClassDecl)
+      a.grantedBy = grantingFriend(naming->owner, fn, context);
+    a.allowed = a.grantedBy != nullptr;
+    return a;
+  }
+
+  // A use of the declaration used at node at, in the code of d (fn: the function it is in, if any)
+  // whose context classes are context: a warning when accessOf denies it, a note when a friend
+  // declaration allows it.
+  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self = nullptr)
+  {
+    AccessDecision a = accessOf(used, fn, context, naming, self);
+    if (!a.member)
+      return; // (allowed without a friend)
+    Decl* member = a.member;
+    bool isProtected = a.isProtected;
     std::string where = locationOf(d->file, at->token);
     std::string name = accessName(member);
-    Decl* f = grantingFriend(owner, fn, context);
-    if (!f && isProtected && naming && naming != owner->ownScope && naming->owner && naming->owner->kind == NodeKind::ClassDecl)
-      f = grantingFriend(naming->owner, fn, context);
+    Decl* f = a.grantedBy;
     // The code's name: a function with its class, also when defined outside the class.
     std::string in = fn ? accessName(fn) : accessName(d);
     if (Decl* cls = fn ? owningClassOf(fn) : nullptr; cls && fn->parent != cls && !fn->name.empty())
@@ -5236,6 +5264,47 @@ struct GlobalScope::Impl
     return arrowObject(ft->inner, depth + 1);
   }
 
+  // What node n names, for the access checks: a name's, a member's or a type name's declaration, and
+  // for a member the class it is named through (naming: its object's, a pointer's pointee, what an
+  // operator-> gives).
+  Decl* usedAt(Node* n, Scope*& naming)
+  {
+    naming = nullptr;
+    if (n->kind == NodeKind::NameExpr)
+      return static_cast<NameExpr*>(n)->resolved;
+    if (n->kind == NodeKind::NamedType)
+      return static_cast<NamedType*>(n)->resolved;
+    if (n->kind != NodeKind::MemberExpr)
+      return nullptr;
+    auto* m = static_cast<MemberExpr*>(n);
+    if (const Ty* object = m->resolved && m->base && m->base->ty && m->base->ty->isKnown() ? types.stripRef(m->base->ty) : nullptr)
+    {
+      if (m->op == P::Arrow)
+        object = arrowObject(object);
+      object = object ? types.unqualified(types.stripRef(object)) : nullptr;
+      if (object && object->kind == TyKind::Class && !types.isDependent(object))
+        naming = classScopeOf(object);
+    }
+    return m->resolved;
+  }
+
+  // Whether every declaration a typed requirement (n: a private copy, typed by its probe) names is
+  // one the code of fn in the classes of context may name. C++ checks access in a requires-expression
+  // where it is written ([expr.prim.req.general] 5, [temp.deduct] 8): a requirement naming a private
+  // member from elsewhere is an invalid expression, and the requires-expression false
+  // (LuaBinder<T>'s `requires() { &T::luaIndex; }` with LuaDebugAdapter's luaIndex private).
+  bool namesOnlyAccessible(Node* n, FunctionDecl* fn, const std::vector<Scope*>& context, const Ty* self)
+  {
+    bool accessible = true;
+    forEachNode(n, [&](Node* node)
+    {
+      Scope* naming;
+      if (Decl* used = accessible ? usedAt(node, naming) : nullptr)
+        accessible = accessOf(used, fn, context, naming, self).allowed;
+    });
+    return accessible;
+  }
+
   // After the walk of d, a function or a variable: every name, member and type name in it (in a
   // function also its signature, member initializers and the lambdas and local classes of its
   // body) checked against the access of what it names.
@@ -5254,26 +5323,8 @@ struct GlobalScope::Impl
         forEachNode(n, [&](Node* inner) { local.insert(inner); });
         return;
       }
-      Decl* used = nullptr;
-      Scope* naming = nullptr;
-      if (n->kind == NodeKind::NameExpr)
-        used = static_cast<NameExpr*>(n)->resolved;
-      else if (n->kind == NodeKind::MemberExpr)
-      {
-        auto* m = static_cast<MemberExpr*>(n);
-        used = m->resolved;
-        if (const Ty* object = used && m->base && m->base->ty && m->base->ty->isKnown() ? types.stripRef(m->base->ty) : nullptr)
-        {
-          if (m->op == P::Arrow)
-            object = arrowObject(object);
-          object = object ? types.unqualified(types.stripRef(object)) : nullptr;
-          if (object && object->kind == TyKind::Class && !types.isDependent(object))
-            naming = classScopeOf(object);
-        }
-      }
-      else if (n->kind == NodeKind::NamedType)
-        used = static_cast<NamedType*>(n)->resolved;
-      if (used)
+      Scope* naming;
+      if (Decl* used = usedAt(n, naming))
         checkAccessUse(used, n, d, fn, context, naming, self);
     });
   }
@@ -17135,20 +17186,36 @@ struct GlobalScope::Impl
     pushEnclosingTemplateParams(owner, probe.locals);
     for (Decl* p : r->params)
       probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
+    // Each requirement probed on a copy of its own (the template's nodes, which other probes share,
+    // keep nothing of these arguments), its names' access checked where owner is: a concept's
+    // requirements name no private member, a constrained member's those its class may.
+    FunctionDecl* fn = owner->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(owner) : nullptr;
+    std::vector<Scope*> context;
+    accessContext(owner, context);
+    InstanceCopier copier(instanceArena());
     bool dependent = false;
     for (Type* t : r->typeRequirements)
     {
-      const Ty* ty = probe.typeOf(t);
+      Type* copy = copier.typeAlone(t);
+      probe.walkType(copy); // (its names resolved, for their access)
+      const Ty* ty = probe.typeOf(copy);
       if (!ty || !ty->isKnown())
         return false;
-      dependent = dependent || types.isDependent(ty);
+      if (types.isDependent(ty))
+        dependent = true;
+      else if (!namesOnlyAccessible(copy, fn, context, nullptr))
+        return false;
     }
     for (Expr* requirement : r->requirements)
     {
-      const Ty* ty = probe.walkExpr(requirement);
-      if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(requirement))
+      Expr* copy = copier.expression(requirement);
+      const Ty* ty = probe.walkExpr(copy);
+      if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy))
         return false;
-      dependent = dependent || types.isDependent(ty);
+      if (types.isDependent(ty))
+        dependent = true;
+      else if (!namesOnlyAccessible(copy, fn, context, nullptr))
+        return false;
     }
     return dependent ? std::nullopt : std::optional<bool>(true);
   }
@@ -23789,13 +23856,35 @@ struct GlobalScope::Impl
                 walked && walked->isKnown() && !impl.containsAuto(walked) && !Impl::mentionsUnknown(walked))
               probe.locals.items.back().type = walked->kind == TyKind::Array ? types.decay(walked) : walked;
           }
+          // Each requirement on a copy of its own, its names' access checked from where the
+          // requires-expression is (Impl::namesOnlyAccessible): the function walked, its class and
+          // the classes around it, as the instance it is (self).
+          std::vector<Scope*> context;
+          if (bodyOf)
+            impl.accessContext(bodyOf, context);
+          for (Scope* s = scope; s; s = s->parent)
+            if (s->kind == ScopeKind::Class)
+              context.push_back(s);
+          const Ty* self = nullptr;
+          if (activeSubst && bodyOf)
+            if (Decl* cls = impl.owningClassOf(bodyOf); cls && cls->kind == NodeKind::ClassDecl)
+              self = impl.substitute(impl.selfType(cls), *activeSubst);
+          InstanceCopier copier(impl.instanceArena());
           bool satisfied = true;
           for (Type* t : r->typeRequirements)
-            if (const Ty* ty = probe.typeOf(t); !ty || !ty->isKnown())
+          {
+            Type* copy = copier.typeAlone(t);
+            probe.walkType(copy); // (its names resolved, for their access)
+            if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
               satisfied = false;
+          }
           for (Expr* requirement : r->requirements)
-            if (const Ty* ty = probe.walkExpr(requirement); !ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(requirement))
+          {
+            Expr* copy = copier.expression(requirement);
+            if (const Ty* ty = probe.walkExpr(copy); !ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy) ||
+                                                     (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
               satisfied = false;
+          }
           r->satisfied = satisfied;
           return record(e, types.boolType());
         }
