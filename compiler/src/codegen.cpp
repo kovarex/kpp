@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <condition_variable>
 #include <numeric>
 #include <optional>
 #include <thread>
@@ -315,6 +316,11 @@ namespace
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
     std::map<std::pair<Decl*, const Ty*>, std::string> failedGlobals; // globals whose definition failed -> what their uses report
+    // Globals whose initializer an emitter evaluates before taking the lock (Emitter::globalFor):
+    // another emitter that needs one waits for it to be defined instead of evaluating it again.
+    std::mutex claimsMutex;
+    std::condition_variable claimsChanged;
+    std::set<std::pair<Decl*, const Ty*>> evaluating;
     std::atomic<size_t> failuresRemembered{0}; // failed layouts, closures and globals, whose uses fail with them (no session kept)
     std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
     bool dyncastEmitted = false;                        // the @kpp.dyncast helper is in `decls`
@@ -11592,6 +11598,12 @@ namespace
     {
       bool layoutFailed = false;
       std::optional<ConstValue> v;
+      if (PreEvaluated* pre = preEvaluated; pre && pre->evaluated && pre->value == value && pre->type == t)
+      {
+        v = pre->data; // evaluated before the lock was taken (globalFor)
+        pre->used = true;
+      }
+      else
       {
         ConstContextScope context(*this, def);
         v = global.evaluateInitializer(t, value, def->file, def, args, foldHooks(at, layoutFailed));
@@ -11602,6 +11614,92 @@ namespace
     }
 
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
+    // A global's initializer evaluated before globalFor takes the shared lock (preEvaluateGlobal): the
+    // values globalForOnce would compute, so that the evaluator, nearly all of a global's definition,
+    // runs while the other emitters go on (it held the lock 6 of codegen's 9 s). Taken only for the
+    // same initializer and type; unused, what the evaluation noted is taken back.
+    struct PreEvaluated
+    {
+      Expr* value = nullptr; // the initializer
+      const Ty* type = nullptr;
+      bool folded = false; // foldConst's value, as globalForOnce takes it
+      std::optional<ConstValue> scalar;
+      bool evaluated = false; // the object's value (constantData)
+      std::optional<ConstValue> data;
+      bool used = false;
+    };
+    PreEvaluated* preEvaluated = nullptr;
+
+    // The values globalForOnce computes from v's initializer, computed as it does (its arguments,
+    // class, file and declaration context), without the shared lock.
+    void preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* classTy, PreEvaluated& pre)
+    {
+      TemplateArgs classArgs;
+      if (classTy)
+        classArgs = global.definitionArgs(variableDefinition(v, classTy), global.classArgsOf(classTy));
+      ArgsScope argsScope(*this, classTy ? &classArgs : nullptr);
+      struct ClassRestore { const Ty*& c; const Ty* saved; ~ClassRestore() { c = saved; } } classRestore{currentClassTy, currentClassTy};
+      currentClassTy = classTy;
+      struct SharedScope
+      {
+        bool& flag;
+        bool saved;
+        SharedScope(bool& f) : flag(f), saved(f) { flag = true; }
+        ~SharedScope() { flag = saved; }
+      } sharedScope(emittingShared);
+      const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
+      if (!t || !t->isKnown() || t->isReference() || v->builtin)
+        return;
+      VariableDecl* def = variableDefinition(v, classTy);
+      if (def == v && (v->flags & DF_Extern) && !v->init && !classTy)
+        return;
+      Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
+      if (!value)
+        return;
+      const Ty* st = types.stripRef(t);
+      struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, currentFile};
+      currentFile = def->file;
+      pre.value = value;
+      pre.type = st;
+      {
+        ConstContextScope context(*this, def);
+        pre.scalar = foldAs(foldConst(value), st);
+        if (pre.scalar && !pre.scalar->isScalar())
+          pre.scalar.reset();
+        pre.folded = true;
+      }
+      const std::optional<ConstValue>& c = pre.scalar;
+      bool scalarInit = c && (((st->kind == TyKind::Int || st->kind == TyKind::Char || st->kind == TyKind::Enum) && !c->isFloat()) ||
+                              st->kind == TyKind::Float || st->kind == TyKind::Bool);
+      bool literal = value->kind == NodeKind::LiteralExpr &&
+                     ((st->kind == TyKind::Pointer && static_cast<LiteralExpr*>(value)->keyword == Kw::nullptr_) ||
+                      (static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String && st->kind == TyKind::Pointer));
+      if (!scalarInit && !literal && (isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer))
+      {
+        bool layoutFailed = false;
+        ConstContextScope context(*this, def);
+        pre.data = global.evaluateInitializer(st, value, def->file, def, classArgs, foldHooks(at, layoutFailed));
+        pre.evaluated = true;
+      }
+    }
+
+    // An emitter's claim on a global it evaluates before the lock (sh.evaluating), given up once the
+    // global is defined (or failed).
+    struct GlobalClaim
+    {
+      Shared& sh;
+      std::pair<Decl*, const Ty*> key;
+      GlobalClaim(Shared& sh, std::pair<Decl*, const Ty*> key) : sh(sh), key(key) {}
+      ~GlobalClaim()
+      {
+        {
+          std::lock_guard claims(sh.claimsMutex);
+          sh.evaluating.erase(key);
+        }
+        sh.claimsChanged.notify_all();
+      }
+    };
+
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
     {
       // A type name read as a value (`(HANDLE) -1` taken for `HANDLE - 1`, `(LPWSTR)&msg` for
@@ -11616,6 +11714,56 @@ namespace
         return mine->second;
       }
       std::string name;
+      // Not yet defined (and not under the lock already): its initializer evaluated first, the lock
+      // not held. What that noted and numbered is taken back unless globalForOnce takes the values.
+      PreEvaluated pre;
+      std::optional<GlobalClaim> claim; // (until it is defined: after the lock below)
+      size_t inlinedBefore = inlinedNow.size();
+      if (sharedDepth == 0)
+      {
+        bool known;
+        {
+          auto lock = sharedLock();
+          known = sh.failedGlobals.count({v, classTy}) ||
+                  (classTy ? instanceGlobals.count("@\"" + irString(classTy) + "::" + sym(v->name.last().symbol) + "\"") != 0 : globals.count(v) != 0);
+        }
+        if (!known)
+        {
+          // Evaluated by another emitter now: waited for (no lock is held here, and an evaluation
+          // before the lock waits for nothing), then taken as any later use takes it.
+          std::unique_lock claims(sh.claimsMutex);
+          if (sh.evaluating.count({v, classTy}))
+          {
+            sh.claimsChanged.wait(claims, [&] { return !sh.evaluating.count({v, classTy}); });
+            known = true;
+          }
+          else
+          {
+            sh.evaluating.insert({v, classTy});
+            claims.unlock();
+            claim.emplace(sh, std::pair<Decl*, const Ty*>{v, classTy});
+          }
+        }
+        if (!known)
+        {
+          size_t errorsBefore = errors.size();
+          uint32_t tempBefore = temp;
+          size_t fnBefore = fn.size(), allocasBefore = allocas.size();
+          try
+          {
+            preEvaluateGlobal(v, at, classTy, pre);
+          }
+          catch (Unsupported&)
+          {
+            pre = PreEvaluated{}; // globalForOnce evaluates (and fails) as before
+          }
+          errors.resize(errorsBefore);
+          if (fn.size() == fnBefore && allocas.size() == allocasBefore)
+            temp = tempBefore;
+        }
+      }
+      struct PreRestore { PreEvaluated*& p; PreEvaluated* saved; ~PreRestore() { p = saved; } } preRestore{preEvaluated, preEvaluated};
+      preEvaluated = pre.value ? &pre : nullptr;
       {
         auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
         std::pair<Decl*, const Ty*> key{v, classTy};
@@ -11641,9 +11789,13 @@ namespace
           sh.failedGlobals[key] = why;
           ++sh.failuresRemembered;
           errors.resize(errorsBefore);
+          if (!pre.used && inlinedNow.size() > inlinedBefore)
+            inlinedNow.resize(inlinedBefore);
           fail(at, why);
         }
       }
+      if (!pre.used && inlinedNow.size() > inlinedBefore && pre.value)
+        inlinedNow.resize(inlinedBefore); // (another emitter defined it meanwhile: nothing of it is this function's)
       globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
       buildThreadLocal(name);
       return name;
@@ -11769,6 +11921,12 @@ namespace
       if (value)
       {
         std::optional<ConstValue> c;
+        if (PreEvaluated* pre = preEvaluated; pre && pre->folded && pre->value == value && pre->type == st)
+        {
+          c = pre->scalar; // evaluated before the lock was taken (globalFor)
+          pre->used = true;
+        }
+        else
         {
           ConstContextScope context(*this, def); // traits in the initializer resolve their names in the declaration's context
           c = foldAs(foldConst(value), st);       // the value the emitted initialization would store
@@ -18947,11 +19105,22 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         instanceStartupAt.resize(instanceStartupGlobals.size(), Shared::Startup{file->index, token, 0, ""});
       }
   // Every global built at startup is defined and built, read or not (C++ initialises them all);
-  // what their initializers ask for joins the first level's requests.
-  for (VariableDecl* v : startupGlobals)
-    e.emitStartupGlobal(v);
-  for (size_t i = 0; i < instanceStartupGlobals.size(); ++i)
-    e.emitStartupGlobal(instanceStartupGlobals[i].first, instanceStartupGlobals[i].second, instanceStartupAt[i]);
+  // what their initializers ask for joins the next level's requests. They are the first items of
+  // level 0's queue, on all threads with the program's functions: one thread took 4.5 s of the
+  // game's 9 s of codegen defining them before any function, nearly all of it evaluating
+  // initializers (a few take a second each). The order they run in at startup is ctorsText's (where
+  // each is defined), not the order they are defined in here.
+  size_t startupCount = startupGlobals.size() + instanceStartupGlobals.size();
+  auto emitStartup = [&](Emitter& em, size_t k)
+  {
+    if (k < startupGlobals.size())
+      em.emitStartupGlobal(startupGlobals[k]);
+    else
+    {
+      size_t j = k - startupGlobals.size();
+      em.emitStartupGlobal(instanceStartupGlobals[j].first, instanceStartupGlobals[j].second, instanceStartupAt[j]);
+    }
+  };
   // Level 0: the functions the program writes. Each later level: the instantiations the previous
   // one asked for. The functions of a level are emitted on all threads at once.
   std::vector<Instantiation> level;
@@ -18971,7 +19140,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   {
     while (!outOfMemory)
     {
-      if (level.empty())
+      if (level.empty() && startupCount == 0)
       {
         // Everything is emitted: the static_asserts on a class's size or alignment, which the
         // checker leaves to the layouts; those of class template instances once the functions
@@ -18991,18 +19160,23 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         continue;
       }
       std::atomic<size_t> next{0};
+      size_t head = startupCount; // the startup globals, before level 0's functions (once)
+      startupCount = 0;
       auto work = [&](unsigned i) {
         try
         {
-          for (size_t k; !outOfMemory && (k = next++) < level.size();)
-            emitOne(*emitters[i], level[k]);
+          for (size_t k; !outOfMemory && (k = next++) < head + level.size();)
+            if (k < head)
+              emitStartup(*emitters[i], k);
+            else
+              emitOne(*emitters[i], level[k - head]);
         }
         catch (const std::bad_alloc&)
         {
           outOfMemory = true;
         }
       };
-      onThreads(level.size() < 64 ? 1 : threads, work);
+      onThreads(head + level.size() < 64 ? 1 : threads, work);
       emitted += level.size();
       nextLevel();
     }
