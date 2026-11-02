@@ -1342,6 +1342,21 @@ struct_virtual_function_is_error, struct_base_not_public_is_error,
 struct_deriving_from_polymorphic_class_is_error and struct_is_a_public_value_type. Friend
 declarations of classes and functions work (classes/friends, friend_declarations).
 
+**As converted (thread C, 2026-11-02).** The converter writes the C++'s rule-breaking structs as
+classes: `class`, then `public:` first so that the members keep their access, and `public` before
+each base written without an access (a class's bases start private). The breaks are A's (a private
+or protected member, a base that is not public, a virtual function, a polymorphic base, followed
+across files), local structs in function bodies included. The game and its tests: 37 (31 with a
+private or protected member, 4 with a polymorphic base, 2 with a virtual function), 9 bases written
+public; `kppc --struct-rule` passes over the converted game and tests. The converter keeps the game's
+409 friend declarations (it removed them all before): the access warnings over the converted game
+went from 2,071 to 8. Its 32 hidden friends are still rewritten as before (21 member operators, 11
+moved to namespace scope, where 7 of the 8 warnings are): kpp's hidden friends are not yet found
+through an argument of a nested enum (NotificationData's `Flags operator|`) nor made for a class
+nested in a class template (RectangleUnionLogic<P>::IntervalPoint's operator<), specs
+classes/hidden_friend_of_nested_enum and classes/hidden_friend_in_nested_class_of_template, which A's
+b4239284 passes: the converter keeps them as written next.
+
 **Hidden friends (thread A, 2026-11-02), as C++ has them.** A friend function defined in its class
 is a function of the class's namespace that no ordinary lookup finds: only argument-dependent lookup,
 through an argument of the class, of a class deriving from it, of an instance with it as a

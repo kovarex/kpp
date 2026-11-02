@@ -7048,15 +7048,19 @@ namespace
         }
         if ((d->flags & DF_Friend) && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && !classStack.empty())
         {
-          // A hidden friend, defined inside the class: kpp has no friends, so it becomes a member
-          // operator or moves out to namespace scope, body and all.
+          // A hidden friend, defined inside the class, becomes a member operator or moves out to
+          // namespace scope, body and all: kpp's hidden friends are not yet found through a nested
+          // enum's argument (NotificationData's `Flags operator|(Flags, Flags)`) nor made for a class
+          // nested in a class template (RectangleUnionLogic<P>::IntervalPoint's operator<); specs
+          // classes/hidden_friend_of_nested_enum and hidden_friend_in_nested_class_of_template.
           if (!convertHiddenFriend(static_cast<FunctionDecl*>(d)))
             continue;
         }
         else if ((d->flags & DF_Friend) && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::FunctionDecl))
         {
-          removeDecl(d); // no friends in kpp; `friend class X;` would read as a nested class
-          counts.add("friend declarations removed");
+          // kpp keeps friend (design.md "struct and class", kovarex 2026-11-01): a friend class or
+          // function as the C++ declares it.
+          counts.add("friend declarations kept");
           continue;
         }
         if (d->kind == NodeKind::DeductionGuideDecl)
