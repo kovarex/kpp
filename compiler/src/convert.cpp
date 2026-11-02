@@ -4752,7 +4752,13 @@ namespace
               charPointer = pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::char_ &&
                             !static_cast<BuiltinType*>(pointee)->isUnsigned && !static_cast<BuiltinType*>(pointee)->isSigned;
             }
-            bool text = charPointer || (type && isStdStringType(type)) || (plain && plain->kind == NodeKind::ConditionalExpr);
+            // (`x.c_str()` and `e.what()` are C text whatever x's class: a wide one fails to compile)
+            bool cText = plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->callee->kind == NodeKind::MemberExpr &&
+                         !static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts.empty() &&
+                         static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts[0].symbol != UINT32_MAX &&
+                         (symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts[0].symbol) == "c_str" ||
+                          symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts[0].symbol) == "what");
+            bool text = charPointer || cText || (type && isStdStringType(type)) || (plain && plain->kind == NodeKind::ConditionalExpr);
             if (arg && !text)
             {
               valueOpen = "StringView((const char*)(", valueClose = "))";
