@@ -850,9 +850,27 @@ As converted (thread C, 2026-11-02):
   whose format is chosen at run time (`global->localiseFormat(...).c_str()`, a translated key, a
   variable), about 460 calls inside macros the converter expands (the unit tests' CHECK macros, whose
   expansion is text the rewrite does not see), and conversions without a piece (the ' ' and `'` flags,
-  `%E` `%G` `%a`, precision on integers and strings, wide strings: none in these calls). Next: the
-  game's own format functions (Logging, TagWriter, addDebugProperty, makeProperty, AbortException::make)
-  taking a `Text`, std::to_string of a floating value, and the C libraries' printf calls.
+  `%E` `%G` `%a`, precision on integers and strings, wide strings: none in these calls).
+- Step 2 (kpp 8613ccd6, whose message names only docs/build.md: the converter's step 2 and the Util
+  smoke test's Log stub were swept into it from a work-in-progress commit; it had passed convert and the
+  game gate, and master was gated in full after it). The game's own format functions (C-variadic,
+  their last named parameter `format`: Logging's log, logVerbose and logAndAbortOrThrow, TagWriter,
+  addDebugProperty, makeProperty, AbortException::make, InteractiveTestSelect::printf; 16
+  declarations) take `Text text`, their bodies `toString(text)` where they called vssprintf, so the
+  text is still written only where the C++ wrote it (TagWriter after its early return for saves not for
+  humans, addDebugProperty when debug properties show). Their calls, and the Log macros' and
+  SAVING_TAG's, are pieces: 1,090 macro calls, 139 direct calls, and 455 format calls inside macro
+  expansions (a text-level rewrite of the expansion, each value with its type written: `int32_t(x)`,
+  `StringView(p)`). A format chosen at run time, or literals the rewrite does not read (a C header's
+  string macro among them), passes `ssprintf(format, ...)` as one piece, trio's text at run time, or
+  the format alone as `StringView(format)` (43); a std::string there is no format (it took the
+  string overload in C++ too). A `%s` of a pointer to another type (glGetString's `const GLubyte*`),
+  or of an expression whose type the converter does not know, is `StringView((const char*)(x))`, as
+  printf read it. D's fd763247 ranks a Text taking no pieces below an exact overload, so
+  `makeProperty(x)` keeps `makeProperty(String)`. Left: 20 format calls in macro expansions whose
+  arguments the text-level rewrite does not split (they compile as they are: strings, no
+  conversions).
+- Next: std::to_string of a floating value (`fixed(x, 6)`), and the C libraries' printf calls.
 
 ### 15. File-local names: `private` at file scope (decided 2026-11-01)
 
