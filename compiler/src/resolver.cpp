@@ -5419,8 +5419,18 @@ struct GlobalScope::Impl
         for (Decl* p : classParams)
           if (const Ty* t = memberArgs->find(p))
             ofClass.pairs.push_back({p, t});
-      return constInitialize(constDeducedType(v, convertType(v->type, ictx, depth + 1)), constInitializerOf(def, ofClass.empty() ? nullptr : &ofClass),
-                             ictx, depth + 1);
+      std::pair<Decl*, std::vector<const Ty*>> key{def, {}};
+      for (const Subst::Pair& p : ofClass.pairs)
+        key.second.push_back(p.type);
+      bool evaluating = constEvaluating() > 0; // (outside an evaluation nothing is kept)
+      if (evaluating)
+        if (auto known = constGlobalValues().find(key); known != constGlobalValues().end())
+          return known->second;
+      std::optional<ConstValue> value = constInitialize(constDeducedType(v, convertType(v->type, ictx, depth + 1)),
+                                                        constInitializerOf(def, ofClass.empty() ? nullptr : &ofClass), ictx, depth + 1);
+      if (evaluating && value)
+        constGlobalValues().emplace(std::move(key), *value);
+      return value;
     }
     if (d->kind == NodeKind::EnumeratorDecl)
     {
@@ -6262,6 +6272,15 @@ struct GlobalScope::Impl
     static thread_local int evaluating = 0;
     return evaluating;
   }
+  // The const globals' values an evaluation read (constValueOfDecl), by the definition and its
+  // class's arguments: each initializer runs once per outermost evaluation, as C++ runs it once,
+  // not at every read (a loop reading a table built by a function call rebuilt it per element: one
+  // of the game's globals took 1.6 s so). Begin and end with the evaluation, as its memory does.
+  static std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue>& constGlobalValues()
+  {
+    static thread_local std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue> values;
+    return values;
+  }
   template<class Evaluate>
   std::optional<ConstValue> constOutermost(Evaluate&& evaluate, int depth)
   {
@@ -6275,6 +6294,7 @@ struct GlobalScope::Impl
     constStorage().clear();
     constHeap().clear();
     constAllocations().clear();
+    constGlobalValues().clear();
     constFailedAt() = ConstWhere{};
     std::optional<ConstValue> v;
     {
@@ -6295,6 +6315,7 @@ struct GlobalScope::Impl
     }
     constHeap().clear();
     constAllocations().clear();
+    constGlobalValues().clear();
     if (v)
       if (const ConstStorage* escaped = constHeldStorage(*v))
       {
