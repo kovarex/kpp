@@ -147,6 +147,69 @@ modules.py, oldnew.py), interleaved:
   clang 4.0 s (128 modules; 5.2 to 6.0 s for 64 then); the link 2.3 to 3.0 s; the harness's .cmd
   steps (link-settings, c-libraries) 0.1 s. Kpp's own part is 11 s, LLVM's (clang and the link) 6.5 s.
 
+**The rebuild times after one home module per global, against FASTBuild (2026-11-02, thread A).**
+Paired and interleaved, 09:12 to 09:35: kppc at 96daf50d (base) and at 0998f157 (step2: a debug
+build's linkonce_odr globals defined in one module each, docs/codegen-speed.md), each with its own
+standard library, on the frozen tree scratch\resolver\ftree (the conversion of 4c178a5b915), the game
+as run.cmd builds it (scratch\resolver\scripts\quiet.py over edbuild.cmd: debug, incremental link,
+--stub-missing, 128 modules, -j 32), with the 10-30 setup that measured 10.7 s (089dcce5, its standard
+library, factorio-in-kpp d9080751: oldbuild.cmd) in every round as the machine's control. **The machine
+was not quiet**: no quiet window came in ten minutes of waiting, the total CPU (typeperf, every 2 s)
+averaged 76 to 96% in every minute of the clean builds and 33 to 38% during the edits, from other
+threads' kppc, clang-cl, lld-link, factorio-test and spec runs.
+
+The edit loop through the server (3 rounds, each edit and its undo; seconds, wall time from start to
+linked executable):
+
+| edit | base | step2 | documented (10-31, quiet) | step2's phases (rounds 2 and 3) |
+|---|---|---|---|---|
+| leaf | 1.44 to 2.14 | 1.41 to 2.00 (1.41 to 1.57 in rounds 2 and 3) | 1.39 to 1.51 | server 0.03 + 0.01 + 0.08-0.11 + 0.09 s (read, parse, walks, report), codegen 0.23-0.28, clang 0.30-0.40 (1 module), link 0.43-0.48 |
+| wide | 1.63 to 2.39 | 1.57 to 2.32 (1.57 to 1.62 in rounds 2 and 3) | 1.90 to 1.94 | server 0.03 + 0.01 + 0.13-0.17 + 0.09 s, codegen 0.26-0.27, clang 0.36-0.38, link 0.43-0.45 |
+
+Both edits are back at the documented times, the wide edit below them (its walks and checks 0.13 to
+0.17 s after a first 0.54 to 0.74 s); the rest of the wall time, about 0.2 s, is the client and
+edbuild.cmd. Step 2 changes nothing here: an edit compiles one module again either way.
+
+The clean debug build, in its own process and through a fresh server (3 rounds each; codegen, clang,
+link in parentheses):
+
+| | own process | fresh server |
+|---|---|---|
+| base | 24.3 (9.1, 6.9, 4.7), 18.6 (6.9, 5.5, 3.7), 22.0 (7.8, 6.4, 4.1) | 21.9 (5.7, 5.6, 7.9), 35.9 (11.1, 10.2, 10.4), 24.6 (9.5, 5.8, 5.5) |
+| step2 | 22.6 (9.3, 5.5, 3.6), 24.5 (10.9, 4.9, 5.7), 28.6 (10.1, 7.1, 6.6) | 15.0 (6.6, 3.6, 2.0), 25.5 (9.2, 6.8, 4.9), 18.5 (5.4, 5.2, 5.6) |
+| 10-30 setup (10.7 s then) | 18.0 (8.1, 5.5, 1.4), 29.5 (12.5, 9.2, 3.4), 28.2 (10.7, 8.5, 4.5) | |
+
+The control took 18.0 to 29.5 s for what took 10.7 s on 10-30 (its link fails today, unresolved
+externals, so its link time is short): the machine, not the compiler, sets these numbers, and the
+pairs differ by less than the rounds do. The quietest, step2 through the server, 15.0 s: read, lex,
+imports (cached), parse and index 1.1 s, resolve 1.3 s (instantiation 27 s of CPU), codegen 6.6 s,
+clang 3.6 s, the link 2.0 s; Kpp's part 9.0 s, LLVM's 5.6 s. Clang per module (scratch\resolver\scripts\clangmod.py:
+each module of round 1 compiled again on 32 threads, timed): base 150.9 s summed, step2 137.8 s, the
+largest module 3.1 s in both (module 18, 16 MB, 14 MB with step 2), the pool's wall time 5.6 and
+5.3 s; the 10-30 build's 64 modules 95.5 s summed, the largest 5.6 s.
+
+**With the C and C++ libraries, against FASTBuild.** kovarex measured Factorio's C++ Debug full
+rebuild of factorio.exe, every library rebuilt, at 50.4 and 50.6 s on his other machine (same
+setup). Here, in the same window: factorio-in-kpp's build.kpp (a sparse clone of 170b8751 without
+data\, scratch\resolver\fik; build\clib and build\debug emptied first, `kppc factorio --no-server`,
+scratch\resolver\scripts\fikclean.py), which compiles 10 C and C++ libraries from libraries\ with
+clang-cl (641 files: SDL, SDL_Mixer, curl, vorbis, opus, opusfile, RE2, imgui, open-vcdiff and the
+native shims) and the game with its 9 converted libraries as Kpp, and FASTBuild's
+`FBuild.exe -clean -summary vs2022-Debugx64-factorio-run` in C:\Factorio\fastbuild (25 libraries,
+862 objects; nothing else built with FASTBuild then):
+
+| | total | C/C++ libraries | Kpp |
+|---|---|---|---|
+| kpp base | 52.9, 34.9, 37.4 s | 34.7, 16.5, 18.3 s | 18.2, 18.4, 19.1 s |
+| kpp step2 | 33.3, 33.1, 45.5 s | 17.0, 16.7, 24.3 s | 16.3, 16.4, 21.2 s |
+| FASTBuild (C++, Debug) | 57.1 s (19 min 28 s of CPU), 82.4 s (25 min 16 s) | | |
+
+The best rounds: kpp 33.1 s against FASTBuild 57.1 s here (and 50.5 s on kovarex's machine). Half
+of kpp's time is the C libraries, compiled one library after another (project.cpp's buildLibrary
+waits for each library's last file before the next starts, and the game's compile waits for all of
+them). All 641 files in one pool, run beside the game's front end and codegen, would hide most of
+that behind the game's own 16 s (not measured yet).
+
 ## A clean build, phase by phase, and what scales (2026-10-30, night)
 
 A clean build of the game as run.cmd builds it, in a new process and a new output directory (no
