@@ -9,7 +9,10 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
   Visual Studio's language client;
 - go to declaration (Ctrl+F12, Edit.GoToDeclaration). Visual Studio's language client leaves that
   command unavailable, so `GoToDeclaration.cs` handles it in .kpp editors: it sends
-  `textDocument/declaration` on the client's connection and opens the answer.
+  `textDocument/declaration` on the client's connection and opens the answer;
+- the cell (docs/editors.md, "Cells") from a solution kppc generated: `Cell.cs` takes the startup
+  project as the target and the active configuration as the configuration. They go to the server
+  at its start, and as `kpp/selectCell` when either changes.
 
 It is an in-process extension (`ILanguageClient`, `ILanguageClientCustomMessage2`), not a
 VisualStudio.Extensibility `LanguageServerProvider`. The out-of-process provider gives an

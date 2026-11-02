@@ -138,7 +138,7 @@ internal sealed class GoToDeclaration : IOleCommandTarget
         targetView.CenterLines(toLine, 1);
     }
 
-    private static async System.Threading.Tasks.Task StatusAsync(string text)
+    internal static async System.Threading.Tasks.Task StatusAsync(string text)
     {
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (ServiceProvider.GlobalProvider.GetService(typeof(SVsStatusbar)) is IVsStatusbar bar)

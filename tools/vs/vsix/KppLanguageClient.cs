@@ -8,8 +8,10 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.LanguageServer.Client;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Microsoft.VisualStudio.Utilities;
+using Newtonsoft.Json.Linq;
 using StreamJsonRpc;
 
 /// <summary>
@@ -58,7 +60,10 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
 
     public IEnumerable<string>? ConfigurationSections => null;
 
-    public object? InitializationOptions => null;
+    /// <summary>
+    /// The cell the solution is in (<see cref="Cell"/>): the server checks it from the start.
+    /// </summary>
+    public object? InitializationOptions => this.cell;
 
     public IEnumerable<string>? FilesToWatch => null;
 
@@ -74,8 +79,14 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
     public event AsyncEventHandler<EventArgs>? StopAsync;
 #pragma warning restore CS0067
 
+    private JObject? cell;
+    private Cell? watcher;
+
     public async Task OnLoadedAsync()
     {
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        this.cell = Cell.Current();
+        this.watcher ??= Cell.Watch(this.cell, this.SelectAsync);
         if (this.StartAsync is not null)
             await this.StartAsync.InvokeAsync(this, EventArgs.Empty);
     }
@@ -133,6 +144,28 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
             FailureMessage = $"kpp: the language server failed to start ({initializationState.StatusMessage}). Its log: {LogPath}",
         };
         return Task.FromResult<InitializationFailureContext?>(context);
+    }
+
+    /// <summary>
+    /// Another cell (a configuration or startup project picked): kpp/selectCell, which the server
+    /// answers with the cell or an error, both shown on the status bar.
+    /// </summary>
+    private async Task SelectAsync(JObject cell)
+    {
+        this.cell = cell;
+        JsonRpc? rpc = Rpc;
+        if (rpc is null)
+            return;
+        try
+        {
+            JToken? answer = await rpc.InvokeWithParameterObjectAsync<JToken?>("kpp/selectCell", cell);
+            string target = (string?)answer?["target"] ?? "every target";
+            await GoToDeclaration.StatusAsync($"kpp: IntelliSense checks {target}, {(string?)answer?["configuration"]}.");
+        }
+        catch (RemoteInvocationException e)
+        {
+            await GoToDeclaration.StatusAsync($"kpp: {e.Message}");
+        }
     }
 
     public Task AttachForCustomMessageAsync(JsonRpc rpc)

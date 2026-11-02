@@ -132,9 +132,19 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
     32.0 s of it; go to declaration reaches VideoBitmap.kpp:20 (the declaration in the class) in
     0.6 s. A typed error is in the Error List after 16.7 s and gone 35.4 s after undo (checks of
     15.5 and 22.6 s).
+  - tests\lsp\cells as the solution `kpp --generate-visual-studio-files` writes: the server starts
+    in the cell *game, debug*; go to definition in 5.3 s, go to declaration in 0.6 s. The
+    configuration Release shows the game's static_assert error after 2.7 s. The startup project
+    tool clears it after 2.4 s, and game in Debug is clean after 1.3 s.
   - In a folder, the server checks every target at once (no cell is chosen), which on the game
     is factorio and factorio-test together: 32 s for the first check where VS Code's `factorio`
     takes 15 s.
+- **The cell** (see "Cells") is the solution's. In a solution kppc generated (one project per
+  target, named after it), the startup project is the target and the active configuration is the
+  configuration. The server starts in that cell (initializationOptions). Picking another
+  configuration or startup project sends `kpp/selectCell`, and the status bar shows the server's
+  answer. In a folder, or in a solution kppc did not write, the server checks every target in
+  debug.
 
 ## Other editors
 

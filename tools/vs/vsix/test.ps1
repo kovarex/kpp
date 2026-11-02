@@ -4,6 +4,10 @@
 # error typed into a file (the Error List), and a screenshot of the window. Prints one line per check.
 #   test.ps1 -Name cells -Project compiler\tests\lsp\cells -File src\game\main.kpp -Line 6 -Column 12 -Definition src\common\shared.kpp:1
 # -Definition and -Declaration are FILE:LINE, relative to the project; -Declaration defaults to -Definition.
+# -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
+# -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
+# configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
+#   test.ps1 -Name cells-solution -Project compiler\tests\lsp\cells -File src\game\main.kpp -Line 6 -Column 12 -Definition src\common\shared.kpp:1 -Solution -CellError 'debug only' -OtherTarget tool
 param(
   [Parameter(Mandatory)][string]$Name,
   [Parameter(Mandatory)][string]$Project,
@@ -15,7 +19,11 @@ param(
   [string]$Kppc, # default: the checkout's compiler\build\kppc.exe
   [string]$Vsix, # default: tools\vs\kpp-vs.vsix (build.cmd)
   [string]$Work, # default: compiler\build\vs: the project's copy, the log, the screenshot
-  [int]$Timeout = 120
+  [int]$Timeout = 120,
+  [switch]$Solution,
+  [string]$CellError,
+  [string]$CellConfiguration = 'Release',
+  [string]$OtherTarget
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
@@ -50,6 +58,15 @@ if ($open) { throw "test.ps1: an experimental Visual Studio is still open on $Wo
 $copy = "$Work\$Name"
 if (Test-Path $copy) { cmd /c "rd /s /q `"$copy`"" }
 robocopy $Project $copy /E /XD .git build bin .vs /NFL /NDL /NJH /NJS /NP /MT:16 | Out-Null
+$open = $copy
+if ($Solution)
+{
+  Push-Location $copy
+  $generated = & $Kppc --generate-visual-studio-files 2>&1
+  Pop-Location
+  $open = (Get-ChildItem "$copy\build\visual-studio" -Filter *.sln | Select-Object -First 1).FullName
+  Check 'kppc --generate-visual-studio-files' ([bool]$open) "$generated"
+}
 
 Add-Type @"
 using System;
@@ -126,7 +143,7 @@ function Snap($why) { if ($script:shots++ -lt 3) { [SnapAll]::Save([uint32]$deve
 # The server the extension starts: this checkout's kppc (KPP_LSP_SERVER, read by the extension).
 $env:KPP_LSP_SERVER = $Kppc
 $watch = [Diagnostics.Stopwatch]::StartNew()
-$devenv = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', "`"$copy`"" -PassThru
+$devenv = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', "`"$open`"" -PassThru
 $dte = $null
 while (-not $dte -and $watch.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 250; $dte = [KppVsRot]::Dte($devenv.Id) }
 if (-not $dte) { throw "test.ps1: no DTE for devenv $($devenv.Id)" }
@@ -173,12 +190,12 @@ try
   $document = $dte.ActiveDocument
   $dte.ExecuteCommand('View.ErrorList')
   # DTE's ErrorItems has the build's errors only: the Error List's rows are read as UI Automation sees them.
-  function ErrorRow
+  function ErrorRow($text = 'kppUndeclaredName')
   {
     $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
     $rows = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
       [Windows.Automation.Condition]::TrueCondition)
-    foreach ($row in $rows) { if ($row.Current.Name -like '*kppUndeclaredName*') { return $row.Current.Name } }
+    foreach ($row in $rows) { if ($row.Current.Name -like "*$text*") { return $row.Current.Name } }
     $null
   }
   $t = [Diagnostics.Stopwatch]::StartNew()
@@ -190,6 +207,31 @@ try
   $t = [Diagnostics.Stopwatch]::StartNew()
   while ((ErrorRow) -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 500 }
   Check 'the error gone after undo' (-not (ErrorRow)) ("{0:N1} s" -f $t.Elapsed.TotalSeconds)
+
+  # The cells: the active configuration and the startup project pick the server's cell.
+  if ($Solution -and $CellError)
+  {
+    $build = $dte.Solution.SolutionBuild
+    $first = @($build.StartupProjects)[0]
+    $firstName = [IO.Path]::GetFileNameWithoutExtension($first)
+    function Wait($what, $present)
+    {
+      $t = [Diagnostics.Stopwatch]::StartNew()
+      while ([bool](ErrorRow $CellError) -ne $present -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 500 }
+      $row = ErrorRow $CellError
+      Check $what ([bool]$row -eq $present) ("{0}; {1:N1} s" -f $(if ($row) { "'$row'" } else { 'no such error' }), $t.Elapsed.TotalSeconds)
+    }
+    $build.SolutionConfigurations.Item($CellConfiguration).Activate()
+    Wait "$firstName, $CellConfiguration`: the error '$CellError'" $true
+    if ($OtherTarget)
+    {
+      $build.StartupProjects = "$OtherTarget.vcxproj"
+      Wait "$OtherTarget, $CellConfiguration`: no error '$CellError'" $false
+      $build.StartupProjects = $first
+    }
+    $build.SolutionConfigurations.Item('Debug').Activate()
+    Wait "$firstName, Debug: no error '$CellError'" $false
+  }
 
   # Hover: Quick Info at the call, for the screenshot.
   Open $File $Line $Column
