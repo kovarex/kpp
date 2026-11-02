@@ -2,25 +2,34 @@
 # kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
 # grammar, the VS Code extension kpp.vsix (tools/vscode) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
-# build\release\kpp-<Version>.zip, and kpp-<Version>-setup.exe when Inno Setup's compiler (ISCC) is
+# build\release\kpp-<version>.zip, and kpp-<version>-setup.exe when Inno Setup's compiler (ISCC) is
 # found. The CI workflows (ci.yml, release.yml) run it; it runs the same by hand:
-#   tools\release\package.cmd -Version 0.0.0
+#   tools\release\package.cmd
 # (package.cmd runs it with -ExecutionPolicy Bypass: Windows' default policy forbids scripts.)
+# The version and commit are always kppc's own (kppc --version: VERSION and the commits since it
+# changed, docs/build.md "Versions"), never given by hand; they name the files, the README, the
+# installer and the VS Code extension.
 # The toolchain comes from tools\sysroot\llvm-mingw.ps1 (pinned, SHA-256 checked, unpacked once into
 # build\llvm-mingw). -IsccPath names Inno Setup's compiler when it is not installed in a usual place.
-param([Parameter(Mandatory)][string]$Version, [string]$Commit = '', [string]$IsccPath = '')
+param([string]$IsccPath = '', [string]$Version, [string]$Commit)
 $ErrorActionPreference = 'Stop'
+if ($Version -or $Commit) { throw "package.ps1 takes no -Version or -Commit: they are kppc's own (kpp --version; docs/build.md, `"Versions`")" }
 $repository = (Resolve-Path "$PSScriptRoot\..\..").Path
 $out = Join-Path $repository 'build\release'
 $kpp = Join-Path $out 'kpp'
+
+$printed = @(& "$repository\compiler\build\kppc.exe" --version)
+if ($LASTEXITCODE -ne 0 -or $printed[0] -notmatch '^kpp (\d+\.\d+\.\d+(?:\+dirty)?), commit ([0-9a-f]{40})$') { throw "compiler\build\kppc.exe has no version to package (kppc --version: $($printed -join ' / '))" }
+$Version = $Matches[1]
+$Commit = $Matches[2]
+Write-Output "packaging kpp $Version, commit $Commit"
+
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $kpp | Out-Null
 
 Copy-Item "$repository\compiler\build\kppc.exe" "$kpp\kpp.exe"
 # Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
 Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
-# What kpp --version prints: the version, then the commit (main.cpp, printVersion).
-@($Version) + @($Commit | Where-Object { $_ }) | Set-Content -Encoding ascii "$kpp\version.txt"
 
 # The bundled toolchain, at its paths in llvm-mingw so clang finds the rest relative to its bin\ and
 # kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld,
@@ -50,6 +59,15 @@ The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 
 - llvm-mingw's own scripts: ISC.
 "@ | Set-Content "$kpp\NOTICE-toolchain.txt"
 
+# The VS Code extension needs Node.js (npm). CI's runner has it, and there it is an error without; by
+# hand the package leaves kpp.vsix out and says so.
+$npm = [bool](Get-Command npm -ErrorAction SilentlyContinue)
+if (-not $npm)
+{
+  if ($env:CI -eq 'true') { throw 'Node.js (npm) not found: CI builds the VS Code extension kpp.vsix' }
+  Write-Output 'kpp.vsix skipped: Node.js (npm) not found; install Node.js LTS to build it'
+}
+
 Copy-Item -Recurse "$repository\stdlib" "$kpp\stdlib"
 Copy-Item -Recurse "$repository\projectlib" "$kpp\projectlib"
 New-Item -ItemType Directory -Force "$kpp\grammar" | Out-Null
@@ -67,8 +85,8 @@ kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on 
 
 Kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
 
-kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
-offers to install it, or run code --install-extension kpp.vsix. Other editors:
+$(if ($npm) { "kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
+offers to install it, or run code --install-extension kpp.vsix." } else { "The VS Code extension (kpp.vsix) is not in this package: it was made without Node.js." }) Other editors:
 https://github.com/kovarex/kpp/blob/master/docs/editors.md
 
 grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
@@ -76,7 +94,9 @@ grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
 "@ | Set-Content "$kpp\README.txt"
 
 # The VS Code extension (tools/vscode), versioned as the release, with its dependencies from
-# package-lock.json. Needs Node.js (npm), as the CI runner has.
+# package-lock.json.
+if ($npm)
+{
 Push-Location "$repository\tools\vscode"
 try
 {
@@ -89,7 +109,8 @@ try
   if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
   $ErrorActionPreference = 'Stop'
 }
-finally { Pop-Location }
+finally { $ErrorActionPreference = 'Stop'; Pop-Location }
+}
 
 # A smoke test of the package itself: kpp new and kpp --run in a project outside the repository, as on
 # a machine without Visual Studio: PATH cut to Windows' own directories, no INCLUDE, LIB or KPP_CLANG
@@ -105,6 +126,7 @@ try
   $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
   foreach ($name in 'INCLUDE', 'LIB', 'LIBPATH', 'KPP_CLANG') { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
   & "$kpp\kpp.exe" new | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "the packaged kpp new failed ($LASTEXITCODE)" }
   $output = (& "$kpp\kpp.exe" --no-server --run 2>&1 | ForEach-Object { "$_" }) -join "`n"
   if ($LASTEXITCODE -ne 0 -or $output -notmatch 'Hello from Kpp') { throw "the packaged kpp did not build a new project:`n$output" }
   # A project build is --quiet (no toolchain line); its link names the target, which only the bundled

@@ -64,7 +64,11 @@ jobs:
     # Steps are scripts (Windows PowerShell 5.1, cmd) except the checkout, so the same file runs under
     # GitHub Actions and Forgejo Actions (docs/build.md, "Continuous integration").
     steps:
+      # The whole history: kpp's version counts the commits since VERSION last changed
+      # (compiler/version.cmake; a shallow clone without that commit fails the build).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # kpp.net's registry store is written over SSH by tools/release/publish.ps1 (docs/build.md,
       # "Continuous integration"), only in the two steps that need it: the secret KPP_NET_SSH_KEY (a
@@ -137,16 +141,20 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --debug-info
 
-      # The package's version is 0.1.<run> (semver, which vsce needs; it only rises), its release's tag
-      # v0.1.<run>; the nightly run's tag is v0.1.<date> (UTC) instead, the day's release, which
-      # tools/release/settle.ps1 never deletes (a second nightly run on the same day replaces it).
+      # The package's version is kppc's own (docs/build.md, "Versions": VERSION and the commits since it
+      # changed), which package.ps1 takes from kppc --version; never "+dirty" or unknown here. A push
+      # run's release is tagged v<version>; the nightly run's, of a commit a push run has released
+      # already, nightly-<date> (UTC), the day's release, which tools/release/settle.ps1 never deletes (a
+      # second nightly run on the same day replaces it).
       - name: Version
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '0.1.${{ github.run_number }}'
-          $tag = if ('${{ github.event_name }}' -eq 'schedule') { 'v0.1.' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { "v$version" }
+          $printed = @(& compiler\build\kppc.exe --version)
+          if ($printed[0] -notmatch '^kpp (\d+\.\d+\.\d+), commit ${{ github.sha }}$') { throw "kppc's version is not a release's: $($printed[0])" }
+          $version = $Matches[1]
+          $tag = if ('${{ github.event_name }}' -eq 'schedule') { 'nightly-' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { "v$version" }
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "KPP_TAG=$tag" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "version $version, tag $tag"
@@ -165,7 +173,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $started = Get-Date
-          tools\release\package.ps1 -Version $env:KPP_VERSION -Commit "${{ github.sha }}"
+          tools\release\package.ps1
           if (-not (Test-Path "build\release\kpp-$env:KPP_VERSION-setup.exe")) { throw 'no installer' }
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
 
@@ -183,7 +191,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $v = $env:KPP_VERSION
-          $title = if ('${{ github.event_name }}' -eq 'schedule') { "Kpp $v (nightly $($env:KPP_TAG.Substring(5)))" } else { "Kpp $v" }
+          $title = if ('${{ github.event_name }}' -eq 'schedule') { "Kpp $v (nightly $($env:KPP_TAG.Substring(8)))" } else { "Kpp $v" }
           $tested = if ('${{ github.event_name }}' -in 'schedule', 'workflow_dispatch') { 'every test green, including the --release and --debug-info spec' } else { 'every test green (the debug spec; the nightly adds --release and --debug-info)' }
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $env:KPP_TAG -Commit "${{ github.sha }}" -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" -Title $title `

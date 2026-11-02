@@ -702,10 +702,10 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
-- **`kpp --version`** prints the release's version and commit (`version.txt` next to kpp.exe, which
-  package.ps1 writes; "a development build" without it), the compiler's path, the toolchain a build
-  takes without `--toolchain`, and the standard library. `kpp --help` lists the options. Both work
-  only alone; in a project's directory they print and build nothing.
+- **`kpp --version`** prints the version and commit kppc was built from ("Versions" below), the
+  compiler's path, the toolchain a build takes without `--toolchain`, and the standard library.
+  `kpp --help` lists the options. Both work only alone; in a project's directory they print and
+  build nothing.
 - **Options** (2026-11-02, after `kpp --version` built kovarex's project): an option that is neither
   kpp's (`--run`, `--test`, `--set`, `--no-server`...) nor kppc's is an error with a hint at
   `kpp --help`, and so is one missing its value. It is never passed on or ignored. A project's
@@ -720,7 +720,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
   part's licence. The i686, armv7 and aarch64 trees, python, lldb, clangd and clang-tidy are left
   out.
-- **`tools\release\package.cmd -Version V`** packages a built kppc into `build\release\`. It runs
+- **`tools\release\package.cmd`** packages a built kppc into `build\release\`, named by kppc's own
+  version ("Versions" below; `-Version` is an error). It runs
   package.ps1 with `-ExecutionPolicy Bypass`, because Windows' default policy forbids running
   scripts (kovarex's other PC, 2026-11-02). `tools\sysroot\llvm-mingw.cmd` does the same for its
   script. It takes the toolchain from `tools\sysroot\llvm-mingw.ps1` (pinned, SHA-256 checked, unpacked once into
@@ -735,13 +736,15 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
     not shipped).
 
   It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
-  ISCC elsewhere).
+  ISCC elsewhere). kpp.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,
+  with one line saying so: its README says so too, and its installer does not offer it. In CI
+  (`CI=true`) a missing npm is an error. Every step's failure stops the script.
 - **`tools/release/kpp.iss`** is the installer. It installs into Program Files\Kpp and adds that
   directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
   it warned when no Visual Studio with the Clang component was found.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
-  prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from
+  prerelease `build-<run number>`, named by kppc's version. It ran on every master commit from
   e0ca8975 until the coordinator made it manual (2026-10-31): master gets dozens of commits a day,
   and no run had been checked. The automatic releases come from ci.yml (below): a numbered full release from
   every green master run. The repository is private, so its
@@ -792,6 +795,33 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   `run_spec.py --target windows-gnu` (KPP_CLANG naming llvm-mingw's clang; 2026-11-02: every
   snippet the default target passes).
 
+## Versions
+
+design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
+- **MAJOR.MINOR** is the file `VERSION` at the root. It changes only by kovarex's decision.
+- **PATCH** counts the commits since VERSION last changed:
+  `git rev-list --count --first-parent <base>..HEAD`, where the base is
+  `git log -1 --first-parent --format=%H -- VERSION`. The commit that changes VERSION is X.Y.0, and
+  every later commit adds 1 with nothing edited.
+- **The build:** `compiler/version.cmake` runs at every build of kppc (CMake's target
+  `kpp_version`). It rewrites `compiler\build\generated\version.hpp` only when something changed,
+  so only version.cpp is compiled again.
+  - "+dirty" marks a build in which a tracked file differs from HEAD, or VERSION is not committed
+    yet.
+  - Outside a git checkout (a source zip, or no git) the version is "unknown".
+  - A shallow clone that lacks VERSION's last change is an error: `git fetch --unshallow`, or
+    `fetch-depth: 0` in CI.
+- **`kpp --version`** prints `kpp 0.2.5, commit <hash>`, then the compiler, the toolchain and the
+  standard library.
+- **A release** is named by it, always. `tools\release\package.cmd` reads it from the kppc it
+  packages (`kppc --version`), and it names the files, the README, the installer and the VS Code
+  extension. Nothing takes a version by hand (kovarex: "take the version from the versioning system
+  always, not from command line"). `-Version` is an error, and kpp.iss without one is an error. A
+  local package of uncommitted changes is `X.Y.Z+dirty`. CI's release is v<version>, and a "+dirty"
+  or unknown version fails its Version step.
+- **0.2 to start:** VERSION began at 0.2 because CI had published v0.1.141 to v0.1.146 under the
+  earlier run-number scheme, and the first versioned build, 0.2.0, sorts above them.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner,
@@ -820,7 +850,8 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
   (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
   including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
-  kpp.vsix. The version is `0.1.<run number>` (semver, which vsce requires, and it only rises). `tools/release/publish.ps1`
+  kpp.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
+  checkout fetches the whole history for it). `tools/release/publish.ps1`
   then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's
     layout in [kppnet/registry/layout.md](../kppnet/registry/layout.md)). Installers and
@@ -833,9 +864,10 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
       under a temporary name and renamed, so a reader never sees half of one.
   - **The forge's full release**, made through the forge's REST API with the job's token: every
     green master run's, push, nightly or by hand (kovarex, 2026-11-02), titled "Kpp <version>",
-    with the three files. A push or hand-started run's tag is `v0.1.<run>`; the nightly run's is
-    `v0.1.<date>` (UTC, as `v0.1.20261103`), titled "Kpp <version> (nightly <date>)", one durable
-    release per day (a second nightly run on the same day replaces it). On GitHub a release that
+    with the three files. A push or hand-started run's tag is `v<version>`; the nightly run's is
+    `nightly-<date>` (UTC, as `nightly-20261103`; it builds a commit a push run has released, so
+    its version is that one's; until 2026-11-02 it was `v0.1.<date>`), titled "Kpp <version>
+    (nightly <date>)", one durable release per day (a second nightly run on the same day replaces it). On GitHub a release that
     exists is updated in place (its tag moved, the new files uploaded beside the old ones, then the
     old ones removed), so a failed step leaves the old release whole. GitHub refuses the job's
     token a tag on a commit whose `.github/workflows` differ from master's at that moment (403
@@ -847,7 +879,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   factorio-in-kpp's CI downloads. It goes by the run number in the release's notes ("ci run <N>"),
   not by which run finished last: push, nightly and hand-started runs have concurrency groups of
   their own, so an older run can finish after a newer one, and it then leaves the newer one Latest.
-  It also deletes the push releases (`v0.1.<run>`) beyond the newest 20, each with its tag; the
+  It also deletes the push releases (`v<version>`) beyond the newest 20, each with its tag; the
   nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
   prerelease `dev` and only the nightly a numbered release, so a green push left Latest old; the run
   deletes `dev` now. Releases by hand stay with release.yml.

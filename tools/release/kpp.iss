@@ -5,8 +5,9 @@
 ; the system PATH; the uninstaller takes it off again. When VS Code is found (`code` on the PATH), it
 ; offers to install the extension kpp.vsix into it, as the user who started the installer. Nothing
 ; of Visual Studio's is needed, so nothing is checked for.
+; Its version is kpp's own, which package.ps1 passes (kppc --version; docs/build.md, "Versions").
 #ifndef Version
-  #define Version "0.0.0"
+  #error kpp.iss is built by package.ps1, which passes kpp's version (/DVersion)
 #endif
 
 [Setup]
@@ -29,11 +30,14 @@ UninstallDisplayName=Kpp {#Version}
 [Files]
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
+; Only a package with kpp.vsix offers it (package.ps1 leaves it out by hand without Node.js).
+#if FileExists(Source + "\kpp.vsix")
 [Tasks]
 Name: vscode; Description: "Install the Kpp extension into VS Code (colouring and IntelliSense)"; Check: VSCodeFound
 
 [Run]
 Filename: "{cmd}"; Parameters: "/c code --install-extension ""{app}\kpp.vsix"" --force"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: vscode; StatusMsg: "Installing the VS Code extension..."
+#endif
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NotOnPath(ExpandConstant('{app}'))

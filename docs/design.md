@@ -1052,6 +1052,26 @@ nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
   MSVC and the GNU dialect, and executable and debug-info sizes. A slower edit loop keeps the
   incremental link.exe as an explicit debug option, never a silent switch.
 
+### 18. Versions (decided 2026-11-02)
+
+kovarex: "every commit should add to the smallest version". kpp's version is MAJOR.MINOR.PATCH:
+- **MAJOR.MINOR** is the file VERSION at the repository's root. It changes only by kovarex's decision.
+- **PATCH** is the number of commits on master's first-parent history since the commit that last
+  changed VERSION. The commit that changes VERSION is X.Y.0 and every later commit adds 1, so no
+  file is edited per commit and parallel threads never conflict over it. kovarex's example: after
+  0.0.158 comes 0.1.0, not 0.1.159.
+- The build works it out (compiler/version.cmake) and puts it in kppc, with the commit. A build
+  with uncommitted changes adds "+dirty". A build outside git (a source zip) says "unknown" rather
+  than guessing. A shallow clone that lacks VERSION's last change is an error, so CI fetches the
+  whole history.
+- `kpp --version` prints it. A release is named by it (tag v<version>): package.ps1 takes it from
+  the kppc it packages and never from its command line (kovarex: "take the version from the
+  versioning system always, not from command line").
+- VERSION starts at 0.2: CI had already published v0.1.141 to v0.1.146 under the run-number
+  scheme, and 0.2.0 sorts above them.
+
+docs/build.md, "Versions", has the details.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find

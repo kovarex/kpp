@@ -205,37 +205,25 @@ namespace
             "                and run them; ARGS go to the runner: --filter TEXT, --list, --report FILE\n");
   }
 
-  // `kpp --version` (docs/build.md, "Installing"): the release's version and commit (version.txt next
-  // to the compiler, which tools/release/package.ps1 writes; none in a development build), the
+  // `kpp --version` (docs/build.md, "Versions"): the version and commit kppc was built from, the
   // compiler, the toolchain a build takes without --toolchain, and the standard library.
   int printVersion()
   {
     std::filesystem::path compiler = compilerPath();
-    std::string lines[2];
-    if (FILE* file = _wfopen((compiler.parent_path() / "version.txt").c_str(), L"r"))
-    {
-      char line[256];
-      for (std::string& text : lines)
-        if (fgets(line, sizeof line, file))
-        {
-          text = line;
-          while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
-            text.pop_back();
-        }
-      fclose(file);
-    }
-    if (lines[0].empty())
-      printf("kpp: a development build (no version.txt next to it)\n");
+    if (*kppCommit())
+      printf("kpp %s, commit %s\n", kppVersion(), kppCommit());
     else
-      printf("kpp %s%s%s\n", lines[0].c_str(), lines[1].empty() ? "" : ", commit ", lines[1].c_str());
+      printf("kpp: version unknown (built outside a git checkout)\n");
     printf("compiler: %s\n", compiler.string().c_str());
-    selectToolchain(compiler, "");
-    std::string clang = clangPath();
+    std::string problem = selectToolchain(compiler, "");
+    std::string clang = problem.empty() ? clangPath() : "";
     const char* kind = bundledToolchain()      ? "bundled: builds windows-gnu by default"
                        : getenv("KPP_CLANG") ? "KPP_CLANG's"
                                              : "Visual Studio's: builds windows by default";
     std::error_code ec;
-    if (std::filesystem::exists(clang, ec))
+    if (!problem.empty())
+      printf("toolchain: none: %s\n", problem.c_str());
+    else if (std::filesystem::exists(clang, ec))
       printf("toolchain: %s (%s)\n", clang.c_str(), kind);
     else
       printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);

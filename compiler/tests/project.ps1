@@ -242,7 +242,7 @@ void configure(Cell& cell)
   # not have is an error, never passed on or ignored (kovarex's `kpp --version` built the project).
   cmd /c rd /s /q build
   $output = (Kpp @('--version')) -join "`n"
-  if ($code -ne 0 -or $output -notmatch '^kpp: a development build' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($Kppc))$" -or
+  if ($code -ne 0 -or $output -notmatch '^kpp \d+\.\d+\.\d+(\+dirty)?, commit [0-9a-f]{40}\r?\n' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($Kppc))$" -or
       $output -notmatch '(?m)^toolchain: ' -or $output -notmatch '(?m)^stdlib: .*stdlib$') { Fail "kpp --version in a project: exit $code`n$output" }
   $output = (Kpp @('--help')) -join "`n"
   if ($code -ne 0 -or $output -notmatch '^usage: kppc' -or $output -notmatch '--version') { Fail "kpp --help in a project: exit $code`n$output" }
@@ -264,17 +264,24 @@ void configure(Cell& cell)
 }
 finally { Pop-Location }
 
-# Outside a project: an unknown option of kppc is the same error, and a release's version.txt (next to
-# kpp.exe, tools/release/package.ps1) names its version and commit.
+# Outside a project: an unknown option of kppc is the same error. A copy of kppc elsewhere (an
+# installation) prints the version and commit it was built from.
 $output = (Kpp @('--frobnicate', "$work\src")) -join "`n"
 if ($code -ne 2 -or $output -notmatch 'error: unknown option --frobnicate') { Fail "kppc --frobnicate: exit $code`n$output" }
 $installation = Join-Path $work 'installation'
 New-Item -ItemType Directory -Force $installation | Out-Null
 Copy-Item $Kppc "$installation\kpp.exe"
-Set-Content -Encoding ascii "$installation\version.txt" "0.1.999`n0123456789abcdef"
+$built = (& $Kppc --version | Select-Object -First 1)
+# No toolchain of its own and no Visual Studio (KPP_VSWHERE naming a vswhere that is not there):
+# --version still prints, and says what is missing.
+$saved = $env:KPP_CLANG, $env:KPP_VSWHERE
+$env:KPP_CLANG = $null
+$env:KPP_VSWHERE = Join-Path $installation 'no-vswhere.exe'
 $ErrorActionPreference = 'Continue'
 $output = (& "$installation\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
 $ErrorActionPreference = 'Stop'
-if ($output -notmatch '^kpp 0\.1\.999, commit 0123456789abcdef' -or $output -notmatch '(?m)^stdlib: .*\(missing\)$') { Fail "an installation's kpp --version:`n$output" }
+$env:KPP_CLANG, $env:KPP_VSWHERE = $saved
+if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(missing\)$' -or
+    $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own') { Fail "an installation's kpp --version:`n$output" }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed

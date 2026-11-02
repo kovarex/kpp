@@ -48,6 +48,12 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column =
 std::filesystem::path compilerPath();
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 
+// kpp's version, MAJOR.MINOR.PATCH with "+dirty" for a build of uncommitted changes, or "unknown"
+// outside git, and the commit it was built from ("" when unknown): compiler/version.cmake writes them
+// at every build (docs/build.md, "Versions").
+const char* kppVersion();
+const char* kppCommit();
+
 // The clang kppc compiles and links with (docs/build.md, "The toolchain"): --toolchain's choice
 // (selectToolchain), else KPP_CLANG, else an installation's own (bin\clang.exe next to kpp.exe, the
 // bundled toolchain: clang, lld-link, ld.lld, llvm-lib and llvm-rc of LLVM 19.1.7), else the clang of

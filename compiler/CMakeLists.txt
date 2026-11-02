@@ -27,8 +27,19 @@ add_executable(kppc
   src/project.cpp
   src/tests.cpp
   src/ast_walk.cpp
+  src/version.cpp
 )
 target_include_directories(kppc PRIVATE src)
+
+# kpp's version (docs/build.md, "Versions"): version.cmake runs at every build and rewrites
+# generated/version.hpp only when the version or the commit changed, so only version.cpp recompiles.
+add_custom_target(kpp_version
+  COMMAND "${CMAKE_COMMAND}" "-DROOT=${CMAKE_CURRENT_SOURCE_DIR}/.." "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/version.cmake"
+  BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp"
+  COMMENT "kpp's version")
+add_dependencies(kppc kpp_version)
+target_include_directories(kppc PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if (MSVC)
   # Warnings are errors, so the build stays at none. Two are off: `T{a, b}` leaving the later
   # fields to their defaults is the code's aggregate style, and `a || b && c` reads as `a + b * c`.

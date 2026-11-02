@@ -21,7 +21,10 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
+      # The whole history: kpp's version counts the commits since VERSION last changed.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Build kppc
         shell: cmd
@@ -39,20 +42,23 @@ jobs:
 
       - name: Package
         shell: pwsh
-        run: tools\release\package.ps1 -Version "0.1.${{ github.run_number }}" -Commit "${{ github.sha }}"
+        run: |
+          tools\release\package.ps1
+          $version = (& compiler\build\kppc.exe --version | Select-Object -First 1) -replace '^kpp (\S+), commit .*$', '$1'
+          "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Kpp 0.1.${{ github.run_number }}
+          name: Kpp ${{ env.KPP_VERSION }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           body: |
-            Built from ${{ github.sha }}. Install with kpp-0.1.${{ github.run_number }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-0.1.${{ github.run_number }}.zip anywhere.
+            Built from ${{ github.sha }}. Install with kpp-${{ env.KPP_VERSION }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-${{ env.KPP_VERSION }}.zip anywhere.
             Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs.
             kpp.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp.vsix).
           files: |
-            build/release/kpp-0.1.${{ github.run_number }}.zip
-            build/release/kpp-0.1.${{ github.run_number }}-setup.exe
+            build/release/kpp-${{ env.KPP_VERSION }}.zip
+            build/release/kpp-${{ env.KPP_VERSION }}-setup.exe
             build/release/kpp/kpp.vsix
