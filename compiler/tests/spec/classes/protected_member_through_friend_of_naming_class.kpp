@@ -1,0 +1,43 @@
+// spec: a protected member of a base named through a class N (`c->forceID` with a Character*, `handle->forceID` through a Handle<Character>'s operator->) may be named in a friend of N, as C++'s [class.access.base] 5 has it; elsewhere it is a warning of the access checks
+// factorio: EntityWithOwner::forceID in AssociatedCharacters (a friend of Character, through Targeter<Character>), SegmentEngine and LatencyState
+// kppc: --access-warnings
+// warning: Entity::forceID is protected, named in Associated::direct, which a friend class declaration allows
+// warning: Entity::forceID is protected, named in Associated::viaHandle, which a friend class declaration allows
+// warning: protected_member_through_friend_of_naming_class.kpp:33: warning: Entity::forceID is protected, named in Stranger::peek
+class Entity
+{
+protected:
+  int forceID = 3;
+};
+class Character : public Entity
+{
+  friend class Associated;
+};
+template<class T>
+class Handle
+{
+  T* p;
+public:
+  Handle(T* t) : p(t) {}
+  T* operator->() const { return p; }
+};
+class Associated
+{
+public:
+  int direct(Character* c) { return c->forceID; }
+  int viaHandle(Handle<Character>& h) { return h->forceID; }
+};
+class Stranger
+{
+public:
+  int peek(Character* c) { return c->forceID; }
+};
+int main()
+{
+  Character c;
+  Handle<Character> h(&c);
+  Associated a;
+  Stranger s;
+  println(a.direct(&c), " ", a.viaHandle(h), " ", s.peek(&c));
+  return 0;
+}

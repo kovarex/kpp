@@ -1387,6 +1387,21 @@ choose them, codegen does. Run over the converted game with its tests (scratch c
   members. Without it, each of the 259 relationships becomes something else (public members, an
   accessor, the partner nested in the class), in 177 classes, by hand.
 
+**Access warnings, step 1 (thread A, 2026-11-02).** Run again over the conversion of C:\Factorio
+4c178a5b915 (factorio-in-kpp e4cfd9ba, `kppc factorio-test --check --access-warnings`): 2,071 uses
+(2,048 game, 23 tests; 1,866 private, 205 protected) in a program with 0 friend declarations,
+since the converter still removes all of them (409). Over the C++ it reads, friends declared: 1,551
+uses that 260 of its 441 friend declarations allow, and 94 warnings, all quirks of reading the C++
+(none in the converted code): 86 the Style::propertyStatus overload above, 3 computeConstant named
+as an overload set, 1 a UnitTest++ macro's function name, Direction::rotate and
+PaintEvent::graphicsContext. Two checker gaps fixed: a protected member named through a class
+whose operator-> gives it (`handle->forceID` with a Targeter<Character>, in a friend of Character),
+and a class template deriving from its parameter naming the base's protected members in an
+instance (DragPaneWidget, agui::Layout's); specs classes/protected_member_through_friend_of_naming_class,
+protected_member_in_instance_with_parameter_base. Next: the converter keeps the friend declarations
+(and, with hidden friends in kpp, Optional's operators as written), then the count over the
+converted code is what is left to decide; constructors are not checked yet.
+
 ## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 
 **Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of

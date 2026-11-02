@@ -5117,7 +5117,7 @@ struct GlobalScope::Impl
   // nor a friend of its class or, for a protected member, of the class naming names it through
   // (`stock->driver` with a RollingStock* names Vehicle's driver as RollingStock's, C++
   // [class.access.base] 5).
-  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming)
+  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self = nullptr)
   {
     Decl* member = used;
     if (member->kind == NodeKind::EnumeratorDecl && member->parent && member->parent->kind == NodeKind::EnumDecl)
@@ -5147,6 +5147,10 @@ struct GlobalScope::Impl
             isBaseClass(types.classType(owner, {}), types.classType(s->owner, {})))
           return;
       }
+    // In an instance of a class template whose base its arguments choose (`class DragPaneWidget :
+    // public WidgetType` naming agui::Layout's members as an instance with WidgetType a Table).
+    if (isProtected && self && !types.isDependent(self) && isBaseClass(types.classType(owner, {}), self))
+      return;
     std::string where = locationOf(d->file, at->token);
     std::string name = accessName(member);
     Decl* f = grantingFriend(owner, fn, context);
@@ -5176,10 +5180,31 @@ struct GlobalScope::Impl
     accessViolations.emplace(std::move(message), AccessViolation{accessGroup(d->file), isProtected, kind});
   }
 
+  // The object `a->b` names b of, for the access checks: a pointer's pointee, or what a class's
+  // operator-> gives, followed (`handle->forceID` with a Handle<Character> names Character's);
+  // null when not known (an operator-> returning auto).
+  const Ty* arrowObject(const Ty* t, int depth = 0)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || depth > 4)
+      return nullptr;
+    if (t->kind == TyKind::Pointer)
+      return t->inner;
+    Scope* cls = t->kind == TyKind::Class && !types.isDependent(t) ? classScopeOf(t) : nullptr;
+    Lookup arrow;
+    if (!cls || !lookupInScope(cls, opSymbols[uint32_t(P::Arrow)], arrow, 0) || !arrow.decl || arrow.decl->kind != NodeKind::FunctionDecl)
+      return nullptr;
+    Subst subst = substFor(t);
+    const Ty* ft = declaredTypeOf(arrow.decl, subst.empty() ? nullptr : &subst, 0);
+    if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown() || containsAuto(ft->inner))
+      return nullptr;
+    return arrowObject(ft->inner, depth + 1);
+  }
+
   // After the walk of d, a function or a variable: every name, member and type name in it (in a
   // function also its signature, member initializers and the lambdas and local classes of its
   // body) checked against the access of what it names.
-  void checkAccessIn(Decl* d)
+  void checkAccessIn(Decl* d, const Ty* self = nullptr)
   {
     FunctionDecl* fn = d->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(d) : nullptr;
     std::vector<Scope*> context;
@@ -5204,17 +5229,17 @@ struct GlobalScope::Impl
         used = m->resolved;
         if (const Ty* object = used && m->base && m->base->ty && m->base->ty->isKnown() ? types.stripRef(m->base->ty) : nullptr)
         {
-          if (m->op == P::Arrow && object->kind == TyKind::Pointer)
-            object = object->inner;
-          object = types.unqualified(types.stripRef(object));
-          if (object->kind == TyKind::Class && !types.isDependent(object))
+          if (m->op == P::Arrow)
+            object = arrowObject(object);
+          object = object ? types.unqualified(types.stripRef(object)) : nullptr;
+          if (object && object->kind == TyKind::Class && !types.isDependent(object))
             naming = classScopeOf(object);
         }
       }
       else if (n->kind == NodeKind::NamedType)
         used = static_cast<NamedType*>(n)->resolved;
       if (used)
-        checkAccessUse(used, n, d, fn, context, naming);
+        checkAccessUse(used, n, d, fn, context, naming, self);
     });
   }
 
@@ -22669,7 +22694,14 @@ struct GlobalScope::Impl
           walkStmt(f->body);
           bodyOf = savedBodyOf;
           if (impl.accessWarnings && !probing && !retypingElements)
-            impl.checkAccessIn(f);
+          {
+            // In an instance of a class template, the instance: its bases are as its arguments make them.
+            const Ty* self = nullptr;
+            if (activeSubst)
+              if (Decl* cls = impl.owningClassOf(f); cls && cls->kind == NodeKind::ClassDecl)
+                self = impl.substitute(impl.selfType(cls), *activeSubst);
+            impl.checkAccessIn(f, self);
+          }
           if (autoReturn)
           {
             const Ty* deduced = returnFrames.back();

@@ -1,0 +1,32 @@
+// spec: a class template deriving from its parameter (`class Dragging : public W`) may name the protected members of the base an instance's argument makes (`super::paint()` with W a Table); a class deriving from neither gets the access checks' warning
+// factorio: DragPaneWidget<agui::Table, ...> calling agui::Layout's and agui::Widget's protected recursivePaint functions
+// kppc: --access-warnings
+// warning: protected_member_in_instance_with_parameter_base.kpp:25: warning: Table::paint is protected, named in Other::peek
+class Widget
+{
+protected:
+  virtual int paint() { return 1; }
+};
+class Table : public Widget
+{
+protected:
+  int paint() override { return 2; }
+};
+template<class W>
+class Dragging : public W
+{
+  using super = W;
+public:
+  int paint() override { return super::paint() + 10; }
+};
+class Other
+{
+public:
+  int peek(Table& t) { return t.paint(); }
+};
+int main()
+{
+  Dragging<Table> d;
+  println(d.paint());
+  return 0;
+}
