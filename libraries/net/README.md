@@ -31,13 +31,13 @@ TcpStream client = listener.accept();
 ## Platforms
 
 - **Windows**: tested (`kpp --test`). Winsock starts on first use.
-- **Linux**: written (src/NetPosix.kpp) but **not working yet**: glibc spells `sa_family_t` and
-  `in_port_t` `unsigned short int`, which kpp reads as 4 bytes, so `sockaddr_in` is laid out wrong
-  (pending spec language/short_int_spellings).
+- **Linux**: works (src/NetPosix.kpp): a program listening, connecting, accepting, writing and
+  reading over the loopback, built here and run under WSL. The error paths are not tested there
+  yet: exceptions do not unwind on Linux (docs/design.md, "Targets and hosts", stage 3).
 - **FreeBSD**: the same file; not compiled yet (no FreeBSD sysroot for C imports on the build
   machine). Its headers are believed to spell those types `unsigned short` and `uint8_t`, which kpp
-  reads correctly (unverified until it compiles there).
-  Exceptions do not unwind on either POSIX target yet (docs/design.md, "Targets and hosts").
+  reads correctly either way (unverified until it compiles there).
+  Exceptions do not unwind there either yet.
 
 ## Tests
 

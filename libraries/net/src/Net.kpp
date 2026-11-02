@@ -7,8 +7,7 @@ struct NetError : RuntimeError
   NetError(const String& message) : RuntimeError(message) {}
 };
 
-// A port as sockaddr holds it: 2 bytes, big-endian. (Not ntohs: C imports read glibc's `unsigned short
-// int` as 32 bits, spec language/short_int_spellings.)
+// A port as sockaddr holds it: 2 bytes, big-endian.
 int netPortOf(const void* port)
 {
   const uint8_t* bytes = (const uint8_t*)port;
