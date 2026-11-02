@@ -178,6 +178,12 @@ builds win less unless machine code is cached per function.
   base at offset 0, as C++ has it, so the layout is C's and its members are the struct's; anywhere
   else it is a member with a name of its own (the layout stays right; its members by their names
   are an error). (2026-10-29, spec interop/c_anonymous_member_of_named_type.)
+- A C function a header declares or defines and Kpp declares `extern "C"` with its parameters is one
+  function, its `static` included: a later extern declaration takes a visible static one's linkage
+  (C11 6.2.2p4). A call reaches the header's definition when it has one. MSVC 14.44's time.h defines
+  time, localtime, gmtime and mktime `static __inline` (14.51's plain `__inline`) and the stdlib's
+  CTime.kpp declares them; before, every call of them was ambiguous. (2026-11-02, thread A, spec
+  interop/c_static_inline_function_declared_extern_c.)
 - For the C libraries' conversion (2026-10-31, thread D):
   - **Flexible array members.** `T items[];` as a struct's last data member, with another data
     member before it, has C's meaning: `sizeof` ends where the array starts (rounded up to the

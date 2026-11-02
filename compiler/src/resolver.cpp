@@ -17199,9 +17199,12 @@ struct GlobalScope::Impl
   {
     if (a == b)
       return true;
+    // A C function's static is its linkage, which a later extern declaration takes from a visible
+    // static one (C11 6.2.2p4): MSVC 14.44's time.h defines time static inline, CTime.kpp declares
+    // it extern "C", one function.
+    uint32_t compared = isCFunction(a) && isCFunction(b) ? DF_Const | DF_RefQual : DF_Const | DF_RefQual | DF_Static;
     if (a->params.size() != b->params.size() || a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
-        a->templateParams.size() != b->templateParams.size() ||
-        (a->flags & (DF_Const | DF_RefQual | DF_Static)) != (b->flags & (DF_Const | DF_RefQual | DF_Static)))
+        a->templateParams.size() != b->templateParams.size() || (a->flags & compared) != (b->flags & compared))
       return false;
     // A function declared `extern "C"` and then defined without it is one C function (C++
     // [dcl.link] 5: the later declaration takes the earlier one's linkage), as Lua's
@@ -17595,6 +17598,15 @@ struct GlobalScope::Impl
     for (const Candidate* c : tied)
       if (total(*c) < total(*pick) || (total(*c) == total(*pick) && c->f->templateParams.empty() && !pick->f->templateParams.empty()))
         pick = c;
+    // A C function a header defines (static inline: no symbol of its own) and Kpp declares: the
+    // definition, which the call compiles, not the declaration's external symbol.
+    if (!ambiguous && !pick->f->body && isCFunction(pick->f))
+      for (const Candidate* c : tied)
+        if (c->f->body && sameFunction(c->f, pick->f))
+        {
+          pick = c;
+          break;
+        }
     return pick->f;
   }
 
