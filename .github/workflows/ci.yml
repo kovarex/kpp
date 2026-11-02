@@ -78,6 +78,24 @@ jobs:
           "KPP_CCACHE=$exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "CPUs: $env:NUMBER_OF_PROCESSORS"
 
+      # compiler\llvm.ps1's directory for the pinned release (lib\LLVM*.lib and LLVM's headers, 256 MB of
+      # the 845 MB archive), kept by actions/cache under the release's SHA-256, which llvm.ps1 pins and
+      # checks: a hosted runner is a fresh machine, so without it every run downloads the archive.
+      - name: LLVM pin
+        id: llvm-pin
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((Get-Content -Raw compiler\llvm.ps1) -notmatch "\`$sha256 = '([0-9A-F]{64})'") { throw 'no pinned SHA-256 in compiler\llvm.ps1' }
+          "sha256=$($Matches[1])" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
+          "LLVM release $($Matches[1])"
+
+      - name: LLVM cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\..\llvm\${{ steps.llvm-pin.outputs.sha256 }}
+          key: llvm-${{ steps.llvm-pin.outputs.sha256 }}
+
       # LLVM's libraries for the back end inside kppc (compiler\llvm.ps1: the pinned release, its
       # SHA-256 checked, unpacked under that hash outside the workspace); build.cmd links them in
       # (KPP_LLVM_DIR), and run_tests' "LLVM back end" checks that path.
@@ -92,7 +110,8 @@ jobs:
       - name: Build kppc
         shell: cmd
         run: |
-          compiler\build.cmd || exit /b 1
+          rem (call: a batch file run without it never returns to this one)
+          call compiler\build.cmd || exit /b 1
           "%KPP_CCACHE%" --show-stats
 
       - uses: actions/upload-artifact@v4

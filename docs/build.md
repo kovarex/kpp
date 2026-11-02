@@ -977,6 +977,9 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     checkout gives every source a new time, so Ninja rebuilds everything. `compiler\build.cmd` takes
     a launcher from `KPP_CCACHE` when it configures build\. version.cpp is compiled again on every
     commit (its header names the commit).
+  - **LLVM** (compiler\llvm.ps1's unpacked libraries and headers of the pinned clang+llvm release,
+    256 MB, for the back end inside kppc), keyed on the release's SHA-256, which the build job reads
+    from llvm.ps1; without it every run downloads the 845 MB archive.
   - **llvm-mingw** (build\llvm-mingw, for run_tests and the package), keyed on
     tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it.
   - **The SDL3 zip and headers**, keyed on `SDL_SHA256`.
