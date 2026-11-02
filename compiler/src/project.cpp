@@ -1323,8 +1323,14 @@ namespace
         // The IDE builds through kpp itself, so that an edit of build.kpp needs no new files.
         c.buildCommand = "cd /d " + quoteArg(root.string()) + " && " + quoteArg(self.string()) + " " + quoteArg(name) + " " +
                          quoteArg(configuration.name) + " --msvc-diagnostics";
+        c.buildProgram = {self.string(), name, configuration.name, "--msvc-diagnostics"};
+        c.buildDirectory = root;
         for (const auto& [setting, value] : request.settings)
+        {
           c.buildCommand += " --set " + quoteArg(setting + "=" + value);
+          c.buildProgram.push_back("--set");
+          c.buildProgram.push_back(setting + "=" + value);
+        }
         Launch l = launchOf(root, *q);
         c.program = l.program;
         c.arguments = l.arguments;

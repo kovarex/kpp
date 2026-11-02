@@ -302,13 +302,32 @@ namespace
     // Visual Studio's debugger (the C/C++ extension's cppvsdbg) reads the PDB --debug-info writes.
     std::string launch = header + "{\n  \"version\": \"0.2.0\",\n  \"configurations\": [\n";
     bool first = true;
+    std::vector<std::pair<fs::path, std::string>> scripts; // (a build that needs cmd: its .cmd file)
     for (const IdeTarget& target : targets)
       for (const IdeConfiguration& c : target.configurations)
       {
         std::string label = "kpp: " + target.name + " " + c.name;
-        tasks += std::string(first ? "" : ",\n") + "    { \"label\": " + json(label) +
-                 ", \"type\": \"process\", \"command\": \"cmd.exe\", \"args\": [\"/d\", \"/s\", \"/c\", " + json(c.buildCommand) +
-                 "], \"problemMatcher\": " + matcher + ", \"group\": " +
+        // A process task's arguments reach the program as CreateProcess's quoting gives them: a
+        // command line handed to cmd /c in one argument arrives with its quotes as \" , which cmd
+        // does not read (an installed kpp's path, "C:\Program Files\kpp\kpp.exe", 2026-11-02). So
+        // kpp itself is the task's program; a build with before- and after-build steps is a .cmd
+        // file, which cmd gets as a path alone.
+        std::string program;
+        if (!c.buildProgram.empty())
+        {
+          program = "\"command\": " + json(c.buildProgram[0]) + ", \"args\": [";
+          for (size_t i = 1; i < c.buildProgram.size(); ++i)
+            program += (i == 1 ? "" : ", ") + json(c.buildProgram[i]);
+          program += "], \"options\": { \"cwd\": " + json(c.buildDirectory.string()) + " }";
+        }
+        else
+        {
+          fs::path script = directory / ("build-" + target.name + "-" + c.name + ".cmd");
+          scripts.push_back({script, "@rem" + std::string(generatedMark + 2) + " --generate-vs-code-files; generate again instead of editing.\n@echo off\n" + c.buildCommand + "\n"});
+          program = "\"command\": \"cmd.exe\", \"args\": [\"/d\", \"/c\", " + json(script.string()) + "]";
+        }
+        tasks += std::string(first ? "" : ",\n") + "    { \"label\": " + json(label) + ", \"type\": \"process\", " + program +
+                 ", \"problemMatcher\": " + matcher + ", \"group\": " +
                  (first ? "{ \"kind\": \"build\", \"isDefault\": true }" : "\"build\"") + " }";
         launch += std::string(first ? "" : ",\n") + "    { \"name\": " + json(label) +
                   ", \"type\": \"cppvsdbg\", \"request\": \"launch\", \"program\": " + json(c.program.string()) + ", \"args\": [";
@@ -333,6 +352,9 @@ namespace
                                     "  \"files.associations\": { \"*.kpp\": \"kpp\" }\n}\n";
     if (!writeFile(tasksPath, tasks, false) || !writeFile(launchPath, launch, false) || !writeFile(settingsPath, settings, false))
       return false;
+    for (const auto& [script, text] : scripts)
+      if (!writeFile(script, text, true))
+        return false;
     printf("wrote %s (tasks, launch, settings)\n", directory.string().c_str());
     return true;
   }
@@ -489,6 +511,15 @@ int generateProjectFiles(int argc, char** argv)
     if (!g.afterBuild.empty())
       command += (keepGoing ? " & " : " && ") + step(g.afterBuild, ide.exe, ide.name);
     ide.buildCommand = command;
+    if (g.beforeBuild.empty() && g.afterBuild.empty())
+    {
+      ide.buildProgram = {kppc.string(), "--server", "--msvc-diagnostics", "--quiet"};
+      ide.buildProgram.insert(ide.buildProgram.end(), c.arguments.begin(), c.arguments.end());
+      ide.buildProgram.insert(ide.buildProgram.end(), g.arguments.begin(), g.arguments.end());
+      ide.buildProgram.push_back("--exe");
+      ide.buildProgram.push_back(ide.exe.string());
+      ide.buildDirectory = cwd;
+    }
     // What the debugger starts, {exe} and {configuration} expanded as in the steps.
     ide.program = g.debugCommand.empty() ? ide.exe : fs::absolute(step(g.debugCommand, ide.exe, ide.name));
     ide.arguments = step(g.debugArguments, ide.exe, ide.name);

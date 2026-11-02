@@ -25,7 +25,11 @@ struct IdeConfiguration
   std::string visualStudioName; // "Debug"
   std::string name;             // "debug"
   std::filesystem::path exe;
-  std::string buildCommand;
+  std::string buildCommand; // cmd's command line (Visual Studio's NMake runs it through a batch file)
+  // The same build as a program VS Code starts itself, no cmd between: the program and its
+  // arguments, in buildDirectory. Empty when the build needs cmd (before- and after-build steps).
+  std::vector<std::string> buildProgram;
+  std::filesystem::path buildDirectory;
   std::filesystem::path program;
   std::string arguments;
   std::filesystem::path directory;

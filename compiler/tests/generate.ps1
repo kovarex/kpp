@@ -41,14 +41,92 @@ try
   $log = & $msbuild -nologo -v:m -p:Configuration=Debug -p:Platform=x64 'build\visual-studio\hello.sln' 2>&1
   $path = [regex]::Escape((Resolve-Path hello.kpp).Path)
   if ($LASTEXITCODE -eq 0 -or -not ($log -match "^\s*$path\(\d+\): error : ")) { Fail "the error is not in MSBuild's form:`n$($log -join "`n")" }
-  # The servers the builds started: each task's command after --server, with --stop-server.
+  # The servers the builds started: each task's arguments after --server, with --stop-server.
   $tasks = (Get-Content '.vscode\tasks.json' | Select-Object -Skip 1) -join "`n" | ConvertFrom-Json
   foreach ($task in $tasks.tasks)
   {
-    $command = $task.args[3]
-    $rest = $command.Substring($command.IndexOf('--server ') + 9)
-    & cmd /d /c "`"$Kppc`" --stop-server $rest" | Out-Null
+    $rest = @($task.args | Select-Object -Skip 1)
+    & $Kppc --stop-server @rest | Out-Null
   }
+}
+finally { Pop-Location }
+
+# A VS Code task as VS Code runs a process task, with kpp under a path with blanks (as an installed
+# kpp is, in Program Files): the program started directly, each argument quoted for CreateProcess,
+# in the task's directory. A command line handed to cmd /c in one argument failed there (its quotes
+# reached cmd as \"; 2026-11-02). A plain build's .vscode, then a project's (kpp new).
+function Quote([string]$argument)
+{
+  if ($argument -notmatch '[\s"]') { return $argument }
+  '"' + ($argument -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+}
+function RunTask([string]$directory, [string]$what, [switch]$Cmd)
+{
+  $tasks = (Get-Content "$directory\.vscode\tasks.json" | Select-Object -Skip 1) -join "`n" | ConvertFrom-Json
+  $task = $tasks.tasks[0]
+  if ($task.type -ne 'process' -or (($task.command -match 'cmd(\.exe)?$') -ne [bool]$Cmd)) { Fail "$what's task runs $($task.command): $($task | ConvertTo-Json -Compress)" | Out-Host; return $null }
+  $info = New-Object Diagnostics.ProcessStartInfo
+  $info.FileName = $task.command
+  $info.Arguments = (@($task.args) | ForEach-Object { Quote $_ }) -join ' '
+  $info.WorkingDirectory = if ($task.PSObject.Properties['options']) { $task.options.cwd } else { $directory }
+  $info.UseShellExecute = $false
+  $info.RedirectStandardOutput = $true
+  $info.RedirectStandardError = $true
+  $process = [Diagnostics.Process]::Start($info)
+  $out = $process.StandardOutput.ReadToEndAsync()
+  $err = $process.StandardError.ReadToEndAsync()
+  $process.WaitForExit()
+  if ($process.ExitCode -ne 0) { Fail "$what's task exited with $($process.ExitCode):`n$($out.Result)$($err.Result)" | Out-Host }
+  return $task
+}
+$spaced = Join-Path $work 'kpp in a path with blanks'
+New-Item -ItemType Directory -Force $spaced | Out-Null
+Copy-Item $Kppc "$spaced\kpp.exe"
+foreach ($library in 'stdlib', 'projectlib')
+{
+  Copy-Item -Recurse (Join-Path (Split-Path $Kppc) $library) "$spaced\$library" -ErrorAction SilentlyContinue
+  if (-not (Test-Path "$spaced\$library")) { Copy-Item -Recurse "$PSScriptRoot\..\..\$library" "$spaced\$library" }
+}
+$plain = Join-Path $work 'plain build'
+New-Item -ItemType Directory -Force $plain | Out-Null
+Copy-Item "$PSScriptRoot\run\hello.kpp" $plain
+Push-Location $plain
+try
+{
+  & "$spaced\kpp.exe" --generate-vs-code-files --exe build\hello.exe hello.kpp | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "kpp --generate-vs-code-files from a path with blanks exited with $LASTEXITCODE" }
+  $task = RunTask $plain 'a plain build'
+  if ($task)
+  {
+    $output = & ".\build\debug\hello.exe"
+    if (($output -join "`n") -ne ($expected -join "`n")) { Fail "the task's program printed $output" }
+    $rest = @($task.args | Select-Object -Skip 1)
+    & "$spaced\kpp.exe" --stop-server @rest | Out-Null
+  }
+  # With an after-build step the build needs cmd: a .cmd file in .vscode, handed to cmd as a path.
+  & "$spaced\kpp.exe" --generate-vs-code-files --after-build 'copy /y \"{exe}\" \"copied hello.exe\" >nul' --exe build\hello.exe hello.kpp | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "kpp --generate-vs-code-files --after-build exited with $LASTEXITCODE" }
+  $task = RunTask $plain 'a plain build with an after-build step' -Cmd
+  if (-not (Test-Path 'copied hello.exe')) { Fail 'the after-build task did not run its step: no copied hello.exe' }
+  $script = if ($task) { Get-Content ($task.args[-1]) -Raw } else { '' }
+  $rest = @($script -split "`r?`n" | Where-Object { $_ -match '--server ' } | ForEach-Object { $_ -replace '^.*--server ', '' -replace ' && copy.*$', '' })
+  if ($rest) { & cmd /d /c "`"$spaced\kpp.exe`" --stop-server $($rest[0])" | Out-Null }
+}
+finally { Pop-Location }
+$project = Join-Path $work 'a project with blanks\hello'
+New-Item -ItemType Directory -Force $project | Out-Null
+Push-Location $project
+try
+{
+  & "$spaced\kpp.exe" new | Out-Null
+  & "$spaced\kpp.exe" --generate-vs-code-files | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "a project's kpp --generate-vs-code-files from a path with blanks exited with $LASTEXITCODE" }
+  if (RunTask $project 'a project')
+  {
+    $output = & (Get-ChildItem 'build\debug\*.exe').FullName
+    if (($output -join "`n") -notmatch 'Hello from kpp') { Fail "the project's task built a program that printed $output" }
+  }
+  & "$spaced\kpp.exe" --stop-server | Out-Null
 }
 finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   generate' }

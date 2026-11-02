@@ -645,7 +645,13 @@ kppc --generate-visual-studio-files --generate-vs-code-files <build options> --e
   source file is listed, in folders by source root and directory, the standard library as
   *Standard Library*.
 - **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kppc
-  did not write is never overwritten.
+  did not write is never overwritten. A build task starts kpp itself (`"command"`: kpp's path,
+  `"args"`, `"options": { "cwd" }`), no cmd between: VS Code quotes a process task's arguments
+  for CreateProcess, so a command line handed to `cmd /c` in one argument reached cmd with its
+  quotes as `\"`, which cmd does not read, and every kpp under a path with blanks (an installed
+  one, in Program Files) failed (kovarex, 2026-11-02). A build with before- and after-build steps
+  (kppc's own `--before-build`, `--after-build`) needs cmd: its command is a `.cmd` file in
+  `.vscode`, which the task hands to cmd as a path alone.
 
 Both have debug (`--debug-info`, incremental link) and release (`--release`), each with its
 executable in `build\<configuration>\`. They build through the compile server with
