@@ -16645,6 +16645,7 @@ struct GlobalScope::Impl
     int thisRank; // 0 exact constness, 1 const method on a non-const object, NotViable if const object/non-const method
     std::vector<bool> refs; // per rank: the parameter is a reference
     std::vector<const Ty*> params; // per rank: the parameter's type (null for a variadic tail)
+    bool emptyText = false; // its Text parameter takes no pieces (design.md 14)
   };
 
   // The template parameters of d and of the templates around it, as locals of a context in d.
@@ -17433,6 +17434,7 @@ struct GlobalScope::Impl
       }
       if (ok && f->requiresClause && !requiresHolds(f, deduced))
         ok = false; // `requires isIntegral<T>`: the constraint fails for these arguments
+      c.emptyText = textAt != SIZE_MAX && argTypes.size() <= textAt;
       if (ok)
         viable.push_back(std::move(c));
     }
@@ -17620,6 +17622,12 @@ struct GlobalScope::Impl
         return false;
       if (a.thisRank < b.thisRank)
         someBetter = true;
+      // The arguments match alike, and one candidate's Text parameter takes none of them (design.md
+      // 14): the other wins, before the template tie-breakers, as it would if the Text took a piece
+      // (C's `...`): make(String) over make(String&&, Text) given a String, which C++ calls
+      // ambiguous for a `...` taking nothing.
+      if (!someBetter && a.emptyText != b.emptyText)
+        return b.emptyText;
       if (!someBetter && a.f->templateParams.empty() && !b.f->templateParams.empty())
         return true;
       if (!someBetter && !a.f->templateParams.empty() && !b.f->templateParams.empty() &&

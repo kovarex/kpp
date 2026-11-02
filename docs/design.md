@@ -761,6 +761,13 @@ arguments, one after another, with nothing parsed.
   global, a return value, a capture that outlives the call) is a compile error. Its interface is
   `text.appendTo(out)` and `toString(text)`; it cannot be iterated (kovarex: the pieces can be of
   any type, so it is neither useful nor practical).
+- **`Text` among overloads:** each argument packed into a `Text` ranks as one C's `...` takes, below
+  every standard and user-defined conversion, so an overload taking the arguments as they are wins
+  (spec `language/text_parameter_in_overloads`). A `Text` that takes no pieces ranks below an
+  overload that matches the same arguments without one: `make(String)` beside
+  `make(String&&, Text)` given one String takes `make(String)`, where C++ would call the pair with a
+  `...` taking nothing ambiguous (the coordinator and thread C, 2026-11-02, for PropertyItem's
+  `makeProperty`; spec `language/text_with_no_pieces_ranks_below_exact`).
 - **`appendTo`, the one conversion a type defines:** `void appendTo(String& out) const`. Every
   other form comes from it: `toString(x)` (a new String), `out << x`, `a + b`, `print`, `Text`.
   There is no second, String-returning method to write (kovarex: one method, so a deep hierarchy
