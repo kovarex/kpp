@@ -1345,6 +1345,19 @@ an edit above a kept function with a lambda and back. Still from scratch: an edi
 generic lambda (`[](auto v)`): its new walk makes a new call operator instance ("the new code
 instantiates what the old did not").
 
+**A generic lambda's call operator made anew in an edit (2026-11-02, thread A, step 1).** The new
+walk's lambda is a new closure type, so its call operator for its arguments is a new instance, and
+the old lambda's is one nobody asks for: the rewalk counts the new one apart (`rewalkLambdas`, not
+"instantiates what the old did not"), takes the old one out of the table with its statistics and
+errors (GlobalScope::dropUnusedLambdaInstances), and counts the instances' statistics again; a
+contribution made during a rewalk is the resolve's, not codegen's (`late`); codegen hands a closure's
+name back by its writer too (a generic lambda's operators are instances). The edit test: a line added
+above viaLambda's generic lambda and taken out, both incremental (each a build from scratch on master).
+Not yet the game's usual case: a lambda passed to a template (`Util::sort(best, [](const auto& a,
+const auto& b) {...})` in ExpansionPlanner) makes that template's instance for the new closure type
+too (`sort<..., closure>`), a function instance that still means a build from scratch, generic lambda
+or not: step 2 takes any new instance and drops the ones nobody uses.
+
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is

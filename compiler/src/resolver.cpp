@@ -1095,10 +1095,12 @@ struct GlobalScope::Impl
       return slot.get();
     }
     slot = std::make_unique<InstanceRecord>();
-    slot->late = afterResolve.load(std::memory_order_relaxed);
+    slot->late = afterResolve.load(std::memory_order_relaxed) && !rewalking.load(std::memory_order_relaxed);
     slot->of = f;
+    // (A generic lambda's call operator for its arguments: a build from scratch makes it too, the old
+    // lambda's goes with the walk that asked for it, GlobalScope::dropUnusedLambdaInstances.)
     if (rewalking.load(std::memory_order_relaxed))
-      ++rewalkCreated;
+      ++(f->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(f)->lambda ? rewalkLambdas : rewalkCreated);
     slot->owner = std::this_thread::get_id();
     slot->state.store(1, std::memory_order_relaxed);
     producer = true;
@@ -1234,7 +1236,7 @@ struct GlobalScope::Impl
   // Step 3b (the compile server's fast path): the resolve is over (what is made from now on is
   // codegen's), and a changed file's walk is being redone (what it makes or reuses of codegen's).
   std::atomic<bool> afterResolve{false}, rewalking{false}, rewalkTouchedLate{false};
-  std::atomic<size_t> rewalkCreated{0};
+  std::atomic<size_t> rewalkCreated{0}, rewalkLambdas{0}; // (rewalkLambdas: generic lambdas' call operators, made anew)
   // Every instance walk's statistics (GlobalScope::instanceStats), not its asker's: an instance
   // first asked for by a probe (a requires-expression's, whose statistics are dropped) would
   // otherwise go uncounted in some runs and counted in others.
@@ -1259,7 +1261,7 @@ struct GlobalScope::Impl
     std::lock_guard lock(instanceStatsMutex);
     instanceStatsTotal.add(s);
     if (kept)
-      instanceContributions.push_back({owner, std::move(kept), afterResolve.load() && !rechecking});
+      instanceContributions.push_back({owner, std::move(kept), afterResolve.load() && !rechecking && !rewalking.load()}); // (a rewalk is the resolve's)
   }
 
   // The dependencies of the units that are declarations: a function's or a variable's walk (its
@@ -25825,6 +25827,7 @@ void GlobalScope::beginRewalk()
     membersOutsideSink = &impl->membersReadOutside;
   }
   impl->rewalkCreated = 0;
+  impl->rewalkLambdas = 0;
   impl->rewalkTouchedLate = false;
   impl->rewalking = true;
 }
@@ -26736,7 +26739,59 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
   return true;
 }
 
-bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file)
+bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file) { return unusedOf(instances, file).empty(); }
+
+size_t GlobalScope::lambdaInstancesMadeAgain() const { return impl->rewalkLambdas.load(); }
+
+bool GlobalScope::dropUnusedLambdaInstances(const std::vector<const void*>& instances, const ParsedFile& file)
+{
+  std::unordered_set<const void*> unused = unusedOf(instances, file);
+  // Each a generic lambda's call operator (of a lambda the file's new walk no longer has): taken out
+  // of the table as a build from scratch never makes it, with its statistics and errors.
+  std::vector<std::pair<Impl::InstanceShard*, std::string>> found;
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      if (unused.count(record.get()))
+      {
+        if (!record->of || record->of->kind != NodeKind::ClassDecl || !static_cast<const ClassDecl*>(record->of)->lambda)
+          return false;
+        found.push_back({&shard, key});
+      }
+  }
+  if (found.size() != unused.size())
+    return false; // (a class instance, or a function instance of the other table)
+  std::unordered_set<const Impl::InstanceRecord*> drop;
+  for (auto& [shard, key] : found)
+  {
+    std::lock_guard lock(shard->mutex);
+    auto it = shard->map.find(key);
+    drop.insert(it->second.get());
+    impl->droppedInstances.push_back(std::move(it->second));
+    shard->map.erase(it);
+  }
+  {
+    std::lock_guard lock(impl->instanceStatsMutex);
+    auto& list = impl->instanceContributions;
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const Impl::InstanceContribution& c) { return drop.count(static_cast<const Impl::InstanceRecord*>(c.owner)); }),
+               list.end());
+  }
+  std::vector<const void*> units;
+  for (const Impl::InstanceRecord* r : drop)
+    units.push_back(&r->deps);
+  impl->forgetErrorsOf(std::unordered_set<const void*>(units.begin(), units.end()));
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  for (const Impl::InstanceRecord* r : drop)
+    if (r->body)
+    {
+      impl->instanceAssertErrors.erase(r->body);
+      impl->instanceNameErrors.erase(r->body);
+    }
+  return true;
+}
+
+std::unordered_set<const void*> GlobalScope::unusedOf(const std::vector<const void*>& instances, const ParsedFile& file)
 {
   std::unordered_set<const void*> left(instances.begin(), instances.end());
   auto scan = [&](Dependencies& d)
@@ -26771,7 +26826,7 @@ bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const
       if (!left.count(inst.get()))
         scan(inst->deps);
   }
-  return left.empty();
+  return left;
 }
 
 GlobalScope::DependencyStats GlobalScope::dependencyStats()

@@ -3240,9 +3240,13 @@ namespace
       const ParsedFile& file = *kept.parsed[walked[n]];
       std::vector<const void*> after = global.instancesWalksUse(file), dropped;
       std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
-      if (!dropped.empty() && !global.usedElsewhere(dropped, file))
+      // (an old lambda's call operator, which the body's new lambda replaced, taken out)
+      if (!dropped.empty() && !global.usedElsewhere(dropped, file) && !global.dropUnusedLambdaInstances(dropped, file))
         same = false, why = "an old body's instance nobody else asks for";
     }
+    // Generic lambdas' call operators made anew, the old ones taken out: the instances' statistics again.
+    if (same && global.lambdaInstancesMadeAgain())
+      kept.instanceStats = global.instanceStatsAtResolveEnd();
     if (!same)
     {
       logBuildNote("not incremental: " + why);

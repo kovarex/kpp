@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 struct Scope;
@@ -332,6 +333,14 @@ public:
   void forgetWalks(const ParsedFile& file);
   std::vector<const void*> instancesWalksUse(const ParsedFile& file);
   bool usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file);
+  // Of those instances, the ones no walk but file's and no used instance asks for.
+  std::unordered_set<const void*> unusedOf(const std::vector<const void*>& instances, const ParsedFile& file);
+  // Those of the instances no one else uses (unusedOf) taken out, when each is a generic lambda's
+  // call operator (the lambda of a body walked again: its new walk made the new lambda's); false,
+  // nothing taken out, when one is something else.
+  bool dropUnusedLambdaInstances(const std::vector<const void*>& instances, const ParsedFile& file);
+  // How many generic lambdas' call operators the rewalk made (beginRewalk to endRewalk).
+  size_t lambdaInstancesMadeAgain() const;
 
   // A changed function's name as lookups recorded it: its symbol, and for a member the class scope
   // (lookups in a class are recorded with the class; anyClass: a member whose class is unknown, read

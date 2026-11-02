@@ -78,6 +78,10 @@ $steps = @(
   @{ name = 'a line added above a lambda in its function (it moves; its closure keeps its name)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' '  auto add = [base]' "  int pad = 0;`r`n  auto add = [base]" } },
   @{ name = 'a codegen error typed above that lambda'; expect = '(build exit 1)'; edit = { Edit 'lambdas.kpp' '  int pad = 0;' '  int* pad = 5;' } },
   @{ name = 'the error taken out (the lambda back at its place)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' "  int* pad = 5;`r`n" '' } },
+  # A generic lambda's call operator instance belongs to its function's walk: an edit of the function makes it
+  # anew and drops the old (not a build from scratch: "the new code instantiates what the old did not").
+  @{ name = 'a line added above a generic lambda in its function (its call operator''s instance made anew)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' '  auto scaled = [](auto v)' "  int pad2 = 0;`r`n  auto scaled = [](auto v)" } },
+  @{ name = 'that line taken out'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' "  int pad2 = 0;`r`n" '' } },
   @{ name = 'a body edit above a kept function with a lambda (which moves)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { int r = 2; r = r + 0; return r; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; r = r + 0; return r; }' 'int firstHelper() { int r = 2; return r; }' } },
   @{ name = 'a lambda added before another in its file (which moves and is renumbered)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a local type moved'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { auto two = []() { return 2; }; int r = two(); return r; }' } },

@@ -20347,7 +20347,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
   std::unordered_set<const Ty*> droppedClosures;
   for (auto& [t, info] : sh.closures)
-    if (droppedNames.count(info.functionName))
+    if (droppedNames.count(info.functionName) || owners.count(info.writtenIn)) // (a generic lambda's operators are instances: by its writer)
     {
       sh.closuresEmitted.erase(t);
       droppedClosures.insert(t);
