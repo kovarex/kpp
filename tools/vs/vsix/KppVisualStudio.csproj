@@ -9,8 +9,8 @@
     <Nullable>enable</Nullable>
     <NeutralLanguage>en-US</NeutralLanguage>
     <UseWPF>true</UseWPF>
-    <RootNamespace>Kpp.VisualStudio</RootNamespace>
-    <AssemblyName>Kpp.VisualStudio</AssemblyName>
+    <RootNamespace>KppVisualStudio</RootNamespace>
+    <AssemblyName>KppVisualStudio</AssemblyName>
     <VssdkCompatibleExtension>true</VssdkCompatibleExtension>
     <GeneratePkgDefFile>false</GeneratePkgDefFile>
     <IncludeDebugSymbolsInVSIX>false</IncludeDebugSymbolsInVSIX>

@@ -1,4 +1,4 @@
-namespace Kpp.VisualStudio;
+namespace KppVisualStudio;
 
 using System;
 using System.Collections.Generic;

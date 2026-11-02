@@ -17,7 +17,7 @@ for /f "usebackq tokens=1" %%v in (`"%DOTNET%" --list-sdks`) do echo %%v| findst
 if not defined SDKVERSION echo build.cmd: no .NET 8 SDK in "%DOTNET%" --list-sdks & exit /b 1
 for %%X in ("%DOTNET%") do set MSBuildSDKsPath=%%~dpXsdk\%SDKVERSION%\Sdks
 set MSBuildEnableWorkloadResolver=false
-"%MSBUILD%" "%~dp0Kpp.VisualStudio.csproj" -restore -p:Configuration=Release -v:minimal -nologo || exit /b 1
+"%MSBUILD%" "%~dp0KppVisualStudio.csproj" -restore -p:Configuration=Release -v:minimal -nologo || exit /b 1
 set OUT=
 for /r "%~dp0bin\Release" %%f in (kpp-vs.vsix) do if exist "%%f" set OUT=%%f
 if not defined OUT echo build.cmd: the build wrote no kpp-vs.vsix & exit /b 1
