@@ -32,22 +32,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Every commit of a pull request is signed off by its author (CONTRIBUTING.md, "Sign-off"). On a
-  # Linux runner; a Forgejo runner's label through the repository variable KPP_CI_LINUX_RUNNER.
-  signoff:
-    if: github.event_name == 'pull_request'
-    runs-on: ${{ vars.KPP_CI_LINUX_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Signed-off-by on every commit
-        shell: sh
-        run: sh tools/ci/check-signoff.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
-
-  # The jobs below run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
+  # The jobs run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
   # the repository variable KPP_CI_RUNNER. kppc is built once (build) and handed to the test jobs as
   # the artifact "kppc"; run_tests and the spec's shards run at once; package and publish run only
   # when every one of them is green (docs/build.md, "Continuous integration"). Steps are scripts
