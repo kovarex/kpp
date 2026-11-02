@@ -907,6 +907,48 @@ namespace
     return out;
   }
 
+  // The toolchain an import is made with, for its cache key: clang's version, the target triple and
+  // _MSC_VER it gives, and the directories its `#include <...>` searches. clang picks the MSVC and
+  // the Windows SDK from the environment (INCLUDE and the rest under VsDevCmd, else the newest Visual
+  // Studio with MSVC: installing another one changes them), and _MSC_VER from that MSVC: under 14.44's
+  // (1944) the UCRT's time.h defines time() and localtime() `static __inline`, under 14.51's not
+  // (corecrt.h's _STATIC_INLINE_UCRT_FUNCTIONS), from the same header files.
+  std::string clangToolchain(const std::string& clang, const std::string& includeArgs)
+  {
+    std::string out;
+    FILE* pipe = _popen(("\"\"" + clang + "\" -x c -E -v" + includeArgs + " NUL -o NUL 2>&1\"").c_str(), "r");
+    if (!pipe)
+      return out;
+    bool list = false;
+    std::string line;
+    char chunk[4096];
+    while (fgets(chunk, sizeof chunk, pipe))
+    {
+      line += chunk;
+      if (line.back() != '\n' && !feof(pipe))
+        continue; // the cc1 line is longer than a chunk
+      std::string s = std::move(line);
+      line.clear();
+      if (s.rfind("clang version", 0) == 0)
+        out += s;
+      else if (s.find("-cc1") != std::string::npos)
+      {
+        // The command line's other options name the working directory: only these two.
+        for (const char* option : {"-triple ", "-fms-compatibility-version="})
+          if (size_t at = s.find(option); at != std::string::npos)
+            out += s.substr(at, s.find(' ', at + strlen(option)) - at) + "\n";
+      }
+      else if (s.rfind("#include <...>", 0) == 0)
+        list = true;
+      else if (s.rfind("End of search list", 0) == 0)
+        list = false;
+      else if (list)
+        out += s;
+    }
+    _pclose(pipe);
+    return out;
+  }
+
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                       SymbolTable& symbols, const Options& options)
   {
@@ -950,8 +992,17 @@ namespace
       std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
       includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
     }
+    std::string clang = clangPath();
+    std::string toolchain = clangToolchain(clang, includeArgs);
+    if (toolchain.find("clang version") == std::string::npos)
+    {
+      fprintf(stderr, "importing C headers failed: %s -v gave no version\n", clang.c_str());
+      codegenExit = 1;
+      return;
+    }
     uint64_t hash = 1469598103934665603ull;
-    for (unsigned char c : "kpp import 6\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules, vaListForSysV)
+    // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
+    for (unsigned char c : "kpp import 7\n" + wrapper + includeArgs + "\n" + toolchain)
       hash = (hash ^ c) * 1099511628211ull;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);
@@ -981,7 +1032,6 @@ namespace
       }
       fwrite(wrapper.data(), 1, wrapper.size(), w);
       fclose(w);
-      std::string clang = clangPath();
       std::string base = "\"\"" + clang + "\" -x c -w" + includeArgs + " \"" + wrapperPath.string() + "\"";
       int rc = system((base + " -E -P -MD -MF \"" + makeDeps.string() + "\" -o \"" + preprocessed.string() + "\"\"").c_str());
       int rc2 = system((base + " -E -dM -o \"" + defines.string() + "\"\"").c_str());

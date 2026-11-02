@@ -137,6 +137,9 @@ rem --target (tests\targets.ps1, docs/design.md "Targets and hosts"): Windows, F
 rem Linux built here and run under WSL (skipped without WSL).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\targets.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "targets") else (call :ok)
+rem The C import cache keys an import on the toolchain's environment (tests\importcache.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\importcache.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "import cache") else (call :ok)
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (
