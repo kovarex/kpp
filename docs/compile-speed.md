@@ -1358,6 +1358,28 @@ const auto& b) {...})` in ExpansionPlanner) makes that template's instance for t
 too (`sort<..., closure>`), a function instance that still means a build from scratch, generic lambda
 or not: step 2 takes any new instance and drops the ones nobody uses.
 
+**New instances in an edit; the old lambda's instances dropped (2026-11-02, thread A, step 2).** A
+rewalk may make any instance (a call of a template with a new type, `applyTo<closure>` for an edited
+function's new lambda): a build from scratch makes it too, and the report counts it in (each record
+notes what it added to the counters, `InstanceRecord::counted`, the rewalk lists what it made,
+GlobalScope::rewalkCounts; a rewalk's statistics are the resolve's, not codegen's). What the old walks
+asked for that no root reaches now (every walk, the declarations' typing; one parallel pass over the
+recorded uses, then a walk of what each instance asked for: 0.4 s on the game) is dropped when each one
+was made for a lambda's closure (its call operator, an instance with a closure among its arguments, a
+member of such a class instance), with its statistics and errors; the report's counts lose what it
+added. Anything else nobody asks for is still a build from scratch ("an old body's instance nobody else
+asks for": the recorded dependencies need not hold every use codegen makes, as the edit test's
+class-template-argument-deduction step showed). Codegen drops what it emitted for the old closure (an
+instance whose arguments name a closure whose writer is emitted again: not emitted again, its name
+released from the requested set and every emitter's answers, so that the new closure's instance of
+that name is made by its first use; nor its call operator). Paired on the game (factorio-in-kpp e4cfd9ba,
+`scratch\resolver\scripts\undopair.py 3 --edit src/AI/ExpansionPlanner.kpp:400:...`, a line added above
+`Util::sort(best, [](const auto& a, const auto& b) {...})` and taken out, `kpp factorio --check`):
+master (4fc2cf32) 45 to 105 s a check (built from scratch: "the new code instantiates what the old did
+not"); with the change 1.8 to 2.0 s (the server's build 1.6 to 1.8 s, the walks 0.4 to 0.5 s, 2 modules
+assembled again, 12 functions emitted again). The edit test: a line added above a lambda passed to a
+function template and taken out, both incremental (each a build from scratch before).
+
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is

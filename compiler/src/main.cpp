@@ -3235,18 +3235,28 @@ namespace
       kept.instanceStats = global.instanceStatsAtResolveEnd();
     if (!walkedSame)
       why = "the new code instantiates what the old did not (or what only codegen had)";
+    // What the old walks asked for and no one asks for now (an old lambda's closure in a template's
+    // instance): taken out, as a build from scratch never makes it; the instances the rewalk made
+    // counted in. The report's counts and the instances' statistics follow.
+    GlobalScope::InstantiationStats droppedCounts{};
+    std::vector<const Decl*> droppedTemplates;
     for (size_t n = 0; same && n < walked.size(); ++n)
     {
       const ParsedFile& file = *kept.parsed[walked[n]];
       std::vector<const void*> after = global.instancesWalksUse(file), dropped;
       std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
-      // (an old lambda's call operator, which the body's new lambda replaced, taken out)
-      if (!dropped.empty() && !global.usedElsewhere(dropped, file) && !global.dropUnusedLambdaInstances(dropped, file))
+      if (!dropped.empty() && !global.dropUnusedInstances(dropped, file, droppedCounts, droppedTemplates))
         same = false, why = "an old body's instance nobody else asks for";
     }
-    // Generic lambdas' call operators made anew, the old ones taken out: the instances' statistics again.
-    if (same && global.lambdaInstancesMadeAgain())
+    GlobalScope::InstantiationStats made = global.rewalkCounts();
+    if (same && (made.classes || made.functions || made.bodies || !droppedTemplates.empty()))
+    {
+      kept.instantiation.classes += made.classes - droppedCounts.classes;
+      kept.instantiation.functions += made.functions - droppedCounts.functions;
+      kept.instantiation.bodies += made.bodies - droppedCounts.bodies;
       kept.instanceStats = global.instanceStatsAtResolveEnd();
+      // (codegen drops what it emitted for the old closures itself, rebuildLLVM: not every instance of their templates)
+    }
     if (!same)
     {
       logBuildNote("not incremental: " + why);

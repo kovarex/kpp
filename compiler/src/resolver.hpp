@@ -323,24 +323,23 @@ public:
   // Step 3b, the compile server's fast path (docs/compile-speed.md): a file whose function bodies
   // alone changed is walked again in the kept program. resolveDone: what is instantiated from now
   // on is codegen's. beginRewalk/endRewalk around the new walk: endRewalk is false when the walk
-  // made an instance, or reused one codegen made (a resolve from scratch would differ). forgetWalks:
-  // the file's walks' recorded reads, before they are walked again. instancesWalksUse: the
-  // instances the file's walks requested. usedElsewhere: whether every one of instances is
-  // requested by some unit other than the file's walks (else a resolve from scratch would not make it).
+  // reused an instance codegen made (a resolve from scratch would differ; the instances it made
+  // itself are counted, rewalkCounts). forgetWalks: the file's walks' recorded reads, before they
+  // are walked again. instancesWalksUse: the instances the file's walks requested.
   void resolveDone();
   void beginRewalk();
   bool endRewalk();
   void forgetWalks(const ParsedFile& file);
   std::vector<const void*> instancesWalksUse(const ParsedFile& file);
-  bool usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file);
-  // Of those instances, the ones no walk but file's and no used instance asks for.
-  std::unordered_set<const void*> unusedOf(const std::vector<const void*>& instances, const ParsedFile& file);
-  // Those of the instances no one else uses (unusedOf) taken out, when each is a generic lambda's
-  // call operator (the lambda of a body walked again: its new walk made the new lambda's); false,
-  // nothing taken out, when one is something else.
-  bool dropUnusedLambdaInstances(const std::vector<const void*>& instances, const ParsedFile& file);
-  // How many generic lambdas' call operators the rewalk made (beginRewalk to endRewalk).
-  size_t lambdaInstancesMadeAgain() const;
+  // Those of the instances (the old walks' of file) no walk or used instance asks for now, and what only they asked
+  // for, taken out of the tables with their statistics and errors (a server's edit; a build from
+  // scratch never makes them): what the report counted of them added to dropped, their templates to
+  // templates (codegen makes their instances anew by their first use). Only those made for a lambda's
+  // closure: false, nothing taken out, when another is among them (codegen may still ask for it).
+  bool dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
+                           std::vector<const Decl*>& templates);
+  // What the instances a rewalk made (beginRewalk to endRewalk) added to the report's counts.
+  InstantiationStats rewalkCounts() const;
 
   // A changed function's name as lookups recorded it: its symbol, and for a member the class scope
   // (lookups in a class are recorded with the class; anyClass: a member whose class is unknown, read

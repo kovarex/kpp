@@ -11,11 +11,21 @@ int viaPlain(int base)
   return add(0);
 }
 
+// A lambda passed to a function template: the template's instance for the closure type (an edit of the
+// function makes it for the new closure and drops the old, step 2 of new instances).
+template<class F>
+int applyTo(int v, F f) { return f(v); }
+int viaTemplate()
+{
+  auto twice = [](int v) { return v * 2; };
+  return applyTo(3, twice) - 6;
+}
+
 // A generic lambda's call operator that reads `scale`: checked again when the overload is added.
 int viaLambda()
 {
   auto scaled = [](auto v) { int r = scale(v); return r; };
-  return scaled(4.5) + viaPlain(0);
+  return scaled(4.5) + viaPlain(0) + viaTemplate();
 }
 
 // A global whose initializer holds lambdas: a lambda added before them in this file renumbers them,

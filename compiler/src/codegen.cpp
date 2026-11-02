@@ -213,6 +213,13 @@ namespace
       std::lock_guard lock(s.mutex);
       return s.names.count(name) != 0;
     }
+    // Unmarks name: its next claim is a first again.
+    void release(const std::string& name)
+    {
+      Shard& s = shardOf(name);
+      std::lock_guard lock(s.mutex);
+      s.names.erase(name);
+    }
   };
 
   // Answers that do not change once given (a complete layout, a class's size, whether it needs
@@ -20241,15 +20248,52 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
         return true;
     return false;
   };
+  // An instance made for the closure of a lambda whose writer is emitted again (`applyTo<closure>`):
+  // the old lambda's, which no one calls now; dropped, not emitted again (the new lambda's instance is
+  // made by its first use).
+  std::function<bool(const Ty*, int)> oldClosure = [&](const Ty* t, int depth)
+  {
+    if (!t || depth > 8)
+      return false;
+    if (e.isLambda(t))
+      if (auto c = sh.closures.find(e.types.unqualified(t)); c != sh.closures.end() && owners.count(c->second.writtenIn))
+        return true;
+    if (oldClosure(t->inner, depth + 1))
+      return true;
+    for (const Ty* a : t->args)
+      if (oldClosure(a, depth + 1))
+        return true;
+    return false;
+  };
+  // Its name released: the new closure's instance has it, and is asked for by its first use (every
+  // emitter's answers forget it too).
+  auto releaseName = [&](const std::string& name)
+  {
+    sh.requested.release(name);
+    for (auto& em : emitters)
+      std::erase_if(em->usedFunctions, [&](const auto& used) { return used.first == name || used.second.name == name; });
+  };
+  auto forOldClosure = [&](const Instantiation& inst)
+  {
+    if (oldClosure(inst.classTy, 0))
+      return true;
+    for (const auto& pair : inst.args.pairs)
+      if (oldClosure(pair.second, 0))
+        return true;
+    return false;
+  };
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
       if (d.emitted && !owners.count(d.owner) &&
           (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; }) ||
-           instanceOfEdited(d) ||
+           instanceOfEdited(d) || forOldClosure(*d.emitted) ||
            (!droppedLayouts.empty() && usesDropped(d))))
       {
         owners.insert(d.owner);
-        holding[d.emitted->depth].push_back(*d.emitted);
+        if (!forOldClosure(*d.emitted))
+          holding[d.emitted->depth].push_back(*d.emitted);
+        else
+          releaseName(d.name);
       }
   if (!droppedLayouts.empty())
   {
@@ -20312,8 +20356,15 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       {
         droppedNames.insert(defs[i].name);
         droppedFunctions += defs[i].counted;
+        if (defs[i].emitted && forOldClosure(*defs[i].emitted))
+          releaseName(defs[i].name); // (an instance for the old lambda's closure)
         if (defs[i].closure && !removedNames.count(defs[i].owner))
-          operators.push_back({defs[i].name, defs[i].closure, defs[i].callType});
+        {
+          // (not the old lambda's of a writer emitted again: the new lambda's operator is emitted by its first use)
+          auto closure = sh.closures.find(defs[i].closure);
+          if (closure == sh.closures.end() || !owners.count(closure->second.writtenIn))
+            operators.push_back({defs[i].name, defs[i].closure, defs[i].callType});
+        }
         was.definitions.push_back(std::move(defs[i].text));
         continue;
       }

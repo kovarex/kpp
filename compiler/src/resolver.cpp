@@ -1055,6 +1055,7 @@ struct GlobalScope::Impl
     Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)
     LambdaExpr* lambda = nullptr;      // for a generic lambda's call operator: the copy of its body (checkLambdaInstance)
     Dependencies deps;                 // what its walk read (step 2 of the persistent compiler)
+    uint8_t counted = 0;               // the report's counters it added to: 1 instBodies, 2 instFunctions (a server's edit that drops it takes them off)
   };
   struct InstanceShard
   {
@@ -1097,10 +1098,13 @@ struct GlobalScope::Impl
     slot = std::make_unique<InstanceRecord>();
     slot->late = afterResolve.load(std::memory_order_relaxed) && !rewalking.load(std::memory_order_relaxed);
     slot->of = f;
-    // (A generic lambda's call operator for its arguments: a build from scratch makes it too, the old
-    // lambda's goes with the walk that asked for it, GlobalScope::dropUnusedLambdaInstances.)
+    // (Made by a rewalk: a build from scratch makes it too; what the old walks asked for and no one
+    // uses now goes, GlobalScope::dropUnusedInstances.)
     if (rewalking.load(std::memory_order_relaxed))
-      ++(f->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(f)->lambda ? rewalkLambdas : rewalkCreated);
+    {
+      std::lock_guard made(rewalkMadeMutex);
+      rewalkRecords.push_back(slot.get());
+    }
     slot->owner = std::this_thread::get_id();
     slot->state.store(1, std::memory_order_relaxed);
     producer = true;
@@ -1222,6 +1226,8 @@ struct GlobalScope::Impl
     bool late = false; // made after the resolve (by codegen)
     const Ty* deducedReturn = nullptr; // For function templates with `auto` return.
     Dependencies deps; // what checking it read
+    const Ty* classTy = nullptr; // a class instance's type (its template's declaration: classTy->decl)
+    bool counted = false;        // added to instClasses
   };
   struct InstShard
   {
@@ -1236,7 +1242,14 @@ struct GlobalScope::Impl
   // Step 3b (the compile server's fast path): the resolve is over (what is made from now on is
   // codegen's), and a changed file's walk is being redone (what it makes or reuses of codegen's).
   std::atomic<bool> afterResolve{false}, rewalking{false}, rewalkTouchedLate{false};
-  std::atomic<size_t> rewalkCreated{0}, rewalkLambdas{0}; // (rewalkLambdas: generic lambdas' call operators, made anew)
+  // The instances a rewalk made (a build from scratch makes them too; the report counts them in):
+  // GlobalScope::rewalkCounts.
+  std::mutex rewalkMadeMutex;
+  std::vector<const InstanceRecord*> rewalkRecords;
+  std::vector<const Instantiation*> rewalkClasses;
+  // The ones a server's edit took out of the tables (dropUnusedInstances): kept, not freed, so that no
+  // address the recorded reads mention is ever another record's.
+  std::vector<std::unique_ptr<Instantiation>> droppedClasses;
   // Every instance walk's statistics (GlobalScope::instanceStats), not its asker's: an instance
   // first asked for by a probe (a requires-expression's, whose statistics are dropped) would
   // otherwise go uncounted in some runs and counted in others.
@@ -1364,9 +1377,14 @@ struct GlobalScope::Impl
     inst->state.store(1);
     inst->owner = std::this_thread::get_id();
     inst->late = afterResolve.load(std::memory_order_relaxed);
-    if (rewalking.load(std::memory_order_relaxed))
-      ++rewalkCreated;
+    inst->classTy = classTy;
+    inst->counted = true;
     Instantiation* result = inst.get();
+    if (rewalking.load(std::memory_order_relaxed))
+    {
+      std::lock_guard made(rewalkMadeMutex);
+      rewalkClasses.push_back(result);
+    }
     shard.classes.emplace(classTy, std::move(inst));
     producer = true;
     ++instClasses;
@@ -18615,6 +18633,7 @@ struct GlobalScope::Impl
       mine.instExprsUnknown += mine.exprsUnknown;
       impl.addInstanceStats(mine, inst); // counted once, whoever asked (Impl::instanceStatsTotal)
       ++impl.instBodies;
+      inst->counted |= 1;
       inst->state.store(2, std::memory_order_release);
       inst->state.notify_all();
     }
@@ -18782,7 +18801,7 @@ struct GlobalScope::Impl
       int savedDepth = std::exchange(instantiationDepth, t.depth);
       struct DepthRestore { int& d; int saved; ~DepthRestore() { d = saved; } } depthRestore{instantiationDepth, savedDepth};
       if (!t.f->templateParams.empty())
-        ++impl.instFunctions; // a function template's (a class template's member claimed here or by its class's check counts as a body either way)
+        ++impl.instFunctions, inst->counted |= 2; // a function template's (a class template's member claimed here or by its class's check counts as a body either way)
       auto start = std::chrono::steady_clock::now();
       // The instantiation's own copy of f's nodes (its definition's), typed here and kept as its body.
       // One with no arguments at all is a function that is no template, typed before the walk of
@@ -18806,6 +18825,7 @@ struct GlobalScope::Impl
         if (copy->returnType && !copy->trailingReturn)
           pattern = sub.typeOf(copy->returnType);
         ++impl.instBodies;
+        inst->counted |= 1;
       }, inst);
       inst->deducedReturn = deduced ? impl.deducedShape(pattern, deduced) : nullptr;
       impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
@@ -23833,6 +23853,7 @@ struct GlobalScope::Impl
     LambdaExpr* l = InstanceCopier(instanceArena()).lambdaInstance(original);
     inst->lambda = l;
     ++instBodies;
+    inst->counted |= 1;
     ResolveStats local;
     if (statsInto)
     {
@@ -25826,8 +25847,11 @@ void GlobalScope::beginRewalk()
     std::lock_guard lock(membersOutsideMutex);
     membersOutsideSink = &impl->membersReadOutside;
   }
-  impl->rewalkCreated = 0;
-  impl->rewalkLambdas = 0;
+  {
+    std::lock_guard made(impl->rewalkMadeMutex);
+    impl->rewalkRecords.clear();
+    impl->rewalkClasses.clear();
+  }
   impl->rewalkTouchedLate = false;
   impl->rewalking = true;
 }
@@ -25840,7 +25864,7 @@ bool GlobalScope::endRewalk()
       membersOutsideSink = nullptr;
   }
   impl->rewalking = false;
-  return impl->rewalkCreated == 0 && !impl->rewalkTouchedLate;
+  return !impl->rewalkTouchedLate;
 }
 
 namespace
@@ -26739,94 +26763,230 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
   return true;
 }
 
-bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file) { return unusedOf(instances, file).empty(); }
-
-size_t GlobalScope::lambdaInstancesMadeAgain() const { return impl->rewalkLambdas.load(); }
-
-bool GlobalScope::dropUnusedLambdaInstances(const std::vector<const void*>& instances, const ParsedFile& file)
+GlobalScope::InstantiationStats GlobalScope::rewalkCounts() const
 {
-  std::unordered_set<const void*> unused = unusedOf(instances, file);
-  // Each a generic lambda's call operator (of a lambda the file's new walk no longer has): taken out
-  // of the table as a build from scratch never makes it, with its statistics and errors.
-  std::vector<std::pair<Impl::InstanceShard*, std::string>> found;
+  InstantiationStats out{};
+  std::lock_guard made(impl->rewalkMadeMutex);
+  for (const Impl::Instantiation* c : impl->rewalkClasses)
+    out.classes += c->counted;
+  for (const Impl::InstanceRecord* r : impl->rewalkRecords)
+  {
+    out.bodies += (r->counted & 1) != 0;
+    out.functions += (r->counted & 2) != 0;
+  }
+  return out;
+}
+
+bool GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances, const ParsedFile& file, InstantiationStats& dropped,
+                                      std::vector<const Decl*>& templates)
+{
+  // The instances the old walks asked for that no one asks for now, and what only they asked for: a
+  // build from scratch never makes them. One pass over every unit's recorded uses (in parallel, by
+  // shard) gives the roots (every walk, file's new ones too, and the declarations' typing) and what
+  // each instance asked for; an instance is used when a root reaches it.
+  (void)file;
+  auto isInstance = [](uint8_t kind) { return kind == USE_Instance || kind == USE_ClassInstance; };
+  std::vector<std::vector<const void*>> rootParts(std::size(impl->declDependencies) + 1);
+  forEachParallel(std::size(impl->declDependencies), [&](size_t s)
+  {
+    Impl::DeclDependencyShard& shard = impl->declDependencies[s];
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+    {
+      std::lock_guard l(deps->mutex);
+      for (auto& [kind, what] : deps->list.uses)
+        if (isInstance(kind))
+          rootParts[s].push_back(what);
+    }
+  });
+  {
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& deps : impl->typeDependencies)
+    {
+      std::lock_guard l(deps->mutex);
+      for (auto& [kind, what] : deps->list.uses)
+        if (isInstance(kind))
+          rootParts.back().push_back(what);
+    }
+  }
+  using Edges = std::vector<std::pair<const void*, std::vector<const void*>>>;
+  std::vector<Edges> edgeParts(std::size(impl->instanceShards) + std::size(impl->instShards));
+  forEachParallel(edgeParts.size(), [&](size_t s)
+  {
+    auto add = [&](const void* owner, Dependencies& d)
+    {
+      std::lock_guard l(d.mutex);
+      std::vector<const void*> asked;
+      for (auto& [kind, what] : d.list.uses)
+        if (isInstance(kind))
+          asked.push_back(what);
+      if (!asked.empty())
+        edgeParts[s].push_back({owner, std::move(asked)});
+    };
+    if (s < std::size(impl->instanceShards))
+    {
+      Impl::InstanceShard& shard = impl->instanceShards[s];
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, record] : shard.map)
+        add(record.get(), record->deps);
+    }
+    else
+    {
+      Impl::InstShard& shard = impl->instShards[s - std::size(impl->instanceShards)];
+      std::lock_guard lock(shard.mutex);
+      for (auto& [classTy, inst] : shard.classes)
+        add(inst.get(), inst->deps);
+    }
+  });
+  std::unordered_map<const void*, const std::vector<const void*>*> asks;
+  for (const Edges& part : edgeParts)
+    for (const auto& [owner, asked] : part)
+      asks[owner] = &asked;
+  auto spread = [&](std::vector<const void*> pending, std::unordered_set<const void*>& into)
+  {
+    for (const void* p : pending)
+      into.insert(p);
+    while (!pending.empty())
+    {
+      const void* p = pending.back();
+      pending.pop_back();
+      if (auto it = asks.find(p); it != asks.end())
+        for (const void* q : *it->second)
+          if (into.insert(q).second)
+            pending.push_back(q);
+    }
+  };
+  std::unordered_set<const void*> reached, candidates;
+  for (const std::vector<const void*>& part : rootParts)
+    spread(part, reached);
+  spread(instances, candidates);
+  std::unordered_set<const void*> unused;
+  for (const void* p : candidates)
+    if (!reached.count(p))
+      unused.insert(p);
+  // A class instance's members' bodies go with it (they are not among its recorded requests).
+  std::unordered_set<const Ty*> droppedClassTypes;
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [classTy, inst] : shard.classes)
+      if (unused.count(inst.get()))
+        droppedClassTypes.insert(classTy);
+  }
+  if (!droppedClassTypes.empty())
+    for (Impl::InstanceShard& shard : impl->instanceShards)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, r] : shard.map)
+        if (r->recheck && r->recheck->member && r->recheck->thisType && r->recheck->thisType->kind == TyKind::Pointer &&
+            droppedClassTypes.count(impl->types.unqualified(r->recheck->thisType->inner)))
+          unused.insert(r.get());
+    }
+  // Each one made for a lambda's closure (its call operator, an instance with a closure among its
+  // arguments, a member of such a class instance): the old lambda's, which nothing can name now.
+  // Anything else no recorded use asks for may still be what codegen asks for (a use the recorded
+  // dependencies do not hold): not dropped, a build from scratch.
+  std::function<bool(const Ty*, int)> closure = [&](const Ty* t, int depth)
+  {
+    if (!t || depth > 8)
+      return false;
+    if (t->kind == TyKind::Lambda)
+      return true;
+    if (closure(t->inner, depth + 1))
+      return true;
+    for (const Ty* a : t->args)
+      if (closure(a, depth + 1))
+        return true;
+    return false;
+  };
   for (Impl::InstanceShard& shard : impl->instanceShards)
   {
     std::lock_guard lock(shard.mutex);
-    for (auto& [key, record] : shard.map)
-      if (unused.count(record.get()))
+    for (auto& [key, r] : shard.map)
+      if (unused.count(r.get()))
       {
-        if (!record->of || record->of->kind != NodeKind::ClassDecl || !static_cast<const ClassDecl*>(record->of)->lambda)
+        bool ofClosure = r->of && r->of->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(r->of)->lambda;
+        if (!ofClosure && r->recheck)
+        {
+          ofClosure = closure(r->recheck->thisType, 0) || closure(r->recheck->lambdaTy, 0);
+          for (const Subst::Pair& p : r->recheck->subst.pairs)
+            ofClosure = ofClosure || closure(p.type, 0);
+          if (r->recheck->task) // a function template's instance: its arguments
+            for (const Subst::Pair& p : r->recheck->task->full.pairs)
+              ofClosure = ofClosure || closure(p.type, 0);
+        }
+        if (!ofClosure)
           return false;
-        found.push_back({&shard, key});
       }
   }
-  if (found.size() != unused.size())
-    return false; // (a class instance, or a function instance of the other table)
-  std::unordered_set<const Impl::InstanceRecord*> drop;
-  for (auto& [shard, key] : found)
+  for (const Ty* t : droppedClassTypes)
+    if (!closure(t, 0))
+      return false;
+  // Out of the tables (kept: their addresses stay theirs), with their statistics and errors; the
+  // report's counts lose what each added (not codegen's own, which the report never counted).
+  std::unordered_set<const void*> drop;
+  for (Impl::InstanceShard& shard : impl->instanceShards)
   {
-    std::lock_guard lock(shard->mutex);
-    auto it = shard->map.find(key);
-    drop.insert(it->second.get());
-    impl->droppedInstances.push_back(std::move(it->second));
-    shard->map.erase(it);
+    std::lock_guard lock(shard.mutex);
+    for (auto it = shard.map.begin(); it != shard.map.end();)
+      if (unused.count(it->second.get()))
+      {
+        Impl::InstanceRecord* r = it->second.get();
+        if (!r->late)
+        {
+          dropped.bodies += (r->counted & 1) != 0;
+          dropped.functions += (r->counted & 2) != 0;
+        }
+        if (r->of)
+          templates.push_back(r->of);
+        if (r->recheck && r->recheck->source)
+          templates.push_back(r->recheck->source);
+        drop.insert(r);
+        impl->droppedInstances.push_back(std::move(it->second));
+        it = shard.map.erase(it);
+      }
+      else
+        ++it;
+  }
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto it = shard.classes.begin(); it != shard.classes.end();)
+      if (unused.count(it->second.get()))
+      {
+        Impl::Instantiation* c = it->second.get();
+        if (!c->late && c->counted)
+          ++dropped.classes;
+        if (c->classTy && c->classTy->decl)
+          templates.push_back(c->classTy->decl);
+        drop.insert(c);
+        impl->droppedClasses.push_back(std::move(it->second));
+        it = shard.classes.erase(it);
+      }
+      else
+        ++it;
   }
   {
     std::lock_guard lock(impl->instanceStatsMutex);
     auto& list = impl->instanceContributions;
-    list.erase(std::remove_if(list.begin(), list.end(), [&](const Impl::InstanceContribution& c) { return drop.count(static_cast<const Impl::InstanceRecord*>(c.owner)); }),
-               list.end());
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const Impl::InstanceContribution& c) { return drop.count(c.owner) != 0; }), list.end());
   }
-  std::vector<const void*> units;
-  for (const Impl::InstanceRecord* r : drop)
-    units.push_back(&r->deps);
-  impl->forgetErrorsOf(std::unordered_set<const void*>(units.begin(), units.end()));
+  std::unordered_set<const void*> units;
+  for (auto& r : impl->droppedInstances)
+    if (drop.count(r.get()))
+      units.insert(&r->deps);
+  for (auto& c : impl->droppedClasses)
+    if (drop.count(c.get()))
+      units.insert(&c->deps);
+  impl->forgetErrorsOf(units);
   std::lock_guard lock(impl->checkerErrorsMutex);
-  for (const Impl::InstanceRecord* r : drop)
-    if (r->body)
+  for (auto& r : impl->droppedInstances)
+    if (drop.count(r.get()) && r->body)
     {
       impl->instanceAssertErrors.erase(r->body);
       impl->instanceNameErrors.erase(r->body);
     }
   return true;
-}
-
-std::unordered_set<const void*> GlobalScope::unusedOf(const std::vector<const void*>& instances, const ParsedFile& file)
-{
-  std::unordered_set<const void*> left(instances.begin(), instances.end());
-  auto scan = [&](Dependencies& d)
-  {
-    std::lock_guard lock(d.mutex);
-    for (auto& [kind, what] : d.list.uses)
-      left.erase(what);
-  };
-  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, deps] : shard.map)
-      if (walkUnitDecl(key)->file != &file)
-        scan(*deps);
-  }
-  {
-    std::lock_guard lock(impl->typeDependenciesMutex);
-    for (auto& deps : impl->typeDependencies)
-      scan(*deps);
-  }
-  for (Impl::InstanceShard& shard : impl->instanceShards)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, record] : shard.map)
-      if (!left.count(record.get())) // an instance's own requests count only while it is used itself
-        scan(record->deps);
-  }
-  for (Impl::InstShard& shard : impl->instShards)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, inst] : shard.classes)
-      if (!left.count(inst.get()))
-        scan(inst->deps);
-  }
-  return left;
 }
 
 GlobalScope::DependencyStats GlobalScope::dependencyStats()
