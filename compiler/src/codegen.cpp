@@ -11601,7 +11601,7 @@ namespace
       if (PreEvaluated* pre = preEvaluated; pre && pre->evaluated && pre->value == value && pre->type == t)
       {
         v = pre->data; // evaluated before the lock was taken (globalFor)
-        pre->used = true;
+        takePreEvaluated(*pre);
       }
       else
       {
@@ -11627,8 +11627,20 @@ namespace
       bool evaluated = false; // the object's value (constantData)
       std::optional<ConstValue> data;
       bool used = false;
+      // The errors the evaluation recorded (a layout it asked for failed: the evaluator's hook
+      // catches the throw, the error stays): reported when globalForOnce takes a value, as if it
+      // had evaluated it there, else dropped with the values.
+      std::vector<std::string> errors;
     };
     PreEvaluated* preEvaluated = nullptr;
+    // globalForOnce takes a pre-evaluated value: the evaluation's errors are its now.
+    void takePreEvaluated(PreEvaluated& pre)
+    {
+      if (pre.used)
+        return;
+      pre.used = true;
+      errors.insert(errors.end(), pre.errors.begin(), pre.errors.end());
+    }
 
     // The values globalForOnce computes from v's initializer, computed as it does (its arguments,
     // class, file and declaration context), without the shared lock.
@@ -11757,6 +11769,8 @@ namespace
           {
             pre = PreEvaluated{}; // globalForOnce evaluates (and fails) as before
           }
+          if (pre.value)
+            pre.errors.assign(errors.begin() + errorsBefore, errors.end()); // (reported if globalForOnce takes the values)
           errors.resize(errorsBefore);
           if (fn.size() == fnBefore && allocas.size() == allocasBefore)
             temp = tempBefore;
@@ -11794,6 +11808,7 @@ namespace
           fail(at, why);
         }
       }
+      claim.reset(); // defined (or failed): another emitter waiting for it goes on
       if (!pre.used && inlinedNow.size() > inlinedBefore && pre.value)
         inlinedNow.resize(inlinedBefore); // (another emitter defined it meanwhile: nothing of it is this function's)
       globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
@@ -11924,7 +11939,7 @@ namespace
         if (PreEvaluated* pre = preEvaluated; pre && pre->folded && pre->value == value && pre->type == st)
         {
           c = pre->scalar; // evaluated before the lock was taken (globalFor)
-          pre->used = true;
+          takePreEvaluated(*pre);
         }
         else
         {
