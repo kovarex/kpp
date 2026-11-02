@@ -15,8 +15,10 @@ int main()
     for (int i = 0; i < threads; ++i)
       workers.push_back(Thread([shared, &started, &wrong, &thrown]() {
         started.fetch_add(1);
+        // (yielding: on CI's 2 CPUs, 8 bare spinners took 61 s of the program's 60, the thread
+        // still to start waiting for a CPU behind them)
         while (started.load() < threads)
-          ;
+          thisThread::yield();
         try
         {
           if (shared.get() != 42)

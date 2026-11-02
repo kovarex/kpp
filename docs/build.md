@@ -782,10 +782,12 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **No caches:** checkout gives every source a new time, so Ninja would rebuild a cached CMake build
   directory anyway, and a clean build takes about a minute. kppc's import cache (%TEMP%\kpp-imports)
   is not worth a cache action.
-- **Concurrency:** one run per trigger and branch. A newer push cancels the older run still going,
-  so runs never queue back to back. The nightly and hand-started runs have groups of their own, so
-  a push does not cancel them. While pushes come faster than a run takes, push runs keep being
-  cancelled; then the nightly run is the one that moves "latest".
+- **Concurrency:** one run at a time per trigger and branch. A push run on master that has started
+  finishes, so a green one publishes "latest"; of the pushes meanwhile, only the newest waits (GitHub
+  cancels an older waiting run), so at most one run waits. Until 2026-11-02 a newer push cancelled
+  the running one, and while pushes came every few minutes nearly every push run was cancelled
+  before it could publish. A pull request's newer push still cancels its older run. The nightly and
+  hand-started runs have groups of their own, so a push does not cancel them.
 
 ### GitHub Actions and Forgejo Actions
 
@@ -814,8 +816,8 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
     been checked; if it does not, the label is written in place of the expression.
   - **The runner itself:** Forgejo hosts no runners. A Windows machine with Visual Studio 2022 and
     its Clang component, Node.js and Python runs `forgejo-runner` in host mode.
-  - **`concurrency`:** GitHub's cancelling of an older push run. Forgejo Actions may not honour it;
-    there, each push runs to the end.
+  - **`concurrency`:** GitHub's one run at a time, with one waiting (and a pull request's older run
+    cancelled). Forgejo Actions may not honour it; there, every push runs, side by side.
   - **The SDL3 headers** come from kpp.net's mirror, with libsdl-org's release on github.com
     (`SDL_FALLBACK`) as the fallback until the zip is mirrored.
   - **The job's token:** `github.token` on both. On Forgejo it must be allowed to write releases.

@@ -19,11 +19,15 @@ on:
 permissions:
   contents: write
 
-# A newer push cancels the older run still going, so runs never queue back to back; the nightly and
-# hand-started runs have groups of their own, so a push does not cancel them.
+# One run at a time per trigger and branch. A push run that has started finishes, so a green one
+# publishes "latest"; only one more waits, the newest push's (GitHub cancels an older waiting run).
+# On 2026-11-01 almost every push run was cancelled by the next push before it could publish
+# (kovarex had chosen cancelling on 2026-10-31; the coordinator changed it on 2026-11-02). A pull
+# request's newer push still cancels its older run. The nightly and hand-started runs have groups of
+# their own, so a push does not cancel them.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Every commit of a pull request is signed off by its author (CONTRIBUTING.md, "Sign-off"). On a
