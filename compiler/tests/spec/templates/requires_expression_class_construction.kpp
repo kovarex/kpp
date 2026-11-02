@@ -1,6 +1,5 @@
 // spec: a requirement that constructs a class (`StringView(value)`) holds only when one of the class's constructors takes the argument: a class StringView has no constructor from fails `requires { StringView(value); }`, a char array or `const char*` passes
 // found in the embedded test runner's __kppShow (compiler/src/tests.cpp, design.md 14's migration), which took the C text branch for a check's class operand and then failed: "codegen does not support a constructor of StringView taking 1 arguments yet"
-// pending: "a requires-expression's functional cast to a class is satisfied whatever the class's constructors" (D)
 struct Opaque
 {
   int x = 0;
