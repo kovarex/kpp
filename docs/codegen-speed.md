@@ -437,7 +437,7 @@ The gains overlap; each line is against the line before. The status column is as
 | 1. One home per linkonce global (codegen placement) | D | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | **done**, 0998f157: IR 967 -> 708 MB, clang 3.76–4.13 -> 3.10–3.19 s, link 2.15 -> 1.65 s (section 6). With debug info too since 1a8e88c5 (section 7) |
 | 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A (c263459f), **not landed** |
 | 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). With debug info too since 8b5c902c (section 7) |
-| 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **in progress**: design reviewed by B. P0 split the modules offline: IR +1.0%, link unchanged, back end after codegen about 3.0 -> 1.6 s. P1's first hunks are reviewed (declarations at level 0's barrier, the shared functions homed) |
+| 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **in progress**: P1 done, 4d884644 (section 6): each debug module in two pieces, neutral on the clean build (IR +2.6%) and the leaf edit (back end 0.35 -> 0.17 s, its incremental link 0.5 -> 0.7–0.8 s). P2, streaming, next |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | not started |
 | 6. kppc codegen's lock scaling | D | −4 to −6 s | −0.1 s | −0.1 s | **first round done**, b9dcb7ba, 0303a2fb, 9aaf2cdb: codegen 8.9 -> 5.0 s at -j 32 (its serial start). What remains: 23.6 s of work on 32 threads runs about 4.7x. The lock profile of today's build is in section 7 |
 | 7. Patching instead of relinking (e) | B, E | 0 | −0.4 s | −0.4 s | not started |
@@ -548,6 +548,41 @@ LLVM's diagnostics (an instruction the assembler rejects), on windows and on win
 - Cost: kppc.exe 8.0 -> 41.6 MB; kppc's own clean build 32 -> 36 s.
 - Disk: no `.ll` files, 1,466 -> 785 MB for the debug build (the table above).
 
+**Step 4, P1: each module in two pieces (4d884644, hunks 1, 2a and 2b; B reviewed).** A debug build of
+several modules (not optimized: an optimized build's back end is ThinLTO's link) writes each module as
+two: its program piece, what the functions the program writes own (their definitions, their lambdas'
+call operators, catch filters and static locals), and its instance piece, the rest. A program piece is
+assembled only from texts that do not change once written, so level 0's barrier and the end give one
+text; P2 compiles it at the barrier. KPP_CHECK_BARRIER (run_tests, spec, the game gate) assembles it
+at the barrier too and compares.
+- What the game showed: a program function can hold a closure that only the lambda's writer, an
+  instance of a later level, lays out (FusionGeneratorPrototype::addToDescription's): its program
+  piece names a type with no line at the barrier. Such a piece (3 of the game's 128) is late: P2
+  compiles it at the end.
+- Instance pieces keep only the module's own declarations they reach: with all of them the IR grew
+  7.9%, now 2.6% (P0's offline split: 1.0%).
+- Paired clean builds of the game (`cg\p1-measure.ps1`, 3 rounds, load 0 to 8%), master a6b62b44
+  against the pieces, and the leaf edit through the compile server (`cg\leafedit.ps1`, `kppc factorio
+  debug` in the project copy, 3 edits and their undos each):
+
+  | | master (128 modules) | pieces (256) |
+  |---|---:|---:|
+  | clean build, wall | 13.25 to 16.07 s | 13.25 to 13.96 s |
+  | codegen | 5.70 to 5.90 s | 5.69 to 5.91 s |
+  | IR | 690.4 MB | 708.6 MB (+2.6%) |
+  | back end | 2.90 to 3.37 s | 2.83 to 3.13 s |
+  | full link | 1.46 to 3.64 s | 1.47 to 2.06 s |
+  | leaf edit, wall | 2.13 to 2.57 s | 2.19 to 2.27 s |
+  | its back end | 0.35 to 0.36 s (a module) | 0.17 to 0.18 s (a program piece) |
+  | its incremental link | 0.5 s | 0.7 to 0.8 s |
+
+  P1 is neutral, as planned: the pieces cost the clean build nothing measurable, and the leaf edit's
+  halved back end goes to the incremental link of 256 objects. The gain is P2's: the program pieces'
+  back end during levels 1 to 17.
+- The gate: run_tests and spec with and without LLVM in kppc and spec `--debug-info`; the game's 256
+  objects identical at 1, 8 and 32 threads with the barrier check on; `--dump-data` 7/7 equal, the 45
+  menu maps' checksums equal, the unit tests 9,501/9,501 with 0 CRC mismatches against C++ Debug.
+
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for
@@ -631,7 +666,7 @@ gains overlap: 3 and 4 both shorten the back end.
 | 1 | build.kpp's after-build: a hard link or kpp writing bin\Debugx64 directly, not a copy of the exe and PDB | −0.5 s | one line | factorio-in-kpp's build.kpp, C | 0.55 s measured after the build |
 | 2 | the C-library check: once per header (E's 0418c983, after the measured build), then in parallel if still long | up to −1.3 s | small | E | 1.47 s measured at 44d0f0fa, one thread; to be measured on master |
 | 3 | `--debug-info` builds with homes and the back end in kpp | **done**: −2.6 to −2.9 s measured (estimate −2.3 s) | medium | D, B reviewed | 1a8e88c5, 8b5c902c; below |
-| 4 | streaming (step 4: P1's remaining hunks, then P2), with clang's processes too | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
+| 4 | streaming (step 4: P1 done, 4d884644; P2 next), with clang's processes too | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
 | 5 | the debug link: `/DEBUG:FASTLINK` | **none**: this link.exe (MSVC 14.44) no longer supports it ("LNK4315: /DEBUG:FASTLINK is no longer supported. Using /DEBUG:FULL instead"); both links 1.54–1.59 s, the same 207 MB PDB (cg\linkfast.ps1) | — | — | struck |
 | 6 | codegen's locks, second round: short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds |
 | 7 | FastISel lowering Win64 arguments, upstream in LLVM | −0.3 to −0.5 s | an LLVM patch and a release | D | SelectionDAG is 13 s of the back end's 149 s CPU |
