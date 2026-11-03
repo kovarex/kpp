@@ -1,0 +1,22 @@
+// spec: where a `when` condition is false (design.md 19), a member's or a namespace variable's name still hides the standard library's of the same spelling: a use of `count` outside the condition is an error, never a call of the library's count template
+// factorio: none: the game's debug-only counters are named like library functions (count, size), the case a false `when` local met before it was declared absent
+// kppc: --release
+// error: when_false_name_hides_library_names.kpp:9: error: 'count' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_name_hides_library_names.kpp:14: error: 'count' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+struct Tally
+{
+  when (config::debug) int count = 3;
+  int get() { return count; }
+};
+namespace game
+{
+  when (config::debug) int count = 4;
+  int read() { return count; }
+}
+
+int main()
+{
+  Tally t;
+  println(t.get(), " ", game::read());
+  return 0;
+}
