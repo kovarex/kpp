@@ -1,0 +1,31 @@
+// spec: an assert's expression is the debug configuration's (kpp's assert is nothing, its expression unchecked, where config::debug is false: design.md 12), so it may name a `when (config::debug)` member or function (design.md 19): the release build compiles, and the debug one checks
+// factorio: 38 of plan B's 46 release errors: `assert(!this->childrenBeingIterated)` (agui::Widget), `assert(this->getDirectInputLine() == this->directInput)` (TransportLine), `assert(!this->isBeingLoaded())` (Targeter), `assert(this->postLoadSetupRan)` (Trigger, ProductPrototype), `assert(this->isSetup)` (RequesterCounts), `assert(!this->mapped)` (VideoBufferOpenGL), each a member under #ifdef DEBUG in the C++
+// pending: the use rule checks an assert's expression in release: "'checked' exists only when config::debug holds" (D)
+// kppc: --release
+struct Loader
+{
+  int value = 0;
+  when (config::debug) bool checked = false;
+  when (config::debug) bool isChecked() const { return checked; }
+
+  void check()
+  {
+    if constexpr (config::debug)
+      checked = true;
+  }
+  int read() const
+  {
+    assert(this->checked);
+    assert(isChecked());
+    return value;
+  }
+};
+
+int main()
+{
+  Loader loader;
+  loader.value = 7;
+  loader.check();
+  println(loader.read());
+  return 0;
+}
