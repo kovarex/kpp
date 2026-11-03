@@ -11,6 +11,7 @@ library project:
 
 `kpp --test` in a library's directory runs its tests, as does `kppc --test libraries/NAME` for a
 library that uses no other (it leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs every library's.
+[targets.md](targets.md) says how far each one is from running on FreeBSD and Linux.
 
 | Library | What | Checked against |
 |---|---|---|
