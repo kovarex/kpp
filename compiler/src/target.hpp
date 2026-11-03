@@ -59,7 +59,8 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
   {
     t.os = Target::Os::FreeBSD;
     t.name = "freebsd";
-    // FreeBSD 14 until the version kpp.net's host runs is known (design.md, Q4).
+    // FreeBSD 14: kpp.net's host runs 14.3-RELEASE (design.md, Q4), whose base system is the
+    // sysroot (tools/sysroot/freebsd.ps1).
     t.triple = name == "freebsd" ? std::string("x86_64-unknown-freebsd14") : std::string(name);
     t.dataLayout = Target::elfX86_64Layout;
     out = t;

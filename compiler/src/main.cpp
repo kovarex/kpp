@@ -499,6 +499,11 @@ namespace
     if (!options.target.windows())
     {
       std::string flags = targetFlags(options).substr(1) + " -fuse-ld=lld -Wl,--gc-sections -lm -pthread";
+      // FreeBSD links statically: kpp.net's programs then need none of the host's shared libraries,
+      // and keep running when NearlyFreeSpeech.NET upgrades its realm (design.md, "Targets and
+      // hosts", stage 6).
+      if (options.target.os == Target::Os::FreeBSD)
+        flags += " -static";
       if (!options.sysroot.empty())
         flags += " \"--sysroot=" + options.sysroot + "\"";
       for (const std::string& lib : options.libs)

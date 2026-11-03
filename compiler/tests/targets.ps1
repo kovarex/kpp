@@ -1,8 +1,8 @@
 # --target (docs/design.md, "Targets and hosts"): tests\targets\ built for each target kppc has.
 # Windows: built and run here. Linux: built here against a glibc sysroot and run under WSL (made from
 # WSL's Ubuntu by tools\sysroot\linux-from-wsl.sh into build\sysroots\linux-x86_64 when missing, or
-# KPP_SYSROOT_LINUX); skipped without WSL. FreeBSD: the IR and an object (no sysroot, nothing that
-# runs it here). run_tests.cmd runs it.
+# KPP_SYSROOT_LINUX); skipped without WSL. FreeBSD: the IR and an object, and with its sysroot a
+# static executable whose ELF headers are checked (nothing runs it here). run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\targets'
@@ -31,7 +31,8 @@ function Run([string]$exe, [string[]]$arguments)
 function Build([string[]]$arguments)
 {
   $r = Run $Kppc (@('--quiet') + $arguments)
-  if ($r.exit -ne 0) { Fail "kppc $($arguments -join ' '): exit $($r.exit): $($r.err) $($r.out)" }
+  # (Fail's line goes to the host: in the function's output it would make a failed build's result true.)
+  if ($r.exit -ne 0) { Fail "kppc $($arguments -join ' '): exit $($r.exit): $($r.err) $($r.out)" | Write-Host }
   return $r.exit -eq 0
 }
 
@@ -82,6 +83,64 @@ foreach ($program in 'hello', 'uncaught')
   if ($bytes[0] -ne 0x7f -or $bytes[1] -ne 0x45 -or $bytes[7] -ne 9) { Fail "freebsd $program object: not a FreeBSD ELF object" }
 }
 if ([IO.File]::ReadAllText((Join-Path $work 'uncaught.freebsd.ll')) -notmatch '@"__stderrp"') { Fail 'freebsd IR: the runtime does not write to __stderrp' }
+
+# FreeBSD, linked against 14.3's base system (tools\sysroot\freebsd.ps1 makes it into
+# build\sysroots\freebsd-x86_64, or KPP_SYSROOT_FREEBSD; never downloaded from here). Nothing runs it
+# on this machine, so the executable itself is checked: a static x86-64 ELF executable for FreeBSD
+# (OS ABI 9), with no interpreter and no dynamic section, and the ABI note FreeBSD's kernel reads
+# naming 14.3 (__FreeBSD_version 1403xxx, from the sysroot's crt1.o).
+function ElfProblems([string]$path, [int]$osRelease)
+{
+  $b = [IO.File]::ReadAllBytes($path)
+  if ($b.Length -lt 64 -or $b[0] -ne 0x7f -or $b[1] -ne 0x45 -or $b[2] -ne 0x4c -or $b[3] -ne 0x46) { return 'not an ELF file' }
+  $problems = @()
+  if ($b[4] -ne 2 -or $b[5] -ne 1) { $problems += 'not 64-bit little-endian' }
+  if ($b[7] -ne 9) { $problems += "OS ABI $($b[7]), not 9 (FreeBSD)" }
+  if ([BitConverter]::ToUInt16($b, 0x10) -ne 2) { $problems += "type $([BitConverter]::ToUInt16($b, 0x10)), not an executable (ET_EXEC)" }
+  if ([BitConverter]::ToUInt16($b, 0x12) -ne 62) { $problems += 'not x86-64' }
+  $phoff = [BitConverter]::ToUInt64($b, 0x20)
+  $phentsize = [BitConverter]::ToUInt16($b, 0x36)
+  $note = $null
+  for ($i = 0; $i -lt [BitConverter]::ToUInt16($b, 0x38); $i++)
+  {
+    $ph = [int]($phoff + $i * $phentsize)
+    switch ([BitConverter]::ToUInt32($b, $ph))
+    {
+      2 { $problems += 'a dynamic section (not static)' }
+      3 { $problems += 'an interpreter (not static)' }
+      4 {
+        # Notes: namesz, descsz, type, the name and the description, each padded to 4 bytes.
+        $at = [int][BitConverter]::ToUInt64($b, $ph + 8)
+        $end = $at + [int][BitConverter]::ToUInt64($b, $ph + 0x20)
+        while ($at + 12 -le $end)
+        {
+          $namesz = [BitConverter]::ToInt32($b, $at); $descsz = [BitConverter]::ToInt32($b, $at + 4); $type = [BitConverter]::ToInt32($b, $at + 8)
+          $name = [Text.Encoding]::ASCII.GetString($b, $at + 12, [Math]::Max(0, $namesz - 1))
+          $desc = $at + 12 + (($namesz + 3) -band -4)
+          if ($name -eq 'FreeBSD' -and $type -eq 1 -and $descsz -eq 4) { $note = [BitConverter]::ToInt32($b, $desc) }
+          $at = $desc + (($descsz + 3) -band -4)
+        }
+      }
+    }
+  }
+  if ($null -eq $note) { $problems += 'no FreeBSD ABI note (NT_FREEBSD_ABI_TAG)' }
+  elseif ([Math]::Floor($note / 1000) -ne $osRelease) { $problems += "ABI note $note, not $($osRelease)xxx" }
+  return ($problems -join '; ')
+}
+$freebsdSysroot = if ($env:KPP_SYSROOT_FREEBSD) { $env:KPP_SYSROOT_FREEBSD } else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\sysroots\freebsd-x86_64')) }
+$hasFreeBSD = Test-Path (Join-Path $freebsdSysroot 'usr\lib\libc.a')
+if (-not $hasFreeBSD) { "skip targets: freebsd's link (no sysroot: tools\sysroot\freebsd.ps1)" }
+else
+{
+  foreach ($configuration in @(@('debug'), @('release', '--release'), @('debug-info', '--debug-info')))
+  {
+    $name = $configuration[0]
+    $elf = Join-Path $work "hello.freebsd.$name.elf"
+    if (-not (Build (@('--target', 'freebsd', '--sysroot', $freebsdSysroot, '--exe', $elf) + $configuration[1..9] + @((Join-Path $src 'hello.kpp'))))) { continue }
+    $problems = ElfProblems $elf 1403
+    if ($problems) { Fail "freebsd hello ($name): $problems" }
+  }
+}
 
 # Linux, under WSL.
 $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -140,4 +199,4 @@ else
 }
 
 if ($failed) { exit 1 }
-"ok   targets (windows, freebsd's IR and object$(if ($hasWsl) { ', linux run under WSL' }))"
+"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' })$(if ($hasWsl) { ', linux run under WSL' }))"
