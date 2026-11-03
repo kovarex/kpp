@@ -12416,10 +12416,13 @@ namespace
       if (!t || !t->isKnown())
         unsupported(at, "a global of unknown type");
       // A variable of C linkage (declared inside extern "C") has C's name, whatever namespace or
-      // library scope it is declared in (design.md 16): http's `extern "C" char** environ`.
-      std::string name = classTy                                          ? instanceName
-                         : (v->flags & DF_ExternC) && !global.owningClass(v) ? "@\"" + sym(v->name.last().symbol) + "\""
-                                                                             : "@\"" + withSpecialisationArgs(qualifiedName(v), v) + "\"";
+      // library scope it is declared in (design.md 16): http's `extern "C" char** environ`. (A
+      // private one keeps its file's prefix, should the parser ever allow it: design.md 15 refuses
+      // it today, kpp/private_variable_in_extern_c_is_error.)
+      bool cName = (v->flags & DF_ExternC) && !global.owningClass(v) && filePrivatePrefix(v).empty();
+      std::string name = classTy ? instanceName
+                         : cName ? "@\"" + sym(v->name.last().symbol) + "\""
+                                 : "@\"" + withSpecialisationArgs(qualifiedName(v), v) + "\"";
       if (classTy)
         instanceGlobals[instanceName] = name;
       else

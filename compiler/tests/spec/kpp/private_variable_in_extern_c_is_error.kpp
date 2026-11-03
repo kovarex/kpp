@@ -1,0 +1,11 @@
+// spec: a `private` variable cannot have C linkage (design.md 15): its name is its file's, and C's names are the program's, so `private` inside `extern "C" { }` is an error
+// found reviewing the C name of an extern "C" variable (kpp/extern_c_variable_in_library), which has no file prefix: two files' private C variables of one name would be one symbol
+// error: a private declaration declares a name of its file: no namespace, import or extern "C"
+extern "C"
+{
+  private int counter = 5;
+}
+int main()
+{
+  return counter;
+}
