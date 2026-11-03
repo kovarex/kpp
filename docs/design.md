@@ -2948,6 +2948,17 @@ kpp.net's deploy). Taken by the registry thread, B reviewing B's files.
 - **Found on the way:** an `extern "C"` variable declared in a scoped library had the library's
   scope in its name (http's `environ` linked as `http::environ`, on every target). A variable of C
   linkage now has C's name (kpp/extern_c_variable_in_library).
+- **The spec suite for FreeBSD** (`spec.cmd --target freebsd`, 2026-11-03): every snippet built and
+  linked for FreeBSD into `build\spec-freebsd`, a bundle with each program's expected output and a
+  `run.sh` that runs them on FreeBSD and compares. Nothing runs FreeBSD here, so a snippet that
+  links is "built": 916 built, 95 pass (the snippets that must not compile), 9 pending (the
+  Windows suite's), 23 skipped, 19 failing (389 s):
+  - 18 are stage 4's: the standard library's Win32 and UCRT calls (threads, time, filesystem,
+    `_errno` in `stod`, `set_terminate`) do not link.
+  - `interop/c_math_classification_macros`: FreeBSD's math.h makes `fpclassify`, `isnan` and
+    `signbit` type-generic through C11's `_Generic` (`__fp_type_select`), which the C import does
+    not turn into a call ("'fpclassify' is not declared"). On Linux the same snippet stops on the
+    standard library's own `isnan` and `isinf` against glibc's declarations.
 - **Not yet:** running anything on FreeBSD (a VM in CI, then one run on NFS), stage 3's exceptions
   (a throw aborts there as on Linux) and stage 4's platform layer.
 

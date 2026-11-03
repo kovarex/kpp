@@ -51,6 +51,14 @@ that differs on Linux goes in <name>.linux.expected.
 headers and import libraries, the bundled toolchain's) with the llvm-mingw clang KPP_CLANG names, into
 build\\spec-windows-gnu, and runs it here, `run:` and `test:` snippets too; a `target: windows` snippet
 is one of its. Output that differs goes in <name>.windows-gnu.expected.
+
+--target freebsd builds and links every snippet for FreeBSD x86-64 (design.md, "Targets and hosts",
+stage 6) against FreeBSD 14.3's base system (KPP_SYSROOT_FREEBSD, else build\\sysroots\\freebsd-x86_64,
+which tools\\sysroot\\freebsd.ps1 makes), into build\\spec-freebsd, writing no spec-status.md. Nothing
+runs FreeBSD here: a snippet that links is "built", and build\\spec-freebsd is a bundle that runs on
+FreeBSD (run.sh there compares each program's output with its expected output, which is
+<name>.freebsd.expected, else <name>.linux.expected (LP64, a C library that is not the UCRT), else
+<name>.expected). Skipped as for Linux.
 """
 import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
 
@@ -78,6 +86,35 @@ CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2
 TARGET = None
 C_TARGET_FLAGS = []
 SYSROOT_LINUX = os.environ.get("KPP_SYSROOT_LINUX", os.path.join(COMPILER, "build", "sysroots", "linux-x86_64"))
+SYSROOT_FREEBSD = os.environ.get("KPP_SYSROOT_FREEBSD", os.path.join(COMPILER, "build", "sysroots", "freebsd-x86_64"))
+# run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s
+# each), compares its output, normalised as normalise() does, with its .expected, and ends with one
+# summary line; its exit code says the same. A program's exit code above 1 fails, as here.
+FREEBSD_RUN_SH = r'''#!/bin/sh
+# The spec snippets built for FreeBSD by compiler\tests\spec\run_spec.py --target freebsd: each runs
+# and its output is compared with its .expected (normalised: no trailing spaces, no blank lines at
+# either end). The last line sums it up: `spec freebsd: ALL PASSED (N pass)` or `spec freebsd: N FAILED`.
+cd "$(dirname "$0")" || exit 2
+# (copied from Windows, as a CI artifact for one, the programs have lost their executable bit)
+chmod +x ./*.elf
+normalise() { awk '{ sub(/[ \t\r\v\f]+$/, ""); line[NR] = $0 } END { s = 1; while (s <= NR && line[s] == "") s++; e = NR; while (e >= s && line[e] == "") e--; for (i = s; i <= e; i++) print line[i] }'; }
+pass=0; failed=0
+for exe in *.elf; do
+  name=${exe%.elf}
+  timeout 60 "./$exe" > "$name.out" 2> "$name.err"
+  code=$?
+  normalise < "$name.out" > "$name.got"
+  if [ $code -gt 1 ]; then
+    echo "FAIL    $name  -- exit code $code: $(head -n 1 "$name.err")"; failed=$((failed + 1))
+  elif ! cmp -s "$name.got" "$name.expected"; then
+    echo "FAIL    $name  -- output differs: $(diff "$name.expected" "$name.got" | sed -n 2p)"; failed=$((failed + 1))
+  else
+    echo "ok      $name"; pass=$((pass + 1))
+  fi
+done
+if [ $failed -gt 0 ]; then echo "spec freebsd: $failed FAILED ($pass pass)"; exit 1; fi
+echo "spec freebsd: ALL PASSED ($pass pass)"
+'''
 
 
 def run_program(exe, arguments=()):
@@ -134,8 +171,10 @@ def run_one(path):
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
-    if TARGET and os.path.exists(os.path.splitext(path)[0] + f".{TARGET}.expected"):
-        expected_path = os.path.splitext(path)[0] + f".{TARGET}.expected"
+    for variant in ([TARGET, "linux"] if TARGET == "freebsd" else [TARGET] if TARGET else []):
+        if os.path.exists(os.path.splitext(path)[0] + f".{variant}.expected"):
+            expected_path = os.path.splitext(path)[0] + f".{variant}.expected"
+            break
     result = {"area": area, "name": name, "info": info, "note": ""}
     target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
     # (windows-gnu is Windows: a snippet about Windows is about it too, and its programs run here)
@@ -190,6 +229,14 @@ def run_one(path):
     if missing:
         result["status"] = "FAIL"; result["note"] = f"no warning `{missing[0]}`"
         return finish(result)
+    if TARGET == "freebsd":
+        # Into the bundle: the program as <area>.<name>.elf, and its expected output, normalised.
+        os.replace(exe, os.path.splitext(exe)[0] + ".elf")
+        expected = open(expected_path, encoding="utf-8").read() if os.path.exists(expected_path) else ""
+        with open(os.path.splitext(exe)[0] + ".expected", "w", encoding="utf-8", newline="\n") as f:
+            f.write(normalise(expected) + "\n" if normalise(expected) else "")
+        result["status"] = "built"
+        return result
     try:
         r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except subprocess.TimeoutExpired:
@@ -298,7 +345,7 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
-    ap.add_argument("--target", choices=["linux", "windows-gnu"])
+    ap.add_argument("--target", choices=["linux", "freebsd", "windows-gnu"])
     ap.add_argument("--shard", default="")
     args = ap.parse_args()
     shard = re.fullmatch(r"(\d+)/(\d+)", args.shard) if args.shard else None
@@ -324,6 +371,15 @@ def main():
         C_TARGET_FLAGS = ["--target=x86_64-w64-windows-gnu"]
         OUT += "-" + TARGET
         args.no_doc = True
+    elif args.target == "freebsd":
+        TARGET = args.target
+        if not os.path.exists(os.path.join(SYSROOT_FREEBSD, "usr", "lib", "libc.a")):
+            print("no FreeBSD sysroot at", SYSROOT_FREEBSD, "(tools\\sysroot\\freebsd.ps1 makes one)")
+            print("spec: FAILED: no FreeBSD sysroot"); return 2
+        EXTRA.extend(["--target", "freebsd", "--sysroot", SYSROOT_FREEBSD])
+        C_TARGET_FLAGS = ["--target=x86_64-unknown-freebsd14", "--sysroot=" + SYSROOT_FREEBSD]
+        OUT += "-" + TARGET
+        args.no_doc = True
     elif args.target:
         TARGET = args.target
         if not os.path.exists(os.path.join(SYSROOT_LINUX, "usr", "lib", "x86_64-linux-gnu", "libc.so.6")):
@@ -340,6 +396,13 @@ def main():
         print("no compiler at", KPPC)
         print("spec: FAILED: no compiler"); return 2
     os.makedirs(OUT, exist_ok=True)
+    if TARGET == "freebsd":
+        # (a bundle of this run's programs only: an earlier run's are gone)
+        for f in os.listdir(OUT):
+            if f.endswith((".elf", ".expected")):
+                os.remove(os.path.join(OUT, f))
+        with open(os.path.join(OUT, "run.sh"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(FREEBSD_RUN_SH)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
                    if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
     if shard:
@@ -351,13 +414,13 @@ def main():
     skipped = sum(1 for r in results if r["status"] == "skip")
     results = [r for r in results if r["status"] != "skip"]
     for r in results:
-        tag = {"pass": "ok     ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
+        tag = {"pass": "ok     ", "built": "built  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
         if r["status"] in ("FAIL", "pending") and r["note"]:
             line += f"  -- {r['note']}"
         print(line)
-    counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "pending", "FAIL", "fixed")}
-    print(f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+    counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "pending", "FAIL", "fixed")}
+    print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter:
         write_doc(results, elapsed)
@@ -366,7 +429,7 @@ def main():
     # mark must go), and the exit code says the same:
     #   spec: ALL PASSED (898 pass, 2 pending)
     #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
-    summary = f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
+    summary = (f"{counts['built']} built, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
               (f"; shard {args.shard}" if shard else "")
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
           [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"]
