@@ -1,0 +1,3 @@
+// The C library's variable, read through a library function.
+extern "C" int specLibraryValue;
+int readValue() { return specLibraryValue; }

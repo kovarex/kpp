@@ -34,10 +34,10 @@ TcpStream client = listener.accept();
 - **Linux**: works (src/NetPosix.kpp): a program listening, connecting, accepting, writing and
   reading over the loopback, built here and run under WSL. The error paths are not tested there
   yet: exceptions do not unwind on Linux (docs/design.md, "Targets and hosts", stage 3).
-- **FreeBSD**: the same file; not compiled yet (no FreeBSD sysroot for C imports on the build
-  machine). Its headers are believed to spell those types `unsigned short` and `uint8_t`, which kpp
-  reads correctly either way (unverified until it compiles there).
-  Exceptions do not unwind there either yet.
+- **FreeBSD**: the same file, compiled against FreeBSD 14.3's own headers and linked statically
+  (tests\targets.ps1 builds a CGI program with http and mariadb on it; tools\sysroot\freebsd.ps1
+  makes the sysroot). Not run yet: nothing runs FreeBSD on the build machine (docs/design.md,
+  "Targets and hosts", stage 6). Exceptions do not unwind there either yet.
 
 ## Tests
 

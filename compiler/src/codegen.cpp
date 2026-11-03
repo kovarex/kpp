@@ -12415,7 +12415,11 @@ namespace
       const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
       if (!t || !t->isKnown())
         unsupported(at, "a global of unknown type");
-      std::string name = classTy ? instanceName : "@\"" + withSpecialisationArgs(qualifiedName(v), v) + "\"";
+      // A variable of C linkage (declared inside extern "C") has C's name, whatever namespace or
+      // library scope it is declared in (design.md 16): http's `extern "C" char** environ`.
+      std::string name = classTy                                          ? instanceName
+                         : (v->flags & DF_ExternC) && !global.owningClass(v) ? "@\"" + sym(v->name.last().symbol) + "\""
+                                                                             : "@\"" + withSpecialisationArgs(qualifiedName(v), v) + "\"";
       if (classTy)
         instanceGlobals[instanceName] = name;
       else

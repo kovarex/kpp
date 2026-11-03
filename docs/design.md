@@ -2915,14 +2915,50 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   stage 4's (17 Win32 links).
 - **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: kpp
   types a string literal as a pointer.
+
+### Stage 6, FreeBSD: the sysroot, the static link and the C import (2026-11-03)
+
+kovarex: "for 4, we first need to support freebsd compilation, so the web can be in kpp" (4 being
+kpp.net's deploy). Taken by the registry thread, B reviewing B's files.
+- **The version (Q3, Q4):** NearlyFreeSpeech.NET runs FreeBSD 14.3-RELEASE (kovarex's
+  `freebsd-version` there, 2026-11-03). The triple stays `x86_64-unknown-freebsd14`; the sysroot is
+  14.3's.
+- **The sysroot:** `tools/sysroot/freebsd.ps1` downloads 14.3's `base.txz` (kovarex's OK,
+  2026-11-03: "it is ok to download the FreeBSD's official base system"; 210,362,720 bytes, from
+  FreeBSD's archive, since download.freebsd.org no longer has 14.3, over http, its archive's https
+  certificate naming another host). Its SHA-256 is pinned from the release's MANIFEST. The script unpacks `lib`, `usr/include` and
+  `usr/lib` into `compiler/build/sysroots/freebsd-x86_64` (265 MB), replaces every link with a copy
+  of its target, and strips the objects' and archives' debug sections: FreeBSD compresses them
+  with zlib, and neither Visual Studio's lld nor llvm-mingw's is built with zlib. Windows' tar has
+  no xz, so Git for Windows' `xz` decompresses. It takes 47 s.
+- **Static by default:** a FreeBSD program links with `-static`. kpp.net's programs then need none
+  of the host's shared libraries, and survive NFS's realm upgrades. The GENERIC kernel runs older
+  releases' programs (COMPAT_FREEBSD*), so a 14.3 program keeps running on 15.
+- **Test:** `tests/targets.ps1` links hello world for FreeBSD (debug, release, `--debug-info`,
+  about 0.8 MB each) when the sysroot is there, and checks the ELF itself, since nothing runs it
+  here: a 64-bit x86-64 executable (ET_EXEC), OS ABI 9, no interpreter and no dynamic section, and
+  FreeBSD's ABI note (NT_FREEBSD_ABI_TAG, from the sysroot's crt1.o) saying 1403000. It also
+  links `targets/cgi.kpp`, a CGI program on the http and mariadb libraries (net and url under
+  them), 1.4 MB, checked the same way.
+- **The C import** reads FreeBSD's own headers through `--sysroot`: stdio, stdlib, string, errno,
+  unistd, fcntl, sys/types, sys/socket, sys/time, netinet/in, netdb, pthread, time, signal and
+  wchar give 5365 declarations and 21 parse errors (ignored, as glibc's 20). FreeBSD's values come
+  through, not Linux's: EAGAIN 35, AF_INET6 28, SOL_SOCKET 0xffff, SO_REUSEADDR 4, O_NONBLOCK 4,
+  `sizeof(sockaddr_in6)` 28, `sizeof(pthread_mutex_t)` 8.
+- **Found on the way:** an `extern "C"` variable declared in a scoped library had the library's
+  scope in its name (http's `environ` linked as `http::environ`, on every target). A variable of C
+  linkage now has C's name (kpp/extern_c_variable_in_library).
+- **Not yet:** running anything on FreeBSD (a VM in CI, then one run on NFS), stage 3's exceptions
+  (a throw aborts there as on Linux) and stage 4's platform layer.
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
 - **Q2:** `wchar_t`: decided 2026-11-01, the target's C size (above).
-- **Q3:** FreeBSD: the version NFS runs (`freebsd-version` there), an OK to download its
-  `base.txz` as the sysroot, and how tests run there: a script he runs, SSH access for this
-  machine, a local VM, or a FreeBSD VM in CI.
-- **Q4:** The FreeBSD major version to target. The default is the one NFS runs.
+- **Q3:** FreeBSD: the version NFS runs is 14.3-RELEASE, and `base.txz` is OK'd as the sysroot
+  (both 2026-11-03, stage 6 above). How tests run there: a FreeBSD VM in CI and one smoke run on
+  NFS, proposed and agreed with the coordinator; the CI job is still to be set up.
+- **Q4:** decided 2026-11-03: FreeBSD 14, the one NFS runs, linked statically.
 - **Q5:** (to decide when macOS comes, kovarex 2026-11-01) CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
   10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
   runner.
@@ -2954,7 +2990,7 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
-- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54

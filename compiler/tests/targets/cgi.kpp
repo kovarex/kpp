@@ -1,0 +1,16 @@
+// Built for FreeBSD by tests\targets.ps1: a CGI program with the http and mariadb libraries (and net
+// and url under them), the start of kpp.net's own programs. Linked, not run (nothing runs FreeBSD here).
+int main()
+{
+  return http::httpCgi([](const http::HttpRequest& request, http::HttpResponse& response)
+  {
+    response.setHeader("Content-Type", "text/plain; charset=utf-8");
+    response.body = String("hello from kpp on FreeBSD, ") + request.method;
+    if (request.method == "POST")
+    {
+      mariadb::MariaDbOptions options;
+      options.user = "kpp";
+      mariadb::MariaDbConnection db = mariadb::MariaDbConnection::connect(options);
+    }
+  });
+}

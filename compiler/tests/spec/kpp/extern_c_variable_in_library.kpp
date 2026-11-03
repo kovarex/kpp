@@ -1,0 +1,7 @@
+// spec: an extern "C" variable a library declares is the C variable of that name, not one in the library's scope (design.md 16)
+// found building the http library for FreeBSD: http's `extern "C" char** environ` linked as http::environ, on every target
+int main()
+{
+  println(clib::readValue());
+  return 0;
+}
