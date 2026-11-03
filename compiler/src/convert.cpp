@@ -11904,6 +11904,35 @@ std::string withoutEmptyNamespaces(std::string text, const std::set<std::string>
 // one, none at the start of the file, after a line ending with `{` or before one starting with `}`,
 // and the file ends with one line end. A blank line inside a raw string literal is the string's
 // text, and stays. `removed` counts the blank lines taken out.
+// A converted file's text as it is written: every line ends with LF alone. A source whose lines end
+// with CRLF (C:\Factorio's working tree, checked out with core.autocrlf; a library's file kept so in
+// its repository) gives the pieces copied from it their CRs, and a file of them and the converter's
+// own lines had both. C++ reads a CRLF as one new-line (translation phase 1), so a raw string literal
+// over such lines means the same with LF.
+std::string withLfLineEnds(const std::string& text)
+{
+  if (text.find('\r') == std::string::npos)
+    return text;
+  std::string out;
+  out.reserve(text.size());
+  for (size_t i = 0; i < text.size(); ++i)
+    if (!(text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n'))
+      out += text[i];
+  return out;
+}
+
+// Writes a converted file (withLfLineEnds); false when it cannot be opened.
+bool writeConvertedFile(const std::filesystem::path& path, const std::string& text, const char* mode = "wb")
+{
+  FILE* f = fopen(path.string().c_str(), mode);
+  if (!f)
+    return false;
+  std::string lf = withLfLineEnds(text);
+  fwrite(lf.data(), 1, lf.size(), f);
+  fclose(f);
+  return true;
+}
+
 std::string withTidyBlankLines(const std::string& text, size_t& removed)
 {
   // Which line ends are inside a raw string literal.
@@ -13689,11 +13718,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       {
         std::filesystem::path outPath = outDir / outputKey(relativeTo(directory / configured, roots));
         std::filesystem::create_directories(outPath.parent_path(), ec);
-        if (FILE* f = fopen(outPath.string().c_str(), "wb"))
-        {
-          fwrite(text.data(), 1, text.size(), f);
-          fclose(f);
-        }
+        writeConvertedFile(outPath, text);
         total.add("configured imports written (c-headers.txt)");
         break;
       }
@@ -13806,13 +13831,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         if (std::vector<std::string>& imports = libraryImports[rootOf(key)].imports; std::find(imports.begin(), imports.end(), header) == imports.end())
           imports.push_back(header);
     noteLibraryText(rootOf(key), text);
-    FILE* f = fopen(outPath.string().c_str(), "wb");
-    if (f)
-    {
-      fwrite(text.data(), 1, text.size(), f);
-      fclose(f);
+    if (writeConvertedFile(outPath, text))
       ++files;
-    }
     report += "## " + outputKey(key) + "\n";
     for (const Piece& p : pieces)
     {
@@ -13837,10 +13857,12 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           std::string addedKey = entry.path().lexically_relative(added).generic_string();
           std::filesystem::path rel = outputKey(addedKey);
           std::filesystem::path target = outDir / rel;
-          if (std::string addedText; readFile(entry.path(), addedText))
-            noteLibraryText(rootOf(addedKey), addedText);
+          std::string addedText;
+          if (!readFile(entry.path(), addedText))
+            continue;
+          noteLibraryText(rootOf(addedKey), addedText);
           std::filesystem::create_directories(target.parent_path(), ec);
-          if (std::filesystem::copy_file(entry.path(), target, std::filesystem::copy_options::overwrite_existing, ec))
+          if (writeConvertedFile(target, addedText))
           {
             ++files;
             total.add("hand-written files added");
@@ -13884,12 +13906,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::filesystem::path outPath = outDir / outputKey(root.empty() ? std::string("c-imports.kpp") : root + "/c-imports.kpp");
     std::error_code ec;
     std::filesystem::create_directories(outPath.parent_path(), ec);
-    if (FILE* f = fopen(outPath.string().c_str(), "wb"))
-    {
-      fwrite(text.data(), 1, text.size(), f);
-      fclose(f);
+    if (writeConvertedFile(outPath, text))
       ++files;
-    }
     total.add("library C import files written (c-imports.kpp)");
     total.add("C imports written (c-imports.kpp)", count);
     report += "## " + outputKey(root.empty() ? std::string("c-imports.kpp") : root + "/c-imports.kpp") + "\n- the library's C imports: " + std::to_string(count) + "\n";
@@ -13898,13 +13916,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   for (auto& [k, v] : total.values)
     summary += "- " + k + ": " + std::to_string(v) + "\n";
   report.insert(strlen("# Conversion report\n\n"), summary + "\n");
-  std::filesystem::path reportPath = outDir / "CONVERSION.md";
-  FILE* f = fopen(reportPath.string().c_str(), "wb");
-  if (f)
-  {
-    fwrite(report.data(), 1, report.size(), f);
-    fclose(f);
-  }
+  writeConvertedFile(outDir / "CONVERSION.md", report);
   return summary;
 }
 
@@ -14671,11 +14683,7 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
   {
     std::filesystem::path target = outDir / rel;
     std::filesystem::create_directories(target.parent_path(), ec);
-    if (FILE* f = fopen(target.string().c_str(), "wb"))
-    {
-      fwrite(text.data(), 1, text.size(), f);
-      fclose(f);
-    }
+    writeConvertedFile(target, text);
   };
   for (const auto& entry : std::filesystem::recursive_directory_iterator(debugDir, ec))
   {
@@ -14726,11 +14734,7 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
                         "\n- problems: " + std::to_string(report.problems.size()) + "\n";
   for (const std::string& p : report.problems)
     summary += "  - " + p + "\n";
-  if (FILE* f = fopen((outDir / "CONVERSION.md").string().c_str(), "ab"))
-  {
-    fwrite(summary.data(), 1, summary.size(), f);
-    fclose(f);
-  }
+  writeConvertedFile(outDir / "CONVERSION.md", summary, "ab");
   printf("convert-merge: %zu files, %zu groups whose configurations differ (%zu declarations when, %zu initializers config::debug ? a : b), %zu differing by asserts alone, %zu problems\n",
          files, report.conditional, report.when, report.perConfiguration, report.byAsserts, report.problems.size());
   for (const std::string& p : report.problems)

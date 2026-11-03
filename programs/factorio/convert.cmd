@@ -236,6 +236,10 @@ if exist kpp\convert_c.exe del kpp\convert_c.exe
 set CRULESOK=0
 if exist kpp\convert_c.exe (kpp\convert_c.exe > kpp\convert_c.out.txt 2>&1 && fc /w kpp\convert_c.out.txt tests\convert_c.expected > nul && set CRULESOK=1)
 if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& goto :failed) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& goto :failed))
+rem Every file the conversion wrote ends its lines with LF alone, in the checkout and in kpp\ (a file of
+rem both is "inconsistent" to Visual Studio): tests\line-endings.ps1.
+set STEP=the line ends (a converted file has a CR)
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\line-endings.ps1 -Checkout "%WHOLE%" -Also kpp || goto :failed
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
 set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/12, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
