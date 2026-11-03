@@ -1512,6 +1512,27 @@ server (scratchpad srvcheck.sh), the getStateInternal edit, its revert and the e
 0.132, 0.257 and 0.102 s, one module, each "the same as from scratch". The headline IR at -j 1 and
 -j 32 is the same; the game's --dump-data checksum is C++'s (486241314) and the 19 menu maps run.
 
+**Homes that depend on the definition alone (2026-11-03, thread D).** What a first use emits went to
+its first user's module, and users in two modules emitted at once (instances of one level) moved it
+between runs: in two builds of the game, drawEntities' sort comparator `operator()<GamePair<...>,
+...>` was once in object 175, once in 216. A generic lambda's call operator for its arguments and a
+lambda's function-pointer thunk now go to the module their name hashes to, as an instance does
+(NameHome). A lambda's call operator goes beside the plain function it is written in, to that file's
+module as above, whether its closure's first writer emits it or a caller on demand (lambdaHome; a
+lambda written in another lambda counts, since the parser hangs its closure under the function).
+With no plain function it goes to the module its name hashes to: a template's lambda; a default
+member initializer's, which each constructor writes; a default argument's, which each call site
+writes. Both paths take the home from the lambda alone, so whichever is first, the operator is in
+one module. The game's IR grew 0.32% as run.cmd builds it (709,197,896 to 711,487,966 bytes;
+714,848,640 with every operator in its name's module) and 0.23% in the project's debug configuration
+(1,082,266,378 to 1,084,743,969). Leaf edits of EntityPrototypeFilters::buildMapping (55 lambdas)
+through the server rebuild the same modules as with master's kppc: a string in it 1, one nested
+lambda's body 1, an empty line above all its lambdas none. The times are the same within the load's
+noise (3 paired, interleaved rounds during other threads' gates; the quietest pairs 0.81 against
+0.84 s and 0.79 against 0.80 s). run_tests' concurrency check builds a generated program with 1,000
+of each case at -j 1 and twice at -j 32 with 8 modules and compares every module's hash file; with
+the code before, all 8 modules differed.
+
 ### Edits with errors stay incremental (2026-10-31)
 
 Errors as you type (`kppc --lsp`, [ide.md](ide.md), "The language server as built") check the

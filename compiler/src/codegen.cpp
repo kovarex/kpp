@@ -714,6 +714,27 @@ namespace
     }
 
     unsigned currentModule = 0;  // where the function being emitted goes
+    // What a first use emits, whichever user is first (a generic lambda's call operator for its
+    // arguments, a lambda's function-pointer thunk; a lambda's call operator its closure's first writer
+    // emits goes to lambdaHome's), goes to the module its name hashes to, as an
+    // instantiation does (queueInstantiation): users in two modules emitted at once (callers of one
+    // level) would otherwise move it between runs. Its owner stays the user's.
+    struct NameHome
+    {
+      Emitter& e;
+      unsigned module;
+      NameHome(Emitter& e, const std::string& name) : e(e), module(e.currentModule)
+      {
+        if (e.moduleCount > 1)
+          e.currentModule = e.sh.emissionModule(std::hash<std::string>()(name));
+      }
+      NameHome(Emitter& e, unsigned home) : e(e), module(e.currentModule)
+      {
+        if (e.moduleCount > 1)
+          e.currentModule = home;
+      }
+      ~NameHome() { e.currentModule = module; }
+    };
     bool emittingShared = false; // string constants go to the shared decls
     std::string fn;      // current function text (after the allocas)
     std::string allocas; // entry-block allocas of the current function
@@ -5976,7 +5997,12 @@ namespace
           first = sh.closuresEmitted.insert(t).second;
       }
       if (first)
+      {
+        // (Several functions write one closure: a default member initializer's lambda each constructor,
+        // a default argument's each call site: lambdaHome is the lambda's, whoever writes it.)
+        NameHome home(*this, lambdaHome(l, info.functionName));
         emitLambda(l, t, types.function(t->inner ? t->inner : types.voidType(), t->args, false), info.functionName, nullptr);
+      }
       if (!into.empty())
         return {slot, t, false};
       if (needsDestruction(t, l))
@@ -6325,6 +6351,42 @@ namespace
       currentFile = savedFile;
     }
 
+    // The plain function lambda l is written in: none for a lambda in a template (a function template,
+    // a member of a class template), in a member of a local class (inside a function that may be one),
+    // or outside any function (a default member initializer's, a default argument's).
+    FunctionDecl* lambdaWriter(LambdaExpr* l)
+    {
+      if (!l || !l->closure)
+        return nullptr;
+      Decl* writer = l->closure->parent;
+      while (writer && writer->kind != NodeKind::FunctionDecl)
+      {
+        if (!writer->templateParams.empty())
+          return nullptr;
+        writer = writer->parent;
+      }
+      if (!writer || !writer->templateParams.empty())
+        return nullptr;
+      for (Decl* o = global.owningClass(writer); o; o = o->parent)
+        if (!o->templateParams.empty() || (o->kind == NodeKind::FunctionDecl && o != writer))
+          return nullptr;
+      return static_cast<FunctionDecl*>(writer);
+    }
+
+    // Where lambda l's call operator goes (named name; not a generic lambda's instance, which is one by
+    // name): beside its plain writer, in its file's module, so that a lambda stays with the function it
+    // is written in; else (a template's lambda; a default member initializer's, written by each
+    // constructor; a default argument's, by each call site) the module its name hashes to. Its
+    // closure's first writer and a caller emitting it on demand both take it from the lambda alone, so
+    // whichever is first, it is in one module.
+    unsigned lambdaHome(LambdaExpr* l, const std::string& name)
+    {
+      if (FunctionDecl* writer = lambdaWriter(l))
+        if (auto it = sh.fileModule.find(writer->file); it != sh.fileModule.end())
+          return it->second;
+      return moduleCount > 1 ? sh.emissionModule(std::hash<std::string>()(name)) : currentModule;
+    }
+
     // The call operator of a (non-generic) lambda a call needs, emitted from the lambda's AST by
     // whoever needs it first when its writer has not (a lambda a function returns, whose caller may
     // be emitted before it; a private copy's lambda type the writer never makes: the callers of
@@ -6333,21 +6395,10 @@ namespace
     void emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, const std::string& name)
     {
       LambdaExpr* l = lambdaOf(t);
-      if (!l || !l->closure)
-        return;
-      Decl* writer = l->closure->parent;
-      while (writer && writer->kind != NodeKind::FunctionDecl)
-      {
-        if (!writer->templateParams.empty())
-          return;
-        writer = writer->parent;
-      }
-      if (!writer || !writer->templateParams.empty())
+      FunctionDecl* writer = lambdaWriter(l);
+      if (!writer)
         return;
       Decl* ownerClass = global.owningClass(writer);
-      for (Decl* o = ownerClass; o; o = o->parent)
-        if (!o->templateParams.empty() || (o->kind == NodeKind::FunctionDecl && o != writer))
-          return; // a member of a class template, or of a local class (inside a function that may be one)
       {
         auto lock = sharedLock();
         if (!sh.closuresEmitted.insert(t).second)
@@ -6357,9 +6408,10 @@ namespace
           recorded.enclosingClass = types.classType(ownerClass, {}); // what `this` in the body points to
       }
       // Placed and owned as if its writer had made it, whichever caller needs it first (callers of one
-      // level are emitted at once): in the writer's module, belonging to the writer. An edit of the
-      // writer drops it, and rebuildLLVM emits it again on its own (Shared::Definition::closure);
-      // what it inlines is its own, not its first caller's.
+      // level are emitted at once): where its closure's first writer puts it too (lambdaHome: the two
+      // share closuresEmitted), belonging to the writer. An edit of the writer drops it, and rebuildLLVM
+      // emits it again on its own (Shared::Definition::closure); what it inlines is its own, not its
+      // first caller's.
       auto* writerFunction = static_cast<FunctionDecl*>(writer);
       struct Restore
       {
@@ -6378,8 +6430,7 @@ namespace
       } restore{*this, currentModule, owner, std::move(inlinedNow), onDemandNow};
       inlinedNow.clear();
       if (moduleCount > 1)
-        if (auto it = sh.fileModule.find(writer->file); it != sh.fileModule.end())
-          currentModule = it->second;
+        currentModule = lambdaHome(l, name);
       owner = functionName(writerFunction, {}, nullptr);
       onDemandNow = {name, t, callTy, writerFunction};
       TemplateArgs none;
@@ -6433,7 +6484,10 @@ namespace
           firstUse = lambdaInstances.insert(functionName).second;
         }
         if (firstUse)
+        {
+          NameHome home(*this, functionName);
           emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
+        }
       }
       const Ty* ret = fnTy->inner;
       const Ty* lambdaRet = callTy->inner ? callTy->inner : types.voidType();
@@ -6474,6 +6528,7 @@ namespace
       else
         text += "  %r = call " + retType + " " + functionName + "(" + args + ")\n  ret " + retType + " %r\n";
       text += "}\n\n";
+      NameHome home(*this, name);
       addFunction(name, text, true); // emitted once, at its first use: its own, not the user's
       return name;
     }
@@ -6600,7 +6655,10 @@ namespace
         firstUse = lambdaInstances.insert(functionName).second;
       }
       if (firstUse)
+      {
+        NameHome home(*this, functionName);
         emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
+      }
       if (hasSret || ret->kind == TyKind::Void)
       {
         emitCall("", sig + " " + functionName + "(" + argText + ")");

@@ -10,6 +10,18 @@
 # of 160 builds (codegen's ClosureWriter; once in a full spec run, language/lambda_returned_by_value).
 # Built half as many times as the others (it costs about twice their CPU each): 80 such builds miss a
 # crash of that rate about once in 300 runs.
+# Where a definition goes must not depend on timing either, which --emit-llvm (one module) cannot show.
+# What a first use emits, a generic lambda's call operator for its arguments, a lambda's function-pointer
+# thunk, a lambda's call operator its closure's first writer emits, went to that user's module, and users
+# in two modules emitted at once (instances of one level) moved it between runs (the game's drawEntities
+# comparator, object 175 or 216; codegen's NameHome). So one program is built with 8 modules at -j 1 and
+# twice at -j 32, and every module's text (its hash file) must be the -j 1 build's. It has 1,000 of each:
+# - a generic lambda, called by two members of a class template's instance and converted to a function
+#   pointer by two more;
+# - a class template's lambda in a default member initializer, written by its two constructors;
+# - a function template's lambda as a default argument, written by two callers.
+# In each, the users are instances that sort side by side in their level, so their threads emit them at
+# once.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [int]$Copies = 160)
 $ErrorActionPreference = 'Stop'
 $Kppc = (Resolve-Path $Kppc).Path # (the processes start in .NET's current directory, not PowerShell's)
@@ -96,5 +108,46 @@ for ($k = 1; $k -le $programs.Count; $k++)
     Write-Host "FAIL concurrency $($programs[$k - 1]): $($differ[$k]) of $($copiesOf[$k - 1]) builds at -j 32 under load differ from -j 1 (kept in $work)"
   }
 }
+$generic = New-Object System.Text.StringBuilder
+[void]$generic.AppendLine("template<typename F> struct Caller`n{`n  F f;")
+[void]$generic.AppendLine("  int a() { return f(1, 2); }`n  int b() { return f(3, 4); }")
+[void]$generic.AppendLine("  int c() { int (*p)(int, int) = f; return p(5, 6); }`n  int d() { int (*p)(int, int) = f; return p(7, 8); }`n};")
+[void]$generic.AppendLine("template<typename F> Caller<F> caller(F f) { return Caller<F>{f}; }")
+[void]$generic.AppendLine("template<int N> struct Holder`n{`n  Function<int(int)> f = [](int x) { return x + N; };`n  int value = 0;")
+[void]$generic.AppendLine("  Holder() {}`n  Holder(int v) : value(v) {}`n};")
+[void]$generic.AppendLine("template<int N> int applyN(int x, Function<int(int)> f = [](int v) { return v * 3 + N; }) { return f(x); }")
+[void]$generic.AppendLine("template<int N> struct UseDefault`n{`n  int a() { return applyN<N>(1); }`n  int b() { return applyN<N>(2); }`n};")
+for ($i = 0; $i -lt 1000; $i++)
+{
+  [void]$generic.AppendLine("int writer$i() { auto c = caller([](auto a, auto b) { return a * b + $i; }); return c.a() + c.b() + c.c() + c.d(); }")
+  [void]$generic.AppendLine("int holders$i() { Holder<$i> a; Holder<$i> b(5); return a.f(1) + b.f(2) + b.value; }")
+  [void]$generic.AppendLine("int defaults$i() { UseDefault<$i> u; return u.a() + u.b(); }")
+}
+[void]$generic.AppendLine("int main()`n{`n  long long t = 0;")
+for ($i = 0; $i -lt 1000; $i++) { [void]$generic.AppendLine("  t += writer$i() + holders$i() + defaults$i();") }
+[void]$generic.AppendLine("  println(t);`n  return 0;`n}")
+$genericSource = Join-Path $work 'generic_lambdas.kpp'
+[IO.File]::WriteAllText($genericSource, $generic.ToString())
+# (The returned lambdas too, with modules: a caller emits the operator on demand when it needs it before
+# the writer has, and the writer's own emission puts it where the caller would.)
+foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sources[-1])))
+{
+  $moduleTexts = @{}
+  foreach ($run in 'j1', 'a', 'b')
+  {
+    $dir = Join-Path $work "placement.$($placed[0] -replace ' ', '_').$run"
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    $j = if ($run -eq 'j1') { '1' } else { '32' }
+    $proc = Start-Process -FilePath $Kppc -ArgumentList @('--quiet', '-j', $j, '--modules', '8', '--exe', "`"$(Join-Path $dir 'p.exe')`"", "`"$($placed[1])`"") -NoNewWindow -PassThru -Wait
+    $hashes = @(Get-ChildItem $dir -Filter 'p.exe.*.hash' | Sort-Object Name)
+    if ($proc.ExitCode -ne 0 -or $hashes.Count -eq 0) { Write-Host "FAIL concurrency: the $($placed[0])' program does not build with modules (exit $($proc.ExitCode))"; exit 1 }
+    $moduleTexts[$run] = ($hashes | ForEach-Object { $_.Name + '=' + (Get-Content $_.FullName -Raw) }) -join ';'
+  }
+  if ($moduleTexts['a'] -ne $moduleTexts['j1'] -or $moduleTexts['b'] -ne $moduleTexts['j1'])
+  {
+    $failed++
+    Write-Host "FAIL concurrency: a module of the $($placed[0])' program is another text at -j 32 than at -j 1: where a first use's definition went depends on timing (kept in $work)"
+  }
+}
 if ($failed -gt 0) { exit 1 }
-"ok   concurrency: $($programs.Count) programs built $Copies times each (the generated one $($copiesOf[-1])) at -j 32 under load, the IR always the -j 1 build's"
+"ok   concurrency: $($programs.Count) programs built $Copies times each (the generated one $($copiesOf[-1])) at -j 32 under load, the IR always the -j 1 build's; 3,000 lambdas' and 1,000 returned lambdas' modules the same at -j 1 and -j 32"
