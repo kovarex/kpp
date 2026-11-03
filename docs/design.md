@@ -1216,12 +1216,15 @@ A declaration that exists in the current scope only when a constant condition ho
   neither evaluated nor checked, as a discarded branch.
 - When it is true, it is an ordinary declaration of that scope: the same lifetime and the same place
   of its destructor.
-- A use of the name must stand where the condition is known to hold: inside `if constexpr` on it, or
-  in another `when` on it. Anywhere else the use is a compile error, never a silent fallback, and it
-  is an error in every configuration, not only in the one where the name does not exist (kovarex,
-  2026-11-03): the check is structural (the conditions known at the use, compared as written, `&&`
-  giving each of its parts), so building debug reports a use that would break a niche configuration
-  such as a console port's, at no measurable cost.
+- A use of the name is checked in the configuration (and template instance) being built: where the
+  declaration does not exist there, the use is a compile error in that build, never a silent fallback
+  to another declaration of the same spelling (a `when` declaration that does not exist still hides
+  outer names). A use inside a discarded branch (`if constexpr` on a false condition, or another
+  `when` that does not exist) is not checked, as any discarded code.
+  kovarex, 2026-11-03, first decided a structural check reporting a misplaced use in every
+  configuration, then reversed it after the counter-example of several `when` declarations of one name
+  under unrelated or platform conditions: "the conditions and logic can be complex, and we can't cover
+  everything ... only report errors for this specific configuration being built right now".
 - `if constexpr` keeps C++'s scoping; kpp adds no exception to it.
 - It stands wherever a declaration may: in a block, at namespace scope, and as a class member
   (kovarex, 2026-11-03: "Having it for members makes 100% sense", for statistics and debug members).
