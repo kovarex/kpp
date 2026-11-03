@@ -887,6 +887,7 @@ namespace
     std::vector<std::string> activeArguments;   // what the process's kept build was made with
     std::string announcedCell = "\n";          // the cell kpp/activeCell last named
     std::string shownFailure;                   // the diagnostic-less failure last shown (check)
+    bool markdownHover = false;                 // the client renders hover's markdown (else plain text)
     size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
     bool initialized = false, shutdownRequested = false;
@@ -1521,11 +1522,15 @@ namespace
       return out;
     }
 
+    // Hover's code and emphasis: markdown's, or the text alone for a client of plain text.
+    std::string code(const std::string& text) { return markdownHover ? "`" + text + "`" : text; }
+    std::string emphasis(const std::string& text) { return markdownHover ? "*" + text + "*" : text; }
+
     // A config:: constant in the checked cell: a library option's value, who set it, its default
     // and description (build.kpp's description, ProjectCell::options); another constant's cell.
     std::string configNote(const std::string& name)
     {
-      std::string cell = "the cell *" + cellName(project) + "*";
+      std::string cell = "the cell " + emphasis(cellName(project));
       for (const ProjectOption& o : activeOptions)
       {
         if (o.library + "::" + o.name != name)
@@ -1535,14 +1540,14 @@ namespace
         if (auto at = std::search(setBy.begin(), setBy.end(), folder.begin(), folder.end(), [](char x, char y) { return tolower((unsigned char)x) == tolower((unsigned char)y); });
             !folder.empty() && at != setBy.end())
           setBy.erase(at, at + folder.size());
-        std::string note = "`" + o.value + "` in " + cell + ", set by " + setBy + "; ";
-        note += o.required ? "required" : "default `" + o.defaultValue + "`";
+        std::string note = code(o.value) + " in " + cell + ", set by " + setBy + "; ";
+        note += o.required ? "required" : "default " + code(o.defaultValue);
         note += ", " + o.type;
         if (!o.allowed.empty())
         {
           note += ", one of";
           for (size_t i = 0; i < o.allowed.size(); ++i)
-            note += (i ? ", `" : " `") + o.allowed[i] + "`";
+            note += (i ? ", " : " ") + code(o.allowed[i]);
         }
         note += ". An option of the library " + o.library + ".";
         if (!o.description.empty())
@@ -1562,24 +1567,24 @@ namespace
         if (!o)
           return;
         Decl* d = o->decl;
-        std::string value = "```kpp\n" + declarationText(program, d) + "\n```\n";
+        std::string value = markdownHover ? "```kpp\n" + declarationText(program, d) + "\n```\n" : declarationText(program, d) + "\n";
         std::string where = kindWord(d);
         std::string qualified = program.global->qualifiedName(d);
         if (!qualified.empty() && d->kind != NodeKind::ParamDecl && !(d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl))
-          where += " `" + qualified + "`";
+          where += " " + code(qualified);
         // An expression's type where the name is one (a function's name typed as its call's result is not
         // shown, nor a qualifier's: `Entity` in `Entity::count` is the class, the type is count's).
         if (!o->declaration && (o->node->kind == NodeKind::NameExpr || o->node->kind == NodeKind::MemberExpr) && d->kind != NodeKind::FunctionDecl &&
             d->kind != NodeKind::NamespaceDecl && d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl)
           if (const Ty* ty = static_cast<Expr*>(o->node)->ty)
-            where += ", here of type `" + program.global->types().toString(ty, program.symbols) + "`";
+            where += ", here of type " + code(program.global->types().toString(ty, program.symbols));
         value += where;
         if (qualified.rfind("config::", 0) == 0 && !activeCell.empty())
           value += "\n\n" + configNote(qualified.substr(8));
         if (std::string comment = commentAbove(d); !comment.empty())
           value += "\n\n" + comment;
         result = Json::object()
-                   .set("contents", Json::object().set("kind", "markdown").set("value", value))
+                   .set("contents", Json::object().set("kind", markdownHover ? "markdown" : "plaintext").set("value", value))
                    .set("range", tokenRange(file, o->token));
       });
       return result;
@@ -2668,6 +2673,19 @@ namespace
           workspace = uriToPath(params["rootUri"].text);
         else if (params["rootPath"].kind == Json::String)
           workspace = params["rootPath"].text;
+        // What the client renders (hover's formats, completion items'): in the log, for its editor's checks.
+        {
+          std::string hoverCaps, completionCaps;
+          write(params["capabilities"]["textDocument"]["hover"], hoverCaps);
+          write(params["capabilities"]["textDocument"]["completion"], completionCaps);
+          log("client %s %s, hover %s, completion %.1200s", params["clientInfo"]["name"].text.c_str(), params["clientInfo"]["version"].text.c_str(),
+              hoverCaps.c_str(), completionCaps.c_str());
+        }
+        // Markdown only for a client that names it: without contentFormat a client takes plain text
+        // (the protocol's default), and Visual Studio's names plain text alone (docs/editors.md).
+        markdownHover = false;
+        for (const Json& format : params["capabilities"]["textDocument"]["hover"]["contentFormat"].items)
+          markdownHover = markdownHover || format.text == "markdown";
         ProjectCheck wanted = project;
         readOptions(params["initializationOptions"], wanted);
         std::string error;

@@ -1,7 +1,8 @@
 // Cells (docs/editors.md, "Cells"), for tests\lsp.ps1 on a copy of tests\lsp\cells: build.kpp has the
 // targets game and tool in debug and release; the game's release cell has an error, and the game uses the library sound, setting its option volume. $ROOT is the copy's URI.
+// The client renders hover as plain text, as Visual Studio does (no markdown in contentFormat).
 // The first cell is the client's: game, debug. No diagnostics.
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"target":"game","configuration":"debug","keptCells":2}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"textDocument":{"hover":{"contentFormat":["plaintext"]}}},"initializationOptions":{"target":"game","configuration":"debug","keptCells":2}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"kpp/cells","params":{}}
 // A library option in the cell: its value, who set it, its default and description (hover on config::sound::volume).

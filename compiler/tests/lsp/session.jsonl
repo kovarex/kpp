@@ -1,6 +1,6 @@
 // A scripted editor session for tests\lsp.ps1: one message per line, $ROOT the program's URI.
 // The first check builds the program as it is on disk: no diagnostics, none published.
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"textDocument":{"hover":{"contentFormat":["markdown","plaintext"]}}}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
 {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main()\n{\n  Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}}}
 // Hover, definition, declaration, references, the outline and workspace symbols, on the program as opened.
