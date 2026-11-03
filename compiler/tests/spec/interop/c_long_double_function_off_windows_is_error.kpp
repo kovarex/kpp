@@ -1,0 +1,11 @@
+// spec: off Windows, calling an imported C function that takes or returns `long double` is an error: C's long double is x87's 80 bits on x86-64 SysV and kpp's stays double (docs/design.md, "Targets and hosts", the type table)
+// pending: the call is made as double(double), silently: FreeBSD's floorl(2.5) and ceill(2.5) in interop/c_header_inline_functions printed other values than 2 3 1.5 in CI's FreeBSD run (run 41638108414)
+// target: freebsd (Windows' long double is double: the same call is right there)
+// error: long double
+extern "C" import "c_long_double_function_off_windows_is_error.h";
+int main()
+{
+  double half = specHalfOf(5.0);
+  println(half);
+  return 0;
+}
