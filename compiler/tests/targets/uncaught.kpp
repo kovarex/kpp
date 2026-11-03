@@ -2,21 +2,24 @@
 // String short enough to be kept in the object (core/String.kpp's small strings), which the report
 // read as a pointer and crashed on until 2026-11-01. Off Windows the search finds no handler and the
 // report comes from the throw site, with nothing unwound (docs/design.md, "Targets and hosts", stage 3).
+// With an argument the message is too long for the object (a heap one), which the report printed as
+// the pointer's bytes once String grew to 32 bytes (its mark read where the 24-byte String had it).
 struct Boom : Exception
 {
   Boom() : Exception("it went boom") {}
+  explicit Boom(const String& message) : Exception(message) {}
 };
 
-int deep(int v)
+int deep(int v, bool large)
 {
   if (v > 2)
-    throw Boom();
+    throw large ? Boom("it went boom, with a message too long for the object") : Boom();
   return v;
 }
 
-int main()
+int main(int argc, char** argv)
 {
   println("before");
-  println(deep(5));
+  println(deep(5, argc > 1));
   return 0;
 }

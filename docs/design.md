@@ -3042,6 +3042,15 @@ kpp.net's deploy). Taken by the registry thread, B reviewing B's files.
 - **Found on the way:** an `extern "C"` variable declared in a scoped library had the library's
   scope in its name (http's `environ` linked as `http::environ`, on every target). A variable of C
   linkage now has C's name (kpp/extern_c_variable_in_library).
+- **Found running the libraries' tests on Linux:** an uncaught exception whose message is longer
+  than a small String printed the heap pointer's bytes instead of the message, on every target.
+  The report read String's mark at byte 23, where the 24-byte String had it; String is 32 bytes
+  since container sizes became 64-bit (85e03a9b), its mark at byte 31. The byte now comes from
+  String's laid-out size (targets.ps1's uncaught, with a long message, on Windows and Linux).
+- **The libraries' tests for FreeBSD** (2026-11-03): base64, bcrypt, html, json, markdown, net,
+  sha256 and url build and link. http's and mariadb's do not link (the standard library's Win32
+  calls, stage 4), and httpclient has no client off Windows yet. Run on Linux under WSL as the
+  nearest POSIX, all of them pass since stage 3 (below); before it, each stopped at its first throw.
 - **The spec suite for FreeBSD** (`spec.cmd --target freebsd`, 2026-11-03): every snippet built and
   linked for FreeBSD into `build\spec-freebsd`, a bundle with each program's expected output and a
   `run.sh` that runs them on FreeBSD and compares. Nothing runs FreeBSD here, so a snippet that

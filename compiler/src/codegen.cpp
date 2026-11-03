@@ -365,6 +365,7 @@ namespace
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
+    uint64_t exceptionMessageMark = 0;                   // the byte of Exception's message (a String) that says heap or small
     // A definition in a module (a function's, a helper's in its home module) with the names its text
     // uses, found once on the thread that emitted it: module assembly reads these instead of scanning
     // the module's text again (and they are what an incremental build will keep per function).
@@ -687,6 +688,7 @@ namespace
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
+    uint64_t& exceptionMessageMark = sh.exceptionMessageMark;
     std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
     // The shared lock, and how many times this emitter holds it. An answer is published for the
     // other emitters (FinalAnswers) only while it holds the lock once: then no layout of its own is
@@ -17072,7 +17074,13 @@ namespace
           list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(fieldTypes[index], at) +
                   ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
         if (display == "Exception" && exceptionTypeinfo.empty())
+        {
           exceptionTypeinfo = name;
+          // Its message, its first field, is a String: the last of its bytes is the length of a small
+          // one or the large mark (String.kpp's markIndex), wherever String's sizes put it.
+          if (!fieldTypes.empty() && bases.empty() && types.toString(fieldTypes[0], &symbols) == "String")
+            exceptionMessageMark = sizeOf(fieldTypes[0], at) - 1;
+        }
       }
       else
       {
@@ -17417,16 +17425,17 @@ namespace
     // The lines of the report of an exception nobody caught that print its message (format: ": %s")
     // when it is an Exception: from %object (its address) and %typeinfo, on to %end. Exception's
     // message is a String (core/Utility.kpp): its characters are in the object when its last byte
-    // (markIndex 23) is a small string's length, at the pointer in its first word when it is
-    // largeMark (0x80; core/String.kpp). Read as a pointer, a small one's characters crashed.
+    // (markIndex, exceptionMessageMark: 31 with 64-bit sizes) is a small string's length, at the
+    // pointer in its first word when it is largeMark (0x80; core/String.kpp). Read as a pointer, a
+    // small one's characters crashed.
     std::string exceptionMessage(const std::string& format)
     {
-      if (exceptionTypeinfo.empty())
+      if (exceptionTypeinfo.empty() || !exceptionMessageMark)
         return "  br label %end\n";
       return "  %off = call i64 @kpp_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
              "  br i1 %isExc, label %msg, label %end\n"
              "msg:\n  %ep = getelementptr inbounds i8, ptr %object, i64 %off\n"
-             "  %markp = getelementptr inbounds i8, ptr %ep, i64 23\n  %mark = load i8, ptr %markp\n"
+             "  %markp = getelementptr inbounds i8, ptr %ep, i64 " + std::to_string(exceptionMessageMark) + "\n  %mark = load i8, ptr %markp\n"
              "  %large = icmp eq i8 %mark, -128\n  br i1 %large, label %heap, label %print\n"
              "heap:\n  %heapChars = load ptr, ptr %ep\n  %nodata = icmp eq ptr %heapChars, null\n  br i1 %nodata, label %end, label %print\n"
              "print:\n  %data = phi ptr [ %ep, %msg ], [ %heapChars, %heap ]\n"

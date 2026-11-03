@@ -70,6 +70,8 @@ if (Build @('--exe', $exe, (Join-Path $src 'uncaught.kpp')))
 {
   $r = Run $exe @()
   if ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -eq 0) { Fail "windows uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+  $r = Run $exe @('large')
+  if ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom, with a message too long for the object' -or $r.exit -eq 0) { Fail "windows uncaught, a heap message: '$($r.out)' '$($r.err)', exit $($r.exit)" }
 }
 
 # Nothing of Windows' runtime in another target's IR.
@@ -239,6 +241,8 @@ else
     $r = Wsl 'uncaught' @(WslPath $elf)
     # (the search finds no handler: reported from the throw site, then abort's SIGABRT, 134)
     if (-not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+    $r = Wsl 'uncaught, a heap message' @((WslPath $elf), 'large')
+    if (-not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom, with a message too long for the object' -or $r.exit -ne 134)) { Fail "linux uncaught, a heap message: '$($r.out)' '$($r.err)', exit $($r.exit)" }
   }
 }
 
