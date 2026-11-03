@@ -3,7 +3,11 @@
 # Visual Studio through DTE: Edit.GoToDefinition and Edit.GoToDeclaration (where the caret lands), an
 # error typed into a file (the Error List), and a screenshot of the window. Prints one line per check.
 #   test.ps1 -Name cells -Project compiler\tests\lsp\cells -File src\game\main.kpp -Line 6 -Column 12 -Definition src\common\shared.kpp:1
-# -Definition and -Declaration are FILE:LINE, relative to the project; -Declaration defaults to -Definition.
+# -Definition and -Declaration are FILE:LINE, relative to the project; -Declaration defaults to -Definition,
+# -DeclarationFrom (FILE:LINE:COLUMN) to -File, -Line and -Column.
+# -HoverAt FILE:LINE:COLUMN with -HoverText TEXT: Edit.QuickInfo there must show TEXT (the Quick Info
+# popup read through UI Automation). -CompleteAt FILE:LINE with -CompleteText TEXT and -CompleteExpect
+# NAME: TEXT typed in as a line of its own there, Edit.ListMembers at its end must list NAME.
 # -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
@@ -23,7 +27,13 @@ param(
   [switch]$Solution,
   [string]$CellError,
   [string]$CellConfiguration = 'Release',
-  [string]$OtherTarget
+  [string]$OtherTarget,
+  [string]$DeclarationFrom,
+  [string]$HoverAt,
+  [string]$HoverText,
+  [string]$CompleteAt,
+  [string]$CompleteText,
+  [string]$CompleteExpect
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
@@ -31,6 +41,7 @@ if (-not $Kppc) { $Kppc = "$checkout\compiler\build\kppc.exe" }
 if (-not $Vsix) { $Vsix = "$checkout\tools\vs\kpp-visualstudio.vsix" }
 if (-not $Work) { $Work = "$checkout\compiler\build\vs" }
 if (-not $Declaration) { $Declaration = $Definition }
+if (-not $DeclarationFrom) { $DeclarationFrom = "${File}:${Line}:${Column}" }
 New-Item -ItemType Directory -Force $Work | Out-Null
 $Kppc = (Resolve-Path $Kppc).Path
 $ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
@@ -125,7 +136,7 @@ public static class SnapAll {
       uint owner; GetWindowThreadProcessId(h, out owner);
       if (owner != pid || !IsWindowVisible(h)) return true;
       RECT r; GetWindowRect(h, out r); int w = r.R - r.L, hh = r.B - r.T;
-      if (w < 50 || hh < 50) return true;
+      if (w < 20 || hh < 20) return true;
       var t = new StringBuilder(256); GetWindowText(h, t, 256);
       string path = prefix + "-" + (i++) + ".png";
       using (var b = new Bitmap(w, hh)) using (var g = Graphics.FromImage(b)) { IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 2); g.ReleaseHdc(dc); b.Save(path); }
@@ -159,28 +170,123 @@ function Here
   $name = if ($d.FullName.StartsWith($copy, [StringComparison]::OrdinalIgnoreCase)) { $d.FullName.Substring($copy.Length + 1) } else { $d.FullName }
   "{0}:{1}" -f $name, $d.Selection.CurrentLine
 }
-# A command until the caret leaves FILE:LINE (the first answers wait for the server's first check).
-function Go($command, $expected)
+# FILE:LINE:COLUMN as its three parts (a drive's colon is the file's).
+function Position($text)
 {
+  $parts = $text -split ':'
+  [pscustomobject]@{ File = ($parts[0..($parts.Count - 3)] -join ':') -replace '/', '\'; Line = [int]$parts[-2]; Column = [int]$parts[-1] }
+}
+# A command at FROM until the caret leaves its line (the first answers wait for the server's first check).
+function Go($command, $expected, $from)
+{
+  $p = Position $from
   $t = [Diagnostics.Stopwatch]::StartNew()
-  $start = "{0}:{1}" -f ($File -replace '/', '\'), $Line
+  $start = "{0}:{1}" -f $p.File, $p.Line
   $at = $start
   while ($t.Elapsed.TotalSeconds -lt $Timeout)
   {
-    Open $File $Line $Column
+    Open $p.File $p.Line $p.Column
     try { $dte.ExecuteCommand($command) } catch { }
     Start-Sleep -Milliseconds 500
     $at = Here
-    if ($at -ne $start) { break }
+    if ($at -ne $start)
+    {
+      # A large file opens before its caret is placed: the place once it stays for a second.
+      do { $was = $at; Start-Sleep -Milliseconds 1000; $at = Here } while ($at -ne $was)
+      break
+    }
     Start-Sleep -Seconds 1
   }
-  Check $command ($at -ieq ($expected -replace '/', '\')) ("{0} from {1}:{2}, expected {3}; {4:N1} s" -f $at, $File, $Line, $expected, $t.Elapsed.TotalSeconds)
+  Check $command ($at -ieq ($expected -replace '/', '\')) ("{0} from {1}, expected {2}; {3:N1} s" -f $at, $from, $expected, $t.Elapsed.TotalSeconds)
+}
+# The text of Visual Studio's popups (Quick Info, the completion list): the names of what UI
+# Automation sees in its top-level windows of class Popup. With -Items the completion list's
+# items instead (IntellisenseMenuItem, its label the AutomationId) and $script:listed, the count the
+# list gives ("shared. 1 of 13"). The list makes items only for its visible rows: it is scrolled
+# through (its ScrollPattern) to see them all.
+function PopupText([switch]$Items)
+{
+  $root = [Windows.Automation.AutomationElement]::RootElement
+  $mine = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, $devenv.Id)
+  $names = @()
+  foreach ($w in $root.FindAll([Windows.Automation.TreeScope]::Children, $mine))
+  {
+    if ($w.Current.ClassName -ne 'Popup') { continue }
+    $scroll = $null
+    if ($Items)
+    {
+      $list = $w.FindFirst([Windows.Automation.TreeScope]::Descendants,
+        (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, 'CompletionList')))
+      if ($list) { try { $scroll = $list.GetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern) } catch { } }
+    }
+    $pages = if ($scroll -and $scroll.Current.VerticallyScrollable) { [Math]::Ceiling(100 / [Math]::Max(1, $scroll.Current.VerticalViewSize)) } else { 0 }
+    for ($page = 0; $page -le $pages; $page++)
+    {
+    if ($scroll -and $scroll.Current.VerticallyScrollable) { $scroll.SetScrollPercent(-1, [Math]::Min(100, $page * $scroll.Current.VerticalViewSize)); Start-Sleep -Milliseconds 100 }
+    foreach ($e in $w.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition))
+    {
+      if ($Items)
+      {
+        if ($e.Current.ClassName -ne 'IntellisenseMenuItem') { continue }
+        $names += $e.Current.AutomationId
+        if ($e.Current.Name -match ' of (\d+)$') { $script:listed = [int]$Matches[1] }
+        continue
+      }
+      if ($e.Current.Name) { $names += $e.Current.Name.Trim() }
+    }
+    }
+  }
+  $names | Select-Object -Unique
 }
 
 try
 {
-  Go 'Edit.GoToDefinition' $Definition
-  Go 'Edit.GoToDeclaration' $Declaration
+  Go 'Edit.GoToDefinition' $Definition "${File}:${Line}:${Column}"
+  Go 'Edit.GoToDeclaration' $Declaration $DeclarationFrom
+
+  # Hover: Edit.QuickInfo, its popup's text.
+  if ($HoverAt)
+  {
+    $p = Position $HoverAt
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $shown = ''
+    while ($t.Elapsed.TotalSeconds -lt $Timeout)
+    {
+      Open $p.File $p.Line $p.Column
+      try { $dte.ExecuteCommand('Edit.QuickInfo') } catch { }
+      Start-Sleep -Milliseconds 700
+      # (one line where Visual Studio wraps the text)
+      $shown = ((PopupText | Select-Object -Unique) -join ' ') -replace '\s+', ' '
+      if ($shown.Contains($HoverText)) { break }
+    }
+    Check "Quick Info at $HoverAt" ($shown.Contains($HoverText)) ("'{0}'; {1:N1} s" -f $shown, $t.Elapsed.TotalSeconds)
+    Snap 'hover'
+    $dte.ExecuteCommand('Edit.SelectionCancel')
+  }
+
+  # Completion: a line typed in, Edit.ListMembers at its end, the list's items.
+  if ($CompleteAt)
+  {
+    $p = Position "${CompleteAt}:1"
+    Open $p.File $p.Line 1
+    $document = $dte.ActiveDocument
+    $document.Selection.Insert("$CompleteText`n")
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $items = @()
+    $script:listed = 0
+    while ($t.Elapsed.TotalSeconds -lt $Timeout)
+    {
+      $document.Selection.MoveToLineAndOffset($p.Line, $CompleteText.Length + 1)
+      try { $dte.ExecuteCommand('Edit.ListMembers') } catch { }
+      Start-Sleep -Milliseconds 700
+      $items = @(PopupText -Items)
+      if ($items -contains $CompleteExpect) { break }
+    }
+    Check "completion after '$($CompleteText.Trim())'" ($items -contains $CompleteExpect) ("{0} items, {1}; {2:N1} s" -f $script:listed, (($items | Select-Object -First 8) -join ', '), $t.Elapsed.TotalSeconds)
+    Snap 'completion'
+    $dte.ExecuteCommand('Edit.SelectionCancel')
+    $document.Undo() | Out-Null
+  }
 
   # An error typed in: the Error List shows the server's diagnostic, and it goes after undo.
   Open $File $Line 1
@@ -188,13 +294,22 @@ try
   $document = $dte.ActiveDocument
   $dte.ExecuteCommand('View.ErrorList')
   # DTE's ErrorItems has the build's errors only: the Error List's rows are read as UI Automation sees them.
+  # (read again when an element goes while it is read: a window Visual Studio closes meanwhile)
   function ErrorRow($text = 'kppUndeclaredName')
   {
-    $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
-    $rows = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
-      [Windows.Automation.Condition]::TrueCondition)
-    foreach ($row in $rows) { if ($row.Current.Name -like "*$text*") { return $row.Current.Name } }
-    $null
+    for ($try = 1; ; $try++)
+    {
+      try
+      {
+        $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
+        $rows = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
+          [Windows.Automation.Condition]::TrueCondition)
+        foreach ($row in $rows) { if ($row.Current.Name -like "*$text*") { return $row.Current.Name } }
+        return $null
+      }
+      catch [Windows.Automation.ElementNotAvailableException] { if ($try -ge 5) { throw } Start-Sleep -Milliseconds 300 }
+      catch { if ($try -ge 5 -or $_.Exception.InnerException -isnot [Windows.Automation.ElementNotAvailableException]) { throw } Start-Sleep -Milliseconds 300 }
+    }
   }
   $t = [Diagnostics.Stopwatch]::StartNew()
   $found = $null
@@ -231,10 +346,6 @@ try
     Wait "$firstName, Debug: no error '$CellError'" $false
   }
 
-  # Hover: Quick Info at the call, for the screenshot.
-  Open $File $Line $Column
-  try { $dte.ExecuteCommand('Edit.QuickInfo') } catch { }
-  Start-Sleep -Seconds 3
   Snap 'end'
 }
 finally
@@ -245,7 +356,11 @@ finally
   if (-not $devenv.WaitForExit(60000)) { "test.ps1: Visual Studio $($devenv.Id) did not quit" }
 }
 $log = "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log"
-if (Test-Path $log) { "the server's log: $log" }
+if (Test-Path $log)
+{
+  "the server's log: $log"
+  Get-Content $log | Where-Object { $_ -match 'the project of|check \d+:' } | ForEach-Object { '  ' + $_.Substring(0, [Math]::Min(160, $_.Length)) }
+}
 "done, $failures failed"
 if ($failures) { exit 1 }
 exit 0

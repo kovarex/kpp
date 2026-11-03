@@ -5,15 +5,16 @@ Language Server Protocol over stdin and stdout, so any editor with an LSP client
 page has the server's interface and the setup for each editor. For building and debugging from
 an IDE, see [build.md](build.md), "Project files for an IDE".
 
-Status (2026-10-31):
+Status (2026-11-03):
 - `kppc --lsp` is on master (thread F, ff6054ab), on the interface below. run_tests checks it
   with the smoke client.
 - The VS Code extension is ready and checked in a real VS Code 1.144 (2026-11-02, see "VS Code"):
   errors, completion, go to definition, hover with config:: values, and switching cells, on
   tests\lsp\cells and on factorio-in-kpp.
 - The Visual Studio extension, kpp-visualstudio.vsix (tools\vs\vsix), is checked in a real Visual Studio
-  17.14 (2026-11-02, see "Visual Studio 2022"): colouring, go to definition, go to declaration
-  and errors, on tests\lsp\cells and on factorio-in-kpp.
+  17.14 (2026-11-03, see "Visual Studio 2022"): colouring, go to definition, go to declaration,
+  errors, hover with config:: values, completion and the cells, on tests\lsp\cells and on
+  factorio-in-kpp.
 
 ## The language server
 
@@ -123,27 +124,43 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   client (`ILanguageClient`, Microsoft.VisualStudio.LanguageServer.Client) allows it through
   `ILanguageClientCustomMessage2`. VisualStudio.Extensibility's out-of-process
   `LanguageServerProvider` does not, so the first build, which used it, had no go to declaration.
+- **Hover is plain text in Visual Studio.** Its client names hover's `contentFormat` as plain text
+  alone. Given markdown, it showed only the code block (`const int volume`, without the value,
+  the cell or the description). The server sends markdown only to a client that names it, so
+  Visual Studio gets the whole hover as text.
 - **Checked in Visual Studio 17.14.42** by `tools\vs\vsix\test.ps1`, in the experimental instance on
-  copies of the projects, opened as folders (2026-11-02):
-  - tests\lsp\cells, from `println(shared())` in src\game\main.kpp: go to definition reaches
-    src\common\shared.kpp:1 in 12.0 s (the server's first check included), go to declaration the
-    same in 0.5 s. A typed error is in the Error List after 1.2 s and gone 2.4 s after undo.
-  - factorio-in-kpp e4cfd9ba, from `super::setSize` in VideoBitmapDX11.kpp:77: go to definition
-    reaches VideoBitmap.kpp:134 (the out-of-line body) in 40.5 s, the server's first check taking
-    32.0 s of it; go to declaration reaches VideoBitmap.kpp:20 (the declaration in the class) in
-    0.6 s. A typed error is in the Error List after 16.7 s and gone 35.4 s after undo (checks of
-    15.5 and 22.6 s).
-  - tests\lsp\cells as the solution `kpp --generate-visual-studio-files` writes: the server starts
-    in the cell *game, debug*; go to definition in 5.3 s, go to declaration in 0.6 s. The
-    configuration Release shows the game's static_assert error after 2.7 s. The startup project
-    tool clears it after 2.4 s, and game in Debug is clean after 1.3 s.
-  - factorio-in-kpp as its generated solution (2 projects, 9339 files): the server starts in
-    *factorio, debug*. Go to definition takes 33.3 s with the first check (22.9 s, beside
-    Visual Studio loading the solution), go to declaration 0.6 s. A typed error is in the Error
-    List after 3.9 s and gone 3.7 s after undo (checks of 0.8 and 1.0 s).
+  copies of the projects (2026-11-03). Quick Info's popup and the completion list are read through
+  UI Automation.
+  - tests\lsp\cells as the solution `kpp --generate-visual-studio-files` writes, 10 of 10: the
+    server starts in the cell *game, debug*. Go to definition reaches src\common\shared.kpp:1 in
+    16.6 s (Visual Studio loading included) and go to declaration in 1.6 s. Quick Info on
+    `config::sound::volume` gives `7 in the cell game, debug, set by use("sound") in build.kpp;
+    default 5, int` and the description in 1.2 s. Completion after `sha` lists 13 items,
+    `shared` first, in 1.7 s. A typed error is in the Error List after 2.4 s and gone 1.1 s after
+    undo. The configuration Release shows the game's static_assert error after 3.7 s, the startup
+    project tool clears it after 3.2 s, and game in Debug is clean after 1.3 s.
+  - The same project opened as a folder, 6 of 6: the cell is *every target, debug*.
   - In a folder, the server checks every target at once (no cell is chosen), which on the game
-    is factorio and factorio-test together: 32 s for the first check where VS Code's `factorio`
-    takes 15 s.
+    is factorio and factorio-test together: 32 s for the first check where `factorio` alone takes
+    15 to 20 s.
+- **Visual Studio and VS Code on the game:** factorio-in-kpp 3765db6f, the cell *factorio, debug*,
+  one after the other on the same kppc. Visual Studio opened the generated solution (9,374
+  files), VS Code the folder with `kpp.target` factorio. Every check passes in both. Times from
+  the action to the answer, with the server's check in brackets:
+
+  | | VS Code | Visual Studio |
+  |---|---|---|
+  | first check | 19.3 s (19.4 s) | 18.0 s; definition answered after 29.6 s, while the solution loads |
+  | go to definition, `SystemUtil::preventSleep` (SystemUtil.kpp:680) | 4 ms | in the 29.6 s |
+  | go to declaration, `super::setSize` (VideoBitmap.kpp:18) | - | 1.7 s |
+  | hover, `config::debug` | correct | 1.0 s |
+  | completion after `SystemUtil::` (43 items) | 20.1 s (19.5 s) | 13.2 s (9.5 s) |
+  | a typed error shown | 14.3 s (11.1 s) | 11.5 s (7.5 s) |
+  | gone after undo | 1.8 s (1.5 s) | 4.6 s (1.4 s) |
+
+  The editors add little; the server's check of an edit that adds an error is most of each step.
+  It took 7.5 to 19.5 s here, where a day earlier it took 0.6 s and the check after it 11 s.
+  Visual Studio's Error List takes about 3 s more than VS Code to clear an error.
 - **The cell** (see "Cells") is the solution's. In a solution kppc generated (one project per
   target, named after it), the startup project is the target and the active configuration is the
   configuration. The server starts in that cell (initializationOptions). Picking another

@@ -125,18 +125,32 @@ internal sealed class GoToDeclaration : IOleCommandTarget
 
         int toLine = (int)start["line"]!;
         int toColumn = (int)start["character"]!;
+        string file = PathOf(uri);
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        VsShellUtilities.OpenDocument(ServiceProvider.GlobalProvider, new Uri(uri).LocalPath, Guid.Empty, out _, out _, out IVsWindowFrame frame, out IVsTextView targetView);
-        frame?.Show();
-        if (targetView is null)
+        try
         {
-            await StatusAsync($"kpp: Go To Declaration: {uri} did not open in a text editor.");
-            return;
-        }
+            VsShellUtilities.OpenDocument(ServiceProvider.GlobalProvider, file, Guid.Empty, out _, out _, out IVsWindowFrame frame, out IVsTextView targetView);
+            frame?.Show();
+            if (targetView is null)
+            {
+                await StatusAsync($"kpp: Go To Declaration: {file} did not open in a text editor.");
+                return;
+            }
 
-        targetView.SetCaretPos(toLine, toColumn);
-        targetView.CenterLines(toLine, 1);
+            targetView.SetCaretPos(toLine, toColumn);
+            targetView.CenterLines(toLine, 1);
+        }
+        catch (Exception e)
+        {
+            await StatusAsync($"kpp: Go To Declaration could not open {file}: {e.Message}");
+        }
     }
+
+    /// <summary>
+    /// A file URI's path. The server escapes the drive's colon (file:///c%3A/...), which .NET
+    /// Framework's Uri.LocalPath leaves as /c:/...: it is unescaped first.
+    /// </summary>
+    internal static string PathOf(string uri) => new Uri(Uri.UnescapeDataString(uri)).LocalPath;
 
     internal static async System.Threading.Tasks.Task StatusAsync(string text)
     {

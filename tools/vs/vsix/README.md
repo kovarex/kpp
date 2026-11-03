@@ -32,6 +32,8 @@ declaration. Installing it therefore needs a restart of Visual Studio.
   the solution kppc generates. It checks through DTE and UI Automation:
   - where Edit.GoToDefinition and Edit.GoToDeclaration land;
   - that a typed error reaches the Error List, and leaves it after undo;
+  - with `-HoverAt` and `-CompleteAt`, Quick Info's text and the completion list's items, read from
+    their popups through UI Automation;
   - with `-CellError`, that the active configuration and the startup project switch the cell.
 
   It ends with a screenshot of the window (usage in its header). The first start of the
