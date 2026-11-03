@@ -8,6 +8,9 @@
 # -HoverAt FILE:LINE:COLUMN with -HoverText TEXT: Edit.QuickInfo there must show TEXT (the Quick Info
 # popup read through UI Automation). -CompleteAt FILE:LINE with -CompleteText TEXT and -CompleteExpect
 # NAME: TEXT typed in as a line of its own there, Edit.ListMembers at its end must list NAME.
+# -InactiveFile FILE with -InactiveDebug LINES: the extension's log must give FILE's inactive regions
+# (docs/editors.md, "Inactive code") as LINES ("8-10 25-26"); with -Solution and -InactiveRelease, in
+# Release too. Each is shot (NAME-inactive-*.png), where the faded code shows.
 # -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
@@ -33,7 +36,10 @@ param(
   [string]$HoverText,
   [string]$CompleteAt,
   [string]$CompleteText,
-  [string]$CompleteExpect
+  [string]$CompleteExpect,
+  [string]$InactiveFile,
+  [string]$InactiveDebug,
+  [string]$InactiveRelease
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
@@ -66,7 +72,7 @@ if ($open) { throw "test.ps1: an experimental Visual Studio is still open on $Wo
 # A copy: the checks write build\ into the project.
 $copy = "$Work\$Name"
 if (Test-Path $copy) { cmd /c "rd /s /q `"$copy`"" }
-robocopy $Project $copy /E /XD .git build bin .vs /NFL /NDL /NJH /NJS /NP /MT:16 | Out-Null
+robocopy $Project $copy /E /XD .git build bin .vs /XJ /NFL /NDL /NJH /NJS /NP /MT:16 | Out-Null
 $open = $copy
 if ($Solution)
 {
@@ -147,7 +153,7 @@ public static class SnapAll {
 }
 '@
 $shots = 0
-function Snap($why) { if ($script:shots++ -lt 3) { [SnapAll]::Save([uint32]$devenv.Id, "$Work\$Name-$why") | % { "screenshot: $_" } } }
+function Snap($why) { if ($script:shots++ -lt 8) { [SnapAll]::Save([uint32]$devenv.Id, "$Work\$Name-$why") | % { "screenshot: $_" } } }
 
 # The server the extension starts: this checkout's kppc (KPP_LSP_SERVER, read by the extension).
 $env:KPP_LSP_SERVER = $Kppc
@@ -320,6 +326,41 @@ try
   $t = [Diagnostics.Stopwatch]::StartNew()
   while ((ErrorRow) -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 500 }
   Check 'the error gone after undo' (-not (ErrorRow)) ("{0:N1} s" -f $t.Elapsed.TotalSeconds)
+
+  # Inactive code: the regions the extension was sent for the file, as its log gives them.
+  if ($InactiveFile)
+  {
+    $leaf = Split-Path $InactiveFile -Leaf
+    function InactiveNow
+    {
+      $now = $null
+      foreach ($l in (Get-Content "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log" -ErrorAction SilentlyContinue))
+      {
+          if ($l -match "^kpp: inactive regions in .*\\$([regex]::Escape($leaf)): ?(.*)$") { $now = $Matches[1] }
+      }
+      $now
+    }
+    function WaitInactive($what, $expected)
+    {
+      $t = [Diagnostics.Stopwatch]::StartNew()
+      while ((InactiveNow) -ne $expected -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 300 }
+      Check $what ((InactiveNow) -eq $expected) ("'{0}', expected '{1}'; {2:N1} s" -f (InactiveNow), $expected, $t.Elapsed.TotalSeconds)
+    }
+    $p = Position "${InactiveFile}:1:1"
+    Open $p.File 1 1
+    WaitInactive "inactive code in $InactiveFile (debug)" $InactiveDebug
+    Start-Sleep -Seconds 2
+    Snap 'inactive-debug'
+    if ($Solution -and $InactiveRelease)
+    {
+      $dte.Solution.SolutionBuild.SolutionConfigurations.Item('Release').Activate()
+      WaitInactive "inactive code in $InactiveFile (Release)" $InactiveRelease
+      Start-Sleep -Seconds 2
+      Snap 'inactive-release'
+      $dte.Solution.SolutionBuild.SolutionConfigurations.Item('Debug').Activate()
+      WaitInactive "inactive code in $InactiveFile (Debug again)" $InactiveDebug
+    }
+  }
 
   # The cells: the active configuration and the startup project pick the server's cell.
   if ($Solution -and $CellError)

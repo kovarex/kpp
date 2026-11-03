@@ -74,6 +74,27 @@ Status (2026-11-03):
   - completion, triggered by `.`, `>` and `:`;
   - rename, with prepareRename.
 - **Positions** are UTF-16 columns, the protocol's default.
+- **Inactive code** (kovarex, 2026-11-03): the code the checked cell does not build is sent as
+  clangd's notification `textDocument/inactiveRegions` (`{textDocument: {uri}, regions: Range[]}`),
+  for each open document after each check, whenever its regions change, to a client that names
+  `textDocument.inactiveRegionsCapabilities.inactiveRegions` or passes `inactiveRegions: true` in
+  initializationOptions. The regions are:
+  - an `if constexpr` branch the walk discarded in a function body, the braces included, from its
+    first token to its `}` or `;` (the `if constexpr (...)` and `else` stay);
+  - a declaration-scope `if constexpr` branch the parser skipped and a false `when` at namespace or
+    class scope, the `when (...)` included: the parser keeps their tokens (ParsedFile::droppedTokens);
+  - a local's false `when`.
+  A template's own body is decided per instance, so none of it is inactive. Discarded code is not
+  name-checked, so it has no diagnostics, and hover in it answers nothing. A switch of cell checks
+  again and sends the new regions.
+  Measured on factorio-in-kpp c9cda971 (target factorio, debug, 8 game files open, an edit of
+  Main.kpp per round, the capability on and off alternately, 5 rounds each):
+  - computing the regions takes 11.4 to 17.0 ms per check, after the diagnostics are sent;
+  - checks took 0.43 to 0.66 s off and 0.50 to 1.28 s on;
+  - a hover after a check took 430 to 671 ms off and 485 to 1293 ms on.
+
+  Checked by tests\lsp\inactive (the transcript inactive), and in both editors: `inactive.js` and
+  `test.ps1 -InactiveFile`.
 - **Checked by** `tools\vscode\test\lsp-smoke.js`: `node lsp-smoke.js kppc.exe --lsp`. It
   initializes, expects these capabilities, expects an error for an undeclared name and expects
   it gone after the fix, then asks a hover. It needs only Node.js.
@@ -87,7 +108,10 @@ The extension is in `tools/vscode`; its README covers the details.
 - **What it adds:** colouring, from the same TextMate grammar Visual Studio uses, and a language
   client that starts `kpp --lsp` for the open folder.
 - **Settings:** `kpp.path`, `kpp.configuration`, `kpp.target` (`kpp.executable`, its old name, is
-  still read), `kpp.settings` and `kpp.trace.server`.
+  still read), `kpp.settings`, `kpp.inactiveCodeOpacity` and `kpp.trace.server`.
+- **Inactive code** is drawn faded (`kpp.inactiveCodeOpacity`, 0.55; 1 draws it as the rest).
+  `inactive.js` checks it on tests\lsp\inactive: the regions in debug, then after a switch to
+  release (0.4 to 1.0 s).
 - **The cell:** the status bar shows the target and configuration the code is checked in; a click
   (or *kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
   workspace's `kpp.target` and `kpp.configuration`.
@@ -124,6 +148,11 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   client (`ILanguageClient`, Microsoft.VisualStudio.LanguageServer.Client) allows it through
   `ILanguageClientCustomMessage2`. VisualStudio.Extensibility's out-of-process
   `LanguageServerProvider` does not, so the first build, which used it, had no go to declaration.
+- **Inactive code** is drawn faded: a classification of its own, *kpp Inactive Code* (Tools >
+  Options > Fonts and Colors), at 55% opacity. Visual Studio's client cannot add clangd's capability,
+  so the extension asks for the regions in initializationOptions. `test.ps1 -InactiveFile` checks
+  them on tests\lsp\inactive as its generated solution: the regions the extension received in Debug,
+  in Release (0.3 s after the switch) and in Debug again, with screenshots.
 - **Hover is plain text in Visual Studio.** Its client names hover's `contentFormat` as plain text
   alone. Given markdown, it showed only the code block (`const int volume`, without the value,
   the cell or the description). The server sends markdown only to a client that names it, so

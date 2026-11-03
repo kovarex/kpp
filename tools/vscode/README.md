@@ -29,6 +29,8 @@ The status bar shows the target and configuration the code is checked in; clicki
 program of each one it checked, so switching back is quick.
 - `kpp.settings`: build.kpp's settings, as `kpp --set NAME=VALUE` gives them:
   `{ "PREBUILT": "D:/Factorio/vs2022/Releasex64" }`.
+- `kpp.inactiveCodeOpacity`: how faded the code the selected target and configuration do not
+  build is drawn, an `if constexpr` branch not taken or a false `when` (0.55; 1: as the rest).
 - `kpp.trace.server`: `messages` or `verbose` logs the protocol in the *kpp* output.
 
 ## Commands

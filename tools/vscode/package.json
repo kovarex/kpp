@@ -52,6 +52,13 @@
           "default": {},
           "markdownDescription": "Settings for build.kpp, as `kpp --set NAME=VALUE` gives them."
         },
+        "kpp.inactiveCodeOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.55,
+          "markdownDescription": "How opaque the code the selected target and configuration do not build is drawn: an `if constexpr` branch not taken, a false `when` declaration. 1: as the rest."
+        },
         "kpp.trace.server": {
           "type": "string",
           "enum": ["off", "messages", "verbose"],

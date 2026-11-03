@@ -20,6 +20,36 @@ function options()
   };
 }
 
+// The code the checked cell does not build (textDocument/inactiveRegions), by document URI, drawn
+// faded in every editor that shows the document.
+const inactive = new Map();
+let inactiveDecoration;
+
+function inactiveStyle()
+{
+  if (inactiveDecoration)
+    inactiveDecoration.dispose();
+  const opacity = vscode.workspace.getConfiguration('kpp').get('inactiveCodeOpacity', 0.55);
+  inactiveDecoration = vscode.window.createTextEditorDecorationType({ opacity: String(opacity), rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed });
+  for (const editor of vscode.window.visibleTextEditors)
+    drawInactive(editor);
+}
+
+function drawInactive(editor)
+{
+  if (inactiveDecoration)
+    editor.setDecorations(inactiveDecoration, inactive.get(editor.document.uri.toString()) || []);
+}
+
+function showInactiveRegions(params)
+{
+  const uri = vscode.Uri.parse(params.textDocument.uri).toString();
+  inactive.set(uri, params.regions.map((r) => new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character)));
+  for (const editor of vscode.window.visibleTextEditors)
+    if (editor.document.uri.toString() === uri)
+      drawInactive(editor);
+}
+
 function showCell(cell)
 {
   status.text = `$(gear) ${cell.target || 'every target'} | ${cell.configuration}`;
@@ -89,6 +119,18 @@ async function start(context)
       fileEvents: vscode.workspace.createFileSystemWatcher('**/*.kpp')
     }
   });
+  // Inactive code (docs/editors.md, "Inactive code"): clangd's capability and notification.
+  client.registerFeature({
+    fillClientCapabilities(capabilities)
+    {
+      capabilities.textDocument = capabilities.textDocument || {};
+      capabilities.textDocument.inactiveRegionsCapabilities = { inactiveRegions: true };
+    },
+    initialize() {},
+    getState() { return { kind: 'static' }; },
+    clear() {}
+  });
+  client.onNotification('textDocument/inactiveRegions', showInactiveRegions);
   try
   {
     await client.start();
@@ -120,6 +162,11 @@ async function activate(context)
 {
   output = vscode.window.createOutputChannel('kpp');
   context.subscriptions.push(output);
+  inactiveStyle();
+  context.subscriptions.push({ dispose: () => inactiveDecoration && inactiveDecoration.dispose() });
+  context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors((editors) => editors.forEach(drawInactive)));
+  // (for tests: a document's inactive ranges as the server last sent them)
+  context.subscriptions.push(vscode.commands.registerCommand('kpp.inactiveRanges', (uri) => inactive.get(vscode.Uri.parse(String(uri)).toString()) || []));
   context.subscriptions.push(vscode.commands.registerCommand('kpp.restartServer', async () =>
   {
     await stop();
@@ -134,6 +181,8 @@ async function activate(context)
   // server as workspace/didChangeConfiguration (synchronize.configurationSection).
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async (event) =>
   {
+    if (event.affectsConfiguration('kpp.inactiveCodeOpacity'))
+      inactiveStyle();
     if (event.affectsConfiguration('kpp.path'))
     {
       await stop();

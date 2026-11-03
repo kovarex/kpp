@@ -56,14 +56,38 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
     /// </summary>
     public static JsonRpc? Rpc { get; private set; }
 
+    private static StreamWriter? logWriter;
+
+    /// <summary>
+    /// A line of the extension's own in the server's log (LogPath).
+    /// </summary>
+    public static void Log(string line)
+    {
+        if (logWriter is StreamWriter log)
+        {
+            lock (log)
+                log.WriteLine(line);
+        }
+    }
+
     public string Name => "kpp";
 
     public IEnumerable<string>? ConfigurationSections => null;
 
     /// <summary>
-    /// The cell the solution is in (<see cref="Cell"/>): the server checks it from the start.
+    /// The cell the solution is in (<see cref="Cell"/>): the server checks it from the start. And
+    /// inactiveRegions: this client cannot add clangd's capability, so it asks for the notification
+    /// (<see cref="InactiveCode"/>) here.
     /// </summary>
-    public object? InitializationOptions => this.cell;
+    public object? InitializationOptions
+    {
+        get
+        {
+            var options = this.cell is null ? new JObject() : (JObject)this.cell.DeepClone();
+            options["inactiveRegions"] = true;
+            return options;
+        }
+    }
 
     public IEnumerable<string>? FilesToWatch => null;
 
@@ -71,7 +95,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
 
     public object? MiddleLayer => null;
 
-    public object? CustomMessageTarget => null;
+    public object? CustomMessageTarget { get; } = new ServerNotifications();
 
     public event AsyncEventHandler<EventArgs>? StartAsync;
 
@@ -104,6 +128,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
 
         Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
         var log = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+        logWriter = log;
         await log.WriteLineAsync($"kpp: {server} --lsp");
         var info = new ProcessStartInfo
         {
