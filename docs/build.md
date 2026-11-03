@@ -901,6 +901,9 @@ design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
     `fetch-depth: 0` in CI.
 - **`kpp --version`** prints `kpp 0.2.5, commit <hash>`, then the compiler, the toolchain and the
   standard library.
+- **The objects** of a `--debug-info` build name their compiler `kppc 0.2.5` (CodeView's S_COMPILE3,
+  DWARF's DW_AT_producer): the version without the commit and "+dirty", so one version's objects are
+  the same (kovarex, 2026-11-03). LF_BUILDINFO stays empty.
 - **A release** is named by it, always. `tools\release\package.cmd` reads it from the kppc it
   packages (`kppc --version`), and it names the files, the README, the installer and the VS Code
   extension. Nothing takes a version by hand (kovarex: "take the version from the versioning system

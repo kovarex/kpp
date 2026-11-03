@@ -556,10 +556,16 @@ namespace
                                              "!2 = !DISubroutineType(types: !{})\n"
                                              "!3 = !{i32 2, !\"CodeView\", i32 1}\n"
                                              "!4 = !{i32 2, !\"Debug Info Version\", i32 3}\n";
-  // The tail for a target: DWARF instead of CodeView off Windows.
+  // The tail for a target: DWARF instead of CodeView off Windows. The producer (CodeView's S_COMPILE3,
+  // DWARF's DW_AT_producer) is kppc with kpp's release version, without the commit and "+dirty": the
+  // objects of one version are the same (docs/build.md, "Versions").
   static std::string debugModuleTailFor(const Target& target)
   {
     std::string tail = debugModuleTail;
+    std::string version = kppVersion();
+    version.erase(std::min(version.find('+'), version.size()));
+    const std::string producer = "producer: \"kppc\"";
+    tail.replace(tail.find(producer), producer.size(), "producer: \"kppc " + version + "\"");
     if (!target.windows())
     {
       const std::string codeView = "!3 = !{i32 2, !\"CodeView\", i32 1}";

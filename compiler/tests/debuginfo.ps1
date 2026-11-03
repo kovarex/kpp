@@ -1,6 +1,7 @@
 # --debug-info (docs/debugging.md): builds debuginfo\lines.kpp with line tables, runs it, and compares
 # the lines of each of its functions in the PDB (llvm-pdbutil from Visual Studio's LLVM, in address
-# order) with debuginfo\lines.expected, one function per row, the rows sorted. run_tests.cmd runs it.
+# order) with debuginfo\lines.expected, one function per row, the rows sorted; and the compiler its
+# objects name, kppc and kpp's version. run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\debuginfo'
@@ -29,4 +30,16 @@ if ($d)
   $actual | ForEach-Object { "  $_" }
   exit 1
 }
+# Each of the program's objects names its compiler (S_COMPILE3): kppc and the version `kppc --version`
+# gives, without "+dirty" (docs/build.md, "Versions").
+$version = if ((& $Kppc --version | Select-Object -First 1) -match '^kpp ([^,+]+)') { $Matches[1] } else { 'unknown' }
+$compilers = @()
+$inProgram = $false
+foreach ($line in (& $pdbutil dump -symbols (Join-Path $work 'lines.pdb')))
+{
+  if ($line -match '^\s*Mod \d+ \| `(.*)`') { $inProgram = $Matches[1] -match 'lines\.exe\.\d+\.o$' }
+  elseif ($inProgram -and $line -match 'Ver = ([^,]*), language') { $compilers += $Matches[1] }
+}
+$others = @($compilers | Where-Object { $_ -ne "kppc $version" })
+if ($compilers.Count -eq 0 -or $others.Count -gt 0) { "FAIL debug info: the objects name their compiler '$(@($compilers | Sort-Object -Unique) -join "', '")', not 'kppc $version'"; exit 1 }
 "ok   debug info"
