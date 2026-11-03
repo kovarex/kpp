@@ -2945,6 +2945,18 @@ kpp.net's deploy). Taken by the registry thread, B reviewing B's files.
   wchar give 5365 declarations and 21 parse errors (ignored, as glibc's 20). FreeBSD's values come
   through, not Linux's: EAGAIN 35, AF_INET6 28, SOL_SOCKET 0xffff, SO_REUSEADDR 4, O_NONBLOCK 4,
   `sizeof(sockaddr_in6)` 28, `sizeof(pthread_mutex_t)` 8.
+  The 21 are not harmless:
+  - Five constructs give them: `_Nullable` and `_Nonnull` (struct __sFILE's function pointers,
+    `sigset`, `sigwait`), `_Noreturn` (`abort`, `exit`, `_Exit`), `restrict` in a parameter
+    (`pthread_mutex_init`, `pthread_rwlock_init` and others), `__attribute__((__aligned__(16)))`
+    after a member (`mc_fpstate`, `sc_fpstate`), and `_Thread_local`. A dropped function or
+    variable is an error where it is used.
+  - A struct with such a member is laid out smaller than C's, silently: against clang, mcontext_t
+    is 288 bytes and 8-aligned instead of 800 and 16, ucontext_t 360 instead of 880, and struct
+    sigcontext 304 instead of 816. The same constructs do it on Windows: pending spec
+    interop/c_struct_member_attributes. glibc's mcontext_t and ucontext_t match C.
+  - FILE is the standard library's own opaque `_iobuf` (8 bytes) on every target, not the C
+    library's struct (312 bytes on FreeBSD, 216 with glibc).
 - **Found on the way:** an `extern "C"` variable declared in a scoped library had the library's
   scope in its name (http's `environ` linked as `http::environ`, on every target). A variable of C
   linkage now has C's name (kpp/extern_c_variable_in_library).
