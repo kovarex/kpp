@@ -1006,8 +1006,15 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
     DisconnectNamedPipe(pipe);
     lastActivity = nowSeconds();
     busy = false;
+    // Stopped: it ends at once, its pipe with it. Returning freed the kept program first, minutes
+    // for the game's, while the pipe kept its name: the next build of the key found no server to
+    // start (the pipe is the first instance's) and waited for this one to end (2026-11-03).
     if (!goOn)
-      return 0;
+    {
+      logLine("exiting");
+      CloseHandle(pipe);
+      ExitProcess(0);
+    }
   }
 }
 
@@ -1023,10 +1030,18 @@ namespace
     std::string request = requestHeader(stopRequest);
     writeAll(pipe, request.data(), request.size());
     // Its process id, then the exit code: read up to the exit code, so that the server's last write
-    // finds the client still there.
+    // finds the client still there. Then it waits for the process to end: stopped means gone, and a
+    // build right after starts a server of its own.
+    DWORD server = 0;
     for (char frame[9]; readAll(pipe, frame, 9) && frame[0] != char(exitFrame);)
-      ;
+      if (frame[0] == char(processFrame))
+        memcpy(&server, frame + 5, 4);
     CloseHandle(pipe);
+    if (HANDLE process = server ? OpenProcess(SYNCHRONIZE, FALSE, server) : nullptr)
+    {
+      WaitForSingleObject(process, 60000);
+      CloseHandle(process);
+    }
     return true;
   }
 }
