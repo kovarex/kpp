@@ -381,16 +381,24 @@ void build(Project& project)
   project.measure("hello").edit("Edit of one function", "src/main.kpp", "Hello from kpp", "Hello again from kpp");
 }
 '@
-  git init -q 2>&1 | Out-Null
-  git add -A 2>&1 | Out-Null
-  git -c user.name=test -c user.email=test@test commit -q -m measure 2>&1 | Out-Null
+  # git's warnings on stderr (CI's core.autocrlf=true: "LF will be replaced by CRLF") are no errors:
+  # under ErrorActionPreference Stop, Windows PowerShell made them terminating (CI red, 2026-11-03).
+  # Its exit codes are checked instead, and the test's repository keeps its files' line ends.
+  $ErrorActionPreference = 'Continue'
+  $gitOutput = @(git init -q 2>&1; git config core.autocrlf false 2>&1; git add -A 2>&1;
+                 git -c user.name=test -c user.email=test@test commit -q -m measure 2>&1) | ForEach-Object { "$_" }
+  $gitCode = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($gitCode -ne 0) { Fail "git for kpp measure's repository: exit $gitCode`n$($gitOutput -join "`n")" }
   $output = (Kpp @('measure', '--rounds', '1')) -join "`n"
   foreach ($row in '\| Edit of one function \| [\d.]+ s \|', '\| Edit of one function, undone \| [\d.]+ s \|', '\| Clean build of hello, libraries already built \| [\d.]+ s \|',
                    '\| Whole build of hello\.exe, every library included \| [\d.]+ s \|', '\| Whole build of again\.exe, every library included \| [\d.]+ s \|')
   {
     if ($code -ne 0 -or $output -notmatch $row) { Fail "kpp measure: exit $code, no row $row`n$output"; break }
   }
-  $status = git status --porcelain --untracked-files=no
+  $ErrorActionPreference = 'Continue'
+  $status = git status --porcelain --untracked-files=no 2>$null
+  $ErrorActionPreference = 'Stop'
   if ($status) { Fail "kpp measure left changes: $status" }
   Add-Content 'src\main.kpp' '// a change of its own'
   $before = Get-Content -Raw 'src\main.kpp'
