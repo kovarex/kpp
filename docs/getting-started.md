@@ -66,7 +66,8 @@ It times, in 3 rounds, each row of the readme's table: an edit of one function a
 inline function used across the game (each made, built, put back and built, through the compile
 server), the clean build of the game (the server stopped, the C and C++ libraries kept), and the whole
 builds of factorio.exe and factorio-test.exe (the libraries too). It prints kpp's version, the
-machine and how busy it was before each round, and ends with the table, ready to paste. The files it
+machine and how busy it was before each round, each build's time, and ends with the table, ready to
+paste: each row the average of its rounds. The files it
 edits are put back after every build, also on Ctrl+C, and it starts only when they have no changes
 of their own. `kpp measure --compare D:\Factorio` adds Factorio's own C++ build (FASTBuild) in that
 checkout as a second column; `--rounds N` sets the rounds. What it edits and compares is in the

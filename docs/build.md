@@ -662,14 +662,16 @@ m.compare("whole factorio", "..."); // an executable's whole build's
   includes it is built again, its contents unchanged); a second column.
 - **Printed**: kpp's version and commit, the machine (processor, cores, threads, memory), the
   project's commit, the files it edits and how, how busy the machine was in the second before each
-  round, each build's time as it goes, and at the end the table: each row's fastest to slowest round.
+  round, each build's time as it goes, and at the end the table: each row's average over the rounds,
+  one decimal ("average of N rounds" in its heading; kovarex, 2026-11-03: no range, an average), the
+  --compare column the same; each round's own time is in the lines above it.
   Each build's own output goes to `build\measure.txt`.
 - **Safe for the checkout**: it starts only when each file it edits holds its text exactly once and
   has no changes of its own (`git status`: it needs git); it puts the files back after each build, at
   the end, on an error, and on Ctrl+C or Ctrl+Break (the console's handler). It never edits the
   compared checkout, only sets the time of the files `compare` names.
-- Checked by tests\project.ps1 (a `kpp new` project measured in one round: its rows, the file as
-  committed after; a changed file refused, nothing built). Ctrl+Break during a round's edit put the
+- Checked by tests\project.ps1 (a `kpp new` project measured in two rounds: its rows, each the
+  average of its rounds' times, the file as committed after; a changed file refused, nothing built). Ctrl+Break during a round's edit put the
   file back (by hand, 2026-11-03).
 
 ## Project files for an IDE

@@ -1908,29 +1908,32 @@ namespace
     }
     stopAll();
 
-    // The table, to paste into the readme: each row's fastest and slowest round.
-    auto span = [](std::vector<double> values) -> std::string
+    // The table, to paste into the readme: each row's average over the rounds (kovarex, 2026-11-03:
+    // "Don't put the range, just make an average"); each round's time is in the lines above.
+    auto average = [](const std::vector<double>& values) -> std::string
     {
       if (values.empty())
         return "";
-      std::sort(values.begin(), values.end());
+      double sum = 0;
+      for (double v : values)
+        sum += v;
       char text[64];
-      snprintf(text, sizeof text, values.size() == 1 ? "%.1f s" : "%.1f to %.1f s", values.front(), values.back());
+      snprintf(text, sizeof text, "%.1f s", sum / double(values.size()));
       return text;
     };
     std::string loadText;
     for (int load : loads)
       loadText += (loadText.empty() ? "" : ", ") + std::to_string(load) + "%";
-    printf("\n%s (%s), %s; %s %s, %d round%s, the machine %s busy before each; wall time from start to exit, fastest to slowest\n\n",
-           version.c_str(), std::string(kppCommit()).substr(0, 8).c_str(), machine().c_str(), target.c_str(), configuration.c_str(), rounds,
-           rounds == 1 ? "" : "s", loadText.c_str());
+    printf("\n%s (%s), %s; %s %s, the machine %s busy before each round; wall time from start to exit, average of %d round%s\n\n",
+           version.c_str(), std::string(kppCommit()).substr(0, 8).c_str(), machine().c_str(), target.c_str(), configuration.c_str(),
+           loadText.c_str(), rounds, rounds == 1 ? "" : "s");
     bool compared = !compareDirectory.empty();
     printf(compared ? "| | %s | compared |\n|---|---:|---:|\n" : "| | %s |\n|---|---:|\n", version.c_str());
     for (const Row& row : rows)
       if (compared)
-        printf("| %s | %s | %s |\n", row.name.c_str(), span(row.kpp).c_str(), span(row.other).c_str());
+        printf("| %s | %s | %s |\n", row.name.c_str(), average(row.kpp).c_str(), average(row.other).c_str());
       else
-        printf("| %s | %s |\n", row.name.c_str(), span(row.kpp).c_str());
+        printf("| %s | %s |\n", row.name.c_str(), average(row.kpp).c_str());
     return 0;
   }
 

@@ -365,8 +365,8 @@ if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(
     $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own') { Fail "an installation's kpp --version:`n$output" }
 
 # kpp measure (docs/build.md, "kpp measure"): build.kpp's edit made, built, put back and built, the
-# clean build and each executable's whole build, in one round; the table's rows; the file as
-# committed afterwards. Then a file with changes of its own: refused, nothing built or changed.
+# clean build and each executable's whole build, in two rounds; the table's rows, each the average
+# of its rounds; the file as committed afterwards. Then a file with changes of its own: refused, nothing built or changed.
 $measure = Join-Path $work 'measure'
 New-Item -ItemType Directory -Force $measure | Out-Null
 Push-Location $measure
@@ -390,11 +390,18 @@ void build(Project& project)
   $gitCode = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   if ($gitCode -ne 0) { Fail "git for kpp measure's repository: exit $gitCode`n$($gitOutput -join "`n")" }
-  $output = (Kpp @('measure', '--rounds', '1')) -join "`n"
-  foreach ($row in '\| Edit of one function \| [\d.]+ s \|', '\| Edit of one function, undone \| [\d.]+ s \|', '\| Clean build of hello, libraries already built \| [\d.]+ s \|',
-                   '\| Whole build of hello\.exe, every library included \| [\d.]+ s \|', '\| Whole build of again\.exe, every library included \| [\d.]+ s \|')
+  # Two rounds: each row of the table is the average of its rounds' times (the lines before it, two
+  # decimals: within 0.1 s), one decimal, and the heading says so.
+  $output = (Kpp @('measure', '--rounds', '2')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch 'average of 2 rounds') { Fail "kpp measure: exit $code, no `"average of 2 rounds`"`n$output" }
+  foreach ($row in 'Edit of one function', 'Edit of one function, undone', 'Clean build of hello, libraries already built',
+                   'Whole build of hello.exe, every library included', 'Whole build of again.exe, every library included')
   {
-    if ($code -ne 0 -or $output -notmatch $row) { Fail "kpp measure: exit $code, no row $row`n$output"; break }
+    $name = [regex]::Escape($row)
+    $rounds = @([regex]::Matches($output, "(?m)^  $name +([\d.]+) s$") | ForEach-Object { [double]$_.Groups[1].Value })
+    $table = [regex]::Match($output, "(?m)^\| $name \| (\d+\.\d) s \|$")
+    if ($rounds.Count -ne 2 -or -not $table.Success -or [math]::Abs([double]$table.Groups[1].Value - ($rounds[0] + $rounds[1]) / 2) -gt 0.1)
+    { Fail "kpp measure: the row `"$row`": rounds [$($rounds -join ', ')], table [$($table.Value)]`n$output"; break }
   }
   $ErrorActionPreference = 'Continue'
   $status = git status --porcelain --untracked-files=no 2>$null
