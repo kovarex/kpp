@@ -1,5 +1,6 @@
 /* zstd's differential harness (docs/path-to-factorio.md, "Converting the C libraries"): built once
    with the C library and once converted with it, it must print the same bytes. It runs:
+   - zstd.h's macros, the converted zstd's constants and functions (interface());
    - every file the list file names (one path per line): compressed at levels -5, 1, 3, 9 and 19,
      each frame printed as its length and checksum, decompressed and compared;
    - streaming: ZSTD_compressStream2 fed and drained in pieces of pseudo-random sizes, with
@@ -157,8 +158,84 @@ static void streaming(const unsigned char* source, size_t length, int level, int
   free(frame);
 }
 
+/* zstd.h's macros, which the converted zstd has as constants and functions of its scope (design.md
+   16): each constant's value, size and signedness, and ZSTD_COMPRESSBOUND on arguments of several
+   types, its result's size with them. */
+static void constant(const char* name, long long value, size_t size, int isSigned)
+{
+  printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
+}
+
+static void interface(void)
+{
+  constant("ZSTD_VERSION_MAJOR", (long long)ZSTD_VERSION_MAJOR, sizeof(ZSTD_VERSION_MAJOR), ZSTD_VERSION_MAJOR * 0 - 1 < 0);
+  constant("ZSTD_VERSION_MINOR", (long long)ZSTD_VERSION_MINOR, sizeof(ZSTD_VERSION_MINOR), ZSTD_VERSION_MINOR * 0 - 1 < 0);
+  constant("ZSTD_VERSION_RELEASE", (long long)ZSTD_VERSION_RELEASE, sizeof(ZSTD_VERSION_RELEASE), ZSTD_VERSION_RELEASE * 0 - 1 < 0);
+  constant("ZSTD_VERSION_NUMBER", (long long)ZSTD_VERSION_NUMBER, sizeof(ZSTD_VERSION_NUMBER), ZSTD_VERSION_NUMBER * 0 - 1 < 0);
+  constant("ZSTD_CLEVEL_DEFAULT", (long long)ZSTD_CLEVEL_DEFAULT, sizeof(ZSTD_CLEVEL_DEFAULT), ZSTD_CLEVEL_DEFAULT * 0 - 1 < 0);
+  constant("ZSTD_MAGICNUMBER", (long long)ZSTD_MAGICNUMBER, sizeof(ZSTD_MAGICNUMBER), ZSTD_MAGICNUMBER * 0 - 1 < 0);
+  constant("ZSTD_MAGIC_DICTIONARY", (long long)ZSTD_MAGIC_DICTIONARY, sizeof(ZSTD_MAGIC_DICTIONARY), ZSTD_MAGIC_DICTIONARY * 0 - 1 < 0);
+  constant("ZSTD_MAGIC_SKIPPABLE_START", (long long)ZSTD_MAGIC_SKIPPABLE_START, sizeof(ZSTD_MAGIC_SKIPPABLE_START), ZSTD_MAGIC_SKIPPABLE_START * 0 - 1 < 0);
+  constant("ZSTD_MAGIC_SKIPPABLE_MASK", (long long)ZSTD_MAGIC_SKIPPABLE_MASK, sizeof(ZSTD_MAGIC_SKIPPABLE_MASK), ZSTD_MAGIC_SKIPPABLE_MASK * 0 - 1 < 0);
+  constant("ZSTD_BLOCKSIZELOG_MAX", (long long)ZSTD_BLOCKSIZELOG_MAX, sizeof(ZSTD_BLOCKSIZELOG_MAX), ZSTD_BLOCKSIZELOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_BLOCKSIZE_MAX", (long long)ZSTD_BLOCKSIZE_MAX, sizeof(ZSTD_BLOCKSIZE_MAX), ZSTD_BLOCKSIZE_MAX * 0 - 1 < 0);
+  constant("ZSTD_CONTENTSIZE_UNKNOWN", (long long)ZSTD_CONTENTSIZE_UNKNOWN, sizeof(ZSTD_CONTENTSIZE_UNKNOWN), ZSTD_CONTENTSIZE_UNKNOWN * 0 - 1 < 0);
+  constant("ZSTD_CONTENTSIZE_ERROR", (long long)ZSTD_CONTENTSIZE_ERROR, sizeof(ZSTD_CONTENTSIZE_ERROR), ZSTD_CONTENTSIZE_ERROR * 0 - 1 < 0);
+  constant("ZSTD_FRAMEHEADERSIZE_PREFIX", (long long)ZSTD_FRAMEHEADERSIZE_PREFIX, sizeof(ZSTD_FRAMEHEADERSIZE_PREFIX), ZSTD_FRAMEHEADERSIZE_PREFIX * 0 - 1 < 0);
+  constant("ZSTD_FRAMEHEADERSIZE_MIN", (long long)ZSTD_FRAMEHEADERSIZE_MIN, sizeof(ZSTD_FRAMEHEADERSIZE_MIN), ZSTD_FRAMEHEADERSIZE_MIN * 0 - 1 < 0);
+  constant("ZSTD_FRAMEHEADERSIZE_MAX", (long long)ZSTD_FRAMEHEADERSIZE_MAX, sizeof(ZSTD_FRAMEHEADERSIZE_MAX), ZSTD_FRAMEHEADERSIZE_MAX * 0 - 1 < 0);
+  constant("ZSTD_SKIPPABLEHEADERSIZE", (long long)ZSTD_SKIPPABLEHEADERSIZE, sizeof(ZSTD_SKIPPABLEHEADERSIZE), ZSTD_SKIPPABLEHEADERSIZE * 0 - 1 < 0);
+  constant("ZSTD_WINDOWLOG_MAX_32", (long long)ZSTD_WINDOWLOG_MAX_32, sizeof(ZSTD_WINDOWLOG_MAX_32), ZSTD_WINDOWLOG_MAX_32 * 0 - 1 < 0);
+  constant("ZSTD_WINDOWLOG_MAX_64", (long long)ZSTD_WINDOWLOG_MAX_64, sizeof(ZSTD_WINDOWLOG_MAX_64), ZSTD_WINDOWLOG_MAX_64 * 0 - 1 < 0);
+  constant("ZSTD_WINDOWLOG_MAX", (long long)ZSTD_WINDOWLOG_MAX, sizeof(ZSTD_WINDOWLOG_MAX), ZSTD_WINDOWLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_WINDOWLOG_MIN", (long long)ZSTD_WINDOWLOG_MIN, sizeof(ZSTD_WINDOWLOG_MIN), ZSTD_WINDOWLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_HASHLOG_MAX", (long long)ZSTD_HASHLOG_MAX, sizeof(ZSTD_HASHLOG_MAX), ZSTD_HASHLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_HASHLOG_MIN", (long long)ZSTD_HASHLOG_MIN, sizeof(ZSTD_HASHLOG_MIN), ZSTD_HASHLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_CHAINLOG_MAX_32", (long long)ZSTD_CHAINLOG_MAX_32, sizeof(ZSTD_CHAINLOG_MAX_32), ZSTD_CHAINLOG_MAX_32 * 0 - 1 < 0);
+  constant("ZSTD_CHAINLOG_MAX_64", (long long)ZSTD_CHAINLOG_MAX_64, sizeof(ZSTD_CHAINLOG_MAX_64), ZSTD_CHAINLOG_MAX_64 * 0 - 1 < 0);
+  constant("ZSTD_CHAINLOG_MAX", (long long)ZSTD_CHAINLOG_MAX, sizeof(ZSTD_CHAINLOG_MAX), ZSTD_CHAINLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_CHAINLOG_MIN", (long long)ZSTD_CHAINLOG_MIN, sizeof(ZSTD_CHAINLOG_MIN), ZSTD_CHAINLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_SEARCHLOG_MAX", (long long)ZSTD_SEARCHLOG_MAX, sizeof(ZSTD_SEARCHLOG_MAX), ZSTD_SEARCHLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_SEARCHLOG_MIN", (long long)ZSTD_SEARCHLOG_MIN, sizeof(ZSTD_SEARCHLOG_MIN), ZSTD_SEARCHLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_MINMATCH_MAX", (long long)ZSTD_MINMATCH_MAX, sizeof(ZSTD_MINMATCH_MAX), ZSTD_MINMATCH_MAX * 0 - 1 < 0);
+  constant("ZSTD_MINMATCH_MIN", (long long)ZSTD_MINMATCH_MIN, sizeof(ZSTD_MINMATCH_MIN), ZSTD_MINMATCH_MIN * 0 - 1 < 0);
+  constant("ZSTD_TARGETLENGTH_MAX", (long long)ZSTD_TARGETLENGTH_MAX, sizeof(ZSTD_TARGETLENGTH_MAX), ZSTD_TARGETLENGTH_MAX * 0 - 1 < 0);
+  constant("ZSTD_TARGETLENGTH_MIN", (long long)ZSTD_TARGETLENGTH_MIN, sizeof(ZSTD_TARGETLENGTH_MIN), ZSTD_TARGETLENGTH_MIN * 0 - 1 < 0);
+  constant("ZSTD_STRATEGY_MIN", (long long)ZSTD_STRATEGY_MIN, sizeof(ZSTD_STRATEGY_MIN), ZSTD_STRATEGY_MIN * 0 - 1 < 0);
+  constant("ZSTD_STRATEGY_MAX", (long long)ZSTD_STRATEGY_MAX, sizeof(ZSTD_STRATEGY_MAX), ZSTD_STRATEGY_MAX * 0 - 1 < 0);
+  constant("ZSTD_OVERLAPLOG_MIN", (long long)ZSTD_OVERLAPLOG_MIN, sizeof(ZSTD_OVERLAPLOG_MIN), ZSTD_OVERLAPLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_OVERLAPLOG_MAX", (long long)ZSTD_OVERLAPLOG_MAX, sizeof(ZSTD_OVERLAPLOG_MAX), ZSTD_OVERLAPLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_WINDOWLOG_LIMIT_DEFAULT", (long long)ZSTD_WINDOWLOG_LIMIT_DEFAULT, sizeof(ZSTD_WINDOWLOG_LIMIT_DEFAULT), ZSTD_WINDOWLOG_LIMIT_DEFAULT * 0 - 1 < 0);
+  constant("ZSTD_LDM_HASHLOG_MIN", (long long)ZSTD_LDM_HASHLOG_MIN, sizeof(ZSTD_LDM_HASHLOG_MIN), ZSTD_LDM_HASHLOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_LDM_HASHLOG_MAX", (long long)ZSTD_LDM_HASHLOG_MAX, sizeof(ZSTD_LDM_HASHLOG_MAX), ZSTD_LDM_HASHLOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_LDM_MINMATCH_MIN", (long long)ZSTD_LDM_MINMATCH_MIN, sizeof(ZSTD_LDM_MINMATCH_MIN), ZSTD_LDM_MINMATCH_MIN * 0 - 1 < 0);
+  constant("ZSTD_LDM_MINMATCH_MAX", (long long)ZSTD_LDM_MINMATCH_MAX, sizeof(ZSTD_LDM_MINMATCH_MAX), ZSTD_LDM_MINMATCH_MAX * 0 - 1 < 0);
+  constant("ZSTD_LDM_BUCKETSIZELOG_MIN", (long long)ZSTD_LDM_BUCKETSIZELOG_MIN, sizeof(ZSTD_LDM_BUCKETSIZELOG_MIN), ZSTD_LDM_BUCKETSIZELOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_LDM_BUCKETSIZELOG_MAX", (long long)ZSTD_LDM_BUCKETSIZELOG_MAX, sizeof(ZSTD_LDM_BUCKETSIZELOG_MAX), ZSTD_LDM_BUCKETSIZELOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_LDM_HASHRATELOG_MIN", (long long)ZSTD_LDM_HASHRATELOG_MIN, sizeof(ZSTD_LDM_HASHRATELOG_MIN), ZSTD_LDM_HASHRATELOG_MIN * 0 - 1 < 0);
+  constant("ZSTD_LDM_HASHRATELOG_MAX", (long long)ZSTD_LDM_HASHRATELOG_MAX, sizeof(ZSTD_LDM_HASHRATELOG_MAX), ZSTD_LDM_HASHRATELOG_MAX * 0 - 1 < 0);
+  constant("ZSTD_HASHLOG3_MAX", (long long)ZSTD_HASHLOG3_MAX, sizeof(ZSTD_HASHLOG3_MAX), ZSTD_HASHLOG3_MAX * 0 - 1 < 0);
+  constant("ZSTD_c_rsyncable", (long long)ZSTD_c_rsyncable, sizeof(ZSTD_c_rsyncable), ZSTD_c_rsyncable * 0 - 1 < 0);
+  constant("ZSTD_c_format", (long long)ZSTD_c_format, sizeof(ZSTD_c_format), ZSTD_c_format * 0 - 1 < 0);
+  constant("ZSTD_c_forceMaxWindow", (long long)ZSTD_c_forceMaxWindow, sizeof(ZSTD_c_forceMaxWindow), ZSTD_c_forceMaxWindow * 0 - 1 < 0);
+  constant("ZSTD_c_forceAttachDict", (long long)ZSTD_c_forceAttachDict, sizeof(ZSTD_c_forceAttachDict), ZSTD_c_forceAttachDict * 0 - 1 < 0);
+  constant("ZSTD_c_literalCompressionMode", (long long)ZSTD_c_literalCompressionMode, sizeof(ZSTD_c_literalCompressionMode), ZSTD_c_literalCompressionMode * 0 - 1 < 0);
+  constant("ZSTD_d_format", (long long)ZSTD_d_format, sizeof(ZSTD_d_format), ZSTD_d_format * 0 - 1 < 0);
+  static const size_t sizes[] = {0, 1, 100, 131071, 131072, 131073, 1048576};
+  for (int k = 0; k < 7; ++k)
+    printf("ZSTD_COMPRESSBOUND(%lu) = %lu, ZSTD_compressBound %lu\n", (unsigned long)sizes[k], (unsigned long)ZSTD_COMPRESSBOUND(sizes[k]),
+           (unsigned long)ZSTD_compressBound(sizes[k]));
+  int small = 1000;
+  unsigned char byte = 200;
+  long long negative = -5;
+  printf("ZSTD_COMPRESSBOUND of an int %lld, %u bytes; of an unsigned char %lld, %u bytes; of a negative long long %lld, %u bytes\n",
+         (long long)ZSTD_COMPRESSBOUND(small), (unsigned)sizeof(ZSTD_COMPRESSBOUND(small)), (long long)ZSTD_COMPRESSBOUND(byte),
+         (unsigned)sizeof(ZSTD_COMPRESSBOUND(byte)), (long long)ZSTD_COMPRESSBOUND(negative), (unsigned)sizeof(ZSTD_COMPRESSBOUND(negative)));
+}
+
 int main(int argc, char** argv)
 {
+  interface();
   printf("zstd %s (%u), levels %d to %d\n", ZSTD_versionString(), ZSTD_versionNumber(), ZSTD_minCLevel(), ZSTD_maxCLevel());
   /* Synthetic text, compressible, and noise. */
   size_t length = 1500000;

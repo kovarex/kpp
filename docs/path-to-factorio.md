@@ -2043,7 +2043,10 @@ not reach glad; its harness does.
   `ZSTD_STATIC_LINKING_ONLY` before including zstd.h, and kpp's import has no defines. So an
   include of zstd.h imports `kpp_zstd.h`, which defines the macro and includes zstd.h.
   `c-libraries/zstd` holds that header, and the converter writes it beside zstd.h. The builds add
-  the converted directory to their C includes, and resources.cmd keeps `kpp_*.h` there.
+  the converted directory to their C includes, and resources.cmd keeps `kpp_*.h` there. (Until
+  2026-11-03: zstd is scoped now, design.md 16, its zstd.h converted into its scope with the
+  static linking API its files define, so nothing imports zstd.h; the mechanism stays for a
+  library that keeps such a header as C.)
 - **More macros the parse sees through:**
   - several storage words, through other macros and attributes (`MEM_STATIC`,
     `FORCE_INLINE_TEMPLATE`);

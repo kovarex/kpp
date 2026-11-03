@@ -52,7 +52,7 @@ rem (the library's sources: its directory, or the files its sources.txt names, s
 set CSOURCES=%FACTORIO%\libraries\%NAME%
 if exist c-libraries\%NAME%\sources.txt set CSOURCES=
 if exist c-libraries\%NAME%\sources.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\sources.txt") do call set CSOURCES=%%CSOURCES%% "%FACTORIO%\libraries\%NAME%\%%i"
-rem (and the conversion's own headers: the configured imports c-headers.txt names, zstd's kpp_zstd.h)
+rem (and the conversion's own headers: the configured imports c-headers.txt names, kpp_*.h)
 if exist c-libraries\%NAME% set CINC=%CINC% --cinclude %OUT%\converted\%NAME%
 if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"& call set CLINC=%%CLINC%% /I"%CONVERSION%\libraries\%NAME%\%%i"
 if exist %OUT% rd /s /q %OUT%
@@ -74,10 +74,20 @@ rem (a driver in C: the library's C++ standard flag is no C one)
 if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
 "%CLANGCL%" %FLAGS% /I"%CONVERSION%\libraries" %CLINC% -fuse-ld=lld /Fo%OUT%\ /Fe%OUT%\c.exe %DRIVER% "%CLIBRARY%" %CLINKS% > %OUT%\c-build.txt 2>&1 || (type %OUT%\c-build.txt& exit /b 1)
 
-rem The kpp build: the driver and the library converted together, then compiled.
+rem The kpp build: the driver and the library converted together, then compiled. A scoped library
+rem (c-libraries\NAME\interface.txt, design.md 16) is converted on its own, as convert.cmd converts it
+rem for the game, and the driver with --convert-library, which writes its uses qualified (zstd::...):
+rem the library is compiled as the library NAME (--library-root), the driver as the program.
 copy /y %DRIVER% %OUT%\driver\ > nul
+if exist c-libraries\%NAME%\interface.txt goto :scoped
 %KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 %KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+goto :run
+:scoped
+%KPPC% --no-std --quiet %CMODE% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --no-std --quiet --c-sources --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+:run
 
 %OUT%\c.exe %OUT%\inputs.txt > %OUT%\c-output.txt 2> %OUT%\c-errors.txt
 set CEXIT=%errorlevel%

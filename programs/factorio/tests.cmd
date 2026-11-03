@@ -74,8 +74,9 @@ if %BASELINEDEBUG%==1 set EXE=C:\Factorio\bin\Debugx64vs2022\factorio-test.exe
 if %BASELINE%==1 goto run
 call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
+rem (a scoped one, CLIBSCOPED, as the library it is, its build.kpp no source: design.md 16)
 set CLIBWHOLE=
-for %%l in (%CLIBRARIES%) do call set CLIBWHOLE=%%CLIBWHOLE%% %CONVERSION%\libraries\%%l
+for %%l in (%CLIBRARIES%) do if exist "%HERE%c-libraries\%%l\interface.txt" (call set CLIBWHOLE=%%CLIBWHOLE%% --library-root %%l %CONVERSION%\libraries\%%l --exclude %CONVERSION%\libraries\%%l\build.kpp) else call set CLIBWHOLE=%%CLIBWHOLE%% %CONVERSION%\libraries\%%l
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude %CONVERSION%\libraries\%%l
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe

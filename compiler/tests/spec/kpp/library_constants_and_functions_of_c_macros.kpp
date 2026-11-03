@@ -1,0 +1,18 @@
+// spec: a scoped library's interface converted from C macros (design.md 16, "As converted"): its number macros are constants of its scope with the macro's value and type (zstd::ZSTD_CONTENTSIZE_UNKNOWN is an unsigned long long, ZSTD_MAGICNUMBER an unsigned int, ZSTD_STRATEGY_MAX the enumeration's), and a function-like macro of values a function whose arithmetic is the macro's on the argument's type (an int argument gives an int, a size_t a size_t, a negative one the macro's value)
+// factorio: zstd's interface (zstd.h), which the game writes zstd::ZSTD_COMPRESSBOUND, zstd::ZSTD_CONTENTSIZE_ERROR; programs/factorio/harness/zstd.c checks every one against the C build
+int main()
+{
+  println(zstd::ZSTD_BLOCKSIZE_MAX, " ", sizeof(zstd::ZSTD_BLOCKSIZE_MAX), " ", zstd::ZSTD_CONTENTSIZE_UNKNOWN, " ", sizeof(zstd::ZSTD_CONTENTSIZE_UNKNOWN));
+  println(zstd::ZSTD_MAGICNUMBER, " ", zstd::ZSTD_MAGICNUMBER * 0 - 1 < 0, " ", zstd::ZSTD_WINDOWLOG_MAX, " ", zstd::ZSTD_CHAINLOG_MIN);
+  println(int(zstd::ZSTD_STRATEGY_MAX), " ", zstd::ZSTD_STRATEGY_MAX == zstd::ZSTD_btultra2);
+  int small = 1000;
+  unsigned char byte = 200;
+  long long negative = -5;
+  size_t large = 1048576;
+  println(zstd::ZSTD_COMPRESSBOUND(small), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(small)), " ", zstd::ZSTD_COMPRESSBOUND(byte), " ",
+          sizeof(zstd::ZSTD_COMPRESSBOUND(byte)));
+  println(zstd::ZSTD_COMPRESSBOUND(negative), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(negative)), " ", zstd::ZSTD_COMPRESSBOUND(large), " ",
+          sizeof(zstd::ZSTD_COMPRESSBOUND(large)));
+  println(zstd::blocks(300000));
+  return 0;
+}

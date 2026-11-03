@@ -1008,7 +1008,7 @@ As converted (thread C, 2026-11-02; the C libraries' harnesses byte-identical):
   minizip 27, zlib 16, trio 14, glad 3). The rest stay written out at their uses: `#define SIZE
   1024*1024` (`x / SIZE` would change), strings (sizeof), bodies naming a variable (the use's local
   in C), macros defined twice, and every header's macro (each library's interface: its home is the
-  library's scope, section 16, once the converted libraries are scoped).
+  library's scope, section 16, where a scoped library's interface headers make them constants).
 - C++ (the game): a source file's `static` functions and variables at the global namespace's scope
   and its anonymous namespaces at that scope, unwrapped, their declarations each `private` (Atlas.cpp's
   helpers, AppManager.cpp's ConfirmationBoxConnectToServer): 93 declarations, the 7 anonymous
@@ -1082,6 +1082,44 @@ As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `k
   "declared here and in the library util (PATH)"; the program's declaration is the one reported.
 - The compile server rebuilds in full when a scoped library gains or loses a top-level function
   (its namespace comes from a whole index); body edits stay incremental.
+
+As converted (thread C, 2026-11-03; zstd first, then zlib, minizip, stb_image, fontstash and trio;
+glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this round):
+- A converted C library is scoped when its `c-libraries/NAME/interface.txt` names its interface
+  headers (zstd's zstd.h, zstd_errors.h and zdict.h). They are converted with the library, not kept as C
+  imports: their declarations are kpp in the library's scope. The library is a kpp library of the
+  game's build.kpp (`e.use("zstd", local("libraries/zstd"))`, its build.kpp `root(".")`, copied
+  beside it by convert.cmd), kppc's `--library-root zstd` in convert.cmd's builds. Its C functions
+  keep `extern "C"` and their C names, so the C symbols are unchanged.
+- **An interface header's macros are the scope's names:** a number is a constant (`const auto
+  ZSTD_CONTENTSIZE_UNKNOWN = (0ULL - 1);`) by section 15's rule for a `.c` file's own constant,
+  public, and also when it is a choice (`((int)(sizeof(size_t) == 4 ? ... : ...))`), another
+  constant's name (`ZSTD_CHAINLOG_MIN ZSTD_HASHLOG_MIN`) or an enumerator's (`ZSTD_STRATEGY_MIN
+  ZSTD_fast`, of the enumeration's type). The library's files write it by name where C's code
+  names it, and as its value inside another macro's expansion, as the preprocessor rescans
+  (ZSTD_VERSION_STRING stringizes the version's numbers). A function-like macro computing a value
+  from its arguments is a function, each parameter its own template type, so the arithmetic is
+  the macro's on the argument's type: `template<typename T1> constexpr auto
+  ZSTD_COMPRESSBOUND(T1 srcSize) { return ...; }`. Uses inside the library stay expanded.
+- **What is not expressed is reported, never left out silently:** each such macro is a TODO of
+  the conversion report, "macro of the library's interface not expressed in kpp, its users have no
+  NAME". zstd: 54 constants and 1 function, and 6 not expressed: 4 of the version's text,
+  ZSTD_LIB_VERSION (`1.4.0` as tokens), ZSTD_QUOTE and ZSTD_EXPAND_AND_QUOTE (stringizing) and
+  ZSTD_VERSION_STRING (made of them; ZSTD_versionString() gives it), and zdict.h's deprecation
+  attribute, ZDICT_DEPRECATED and the ZDICT_GCC_VERSION it tests. Guards and linkage words
+  (ZSTDLIB_API) are no value.
+- **The checks:** zstd's harness (programs/factorio/harness/zstd.c) prints each constant's value,
+  size and signedness, and ZSTD_COMPRESSBOUND on a size_t, an int, an unsigned char and a
+  negative long long with its result's size; the C build and the converted one print the same
+  bytes (2,719 lines). The harness converts a scoped library as convert.cmd does: the library on
+  its own, then the driver as the program.
+- **The game:** kppc `--convert-library NAME DIR` gives the conversion the converted library; its
+  names are the top-level declarations that are not private of its interface files, those the
+  converter marks so: what C's users see by including the headers, not an internal header's
+  (zstd's mem.h declares `BYTE`, which the game takes from Windows' headers). The game's uses are
+  written qualified (`zstd::ZSTD_compress`, `zstd::ZSTD_inBuffer`), except a name the program
+  declares itself, and its includes of the library's headers (`zstd/zstd.h`) import nothing. The
+  harness driver: 247 uses qualified.
 
 **The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
 

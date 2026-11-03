@@ -68,6 +68,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr,
                          const std::filesystem::path& libraryDir = {}, const std::filesystem::path& baseDir = {});
+// kppc --convert-library NAME DIR (design.md 16): the program uses the scoped library NAME, converted
+// into DIR. Its names (the top-level declarations of DIR's .kpp files that are not private) are
+// written qualified in the converted program, zstd::ZSTD_compress, and an include of its headers
+// (zstd/zstd.h) imports nothing.
+void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::path>> libraries);
 // The errors the last convertToKpp found that leave its output wrong, which it printed: C, an #if
 // name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kppc
 // exits 1.

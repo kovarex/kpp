@@ -100,6 +100,7 @@ namespace
     const SourceConfiguration* configuration = nullptr; // converting: the #if branches the front end and the converter keep
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     std::string convertBase;       // --convert-base DIR: --convert writes each file at its path below DIR
+    std::vector<std::pair<std::string, std::filesystem::path>> convertLibraries; // --convert-library NAME DIR (convert.hpp)
     bool cSources = false;         // --c-sources: the inputs are C, not the C++ Factorio compiles Lua as (convert.hpp)
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
@@ -195,6 +196,8 @@ namespace
             "  --convert-base B  with --convert: each file at its input's path below B, not below its input\n"
             "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
             "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"
+            "  --convert-library NAME DIR  with --convert: the program uses the scoped library NAME, converted\n"
+            "                into DIR: its names are written NAME::name (design.md 16)\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
@@ -2098,6 +2101,7 @@ namespace
       for (size_t i = 0; i < parsed.size(); ++i)
         inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get(), options.cSources && isCSource(files[i].path)});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
+      setConvertLibraries(options.convertLibraries);
       std::string summary =
         convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary,
                      options.convertBase);
@@ -3432,7 +3436,7 @@ namespace
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1},
     {"--codegen-threads", 1}, {"--lib", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
-    {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}};
+    {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2}};
 }
 
 int compileOptionValues(const std::string& arg)
@@ -3647,6 +3651,11 @@ int compile(int argc, char** argv)
       options.convertBase = argv[++i];
     else if (arg == "--c-sources")
       options.cSources = true;
+    else if (arg == "--convert-library" && i + 2 < argc)
+    {
+      options.convertLibraries.push_back({argv[i + 1], argv[i + 2]});
+      i += 2;
+    }
     else if (arg[0] == '-')
       return optionError(arg);
     else

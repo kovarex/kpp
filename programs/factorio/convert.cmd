@@ -38,12 +38,42 @@ rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-fact
 rem Lua"). No other input has .c files.
 set LUA=%FACTORIO%\libraries\Lua
 set EXT=--ext .cpp,.hpp,.h,.kpp,.c
+rem The C libraries (c-libraries.cmd), first: each converted on its own by C's rules into
+rem kpp\clib\NAME\ (its report there), then copied into the checkout's libraries\NAME\ and into
+rem kpp\NAME\. Their headers stay C, but a scoped library's interface (CLIBSCOPED, design.md 16): the
+rem checkout has them from resources.cmd, and the builds import them (CLIBINC). A scoped library is a
+rem library of the builds (--library-root, and its build.kpp, c-libraries\NAME\build.kpp, in the
+rem checkout), and the game's conversions write its names qualified (--convert-library, CLIBUSE).
+set STEP=the C libraries
+call "%~dp0c-libraries.cmd" || goto :failed
+set CLIBKPP=
+set CLIBWHOLE=
+set CLIBUSE=
+if exist kpp\clib rd /s /q kpp\clib
+for %%l in (%CLIBRARIES%) do (
+  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+  if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
+  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
+  if exist kpp\%%l rd /s /q kpp\%%l
+  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l kpp\%%l >nul
+  if exist c-libraries\%%l\interface.txt (
+    copy /y c-libraries\%%l\build.kpp "%WHOLE%\libraries\%%l" >nul
+    call set CLIBKPP=%%CLIBKPP%% --library-root %%l kpp\%%l
+    call set CLIBWHOLE=%%CLIBWHOLE%% --library-root %%l %WHOLE%\libraries\%%l --exclude %WHOLE%\libraries\%%l\build.kpp
+    call set CLIBUSE=%%CLIBUSE%% --convert-library %%l kpp\clib\%%l\libraries\%%l
+  ) else (
+    call set CLIBKPP=%%CLIBKPP%% kpp\%%l
+    call set CLIBWHOLE=%%CLIBWHOLE%% %WHOLE%\libraries\%%l
+  )
+)
+echo C libraries converted: %CLIBRARIES% (scoped:%CLIBSCOPED%)
+set STEP=the whole conversion
 rem Fresh every run, as kpp\ below: a file an older conversion wrote and this one does not (a header
 rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and be built with it. The
 rem conversion's files only: tests\ and the libraries keep resources.cmd's (saves, READMEs).
 if exist "%WHOLE%\src" rd /s /q "%WHOLE%\src"
 for %%d in (libraries\CommonUtil libraries\Agui libraries\cxxopts libraries\StackWalker libraries\Lua libraries\crc32fast libraries\UnitTest++ tests) do if exist "%WHOLE%\%%d" del /s /q "%WHOLE%\%%d\*.kpp" >nul
-%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
@@ -62,29 +92,11 @@ set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libr
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
-%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
+%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
 type kpp\CONVERSION.md | findstr /B "Files -"
-rem The C libraries (c-libraries.cmd), each converted on its own by C's rules into kpp\clib\NAME\ (its
-rem report there), then copied into the checkout's libraries\NAME\ and into kpp\NAME\. Their headers
-rem stay C: the checkout has them from resources.cmd, and the builds import them (CLIBINC).
-set STEP=the C libraries
-call "%~dp0c-libraries.cmd" || goto :failed
 set CINC=%CINC% %CLIBINC%
-set CLIBKPP=
-set CLIBWHOLE=
-if exist kpp\clib rd /s /q kpp\clib
-for %%l in (%CLIBRARIES%) do (
-  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
-  if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
-  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
-  if exist kpp\%%l rd /s /q kpp\%%l
-  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l kpp\%%l >nul
-  call set CLIBKPP=%%CLIBKPP%% kpp\%%l
-  call set CLIBWHOLE=%%CLIBWHOLE%% %WHOLE%\libraries\%%l
-)
-rem (and their own headers: the configured imports, zstd's kpp_zstd.h)
+rem (and their own headers: the configured imports, minizip's)
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
-echo C libraries converted: %CLIBRARIES%
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
 rem Keep CommonUtil, Agui, Util (from the libraries and the smoke tests) and src itself.

@@ -26,7 +26,7 @@ if exist "%WHOLE%\libraries" for /d %%d in ("%WHOLE%\libraries\*") do (
   if !KEEP!==0 rd /s /q "%%d"
 )
 rem (dir, not for /r: for /r's directory cannot be another for's variable, and then it lists nothing.)
-rem (The converter's own C headers stay too: a C library's configured imports, zstd's kpp_zstd.h.)
+rem (The converter's own C headers stay too: a C library's configured imports, kpp_*.h.)
 for %%d in (%CONVERTED%) do if exist "%WHOLE%\libraries\%%d" for /f "delims=" %%f in ('dir /s /b /a-d "%WHOLE%\libraries\%%d"') do if /i not "%%~xf"==".kpp" call :keep "%%f"
 if exist "%WHOLE%\tests" for /r "%WHOLE%\tests" %%f in (*) do if /i not "%%~xf"==".kpp" del /q "%%f"
 endlocal

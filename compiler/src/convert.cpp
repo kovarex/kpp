@@ -2748,6 +2748,26 @@ namespace
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
+    // C: the library's interface headers converted into its scope (overrides/interface.txt, design.md
+    // 16: zstd's zstd.h), whose number macros are constants of the scope and whose function-like
+    // macros of values are functions; and the constants they made, by name, which every file's uses
+    // write by name.
+    const std::set<std::string>* cScopeHeaders = nullptr;
+    std::map<std::string, std::string>* cScopeConstants = nullptr;
+    bool isScopeHeader() const { return in.c && cScopeHeaders && cScopeHeaders->count(in.path.filename().string()); }
+    std::vector<std::string> scopeFunctions; // an interface header's functions, in its order
+    // A macro whose uses in the code write its name: this file's constant, or one an interface header
+    // made. (Inside another macro's expansion an interface constant is its value, as the preprocessor
+    // rescans: ZSTD_VERSION_STRING stringizes ZSTD_LIB_VERSION's numbers, "1.4.0".)
+    bool cNamedConstant(const std::string& name)
+    {
+      return cOwnConstant(name) || (cScopeConstants && cScopeConstants->count(name) && !isScopeHeader());
+    }
+    // --convert-library: the scoped libraries this program uses, their names by library (design.md
+    // 16): a use of one is written qualified (zstd::ZSTD_compress), and an include of its headers
+    // (zstd/zstd.h) imports nothing.
+    const std::map<std::string, std::string>* scopedLibraryNames = nullptr; // name -> its library
+    const std::set<std::string>* scopedLibraries = nullptr;
     // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
     // std::ostream;`), by their kpp names: its later unqualified uses are the library's.
     std::map<std::string, std::string> stdUsingNames;
@@ -3173,8 +3193,145 @@ namespace
       std::vector<std::pair<uint32_t, uint32_t>> lines; // offset, length (without the newline)
     };
 
-    // Turns `#define NAME body` into a constant where the body is one, else a TODO comment.
+    // An interface header's macro (isScopeHeader, design.md 16) is the library's interface: a number
+    // is a constant of its scope (macroToKppText), a function-like macro computing a value from its
+    // arguments a function (`template<typename T> constexpr auto ZSTD_COMPRESSBOUND(T srcSize)`,
+    // whose arithmetic is the macro's on the argument's type), and one that is neither (a stringized
+    // version, `ZSTD_LIB_VERSION`'s `1.4.0`) a TODO of the report, never left out silently. A guard,
+    // an empty one and a linkage word (ZSTDLIB_API) are no value.
     std::string macroToKpp(const std::string& line, uint32_t offset)
+    {
+      std::string out = macroToKppText(line, offset);
+      if (!isScopeHeader())
+        return out;
+      size_t p = line.find("define") + 6;
+      while (p < line.size() && isspace((unsigned char)line[p]))
+        ++p;
+      size_t nameStart = p;
+      while (p < line.size() && isIdentChar(line[p]))
+        ++p;
+      std::string name = line.substr(nameStart, p - nameStart);
+      bool functionLike = p < line.size() && line[p] == '(';
+      std::string body = collapsedSpaces(continuationsAsSpaces(line.substr(p)));
+      for (size_t c = body.find("/*"); c != std::string::npos; c = body.find("/*", c))
+      {
+        size_t e = body.find("*/", c + 2);
+        body.replace(c, (e == std::string::npos ? body.size() : e + 2) - c, " ");
+      }
+      if (size_t c = body.find("//"); c != std::string::npos)
+        body = body.substr(0, c);
+      body = collapsedSpaces(body);
+      std::vector<std::string> params;
+      if (functionLike)
+      {
+        size_t close = body.find(')');
+        std::string list = close == std::string::npos ? std::string() : body.substr(1, close - 1);
+        for (size_t start = 0; start <= list.size();)
+        {
+          size_t comma = list.find(',', start);
+          std::string param = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+          size_t a = param.find_first_not_of(" \t"), b = param.find_last_not_of(" \t");
+          if (a != std::string::npos)
+            params.push_back(param.substr(a, b - a + 1));
+          if (comma == std::string::npos)
+            break;
+          start = comma + 1;
+        }
+        body = close == std::string::npos ? std::string() : body.substr(close + 1);
+      }
+      size_t a = body.find_first_not_of(" \t\r\n"), b = body.find_last_not_of(" \t\r\n");
+      body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+      if (!functionLike && cOwnConstant(name))
+        return out;
+      if (functionLike)
+        if (std::string function = cScopeFunction(name, params, body); !function.empty())
+        {
+          // (its uses in the library stay expanded; this is its users')
+          counts.add("C function-like macros of the interface written functions of the library's scope");
+          std::string indent = line.substr(0, line.find('#'));
+          return out.empty() ? indent + function : out + "\n" + indent + function;
+        }
+      static const std::set<std::string> linkageWords = {"__declspec", "dllexport", "dllimport", "__attribute__", "visibility", "default", "extern",
+                                                         "static", "inline", "__inline", "__forceinline"};
+      bool noValue = body.empty();
+      if (!noValue && !functionLike)
+      {
+        // (a linkage word, or another name of one: ZSTDLIB_API is ZSTDLIB_VISIBILITY, empty here)
+        noValue = true;
+        for (size_t k = 0; k < body.size() && noValue;)
+          if (isalpha((unsigned char)body[k]) || body[k] == '_')
+          {
+            size_t e = k;
+            while (e < body.size() && isIdentChar(body[e]))
+              ++e;
+            std::string word = body.substr(k, e - k);
+            auto object = objectMacros.find(word);
+            if (!linkageWords.count(word) && !(object != objectMacros.end() && collapsedSpaces(object->second).find_first_not_of(" \t") == std::string::npos) &&
+                word.find("VISIBILITY") == std::string::npos)
+              noValue = false;
+            k = e;
+          }
+          else if (strchr(" \t()\"", body[k]))
+            ++k;
+          else
+            noValue = false;
+      }
+      if (noValue)
+      {
+        counts.add("C macros of the interface that are no value (guards, linkage words)");
+        return out;
+      }
+      counts.add("C macros of the interface not expressed in kpp");
+      todo(offset, "macro of the library's interface not expressed in kpp, its users have no " + name + ": #define " + name +
+                       (functionLike ? "(...) " : " ") + body);
+      return out;
+    }
+
+    // An interface header's function-like macro as a function of its scope: each parameter a value of
+    // its own type (a template parameter), the body an expression of the parameters, numbers, the
+    // interface's constants and operators, which the function returns: the macro's arithmetic on
+    // the arguments' types (C's conversions are C++'s). None (""): a body of anything else (a
+    // stringizing `#str`, a statement, a name it would capture at its use).
+    std::string cScopeFunction(const std::string& name, const std::vector<std::string>& params, const std::string& body)
+    {
+      if (params.empty() || body.empty())
+        return std::string();
+      static const std::set<std::string> typeWords = {"sizeof", "unsigned", "signed", "int", "long", "short", "char", "float", "double", "size_t"};
+      for (size_t i = 0; i < body.size();)
+      {
+        char c = body[i];
+        if (isdigit((unsigned char)c))
+        {
+          while (i < body.size() && (isIdentChar(body[i]) || body[i] == '.'))
+            ++i;
+          continue;
+        }
+        if (isalpha((unsigned char)c) || c == '_')
+        {
+          size_t j = i;
+          while (j < body.size() && isIdentChar(body[j]))
+            ++j;
+          std::string word = body.substr(i, j - i);
+          i = j;
+          if (!typeWords.count(word) && std::find(params.begin(), params.end(), word) == params.end() && !cOwnConstant(word))
+            return std::string();
+          continue;
+        }
+        if (!strchr(" \t()+-*/%<>|&~!^?:=", c))
+          return std::string();
+        ++i;
+      }
+      std::string function = "template<";
+      for (size_t k = 0; k < params.size(); ++k)
+        function += std::string(k ? ", " : "") + "typename T" + std::to_string(k + 1);
+      function += "> constexpr auto " + name + "(";
+      for (size_t k = 0; k < params.size(); ++k)
+        function += std::string(k ? ", " : "") + "T" + std::to_string(k + 1) + " " + params[k];
+      return function + ") { return " + body + "; }";
+    }
+
+    // Turns `#define NAME body` into a constant where the body is one, else a TODO comment.
+    std::string macroToKppText(const std::string& line, uint32_t offset)
     {
       size_t p = line.find("define") + 6;
       while (p < line.size() && isspace((unsigned char)line[p]))
@@ -3247,6 +3404,13 @@ namespace
       if (!functionLike)
         if (const std::string* value = cOwnConstant(name))
         {
+          if (isScopeHeader())
+          {
+            // (the scope's: its users write zstd::ZSTD_CONTENTSIZE_UNKNOWN, its files the name)
+            counts.add("C macro constants of the interface written constants of the library's scope");
+            (*cScopeConstants)[name] = *value;
+            return line.substr(0, line.find('#')) + "const auto " + name + " = " + *value + ";" + trailing;
+          }
           counts.add("C macro constants of a .c file written private constants");
           return line.substr(0, line.find('#')) + "private const auto " + name + " = " + *value + ";" + trailing;
         }
@@ -3547,6 +3711,14 @@ namespace
             // prefix would otherwise take for an import): its symbols are the program's.
             remove(offset, removeLength);
             counts.add("includes removed");
+            continue;
+          }
+          // A scoped library's header (`zstd/zstd.h`, --convert-library): nothing to import, its names
+          // are the library's, written qualified (convertTokens).
+          if (scopedLibraries && header.find('/') != std::string::npos && scopedLibraries->count(header.substr(0, header.find('/'))))
+          {
+            remove(offset, removeLength);
+            counts.add("includes of a scoped library's headers removed");
             continue;
           }
           auto cxx = cxxToC.find(base);
@@ -5868,6 +6040,16 @@ namespace
             counts.add("C statics another file declares too renamed with their file's name");
             continue;
           }
+        // A name of a scoped library the program uses (--convert-library), qualified by the library:
+        // `zstd::ZSTD_compress(...)`, `zstd::ZSTD_inBuffer in = {}` (design.md 16).
+        if (scopedLibraryNames && !scopedLibraryNames->empty() && t.getKind() == TokenKind::Identifier &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+          if (auto library = scopedLibraryNames->find(std::string(spelling(i))); library != scopedLibraryNames->end())
+          {
+            replace(t.offset, t.length, library->second + "::" + library->first);
+            counts.add("names of a scoped library qualified");
+            continue;
+          }
         if (in.c && t.getKind() == TokenKind::Identifier && spelling(i) == "config" && !memberAccessAt(i) && !inClassBody(t.offset))
         {
           // kpp's build configuration is the namespace `config` (config::debug): zlib's
@@ -6048,7 +6230,7 @@ namespace
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
         // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
         if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*") && t.getKind() == TokenKind::Identifier && !(i > 0 && toks[i - 1].is(P::ColonColon)) &&
-            !cOwnConstant(std::string(spelling(i))))
+            !cNamedConstant(std::string(spelling(i))))
           if (const std::string* own = cOwnObjectAt(std::string(spelling(i)), t.offset))
           {
             // C: this file's own macro in force here (one of several definitions of the name)
@@ -6060,7 +6242,7 @@ namespace
         if (t.getKind() == TokenKind::Identifier && !objectMacros.empty() &&
             !(i > 0 && (((toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)) && !in.c) || toks[i - 1].is(P::ColonColon))))
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset) &&
-              !cOwnConstant(macro->first))
+              !cNamedConstant(macro->first))
           {
             replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : macro->second);
             counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
@@ -7290,6 +7472,10 @@ namespace
           case NodeKind::FunctionDecl:
           {
             auto* f = static_cast<FunctionDecl*>(d);
+            // (an interface header's function, defined in the library's files: listed in its file,
+            // the interface's own record of it once the declaration goes)
+            if (isScopeHeader() && namespaceScope && !f->body && f->name.parts.size() == 1 && f->name.last().symbol != UINT32_MAX)
+              scopeFunctions.push_back(std::string(symbols.name(f->name.last().symbol)));
             if (f->templateParams.empty() && !f->body && !f->name.empty() && f->name.last().hasTemplateArgs && !(f->flags & DF_Specialization))
             {
               removeDecl(d); // an explicit instantiation: templates compile from source in kpp
@@ -9564,11 +9750,13 @@ namespace
     // what it did), with no string (sizeof would differ) and no name but this file's other such
     // constants and type words (a variable it named would be the use's local in C, a global here).
     std::map<std::string, std::string> cOwnConstants; // name -> its value's text ("" once found not to be one)
+    std::set<std::string> cScopeEnumerators; // an interface header's: its unscoped enumerations' enumerators
     std::vector<std::pair<uint32_t, uint32_t>> cTopLevelRanges;
     bool cTopLevelRangesRead = false;
     const std::string* cOwnConstant(const std::string& name, int depth = 0)
     {
-      if (!in.c || in.path.extension() != ".c" || !cWrittenOutMacros || !cWrittenOutMacros->count("*") || depth > 16)
+      bool scope = isScopeHeader();
+      if (!in.c || (in.path.extension() != ".c" && !scope) || !cWrittenOutMacros || !cWrittenOutMacros->count("*") || depth > 16)
         return nullptr;
       if (knownFunctionMacros.count(name))
         return nullptr; // (trio's FORMAT_STRING, a SAL annotation's name too, whose #define is not read as one)
@@ -9601,6 +9789,15 @@ namespace
       std::string body = own->body;
       int expansions = 0;
       static const std::set<std::string> typeWords = {"sizeof", "unsigned", "signed", "int", "long", "short", "char", "float", "double", "void"};
+      // An interface header's (scope): also a choice (zstd.h's `((int)(sizeof(size_t) == 4 ?
+      // ZSTD_WINDOWLOG_MAX_32 : ZSTD_WINDOWLOG_MAX_64))`) and another name of one of its enumerators
+      // (`#define ZSTD_STRATEGY_MIN ZSTD_fast`), a constant of the enumeration's type.
+      bool enumerator = false;
+      if (scope && cScopeEnumerators.empty() && in.parsed)
+        for (Decl* d : in.parsed->decls)
+          if (d->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(d)->isClass)
+            for (Decl* e : static_cast<EnumDecl*>(d)->enumerators)
+              cScopeEnumerators.insert(std::string(symbols.name(static_cast<EnumeratorDecl*>(e)->name)));
       for (size_t i = 0; i < body.size();)
       {
         char c = body[i];
@@ -9623,10 +9820,18 @@ namespace
             ++j;
           std::string word = body.substr(i, j - i);
           i = j;
-          if (typeWords.count(word))
+          if (typeWords.count(word) || (scope && word == "size_t"))
             value += word;
-          else if (cOwnConstant(word, depth + 1))
+          else if (cOwnConstant(word, depth + 1) || (cScopeConstants && cScopeConstants->count(word) && !scope))
+          {
             value += word;
+            enumerator = enumerator || scope; // (made of the interface's constants: `ZSTD_CHAINLOG_MIN ZSTD_HASHLOG_MIN`)
+          }
+          else if (scope && cScopeEnumerators.count(word))
+          {
+            value += word;
+            enumerator = true;
+          }
           else if (auto macro = objectMacros.find(word); macro != objectMacros.end() && macroHoldsAt(macro->first, own->from) && ++expansions < 64)
           {
             // (a header's macro: its text in its place, checked as this one's; as the
@@ -9638,7 +9843,7 @@ namespace
             return nullptr;
           continue;
         }
-        if (!strchr(" 	()+-*/%<>|&~!^", c))
+        if (!strchr(" 	()+-*/%<>|&~!^", c) && !(scope && strchr("?:=", c)))
           return nullptr;
         value += c;
         ++i;
@@ -9659,7 +9864,7 @@ namespace
           if (open == 0 && k + 1 < value.size())
             wrapped = false;
         }
-      if ((!atom && !wrapped) || value.find_first_of("0123456789") == std::string::npos)
+      if ((!atom && !wrapped) || (value.find_first_of("0123456789") == std::string::npos && !enumerator))
         return nullptr;
       cOwnConstants[name] = value;
       return &cOwnConstants[name];
@@ -11763,7 +11968,11 @@ std::set<std::string> identifiersOf(const std::string& text)
       size_t e = i;
       while (e < text.size() && isIdentChar(text[e]))
         ++e;
-      out.insert(text.substr(i, e - i));
+      // (a member's name is no C function's: `widgets.remove(w)` is no stdio.h)
+      size_t before = text.find_last_not_of(" \t\r\n", i == 0 ? 0 : i - 1);
+      bool member = i > 0 && before != std::string::npos && (text[before] == '.' || (text[before] == '>' && before > 0 && text[before - 1] == '-'));
+      if (!member)
+        out.insert(text.substr(i, e - i));
       i = e;
     }
     else if (isdigit((unsigned char)text[i]))
@@ -12187,6 +12396,89 @@ std::set<std::string> libraryFunctionNames(const std::filesystem::path& libraryD
   return names;
 }
 
+// --convert-library (setConvertLibraries): the scoped libraries the converted program uses.
+static std::vector<std::pair<std::string, std::filesystem::path>> convertLibraries;
+void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::path>> libraries) { convertLibraries = std::move(libraries); }
+
+// The line a converted interface header's file starts with (after the "Converted from" line).
+static const char* const scopeInterfaceLine =
+  "// The library's interface (interface.txt): its users write its names qualified (design.md 16).";
+// The line after it that lists the interface's functions, whose declarations the conversion removes
+// (they are defined in the library's files), continued on `//  ` lines, the names comma-separated.
+static const char* const scopeFunctionsLine = "// Its functions, defined in the library's files:";
+
+// A scoped library's names, as its users write them qualified (design.md 16): the top-level
+// declarations of its interface files under dir (scopeInterfaceLine: what C's users include, zstd.h,
+// not its internal mem.h's BYTE, which Windows' headers declare too) that are not private
+// (functions, classes, enumerations and their enumerators, aliases, variables and constants),
+// parsed as kppc parses them.
+static std::set<std::string> scopedNamesOf(const std::filesystem::path& dir)
+{
+  std::set<std::string> names;
+  std::error_code ec;
+  SymbolTable symbols;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
+  {
+    if (!entry.is_regular_file() || entry.path().extension() != ".kpp")
+      continue;
+    std::string text;
+    if (!readFile(entry.path(), text) || text.find(scopeInterfaceLine) == std::string::npos)
+      continue;
+    if (size_t list = text.find(scopeFunctionsLine); list != std::string::npos)
+    {
+      size_t at = list + strlen(scopeFunctionsLine);
+      for (;;)
+      {
+        size_t end = text.find('\n', at);
+        std::string line = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+        for (size_t k = 0; k < line.size();)
+          if (isIdentChar(line[k]))
+          {
+            size_t e = k;
+            while (e < line.size() && isIdentChar(line[e]))
+              ++e;
+            names.insert(line.substr(k, e - k));
+            k = e;
+          }
+          else
+            ++k;
+        if (end == std::string::npos || text.compare(end + 1, 4, "//  ") != 0)
+          break;
+        at = end + 5;
+      }
+    }
+    LexResult lexed = lex(text, symbols);
+    ParsedFile parsed;
+    parseFile(lexed.tokens, text, symbols, parsed);
+    auto add = [&](const QualifiedName& name)
+    {
+      if (name.parts.size() == 1 && name.last().symbol != UINT32_MAX)
+        names.insert(std::string(symbols.name(name.last().symbol)));
+    };
+    for (Decl* d : parsed.decls)
+    {
+      if (d->filePrivate)
+        continue;
+      if (d->kind == NodeKind::FunctionDecl)
+        add(static_cast<FunctionDecl*>(d)->name);
+      else if (d->kind == NodeKind::ClassDecl)
+        add(static_cast<ClassDecl*>(d)->name);
+      else if (d->kind == NodeKind::VariableDecl)
+        add(static_cast<VariableDecl*>(d)->name);
+      else if (d->kind == NodeKind::UsingAliasDecl)
+        names.insert(std::string(symbols.name(static_cast<UsingAliasDecl*>(d)->name)));
+      else if (d->kind == NodeKind::EnumDecl)
+      {
+        add(static_cast<EnumDecl*>(d)->name);
+        if (!static_cast<EnumDecl*>(d)->isClass)
+          for (Decl* e : static_cast<EnumDecl*>(d)->enumerators)
+            names.insert(std::string(symbols.name(static_cast<EnumeratorDecl*>(e)->name)));
+      }
+    }
+  }
+  return names;
+}
+
 // The names of the standard library's global classes, unions, enums and aliases: a top-level
 // declaration line (no indentation), after a template header on it if any, `struct Set`,
 // `template<> struct AtomicWord<1> ...`, `using Byte = uint8_t;`.
@@ -12278,6 +12570,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::vector<std::string> todos;
     std::string source;
     bool header;
+    bool scopeInterface = false; // converted from an interface header (overrides/interface.txt)
+    std::vector<std::string> scopeFunctions; // and its functions
   };
   std::map<std::string, std::vector<Piece>> outputs; // output path -> header piece(s) then source piece(s)
   Counts total;
@@ -12317,6 +12611,57 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           if (space != std::string::npos)
             cConfiguredImports[header] = entry.substr(entry.find_first_not_of(" \t", space));
         }
+      }
+  }
+  // A scoped C library's interface (overrides/interface.txt, file names: zstd's zstd.h and
+  // zstd_errors.h, design.md 16): headers converted into the library's scope, their number macros
+  // its constants, which every file's uses write by name (cScopeConstants, filled as the headers are
+  // converted, before the other files).
+  std::set<std::string> cScopeHeaders;
+  std::map<std::string, std::string> cScopeConstants;
+  // The scoped libraries the program uses (--convert-library): their names, by library.
+  std::map<std::string, std::string> scopedLibraryNames;
+  std::set<std::string> scopedLibraries;
+  for (const auto& [library, dir] : convertLibraries)
+  {
+    scopedLibraries.insert(library);
+    for (const std::string& name : scopedNamesOf(dir))
+      scopedLibraryNames.emplace(name, library);
+  }
+  // (a name the program or its C imports declare is theirs, as a bare name resolves: Windows' BYTE,
+  // which zstd's mem.h declares too; the library's is reached qualified only)
+  if (!scopedLibraryNames.empty())
+    for (const ConvertInput& in : inputs)
+      if (in.parsed)
+        for (Decl* d : in.parsed->decls)
+        {
+          const QualifiedName* name = d->kind == NodeKind::FunctionDecl ? &static_cast<FunctionDecl*>(d)->name
+                                      : d->kind == NodeKind::ClassDecl  ? &static_cast<ClassDecl*>(d)->name
+                                      : d->kind == NodeKind::VariableDecl ? &static_cast<VariableDecl*>(d)->name
+                                      : d->kind == NodeKind::EnumDecl     ? &static_cast<EnumDecl*>(d)->name
+                                                                          : nullptr;
+          if (name && name->parts.size() == 1 && name->last().symbol != UINT32_MAX)
+            scopedLibraryNames.erase(std::string(symbols.name(name->last().symbol)));
+          else if (d->kind == NodeKind::UsingAliasDecl)
+            scopedLibraryNames.erase(std::string(symbols.name(static_cast<UsingAliasDecl*>(d)->name)));
+          if (d->kind == NodeKind::EnumDecl)
+            for (Decl* e : static_cast<EnumDecl*>(d)->enumerators)
+              scopedLibraryNames.erase(std::string(symbols.name(static_cast<EnumeratorDecl*>(e)->name)));
+        }
+  if (!overridesDir.empty())
+  {
+    std::string list;
+    if (readFile(overridesDir / "interface.txt", list))
+      for (size_t pos = 0; pos < list.size();)
+      {
+        size_t end = list.find('\n', pos);
+        if (end == std::string::npos)
+          end = list.size();
+        std::string line = list.substr(pos, end - pos);
+        pos = end + 1;
+        size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+        if (a != std::string::npos && line[a] != '#')
+          cScopeHeaders.insert(line.substr(a, b - a + 1));
       }
   }
   if (!overridesDir.empty())
@@ -13089,8 +13434,17 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
                       filesNotBuilt.count((in.path.parent_path().filename() / in.path.filename()).generic_string())))
       leftOutFiles.insert(in.parsed);
   }
+  // (the interface headers first: the constants they make are written by name in the other files)
+  std::vector<const ConvertInput*> converted;
   for (const ConvertInput& in : inputs)
+    if (in.c && cScopeHeaders.count(in.path.filename().string()))
+      converted.push_back(&in);
+  for (const ConvertInput& in : inputs)
+    if (!(in.c && cScopeHeaders.count(in.path.filename().string())))
+      converted.push_back(&in);
+  for (const ConvertInput* convertedInput : converted)
   {
+    const ConvertInput& in = *convertedInput;
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
       continue;
     std::string ext = in.path.extension().string();
@@ -13160,6 +13514,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       fc.cPrivate = &own->second;
     fc.cConfiguredImports = &cConfiguredImports;
     fc.cWrittenOutMacros = &cWrittenOutMacros;
+    fc.cScopeHeaders = &cScopeHeaders;
+    fc.cScopeConstants = &cScopeConstants;
+    fc.scopedLibraryNames = &scopedLibraryNames;
+    fc.scopedLibraries = &scopedLibraries;
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
     fc.classesByName = &classesByName;
@@ -13215,6 +13573,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     piece.cImports = fc.cImports;
     piece.source = in.path.string();
     piece.header = ext != ".cpp" && ext != ".cc" && ext != ".c";
+    piece.scopeInterface = in.c && cScopeHeaders.count(in.path.filename().string());
+    piece.scopeFunctions = fc.scopeFunctions;
     outputs[key].push_back(std::move(piece));
     for (auto& [k, v] : fc.counts.values)
       total.add(k, v);
@@ -13330,6 +13690,31 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (const Piece& p : pieces)
       text += " " + std::filesystem::path(p.source).filename().string();
     text += " by kppc --convert; see CONVERSION.md.\n\n";
+    // (the line kppc --convert-library finds a library's interface files by: scopedNamesOf)
+    if (std::any_of(pieces.begin(), pieces.end(), [](const Piece& p) { return p.scopeInterface; }))
+    {
+      text += std::string(scopeInterfaceLine) + "\n";
+      // (its functions, whose declarations go: their definitions are in the library's files)
+      std::vector<std::string> functions;
+      for (const Piece& p : pieces)
+        functions.insert(functions.end(), p.scopeFunctions.begin(), p.scopeFunctions.end());
+      std::string line = scopeFunctionsLine;
+      bool first = true;
+      for (const std::string& name : functions)
+      {
+        if (line.size() + name.size() + 2 > 110)
+        {
+          text += line + ",\n";
+          line = "//  ";
+          first = true;
+        }
+        line += (first ? " " : ", ") + name;
+        first = false;
+      }
+      if (!functions.empty())
+        text += line + "\n";
+      text += "\n";
+    }
     for (const Piece& p : pieces)
     {
       text += std::string_view(p.text).substr(byteOrderMarkLength(p.text));

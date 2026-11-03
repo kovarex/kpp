@@ -1,0 +1,16 @@
+// The library zstd of library_constants_and_functions_of_c_macros.kpp: zstd.h's macros as the
+// converter writes them in a scoped library's interface (design.md 16).
+enum ZSTD_strategy { ZSTD_fast = 1, ZSTD_dfast = 2, ZSTD_btultra2 = 9 };
+const auto ZSTD_BLOCKSIZELOG_MAX = 17;
+const auto ZSTD_BLOCKSIZE_MAX = (1<<ZSTD_BLOCKSIZELOG_MAX);
+const auto ZSTD_CONTENTSIZE_UNKNOWN = (0ULL - 1);
+const auto ZSTD_MAGICNUMBER = 0xFD2FB528;
+const auto ZSTD_WINDOWLOG_MAX_32 = 30;
+const auto ZSTD_WINDOWLOG_MAX_64 = 31;
+const auto ZSTD_WINDOWLOG_MAX = ((int)(sizeof(size_t) == 4 ? ZSTD_WINDOWLOG_MAX_32 : ZSTD_WINDOWLOG_MAX_64));
+const auto ZSTD_HASHLOG_MIN = 6;
+const auto ZSTD_CHAINLOG_MIN = ZSTD_HASHLOG_MIN;
+const auto ZSTD_STRATEGY_MAX = ZSTD_btultra2;
+template<typename T1> constexpr auto ZSTD_COMPRESSBOUND(T1 srcSize) { return ((srcSize) + ((srcSize)>>8) + (((srcSize) < (128<<10)) ? (((128<<10) - (srcSize)) >> 11) : 0)); }
+// Its own uses are bare.
+size_t blocks(size_t size) { return (size + ZSTD_BLOCKSIZE_MAX - 1) / ZSTD_BLOCKSIZE_MAX; }

@@ -13,8 +13,9 @@ rem as convert.cmd writes them), not linked, and their headers imported.
 call "%~dp0c-libraries.cmd"
 set CINC=%CINC% %CLIBINC%
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
+rem (a scoped one, CLIBSCOPED, as the library it is: --library-root, design.md 16)
 set CLIBKPP=
-for %%l in (%CLIBRARIES%) do call set CLIBKPP=%%CLIBKPP%% kpp\%%l
+for %%l in (%CLIBRARIES%) do if exist "%~dp0c-libraries\%%l\interface.txt" (call set CLIBKPP=%%CLIBKPP%% --library-root %%l kpp\%%l) else call set CLIBKPP=%%CLIBKPP%% kpp\%%l
 set L=C:\Factorio\vs2022\Releasex64
 set LIBS=--lib native\build\factorio-native.lib --lib %FACTORIO%\libraries\Logitech\x64\LogitechLEDLib.lib
 for %%l in (sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 stb fontstash glad imgui trio open-vcdiff) do call :link %%l

@@ -1,0 +1,9 @@
+# zstd's interface, converted into its scope (design.md 16): the game and the harness write
+# zstd::ZSTD_compress, zstd::ZSTD_CONTENTSIZE_UNKNOWN, zstd::ZDICT_trainFromBuffer. Their number macros
+# are constants of the scope, their function-like macros of values functions; a macro that is
+# neither is a TODO of the report. Only these headers' names are its users' (zstd's internal mem.h
+# declares BYTE, which Windows' headers declare too). zstd's files define ZSTD_STATIC_LINKING_ONLY and
+# ZDICT_STATIC_LINKING_ONLY before their includes (defines.txt), so the scope has those APIs too.
+zstd.h
+zstd_errors.h
+zdict.h
