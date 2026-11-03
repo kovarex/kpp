@@ -1219,6 +1219,11 @@ A declaration that exists in the current scope only when a constant condition ho
 - A use of the name must stand where the condition is known to hold: inside `if constexpr` on it, or
   in another `when` on it. Anywhere else the use is a compile error, never a silent fallback.
 - `if constexpr` keeps C++'s scoping; kpp adds no exception to it.
+- It stands wherever a declaration may: in a block, at namespace scope, and as a class member
+  (kovarex, 2026-11-03: "Having it for members makes 100% sense", for statistics and debug members).
+  A `when` member is part of the class's layout only where its condition holds, per configuration and
+  per class template instance. A constructor's member initializer for a `when` member exists exactly
+  when the member does, as part of that member's declaration.
 - `when` is a keyword. It is not one in C++, and the converted game never uses it as a name.
 
 Why (kovarex, 2026-11-03): converting `#ifdef DEBUG` to `if constexpr (config::debug) { }` gave each
