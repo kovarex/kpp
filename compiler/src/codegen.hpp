@@ -4,6 +4,7 @@
 #include "ast.hpp"
 #include "resolver.hpp"
 #include "target.hpp"
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,6 +20,9 @@ struct CodegenResult
   size_t functions = 0;
   size_t structs = 0;
   std::vector<bool> changedModules; // rebuildLLVM: which modules it assembled again (the others' texts are empty here)
+  // With a PieceStream: the program pieces whose object the stream compiles, its text being modules[k]
+  // (handed over at level 0's barrier, the same at the end).
+  std::vector<bool> streamed;
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
   size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
@@ -37,6 +41,16 @@ struct CodegenSessionDeleter
 };
 using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>;
 
+// Step 4's P2 (docs/codegen-speed.md): a debug build's program pieces handed over at level 0's barrier,
+// so that the back end compiles them while codegen emits the instances. piece(k, text) is called on
+// codegen's threads, once for each program piece the barrier has whole (k < the module count, its index
+// in CodegenResult::modules), when no error came before, and takes the text. The end assembles every
+// piece again: CodegenResult::streamed says which are the text handed over.
+struct PieceStream
+{
+  std::function<void(unsigned k, std::string&& text)> piece;
+};
+
 // debug: config::debug; `assert` statements compile to nothing when it is false.
 // moduleCount > 1 splits the output into that many modules (functions by file, instantiations
 // by the hash of their name) so that LLVM can compile them in parallel.
@@ -54,10 +68,11 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // debugger steps through the kpp source (docs/debugging.md).
 // target: the platform the IR is for (--target; null: Windows x64).
 // optimize (--optimize): the modules are optimized (ThinLTO), and not split (codegenOutputModules).
+// stream: the program pieces handed over at level 0's barrier (PieceStream).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
                            bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr,
-                           bool debugInfo = false, const Target* target = nullptr, bool optimize = false);
+                           bool debugInfo = false, const Target* target = nullptr, bool optimize = false, PieceStream* stream = nullptr);
 
 // How many modules a build of moduleCount modules writes (CodegenResult::modules): a debug build of
 // several, not optimized, has each in two, its program piece (what the functions the program writes

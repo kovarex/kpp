@@ -540,11 +540,13 @@ namespace
   }
 
   // What a build printed, without what differs from run to run by design (timings and rates, wait
-  // counts, the interned types' count, whether the C import came from its cache).
+  // counts, the interned types' count, whether the C import came from its cache, how many objects the
+  // back end made while codegen ran).
   std::string normalized(const std::string& text)
   {
     static const std::regex seconds("[0-9]+\\.[0-9]+ s\\b"), rates("\\([0-9.]+ [MG]?B/s[^)]*\\)"), lines("\\([0-9.]+ M lines/s\\)"),
-      waits("\\([0-9]+ requests, [0-9]+ waits\\)"), unchanged("[0-9]+ unchanged"), types("^check: +[0-9]+ distinct types"), cached(" \\(cached\\)$");
+      waits("\\([0-9]+ requests, [0-9]+ waits\\)"), unchanged("[0-9]+ unchanged"), during(", [0-9]+ during codegen"), types("^check: +[0-9]+ distinct types"),
+      cached(" \\(cached\\)$");
     std::string out;
     size_t start = 0;
     while (start < text.size())
@@ -559,6 +561,7 @@ namespace
       line = std::regex_replace(line, lines, "(_)");
       line = std::regex_replace(line, waits, "(_)");
       line = std::regex_replace(line, unchanged, "_ unchanged"); // the object cache's state, not the build's
+      line = std::regex_replace(line, during, ""); // (step 4's P2; a server's incremental build streams none)
       line = std::regex_replace(line, types, "check:");
       line = std::regex_replace(line, cached, "");
       out += line + "\n";

@@ -15,6 +15,8 @@
 #include "backend.hpp"
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <unordered_set>
@@ -272,6 +274,102 @@ namespace
     for (auto& t : pool)
       t.join();
   }
+
+  // Step 4's P2 (docs/codegen-speed.md): the back end's threads in a build that streams. They compile the
+  // program pieces codegen hands over at level 0's barrier while it emits the instances, below normal
+  // priority so that codegen keeps the cores it uses; then (raise) the rest of the build's modules at
+  // normal priority.
+  class BackEndPool
+  {
+  public:
+    explicit BackEndPool(unsigned threads)
+    {
+      for (unsigned t = 0; t < std::max(1u, threads); ++t)
+        workers.emplace_back([this] { work(); });
+    }
+    // What is queued and not started is dropped (an early return: codegen failed).
+    ~BackEndPool()
+    {
+      {
+        std::lock_guard lock(mutex);
+        queue.clear();
+        closing = true;
+      }
+      ready.notify_all();
+      for (std::thread& t : workers)
+        t.join();
+    }
+    // streamed: a program piece handed over at the barrier (waitStreamed).
+    void push(std::function<void()> task, bool streamed)
+    {
+      {
+        std::lock_guard lock(mutex);
+        queue.push_back({std::move(task), streamed});
+        ++pending;
+        streamedPending += streamed;
+      }
+      ready.notify_one();
+    }
+    // Codegen ended: normal priority for every task started from now on.
+    void raise() { below = false; }
+    void waitStreamed()
+    {
+      std::unique_lock lock(mutex);
+      done.wait(lock, [&] { return streamedPending == 0; });
+    }
+    void wait()
+    {
+      std::unique_lock lock(mutex);
+      done.wait(lock, [&] { return pending == 0; });
+    }
+    // How many tasks ended while codegen ran (after wait).
+    size_t duringCodegen() const { return endedBelow; }
+
+  private:
+    struct Task
+    {
+      std::function<void()> run;
+      bool streamed = false;
+    };
+    void work()
+    {
+      bool lowered = false;
+      for (;;)
+      {
+        Task task;
+        {
+          std::unique_lock lock(mutex);
+          ready.wait(lock, [&] { return closing || !queue.empty(); });
+          if (queue.empty())
+            return;
+          task = std::move(queue.front());
+          queue.pop_front();
+        }
+        if (lowered != below)
+        {
+          lowered = below;
+          setThreadBelowNormal(lowered);
+        }
+        task.run();
+        bool ended = below;
+        task.run = nullptr; // (its text freed now)
+        {
+          std::lock_guard lock(mutex);
+          --pending;
+          streamedPending -= task.streamed;
+          endedBelow += ended;
+        }
+        done.notify_all();
+      }
+    }
+    std::vector<std::thread> workers;
+    std::mutex mutex;
+    std::condition_variable ready, done;
+    std::deque<Task> queue;
+    size_t pending = 0, streamedPending = 0, endedBelow = 0;
+    bool closing = false;
+    std::atomic<bool> below{true};
+  };
 
   double seconds(std::chrono::steady_clock::duration d);
   int codegenExit = 0;
@@ -1343,15 +1441,137 @@ namespace
                                               " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again");
     }
     build.rebuildCodegen = false;
+    // The objects, EXE.k.o for output module k, and what compiles them: declared before codegen, as
+    // step 4's P2 compiles a debug build's program pieces while codegen emits the instances.
+    // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
+    // link optimises them in parallel with what each needs from the others imported, so that calls
+    // into another module's instantiations inline as they do in one module (optimised separately,
+    // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower).
+    bool thinLTO = options.optimize && modules > 1;
+    const char* level = !options.optimize ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
+    auto writeFile = [&](const std::string& path, const std::string& text)
+    {
+      FILE* out = fopen(path.c_str(), "wb");
+      if (!out)
+      {
+        fprintf(stderr, "cannot write %s\n", path.c_str());
+        codegenExit = 1;
+        return false;
+      }
+      fwrite(text.data(), 1, text.size(), out);
+      fclose(out);
+      return true;
+    };
+    std::vector<std::string> objects;
+    for (unsigned k = 0; k < outputModules; ++k)
+      objects.push_back(options.exe + "." + std::to_string(k) + ".o");
+    std::atomic<int> failures{0}, cached{0};
+    struct ModuleFailure
+    {
+      unsigned module;
+      int rc; // clang's exit code; 0: LLVM's back end in this process
+      std::string path, output;
+    };
+    std::vector<ModuleFailure> moduleFailures;
+    std::mutex moduleFailuresMutex;
+    // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
+    // debug build's module for Windows (windows or windows-gnu, with --debug-info too) compiled from
+    // its text in memory, no IR file written, no clang started. Its objects are clang's apart from
+    // what names the compiler in CodeView (S_COMPILE3's back-end version, LF_BUILDINFO's tool and
+    // command line, which kppc leaves empty). A release build (ThinLTO, lld), Linux and --clang-flags
+    // (their objects not compared with clang's) stay clang's; so does any build with
+    // KPP_BACKEND=clang (the comparison).
+    const char* backendChoice = getenv("KPP_BACKEND");
+    bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() &&
+                     !(backendChoice && std::string(backendChoice) == "clang");
+    // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
+    // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
+    // KPP_TEST_BROKEN_ASM=K: module K gets an instruction the assembler rejects, which the verifier
+    // passes and only the back end finds (LLVM's diagnostics, not its verifier).
+    const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
+    const char* brokenAsm = getenv("KPP_TEST_BROKEN_ASM");
+    // Whether module k keeps the last build's object (counted unchanged): its hash file has the hash of
+    // its text (a KPP_TEST_BROKEN_* function added first), the optimisation level and --clang-flags.
+    // Otherwise hashText is what the hash file gets once the module is compiled.
+    auto unchangedObject = [&](size_t k, std::string& text, const char* level, std::string& hashText)
+    {
+      if (brokenModule && std::to_string(k) == brokenModule)
+        text += "\ndefine void @kpp.test.broken() {\n  %a = add i32 %b, 1\n  %b = add i32 %a, 1\n  ret void\n}\n";
+      if (brokenAsm && std::to_string(k) == brokenAsm)
+        text += "\nmodule asm \"kpp_no_such_instruction\"\n";
+      // A module whose text (and optimisation level) did not change keeps its object file.
+      uint64_t h = 1469598103934665603ull;
+      for (unsigned char c : text)
+        h = (h ^ c) * 1099511628211ull;
+      for (const char* c = level; *c; ++c)
+        h = (h ^ (unsigned char)*c) * 1099511628211ull;
+      for (unsigned char c : options.clangFlags)
+        h = (h ^ c) * 1099511628211ull;
+      hashText = std::to_string(h);
+      std::error_code ec;
+      if (readWholeFile(options.exe + "." + std::to_string(k) + ".hash") == hashText && std::filesystem::exists(objects[k], ec))
+      {
+        ++cached;
+        return true;
+      }
+      return false;
+    };
+    // Module k compiled by LLVM's back end in this process; its text is written next to the executable
+    // only when LLVM rejects it, for the report.
+    auto compileInProcess = [&](size_t k, const std::string& text, const std::string& hashText)
+    {
+      std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
+      std::string object, error;
+      BackendOptions backend;
+      backend.path = llPath;
+      backend.module = unsigned(k);
+      bool compiled = compileModule(text, backend, object, error);
+      if (compiled && !writeFile(objects[k], object))
+        error = "cannot write " + objects[k];
+      if (!compiled || !error.empty())
+      {
+        ++failures;
+        std::error_code removed;
+        std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
+        writeFile(llPath, text); // (the text LLVM rejected, for the report)
+        std::lock_guard lock(moduleFailuresMutex);
+        moduleFailures.push_back({unsigned(k), 0, llPath, error});
+      }
+      else
+        writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
+    };
+    // Step 4's P2 (docs/codegen-speed.md): a debug build of several modules whose objects LLVM's back end
+    // in this process makes has its program pieces compiled while codegen emits the instances, on
+    // backEnd's threads below normal priority: codegen hands each over at level 0's barrier
+    // (PieceStream). The other modules are compiled once codegen ends, on the same threads.
+    std::unique_ptr<BackEndPool> backEnd;
+    std::vector<char> handedOver(outputModules);
     if (!rebuilt)
     {
       build.retiredCodegen = std::move(build.codegen);
       // (--check writes nothing: no IR assembled despite errors, so that a server keeps its session across them)
       bool despiteErrors = options.keepGoing && !options.check;
+      PieceStream stream;
+      if (inProcess && outputModules != modules && !options.exe.empty() && options.emitLLVM.empty() && !options.check)
+      {
+        backEnd = std::make_unique<BackEndPool>(options.threads);
+        stream.piece = [&](unsigned k, std::string&& text)
+        {
+          handedOver[k] = 1;
+          backEnd->push([&, k, text = std::move(text)]() mutable
+          {
+            std::string hashText;
+            if (!unchangedObject(k, text, level, hashText))
+              compileInProcess(k, text, hashText);
+          }, true);
+        };
+      }
       cg = generateLLVM(parsed, global, symbols, options.debug, modules, despiteErrors, options.codegenThreads ? options.codegenThreads : options.threads,
                         despiteErrors && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
-                        options.debugInfo, &options.target, options.optimize);
+                        options.debugInfo, &options.target, options.optimize, backEnd ? &stream : nullptr);
       cg.changedModules.clear();
+      if (backEnd)
+        backEnd->raise(); // (codegen ended: the back end has every core)
     }
     double t = seconds(Clock::now() - start);
     // Errors assemble no module; a session kept across them keeps the sizes of the modules the last
@@ -1382,29 +1602,10 @@ namespace
     reportAccessWarnings(build);
     if (options.check)
       return; // the errors are all it is for
-    auto writeFile = [&](const std::string& path, const std::string& text)
-    {
-      FILE* out = fopen(path.c_str(), "wb");
-      if (!out)
-      {
-        fprintf(stderr, "cannot write %s\n", path.c_str());
-        codegenExit = 1;
-        return false;
-      }
-      fwrite(text.data(), 1, text.size(), out);
-      fclose(out);
-      return true;
-    };
     std::string clang = clangPath();
     report("toolchain: %s (%s, %s: links with %s)\n", clang.c_str(),
            bundledToolchain() ? "bundled" : getenv("KPP_CLANG") ? "KPP_CLANG" : "Visual Studio's", options.target.name.c_str(),
            !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
-    // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
-    // link optimises them in parallel with what each needs from the others imported, so that calls
-    // into another module's instantiations inline as they do in one module (optimised separately,
-    // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower).
-    bool thinLTO = options.optimize && !cg.modules.empty();
-    const char* level = !options.optimize ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
     // Every function in its own section, so that the linker drops the ones nobody calls (and
     // the libraries they would need): a program pays only for what it uses.
     // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
@@ -1448,85 +1649,26 @@ namespace
       return;
     }
     if (stop)
-      return;
-    std::vector<std::string> objects(cg.modules.size());
-    std::atomic<int> failures{0}, cached{0};
-    struct ModuleFailure
-    {
-      unsigned module;
-      int rc; // clang's exit code; 0: LLVM's back end in this process
-      std::string path, output;
-    };
-    std::vector<ModuleFailure> moduleFailures;
-    std::mutex moduleFailuresMutex;
+      return; // (backEnd drops what it has not started)
     start = Clock::now();
-    // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
-    // debug build's module for Windows (windows or windows-gnu, with --debug-info too) compiled from
-    // its text in memory, no IR file written, no clang started. Its objects are clang's apart from
-    // what names the compiler in CodeView (S_COMPILE3's back-end version, LF_BUILDINFO's tool and
-    // command line, which kppc leaves empty). A release build (ThinLTO, lld), Linux and --clang-flags
-    // (their objects not compared with clang's) stay clang's; so does any build with
-    // KPP_BACKEND=clang (the comparison).
-    const char* backendChoice = getenv("KPP_BACKEND");
-    bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() &&
-                     !(backendChoice && std::string(backendChoice) == "clang");
-    // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
-    // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
-    // KPP_TEST_BROKEN_ASM=K: module K gets an instruction the assembler rejects, which the verifier
-    // passes and only the back end finds (LLVM's diagnostics, not its verifier).
-    const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
-    const char* brokenAsm = getenv("KPP_TEST_BROKEN_ASM");
-    parallelFor(cg.modules.size(), options.threads, [&](size_t k)
+    // Output module k's object: the last build's when rebuildLLVM did not assemble it again or its hash
+    // file has its text, else compiled (by LLVM's back end in this process, or by clang).
+    auto compileEnd = [&](size_t k)
     {
-      std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
-      objects[k] = options.exe + "." + std::to_string(k) + ".o";
       if (!cg.changedModules.empty() && !cg.changedModules[k])
       {
         ++cached; // not assembled again: its text and object are the last build's (checked before rebuildLLVM ran)
         return;
       }
-      if (brokenModule && std::to_string(k) == brokenModule)
-        cg.modules[k] += "\ndefine void @kpp.test.broken() {\n  %a = add i32 %b, 1\n  %b = add i32 %a, 1\n  ret void\n}\n";
-      if (brokenAsm && std::to_string(k) == brokenAsm)
-        cg.modules[k] += "\nmodule asm \"kpp_no_such_instruction\"\n";
-      // A module whose text (and optimisation level) did not change keeps its object file.
-      uint64_t h = 1469598103934665603ull;
-      for (unsigned char c : cg.modules[k])
-        h = (h ^ c) * 1099511628211ull;
-      for (const char* c = level; *c; ++c)
-        h = (h ^ (unsigned char)*c) * 1099511628211ull;
-      for (unsigned char c : options.clangFlags)
-        h = (h ^ c) * 1099511628211ull;
-      std::string hashText = std::to_string(h);
-      std::string hashPath = options.exe + "." + std::to_string(k) + ".hash";
-      std::error_code ec;
-      if (readWholeFile(hashPath) == hashText && std::filesystem::exists(objects[k], ec))
-      {
-        ++cached;
+      std::string hashText;
+      if (unchangedObject(k, cg.modules[k], level, hashText))
         return;
-      }
       if (inProcess)
       {
-        std::string object, error;
-        BackendOptions backend;
-        backend.path = llPath;
-        backend.module = unsigned(k);
-        bool compiled = compileModule(cg.modules[k], backend, object, error);
-        if (compiled && !writeFile(objects[k], object))
-          error = "cannot write " + objects[k];
-        if (!compiled || !error.empty())
-        {
-          ++failures;
-          std::error_code removed;
-          std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
-          writeFile(llPath, cg.modules[k]); // (the text LLVM rejected, for the report)
-          std::lock_guard lock(moduleFailuresMutex);
-          moduleFailures.push_back({unsigned(k), 0, llPath, error});
-        }
-        else
-          writeFile(hashPath, hashText);
+        compileInProcess(k, cg.modules[k], hashText);
         return;
       }
+      std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
       if (!writeFile(llPath, cg.modules[k]))
       {
         ++failures;
@@ -1547,12 +1689,49 @@ namespace
       }
       else
       {
-        writeFile(hashPath, hashText);
+        writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
         std::error_code removed;
         std::filesystem::remove(errPath, removed); // (-w: nothing in it)
       }
-    });
+    };
+    if (backEnd)
+    {
+      // Step 4's P2: the modules the stream did not compile, on its threads. A program piece it was
+      // handed that the end assembled otherwise (CodegenResult::streamed) is compiled after the stream's
+      // compile of it: both write its object.
+      std::vector<size_t> again;
+      for (size_t k = 0; k < cg.modules.size(); ++k)
+        if (k < cg.streamed.size() && cg.streamed[k])
+          continue;
+        else if (handedOver[k])
+          again.push_back(k);
+        else
+          backEnd->push([&, k] { compileEnd(k); }, false);
+      if (!again.empty())
+      {
+        backEnd->waitStreamed();
+        {
+          // (Its streamed compile's failure is not the build's: the end's text is compiled now.)
+          std::lock_guard lock(moduleFailuresMutex);
+          for (size_t k : again)
+            for (auto f = moduleFailures.begin(); f != moduleFailures.end();)
+              if (f->module == k)
+              {
+                f = moduleFailures.erase(f);
+                --failures;
+              }
+              else
+                ++f;
+        }
+        for (size_t k : again)
+          backEnd->push([&, k] { compileEnd(k); }, false);
+      }
+      backEnd->wait();
+    }
+    else
+      parallelFor(cg.modules.size(), options.threads, compileEnd);
     double compileTime = seconds(Clock::now() - start);
+    std::string during = backEnd ? ", " + std::to_string(backEnd->duringCodegen()) + " during codegen" : ""; // (step 4's P2)
     // A module clang or LLVM rejected is an error of the build whatever --quiet says, with what it said
     // (its first lines): with --keep-going the link goes on without its object and reports what it
     // would have defined, which names no cause.
@@ -1635,13 +1814,13 @@ namespace
     if (options.deferLink)
     {
       deferLinkCommand(options, link);
-      report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged) + link deferred\n", compileTime, level, cg.modules.size(),
-             options.threads, cached.load());
+      report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged%s) + link deferred\n", compileTime, level, cg.modules.size(),
+             options.threads, cached.load(), during.c_str());
       return;
     }
     int rc = system(link.c_str());
-    report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
-           options.threads, cached.load(), seconds(Clock::now() - start), rc);
+    report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged%s) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
+           options.threads, cached.load(), during.c_str(), seconds(Clock::now() - start), rc);
     if (rc != 0)
       codegenExit = 1;
   }

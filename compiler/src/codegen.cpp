@@ -431,6 +431,15 @@ namespace
     // addToDescription's, in 3 of the game's 128 modules).
     std::vector<std::string> barrierPieces;
     std::vector<char> latePieces;
+    // Step 4's P2: per module, its program piece as handed to the stream at the barrier (PieceStream),
+    // by its size and hash, for the end's check that it is the end's text.
+    struct StreamedPiece
+    {
+      bool handed = false;
+      uint64_t hash = 0;
+      size_t size = 0;
+    };
+    std::vector<StreamedPiece> streamedPieces;
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
@@ -19511,7 +19520,7 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize);
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -19669,7 +19678,7 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                           CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize)
+                           CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -19689,13 +19698,14 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     bool debugInfo;
     const Target* target;
     bool optimize;
+    PieceStream* stream;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, stream, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
     j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
-                         j->keep, j->debugInfo, j->target, j->optimize);
+                         j->keep, j->debugInfo, j->target, j->optimize, j->stream);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -19705,7 +19715,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, stream);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -20103,6 +20113,15 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   return out;
 }
 
+// A text's FNV-1a hash: step 4's P2 checks that a program piece handed to the stream is the end's text.
+static uint64_t textHash(std::string_view text)
+{
+  uint64_t h = 1469598103934665603ull;
+  for (unsigned char c : text)
+    h = (h ^ c) * 1099511628211ull;
+  return h;
+}
+
 // Output module i of a build (Shared::outputModules): module i's text, or with pieces, the program piece
 // of module i (i < M) or the instance piece of module i - M.
 static std::string outputText(Emitter& em, unsigned i, const std::string& prefix, const PieceSources* sources, std::string* errors)
@@ -20117,7 +20136,7 @@ static std::string outputText(Emitter& em, unsigned i, const std::string& prefix
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize)
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream)
 {
   // The build's state lives in a session (Shared refers to its result), kept for the next build
   // when asked (keep) or freed.
@@ -20312,19 +20331,35 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         if (sh.checkBarrier)
           for (const auto& [name, line] : definedNames(sh))
             sh.barrierDefined.insert(name);
-        // The program pieces as the barrier has them, for the check at the end that they are its.
-        if (sh.checkBarrier && sh.splitPieces)
+        // The program pieces as the barrier has them: each one it has whole handed to the stream as soon
+        // as it is assembled (step 4's P2), when no error came before (an error's --keep-going
+        // declarations come at the end); and kept under KPP_CHECK_BARRIER for the check at the end that
+        // each is the end's.
+        bool streaming = stream && sh.splitPieces &&
+                         std::all_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em) { return em->errors.empty() && em->hiddenErrors == 0; });
+        if ((sh.checkBarrier || streaming) && sh.splitPieces)
         {
           PieceSources sources = pieceSources(sh, true);
-          sh.barrierPieces.assign(sh.moduleCount, {});
+          if (sh.checkBarrier)
+            sh.barrierPieces.assign(sh.moduleCount, {});
+          if (streaming)
+            sh.streamedPieces.assign(sh.moduleCount, {});
           std::atomic<unsigned> nextPiece{0};
           auto assemblePieces = [&](unsigned)
           {
             for (unsigned k; (k = nextPiece++) < sh.moduleCount;)
             {
               bool complete = true;
-              sh.barrierPieces[k] = programPieceText(sh, k, prefix, sources, nullptr, &complete);
+              std::string errors; // (the end assembles the piece again and reports them)
+              std::string text = programPieceText(sh, k, prefix, sources, &errors, &complete);
               sh.latePieces[k] = !complete;
+              if (sh.checkBarrier)
+                sh.barrierPieces[k] = text;
+              if (streaming && complete && errors.empty())
+              {
+                sh.streamedPieces[k] = {true, textHash(text), text.size()};
+                stream->piece(k, std::move(text));
+              }
             }
           };
           onThreads(threads, assemblePieces);
@@ -20589,6 +20624,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // (A module's definitions may be placed in another (placeShortDefinitions): they are freed once
   // every module is assembled; its own declarations as soon as it is, both its pieces with it.)
   bool placed = sh.importableModules != 0;
+  std::vector<char> asStreamed(e.moduleCount); // (step 4's P2: a program piece's text is the one the stream has)
   auto assemble = [&](unsigned thread)
   {
     Emitter& em = *emitters[thread];
@@ -20607,9 +20643,28 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         for (unsigned i : {k, k + em.moduleCount})
           if (i < outputs)
             result.modules[i] += declareUndefined(result.modules[i], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[i]);
+      if (k < sh.streamedPieces.size() && sh.streamedPieces[k].handed)
+        asStreamed[k] = result.modules[k].size() == sh.streamedPieces[k].size && textHash(result.modules[k]) == sh.streamedPieces[k].hash;
     }
   };
   onThreads(unsigned(emitters.size()), assemble);
+  // Step 4's P2: the build links the stream's object of a program piece handed over at the barrier when
+  // its text is the end's (CodegenResult::streamed). Otherwise the driver compiles the end's: as it may
+  // differ (--keep-going's declarations of what failed, a program function's lambda emitted at a later
+  // level), or, in a build without errors, as kppc's error, never silently (KPP_CHECK_BARRIER shows the
+  // first difference).
+  if (!sh.streamedPieces.empty())
+  {
+    result.streamed.assign(outputs, false);
+    for (unsigned k = 0; k < e.moduleCount; ++k)
+    {
+      result.streamed[k] = asStreamed[k] != 0;
+      if (sh.streamedPieces[k].handed && !asStreamed[k] && !failed && !sh.latePieces[k] && sh.barrierPieces.empty())
+        pieceErrors[k] += "codegen: module " + std::to_string(k) + "'s program piece handed to the back end at level 0's barrier is not the end's "
+                          "(step 4's pieces; KPP_CHECK_BARRIER=1 shows the first difference)\n";
+    }
+    sh.streamedPieces.clear();
+  }
   // KPP_CHECK_BARRIER: each program piece is the one level 0's barrier assembled, unless it is late.
   if (sh.splitPieces && !sh.barrierPieces.empty() && !failed)
     for (unsigned k = 0; k < e.moduleCount; ++k)

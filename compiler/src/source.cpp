@@ -186,6 +186,11 @@ bool bundledToolchain()
   return !getenv("KPP_CLANG") && std::filesystem::exists(bundledClang(compilerPath()), ec);
 }
 
+void setThreadBelowNormal(bool below)
+{
+  SetThreadPriority(GetCurrentThread(), below ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL);
+}
+
 std::string clangPath()
 {
   if (!chosenClang.empty())

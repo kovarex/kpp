@@ -46,6 +46,9 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column =
 // ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kppc
 // elsewhere, so it is given its client's path (main makes argv[0] that).
 std::filesystem::path compilerPath();
+// The calling thread below normal priority (true) or at normal priority (false): step 4's P2 runs the
+// back end below codegen's threads (main.cpp, BackEndPool).
+void setThreadBelowNormal(bool below);
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 
 // kpp's version, MAJOR.MINOR.PATCH with "+dirty" for a build of uncommitted changes, or "unknown"

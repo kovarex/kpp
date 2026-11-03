@@ -1,0 +1,21 @@
+// spec: a debug build of several modules whose objects kppc's own back end makes has its program pieces compiled while codegen emits the instances, each from the text level 0's barrier assembles (docs/codegen-speed.md, step 4's P2); a piece the end assembles otherwise is compiled again from the end's text: here a program function's generic lambdas, whose call operators only instances of later levels ask for (`11 12 8 3`)
+// kppc: --modules 4
+template<typename F> int applyTwice(F f, int x)
+{
+  return f(f(x));
+}
+template<typename T> struct Box
+{
+  T value;
+  template<typename F> T apply(F f) const { return f(this->value); }
+};
+
+int main()
+{
+  int base = 5;
+  auto addBase = [base](auto x) { return x + base; };
+  auto twice = [](auto x) { return x * 2; };
+  Box<int> box{4};
+  println(applyTwice(addBase, 1), " ", applyTwice(twice, 3), " ", box.apply(twice), " ", box.apply([](auto v) { return v - 1; }));
+  return 0;
+}
