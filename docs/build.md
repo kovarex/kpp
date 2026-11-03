@@ -626,9 +626,9 @@ A program's build is its C libraries and kppc's work at once, then the link:
 - kppc leaves the link to kpp (`--defer-link`): it writes the link command to `EXE.link.command`,
   and `EXE.link.pending` when its objects are new. kpp links once both are done, also when only a
   C library changed (a compile server replays an unchanged program's build, which does not link).
-- kpp's line gives the whole build's time and its split, `kpp: built ...\factorio.exe (debug, total
-  21.2 s: C libraries 18.8 s alongside kpp 18.3 s, link 2.4 s)`, and a command that builds several
-  programs ends with `kpp: built 2 programs, total N s`.
+- kpp's line gives the toolchain the build took, the whole build's time and its split, `kpp: built
+  ...\factorio.exe (debug, msvc toolchain, total 21.2 s: C libraries 18.8 s alongside kpp 18.3 s,
+  link 2.4 s)`, and a command that builds several programs ends with `kpp: built 2 programs, total N s`.
 - Measured on factorio-in-kpp's debug build from scratch (d84869e1, its 641 C/C++ files, PC-PRACOVNA,
   3 rounds interleaved): 32.8, 39.1, 34.0 s with the libraries one after another before kppc;
   22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
@@ -902,10 +902,15 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   libmingwex's are x87's 80 bits.
 - **Which toolchain a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's
   clang, found by vswhere, and its MSVC dialect, `--target windows`), and an error when that one is
-  not there, never the other in its place. Without it: KPP_CLANG, else the installation's `bin\`
-  when it has one, else Visual Studio's. The bundled toolchain with `--target windows` (it has no
-  MSVC headers) and Visual Studio's clang with `--target windows-gnu` are errors. The build's report
-  says which (`toolchain: ... (bundled, windows-gnu: links with lld)`). A compile server takes `bin\`
+  not there, never the other in its place. A list in the order preferred, `--toolchain msvc,bundled`,
+  takes the first of them this machine has (every name checked first; an error when none is): a
+  build.kpp that prefers Visual Studio's builds where only the bundled one is, as the game's does
+  (kovarex, 2026-11-03: `kpp factorio debug --set toolchain=bundled` chooses without editing it).
+  Without it: KPP_CLANG, else the installation's `bin\` when it has one, else Visual Studio's. The
+  bundled toolchain with `--target windows` (it has no MSVC headers) and Visual Studio's clang with
+  `--target windows-gnu` are errors. kpp's build line names the one taken (`(debug, bundled
+  toolchain, total ...)`), and the build's report says more (`toolchain: ... (bundled, windows-gnu:
+  links with lld)`). A compile server takes `bin\`
   next to its client's kpp.exe. A project's C libraries compile with clang's own flags under the
   bundled toolchain, with clang-cl's (`clang --driver-mode=cl`) under Visual Studio's.
 - **The link:** the bundled toolchain links with lld, debug builds too. `--incremental-link`
@@ -918,8 +923,13 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   game, which links Visual Studio-built C++ libraries, keeps `--toolchain msvc` and
   `--incremental-link`. The release link (ThinLTO) is the same with lld 19.1.5 and 19.1.7: 52.9 to
   66.6 against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
+- **A symbol kept in the link** whatever the toolchain: `--keep-symbol NAME` links in what defines
+  NAME although nothing names it, a C library's object that registers itself at startup (kpp-native's
+  crash report, `kpp_crash_report_install`): link.exe's and lld-link's `/INCLUDE:NAME`, the GNU
+  driver's `-u NAME`. A build.kpp gives it as an argument, never as a linker flag of one toolchain.
 - **Checked:** tests\toolchain.ps1 (an installation made of llvm-mingw and this kppc: its default,
-  `--toolchain msvc`, the errors, a project's debug link, and that its programs import Windows' DLLs
+  `--toolchain msvc`, a list with and without Visual Studio (KPP_VSWHERE), the errors, a project's
+  debug link, `--keep-symbol` with both toolchains, and that its programs import Windows' DLLs
   alone), tests\windowsgnu.ps1 (the 45 end-to-end programs in the GNU dialect), and
   `run_spec.py --target windows-gnu` (KPP_CLANG naming llvm-mingw's clang; 2026-11-02: every
   snippet the default target passes).

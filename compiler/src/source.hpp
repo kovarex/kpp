@@ -65,8 +65,11 @@ const char* kppCommit();
 std::string clangPath();
 // --toolchain bundled|msvc for the compiler at `compiler` (argv[0]: the client's, in a compile
 // server): bundled is bin\ next to it, msvc Visual Studio's clang; empty is the default above. The
-// error, if the one named is not there (never the other one in its place).
+// error, if the one named is not there (never the other one in its place). A list, `msvc,bundled`,
+// takes the first of them that is there, and is an error when none is.
 std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain);
 // Whether clangPath() is the bundled toolchain's: its links are lld-link's (Visual Studio's link.exe
 // is not part of it).
 bool bundledToolchain();
+// The toolchain a build takes, as --toolchain names it ("bundled", "msvc"), or "KPP_CLANG".
+std::string toolchainName();

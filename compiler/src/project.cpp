@@ -1068,9 +1068,9 @@ namespace
       args.push_back("--debug-info");
     args.push_back(p.optimize ? "--optimize" : "--no-optimize");
     // An unoptimized build links incrementally with Visual Studio's link.exe; the bundled toolchain's
-    // lld links whole.
+    // lld links whole. (A list, `msvc,bundled`, is the one of it this machine has.)
     std::string toolchain = toolchainOf(p, request);
-    if (!p.optimize && (toolchain.empty() ? !bundledToolchain() : toolchain != "bundled"))
+    if (!p.optimize && toolchain != "bundled" && (toolchain == "msvc" || (selectToolchain(compilerPath(), toolchain).empty() && !bundledToolchain())))
       args.push_back("--incremental-link");
     for (const std::string& c : p.configs)
       args.push_back("--config"), args.push_back(c);
@@ -1204,8 +1204,10 @@ namespace
       snprintf(split, sizeof split, "C libraries %.1f s alongside kpp %.1f s, link %.1f s", librarySeconds, kppSeconds, linkSeconds);
     else
       snprintf(split, sizeof split, "kpp %.1f s, link %.1f s", kppSeconds, linkSeconds);
+    // (The toolchain it took: build.kpp's `msvc,bundled` is the one of them this machine has.)
     if (code == 0)
-      printf("kpp: built %s (%s, total %.1f s: %s)\n", exe.string().c_str(), p.configuration.c_str(), seconds, split);
+      printf("kpp: built %s (%s, %s toolchain, total %.1f s: %s)\n", exe.string().c_str(), p.configuration.c_str(), toolchainName().c_str(), seconds,
+             split);
     else
       fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&

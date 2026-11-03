@@ -91,6 +91,7 @@ namespace
     std::vector<LibraryRoot> libraryRoots;
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
+    std::vector<std::string> keepSymbols;  // --keep-symbol NAME: linked in although nothing names it
     std::vector<std::string> excluded;     // --exclude FILE: a file under the roots left out
     bool showImportErrors = false; // --errors given: list parse errors in imported headers too
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
@@ -164,6 +165,8 @@ namespace
             "  --unscoped-library-root NAME DIR  the same for an unscoped library: its names are bare everywhere\n"
             "  --cinclude D  directory searched by imported C headers (repeatable)\n"
             "  --lib F       a library (.lib) linked into the executable (repeatable)\n"
+            "  --keep-symbol S  link in what defines the symbol S although nothing names it (a library's object that\n"
+            "                registers itself), with any toolchain: link.exe's /INCLUDE:S, the GNU driver's -u S (repeatable)\n"
             "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
@@ -187,7 +190,8 @@ namespace
             "                objects are new) instead of linking: kpp links once the C libraries, built alongside, are there\n"
             "  --toolchain T  bundled: the installation's own llvm-mingw (bin\\, the default where it has one),\n"
             "                which builds windows-gnu with nothing of Visual Studio's; msvc: Visual Studio's clang\n"
-            "                and link.exe (the default otherwise, and what --incremental-link needs; design.md 17)\n"
+            "                and link.exe (the default otherwise, and what --incremental-link needs; design.md 17);\n"
+            "                a list in the order preferred (msvc,bundled): the first of them this machine has\n"
             "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
             "                steps through the kpp source (docs/debugging.md)\n"
             "  --target T    build for T: windows (the default), linux, freebsd, or a triple (docs/design.md,\n"
@@ -590,6 +594,8 @@ namespace
         flags += " -municode";
       if (options.debugInfo)
         flags += " -g -Wl,--pdb=";
+      for (const std::string& symbol : options.keepSymbols)
+        flags += " -Wl,-u," + symbol;
       for (const std::string& lib : options.libs)
         flags += " \"" + lib + "\"";
       return flags;
@@ -607,6 +613,8 @@ namespace
         flags += " -static";
       if (!options.sysroot.empty())
         flags += " \"--sysroot=" + options.sysroot + "\"";
+      for (const std::string& symbol : options.keepSymbols)
+        flags += " -Wl,-u," + symbol;
       for (const std::string& lib : options.libs)
         flags += " \"" + lib + "\"";
       return flags;
@@ -621,6 +629,8 @@ namespace
       flags += " -Wl,/ENTRY:wmainCRTStartup";
     if (options.debugInfo)
       flags += " -Wl,/DEBUG";
+    for (const std::string& symbol : options.keepSymbols)
+      flags += " -Wl,/INCLUDE:" + symbol;
     for (const std::string& lib : options.libs)
       flags += " \"" + lib + "\"";
     return flags;
@@ -3748,7 +3758,7 @@ namespace
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1},
-    {"--codegen-threads", 1}, {"--lib", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
+    {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
     {"--convert-release", 0}, {"--convert-marks", 0}};
@@ -3938,6 +3948,8 @@ int compile(int argc, char** argv)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)
       options.libs.push_back(argv[++i]);
+    else if (arg == "--keep-symbol" && i + 1 < argc)
+      options.keepSymbols.push_back(argv[++i]);
     else if (arg == "--exclude" && i + 1 < argc)
       options.excluded.push_back(argv[++i]);
     else if ((arg == "--library-root" || arg == "--unscoped-library-root") && i + 2 < argc)

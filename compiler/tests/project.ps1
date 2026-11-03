@@ -340,7 +340,7 @@ void configure(Cell& cell)
   if (Test-Path 'build') { Fail 'kpp --version, --help or an option error built the project' }
   # kppc's options with their values go on to the cells' builds: --toolchain's value is no target name.
   $output = (Kpp @('main', '--no-server', '--toolchain', 'nosuch')) -join "`n"
-  if ($code -eq 0 -or $output -notmatch "--toolchain takes bundled or msvc, not 'nosuch'") { Fail "kpp main --toolchain nosuch: exit $code`n$output" }
+  if ($code -eq 0 -or $output -notmatch [regex]::Escape("--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not 'nosuch'")) { Fail "kpp main --toolchain nosuch: exit $code`n$output" }
 }
 finally { Pop-Location }
 

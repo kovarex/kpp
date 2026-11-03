@@ -38,6 +38,20 @@ Copy-Item $Kppc "$inst\kpp.exe" -Force
 Copy-Item -Recurse "$PSScriptRoot\..\..\stdlib" "$inst\stdlib"
 Copy-Item -Recurse "$PSScriptRoot\..\..\projectlib" "$inst\projectlib"
 
+# A C library's object that nothing names and that registers itself at startup, as kpp-native's crash
+# report does: Visual Studio's CRT runs what .CRT$XCU holds, MinGW-w64's a constructor.
+$keptSource = @'
+#include <stdio.h>
+int kept_marker = 1;
+static void kept_report(void) { puts("kept by --keep-symbol"); }
+#ifdef _MSC_VER
+#pragma section(".CRT$XCU", read)
+__declspec(allocate(".CRT$XCU")) void (*kept_init)(void) = kept_report;
+#else
+__attribute__((constructor)) static void kept_init(void) { kept_report(); }
+#endif
+'@
+
 Set-Content -Encoding ascii "$work\probe.kpp" @'
 extern "C" import "string.h";
 int main()
@@ -75,6 +89,20 @@ try
   $r = Probe "$inst\kpp.exe" 'msvc' @('--toolchain', 'msvc')
   if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain msvc did not build: $($r.report)" }
   elseif ($r.line -notlike "toolchain: *(Visual Studio's, windows*") { Fail "--toolchain msvc is not Visual Studio's clang: '$($r.line)'" }
+
+  # A list in the order preferred (the game's build.kpp: msvc where Visual Studio is, else bundled):
+  # the first of them that is here, every name checked first.
+  $r = Probe "$inst\kpp.exe" 'prefermsvc' @('--toolchain', 'msvc,bundled')
+  if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain msvc,bundled did not build: $($r.report)" }
+  elseif ($r.line -notlike "toolchain: *(Visual Studio's, windows*") { Fail "--toolchain msvc,bundled with Visual Studio here is not Visual Studio's clang: '$($r.line)'" }
+  $r = Probe "$inst\kpp.exe" 'preferbundled' @('--toolchain', 'bundled,msvc')
+  if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain bundled,msvc did not build: $($r.report)" }
+  elseif ($r.line -notlike "toolchain: $inst\bin\clang.exe (bundled, windows-gnu*") { Fail "--toolchain bundled,msvc in an installation is not its bin\: '$($r.line)'" }
+  $r = Probe $Kppc 'nextone' @('--toolchain', 'bundled,msvc')
+  if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain bundled,msvc without bin\ did not build with Visual Studio's clang: $($r.report)" }
+  elseif ($r.line -notlike "toolchain: *(Visual Studio's, windows*") { Fail "--toolchain bundled,msvc without bin\ is not Visual Studio's clang: '$($r.line)'" }
+  $r = Probe $Kppc 'badlist' @('--toolchain', 'msvc,gcc')
+  if ($r.code -ne 2 -or $r.report -notmatch 'takes bundled, msvc or a list') { Fail "--toolchain msvc,gcc was not an error: exit $($r.code), $($r.report)" }
 
   $r = Probe $Kppc 'none' @('--toolchain', 'bundled')
   if ($r.code -ne 2 -or $r.report -notmatch '--toolchain bundled: this installation has no') { Fail "--toolchain bundled without bin\ was not an error: exit $($r.code), $($r.report)" }
@@ -140,6 +168,19 @@ void build(Project& project)
       $exe = Get-ChildItem -Recurse "$project\build" -Filter *.exe | Select-Object -First 1
       if ($exe -and (ForeignImports $exe.FullName).Count) { Fail "the project's program imports $((ForeignImports $exe.FullName) -join ', ')" }
     }
+    # An object of the C library that nothing names, which registers itself at startup (as kpp-native's
+    # crash report does): left out of the link, unless build.kpp keeps its symbol (--keep-symbol, -u
+    # for this toolchain's lld). kpp's build line says the toolchain.
+    Set-Content -Encoding ascii 'libs\plus\kept.c' $keptSource
+    $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -match 'kept by --keep-symbol') { Fail "an object nothing names was linked in without --keep-symbol: $($run.text)" }
+    if ($run.text -notmatch 'kpp: built .*\(debug, bundled toolchain, total') { Fail "kpp's build line does not say the bundled toolchain: $($run.text)" }
+    $built = Get-Content -Raw 'build.kpp'
+    Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    hello.argument(option);")
+    $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'kept by --keep-symbol' -or $run.text -notmatch 'Hello from kpp 42') { Fail "--keep-symbol kept_marker did not link in its object (the GNU driver's -u): $($run.text)" }
+    Set-Content -Encoding ascii 'build.kpp' $built
+    Remove-Item 'libs\plus\kept.c'
   }
   finally { Pop-Location }
 
@@ -174,6 +215,17 @@ void build(Project& project)
     $run = Run "$inst\kpp.exe" @('--no-server', '--toolchain', 'msvc', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp --toolchain msvc did not build the C library with it: $($run.text)" }
     Set-Content -Encoding ascii 'build.kpp' $withArguments
+    # The self-registering object with Visual Studio's toolchain: kept by link.exe's /INCLUDE.
+    cmd /c rd /s /q build
+    Set-Content -Encoding ascii 'libs\plus\kept.c' $keptSource
+    $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -match 'kept by --keep-symbol') { Fail "an object nothing names was linked in without --keep-symbol (msvc): $($run.text)" }
+    if ($run.text -notmatch 'kpp: built .*\(debug, msvc toolchain, total') { Fail "kpp's build line does not say the msvc toolchain: $($run.text)" }
+    Set-Content -Encoding ascii 'build.kpp' ($withArguments -replace 'withvs\.link\("plus"\);', "withvs.link(`"plus`");`n  for (StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    withvs.argument(option);")
+    $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+    if ($run.exit -ne 0 -or $run.text -notmatch 'kept by --keep-symbol' -or $run.text -notmatch 'Hello from kpp 42') { Fail "--keep-symbol kept_marker did not link in its object (link.exe's /INCLUDE): $($run.text)" }
+    Set-Content -Encoding ascii 'build.kpp' $withArguments
+    Remove-Item 'libs\plus\kept.c'
   }
   finally { Pop-Location }
 
@@ -198,6 +250,25 @@ void build(Project& project)
     # The repository's kppc (no toolchain of its own) without Visual Studio's clang: the same, said for it.
     $r = Probe $Kppc 'novs' @()
     if ($r.code -ne 2 -or $r.report -notmatch 'has no toolchain of its own.*none is installed') { Fail "a kppc without a toolchain and without Visual Studio: exit $($r.code), $($r.report)" }
+    # Without Visual Studio, a list goes on to the bundled toolchain (and without that too, it says
+    # none of them is here): a project's build.kpp asking for msvc,bundled builds with it, and its
+    # debug build links whole (kpp adds no --incremental-link, which the bundled toolchain refuses).
+    $r = Probe "$inst\kpp.exe" 'novsbundled' @('--toolchain', 'msvc,bundled')
+    if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain msvc,bundled without Visual Studio did not build with the bundled toolchain: $($r.report)" }
+    elseif ($r.line -notlike "toolchain: $inst\bin\clang.exe (bundled, windows-gnu*") { Fail "--toolchain msvc,bundled without Visual Studio is not the bundled toolchain: '$($r.line)'" }
+    $r = Probe $Kppc 'novsnone' @('--toolchain', 'msvc,bundled')
+    if ($r.code -ne 2 -or $r.report -notmatch 'none of them is here') { Fail "--toolchain msvc,bundled with neither was not an error: exit $($r.code), $($r.report)" }
+    Push-Location $project
+    try
+    {
+      $built = Get-Content -Raw 'build.kpp'
+      Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (StringView option : {`"--toolchain`", `"msvc,bundled`"})`n    hello.argument(option);")
+      cmd /c rd /s /q build
+      $run = Run "$inst\kpp.exe" @('--no-server', '--run')
+      if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -notmatch '\(debug, bundled toolchain, total') { Fail "a build.kpp asking for msvc,bundled without Visual Studio did not build with the bundled toolchain: $($run.text)" }
+      Set-Content -Encoding ascii 'build.kpp' $built
+    }
+    finally { Pop-Location }
   }
   finally
   {
@@ -213,5 +284,5 @@ finally
   foreach ($d in 'stdlib', 'projectlib') { if (Test-Path "$inst\$d") { cmd /c rd /s /q "$inst\$d" } }
 }
 
-if ($failed -eq 0) { "ok   toolchain: llvm-mingw by default in an installation (windows-gnu, Windows' DLLs alone), msvc on request" }
+if ($failed -eq 0) { "ok   toolchain: llvm-mingw by default in an installation (windows-gnu, Windows' DLLs alone), msvc on request, a list's first one here, --keep-symbol with both" }
 exit $failed

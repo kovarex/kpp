@@ -149,6 +149,30 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
   chosenClang.clear();
   chosenBundled = false;
   std::error_code ec;
+  // A list (`msvc,bundled`): the first one of it this machine has, as if it alone were named. A
+  // build description that prefers Visual Studio's still builds where only the bundled one is.
+  if (toolchain.find(',') != std::string::npos)
+  {
+    std::vector<std::string> names;
+    for (size_t at = 0; at <= toolchain.size();)
+    {
+      size_t end = std::min(toolchain.find(',', at), toolchain.size());
+      names.push_back(toolchain.substr(at, end - at));
+      at = end + 1;
+    }
+    for (const std::string& one : names)
+      if (one != "bundled" && one != "msvc")
+        return "--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
+    std::string missing;
+    for (const std::string& one : names)
+    {
+      std::string error = selectToolchain(compiler, one);
+      if (error.empty())
+        return "";
+      missing += (missing.empty() ? "" : "; ") + error;
+    }
+    return "--toolchain " + toolchain + ": none of them is here (" + missing + ")";
+  }
   if (toolchain == "bundled")
   {
     std::filesystem::path clang = bundledClang(compiler);
@@ -164,7 +188,7 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
       return "--toolchain msvc " + visualStudioMissing();
   }
   else if (!toolchain.empty())
-    return "--toolchain takes bundled or msvc, not '" + toolchain + "'";
+    return "--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
   else if (getenv("KPP_CLANG"))
     ;
   else if (std::filesystem::exists(bundledClang(compiler), ec))
@@ -184,6 +208,13 @@ bool bundledToolchain()
     return chosenBundled;
   std::error_code ec;
   return !getenv("KPP_CLANG") && std::filesystem::exists(bundledClang(compilerPath()), ec);
+}
+
+std::string toolchainName()
+{
+  if (bundledToolchain())
+    return "bundled";
+  return chosenClang.empty() && getenv("KPP_CLANG") ? "KPP_CLANG" : "msvc";
 }
 
 void setThreadBelowNormal(bool below)
