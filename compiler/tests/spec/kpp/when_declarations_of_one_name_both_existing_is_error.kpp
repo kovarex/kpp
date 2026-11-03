@@ -1,7 +1,6 @@
 // spec: two `when` declarations of one name that both exist in a template instance (design.md 19) are a clash, a compile error in that instance: limit<int> has both `size` declarations (an int is trivially copyable and 4 bytes), while limit<double> has only the first and compiles
 // factorio: none: the converter writes complementary conditions (`config::debug`, `!config::debug`)
-// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses and the clash per instance; the message is theirs to word)
-// error: when_declarations_of_one_name_both_existing_is_error.kpp:9: error: 'size' is declared twice in this instance (limit<int>): both `when` conditions hold
+// error: when_declarations_of_one_name_both_existing_is_error.kpp:8: error: 'size' is declared twice in this instance (limit<int32>): both `when` conditions hold
 template<typename T>
 int limit()
 {

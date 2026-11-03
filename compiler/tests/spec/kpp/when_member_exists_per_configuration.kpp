@@ -1,6 +1,5 @@
 // spec: a `when` class member (design.md 19) is part of the class's layout only where its condition holds: a debug-only statistics member makes the class larger in debug and is absent in release, and a constructor's member initializer for it exists exactly when the member does (in release `lookups(5)` names no member and is not checked)
 // factorio: the game's 61 class members under #ifdef DEBUG (statistics and checks), converted to `when (config::debug)` (design.md 12)
-// pending: `when` is not parsed yet (A: the parser, the scope and the layout; D: the uses)
 struct Counter
 {
   int value;

@@ -1,6 +1,5 @@
 // spec: a local declared with `when (config::debug)` (design.md 19) is the enclosing block's, so a later `if constexpr (config::debug)` in the block uses it, as C++'s two `#ifdef DEBUG` sections share a local; one declared `when (!config::debug)` alike in the `else` of that `if constexpr`, where its condition is known to hold
 // factorio: LogisticManager's `std::vector<LogisticCell*> neighbors` and DeliverJob's `LogisticPoint* point`, LatencyOneTimeEffect's `itTick`, TextureCopyHelperDX11's `sourceWidth` and FogShaderRenderLogic's `cachedTileID`, each declared under one #ifdef DEBUG and used under a later one (design.md 12)
-// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses)
 int main()
 {
   int cells[3] = {4, 5, 6};

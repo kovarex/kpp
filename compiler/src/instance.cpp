@@ -286,6 +286,11 @@ Decl* InstanceCopier::decl(const Decl* d)
     default: return const_cast<Decl*>(d); // a namespace or an import cannot appear in a body
   }
   copy->cachedType.store(nullptr, std::memory_order_relaxed); // typed again, for this instantiation
+  if (copy != d && d->when)
+  {
+    copy->when = expr(d->when);
+    copy->whenKnown = -1; // decided again, for this instantiation
+  }
   if (!decls.count(const_cast<Decl*>(d)))
     decls[const_cast<Decl*>(d)] = copy;
   return copy;

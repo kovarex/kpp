@@ -84,6 +84,7 @@ namespace
         return;
       each(d);
       decls(d->templateParams);
+      expr(d->when);
       switch (d->kind)
       {
         case NodeKind::NamespaceDecl:

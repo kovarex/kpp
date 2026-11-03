@@ -203,6 +203,11 @@ struct Decl : Node
   uint32_t endToken = 0;      // One past the declaration's last token (set when the parser finishes it).
   uint8_t builtin = 0;        // BUILTIN_*: a member the compiler generates (no body/initializer in the AST).
   bool filePrivate = false;   // `private` at file scope (design.md 15): a name its own file alone sees.
+  // `when (condition) declaration;` (design.md 19): the declaration exists only while the constant
+  // condition holds. whenKnown is the walk's answer (as IfStmt::constexprKnown): -1 not evaluated,
+  // 0 false (no storage, nothing checked or emitted), 1 true; each instance's copy has its own.
+  int8_t whenKnown = -1;
+  Expr* when = nullptr;
 };
 
 struct LambdaExpr;
@@ -231,6 +236,9 @@ struct ClassDecl : Decl
   Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
+  // The data members a false `when` dropped in this configuration (design.md 19), by name: their
+  // constructor initializers are dropped with them (absentMemberInit).
+  Span<uint32_t> absentMembers;
 };
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };
 struct EnumDecl : Decl
@@ -278,6 +286,23 @@ struct VariableDecl : Decl
   Span<Expr*> structuredBindings; // NameExpr* for `auto [a, b] = ...`
   Expr* alignment = nullptr; // alignas(N) on the variable or data member
 };
+// A constructor's initializer of a data member of cls (its definition) that a false `when` dropped:
+// it exists exactly when the member does (design.md 19), so it does not either.
+inline bool absentMemberInit(const ClassDecl* cls, const FunctionDecl::CtorInit& init)
+{
+  if (!cls || cls->absentMembers.empty() || init.member.parts.size() != 1 || init.member.global)
+    return false;
+  uint32_t name = init.member.parts[0].symbol;
+  bool absent = false;
+  for (uint32_t symbol : cls->absentMembers)
+    absent = absent || symbol == name;
+  if (absent) // (unless a member that exists has the name: `when (!c)`'s of `when (c)`'s)
+    for (const Decl* m : cls->members)
+      if (m->kind == NodeKind::VariableDecl && !static_cast<const VariableDecl*>(m)->name.empty() &&
+          static_cast<const VariableDecl*>(m)->name.last().symbol == name)
+        return false;
+  return absent;
+}
 struct UsingAliasDecl : Decl { uint32_t name; Type* type; };
 struct UsingDirectiveDecl : Decl { QualifiedName name; };
 struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; };

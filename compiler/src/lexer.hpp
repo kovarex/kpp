@@ -17,8 +17,9 @@ enum class TokenKind : uint8_t
   Error,
 };
 
-// C++ keywords. kpp-only keywords (implicit, fallthrough, both_const, class_const, accumulate)
-// are contextual and recognised by the parser, so C++ code using them as names still parses.
+// C++ keywords, and `when` (design.md 19). kpp's other keywords (implicit, fallthrough, both_const,
+// class_const, accumulate) are contextual and recognised by the parser, so C++ code using them as
+// names still parses; C's code has `when` as a name (cKeywordsAsNames).
 #define KPP_KEYWORDS(X) \
   X(alignas) X(alignof) X(and) X(and_eq) X(asm) X(auto) X(bitand) X(bitor) X(bool) X(break) \
   X(case) X(catch) X(char) X(char8_t) X(char16_t) X(char32_t) X(class) X(compl) X(concept) \
@@ -30,7 +31,7 @@ enum class TokenKind : uint8_t
   X(reinterpret_cast) X(requires) X(return) X(short) X(signed) X(sizeof) X(static) \
   X(static_assert) X(static_cast) X(struct) X(switch) X(template) X(this) X(thread_local) \
   X(throw) X(true) X(try) X(typedef) X(typeid) X(typename) X(union) X(unsigned) X(using) \
-  X(virtual) X(void) X(volatile) X(wchar_t) X(while) X(xor) X(xor_eq)
+  X(virtual) X(void) X(volatile) X(wchar_t) X(when) X(while) X(xor) X(xor_eq)
 
 enum class Kw : uint32_t
 {

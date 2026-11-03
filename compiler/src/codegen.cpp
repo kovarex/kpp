@@ -5348,7 +5348,7 @@ namespace
           break;
         case NodeKind::DeclStmt:
           for (Decl* d : static_cast<DeclStmt*>(n)->decls)
-            if (d->kind == NodeKind::VariableDecl)
+            if (d->kind == NodeKind::VariableDecl && !(keptBranches && d->whenKnown == 0)) // (a `when` its instance decided false names nothing)
             {
               inner.insert(d);
               visit(static_cast<VariableDecl*>(d)->init);
@@ -17599,6 +17599,10 @@ namespace
         case NodeKind::DeclStmt:
           for (Decl* d : static_cast<DeclStmt*>(s)->decls)
           {
+            if (d->when && d->whenKnown < 0)
+              unsupported(d, "a when declaration the checker did not decide");
+            if (d->whenKnown == 0)
+              continue; // `when (false)` (design.md 19): no storage, no constructor, no destructor
             if (d->kind == NodeKind::VariableDecl)
             {
               layOutClosuresIn(static_cast<VariableDecl*>(d)->init); // the variable's slot may hold one

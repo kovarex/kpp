@@ -254,7 +254,7 @@ namespace
         case Kw::using_: case Kw::operator_: case Kw::namespace_: case Kw::thread_local_: case Kw::decltype_:
         case Kw::void_: case Kw::bool_: case Kw::char_: case Kw::char8_t_: case Kw::char16_t_: case Kw::char32_t_:
         case Kw::wchar_t_: case Kw::short_: case Kw::int_: case Kw::long_: case Kw::signed_: case Kw::unsigned_:
-        case Kw::float_: case Kw::double_:
+        case Kw::float_: case Kw::double_: case Kw::when_:
           return true;
         default:
           return false;
@@ -1441,6 +1441,105 @@ namespace
       }
     }
 
+    // `when (condition) declaration;` (design.md 19): the declaration, which exists only while the
+    // constant condition holds; each declaration it makes gets the condition (`when (c) int a, b;`).
+    // A local variable's the checker decides (Decl::whenKnown), per instance. At namespace and class
+    // scope it is decided here, from config constants and literals, as declaration-scope if
+    // constexpr is: true, the declarations are kept (whenKnown 1); false, they are dropped, and a
+    // class keeps its dropped data members' names (ClassDecl::absentMembers), whose constructor
+    // initializers are dropped with them. A condition on a class template's parameters (a member per
+    // instance) is not supported yet.
+    void parseWhen(Scope scope)
+    {
+      uint32_t start = pos;
+      advance();
+      expect(P::LParen, "expected '(' after when");
+      Expr* cond = parseExpression();
+      expect(P::RParen, "expected ')' after the when condition");
+      if (inRecovery)
+        return;
+      if (at(Kw::when_))
+      {
+        out.diagnostics.push_back({pos, "one when per declaration: join the conditions with &&"});
+        inRecovery = true;
+        return;
+      }
+      if (scope == Scope::Enum)
+      {
+        out.diagnostics.push_back({start, "when declares a variable, a member or a namespace's declaration (design.md 19), not an enumerator"});
+        inRecovery = true;
+        return;
+      }
+      std::optional<bool> holds;
+      if (scope != Scope::Local)
+      {
+        std::optional<ConfigValue> value = configValue(cond);
+        if (!value || !value->isNumber)
+        {
+          out.diagnostics.push_back({cond->token, "a when at namespace or class scope needs a condition made of config constants and literals (design.md 19): "
+                                                  "a member per class template instance is not supported yet"});
+          inRecovery = true;
+          return;
+        }
+        holds = value->number != 0;
+      }
+      size_t mark = scratch.size();
+      parseDeclarationInner(scope, {});
+      if (inRecovery)
+        return;
+      for (size_t i = mark; i < scratch.size(); ++i)
+      {
+        Decl* d = static_cast<Decl*>(scratch[i]);
+        if (scope == Scope::Local &&
+            (d->kind != NodeKind::VariableDecl || (d->flags & DF_Typedef) || !static_cast<VariableDecl*>(d)->structuredBindings.empty()))
+        {
+          out.diagnostics.push_back({d->token, "when in a block declares a local variable (design.md 19): not a function, type, alias or structured binding"});
+          continue;
+        }
+        if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ImportDecl)
+        {
+          out.diagnostics.push_back({d->token, "when declares a declaration, not a namespace or an import (design.md 19)"});
+          continue;
+        }
+        d->when = cond;
+        if (holds)
+          d->whenKnown = *holds ? 1 : 0;
+      }
+      if (holds && !*holds)
+      {
+        if (scope == Scope::Class && currentParent && currentParent->kind == NodeKind::ClassDecl)
+        {
+          auto* c = static_cast<ClassDecl*>(currentParent);
+          std::vector<uint32_t> absent(c->absentMembers.begin(), c->absentMembers.end());
+          for (size_t i = mark; i < scratch.size(); ++i)
+            if (scratch[i]->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(scratch[i])->name.empty())
+              absent.push_back(static_cast<VariableDecl*>(scratch[i])->name.last().symbol);
+          c->absentMembers = makeSpanOf(absent);
+        }
+        scratch.resize(mark); // the declarations do not exist in this configuration
+      }
+    }
+
+    // Two data members of one name that both exist, one of them a `when`'s (design.md 19: several
+    // `when`s may declare one name; two existing at once in a configuration are a clash).
+    void checkWhenClash(ClassDecl* c)
+    {
+      if (c->absentMembers.empty() && std::none_of(c->members.begin(), c->members.end(), [](const Decl* m) { return m->when != nullptr; }))
+        return;
+      for (size_t i = 0; i < c->members.size(); ++i)
+      {
+        auto* a = c->members[i]->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(c->members[i]) : nullptr;
+        if (!a || a->name.empty())
+          continue;
+        for (size_t j = i + 1; j < c->members.size(); ++j)
+        {
+          auto* b = c->members[j]->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(c->members[j]) : nullptr;
+          if (b && (a->when || b->when) && !b->name.empty() && b->name.last().symbol == a->name.last().symbol)
+            out.diagnostics.push_back({b->token, "two when declarations of this member exist at once in this configuration, a clash (design.md 19)"});
+        }
+      }
+    }
+
     // `if constexpr (condition) { declarations } else { declarations }` at namespace or class
     // scope. The condition is evaluated here, from config constants and literals, and only the
     // declarations of the taken branch are kept; the others are skipped without being parsed.
@@ -1571,6 +1670,11 @@ namespace
       if (accept(P::Semi))
       {
         pushDecl(decl<EmptyDecl>(start));
+        return;
+      }
+      if (at(Kw::when_))
+      {
+        parseWhen(scope);
         return;
       }
       if (kppSource && atIdent(kwTest) && at(TokenKind::String, 1) && at(P::LBrace, 2) && (scope == Scope::Namespace || scope == Scope::Class))
@@ -1844,6 +1948,7 @@ namespace
             run->body = parseBlock();
             pushDecl(run);
             c->members = makeSpan<Decl*>(mark);
+            checkWhenClash(c);
             currentParent = savedParent;
             currentAccess = savedAccess;
             currentClassName = savedClassName;
@@ -3175,6 +3280,7 @@ namespace
           break;
       }
       c->members = makeSpan<Decl*>(mark);
+      checkWhenClash(c);
       currentParent = savedParent;
       currentAccess = savedAccess;
       currentClassName = savedClassName;
@@ -3435,6 +3541,7 @@ namespace
       classMembersMark = savedMembersMark;
       implicitEquality(mark);
       c->members = makeSpan<Decl*>(mark);
+      checkWhenClash(c);
       // A friend function defined in its class (a hidden friend) takes no object: a static member,
       // which only argument-dependent lookup finds (the resolver's hiddenFriends). A defaulted
       // friend comparison (`friend bool operator==(const C&, const C&) = default;`) compares as
@@ -3908,6 +4015,7 @@ namespace
           case Kw::inline_:
           case Kw::constinit_:
           case Kw::consteval_:
+          case Kw::when_:
             return parseDeclStmt();
           default:
             if (isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1))

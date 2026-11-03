@@ -10162,6 +10162,8 @@ struct GlobalScope::Impl
     std::vector<std::optional<ConstValue>> parts(nb + nf);
     for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
     {
+      if (absentMemberInit(layout->decl, init))
+        continue; // (design.md 19)
       if (init.member.empty() || init.isPack)
         return std::nullopt;
       uint32_t symbol = init.member.last().symbol;
@@ -18023,6 +18025,7 @@ struct GlobalScope::Impl
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
     std::vector<const Ty*> walkedArgTypes;
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
+    size_t blockLocals = 0;            // where the innermost block's locals start (a `when` clash: whenHolds)
     int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide
     // The code generator's re-typing of an instance's copy with a type pack bound to one element
     // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
@@ -22767,8 +22770,11 @@ struct GlobalScope::Impl
           walkExpr(f->condition);
           checkDefinedOnce(f);
           checkTextSignature(f);
+          Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);
           for (FunctionDecl::CtorInit& init : f->ctorInits)
           {
+            if (initialized && initialized->kind == NodeKind::ClassDecl && absentMemberInit(static_cast<ClassDecl*>(initialized), init))
+              continue; // a member a false `when` dropped: its initializer is not there either (design.md 19)
             Lookup l = impl.lookupQualified(init.member, scope, &locals, 0);
             if (l.found == Found::No)
             {
@@ -23166,8 +23172,52 @@ struct GlobalScope::Impl
       locals.pop(mark);
     }
 
+    // `when (condition)` on a local (design.md 19): decided as if constexpr's condition is, in an
+    // instance and in a function that is no template; false, the variable does not exist: it is not
+    // declared, nothing of it is checked or instantiated, as a discarded branch. A template's own
+    // walk checks it as an undecided branch. True when there is no condition.
+    bool whenHolds(Decl* d)
+    {
+      if (!d->when)
+        return true;
+      if (keepConstexprBranches && d->whenKnown >= 0)
+        return d->whenKnown != 0;
+      walkExpr(d->when);
+      if (!activeSubst && (inGenericTemplate() || impl.converting))
+        return true;
+      std::optional<bool> known = impl.constCondition(d->when, ctx(), 0);
+      if (!known)
+      {
+        impl.reportCheckerError(file, d->when->token, "a when condition is a constant expression, as if constexpr's (design.md 19)");
+        return true;
+      }
+      d->whenKnown = int8_t(*known ? 1 : 0);
+      // Several `when`s may declare one name, as an #ifdef/#else pair (`when (c) A t; when (!c) B
+      // t;`); two that exist at once are a clash.
+      auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
+      if (*known && v && v->name.parts.size() == 1)
+        for (size_t i = blockLocals; i < locals.items.size(); ++i)
+          if (locals.items[i].symbol == v->name.parts[0].symbol && locals.items[i].decl && locals.items[i].decl->when)
+          {
+            std::string where = "here";
+            if (activeSubst && bodyOf && !bodyOf->name.empty())
+            {
+              where = "in this instance (" + std::string(symbols.name(bodyOf->name.last().symbol)) + "<";
+              for (size_t k = 0; k < activeSubst->pairs.size(); ++k)
+                where += (k ? ", " : "") + types.toString(activeSubst->pairs[k].type, &symbols);
+              where += ">)";
+            }
+            impl.reportCheckerError(file, d->token, "'" + std::string(symbols.name(v->name.parts[0].symbol)) + "' is declared twice " + where +
+                                                        ": both `when` conditions hold");
+            break;
+          }
+      return *known;
+    }
+
     void walkLocalDecl(Decl* d)
     {
+      if (!whenHolds(d))
+        return; // (not declared: the name is another `when`'s, or nothing's)
       // Classes are in scope in their own bodies. A variable whose type is written is in scope
       // in its own initializer, as C++ declares it before that (`Function<void(int)> visit =
       // [&](int n) { visit(n - 1); };`); an `auto` one is not, its type comes from there.
@@ -23209,9 +23259,11 @@ struct GlobalScope::Impl
       {
         case NodeKind::BlockStmt:
         {
-          size_t mark = locals.mark();
+          size_t mark = locals.mark(), savedBlock = blockLocals;
+          blockLocals = mark;
           for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
             walkStmt(inner);
+          blockLocals = savedBlock;
           locals.pop(mark);
           break;
         }

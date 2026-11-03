@@ -10635,7 +10635,8 @@ void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolT
                                Kw::export_, Kw::friend_, Kw::mutable_, Kw::namespace_, Kw::new_, Kw::noexcept_, Kw::not_,
                                Kw::not_eq_, Kw::operator_, Kw::or_, Kw::or_eq_, Kw::private_, Kw::protected_, Kw::public_,
                                Kw::reinterpret_cast_, Kw::requires_, Kw::static_cast_, Kw::template_, Kw::this_, Kw::throw_,
-                               Kw::try_, Kw::typeid_, Kw::typename_, Kw::using_, Kw::virtual_, Kw::xor_, Kw::xor_eq_};
+                               Kw::try_, Kw::typeid_, Kw::typename_, Kw::using_, Kw::virtual_, Kw::xor_, Kw::xor_eq_,
+                               Kw::when_}; // (kpp's: design.md 19)
   for (Token& t : tokens)
     if (t.getKind() == TokenKind::Keyword && std::find(std::begin(cppOnly), std::end(cppOnly), Kw(t.id)) != std::end(cppOnly))
     {
