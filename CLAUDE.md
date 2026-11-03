@@ -26,7 +26,7 @@ simple templates, own standard library, C-only interop.
 - Work happens on PC-PRACOVNA (Windows 10, Ryzen 9 9950X 16C/32T, 128 GB RAM).
 - Toolchain: Visual Studio 2022 Community (MSVC 14.44, bundled clang 19.1.5, CMake, Ninja).
 - Factorio source (benchmark corpus) is at C:\Factorio. Never modify its sources or commit there; building
-  it with its own FASTBuild command line (C++ Debug/Release, its libraries) is allowed (kovarex, 2026-10-31).
+  it with its own FASTBuild command line (C++ Debug/Release/FinalRelease, its libraries) is allowed (kovarex, 2026-10-31; FinalRelease 2026-11-03).
 - Repositories: this one is C:\kpp (github.com/kovarex/kpp; it replaced C:\kov and
   github.com/wube/kov, which are no longer worked in). The Factorio source converted to kpp is
   C:\factorio-in-kpp (github.com/kovarex/factorio-in-kpp, private: it is game source), written by
