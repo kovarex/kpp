@@ -437,7 +437,7 @@ The gains overlap; each line is against the line before. The status column is as
 | 1. One home per linkonce global (codegen placement) | D | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | **done**, 0998f157: IR 967 -> 708 MB, clang 3.76–4.13 -> 3.10–3.19 s, link 2.15 -> 1.65 s (section 6). With debug info too since 1a8e88c5 (section 7) |
 | 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A (c263459f), **not landed** |
 | 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). With debug info too since 8b5c902c (section 7) |
-| 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **in progress**: P1 done, 4d884644 (section 6): each debug module in two pieces, neutral on the clean build (IR +2.6%) and the leaf edit (back end 0.35 -> 0.17 s, its incremental link 0.5 -> 0.7–0.8 s). P2, streaming, next |
+| 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **done**: P1 4d884644, P2 91671241 (section 6): the program pieces compiled during codegen; the game's clean build 13.7 -> 11.3 s (back end after codegen 2.8 -> 1.3 s, 120 of the 128 program pieces during codegen), peak memory unchanged |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | not started |
 | 6. kppc codegen's lock scaling | D | −4 to −6 s | −0.1 s | −0.1 s | **first round done**, b9dcb7ba, 0303a2fb, 9aaf2cdb: codegen 8.9 -> 5.0 s at -j 32 (its serial start). What remains: 23.6 s of work on 32 threads runs about 4.7x. The lock profile of today's build is in section 7 |
 | 7. Patching instead of relinking (e) | B, E | 0 | −0.4 s | −0.4 s | not started |
@@ -583,6 +583,48 @@ at the barrier too and compares.
   objects identical at 1, 8 and 32 threads with the barrier check on; `--dump-data` 7/7 equal, the 45
   menu maps' checksums equal, the unit tests 9,501/9,501 with 0 CRC mismatches against C++ Debug.
 
+**Step 4, P2: streaming (91671241; B reviewed).** The program pieces are compiled while codegen emits the
+instances.
+- **The hand-over.** At level 0's barrier, codegen hands the driver each program piece it has whole
+  (PieceStream). That happens only when no error came before; a late piece is not handed over.
+- **The pool.** The driver's BackEndPool compiles each piece with LLVM's back end in kppc, on
+  `options.threads` threads below normal priority while codegen runs. Once codegen ends, the other
+  modules follow on the same threads at normal priority.
+- **The check at the end.** The end assembles every program piece again and compares it with what it
+  handed over, by size and FNV-1a hash.
+  - The stream's object is linked only when the two texts are equal.
+  - When they differ, the end's text is compiled: a --keep-going build's declarations of what failed,
+    or a program function's lambda emitted at a later level.
+  - In a build without errors, a difference is kppc's error, never a silently linked barrier object.
+- **Not streamed:** the clang path, a release build and the server's rebuildLLVM.
+- **Measured:** paired clean builds of the game (`cg\p2-measure.ps1`, 3 interleaved rounds, load 0 to 3%,
+  0 stderr lines on both), master a31c239e against P2:
+
+  | | master (256 objects) | P2 |
+  |---|---:|---:|
+  | wall | 13.66 to 13.70 s | 11.26 to 11.35 s |
+  | codegen | 5.67 to 5.70 s | 4.82 to 4.90 s |
+  | back end after codegen | 2.75 to 2.78 s | 1.30 to 1.32 s (120 of the 128 program pieces during codegen) |
+  | link | 1.42 to 1.45 s | 1.43 to 1.45 s |
+  | peak working set | 1.85 to 1.89 GB | 1.84 to 1.89 GB |
+
+- **What the numbers say.**
+  - The back end after codegen is 1.46 s shorter, as P0 estimated.
+  - Codegen is 0.85 s shorter too, which P2's own work does not explain: its end assembles every program
+    piece again. With streaming off (a build with an error before the barrier), P2's codegen equals
+    master's. A guess still to test on a quiet machine: the busy back-end threads keep the cores awake
+    between codegen's levels.
+- **Measuring needs a build without errors.** An error before level 0's barrier switches streaming off,
+  as it should. With bd4ee165's zstd passed as plain sources instead of the scoped library it is,
+  5 codegen errors did that in the first rounds.
+- **The gate:**
+  - run_tests and spec with and without LLVM in kppc, and spec `--debug-info`;
+  - the game's 256 objects identical at 1, 8 and 32 threads with the barrier check on, the streamed
+    build identical to the barrier-checked one, and P2's objects identical to master's;
+  - `--dump-data` 7/7 equal;
+  - on the first base (b83dbe94), the 45 menu maps and the unit tests 9,501/9,501 with 0 CRC mismatches
+    against C++ Debug.
+
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for
@@ -666,7 +708,7 @@ gains overlap: 3 and 4 both shorten the back end.
 | 1 | build.kpp's after-build: a hard link or kpp writing bin\Debugx64 directly, not a copy of the exe and PDB | −0.5 s | one line | factorio-in-kpp's build.kpp, C | 0.55 s measured after the build |
 | 2 | the C-library check: once per header (E's 0418c983, after the measured build), then in parallel if still long | up to −1.3 s | small | E | 1.47 s measured at 44d0f0fa, one thread; to be measured on master |
 | 3 | `--debug-info` builds with homes and the back end in kpp | **done**: −2.6 to −2.9 s measured (estimate −2.3 s) | medium | D, B reviewed | 1a8e88c5, 8b5c902c; below |
-| 4 | streaming (step 4: P1 done, 4d884644; P2 next), with clang's processes too | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
+| 4 | streaming (step 4: done, P1 4d884644 and P2 91671241, measured −2.4 s; clang's processes not streamed) | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
 | 5 | the debug link: `/DEBUG:FASTLINK` | **none**: this link.exe (MSVC 14.44) no longer supports it ("LNK4315: /DEBUG:FASTLINK is no longer supported. Using /DEBUG:FULL instead"); both links 1.54–1.59 s, the same 207 MB PDB (cg\linkfast.ps1) | — | — | struck |
 | 6 | codegen's locks, second round: short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds |
 | 7 | FastISel lowering Win64 arguments, upstream in LLVM | −0.3 to −0.5 s | an LLVM patch and a release | D | SelectionDAG is 13 s of the back end's 149 s CPU |
