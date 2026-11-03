@@ -909,10 +909,69 @@ namespace
     return out;
   }
 
+  // The names the preprocessed headers declare with typedef: in each `typedef ...;`, a name before a
+  // ',', ';' or '[' outside parentheses and braces (`typedef unsigned long u_long;`, `} NAME, *PNAME;`),
+  // or after a '*' and before a ')' in one level of parentheses (`typedef void (*NAME)(int);`).
+  std::set<std::string> typedefNames(const std::string& text)
+  {
+    std::set<std::string> names;
+    auto identChar = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+    bool inTypedef = false;
+    int depth = 0;
+    char before = 0; // the last character before the identifier, spaces skipped
+    for (size_t i = 0; i < text.size();)
+    {
+      char c = text[i];
+      if (isdigit((unsigned char)c))
+      {
+        // a number, `0x10` and `1.5e3f` whole (its letters are no identifier)
+        while (i < text.size() && (identChar(text[i]) || text[i] == '.'))
+          ++i;
+        before = '0';
+        continue;
+      }
+      if (identChar(c))
+      {
+        size_t j = i;
+        while (j < text.size() && identChar(text[j]))
+          ++j;
+        std::string_view word(text.data() + i, j - i);
+        size_t next = j;
+        while (next < text.size() && (text[next] == ' ' || text[next] == '\t' || text[next] == '\r' || text[next] == '\n'))
+          ++next;
+        char after = next < text.size() ? text[next] : 0;
+        if (!inTypedef && word == "typedef" && (i == 0 || !identChar(text[i - 1])))
+        {
+          inTypedef = true;
+          depth = 0;
+        }
+        else if (inTypedef && ((depth == 0 && (after == ',' || after == ';' || after == '[')) || (depth == 1 && before == '*' && after == ')')))
+          names.insert(std::string(word));
+        before = word.back();
+        i = j;
+        continue;
+      }
+      if (inTypedef)
+      {
+        if (c == '(' || c == '{' || c == '[')
+          ++depth;
+        else if ((c == ')' || c == '}' || c == ']') && depth > 0)
+          --depth;
+        else if (c == ';' && depth == 0)
+          inTypedef = false;
+      }
+      if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+        before = c;
+      ++i;
+    }
+    return names;
+  }
+
   // Turns `#define NAME body` lines (clang -dM output) into kpp constant declarations where the
-  // body looks like a constant: numbers, string literals, operators, parentheses and names. A body
-  // that calls function-like macros is taken as clang expanded it (expansions).
-  std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions)
+  // body looks like a constant: numbers, string literals, operators, parentheses and names (other
+  // macros', type words, and the typedefs of the headers: `(u_long)0x00000000`). A body that calls
+  // function-like macros is taken as clang expanded it (expansions).
+  std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions, const std::set<std::string>& typedefs)
   {
     std::string out = "\n// Object-like macros, as constants.\n";
     // Names of object-like macros with a body: a body may refer to them (INFINITY uses _HUGE_ENUF).
@@ -944,6 +1003,7 @@ namespace
                                                     "SHORT", "UCHAR", "CHAR", "WCHAR"};
     std::map<std::string, std::string> integerTypes; // constants with a plain integer body, by name
     std::map<std::string, std::string> floatTypes;   // constants with a plain floating literal body (__FLT_MAX__), by name
+    std::vector<std::pair<std::string, std::string>> laterAliases; // (name, the macro it names) not typed when read
     // `3.40282347e+38F`, `2.2204460492503131e-16`: a decimal floating literal.
     auto floatLiteral = [](const std::string& body)
     {
@@ -1047,12 +1107,13 @@ namespace
           ok = false;
         if ((isalpha((unsigned char)c) || c == '_') && !prevIdent && quotes % 2 == 0)
         {
-          // An identifier: it must be a type word or another constant macro for the body to be a constant.
+          // An identifier: it must be a type word, a typedef of the headers or another constant macro for
+          // the body to be a constant.
           size_t j = i;
           while (j < body.size() && (isalnum((unsigned char)body[j]) || body[j] == '_'))
             ++j;
           std::string word = body.substr(i, j - i);
-          if (!typeWords.count(word) && !candidates.count(word))
+          if (!typeWords.count(word) && !typedefs.count(word) && !candidates.count(word))
             namesKnown = false;
         }
         if (c == '(')
@@ -1066,9 +1127,17 @@ namespace
       }
       bool aliasOfInteger = integerTypes.count(body) != 0; // DBL_MANT_DIG = __DBL_MANT_DIG__
       bool aliasOfFloat = floatTypes.count(body) != 0;     // FLT_MAX = __FLT_MAX__
-      if (!ok || call || (quotes != 0 && quotes != 2) || !namesKnown ||
-          (!hasNumber && quotes == 0 && body.find('(') == std::string::npos && !aliasOfInteger && !aliasOfFloat))
+      if (!ok || call || (quotes != 0 && quotes != 2) || !namesKnown)
         continue;
+      if (!hasNumber && quotes == 0 && body.find('(') == std::string::npos && !aliasOfInteger && !aliasOfFloat)
+      {
+        // An alias of a macro not typed yet, typed after the others (-dM's macros come in name order:
+        // curl's `#define EWOULDBLOCK WSAEWOULDBLOCK` before MinGW-w64's `#define WSAEWOULDBLOCK
+        // (WSABASEERR + 35)`).
+        if (candidates.count(body))
+          laterAliases.emplace_back(name, body);
+        continue;
+      }
       // A declared type where the body shows one: a cast, a string, a float or an integer literal.
       std::string type = "auto";
       if (body.rfind("((", 0) == 0 && body.find(')') != std::string::npos)
@@ -1137,6 +1206,27 @@ namespace
       if (type.find("int") != std::string::npos || type.find("long") != std::string::npos)
         integerTypes[name] = type;
       out += "const " + type + " " + name + " = " + body + ";\n";
+    }
+    // The aliases of macros typed after them, each once the macro it names is (an alias of such an
+    // alias in a later round), declared after it.
+    for (bool typed = true; typed;)
+    {
+      typed = false;
+      for (auto it = laterAliases.begin(); it != laterAliases.end();)
+      {
+        auto integer = integerTypes.find(it->second);
+        auto floating = floatTypes.find(it->second);
+        if (integer == integerTypes.end() && floating == floatTypes.end())
+        {
+          ++it;
+          continue;
+        }
+        std::string type = integer != integerTypes.end() ? integer->second : floating->second;
+        out += "const " + type + " " + it->first + " = " + it->second + ";\n";
+        (integer != integerTypes.end() ? integerTypes : floatTypes)[it->first] = type;
+        it = laterAliases.erase(it);
+        typed = true;
+      }
     }
     return out;
   }
@@ -1282,9 +1372,19 @@ namespace
                  "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n";
     // malloc.h's alloca is `#define alloca _alloca` (only where __STDC__ is not defined, as it is
     // here), which the import does not carry: declared as the function, the code generator's
-    // stack allocation like _alloca. MinGW-w64's malloc.h has _alloca a macro too (`__builtin_alloca`).
+    // stack allocation like _alloca.
     if (std::find(headers.begin(), headers.end(), "malloc.h") != headers.end())
-      wrapper += "#undef alloca\nvoid* alloca(size_t);\n#undef _alloca\nvoid* _alloca(size_t);\n";
+      wrapper += "#undef alloca\nvoid* alloca(size_t);\n";
+    // _alloca: the UCRT's malloc.h declares it, MinGW-w64's makes it a macro of __builtin_alloca, also
+    // where another header includes malloc.h (MinGW-w64's stdlib.h does): declared as the function
+    // wherever a header made it a macro.
+    wrapper += "#ifdef _alloca\n#undef _alloca\nvoid* _alloca(size_t);\n#endif\n";
+    // HRESULT_FROM_WIN32: the Windows SDK's winerror.h has it an inline function, MinGW-w64's a
+    // function-like macro, which the import does not carry (its inline function only outside
+    // __CRT__NO_INLINE, which clang's unoptimized -E sets with every other inline function of its
+    // CRT, math.h's on __builtin_fabsf among them): declared as the function wherever a header made it
+    // a macro (its definition for the link is the program's: kpp-native's inline_c.c for the game).
+    wrapper += "#ifdef HRESULT_FROM_WIN32\n#undef HRESULT_FROM_WIN32\nlong HRESULT_FROM_WIN32(long);\n#endif\n";
     // The include directories as absolute paths, in the key and on clang's command line: a relative
     // `--cinclude native\include` names another directory in every worktree.
     std::error_code ec;
@@ -1307,7 +1407,7 @@ namespace
     }
     uint64_t hash = 1469598103934665603ull;
     // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
-    for (unsigned char c : "kpp import 8\n" + wrapper + includeArgs + "\n" + toolchain)
+    for (unsigned char c : "kpp import 9\n" + wrapper + includeArgs + "\n" + toolchain)
       hash = (hash ^ c) * 1099511628211ull;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);
@@ -1348,7 +1448,8 @@ namespace
       }
       std::string definesText = readWholeFile(defines);
       std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (own + ".x.c"), clang, includeArgs);
-      text = readWholeFile(preprocessed) + macroConstants(definesText, expansions);
+      text = readWholeFile(preprocessed);
+      text += macroConstants(definesText, expansions, typedefNames(text));
       if (!options.target.windows())
         text = vaListForSysV(text);
       // The import, then its stamps (a reader that finds the import with older stamps checks those:

@@ -1,0 +1,27 @@
+// spec: _alloca is a function of the import wherever an imported header's malloc.h has it, also where malloc.h is not imported itself (another header includes it) and its _alloca is MinGW-w64's macro of __builtin_alloca (windows-gnu): a block on the calling function's stack, aligned to 16 bytes (`703 0`)
+// factorio: MiningDrill, DrawQueue, Framebuffer and Noise call _alloca, which the game's import has through SDL_stdinc.h's malloc.h (MSVC) and MinGW-w64's stdlib.h (windows-gnu), never an import of malloc.h: the windows-gnu build had "'_alloca' is not declared"
+// target: windows (the UCRT's and MinGW-w64's malloc.h)
+extern "C" import "c_alloca_through_another_header.h";
+
+int sumOfFirst(int count)
+{
+  int* block = (int*)_alloca(count * sizeof(int));
+  for (int i = 0; i < count; ++i)
+    block[i] = i;
+  int sum = 0;
+  for (int i = 0; i < count; ++i)
+    sum += block[i];
+  return sum;
+}
+
+int misalignment(int count)
+{
+  char* block = (char*)_alloca(count);
+  return (int)((unsigned long long)block % 16);
+}
+
+int main()
+{
+  println(sumOfFirst(38), " ", misalignment(5));
+  return 0;
+}

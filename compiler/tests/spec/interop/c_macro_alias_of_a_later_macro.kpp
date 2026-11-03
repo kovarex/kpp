@@ -1,0 +1,9 @@
+// spec: an imported C macro that names another one is that one's constant, also when the one it names comes after it in name order and is itself an alias, or an integer expression of a third: A_FIRST names A_SECOND, which names ZZ_DERIVED, `(ZZ_BASE + 35)`; each is an int (`10035 10035 10035 5017`)
+// factorio: zlib (converted as C) reads EWOULDBLOCK (gzread, gzwrite), which curl's curl_setup_once.h makes `#define EWOULDBLOCK WSAEWOULDBLOCK`: in the windows-gnu import, MinGW-w64's WSAEWOULDBLOCK is `(WSABASEERR + 35)`, after EWOULDBLOCK in name order, and EWOULDBLOCK was not declared
+extern "C" import "c_macro_alias_of_a_later_macro.h";
+
+int main()
+{
+  println(A_FIRST, " ", A_SECOND, " ", ZZ_DERIVED, " ", A_FIRST / 2);
+  return 0;
+}

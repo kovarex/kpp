@@ -64,8 +64,9 @@ namespace
       kwCheck = symbols.intern("check");
       kwRequire = symbols.intern("require");
       kwMain = symbols.intern("main");
+      kwCBool = symbols.intern("_Bool");
     }
-    uint32_t kwTest, kwCheck, kwRequire, kwMain;
+    uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool;
     bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
@@ -1186,6 +1187,10 @@ namespace
           if (d->flags & DF_Typedef)
             return;
       }
+      // A C typedef named _Bool, C's keyword, is not declared (namesCBool).
+      if constexpr (std::is_same_v<T, VariableDecl>)
+        if ((d->flags & DF_Typedef) && namesCBool(d->name))
+          return;
       // `alignas(16) float a[4], b[4];`: every variable of the declaration (it is cleared when the
       // next declaration starts).
       if constexpr (std::is_same_v<T, VariableDecl>)
@@ -1198,6 +1203,15 @@ namespace
         if constexpr (std::is_same_v<T, VariableDecl>)
           if ((d->flags & DF_Typedef) && d->name.parts.size() == 1)
             cTypedefNames.insert(d->name.parts[0].symbol);
+    }
+
+    // C's _Bool keyword as a declared name. A header that typedefs bool after stdbool.h's `#define bool
+    // _Bool` (curl's curl_setup.h without HAVE_BOOL_T: `typedef enum { bool_false, bool_true } bool;`)
+    // does not compile as C, but the import reads it, and its _Bool would be another type than bool in
+    // every declaration of the import (SDL's `const _Bool*`): so nothing of that name is declared.
+    bool namesCBool(const QualifiedName& name) const
+    {
+      return cMode && name.parts.size() == 1 && name.parts[0].symbol == kwCBool;
     }
 
     // MS C's anonymous member of a named struct type, `MONITORINFO;` in winuser.h's MONITORINFOEXW
@@ -3651,7 +3665,7 @@ namespace
           parseDeclarator(d, scope);
           if (inRecovery)
             return true;
-          if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1)
+          if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1 && !namesCBool(d.name))
           {
             // `typedef struct { ... } Name;`: the class itself takes the name, the first one; any
             // later plain name is a typedef of it (windns.h's `} DNS_KEY_DATA, *PDNS_KEY_DATA,
@@ -3827,7 +3841,7 @@ namespace
           parseDeclarator(d, scope);
           if (inRecovery)
             return true;
-          if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1)
+          if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1 && !namesCBool(d.name))
           {
             // `typedef enum { ... } Name;` (C headers: curl's CURLcode): the enum itself takes the name.
             e->name = d.name;

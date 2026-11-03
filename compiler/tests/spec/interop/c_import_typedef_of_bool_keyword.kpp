@@ -1,0 +1,11 @@
+// spec: an imported header's typedef that names C's _Bool keyword (stdbool.h's `#define bool _Bool` before a `typedef enum {...} bool;`, which C does not allow) is not declared: _Bool stays C's bool in every declaration of the import, so a `const bool*` a C function returns is a kpp `const bool*` (`true false true false 1`)
+// factorio: InputState's `const bool* keys = SDL_GetKeyboardState(...)`: in the windows-gnu import, curl's curl_setup.h (no HAVE_BOOL_T) made `typedef enum { bool_false, bool_true } _Bool;`, and SDL's `const _Bool*` became a pointer to that enumeration ("a pointer (const _Bool*) does not convert to const bool*")
+extern "C" import "c_import_typedef_of_bool_keyword.h";
+
+int main()
+{
+  const bool* flags = bool_flags();
+  bool second = bool_flag(1);
+  println(flags[0], " ", flags[1], " ", flags[2], " ", second, " ", sizeof(flags[0]));
+  return 0;
+}

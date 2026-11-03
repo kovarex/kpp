@@ -1,0 +1,10 @@
+// spec: windows.h's HRESULT_FROM_WIN32 is a function of the import, as the Windows SDK has it (an inline function), also with MinGW-w64's headers, whose winerror.h makes it a function-like macro, which the import does not carry (windows-gnu) (`-2147024891 0 -5`)
+// factorio: WICLoaderData (SpriteLoaders' WIC errors) calls HRESULT_FROM_WIN32, which kpp-native's inline_c.c makes clang emit for the link; the windows-gnu build had "'HRESULT_FROM_WIN32' is not declared"
+// target: windows (windows.h)
+extern "C" import "windows.h";
+
+int main()
+{
+  println(HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED), " ", HRESULT_FROM_WIN32(0), " ", HRESULT_FROM_WIN32(-5));
+  return 0;
+}

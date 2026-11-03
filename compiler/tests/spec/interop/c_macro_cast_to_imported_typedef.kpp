@@ -1,0 +1,9 @@
+// spec: an imported C macro that casts a number to a typedef its headers declare (`(my_ulong)0x7f000001`) is that constant, of that type, as the macros casting to a builtin or Windows type are (interop/c_macro_casts) (`0 2130706433 65535 2`)
+// factorio: UDPSocket's INADDR_ANY, MinGW-w64's `(u_long)0x00000000` in the windows-gnu import (the Windows SDK's `(ULONG)0x00000000` imports): it was not declared
+extern "C" import "c_macro_cast_to_imported_typedef.h";
+
+int main()
+{
+  println(ANY_ADDRESS, " ", LOOPBACK_ADDRESS, " ", SHORT_MASK, " ", sizeof(SHORT_MASK));
+  return 0;
+}
