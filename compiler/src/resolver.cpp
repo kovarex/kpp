@@ -1000,7 +1000,9 @@ struct GlobalScope::Impl
   // std::hash<std::string> takes them one by one (the instance maps were 8% of the front end).
   struct PointerKeyHash
   {
-    size_t operator()(const std::string& key) const
+    using is_transparent = void; // (claimInstance looks a key on its stack up: std::string_view)
+    size_t operator()(const std::string& key) const { return (*this)(std::string_view(key)); }
+    size_t operator()(std::string_view key) const
     {
       uint64_t h = 0x9E3779B97F4A7C15ull ^ key.size();
       size_t i = 0;
@@ -1073,9 +1075,23 @@ struct GlobalScope::Impl
   struct InstanceShard
   {
     std::mutex mutex;
-    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>, PointerKeyHash> map; // key: f, this type, sorted argument pointers
+    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>, PointerKeyHash, std::equal_to<>> map; // key: f, this type, sorted argument pointers
   };
   InstanceShard instanceShards[64];
+  // A thread's last answers of claimInstance by key (direct-mapped): an instance asked for again (92%
+  // of the game's 1,288,637 requests) is found without its shard's lock and without allocating. An
+  // entry holds for one generation of the table: one is a GlobalScope's life (a new one may reuse
+  // addresses) until a record leaves the table (recheckInstancesOf, dropUnusedInstances).
+  static inline std::atomic<uint64_t> instanceGeneration{1};
+  struct InstanceCacheEntry
+  {
+    uint64_t generation = 0;
+    size_t hash = 0;
+    uint32_t size = 0;
+    char key[16 + 16 * 6];
+    InstanceRecord* record = nullptr;
+  };
+  static constexpr size_t instanceCacheSize = 1024;
   // Instances codegen made that a compile server's edit took out of the table (recheckInstancesOf):
   // kept, not freed, so that no address the recorded reads mention is ever another record's.
   std::vector<std::unique_ptr<InstanceRecord>> droppedInstances;
@@ -1085,29 +1101,65 @@ struct GlobalScope::Impl
   // a variable whose initializer is instantiated.
   InstanceRecord* claimInstance(const Decl* f, const Subst& subst, const Ty* thisType, bool& producer)
   {
-    std::vector<std::pair<const void*, const void*>> pairs;
-    pairs.reserve(subst.pairs.size());
-    for (const Subst::Pair& p : subst.pairs)
-      pairs.push_back({p.param, p.type});
-    std::sort(pairs.begin(), pairs.end());
-    std::string key(reinterpret_cast<const char*>(&f), sizeof f);
-    key.append(reinterpret_cast<const char*>(&thisType), sizeof thisType);
-    for (auto& [d, t] : pairs)
+    // The key, on the stack for up to 8 arguments: f, the this type, the argument pairs sorted.
+    size_t n = subst.pairs.size();
+    std::pair<const void*, const void*> fewPairs[8];
+    std::vector<std::pair<const void*, const void*>> manyPairs;
+    std::pair<const void*, const void*>* pairs = n <= std::size(fewPairs) ? fewPairs : (manyPairs.resize(n), manyPairs.data());
+    for (size_t i = 0; i < n; ++i)
+      pairs[i] = {subst.pairs[i].param, subst.pairs[i].type};
+    std::sort(pairs, pairs + n);
+    char fewKey[16 + 16 * 8];
+    std::string manyKey;
+    size_t size = 16 + 16 * n;
+    char* key = size <= sizeof fewKey ? fewKey : (manyKey.resize(size), manyKey.data());
+    memcpy(key, &f, 8);
+    memcpy(key + 8, &thisType, 8);
+    for (size_t i = 0; i < n; ++i)
     {
-      key.append(reinterpret_cast<const char*>(&d), sizeof d);
-      key.append(reinterpret_cast<const char*>(&t), sizeof t);
+      memcpy(key + 16 + 16 * i, &pairs[i].first, 8);
+      memcpy(key + 24 + 16 * i, &pairs[i].second, 8);
     }
-    InstanceShard& shard = instanceShards[(PointerKeyHash()(key) >> 58) % std::size(instanceShards)]; // the top bits: the map inside buckets by the low ones
-    std::lock_guard lock(shard.mutex);
-    auto& slot = shard.map[key];
-    if (slot)
+    std::string_view keyView(key, size);
+    size_t hash = PointerKeyHash()(keyView);
+    auto found = [&](InstanceRecord* record)
     {
       producer = false;
-      if (rewalking.load(std::memory_order_relaxed) && slot->late)
+      if (rewalking.load(std::memory_order_relaxed) && record->late)
         rewalkTouchedLate = true;
-      recordUse(USE_Instance, slot.get());
-      return slot.get();
+      recordUse(USE_Instance, record);
+      return record;
+    };
+    // This thread's cache: a record the table held for this key in this generation is still its.
+    thread_local std::unique_ptr<InstanceCacheEntry[]> cache;
+    uint64_t generation = instanceGeneration.load(std::memory_order_acquire);
+    InstanceCacheEntry* cached = nullptr;
+    if (size <= sizeof(InstanceCacheEntry::key))
+    {
+      if (!cache)
+        cache = std::make_unique<InstanceCacheEntry[]>(instanceCacheSize);
+      cached = &cache[hash % instanceCacheSize];
+      if (cached->generation == generation && cached->hash == hash && cached->size == size && !memcmp(cached->key, key, size))
+        return found(cached->record);
     }
+    auto remember = [&](InstanceRecord* record)
+    {
+      if (!cached)
+        return;
+      cached->generation = generation;
+      cached->hash = hash;
+      cached->size = uint32_t(size);
+      memcpy(cached->key, key, size);
+      cached->record = record;
+    };
+    InstanceShard& shard = instanceShards[(hash >> 58) % std::size(instanceShards)]; // the top bits: the map inside buckets by the low ones
+    std::lock_guard lock(shard.mutex);
+    if (auto it = shard.map.find(keyView); it != shard.map.end())
+    {
+      remember(it->second.get());
+      return found(it->second.get());
+    }
+    auto& slot = shard.map[std::string(keyView)];
     slot = std::make_unique<InstanceRecord>();
     slot->late = afterResolve.load(std::memory_order_relaxed) && !rewalking.load(std::memory_order_relaxed);
     slot->of = f;
@@ -24626,6 +24678,7 @@ GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols))
 
 GlobalScope::~GlobalScope()
 {
+  Impl::instanceGeneration.fetch_add(1, std::memory_order_acq_rel); // (another GlobalScope's records may get these addresses)
   {
     std::lock_guard lock(membersOutsideMutex);
     if (membersOutsideSink == &impl->membersReadOutside)
@@ -26697,6 +26750,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
         {
           impl->droppedInstances.push_back(std::move(it->second));
           it = shard.map.erase(it);
+          Impl::instanceGeneration.fetch_add(1, std::memory_order_acq_rel); // (no thread's claimInstance answers with it now)
           if (dropped)
             ++*dropped;
         }
@@ -27435,6 +27489,7 @@ void GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
         drop.insert(r);
         impl->droppedInstances.push_back(std::move(it->second));
         it = shard.map.erase(it);
+        Impl::instanceGeneration.fetch_add(1, std::memory_order_acq_rel); // (no thread's claimInstance answers with it now)
       }
       else
         ++it;
