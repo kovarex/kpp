@@ -14419,6 +14419,13 @@ struct GlobalScope::Impl
         // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
         // A = int finds the member in the specialisation those arguments pick.
         Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        if (l.found == Found::Local && l.decl && l.decl->when && n->resolved && n->resolved != l.decl && n->resolved->when)
+        {
+          l.decl = n->resolved; // (of several `when` locals of the name, the one the walk found existing: design.md 19)
+          l.scope = n->resolved->ownScope;
+        }
+        if (l.found == Found::Local && l.decl && l.decl->when && l.decl->whenKnown == 0)
+          return types.unknown(); // a local a false `when` declares: no type (the walk said so where it is used)
         if (l.decl && l.decl->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(l.decl)->type == t && n->name.parts.size() == 1)
           l = lookupPastAlias(static_cast<UsingAliasDecl*>(l.decl), n->name.parts[0].symbol, depth + 1); // `using Option = Option<DataType>;`
         if (n->name.parts.size() == 2 && !n->name.parts[1].hasTemplateArgs && n->name.parts[0].hasTemplateArgs)
@@ -19068,6 +19075,20 @@ struct GlobalScope::Impl
         return;
       Lookup l = impl.lookupQualified(t->name, scope, &locals, 0, activeSubst);
       reportAmbiguity(l, t->name, t->token);
+      if (l.found == Found::Local && l.decl && l.decl->when && t->name.parts.size() == 1)
+      {
+        // A local alias, class or enumeration a `when` declares (design.md 19): the one of the name
+        // that exists here (convertType takes it from resolved), or the error that none does.
+        bool undecided = false;
+        Decl* named = whenUse(t->name.parts[0].symbol, t->token, l.decl, undecided);
+        if (!named)
+        {
+          t->resolved = nullptr;
+          return;
+        }
+        l.decl = named;
+        l.scope = named->ownScope;
+      }
       t->resolved = l.decl;
       if (l.found == Found::No)
       {
@@ -23162,7 +23183,8 @@ struct GlobalScope::Impl
           break;
         }
         case NodeKind::UsingAliasDecl:
-          checkNotLibrary(static_cast<UsingAliasDecl*>(d)->type, d->token);
+          if (d->whenKnown != 0) // (a false `when`'s is not checked: design.md 19)
+            checkNotLibrary(static_cast<UsingAliasDecl*>(d)->type, d->token);
           locals.push(static_cast<UsingAliasDecl*>(d)->name, d);
           break;
         case NodeKind::UsingDirectiveDecl: // `using namespace Helpers;`
@@ -23421,12 +23443,12 @@ struct GlobalScope::Impl
       d->whenKnown = int8_t(*known ? 1 : 0);
       // Several `when`s may declare one name, as an #ifdef/#else pair (`when (c) A t; when (!c) B
       // t;`); two that exist at once are a clash.
-      auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
-      if (*known && v && v->name.parts.size() == 1)
+      uint32_t name = impl.absentName(d); // (a variable's, an alias's, a class's or an enumeration's)
+      if (*known && name != UINT32_MAX)
         for (size_t i = blockLocals; i < locals.items.size(); ++i)
-          if (Decl* other = locals.items[i].decl; locals.items[i].symbol == v->name.parts[0].symbol && other && (!other->when || other->whenKnown != 0))
+          if (Decl* other = locals.items[i].decl; locals.items[i].symbol == name && other && (!other->when || other->whenKnown != 0))
           {
-            impl.reportCheckerError(file, d->token, "'" + std::string(symbols.name(v->name.parts[0].symbol)) + "' is declared twice " + whenWhere() +
+            impl.reportCheckerError(file, d->token, "'" + std::string(symbols.name(name)) + "' is declared twice " + whenWhere() +
                                                         ": both `when` conditions hold");
             break;
           }

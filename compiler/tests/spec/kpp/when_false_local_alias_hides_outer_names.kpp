@@ -1,0 +1,17 @@
+// spec: where a `when` condition is false (design.md 19), a local alias's or local class's name still hides the names of its spelling around it: a use outside the condition is an error, never a use of the global `Width` or `Probe`; a false alias's type is not checked
+// factorio: none: the converter writes each use of a debug-only alias inside `if constexpr (config::debug)` or a `when` on it
+// kppc: --release
+// error: when_false_local_alias_hides_outer_names.kpp:14: error: 'Width' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_local_alias_hides_outer_names.kpp:15: error: 'Probe' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+using Width = int;
+struct Probe { int v = 1; };
+
+int main()
+{
+  when (config::debug) using Width = long long;
+  when (config::debug) struct Probe { int v = 2; };
+  when (config::debug) using Unchecked = NoSuchType*; // (false here: not checked)
+  Width w = 3;
+  Probe p;
+  return w + p.v;
+}

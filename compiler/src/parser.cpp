@@ -1501,10 +1501,10 @@ namespace
       for (size_t i = mark; i < scratch.size(); ++i)
       {
         Decl* d = static_cast<Decl*>(scratch[i]);
-        if (scope == Scope::Local &&
-            (d->kind != NodeKind::VariableDecl || (d->flags & DF_Typedef) || !static_cast<VariableDecl*>(d)->structuredBindings.empty()))
+        if (scope == Scope::Local && d->kind != NodeKind::VariableDecl && d->kind != NodeKind::UsingAliasDecl && d->kind != NodeKind::ClassDecl &&
+            d->kind != NodeKind::EnumDecl)
         {
-          out.diagnostics.push_back({d->token, "when in a block declares a local variable (design.md 19): not a function, type, alias or structured binding"});
+          out.diagnostics.push_back({d->token, "when in a block declares a local variable, alias, class or enumeration (design.md 19), not a function or a using"});
           continue;
         }
         if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ImportDecl)
