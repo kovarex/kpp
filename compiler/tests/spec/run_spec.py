@@ -434,7 +434,10 @@ def main():
             print("spec: FAILED: no Linux sysroot"); return 2
         # (WSL started once first: its virtual machine, stopped when idle, took more than a program's
         # 60 s to start under a pool of programs at once)
-        subprocess.run(["wsl.exe", "-e", "true"], capture_output=True, timeout=300)
+        try:
+            subprocess.run(["wsl.exe", "-e", "true"], capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print("spec: FAILED: WSL did not answer in 300 s"); return 2
         EXTRA.extend(["--target", "linux", "--sysroot", SYSROOT_LINUX])
         C_TARGET_FLAGS = ["--target=x86_64-unknown-linux-gnu", "--sysroot=" + SYSROOT_LINUX]
         OUT += "-" + TARGET

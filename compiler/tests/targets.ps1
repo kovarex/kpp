@@ -3,7 +3,12 @@
 # WSL's Ubuntu by tools\sysroot\linux-from-wsl.sh into build\sysroots\linux-x86_64 when missing, or
 # KPP_SYSROOT_LINUX); skipped without WSL. FreeBSD: the IR and an object, and with its sysroot a
 # static executable whose ELF headers are checked (nothing runs it here). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+# Every call of wsl.exe has a timeout: a WSL that does not answer the first in 30 s skips Linux, and
+# one that stops answering later fails the check; neither hangs it. Exit 0: passed; 1: failed;
+# 3: passed, Linux skipped (no WSL); 4: passed, Linux skipped (WSL did not answer in 30 s).
+# run_tests.cmd lists a skip in its summary.
+# -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout).
+param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$WslExe = 'wsl.exe')
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\targets'
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -12,7 +17,8 @@ $failed = 0
 function Fail([string]$what) { "FAIL targets: $what"; $script:failed++ }
 
 # Runs a command: its stdout, its stderr (as written: not PowerShell's error records) and exit code.
-function Run([string]$exe, [string[]]$arguments)
+# With $seconds, a command still running after that long is killed, and timedOut says so.
+function Run([string]$exe, [string[]]$arguments, [int]$seconds = 0)
 {
   $info = New-Object System.Diagnostics.ProcessStartInfo
   $info.FileName = $exe
@@ -22,10 +28,20 @@ function Run([string]$exe, [string[]]$arguments)
   $info.RedirectStandardError = $true
   $p = [System.Diagnostics.Process]::Start($info)
   $errTask = $p.StandardError.ReadToEndAsync()
-  $out = $p.StandardOutput.ReadToEnd()
+  $outTask = $p.StandardOutput.ReadToEndAsync()
+  $timedOut = $false
+  if ($seconds -gt 0 -and -not $p.WaitForExit($seconds * 1000))
+  {
+    $timedOut = $true
+    # (its whole tree: a child left running would hold this script's own output open)
+    & taskkill.exe /T /F /PID $p.Id 2>&1 | Out-Null
+    try { $p.Kill() } catch {}
+  }
   $p.WaitForExit()
-  $trim = { param($s) ($s -replace "`r", '').TrimEnd("`n") }
-  return [pscustomobject]@{ exit = $p.ExitCode; out = (& $trim $out); err = (& $trim $errTask.Result) }
+  # (a killed command's output so far: a child that holds its pipes open is not waited for)
+  $null = [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($outTask, $errTask), 5000)
+  $trim = { param($t) if ($t.IsCompleted) { ($t.Result -replace "`r", '').TrimEnd("`n") } else { '' } }
+  return [pscustomobject]@{ exit = $p.ExitCode; out = (& $trim $outTask); err = (& $trim $errTask); timedOut = $timedOut }
 }
 
 function Build([string[]]$arguments)
@@ -152,41 +168,59 @@ else
   }
 }
 
-# Linux, under WSL.
-$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-$hasWsl = $false
-if ($wsl)
+# Linux, under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every run_tests): 30 s
+# for the first, which also starts WSL's virtual machine, then 120 s for a program, 600 s for the sysroot.
+$wslSkip = $null
+if (-not (Get-Command $WslExe -ErrorAction SilentlyContinue)) { $wslSkip = 'no WSL' }
+else
 {
-  $ErrorActionPreference = 'Continue'
-  & wsl.exe -e true 2> $null
-  $hasWsl = $LASTEXITCODE -eq 0
-  $ErrorActionPreference = 'Stop'
+  $r = Run $WslExe @('-e', 'true') 30
+  if ($r.timedOut) { $wslSkip = 'WSL did not answer in 30 s' }
+  elseif ($r.exit -ne 0) { $wslSkip = 'no WSL' }
 }
-if (-not $hasWsl) { "skip targets: linux (no WSL to run its programs)" }
+$hasWsl = -not $wslSkip
+# A command under WSL (Run's result); one that does not finish in time fails the check, and after
+# that no command runs under WSL (each would wait its own timeout).
+$wslHung = $false
+function Wsl([string]$what, [string[]]$arguments, [int]$seconds = 120)
+{
+  if ($script:wslHung) { return [pscustomobject]@{ exit = -1; out = ''; err = ''; timedOut = $true } }
+  $r = Run $WslExe (@('-e') + $arguments) $seconds
+  if ($r.timedOut)
+  {
+    $script:wslHung = $true
+    Fail "linux $what`: WSL did not answer in $seconds s ($WslExe -e $($arguments -join ' ')); nothing more runs under WSL" | Write-Host
+  }
+  return $r
+}
+# A Windows path as WSL names it (/mnt/c/...).
+function WslPath([string]$path) { (Wsl "wslpath $path" @('wslpath', '-a', $path) 30).out.Trim() }
+if (-not $hasWsl) { "skip targets: linux ($wslSkip)" }
 else
 {
   $sysroot = if ($env:KPP_SYSROOT_LINUX) { $env:KPP_SYSROOT_LINUX } else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\sysroots\linux-x86_64')) }
   if (-not (Test-Path (Join-Path $sysroot 'usr\lib\x86_64-linux-gnu\libc.so.6')))
   {
-    $script = (& wsl.exe -e wslpath -a ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\tools\sysroot\linux-from-wsl.sh')))).Trim()
-    $target = (& wsl.exe -e wslpath -a $sysroot).Trim()
-    $r = Run wsl.exe @('-e', 'sh', $script, $target)
-    if ($r.exit -ne 0) { Fail "linux sysroot: $($r.err)" }
+    $script = WslPath ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\tools\sysroot\linux-from-wsl.sh')))
+    $target = WslPath $sysroot
+    $r = Wsl 'sysroot' @('sh', $script, $target) 600
+    if ($r.exit -ne 0 -and -not $r.timedOut) { Fail "linux sysroot: $($r.err)" }
   }
   foreach ($configuration in @(@('debug'), @('release', '--release'), @('debug-info', '--debug-info')))
   {
     $name = $configuration[0]
     $elf = Join-Path $work "hello.$name.elf"
     if (-not (Build (@('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf) + $configuration[1..9] + @((Join-Path $src 'hello.kpp'))))) { continue }
-    $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim(), 'a', 'b')
+    $r = Wsl "hello ($name)" @((WslPath $elf), 'a', 'b')
+    if ($r.timedOut) { continue }
     if ($r.out -ne 'hello, world! 2 argument(s), sum 30, posix' -or $r.exit -ne 3) { Fail "linux hello ($name): '$($r.out)', exit $($r.exit) $($r.err)" }
   }
   # The target's own headers (glibc's, from the sysroot): C's long 64 bits.
   $elf = Join-Path $work 'imports.elf'
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'imports.kpp')))
   {
-    $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim())
-    if ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
+    $r = Wsl 'imports' @(WslPath $elf)
+    if (-not $r.timedOut -and ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0)) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
   }
   # C's long is 64 bits on Linux and 32 on Windows, decided at compile time for each target (Q1): the
   # same static_assert compiles for one and is an error for the other. (C-variadic calls are not
@@ -202,11 +236,13 @@ else
   $elf = Join-Path $work 'uncaught.elf'
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'uncaught.kpp')))
   {
-    $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim())
+    $r = Wsl 'uncaught' @(WslPath $elf)
     $want = 'exception of type Boom thrown: it went boom (exceptions do not unwind on this target yet: docs/design.md, "Targets and hosts", stage 3)'
-    if ($r.out -ne 'before' -or -not $r.err.StartsWith($want) -or $r.exit -ne 134) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+    if (-not $r.timedOut -and ($r.out -ne 'before' -or -not $r.err.StartsWith($want) -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
   }
 }
 
 if ($failed) { exit 1 }
-"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' })$(if ($hasWsl) { ', linux run under WSL' }))"
+"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' })$(if ($hasWsl) { ', linux run under WSL' } else { ", linux skipped: $wslSkip" }))"
+if ($wslSkip -eq 'no WSL') { exit 3 }
+if ($wslSkip) { exit 4 }

@@ -181,9 +181,16 @@ rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debuggin
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)
 rem --target (tests\targets.ps1, docs/design.md "Targets and hosts"): Windows, FreeBSD's IR and object,
-rem Linux built here and run under WSL (skipped without WSL).
+rem Linux built here and run under WSL (skipped without WSL, or when WSL does not answer in 30 s: exit 3
+rem and 4, the rest passed; the summary lists the skip).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\targets.ps1 -Kppc %KPPC%
-if errorlevel 1 (call :fail "targets") else (call :ok)
+if errorlevel 4 (
+  call :ok
+  if defined SKIPPED (set "SKIPPED=!SKIPPED!, linux targets (WSL did not answer in 30 s)") else (set "SKIPPED=linux targets (WSL did not answer in 30 s)")
+) else if errorlevel 3 (
+  call :ok
+  if defined SKIPPED (set "SKIPPED=!SKIPPED!, linux targets (no WSL)") else (set "SKIPPED=linux targets (no WSL)")
+) else if errorlevel 1 (call :fail "targets") else (call :ok)
 rem --toolchain: an installation's bin\ by default, Visual Studio's on request (tests\toolchain.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\toolchain.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "toolchain") else (call :ok)
