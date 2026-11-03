@@ -24,7 +24,7 @@ with `/DEBUG` already, for the crash report's function names).
 - A trivial callee inlined into its caller (docs/compile-speed.md, "Design: inlining trivial
   functions in kppc") has no lines of its own: its instructions are at the call's line, and stepping
   into it steps over it. `--no-inline` keeps every call, for stepping into getters.
-- Only lines (`emissionKind: LineTablesOnly`): no types and no variables yet, so a debugger shows the
+- Only lines (`emissionKind: LineTablesOnly`): no types and no variables yet (thread B adds them), so a debugger shows the
   stack, the source and the registers, but not locals by name.
 - Not covered: the startup functions of global initializers (no lines).
 
@@ -65,12 +65,49 @@ kpp crash report: exception 0xc0000005 at 00007FF7D21B135E (writing 0x0)
 
 ## Visual Studio and WinDbg
 
-Visual Studio: `devenv /DebugExe out.exe` (or File > Open > Project/Solution, the .exe), then F11
-starts at `main`; a breakpoint in a `.kpp` opened in the same instance binds through the PDB's file
-paths, which are absolute. WinDbg: `windbg out.exe`, `.lines` on, `bp program!kpp.main`, `p` and
-`t` step by line. (Checked here: the PDB's line tables with llvm-pdbutil and dbghelp, through the
-crash report. The interactive sessions in Visual Studio and WinDbg are still to be tried by hand;
-neither cdb nor a working lldb is installed on PC-PRACOVNA.)
+Visual Studio: open the solution `kpp --generate-visual-studio-files` writes (build.md) and press F5,
+or `devenv /DebugExe out.exe`. A breakpoint in a `.kpp` file binds through the PDB's file paths,
+which are absolute. WinDbg: `windbg out.exe`, `.lines` on, `bp program!kpp.main`, `p` and `t` step by
+line (not tried: neither cdb nor a working lldb is installed on PC-PRACOVNA).
+
+Tried in Visual Studio 17.14.42 on 2026-11-04 (the experimental instance, driven through DTE, the
+kpp extension installed; scratch programs, not a test of run_tests):
+- A small program (a Vector, a String, a struct; main calls sum, which calls square), its generated
+  solution. The build from Visual Studio takes 2.4 to 5.5 s. A breakpoint on a line of sum is hit 1.0
+  to 2.0 s after F5. The call stack reads `sum(Vector<int32>&)`, `kpp.main`, `main` (the C runtime's).
+  Step into stops in square at its declaration's line (the entry block's), step over at its first
+  statement, step out back at the call's line. A breakpoint on `return 0;` is hit.
+- The game (factorio-in-kpp c9cda971, its generated solution, Debug): the startup project builds in
+  12.9 s. A breakpoint on Main.kpp:27, `SystemUtil::preventSleep();`, is hit 1.7 s after F5 with the
+  stack `fmain(int32, char16_t**)`, `kpp.wmain`. Step into stops in SystemUtil.kpp at
+  preventSleep's line 695, step over at 699, step out back in Main.kpp at line 30. A second
+  breakpoint, line 35, is hit.
+- Locals and watches show nothing ("identifier "values" is undefined"): the line tables have no
+  variables. Thread B adds them, with the types ("Values in Visual Studio" below).
+
+## Values in Visual Studio
+
+A build with `--debug-info` for Windows (MSVC) also writes `NAME.natvis` beside `NAME.exe` and links it
+into the PDB (`/NATVIS`), where Visual Studio finds it with the program: nothing to install. It
+shows the library's values as values (compiler\src\natvis.cpp):
+- `String` and `StringView` as their text (a String's last byte tells a small string's length from
+  the heap's mark, largeMark, taken from the library's literal);
+- `Vector<*>` and `Span<*>` as their elements, `UniquePtr<*>`, `SharedPtr<*>` and `Optional<*>` as
+  what they hold (or `empty`), `Pair<*>` as `(first, second)`;
+- `HashMap<*>` and `HashSet<*>` as their entries: one rule per HashTable instance the program has,
+  which casts the slots to its entry type by name.
+
+The type names are kppc's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
+HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), which are the PDB's: agreed with
+thread B (2026-11-04), whose types carry each instance's full argument list. A rule reads the
+library's members by their names; each is checked against the library's classes as they are, and
+one whose member is gone is left out with `warning: natvis: ...`. The per-instance rules are sorted
+by name, so the file does not depend on the threads.
+
+`tests\natvis.ps1` (run by run_tests.cmd) builds `tests\natvis\values.kpp` with `--debug-info` and
+checks that kppc warned of nothing, that the .natvis is valid by Visual Studio's natvis.xsd, that
+the PDB holds it (its named stream `/src/files/PATH`) and that its rules are `values.expected`.
+What a rule shows in Visual Studio can be checked only once the PDB has the types (thread B).
 
 ## How kppc emits it
 

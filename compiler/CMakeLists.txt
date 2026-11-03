@@ -22,6 +22,7 @@ add_executable(kppc
   src/source.cpp
   src/server.cpp
   src/lsp.cpp
+  src/natvis.cpp
   src/run.cpp
   src/generate.cpp
   src/project.cpp

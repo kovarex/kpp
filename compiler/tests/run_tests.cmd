@@ -182,6 +182,9 @@ if errorlevel 1 (call :fail "stubs") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)
+rem --debug-info for Visual Studio: the natvis linked into the PDB (tests\natvis.ps1, docs/debugging.md).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\natvis.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "natvis") else (call :ok)
 rem --target (tests\targets.ps1, docs/design.md "Targets and hosts"): Windows, FreeBSD's IR and object,
 rem Linux built here and run under WSL (skipped without WSL, or when WSL does not answer in 30 s: exit 3
 rem and 4, the rest passed; the summary lists the skip).

@@ -11,6 +11,7 @@
 #include "tests.hpp"
 #include "server.hpp"
 #include "lsp.hpp"
+#include "natvis.hpp"
 #include "source.hpp"
 #include "backend.hpp"
 #include <algorithm>
@@ -794,6 +795,12 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       }
   }
 
+  // A --debug-info build's .natvis (natvis.hpp): the executable's name with .natvis.
+  std::string natvisPath(const Options& options)
+  {
+    return std::filesystem::path(options.exe).replace_extension(".natvis").string();
+  }
+
   std::string linkFlags(const Options& options, bool wideEntry)
   {
     // Windows' GNU dialect (windows-gnu): lld's GNU driver, unused sections dropped as /OPT:REF
@@ -844,7 +851,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     if (wideEntry)
       flags += " -Wl,/ENTRY:wmainCRTStartup";
     if (options.debugInfo)
-      flags += " -Wl,/DEBUG";
+      flags += " -Wl,/DEBUG \"-Wl,/NATVIS:" + natvisPath(options) + "\""; // (the .natvis in the PDB: Visual Studio loads it with it)
     for (const std::string& symbol : options.keepSymbols)
       flags += " -Wl,/INCLUDE:" + symbol;
     for (const std::string& lib : options.libs)
@@ -1979,6 +1986,21 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       for (const std::string& name : cg.failedFunctions)
         list += name + "\n";
       writeFile(options.exe + ".failed-functions.txt", list);
+    }
+    // --debug-info for Visual Studio: the .natvis that shows the library's values (a String's text, a
+    // Vector's elements), linked into the PDB by linkFlags' /NATVIS (docs/debugging.md, "Values in
+    // Visual Studio"). A rule a library change broke is left out with a warning.
+    if (options.debugInfo && options.target.msvc() && !options.exe.empty())
+    {
+      std::vector<ParsedFile*> files;
+      for (const std::unique_ptr<ParsedFile>& p : parsed)
+        files.push_back(p.get());
+      std::vector<std::string> problems;
+      std::string natvis = makeNatvis(files, global, symbols, problems);
+      for (const std::string& problem : problems)
+        fprintf(stderr, "warning: natvis: %s\n", problem.c_str());
+      if (!writeFile(natvisPath(options), natvis))
+        fprintf(stderr, "error: cannot write %s\n", natvisPath(options).c_str());
     }
     if (cg.modules.empty())
     {

@@ -232,8 +232,9 @@ constant expressions in the interpreter. A debugger of our own (the Win32 debug 
 PDB reading) is not proposed: months of work for what DbgEng does, until DbgEng is measured to be
 the bottleneck (stepping speed, conditional breakpoints in a hot loop).
 
-A side product for thread E: the server can write a `.natvis` from the same layouts, so the VS
-debugger shows kpp values too.
+A side product for Visual Studio: kppc writes a `.natvis` from the library's layouts into every
+`--debug-info` build's PDB, so the VS debugger shows kpp values too (docs/debugging.md, "Values in
+Visual Studio"; it needs the PDB's types, thread B's).
 
 **Hot reload** (phase 4, research): rebuilding a changed body is already exactly the server's fast
 path, and `rebuildLLVM` knows exactly which functions' code changed (inlined callers included,
