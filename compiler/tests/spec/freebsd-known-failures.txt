@@ -1,0 +1,59 @@
+# FreeBSD's known failures: the spec built for FreeBSD 14.3 (run_spec.py --target freebsd, spec.cmd's
+# script) and run there (CI's freebsd_build and freebsd_run, ci.yml). One line each:
+#   build area/name  why   the snippet does not build for FreeBSD yet
+#   run area/name  why     it builds and does not run right there yet
+# A known failure is reported as "known"; one that starts working fails the run until its line goes,
+# and so does a line naming no snippet. Pending snippets are known failures without a line here.
+# From CI run 41650507690 (2026-11-03, H's lists), less what has been fixed since.
+
+# Stage 3 (docs/design.md, "Targets and hosts"): exceptions do not unwind off Windows; a throw aborts.
+run classes/catch_by_second_base  stage 3
+run classes/constructor_throw_destroys_built_parts  stage 3
+run language/adjacent_invokes_cleanup_once_release  stage 3
+run language/exceptions  stage 3
+run language/noexcept_false_destructor_throws_to_its_caller  stage 3
+run language/noexcept_false_destructor_unwinds_what_was_built_before  stage 3
+run language/program_and_instance_pieces  stage 3
+run language/rethrow_from_nested_catch_release  stage 3
+run language/rethrow_in_function_a_handler_calls  stage 3
+run language/text_constructor_argument  stage 3
+run language/throw_from_handler_cleans_up_enclosing_scope  stage 3
+run language/throw_in_array_element_destroys_built_elements  stage 3
+run language/throwing_call_result_temporary  stage 3
+run library/array_of_no_elements  stage 3
+run library/enable_shared_from_this  stage 3
+run library/exceptions_std  stage 3
+run library/optional_function_errors  stage 3
+run library/size_limits_growth  stage 3
+run library/size_limits_string  stage 3
+run library/size_limits_vector  stage 3
+run library/string_view_copy  stage 3
+run library/utf8  stage 3
+run library/wstring_insert  stage 3
+
+# Found by the FreeBSD run, each B's.
+run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
+run language/variadic_with_own_format  SIGBUS: LLVM's -O0 va_arg on a va_list parameter reads a spill slot never written (Linux too)
+
+# Stage 4: the standard library's Win32 and UCRT calls (threads, time, files, errno, terminate).
+build language/thread_local_globals  stage 4: CreateThread
+build language/thread_local_locals  stage 4: CreateThread
+build library/async_launch  stage 4: CreateThread
+build library/atomic_wait_notify  stage 4: CreateThread
+build library/exception_ptr_promise  stage 4: WakeAllConditionVariable
+build library/filesystem_equivalent  stage 4: GetFileAttributesExW
+build library/filesystem_path  stage 4: WideCharToMultiByte
+build library/future_get_releases_state  stage 4: CreateThread
+build library/recursive_mutex  stage 4: CreateThread
+build library/set_terminate  stage 4: set_terminate
+build library/shared_future_deferred_runs_once_across_threads  stage 4: CreateThread
+build library/shared_ptr_atomic  stage 4: AcquireSRWLockShared
+build library/string_to_number  stage 4: _errno
+build library/thread_like_std  stage 4: CreateThread
+build library/threads_atomics  stage 4: CreateThread
+build library/time_chrono  stage 4: Sleep
+build library/time_python_datetime  stage 4: GetSystemTimePreciseAsFileTime
+build library/unsigned_size_traps  stage 4: WideCharToMultiByte
+
+# FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).
+build interop/c_math_classification_macros  _Generic math macros

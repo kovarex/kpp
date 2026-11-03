@@ -87,18 +87,27 @@ TARGET = None
 C_TARGET_FLAGS = []
 SYSROOT_LINUX = os.environ.get("KPP_SYSROOT_LINUX", os.path.join(COMPILER, "build", "sysroots", "linux-x86_64"))
 SYSROOT_FREEBSD = os.environ.get("KPP_SYSROOT_FREEBSD", os.path.join(COMPILER, "build", "sysroots", "freebsd-x86_64"))
+# FreeBSD's known failures (freebsd-known-failures.txt): `build area/name  why` for a snippet that does
+# not build for FreeBSD yet, `run area/name  why` for one that builds and does not run right. A known
+# failure is reported as known, not as a failure; a known one that works fails the run (its line must
+# go), and so does a line naming no snippet. The pending snippets are known failures of their own.
+KNOWN_FREEBSD = os.path.join(HERE, "freebsd-known-failures.txt")
 # run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s and
 # 4 GB of address space each), compares its output, normalised as normalise() does, with its .expected, and ends with one
-# summary line; its exit code says the same. A program's exit code above 1 fails, as here.
+# summary line; its exit code says the same. A program's exit code above 1 fails, as here. known.txt
+# beside it lists the programs expected to fail (the run lines and the pending snippets).
 FREEBSD_RUN_SH = r'''#!/bin/sh
 # The spec snippets built for FreeBSD by compiler\tests\spec\run_spec.py --target freebsd: each runs
 # and its output is compared with its .expected (normalised: no trailing spaces, no blank lines at
-# either end). The last line sums it up: `spec freebsd: ALL PASSED (N pass)` or `spec freebsd: N FAILED`.
+# either end). A program known.txt names is expected to fail: its failure is "known", and its passing
+# fails the run (freebsd-known-failures.txt's line, or the snippet's pending line, must go). The last
+# line sums it up: `spec freebsd: ALL PASSED (N pass, K known)` or `spec freebsd: N FAILED (...)`.
 cd "$(dirname "$0")" || exit 2
 # (copied from Windows, as a CI artifact for one, the programs have lost their executable bit)
 chmod +x ./*.elf
 normalise() { awk '{ sub(/[ \t\r\v\f]+$/, ""); line[NR] = $0 } END { s = 1; while (s <= NR && line[s] == "") s++; e = NR; while (e >= s && line[e] == "") e--; for (i = s; i <= e; i++) print line[i] }'; }
-pass=0; failed=0
+pass=0; failed=0; known=0
+isknown() { grep -qx "$1" known.txt 2>/dev/null; }
 for exe in *.elf; do
   name=${exe%.elf}
   # (4 GB of address space each: a snippet that allocates until it fails, new_failure_throws_bad_alloc,
@@ -106,16 +115,24 @@ for exe in *.elf; do
   ( ulimit -v 4194304; exec timeout 60 "./$exe" ) > "$name.out" 2> "$name.err"
   code=$?
   normalise < "$name.out" > "$name.got"
+  why=""
   if [ $code -gt 1 ]; then
-    echo "FAIL    $name  -- exit code $code: $(head -n 1 "$name.err")"; failed=$((failed + 1))
+    why="exit code $code: $(head -n 1 "$name.err")"
   elif ! cmp -s "$name.got" "$name.expected"; then
-    echo "FAIL    $name  -- output differs: $(diff "$name.expected" "$name.got" | sed -n 2p)"; failed=$((failed + 1))
-  else
+    why="output differs: $(diff "$name.expected" "$name.got" | sed -n 2p)"
+  fi
+  if [ -z "$why" ] && isknown "$name"; then
+    echo "FIXED   $name  -- passes: remove its line from freebsd-known-failures.txt (or its pending line)"; failed=$((failed + 1))
+  elif [ -z "$why" ]; then
     echo "ok      $name"; pass=$((pass + 1))
+  elif isknown "$name"; then
+    echo "known   $name  -- $why"; known=$((known + 1))
+  else
+    echo "FAIL    $name  -- $why"; failed=$((failed + 1))
   fi
 done
-if [ $failed -gt 0 ]; then echo "spec freebsd: $failed FAILED ($pass pass)"; exit 1; fi
-echo "spec freebsd: ALL PASSED ($pass pass)"
+if [ $failed -gt 0 ]; then echo "spec freebsd: $failed FAILED ($pass pass, $known known)"; exit 1; fi
+echo "spec freebsd: ALL PASSED ($pass pass, $known known)"
 '''
 
 
@@ -340,6 +357,34 @@ def write_doc(results, elapsed):
         f.write("\n".join(lines))
 
 
+def apply_known_freebsd(results, whole):
+    """FreeBSD's known failures: a known build failure becomes "known", a known one that builds
+    "fixed"; known.txt in the bundle lists the run lines and the pending snippets that built. Returns
+    the lines naming no snippet (checked on a whole run only)."""
+    known = {}
+    if os.path.exists(KNOWN_FREEBSD):
+        for line in open(KNOWN_FREEBSD, encoding="utf-8"):
+            line = line.split("#", 1)[0].strip()
+            if line:
+                kind, name, *why = line.split(None, 2)
+                known[name] = (kind, why[0] if why else "")
+    seen = set()
+    runs = []
+    for r in results:
+        key = f"{r['area']}/{r['name']}"
+        seen.add(key)
+        kind, why = known.get(key, ("", ""))
+        if kind == "build" and r["status"] == "FAIL":
+            r["status"] = "known"; r["note"] = why + (f"; {r['note']}" if r["note"] else "")
+        elif kind == "build" and r["status"] in ("built", "pass"):
+            r["status"] = "fixed"; r["note"] = "builds now: remove its build line from freebsd-known-failures.txt"
+        if r["status"] == "built" and (kind == "run" or r["info"]["pending"] is not None):
+            runs.append(f"{r['area']}.{r['name']}")
+    with open(os.path.join(OUT, "known.txt"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("".join(name + "\n" for name in sorted(runs)))
+    return sorted(name for name in known if name not in seen) if whole else []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--filter", default="")
@@ -401,7 +446,7 @@ def main():
     if TARGET == "freebsd":
         # (a bundle of this run's programs only: an earlier run's are gone)
         for f in os.listdir(OUT):
-            if f.endswith((".elf", ".expected")):
+            if f.endswith((".elf", ".expected")) or f == "known.txt":
                 os.remove(os.path.join(OUT, f))
         with open(os.path.join(OUT, "run.sh"), "w", encoding="utf-8", newline="\n") as f:
             f.write(FREEBSD_RUN_SH)
@@ -415,14 +460,19 @@ def main():
     elapsed = time.time() - start
     skipped = sum(1 for r in results if r["status"] == "skip")
     results = [r for r in results if r["status"] != "skip"]
+    stale = []
+    if TARGET == "freebsd":
+        stale = apply_known_freebsd(results, not args.filter)
     for r in results:
-        tag = {"pass": "ok     ", "built": "built  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
+        tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
-        if r["status"] in ("FAIL", "pending") and r["note"]:
+        if r["status"] in ("FAIL", "pending", "known", "fixed") and r["note"]:
             line += f"  -- {r['note']}"
         print(line)
-    counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "pending", "FAIL", "fixed")}
-    print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+    counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "known", "pending", "FAIL", "fixed")}
+    for entry in stale:
+        print(f"FAIL    {entry}  -- freebsd-known-failures.txt names no such snippet")
+    print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter:
         write_doc(results, elapsed)
@@ -431,10 +481,11 @@ def main():
     # mark must go), and the exit code says the same:
     #   spec: ALL PASSED (898 pass, 2 pending)
     #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
-    summary = (f"{counts['built']} built, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
+    summary = (f"{counts['built']} built, {counts['known']} known not to build, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
               (f"; shard {args.shard}" if shard else "")
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
-          [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"]
+          [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"] + \
+          [f"stale {entry}" for entry in stale]
     if bad:
         shown = ", ".join(bad[:10]) + (f", and {len(bad) - 10} more" if len(bad) > 10 else "")
         print(f"spec: {len(bad)} FAILED: {shown} ({summary}, {counts['FAIL']} failing, {counts['fixed']} fixed)")

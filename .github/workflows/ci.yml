@@ -254,17 +254,23 @@ jobs:
 
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
-  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only. Until a baseline of the known failures
-  # (stages 3 and 4, design.md) fails only on new ones, both jobs are continue-on-error and write
-  # their counts in the run's summary; publish does not wait for them.
+  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only. The known failures (stages 3 and 4,
+  # design.md) are compiler\tests\spec\freebsd-known-failures.txt: either job fails on a new failure,
+  # and on a known one that works (its line must go). Both write their counts in the run's summary;
+  # publish does not wait for them.
   freebsd_build:
     needs: build
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
-    continue-on-error: true
     permissions:
       contents: read
+    env:
+      # The two interop snippets that import SDL3/SDL.h, as the spec job has them (its SDL3 steps,
+      # without their upload to kpp.net's mirror).
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -272,6 +278,36 @@ jobs:
         with:
           name: kppc
           path: compiler/build
+
+      - name: SDL3 cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.workspace }}\sdl
+          key: sdl-${{ env.SDL_SHA256 }}
+
+      - name: SDL3 headers
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = "${{ runner.workspace }}\sdl"
+          $env:KPP_SDL_INCLUDE = "$dir\SDL3-3.4.18\include"
+          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+            $zip = "$dir\$env:SDL_NAME"
+            function Fetch([string]$url) {
+              try { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing } catch { Write-Host "not at $url ($($_.Exception.Message))"; return $false }
+              $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+              if ($hash -ne $env:SDL_SHA256) { Write-Host "$url has SHA-256 $hash, not $env:SDL_SHA256"; return $false }
+              Write-Host "SDL3 from $url"; return $true
+            }
+            if (-not (Fetch "https://kpp.net/registry/mirror/$env:SDL_SHA256/$env:SDL_NAME")) {
+              if (-not (Fetch $env:SDL_FALLBACK)) { throw 'no SDL3 zip with the expected SHA-256' }
+            }
+            Expand-Archive -Force $zip $dir
+          }
+          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
 
       # The sysroot, kept under the script's hash (which pins base.txz's SHA-256): a cache hit
       # downloads nothing from FreeBSD's archive.
@@ -293,9 +329,10 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File tools\sysroot\freebsd.ps1
           if ($LASTEXITCODE -ne 0) { throw 'tools\sysroot\freebsd.ps1 failed' }
 
-      # A snippet that does not build is listed (stage 4's Win32 calls, exit code 1), and the bundle
-      # has the ones that linked. The step fails when run_spec.py itself cannot run (exit code 2: no
-      # sysroot, no compiler) and when kppc crashes or times out on a snippet.
+      # A known build failure is listed as known, and the bundle has the snippets that linked. The step
+      # fails on a new failure (or a known one that builds) after the bundle is uploaded, when
+      # run_spec.py itself cannot run (exit code 2: no sysroot, no compiler), and when kppc crashes or
+      # times out on a snippet.
       - name: spec built for FreeBSD
         shell: powershell
         run: |
@@ -307,8 +344,8 @@ jobs:
           @('### spec built for FreeBSD 14.3', '', '    ' + ($out | Select-Object -Last 1)) + @($crashes | ForEach-Object { "    $_" }) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           if ($code -gt 1) { throw "run_spec.py --target freebsd: exit code $code" }
           if ($crashes.Count) { throw "kppc crashed or timed out on $($crashes.Count) snippet(s)" }
-          # (Actions' powershell ends the step with exit $LASTEXITCODE, run_spec.py's 1 for the snippets
-          # that do not build, which would skip the upload)
+          # (exit 0 here: the upload runs first, and the step after it fails on run_spec.py's 1)
+          "KPP_FREEBSD_BUILD=$code" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           exit 0
 
       - uses: actions/upload-artifact@v4
@@ -316,10 +353,15 @@ jobs:
           name: spec-freebsd
           path: |
             compiler/build/spec-freebsd/run.sh
+            compiler/build/spec-freebsd/known.txt
             compiler/build/spec-freebsd/*.elf
             compiler/build/spec-freebsd/*.expected
           retention-days: 3
           if-no-files-found: error
+
+      - name: New build failures
+        shell: powershell
+        run: if ($env:KPP_FREEBSD_BUILD -ne '0') { throw 'snippets fail to build for FreeBSD that freebsd-known-failures.txt does not list, or listed ones build (spec built for FreeBSD, above)' }
 
   # The bundle in a FreeBSD 14.3 VM: vmactions/freebsd-vm (QEMU with KVM on the Ubuntu runner; v1.5.9,
   # pinned by its commit). It copies the workspace in and back with rsync and runs run.sh there; its
@@ -327,9 +369,10 @@ jobs:
   # FreeBSD's), its scripts and SSH keys, none of them hash-checked: the job's token can only read.
   freebsd_run:
     needs: freebsd_build
+    # (also after a new build failure there: the snippets that did build still run)
+    if: ${{ !cancelled() && needs.freebsd_build.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -358,7 +401,7 @@ jobs:
           log=spec-freebsd/run.log
           last=$(tail -n 1 "$log" 2>/dev/null || true)
           [ -n "$last" ] || last='no result: run.sh did not finish (the VM step failed)'
-          { echo '### spec on FreeBSD 14.3'; echo; echo "    $last"; grep '^FAIL' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### spec on FreeBSD 14.3'; echo; echo "    $last"; grep -E '^(FAIL|FIXED)' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
           case "$last" in "spec freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
 
   # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
