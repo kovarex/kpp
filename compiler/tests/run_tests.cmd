@@ -216,6 +216,10 @@ if errorlevel 1 (call :fail "servers") else (call :ok)
 rem An edit's check through the compile server takes well under the first build (tests\editcost.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\editcost.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "edit cost") else (call :ok)
+rem A thread's factorio-in-kpp copy never reaches the main checkout's files, through any git command in
+rem it (programs\factorio\tests\checkout.ps1, on a throwaway main checkout).
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\programs\factorio\tests\checkout.ps1
+if errorlevel 1 (call :fail "checkout") else (call :ok)
 if "%PART%"=="1" goto :afterpart2
 :part2
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).

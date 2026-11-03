@@ -34,7 +34,9 @@ simple templates, own standard library, C-only interop.
   Every thread reads it, so gates and timing runs write their own copy: `convert.cmd`, `tests.cmd`,
   `harness.cmd` and `run.cmd` take the checkout from their argument or FACTORIO_IN_KPP and stop
   without one. `programs\factorio\setup-checkout.cmd scratch\<thread>\fik` makes a copy once (a worktree of
-  C:\factorio-in-kpp, data\ and shaders\ linked: 0.2 GB, and about 3.8 GB per configuration built, build\ and bin\).
+  C:\factorio-in-kpp without data\ and shaders\, its game reading C:\factorio-in-kpp's data through its config:
+  0.2 GB, and about 3.8 GB per configuration built, build\ and bin\). Never a junction into C:\factorio-in-kpp: git
+  deletes through it (2026-11-03); `setup-checkout.cmd --unlink DIR` fixes a copy made with junctions.
 - Several threads may work in this same clone (C:\kpp): commit small, push promptly, pull before
   committing.
 

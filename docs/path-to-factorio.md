@@ -78,11 +78,27 @@ a timing run never writes it. convert.cmd, tests.cmd, harness.cmd, resources.cmd
 the checkout from their argument, else FACTORIO_IN_KPP, and stop without one; C:\factorio-in-kpp is
 named only for a factorio-in-kpp push. `programs\factorio\setup-checkout.cmd DIR` makes a thread's
 copy once: a git worktree of C:\factorio-in-kpp (its objects shared), checked out without data\ and
-shaders\, which are junctions to C:\factorio-in-kpp's (4.3 GB, read only). Measured on thread C's
-copy: 0.18 GB checked out; a game build adds build\ (about 3.2 GB per configuration) and bin\
-(0.6 GB), so debug and release together are about 8 GB. resources.cmd refuses a copy (its data\
-is a junction): it updates C:\factorio-in-kpp's, which the copies share. `rd /s /q` of a copy
-removes its junctions, not what they point to.
+shaders\ (4.3 GB). The game built there reads C:\factorio-in-kpp's data through its config
+(config\config.ini's `read-data=C:/factorio-in-kpp/data`, which setup-checkout.cmd writes and
+build.kpp and run.cmd keep), and so `read-data/../tests` and `../shaders` are C:\factorio-in-kpp's
+too; harness.cmd takes its data\ inputs from there. Measured on thread C's copy: 0.18 GB checked
+out; a game build adds build\ (about 3.2 GB per configuration) and bin\ (0.6 GB), so debug and
+release together are about 8 GB. resources.cmd refuses a copy (a sparse checkout): it updates
+C:\factorio-in-kpp's, which the copies share.
+
+Until 2026-11-03 a copy's data\ and shaders\ were junctions to C:\factorio-in-kpp's. git 2.37 and
+later take a sparse checkout's files that exist on disk outside its patterns, through a junction
+too, for its own: they lose their skip-worktree bits, and the next checkout deletes them. A
+`git checkout --detach` in B's copy deleted C:\factorio-in-kpp's data\ (17,589 files) and shaders\
+(139). `setup-checkout.cmd --unlink DIR` makes such a copy safe: it removes the junctions (rmdir,
+the links alone), writes the config and reapplies the sparse patterns. Every copy also has
+`sparse.expectFilesOutsideOfPatterns=true` in its own worktree config, so a file outside its
+patterns that is on disk keeps its skip-worktree bit (H's second guard). `git worktree remove` of a
+copy that still has the junctions deletes through them too: such a copy goes with `rd /s /q` (which
+removes a junction as a link) and `git -C C:\factorio-in-kpp worktree prune`, or after --unlink. run_tests'
+programs\factorio\tests\checkout.ps1 runs a new copy and an unlinked old one through checkouts, a
+switch, a reset --hard and a reapply, then removes them and an old one with its junctions with
+`git worktree remove --force`, on a throwaway main checkout, which must stay whole.
 
 ## Where kppc is
 

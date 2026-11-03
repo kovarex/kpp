@@ -63,7 +63,12 @@ mkdir %OUT%\driver
 rem The inputs: one list of files, the same for both builds.
 if exist %OUT%\inputs.txt del %OUT%\inputs.txt
 type nul > %OUT%\inputs.txt
-if exist harness\%NAME%.inputs for /f "usebackq delims=" %%p in ("harness\%NAME%.inputs") do dir /s /b /a-d /on "%CONVERSION%\%%p" >> %OUT%\inputs.txt 2>nul
+rem (data\ from the checkout, or, in a copy that has none (setup-checkout.cmd), from the one its game
+rem reads: config.ini's read-data)
+set DATAROOT=%CONVERSION%
+if not exist "%CONVERSION%\data" if exist "%CONVERSION%\config\config.ini" for /f "usebackq tokens=1,* delims==" %%a in ("%CONVERSION%\config\config.ini") do if "%%a"=="read-data" set DATAROOT=%%~dpb
+if "%DATAROOT:~-1%"=="\" set DATAROOT=%DATAROOT:~0,-1%
+if exist harness\%NAME%.inputs for /f "usebackq delims=" %%p in ("harness\%NAME%.inputs") do call :inputFiles "%%p"
 rem (System32's find: a Unix find earlier on the PATH, Git's, would walk the disk instead)
 for /f %%n in ('%SystemRoot%\System32\find.exe /c /v "" ^< %OUT%\inputs.txt') do echo == %NAME%: %%n input files
 
@@ -104,4 +109,12 @@ if errorlevel 1 (
 )
 if not "%CEXIT%"=="%KEXIT%" (echo == %NAME%: the same output, but exit %CEXIT% and %KEXIT%& exit /b 1)
 echo == %NAME%: identical, %LINES% lines (exit %CEXIT%)
+exit /b 0
+
+rem One line of harness\NAME.inputs: its files, a data\ pattern's under DATAROOT.
+:inputFiles
+set PATTERN=%~1
+set ROOT=%CONVERSION%
+if /i "%PATTERN:~0,5%"=="data\" set ROOT=%DATAROOT%
+dir /s /b /a-d /on "%ROOT%\%PATTERN%" >> %OUT%\inputs.txt 2>nul
 exit /b 0

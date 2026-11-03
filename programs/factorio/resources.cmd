@@ -9,14 +9,15 @@ rem Factorio source changes. The files are git archive's of FACTORIO's HEAD, wit
 rem endings (core.autocrlf), as the game's working tree has them; FACTORIO must be a git checkout.
 setlocal
 if not defined FACTORIO set FACTORIO=C:\Factorio
-rem (the checkout: the first argument, else FACTORIO_IN_KPP; never a thread's copy, whose data\ and
-rem shaders\ are junctions to C:\factorio-in-kpp's: setup-checkout.cmd)
+rem (the checkout: the first argument, else FACTORIO_IN_KPP; never a thread's copy, a sparse checkout
+rem without data\ and shaders\ whose game reads C:\factorio-in-kpp's: setup-checkout.cmd)
 set WHOLE=%FACTORIO_IN_KPP%
 if not "%~1"=="" set WHOLE=%~1
 if "%WHOLE%"=="" (echo resources: name the factorio-in-kpp checkout: resources.cmd DIR, or set FACTORIO_IN_KPP=DIR& exit /b 2)
 set ATTRIBUTES=-
 if exist "%WHOLE%\data" for %%a in ("%WHOLE%\data") do set ATTRIBUTES=%%~aa
-if not "%ATTRIBUTES:l=%"=="%ATTRIBUTES%" (echo resources: %WHOLE%\data is a junction: a copy shares C:\factorio-in-kpp's resources, update those there& exit /b 2)
+if not "%ATTRIBUTES:l=%"=="%ATTRIBUTES%" (echo resources: %WHOLE%\data is a junction: a copy shares C:\factorio-in-kpp's resources, update those there ^(and run setup-checkout.cmd --unlink on it^)& exit /b 2)
+for /f %%s in ('git -C "%WHOLE%" config --get core.sparseCheckout 2^>nul') do if "%%s"=="true" (echo resources: %WHOLE% is a thread's copy ^(a sparse checkout^): its game reads C:\factorio-in-kpp's resources, update those there& exit /b 2)
 rem The libraries convert.cmd converts, and the shims it copies (libraries\kpp-native). Of a C library
 rem converted to kpp (c-libraries.cmd) only the .c and .cpp files are left out: its headers stay C.
 call "%~dp0c-libraries.cmd"
