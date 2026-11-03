@@ -2595,6 +2595,17 @@ The semantics of section 9 hold on every target:
     - Phase 1 walks the LSDA. A catch clause matches when `kpp_eh_offset` (the base search SEH's
       filters use today) finds the clause's descriptor among the thrown type's bases.
     - Phase 2 installs the landing pad with the record and the clause's selector.
+    - **Two phases, the types matched in phase 1** (kovarex, 2026-11-03, against a proposal to match
+      in the landing pads and raise again from each one): "we need to be able to report crashes
+      like that". An exception nobody catches, and one leaving a noexcept function, end the program
+      through the terminate handler from the search itself, with the throw site still on the stack
+      (for a crash report, and later a dump), and a debugger sees one throw. C++ leaves both to the
+      implementation ([except.terminate]); kpp unwinds nothing before terminate. (Windows today
+      unwinds first: its `@main` catches everything and reports in the handler. Reporting from the
+      SEH filter instead, during the search, is the same change there, and changes Windows' IR.)
+    - **noexcept** (2026-11-03): an exception leaving a noexcept function terminates, on every
+      target. Before this, it passed through, its frames unwound and the caller's handler took it,
+      Windows included (spec language/noexcept_violation_terminates_at_the_throw, pending).
   - **`throw`** allocates `{_Unwind_Exception header; object; descriptor; destructor}` and calls
     `_Unwind_RaiseException`.
   - **Not `__gxx_personality_v0`:** that would need C++ `std::type_info` objects and a C++ runtime's

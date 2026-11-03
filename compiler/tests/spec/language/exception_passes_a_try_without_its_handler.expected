@@ -1,0 +1,4 @@
+~inner try local
+~inner local
+~outer try local
+caught boom

@@ -30,6 +30,8 @@ run library/size_limits_vector  stage 3
 run library/string_view_copy  stage 3
 run library/utf8  stage 3
 run library/wstring_insert  stage 3
+run language/exception_passes_frames_without_cleanups  stage 3 (written for it, 2026-11-03)
+run language/exception_passes_a_try_without_its_handler  stage 3 (written for it, 2026-11-03)
 
 # Found by the FreeBSD run, each B's.
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)

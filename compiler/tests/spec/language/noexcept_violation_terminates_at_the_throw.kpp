@@ -1,0 +1,25 @@
+// spec: an exception leaving a noexcept function ends the program through the terminate handler (C++'s std::terminate, [except.terminate]), found in the search before anything unwinds: the throw site is still on the stack, so no destructor between the throw and the noexcept function runs and no handler outside it is reached (kovarex, 2026-11-03: "we need to be able to report crashes like that")
+// pending: a noexcept function does not stop an exception: it passes through, its locals' destructors run and the caller's catch takes it, on every target (stage 3 of docs/design.md "Targets and hosts" brings it with the two-phase search)
+struct Boom : Exception { Boom() : Exception("boom") {} };
+struct Noisy { ~Noisy() { println("destroyed between the throw and the noexcept function"); } };
+void thrower() { Noisy n; throw Boom(); }
+void wall() noexcept { thrower(); }
+void onTerminate()
+{
+  println("terminate");
+  fflush(nullptr);
+  exit(0);
+}
+int main()
+{
+  setTerminate(onTerminate);
+  try
+  {
+    wall();
+  }
+  catch (const Boom&)
+  {
+    println("caught past the noexcept function");
+  }
+  return 0;
+}
