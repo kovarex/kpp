@@ -861,6 +861,7 @@ struct GlobalScope::Impl
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
   bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked
+  bool debug = true;         // GlobalScope::setDebug: config::debug (false: an assert's expression is discarded code)
   bool cLong64 = false;      // GlobalScope::setCLong64: the target's C long is 64 bits (printf's %ld)
   bool emitted(const FunctionDecl* f) const { return codeGenerated && emittedFunctions.count(f); }
   std::atomic<size_t> scopes{1};
@@ -13015,7 +13016,10 @@ struct GlobalScope::Impl
         return ConstFlow::Next;
       case NodeKind::AssertStmt:
       {
-        // A failing assert stops a constant evaluation, as C++'s does.
+        // A failing assert stops a constant evaluation, as C++'s does; where config::debug is false an
+        // assert is nothing (a release_assert and a test's check stay).
+        if (auto* a = static_cast<AssertStmt*>(s); !a->release && !a->testKind && !debug)
+          return ConstFlow::Next;
         std::optional<ConstValue> cond = constValue(static_cast<AssertStmt*>(s)->cond, ctx, depth + 1);
         std::optional<bool> holds = cond ? constTruth(*cond, depth + 1) : std::nullopt;
         return holds && *holds ? ConstFlow::Next : ConstFlow::Failed;
@@ -23421,10 +23425,40 @@ struct GlobalScope::Impl
       return true;
     }
 
+    // A condition made of config constants and literals (names in the `config` namespace, already
+    // resolved: a walked condition): the same in every instance of a template, so its own walk decides it
+    // as a function that is no template does (design.md 7.4 and 19).
+    bool configCondition(Node* n, int depth = 0)
+    {
+      if (!n || depth > 32)
+        return false;
+      switch (n->kind)
+      {
+        case NodeKind::LiteralExpr: return true;
+        case NodeKind::ParenExpr: return configCondition(static_cast<ParenExpr*>(n)->inner, depth + 1);
+        case NodeKind::UnaryExpr: return configCondition(static_cast<UnaryExpr*>(n)->operand, depth + 1);
+        case NodeKind::BinaryExpr:
+          return configCondition(static_cast<BinaryExpr*>(n)->lhs, depth + 1) && configCondition(static_cast<BinaryExpr*>(n)->rhs, depth + 1);
+        case NodeKind::NameExpr:
+        {
+          Decl* d = static_cast<NameExpr*>(n)->resolved;
+          if (!d || d->kind != NodeKind::VariableDecl)
+            return false;
+          Decl* top = d->parent;
+          while (top && top->parent)
+            top = top->parent;
+          return top && top->kind == NodeKind::NamespaceDecl && static_cast<NamespaceDecl*>(top)->name != UINT32_MAX &&
+                 symbols.name(static_cast<NamespaceDecl*>(top)->name) == "config";
+        }
+        default: return false;
+      }
+    }
+
     // `when (condition)` on a local (design.md 19): decided as if constexpr's condition is, in an
-    // instance and in a function that is no template; false, the variable does not exist: it is not
-    // declared, nothing of it is checked or instantiated, as a discarded branch. A template's own
-    // walk checks it as an undecided branch. True when there is no condition.
+    // instance and in a function that is no template; false, the variable does not exist: nothing of
+    // it is checked or instantiated, as a discarded branch (walkLocalDecl declares it absent). A
+    // template's own walk decides a condition of config constants and literals so too, and checks any
+    // other as an undecided branch. True when there is no condition.
     bool whenHolds(Decl* d)
     {
       if (!d->when)
@@ -23432,8 +23466,8 @@ struct GlobalScope::Impl
       if (keepConstexprBranches && d->whenKnown >= 0)
         return d->whenKnown != 0;
       walkExpr(d->when);
-      if (!activeSubst && (inGenericTemplate() || impl.converting))
-        return true;
+      if (!activeSubst && (impl.converting || (inGenericTemplate() && !configCondition(d->when))))
+        return true; // (a template's own walk decides only a condition of config constants and literals)
       std::optional<bool> known = impl.constCondition(d->when, ctx(), 0);
       if (!known)
       {
@@ -23516,7 +23550,12 @@ struct GlobalScope::Impl
           break;
         }
         case NodeKind::ExprStmt: walkExpr(static_cast<ExprStmt*>(s)->expr); break;
-        case NodeKind::AssertStmt: walkExpr(static_cast<AssertStmt*>(s)->cond); break;
+        case NodeKind::AssertStmt:
+          // Where config::debug is false an assert compiles to nothing (design.md 7): its expression is
+          // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).
+          if (auto* a = static_cast<AssertStmt*>(s); a->release || a->testKind || impl.debug)
+            walkExpr(a->cond);
+          break;
         case NodeKind::DeclStmt:
           for (Decl* d : static_cast<DeclStmt*>(s)->decls)
             walkLocalDecl(d);
@@ -23535,9 +23574,11 @@ struct GlobalScope::Impl
           walkNode(i->cond);
           // In an instantiation, and in a function that is no template (`if constexpr (config::debug)`,
           // whose discarded branch names what only the other configuration declares: design.md
-          // 7.4, discarded branches); a template's own walk leaves both to its instances.
-          if (i->isConstexpr && (activeSubst || (!inGenericTemplate() && !impl.converting)) && i->cond && uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) &&
-              uint8_t(i->cond->kind) >= uint8_t(NodeKind::NameExpr))
+          // 7.4, discarded branches); a template's own walk leaves both to its instances, but for a
+          // condition of config constants and literals, the same in every instance (a `when` member
+          // the discarded branch names: design.md 19).
+          if (i->isConstexpr && (activeSubst || (!impl.converting && (!inGenericTemplate() || configCondition(i->cond)))) && i->cond &&
+              uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) && uint8_t(i->cond->kind) >= uint8_t(NodeKind::NameExpr))
             if (std::optional<bool> known = impl.constCondition(static_cast<Expr*>(i->cond), ctx(), 0))
             {
               // if constexpr with a known condition: the discarded branch is not checked (nor are
@@ -24999,6 +25040,8 @@ std::string GlobalScope::checkConstructorAccess(FunctionDecl* ctor, Decl* in, No
 void GlobalScope::enableAccessErrors() { impl->accessErrors = true; }
 
 void GlobalScope::setConverting(bool converting) { impl->converting = converting; }
+
+void GlobalScope::setDebug(bool debug) { impl->debug = debug; }
 
 void GlobalScope::setLP64(bool lp64)
 {

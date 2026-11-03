@@ -273,6 +273,10 @@ public:
   // A conversion's resolve (kppc --convert): both branches of an `if constexpr` in a function that is no
   // template are walked, as C++ checks them (the converter rewrites both); a build walks the taken one.
   void setConverting(bool converting);
+  // config::debug of the build (kppc's `--config debug=...`, false in a release build): where it is
+  // false, `assert` compiles to nothing (design.md 7), so the checker and the evaluator leave its
+  // expression as discarded code (a `when (config::debug)` member it names is no error, design.md 19).
+  void setDebug(bool debug);
   // Whether a checker error at a place in the file at path was reported outside any unit (the
   // index's, a class instance's static_assert): walking the file again would not take it back.
   bool unitlessErrorIn(const std::string& path);

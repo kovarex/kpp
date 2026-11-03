@@ -1,6 +1,5 @@
 // spec: a `when (config::debug)` member of a class template used inside `if constexpr (config::debug)` in a constructor of a class nested in it (design.md 19: a use inside a discarded branch is not walked): the release build compiles, the debug one counts
 // factorio: Rcu<T>::WriteLock's constructor, `if constexpr (config::debug) { ++this->rcu->writeLockCount; }`, writeLockCount an `#ifdef DEBUG` member of Rcu<T> (4 of plan B's 46 release errors)
-// pending: in release the discarded branch's use is reported: "'writeLockCount' exists only when config::debug holds" (D)
 // kppc: --release
 template<typename T>
 struct Rcu

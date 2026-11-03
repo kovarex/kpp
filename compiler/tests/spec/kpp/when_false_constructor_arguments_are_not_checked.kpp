@@ -1,6 +1,5 @@
 // spec: a false `when` local's constructor arguments are neither evaluated nor checked (design.md 19), also in a member function of a class template and when they name a `when (config::debug)` static member of a class in a namespace: the release build compiles (outside a template it does already)
 // factorio: MetaTestRunner<T, Helper>::metaTestExecution's `ScopedSetter<std::unordered_set<agui::Widget*>> widgetsSetter(agui::Widget::widgets, {})` under #ifdef DEBUG, Widget::widgets an #ifdef DEBUG static member (1 of plan B's 46 release errors)
-// pending: in a class template's member the false declaration's arguments are checked in release: "'widgets' exists only when config::debug holds" (D)
 // kppc: --release
 template<typename T>
 struct ScopedSetter
