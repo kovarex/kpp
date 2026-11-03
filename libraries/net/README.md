@@ -31,13 +31,12 @@ TcpStream client = listener.accept();
 ## Platforms
 
 - **Windows**: tested (`kpp --test`). Winsock starts on first use.
-- **Linux**: works (src/NetPosix.kpp): a program listening, connecting, accepting, writing and
-  reading over the loopback, built here and run under WSL. The error paths are not tested there
-  yet: exceptions do not unwind on Linux (docs/design.md, "Targets and hosts", stage 3).
+- **Linux**: tested (src/NetPosix.kpp): the library's tests, built here and run under WSL, error
+  paths included (docs/design.md, "Targets and hosts", stage 3).
 - **FreeBSD**: the same file, compiled against FreeBSD 14.3's own headers and linked statically
   (tests\targets.ps1 builds a CGI program with http and mariadb on it; tools\sysroot\freebsd.ps1
   makes the sysroot). Not run yet: nothing runs FreeBSD on the build machine (docs/design.md,
-  "Targets and hosts", stage 6). Exceptions do not unwind there either yet.
+  "Targets and hosts", stage 6).
 
 ## Tests
 

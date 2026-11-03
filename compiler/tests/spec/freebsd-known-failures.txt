@@ -6,35 +6,6 @@
 # and so does a line naming no snippet. Pending snippets are known failures without a line here.
 # From CI run 41650507690 (2026-11-03, H's lists), less what has been fixed since.
 
-# Stage 3 (docs/design.md, "Targets and hosts"): exceptions do not unwind off Windows; a throw aborts.
-run classes/catch_by_second_base  stage 3
-run classes/constructor_throw_destroys_built_parts  stage 3
-run language/adjacent_invokes_cleanup_once_release  stage 3
-run language/exceptions  stage 3
-run language/noexcept_false_destructor_throws_to_its_caller  stage 3
-run language/noexcept_false_destructor_unwinds_what_was_built_before  stage 3
-run language/program_and_instance_pieces  stage 3
-run language/rethrow_from_nested_catch_release  stage 3
-run language/rethrow_in_function_a_handler_calls  stage 3
-run language/text_constructor_argument  stage 3
-run language/throw_from_handler_cleans_up_enclosing_scope  stage 3
-run language/throw_in_array_element_destroys_built_elements  stage 3
-run language/throwing_call_result_temporary  stage 3
-run library/array_of_no_elements  stage 3
-run library/enable_shared_from_this  stage 3
-run library/exceptions_std  stage 3
-run library/optional_function_errors  stage 3
-run library/size_limits_growth  stage 3
-run library/size_limits_string  stage 3
-run library/size_limits_vector  stage 3
-run library/stoi_out_of_range_beyond_int  stage 3
-run library/string_to_number  stage 3
-run library/string_view_copy  stage 3
-run library/utf8  stage 3
-run library/wstring_insert  stage 3
-run language/exception_passes_frames_without_cleanups  stage 3 (written for it, 2026-11-03)
-run language/exception_passes_a_try_without_its_handler  stage 3 (written for it, 2026-11-03)
-
 # Found by the FreeBSD run, each B's.
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
 

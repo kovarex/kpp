@@ -3056,6 +3056,61 @@ kpp.net's deploy). Taken by the registry thread, B reviewing B's files.
 - **Not yet:** running anything on FreeBSD (a VM in CI, then one run on NFS), stage 3's exceptions
   (a throw aborts there as on Linux) and stage 4's platform layer.
 
+### Stage 3, exceptions on the Itanium model (2026-11-03)
+
+Linux and FreeBSD, as decided above (two phases, the types matched in phase 1). Windows is unchanged:
+its IR for every spec snippet (1073) is byte-identical before and after.
+- **The personality**, `__kpp_personality_v0`, is C in main.cpp (`itaniumRuntime`), compiled once
+  per target into the import cache and linked into every program off Windows, as windows-gnu's
+  `kpp_long_double` is. In C rather than IR text: it reads the LSDA (uleb128 and sleb128, the
+  call-site, action and type tables), which is about 150 lines of C and would be about 300 of IR.
+  - **Phase 1** matches each catch clause's descriptor with `kpp_eh_offset`. `null` is catch (...),
+    and a zero entry is null in every encoding, pc-relative too.
+  - **The empty exception specification** of a noexcept function ends the program in phase 1
+    through `kpp_eh_terminate`, with the throw site on the stack.
+  - **Phase 2** installs the handler's landing pad with the clause's index, and the other frames'
+    pads for their cleanups with 0.
+  - **Encodings:** the type table is udata4 in FreeBSD's static non-PIC link and indirect pcrel
+    sdata4 with glibc, and the call sites are uleb128. Anything else aborts with a message.
+  - **Exception class:** only kpp's exceptions ("KPP\0KPP\0") are caught. Another language's pass
+    through the cleanups.
+  - **Linking:** `kpp_eh_offset` and `kpp_eh_terminate` are weak there, and a program without
+    exceptions drops the object (--gc-sections).
+- **codegen** (`itaniumUnwindDestination`, `itaniumTry`, `finishExceptionRuntime`):
+  - **Landing pads:** a call that may throw is an invoke whose landing pad has `cleanup`, the catch
+    clauses of every try around it in the function (innermost first), and in a noexcept function
+    the empty filter. The pad keeps the exception and the selector in two slots and goes on to a
+    chain of plain blocks destroying what the call leaves, shared as SEH's cleanup pads are.
+  - **Try:** its dispatch compares the selector with each handler's `llvm.eh.typeid.for` in order.
+    The handler it finds takes the exception into its record (`kpp_eh_enter`); with none, the
+    chain goes on outward, to the enclosing try or to `resume`.
+  - **Handlers** are plain code: `kpp_eh_end` frees the unwinder's header too, and leaving a
+    handler is a branch.
+  - **A destructor that throws** during a cleanup is invoked with a landing pad of the empty filter,
+    so the program terminates in phase 1.
+  - **Throw:** `kpp_throw` puts the object, its descriptor and its destructor after the unwinder's
+    32-byte header and calls `_Unwind_RaiseException`. When that returns (no handler),
+    `kpp_eh_terminate` prints "unhandled exception of type T: message" from the throw site and
+    aborts.
+- **The unwinder:** FreeBSD's static link takes it from libgcc_eh (LLVM's libunwind in 14.3), and
+  glibc's from libgcc_s. kpp's functions have unwind tables by default (they are not `nounwind`).
+- **Found on the way:** the first personality took a pc-relative zero, catch (...)'s, for an
+  offset. So catch (...) never matched with glibc: the inner `throw;` specs aborted.
+- **Spec** (`spec.cmd --target linux`, under WSL): every exception snippet passes in debug,
+  release and debug-info. The 21 failing are the known ones: stage 4's Win32 links, the long double
+  and `_Generic` math headers, and LLVM's -O0 va_arg. The two release-only failures,
+  `kpp/asserts_and_config` and `config_values`, are the runner's: its `.linux.expected` wins over
+  `.release.expected`.
+  - FreeBSD: every snippet builds (928, 19 known not to), and the 25 stage-3 lines of
+    freebsd-known-failures.txt are gone, for CI's VM to confirm.
+- **The libraries' tests on Linux**: base64 (3), bcrypt (5), html (6), json (13), markdown (10),
+  net (3), sha256 (6) and url (6) all pass. Each stopped at its first throw before.
+- **Not yet:**
+  - noexcept on Windows (the pending spec): its SEH filter would report and end the program in the
+    search.
+  - The terminate handler off Windows: `setTerminate` and `uncaught_exceptions()`, which call the
+    UCRT today (stage 4, the standard library's).
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).

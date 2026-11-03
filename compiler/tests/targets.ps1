@@ -237,8 +237,8 @@ else
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'uncaught.kpp')))
   {
     $r = Wsl 'uncaught' @(WslPath $elf)
-    $want = 'exception of type Boom thrown: it went boom (exceptions do not unwind on this target yet: docs/design.md, "Targets and hosts", stage 3)'
-    if (-not $r.timedOut -and ($r.out -ne 'before' -or -not $r.err.StartsWith($want) -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+    # (the search finds no handler: reported from the throw site, then abort's SIGABRT, 134)
+    if (-not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
   }
 }
 

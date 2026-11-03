@@ -821,7 +821,8 @@ namespace
 
     // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
     // filter function per try statement matches the thrown type against the handlers, and the
-    // destructors of the objects between a call and its handler run in cleanup pads.
+    // destructors of the objects between a call and its handler run in cleanup pads. Off Windows, the
+    // Itanium model's landing pads (itaniumUnwindDestination, itaniumTry): the frames are the same.
     struct EHFrame
     {
       bool isHandler;            // false: an open try body; true: an open catch handler
@@ -832,11 +833,13 @@ namespace
       std::string exceptionSlot; // handler: the alloca holding the caught exception record
       size_t scopeDepth;         // scopes.size() when entered
       bool used = false;         // try: some call in the body unwinds to the dispatch
+      std::vector<std::string> catchTypes; // off Windows, a try: its handlers' descriptors in order ("null": catch (...))
     };
     std::vector<EHFrame> ehFrames;
     std::string ehBlocks;                                     // cleanup pads of the current function
     std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block
     std::string funcletOverride;                              // the pad being emitted, for its calls
+    bool itaniumCleanup = false;                              // off Windows: a cleanup block is being emitted, for its calls
     bool usesEH = false;                                      // the current function has invokes or pads
     std::string returnLabel; // a destructor's: where a `return` goes, the members and bases destroyed after the body
 
@@ -5995,6 +5998,7 @@ namespace
       std::vector<EHFrame> ehFrames;
       std::string ehBlocks;
       std::unordered_map<std::string, std::string> cleanupPads;
+      bool itaniumCleanup;
       bool usesEH;
       std::string returnLabel;
       std::unordered_map<std::string, std::string> inlineSlots;
@@ -6006,7 +6010,7 @@ namespace
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
+              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, itaniumCleanup, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
               bodyNow};
     }
 
@@ -6030,6 +6034,7 @@ namespace
       ehFrames = s.ehFrames;
       ehBlocks = s.ehBlocks;
       cleanupPads = s.cleanupPads;
+      itaniumCleanup = s.itaniumCleanup;
       usesEH = s.usesEH;
       returnLabel = s.returnLabel;
       inlineSlots = s.inlineSlots;
@@ -6052,6 +6057,7 @@ namespace
       ehFrames.clear();
       ehBlocks.clear();
       cleanupPads.clear();
+      itaniumCleanup = false;
       usesEH = false;
       inlineSlots.clear();
       debugAt = nullptr;
@@ -6067,7 +6073,7 @@ namespace
     std::string functionText(std::string header)
     {
       if (usesEH)
-        header.insert(header.rfind("{\nentry:"), "personality ptr @__C_specific_handler ");
+        header.insert(header.rfind("{\nentry:"), "personality ptr " + personality() + " ");
       if (size_t line = debugFile ? lineOf(debugAt, debugFile) : 0)
         return debugLines(header, line);
       return header + allocas + fn + ehBlocks + "}\n\n";
@@ -9751,6 +9757,9 @@ namespace
     static constexpr const char* kppEhEndHeader = "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {";
     static constexpr const char* kppEhFilterAnyHeader = "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {";
     static constexpr const char* kppEhUnhandledHeader = "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {";
+    // (off Windows: main.cpp's personality calls kpp_eh_terminate too)
+    static constexpr const char* kppEhEnterHeader = "define linkonce_odr void @kpp_eh_enter(ptr %out, ptr %h, i32 %handler, ptr %target) comdat {";
+    static constexpr const char* kppEhTerminateHeader = "define linkonce_odr void @kpp_eh_terminate(ptr %h, i32 %why) noinline comdat {";
     static constexpr const char* kppAssertFailedHeader =
       "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {";
     static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
@@ -9761,7 +9770,8 @@ namespace
     static std::vector<std::string> runtimeHeaders()
     {
       return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
-              kppEhFilterAnyHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset")};
+              kppEhFilterAnyHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
+              kppEhEnterHeader,   kppEhTerminateHeader};
     }
 
     // "declare RET NAME(TYPES)" from a "define RET NAME(TYPE %name, ...) attrs {" header.
@@ -16760,10 +16770,13 @@ namespace
           break; // the target is inside this handler
         unwindRange(ehFrames[i].scopeDepth, top);
         top = ehFrames[i].scopeDepth;
-        std::string next = newLabel("catchret");
-        fn += "  catchret from " + ehFrames[i].funclet + " to label %" + next + "\n";
+        if (!ehFrames[i].funclet.empty()) // (off Windows a handler is plain code: nothing to leave)
+        {
+          std::string next = newLabel("catchret");
+          fn += "  catchret from " + ehFrames[i].funclet + " to label %" + next + "\n";
+          startBlock(next);
+        }
         ehFrames.resize(i);
-        startBlock(next);
       }
       unwindRange(depth, top);
       ehFrames = saved;
@@ -16789,15 +16802,19 @@ namespace
       return f.empty() ? "" : " [ \"funclet\"(token " + f + ") ]";
     }
 
-    bool handlerDeclared = false; // this emitter saw __C_specific_handler declared
+    // The personality of a function with exception handling: SEH's on Windows, kpp's own (main.cpp's
+    // itaniumRuntime) on the other targets.
+    std::string personality() const { return sh.target.windows() ? "@__C_specific_handler" : "@__kpp_personality_v0"; }
+
+    bool handlerDeclared = false; // this emitter saw the personality declared
     void markEH()
     {
       usesEH = true;
       if (handlerDeclared)
         return;
       handlerDeclared = true;
-      if (declaredNames.claim("@__C_specific_handler"))
-        decls += "declare i32 @__C_specific_handler(...)\n";
+      if (declaredNames.claim(personality()))
+        decls += "declare i32 " + personality() + "(...)\n";
     }
 
     // Emits `call` or, when an exception leaving the call has to run destructors or reach a handler
@@ -16828,7 +16845,7 @@ namespace
     std::string unwindDestination()
     {
       if (!sh.target.windows())
-        return ""; // no exception unwinds yet off Windows (tryStatement)
+        return itaniumUnwindDestination();
       size_t limit = ehFrames.empty() ? 0 : ehFrames.back().scopeDepth;
       std::vector<Object> objects;
       for (size_t i = statementTemps.size(); i-- > 0;)
@@ -16887,6 +16904,147 @@ namespace
       currentBlock = savedBlock;
       blockTerminated = savedTerminated;
       return padLabel;
+    }
+
+    // --- exceptions off Windows: the Itanium model (docs/design.md, "Targets and hosts", stage 3) ---
+    // A call that may throw is an invoke whose unwind edge is a landing pad: `landingpad cleanup` with
+    // the catch clauses of every try around the call in this function, innermost first, and in a
+    // noexcept function the empty filter. kpp's personality (main.cpp's itaniumRuntime) matches the
+    // clauses in the search, phase 1. The pad keeps the exception and the selector (the index of the
+    // clause matched in this frame, 0 for its cleanups alone) in two slots of the function, and goes
+    // on to a chain of plain blocks that destroy what the call leaves, newest first, shared as
+    // cleanupChain's pads are. The chain ends at the innermost try's dispatch or at `resume`.
+
+    // The function's two slots, made on first use: %eh.exc, the exception (the unwinder's header),
+    // and %eh.sel, the selector.
+    void itaniumSlots()
+    {
+      if (cleanupPads.emplace("itanium.slots", "").second)
+        allocas += "  %eh.exc = alloca ptr\n  %eh.sel = alloca i32\n";
+    }
+
+    // The block that goes on unwinding to the caller with the exception in the slots.
+    std::string itaniumResume()
+    {
+      auto found = cleanupPads.find("itanium.resume");
+      if (found != cleanupPads.end())
+        return found->second;
+      itaniumSlots();
+      std::string block = newLabel("eh.resume"), exc = newTemp(), sel = newTemp(), pair = newTemp(), full = newTemp();
+      cleanupPads["itanium.resume"] = block;
+      ehBlocks += block + ":\n  " + exc + " = load ptr, ptr %eh.exc\n  " + sel + " = load i32, ptr %eh.sel\n  " + pair +
+                  " = insertvalue { ptr, i32 } poison, ptr " + exc + ", 0\n  " + full + " = insertvalue { ptr, i32 } " + pair + ", i32 " + sel +
+                  ", 1\n  resume { ptr, i32 } " + full + "\n";
+      return block;
+    }
+
+    // The landing pad of the calls a cleanup block makes: a destructor that throws while an exception
+    // unwinds ends the program (C++'s std::terminate), found in the search at the empty filter.
+    std::string itaniumTerminatePad()
+    {
+      auto found = cleanupPads.find("itanium.terminate");
+      if (found != cleanupPads.end())
+        return found->second;
+      markEH();
+      std::string block = newLabel("eh.terminate"), lp = newTemp();
+      cleanupPads["itanium.terminate"] = block;
+      ehBlocks += block + ":\n  " + lp + " = landingpad { ptr, i32 } filter [0 x ptr] zeroinitializer\n  unreachable\n";
+      return block;
+    }
+
+    // Whether the function being emitted is noexcept (`noexcept`, or `noexcept(cond)` with cond true):
+    // no exception leaves it.
+    bool emittingNoexcept()
+    {
+      static const TemplateArgs none;
+      return currentFunction && (currentFunction->flags & DF_Noexcept) && global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
+    }
+
+    // The chain destroying objects[from..] (the newest first), then going on to next (a try's dispatch
+    // or the chain of an enclosing scope's objects), or to resume when next is "".
+    std::string itaniumChain(const std::vector<Object>& objects, size_t from, const std::string& next)
+    {
+      if (from == objects.size())
+        return next.empty() ? itaniumResume() : next;
+      std::string key = "itanium.chain|" + next;
+      for (size_t i = from; i < objects.size(); ++i)
+        key += "|" + objects[i].addr + (objects[i].freeMemory ? "~" : "") + (objects[i].exception ? "!" : "");
+      auto found = cleanupPads.find(key);
+      if (found != cleanupPads.end())
+        return found->second;
+      std::string rest = itaniumChain(objects, from + 1, next);
+      std::string block = newLabel("eh.cleanup");
+      cleanupPads[key] = block;
+      // The block is emitted aside, after the function body.
+      std::string savedFn = std::move(fn), savedBlock = currentBlock;
+      bool savedTerminated = blockTerminated, savedCleanup = itaniumCleanup;
+      fn.clear();
+      startBlock(block);
+      itaniumCleanup = true;
+      destroyObject(objects[from]);
+      itaniumCleanup = savedCleanup;
+      emitBranch(rest);
+      ehBlocks += fn;
+      fn = std::move(savedFn);
+      currentBlock = savedBlock;
+      blockTerminated = savedTerminated;
+      return block;
+    }
+
+    // The landing pad of a call whose exception goes on to head (a chain block or a try's dispatch).
+    std::string itaniumLandingPad(const std::string& head)
+    {
+      std::string clauses;
+      for (size_t i = ehFrames.size(); i-- > 0;)
+        if (!ehFrames[i].isHandler)
+          for (const std::string& type : ehFrames[i].catchTypes)
+            clauses += " catch ptr " + type;
+      if (emittingNoexcept())
+        clauses += " filter [0 x ptr] zeroinitializer";
+      std::string key = "itanium.pad|" + head + "|" + clauses;
+      auto found = cleanupPads.find(key);
+      if (found != cleanupPads.end())
+        return found->second;
+      markEH();
+      itaniumSlots();
+      std::string block = newLabel("eh.pad"), lp = newTemp(), exc = newTemp(), sel = newTemp();
+      cleanupPads[key] = block;
+      ehBlocks += block + ":\n  " + lp + " = landingpad { ptr, i32 } cleanup" + clauses + "\n  " + exc + " = extractvalue { ptr, i32 } " + lp +
+                  ", 0\n  store ptr " + exc + ", ptr %eh.exc\n  " + sel + " = extractvalue { ptr, i32 } " + lp + ", 1\n  store i32 " + sel +
+                  ", ptr %eh.sel\n  br label %" + head + "\n";
+      return block;
+    }
+
+    // Where the exception of a call at this point goes: the objects constructed since the innermost
+    // try or handler began, then that try's dispatch (or, out of a handler, where its try's dispatch
+    // goes when no handler takes the exception). "" when nothing in this function has to happen.
+    std::vector<Object> itaniumObjects()
+    {
+      size_t limit = ehFrames.empty() ? 0 : ehFrames.back().scopeDepth;
+      std::vector<Object> objects;
+      for (size_t i = statementTemps.size(); i-- > 0;)
+        objects.push_back(statementTemps[i]);
+      for (size_t s = scopes.size(); s-- > limit;)
+        for (size_t i = scopes[s].size(); i-- > 0;)
+          objects.push_back(scopes[s][i]);
+      return objects;
+    }
+
+    std::string itaniumUnwindDestination()
+    {
+      if (itaniumCleanup)
+        return itaniumTerminatePad();
+      std::vector<Object> objects = itaniumObjects();
+      std::string next;
+      if (!ehFrames.empty())
+      {
+        next = ehFrames.back().dispatchLabel;
+        if (!ehFrames.back().isHandler)
+          ehFrames.back().used = true;
+      }
+      if (objects.empty() && next.empty() && !emittingNoexcept())
+        return "";
+      return itaniumLandingPad(itaniumChain(objects, 0, next));
     }
 
     std::string sharedComdat(const std::string& name) { return "$" + name.substr(1) + " = comdat any\n"; }
@@ -16970,7 +17128,7 @@ namespace
       {
         destroy("%o", t, at);
         fn += "  ret void\n";
-        shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat " + (usesEH ? "personality ptr @__C_specific_handler " : "") +
+        shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat " + (usesEH ? "personality ptr " + personality() + " " : std::string()) +
                   "{\nentry:\n" + allocas + fn + ehBlocks + "}\n";
       }
       catch (Unsupported&)
@@ -17049,14 +17207,16 @@ namespace
     // whose filter function (run by the OS during the search phase) matches the thrown type against
     // the handlers in order and records the exception for the one that takes it. The handler code
     // is a catchpad funclet reading that record; leaving it normally ends the exception.
-    // Off Windows, until exceptions unwind there (docs/design.md, "Targets and hosts", stage 3): no
-    // call unwinds (unwindDestination), so a try's handlers are never reached and not emitted, and a
-    // throw prints what was thrown and aborts (finishExceptionRuntime's kpp_throw).
+    // Off Windows the Itanium model's landing pads and a dispatch block (itaniumTry).
     void tryStatement(TryStmt* t)
     {
       usesExceptions = true;
-      if (sh.target.windows())
-        markEH();
+      if (!sh.target.windows())
+      {
+        itaniumTry(t);
+        return;
+      }
+      markEH();
       std::string endL = newLabel("try.end"), dispatchL = newLabel("catch.dispatch"), handlerL = newLabel("catch.pad");
       ehFrames.push_back({false, dispatchL, currentFunclet(), "", "", scopes.size()});
       statement(t->body);
@@ -17122,7 +17282,19 @@ namespace
         fn += " ]\n";
         blockTerminated = true;
       }
-      for (size_t i = 0; i < t->handlers.size(); ++i)
+      catchHandlers(t, slot, handlerLabels, pad, endL);
+      ehFrames.pop_back();
+      startBlock(endL);
+    }
+
+    // The first handlerLabels.size() handlers of t, each at its label, with the caught exception's
+    // record in slot (the object at offset 32): each binds its parameter, runs, ends the exception
+    // (the record, a scope object) and leaves for endL, out of its catchpad on Windows (pad), by a
+    // branch elsewhere (pad "").
+    void catchHandlers(TryStmt* t, const std::string& slot, const std::vector<std::string>& handlerLabels, const std::string& pad,
+                       const std::string& endL)
+    {
+      for (size_t i = 0; i < handlerLabels.size(); ++i)
       {
         const TryStmt::Handler& h = t->handlers[i];
         startBlock(handlerLabels[i]);
@@ -17158,12 +17330,84 @@ namespace
         }
         statement(h.body);
         popScope();
-        if (!blockTerminated)
+        if (!blockTerminated && pad.empty())
+          emitBranch(endL);
+        else if (!blockTerminated)
         {
           fn += "  catchret from " + pad + " to label %" + endL + "\n";
           blockTerminated = true;
         }
       }
+    }
+
+    // try off Windows (the Itanium model, above unwindDestination): the body's landing pads go on to
+    // the dispatch, a plain block that compares the selector with each handler's descriptor's index
+    // (llvm.eh.typeid.for), in order; the handler it finds takes the exception into its record
+    // (kpp_eh_enter). With none (a cleanup of this frame's on the way to a handler further out), the
+    // exception goes on through the objects outside the try to the enclosing try, or to the caller.
+    void itaniumTry(TryStmt* t)
+    {
+      std::string endL = newLabel("try.end"), dispatchL = newLabel("catch.dispatch");
+      EHFrame frame{false, dispatchL, "", "", "", scopes.size()};
+      for (const TryStmt::Handler& h : t->handlers)
+      {
+        if (!h.param)
+        {
+          frame.catchTypes.push_back("null");
+          break; // (a handler after catch (...) is never reached)
+        }
+        const Ty* pt = declType(h.param);
+        if (!pt || !pt->isKnown())
+          unsupported(h.param, "a catch parameter of unknown type");
+        frame.catchTypes.push_back(typeinfoFor(pt, t));
+      }
+      ehFrames.push_back(frame);
+      statement(t->body);
+      emitBranch(endL);
+      frame = ehFrames.back();
+      ehFrames.pop_back();
+      if (!frame.used)
+      {
+        startBlock(endL); // nothing in the body can throw to the handlers
+        return;
+      }
+      // Where the exception goes on when no handler takes it: the objects since the enclosing try or
+      // handler, then its dispatch (or where it goes), else the caller.
+      std::vector<Object> objects = itaniumObjects();
+      std::string next = ehFrames.empty() ? std::string() : ehFrames.back().dispatchLabel;
+      if (!ehFrames.empty() && !ehFrames.back().isHandler)
+        ehFrames.back().used = true;
+      std::string outer = itaniumChain(objects, 0, next);
+      itaniumSlots();
+      if (declaredNames.claim("@llvm.eh.typeid.for.p0"))
+        decls += "declare i32 @llvm.eh.typeid.for.p0(ptr)\n";
+      startBlock(dispatchL);
+      std::string sel = newTemp();
+      fn += "  " + sel + " = load i32, ptr %eh.sel\n";
+      std::string slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca [7 x i64]\n"; // object, typeinfo, destructor, handler, adjusted object, the handler around this one, the exception's header
+      std::vector<std::string> handlerLabels, enterLabels;
+      for (size_t i = 0; i < frame.catchTypes.size(); ++i)
+      {
+        handlerLabels.push_back(newLabel("catch.body"));
+        enterLabels.push_back(newLabel("catch.enter"));
+      }
+      for (size_t i = 0; i < frame.catchTypes.size(); ++i)
+      {
+        std::string id = newTemp(), is = newTemp(), nextL = i + 1 < frame.catchTypes.size() ? newLabel("catch.next") : outer;
+        fn += "  " + id + " = call i32 @llvm.eh.typeid.for.p0(ptr " + frame.catchTypes[i] + ")\n  " + is + " = icmp eq i32 " + sel + ", " + id +
+              "\n  br i1 " + is + ", label %" + enterLabels[i] + ", label %" + nextL + "\n";
+        blockTerminated = true;
+        startBlock(enterLabels[i]);
+        std::string exc = newTemp();
+        fn += "  " + exc + " = load ptr, ptr %eh.exc\n  call void @kpp_eh_enter(ptr " + slot + ", ptr " + exc + ", i32 " + std::to_string(i) +
+              ", ptr " + frame.catchTypes[i] + ")\n";
+        emitBranch(handlerLabels[i]);
+        if (nextL != outer)
+          startBlock(nextL);
+      }
+      ehFrames.push_back({true, outer, "", "", slot, scopes.size()});
+      catchHandlers(t, slot, handlerLabels, "", endL);
       ehFrames.pop_back();
       startBlock(endL);
     }
@@ -17198,14 +17442,21 @@ namespace
       };
       if (usesExceptions && !sh.target.windows())
       {
-        // No unwinding yet off Windows (tryStatement): a throw prints the exception, as an uncaught
-        // one does, says why, and aborts; `throw;` outside a handler traps (no handler runs here).
+        // Off Windows, the Itanium model (itaniumUnwindDestination, itaniumTry, main.cpp's
+        // itaniumRuntime). kpp_throw puts the object, its descriptor and its destructor after the
+        // unwinder's 32-byte header, class "KPP\0KPP\0", and raises it. _Unwind_RaiseException returns
+        // only when the search finds no handler: kpp_eh_terminate then reports it, as the personality
+        // does for a noexcept function in the way, with the throw site still on the stack (kovarex,
+        // 2026-11-03), and aborts. A handler takes the exception into its record (kpp_eh_enter), whose
+        // end destroys and frees the object and frees the header.
+        ensureMalloc();
         declareOnce("@fprintf", "declare i32 @fprintf(ptr, ptr, ...)");
         declareOnce("@fflush", "declare i32 @fflush(ptr)");
         declareOnce("@abort", "declare void @abort()");
+        declareOnce("@_Unwind_RaiseException", "declare i32 @_Unwind_RaiseException(ptr)");
         emittingShared = true;
-        std::string fmt1 = cStringConstant("exception of type %s thrown"), fmt2 = cStringConstant(": %s"),
-                    fmt3 = cStringConstant(" (exceptions do not unwind on this target yet: docs/design.md, \"Targets and hosts\", stage 3)\n");
+        std::string uncaught = cStringConstant("unhandled exception of type %s"), throughNoexcept = cStringConstant("exception of type %s thrown through a noexcept function"),
+                    foreign = cStringConstant("unhandled exception of another language"), fmt2 = cStringConstant(": %s"), fmt3 = cStringConstant("\n");
         emittingShared = false;
         std::string err = stderrStream();
         decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
@@ -17213,11 +17464,54 @@ namespace
         std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_throw") +
                   std::string(kppThrowHeader) + "\nentry:\n"
+                  "  %h = call ptr @malloc(i64 64)\n  store i64 21198927785840720, ptr %h\n" // "KPP\0KPP\0"
+                  "  %cleanup = getelementptr inbounds i8, ptr %h, i64 8\n  store ptr null, ptr %cleanup\n"
+                  "  %private = getelementptr inbounds i8, ptr %h, i64 16\n  call void @llvm.memset.p0.i64(ptr %private, i8 0, i64 16, i1 false)\n"
+                  "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  store ptr %object, ptr %op\n"
+                  "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  store ptr %typeinfo, ptr %tp\n"
+                  "  %dp = getelementptr inbounds i8, ptr %h, i64 48\n  store ptr %dtor, ptr %dp\n"
+                  "  %r = call i32 @_Unwind_RaiseException(ptr %h)\n  call void @kpp_eh_terminate(ptr %h, i32 1)\n  unreachable\n}\n";
+        declareOnce("@llvm.memset.p0.i64", "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)");
+        shared += sharedComdat("@kpp_eh_terminate") +
+                  std::string(kppEhTerminateHeader) + "\nentry:\n"
                   "  %flushed = call i32 @fflush(ptr null)\n" + // (the program's output first: abort writes no buffer out)
                   err +
-                  "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
+                  "  %class = load i64, ptr %h\n  %isKpp = icmp eq i64 %class, 21198927785840720\n  br i1 %isKpp, label %kpp, label %foreign\n"
+                  "foreign:\n  %r0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + foreign + ")\n  br label %end\n"
+                  "kpp:\n  %op = getelementptr inbounds i8, ptr %h, i64 32\n  %object = load ptr, ptr %op\n"
+                  "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  %typeinfo = load ptr, ptr %tp\n"
+                  "  %isNoexcept = icmp eq i32 %why, 2\n  %fmt = select i1 %isNoexcept, ptr " + throughNoexcept + ", ptr " + uncaught + "\n"
+                  "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %fmt, ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
-        shared += sharedComdat("@kpp_eh_rethrow") + std::string(kppEhRethrowHeader) + "\nentry:\n  call void @abort()\n  unreachable\n}\n";
+        shared += sharedComdat("@kpp_eh_enter") +
+                  std::string(kppEhEnterHeader) + "\nentry:\n"
+                  "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  %object = load ptr, ptr %op\n"
+                  "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  %ti = load ptr, ptr %tp\n"
+                  "  %dp = getelementptr inbounds i8, ptr %h, i64 48\n  %dtor = load ptr, ptr %dp\n"
+                  "  %any = icmp eq ptr %target, null\n  br i1 %any, label %join, label %search\n"
+                  "search:\n  %found = call i64 @kpp_eh_offset(ptr %ti, ptr %target)\n  br label %join\n"
+                  "join:\n  %offset = phi i64 [ 0, %entry ], [ %found, %search ]\n  %adjusted = getelementptr inbounds i8, ptr %object, i64 %offset\n"
+                  "  %s1 = getelementptr inbounds i64, ptr %out, i64 1\n  %s2 = getelementptr inbounds i64, ptr %out, i64 2\n"
+                  "  %s3 = getelementptr inbounds i64, ptr %out, i64 3\n  %s4 = getelementptr inbounds i64, ptr %out, i64 4\n"
+                  "  %s5 = getelementptr inbounds i64, ptr %out, i64 5\n  %s6 = getelementptr inbounds i64, ptr %out, i64 6\n"
+                  "  store ptr %object, ptr %out\n  store ptr %ti, ptr %s1\n  store ptr %dtor, ptr %s2\n  %hz = zext i32 %handler to i64\n  store i64 %hz, ptr %s3\n"
+                  "  store ptr %adjusted, ptr %s4\n  store ptr %h, ptr %s6\n"
+                  "  %outer = load ptr, ptr @kpp.eh.current\n  store ptr %outer, ptr %s5\n  store ptr %out, ptr @kpp.eh.current\n  ret void\n}\n";
+        shared += sharedComdat("@kpp_eh_end") +
+                  std::string(kppEhEndHeader) + "\nentry:\n"
+                  "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
+                  "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %header, label %live\n"
+                  "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
+                  "  %nodtor = icmp eq ptr %dtor, null\n  br i1 %nodtor, label %release, label %destroy\n"
+                  "destroy:\n  call void %dtor(ptr %obj)\n  br label %release\n"
+                  "release:\n  call void @free(ptr %obj)\n  store ptr null, ptr %out\n  br label %header\n"
+                  "header:\n  %hp = getelementptr inbounds i8, ptr %out, i64 48\n  %h = load ptr, ptr %hp\n  call void @free(ptr %h)\n"
+                  "  store ptr null, ptr %hp\n  ret void\n}\n";
+        shared += sharedComdat("@kpp_eh_rethrow") +
+                  std::string(kppEhRethrowHeader) + "\nentry:\n"
+                  "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
+                  "  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n  store ptr null, ptr %out\n"
+                  "  call void @kpp_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
       }
       else if (usesExceptions)
       {
