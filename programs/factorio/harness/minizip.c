@@ -1,6 +1,8 @@
 /* minizip's differential harness (docs/path-to-factorio.md, "Converting the C libraries"): built
-   once with the C library and once converted with it (both with the converted zlib's C build, the
-   one zlib.lib), it must print the same bytes. It runs:
+   once with the C library and once converted with it (the C build with zlib's C build, zlib.lib;
+   the converted one with the converted zlib, the scoped library it uses), it must print the same bytes.
+   It runs:
+   - unzip.h's, zip.h's and ioapi.h's macros, the converted minizip's constants (interface());
    - a zip written with zipOpen64, files stored and deflated at levels 1, 6 and 9 of pseudo-random
      sizes and contents (one empty), with extra fields, comments and a global comment, the bytes
      of the archive printed as its length and CRC; then read back with unzip: every entry's info,
@@ -210,8 +212,48 @@ static void zipFileListed(const char* path)
   unzClose(in);
 }
 
+/* unzip.h's, zip.h's and ioapi.h's macros, which the converted minizip has as constants of its scope
+   (design.md 16): each constant's value, size and signedness. */
+static void constant(const char* name, long long value, size_t size, int isSigned)
+{
+  printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
+}
+
+static void interface(void)
+{
+  constant("UNZ_OK", (long long)UNZ_OK, sizeof(UNZ_OK), UNZ_OK * 0 - 1 < 0);
+  constant("UNZ_END_OF_LIST_OF_FILE", (long long)UNZ_END_OF_LIST_OF_FILE, sizeof(UNZ_END_OF_LIST_OF_FILE), UNZ_END_OF_LIST_OF_FILE * 0 - 1 < 0);
+  constant("UNZ_ERRNO", (long long)UNZ_ERRNO, sizeof(UNZ_ERRNO), UNZ_ERRNO * 0 - 1 < 0);
+  constant("UNZ_EOF", (long long)UNZ_EOF, sizeof(UNZ_EOF), UNZ_EOF * 0 - 1 < 0);
+  constant("UNZ_PARAMERROR", (long long)UNZ_PARAMERROR, sizeof(UNZ_PARAMERROR), UNZ_PARAMERROR * 0 - 1 < 0);
+  constant("UNZ_BADZIPFILE", (long long)UNZ_BADZIPFILE, sizeof(UNZ_BADZIPFILE), UNZ_BADZIPFILE * 0 - 1 < 0);
+  constant("UNZ_INTERNALERROR", (long long)UNZ_INTERNALERROR, sizeof(UNZ_INTERNALERROR), UNZ_INTERNALERROR * 0 - 1 < 0);
+  constant("UNZ_CRCERROR", (long long)UNZ_CRCERROR, sizeof(UNZ_CRCERROR), UNZ_CRCERROR * 0 - 1 < 0);
+  constant("UNZ_BADPASSWORD", (long long)UNZ_BADPASSWORD, sizeof(UNZ_BADPASSWORD), UNZ_BADPASSWORD * 0 - 1 < 0);
+  constant("Z_BZIP2ED", (long long)Z_BZIP2ED, sizeof(Z_BZIP2ED), Z_BZIP2ED * 0 - 1 < 0);
+  constant("ZIP_OK", (long long)ZIP_OK, sizeof(ZIP_OK), ZIP_OK * 0 - 1 < 0);
+  constant("ZIP_EOF", (long long)ZIP_EOF, sizeof(ZIP_EOF), ZIP_EOF * 0 - 1 < 0);
+  constant("ZIP_ERRNO", (long long)ZIP_ERRNO, sizeof(ZIP_ERRNO), ZIP_ERRNO * 0 - 1 < 0);
+  constant("ZIP_PARAMERROR", (long long)ZIP_PARAMERROR, sizeof(ZIP_PARAMERROR), ZIP_PARAMERROR * 0 - 1 < 0);
+  constant("ZIP_BADZIPFILE", (long long)ZIP_BADZIPFILE, sizeof(ZIP_BADZIPFILE), ZIP_BADZIPFILE * 0 - 1 < 0);
+  constant("ZIP_INTERNALERROR", (long long)ZIP_INTERNALERROR, sizeof(ZIP_INTERNALERROR), ZIP_INTERNALERROR * 0 - 1 < 0);
+  constant("DEF_MEM_LEVEL", (long long)DEF_MEM_LEVEL, sizeof(DEF_MEM_LEVEL), DEF_MEM_LEVEL * 0 - 1 < 0);
+  constant("APPEND_STATUS_CREATE", (long long)APPEND_STATUS_CREATE, sizeof(APPEND_STATUS_CREATE), APPEND_STATUS_CREATE * 0 - 1 < 0);
+  constant("APPEND_STATUS_CREATEAFTER", (long long)APPEND_STATUS_CREATEAFTER, sizeof(APPEND_STATUS_CREATEAFTER), APPEND_STATUS_CREATEAFTER * 0 - 1 < 0);
+  constant("APPEND_STATUS_ADDINZIP", (long long)APPEND_STATUS_ADDINZIP, sizeof(APPEND_STATUS_ADDINZIP), APPEND_STATUS_ADDINZIP * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_SEEK_CUR", (long long)ZLIB_FILEFUNC_SEEK_CUR, sizeof(ZLIB_FILEFUNC_SEEK_CUR), ZLIB_FILEFUNC_SEEK_CUR * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_SEEK_END", (long long)ZLIB_FILEFUNC_SEEK_END, sizeof(ZLIB_FILEFUNC_SEEK_END), ZLIB_FILEFUNC_SEEK_END * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_SEEK_SET", (long long)ZLIB_FILEFUNC_SEEK_SET, sizeof(ZLIB_FILEFUNC_SEEK_SET), ZLIB_FILEFUNC_SEEK_SET * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_MODE_READ", (long long)ZLIB_FILEFUNC_MODE_READ, sizeof(ZLIB_FILEFUNC_MODE_READ), ZLIB_FILEFUNC_MODE_READ * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_MODE_WRITE", (long long)ZLIB_FILEFUNC_MODE_WRITE, sizeof(ZLIB_FILEFUNC_MODE_WRITE), ZLIB_FILEFUNC_MODE_WRITE * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_MODE_READWRITEFILTER", (long long)ZLIB_FILEFUNC_MODE_READWRITEFILTER, sizeof(ZLIB_FILEFUNC_MODE_READWRITEFILTER), ZLIB_FILEFUNC_MODE_READWRITEFILTER * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_MODE_EXISTING", (long long)ZLIB_FILEFUNC_MODE_EXISTING, sizeof(ZLIB_FILEFUNC_MODE_EXISTING), ZLIB_FILEFUNC_MODE_EXISTING * 0 - 1 < 0);
+  constant("ZLIB_FILEFUNC_MODE_CREATE", (long long)ZLIB_FILEFUNC_MODE_CREATE, sizeof(ZLIB_FILEFUNC_MODE_CREATE), ZLIB_FILEFUNC_MODE_CREATE * 0 - 1 < 0);
+}
+
 int main(int argc, char** argv)
 {
+  interface();
   char path[4096] = "minizip-harness.zip";
   if (argc >= 2)
   {

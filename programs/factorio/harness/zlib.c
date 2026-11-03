@@ -1,5 +1,6 @@
 /* zlib's differential harness (docs/path-to-factorio.md, "Converting the C libraries"): built once
    with the C library and once converted with it, it must print the same bytes. It runs:
+   - zlib.h's and zconf.h's macros, the converted zlib's constants, aliases and functions (interface());
    - adler32, crc32 and their _combine over buffers of pseudo-random bytes, every length to 1,100;
    - deflate at every level 0 to 9, the five strategies, zlib, gzip and raw streams, small and
      large windows and memory levels, fed and drained in pieces, with Z_SYNC_FLUSH, Z_FULL_FLUSH and
@@ -381,8 +382,63 @@ static void file(const char* path)
   free(bytes);
 }
 
+/* zlib.h's and zconf.h's macros, which the converted zlib has as constants, aliases and functions of
+   its scope (design.md 16): each constant's value, size and signedness, ZLIB_VERSION and its size,
+   the aliases' sizes, and Z_NULL as a pointer. */
+static void constant(const char* name, long long value, size_t size, int isSigned)
+{
+  printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
+}
+
+static void interface(void)
+{
+  constant("ZLIB_VERNUM", (long long)ZLIB_VERNUM, sizeof(ZLIB_VERNUM), ZLIB_VERNUM * 0 - 1 < 0);
+  constant("ZLIB_VER_MAJOR", (long long)ZLIB_VER_MAJOR, sizeof(ZLIB_VER_MAJOR), ZLIB_VER_MAJOR * 0 - 1 < 0);
+  constant("ZLIB_VER_MINOR", (long long)ZLIB_VER_MINOR, sizeof(ZLIB_VER_MINOR), ZLIB_VER_MINOR * 0 - 1 < 0);
+  constant("ZLIB_VER_REVISION", (long long)ZLIB_VER_REVISION, sizeof(ZLIB_VER_REVISION), ZLIB_VER_REVISION * 0 - 1 < 0);
+  constant("ZLIB_VER_SUBREVISION", (long long)ZLIB_VER_SUBREVISION, sizeof(ZLIB_VER_SUBREVISION), ZLIB_VER_SUBREVISION * 0 - 1 < 0);
+  constant("Z_NO_FLUSH", (long long)Z_NO_FLUSH, sizeof(Z_NO_FLUSH), Z_NO_FLUSH * 0 - 1 < 0);
+  constant("Z_PARTIAL_FLUSH", (long long)Z_PARTIAL_FLUSH, sizeof(Z_PARTIAL_FLUSH), Z_PARTIAL_FLUSH * 0 - 1 < 0);
+  constant("Z_SYNC_FLUSH", (long long)Z_SYNC_FLUSH, sizeof(Z_SYNC_FLUSH), Z_SYNC_FLUSH * 0 - 1 < 0);
+  constant("Z_FULL_FLUSH", (long long)Z_FULL_FLUSH, sizeof(Z_FULL_FLUSH), Z_FULL_FLUSH * 0 - 1 < 0);
+  constant("Z_FINISH", (long long)Z_FINISH, sizeof(Z_FINISH), Z_FINISH * 0 - 1 < 0);
+  constant("Z_BLOCK", (long long)Z_BLOCK, sizeof(Z_BLOCK), Z_BLOCK * 0 - 1 < 0);
+  constant("Z_TREES", (long long)Z_TREES, sizeof(Z_TREES), Z_TREES * 0 - 1 < 0);
+  constant("Z_OK", (long long)Z_OK, sizeof(Z_OK), Z_OK * 0 - 1 < 0);
+  constant("Z_STREAM_END", (long long)Z_STREAM_END, sizeof(Z_STREAM_END), Z_STREAM_END * 0 - 1 < 0);
+  constant("Z_NEED_DICT", (long long)Z_NEED_DICT, sizeof(Z_NEED_DICT), Z_NEED_DICT * 0 - 1 < 0);
+  constant("Z_ERRNO", (long long)Z_ERRNO, sizeof(Z_ERRNO), Z_ERRNO * 0 - 1 < 0);
+  constant("Z_STREAM_ERROR", (long long)Z_STREAM_ERROR, sizeof(Z_STREAM_ERROR), Z_STREAM_ERROR * 0 - 1 < 0);
+  constant("Z_DATA_ERROR", (long long)Z_DATA_ERROR, sizeof(Z_DATA_ERROR), Z_DATA_ERROR * 0 - 1 < 0);
+  constant("Z_MEM_ERROR", (long long)Z_MEM_ERROR, sizeof(Z_MEM_ERROR), Z_MEM_ERROR * 0 - 1 < 0);
+  constant("Z_BUF_ERROR", (long long)Z_BUF_ERROR, sizeof(Z_BUF_ERROR), Z_BUF_ERROR * 0 - 1 < 0);
+  constant("Z_VERSION_ERROR", (long long)Z_VERSION_ERROR, sizeof(Z_VERSION_ERROR), Z_VERSION_ERROR * 0 - 1 < 0);
+  constant("Z_NO_COMPRESSION", (long long)Z_NO_COMPRESSION, sizeof(Z_NO_COMPRESSION), Z_NO_COMPRESSION * 0 - 1 < 0);
+  constant("Z_BEST_SPEED", (long long)Z_BEST_SPEED, sizeof(Z_BEST_SPEED), Z_BEST_SPEED * 0 - 1 < 0);
+  constant("Z_BEST_COMPRESSION", (long long)Z_BEST_COMPRESSION, sizeof(Z_BEST_COMPRESSION), Z_BEST_COMPRESSION * 0 - 1 < 0);
+  constant("Z_DEFAULT_COMPRESSION", (long long)Z_DEFAULT_COMPRESSION, sizeof(Z_DEFAULT_COMPRESSION), Z_DEFAULT_COMPRESSION * 0 - 1 < 0);
+  constant("Z_FILTERED", (long long)Z_FILTERED, sizeof(Z_FILTERED), Z_FILTERED * 0 - 1 < 0);
+  constant("Z_HUFFMAN_ONLY", (long long)Z_HUFFMAN_ONLY, sizeof(Z_HUFFMAN_ONLY), Z_HUFFMAN_ONLY * 0 - 1 < 0);
+  constant("Z_RLE", (long long)Z_RLE, sizeof(Z_RLE), Z_RLE * 0 - 1 < 0);
+  constant("Z_FIXED", (long long)Z_FIXED, sizeof(Z_FIXED), Z_FIXED * 0 - 1 < 0);
+  constant("Z_DEFAULT_STRATEGY", (long long)Z_DEFAULT_STRATEGY, sizeof(Z_DEFAULT_STRATEGY), Z_DEFAULT_STRATEGY * 0 - 1 < 0);
+  constant("Z_BINARY", (long long)Z_BINARY, sizeof(Z_BINARY), Z_BINARY * 0 - 1 < 0);
+  constant("Z_TEXT", (long long)Z_TEXT, sizeof(Z_TEXT), Z_TEXT * 0 - 1 < 0);
+  constant("Z_ASCII", (long long)Z_ASCII, sizeof(Z_ASCII), Z_ASCII * 0 - 1 < 0);
+  constant("Z_UNKNOWN", (long long)Z_UNKNOWN, sizeof(Z_UNKNOWN), Z_UNKNOWN * 0 - 1 < 0);
+  constant("Z_DEFLATED", (long long)Z_DEFLATED, sizeof(Z_DEFLATED), Z_DEFLATED * 0 - 1 < 0);
+  constant("MAX_MEM_LEVEL", (long long)MAX_MEM_LEVEL, sizeof(MAX_MEM_LEVEL), MAX_MEM_LEVEL * 0 - 1 < 0);
+  constant("MAX_WBITS", (long long)MAX_WBITS, sizeof(MAX_WBITS), MAX_WBITS * 0 - 1 < 0);
+  printf("ZLIB_VERSION %s, %u bytes\n", ZLIB_VERSION, (unsigned)sizeof(ZLIB_VERSION));
+  printf("z_off_t %u bytes, z_off64_t %u bytes, uLong %u bytes, uInt %u bytes, Bytef %u bytes\n", (unsigned)sizeof(z_off_t), (unsigned)sizeof(z_off64_t),
+         (unsigned)sizeof(uLong), (unsigned)sizeof(uInt), (unsigned)sizeof(Bytef));
+  void* none = Z_NULL;
+  printf("Z_NULL %s\n", none == 0 ? "null" : "not null");
+}
+
 int main(int argc, char** argv)
 {
+  interface();
   printf("zlib %s, flags %lx\n", zlibVersion(), zlibCompileFlags());
   checksums();
   streams();

@@ -56,7 +56,8 @@ set CLIBWHOLE=
 set CLIBUSE=
 if exist kpp\clib rd /s /q kpp\clib
 for %%l in (%CLIBRARIES%) do (
-  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+  call :libraryUses %%l
+  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
   if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
   xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
   if exist kpp\%%l rd /s /q kpp\%%l
@@ -261,6 +262,12 @@ exit /b 0
 :countsfailed
 echo convert: FAILED: headline %HEADLINE%, tests errors %TESTSERRORS% (%SUMMARY%)
 exit /b 1
+:libraryUses
+rem (LIBUSE: the --convert-library options of the scoped libraries C library %1 uses,
+rem c-libraries\%1\uses.txt, converted before it: minizip's zlib)
+set LIBUSE=
+if exist "c-libraries\%1\uses.txt" for /f "usebackq eol=# delims=" %%u in ("c-libraries\%1\uses.txt") do call set LIBUSE=%%LIBUSE%% --convert-library %%u kpp\clib\%%u\libraries\%%u
+goto :eof
 :nocheckout
 echo convert: name the factorio-in-kpp checkout to write: convert.cmd DIR, or set FACTORIO_IN_KPP=DIR. Each thread writes its own copy, made once by setup-checkout.cmd; C:\factorio-in-kpp only for a factorio-in-kpp push.
 exit /b 2

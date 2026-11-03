@@ -1,7 +1,4 @@
-# minizip's interface: these headers stay C, imported by the converted files and by the game
-# (unzip.h, zip.h and ioapi.h).
-unzip.h
-zip.h
-ioapi.h
+# zlib's interface, which minizip's conversion parses (inputs.txt) and does not write: zlib is a
+# scoped library, its names written zlib::deflate (uses.txt), its includes importing nothing.
 zlib.h
 zconf.h

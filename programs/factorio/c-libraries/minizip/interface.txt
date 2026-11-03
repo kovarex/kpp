@@ -1,0 +1,6 @@
+# minizip's interface, converted into its scope (design.md 16): the game writes minizip::unzOpen2_64,
+# minizip::zipOpenNewFileInZip4_64, minizip::UNZ_OK. Their number macros are constants of the scope,
+# their function-like macros of values functions; a macro that is neither is a TODO of the report.
+unzip.h
+zip.h
+ioapi.h

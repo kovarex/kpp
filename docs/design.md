@@ -1186,6 +1186,22 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   written qualified (`zstd::ZSTD_compress`, `zstd::ZSTD_inBuffer`), except a name the program
   declares itself, and its includes of the library's headers (`zstd/zstd.h`) import nothing. The
   harness driver: 247 uses qualified.
+- **zlib and minizip (2026-11-04):** zlib's interface is zlib.h and zconf.h; minizip's is unzip.h,
+  zip.h and ioapi.h. minizip uses zlib (c-libraries/minizip/uses.txt: its conversion and its
+  build.kpp's `use("zlib", ...)`), so zlib's names are `zlib::` in it too.
+  - Counts: zlib has 38 constants and 5 functions; minizip has 29 constants and 8 functions.
+  - Not expressed (TODOs of the report): zlib's `zlib_version` (`zlibVersion()`, which its users
+    call instead), and minizip's fopen64, ftello64 and fseeko64 (macros naming the C runtime's
+    functions). A macro beside a function of its name (gzgetc) is the function. zlib's identity
+    macro OF, guards and linkage words are no value. C's standard names (SEEK_SET) stay the C
+    headers'.
+  - What made them convert: a local's name shadowing a library name stays unqualified (a local
+    `compress`), and the program's own redeclarations of the library's names (ZipPackage's forward
+    declarations) are removed and their uses qualified. Casts the converter inserts write the
+    type qualified, and `__int64` in an alias is `long long`.
+  - The harnesses print every constant's value and size (zlib 4,115 lines, minizip 1,015), and the
+    C and converted builds print the same bytes. In the game, 75 uses of `zlib::` and 62 of
+    `minizip::` (4 files each).
 
 **The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
 

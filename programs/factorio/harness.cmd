@@ -91,9 +91,28 @@ if exist c-libraries\%NAME%\interface.txt goto :scoped
 %KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 goto :run
 :scoped
-%KPPC% --no-std --quiet %CMODE% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --no-std --quiet --c-sources --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+rem (the scoped libraries it uses, c-libraries\NAME\uses.txt, minizip's zlib: each converted on its own
+rem first, as convert.cmd does, and a library of the kpp build in place of its C .lib, which the C
+rem build still links)
+set USED=
+set USEDROOTS=
+type nul > %OUT%\convert.txt
+if exist c-libraries\%NAME%\uses.txt for /f "usebackq eol=# delims=" %%u in ("c-libraries\%NAME%\uses.txt") do call :useLibrary %%u || exit /b 1
+set KLINKS=
+if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call :linkUnlessUsed %%i
+%KPPC% --no-std --quiet %CMODE% %USED% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --no-std --quiet --c-sources %USED% --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% %USEDROOTS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+goto :run
+:useLibrary
+%KPPC% --no-std --quiet --c-sources --overrides c-libraries\%1 --convert %OUT%\library --ext .c,.h,.hpp %FACTORIO%\libraries\%1 >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+set USED=%USED% --convert-library %1 %OUT%\library\%1
+set USEDROOTS=%USEDROOTS% --library-root %1 %OUT%\library\%1
+goto :eof
+:linkUnlessUsed
+findstr /x /c:"%1" "c-libraries\%NAME%\uses.txt" >nul 2>&1 && goto :eof
+set KLINKS=%KLINKS% --lib "%CONVERSION%\build\clib\%1.lib"
+goto :eof
 :run
 
 %OUT%\c.exe %OUT%\inputs.txt > %OUT%\c-output.txt 2> %OUT%\c-errors.txt

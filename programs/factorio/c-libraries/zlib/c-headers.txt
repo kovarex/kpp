@@ -1,4 +1,0 @@
-# zlib's interface: these headers stay C, imported by the converted files and by the C libraries
-# that use zlib (minizip, curl, png).
-zlib.h
-zconf.h

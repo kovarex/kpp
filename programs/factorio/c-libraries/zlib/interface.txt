@@ -1,0 +1,7 @@
+# zlib's interface, converted into its scope (design.md 16): the game writes zlib::deflate,
+# zlib::Z_OK, zlib::z_stream, zlib::deflateInit2. Their number macros are constants of the scope,
+# their string, type and function-like macros a constant array, aliases and functions; a macro that
+# is none is a TODO of the report. The C libraries that use zlib (curl, png, and minizip's C
+# interface headers until minizip is scoped) keep including zlib.h, which stays in the checkout.
+zlib.h
+zconf.h

@@ -1,0 +1,11 @@
+// zlib, converted to kpp from Factorio's libraries/zlib by kpp's programs/factorio/convert.cmd (C's
+// rules, kppc --c-sources), which copies this file beside it. A scoped library (design.md 16): the
+// game writes its names zlib::deflate, zlib::Z_OK, zlib::z_stream; its C functions keep their C
+// names, which the C libraries that use zlib link to (curl, png, minizip's C interface). Rooted at its
+// own directory, whose C headers the game's `--ext .kpp` leaves out.
+void build(Project& project)
+{
+  Library& zlib = project.library("zlib");
+  zlib.version = "1.3.2"; // (zlib.h's ZLIB_VERSION)
+  zlib.root(".");
+}
