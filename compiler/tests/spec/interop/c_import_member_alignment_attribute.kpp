@@ -1,0 +1,14 @@
+// spec: `__attribute__((aligned(N)))` written after an imported C struct member's declarator aligns that member: the struct's size and alignment are C's, and so are its members' places (the C side reads what kpp wrote) (`96 16 96 16 16 80 4321`)
+// factorio: none; kpp.net's FreeBSD 14.3 headers: machine/ucontext.h's `long mc_fpstate[64] __attribute__((__aligned__(16)))` and struct sigcontext's sc_fpstate were dropped, so ucontext_t was 360 bytes, not 880 (B's review of I's FreeBSD target)
+extern "C" import "c_import_member_alignment_attribute.h";
+
+int main()
+{
+  AlignedTail a{};
+  a.first = 1;
+  a.block[0] = 20;
+  a.block[7] = 300;
+  a.tail = 4000;
+  println(sizeof(AlignedTail), " ", alignof(AlignedTail), " ", c_layout(0), " ", c_layout(1), " ", c_layout(2), " ", c_layout(3), " ", c_sum(&a));
+  return 0;
+}

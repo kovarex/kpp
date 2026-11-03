@@ -1321,7 +1321,13 @@ namespace
       Decl* def = global.definitionOf(decl);
       if (!def || def->kind != NodeKind::ClassDecl)
         fail(at, qualifiedName(decl) + " is only declared (no definition in the program), and this use needs its layout");
-      return static_cast<ClassDecl*>(def);
+      auto* c = static_cast<ClassDecl*>(def);
+      // An imported C struct the C parser could not read in full: its layout without what it skipped
+      // would silently be another than C's.
+      if (c->importError)
+        fail(at, qualifiedName(decl) + ": the C import could not read its definition (" + std::string(c->importError) +
+                     (c->importErrorAt != UINT32_MAX ? " at `" + sym(c->importErrorAt) + "`" : std::string()) + "), and this use needs its layout");
+      return c;
     }
 
     // The instantiation type with the definition as its decl (forward declarations map here).

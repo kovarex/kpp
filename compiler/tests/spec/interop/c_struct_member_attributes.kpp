@@ -1,5 +1,4 @@
 // spec: an imported struct with an attribute on a member (`long state[4] __attribute__((__aligned__(16)))`) or a nullability qualifier (`int (* _Nullable close)(void*)`) has C's layout, every member after it included
-// pending: the C import drops what follows the member it cannot parse and lays the struct out smaller, silently: FreeBSD 14.3's mcontext_t is 288 bytes in kpp and 800 in C, ucontext_t 360 and 880, struct sigcontext 304 and 816
 extern "C" import "c_struct_member_attributes.h";
 int main()
 {

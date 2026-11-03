@@ -1,0 +1,14 @@
+// spec: an imported C struct whose definition the import could not read in full (a member in a construct the C parser does not read) is an error where a use needs its layout, and so is a struct that holds one; never a struct without that member, whose layout would silently be another than C's (a pointer to it needs no layout)
+// factorio: none; kpp.net's FreeBSD 14.3 headers: mcontext_t's `long mc_fpstate[64] __attribute__((__aligned__(16)))` was skipped, so ucontext_t was 360 bytes, not 880 (B's review of I's FreeBSD target)
+// error: c_import_unreadable_member_is_error.kpp:7: error: Unreadable: the C import could not read its definition
+// error: c_import_unreadable_member_is_error.kpp:8: error: Unreadable: the C import could not read its definition
+extern "C" import "c_import_unreadable_member_is_error.h";
+
+int useUnreadable() { Unreadable u{}; return u.before; }
+int useHolder() { HoldsUnreadable h{}; return h.x; }
+int pointerOnly(Unreadable* p) { return p != nullptr ? 1 : 0; }
+
+int main()
+{
+  return useUnreadable() + useHolder() + pointerOnly(nullptr);
+}

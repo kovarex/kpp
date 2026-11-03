@@ -1,0 +1,14 @@
+// spec: an imported C enum with an enumerator whose value the import could not read is not declared, none of its enumerators (the parser drops the whole declaration): a use of one is an error, never a value other than C's (the next ones count on from the one it could not read)
+// factorio: none; B's review of I's FreeBSD target (the import skipped what it could not read in struct bodies; an enum's error drops the enum)
+// error: c_import_unreadable_enumerator_is_not_declared.kpp:10: error: 'SHIFT_A' is not declared
+// error: c_import_unreadable_enumerator_is_not_declared.kpp:11: error: 'SHIFT_B' is not declared
+// error: c_import_unreadable_enumerator_is_not_declared.kpp:12: error: 'SHIFT_C' is not declared
+extern "C" import "c_import_unreadable_enumerator_is_not_declared.h";
+
+int main()
+{
+  int a = SHIFT_A;
+  int b = SHIFT_B;
+  int c = SHIFT_C;
+  return a + b + c;
+}

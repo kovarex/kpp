@@ -1,0 +1,20 @@
+// spec: clang's nullability qualifiers (`_Nonnull`, `_Nullable`, `_Null_unspecified`), C99's `restrict` before a parameter's name and C11's `_Noreturn` in an imported C header change nothing in a declaration: a struct keeps every member (its layout is C's) and the functions are declared (`32 10 12`)
+// factorio: none; kpp.net's FreeBSD 14.3 headers have them: stdio.h's FILE (`int (* _Nullable _close)(void *)`), pthread.h's `pthread_mutex_t * restrict __mutex`, stdlib.h's `_Noreturn void exit(int)` (B's review of I's FreeBSD target)
+extern "C" import "c_import_nullability_restrict_noreturn.h";
+
+int combineTwo(int a, int b) { return a + b; }
+int five() { return 5; }
+
+int main(int argc, char** argv)
+{
+  int values[4] = {1, 2, 3, 4};
+  Callbacks callbacks{};
+  callbacks.combine = combineTwo;
+  callbacks.context = values;
+  callbacks.fallback = five;
+  callbacks.tail = 0;
+  if (argc > 100)
+    exit_with(3); // (declared: not called here)
+  println(sizeof(Callbacks), " ", sum_values(values, 4), " ", apply_callbacks(&callbacks));
+  return 0;
+}

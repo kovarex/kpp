@@ -225,6 +225,12 @@ struct ClassDecl : Decl
   bool isClassConst = false;
   bool isClosure = false;         // Synthetic class standing for a lambda's closure type.
   Expr* alignment = nullptr;      // `struct alignas(16) X`: the alignment written.
+  // An imported C struct or union whose body the import could not read in full (a member in a
+  // construct the C parser does not read): the parser's message and the symbol of the token it
+  // stopped at. A use that needs its layout is an error (codegen's classDef), never a layout without
+  // the member (FreeBSD's mcontext_t without its mc_fpstate was 288 bytes, not 800).
+  const char* importError = nullptr;
+  uint32_t importErrorAt = UINT32_MAX;
   LambdaExpr* lambda = nullptr;   // The lambda, for closures.
   // A class template declared in a class template (`Heap<V, Tag>::IteratorBase<Value>`): the
   // parameters its instances are made with, the enclosing template's then its own (set by the

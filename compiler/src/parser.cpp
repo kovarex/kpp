@@ -135,6 +135,10 @@ namespace
     uint32_t currentClassName = UINT32_MAX;
     Access currentAccess = Access::Default;
     bool inRecovery = false;
+    // Every error() as it was called, a recovery's own too (diagnostics keeps the first of each): a
+    // C struct's body that had one is one the import could not read in full (the safety net in
+    // parseClassOrElaborated).
+    std::vector<Diagnostic> allErrors;
     int depth = 0;
   public:
     bool externC = false; // Inside extern "C".
@@ -281,6 +285,7 @@ namespace
 
     void error(const char* message)
     {
+      allErrors.push_back({pos, message});
       if (inRecovery)
         return;
       inRecovery = true;
@@ -2350,7 +2355,13 @@ namespace
       }
       skipAttributes();
       if (at(P::LBracket) && !at(P::LBracket, 1))
+      {
         d.type = parseArraySuffixes(d.type);
+        // C's attributes after the bounds: `long mc_fpstate[64] __attribute__((__aligned__(16)))`
+        // (FreeBSD's machine/ucontext.h), whose alignment the member takes (pushDecl).
+        if (cMode)
+          skipAttributes();
+      }
       if (at(P::LParen) && !d.name.empty())
       {
         // Function, unless this is a variable with parenthesised initializer. Decide by looking
@@ -3542,9 +3553,20 @@ namespace
       size_t mark = scratch.size();
       size_t savedMembersMark = classMembersMark;
       classMembersMark = mark;
+      size_t errorsBefore = allErrors.size();
       while (!at(P::RBrace) && !at(TokenKind::End))
         parseDeclaration(Scope::Class);
       classMembersMark = savedMembersMark;
+      // An imported C struct or union whose body had an error lost what the parser skipped (a member
+      // in a construct it does not read): its layout would silently be another than C's, so a use
+      // that needs it is an error (ClassDecl::importError). A pointer to it is still a pointer.
+      if (cMode && allErrors.size() > errorsBefore)
+      {
+        const Diagnostic& first = allErrors[errorsBefore];
+        c->importError = first.message;
+        if (first.token < toks.size())
+          c->importErrorAt = symbols.intern(std::string(spelling(toks[first.token])));
+      }
       implicitEquality(mark);
       c->members = makeSpan<Decl*>(mark);
       checkWhenClash(c);
@@ -5972,14 +5994,25 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     // `__restrict__` (MSVC's `__restrict`), and `__attribute__((...))` where MSVC's put a calling convention, between a declaration's type
     // and its name and inside a declarator (`typedef int (__attribute__((__cdecl__)) *f)(int)`).
     // Both go, except the attributes that say something about a type (vector_size, aligned, packed,
-    // mode), which stay where the declaration grammar takes them.
+    // mode), which stay where the declaration grammar takes them. So do what says nothing about a
+    // declaration's type or layout wherever it stands: C99's `restrict` (`pthread_mutex_t * restrict
+    // __mutex`), C11's `_Noreturn`, and clang's nullability qualifiers (FreeBSD's headers:
+    // `int (* _Nullable _close)(void *)` in stdio.h's FILE, `const sigset_t * _Nonnull restrict`).
     auto spelled = [&](const Token& t) { return std::string_view(text.data() + t.offset, t.length); };
     auto identifier = [&](const Token& t, std::string_view s) { return TokenKind(t.kind) == TokenKind::Identifier && spelled(t) == s; };
+    auto meaningless = [&](const Token& t)
+    {
+      if (TokenKind(t.kind) != TokenKind::Identifier)
+        return false;
+      std::string_view s = spelled(t);
+      return s == "__extension__" || s == "__restrict__" || s == "restrict" || s == "_Noreturn" || s == "_Nonnull" || s == "_Nullable" ||
+             s == "_Nullable_result" || s == "_Null_unspecified";
+    };
     std::vector<Token> kept;
     kept.reserve(tokens.size());
     for (size_t i = 0; i < tokens.size(); ++i)
     {
-      if (identifier(tokens[i], "__extension__") || identifier(tokens[i], "__restrict__"))
+      if (meaningless(tokens[i]))
         continue;
       if (identifier(tokens[i], "__attribute__") && i + 2 < tokens.size() && spelled(tokens[i + 1]) == "(" && spelled(tokens[i + 2]) == "(")
       {

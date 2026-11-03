@@ -2661,6 +2661,16 @@ The semantics of section 9 hold on every target:
     FreeBSD's and Apple's headers use GNU extensions the importer must accept or drop
     (`__attribute__`, `__extension__`, `__restrict`, inline functions, `__builtin_va_list`, Apple's
     availability attributes and `__asm` renames). They are measured in the Linux stage.
+    - FreeBSD's add more: clang's nullability qualifiers (`_Nonnull`, `_Nullable`), C99's
+      `restrict` and C11's `_Noreturn`, which the importer drops. They also put
+      `__attribute__((aligned(N)))` after a member's declarator, which the member takes.
+    - What the importer still cannot read is never a silent wrong declaration:
+      - a declaration it skips whole is not declared;
+      - a struct or union whose body it could not read in full is an error where a use needs its
+        layout (a pointer to it needs none);
+      - an enum with an enumerator whose value it could not read is not declared, none of its
+        enumerators.
+    - Before this, FreeBSD 14.3's ucontext_t imported as 360 bytes, not 880 (2026-11-03).
 - **macOS targets.** Built on a Mac: Xcode's command-line tools' clang, ld64 and the SDK. Apple's
   SDK licence ties its use to Apple hardware, so cross-linking for macOS from Windows or Linux is
   not proposed, though ld64.lld exists. A Mac host, or CI's macOS runners, builds and tests the
