@@ -11,6 +11,10 @@ source. Thread H keeps it current; each row names the command that produces it.
 | release | `--release` (= `--config debug=false`) | `assert` compiles to nothing (`release_assert` stays), clang -O2 (-flto=thin with several modules), lld ThinLTO with a cache and /OPT:REF; refuses `--incremental-link` |
 | debug-info | `--debug-info` | CodeView line tables and a PDB; orthogonal to the two above |
 
+A third, final, is planned: the game as Factorio's official FinalRelease build makes it (whole-program
+optimization, `FINAL_RELEASE`). [final-release.md](final-release.md) has what that needs and its
+benchmark against C++ FinalRelease.
+
 kppc's trivial inlining is on in all of them (`--no-inline` turns it off). The converted game is
 always Factorio's FastDebug preprocessing (`_DEBUG`, `DEBUG`, `LUA_USE_APICHECK`: convert.cpp's
 `buildDefines`), so the kppc release game is FastDebug code without asserts at -O2, not Factorio's
