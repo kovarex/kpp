@@ -1074,7 +1074,8 @@ What the first runs found, each with its spec:
 5. Then the stub of StdoutWriteStream's constructor, built at startup for
    `StdoutWriteStream::instance`: `: FileWriteStream(stdout)` found no constructor, because the
    library's stdout was a `void*` and FileWriteStream takes a `FILE*`. stdin, stdout and stderr are
-   `FILE*` now, FILE being the UCRT's own struct (interop/stdout_is_file_pointer).
+   `FILE*` now, FILE being the UCRT's own struct (interop/stdout_is_file_pointer; off Windows the C
+   library's own, declared and not defined, as glibc's `struct _IO_FILE`: interop/c_file_*).
 
 Found on the way, from the coordinator's list of layout asserts: Decorative's bit fields (`uint8_t`
 and `bool` ones in one byte, MSVC's rule: one storage unit while the types have one size;

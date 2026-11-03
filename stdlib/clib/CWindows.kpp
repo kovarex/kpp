@@ -1,6 +1,11 @@
 requires config::platform == Platform::Windows;
 // What the C runtime of Windows (the UCRT) has its own way (CLinux.kpp, CFreeBSD.kpp for the others).
 
+// FILE as the UCRT's stdio.h defines it (one pointer: sizeof(FILE) is 8, as C's), so that a program's
+// import of stdio.h has the same type.
+struct _iobuf { void* _Placeholder; };
+using FILE = _iobuf;
+
 // The standard streams: the UCRT's stdio.h's macros call __acrt_iob_func.
 extern "C" FILE* __acrt_iob_func(unsigned index);
 FILE* stdin  = __acrt_iob_func(0);

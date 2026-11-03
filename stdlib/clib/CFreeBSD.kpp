@@ -1,6 +1,12 @@
 requires config::platform == Platform::FreeBSD;
 // What FreeBSD's C library has its own way (CWindows.kpp, CLinux.kpp for the others).
 
+// FILE as FreeBSD's stdio.h names it, `typedef struct __sFILE FILE;`: declared, not defined, so a
+// program's import of stdio.h gives its definition (312 bytes), and without one sizeof(FILE) or a FILE
+// held by value is an error, never a wrong size.
+struct __sFILE;
+using FILE = __sFILE;
+
 // The standard streams: its stdio.h's macros name the C library's __stdinp, __stdoutp and
 // __stderrp (which do not change once the program runs).
 extern "C" FILE* __stdinp;

@@ -1,0 +1,15 @@
+// spec: the standard library's FILE is the C runtime's own (stdlib/clib): on Windows the UCRT's `struct _iobuf`, one pointer, so sizeof(FILE) is C's 8, and a stream through FILE* writes and reads back
+// factorio: the game's FILE* streams (fopen, fwrite, fprintf to stderr) and the converted C libraries' (zlib's gzip files, minizip's)
+// target: windows (the UCRT's FILE; off Windows FILE is incomplete: c_file_is_incomplete_off_windows)
+int main()
+{
+  println(sizeof(FILE));
+  FILE* f = tmpfile();
+  fwrite("abc", 1, 3, f);
+  fseek(f, 0, 0);
+  char text[4] = {};
+  usize read = fread(text, 1, 3, f);
+  fclose(f);
+  println(read, " ", StringView(text));
+  return 0;
+}

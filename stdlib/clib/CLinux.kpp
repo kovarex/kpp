@@ -1,6 +1,12 @@
 requires config::platform == Platform::Linux;
 // What glibc has its own way (CWindows.kpp, CFreeBSD.kpp for the others).
 
+// FILE as glibc's stdio.h names it, `typedef struct _IO_FILE FILE;`: declared, not defined, so a
+// program's import of stdio.h gives its definition (216 bytes), and without one sizeof(FILE) or a FILE
+// held by value is an error, never a wrong size.
+struct _IO_FILE;
+using FILE = _IO_FILE;
+
 // The standard streams: variables of the C library itself.
 extern "C" FILE* stdin;
 extern "C" FILE* stdout;

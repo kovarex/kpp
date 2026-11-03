@@ -1,0 +1,11 @@
+// spec: off Windows a program that imports stdio.h gets its C library's FILE: the import's definition of glibc's `struct _IO_FILE` completes the standard library's declaration of it, so sizeof(FILE) is glibc's 216 and the stdlib's FILE* functions take the import's streams
+// factorio: none: the game runs on Windows; a kpp program for Linux that imports stdio.h and holds a FILE's size
+// target: linux (glibc's FILE)
+extern "C" import "stdio.h";
+
+int main()
+{
+  println(sizeof(FILE));
+  fputs("through FILE*\n", stdout);
+  return 0;
+}

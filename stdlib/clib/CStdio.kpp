@@ -1,6 +1,7 @@
 // C stdio beyond what core/Format.kpp declares (printf, snprintf are already there).
-// FILE is the C runtime's, as the UCRT's stdio.h defines it, and the functions are declared with
-// stdio.h's types, so that a program's import of stdio.h declares the same functions the same way.
+// FILE is each C runtime's own, as its stdio.h has it (CWindows.kpp, CLinux.kpp, CFreeBSD.kpp), and
+// the functions are declared with stdio.h's types, so that a program's import of stdio.h declares the
+// same functions the same way.
 // stdin, stdout and stderr are FILE*, as in C: each platform's C runtime has them its own way
 // (CWindows.kpp, CLinux.kpp, CFreeBSD.kpp).
 extern "C" FILE* fopen(const char* filename, const char* mode);
@@ -24,5 +25,3 @@ extern "C" int remove(const char* filename);
 extern "C" int rename(const char* oldname, const char* newname);
 extern "C" FILE* tmpfile();
 
-struct _iobuf { void* _Placeholder; };
-using FILE = _iobuf;
