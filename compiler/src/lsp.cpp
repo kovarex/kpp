@@ -870,6 +870,7 @@ namespace
     CompileFunction compile = nullptr;
     std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
     fs::path workspace;                         // the editor's root folder
+    fs::path projectFolder;                     // build.kpp's folder: the workspace or one above it
     ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)
     std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
     // The cells checked before (a target and a configuration of build.kpp's), each with the build it
@@ -1099,6 +1100,23 @@ namespace
           }
           project = wanted;
           key = cellKey(project);
+          // build.kpp's folder, found as kpp finds it (Visual Studio's root is a generated solution's
+          // folder below it): hover gives the paths in it from there.
+          projectFolder.clear();
+          if (!wanted.buildFile.empty())
+            projectFolder = fs::path(wanted.buildFile).parent_path();
+          else
+            for (fs::path at = workspace; !at.empty(); at = at.parent_path())
+            {
+              std::error_code ec;
+              if (fs::exists(at / "build.kpp", ec))
+              {
+                projectFolder = at;
+                break;
+              }
+              if (at == at.parent_path())
+                break;
+            }
           activeOptions.clear();
           for (const ProjectCell& c : cells)
             if (c.configuration == project.configuration && (project.target.empty() || c.target == project.target))
@@ -1110,7 +1128,7 @@ namespace
                 if (!known)
                   activeOptions.push_back(o);
               }
-          log("the project of %s (build.kpp), %s", workspace.string().c_str(), cellName(project).c_str());
+          log("the project of %s (build.kpp), %s", (projectFolder.empty() ? workspace : projectFolder).string().c_str(), cellName(project).c_str());
         }
         else
         {
@@ -1535,8 +1553,8 @@ namespace
       {
         if (o.library + "::" + o.name != name)
           continue;
-        std::string setBy = o.setBy; // (build.kpp's path in it from the workspace)
-        std::string folder = workspace.string() + "\\";
+        std::string setBy = o.setBy; // (build.kpp's path in it from the project's folder)
+        std::string folder = (projectFolder.empty() ? workspace : projectFolder).string() + "\\";
         if (auto at = std::search(setBy.begin(), setBy.end(), folder.begin(), folder.end(), [](char x, char y) { return tolower((unsigned char)x) == tolower((unsigned char)y); });
             !folder.empty() && at != setBy.end())
           setBy.erase(at, at + folder.size());

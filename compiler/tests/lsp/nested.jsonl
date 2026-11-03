@@ -1,0 +1,8 @@
+// The cells project opened from below its build.kpp, as Visual Studio opens the generated solution
+// (build\visual-studio), for tests\lsp.ps1: the server walks up to build.kpp, takes Visual Studio's
+// configuration name (Debug), and hover gives the setter's build.kpp from the project's folder.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT/build/visual-studio","capabilities":{"textDocument":{"hover":{"contentFormat":["plaintext"]}}},"initializationOptions":{"target":"game","configuration":"Debug"}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/libraries/sound/src/sound.kpp"},"position":{"line":0,"character":40}}}
+{"jsonrpc":"2.0","id":3,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}
