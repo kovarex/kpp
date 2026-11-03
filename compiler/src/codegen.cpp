@@ -20942,12 +20942,13 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     return oldClosureIn[t] = found;
   };
   // Its name released: the new closure's instance has it, and is asked for by its first use (every
-  // emitter's answers forget it too).
+  // emitter's answers forget it too, all at once below: one pass over each emitter's answers, not one
+  // per name, which an edit of the game's fmain made 7 s).
+  std::unordered_set<std::string> releasedNames;
   auto releaseName = [&](const std::string& name)
   {
     sh.requested.release(name);
-    for (auto& em : emitters)
-      std::erase_if(em->usedFunctions, [&](const auto& used) { return used.first == name || used.second.name == name; });
+    releasedNames.insert(name);
   };
   auto forOldClosure = [&](const Instantiation& inst)
   {
@@ -21073,6 +21074,9 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::sort(was.definitions.begin(), was.definitions.end());
     std::sort(was.owned.begin(), was.owned.end());
   }
+  if (!releasedNames.empty())
+    for (auto& em : emitters)
+      std::erase_if(em->usedFunctions, [&](const auto& used) { return releasedNames.count(used.first) || releasedNames.count(used.second.name); });
   // A closure of a function emitted again: its name goes to the closure the function's new walk makes
   // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
   // already in the shared declarations (below).
