@@ -1,0 +1,19 @@
+requires config::platform == Platform::FreeBSD;
+// What FreeBSD's C library has its own way in the platform layer (PlatformPosix.kpp;
+// PlatformLinux.kpp).
+
+namespace posix
+{
+  // errno, which FreeBSD's errno.h defines as (*__error()).
+  extern "C" int* __error();
+}
+
+namespace platform
+{
+  // The clocks' ids (FreeBSD's sys/_clock_id.h).
+  const int clockRealtime = 0;
+  const int clockMonotonic = 4;
+
+  // C's errno of the calling thread.
+  int* errnoLocation() { return posix::__error(); }
+}

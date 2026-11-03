@@ -1,0 +1,18 @@
+requires config::platform == Platform::Linux;
+// What glibc has its own way in the platform layer (PlatformPosix.kpp; PlatformFreeBSD.kpp).
+
+namespace posix
+{
+  // errno, which glibc's errno.h defines as (*__errno_location()).
+  extern "C" int* __errno_location();
+}
+
+namespace platform
+{
+  // The clocks' ids (glibc's time.h).
+  const int clockRealtime = 0;
+  const int clockMonotonic = 1;
+
+  // C's errno of the calling thread.
+  int* errnoLocation() { return posix::__errno_location(); }
+}

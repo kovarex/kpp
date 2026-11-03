@@ -289,8 +289,6 @@ auto operator+(const Duration<R, P>& d, const TimePoint<C, D>& t) { return t + d
 template<typename To, typename C, typename D>
 TimePoint<C, To> timePointCast(const TimePoint<C, D>& t) { return TimePoint<C, To>(durationCast<To>(t.sinceEpoch)); }
 
-int64_t steadyClockFrequency = 0; // QueryPerformanceCounter's counts per second, read once
-
 // A monotonic clock in nanoseconds (std::chrono::steady_clock; also high_resolution_clock).
 struct SteadyClock
 {
@@ -300,17 +298,7 @@ struct SteadyClock
   using time_point = TimePoint<SteadyClock>;
   static constexpr bool is_steady = true;
 
-  static TimePoint<SteadyClock> now()
-  {
-    if (steadyClockFrequency == 0)
-      win32::QueryPerformanceFrequency((_LARGE_INTEGER*)&steadyClockFrequency);
-    int64_t counter = 0;
-    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
-    // Split to keep the multiplication within 64 bits for long uptimes.
-    int64_t whole = counter / steadyClockFrequency;
-    int64_t rest = counter % steadyClockFrequency;
-    return TimePoint<SteadyClock>(Nanoseconds(whole * 1000000000 + rest * 1000000000 / steadyClockFrequency));
-  }
+  static TimePoint<SteadyClock> now() { return TimePoint<SteadyClock>(Nanoseconds(platform::steadyNanoseconds())); }
 };
 using HighResolutionClock = SteadyClock;
 
@@ -324,12 +312,7 @@ struct SystemClock
   using time_point = TimePoint<SystemClock>;
   static constexpr bool is_steady = false;
 
-  static TimePoint<SystemClock> now()
-  {
-    uint64_t fileTime = 0; // 100 ns ticks since 1601-01-01
-    win32::GetSystemTimePreciseAsFileTime((_FILETIME*)&fileTime);
-    return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>((long long)fileTime - 116444736000000000ll));
-  }
+  static TimePoint<SystemClock> now() { return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>(platform::systemTicks())); }
   // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.
   static long long to_time_t(const TimePoint<SystemClock>& t)
   {

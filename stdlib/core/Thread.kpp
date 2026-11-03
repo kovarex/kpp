@@ -172,14 +172,14 @@ namespace thisThread
   Thread::Id getId() { return Thread::Id(win32::GetCurrentThreadId()); }
   Thread::Id get_id() { return getId(); }
   // Lets another thread run (std::this_thread::yield).
-  void yield() { win32::SwitchToThread(); }
+  void yield() { platform::yield(); }
   // Blocks until t has passed on t's clock (std::this_thread::sleep_until): at least until then,
-  // waking up early as Windows' timer may only to sleep again.
+  // waking up early as Windows' timer or a signal may only to sleep again.
   template<typename Clock, typename Dur>
   void sleepUntil(const TimePoint<Clock, Dur>& t)
   {
     for (auto now = Clock::now(); now < t; now = Clock::now())
-      win32::Sleep(waitMilliseconds(t - now));
+      platform::sleepFor(t - now);
   }
   template<typename Clock, typename Dur>
   void sleep_until(const TimePoint<Clock, Dur>& t) { sleepUntil(t); }

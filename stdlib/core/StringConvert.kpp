@@ -1,14 +1,14 @@
 // String-to-number conversions: std::stoi, std::stod and the rest, with std's parameters and
 // errors. Each calls the C runtime's strto* function; idx, when not null, gets the index of the
 // first character not converted. No conversion throws InvalidArgument, a value the type cannot hold
-// (the C runtime's ERANGE; long is int's size) OutOfRange, with the C++ runtime's messages.
+// (the C runtime's ERANGE, and for stoi int's range) OutOfRange, with the C++ runtime's messages.
 
 // The checks after a strto* call (errno cleared before it), std's way: name is the function's.
 void checkStringConversion(const String& str, const char* end, const char* name, size_t* idx)
 {
   if (end == str.c_str())
     throw InvalidArgument(String("invalid ") + name + " argument");
-  if (*_errno() == 34) // ERANGE
+  if (*platform::errnoLocation() == 34) // ERANGE
     throw OutOfRange(String(name) + " argument out of range");
   if (idx)
     *idx = size_t(end - str.c_str());
@@ -17,16 +17,19 @@ void checkStringConversion(const String& str, const char* end, const char* name,
 int stoi(const String& str, size_t* idx = nullptr, int base = 10)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   long value = strtol(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoi", idx);
+  // (C's long is int's size on Windows alone: elsewhere strtol holds what int cannot)
+  if (value < -2147483647 - 1 || value > 2147483647)
+    throw OutOfRange(String("stoi argument out of range"));
   return int(value);
 }
 
 long stol(const String& str, size_t* idx = nullptr, int base = 10)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   long value = strtol(str.c_str(), &end, base);
   checkStringConversion(str, end, "stol", idx);
   return value;
@@ -35,7 +38,7 @@ long stol(const String& str, size_t* idx = nullptr, int base = 10)
 unsigned long stoul(const String& str, size_t* idx = nullptr, int base = 10)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   unsigned long value = strtoul(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoul", idx);
   return value;
@@ -44,7 +47,7 @@ unsigned long stoul(const String& str, size_t* idx = nullptr, int base = 10)
 long long stoll(const String& str, size_t* idx = nullptr, int base = 10)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   long long value = strtoll(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoll", idx);
   return value;
@@ -53,7 +56,7 @@ long long stoll(const String& str, size_t* idx = nullptr, int base = 10)
 unsigned long long stoull(const String& str, size_t* idx = nullptr, int base = 10)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   unsigned long long value = strtoull(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoull", idx);
   return value;
@@ -62,7 +65,7 @@ unsigned long long stoull(const String& str, size_t* idx = nullptr, int base = 1
 float stof(const String& str, size_t* idx = nullptr)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   float value = strtof(str.c_str(), &end);
   checkStringConversion(str, end, "stof", idx);
   return value;
@@ -71,7 +74,7 @@ float stof(const String& str, size_t* idx = nullptr)
 double stod(const String& str, size_t* idx = nullptr)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   double value = strtod(str.c_str(), &end);
   checkStringConversion(str, end, "stod", idx);
   return value;
@@ -80,7 +83,7 @@ double stod(const String& str, size_t* idx = nullptr)
 long double stold(const String& str, size_t* idx = nullptr)
 {
   char* end = nullptr;
-  *_errno() = 0;
+  *platform::errnoLocation() = 0;
   long double value = strtold(str.c_str(), &end);
   checkStringConversion(str, end, "stold", idx);
   return value;

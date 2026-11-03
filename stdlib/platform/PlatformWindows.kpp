@@ -1,0 +1,58 @@
+requires config::platform == Platform::Windows;
+// The platform layer on Windows (design.md, "Targets and hosts", 3): the Win32 and UCRT calls the
+// portable files make through platform:: (PlatformPosix.kpp for Linux and FreeBSD).
+
+// errno, which the UCRT defines as (*_errno()).
+extern "C" int* _errno();
+// std::set_terminate: the C runtime's terminate handler.
+extern "C" TerminateHandlerFunction set_terminate(TerminateHandlerFunction handler);
+
+namespace platform
+{
+  int64_t steadyClockFrequency = 0; // QueryPerformanceCounter's counts per second, read once
+
+  // The monotonic clock in nanoseconds (SteadyClock).
+  int64_t steadyNanoseconds()
+  {
+    if (steadyClockFrequency == 0)
+      win32::QueryPerformanceFrequency((_LARGE_INTEGER*)&steadyClockFrequency);
+    int64_t counter = 0;
+    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
+    // Split to keep the multiplication within 64 bits for long uptimes.
+    int64_t whole = counter / steadyClockFrequency;
+    int64_t rest = counter % steadyClockFrequency;
+    return whole * 1000000000 + rest * 1000000000 / steadyClockFrequency;
+  }
+
+  // A count that changes faster than the clocks tick, for seeds (RandomDevice):
+  // QueryPerformanceCounter's.
+  int64_t fastCounter()
+  {
+    int64_t counter = 0;
+    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
+    return counter;
+  }
+
+  // The wall clock in 100 ns ticks since 1970-01-01 UTC (SystemClock).
+  int64_t systemTicks()
+  {
+    uint64_t fileTime = 0; // 100 ns ticks since 1601-01-01
+    win32::GetSystemTimePreciseAsFileTime((_FILETIME*)&fileTime);
+    return (int64_t)fileTime - 116444736000000000ll;
+  }
+
+  // Blocks the calling thread for at least d's milliseconds, rounded up (Windows' timer may wake it
+  // early, so callers check their clock and sleep again).
+  template<typename Rep, typename Period>
+  void sleepFor(const Duration<Rep, Period>& d) { win32::Sleep(waitMilliseconds(d)); }
+
+  // Lets another thread run.
+  void yield() { win32::SwitchToThread(); }
+
+  // C's errno of the calling thread.
+  int* errnoLocation() { return _errno(); }
+
+  // Installs the terminate handler and returns the one before: the UCRT's, which its terminate()
+  // calls.
+  TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return set_terminate(handler); }
+}

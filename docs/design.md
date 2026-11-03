@@ -2705,6 +2705,19 @@ The semantics of section 9 hold on every target:
   `conditional(config::os == Os::windows)`.
 - **Order:** sockets and threads first, which the web server needs (thread I collects the
   website's needs). Then files, time, the environment and processes.
+- **As built (thread C, 2026-11-03):** the platform files are picked by the file-level
+  `requires config::platform == ...` kpp already had (stage 1's split, below), not by
+  directories the driver adds: `stdlib/platform/PlatformWindows.kpp` (`== Platform::Windows`),
+  `PlatformPosix.kpp` (`!= Platform::Windows`), `PlatformLinux.kpp` and `PlatformFreeBSD.kpp`.
+  `platform::` so far:
+  - `steadyNanoseconds`, `systemTicks` (100 ns since 1970), `fastCounter` (RandomDevice's seed),
+    `sleepFor`, `yield`: QueryPerformanceCounter, GetSystemTimePreciseAsFileTime, Sleep and
+    SwitchToThread on Windows; `clock_gettime`, `nanosleep` and `sched_yield` elsewhere
+    (CLOCK_MONOTONIC is 1 on Linux, 4 on FreeBSD).
+  - `errnoLocation`: `_errno()`, `__errno_location()`, `__error()`.
+  - `setTerminate`: the UCRT's `set_terminate` on Windows; elsewhere kpp's own handler
+    (`platform::terminateHandler`, an Atomic), as no C++ runtime is linked there. Stage 3's
+    terminate calls it.
 
 ### 4. Toolchains: what links for each target, from each host
 

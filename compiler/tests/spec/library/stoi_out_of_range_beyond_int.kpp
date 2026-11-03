@@ -1,0 +1,21 @@
+// spec: stoi throws OutOfRange for a value int cannot hold, on every target: off Windows C's long is 64 bits, so strtol's ERANGE does not catch 2147483648 there, and stoi checks int's range itself (it returned the value wrapped before, -2147483648)
+void tryStoi(const char* text)
+{
+  try
+  {
+    println(StringView(text), " -> ", stoi(text));
+  }
+  catch (const OutOfRange& e)
+  {
+    println(StringView(text), " -> OutOfRange: ", StringView(e.what()));
+  }
+}
+int main()
+{
+  tryStoi("2147483647");
+  tryStoi("-2147483648");
+  tryStoi("2147483648");
+  tryStoi("-2147483649");
+  tryStoi("99999999999");
+  return 0;
+}

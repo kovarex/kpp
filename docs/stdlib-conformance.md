@@ -17,6 +17,11 @@ the converted game. The four listed until 2026-10-29 pass now (language/brace_ar
 templates/forwarding_reference_to_function, language/array_new_and_delete with
 library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
 
+**The terminate handler off Windows** (platform/PlatformPosix.kpp, 2026-11-03): setTerminate
+installs and returns kpp's own handler there, as no C++ runtime is linked, and nothing calls it
+yet: an exception does not unwind off Windows before stage 3 (design.md, "Targets and hosts"), and
+a throw prints and aborts. Stage 3's terminate calls `platform::terminateHandler`.
+
 **Sizes are unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
 unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned
 and as wide as std's `size_t`: `u64`, the one width (common.md; design.md, "Container sizes are

@@ -27,6 +27,8 @@ run library/optional_function_errors  stage 3
 run library/size_limits_growth  stage 3
 run library/size_limits_string  stage 3
 run library/size_limits_vector  stage 3
+run library/stoi_out_of_range_beyond_int  stage 3
+run library/string_to_number  stage 3
 run library/string_view_copy  stage 3
 run library/utf8  stage 3
 run library/wstring_insert  stage 3
@@ -46,14 +48,10 @@ build library/filesystem_equivalent  stage 4: GetFileAttributesExW
 build library/filesystem_path  stage 4: WideCharToMultiByte
 build library/future_get_releases_state  stage 4: CreateThread
 build library/recursive_mutex  stage 4: CreateThread
-build library/set_terminate  stage 4: set_terminate
 build library/shared_future_deferred_runs_once_across_threads  stage 4: CreateThread
 build library/shared_ptr_atomic  stage 4: AcquireSRWLockShared
-build library/string_to_number  stage 4: _errno
 build library/thread_like_std  stage 4: CreateThread
 build library/threads_atomics  stage 4: CreateThread
-build library/time_chrono  stage 4: Sleep
-build library/time_python_datetime  stage 4: GetSystemTimePreciseAsFileTime
 build library/unsigned_size_traps  stage 4: WideCharToMultiByte
 
 # FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).

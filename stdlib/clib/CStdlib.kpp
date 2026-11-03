@@ -15,7 +15,5 @@ extern "C" unsigned long strtoul(const char* str, char** endptr, int base);
 extern "C" long long strtoll(const char* str, char** endptr, int base);
 extern "C" unsigned long long strtoull(const char* str, char** endptr, int base);
 extern "C" long double strtold(const char* str, char** endptr);
-// errno, which MSVC's C runtime defines as (*_errno()): the strto* functions set it to ERANGE (34).
-extern "C" int* _errno();
 extern "C" int atoi(const char* str);
 extern "C" double atof(const char* str);

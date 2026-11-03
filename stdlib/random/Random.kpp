@@ -6,9 +6,7 @@ struct RandomDevice
 {
   unsigned long long operator()()
   {
-    int64_t counter = 0;
-    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
-    unsigned long long x = (unsigned long long)counter;
+    unsigned long long x = (unsigned long long)platform::fastCounter();
     x ^= x >> 30;
     x *= 0xbf58476d1ce4e5b9ull;
     x ^= x >> 27;

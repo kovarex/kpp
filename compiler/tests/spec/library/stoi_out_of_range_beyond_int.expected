@@ -1,0 +1,5 @@
+2147483647 -> 2147483647
+-2147483648 -> -2147483648
+2147483648 -> OutOfRange: stoi argument out of range
+-2147483649 -> OutOfRange: stoi argument out of range
+99999999999 -> OutOfRange: stoi argument out of range
