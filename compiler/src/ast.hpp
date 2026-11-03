@@ -449,7 +449,12 @@ struct ParsedFile
   bool droppedWhen = false; // a false `when` dropped a declaration in it, at namespace or class scope
   // The tokens [from, to) the parser dropped for this configuration: a false `when` at namespace or
   // class scope, `when` included, and a declaration-scope `if constexpr` branch not taken, braces
-  // included (the language server shows them as inactive: docs/editors.md, "Inactive code").
+  // included (the language server shows them as inactive: docs/editors.md, "Inactive code"). In the
+  // order the parser finished them, not sorted, and they may nest (a class's false member inside a
+  // false namespace `when` comes first): sort and merge before searching them. Not in them: a local's
+  // `when` (the walk decides it: Decl::whenKnown), a class template's member decided per instance, a
+  // `when` whose declaration did not parse, and the `if constexpr (...)` and `else` tokens. A compile
+  // server's graft assigns the new text's ranges (they index its tokens).
   std::vector<std::pair<uint32_t, uint32_t>> droppedTokens;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
