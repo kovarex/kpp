@@ -22,10 +22,6 @@ namespace
 {
   namespace fs = std::filesystem;
 
-  // The version a library's minimum-kpp is compared with (docs/build.md, "kpp libraries"); raised
-  // with each release.
-  const char* const kppVersion = "0.1.0";
-
   // A kpp library used (Project.kpp's Dependency): its lowest version ("" for any) and its directory
   // ("" for libraries/NAME), relative to the directory of the build.kpp that uses it.
   struct Use
@@ -545,11 +541,21 @@ namespace
                 use.minimum.c_str(), directory.string().c_str(), library->version.c_str());
         return false;
       }
-      versionNumbers(kppVersion, kpp);
+      // minimum-kpp against kpp's own version (docs/build.md, "Versions"; 0.2.N+dirty is 0.2.N with
+      // changes). It was a constant, 0.1.0, which refused every library needing 0.2 (2026-11-03). A
+      // kpp built outside a git checkout has no version, and the check is an error, not a guess.
+      std::string own = ::kppVersion();
+      own = own.substr(0, own.find('+'));
+      if (!library->minimumKpp.empty() && !versionNumbers(own, kpp))
+      {
+        fprintf(stderr, "%s: error: the library %s needs kpp %s or later, and this kpp's version is unknown (built outside a git checkout)\n",
+                (directory / "build.kpp").string().c_str(), use.name.c_str(), library->minimumKpp.c_str());
+        return false;
+      }
       if (!library->minimumKpp.empty() && (!versionNumbers(library->minimumKpp, need) || kpp < need))
       {
         fprintf(stderr, "%s: error: the library %s needs kpp %s or later, and this is kpp %s\n",
-                (directory / "build.kpp").string().c_str(), use.name.c_str(), library->minimumKpp.c_str(), kppVersion);
+                (directory / "build.kpp").string().c_str(), use.name.c_str(), library->minimumKpp.c_str(), ::kppVersion());
         return false;
       }
       std::vector<std::pair<std::string, std::string>> configs;
@@ -1773,7 +1779,7 @@ namespace
     runAndRead("git -C " + quoteArg(root.string()) + " log -1 --format=\"%h (%cs)\"", commit);
     while (!commit.empty() && (commit.back() == '\n' || commit.back() == '\r'))
       commit.pop_back();
-    std::string version = std::string("kpp ") + ::kppVersion();
+    std::string version = std::string("kpp ") + kppVersion();
     printf("%s, commit %s\n%s\n%s at %s, cell %s %s, %d round%s\n", version.c_str(), kppCommit(), machine().c_str(), root.string().c_str(),
            commit.c_str(), target.c_str(), configuration.c_str(), rounds, rounds == 1 ? "" : "s");
     for (const Measurement::Edit& e : m.edits)

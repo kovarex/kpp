@@ -193,6 +193,20 @@ void build(Project& project)
   Pop-Location
   $output = (Kpp @('--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'the library greet needs kpp 99\.0\.0 or later') { Fail "a minimum kpp above this one: exit $code`n$output" }
+  # Against this kpp's own version (kppc --version; 0.2.N+dirty counts as 0.2.N): exactly it builds,
+  # its next patch is refused. (The version compared was a constant, 0.1.0, until 2026-11-03.)
+  if ((& $Kppc --version | Select-Object -First 1) -match '^kpp (\d+)\.(\d+)\.(\d+)')
+  {
+    $own = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    $next = "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+    Set-Content 'libraries\greet\build.kpp' ($greet -replace '0\.1\.0', $own)
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -ne 0) { Fail "a minimum kpp equal to this one ($own): exit $code`n$output" }
+    Set-Content 'libraries\greet\build.kpp' ($greet -replace '0\.1\.0', $next)
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch "the library greet needs kpp $([regex]::Escape($next)) or later, and this is kpp $([regex]::Escape($own))") { Fail "a minimum kpp one patch above this one ($next): exit $code`n$output" }
+  }
+  else { Fail "kppc --version names no version: $(& $Kppc --version | Select-Object -First 1)" }
   Set-Content 'libraries\greet\build.kpp' $greet
   Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.3`");`n}"
   $output = (Kpp @('--no-server')) -join "`n"

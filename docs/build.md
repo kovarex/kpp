@@ -264,8 +264,11 @@ void build(Project& project)
 
 - **The fields** are the registry's manifest (library-registry.md, "What a library is"): `name`
   (from `library()`), `version`, `license`, `minimumKpp`, the source roots and the test roots.
-  `version` must be `major.minor.patch`. kpp compares `minimumKpp` with its own version (0.1.0
-  now, raised with each release) and refuses a library that needs a newer one.
+  `version` must be `major.minor.patch`. kpp compares `minimumKpp` with its own version ("Versions"
+  below: `kpp --version`'s; a build with changes, 0.2.N+dirty, counts as 0.2.N) and refuses a
+  library that needs a newer one. A kpp built outside a git checkout has no version: a library with a
+  `minimumKpp` is then an error, not a guess. (Until 2026-11-03 the version compared was a constant,
+  0.1.0, so every library needing 0.2 was refused.)
 - **Using one:** `project.use("json")` for every executable, `game.use("json")` for one, and
   `json.use("base64")` in a library. `use("json", "0.2")` also states the lowest version that will
   do; a lower one is an error. `use("json", local("../json"))` gives the library's directory,
