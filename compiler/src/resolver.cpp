@@ -2777,9 +2777,27 @@ struct GlobalScope::Impl
   // them again (forgetMergedOverloads).
   std::mutex hiddenFriendsMutex;
   std::map<std::pair<const Decl*, uint32_t>, std::unique_ptr<std::vector<Entry>>> hiddenFriendSets;
+  std::vector<ClassDecl*> hiddenFriendsDecided; // the classes whose hiddenFriendState is set (forgetMergedOverloads)
   const std::vector<Entry>* hiddenFriendsOf(ClassDecl* def, uint32_t symbol)
   {
     recordName(symbol); // (a hidden friend's changed name is read by name: GlobalScope::changedNameOf)
+    // Most classes define no friend function: said without the lock, which argument-dependent lookup
+    // took for every class it visits (47 to 62% of the resolve phase's waits at -j 32, 2026-11-03).
+    int8_t state = def->hiddenFriendState.load(std::memory_order_acquire);
+    if (state == 0)
+    {
+      bool any = false;
+      for (Decl* m : def->members)
+        any = any || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Friend) && (m->flags & DF_Static));
+      state = any ? 2 : 1;
+      if (def->hiddenFriendState.exchange(state, std::memory_order_acq_rel) == 0)
+      {
+        std::lock_guard lock(hiddenFriendsMutex); // (once per class)
+        hiddenFriendsDecided.push_back(def);
+      }
+    }
+    if (state == 1)
+      return nullptr;
     std::lock_guard lock(hiddenFriendsMutex);
     auto [it, added] = hiddenFriendSets.try_emplace({def, symbol});
     if (added)
@@ -2906,6 +2924,9 @@ struct GlobalScope::Impl
         if (set)
           retiredOverloads.push_back(std::move(set));
       hiddenFriendSets.clear();
+      for (ClassDecl* c : hiddenFriendsDecided)
+        c->hiddenFriendState.store(0, std::memory_order_relaxed); // (an edit may have added or removed one)
+      hiddenFriendsDecided.clear();
     }
     std::lock_guard lock(usingOverloadsMutex);
     for (auto& [key, set] : usingOverloads)

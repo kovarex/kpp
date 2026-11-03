@@ -1,7 +1,8 @@
 // Members whose signature edits reach their callers in edgecalls.kpp only through a class: a member a
 // using-declaration brings into a derived class, and a base's member called through a derived class
-// (and through a template instantiated with it). (A friend defined in its class, which a call finds by
-// ADL, keeps being read by name; kppc does not find such a friend by ADL yet, so no caller here.)
+// (and through a template instantiated with it). A friend defined in its class, which a call finds by
+// ADL and is read by name: Weighed's, added by an edit after argument-dependent lookup found the class
+// had none (the resolver keeps that answer: the edit must take it back).
 struct UsingBase
 {
   int f(int v) { return 1; }
@@ -19,3 +20,10 @@ struct EdgeBase
 struct EdgeDerived : EdgeBase
 {
 };
+
+struct Weighed
+{
+  int v = 3;
+};
+int weigh(const Weighed& w, int extra) { return w.v + extra; }
+int weighed() { Weighed w; return weigh(w, 1); }

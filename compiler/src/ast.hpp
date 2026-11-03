@@ -240,6 +240,9 @@ struct ClassDecl : Decl
   // a lookup in the class stops at (Scope::absent); a data member's constructor initializers are
   // dropped with it (absentMemberInit).
   Span<Decl*> absentMembers;
+  // Whether the class defines a friend function (a hidden friend, which argument-dependent lookup
+  // finds): 0 not looked at yet, 1 none, 2 some. The resolver's (hiddenFriendsOf), decided once.
+  std::atomic<int8_t> hiddenFriendState{0};
 };
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };
 struct EnumDecl : Decl
