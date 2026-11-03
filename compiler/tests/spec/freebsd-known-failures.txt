@@ -35,7 +35,6 @@ run language/exception_passes_a_try_without_its_handler  stage 3 (written for it
 
 # Found by the FreeBSD run, each B's.
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
-run language/variadic_with_own_format  SIGBUS: LLVM's -O0 va_arg on a va_list parameter reads a spill slot never written (Linux too)
 
 # Stage 4: the standard library's Win32 and UCRT calls (threads, time, files, errno, terminate).
 build language/thread_local_globals  stage 4: CreateThread

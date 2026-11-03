@@ -13453,14 +13453,62 @@ namespace
       };
       if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty && !sh.target.windows())
       {
-        // `va_arg(list, T)` on SysV: LLVM's va_arg, which reads a scalar from the registers saved
-        // or from the stack as the convention put it.
+        // `va_arg(list, T)` on SysV x86-64, lowered as clang lowers it, not by LLVM's va_arg
+        // instruction: at -O0 that read the va_list's pointer back from a stack slot nothing wrote
+        // when the va_list was a parameter (spec language/variadic_with_own_format crashed on Linux
+        // and FreeBSD). The va_list is { i32 gp_offset, i32 fp_offset, ptr overflow_arg_area,
+        // ptr reg_save_area }: a value of the INTEGER class (an integer, a pointer, an enumeration)
+        // comes from the six general registers' save area while gp_offset leaves room for its
+        // eightbytes, a floating one from the eight vector registers' (16 bytes each, fp_offset 48 to
+        // 176), any other from the overflow area, an argument there in 8-byte steps. (AArch64's
+        // va_list, stage 7, is another.)
         const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(c->ty)));
         if (isAggregate(t) || t->kind == TyKind::Vector)
           unsupported(c, "va_arg of a struct or vector on " + sh.target.triple);
-        std::string v = newTemp();
-        fn += "  " + v + " = va_arg ptr " + sysvList(c->args[0]) + ", " + (t->kind == TyKind::Pointer ? std::string("ptr") : llType(t, c)) + "\n";
-        return Value{v, t, false};
+        std::string list = sysvList(c->args[0]);
+        uint64_t size = sizeOf(t, c), align = alignOf(t, c);
+        bool sse = t->kind == TyKind::Float;
+        uint64_t eightbytes = (size + 7) / 8;
+        uint64_t limit = sse ? 176 - 16 : 48 - 8 * eightbytes, step = sse ? 16 : 8 * eightbytes;
+        std::string offsetAddr = newTemp(), offset = newTemp(), fits = newTemp();
+        std::string regL = newLabel("vaarg.reg"), memL = newLabel("vaarg.mem"), endL = newLabel("vaarg.end");
+        fn += "  " + offsetAddr + " = getelementptr inbounds i8, ptr " + list + ", i64 " + (sse ? "4" : "0") + "\n";
+        fn += "  " + offset + " = load i32, ptr " + offsetAddr + "\n";
+        fn += "  " + fits + " = icmp ule i32 " + offset + ", " + std::to_string(limit) + "\n";
+        fn += "  br i1 " + fits + ", label %" + regL + ", label %" + memL + "\n";
+        startBlock(regL);
+        std::string saveAddr = newTemp(), save = newTemp(), offset64 = newTemp(), inRegister = newTemp(), nextOffset = newTemp();
+        fn += "  " + saveAddr + " = getelementptr inbounds i8, ptr " + list + ", i64 16\n";
+        fn += "  " + save + " = load ptr, ptr " + saveAddr + "\n";
+        fn += "  " + offset64 + " = zext i32 " + offset + " to i64\n";
+        fn += "  " + inRegister + " = getelementptr inbounds i8, ptr " + save + ", i64 " + offset64 + "\n";
+        fn += "  " + nextOffset + " = add i32 " + offset + ", " + std::to_string(step) + "\n";
+        fn += "  store i32 " + nextOffset + ", ptr " + offsetAddr + "\n";
+        std::string regEnd = currentBlock;
+        emitBranch(endL);
+        startBlock(memL);
+        std::string areaAddr = newTemp(), area = newTemp(), next = newTemp();
+        fn += "  " + areaAddr + " = getelementptr inbounds i8, ptr " + list + ", i64 8\n";
+        fn += "  " + area + " = load ptr, ptr " + areaAddr + "\n";
+        std::string inMemory = area;
+        if (align > 8)
+        {
+          // (one aligned to more than 8, an __int128, starts at its alignment there)
+          std::string bits = newTemp(), up = newTemp(), aligned = newTemp();
+          inMemory = newTemp();
+          fn += "  " + bits + " = ptrtoint ptr " + area + " to i64\n";
+          fn += "  " + up + " = add i64 " + bits + ", " + std::to_string(align - 1) + "\n";
+          fn += "  " + aligned + " = and i64 " + up + ", " + std::to_string(-int64_t(align)) + "\n";
+          fn += "  " + inMemory + " = inttoptr i64 " + aligned + " to ptr\n";
+        }
+        fn += "  " + next + " = getelementptr inbounds i8, ptr " + inMemory + ", i64 " + std::to_string(8 * eightbytes) + "\n";
+        fn += "  store ptr " + next + ", ptr " + areaAddr + "\n";
+        std::string memEnd = currentBlock;
+        emitBranch(endL);
+        startBlock(endL);
+        std::string address = newTemp();
+        fn += "  " + address + " = phi ptr [ " + inRegister + ", %" + regEnd + " ], [ " + inMemory + ", %" + memEnd + " ]\n";
+        return load(address, t, c);
       }
       if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty)
       {

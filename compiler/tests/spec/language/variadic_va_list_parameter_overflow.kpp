@@ -1,0 +1,42 @@
+// spec: a va_list received as a parameter reads every variadic argument its caller passed, integers, long longs, a pointer and doubles, past the registers the convention has for them into the stack (SysV x86-64: six general and eight vector registers; x64 Windows: four of either, then the stack) (`62 60.5` and `1000000000005 0.25`)
+// factorio: trio (converted as C): trio_vsprintf and its siblings read their arguments from a va_list a caller started, doubles among them; stb_image_write's stbiw__writefv
+extern "C" import "stdarg.h";
+
+void sumV(const char* kinds, long long* ints, double* reals, va_list v)
+{
+  for (; *kinds; ++kinds)
+  {
+    if (*kinds == 'i')
+      *ints += va_arg(v, int);
+    else if (*kinds == 'l')
+      *ints += va_arg(v, long long);
+    else if (*kinds == 'p')
+      *ints += *va_arg(v, int*);
+    else
+      *reals += va_arg(v, double);
+  }
+}
+
+void sum(const char* kinds, long long* ints, double* reals, ...)
+{
+  va_list v;
+  va_start(v, reals);
+  sumV(kinds, ints, reals, v);
+  va_end(v);
+}
+
+int main()
+{
+  int seven = 7;
+  long long ints = 0;
+  double reals = 0;
+  // Ten ints (three general registers are left after the named three), eleven doubles (eight vector
+  // registers) and a pointer, the rest on the stack.
+  sum("iiiiiiiiiidddddddddddp", &ints, &reals, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, &seven);
+  println(ints, " ", reals);
+  ints = 0;
+  reals = 0;
+  sum("lidl", &ints, &reals, 1000000000000LL, 2, 0.25, 3LL);
+  println(ints, " ", reals);
+  return 0;
+}
