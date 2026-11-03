@@ -25,7 +25,9 @@ Factorio already has (see [Status](#status)).
   on the development machine, which has the same hardware. The last two rows are whole builds
   including all the C and C++ libraries the game links. These are today's numbers, and the work to
   bring them down is in the documents below. How they are measured: [docs/compile-speed.md](docs/compile-speed.md),
-  [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md).
+  [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md). To measure them
+  on your own machine, run `kpp measure` in a factorio-in-kpp checkout
+  ([docs/getting-started.md](docs/getting-started.md#measuring-the-readmes-compile-times-yourself)).
 - **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
   build of the same game is about 1.5 GB in all, executable and debug information included, and
   shrinks further as the compiler keeps more in memory instead of on disk.

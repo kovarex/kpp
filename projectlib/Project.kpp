@@ -273,6 +273,51 @@ struct Library
   }
 };
 
+// What `kpp measure` times (docs/build.md, "kpp measure"): build.kpp's edits, each a row of its
+// table, made and undone in the cell measured, and per row, optionally, another build's command to
+// compare with (`kpp measure --compare DIR` runs it in DIR).
+struct MeasureEdit
+{
+  String row;  // the table's row: "Edit of one function"
+  String file; // relative to the project's directory
+  String from; // what the file holds exactly once, replaced by `to` and back
+  String to;
+};
+
+struct MeasureCompare
+{
+  String row;     // an edit's row, "clean" (the clean build), or "whole TARGET" (a whole build)
+  String command; // run by cmd in the directory --compare names
+  String touch;   // a file there, relative to it, whose time is set first (an edit for a build that
+                  // rebuilds what includes it): "" none
+};
+
+struct Measure
+{
+  String target;        // the cell the edits and the clean build build: "" the first executable
+  String configuration; // "" debug
+  Deque<MeasureEdit> edits;
+  Deque<MeasureCompare> compares;
+
+  // A row: the file's text `from` (there exactly once) replaced by `to`, built, then put back, built.
+  void edit(StringView row, StringView file, StringView from, StringView to)
+  {
+    MeasureEdit& e = edits.emplace_back();
+    e.row = row;
+    e.file = file;
+    e.from = from;
+    e.to = to;
+  }
+  // The other build of a row, run in --compare's directory after `touch` is touched.
+  void compare(StringView row, StringView command, StringView touch = "")
+  {
+    MeasureCompare& c = compares.emplace_back();
+    c.row = row;
+    c.command = command;
+    c.touch = touch;
+  }
+};
+
 struct Project
 {
   // For every executable, before its own.
@@ -286,6 +331,7 @@ struct Project
   Deque<CLibrary> cLibraries;
   Deque<Library> kppLibraries;
   Deque<Configuration> configurations; // the ones build() named; debug and release are there either way
+  Measure measurement;                 // kpp measure's (measure())
 
   Executable& executable(StringView name, InitializerList<StringView> roots)
   {
@@ -326,6 +372,14 @@ struct Project
     return c;
   }
   void argument(StringView option) { arguments.push_back(option); }
+  // What `kpp measure` times, in the cell TARGET CONFIGURATION ("": the first executable; debug):
+  // `project.measure("factorio").edit("Edit of one function", "src/A.kpp", "old", "new")`.
+  Measure& measure(StringView target = "", StringView configuration = "debug")
+  {
+    measurement.target = target;
+    measurement.configuration = configuration;
+    return measurement;
+  }
   // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
   void linkFile(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
@@ -593,6 +647,29 @@ String describe(const Project& project)
     }
     kppUses(out, project.uses);
     kppUses(out, l.uses);
+    out << "end\n";
+  }
+  // `measure`, its cell, per edit `edit ROW` and its file and texts, per comparison `compare ROW`
+  // and its command and file, `end`.
+  const Measure& m = project.measurement;
+  if (m.edits.size() != 0 || m.compares.size() != 0 || m.target.size() != 0)
+  {
+    out << "measure\n";
+    kppLine(out, "measure-target", m.target);
+    kppLine(out, "measure-configuration", m.configuration);
+    for (const MeasureEdit& e : m.edits)
+    {
+      kppLine(out, "edit", e.row);
+      kppLine(out, "edit-file", e.file);
+      kppLine(out, "edit-from", e.from);
+      kppLine(out, "edit-to", e.to);
+    }
+    for (const MeasureCompare& c : m.compares)
+    {
+      kppLine(out, "compare", c.row);
+      kppLine(out, "compare-command", c.command);
+      kppLine(out, "compare-touch", c.touch);
+    }
     out << "end\n";
   }
   return out;

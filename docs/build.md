@@ -631,6 +631,44 @@ A program's build is its C libraries and kppc's work at once, then the link:
   22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
   all the time either way: the libraries take as long beside kppc as alone, and so does kppc.
 
+### kpp measure (2026-11-03)
+
+`kpp measure [--rounds N] [--compare DIR]` in a project times its builds on this machine, as a user
+runs them, and prints a table to paste (the readme's, from a factorio-in-kpp checkout; kovarex,
+2026-11-03: one command, no script). build.kpp says what it edits and compares:
+
+```
+Measure& m = project.measure("factorio", "debug"); // the cell; "": the first executable, debug
+m.edit("Edit of one function", "src/AnimationBank.kpp", "text there once", "its replacement");
+m.compare("Edit of one function", "cd fastbuild && FBuild.exe ...", "src/AnimationBank.hpp");
+m.compare("clean", "...");          // the clean build's other build
+m.compare("whole factorio", "..."); // an executable's whole build's
+```
+
+- **Rows**, in each round (3 unless `--rounds`), one after another:
+  - per `edit`: the file's text replaced, `kpp TARGET CONFIGURATION` (through the compile server, the
+    program built before the round, untimed), the file put back, built again (the row ", undone");
+  - the clean build: `kpp --stop-server`, `build\CONFIGURATION` deleted, the C and C++ libraries
+    (`build\clib`) and the import cache kept, then the build, which starts the server again;
+  - per executable, its whole build: the server stopped, `build\CONFIGURATION` and `build\clib`
+    deleted, `kpp EXECUTABLE CONFIGURATION`.
+  Each time is the build command's wall time from start to exit, the link and the after-build step
+  included, and every build must write its executable anew (else the measurement stops).
+- **`--compare DIR`**: after each row, its `compare` command (by the edit's row, `clean`, or `whole
+  EXECUTABLE`), run by cmd in DIR, after its file there, if any, is touched (its time set: what
+  includes it is built again, its contents unchanged); a second column.
+- **Printed**: kpp's version and commit, the machine (processor, cores, threads, memory), the
+  project's commit, the files it edits and how, how busy the machine was in the second before each
+  round, each build's time as it goes, and at the end the table: each row's fastest to slowest round.
+  Each build's own output goes to `build\measure.txt`.
+- **Safe for the checkout**: it starts only when each file it edits holds its text exactly once and
+  has no changes of its own (`git status`: it needs git); it puts the files back after each build, at
+  the end, on an error, and on Ctrl+C or Ctrl+Break (the console's handler). It never edits the
+  compared checkout, only sets the time of the files `compare` names.
+- Checked by tests\project.ps1 (a `kpp new` project measured in one round: its rows, the file as
+  committed after; a changed file refused, nothing built). Ctrl+Break during a round's edit put the
+  file back (by hand, 2026-11-03).
+
 ## Project files for an IDE
 
 These build, run and debug. IntelliSense (errors as you type, hover, go to definition, completion)

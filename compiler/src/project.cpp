@@ -6,6 +6,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <chrono>
 #include <thread>
 #include <unordered_map>
@@ -96,6 +97,17 @@ namespace
     std::vector<std::string> sources, excluded, includes, defines, prebuilt, resources;
   };
 
+  // What `kpp measure` times (Project.kpp's Measure): the cell, build.kpp's edits, and the commands of
+  // another build to compare with, by row.
+  struct Measurement
+  {
+    std::string target, configuration;
+    struct Edit { std::string row, file, from, to; };
+    struct Compare { std::string row, command, touch; };
+    std::vector<Edit> edits;
+    std::vector<Compare> compares;
+  };
+
   // build.kpp's matrix: its configurations, then its cells, target by target.
   struct Description
   {
@@ -103,6 +115,7 @@ namespace
     std::vector<Program> programs;
     std::vector<CLibrary> cLibraries;
     std::vector<KppLibrary> libraries;
+    Measurement measurement;
     std::vector<std::string> errors;
   };
 
@@ -196,7 +209,7 @@ namespace
   Description parse(const std::string& text)
   {
     Description d;
-    enum { none, configuration, program, cLibrary, library } section = none;
+    enum { none, configuration, program, cLibrary, library, measure } section = none;
     size_t pos = 0;
     while (pos < text.size())
     {
@@ -225,8 +238,23 @@ namespace
         d.cLibraries.push_back({value}), section = cLibrary;
       else if (key == "kpp-library") // not "library": an executable's link file is that key
         d.libraries.push_back({value}), section = library;
+      else if (key == "measure")
+        section = measure;
       else if (key == "end")
         section = none;
+      else if (section == measure)
+      {
+        Measurement& m = d.measurement;
+        if (key == "measure-target") m.target = value;
+        else if (key == "measure-configuration") m.configuration = value;
+        else if (key == "edit") m.edits.push_back({value});
+        else if (key == "compare") m.compares.push_back({value});
+        else if (key == "edit-file" && !m.edits.empty()) m.edits.back().file = value;
+        else if (key == "edit-from" && !m.edits.empty()) m.edits.back().from = value;
+        else if (key == "edit-to" && !m.edits.empty()) m.edits.back().to = value;
+        else if (key == "compare-command" && !m.compares.empty()) m.compares.back().command = value;
+        else if (key == "compare-touch" && !m.compares.empty()) m.compares.back().touch = value;
+      }
       else if ((section == program || section == library) && (key == "use" || key == "use-minimum" || key == "use-path" || key == "use-config"))
       {
         std::vector<Use>& uses = section == program ? d.programs.back().uses : d.libraries.back().uses;
@@ -1551,6 +1579,353 @@ namespace
     return request.run ? runProgram(root, *chosen[0], request.runArguments) : 0;
   }
 
+  // kpp measure (docs/build.md, "kpp measure"): the files it edits, as they were, put back at the end,
+  // on an error and on Ctrl+C (the console's handler, on a thread of its own).
+  std::mutex measuredLock;
+  std::vector<std::pair<fs::path, std::string>> measuredFiles;
+
+  void restoreMeasuredFiles()
+  {
+    std::lock_guard lock(measuredLock);
+    for (const auto& [path, text] : measuredFiles)
+      if (readText(path) != text)
+        if (FILE* f = _wfopen(path.c_str(), L"wb"))
+          fwrite(text.data(), 1, text.size(), f), fclose(f);
+  }
+
+  BOOL WINAPI measureInterrupted(DWORD)
+  {
+    restoreMeasuredFiles();
+    return FALSE; // and the process ends as it would have
+  }
+
+  // The machine as the table's heading names it: the processor, its cores and threads, the memory.
+  std::string machine()
+  {
+    std::string cpu = "an unknown processor";
+    HKEY key;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &key) == ERROR_SUCCESS)
+    {
+      char name[256] = {};
+      DWORD size = sizeof name - 1, type = 0;
+      if (RegQueryValueExA(key, "ProcessorNameString", nullptr, &type, reinterpret_cast<BYTE*>(name), &size) == ERROR_SUCCESS && type == REG_SZ)
+        cpu = name;
+      RegCloseKey(key);
+      while (!cpu.empty() && cpu.back() == ' ')
+        cpu.pop_back();
+    }
+    DWORD length = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &length);
+    std::vector<char> buffer(length);
+    unsigned cores = 0;
+    if (length && GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &length))
+      for (DWORD at = 0; at < length; ++cores)
+        at += reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data() + at)->Size;
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof memory;
+    GlobalMemoryStatusEx(&memory);
+    char line[512];
+    snprintf(line, sizeof line, "%s, %u cores, %lu threads, %.0f GB", cpu.c_str(), cores, GetActiveProcessorCount(ALL_PROCESSOR_GROUPS),
+             double(memory.ullTotalPhys) / (1024.0 * 1024 * 1024));
+    return line;
+  }
+
+  // How busy the machine is, every core, over the next second, in percent.
+  int machineLoad()
+  {
+    FILETIME idle[2], kernel[2], user[2];
+    GetSystemTimes(&idle[0], &kernel[0], &user[0]);
+    Sleep(1000);
+    GetSystemTimes(&idle[1], &kernel[1], &user[1]);
+    auto ticks = [](const FILETIME& t) { return (uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    uint64_t idled = ticks(idle[1]) - ticks(idle[0]), all = ticks(kernel[1]) - ticks(kernel[0]) + ticks(user[1]) - ticks(user[0]); // (kernel time includes idle)
+    return all ? int(100.0 * double(all - idled) / double(all) + 0.5) : 0;
+  }
+
+  // Runs a command line in directory, its output appended to log: its exit code, and its wall time
+  // from start to exit.
+  int timed(const std::string& command, const fs::path& directory, const fs::path& log, double& seconds)
+  {
+    SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
+    HANDLE out = CreateFileW(log.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (out == INVALID_HANDLE_VALUE)
+      return -1;
+    std::string heading = "\n> " + command + "\n";
+    DWORD written = 0;
+    WriteFile(out, heading.data(), DWORD(heading.size()), &written, nullptr);
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = si.hStdError = out;
+    PROCESS_INFORMATION pi{};
+    std::wstring line(MultiByteToWideChar(CP_UTF8, 0, command.data(), int(command.size()), nullptr, 0), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, command.data(), int(command.size()), line.data(), int(line.size()));
+    auto start = std::chrono::steady_clock::now();
+    if (!CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, 0, nullptr, directory.c_str(), &si, &pi))
+    {
+      CloseHandle(out);
+      return -1;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    CloseHandle(out);
+    return int(code);
+  }
+
+  fs::file_time_type writtenAt(const fs::path& path)
+  {
+    std::error_code ec;
+    fs::file_time_type t = fs::last_write_time(path, ec);
+    return ec ? fs::file_time_type::min() : t;
+  }
+
+  // `kpp measure [--rounds N] [--compare DIR]`: the readme's rows on this machine (docs/build.md,
+  // "kpp measure"). In rounds, each row in turn: build.kpp's edits (project.measure()) in the cell it
+  // names, each made, built, put back and built through the compile server, as `kpp TARGET
+  // CONFIGURATION` builds; the clean build of that target, the server stopped and its configuration's
+  // outputs deleted, the C and C++ libraries kept; and per executable its whole build, the C and C++
+  // libraries deleted too. With --compare, each row's other build (measure().compare) after it.
+  int measureProject(const fs::path& root, int argc, char** argv)
+  {
+    int rounds = 3;
+    fs::path compareDirectory;
+    for (int i = 2; i < argc; ++i)
+    {
+      std::string arg = argv[i];
+      if (arg == "--rounds" && i + 1 < argc && atoi(argv[i + 1]) > 0)
+        rounds = atoi(argv[++i]);
+      else if (arg == "--compare" && i + 1 < argc)
+        compareDirectory = fs::absolute(argv[++i]);
+      else
+      {
+        fprintf(stderr, "error: kpp measure takes --rounds N and --compare DIR, not %s (docs/build.md, \"kpp measure\")\n", arg.c_str());
+        return 2;
+      }
+    }
+    Request request;
+    request.server = false; // (no server left running for the description: the measurement starts its own)
+    Description d;
+    if (!describe(root, request, d))
+      return 1;
+    const Measurement& m = d.measurement;
+    std::vector<std::string> targets = targetNames(d);
+    if (targets.empty())
+    {
+      fprintf(stderr, "error: %s describes no executable to measure\n", (root / "build.kpp").string().c_str());
+      return 1;
+    }
+    std::string target = m.target.empty() ? targets[0] : m.target, configuration = m.configuration.empty() ? "debug" : m.configuration;
+    const Program* cell = findCell(d, target, configuration);
+    if (!cell)
+    {
+      fprintf(stderr, "error: build.kpp's measure() names %s %s, which it does not describe\n", target.c_str(), configuration.c_str());
+      return 1;
+    }
+    // The files edited: each holding its text exactly once, and without changes of its own (git).
+    std::vector<std::string> problems;
+    std::vector<std::pair<fs::path, std::string>> files;
+    for (const Measurement::Edit& e : m.edits)
+    {
+      fs::path path = (root / e.file).make_preferred();
+      std::string text;
+      if (!readFile(path, text))
+      {
+        problems.push_back(path.string() + " is not there");
+        continue;
+      }
+      size_t at = text.find(e.from);
+      if (e.from.empty() || at == std::string::npos || text.find(e.from, at + 1) != std::string::npos)
+        problems.push_back(path.string() + " does not hold \"" + e.from + "\" exactly once");
+      std::string status;
+      if (runAndRead("git -C " + quoteArg(root.string()) + " status --porcelain -- " + quoteArg(e.file), status) != 0)
+        problems.push_back("git could not tell whether " + path.string() + " has changes of its own (kpp measure needs git and a git checkout)");
+      else if (!status.empty())
+        problems.push_back(path.string() + " has changes of its own (git status): commit or restore it first");
+      files.push_back({path, text});
+    }
+    for (const Measurement::Compare& c : m.compares)
+      if (!compareDirectory.empty() && !c.touch.empty() && !fs::exists(compareDirectory / c.touch))
+        problems.push_back((compareDirectory / c.touch).string() + " is not there (measure().compare's file to touch)");
+    if (!compareDirectory.empty() && !fs::is_directory(compareDirectory))
+      problems.push_back("--compare " + compareDirectory.string() + " is no directory");
+    if (!problems.empty())
+    {
+      fprintf(stderr, "error: kpp measure built and changed nothing:\n");
+      for (const std::string& p : problems)
+        fprintf(stderr, "  %s\n", p.c_str());
+      return 1;
+    }
+    auto compareOf = [&](const std::string& row) -> const Measurement::Compare*
+    {
+      if (compareDirectory.empty())
+        return nullptr;
+      for (const Measurement::Compare& c : m.compares)
+        if (c.row == row)
+          return &c;
+      return nullptr;
+    };
+
+    std::string self = compilerPath().string(), commit;
+    runAndRead("git -C " + quoteArg(root.string()) + " log -1 --format=\"%h (%cs)\"", commit);
+    while (!commit.empty() && (commit.back() == '\n' || commit.back() == '\r'))
+      commit.pop_back();
+    std::string version = std::string("kpp ") + ::kppVersion();
+    printf("%s, commit %s\n%s\n%s at %s, cell %s %s, %d round%s\n", version.c_str(), kppCommit(), machine().c_str(), root.string().c_str(),
+           commit.c_str(), target.c_str(), configuration.c_str(), rounds, rounds == 1 ? "" : "s");
+    for (const Measurement::Edit& e : m.edits)
+      printf("edits, and puts back after each build: %s\n  \"%s\"\n  -> \"%s\"\n", (root / e.file).make_preferred().string().c_str(), e.from.c_str(), e.to.c_str());
+    printf("clean build: the compile server stopped, build\\%s deleted, the C and C++ libraries (build\\clib) kept\n", configuration.c_str());
+    printf("whole build: build\\%s and build\\clib deleted too\n", configuration.c_str());
+    if (!compareDirectory.empty())
+      printf("compared with: %s\n", compareDirectory.string().c_str());
+    fs::path log = root / "build" / "measure.txt";
+    std::error_code ec;
+    fs::create_directories(log.parent_path(), ec);
+    fs::remove(log, ec);
+    printf("each build's output: %s\n\n", log.string().c_str());
+    fflush(stdout);
+
+    {
+      std::lock_guard lock(measuredLock);
+      measuredFiles = files;
+    }
+    SetConsoleCtrlHandler(measureInterrupted, TRUE);
+    struct PutBack
+    {
+      ~PutBack() { restoreMeasuredFiles(); }
+    } putBack;
+
+    // The rows: per edit, it and its undoing; the clean build; per executable its whole build.
+    struct Row
+    {
+      std::string name, compare;
+      std::vector<double> kpp, other;
+    };
+    std::vector<Row> rows;
+    for (const Measurement::Edit& e : m.edits)
+    {
+      rows.push_back({e.row, e.row});
+      rows.push_back({e.row + ", undone", ""});
+    }
+    rows.push_back({"Clean build of " + target + ", libraries already built", "clean"});
+    for (const std::string& t : targets)
+      rows.push_back({"Whole build of " + exeOf(root, *findCell(d, t, configuration)).filename().string() + ", every library included", "whole " + t});
+
+    auto fail = [&](const std::string& what)
+    {
+      fprintf(stderr, "error: %s (the build's output: %s)\n", what.c_str(), log.string().c_str());
+      return 1;
+    };
+    // A build of TARGET as a user runs it: its wall time, and that it wrote the executable anew.
+    auto build = [&](const std::string& t, Row* row) -> bool
+    {
+      fs::path exe = exeOf(root, *findCell(d, t, configuration));
+      fs::file_time_type before = writtenAt(exe);
+      double seconds = 0;
+      int code = timed(quoteArg(self) + " " + quoteArg(t) + " " + quoteArg(configuration), root, log, seconds);
+      if (code != 0)
+        return fail("kpp " + t + " " + configuration + " failed (exit " + std::to_string(code) + ")"), false;
+      if (row)
+      {
+        if (writtenAt(exe) <= before)
+          return fail("kpp " + t + " " + configuration + " wrote no new " + exe.string() + ": not a build of the change"), false;
+        row->kpp.push_back(seconds);
+        printf("  %-62s %7.2f s\n", row->name.c_str(), seconds);
+        fflush(stdout);
+      }
+      return true;
+    };
+    auto compare = [&](Row& row) -> bool
+    {
+      const Measurement::Compare* c = compareOf(row.compare);
+      if (!c)
+        return true;
+      if (!c->touch.empty())
+        fs::last_write_time(compareDirectory / c->touch, fs::file_time_type::clock::now(), ec);
+      double seconds = 0;
+      int code = timed("cmd.exe /d /s /c \"" + c->command + "\"", compareDirectory, log, seconds);
+      if (code != 0)
+        return fail("the compared build of \"" + row.name + "\" failed (exit " + std::to_string(code) + "): " + c->command), false;
+      row.other.push_back(seconds);
+      printf("  %-62s %7.2f s (compared)\n", row.name.c_str(), seconds);
+      fflush(stdout);
+      return true;
+    };
+    auto stopAll = [&]() -> bool
+    {
+      double seconds = 0;
+      return timed(quoteArg(self) + " --stop-server", root, log, seconds) == 0 || (fail("kpp --stop-server failed"), false);
+    };
+    auto erase = [&](const fs::path& directory) -> bool
+    {
+      fs::remove_all(directory, ec);
+      return !fs::exists(directory) || (fail("could not delete " + directory.string() + " (a program holding a file in it?)"), false);
+    };
+
+    std::vector<int> loads;
+    for (int round = 1; round <= rounds; ++round)
+    {
+      loads.push_back(machineLoad());
+      printf("round %d (the machine %d%% busy before it)\n", round, loads.back());
+      fflush(stdout);
+      // The server the edits build through, up to date: not timed.
+      if (!build(target, nullptr))
+        return 1;
+      size_t r = 0;
+      for (size_t i = 0; i < m.edits.size(); ++i, r += 2)
+      {
+        std::string edited = files[i].second;
+        edited.replace(edited.find(m.edits[i].from), m.edits[i].from.size(), m.edits[i].to);
+        if (FILE* f = _wfopen(files[i].first.c_str(), L"wb"))
+          fwrite(edited.data(), 1, edited.size(), f), fclose(f);
+        if (!build(target, &rows[r]))
+          return 1;
+        restoreMeasuredFiles();
+        if (!build(target, &rows[r + 1]) || !compare(rows[r]))
+          return 1;
+      }
+      if (!stopAll() || !erase(root / "build" / configuration) || !build(target, &rows[r]) || !compare(rows[r]))
+        return 1;
+      ++r;
+      for (const std::string& t : targets)
+      {
+        if (!stopAll() || !erase(root / "build" / configuration) || !erase(root / "build" / "clib") || !build(t, &rows[r]) || !compare(rows[r]))
+          return 1;
+        ++r;
+      }
+    }
+    stopAll();
+
+    // The table, to paste into the readme: each row's fastest and slowest round.
+    auto span = [](std::vector<double> values) -> std::string
+    {
+      if (values.empty())
+        return "";
+      std::sort(values.begin(), values.end());
+      char text[64];
+      snprintf(text, sizeof text, values.size() == 1 ? "%.1f s" : "%.1f to %.1f s", values.front(), values.back());
+      return text;
+    };
+    std::string loadText;
+    for (int load : loads)
+      loadText += (loadText.empty() ? "" : ", ") + std::to_string(load) + "%";
+    printf("\n%s (%s), %s; %s %s, %d round%s, the machine %s busy before each; wall time from start to exit, fastest to slowest\n\n",
+           version.c_str(), std::string(kppCommit()).substr(0, 8).c_str(), machine().c_str(), target.c_str(), configuration.c_str(), rounds,
+           rounds == 1 ? "" : "s", loadText.c_str());
+    bool compared = !compareDirectory.empty();
+    printf(compared ? "| | %s | compared |\n|---|---:|---:|\n" : "| | %s |\n|---|---:|\n", version.c_str());
+    for (const Row& row : rows)
+      if (compared)
+        printf("| %s | %s | %s |\n", row.name.c_str(), span(row.kpp).c_str(), span(row.other).c_str());
+      else
+        printf("| %s | %s |\n", row.name.c_str(), span(row.kpp).c_str());
+    return 0;
+  }
+
   // `kpp` alone in a console: the actions, each with the command that does it.
   int menu(const fs::path& root, CompileFunction compile)
   {
@@ -1604,6 +1979,16 @@ int runProject(int argc, char** argv, CompileFunction compile)
   if (options)
     --argc, ++argv;
   fs::path root = findProject(fs::current_path());
+  if (argc >= 2 && strcmp(argv[1], "measure") == 0 && !options)
+  {
+    if (root.empty())
+    {
+      fprintf(stderr, "error: kpp measure times a project's builds, and there is no build.kpp here or above\n");
+      return 2;
+    }
+    SetCurrentDirectoryW(root.c_str());
+    return measureProject(root, argc, argv);
+  }
   if (argc == 1 && !options)
   {
     if (!_isatty(_fileno(stdin)))

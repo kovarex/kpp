@@ -16,32 +16,11 @@ powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tr
 
 ## Measure it yourself
 
-The readme's first three rows (an edit of one function, an edit of an inline function used across
-the game, a clean build of the game) on your own machine, with the kpp you installed: download
-[tools/measure/factorio-edits.ps1](https://github.com/kovarex/kpp/blob/master/tools/measure/factorio-edits.ps1)
-and run it on a factorio-in-kpp checkout your kpp builds, and on your Factorio checkout for the C++
-side (leave out `-Factorio` for kpp alone):
-
-```
-powershell -NoProfile -ExecutionPolicy Bypass -File factorio-edits.ps1 -Checkout D:\factorio-in-kpp -Factorio D:\Factorio
-```
-
-- **kpp:** `kpp factorio` once (its compile server, the C and C++ libraries), then in each round the
-  leaf edit (a string in `AnimationBank::getAnimation`) and the wide edit (`MapPosition::operator+`'s
-  operands swapped), each built and then undone and built, and the clean build of the game: the
-  server stopped and `build\debug` deleted, the C and C++ libraries (`build\clib`) and the import
-  cache kept, then `kpp factorio` again.
-- **C++** (FASTBuild, `vs2022-Debugx64-factorio-run`), as docs/test-matrix.md's "Build time" measured
-  it: `src\AnimationBank.hpp` touched for the leaf edit and `src\ActionResult.hpp` (the precompiled
-  header includes it) for the wide edit, the time stamp only; the clean build is `FBuild -clean` of
-  every library factorio-run links except the nine factorio-in-kpp builds as C libraries (SDL,
-  curl, re2, imgui and the rest stay built, as kpp's do), then factorio-run.
-- Rounds interleave kpp and C++ (3 by default, `-Rounds N`); each time is the build command's wall
-  time to its exit, the link included, and the script ends with each row's minimum and maximum, the
-  kpp version and the machine. It prints what it edits before it starts, refuses a checkout where
-  those files have changes of their own, and restores them after every build and at the end, also on
-  an error or Ctrl+C. `-DryRun` checks all of it and builds nothing. It needs no administrator rights
-  and runs in Windows PowerShell 5.1; the logs are in the checkout's `build\measure\`.
+The readme's rows on your own machine, with the kpp you installed: `kpp measure` in a factorio-in-kpp
+checkout (`kpp measure --compare D:\Factorio` adds Factorio's own C++ build; getting-started.md,
+"Measuring the readme's compile times yourself"; build.md, "kpp measure"). It replaced
+tools/measure/factorio-edits.ps1 (8504bacb, 2026-11-02), a PowerShell script that measured the
+first three rows the same way and gave the numbers below.
 
 On PC-PRACOVNA (2026-11-02; kpp 0.2.40 packaged from 8ebb9df8, factorio-in-kpp e4cfd9ba, converted
 from Factorio 4c178a5b915; 3 rounds, the machine 22 to 99% busy with other worktrees' builds and
@@ -57,7 +36,8 @@ These are `kpp factorio`'s times, as the readme's kpp column is. kpp's own line 
 in the edits kppc took 1.0 to 3.5 s and the link 0.6 to 1.7 s; the rest was mostly the check of the
 C libraries, now cut (below). A clean build in its own process took 45.1 s once on the same
 busy machine (kppc 29.2 s: codegen 14.8 s, clang 8.7 s), against 77 to 94 s through a fresh compile
-server, the server's slower first build; so the clean row is a build without the server. The C++
+server, then taken for the server's slower first build; the next day showed most of it to be the
+stopped server (below), and `kpp measure`'s clean row is a build through the server, as a user's. The C++
 side ran here only with `-DryRun` (its checks against C:\Factorio, which nothing on this machine
 edits or touches).
 
@@ -82,6 +62,18 @@ it names, about 100,000 times for the same few thousand headers (the SDK's, SDL'
 per header per build (project.cpp, upToDate). What is left is kppc and the link (1.5 to 1.7 s, the
 readme's earlier figure was these two alone) and the after-build copies, which hard links instead
 of copies would make nearly free.
+
+**A stopped server lingered, and the build after it waited (2026-11-03).** `kpp --stop-server`
+returned once the server had answered, and the server then returned from its loop and freed the
+kept program before it ended: about 4 minutes for the game's (a server stopped at 10:30:35 was gone
+only at about 10:34), all the while holding its pipe's name. A build of the same key right after
+found the name taken (the pipe is created as the first instance), so no new server could start, and
+the client waited for the old one to end and then built in its own process. Every "clean build
+through a fresh server" right after a stop measured that. Now a stopped server ends at once
+(ExitProcess, nothing freed) and --stop-server waits for its process to end. `kpp measure` on
+factorio-in-kpp 3765db6f, this machine 73 to 87% busy before each round: the clean build of the game
+122.5 s before (one round), 33.0 and 29.7 s after (two rounds); the whole build of factorio.exe 130.8 s,
+then 54.2 and 41.3 s.
 
 ## The release edit (2026-10-31)
 

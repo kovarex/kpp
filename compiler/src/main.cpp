@@ -124,7 +124,7 @@ namespace
             "usage: kppc [options] <file-or-dir>...\n"
             "       kpp [targets] [configurations] [options] in a project's directory (build.kpp: --run ARGS,\n"
             "       --test, --set NAME=VALUE, --verbose (kppc's report of each build) and the options below;\n"
-            "       kpp new, kpp options; docs/build.md)\n"
+            "       kpp new, kpp options, kpp measure [--rounds N] [--compare DIR]; docs/build.md)\n"
             "  --version     the version and commit, the compiler, the toolchain a build takes, the standard library\n"
             "  --help        this list\n"
             "  -j N          worker threads (default: hardware threads)\n"

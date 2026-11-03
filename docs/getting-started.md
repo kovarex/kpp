@@ -46,12 +46,31 @@ In a directory with a `build.kpp`, or below one:
 | `kpp TARGET --run ARGS` | builds and runs it |
 | `kpp --test` | builds and runs the tests |
 | `kpp options` | lists the used libraries' options and their values |
+| `kpp measure` | times the project's builds on this machine and prints them as a table (below) |
 | `kpp --generate-visual-studio-files` | writes a Visual Studio solution (one project per target, one configuration per named configuration) |
 | `kpp --generate-vs-code-files` | the same for VS Code |
 | `kpp --version`, `kpp --help` | the version, the toolchain a build would use, the usage |
 
 Targets, configurations (`debug`, `release`, your own), library options and the toolchain are set in
 `build.kpp`, written in kpp itself: see [build.md](build.md).
+
+## Measuring the readme's compile times yourself
+
+In a checkout of factorio-in-kpp, with the kpp you installed:
+
+```
+kpp measure
+```
+
+It times, in 3 rounds, each row of the readme's table: an edit of one function and an edit of an
+inline function used across the game (each made, built, put back and built, through the compile
+server), the clean build of the game (the server stopped, the C and C++ libraries kept), and the whole
+builds of factorio.exe and factorio-test.exe (the libraries too). It prints kpp's version, the
+machine and how busy it was before each round, and ends with the table, ready to paste. The files it
+edits are put back after every build, also on Ctrl+C, and it starts only when they have no changes
+of their own. `kpp measure --compare D:\Factorio` adds Factorio's own C++ build (FASTBuild) in that
+checkout as a second column; `--rounds N` sets the rounds. What it edits and compares is in the
+project's build.kpp ([build.md](build.md), "kpp measure"), so any project can be measured the same way.
 
 ## Editors
 

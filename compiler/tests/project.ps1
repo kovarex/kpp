@@ -349,5 +349,41 @@ $ErrorActionPreference = 'Stop'
 $env:KPP_CLANG, $env:KPP_VSWHERE = $saved
 if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(missing\)$' -or
     $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own') { Fail "an installation's kpp --version:`n$output" }
+
+# kpp measure (docs/build.md, "kpp measure"): build.kpp's edit made, built, put back and built, the
+# clean build and each executable's whole build, in one round; the table's rows; the file as
+# committed afterwards. Then a file with changes of its own: refused, nothing built or changed.
+$measure = Join-Path $work 'measure'
+New-Item -ItemType Directory -Force $measure | Out-Null
+Push-Location $measure
+try
+{
+  Kpp @('new') | Out-Null
+  Set-Content 'build.kpp' @'
+void build(Project& project)
+{
+  project.executable("hello", {"src"});
+  project.executable("again", {"src"});
+  project.measure("hello").edit("Edit of one function", "src/main.kpp", "Hello from kpp", "Hello again from kpp");
+}
+'@
+  git init -q 2>&1 | Out-Null
+  git add -A 2>&1 | Out-Null
+  git -c user.name=test -c user.email=test@test commit -q -m measure 2>&1 | Out-Null
+  $output = (Kpp @('measure', '--rounds', '1')) -join "`n"
+  foreach ($row in '\| Edit of one function \| [\d.]+ s \|', '\| Edit of one function, undone \| [\d.]+ s \|', '\| Clean build of hello, libraries already built \| [\d.]+ s \|',
+                   '\| Whole build of hello\.exe, every library included \| [\d.]+ s \|', '\| Whole build of again\.exe, every library included \| [\d.]+ s \|')
+  {
+    if ($code -ne 0 -or $output -notmatch $row) { Fail "kpp measure: exit $code, no row $row`n$output"; break }
+  }
+  $status = git status --porcelain --untracked-files=no
+  if ($status) { Fail "kpp measure left changes: $status" }
+  Add-Content 'src\main.kpp' '// a change of its own'
+  $before = Get-Content -Raw 'src\main.kpp'
+  $output = (Kpp @('measure', '--rounds', '1')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'main\.kpp has changes of its own' -or (Get-Content -Raw 'src\main.kpp') -ne $before) { Fail "kpp measure with a changed file: exit $code`n$output" }
+  Kpp @('--stop-server') | Out-Null
+}
+finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed
