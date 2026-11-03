@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -14,10 +15,90 @@
 // so that it ends the way every build ends (a build
 // in this process exits on the spot when done, server.hpp's buildDone). The executable goes to
 // %TEMP%\kpp-run\<name>-<hash>\, one directory per source and options, where the objects of the
-// modules the next build finds unchanged stay.
+// modules the next build finds unchanged stay. The cache keeps the most recently used directories
+// (keptRunDirectories); a directory in use is never deleted (its lock file, below).
 
 namespace
 {
+  // Every thread's and worktree's runs share %TEMP%\kpp-run: 734 directories and 191,078 files on
+  // 2026-11-03, when the kernel's record of each cached file filled its pool. A directory takes some
+  // 15 files at four modules.
+  constexpr size_t keptRunDirectories = 100;
+
+  // A run holds <dir>\lock open, shared for reading and writing but not for deleting, from before
+  // its build until its program has ended, and sets its last write time, the time of last use the
+  // cleanup orders by. The cleanup deletes a directory only while it holds the lock file alone, so a
+  // run waits here while one is being deleted, and then makes it again.
+  HANDLE lockRunDirectory(const std::filesystem::path& dir)
+  {
+    for (int attempt = 0; attempt < 400; ++attempt)
+    {
+      std::error_code ec;
+      std::filesystem::create_directories(dir, ec);
+      HANDLE lock = CreateFileW((dir / "lock").c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+      if (lock != INVALID_HANDLE_VALUE)
+      {
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        SetFileTime(lock, nullptr, nullptr, &now);
+        return lock;
+      }
+      Sleep(25);
+    }
+    return INVALID_HANDLE_VALUE;
+  }
+
+  // Deletes the directories of root beyond the keptRunDirectories most recently used, each while
+  // holding its lock file alone (one a run holds is skipped). A directory without a lock file was
+  // made by a kppc from before the lock, whose build may still run in it: it goes only once it has
+  // been an hour unchanged.
+  void trimRunDirectories(const std::filesystem::path& root)
+  {
+    struct Entry
+    {
+      std::filesystem::path dir;
+      std::filesystem::file_time_type used;
+      bool locked;
+    };
+    std::vector<Entry> entries;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec))
+    {
+      if (!it->is_directory(ec))
+        continue;
+      std::error_code lockEc;
+      std::filesystem::file_time_type lockTime = std::filesystem::last_write_time(it->path() / "lock", lockEc);
+      if (!lockEc)
+        entries.push_back({it->path(), lockTime, true});
+      else
+        entries.push_back({it->path(), std::filesystem::last_write_time(it->path(), lockEc), false});
+    }
+    if (entries.size() <= keptRunDirectories)
+      return;
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.used > b.used; });
+    std::filesystem::file_time_type now = std::filesystem::file_time_type::clock::now();
+    for (size_t i = keptRunDirectories; i < entries.size(); ++i)
+    {
+      const Entry& entry = entries[i];
+      if (!entry.locked && now - entry.used < std::chrono::hours(1))
+        continue;
+      std::filesystem::path lockPath = entry.dir / "lock";
+      HANDLE lock = CreateFileW(lockPath.c_str(), DELETE | GENERIC_READ, 0, nullptr, OPEN_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+      if (lock == INVALID_HANDLE_VALUE)
+        continue;
+      std::vector<std::filesystem::path> contents;
+      std::error_code listEc;
+      for (std::filesystem::directory_iterator it(entry.dir, listEc), end; !listEc && it != end; it.increment(listEc))
+        if (it->path().filename() != "lock")
+          contents.push_back(it->path());
+      for (const std::filesystem::path& path : contents)
+        std::filesystem::remove_all(path, listEc);
+      CloseHandle(lock);
+      RemoveDirectoryW(entry.dir.c_str());
+    }
+  }
+
   // A command line argument as CommandLineToArgvW and the C runtime read it back.
   std::string quoted(const std::string& arg)
   {
@@ -161,6 +242,13 @@ int runProgram(int argc, char** argv, int runIndex)
   }
   if (test)
     options.push_back("--tests");
+  // Four modules unless the options say otherwise, as the spec runner builds a snippet: kppc's default
+  // (four per thread) made some 385 files of objects and IR a build, every one kept in the cache.
+  if (std::find(options.begin(), options.end(), "--modules") == options.end())
+  {
+    options.push_back("--modules");
+    options.push_back("4");
+  }
   // Through the compile server unless --no-server: it is faster after an edit too since 6812a62
   // (docs/design.md, "Running and testing kpp code").
   auto noServer = std::find(options.begin(), options.end(), "--no-server");
@@ -177,8 +265,26 @@ int runProgram(int argc, char** argv, int runIndex)
     name = "program";
   if (test)
     name += "-tests";
-  std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "kpp-run" / (name + "-" + hex);
-  std::filesystem::create_directories(dir, ec);
+  std::filesystem::path root = std::filesystem::temp_directory_path(ec) / "kpp-run";
+  std::filesystem::path dir = root / (name + "-" + hex);
+  HANDLE lock = lockRunDirectory(dir);
+  if (lock == INVALID_HANDLE_VALUE)
+  {
+    fprintf(stderr, "kppc %s: cannot lock %s (error %lu)\n", argv[runIndex], (dir / "lock").string().c_str(), GetLastError());
+    return 1;
+  }
+  // Once the program has ended (or the build failed): the cache is trimmed, this directory among the
+  // most recent, and its lock let go.
+  struct Unlock
+  {
+    HANDLE lock;
+    std::filesystem::path root;
+    ~Unlock()
+    {
+      trimRunDirectories(root);
+      CloseHandle(lock);
+    }
+  } unlock{lock, root};
   std::string exe = (dir / (name + ".exe")).string();
 
   char kppc[MAX_PATH * 4];

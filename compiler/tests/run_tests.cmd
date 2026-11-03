@@ -197,6 +197,10 @@ rem What a spec run leaves (tests\specfiles.ps1): a passing snippet's build dele
 rem kept and failing the run.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\specfiles.ps1
 if errorlevel 1 (call :fail "specfiles") else (call :ok)
+rem kppc --run's build cache in TEMP (tests\runcache.ps1): four modules a build, the 100 most recently
+rem used directories kept, one a run holds never deleted.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\runcache.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "runcache") else (call :ok)
 rem --toolchain: an installation's bin\ by default, Visual Studio's on request (tests\toolchain.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\toolchain.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "toolchain") else (call :ok)

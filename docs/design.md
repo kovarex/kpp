@@ -2359,7 +2359,15 @@ snippet with asserts, 0.3-0.5 s from the edit to the result.
 options before `--run`, runs it with the arguments after SOURCE, and returns the program's exit
 code; when the build fails, the compiler's errors and exit code. The executable and its module
 objects live in `%TEMP%\kpp-run\<name>-<hash of the source's path and the options>\`, so the next
-run rebuilds only the changed module and nothing is written next to the source. The build is a
+run rebuilds only the changed module and nothing is written next to the source. Every thread's runs
+share that cache, which came to 734 directories and 191,078 files on 2026-11-03, when the kernel's
+record of each cached file filled its pool: since then a run builds with `--modules 4` unless its
+options name `--modules` (some 15 files a directory, against some 385 at kppc's default), and the
+cache keeps the 100 most recently used directories. A run holds its directory's `lock` file open,
+deletable by no one else, from before its build until its program ends, and the time of last use is
+that file's; the cleanup, at the end of each run, deletes a directory only while it holds its lock
+file alone (a run that finds it held waits, then makes the directory again), and one from before the
+lock file only once it has been unchanged for an hour (tests\runcache.ps1). The build is a
 kppc process of its own (a build ends its process when done), a client of the compile server: it
 starts the server when none runs, and the server stops after an hour idle (one per kppc binary,
 directory and argument list; 25-48 MB each for small programs). `--no-server` among the options
