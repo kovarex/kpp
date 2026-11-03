@@ -87,8 +87,8 @@ TARGET = None
 C_TARGET_FLAGS = []
 SYSROOT_LINUX = os.environ.get("KPP_SYSROOT_LINUX", os.path.join(COMPILER, "build", "sysroots", "linux-x86_64"))
 SYSROOT_FREEBSD = os.environ.get("KPP_SYSROOT_FREEBSD", os.path.join(COMPILER, "build", "sysroots", "freebsd-x86_64"))
-# run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s
-# each), compares its output, normalised as normalise() does, with its .expected, and ends with one
+# run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s and
+# 4 GB of address space each), compares its output, normalised as normalise() does, with its .expected, and ends with one
 # summary line; its exit code says the same. A program's exit code above 1 fails, as here.
 FREEBSD_RUN_SH = r'''#!/bin/sh
 # The spec snippets built for FreeBSD by compiler\tests\spec\run_spec.py --target freebsd: each runs
@@ -101,7 +101,9 @@ normalise() { awk '{ sub(/[ \t\r\v\f]+$/, ""); line[NR] = $0 } END { s = 1; whil
 pass=0; failed=0
 for exe in *.elf; do
   name=${exe%.elf}
-  timeout 60 "./$exe" > "$name.out" 2> "$name.err"
+  # (4 GB of address space each: a snippet that allocates until it fails, new_failure_throws_bad_alloc,
+  # took the whole VM's memory and the VM with it in CI, run 41638108414)
+  ( ulimit -v 4194304; exec timeout 60 "./$exe" ) > "$name.out" 2> "$name.err"
   code=$?
   normalise < "$name.out" > "$name.got"
   if [ $code -gt 1 ]; then
