@@ -4,9 +4,9 @@ rem link.cmd does, but with --stub-missing, a bring-up tool and never a way to s
 rem code generator left out (or found no definition of) is a stub that prints its name and line and
 rem aborts when the game reaches it, so the game links and runs up to the first one. The compile's
 rem errors stay in kpp\run\build-errors.txt and its exit code stays 1. factorio.exe goes where the C++
-rem build puts its own relative to the data, C:\factorio-in-kpp\bin\Debugx64 (bin\Releasex64 for
+rem build puts its own relative to the data, the checkout's bin\Debugx64 (bin\Releasex64 for
 rem --release; build.kpp's folders, Factorio's names: the game's path discovery works unchanged), and
-rem writes where C:\Factorio's game does, into C:\factorio-in-kpp itself (config\, saves\, mods\, the
+rem writes where C:\Factorio's game does, into the checkout itself (config\, saves\, mods\, the
 rem log): never %APPDATA%\Factorio, never C:\Factorio. Arguments go to the game:
 rem `run.cmd --version`, `run.cmd --dump-data`; `--no-build` first runs the last build again;
 rem `--release` builds the release game (kppc --release, kpp\run-release) instead of the debug one. The
@@ -24,8 +24,10 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
-rem The game's directory (its data\, bin\ and what the game writes): GAME names another.
-if not defined GAME set GAME=C:\factorio-in-kpp
+rem The game's directory (its data\, bin\ and what the game writes): GAME, else FACTORIO_IN_KPP
+rem (convert.cmd's checkout; a thread's own copy, setup-checkout.cmd).
+if not defined GAME set GAME=%FACTORIO_IN_KPP%
+if "%GAME%"=="" (echo run: name the factorio-in-kpp checkout: set FACTORIO_IN_KPP=DIR, or GAME=DIR& exit /b 2)
 set BUILD=1
 set ARGS=
 rem The debug build links incrementally into kpp\run; --release (config::debug false, ThinLTO) links

@@ -1,7 +1,7 @@
 @echo off
 rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++), built and run as
 rem run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
-rem one (the checkout C:\factorio-in-kpp, or the directory given as the first argument), with UnitTest++. The
+rem one (the checkout given as an argument, else FACTORIO_IN_KPP), with UnitTest++. The
 rem build links link-settings.cmd's libraries with --keep-going and --stub-missing (a function the
 rem code generator left out aborts when a test reaches it) and the crash report, into
 rem kpp\tests-run\factorio-test.exe. The run has a write directory of its own, kpp\tests-run\run
@@ -37,7 +37,8 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
-set CONVERSION=C:\factorio-in-kpp
+rem (the checkout: an argument naming one, else FACTORIO_IN_KPP, convert.cmd's; a baseline run needs none)
+set CONVERSION=%FACTORIO_IN_KPP%
 set BASELINE=0
 set BASELINEDEBUG=0
 set ASAN=0
@@ -53,6 +54,7 @@ if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--baseline-debug" (set B
 shift
 goto arguments
 :argumentsDone
+if %BASELINE%==0 if "%CONVERSION%"=="" (echo tests: name the factorio-in-kpp checkout: tests.cmd DIR, or set FACTORIO_IN_KPP=DIR& exit /b 2)
 set OUT=%HERE%kpp\tests-run
 if %BASELINE%==1 set OUT=%HERE%kpp\tests-baseline
 if %BASELINEDEBUG%==1 set OUT=%HERE%kpp\tests-baseline-debug

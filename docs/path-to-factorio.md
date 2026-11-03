@@ -71,6 +71,19 @@ root). What it implies:
      below);
    - the measurements of build and edit times on the whole game against the C++ build.
 
+### Each thread's copy of the checkout (2026-11-03)
+
+C:\factorio-in-kpp is what every thread reads (D's paired builds, the measurements), so a gate or
+a timing run never writes it. convert.cmd, tests.cmd, harness.cmd, resources.cmd and run.cmd take
+the checkout from their argument, else FACTORIO_IN_KPP, and stop without one; C:\factorio-in-kpp is
+named only for a factorio-in-kpp push. `programs\factorio\setup-checkout.cmd DIR` makes a thread's
+copy once: a git worktree of C:\factorio-in-kpp (its objects shared), checked out without data\ and
+shaders\, which are junctions to C:\factorio-in-kpp's (4.3 GB, read only). Measured on thread C's
+copy: 0.18 GB checked out; a game build adds build\ (about 3.2 GB per configuration) and bin\
+(0.6 GB), so debug and release together are about 8 GB. resources.cmd refuses a copy (its data\
+is a junction): it updates C:\factorio-in-kpp's, which the copies share. `rd /s /q` of a copy
+removes its junctions, not what they point to.
+
 ## Where kppc is
 
 - **Front end.** Parses 99.54% of Factorio's files and types 77% of the expressions and 78% of
@@ -1626,7 +1639,7 @@ about their own code, the test bodies the macros now expand into.
 ### The unit tests (2026-10-29, evening)
 
 `programs\factorio\tests.cmd` builds the tests from convert.cmd's whole conversion (the directory
-given, or C:\factorio-in-kpp) as run.cmd builds the game: link-settings.cmd's libraries,
+given, or FACTORIO_IN_KPP's) as run.cmd builds the game: link-settings.cmd's libraries,
 `--keep-going --stub-missing` (a function the code generator left out aborts when a test reaches
 it) and the crash report, into kpp\tests-run\factorio-test.exe. It runs them from a write directory
 of its own (kpp\tests-run\run, through `--config` and `--write-data`; never %APPDATA%) and reads the

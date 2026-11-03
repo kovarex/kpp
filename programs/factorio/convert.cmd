@@ -1,7 +1,8 @@
 @echo off
 rem Converts the whole Factorio source (CommonUtil, Agui, src, and the tests with UnitTest++, the
-rem unit-test library they are written in) to kpp into the factorio-in-kpp checkout (C:\factorio-in-kpp,
-rem or the directory given as the first argument; commit there by hand), each file at its path in
+rem unit-test library they are written in) to kpp into a factorio-in-kpp checkout (the directory given
+rem as the first argument, else FACTORIO_IN_KPP: a thread's own copy, setup-checkout.cmd; C:\factorio-in-kpp
+rem only for a factorio-in-kpp push, committed there by hand), each file at its path in
 rem Factorio's repository (kppc's --convert-base): src\, tests\ and libraries\CommonUtil\ ... With it,
 rem the C and C++ shims the game links (native\) into libraries\kpp-native\. What the game takes from
 rem Factorio unchanged (data\, shaders\, the other libraries, the tests' saves) resources.cmd copies. Then converts the CommonUtil and Agui libraries and the game's Util module again on their
@@ -31,8 +32,12 @@ set KPPC=..\..\compiler\build\kppc.exe
 set SMOKES=0
 set STEP=the whole conversion
 set SRC=%FACTORIO%\src
-set WHOLE=C:\factorio-in-kpp
+rem The checkout written: the first argument, else FACTORIO_IN_KPP; none is an error. Each thread
+rem writes its own copy (setup-checkout.cmd); C:\factorio-in-kpp, which every thread reads, only for
+rem a factorio-in-kpp push.
+set WHOLE=%FACTORIO_IN_KPP%
 if not "%~1"=="" set WHOLE=%~1
+if "%WHOLE%"=="" goto :nocheckout
 rem Lua (libraries\Lua): its .c files as the C++ the game compiles them as, with the game's C++
 rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-factorio.md, "Converting
 rem Lua"). No other input has .c files.
@@ -222,6 +227,9 @@ exit /b 0
 :countsfailed
 echo convert: FAILED: headline %HEADLINE%, tests errors %TESTSERRORS% (%SUMMARY%)
 exit /b 1
+:nocheckout
+echo convert: name the factorio-in-kpp checkout to write: convert.cmd DIR, or set FACTORIO_IN_KPP=DIR. Each thread writes its own copy, made once by setup-checkout.cmd; C:\factorio-in-kpp only for a factorio-in-kpp push.
+exit /b 2
 :clibfailed
 echo convert: a C library's conversion failed
 :failed

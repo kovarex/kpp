@@ -1,7 +1,7 @@
 @echo off
 rem Copies what the converted game takes from the Factorio source unchanged into the factorio-in-kpp
-rem checkout (C:\factorio-in-kpp, or the directory given as the first argument; commit there by
-rem hand), at the paths it has in Factorio's repository: data\, shaders\, version.txt, libraries\
+rem checkout (the directory given as the first argument, else FACTORIO_IN_KPP; C:\factorio-in-kpp for a
+rem push, committed there by hand), at the paths it has in Factorio's repository: data\, shaders\, version.txt, libraries\
 rem (the C and C++ libraries the game imports and links, as Factorio has them) and tests\ (the saves,
 rem images and mods the tests read). The converted libraries' and the tests' own C and C++ sources
 rem are left out: convert.cmd writes their kpp conversion there. Run after convert.cmd when the
@@ -9,8 +9,14 @@ rem Factorio source changes. The files are git archive's of FACTORIO's HEAD, wit
 rem endings (core.autocrlf), as the game's working tree has them; FACTORIO must be a git checkout.
 setlocal
 if not defined FACTORIO set FACTORIO=C:\Factorio
-set WHOLE=C:\factorio-in-kpp
+rem (the checkout: the first argument, else FACTORIO_IN_KPP; never a thread's copy, whose data\ and
+rem shaders\ are junctions to C:\factorio-in-kpp's: setup-checkout.cmd)
+set WHOLE=%FACTORIO_IN_KPP%
 if not "%~1"=="" set WHOLE=%~1
+if "%WHOLE%"=="" (echo resources: name the factorio-in-kpp checkout: resources.cmd DIR, or set FACTORIO_IN_KPP=DIR& exit /b 2)
+set ATTRIBUTES=-
+if exist "%WHOLE%\data" for %%a in ("%WHOLE%\data") do set ATTRIBUTES=%%~aa
+if not "%ATTRIBUTES:l=%"=="%ATTRIBUTES%" (echo resources: %WHOLE%\data is a junction: a copy shares C:\factorio-in-kpp's resources, update those there& exit /b 2)
 rem The libraries convert.cmd converts, and the shims it copies (libraries\kpp-native). Of a C library
 rem converted to kpp (c-libraries.cmd) only the .c and .cpp files are left out: its headers stay C.
 call "%~dp0c-libraries.cmd"

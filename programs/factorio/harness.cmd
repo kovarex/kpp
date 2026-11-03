@@ -7,7 +7,7 @@ rem
 rem harness\NAME.cpp (or .c) is a driver that feeds the library inputs and prints what it gets back.
 rem It is built twice:
 rem - with the C or C++ library as the game links it today: CONVERSION\build\clib\NAME.lib, which
-rem   `kpp factorio` builds in the factorio-in-kpp checkout CONVERSION (C:\factorio-in-kpp unless
+rem   `kpp factorio` builds in the factorio-in-kpp checkout CONVERSION (FACTORIO_IN_KPP unless
 rem   given), clang-cl with the library's own flags (so it runs before the library's swap: after it,
 rem   build.kpp builds no NAME.lib);
 rem - converted by kppc --convert together with the library's sources (FACTORIO\libraries\NAME),
@@ -24,8 +24,10 @@ rem Everything is written to kpp\harness\NAME. Exit 0 only when the outputs matc
 setlocal
 if "%~1"=="" (echo usage: harness.cmd NAME [CONVERSION]& exit /b 2)
 set NAME=%~1
-set CONVERSION=C:\factorio-in-kpp
+rem (the checkout: the second argument, else FACTORIO_IN_KPP, convert.cmd's)
+set CONVERSION=%FACTORIO_IN_KPP%
 if not "%~2"=="" set CONVERSION=%~f2
+if "%CONVERSION%"=="" (echo harness: name the factorio-in-kpp checkout: harness.cmd NAME DIR, or set FACTORIO_IN_KPP=DIR& exit /b 2)
 if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 set KPPC=..\..\compiler\build\kppc.exe

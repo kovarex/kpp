@@ -31,6 +31,10 @@ simple templates, own standard library, C-only interop.
   github.com/wube/kov, which are no longer worked in). The Factorio source converted to kpp is
   C:\factorio-in-kpp (github.com/kovarex/factorio-in-kpp, private: it is game source), written by
   `programs\factorio\convert.cmd`; commit and push it there when a converter change alters it.
+  Every thread reads it, so gates and timing runs write their own copy: `convert.cmd`, `tests.cmd`,
+  `harness.cmd` and `run.cmd` take the checkout from their argument or FACTORIO_IN_KPP and stop
+  without one. `programs\factorio\setup-checkout.cmd scratch\<thread>\fik` makes a copy once (a worktree of
+  C:\factorio-in-kpp, data\ and shaders\ linked: 0.2 GB, and about 3.8 GB per configuration built, build\ and bin\).
 - Several threads may work in this same clone (C:\kpp): commit small, push promptly, pull before
   committing.
 
@@ -96,7 +100,7 @@ Front end (lexer, parser, resolver, type checker, template instantiation) is don
 and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run the end-to-end
 tests with `compiler\tests\run_tests.cmd` and the specification suite `compiler\tests\spec.cmd`
 (one snippet per construct, pass/pending, writes docs/spec-status.md) after every compiler
-change, and `programs\factorio\convert.cmd`, which converts the whole game into the factorio-in-kpp checkout C:\factorio-in-kpp (src\, tests\, libraries\CommonUtil\ ..., at their paths in Factorio's repository),
+change, and `programs\factorio\convert.cmd`, which converts the whole game into a factorio-in-kpp checkout (FACTORIO_IN_KPP, a thread's own copy; src\, tests\, libraries\CommonUtil\ ..., at their paths in Factorio's repository),
 then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs their three smoke tests (the one check that runs converted game code) and the imgui, glm, Lua internals and GDI+ ones (imgui frames through the generated C interface, the glm port against glm, the Lua internals bridge against the C++ build's layout, the GDI+ classes against the SDK's gdiplus.h); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`
 before it is fixed. Measure, don't guess: every speed claim comes with the benchmark command and
