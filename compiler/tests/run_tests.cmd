@@ -46,6 +46,8 @@ for %%f in (tests\run\*.kpp) do (
     ) else (
       echo ok   !NAME!
       set /a PASS+=1
+      rem (a passing program's build goes: its objects and IR, about 400 files at kppc's default modules)
+      del /q build\tests\!NAME!.exe build\tests\!NAME!.exe.* build\tests\!NAME!.compile.txt build\tests\!NAME!.out.txt 2> nul
     )
   )
 )
@@ -191,6 +193,10 @@ if errorlevel 4 (
   call :ok
   if defined SKIPPED (set "SKIPPED=!SKIPPED!, linux targets (no WSL)") else (set "SKIPPED=linux targets (no WSL)")
 ) else if errorlevel 1 (call :fail "targets") else (call :ok)
+rem What a spec run leaves (tests\specfiles.ps1): a passing snippet's build deleted, a failing one's
+rem kept and failing the run.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\specfiles.ps1
+if errorlevel 1 (call :fail "specfiles") else (call :ok)
 rem --toolchain: an installation's bin\ by default, Visual Studio's on request (tests\toolchain.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\toolchain.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "toolchain") else (call :ok)
@@ -301,6 +307,9 @@ if %FAIL% neq 0 (
   echo run_tests: %FAIL% FAILED: !FAILED! ^(!SUMMARY!^)
   exit /b 1
 )
+rem Everything passed: the checks' builds go (build\tests held some 50,000 files of objects and IR after
+rem a run, and the kernel keeps a record of each cached file in its pool; a failed run keeps them).
+rd /s /q build\tests 2> nul
 echo run_tests: ALL PASSED ^(!SUMMARY!^)
 exit /b 0
 

@@ -32,6 +32,17 @@ NAME DIR`, design.md 16), and a <name>.unscoped.NAME directory an unscoped one (
 
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info] [--shard I/N]
 
+Each snippet is built in a directory of its own, build\\spec\\<area>.<name>\\, deleted as soon as the snippet
+passes: what a run leaves is the failing and pending snippets' builds (and the FreeBSD bundle). A
+snippet is built with --modules 4 unless its `kppc:` line says --modules: cross-module code and a
+release build's ThinLTO are still exercised, in about 12 files of objects and IR where kppc's default
+(4 modules per thread) made about 385. Every build of a whole run kept in the worktree, 380 to 600 files a
+snippet, came to 2.6 million files in one worktree, and the kernel kept a record of each in its pool
+(2026-11-03).
+
+--out DIR and --snippets DIR replace build\\spec and compiler\\tests\\spec (tests\\specfiles.ps1 runs the
+runner itself on a snippet that passes and one that fails).
+
 --shard I/N runs the I-th of N parts (1 <= I <= N): every N-th snippet of the sorted list, starting at
 the I-th, so each part gets a share of every area. CI runs the parts as parallel jobs (docs/build.md,
 "Continuous integration"); a part writes no spec-status.md, and its summary line names it.
@@ -60,7 +71,7 @@ FreeBSD (run.sh there compares each program's output with its expected output, w
 <name>.freebsd.expected, else <name>.linux.expected (LP64, a C library that is not the UCRT), else
 <name>.expected). Skipped as for Linux.
 """
-import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
+import argparse, os, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
 # Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
 # snippet built here, spec.cmd's or not, until program pieces rely on it.
@@ -78,6 +89,7 @@ EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
 # Headers written for the interop snippets themselves (C constructs the system headers lack).
 EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
 OUT = os.path.join(COMPILER, "build", "spec")
+SNIPPETS = HERE
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
 # The clang kppc itself uses (main.cpp's clangPath), for the snippets' own C sources.
 CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe")
@@ -181,11 +193,33 @@ def first_complaint(text):
     return text.strip().split("\n")[0] if text.strip() else ""
 
 
+def remove_tree(directory):
+    """Deletes a snippet's build directory; a program that just exited may hold its file for a moment."""
+    for attempt in range(5):
+        shutil.rmtree(directory, ignore_errors=True)
+        if not os.path.exists(directory):
+            return
+        time.sleep(0.2)
+
+
 def run_one(path):
+    """Builds and runs a snippet in its own directory, which goes once the snippet passes (or, for
+    FreeBSD, once its program and expected output are in the bundle)."""
     area = os.path.basename(os.path.dirname(path))
     name = os.path.splitext(os.path.basename(path))[0]
+    work = os.path.join(OUT, f"{area}.{name}")
+    remove_tree(work)
+    result = build_and_run(path, area, name, work)
+    if result["status"] in ("pass", "built", "skip"):
+        remove_tree(work)
+    return result
+
+
+def build_and_run(path, area, name, work):
     info = header(path)
-    exe = os.path.join(OUT, f"{area}.{name}.exe")
+    exe = os.path.join(work, f"{area}.{name}.exe")
+    # (a snippet's own --modules wins: the ones about splitting a program ask for 64 or 128)
+    modules = [] if "--modules" in shlex.split(info["kppc"]) else ["--modules", "4"]
     expected_path = os.path.splitext(path)[0] + ".expected"
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
@@ -202,21 +236,22 @@ def run_one(path):
         result["status"] = "skip"; return result
     if not TARGET and target not in (None, "windows"):
         result["status"] = "skip"; return result
+    os.makedirs(work, exist_ok=True)
     libs = []
     c_source = os.path.splitext(path)[0] + ".c"
     if os.path.exists(c_source):
-        obj = os.path.join(OUT, f"{area}.{name}.c.obj")
+        obj = os.path.join(work, f"{area}.{name}.c.obj")
         cc = subprocess.run([CLANG, *C_TARGET_FLAGS, "-c", "-O1", "-o", obj, c_source], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if cc.returncode != 0:
             result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
         libs = ["--lib", obj]
     if info["run"] is not None or info["test"] is not None:
-        return finish(run_command(path, info, libs, expected_path, result))
+        return finish(run_command(path, info, modules + libs, expected_path, result))
     companions = os.path.splitext(path)[0] + ".files"
     sources = [path, companions] if os.path.isdir(companions) else [path]
     sources += library_roots(path)
     try:
-        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *modules, *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -249,10 +284,12 @@ def run_one(path):
         result["status"] = "FAIL"; result["note"] = f"no warning `{missing[0]}`"
         return finish(result)
     if TARGET == "freebsd":
-        # Into the bundle: the program as <area>.<name>.elf, and its expected output, normalised.
-        os.replace(exe, os.path.splitext(exe)[0] + ".elf")
+        # Into the bundle, beside run.sh: the program as <area>.<name>.elf, and its expected output,
+        # normalised (the rest of its build goes with its directory).
+        bundled = os.path.join(OUT, f"{area}.{name}")
+        os.replace(exe, bundled + ".elf")
         expected = open(expected_path, encoding="utf-8").read() if os.path.exists(expected_path) else ""
-        with open(os.path.splitext(exe)[0] + ".expected", "w", encoding="utf-8", newline="\n") as f:
+        with open(bundled + ".expected", "w", encoding="utf-8", newline="\n") as f:
             f.write(normalise(expected) + "\n" if normalise(expected) else "")
         result["status"] = "built"
         return result
@@ -280,7 +317,7 @@ def library_roots(path):
 
 def is_companion(directory):
     """Whether a directory is (in) a snippet's companion: its .files, or one of its libraries."""
-    return any(re.search(r"\.(files|library\.\w+|unscoped\.\w+)$", part) for part in os.path.relpath(directory, HERE).split(os.sep))
+    return any(re.search(r"\.(files|library\.\w+|unscoped\.\w+)$", part) for part in os.path.relpath(directory, SNIPPETS).split(os.sep))
 
 
 def run_command(path, info, libs, expected_path, result):
@@ -394,14 +431,21 @@ def main():
     ap.add_argument("--debug-info", action="store_true")
     ap.add_argument("--target", choices=["linux", "freebsd", "windows-gnu"])
     ap.add_argument("--shard", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--snippets", default="")
     args = ap.parse_args()
+    global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS
+    if args.out:
+        OUT = os.path.abspath(args.out)
+    if args.snippets:
+        SNIPPETS = os.path.abspath(args.snippets)
+        args.no_doc = True
     shard = re.fullmatch(r"(\d+)/(\d+)", args.shard) if args.shard else None
     if args.shard and not (shard and 1 <= int(shard.group(1)) <= int(shard.group(2))):
         print("--shard takes I/N with 1 <= I <= N, not", args.shard)
         print("spec: FAILED: bad --shard"); return 2
     if shard:
         args.no_doc = True
-    global OUT, TARGET, C_TARGET_FLAGS
     for flag in ("release", "debug_info"):
         if getattr(args, flag):
             option = "--" + flag.replace("_", "-")
@@ -446,15 +490,20 @@ def main():
         print("no compiler at", KPPC)
         print("spec: FAILED: no compiler"); return 2
     os.makedirs(OUT, exist_ok=True)
+    # Files directly in OUT are an earlier run's: the FreeBSD bundle, or every build's objects from
+    # before the builds had a directory each. A whole run also clears the directories it leaves (a
+    # snippet since removed or renamed); one with --filter or --shard clears its own snippets' only.
+    whole = not args.filter and not shard
+    for entry in os.listdir(OUT):
+        if os.path.isfile(os.path.join(OUT, entry)):
+            os.remove(os.path.join(OUT, entry))
+        elif whole:
+            remove_tree(os.path.join(OUT, entry))
     if TARGET == "freebsd":
-        # (a bundle of this run's programs only: an earlier run's are gone)
-        for f in os.listdir(OUT):
-            if f.endswith((".elf", ".expected")) or f == "known.txt":
-                os.remove(os.path.join(OUT, f))
         with open(os.path.join(OUT, "run.sh"), "w", encoding="utf-8", newline="\n") as f:
             f.write(FREEBSD_RUN_SH)
-    files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
-                   if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
+    files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(SNIPPETS) for f in fn
+                   if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), SNIPPETS).replace("\\", "/"))
     if shard:
         files = files[int(shard.group(1)) - 1::int(shard.group(2))]
     start = time.time()
