@@ -1,0 +1,34 @@
+// spec: where a `when` condition is false (design.md 19), its declaration's name still hides the names of the same spelling around it: a use outside the condition is an error, never a use of the global `tally`, the base's `size`, the outer `Info` or the outer `note`
+// factorio: none: the converter writes each use of a debug-only name inside `if constexpr (config::debug)` (the game's #ifdef DEBUG members and globals beside release ones of the same spelling)
+// kppc: --release
+// error: when_false_name_hides_outer_names.kpp:19: error: 'tally' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_name_hides_outer_names.kpp:20: error: 'Info' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_name_hides_outer_names.kpp:20: error: 'note' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_name_hides_outer_names.kpp:26: error: 'size' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// error: when_false_name_hides_outer_names.kpp:32: error: 'size' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+int tally = 100;
+struct Info { int v = 1; };
+void note(long n) { println("outer ", n); }
+struct Base { int size = 1; };
+
+namespace game
+{
+  when (config::debug) int tally = 5;
+  when (config::debug) struct Info { int v = 2; };
+  when (config::debug) void note(int n) { println("debug ", n); }
+  int read() { return tally; }
+  int run() { Info i; note(3); return i.v; }
+}
+
+struct Box : Base
+{
+  when (config::debug) int size = 2;
+  int get() { return size; }
+};
+
+int main()
+{
+  Box b;
+  println(game::read(), " ", game::run(), " ", b.get(), " ", b.size);
+  return 0;
+}

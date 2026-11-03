@@ -2263,6 +2263,8 @@ namespace
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
     if (out.lexed.errorCount)
       return why = "the new text has lexical errors", false;
+    if (old.droppedWhen || out.parsed->droppedWhen)
+      return why = "a false when dropped a declaration (its name is kept in the index)", false;
     if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
       return why = "the function bodies cannot be paired", false;
     if (!collectBodies(out.parsed->decls, out.tokens, false, out.newBodies) || out.oldBodies.size() != out.newBodies.size())
@@ -2697,6 +2699,8 @@ namespace
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
     if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
       return why = "the new text has errors", false;
+    if (old.droppedWhen || out.parsed->droppedWhen)
+      return why = "a false when dropped a declaration (its name is kept in the index)", false;
     if (!tokenMap(oldTokens, oldText, out.tokens, out.text, out.map))
       return why = "the two versions differ too much to pair their tokens", false;
     std::vector<DeclaredFunction> oldFunctions, newFunctions;

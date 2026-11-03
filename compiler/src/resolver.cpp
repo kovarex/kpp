@@ -507,6 +507,17 @@ struct Scope
   std::atomic<int> usingEnumState{0};
   Span<Decl*> templateParams; // Of the owning class template.
   std::vector<FunctionDecl*> outOfLineMembers; // `void Foo<T>::f() {}` definitions, attached by finishIndex.
+  // The names the false `when` declarations of this scope declare (design.md 19), which the parser
+  // dropped: a lookup stops at one (Lookup::absent), never reaching an outer scope's or a base's name
+  // of that spelling. Filled by the index (a namespace's under deferredMutex), read after it.
+  std::unordered_map<uint32_t, Decl*> absent;
+  Decl* findAbsent(uint32_t symbol) const
+  {
+    if (absent.empty())
+      return nullptr;
+    auto it = absent.find(symbol);
+    return it == absent.end() ? nullptr : it->second;
+  }
   Dependencies relationDeps; // what resolving the bases and using-directives read
 
   Scope(ScopeKind kind, Scope* parent, Decl* owner, uint32_t shardCount)
@@ -620,6 +631,7 @@ namespace
     Scope* foundIn = nullptr;                      // Scope the name was found in.
     Decl* ambiguousWith = nullptr; // another entity the name equally names (through a using-directive): an error
     Scope* ambiguousIn = nullptr;  // set with ambiguousWith when two bases of a class have the name: the other base's scope
+    Decl* absent = nullptr;        // not found: the name is a false `when` declaration's in foundIn (design.md 19)
   };
 
   // Template parameter -> type, for members seen through an instantiation like Vector<int>.
@@ -1608,6 +1620,27 @@ struct GlobalScope::Impl
     localTypesOfOutOfLine.clear();
   }
 
+  // The name a declaration a false `when` dropped declares in its scope (design.md 19), or none.
+  uint32_t absentName(const Decl* d)
+  {
+    switch (d->kind)
+    {
+      case NodeKind::VariableDecl:
+        return static_cast<const VariableDecl*>(d)->name.parts.size() == 1 ? static_cast<const VariableDecl*>(d)->name.parts[0].symbol : UINT32_MAX;
+      case NodeKind::FunctionDecl:
+      {
+        auto* f = static_cast<const FunctionDecl*>(d);
+        return f->name.parts.size() == 1 && !(f->flags & (DF_Constructor | DF_Destructor | DF_Conversion | DF_Friend)) ? functionSymbol(f->name) : UINT32_MAX;
+      }
+      case NodeKind::ClassDecl:
+        return static_cast<const ClassDecl*>(d)->name.parts.size() == 1 ? static_cast<const ClassDecl*>(d)->name.parts[0].symbol : UINT32_MAX;
+      case NodeKind::EnumDecl:
+        return static_cast<const EnumDecl*>(d)->name.parts.size() == 1 ? static_cast<const EnumDecl*>(d)->name.parts[0].symbol : UINT32_MAX;
+      case NodeKind::UsingAliasDecl: return static_cast<const UsingAliasDecl*>(d)->name;
+      default: return UINT32_MAX;
+    }
+  }
+
   void indexDecls(Span<Decl*> decls, Scope* scope)
   {
     for (Decl* d : decls)
@@ -1661,6 +1694,9 @@ struct GlobalScope::Impl
           c->ownScope = own;
           ++scopes;
           indexDecls(c->members, own);
+          for (Decl* a : c->absentMembers) // (the scope is this thread's until the index is done)
+            if (uint32_t symbol = absentName(a); symbol != UINT32_MAX)
+              own->absent.emplace(symbol, a);
         }
         if (c->name.empty())
         {
@@ -2088,6 +2124,9 @@ struct GlobalScope::Impl
       if (!c->name.empty())
         own->add(c->name.parts[0].symbol, c, own);
       indexDecls(c->members, own);
+      for (Decl* a : c->absentMembers)
+        if (uint32_t symbol = absentName(a); symbol != UINT32_MAX)
+          own->absent.emplace(symbol, a);
     }
     else
     {
@@ -2403,6 +2442,12 @@ struct GlobalScope::Impl
       out.foundIn = s;
       return true;
     }
+    if (Decl* a = s->findAbsent(symbol))
+    {
+      out.absent = a; // (the name is a false `when`'s here: no base's, no using's)
+      out.foundIn = s;
+      return false;
+    }
     if (s->kind == ScopeKind::Class)
     {
       for (Decl* p : s->templateParams)
@@ -2441,11 +2486,16 @@ struct GlobalScope::Impl
         // other's; hiding happens inside each base's own lookup.)
         ensureBases(s, depth);
         bool any = false;
+        Lookup absentInBase;
         for (Scope* b : s->baseScopes)
         {
           Lookup r;
           if (!lookupInScope(b, symbol, r, depth + 1))
+          {
+            if (r.absent && !absentInBase.absent)
+              absentInBase = r;
             continue;
+          }
           if (!any)
           {
             out = r;
@@ -2463,6 +2513,12 @@ struct GlobalScope::Impl
         }
         if (any)
           return true;
+        if (absentInBase.absent)
+        {
+          out.absent = absentInBase.absent;
+          out.foundIn = absentInBase.foundIn;
+          return false;
+        }
       }
     }
     else if (s->kind == ScopeKind::Namespace)
@@ -2506,6 +2562,15 @@ struct GlobalScope::Impl
 
   // qualifierOnly: the name is followed by `::` (`thisThread::get_id()` with a local variable
   // thisThread in scope): variables and functions of the name are passed over.
+  // A lookup the name of a false `when` declaration stopped (design.md 19): nothing found, and why.
+  static Lookup absentStop(const Lookup& l)
+  {
+    Lookup out;
+    out.absent = l.absent;
+    out.foundIn = l.foundIn;
+    return out;
+  }
+
   Lookup lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly = false)
   {
     Lookup out;
@@ -2547,8 +2612,13 @@ struct GlobalScope::Impl
       // The file's private names (design.md 15) hide the global ones of the same spelling (in a
       // scoped library's file, the library's: design.md 16).
       if (s == &root || s->library)
-        if (Scope* own = privateScopeFor(context); own && own->parent == s && lookupInScope(own, symbol, out, depth, false) && found(out))
-          return out;
+        if (Scope* own = privateScopeFor(context); own && own->parent == s)
+        {
+          if (lookupInScope(own, symbol, out, depth, false) && found(out))
+            return out;
+          if (out.absent)
+            return absentStop(out);
+        }
       if (!usingsTried && s->kind == ScopeKind::Namespace)
       {
         usingsTried = true;
@@ -2566,6 +2636,8 @@ struct GlobalScope::Impl
       {
         if (lookupInScope(s, symbol, out, depth) && found(out))
           return out;
+        if (out.absent)
+          return absentStop(out);
         continue;
       }
       // A namespace's using-directive makes the nominated namespace's names visible as if declared
@@ -2596,6 +2668,8 @@ struct GlobalScope::Impl
         return own;
       if (viaFound)
         return via;
+      if (own.absent)
+        return absentStop(own);
     }
     if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth) && found(out))
       return out;
@@ -18303,7 +18377,13 @@ struct GlobalScope::Impl
           spelled.starts_with("_MM_"))
         return;
       std::string message = "'" + std::string(spelled) + "' is not declared";
-      if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
+      if (Lookup again = impl.lookupUnqualified(name.parts[0].symbol, scope, &locals, 0); again.absent)
+      {
+        // A false `when` declaration's name (design.md 19), which stopped the lookup.
+        std::string condition = conditionText(again.absent);
+        message = "'" + std::string(spelled) + "' exists only when " + condition + " holds: use it inside `if constexpr (" + condition + ")` or a `when` on it";
+      }
+      else if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
         message = "'" + std::string(spelled) + "' is private to " + owner->path;
       else
         for (Scope* library : impl.libraryScopes)
@@ -19571,11 +19651,11 @@ struct GlobalScope::Impl
             foundInBase = instantiationOfBase(t, cls, l.foundIn, 0);
             viaOtherClass = !foundInBase;
           }
-          if (!found || viaOtherClass)
+          if ((!found && !l.absent) || viaOtherClass) // (a false `when` member's name stops it: design.md 19)
             if (std::optional<MemberResult> viaBase = memberOfInstantiatedBases(t, cls, symbol, token))
               return *viaBase;
         }
-        else if (!found && !types.isDependent(t) && !cls->baseTypes.empty())
+        else if (!found && !l.absent && !types.isDependent(t) && !cls->baseTypes.empty())
         {
           // A plain class deriving from such an instantiation (`struct Item : H<Item, true>`,
           // whose Hook takes a sibling nested class as its base by the arguments): the member
@@ -19583,6 +19663,18 @@ struct GlobalScope::Impl
           if (std::optional<MemberResult> viaBase = memberOfInstantiatedBases(t, cls, symbol, token))
             return *viaBase;
         }
+      }
+      if (!found && l.absent)
+      {
+        // A member a false `when` dropped (design.md 19): used where its condition is not known to hold.
+        if (file && !file->isImported && !probing && token)
+        {
+          std::string condition = conditionText(l.absent);
+          impl.reportCheckerError(file, token, "'" + std::string(symbols.name(symbol)) + "' exists only when " + condition +
+                                                   " holds: use it inside `if constexpr (" + condition + ")` or a `when` on it");
+        }
+        r.type = types.unknown();
+        return r;
       }
       if (!found)
       {
@@ -24519,6 +24611,17 @@ void GlobalScope::indexFile(ParsedFile& file)
     }
   for (Decl* d : file.decls)
     impl->indexDecl(d, d->filePrivate ? file.privateScope : top);
+  if (!file.absentDecls.empty())
+  {
+    // The namespace-scope declarations a false `when` dropped (design.md 19): names lookups stop at.
+    std::lock_guard lock(impl->deferredMutex);
+    for (Decl* a : file.absentDecls)
+      if (uint32_t symbol = impl->absentName(a); symbol != UINT32_MAX)
+      {
+        Scope* in = a->parent && a->parent->kind == NodeKind::NamespaceDecl && a->parent->ownScope ? a->parent->ownScope : top;
+        in->absent.emplace(symbol, a);
+      }
+  }
   if (!file.castCandidates.empty())
   {
     std::lock_guard lock(impl->deferredMutex);

@@ -1445,9 +1445,10 @@ namespace
     // constant condition holds; each declaration it makes gets the condition (`when (c) int a, b;`).
     // A local variable's the checker decides (Decl::whenKnown), per instance. At namespace and class
     // scope it is decided here, from config constants and literals, as declaration-scope if
-    // constexpr is: true, the declarations are kept (whenKnown 1); false, they are dropped, and a
-    // class keeps its dropped data members' names (ClassDecl::absentMembers), whose constructor
-    // initializers are dropped with them. A condition on a class template's parameters (a member per
+    // constexpr is: true, the declarations are kept (whenKnown 1); false, they are dropped from the
+    // program but kept as names a lookup stops at (ClassDecl::absentMembers, ParsedFile::absentDecls),
+    // so a misplaced use is an error, never a use of an outer name; a dropped data member's constructor
+    // initializers are dropped with it. A condition on a class template's parameters (a member per
     // instance) is not supported yet.
     void parseWhen(Scope scope)
     {
@@ -1507,16 +1508,21 @@ namespace
       }
       if (holds && !*holds)
       {
+        // The declarations do not exist in this configuration; their names stay, for a lookup to stop
+        // at (a misplaced use is an error, never a use of an outer name of the same spelling).
+        out.droppedWhen = true;
         if (scope == Scope::Class && currentParent && currentParent->kind == NodeKind::ClassDecl)
         {
           auto* c = static_cast<ClassDecl*>(currentParent);
-          std::vector<uint32_t> absent(c->absentMembers.begin(), c->absentMembers.end());
+          std::vector<Decl*> absent(c->absentMembers.begin(), c->absentMembers.end());
           for (size_t i = mark; i < scratch.size(); ++i)
-            if (scratch[i]->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(scratch[i])->name.empty())
-              absent.push_back(static_cast<VariableDecl*>(scratch[i])->name.last().symbol);
+            absent.push_back(static_cast<Decl*>(scratch[i]));
           c->absentMembers = makeSpanOf(absent);
         }
-        scratch.resize(mark); // the declarations do not exist in this configuration
+        else if (scope == Scope::Namespace)
+          for (size_t i = mark; i < scratch.size(); ++i)
+            out.absentDecls.push_back(static_cast<Decl*>(scratch[i]));
+        scratch.resize(mark);
       }
     }
 

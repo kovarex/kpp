@@ -236,9 +236,10 @@ struct ClassDecl : Decl
   Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
-  // The data members a false `when` dropped in this configuration (design.md 19), by name: their
-  // constructor initializers are dropped with them (absentMemberInit).
-  Span<uint32_t> absentMembers;
+  // The members a false `when` dropped in this configuration (design.md 19): not members, but names
+  // a lookup in the class stops at (Scope::absent); a data member's constructor initializers are
+  // dropped with it (absentMemberInit).
+  Span<Decl*> absentMembers;
 };
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };
 struct EnumDecl : Decl
@@ -294,8 +295,9 @@ inline bool absentMemberInit(const ClassDecl* cls, const FunctionDecl::CtorInit&
     return false;
   uint32_t name = init.member.parts[0].symbol;
   bool absent = false;
-  for (uint32_t symbol : cls->absentMembers)
-    absent = absent || symbol == name;
+  for (const Decl* a : cls->absentMembers)
+    absent = absent || (a->kind == NodeKind::VariableDecl && !static_cast<const VariableDecl*>(a)->name.empty() &&
+                        static_cast<const VariableDecl*>(a)->name.last().symbol == name);
   if (absent) // (unless a member that exists has the name: `when (!c)`'s of `when (c)`'s)
     for (const Decl* m : cls->members)
       if (m->kind == NodeKind::VariableDecl && !static_cast<const VariableDecl*>(m)->name.empty() &&
@@ -432,6 +434,10 @@ struct ParsedFile
   std::string_view text;
   std::string path; // Set by the driver, for diagnostics.
   bool isImported = false; // Preprocessed C declarations, not user code.
+  // The namespace-scope declarations a false `when` dropped (design.md 19), each with its parent: not
+  // declarations of the program, but names a lookup stops at (the resolver's index, Scope::absent).
+  std::vector<Decl*> absentDecls;
+  bool droppedWhen = false; // a false `when` dropped a declaration in it, at namespace or class scope
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's
