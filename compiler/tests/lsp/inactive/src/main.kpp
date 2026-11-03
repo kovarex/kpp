@@ -1,0 +1,40 @@
+// Inactive code for tests\lsp.ps1 (docs/editors.md, "Inactive code"): what the checked configuration does not build.
+when (config::debug) int created = 0;
+if constexpr (config::debug)
+{
+  int pick() { return 1; }
+}
+else
+{
+  int pick() { return 2; }
+}
+
+struct Counter
+{
+  int value = 0;
+  when (config::debug) int calls = 0;
+
+  void add()
+  {
+    if constexpr (config::debug)
+    {
+      ++calls;
+      ++created;
+    }
+    else
+      value += pick();
+    when (!config::debug) int skipped = 0;
+    ++value;
+  }
+};
+
+int main()
+{
+  Counter c;
+  c.add();
+  if constexpr (config::debug)
+    println("debug ", pick());
+  else
+    println("release ", pick());
+  return 0;
+}

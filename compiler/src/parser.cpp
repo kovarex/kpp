@@ -1541,6 +1541,7 @@ namespace
         // The declarations do not exist in this configuration; their names stay, for a lookup to stop
         // at (a misplaced use is an error, never a use of an outer name of the same spelling).
         out.droppedWhen = true;
+        out.droppedTokens.push_back({start, pos});
         if (scope == Scope::Class && currentParent && currentParent->kind == NodeKind::ClassDecl)
         {
           auto* c = static_cast<ClassDecl*>(currentParent);
@@ -1621,7 +1622,9 @@ namespace
       }
       if (!keep)
       {
+        uint32_t from = pos;
         skipBalanced();
+        out.droppedTokens.push_back({from, pos});
         return;
       }
       advance();

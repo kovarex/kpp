@@ -447,6 +447,10 @@ struct ParsedFile
   // declarations of the program, but names a lookup stops at (the resolver's index, Scope::absent).
   std::vector<Decl*> absentDecls;
   bool droppedWhen = false; // a false `when` dropped a declaration in it, at namespace or class scope
+  // The tokens [from, to) the parser dropped for this configuration: a false `when` at namespace or
+  // class scope, `when` included, and a declaration-scope `if constexpr` branch not taken, braces
+  // included (the language server shows them as inactive: docs/editors.md, "Inactive code").
+  std::vector<std::pair<uint32_t, uint32_t>> droppedTokens;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's

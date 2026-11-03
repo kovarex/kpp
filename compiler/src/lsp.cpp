@@ -889,6 +889,8 @@ namespace
     std::string announcedCell = "\n";          // the cell kpp/activeCell last named
     std::string shownFailure;                   // the diagnostic-less failure last shown (check)
     bool markdownHover = false;                 // the client renders hover's markdown (else plain text)
+    bool inactiveRegions = false;               // the client takes textDocument/inactiveRegions (clangd's)
+    std::map<std::string, std::string> inactiveSent; // the regions last sent per open document (overlayKey -> JSON)
     size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
     bool initialized = false, shutdownRequested = false;
@@ -1339,6 +1341,130 @@ namespace
       log("check %zu: %.3f s, exit %d, %zu diagnostics in %zu files", checks, seconds, code, count, published.size());
       for (const std::string& note : notes)
         log("  %s", note.c_str());
+      sendInactiveRegions();
+    }
+
+    // ---- inactive code (docs/editors.md, "Inactive code") ----
+
+    // One past a statement's last token: a block's closing brace, else the `;` that ends it.
+    uint32_t statementEnd(const ParsedFile& f, Stmt* s)
+    {
+      const std::vector<Token>& tokens = *f.tokens;
+      uint32_t n = uint32_t(tokens.size());
+      if (s->token < n && tokens[s->token].is(P::LBrace))
+      {
+        int depth = 0;
+        for (uint32_t t = s->token; t < n; ++t)
+          if (tokens[t].is(P::LBrace))
+            ++depth;
+          else if (tokens[t].is(P::RBrace) && --depth == 0)
+            return t + 1;
+        return n;
+      }
+      uint32_t last = s->token;
+      forEachNode(s, [&](Node* node) { last = std::max(last, node->token); });
+      int depth = 0;
+      for (uint32_t t = last; t < n; ++t)
+      {
+        if (tokens[t].is(P::LParen) || tokens[t].is(P::LBrace) || tokens[t].is(P::LBracket))
+          ++depth;
+        else if (tokens[t].is(P::RParen) || tokens[t].is(P::RBrace) || tokens[t].is(P::RBracket))
+          --depth;
+        else if (tokens[t].is(P::Semi) && depth <= 0)
+          return t + 1;
+      }
+      return last + 1;
+    }
+
+    // The tokens [from, to) of a file its cell does not build: what the parser dropped (a false
+    // `when` at namespace or class scope, a declaration-scope `if constexpr` branch not taken), and
+    // what the walk decided in function bodies: an `if constexpr`'s discarded branch and a local's
+    // false `when`. A template's own body is decided per instance and none of it is shown.
+    std::vector<std::pair<uint32_t, uint32_t>> inactiveTokens(const ParsedFile& f)
+    {
+      std::vector<std::pair<uint32_t, uint32_t>> out = f.droppedTokens;
+      const std::vector<Token>& tokens = *f.tokens;
+      forEachNode(f.decls, [&](Node* n)
+      {
+        if (n->kind == NodeKind::IfStmt)
+        {
+          auto* s = static_cast<IfStmt*>(n);
+          Stmt* discarded = !s->isConstexpr || s->constexprKnown < 0 ? nullptr : s->constexprKnown ? s->else_ : s->then;
+          if (discarded)
+            out.push_back({discarded->token, statementEnd(f, discarded)});
+        }
+        else if (n->kind == NodeKind::VariableDecl || n->kind == NodeKind::UsingAliasDecl || n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
+        {
+          // A local's false `when` (what a block may declare with one), from `when`: the declaration's
+          // tokens begin after its parenthesized condition.
+          auto* d = static_cast<Decl*>(n);
+          if (!d->when || d->whenKnown != 0)
+            return;
+          uint32_t from = d->token;
+          if (from > 0 && tokens[from - 1].is(P::RParen))
+          {
+            int depth = 0;
+            for (uint32_t t = from; t-- > 0;)
+              if (tokens[t].is(P::RParen))
+                ++depth;
+              else if (tokens[t].is(P::LParen) && --depth == 0)
+              {
+                if (t > 0 && tokens[t - 1].is(Kw::when_))
+                  from = t - 1;
+                break;
+              }
+          }
+          out.push_back({from, std::max(d->endToken, d->token + 1)});
+        }
+      });
+      std::sort(out.begin(), out.end());
+      std::vector<std::pair<uint32_t, uint32_t>> merged;
+      for (const auto& r : out)
+        if (!merged.empty() && r.first <= merged.back().second)
+          merged.back().second = std::max(merged.back().second, r.second);
+        else
+          merged.push_back(r);
+      return merged;
+    }
+
+    // textDocument/inactiveRegions for each open document whose regions changed (an empty list when
+    // they went), to a client that takes them.
+    void sendInactiveRegions()
+    {
+      if (!inactiveRegions)
+        return;
+      auto start = Clock::now();
+      std::vector<std::pair<std::string, Json>> changed;
+      onProgram([&](const KeptProgram& program)
+      {
+        for (const auto& [key, document] : documents)
+        {
+          Json regions = Json::array();
+          if (ParsedFile* f = fileOf(program, document.uri); f && f->tokens && !f->tokens->empty())
+          {
+            const std::vector<Token>& tokens = *f->tokens;
+            for (const auto& [from, to] : inactiveTokens(*f))
+            {
+              if (from >= to || to > tokens.size())
+                continue;
+              const Token& last = tokens[to - 1];
+              regions.push(range(f->text, startsOf(f), tokens[from].offset, size_t(last.offset) + last.length));
+            }
+          }
+          std::string body;
+          write(regions, body);
+          if (inactiveSent[key] != body)
+          {
+            inactiveSent[key] = body;
+            changed.push_back({document.uri, std::move(regions)});
+          }
+        }
+      });
+      log("inactive regions: %zu open document(s), %zu changed, %.3f ms", documents.size(), changed.size(),
+          std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+      for (auto& [uri, regions] : changed)
+        notify("textDocument/inactiveRegions",
+               Json::object().set("textDocument", Json::object().set("uri", uri)).set("regions", std::move(regions)));
     }
 
     // ---- queries (under withKeptProgram) ----
@@ -2631,6 +2757,7 @@ namespace
     {
       fs::path path = uriToPath(params["textDocument"]["uri"].text);
       std::string key = overlayKey(path);
+      inactiveSent.erase(key);
       if (documents.erase(key))
       {
         setFileOverlay(path, nullptr); // the file on disk again
@@ -2704,6 +2831,10 @@ namespace
         markdownHover = false;
         for (const Json& format : params["capabilities"]["textDocument"]["hover"]["contentFormat"].items)
           markdownHover = markdownHover || format.text == "markdown";
+        // clangd's capability, or initializationOptions' inactiveRegions from a client that cannot add
+        // one (Visual Studio's in-process client).
+        inactiveRegions = params["capabilities"]["textDocument"]["inactiveRegionsCapabilities"]["inactiveRegions"].boolean ||
+                          params["initializationOptions"]["inactiveRegions"].boolean;
         ProjectCheck wanted = project;
         readOptions(params["initializationOptions"], wanted);
         std::string error;

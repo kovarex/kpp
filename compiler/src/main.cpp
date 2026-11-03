@@ -3130,6 +3130,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     file.diagnostics = c.parsed->diagnostics; // (inside bodies: errorsInBodies)
     file.declCount = c.parsed->declCount;
     file.functionBodies = c.parsed->functionBodies;
+    file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
     file.nodeCount = c.parsed->nodeCount;
     file.arenaBytesReported = c.parsed->arena.bytesAllocated();
     kept.grafts.push_back(std::move(c.parsed)); // its arena holds the new bodies
@@ -3511,6 +3512,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     file.tokens = &kept.lexed[i].tokens;
     file.declCount = c.parsed->declCount;
     file.functionBodies = c.parsed->functionBodies;
+    file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
     file.nodeCount = c.parsed->nodeCount;
     file.arenaBytesReported = c.parsed->arena.bytesAllocated();
     kept.grafts.push_back(std::move(c.parsed));
