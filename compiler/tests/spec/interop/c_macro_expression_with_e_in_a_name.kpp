@@ -1,0 +1,17 @@
+// spec: an imported C macro whose body is an integer expression naming another macro is an integer constant, whatever letters that name has: `(BASE_VALUE + 13)` divides as an int; one with a floating literal (`* 0.5`, `2e3`) is floating (`5006 9999 5000 2001`)
+// factorio: MinGW-w64's winsock error codes (`#define WSAEWOULDBLOCK (WSABASEERR + 35)`), imported as doubles in the windows-gnu build of the game
+extern "C" import "c_macro_expression_with_e_in_a_name.h";
+
+int main()
+{
+  int derived = DERIVED;
+  switch (derived)
+  {
+    case DERIVED:
+      break;
+    default:
+      return 1;
+  }
+  println(DERIVED / 2, " ", SCALED_BASE / 2, " ", REAL_HALF, " ", REAL_EXPONENT);
+  return 0;
+}

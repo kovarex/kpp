@@ -947,6 +947,32 @@ namespace
       return !body.empty() && isdigit((unsigned char)body[0]) && body.find_first_not_of("0123456789.eE+-fFlL") == std::string::npos &&
              body.find_first_of(".eE") != std::string::npos;
     };
+    // A floating literal among a body's numbers (`* 0.5`, `2e3 + 1`): a '.' or a decimal exponent in a
+    // number, never an E of a name. `(WSABASEERR + 13)`, MinGW-w64's WSAEACCES, is an int (taken for a
+    // double, `DERIVED / 2` divided as one).
+    auto floatingNumber = [](const std::string& body)
+    {
+      for (size_t i = 0; i < body.size(); ++i)
+      {
+        bool inName = i > 0 && (isalnum((unsigned char)body[i - 1]) || body[i - 1] == '_');
+        bool starts = isdigit((unsigned char)body[i]) || (body[i] == '.' && i + 1 < body.size() && isdigit((unsigned char)body[i + 1]));
+        if (inName || !starts)
+          continue;
+        bool hex = body[i] == '0' && i + 1 < body.size() && (body[i + 1] == 'x' || body[i + 1] == 'X');
+        size_t j = i;
+        bool floating = false;
+        while (j < body.size() && (isalnum((unsigned char)body[j]) || body[j] == '.' || body[j] == '_' ||
+                                   (!hex && (body[j] == '+' || body[j] == '-') && (body[j - 1] == 'e' || body[j - 1] == 'E'))))
+        {
+          floating = floating || (!hex && (body[j] == '.' || body[j] == 'e' || body[j] == 'E'));
+          ++j;
+        }
+        if (floating)
+          return true;
+        i = j - 1;
+      }
+      return false;
+    };
     for (size_t p = 0; p < defines.size();)
     {
       size_t end = defines.find('\n', p);
@@ -1054,8 +1080,7 @@ namespace
       }
       else if (quotes == 2)
         type = "char*";
-      else if (hasNumber && body.find_first_of("\"") == std::string::npos && body.find_first_of("xX") == std::string::npos &&
-               body.find_first_of(".eE") != std::string::npos)
+      else if (hasNumber && body.find_first_of("\"") == std::string::npos && floatingNumber(body))
         type = body.back() == 'f' || body.back() == 'F' ? "float" : "double";
       else if (hasNumber && body.find_first_not_of("0123456789xXabcdefABCDEFuUlLi()- +") == std::string::npos &&
                (body.find('i') == std::string::npos || body.find("i64") != std::string::npos || body.find("i32") != std::string::npos))
@@ -1279,7 +1304,7 @@ namespace
     }
     uint64_t hash = 1469598103934665603ull;
     // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
-    for (unsigned char c : "kpp import 7\n" + wrapper + includeArgs + "\n" + toolchain)
+    for (unsigned char c : "kpp import 8\n" + wrapper + includeArgs + "\n" + toolchain)
       hash = (hash ^ c) * 1099511628211ull;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);

@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1073 pass, 11 pending, 0 failing, 0 fixed** (1084 snippets, 45.0 s).
+**1074 pass, 11 pending, 0 failing, 0 fixed** (1085 snippets, 45.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1065,6 +1065,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `interop/c_import_unreadable_member_is_error.kpp` | an imported C struct whose definition the import could not read in full (a member in a construct the C parser does not read) is an error where a use needs its layout, and so is a struct that holds one; never a struct without that member, whose layout would silently be another than C's (a pointer to it needs no layout) | pass | none; kpp.net's FreeBSD 14.3 headers: mcontext_t's `long mc_fpstate[64] __attribute__((__aligned__(16)))` was skipped, so ucontext_t was 360 bytes, not 880 (B's review of I's FreeBSD target) |  |
 | `interop/c_import_windows.kpp` | importing a C header (`extern "C" import "windows.h";`) and calling into it | pass |  |  |
 | `interop/c_macro_casts.kpp` | an imported header's constant macro that casts through typedef names (windows.h's `INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)`) is the constant the casts make: all ones, as Win32 returns it | pass |  |  |
+| `interop/c_macro_expression_with_e_in_a_name.kpp` | an imported C macro whose body is an integer expression naming another macro is an integer constant, whatever letters that name has: `(BASE_VALUE + 13)` divides as an int; one with a floating literal (`* 0.5`, `2e3`) is floating (`5006 9999 5000 2001`) | pass | MinGW-w64's winsock error codes (`#define WSAEWOULDBLOCK (WSABASEERR + 35)`), imported as doubles in the windows-gnu build of the game |  |
 | `interop/c_math_classification_macros.kpp` | math.h's classification macros are usable through the C import as C uses them: fpclassify, signbit, isnan, isinf, and the FP_* constants the UCRT defines (FP_NORMAL is (-1), FP_SUBNORMAL (-2)) | pass | trio (converted as C): trionan.c's c99_fpclassify_and_signbit, which its `#if defined(PREDEF_STANDARD_C99) && defined(fpclassify)` selects in the C build, `switch (fpclassify(number)) { case FP_NAN: ... case FP_SUBNORMAL: ... }` |  |
 | `interop/c_object_with_vtable.kpp` | a single-inheritance class's vtable is laid out as MSVC's and COM's: the object's first word points at the first virtual function's slot, the slots follow in declaration order, `this` is the first argument; so kpp calls a C object's table of functions through a class declaring the same virtual functions, and C calls a kpp object's through its table | pass |  |  |
 | `interop/c_short_int_spellings.kpp` | a C header's `short int`, `unsigned short int` and `signed short int` are 16 bits, in a typedef, a struct's members and an inline function's parameter, result and cast (`long int` stays 4 bytes, as MSVC's long) | pass | none; glibc's `typedef unsigned short int uint16_t`, so ntohs and htons returned 32 bits on Linux (thread G, libraries/net) |  |
