@@ -81,7 +81,10 @@ copy once: a git worktree of C:\factorio-in-kpp (its objects shared), checked ou
 shaders\ (4.3 GB). The game built there reads C:\factorio-in-kpp's data through its config
 (config\config.ini's `read-data=C:/factorio-in-kpp/data`, which setup-checkout.cmd writes and
 build.kpp and run.cmd keep), and so `read-data/../tests` and `../shaders` are C:\factorio-in-kpp's
-too; harness.cmd takes its data\ inputs from there. Measured on thread C's copy: 0.18 GB checked
+too; harness.cmd takes its data\ inputs from there. The game's resources need no data\: convert.cmd
+copies the icons factorio.rc names (data\core\graphics\factorio.ico and factorio-icon.png) into
+libraries\kpp-native beside it, and its check tests\native-rc.ps1 compiles the .rc from those files
+alone. Measured on thread C's copy: 0.18 GB checked
 out; a game build adds build\ (about 3.2 GB per configuration) and bin\ (0.6 GB), so debug and
 release together are about 8 GB. resources.cmd refuses a copy (a sparse checkout): it updates
 C:\factorio-in-kpp's, which the copies share.

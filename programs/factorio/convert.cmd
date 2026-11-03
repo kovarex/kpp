@@ -98,7 +98,10 @@ for %%f in (native\*.c native\*.cpp) do copy /y %%f "%NATIVE%" >nul
 xcopy /y /q native\include "%NATIVE%\include" >nul
 copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || goto :failed
 copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || goto :failed
-powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/', '../../') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || goto :failed
+rem (and its icons beside it: a thread's copy has no data\, setup-checkout.cmd)
+for %%i in (factorio.ico factorio-icon.png) do copy /y %FACTORIO%\data\core\graphics\%%i "%NATIVE%" >nul || goto :failed
+powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/data/core/graphics/', '') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || goto :failed
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\native-rc.ps1 -Native "%NATIVE%" || goto :failed
 set STEP=the conversion into kpp\
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
