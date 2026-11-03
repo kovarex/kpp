@@ -1,0 +1,24 @@
+// spec: a use of a name several `when` declarations declare (design.md 19) may stand outside any condition: it names the one that exists in this configuration and is checked against that declaration, as a use after an `#ifdef`/`#else` pair was; `config::debug` and `!config::debug` always leave exactly one (`debug 2` in a debug build, `release 0` in a release one)
+// factorio: `#ifdef DEBUG` / `#else` pairs declaring one local two ways and using it after both
+struct DebugTimer
+{
+  int ticks = 0;
+  void tick() { this->ticks = this->ticks + 1; }
+  const char* kind() const { return "debug"; }
+};
+struct NullTimer
+{
+  int ticks = 0;
+  void tick() {}
+  const char* kind() const { return "release"; }
+};
+
+int main()
+{
+  when (config::debug) DebugTimer timer;
+  when (!config::debug) NullTimer timer;
+  timer.tick();
+  timer.tick();
+  println(StringView(timer.kind()), " ", timer.ticks);
+  return 0;
+}

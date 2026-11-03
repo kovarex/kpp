@@ -18026,6 +18026,7 @@ struct GlobalScope::Impl
     std::vector<const Ty*> walkedArgTypes;
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
     size_t blockLocals = 0;            // where the innermost block's locals start (a `when` clash: whenHolds)
+    std::vector<size_t> blockStarts;   // where each enclosing block's locals start, the innermost last (whenUse)
     int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide
     // The code generator's re-typing of an instance's copy with a type pack bound to one element
     // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
@@ -19246,6 +19247,8 @@ struct GlobalScope::Impl
           l = target;
       }
       e->resolved = l.decl;
+      if (!whenLookup(l, e))
+        return types.unknown(); // (design.md 19: reported, or the instances' to tell)
       for (const NamePart& part : e->name.parts)
         for (Node* arg : part.templateArgs)
           walkNode(arg);
@@ -21286,6 +21289,11 @@ struct GlobalScope::Impl
           }
         }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        if (!whenLookup(l, n))
+        {
+          record(n, types.unknown());
+          return types.unknown(); // (design.md 19: reported, or the instances' to tell)
+        }
         Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
         if (l.found == Found::Global)
           l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
@@ -23172,6 +23180,108 @@ struct GlobalScope::Impl
       locals.pop(mark);
     }
 
+    // A `when` declaration's condition as written (design.md 19), for a message: its tokens from the first
+    // to the `)` that closes `when (`.
+    std::string conditionText(Decl* d)
+    {
+      const ParsedFile* f = d->file ? d->file : file;
+      if (!d->when || !f || !f->tokens)
+        return "its condition";
+      uint32_t first = UINT32_MAX;
+      forEachNode(d->when, [&](Node* n) { first = std::min(first, n->token); });
+      const std::vector<Token>& tokens = *f->tokens;
+      uint32_t end = first;
+      for (int depth = 0; end < tokens.size(); ++end)
+        if (tokens[end].is(P::LParen))
+          ++depth;
+        else if (tokens[end].is(P::RParen) && depth-- == 0)
+          break;
+      if (first >= end || end >= tokens.size())
+        return "its condition";
+      return std::string(f->text.substr(tokens[first].offset, tokens[end - 1].offset + tokens[end - 1].length - tokens[first].offset));
+    }
+
+    // Where the walk is, for a message about what exists: "here", or which instance.
+    std::string whenWhere()
+    {
+      std::string where = "here";
+      if (activeSubst && bodyOf && !bodyOf->name.empty())
+      {
+        where = "in this instance (" + std::string(symbols.name(bodyOf->name.last().symbol)) + "<";
+        for (size_t k = 0; k < activeSubst->pairs.size(); ++k)
+          where += (k ? ", " : "") + types.toString(activeSubst->pairs[k].type, &symbols);
+        where += ">)";
+      }
+      return where;
+    }
+
+    // A use of a local a `when` declares (design.md 19), found by lookup as found (its block's last
+    // declaration of the name), checked in the configuration and instance being built: the declaration
+    // the use names, or null after an error, or where this walk cannot tell (undecided: a template's own
+    // walk, a condition on its parameters, of several declarations). The candidates are the declarations
+    // of the name in found's block, a plain one existing always. The use names the one that exists here;
+    // none existing is an error here, as a `when` that does not exist still hides an outer name (never a
+    // fallback to it); two existing are the clash, reported where the later is declared. A use inside a
+    // discarded branch is not walked, as any discarded code.
+    Decl* whenUse(uint32_t symbol, uint32_t token, Decl* found, bool& undecided)
+    {
+      undecided = false;
+      size_t at = locals.items.size();
+      while (at > 0 && locals.items[at - 1].decl != found)
+        --at;
+      if (at == 0)
+        return found;
+      size_t start = 0;
+      for (size_t s : blockStarts)
+        if (s < at)
+          start = s;
+      std::vector<Decl*> candidates, existing;
+      std::string conditions;
+      for (size_t i = start; i < locals.items.size(); ++i)
+        if (Decl* c = locals.items[i].decl;
+            locals.items[i].symbol == symbol && c && std::find(candidates.begin(), candidates.end(), c) == candidates.end())
+        {
+          candidates.push_back(c);
+          if (!c->when || c->whenKnown == 1)
+            existing.push_back(c);
+          else if (c->whenKnown < 0)
+            undecided = true;
+          if (c->when)
+            conditions += (conditions.empty() ? "" : ", ") + conditionText(c);
+        }
+      if (undecided)
+        return candidates.size() == 1 ? found : nullptr; // (a lone one typed as itself; of several, the instances tell)
+      if (!existing.empty())
+        return existing[0];
+      if (file && !file->isImported && !probing)
+      {
+        std::string name(symbols.name(symbol));
+        std::string message = candidates.size() == 1 ? "'" + name + "' exists only when " + conditions + " holds: use it inside `if constexpr (" +
+                                                           conditions + ")` or a `when` on it"
+                                                     : "'" + name + "' does not exist here: none of its `when` conditions holds (" + conditions + ")";
+        if (activeSubst)
+          reportInInstance(token, message);
+        else
+          impl.reportCheckerError(file, token, message);
+      }
+      return nullptr;
+    }
+
+    // A lookup that found a local a `when` declares (design.md 19): its declaration made the one the use
+    // names (whenUse); false after an error, or where this walk cannot tell which.
+    bool whenLookup(Lookup& l, NameExpr* n)
+    {
+      if (l.found != Found::Local || !l.decl || !l.decl->when || n->name.parts.size() != 1)
+        return true;
+      bool undecided = false;
+      Decl* named = whenUse(n->name.parts[0].symbol, n->token, l.decl, undecided);
+      if (!named)
+        return false;
+      l.decl = named;
+      n->resolved = named;
+      return true;
+    }
+
     // `when (condition)` on a local (design.md 19): decided as if constexpr's condition is, in an
     // instance and in a function that is no template; false, the variable does not exist: it is not
     // declared, nothing of it is checked or instantiated, as a discarded branch. A template's own
@@ -23197,17 +23307,9 @@ struct GlobalScope::Impl
       auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
       if (*known && v && v->name.parts.size() == 1)
         for (size_t i = blockLocals; i < locals.items.size(); ++i)
-          if (locals.items[i].symbol == v->name.parts[0].symbol && locals.items[i].decl && locals.items[i].decl->when)
+          if (Decl* other = locals.items[i].decl; locals.items[i].symbol == v->name.parts[0].symbol && other && (!other->when || other->whenKnown != 0))
           {
-            std::string where = "here";
-            if (activeSubst && bodyOf && !bodyOf->name.empty())
-            {
-              where = "in this instance (" + std::string(symbols.name(bodyOf->name.last().symbol)) + "<";
-              for (size_t k = 0; k < activeSubst->pairs.size(); ++k)
-                where += (k ? ", " : "") + types.toString(activeSubst->pairs[k].type, &symbols);
-              where += ">)";
-            }
-            impl.reportCheckerError(file, d->token, "'" + std::string(symbols.name(v->name.parts[0].symbol)) + "' is declared twice " + where +
+            impl.reportCheckerError(file, d->token, "'" + std::string(symbols.name(v->name.parts[0].symbol)) + "' is declared twice " + whenWhere() +
                                                         ": both `when` conditions hold");
             break;
           }
@@ -23217,7 +23319,12 @@ struct GlobalScope::Impl
     void walkLocalDecl(Decl* d)
     {
       if (!whenHolds(d))
-        return; // (not declared: the name is another `when`'s, or nothing's)
+      {
+        // Declared all the same, absent (whenKnown 0): a use of its name finds it, never a name of an
+        // outer scope or of the library, and is an error unless it is discarded code (whenUse).
+        declareLocal(d);
+        return;
+      }
       // Classes are in scope in their own bodies. A variable whose type is written is in scope
       // in its own initializer, as C++ declares it before that (`Function<void(int)> visit =
       // [&](int n) { visit(n - 1); };`); an `auto` one is not, its type comes from there.
@@ -23261,8 +23368,10 @@ struct GlobalScope::Impl
         {
           size_t mark = locals.mark(), savedBlock = blockLocals;
           blockLocals = mark;
+          blockStarts.push_back(mark);
           for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
             walkStmt(inner);
+          blockStarts.pop_back();
           blockLocals = savedBlock;
           locals.pop(mark);
           break;
@@ -23730,6 +23839,11 @@ struct GlobalScope::Impl
           for (const LambdaCapture& cap : l->captures)
             if (cap.decl)
               walkLocalDecl(cap.decl); // init-capture: a variable of the closure, typed from its initializer
+            else if (Decl* captured = cap.isThis ? nullptr : locals.find(cap.symbol); captured && captured->when)
+            {
+              bool undecided = false;
+              whenUse(cap.symbol, l->token, captured, undecided); // (design.md 19: a use of the local)
+            }
           pushTemplateParams(l->templateParams);
           std::vector<const Ty*> params;
           for (Decl* p : l->params)

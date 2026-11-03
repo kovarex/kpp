@@ -1,11 +1,13 @@
-// spec: a name `when (condition)` declares (design.md 19) may be used only where the condition is known to hold, inside `if constexpr` on it or another `when` on it; a use anywhere else is a compile error in every configuration, also where the condition happens to be true (the debug one here), never a silent fallback
+// spec: a name `when (condition)` declares (design.md 19) is checked in the configuration being built: where the declaration does not exist (tracing is off here), a use of the name is a compile error in that build, never a silent fallback to another declaration of that spelling (here the library's count), while a use inside a discarded branch is not checked
 // factorio: none: the converter writes each use of a debug-only local inside `if constexpr (config::debug)` or `when (config::debug)`
-// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses; the message is D's to word)
-// error: when_use_outside_its_condition_is_error.kpp:9: error: 'count' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
+// kppc: --config tracing=false
+// error: when_use_outside_its_condition_is_error.kpp:11: error: 'count' exists only when config::tracing holds: use it inside `if constexpr (config::tracing)` or a `when` on it
 int main()
 {
-  when (config::debug) int count = 3;
+  when (config::tracing) int count = 3;
   int total = 1;
+  if constexpr (config::tracing)
+    total += count;
   total += count;
   println(total);
   return 0;
