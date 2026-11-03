@@ -1,0 +1,29 @@
+// spec: a generic lambda written in a function template names the static local of the instance it is in, each instance's lambda its own instance's static, and an instance (a template the lambda is passed to) calls it first, in a build of 64 modules (and the release suite's) (`206 212 406 412 806 812 1606 1612`)
+// factorio: none known; found fixing language/generic_lambda_reads_writers_static_local (master before the fix: "use of undefined value '@"counter<char>()::calls.29"'", at --modules 4 and 64, debug and release)
+// kppc: --modules 64
+template<typename F> int apply(F f) { return f(2); }
+
+// Each instance: its static's start from its argument, the instance's own update, the operator's
+// (through apply), then the sum of the two reads: twice the value the operator left.
+template<typename T> int counter()
+{
+  static int calls = int(sizeof(T)) * 100;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+
+int main()
+{
+  int a1 = counter<char>();
+  int a2 = counter<char>();
+  int b1 = counter<short>();
+  int b2 = counter<short>();
+  int c1 = counter<int>();
+  int c2 = counter<int>();
+  int d1 = counter<long long>();
+  int d2 = counter<long long>();
+  println(a1, " ", a2, " ", b1, " ", b2, " ", c1, " ", c2, " ", d1, " ", d2);
+  return 0;
+}

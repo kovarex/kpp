@@ -333,6 +333,11 @@ namespace
     std::unordered_map<const Ty*, StructInfo> structs;
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
+    // A static local that code its function's emission does not write names too (Emitter::staticLocal):
+    // its definition by name, which every module naming it has a copy of; a build of one module
+    // defines it once.
+    std::unordered_map<std::string, std::string> sharedStatics;
+    std::unordered_set<std::string> sharedStaticsDefined;
     std::map<std::pair<Decl*, const Ty*>, std::string> failedGlobals; // globals whose definition failed -> what their uses report
     // Globals whose initializer an emitter evaluates before taking the lock (Emitter::globalFor):
     // another emitter that needs one waits for it to be defined instead of evaluating it again.
@@ -704,6 +709,9 @@ namespace
     bool blockTerminated = false;
     std::string currentBlock = "entry";
     FunctionDecl* currentFunction = nullptr;
+    // The body being emitted: the function's, or the lambda's whose call operator is (its static
+    // locals are declared in it, staticLocal).
+    Node* bodyNow = nullptr;
     // The function emitFunction emits, as the checker typed it (an instance's copy; fail).
     const FunctionDecl* checkerChecked = nullptr;
     const Ty* currentReturn = nullptr;
@@ -5914,12 +5922,14 @@ namespace
       std::unordered_map<std::string, std::string> inlineSlots;
       Node* debugAt;
       ParsedFile* debugFile;
+      Node* bodyNow;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots, debugAt, debugFile};
+              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
+              bodyNow};
     }
 
     void restoreState(FunctionState& s)
@@ -5947,10 +5957,12 @@ namespace
       inlineSlots = s.inlineSlots;
       debugAt = s.debugAt;
       debugFile = s.debugFile;
+      bodyNow = s.bodyNow;
     }
 
     void resetFunctionState()
     {
+      bodyNow = nullptr;
       returnLabel.clear();
       fn.clear();
       allocas.clear();
@@ -6126,6 +6138,7 @@ namespace
         initializerOf = nullptr;
       }
       resetFunctionState();
+      bodyNow = l->body;
       // The function it is written in is the current function while its body is emitted (not the
       // one that happened to emit it first, a generic lambda's first caller): its operators and free
       // functions are looked up from there, `this` is that function's, and its nodes are that
@@ -11862,8 +11875,17 @@ namespace
     // what it was bound to. classTy: the instantiation, for a static member of a class template.
     std::string globalAddress(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
     {
-      classTy = staticMemberClass(v, at, at, classTy);
-      std::string g = globalFor(v, at, classTy);
+      std::string g;
+      if (isStaticLocal(v))
+      {
+        g = staticLocalElsewhere(v, at); // (its function's emission has it among its locals)
+        classTy = nullptr;
+      }
+      else
+      {
+        classTy = staticMemberClass(v, at, at, classTy);
+        g = globalFor(v, at, classTy);
+      }
       const Ty* t = classTy ? global.typeOfDeclIn(v, global.classArgsOf(classTy)) : global.typeOfDecl(v);
       if (!t || !t->isReference())
         return g;
@@ -17177,10 +17199,163 @@ namespace
       }
     }
 
+    // A static local: `static T x` or `thread_local T x` in a function body (staticLocal).
+    static bool isStaticLocal(const VariableDecl* v)
+    {
+      return v->parent && v->parent->kind == NodeKind::FunctionDecl && (v->flags & (DF_Static | DF_ThreadLocal)) &&
+             !(v->flags & (DF_Extern | DF_Typedef));
+    }
+
+    // What the bodies nested in a body name (its lambdas', its local classes' member functions':
+    // code that other emissions than the body's may write), and the variables declared in the body
+    // itself, outside those.
+    struct NestedNames
+    {
+      std::unordered_set<const Decl*> named;
+      std::unordered_set<const Decl*> direct;
+    };
+    std::unordered_map<const Node*, NestedNames> nestedNamesByBody; // (emitFunction clears it: nodes go between builds)
+    const NestedNames& nestedNamesOf(Node* body)
+    {
+      auto [it, isNew] = nestedNamesByBody.try_emplace(body);
+      if (!isNew || !body)
+        return it->second;
+      NestedNames& found = it->second;
+      std::unordered_set<const Node*> nested;
+      forEachNode(body, [&](Node* n)
+      {
+        if (n->kind != NodeKind::LambdaExpr && !(n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->isClosure))
+          return;
+        forEachNode(n, [&](Node* m)
+        {
+          nested.insert(m);
+          if (m->kind == NodeKind::NameExpr && static_cast<NameExpr*>(m)->resolved)
+            found.named.insert(static_cast<NameExpr*>(m)->resolved);
+        });
+      });
+      forEachNode(body, [&](Node* n)
+      {
+        if (n->kind == NodeKind::VariableDecl && !nested.count(n))
+          found.direct.insert(static_cast<Decl*>(n));
+      });
+      return found;
+    }
+
+    // The function a static local is written in, when the variable is named after that function alone:
+    // a function no template makes or holds, the variable declared in its own body (not in a lambda's,
+    // whose operator names it). Null for any other. A copy of such a function is the function (the
+    // checker types an `auto` one's body in a copy, whose lambdas its callers get: `auto g = make();`).
+    FunctionDecl* plainWriter(VariableDecl* v)
+    {
+      Decl* w = v->parent;
+      if (!w || w->kind != NodeKind::FunctionDecl || !static_cast<FunctionDecl*>(w)->body)
+        return nullptr;
+      for (Decl* p = w; p; p = p->parent)
+        if (!p->templateParams.empty() || (p != w && p->kind == NodeKind::FunctionDecl))
+          return nullptr; // a template's, or a local class's member's
+      auto* f = static_cast<FunctionDecl*>(w);
+      return nestedNamesOf(f->body).direct.count(v) ? f : nullptr;
+    }
+
+    // A local's type: its declaration's, or for `auto` its initializer's.
+    const Ty* localType(VariableDecl* v)
+    {
+      const Ty* t = declType(v);
+      if ((!t || !t->isKnown() || types.isDependent(t)) && v->init && v->init->ty)
+      {
+        // Fall back to the initializer's type when the declared type is unknown (e.g. auto).
+        const Ty* initTy = types.stripRef(v->init->ty);
+        if (initTy && initTy->isKnown() && !types.isDependent(initTy))
+          t = initTy;
+      }
+      return t;
+    }
+
+    // A static local's storage, named after the function it belongs to (an IR name, `@"..."`) and
+    // numbered by where the variable is written (its token): the same name in every run.
+    std::string staticLocalName(const std::string& function, VariableDecl* v)
+    {
+      std::string owner = function;
+      if (owner.rfind("@\"", 0) == 0)
+        owner = owner.substr(2, owner.size() - 3);
+      else if (!owner.empty() && owner[0] == '@')
+        owner = owner.substr(1);
+      return "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
+    }
+
+    // The definition of a static local that code other emissions write names too (staticLocal's
+    // shared): linkonce_odr in a comdat of its own, every module naming it carrying this text, and the
+    // link keeping one object.
+    std::string sharedStaticText(const std::string& name, VariableDecl* v, const Ty* t, uint64_t alignment)
+    {
+      std::string storage = (v->flags & DF_ThreadLocal) ? " = linkonce_odr thread_local global " : " = linkonce_odr global ";
+      std::string value = t->isReference() ? "ptr null, comdat" : llType(t, v) + " zeroinitializer, comdat" + alignSuffix(t, alignment, v);
+      return "$" + name.substr(1) + " = comdat any\n" + name + storage + value + "\n";
+    }
+
+    // A shared static local's definition in this module, belonging to the function being emitted (its
+    // own static, or a copy of another's it names): once per function and module, and a build of one
+    // module has it once.
+    void addSharedStatic(const std::string& name, const std::string& text)
+    {
+      auto lock = sharedLock();
+      if (moduleCount <= 1)
+      {
+        if (sh.sharedStaticsDefined.insert(name).second)
+          moduleDecls[currentModule] += text;
+        return;
+      }
+      const std::string& by = owner.empty() ? currentFunctionName : owner;
+      std::vector<Shared::OwnedEntry>& here = sh.ownedEntries[currentModule];
+      for (const Shared::OwnedEntry& o : here)
+        if (o.owner == by && o.text == text)
+          return;
+      here.push_back({by, text});
+    }
+
+    // A static local named by code its function's emission does not write (a lambda's call operator,
+    // which a generic lambda's first caller emits; a local class's member function): the storage its
+    // function defines shared (staticLocal), with a copy of the definition in this module. Before the
+    // function is emitted, a plain function's (plainWriter) has the name and the definition that
+    // function will give it; another's is not known yet.
+    std::string staticLocalElsewhere(VariableDecl* v, Node* at)
+    {
+      std::string name, text;
+      if (FunctionDecl* plain = plainWriter(v))
+      {
+        if (!nestedNamesOf(plain->body).named.count(v))
+          fail(at, "the static local " + sym(v->name.last().symbol) + " of " + qualifiedName(plain) +
+                       " is named outside the function's emission, not from a lambda or a local class of it");
+        // In the function's terms (staticLocal there): no template arguments, the function the context.
+        ArgsScope noArgs(*this, nullptr);
+        const Ty* t = localType(v);
+        if (!t || !t->isKnown() || types.isDependent(t))
+          unsupported(at, "the static local " + sym(v->name.last().symbol) + " of unknown type");
+        name = staticLocalName(functionName(plain, {}, nullptr), v);
+        text = sharedStaticText(name, v, t, variableAlignment(v, plain, at));
+      }
+      else
+      {
+        auto lock = sharedLock();
+        auto it = globals.find(v);
+        if (it == globals.end())
+          unsupported(at, "the static local " + sym(v->name.last().symbol) + " of a template's instance or of a lambda, named before its function is emitted");
+        name = it->second;
+        if (auto shared = sh.sharedStatics.find(name); shared != sh.sharedStatics.end())
+          text = shared->second;
+      }
+      if (!text.empty())
+        addSharedStatic(name, text);
+      return name;
+    }
+
     // `static T x = ...;` inside a function: a global of the program (in the module of the function),
     // constructed on the first pass through the declaration, never destroyed. Not thread-safe yet.
     // `thread_local T x;` (static or not): one per thread, the guard too, so each thread builds its
-    // own on its first pass (destroyed at no thread's exit yet).
+    // own on its first pass (destroyed at no thread's exit yet). One that code in a lambda or a local
+    // class of the body names is shared: that code's operator or member function may be emitted
+    // elsewhere (a generic lambda's by its first caller, before or after the function, in another
+    // module or piece), which names it too (staticLocalElsewhere); the guard stays the function's.
     void staticLocal(VariableDecl* v, const Ty* t)
     {
       // `static const Map<String, SDL_Scancode>& keyStrings = generate();`: a pointer, bound on the
@@ -17189,16 +17364,21 @@ namespace
       bool isRef = t->isReference();
       if (isRef && (!v->init || !(isLvalueExpression(v->init) || (v->init->ty && v->init->ty->isReference()))))
         unsupported(v, "a static local reference bound to a temporary");
-      std::string owner = currentFunctionName;
-      if (owner.rfind("@\"", 0) == 0)
-        owner = owner.substr(2, owner.size() - 3);
-      else if (!owner.empty() && owner[0] == '@')
-        owner = owner.substr(1);
-      // Numbered by where the variable is written (its token): the same name in every run.
-      std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
+      bool shared = nestedNamesOf(bodyNow).named.count(v) != 0;
+      FunctionDecl* plain = shared ? plainWriter(v) : nullptr;
+      std::string name = staticLocalName(plain ? functionName(plain, {}, nullptr) : currentFunctionName, v);
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       std::string storage = (v->flags & DF_ThreadLocal) ? " = internal thread_local global " : " = internal global ";
-      if (isRef)
+      if (shared)
+      {
+        std::string text = sharedStaticText(name, v, t, variableAlignment(v, typingContext(), v));
+        {
+          auto lock = sharedLock();
+          sh.sharedStatics[name] = text;
+        }
+        addSharedStatic(name, text);
+      }
+      else if (isRef)
         addOwnedEntry(name + storage + "ptr null\n");
       else
         addOwnedEntry(name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
@@ -17241,14 +17421,7 @@ namespace
 
     void declareLocal(VariableDecl* v)
     {
-      const Ty* t = declType(v);
-      if ((!t || !t->isKnown() || types.isDependent(t)) && v->init && v->init->ty)
-      {
-        // Fall back to the initializer's type when the declared type is unknown (e.g. auto).
-        const Ty* initTy = types.stripRef(v->init->ty);
-        if (initTy && initTy->isKnown() && !types.isDependent(initTy))
-          t = initTy;
-      }
+      const Ty* t = localType(v);
       if ((!t || !t->isKnown() || types.isDependent(t)) && v->init && v->init->kind == NodeKind::NameExpr)
         if (auto local = locals.find(static_cast<NameExpr*>(v->init)->resolved); local != locals.end() && local->second.ty && local->second.ty->kind == TyKind::Vector)
           t = local->second.ty; // `auto xmm3 = xmm6;` of an SSE `auto` local, which the code generator typed
@@ -18847,6 +19020,8 @@ namespace
       }
       resetFunctionState();
       currentFunction = f;
+      bodyNow = f->body;
+      nestedNamesByBody.clear();
       if (sh.debugInfo)
       {
         debugAt = f;
@@ -19654,6 +19829,17 @@ static void gatherProgramFunctions(Shared& sh, std::vector<std::unique_ptr<Emitt
   }
 }
 
+// Module k's owned entries for its declarations (a program function's go in its program piece), each
+// text once: a shared static local's definition is an entry of every function naming it
+// (Emitter::addSharedStatic).
+static void appendOwnedEntries(const Shared& sh, unsigned k, std::vector<std::string>& entries)
+{
+  std::unordered_set<std::string_view> seen;
+  for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+    if (!sh.programOwned(o.owner) && seen.insert(o.text).second)
+      entries.push_back(o.text);
+}
+
 // What program pieces are assembled from besides their module's own texts (programPieceText): the
 // units (a line, or a definition with its body: Emitter::forEachLine) of the shared declarations and
 // of the shared definitions every module carries, by the name each defines or declares, and the type
@@ -19729,6 +19915,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     if (sh.programOwned(entries[i].owner))
       owned.push_back(entries[i].text);
   std::sort(owned.begin(), owned.end());
+  owned.erase(std::unique(owned.begin(), owned.end()), owned.end()); // (a shared static local's, one per function naming it)
   // What the piece defines (by name, without the sigil), and the module's own declarations by name.
   std::unordered_set<std::string_view> defined;
   for (const Shared::Definition* d : definitions)
@@ -20306,9 +20493,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     dropSharedLiterals(sh, sh.moduleDecls[k].entries);
     if (keepTexts)
       sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
-    for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-      if (!sh.programOwned(o.owner)) // (a program function's go in its program piece)
-        sh.moduleDecls[k].entries.push_back(o.text);
+    appendOwnedEntries(sh, k, sh.moduleDecls[k].entries);
     sh.moduleDecls[k].finish();
   }
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
@@ -21237,9 +21422,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
     dropSharedLiterals(sh, kept);
     std::vector<std::string> entries = kept;
-    for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-      if (!sh.programOwned(o.owner)) // (a program function's go in its program piece)
-        entries.push_back(o.text);
+    appendOwnedEntries(sh, k, entries);
     sh.moduleDecls[k].entries = std::move(entries);
     sh.moduleDecls[k].text.clear();
     sh.moduleDecls[k].finish();

@@ -1,0 +1,60 @@
+// spec: a member function of a class declared in a function's body names a static local of that function (a local class's virtual function, emitted where its vtable is, in another module or piece of a build of 64 modules, and the release suite's): it reads and writes the function's one static, and two such statics of one name are two (`9011 140160`)
+// factorio: none known; found fixing language/generic_lambda_reads_writers_static_local: with 4d884644's pieces the member function went to its module's instance piece and the static to the program piece, and clang rejected the instance piece ("use of undefined value '@"makeA()::calls.23"'", debug at --modules 64)
+// kppc: --modules 64
+class Counter
+{
+public:
+  virtual int bump(int x) = 0;
+};
+
+// Each returns its local class's one object, whose bump adds to the function's static.
+Counter* makeA()
+{
+  static int calls = 5;
+  calls = calls + 1;
+  class Local : public Counter
+  {
+  public:
+    int bump(int x) override { calls = calls + x; return calls; }
+  };
+  static Local local;
+  return &local;
+}
+
+Counter* makeB()
+{
+  static int calls = 100;
+  calls = calls + 10;
+  class Local : public Counter
+  {
+  public:
+    int bump(int x) override { calls = calls + x; return calls; }
+  };
+  static Local local;
+  return &local;
+}
+
+// Each calls bump twice, the maker updating its static before each.
+int runA()
+{
+  Counter* c = makeA();
+  int first = c->bump(3);
+  int second = makeA()->bump(1);
+  return first * 1000 + second;
+}
+
+int runB()
+{
+  Counter* c = makeB();
+  int first = c->bump(30);
+  int second = makeB()->bump(10);
+  return first * 1000 + second;
+}
+
+int main()
+{
+  int a = runA();
+  int b = runB();
+  println(a, " ", b);
+  return 0;
+}

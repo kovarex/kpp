@@ -1,6 +1,5 @@
 // spec: a generic lambda names a static local of the function it is written in, and an instance (a template the lambda is passed to) calls it first, in a build of 64 modules (and the release suite's): the call operator, emitted where that instance is, reads and writes the one static the function does, whichever module each is in (`6 12 26 32 46 52 66 72 86 92 106 112`)
 // factorio: none known; found reviewing streaming's pieces (step 4): a non-generic lambda's call operator is placed and owned as its writer's (emitCallOperatorOnDemand) and works at any module count
-// pending: the operator is emitted with its first caller, an instance placed by its name's hash, and the static is `internal` in its writer's module: "use of undefined value '@"counted0()::calls.N"'", clang rejects that module (master at --modules 64 and 128, debug and release; 1 and 4 happened to share a module) (B)
 // kppc: --modules 64
 template<typename F> int apply(F f) { return f(2); }
 

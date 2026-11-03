@@ -1,6 +1,5 @@
-// spec: a generic lambda a function returns names that function's static local, and the function's caller calls it first (the call operator emitted with that caller, before the function itself is): the operator reads and writes the function's one static, whichever is emitted first and whichever module each is in, in a build of 64 modules (and the release suite's) (`9011 140160`)
+// spec: a generic lambda a function returns names that function's static local, and the function's caller calls it first (the call operator emitted with that caller, before the function itself is): the operator reads and writes the function's one static, whichever is emitted first and whichever module each is in, and two such statics of one name are two (each its function's), in a build of 64 modules (and the release suite's) (`9011 140160`)
 // factorio: none known; found fixing language/generic_lambda_reads_writers_static_local
-// pending: the operator, emitted before its writer, takes the static for a global of its own (`@"calls" = linkonce_odr global i32 5, comdat`, initialized at startup) and reads and writes that, not the function's static: `8009 130140` (master at any module count and thread count, debug and release; two such statics of one name make two `$"calls"` comdats, which clang rejects) (B)
 // kppc: --modules 64
 // The functions returning a generic lambda that names their own static local.
 auto makeA()
@@ -12,9 +11,9 @@ auto makeA()
 
 auto makeB()
 {
-  static int total = 100;
-  total = total + 10;
-  return [](auto x) { total = total + x; return total; };
+  static int calls = 100;
+  calls = calls + 10;
+  return [](auto x) { calls = calls + x; return calls; };
 }
 
 // Each calls the lambda its maker returns (whose operator its emission makes, before the maker's,
