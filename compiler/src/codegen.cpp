@@ -16952,12 +16952,14 @@ namespace
       return block;
     }
 
-    // Whether the function being emitted is noexcept (`noexcept`, or `noexcept(cond)` with cond true):
-    // no exception leaves it.
+    // Whether the body being emitted is a noexcept function's own (`noexcept`, or `noexcept(cond)` with
+    // cond true): no exception leaves it. Not a lambda's written in it, nor a helper emitted while it is
+    // (currentFunction stays the writer for those: B's review): only the body of currentFunction itself.
     bool emittingNoexcept()
     {
       static const TemplateArgs none;
-      return currentFunction && (currentFunction->flags & DF_Noexcept) && global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
+      return currentFunction && bodyNow && bodyNow == currentFunction->body && (currentFunction->flags & DF_Noexcept) &&
+             global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
     }
 
     // The chain destroying objects[from..] (the newest first), then going on to next (a try's dispatch
@@ -17456,7 +17458,9 @@ namespace
         declareOnce("@_Unwind_RaiseException", "declare i32 @_Unwind_RaiseException(ptr)");
         emittingShared = true;
         std::string uncaught = cStringConstant("unhandled exception of type %s"), throughNoexcept = cStringConstant("exception of type %s thrown through a noexcept function"),
-                    foreign = cStringConstant("unhandled exception of another language"), fmt2 = cStringConstant(": %s"), fmt3 = cStringConstant("\n");
+                    unlisted = cStringConstant("exception of type %s thrown from a call its function's exception table does not list"),
+                    foreign = cStringConstant("unhandled exception of another language"), noMemory = cStringConstant("no memory for an exception\n"),
+                    fmt2 = cStringConstant(": %s"), fmt3 = cStringConstant("\n");
         emittingShared = false;
         std::string err = stderrStream();
         decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
@@ -17464,7 +17468,10 @@ namespace
         std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_throw") +
                   std::string(kppThrowHeader) + "\nentry:\n"
-                  "  %h = call ptr @malloc(i64 64)\n  store i64 21198927785840720, ptr %h\n" // "KPP\0KPP\0"
+                  "  %h = call ptr @malloc(i64 64)\n  %none = icmp eq ptr %h, null\n  br i1 %none, label %nomemory, label %raise\n"
+                  "nomemory:\n  %flushed = call i32 @fflush(ptr null)\n" + err +
+                  "  %r0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + noMemory + ")\n  call void @abort()\n  unreachable\n"
+                  "raise:\n  store i64 21198927785840720, ptr %h\n" // "KPP\0KPP\0"
                   "  %cleanup = getelementptr inbounds i8, ptr %h, i64 8\n  store ptr null, ptr %cleanup\n"
                   "  %private = getelementptr inbounds i8, ptr %h, i64 16\n  call void @llvm.memset.p0.i64(ptr %private, i8 0, i64 16, i1 false)\n"
                   "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  store ptr %object, ptr %op\n"
@@ -17480,7 +17487,9 @@ namespace
                   "foreign:\n  %r0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + foreign + ")\n  br label %end\n"
                   "kpp:\n  %op = getelementptr inbounds i8, ptr %h, i64 32\n  %object = load ptr, ptr %op\n"
                   "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  %typeinfo = load ptr, ptr %tp\n"
-                  "  %isNoexcept = icmp eq i32 %why, 2\n  %fmt = select i1 %isNoexcept, ptr " + throughNoexcept + ", ptr " + uncaught + "\n"
+                  "  %isNoexcept = icmp eq i32 %why, 2\n  %isUnlisted = icmp eq i32 %why, 3\n"
+                  "  %fmt0 = select i1 %isNoexcept, ptr " + throughNoexcept + ", ptr " + uncaught + "\n"
+                  "  %fmt = select i1 %isUnlisted, ptr " + unlisted + ", ptr %fmt0\n"
                   "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %fmt, ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
         shared += sharedComdat("@kpp_eh_enter") +

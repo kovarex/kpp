@@ -3068,6 +3068,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     and a zero entry is null in every encoding, pc-relative too.
   - **The empty exception specification** of a noexcept function ends the program in phase 1
     through `kpp_eh_terminate`, with the throw site on the stack.
+  - **A call its function's table does not list** ends the program in phase 1 too, as C++ does:
+    continuing would skip that frame's cleanups, silently (B's review).
   - **Phase 2** installs the handler's landing pad with the clause's index, and the other frames'
     pads for their cleanups with 0.
   - **Encodings:** the type table is udata4 in FreeBSD's static non-PIC link and indirect pcrel
@@ -3075,11 +3077,13 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   - **Exception class:** only kpp's exceptions ("KPP\0KPP\0") are caught. Another language's pass
     through the cleanups.
   - **Linking:** `kpp_eh_offset` and `kpp_eh_terminate` are weak there, and a program without
-    exceptions drops the object (--gc-sections).
+    exceptions drops the object (--gc-sections). Without `kpp_eh_terminate` (no throw of its own:
+    another language's exception at a noexcept frame), the personality writes a line and aborts.
 - **codegen** (`itaniumUnwindDestination`, `itaniumTry`, `finishExceptionRuntime`):
   - **Landing pads:** a call that may throw is an invoke whose landing pad has `cleanup`, the catch
-    clauses of every try around it in the function (innermost first), and in a noexcept function
-    the empty filter. The pad keeps the exception and the selector in two slots and goes on to a
+    clauses of every try around it in the function (innermost first), and in a noexcept function's
+    own body the empty filter. A lambda written there is not noexcept itself (B's review:
+    language/lambda_in_noexcept_function_may_throw), nor is a helper emitted while it is. The pad keeps the exception and the selector in two slots and goes on to a
     chain of plain blocks destroying what the call leaves, shared as SEH's cleanup pads are.
   - **Try:** its dispatch compares the selector with each handler's `llvm.eh.typeid.for` in order.
     The handler it finds takes the exception into its record (`kpp_eh_enter`); with none, the
@@ -3091,7 +3095,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   - **Throw:** `kpp_throw` puts the object, its descriptor and its destructor after the unwinder's
     32-byte header and calls `_Unwind_RaiseException`. When that returns (no handler),
     `kpp_eh_terminate` prints "unhandled exception of type T: message" from the throw site and
-    aborts.
+    aborts. With no memory for the header, it says so and aborts.
 - **The unwinder:** FreeBSD's static link takes it from libgcc_eh (LLVM's libunwind in 14.3), and
   glibc's from libgcc_s. kpp's functions have unwind tables by default (they are not `nounwind`).
 - **Found on the way:** the first personality took a pc-relative zero, catch (...)'s, for an

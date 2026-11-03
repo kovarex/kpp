@@ -602,6 +602,18 @@ static void badTable(void)
   abort();
 }
 
+/* Ends the program from the search, the throw site on the stack: kpp_eh_terminate's report (why: 2 a
+   noexcept function, 3 a call its function's table does not list), or, in a program that has no
+   kpp_eh_terminate (no throw of its own: another language's exception), a line and abort. */
+static void terminate(Header* exception, int32_t why)
+{
+  static const char text[] = "kpp: an exception of another language ended the program (main.cpp's itaniumRuntime)\n";
+  if (kpp_eh_terminate)
+    kpp_eh_terminate(exception, why);
+  write(2, text, sizeof text - 1);
+  abort();
+}
+
 static uint64_t uleb(const uint8_t** p)
 {
   uint64_t result = 0;
@@ -679,6 +691,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
   const uint8_t* end = p + length;
   const uint8_t* actionTable = end;
   uint64_t pad = 0, action = 0;
+  int listed = 0;
   while (p < end)
   {
     uint64_t siteStart = uleb(&p), siteLength = uleb(&p), sitePad = uleb(&p), siteAction = uleb(&p);
@@ -686,10 +699,20 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       break;
     if (ip < start + siteStart + siteLength)
     {
+      listed = 1;
       pad = sitePad;
       action = siteAction;
       break;
     }
+  }
+  /* A call the table does not list may not throw: its frame's cleanups would be skipped, silently.
+     C++ terminates there; so does kpp, in the search. A listed call without a landing pad has
+     nothing to do in this frame. */
+  if (!listed)
+  {
+    if (actions & 1)
+      terminate(exception, 3);
+    return 8;
   }
   if (!pad)
     return 8;
@@ -720,7 +743,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         /* An exception specification: kpp writes only the empty one, a noexcept function's, which no
            exception passes. */
         if (actions & 1)
-          kpp_eh_terminate(exception, 2);
+          terminate(exception, 2);
         selector = filter;
         break;
       }
