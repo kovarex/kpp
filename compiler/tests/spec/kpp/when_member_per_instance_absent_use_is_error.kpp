@@ -1,0 +1,21 @@
+// spec: a use of a class template's `when` member in an instance where its condition does not hold is an error in that instance (design.md 19: the member does not exist there), naming the instance
+// factorio: the game's class templates under #ifdef DEBUG members, and type-dependent members such as the trivially copyable cases of its containers
+// error: when_member_per_instance_absent_use_is_error.kpp:20: error: 'backup' does not exist in Slot<Handle>: its `when` condition does not hold there
+struct Handle
+{
+  int id = 7;
+  ~Handle() {}
+};
+
+template<typename T>
+struct Slot
+{
+  T value;
+  when (isTriviallyCopyable<T>) T backup;
+};
+
+int main()
+{
+  Slot<Handle> s;
+  return s.backup.id;
+}

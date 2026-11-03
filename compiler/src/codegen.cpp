@@ -1529,7 +1529,11 @@ namespace
         {
           const Ty* ft = nullptr;
           if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+          {
+            if (!whenMemberHolds(m, c, args, key, at))
+              continue; // (a `when` member this instance does not have)
             ft = global.typeOfDeclIn(m, args);
+          }
           else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
             ft = types.classType(m, key->args); // an anonymous struct takes the enclosing instantiation's arguments
           else
@@ -1639,6 +1643,16 @@ namespace
         }
         if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
           continue;
+        // A `when` member on the template's parameters is in this instance's layout only where its
+        // condition holds (design.md 19); two of one name that both hold are a clash.
+        if (!whenMemberHolds(m, c, args, key, at))
+          continue;
+        if (!static_cast<VariableDecl*>(m)->name.empty())
+          for (Decl* f : info.fieldDecls)
+            if ((m->when || f->when) && f->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(f)->name.empty() &&
+                static_cast<VariableDecl*>(f)->name.last().symbol == static_cast<VariableDecl*>(m)->name.last().symbol)
+              fail(at, "the layout of " + types.toString(key, &symbols) + ": two `when` declarations of the member " + memberName(m) +
+                           " exist at once, a clash (design.md 19)");
         const Ty* ft = global.typeOfDeclIn(m, args);
         if (!ft || !ft->isKnown() || types.isDependent(ft))
           layoutError("the member " + memberName(m) + " has an unknown type");
@@ -2174,13 +2188,22 @@ namespace
         return nullptr;
       auto* c = static_cast<ClassDecl*>(def);
       TemplateArgs args = global.classArgsOf(classTy);
+      Decl* absent = nullptr; // a `when` member of the name this instance does not have
       for (Decl* m : c->members)
       {
         if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
         {
           auto* vd = static_cast<VariableDecl*>(m);
           if (!vd->name.empty() && vd->name.last().symbol == nameSymbol)
+          {
+            // (several `when` members may declare one name: the one this instance has)
+            if (!whenMemberHolds(m, c, args, classTy, at))
+            {
+              absent = m;
+              continue;
+            }
             return m;
+          }
         }
         // Search anonymous struct/union members.
         if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
@@ -2195,7 +2218,34 @@ namespace
           if (Decl* found = findFieldByName(bt, nameSymbol, at, depth + 1))
             return found;
       }
+      if (absent)
+        fail(at, "'" + sym(nameSymbol) + "' does not exist in " + types.toString(classTy, &symbols) +
+                     ": its `when` condition does not hold there (design.md 19)");
       return nullptr;
+    }
+
+    // Whether data member m of class c exists in the instance key (args its arguments): a `when`
+    // member on a class template's parameters (design.md 19) is decided per instance, its condition
+    // folded under the instance's arguments as a bit field's width is. The parser decided every
+    // other `when` member (one it found false is no member of c).
+    bool whenMemberHolds(Decl* m, ClassDecl* c, const TemplateArgs& args, const Ty* key, Node* at)
+    {
+      if (!m->when || m->whenKnown >= 0)
+        return m->whenKnown != 0;
+      ParsedFile* savedFile = currentFile;
+      currentFile = c->file ? c->file : currentFile;
+      std::optional<bool> holds;
+      {
+        ArgsScope whenArgs(*this, &args);
+        ConstContextScope whenContext(*this, c);
+        holds = evalCondition(m->when);
+      }
+      currentFile = savedFile;
+      if (!holds)
+        fail(at, "the `when` condition of " + types.toString(key, &symbols) + "'s member " +
+                     (static_cast<VariableDecl*>(m)->name.empty() ? std::string("?") : sym(static_cast<VariableDecl*>(m)->name.last().symbol)) +
+                     " is no constant the compiler could evaluate (design.md 19)");
+      return *holds;
     }
 
     // --- class metadata: constructors, destructors ---
@@ -4181,7 +4231,14 @@ namespace
     {
       std::string addr;
       if (!fieldAddress(classTy, d, object, addr, e))
+      {
+        // A `when` member on a class template's parameters that this instance does not have (design.md
+        // 19): a use of it is an error in the instance being built.
+        if (d->when && d->whenKnown < 0 && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+          fail(e, "'" + sym(static_cast<VariableDecl*>(d)->name.last().symbol) + "' does not exist in " +
+                      types.toString(types.unqualified(types.stripRef(classTy)), &symbols) + ": its `when` condition does not hold there (design.md 19)");
         unsupported(e, "a member that is not a field of the object's class");
+      }
       const Ty* ft = fieldTypeIn(classTy, d, e);
       if (!ft)
         ft = d->kind == NodeKind::VariableDecl ? declType(d) : nullptr;

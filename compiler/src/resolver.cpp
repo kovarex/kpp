@@ -22969,6 +22969,10 @@ struct GlobalScope::Impl
         {
           auto* v = static_cast<VariableDecl*>(d);
           deducedLocal = nullptr; // this variable's own, if it deduces one (not the one walked before)
+          // A class template's data member a `when` on its parameters declares (design.md 19): its
+          // condition, which codegen folds per instance for the layout, walked with the member.
+          if (v->when && v->whenKnown < 0 && v->parent && v->parent->kind == NodeKind::ClassDecl)
+            walkExpr(v->when);
           walkType(v->type);
           checkArrayBounds(v);
           walkExpr(v->bitfield);

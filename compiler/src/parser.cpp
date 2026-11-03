@@ -1453,8 +1453,9 @@ namespace
     // constexpr is: true, the declarations are kept (whenKnown 1); false, they are dropped from the
     // program but kept as names a lookup stops at (ClassDecl::absentMembers, ParsedFile::absentDecls),
     // so a misplaced use is an error, never a use of an outer name; a dropped data member's constructor
-    // initializers are dropped with it. A condition on a class template's parameters (a member per
-    // instance) is not supported yet.
+    // initializers are dropped with it. In a class template, a data member's condition on its
+    // parameters is decided per instance: kept undecided (whenKnown -1), the instance's layout has the
+    // member where it holds (codegen's whenMemberHolds); another declaration's is not supported yet.
     void parseWhen(Scope scope)
     {
       uint32_t start = pos;
@@ -1477,17 +1478,21 @@ namespace
         return;
       }
       std::optional<bool> holds;
+      bool perInstance = false; // a class template's member, decided per instance
       if (scope != Scope::Local)
       {
         std::optional<ConfigValue> value = configValue(cond);
-        if (!value || !value->isNumber)
+        if (value && value->isNumber)
+          holds = value->number != 0;
+        else if (scope == Scope::Class && inClassTemplate())
+          perInstance = true;
+        else
         {
-          out.diagnostics.push_back({cond->token, "a when at namespace or class scope needs a condition made of config constants and literals (design.md 19): "
-                                                  "a member per class template instance is not supported yet"});
+          out.diagnostics.push_back({cond->token, "a when at namespace scope or in a class that is no template needs a condition made of config "
+                                                  "constants and literals (design.md 19)"});
           inRecovery = true;
           return;
         }
-        holds = value->number != 0;
       }
       size_t mark = scratch.size();
       parseDeclarationInner(scope, {});
@@ -1505,6 +1510,12 @@ namespace
         if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ImportDecl)
         {
           out.diagnostics.push_back({d->token, "when declares a declaration, not a namespace or an import (design.md 19)"});
+          continue;
+        }
+        if (perInstance && (d->kind != NodeKind::VariableDecl || (d->flags & (DF_Static | DF_Typedef | DF_Friend))))
+        {
+          out.diagnostics.push_back({d->token, "a when on a class template's parameters declares a data member, decided per instance (design.md 19): "
+                                               "a member function, static member or type is not supported yet"});
           continue;
         }
         d->when = cond;
@@ -1531,8 +1542,19 @@ namespace
       }
     }
 
+    // Inside a class template's body, or a class's nested in one: a member's `when` may be on its
+    // parameters (parseWhen).
+    bool inClassTemplate() const
+    {
+      for (const Decl* p = currentParent; p; p = p->parent)
+        if (p->kind == NodeKind::ClassDecl && !p->templateParams.empty())
+          return true;
+      return false;
+    }
+
     // Two data members of one name that both exist, one of them a `when`'s (design.md 19: several
-    // `when`s may declare one name; two existing at once in a configuration are a clash).
+    // `when`s may declare one name; two existing at once in a configuration are a clash). One decided
+    // per class template instance is checked in each instance's layout (codegen's buildStruct).
     void checkWhenClash(ClassDecl* c)
     {
       if (c->absentMembers.empty() && std::none_of(c->members.begin(), c->members.end(), [](const Decl* m) { return m->when != nullptr; }))
@@ -1545,7 +1567,8 @@ namespace
         for (size_t j = i + 1; j < c->members.size(); ++j)
         {
           auto* b = c->members[j]->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(c->members[j]) : nullptr;
-          if (b && (a->when || b->when) && !b->name.empty() && b->name.last().symbol == a->name.last().symbol)
+          if (b && (a->when || b->when) && !(a->when && a->whenKnown < 0) && !(b->when && b->whenKnown < 0) && !b->name.empty() &&
+              b->name.last().symbol == a->name.last().symbol)
             out.diagnostics.push_back({b->token, "two when declarations of this member exist at once in this configuration, a clash (design.md 19)"});
         }
       }

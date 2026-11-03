@@ -1,0 +1,15 @@
+// spec: two `when` members of one name in a class template whose conditions both hold in an instance are a clash, a compile error in that instance (design.md 19)
+// factorio: none known
+// error: when_members_per_instance_both_existing_is_error.kpp:13: error: the layout of Duo<int32>: two `when` declarations of the member extra
+template<typename T>
+struct Duo
+{
+  when (isTriviallyCopyable<T>) int extra;
+  when (sizeof(T) >= 4) int extra;
+};
+
+int main()
+{
+  Duo<int> d;
+  return sizeof(d);
+}

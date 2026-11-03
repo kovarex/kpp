@@ -1,6 +1,5 @@
 // spec: a `when` member of a class template whose condition depends on T (design.md 19) is in the layout of the instances where it holds and absent from the others: Slot<int> keeps a backup copy, Slot<Handle> (a Handle has a destructor of its own, so it is not trivially copyable) has none and its member's type is never checked
 // factorio: the game's class templates under #ifdef DEBUG members, and type-dependent members such as the trivially copyable cases of its containers
-// pending: `when` is not parsed yet (A: the parser, the scope and the layout; D: the uses and the per-instance condition)
 struct Handle
 {
   int id = 7;
