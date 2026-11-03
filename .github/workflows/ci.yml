@@ -252,6 +252,81 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
+  # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
+  # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
+  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only, and publish does not wait for either: the
+  # build fails for 19 snippets and the run for every throw until stages 3 and 4 (design.md).
+  freebsd_build:
+    needs: build
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build
+
+      # The sysroot, kept under the script's hash (which pins base.txz's SHA-256): a cache hit
+      # downloads nothing from FreeBSD's archive.
+      - name: FreeBSD sysroot cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/sysroots/freebsd-x86_64
+          key: freebsd-sysroot-${{ hashFiles('tools/sysroot/freebsd.ps1') }}
+
+      # Clang for the snippets' C sources, and llvm-objcopy beside it for the sysroot's script.
+      - name: FreeBSD sysroot
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the Clang component' }
+          $env:KPP_CLANG = "$vs\VC\Tools\Llvm\x64\bin\clang.exe"
+          "KPP_CLANG=$env:KPP_CLANG" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\sysroot\freebsd.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'tools\sysroot\freebsd.ps1 failed' }
+
+      # The snippets that do not build are listed, not fatal (stage 4's Win32 calls): the bundle has
+      # the ones that linked.
+      - name: spec built for FreeBSD
+        shell: cmd
+        run: python -X utf8 -I compiler\tests\spec\run_spec.py --target freebsd & exit /b 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spec-freebsd
+          path: |
+            compiler/build/spec-freebsd/run.sh
+            compiler/build/spec-freebsd/*.elf
+            compiler/build/spec-freebsd/*.expected
+          retention-days: 3
+          if-no-files-found: error
+
+  # The bundle in a FreeBSD 14.3 VM: vmactions/freebsd-vm (QEMU with KVM on the Ubuntu runner;
+  # v1.5.9, pinned by its commit), which copies the workspace in with rsync and runs run.sh there.
+  freebsd_run:
+    needs: freebsd_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: spec-freebsd
+          path: spec-freebsd
+
+      - name: spec on FreeBSD 14.3
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: '14.3'
+          sync: rsync
+          copyback: false
+          run: |
+            freebsd-version
+            sh spec-freebsd/run.sh
+
   # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
   # the artifact "package". Packaging publishes nothing.
   package:
