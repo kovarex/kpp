@@ -303,10 +303,13 @@ jobs:
           $out = & python -X utf8 -I compiler\tests\spec\run_spec.py --target freebsd 2>&1 | ForEach-Object { "$_" }
           $code = $LASTEXITCODE
           $out
-          $crashes = @($out | Where-Object { $_ -match 'the compiler crashed|compiler timed out' })
+          $crashes = @($out | Where-Object { $_ -match 'crashed|timed out' })
           @('### spec built for FreeBSD 14.3', '', '    ' + ($out | Select-Object -Last 1)) + @($crashes | ForEach-Object { "    $_" }) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           if ($code -gt 1) { throw "run_spec.py --target freebsd: exit code $code" }
           if ($crashes.Count) { throw "kppc crashed or timed out on $($crashes.Count) snippet(s)" }
+          # (Actions' powershell ends the step with exit $LASTEXITCODE, run_spec.py's 1 for the snippets
+          # that do not build, which would skip the upload)
+          exit 0
 
       - uses: actions/upload-artifact@v4
         with:
