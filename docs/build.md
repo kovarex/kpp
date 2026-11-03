@@ -931,6 +931,29 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
   no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
 
+**The release check** (`.github/workflows/release-check.yml`, kovarex, 2026-11-03) tests what was
+published, not the checkout: daily at 04:17 UTC (an hour after the nightly run below publishes), or
+by hand for any tag (Actions > release check > Run workflow), on a clean windows-2022 runner.
+- It renames Visual Studio's two directories and the Windows SDK's (`Windows Kits`) away first, so
+  nothing can use them (kpp finds Visual Studio through vswhere, which is in one of them), and runs
+  no vcvars.
+- It downloads the Latest release's `kpp-<version>-setup.exe` and installs it silently (`/VERYSILENT
+  /SUPPRESSMSGBOXES`). Program Files\kpp must hold kpp.exe and be on the system PATH.
+- `tools/release/check-release.ps1` then uses it with PATH cut to the installation, System32 and the
+  Windows directory; VSINSTALLDIR, INCLUDE, LIB, KPP_CLANG and the like set are a failure. It checks:
+  - `kpp --version`: its first line is `kpp <version>, commit <the tag's commit>`, and its toolchain
+    is the installation's `bin\clang.exe` (bundled);
+  - `kpp new hello`, then `kpp hello debug --toolchain bundled --run` and the same in release;
+    `kpp hello --verbose`'s toolchain line says `(bundled, windows-gnu: links with lld)`;
+  - a project with a C library built from its source, whose define comes from a build.kpp setting:
+    debug with the default, release with `--set PLUS=2`, each with `--toolchain bundled --run`;
+  - that every program it built imports only Windows' own DLLs (read from the executable's import
+    table: the UCRT, kernel32 and the like).
+- A failure is a red run, with each check's line and the failures in the run's summary. It opens no
+  issue and mails no one (GitHub mails a failed scheduled run to whoever last changed its cron line,
+  if their notification settings say so). It takes under a minute: 51 s, the first run (v0.2.116,
+  run 41610046288).
+
 Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Every push to master and every pull request:** build, run_tests and the debug spec.
 - **Nightly at 03:17 UTC, and when started by hand** (Actions > ci > Run workflow): the same, plus

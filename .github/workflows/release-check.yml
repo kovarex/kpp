@@ -1,0 +1,97 @@
+# The nightly check of the PUBLISHED release (kovarex, 2026-11-03; docs/build.md, "Continuous
+# integration"), daily at 04:17 UTC, an hour after ci.yml's nightly run has published its release:
+# on a clean windows-2022 runner, with Visual Studio and the Windows SDK renamed away
+# first, it installs the Latest release's kpp-<version>-setup.exe silently and uses it as a user
+# would (tools/release/check-release.ps1): kpp --version against the release's version and commit,
+# kpp new and kpp hello --run, a project with a C library and a build.kpp setting, debug and release,
+# --toolchain bundled. A failure is a red run, with what failed in the run's summary. It opens no
+# issue and mails no one (GitHub itself mails a failed scheduled run to whoever last changed the cron
+# line, if their notification settings say so).
+name: release check
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag (empty: the Latest release)"
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      # Only the check script: the release is what is tested, not this checkout.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/release
+          sparse-checkout-cone-mode: false
+
+      - name: The release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $path = if ($env:TAG) { "repos/${{ github.repository }}/releases/tags/$env:TAG" } else { "repos/${{ github.repository }}/releases/latest" }
+          $release = gh api $path | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "gh api $path failed" }
+          if (-not ($release.name -match '^kpp (\d+\.\d+\.\d+)(?: \(nightly [0-9-]+\))?$')) { throw "release $($release.tag_name) is named '$($release.name)', not 'kpp X.Y.Z'" }
+          $version = $Matches[1]
+          if ($release.tag_name -like 'v*' -and $release.tag_name -cne "v$version") { throw "release '$($release.name)' has the tag $($release.tag_name), not v$version" }
+          $commit = gh api "repos/${{ github.repository }}/commits/$($release.tag_name)" --jq .sha
+          if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw "no commit for the tag $($release.tag_name)" }
+          $setup = "kpp-$version-setup.exe"
+          if (-not ($release.assets | Where-Object name -ceq $setup)) { throw "release $($release.tag_name) has no $setup (it has: $($release.assets.name -join ', '))" }
+          gh release download $release.tag_name --repo ${{ github.repository }} --pattern $setup --dir "$env:RUNNER_TEMP\release"
+          if ($LASTEXITCODE -ne 0) { throw "downloading $setup failed" }
+          "release $($release.tag_name): kpp $version, commit $commit, $setup $((Get-Item "$env:RUNNER_TEMP\release\$setup").Length) bytes"
+          "## Release check: [$($release.name)]($($release.html_url)) (tag $($release.tag_name))" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "tag=$($release.tag_name)", "version=$version", "commit=$commit", "setup=$env:RUNNER_TEMP\release\$setup" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
+
+      # The runner has Visual Studio 2022 and the Windows SDK; renamed, nothing can use them (kpp
+      # finds Visual Studio through vswhere, which is in Microsoft Visual Studio\Installer). Before
+      # the installer, so that it offers no Visual Studio extension.
+      - name: Hide Visual Studio and the Windows SDK
+        shell: pwsh
+        run: |
+          Get-Service -Name 'VSStandardCollectorService*' -ErrorAction SilentlyContinue | Stop-Service -Force
+          foreach ($dir in "$env:ProgramFiles\Microsoft Visual Studio", "${env:ProgramFiles(x86)}\Microsoft Visual Studio", "${env:ProgramFiles(x86)}\Windows Kits")
+          {
+            if (Test-Path $dir) { Rename-Item $dir "$(Split-Path -Leaf $dir) (hidden)"; "hid $dir" }
+          }
+
+      - name: Install
+        shell: pwsh
+        run: |
+          $log = "$env:RUNNER_TEMP\setup.log"
+          $p = Start-Process -Wait -PassThru '${{ steps.release.outputs.setup }}' -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/LOG=`"$log`""
+          if ($p.ExitCode -ne 0) { Get-Content $log | Select-Object -Last 30; throw "the installer exited with $($p.ExitCode)" }
+          $install = "$env:ProgramFiles\kpp"
+          if (-not (Test-Path "$install\kpp.exe")) { throw "the installer put no kpp.exe in $install" }
+          $path = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';'
+          if ($path -notcontains $install) { throw "the installer did not put $install on the system PATH" }
+          "installed in $install, on the system PATH"
+
+      - name: Check
+        shell: pwsh
+        run: |
+          tools\release\check-release.ps1 -Install "$env:ProgramFiles\kpp" -Version '${{ steps.release.outputs.version }}' -Commit '${{ steps.release.outputs.commit }}' -Work "$env:RUNNER_TEMP\check" -Summary $env:GITHUB_STEP_SUMMARY
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Failed
+        if: failure()
+        shell: pwsh
+        run: |
+          "**The release check failed** (kpp ${{ steps.release.outputs.version }}, tag ${{ steps.release.outputs.tag }}): see the failed step's log; check-release.ps1's lines above name each check." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
