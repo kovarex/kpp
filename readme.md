@@ -12,17 +12,17 @@ Factorio already has (see [Status](#status)).
   file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
   Factorio converted to kpp, against its own C++ build (debug, 32 threads):
 
-  | | C++ (MSVC, FASTBuild) | kpp 0.2.28 |
+  | | C++ (MSVC, FASTBuild) | kpp 0.2.171 |
   |---|---:|---:|
-  | Edit of one function | 22 to 29 s | 3.6 to 3.8 s |
-  | Edit of an inline function used across the game | 51 to 59 s | (being measured) |
-  | Clean build of the game, libraries already built | 57 to 61 s | 16.8 to 17.0 s |
-  | Whole build of factorio.exe, every library included | 50 s | 20.6 s |
-  | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 36.4 s |
+  | Edit of one function | 22 to 29 s | 1.4 s |
+  | Edit of an inline function used across the game | 51 to 59 s | 2.0 s |
+  | Clean build of the game, libraries already built | 57 to 61 s | 10.5 to 11.2 s |
+  | Whole build of factorio.exe, every library included | 50 s | 19.1 to 19.8 s |
+  | Whole build of factorio-test.exe (the unit tests), every library included | 63 s | 23.8 to 24.1 s |
 
-  The kpp column is the released kpp, run as a user runs it (`kpp factorio debug`, the compile server
-  warm for the edits), on kovarex's second machine; the C++ edit and clean-build times were measured
-  on the development machine, which has the same hardware. The last two rows are whole builds
+  The kpp column is the released kpp, run as a user runs it: kovarex's `kpp measure` (3 rounds, fastest
+  to slowest, the compile server warm for the edits) on the development machine (Ryzen 9 9950X, 32
+  threads, 128 GB), where the C++ edit and clean-build times were also measured. The last two rows are whole builds
   including all the C and C++ libraries the game links. These are today's numbers, and the work to
   bring them down is in the documents below. How they are measured: [docs/compile-speed.md](docs/compile-speed.md),
   [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md). To measure them
