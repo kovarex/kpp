@@ -1217,7 +1217,11 @@ A declaration that exists in the current scope only when a constant condition ho
 - When it is true, it is an ordinary declaration of that scope: the same lifetime and the same place
   of its destructor.
 - A use of the name must stand where the condition is known to hold: inside `if constexpr` on it, or
-  in another `when` on it. Anywhere else the use is a compile error, never a silent fallback.
+  in another `when` on it. Anywhere else the use is a compile error, never a silent fallback, and it
+  is an error in every configuration, not only in the one where the name does not exist (kovarex,
+  2026-11-03): the check is structural (the conditions known at the use, compared as written, `&&`
+  giving each of its parts), so building debug reports a use that would break a niche configuration
+  such as a console port's, at no measurable cost.
 - `if constexpr` keeps C++'s scoping; kpp adds no exception to it.
 - It stands wherever a declaration may: in a block, at namespace scope, and as a class member
   (kovarex, 2026-11-03: "Having it for members makes 100% sense", for statistics and debug members).
