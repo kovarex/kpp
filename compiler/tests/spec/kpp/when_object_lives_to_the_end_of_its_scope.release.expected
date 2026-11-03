@@ -1,0 +1,6 @@
+start outer
+start inner
+work
+stop inner
+stop outer
+after

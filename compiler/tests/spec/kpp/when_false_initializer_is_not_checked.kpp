@@ -1,0 +1,19 @@
+// spec: when a `when` condition is false (design.md 19) the declaration does not exist: its initializer is neither evaluated nor checked, as a discarded branch, so it may name what this configuration does not have (a debug-only function in release) and call nothing
+// factorio: a debug-only local initialized from a debug-only member or function (`#ifdef DEBUG` members the release configuration leaves out), converted to `when (config::debug)`
+// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses)
+int calls = 0;
+int bump()
+{
+  ++calls;
+  return calls;
+}
+
+int main()
+{
+  when (false) int missing = noSuchFunction(42);
+  when (false) int bumped = bump();
+  when (true) int counted = bump();
+  if constexpr (true)
+    println("calls ", calls, " counted ", counted);
+  return 0;
+}

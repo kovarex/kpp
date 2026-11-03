@@ -1,0 +1,21 @@
+// spec: `when (condition) declaration;` (design.md 19) declares an object of the enclosing scope only when the condition holds: an RAII object's constructor runs at the declaration and its destructor at the end of the enclosing block, in reverse order with the block's other locals, as the C++ `#ifdef` declared it; when the condition is false there is no object, no constructor and no destructor
+// factorio: the game's time measurers under #ifdef (`TimeMeasurer timeMeasurer(...)` for the rest of a function), converted from `#ifdef DEBUG` (design.md 12, "The game's DEBUG as config::debug")
+// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses)
+struct Timer
+{
+  const char* name;
+  Timer(const char* name) : name(name) { println("start ", StringView(name)); }
+  ~Timer() { println("stop ", StringView(name)); }
+};
+
+int main()
+{
+  {
+    Timer outer("outer");
+    when (config::debug) Timer timer("phase");
+    Timer inner("inner");
+    println("work");
+  }
+  println("after");
+  return 0;
+}

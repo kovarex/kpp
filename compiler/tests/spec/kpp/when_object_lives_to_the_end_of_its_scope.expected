@@ -1,0 +1,8 @@
+start outer
+start phase
+start inner
+work
+stop inner
+stop phase
+stop outer
+after

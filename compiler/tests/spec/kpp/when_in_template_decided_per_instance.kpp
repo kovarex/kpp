@@ -1,0 +1,26 @@
+// spec: a `when` condition on a template's types (design.md 19) is decided per instance: the declaration exists in the instances where it holds, and in the others there is none and its initializer is not checked (a Handle, whose destructor is its own, is no T to copy here)
+// factorio: the game's templates over trivially copyable types (`std::is_trivially_copyable_v<T>`), and #ifdef DEBUG inside templates converted to `when (config::debug)`
+// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses and the per-instance condition)
+struct Handle
+{
+  int id = 7;
+  Handle() {}
+  Handle(const Handle&) = delete;
+  ~Handle() {}
+};
+
+template<typename T>
+int bytesKept(const T& value)
+{
+  when (isTriviallyCopyable<T>) T copy = value;
+  if constexpr (isTriviallyCopyable<T>)
+    return int(sizeof(copy));
+  return 0;
+}
+
+int main()
+{
+  Handle handle;
+  println(bytesKept(3.0), " ", bytesKept(handle), " ", bytesKept('x'));
+  return 0;
+}

@@ -1,0 +1,31 @@
+// spec: a `when` member of a class template whose condition depends on T (design.md 19) is in the layout of the instances where it holds and absent from the others: Slot<int> keeps a backup copy, Slot<Handle> (a Handle has a destructor of its own, so it is not trivially copyable) has none and its member's type is never checked
+// factorio: the game's class templates under #ifdef DEBUG members, and type-dependent members such as the trivially copyable cases of its containers
+// pending: `when` is not parsed yet (A: the parser, the scope and the layout; D: the uses and the per-instance condition)
+struct Handle
+{
+  int id = 7;
+  ~Handle() {}
+};
+
+template<typename T>
+struct Slot
+{
+  T value;
+  when (isTriviallyCopyable<T>) T backup;
+
+  void save()
+  {
+    if constexpr (isTriviallyCopyable<T>)
+      backup = value;
+  }
+};
+
+int main()
+{
+  Slot<int> number;
+  number.value = 4;
+  number.save();
+  number.value = 5;
+  println(number.value, " ", number.backup, " ", sizeof(Slot<int>), " ", sizeof(Slot<Handle>));
+  return 0;
+}

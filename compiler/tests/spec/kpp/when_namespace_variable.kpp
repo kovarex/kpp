@@ -1,0 +1,24 @@
+// spec: a `when` declaration at namespace scope (design.md 19) exists only where its condition holds: a debug-only global counter in a namespace and at file scope, used inside `if constexpr (config::debug)`; in release there is no variable and its initializer is not checked
+// factorio: the game's 57 namespace-scope declarations under #ifdef DEBUG (counters, debug tables, debug-only globals), converted to `when (config::debug)` (design.md 12)
+// pending: `when` is not parsed yet (A: the parser and the scope; D: the uses)
+namespace Statistics
+{
+  when (config::debug) int created = 0;
+}
+when (config::debug) const char* buildName = "debug build";
+
+int make(int value)
+{
+  if constexpr (config::debug)
+    ++Statistics::created;
+  return value * 2;
+}
+
+int main()
+{
+  int total = make(1) + make(2) + make(3);
+  println(total);
+  if constexpr (config::debug)
+    println(StringView(buildName), ": ", Statistics::created, " made");
+  return 0;
+}
