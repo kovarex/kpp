@@ -346,7 +346,7 @@ jobs:
           copyback: true
           run: |
             freebsd-version
-            sh spec-freebsd/run.sh > spec-freebsd/run.log 2>&1
+            sh spec-freebsd/run.sh > spec-freebsd/run.log 2>&1 || true
             cat spec-freebsd/run.log
 
       # The counts and the failures in the run's summary; the step fails unless run.sh reached its
@@ -356,9 +356,9 @@ jobs:
         shell: bash
         run: |
           log=spec-freebsd/run.log
-          last=$(tail -n 1 "$log" 2>/dev/null)
-          { echo '### spec on FreeBSD 14.3'; echo; echo "    ${last:-no result: run.sh did not finish (the VM's step failed)}";
-            grep '^FAIL' "$log" 2>/dev/null | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
+          last=$(tail -n 1 "$log" 2>/dev/null || true)
+          [ -n "$last" ] || last='no result: run.sh did not finish (the VM step failed)'
+          { echo '### spec on FreeBSD 14.3'; echo; echo "    $last"; grep '^FAIL' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
           case "$last" in "spec freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
 
   # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
