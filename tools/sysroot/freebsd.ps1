@@ -7,9 +7,11 @@
 # not follow them); prints the sysroot. Needs Git for Windows' xz (Windows' tar cannot decompress xz).
 #   powershell -ExecutionPolicy Bypass -File tools\sysroot\freebsd.ps1 [-Out compiler\build\sysroots\freebsd-x86_64]
 # The release is on FreeBSD's archive only (download.freebsd.org dropped it), over http: its https
-# certificate names another host. The pinned SHA-256 is the release's MANIFEST's (2026-11-03), read
-# from the same http server: UNVERIFIED until it is checked against something FreeBSD signed (disc1.iso,
-# which holds base.txz, against the signed release announcement's SHA-256, awaiting kovarex's OK).
+# certificate names another host. The pinned SHA-256 is VERIFIED (2026-11-03, kovarex's OK): FreeBSD's
+# signed 14.3 release announcement, read over https (https://www.freebsd.org/releases/14.3R/announce/),
+# gives disc1.iso's SHA-256 f564822bc72d420d1e1a6faacb72f6056d828fcf539dfafd52e08503ef5fab68; the ISO
+# downloaded had it, and its usr/freebsd-dist/base.txz and MANIFEST are byte-identical to the ones
+# downloaded from the archive, whose SHA-256 is the one pinned here.
 param(
   [string]$Out = "$PSScriptRoot\..\..\compiler\build\sysroots\freebsd-x86_64",
   [string]$Download = "$PSScriptRoot\..\..\compiler\build\sysroots"
