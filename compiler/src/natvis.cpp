@@ -76,11 +76,17 @@ namespace
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, std::vector<std::string>& problems)
 {
   // The library's class definitions at namespace scope, by name.
+  // A specialization (`Vector<bool>`) is named with /spec<token> in the PDB (B's names): a wildcard
+  // rule misses it, so one of a class with a rule is a problem.
   std::map<std::string, std::pair<const ClassDecl*, const ParsedFile*>> library;
+  std::set<std::string> specialized;
   std::function<void(Span<Decl*>, const ParsedFile*)> collect = [&](Span<Decl*> decls, const ParsedFile* file)
   {
     for (const Decl* d : decls)
-      if (d->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d)->isDefinition)
+      if (d->kind == NodeKind::ClassDecl && !static_cast<const ClassDecl*>(d)->name.parts.empty() &&
+          static_cast<const ClassDecl*>(d)->name.parts[static_cast<const ClassDecl*>(d)->name.parts.size() - 1].hasTemplateArgs)
+        specialized.insert(nameOf(static_cast<const ClassDecl*>(d)->name, symbols));
+      else if (d->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d)->isDefinition)
         library.emplace(nameOf(static_cast<const ClassDecl*>(d)->name, symbols), std::make_pair(static_cast<const ClassDecl*>(d), file));
       else if (d->kind == NodeKind::NamespaceDecl)
         collect(static_cast<const NamespaceDecl*>(d)->decls, file);
@@ -192,6 +198,8 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     bool ok = !(r.classes[0] == "String" && largeMark.empty());
     for (const std::string& cls : r.classes)
     {
+      if (specialized.count(cls))
+        problems.push_back("the library specializes " + cls + ", whose rule names only its primary template: add a rule for the specialization");
       auto found = library.find(cls);
       if (found == library.end())
       {
