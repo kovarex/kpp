@@ -1224,6 +1224,10 @@ A declaration that exists in the current scope only when a constant condition ho
   A `when` member is part of the class's layout only where its condition holds, per configuration and
   per class template instance. A constructor's member initializer for a `when` member exists exactly
   when the member does, as part of that member's declaration.
+- Several `when` declarations may declare one name in one scope (kovarex, 2026-11-03), as an
+  `#ifdef`/`#else` pair did: `when (config::debug) DebugTimer timer("x"); when (!config::debug)
+  NullTimer timer("x");`. It is decided at compile time: where two of them exist at once, in a
+  configuration or a template instance, that is a clash and a compile error there.
 - `when` is a keyword. It is not one in C++, and the converted game never uses it as a name.
 
 Why (kovarex, 2026-11-03): converting `#ifdef DEBUG` to `if constexpr (config::debug) { }` gave each
