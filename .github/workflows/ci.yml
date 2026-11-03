@@ -254,13 +254,17 @@ jobs:
 
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
-  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only, and publish does not wait for either: the
-  # build fails for 19 snippets and the run for every throw until stages 3 and 4 (design.md).
+  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only. Until a baseline of the known failures
+  # (stages 3 and 4, design.md) fails only on new ones, both jobs are continue-on-error and write
+  # their counts in the run's summary; publish does not wait for them.
   freebsd_build:
     needs: build
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -289,11 +293,20 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File tools\sysroot\freebsd.ps1
           if ($LASTEXITCODE -ne 0) { throw 'tools\sysroot\freebsd.ps1 failed' }
 
-      # The snippets that do not build are listed, not fatal (stage 4's Win32 calls): the bundle has
-      # the ones that linked.
+      # A snippet that does not build is listed (stage 4's Win32 calls, exit code 1), and the bundle
+      # has the ones that linked. The step fails when run_spec.py itself cannot run (exit code 2: no
+      # sysroot, no compiler) and when kppc crashes or times out on a snippet.
       - name: spec built for FreeBSD
-        shell: cmd
-        run: python -X utf8 -I compiler\tests\spec\run_spec.py --target freebsd & exit /b 0
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue' # (Actions' 'stop' would end the step on python's stderr)
+          $out = & python -X utf8 -I compiler\tests\spec\run_spec.py --target freebsd 2>&1 | ForEach-Object { "$_" }
+          $code = $LASTEXITCODE
+          $out
+          $crashes = @($out | Where-Object { $_ -match 'the compiler crashed|compiler timed out' })
+          @('### spec built for FreeBSD 14.3', '', '    ' + ($out | Select-Object -Last 1)) + @($crashes | ForEach-Object { "    $_" }) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          if ($code -gt 1) { throw "run_spec.py --target freebsd: exit code $code" }
+          if ($crashes.Count) { throw "kppc crashed or timed out on $($crashes.Count) snippet(s)" }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -305,12 +318,17 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-  # The bundle in a FreeBSD 14.3 VM: vmactions/freebsd-vm (QEMU with KVM on the Ubuntu runner;
-  # v1.5.9, pinned by its commit), which copies the workspace in with rsync and runs run.sh there.
+  # The bundle in a FreeBSD 14.3 VM: vmactions/freebsd-vm (QEMU with KVM on the Ubuntu runner; v1.5.9,
+  # pinned by its commit). It copies the workspace in and back with rsync and runs run.sh there; its
+  # log comes back for the summary. The action downloads its own FreeBSD image (anyvm-org's, not
+  # FreeBSD's), its scripts and SSH keys, none of them hash-checked: the job's token can only read.
   freebsd_run:
     needs: freebsd_build
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: read
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -322,10 +340,23 @@ jobs:
         with:
           release: '14.3'
           sync: rsync
-          copyback: false
+          copyback: true
           run: |
             freebsd-version
-            sh spec-freebsd/run.sh
+            sh spec-freebsd/run.sh > spec-freebsd/run.log 2>&1
+            cat spec-freebsd/run.log
+
+      # The counts and the failures in the run's summary; the step fails unless run.sh reached its
+      # last line and that says ALL PASSED (a VM that died has no last line).
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          log=spec-freebsd/run.log
+          last=$(tail -n 1 "$log" 2>/dev/null)
+          { echo '### spec on FreeBSD 14.3'; echo; echo "    ${last:-no result: run.sh did not finish (the VM's step failed)}";
+            grep '^FAIL' "$log" 2>/dev/null | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
+          case "$last" in "spec freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
 
   # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
   # the artifact "package". Packaging publishes nothing.
