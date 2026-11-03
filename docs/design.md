@@ -1201,6 +1201,35 @@ kovarex: "every commit should add to the smallest version". kpp's version is MAJ
 
 docs/build.md, "Versions", has the details.
 
+### 19. Conditional declarations: `when (condition) declaration;` (decided 2026-11-03)
+
+A declaration that exists in the current scope only when a constant condition holds:
+```cpp
+{
+  when (config::timeMeasuring) TimeMeasurer timeMeasurer("buildPhase");
+  buildPhase();
+}   // when it exists, its destructor runs here, as in the C++
+```
+- The condition is any constant expression, as `if constexpr`'s: a `config::` value, or a property of
+  a template's types (decided per instance).
+- When it is false, the declaration does not exist: no storage, no constructor, and its initializer is
+  neither evaluated nor checked, as a discarded branch.
+- When it is true, it is an ordinary declaration of that scope: the same lifetime and the same place
+  of its destructor.
+- A use of the name must stand where the condition is known to hold: inside `if constexpr` on it, or
+  in another `when` on it. Anywhere else the use is a compile error, never a silent fallback.
+- `if constexpr` keeps C++'s scoping; kpp adds no exception to it.
+- `when` is a keyword. It is not one in C++, and the converted game never uses it as a name.
+
+Why (kovarex, 2026-11-03): converting `#ifdef DEBUG` to `if constexpr (config::debug) { }` gave each
+block a scope of its own, which broke a debug-only local used by a later block, a constant whose
+value differs per configuration, and an RAII object such as a time measurer, whose lifetime would end
+with the block. Making `if constexpr` scope-free for config conditions, or adding a separate
+scope-free `if`, was rejected as a special exception ("not very elegant"). A constant that differs
+per configuration converts to `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`; a declaration that
+exists only in some configurations is a `when`. kovarex: "it solves at least 2-3 problems we had, and
+is simple."
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
