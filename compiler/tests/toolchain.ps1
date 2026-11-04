@@ -247,6 +247,22 @@ void build(Project& project)
       $run = Run "$inst\kpp.exe" @('--no-server')
       if ($run.exit -eq 0 -or $run.text -notmatch $case[1] -or $run.text -match 'compiling') { Fail "--toolchain msvc without Visual Studio's clang ($([IO.Path]::GetFileName($case[0]))): exit $($run.exit), $($run.text)" }
     }
+    # kpp --version where its default is the bundled toolchain: whether Visual Studio's is here too,
+    # and what to install where it is not (kovarex's other machine took the bundled one unsaid).
+    $env:KPP_VSWHERE = $noClang
+    $version = Run "$inst\kpp.exe" @('--version')
+    if ($version.text -notmatch 'toolchain msvc: none: needs Visual Studio''s "C\+\+ Clang Compiler for Windows".*does not have') { Fail "kpp --version without Visual Studio's clang does not say what to install: $($version.text)" }
+    # A Visual Studio whose Clang component only a prerelease one (Preview, Insiders) has: taken.
+    $real = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+    if ($real)
+    {
+      $prerelease = Join-Path $work 'vswhere-prerelease.cmd'
+      Set-Content -Encoding ascii $prerelease "@echo off`r`necho %* | %SystemRoot%\System32\findstr.exe /c:`"-prerelease`" >nul || exit /b 0`r`necho $real"
+      $env:KPP_VSWHERE = $prerelease
+      $r = Probe "$inst\kpp.exe" 'prerelease' @('--toolchain', 'msvc')
+      if ($r.code -ne 0 -or $r.line -notlike "toolchain: $real\VC\Tools\Llvm\x64\bin\clang.exe*") { Fail "--toolchain msvc did not take a prerelease Visual Studio's clang: '$($r.line)' $($r.report)" }
+    }
+    $env:KPP_VSWHERE = $noVs
     # The repository's kppc (no toolchain of its own) without Visual Studio's clang: the same, said for it.
     $r = Probe $Kppc 'novs' @()
     if ($r.code -ne 2 -or $r.report -notmatch 'has no toolchain of its own.*none is installed') { Fail "a kppc without a toolchain and without Visual Studio: exit $($r.code), $($r.report)" }
@@ -266,6 +282,8 @@ void build(Project& project)
       cmd /c rd /s /q build
       $run = Run "$inst\kpp.exe" @('--no-server', '--run')
       if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -notmatch '\(debug, bundled toolchain, total') { Fail "a build.kpp asking for msvc,bundled without Visual Studio did not build with the bundled toolchain: $($run.text)" }
+      # ... and says why, as a warning Visual Studio's Error List shows: what Visual Studio lacks.
+      elseif ($run.text -notmatch 'warning: hello \(debug\): --toolchain msvc,bundled takes bundled: --toolchain msvc needs Visual Studio 2022 or its Build Tools, and none is installed') { Fail "a build.kpp's msvc,bundled took the bundled toolchain without saying why: $($run.text)" }
       Set-Content -Encoding ascii 'build.kpp' $built
     }
     finally { Pop-Location }

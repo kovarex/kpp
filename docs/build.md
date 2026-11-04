@@ -933,11 +933,17 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   math.h's long double functions on doubles: kpp's long double is a double, as MSVC's, and
   libmingwex's are x87's 80 bits.
 - **Which toolchain a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's
-  clang, found by vswhere, and its MSVC dialect, `--target windows`), and an error when that one is
-  not there, never the other in its place. A list in the order preferred, `--toolchain msvc,bundled`,
-  takes the first of them this machine has (every name checked first; an error when none is): a
-  build.kpp that prefers Visual Studio's builds where only the bundled one is, as the game's does
-  (kovarex, 2026-11-03: `kpp factorio debug --set toolchain=bundled` chooses without editing it).
+  clang and its MSVC dialect, `--target windows`), and an error when that one is not there, never the
+  other in its place. Visual Studio's clang is that of the newest Visual Studio with its "C++ Clang
+  Compiler for Windows" component (vswhere), a prerelease one (Preview, Insiders) only when no other
+  has it; the error names every Visual Studio here and what to install. A list in the order
+  preferred, `--toolchain msvc,bundled`, takes the first of them this machine has (every name checked
+  first; an error when none is): a build.kpp that prefers Visual Studio's builds where only the
+  bundled one is (kovarex, 2026-11-03). kpp warns of such a build, why the first one is not taken
+  (`warning: game (debug): --toolchain msvc,bundled takes bundled: --toolchain msvc needs Visual
+  Studio's "C++ Clang Compiler for Windows" ...`), in Visual Studio's Error List too: a build of the
+  other dialect, whose C imports and libraries differ, is never a silent one. `kpp --version` says
+  whether Visual Studio's is here where the default is another (`toolchain msvc: ...`).
   Without it: KPP_CLANG, else the installation's `bin\` when it has one, else Visual Studio's. The
   bundled toolchain with `--target windows` (it has no MSVC headers) and Visual Studio's clang with
   `--target windows-gnu` are errors. kpp's build line names the one taken (`(debug, bundled

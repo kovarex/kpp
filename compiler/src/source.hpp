@@ -73,3 +73,10 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
 bool bundledToolchain();
 // The toolchain a build takes, as --toolchain names it ("bundled", "msvc"), or "KPP_CLANG".
 std::string toolchainName();
+// Why the last selectToolchain's list did not take its toolchains before the one it took (`--toolchain
+// msvc needs Visual Studio's "C++ Clang Compiler for Windows" ...`), what kpp says of such a build;
+// empty when it took its first one, or was no list.
+std::string toolchainSkipped();
+// Visual Studio's clang (visualStudioClang: of the newest Visual Studio with its Clang component, a
+// prerelease one if no other has it), or why there is none: what kpp --version says.
+std::string visualStudioToolchain(std::string& missing);

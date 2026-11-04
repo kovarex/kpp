@@ -257,6 +257,16 @@ namespace
       printf("toolchain: %s (%s)\n", clang.c_str(), kind);
     else
       printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);
+    // Visual Studio's too where it is not the default: whether --toolchain msvc (and a build.kpp's
+    // msvc,bundled) finds it here, and if not, what to install.
+    if (!problem.empty() || bundledToolchain() || getenv("KPP_CLANG"))
+    {
+      std::string missing, msvc = visualStudioToolchain(missing);
+      if (msvc.empty())
+        printf("toolchain msvc: none: %s\n", missing.c_str());
+      else
+        printf("toolchain msvc: %s (Visual Studio's: --toolchain msvc)\n", msvc.c_str());
+    }
     printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows or windows-gnu (clang otherwise)" : "clang's");
     std::filesystem::path stdlib = defaultStdlib(compiler);
     printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");

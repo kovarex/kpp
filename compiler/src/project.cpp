@@ -1151,11 +1151,18 @@ namespace
     std::error_code ec;
     // The program's toolchain, its C libraries' too (a game that links Visual Studio's C++ libraries
     // asks for --toolchain msvc): one that is not there is said here, before anything compiles.
-    if (std::string error = selectToolchain(compilerPath(), toolchainOf(p, request)); !error.empty())
+    std::string toolchain = toolchainOf(p, request);
+    if (std::string error = selectToolchain(compilerPath(), toolchain); !error.empty())
     {
       fprintf(stderr, "error: %s (%s): %s\n", p.name.c_str(), p.configuration.c_str(), error.c_str());
       return 1;
     }
+    // A list's later toolchain (msvc,bundled where Visual Studio's clang is missing): why the first
+    // one is not taken, a warning Visual Studio's Error List shows (a build of the other dialect, whose
+    // C imports and libraries differ, is never a silent one).
+    if (std::string skipped = toolchainSkipped(); !skipped.empty())
+      fprintf(stderr, "warning: %s (%s): --toolchain %s takes %s: %s\n", p.name.c_str(), p.configuration.c_str(), toolchain.c_str(),
+              toolchainName().c_str(), skipped.c_str());
     fs::create_directories(exe.parent_path(), ec);
     if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, p.configuration).c_str()) != 0)
     {
