@@ -1200,7 +1200,8 @@ namespace
     std::string programLocationOf(Node* at, ParsedFile* file)
     {
       size_t line = lineOf(at, file);
-      return line ? file->path + ":" + std::to_string(line) : std::string("?");
+      // (the path as the program's text gives it: --file-prefix-map's, no path of this machine in a release)
+      return line ? programPathOf(file) + ":" + std::to_string(line) : std::string("?");
     }
 
     // The line a node starts on in its file (from 1), 0 when unknown.
@@ -21263,12 +21264,16 @@ static std::string declareUndefined(const std::string& text, const std::unordere
       used.insert(name);
     i += name.size() - 1;
   }
+  // The stubs' runtime is a shared function, which a debug build of several modules defines in one
+  // home module: the others declare it for their stubs (made after their declarations were, or in
+  // their text already: a program piece's), never stub it. Taken for a function left out, it was
+  // defined twice there, `declare void @kpp_missing(ptr)` and a stub `define ... @kpp_missing()`, and
+  // clang rejected the module (spec language/stub_missing_in_several_modules).
+  bool usesRuntime = used.erase("@kpp_missing") > 0;
   std::vector<std::string> sorted(used.begin(), used.end());
   std::sort(sorted.begin(), sorted.end());
-  std::string out = sorted.empty() ? "" : "\n; left out by codegen errors (--keep-going)\n";
-  // The stubs' runtime is a shared function, which a debug build of several modules defines in one
-  // home module: the others declare it for their stubs (made after their declarations were).
-  if (stubs && !sorted.empty() && !known.count("@kpp_missing"))
+  std::string out = sorted.empty() && !usesRuntime ? "" : "\n; left out by codegen errors (--keep-going)\n";
+  if (((stubs && !sorted.empty()) || usesRuntime) && !known.count("@kpp_missing"))
     out += "declare void @kpp_missing(ptr)\n";
   for (const std::string& name : sorted)
     if (stubs)

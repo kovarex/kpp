@@ -1050,7 +1050,35 @@ namespace
     std::unique_ptr<std::atomic<bool>[]> failed; // by command
   };
 
-  bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, LibraryJob& job,
+  // What a C library's __FILE__ (an SDL_assert's, a LOG(FATAL)'s) says of the paths under the project:
+  // relative to it, and under a kpp library's root the library's name, as kppc's --file-prefix-map
+  // writes kpp's own paths in a release build, so that no binary holds a path of this machine. Clang's
+  // -ffile-prefix-map, the longest directory first (clang's own order). In every configuration: they
+  // share the C libraries' objects (build\clib), which have no debug information to open files by.
+  std::string libraryPrefixMap(const fs::path& root, const Program& p)
+  {
+    bool gnu = bundledToolchain();
+    std::string flags;
+    auto add = [&](const fs::path& from, const std::string& to)
+    {
+      std::error_code ec;
+      std::string dir = fs::absolute(from, ec).lexically_normal().string();
+      if (dir.empty())
+        return;
+      if (dir.back() != '\\' && dir.back() != '/')
+        dir += '\\';
+      std::string flag = "-ffile-prefix-map=" + dir + "=" + to; // (TO ends in no backslash: quoteArg's quote would be escaped)
+      flags += " " + quoteArg(gnu ? flag : "/clang:" + flag);
+    };
+    add(root, "");
+    for (const ProjectLibrary& l : p.kppLibraries)
+      for (const std::string& r : l.roots)
+        add(rooted(root, r), l.name + "/");
+    return flags;
+  }
+
+  // prefixMap: libraryPrefixMap's flags, after cFlags.
+  bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& prefixMap, LibraryJob& job,
                       std::unordered_map<std::string, fs::file_time_type>& times)
   {
     fs::path tools = fs::path(clangPath()).parent_path();
@@ -1094,6 +1122,7 @@ namespace
         flags += (gnu ? " -D" : " /D") + quoteArg(d);
       for (const std::string& f : cFlags)
         flags += " " + quoteArg(f);
+      flags += prefixMap;
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
@@ -1389,6 +1418,7 @@ namespace
     auto start = Clock::now();
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
+    std::string prefixMap = libraryPrefixMap(root, p);
     std::vector<const CLibrary*> cLibraries;
     for (const std::string& name : p.links)
     {
@@ -1419,7 +1449,7 @@ namespace
           checks.emplace_back([&, i]
           {
             std::unordered_map<std::string, fs::file_time_type> times;
-            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, jobs[i], times);
+            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, prefixMap, jobs[i], times);
           });
         for (std::thread& t : checks)
           t.join();

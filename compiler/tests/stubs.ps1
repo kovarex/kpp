@@ -51,6 +51,28 @@ foreach ($mode in '--modules 1', '--modules 4', '--release --modules 4')
     $failed += "${mode}: calling broken did not abort with its stub's message: '$($stub.text.Trim())', exit $($stub.code)"
   }
 }
+# A function declared and never defined (stubs\undefined.kpp): "used, but no definition of it was
+# found", and a stub too. In a build of several modules the stubs' runtime, homed in one module, is
+# declared in the others: taken for a function left out there, it got a stub of itself beside its
+# declaration, and clang rejected the module (declareUndefined). The stub's message gives its place as
+# the program's text gives paths (--file-prefix-map: a release build's, with no path of this machine).
+$undefined = (Resolve-Path "$PSScriptRoot\stubs\undefined.kpp").Path
+foreach ($mode in '--modules 1', '--modules 4', '--release --modules 4')
+{
+  $exe = "$work\undefined$($mode -replace '[- ]', '').exe"
+  Remove-Item $exe -ErrorAction SilentlyContinue
+  $build = Run $Kppc "--quiet --keep-going --stub-missing $mode --file-prefix-map `"$(Split-Path $undefined)=`" --exe `"$exe`" `"$undefined`""
+  $said = ($build.text -split "`r?`n" | Select-Object -First 4) -join ' | '
+  if ($build.code -ne 1 -or $build.text -notmatch 'missing is used, but no definition of it was found') { $failed += "undefined, ${mode}: the build exited $($build.code): $said"; continue }
+  if (-not (Test-Path $exe)) { $failed += "undefined, ${mode}: no executable: $said"; continue }
+  $run = Run $exe ''
+  if ($run.code -ne 0 -or $run.out -notmatch '^before\r?\nafter') { $failed += "undefined, ${mode}: the program printed '$($run.text.Trim())', exit $($run.code)" }
+  $stub = Run $exe 'call'
+  if ($stub.code -eq 0 -or $stub.text -notmatch 'missing at undefined\.kpp:1 ' -or $stub.text.Contains((Split-Path $undefined)))
+  {
+    $failed += "undefined, ${mode}: calling missing did not abort with its stub's message: '$($stub.text.Trim())', exit $($stub.code)"
+  }
+}
 foreach ($f in $failed) { "FAIL stubs: $f" }
-if (-not $failed.Count) { "ok   stubs: a function the checker found an error in is a stub in the module that calls it (--keep-going --stub-missing), in one module, four, and a release build" }
+if (-not $failed.Count) { "ok   stubs: a function the checker found an error in is a stub in the module that calls it (--keep-going --stub-missing), in one module, four, and a release build; and a function declared and never defined, in each" }
 exit $failed.Count

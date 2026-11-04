@@ -711,7 +711,8 @@ void build(Project& project)
 # The paths a program's text holds (an assertion's message, a CallerLocation's file): a release build
 # writes the project's relative to its directory and the standard library's under stdlib/
 # (--file-prefix-map), so that its binary holds no path of this machine; a debug build keeps them
-# whole, as its IDE and debugger open them.
+# whole, as its IDE and debugger open them. A C library's __FILE__ is relative to the project in every
+# configuration (clang's -ffile-prefix-map; the configurations share the library's objects).
 if (Run 'paths')
 {
   $paths = Join-Path $work 'paths'
@@ -719,13 +720,18 @@ if (Run 'paths')
   Push-Location $paths
   try
   {
-    Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"paths`", {`"src`"});`n}"
-    Set-Content 'src\main.kpp' "void where(CallerLocation here = caller) { println(StringView(here.file_name())); }`nint main()`n{`n  println(format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  where();`n  return 0;`n}"
+    New-Item -ItemType Directory -Force "$paths\libs\where", "$paths\include" | Out-Null
+    Set-Content 'include\where.h' 'const char* c_file(void);'
+    Set-Content 'libs\where\where.c' "#include `"where.h`"`nconst char* c_file(void) { return __FILE__; }"
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  CLibrary& where = project.cLibrary(`"where`");`n  where.source(`"libs/where`");`n  where.include(`"include`");`n  Executable& paths = project.executable(`"paths`", {`"src`"});`n  paths.link(`"where`");`n  paths.cInclude(`"include`");`n}"
+    Set-Content 'src\main.kpp' "extern `"C`" import `"where.h`";`nvoid where(CallerLocation here = caller) { println(StringView(here.file_name())); }`nint main()`n{`n  println(format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  println(StringView(c_file()));`n  where();`n  return 0;`n}"
     $root = (Get-Location).Path
     $stdlib = [IO.Path]::GetFullPath((Join-Path (Split-Path $Kppc) '..\..\stdlib'))
     $output = @(Kpp @('--release', '--no-server', '--run'))
     $printed = if ($output.Count) { $output[-1] } else { '' }
     if ($code -ne 0 -or $printed -ne 'src/main.kpp') { Fail "a release build's CallerLocation file is '$printed', not src/main.kpp`n$($output -join "`n")" }
+    $cFile = if ($output.Count -ge 2) { $output[-2] } else { '' }
+    if ($cFile -ne 'libs\where\where.c') { Fail "a C library's __FILE__ is '$cFile', not libs\where\where.c" }
     $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $paths 'build\release\paths.exe')))
     foreach ($held in $root, $stdlib)
     {
