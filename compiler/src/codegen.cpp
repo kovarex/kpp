@@ -149,6 +149,7 @@ namespace
   {
     const Ty* enclosingClass = nullptr; // what `this` in its body points to
     std::string writtenIn;              // the function it is written in (its call operator's requester in diagnostics)
+    std::string writtenInContext;       // and as diagnostics show it (`a lambda in main(), line 12`)
   };
 
   struct Instantiation
@@ -160,6 +161,7 @@ namespace
     std::string requestedBy; // the name of that function, for diagnostics
     std::string name;        // the LLVM name to define it under (the declaration's), or empty
     unsigned depth;          // instantiations in the chain that asked for it, itself included
+    std::string requestedByContext; // requestedBy as diagnostics show it (Emitter::currentContext)
   };
 
   // IR text several emitters append to (the shared declarations, a module's), one whole
@@ -361,6 +363,7 @@ namespace
   {
     std::string by;
     unsigned depth = 0;
+    std::string byContext; // by, as diagnostics show it (Emitter::currentContext)
   };
 
   // What the emitters of one program share, under `mutex` (recursive: laying out a class lays out
@@ -1083,6 +1086,12 @@ namespace
     unsigned currentDepth = 0;       // of the function being emitted: 0 for one that is not an instantiation
     std::string currentFunctionName; // LLVM name of the function being emitted
     std::string currentRequestedBy;  // for an instantiation: the function that first used it
+    // What an error's `(in ...)` calls them (fail): the function as errors print types
+    // (displayFunctionName: `a(Item^&)`, `Probe::Reading(int32)`, `sum<int32>(const Vector<int32>&)`), a
+    // lambda by the function it is written in and its line, a vtable or a global's initializer; the
+    // LLVM names above are the program's, never shown. Empty: those names are shown.
+    std::string currentContext;
+    std::string currentRequestedByContext;
 
     static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
     static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
@@ -1217,7 +1226,9 @@ namespace
     [[noreturn]] void fail(Node* at, const std::string& message, bool shown = true)
     {
       std::string where;
-      if (!currentFunctionName.empty())
+      if (!currentContext.empty())
+        where = " (in " + currentContext + (currentRequestedByContext.empty() ? "" : ", requested by " + currentRequestedByContext) + ")";
+      else if (!currentFunctionName.empty())
         where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
       // A value of unknown type in a function the checker reported an error in (`auto v = p.size()`
       // on an undeclared type's p) follows from that error too; and so does any failure on an
@@ -2212,6 +2223,10 @@ namespace
       // (the requester the diagnostics name, the same in every run).
       struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = std::move(saved); } } restore{currentFunctionName, currentFunctionName};
       currentFunctionName = "the vtable of " + types.toString(key, &symbols);
+      NameRestore contextRestore{currentContext, currentContext};
+      NameRestore requesterContextRestore{currentRequestedByContext, currentRequestedByContext};
+      currentContext = currentFunctionName;
+      currentRequestedByContext.clear();
       for (size_t t = 0; t < tables.size(); ++t)
       {
         Vtable& table = tables[t];
@@ -4704,9 +4719,9 @@ namespace
         }
       }
       if (copy && (copy->flags & DF_Delete))
-        unsupported(at, "copying " + qualifiedName(c) + ", whose copy constructor is deleted (move it instead)");
+        fail(at, "copying " + types.toString(types.unqualified(t), &symbols) + ", whose copy constructor is deleted (move it instead)"); // (the program's mistake, no gap: as errors print it, `Item^`)
       if (!copy && hasMove && !defaultedCopy)
-        unsupported(at, "copying " + qualifiedName(c) + ", which has a move constructor but no copy constructor");
+        fail(at, "copying " + types.toString(types.unqualified(t), &symbols) + ", which has a move constructor but no copy constructor");
       if (copy)
       {
         emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
@@ -6217,6 +6232,7 @@ namespace
         if (writer.writtenIn.empty())
         {
           writer.writtenIn = currentFunctionName;
+          writer.writtenInContext = currentContext;
           writer.enclosingClass = currentClassTy;
         }
       }
@@ -6970,6 +6986,16 @@ namespace
       // happened to emit it first.
       NameRestore requesterRestore{currentRequestedBy, currentRequestedBy};
       currentRequestedBy = writer.writtenIn;
+      // As an error says it: the function it is written in and its line, which a lambda's closure
+      // tag would not tell a reader (A, 2026-11-04).
+      NameRestore contextRestore1{currentContext, currentContext};
+      NameRestore contextRestore2{currentRequestedByContext, currentRequestedByContext};
+      {
+        size_t line = lineOf(l, l->closure && l->closure->file ? l->closure->file : currentFile);
+        currentContext = "a lambda" + (writer.writtenInContext.empty() ? std::string() : " in " + writer.writtenInContext) +
+                         (line ? ", line " + std::to_string(line) : std::string());
+        currentRequestedByContext.clear();
+      }
       struct ContextRestore
       {
         Decl*& lambda;
@@ -7581,6 +7607,78 @@ namespace
       return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + "\"";
     }
 
+    // The function as an error's `(in ...)` names it (currentContext): written as errors write types
+    // (types.toString: `Item^`, `const Vector<int32>&`), its class with the instance's arguments, a
+    // function template's arguments, its parameters and a const method's `const`, so that two
+    // instances or overloads stay two texts (the checker's errors are a set). computeFunctionName's
+    // structure, with the program's own spelling instead of the IR's.
+    std::string displayFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      ArgsScope scope(*this, &args);
+      auto spell = [&](const Ty* t) { return t ? types.toString(t, &symbols) : std::string("?"); };
+      std::string q;
+      Decl* owner = global.owningClass(f);
+      if (global.isExternC(f))
+        q = sym(f->name.last().symbol);
+      else if (owner && owner->kind == NodeKind::ClassDecl)
+      {
+        // A member: its class as types print it (an instance's arguments, a local class's place),
+        // then the member's own name.
+        std::string full = qualifiedName(f);
+        size_t pos = full.rfind("::");
+        q = spell(classTy ? classTy : types.classType(owner, {})) + (pos == std::string::npos ? "::" + full : full.substr(pos));
+      }
+      else
+      {
+        q = qualifiedName(f);
+        if (f->name.parts.size() > 1)
+        {
+          // `int M::twice(int) {}` outside its namespace: the name the declaration in M has.
+          std::string prefix;
+          for (size_t i = 0; i + 1 < f->name.parts.size(); ++i)
+            if (f->name.parts[i].symbol != UINT32_MAX)
+              prefix += sym(f->name.parts[i].symbol) + "::";
+          size_t pos = q.rfind("::");
+          std::string head = pos == std::string::npos ? "" : q.substr(0, pos + 2), tail = pos == std::string::npos ? q : q.substr(pos + 2);
+          if (!prefix.empty() && head.find(prefix) == std::string::npos)
+            q = head + prefix + tail;
+        }
+        q = withSpecialisationArgs(q, f);
+      }
+      if (!f->templateParams.empty())
+      {
+        q += "<";
+        for (size_t i = 0; i < f->templateParams.size(); ++i)
+        {
+          const Ty* t = nullptr;
+          for (auto& [d, ty] : args.pairs)
+            if (d == f->templateParams[i])
+              t = ty;
+          q += (i ? ", " : "") + spell(t);
+        }
+        q += ">";
+      }
+      else if ((f->flags & DF_Specialization) && f->isTemplate)
+      {
+        // (an explicit specialisation's arguments, as computeFunctionName tells them apart)
+        std::string spelled;
+        for (Node* a : f->name.last().templateArgs)
+        {
+          const Ty* t = uint8_t(a->kind) <= uint8_t(NodeKind::PackType) ? global.typeOfAst(static_cast<Type*>(a), f) : nullptr;
+          spelled += (spelled.empty() ? "" : ", ") + (t && t->isKnown() ? spell(t) : std::string("?"));
+        }
+        if (spelled.empty())
+          if (const Ty* ft = declType(f); ft && ft->kind == TyKind::Function && ft->inner)
+            spelled = spell(ft->inner);
+        q += "<" + spelled + ">";
+      }
+      const Ty* ft = declType(f);
+      std::string params;
+      for (size_t i = 0; ft && i < ft->args.size(); ++i)
+        params += (i ? ", " : "") + spell(ft->args[i]);
+      return q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "");
+    }
+
     struct Signature
     {
       std::string returnType;
@@ -8041,9 +8139,9 @@ namespace
     std::unordered_map<std::string, Request> levelRequests;
     void noteRequest(const std::string& name)
     {
-      auto [it, first] = levelRequests.try_emplace(name, Request{currentFunctionName, currentDepth + 1});
+      auto [it, first] = levelRequests.try_emplace(name, Request{currentFunctionName, currentDepth + 1, currentContext});
       if (!first && currentFunctionName < it->second.by)
-        it->second = {currentFunctionName, currentDepth + 1};
+        it->second = {currentFunctionName, currentDepth + 1, currentContext};
     }
     bool lastUseInstantiates = false; // the last useFunctionOnce asked for an instantiation
 
@@ -8103,7 +8201,7 @@ namespace
       // first requester's module piled most of the library's instantiations into one module that
       // clang then took 7 s at -O0 and 224 s at -O2 on, alone).
       unsigned module = moduleCount <= 1 ? 0 : sh.emissionModule(std::hash<std::string>()(name));
-      worklist.push_back({f, args, classTy, module, currentFunctionName, name, currentDepth + 1});
+      worklist.push_back({f, args, classTy, module, currentFunctionName, name, currentDepth + 1, currentContext});
     }
 
     // Makes a function usable from the current function: declares external ones, queues
@@ -12530,6 +12628,11 @@ namespace
       } nameRestore{currentFunctionName, currentRequestedBy, currentFunctionName, currentRequestedBy};
       currentFunctionName = fnName;
       currentRequestedBy.clear();
+      // (as an error names it: the global, not its initializer's LLVM name)
+      struct ContextNameRestore { std::string& name; std::string saved; ~ContextNameRestore() { name = std::move(saved); } }
+        contextRestore{currentContext, currentContext}, requesterContextRestore{currentRequestedByContext, currentRequestedByContext};
+      currentContext = "the initializer of " + (name.size() > 3 && name.compare(0, 2, "@\"") == 0 ? name.substr(2, name.size() - 3) : name);
+      currentRequestedByContext.clear();
       try
       {
         if (perThread)
@@ -20383,6 +20486,7 @@ namespace
         currentReturn = types.pointer(types.voidType());
       sretAddr.clear();
       currentFunctionName = nameOverride.empty() ? functionName(original, args, classTy) : nameOverride;
+      currentContext = displayFunctionName(original, args, classTy);
       struct OwnerScope
       {
         std::string& owner;
@@ -20397,7 +20501,7 @@ namespace
       {
         owner = currentFunctionName;
         emittingName = currentFunctionName;
-        emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth};
+        emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth, currentRequestedByContext};
         inlinedNow.clear();
         layoutsNow.clear();
         // One of the program's own functions (a level-0 item): what it owns goes in its module's
@@ -20773,6 +20877,8 @@ namespace
       currentModule = it == fileModule.end() ? 0 : it->second;
       currentFunctionName = "@\"kpp.init." + (classTy ? irString(classTy) + "::" + sym(v->name.last().symbol) : qualifiedName(v)) + "\"";
       currentRequestedBy.clear();
+      currentContext = "the initializer of " + (classTy ? types.toString(classTy, &symbols) + "::" + sym(v->name.last().symbol) : qualifiedName(v));
+      currentRequestedByContext.clear();
       currentFile = v->file; // its errors point at its declaration
       try
       {
@@ -21064,6 +21170,7 @@ static void emitInstantiation(Emitter& em, const Instantiation& item)
   }
   em.currentModule = item.module;
   em.currentRequestedBy = item.requestedBy;
+  em.currentRequestedByContext = item.requestedByContext;
   em.currentDepth = item.depth;
   struct EmitCall { Emitter* e; const Instantiation* item; };
   EmitCall call{&em, &item};
@@ -21112,6 +21219,7 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
     if (Request* r = first[item.name])
     {
       item.requestedBy = r->by;
+      item.requestedByContext = r->byContext;
       item.depth = r->depth;
     }
   for (auto& em : emitters)
@@ -21165,6 +21273,7 @@ static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, s
       if (const Request* r = best[i - bounds[c]])
       {
         level[i].requestedBy = r->by;
+        level[i].requestedByContext = r->byContext;
         level[i].depth = r->depth;
       }
     std::sort(level.begin() + bounds[c], level.begin() + bounds[c + 1], byName);

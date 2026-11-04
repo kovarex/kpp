@@ -1,0 +1,36 @@
+// spec: an error in a function's code names the function as the program writes it: its parameters' types as errors print them (`Item^`, design.md 20), a member with its class and `const`, a lambda by the function it is written in and its line; never the code generator's own name (`@"owned(UniquePtr<Item, DefaultDelete<Item>>&)"`, `@"main::__lambda_9f0c4e21_0::operator()(int32)"`)
+// error: error_context_names_function_as_written.kpp:15: error: a pointer (int32*) does not convert to int32 without a cast (in Probe::reading(int32) const)
+// error: error_context_names_function_as_written.kpp:22: error: a pointer (int32*) does not convert to int32 without a cast (in owned(Item^&))
+// error: error_context_names_function_as_written.kpp:32: error: a pointer (int32*) does not convert to int32 without a cast (in a lambda in main(), line 29)
+struct Item
+{
+  int value = 0;
+};
+struct Probe
+{
+  int base = 1;
+  int reading(int scale) const
+  {
+    int* place = nullptr;
+    int value = place;
+    return value * scale + this->base;
+  }
+};
+int owned(Item^& item)
+{
+  int* place = nullptr;
+  int value = place;
+  return value + item->value;
+}
+int main()
+{
+  Probe probe;
+  Item^ item = makeUnique<Item>();
+  auto twice = [](int v)
+  {
+    int* place = nullptr;
+    int doubled = place;
+    return doubled + v * 2;
+  };
+  return probe.reading(2) + owned(item) + twice(3);
+}

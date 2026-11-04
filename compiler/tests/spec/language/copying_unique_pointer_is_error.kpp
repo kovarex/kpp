@@ -1,0 +1,16 @@
+// spec: copying a `T^` (a UniquePtr, whose copy constructor is deleted) is the program's error, worded as such and with the type as it is written: `copying Item^, whose copy constructor is deleted (move it instead)`, not "codegen does not support copying UniquePtr ... yet"
+// error: copying_unique_pointer_is_error.kpp:9: error: copying Item^, whose copy constructor is deleted (move it instead) (in copyOf(Item^&))
+struct Item
+{
+  int value = 0;
+};
+int copyOf(Item^& owner)
+{
+  Item^ copy = owner;
+  return copy->value;
+}
+int main()
+{
+  Item^ owner = makeUnique<Item>();
+  return copyOf(owner);
+}
