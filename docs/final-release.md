@@ -1,21 +1,30 @@
 # kpp's best release against C++ FinalRelease
 
-The official Factorio releases are built in fbuild.bff's FinalRelease configuration. A fair runtime
+The official Factorio releases are built in fbuild.bff's FinalRelease configuration, of its
+factorio-all-in-one target: all of `src` in one unity file (kovarex, 2026-11-04). A fair runtime
 comparison puts kpp's best release build against that, not against C++ Release (kovarex,
 2026-11-03). This page records what FinalRelease is, what the converted game and kppc need to build
 the same program, and the measurements. Thread H leads it. The converter's part belongs to C, the
 build cell's to B.
 
 **The rule** (kovarex, 2026-11-04, CLAUDE.md): the game speed of kpp's release and final builds is
-always given against C++ FinalRelease of the same Factorio commit. C++ Release appears only as an
-extra column. Thread H rebuilds FinalRelease whenever the converted commit moves (FASTBuild through
-the coordinator) and keeps its benchmark root, `scratch\configs\bench\cppfinal`, for every thread's
-runs.
+always given against **C++ FinalRelease all-in-one** of the same Factorio commit. C++ Release, or
+FinalRelease's factorio-run, appears only as an extra column. Thread H rebuilds it whenever the
+converted commit moves (FASTBuild through the coordinator) and keeps its benchmark root,
+`scratch\configs\bench\cppaio`, for every thread's runs.
 
-**Latest** (2026-11-04, Factorio 4c178a5b915): kpp release is **0.97x** C++ FinalRelease on
-performance.zip and **0.98x** on kovarex_modern_playthrough_155 (C++ Release: 1.10x on both). The
-details are in "The benchmark" below. On the 45 menu maps it is **0.87x** (C++ Release: 1.01x;
-[test-matrix.md](test-matrix.md)).
+**Latest** (2026-11-04, Factorio 4c178a5b915), against C++ FinalRelease all-in-one:
+
+| build | performance.zip | modern_playthrough_155 |
+|---|---:|---:|
+| kpp final, full LTO (B's final cell) | **0.99x** | **0.97x** |
+| kpp final at -O3 | 0.98x | 0.97x |
+| kpp release (ThinLTO) | 0.98x | 0.99x |
+| C++ FinalRelease, factorio-run | 1.01x | 1.00x |
+
+The details are in "The benchmark against the all-in-one" below. On the 45 menu maps kpp release is
+**0.87x** C++ FinalRelease's factorio-run, which is within 1% of the all-in-one on the two saves
+(C++ Release: 1.01x; [test-matrix.md](test-matrix.md)).
 
 Source: C:\Factorio 4c178a5b915 (2.1.25), `fastbuild/fbuild.bff`, `.BuildVanillaRelease` (line 1303)
 and `.BuildVanillaFinalRelease` (line 1373). `.BuildRelease` and `.BuildFinalRelease` add `SPACE_AGE` to
@@ -132,6 +141,14 @@ or kovarex's decision), as plan B did for `config::debug`.
 - **`#error` and `static_assert`:** `src/BuildConstants.hpp:32` refuses FINAL_RELEASE together with
   DEBUG, so a final build is always non-debug. `src/Map/Map.cpp:132`'s static_assert is checked only
   in FinalRelease.
+- **`ALL_IN_ONE=1`:** the all-in-one target's one define of its own (fbuild.bff's
+  `.factorioallinoneConfig`). The converter lists it as undefined on purpose today. It makes
+  GlobalContext's test flags constexpr false (src/GlobalContext.hpp:445: `inTests`,
+  `inChartingTests`, `inTestUsingAppManager`, `inHeavyModeTests()`, `inBuildingRendererTests`,
+  `inForkGraphicsTests`, `prepareTestCacheFiles`), so every `if (global->inTests ...)` folds away. It
+  also drops ClientItemStackLocation's test-only constructor (src/Input/ClientItemStackLocation.hpp:11,
+  .cpp:13). The kpp final game keeps them as runtime members until the converter defines it. The
+  test executable (factorio-test) is not all-in-one and never defines it.
 - **C libraries:** they are compiled with Release's defines (build.kpp's `fromSource`). None of
   them reads `FINAL_RELEASE` or `PACKAGED_BUILD`: in all of `libraries\`, the only site is Agui's
   Widget.hpp, which is converted C++. So `fromSource` needs only the two defines added, for
@@ -182,7 +199,75 @@ C:\Factorio 4c178a5b915 (2026-11-03 22:58 UTC). It writes `vs2022\FinalReleasex6
 | The machine | loaded: 100% CPU at the start, from other threads' gates. A rough figure only. |
 | Result | factorio-run.exe 49.4 MB (Release's 65.1 MB), "2.1.25 (build 87847, win64, full)" |
 
+### C++ FinalRelease all-in-one, the reference
+
+`FBuild.exe -clean -summary vs2022-FinalReleasex64-factorio-all-in-one` (fbuild.bff's "Factorio all
+in one", line 3021), run on the same commit (2026-11-04 08:09 UTC). It is FinalRelease's flags and
+defines, plus `ALL_IN_ONE=1`. All of `src` is one unity file (`.UnityNumFiles = 1`), compiled without
+the precompiled header (`/bigobj /Zm300`). It writes `bin\FinalReleasex64vs2022\factorio.exe`, beside
+the factorio-run.exe above.
+
+| | |
+|---|---|
+| Wall time | **4 min 52.1 s** (load 5% at the start) |
+| Of that, the one unity file's compile | 119.8 s |
+| Of that, the LTCG link | 172.2 s |
+| CPU | 9 min 5.9 s (1.9:1): the unity file and the link run one after the other |
+| Result | factorio.exe 49.4 MB; checksums equal to the other builds' on both saves |
+
+The benchmark root copies it as `bench\cppaio\bin\FinalReleasex64\factorio-run.exe`. The bench runs a
+factorio-run.exe as C++ (without kpp's `--no-crash-handler`), and the game finds its paths from its
+folder, not its name.
+
+## The benchmark against the all-in-one (2026-11-04)
+
+The same method as the next section, in a quiet slot from 08:29 to 08:44 UTC:
+- `--benchmark SAVE --benchmark-ticks 1000`, 5 rounds interleaved with the order rotated, each build
+  from its own root;
+- load before each run 0.1–1.9%;
+- checksums equal in all 25 runs of each save.
+
+The builds:
+- **C++ FinalRelease all-in-one:** above, the reference.
+- **C++ FinalRelease's factorio-run:** above.
+- **kpp release:** B's plan-B game, as in the next section.
+- **kpp final:** B's final cell (branch final-cell): `kppc --lto full`, full LTO of the kpp code in
+  32 partitions, the C libraries built with `/GS-` outside the LTO. Still without FINAL_RELEASE's and
+  ALL_IN_ONE's configuration (C's, above).
+- **kpp final at -O3:** the same with `--opt-level 3`.
+
+performance.zip (checksum 21933964):
+
+| build | rounds (ms) | median | vs all-in-one |
+|---|---|---:|---:|
+| C++ FinalRelease all-in-one | 7068, 7116, 7033, 7045, 7014 | 7,045 | 1.00x |
+| C++ FinalRelease, factorio-run | 7060, 7108, 7134, 7226, 7053 | 7,108 | 1.01x |
+| kpp release | 7119, 6862, 6909, 6923, 6924 | 6,923 | **0.98x** |
+| kpp final | 6879, 6883, 7131, 7111, 6979 | 6,979 | **0.99x** |
+| kpp final at -O3 | 6948, 6836, 6912, 6757, 7006 | 6,912 | **0.98x** |
+
+kovarex_modern_playthrough_155.zip (checksum 816201650):
+
+| build | rounds (ms) | median | vs all-in-one |
+|---|---|---:|---:|
+| C++ FinalRelease all-in-one | 7941, 8079, 7941, 8061, 8102 | 8,061 | 1.00x |
+| C++ FinalRelease, factorio-run | 8119, 8095, 7890, 8126, 7923 | 8,095 | 1.00x |
+| kpp release | 7838, 8018, 8004, 7943, 8158 | 8,004 | **0.99x** |
+| kpp final | 7790, 7700, 7820, 7954, 7946 | 7,820 | **0.97x** |
+| kpp final at -O3 | 7655, 7811, 7823, 7800, 7604 | 7,800 | **0.97x** |
+
+What these show:
+- The all-in-one is 0.9% and 0.4% faster than FinalRelease's factorio-run. One unity file adds
+  little on top of `/GL` and `/LTCG`, which already optimize across the whole program.
+- kpp's builds are 1–3% faster than the reference. The rounds overlap, though: kpp final's
+  performance.zip rounds span 6,879–7,131 ms. -O3 is level with -O2 within that spread.
+- kpp final still runs FINAL_RELEASE's checks and ALL_IN_ONE's runtime test flags, which the C++
+  builds compile out. C's configuration is the next lever.
+
 ## The benchmark: C++ FinalRelease, C++ Release, kpp release (2026-11-04)
+
+The first comparison, the night before, was against FinalRelease's factorio-run (the all-in-one was
+not yet the reference).
 
 The method is B's from 2026-11-03 (the bench.py in thread B's scratch), copied:
 - `--benchmark SAVE --benchmark-ticks 1000`, 5 rounds interleaved with the order rotated;

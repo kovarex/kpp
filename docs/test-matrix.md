@@ -15,15 +15,20 @@ A third, final, is planned: the game as Factorio's official FinalRelease build m
 optimization, `FINAL_RELEASE`). [final-release.md](final-release.md) has what that needs and its
 benchmark against C++ FinalRelease.
 
-**Game speed is compared against C++ FinalRelease** (kovarex, 2026-11-04). kpp's release and final
-builds are measured against the C++ FinalRelease build of the same Factorio commit, the build the
-official releases come from. C++ Release is at most an extra column. The latest numbers for kpp
-release:
-- **0.97x C++ FinalRelease** on performance.zip and **0.98x** on modern_playthrough_155 (C++ Release:
-  1.10x on both; [final-release.md](final-release.md), "The benchmark");
-- **0.87x** on the 45 menu maps (C++ Release: 1.01x; the section below). Thread H rebuilds C++
-FinalRelease whenever the converted Factorio commit moves, and keeps its benchmark root
-(`scratch\configs\bench\cppfinal`) for every thread's runs.
+**Game speed is compared against C++ FinalRelease all-in-one** (kovarex, 2026-11-04). kpp's release
+and final builds are measured against FinalRelease of the factorio-all-in-one target, of the same
+Factorio commit: the build the packaged releases come from. C++ Release, and FinalRelease's
+factorio-run, are at most extra columns. The latest numbers ([final-release.md](final-release.md),
+"The benchmark against the all-in-one"):
+- kpp final (B's final cell, full LTO): **0.99x** on performance.zip, **0.97x** on
+  modern_playthrough_155;
+- kpp release: **0.98x** and **0.99x**;
+- FinalRelease's factorio-run: 1.01x and 1.00x.
+
+On the 45 menu maps, kpp release is **0.87x** FinalRelease's factorio-run (the section below; C++
+Release 1.01x), which is within 1% of the all-in-one on the two saves. Thread H rebuilds the C++
+FinalRelease builds whenever the converted Factorio commit moves, and keeps their benchmark roots
+(`scratch\configs\bench\cppaio`, the reference, and `cppfinal`) for every thread's runs.
 
 kppc's trivial inlining is on in all of them (`--no-inline` turns it off). The converted game is
 always Factorio's FastDebug preprocessing (`_DEBUG`, `DEBUG`, `LUA_USE_APICHECK`: convert.cpp's
@@ -38,8 +43,12 @@ GAME_DIR` (the 45 menu maps' checksums, with test_mod removed from the game's mo
 
 ## Game speed against C++ FinalRelease: the 45 menu maps (2026-11-04)
 
+This run predates the all-in-one reference. Its reference is FinalRelease's factorio-run, which the
+two saves measured within 1% of the all-in-one (1.01x and 1.00x). The next run of the maps adds the
+all-in-one.
+
 The builds, all from Factorio 4c178a5b915 (2.1.25):
-- **C++ FinalRelease:** built on 2026-11-03 ([final-release.md](final-release.md)).
+- **C++ FinalRelease:** factorio-run, built on 2026-11-03 ([final-release.md](final-release.md)).
 - **kpp release:** B's plan-B game, kpp 0.2.170 (master 29007274) building factorio-in-kpp c9cda971
   with `kpp factorio release`. ThinLTO, with FINAL_RELEASE's checks still in: not the final cell.
 - **C++ Release:** factorio-run.exe of 2026-10-31.
