@@ -85,20 +85,52 @@ void printPackages(const std::vector<PackageOf>& packages, const std::vector<std
           return {};
         return symbols.name(name.last().symbol);
       };
-      for (const Decl* d : parsed[i]->decls)
-        switch (d->kind)
+      // (a namespace's names qualified by it, `agui::Button`; a namespace that declares none of them
+      // is listed as one)
+      auto collect = [&](auto& self, Span<Decl*> decls, const std::string& prefix) -> bool
+      {
+        bool any = false;
+        auto named = [&](std::vector<std::string>& to, std::string_view name)
         {
-        case NodeKind::ClassDecl: add(types, spelled(static_cast<const ClassDecl*>(d)->name)); break;
-        case NodeKind::EnumDecl: add(types, spelled(static_cast<const EnumDecl*>(d)->name)); break;
-        case NodeKind::UsingAliasDecl: add(types, symbols.name(static_cast<const UsingAliasDecl*>(d)->name)); break;
-        case NodeKind::FunctionDecl: add(functions, spelled(static_cast<const FunctionDecl*>(d)->name)); break;
-        case NodeKind::VariableDecl: add(variables, spelled(static_cast<const VariableDecl*>(d)->name)); break;
-        case NodeKind::NamespaceDecl:
-          if (uint32_t name = static_cast<const NamespaceDecl*>(d)->name; name != UINT32_MAX)
-            add(namespaces, symbols.name(name));
-          break;
-        default: break;
-        }
+          if (!name.empty())
+          {
+            add(to, prefix + std::string(name));
+            any = true;
+          }
+        };
+        for (const Decl* d : decls)
+          switch (d->kind)
+          {
+          case NodeKind::ClassDecl: named(types, spelled(static_cast<const ClassDecl*>(d)->name)); break;
+          case NodeKind::EnumDecl: named(types, spelled(static_cast<const EnumDecl*>(d)->name)); break;
+          case NodeKind::UsingAliasDecl: named(types, symbols.name(static_cast<const UsingAliasDecl*>(d)->name)); break;
+          case NodeKind::FunctionDecl: named(functions, spelled(static_cast<const FunctionDecl*>(d)->name)); break;
+          case NodeKind::VariableDecl: named(variables, spelled(static_cast<const VariableDecl*>(d)->name)); break;
+          case NodeKind::NamespaceDecl:
+          {
+            const auto* n = static_cast<const NamespaceDecl*>(d);
+            std::string inner = n->name == UINT32_MAX ? prefix : prefix + std::string(symbols.name(n->name)) + "::";
+            if (!self(self, n->decls, inner) && n->name != UINT32_MAX)
+              add(namespaces, inner.substr(0, inner.size() - 2)); // (dropped below if another block of it declares names)
+            any = true;
+            break;
+          }
+          default: break;
+          }
+        return any;
+      };
+      collect(collect, parsed[i]->decls, std::string());
+      // (a namespace listed for one block of it that declares nothing, `namespace agui { }` holding only
+      // definitions of members, while another block's names are listed: those say it already)
+      std::erase_if(namespaces, [&](const std::string& n)
+      {
+        std::string prefix = n + "::";
+        for (const std::vector<std::string>* names : {&types, &functions, &variables})
+          for (const std::string& name : *names)
+            if (name.compare(0, prefix.size(), prefix) == 0)
+              return true;
+        return false;
+      });
       std::string line = "  " + files[i].filename().string();
       const char* separator = ": ";
       const std::pair<const char*, const std::vector<std::string>*> kinds[] = {

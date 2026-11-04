@@ -2,7 +2,8 @@
 # named as the directory, a library's root named as the library; a package's README.md gives its
 # description (its first paragraph, the headings, pictures and code blocks before it skipped); each
 # file lists the names it declares at its top level, an out-of-line member's definition and a second
-# overload left out. tests\packages\ against packages.expected.
+# overload left out, a namespace's names qualified by it (one declaring none listed as a namespace).
+# tests\packages\ against packages.expected.
 param([string]$Kppc = "build\kppc.exe")
 $ErrorActionPreference = "Stop"
 $Kppc = (Resolve-Path $Kppc).Path

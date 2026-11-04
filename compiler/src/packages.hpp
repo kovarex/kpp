@@ -26,7 +26,8 @@ std::string packageDescription(const std::filesystem::path& dir);
 
 // `kppc --packages`: each package by its path from its root, sorted (`a`, `a/b`, `a/c`), with `: ` and
 // its description when it has one, then each of its files by name with the names it declares at its
-// top level: types, functions, variables and constants, namespaces. packages[i] is files[i]'s package;
+// top level: types, functions, variables and constants, a namespace's qualified by it (`agui::Button`),
+// and the namespaces that declare none of those. packages[i] is files[i]'s package;
 // the files after packages.size() (the driver's own) are not listed.
 void printPackages(const std::vector<PackageOf>& packages, const std::vector<std::filesystem::path>& files,
                    const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols);
