@@ -7768,6 +7768,25 @@ struct GlobalScope::Impl
         return constCallObject(callee, c, ctx, depth); // `compare(a, b)`: an object's operator()
       return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
     }
+    // `UnderlyingType<E>(value)`, `Conditional<isSigned<U>, int64_t, uint64_t>(value)`: a functional cast to the type the
+    // built-in trait gives, as the walk types the call (typeOfCall), which converts as `T(value)` does below. The name is
+    // no function (or the library's struct of the name, which the trait is not).
+    if (!d && callee->name.parts.size() == 1 && callee->name.parts[0].hasTemplateArgs && isTypeTraitName(callee->name.parts[0].symbol))
+    {
+      const Ty* to = typeTrait(callee->name.parts[0], ctx, depth + 1);
+      to = to && to->isKnown() ? types.unqualified(to) : nullptr;
+      if (to && (to->isArithmetic() || to->kind == TyKind::Enum) && c->args.size() <= 1)
+        return c->args.empty() ? constConverted(ConstValue::integer(0), to) : constConverted(constValue(c->args[0], ctx, depth + 1), to);
+      if (to && to->kind == TyKind::Class && !isUndeducedClassTemplate(to))
+      {
+        // `Conditional<wide, Size, Small>(3, 4)`: the object the constructor the arguments choose makes, as below.
+        std::vector<ConstValue> values;
+        if (!constArguments(c->args, ctx, depth, values))
+          return std::nullopt;
+        return constConstruct(to, values, false, depth + 1, values.size() == c->args.size() ? &c->args : nullptr);
+      }
+      return std::nullopt; // (a pointer the trait gives: not evaluated yet)
+    }
     if (!d || d->kind == NodeKind::TemplateParamDecl)
     {
       Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);

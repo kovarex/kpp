@@ -1,14 +1,18 @@
-// spec: at compile time a functional cast to a built-in trait's type (`UnderlyingType<E>(value)` in a template) converts as at run time, as `static_cast<UnderlyingType<E>>(value)` does (`7 7`)
+// spec: at compile time a functional cast to a built-in trait's type (`UnderlyingType<E>(value)` in a template) converts as at run time, as `static_cast<UnderlyingType<E>>(value)` does, and one to a class the trait gives constructs it (`RemoveCvRef<T>(3, 4)`) (`7 7 3 3`)
 // found while making an enum's appendTo (design.md 14) run at compile time
-// pending: the evaluator looks the trait's name up as a function, finds none and gives up (D)
 extern "C" import "stdio.h";
 enum class Direction : u8 { North, East };
 template<typename E>
 constexpr int underlying(E value) { return int(UnderlyingType<E>(value)); }
 static_assert(underlying(Direction(7)) == 7);
 constexpr int seven = underlying(Direction(7));
+struct Size { int w = 0; int h = 0; constexpr Size(int width, int height) : w(width), h(height) {} };
+template<typename T>
+constexpr int width() { return RemoveCvRef<T>(3, 4).w; }
+static_assert(width<const Size&>() == 3);
+constexpr int three = width<const Size&>();
 int main()
 {
-  printf("%d %d\n", seven, underlying(Direction(7)));
+  printf("%d %d %d %d\n", seven, underlying(Direction(7)), three, width<const Size&>());
   return 0;
 }
