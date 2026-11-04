@@ -439,7 +439,7 @@ The gains overlap; each line is against the line before. The status column is as
 | 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). With debug info too since 8b5c902c (section 7) |
 | 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **done**: P1 4d884644, P2 91671241 (section 6): the program pieces compiled during codegen; the game's clean build 13.7 -> 11.3 s (back end after codegen 2.8 -> 1.3 s, 120 of the 128 program pieces during codegen), peak memory unchanged |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | not started |
-| 6. kppc codegen's lock scaling | D | −4 to −6 s | −0.1 s | −0.1 s | **first round done**, b9dcb7ba, 0303a2fb, 9aaf2cdb: codegen 8.9 -> 5.0 s at -j 32 (its serial start). What remains: 23.6 s of work on 32 threads runs about 4.7x. The lock profile of today's build is in section 7 |
+| 6. kppc codegen's lock scaling | D | −4 to −6 s | −0.1 s | −0.1 s | **first round done**, b9dcb7ba, 0303a2fb, 9aaf2cdb: codegen 8.9 -> 5.0 s at -j 32 (its serial start). **Second round** (section 6, steps 5 to 7), each step against its own master: the spin locks 9ce78be2 −0.2 to −0.3 s, the collection between levels 0c2a863d −0.23 to −0.26 s, the reserved maps and the modules finished on the threads (L2) −0.36 to −0.53 s; codegen 4.09 to 4.18 s at ca061cc6, 3.64 to 3.73 s with L2. The lock profile of today's build is in section 7 |
 | 7. Patching instead of relinking (e) | B, E | 0 | −0.4 s | −0.4 s | not started |
 
 Together, steps 1, 3 and 6 took the clean build without debug info (kppc direct) from 17.1 s to about
@@ -699,8 +699,8 @@ instances.
     0.19 s is on CPU. No hold of the shared lock is over 15.3 ms (the longest is
     LuaBinder<LuaCommandable>::getFunctionMap()'s).
   - The stall is a hold of definitionsMutex (`cg\timeline-l2.py`: every spin-lock hold over 20 ms):
-    156.5 ms in level 12, 106.6 ms in level 1 and 29.8 ms in level 0. The likely cause, not yet
-    measured: addDefinition inserts each function's name into definedIn and declareLines, maps that
+    156.5 ms in level 12, 106.6 ms in level 1 and 29.8 ms in level 0. The likely cause, confirmed in
+    step 7: addDefinition inserts each function's name into definedIn and declareLines, maps that
     reach about 260 k entries. MSVC rehashes such a map as it passes 65,536, 131,072 and 262,144
     entries, re-hashing every name under the lock. That predicts about 26, 50 to 100 and 157 ms for the
     two maps.
@@ -729,6 +729,54 @@ instances.
 
     That is −0.23 to −0.26 s of codegen. With the timeline, the serial gaps between levels went from
     513 to 537 ms to 307 to 329 ms, and the one after level 1 from 157 to 168 ms to 59 ms.
+
+**Step 7: the definition maps reserved, and the modules finished on the emitters' threads (L2; thread
+D, 2026-11-04).**
+- **Why.** Step 6's timeline left two serial costs:
+  - definitionsMutex held 156.5 ms in level 12, 106.6 ms in level 1 and 29.8 ms in level 0, and every
+    emitter adding a definition meanwhile waited: level 12's 784 items took 160 ms;
+  - after the last level, a 130 ms loop over the 256 modules on one thread.
+- **L2a: the definition maps reserved.** Every definition's name goes into definedIn and declareLines,
+  and level 0's requests into requestDeclarations, under definitionsMutex (Emitter::addDefinition).
+  MSVC's unordered_map rehashes as it passes its bucket count, which doubles (65,536, 131,072, 262,144
+  at these sizes), and hashes every name again under the lock. Before the first level, definedIn and
+  declareLines are now reserved for twice the program's own functions and startup globals and the
+  function instances the resolver made, at most 2^21 names, and requestDeclarations for the own ones.
+  A program past the estimate rehashes as before.
+  - The game, counted with temporary prints (`cg\mapcount.py`, one build): 2 x (80,632 + 81,533) =
+    324,330 names, which MSVC rounds up to 524,288 buckets. At the end definedIn holds 266,292 names
+    and declareLines 266,293, both still in 524,288 buckets, and requestDeclarations 48,777 in its
+    131,072. None of the three rehashed, so step 6's guess holds: the holds were the rehashes.
+- **L2b: each module's own texts finished on the emitters' threads.** The loop after the last level
+  (each module's definitions sorted by their text, its declarations given its owned entries and joined,
+  the check for a late program piece) takes the modules from a shared counter on the emitters' threads.
+  A module's step touches only its own data, and reads the program's functions and the shared literals.
+- **The timeline** (`cg\timeline-run.ps1`, one build each; master's is step 6's, at ca061cc6, whose
+  level 0 had 19 items and 1 startup global fewer):
+
+  | | master | L2 |
+  |---|---:|---:|
+  | spin-lock holds over 20 ms | 3, all definitionsMutex: 156.5, 106.6, 29.8 ms | none |
+  | level 0 / level 1 / level 12 | 1,238 / 813 / 160 ms | 1,153 / 724 / 3 ms |
+  | the modules' declarations finished | 130.0 ms, on one thread | 12.4 ms |
+  | after the last level | 475 ms | 362 ms |
+  | the levels' waits on the spin locks, thread time | 47.7 s | 37.5 s |
+  | codegen, the timeline's total | 4,229 ms | 3,823 ms |
+
+- **Measured.** Paired clean builds of the game (`cg\l2-pairs.ps1`, 3 interleaved rounds, the order
+  alternating, load 0 to 6%, no round run again, 0 stderr lines on both), master ca061cc6 against L2
+  on that base:
+
+  | | master | L2 |
+  |---|---:|---:|
+  | codegen | 4.090 to 4.183 s | 3.644 to 3.731 s |
+  | wall | 8.08 to 8.15 s | 7.67 to 7.71 s |
+
+  That is −0.36 to −0.53 s of codegen a round, −0.44 s between the medians, more than the −0.25 to
+  −0.35 s estimated: about what the timeline removed, 293 ms of holds and 118 ms of the loop.
+- **The gate** (on master 1420e41d): run_tests and spec with and without LLVM in kppc (spec 1,087
+  pass, 13 pending), spec `--debug-info` and `--release`; the game's 256 objects identical to
+  master's, and at 1, 8 and 32 threads with the barrier check on.
 
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
