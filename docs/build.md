@@ -624,7 +624,8 @@ void configure(Cell& cell)
   of those targets and libraries in those configurations. A name that is also an existing file or
   directory is still a plain build of those sources, so a target is best not named like a
   directory (`tests`).
-- **Outputs** go to `build/<configuration>/<target>.exe`, with kppc's object cache beside it. A cell's
+- **Outputs** go to `build/<configuration>/<target>.exe` (`build/<configuration>/<target>` for Linux and
+  FreeBSD, whose programs have no extension), with kppc's object cache beside it. A cell's
   kppc arguments differ from every other cell's (its configuration's options and constants, its
   output), so each has its own compile server and its own cache: switching from debug to
   fastdebug and back rebuilds nothing.

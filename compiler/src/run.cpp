@@ -310,7 +310,7 @@ int runProgram(int argc, char** argv, int runIndex)
       CloseHandle(lock);
     }
   } unlock{lock, root};
-  std::string exe = (dir / (name + ".exe")).string();
+  std::string exe = (dir / (name + (target.windows() ? ".exe" : ""))).string(); // (NAME alone for Linux and FreeBSD)
 
   char kppc[MAX_PATH * 4];
   DWORD n = GetModuleFileNameA(nullptr, kppc, DWORD(sizeof kppc));

@@ -2410,7 +2410,8 @@ deletable by no one else, from before its build until its program ends, and the 
 that file's; the cleanup, at the end of each run, deletes a directory only while it holds its lock
 file alone (a run that finds it held waits, then makes the directory again), and one from before the
 lock file only once it has been unchanged for an hour (tests\runcache.ps1). `--no-run` among the
-options builds only and names the executable (`kppc --run: built PATH (not run: --no-run)`); a
+options builds only and names the executable (`kppc --run: built PATH (not run: --no-run)`; NAME.exe,
+NAME alone for Linux and FreeBSD, as a project's build/CONFIGURATION/NAME is); a
 program for another `--target`, which this machine does not run, is an error without it, before
 any build (2026-11-04: CI builds the libraries' tests for FreeBSD with `kpp --target freebsd
 --no-run --test` and runs them in a FreeBSD VM). The build is a

@@ -207,9 +207,22 @@ else
       $ErrorActionPreference = 'Stop'
       $line = @($output | Where-Object { $_ -like 'kpp: built *' }) -join ''
       if ($code -ne 0 -or $line -notmatch "\($configuration, freebsd: (Visual Studio's|the bundled|KPP_CLANG's) clang and ld\.lld, total") { Fail "a kpp project built for freebsd ($configuration): exit $code, its build line '$line': $($output -join ' ')" }
+      # Its executable is build\CONFIGURATION\hello, without .exe (it was hello.exe).
+      elseif (Test-Path "build\$configuration\hello.exe") { Fail "a kpp project built for freebsd ($configuration) named its executable hello.exe" }
+      elseif (-not (Test-Path "build/$configuration/hello")) { Fail "a kpp project built for freebsd ($configuration) wrote no build/$configuration/hello" }
+      elseif ($problems = ElfProblems (Join-Path $project "build\$configuration\hello") 1403) { Fail "a kpp project built for freebsd ($configuration): build\$configuration\hello: $problems" }
     }
   }
   finally { Pop-Location }
+  # kppc --run --no-run likewise names a FreeBSD program without .exe.
+  $ErrorActionPreference = 'Continue'
+  $output = @(& $Kppc --no-server --target freebsd --sysroot $freebsdSysroot --no-run --run (Join-Path $src 'hello.kpp') 2>&1 | ForEach-Object { "$_" })
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  $built = if (($output -join "`n") -match 'kppc --run: built (.*) \(not run: --no-run\)') { $Matches[1] } else { '' }
+  if ($code -ne 0 -or [IO.Path]::GetFileName($built) -ne 'hello') { Fail "kppc --target freebsd --no-run --run: exit $code, built '$built', not ...\hello: $($output -join ' ')" }
+  elseif (-not (Test-Path $built)) { Fail "kppc --target freebsd --no-run --run: no $built" }
+  elseif ($problems = ElfProblems $built 1403) { Fail "kppc --target freebsd --no-run --run: $built`: $problems" }
 }
 
 # Linux, under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every run_tests): 30 s

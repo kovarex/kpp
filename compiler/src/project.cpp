@@ -746,11 +746,6 @@ namespace
     return true;
   }
 
-  fs::path exeOf(const fs::path& root, const Program& p)
-  {
-    return root / "build" / p.configuration / (p.name + ".exe");
-  }
-
   std::string withExe(std::string command, const fs::path& exe, const std::string& configuration)
   {
     for (auto [key, value] : {std::pair<std::string, std::string>{"{exe}", exe.string()}, {"{configuration}", configuration}})
@@ -1105,6 +1100,12 @@ namespace
     return target.os == Target::Os::Linux ? "linux" : target.os == Target::Os::FreeBSD ? "freebsd" : "windows";
   }
 
+  // The executable a cell builds: build\CONFIGURATION\NAME.exe, NAME alone for Linux and FreeBSD.
+  fs::path exeOf(const fs::path& root, const Program& p, const Request& request)
+  {
+    return root / "build" / p.configuration / (p.name + (targetPlatform(p, request) == "windows" ? ".exe" : ""));
+  }
+
   // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
   // in the order the project, the configuration, the target and configure() set them, so that the
   // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
@@ -1173,7 +1174,7 @@ namespace
     }
     args.insert(args.end(), request.passed.begin(), request.passed.end());
     args.push_back("--exe");
-    args.push_back(exeOf(root, p).string());
+    args.push_back(exeOf(root, p, request).string());
     for (const std::string& r : p.roots)
       args.push_back(rooted(root, r).string());
     return args;
@@ -1190,7 +1191,7 @@ namespace
 
   int buildProgram(const fs::path& root, const Description& d, const Program& p, const Request& request, CompileFunction compile)
   {
-    fs::path exe = exeOf(root, p);
+    fs::path exe = exeOf(root, p, request);
     std::error_code ec;
     // The program's toolchain, its C libraries' too (a game that links Visual Studio's C++ libraries
     // asks for --toolchain msvc): one that is not there is said here, before anything compiles.
@@ -1310,9 +1311,9 @@ namespace
     fs::path program, directory;
     std::string arguments;
   };
-  Launch launchOf(const fs::path& root, const Program& p)
+  Launch launchOf(const fs::path& root, const Program& p, const Request& request)
   {
-    fs::path exe = exeOf(root, p);
+    fs::path exe = exeOf(root, p, request);
     Launch l;
     l.program = p.debugCommand.empty() ? exe : rooted(root, withExe(p.debugCommand, exe, p.configuration));
     l.directory = p.debugDirectory.empty() ? root : rooted(root, withExe(p.debugDirectory, exe, p.configuration));
@@ -1320,9 +1321,9 @@ namespace
     return l;
   }
 
-  int runProgram(const fs::path& root, const Program& p, const std::vector<std::string>& extra)
+  int runProgram(const fs::path& root, const Program& p, const Request& request, const std::vector<std::string>& extra)
   {
-    Launch l = launchOf(root, p);
+    Launch l = launchOf(root, p, request);
     std::string command = "cd /d " + quoteArg(l.directory.string()) + " && " + quoteArg(l.program.string());
     if (!l.arguments.empty())
       command += " " + l.arguments;
@@ -1439,7 +1440,7 @@ namespace
         IdeConfiguration c;
         c.visualStudioName = visualStudioName(configuration.name);
         c.name = configuration.name;
-        c.exe = exeOf(root, *q);
+        c.exe = exeOf(root, *q, request);
         // The IDE builds through kpp itself, so that an edit of build.kpp needs no new files.
         c.buildCommand = "cd /d " + quoteArg(root.string()) + " && " + quoteArg(self.string()) + " " + quoteArg(name) + " " +
                          quoteArg(configuration.name) + " --msvc-diagnostics";
@@ -1451,7 +1452,7 @@ namespace
           c.buildProgram.push_back("--set");
           c.buildProgram.push_back(setting + "=" + value);
         }
-        Launch l = launchOf(root, *q);
+        Launch l = launchOf(root, *q, request);
         c.program = l.program;
         c.arguments = l.arguments;
         c.directory = l.directory;
@@ -1541,8 +1542,8 @@ namespace
         for (const Program& p : d.programs)
         {
           std::vector<std::string> args = buildCommand(root, d, p, request);
-          stop(args, exeOf(root, p).string());
-          commands[exeOf(root, p).string()].assign(args.begin() + 1, args.end());
+          stop(args, exeOf(root, p, request).string());
+          commands[exeOf(root, p, request).string()].assign(args.begin() + 1, args.end());
         }
       std::string prefix = root.string() + "\\";
       std::transform(prefix.begin(), prefix.end(), prefix.begin(), [](unsigned char c) { return char(tolower(c)); });
@@ -1668,7 +1669,7 @@ namespace
     if (chosen.size() > 1)
       printf("kpp: built %zu programs, total %.1f s\n", chosen.size(),
              std::chrono::duration<double>(std::chrono::steady_clock::now() - commandStart).count());
-    return request.run ? runProgram(root, *chosen[0], request.runArguments) : 0;
+    return request.run ? runProgram(root, *chosen[0], request, request.runArguments) : 0;
   }
 
   // kpp measure (docs/build.md, "kpp measure"): the files it edits, as they were, put back at the end,
@@ -1905,7 +1906,7 @@ namespace
     }
     rows.push_back({"Clean build of " + target + ", libraries already built", "clean"});
     for (const std::string& t : targets)
-      rows.push_back({"Whole build of " + exeOf(root, *findCell(d, t, configuration)).filename().string() + ", every library included", "whole " + t});
+      rows.push_back({"Whole build of " + exeOf(root, *findCell(d, t, configuration), request).filename().string() + ", every library included", "whole " + t});
 
     auto fail = [&](const std::string& what)
     {
@@ -1915,7 +1916,7 @@ namespace
     // A build of TARGET as a user runs it: its wall time, and that it wrote the executable anew.
     auto build = [&](const std::string& t, Row* row) -> bool
     {
-      fs::path exe = exeOf(root, *findCell(d, t, configuration));
+      fs::path exe = exeOf(root, *findCell(d, t, configuration), request);
       fs::file_time_type before = writtenAt(exe);
       double seconds = 0;
       int code = timed(quoteArg(self) + " " + quoteArg(t) + " " + quoteArg(configuration), root, log, seconds);
