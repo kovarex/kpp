@@ -236,7 +236,10 @@ run_tests.cmd.
     project (a build with options of its own, `--verbose` or another `--toolchain`, has a server of
     its own), and says which it stopped; `--verbose` shows kppc's report of each build (its
     phases' times), which a project's builds otherwise keep quiet;
-  - `kpp` alone in a console shows a menu of these, each with its command; `kpp new [DIR]` writes
+  - `kpp` alone in a console shows a menu of these, each with its command, and so in Git Bash
+    (mintty) and Cygwin, whose terminals give programs a pipe, not a console (its name,
+    `\msys-...-pty0-from-master`, says it is one; 2026-11-04). With input from a file or another
+    pipe, it lists the commands, says it asked nothing, and exits with 2. `kpp new [DIR]` writes
     build.kpp, `src\main.kpp` and a `.gitignore`.
   An argument that is an existing file or directory makes it a plain build of those sources, as
   before.

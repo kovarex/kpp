@@ -40,7 +40,7 @@ In a directory with a `build.kpp`, or below one:
 
 | Command | What it does |
 |---|---|
-| `kpp` | a menu of the commands below |
+| `kpp` | a menu of the commands below (in a console, Git Bash too) |
 | `kpp debug`, `kpp release` | builds every target in that configuration |
 | `kpp TARGET CONFIGURATION` | builds one target in one configuration, into `build\CONFIGURATION\TARGET.exe` |
 | `kpp TARGET --run ARGS` | builds and runs it |

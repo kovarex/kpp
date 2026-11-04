@@ -54,7 +54,35 @@ try
     { Fail "two servers (the source says `"Hello $($step[0])`", built $(if ($step[1]) { 'with' } else { 'without' }) --msvc-diagnostics): exit $code`n$($output -join "`n")"; break }
   }
   [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), $main)
-  Kpp @('--msvc-diagnostics', '--stop-server') | Out-Null
+  Kpp @('--stop-server') | Out-Null
+  # `kpp` alone (2026-11-04). Input from a pipe asks nothing and says so, listing the commands
+  # (exit 2). The pipe a Cygwin or MSYS terminal gives its programs (Git Bash's mintty:
+  # \msys-<hash>-pty0-from-master) is a terminal: the menu asks, and 0 quits.
+  $ErrorActionPreference = 'Continue'
+  $output = ('' | & $Kppc 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -ne 2 -or $output -notmatch 'kpp debug' -or $output -notmatch 'nothing was asked') { Fail "kpp alone, input from a pipe: exit $code`n$output" }
+  $pipeName = 'msys-0123456789abcdef-pty0-from-master'
+  $pipe = New-Object IO.Pipes.NamedPipeServerStream($pipeName, [IO.Pipes.PipeDirection]::Out)
+  $connected = $pipe.WaitForConnectionAsync()
+  $info = New-Object Diagnostics.ProcessStartInfo
+  $info.FileName = "$env:SystemRoot\System32\cmd.exe"
+  $info.Arguments = "/d /s /c `"`"$Kppc`" < \\.\pipe\$pipeName`""
+  $info.WorkingDirectory = (Get-Location).Path
+  $info.UseShellExecute = $false
+  $info.RedirectStandardOutput = $true
+  $menu = [Diagnostics.Process]::Start($info)
+  $read = $menu.StandardOutput.ReadToEndAsync()
+  if ($connected.Wait(30000))
+  {
+    $answer = [Text.Encoding]::ASCII.GetBytes("0`r`n")
+    $pipe.Write($answer, 0, $answer.Length)
+    $pipe.Flush()
+  }
+  $pipe.Dispose()
+  if (-not $menu.WaitForExit(60000)) { $menu.Kill() }
+  if ($menu.ExitCode -ne 0 -or $read.Result -notmatch '1  build, debug' -or $read.Result -match 'nothing was asked') { Fail "kpp alone, input from a mintty-like pipe: exit $($menu.ExitCode)`n$($read.Result)" }
   # A build with an option of its own has a server of its own: kpp --stop-server stops it with the
   # others and says which (2026-11-02).
   Kpp @('--verbose', '--run') | Out-Null

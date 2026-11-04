@@ -1973,7 +1973,28 @@ namespace
   }
 
   // `kpp` alone in a console: the actions, each with the command that does it.
-  int menu(const fs::path& root, CompileFunction compile)
+  // Whether a person answers on stdin: a console, or the pipe a Cygwin or MSYS terminal gives its
+  // programs (Git Bash's mintty: \msys-<hash>-pty0-from-master, Cygwin's \cygwin-<hash>-pty0-...),
+  // which _isatty does not take for one (kovarex, 2026-11-04: `kpp` alone in Git Bash showed no menu).
+  bool interactiveInput()
+  {
+    if (_isatty(_fileno(stdin)))
+      return true;
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    if (in == nullptr || in == INVALID_HANDLE_VALUE || GetFileType(in) != FILE_TYPE_PIPE)
+      return false;
+    std::vector<char> buffer(sizeof(FILE_NAME_INFO) + MAX_PATH * sizeof(wchar_t));
+    FILE_NAME_INFO* info = reinterpret_cast<FILE_NAME_INFO*>(buffer.data());
+    if (!GetFileInformationByHandleEx(in, FileNameInfo, info, DWORD(buffer.size())))
+      return false;
+    std::wstring name(info->FileName, info->FileNameLength / sizeof(wchar_t));
+    bool terminal = name.rfind(L"\\msys-", 0) == 0 || name.rfind(L"\\cygwin-", 0) == 0;
+    return terminal && name.find(L"-pty") != std::wstring::npos && name.find(L"-from-master") != std::wstring::npos;
+  }
+
+  // `kpp` alone in a project: the menu, its answer read from stdin. Without anyone to answer (input
+  // from a file or a pipe), the commands it offers, and a word that it asked nothing: never silence.
+  int menu(const fs::path& root, CompileFunction compile, bool asking)
   {
     if (root.empty())
     {
@@ -2002,6 +2023,11 @@ namespace
            "  4  write Visual Studio files        kpp --generate-visual-studio-files\n"
            "  5  write VS Code files              kpp --generate-vs-code-files\n"
            "  0  quit\n", first.c_str(), first.c_str());
+    if (!asking)
+    {
+      printf("kpp: input is no terminal, so nothing was asked and nothing done: run one of the commands above\n");
+      return 2;
+    }
     std::string answer = ask("> ");
     if (answer == "1" || answer == "2")
       request.configurations = {answer == "1" ? "debug" : "release"};
@@ -2037,11 +2063,12 @@ int runProject(int argc, char** argv, CompileFunction compile)
   }
   if (argc == 1 && !options)
   {
-    if (!_isatty(_fileno(stdin)))
+    bool asking = interactiveInput();
+    if (!asking && root.empty())
       return -1;
     if (!root.empty())
       SetCurrentDirectoryW(root.c_str());
-    return menu(root, compile);
+    return menu(root, compile, asking);
   }
   if (root.empty() && options)
   {
