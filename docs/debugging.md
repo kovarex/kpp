@@ -18,7 +18,8 @@ with `/DEBUG` already, for the crash report's function names).
   number in the file (`inspect::__lambda_f9e4fd6c_0::operator()(int32)`): the tag is a hash of the
   file's path under its root (`std/...` for the standard library's, the root directory's name and
   the path under it for the program's), so the name is the same wherever the sources are and
-  whatever files come before it.
+  whatever files come before it. A file's private entities (design.md 15) carry its name and the
+  same tag (`inflate.kpp@3f0c9a12::helper(int32)`).
 - Every statement starts a line: its instructions are at the statement's first line. A `for`'s
   condition and step, a `while`'s and `do`'s condition and a range-`for`'s advance are at their own
   lines, so stepping through a loop comes back to its header. A `switch`'s cases are at their own

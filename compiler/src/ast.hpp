@@ -465,10 +465,11 @@ struct ParsedFile
   uint32_t libraryScope = UINT32_MAX;
   struct NamespaceDecl* libraryNamespace = nullptr;
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files.
-  // What names its lambdas' closures apart from other files' (`__lambda_<tag>_<n>`, the parser's): a
-  // hash of the file's name under its root, so that a closure's name (in the IR, the PDB, a module's
-  // hash) is the same wherever the sources are and whatever files come before it (main.cpp,
-  // lambdaTags). 0, unset: the index names them.
+  // What names its lambdas' closures apart from other files' (`__lambda_<tag>_<n>`, the parser's), and
+  // its private entities (filePrivatePrefix, `inflate.kpp@<tag>::helper`): a hash of the file's name
+  // under its root, so that those names (in the IR, the PDB, a module's hash) are the same wherever
+  // the sources are and whatever files come before it (main.cpp, lambdaTags). 0, unset: the index
+  // names the closures, the path's hash the private entities.
   uint32_t lambdaTag = 0;
   std::vector<Diagnostic> diagnostics;
   // The struct rule's breaks in it (design.md "struct and class": a struct is a public value type),
@@ -490,8 +491,11 @@ struct ParsedFile
 };
 
 // What tells apart the entities two files declare private under one name (design.md 15), put
-// before a qualified name (a symbol's, a type's in the IR): "<file name>@<hash of its path>::" for
-// a private top-level declaration and what is declared in it, else nothing.
+// before a qualified name (a symbol's, a type's in the IR): "<file name>@<its file's tag>::" for a
+// private top-level declaration and what is declared in it, else nothing. The tag is the one that
+// names the file's lambdas (ParsedFile::lambdaTag: a hash of its name under its root, unique in the
+// program), so the names are the same wherever the sources are (in the IR, the PDB, the modules'
+// hashes); a file without one (the converter's parses) takes the hash of its path.
 inline std::string filePrivatePrefix(const Decl* d)
 {
   const Decl* top = d;
@@ -500,9 +504,13 @@ inline std::string filePrivatePrefix(const Decl* d)
   if (!top || !top->filePrivate || !top->file)
     return std::string();
   const std::string& path = top->file->path;
-  uint32_t hash = 2166136261u;
-  for (unsigned char c : path)
-    hash = (hash ^ c) * 16777619u;
+  uint32_t hash = top->file->lambdaTag;
+  if (hash == 0)
+  {
+    hash = 2166136261u;
+    for (unsigned char c : path)
+      hash = (hash ^ c) * 16777619u;
+  }
   static const char digits[] = "0123456789abcdef";
   std::string tag = path.substr(path.find_last_of("/\\") + 1) + "@";
   for (int shift = 28; shift >= 0; shift -= 4)

@@ -122,6 +122,30 @@ $moved = ClosureNames @((Join-Path $lambdas 'elsewhere\main.kpp')) 'moved'
 if ($alone.Count -eq 1 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism lambda names ($alone)" }
 else { "FAIL determinism lambda names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
 
+# A file's private entities (design.md 15) are named by the file's name and the same tag
+# (`main.kpp@<tag>::helper`, filePrivatePrefix): the same with another file before it and with the
+# file somewhere else (by the hash of its absolute path, every checkout named them apart, in the IR,
+# the PDB and the modules' hashes).
+$privates = Join-Path $work 'privates'
+New-Item -ItemType Directory -Force (Join-Path $privates 'elsewhere') | Out-Null
+$program = "private int helper(int v) { return v * 2; }`nprivate struct Box { int value = 0; int twice() const { return value * 2; } };`ntemplate<typename T> T same(T v) { return v; }`nint main()`n{`n  Box b;`n  b.value = helper(21);`n  return same(b).twice() - 84;`n}`n"
+[IO.File]::WriteAllText((Join-Path $privates 'main.kpp'), $program)
+[IO.File]::WriteAllText((Join-Path $privates 'elsewhere\main.kpp'), $program)
+[IO.File]::WriteAllText((Join-Path $privates 'before.kpp'), "private int helper(int v) { return v + 1; }`nint before() { return helper(1); }`n")
+function PrivateNames([string[]]$sources, [string]$label)
+{
+  $ir = Join-Path $privates "$label.ll"
+  Remove-Item $ir -ErrorAction SilentlyContinue
+  & $Kppc --quiet --emit-llvm $ir @sources 2>&1 | Out-Null
+  if (-not (Test-Path $ir)) { return @() }
+  return @(Select-String -Path $ir -Pattern '(same<)?main\.kpp@[0-9a-f]+::(helper|Box)' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
+}
+$alone = PrivateNames @((Join-Path $privates 'main.kpp')) 'alone'
+$after = PrivateNames @((Join-Path $privates 'before.kpp'), (Join-Path $privates 'main.kpp')) 'after'
+$moved = PrivateNames @((Join-Path $privates 'elsewhere\main.kpp')) 'moved'
+if ($alone.Count -eq 3 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism private names ($alone)" }
+else { "FAIL determinism private names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
+
 $tree = Join-Path $PSScriptRoot '..\..\programs\factorio\kpp'
 if (Test-Path (Join-Path $tree 'src'))
 {

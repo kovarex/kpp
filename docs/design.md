@@ -1050,9 +1050,11 @@ As built (thread A, 2026-11-01; specs `kpp/private_*`):
 - Two private declarations of one name in one file are the usual clash ("top-level names are
   global"); two files' never meet. Naming another file's private name is "'helper' is private to
   PATH".
-- In the IR a private entity's symbols and types carry its file (`inflate.kpp@<hash of the
-  path>::helper`), so two files' private functions, globals, classes, vtables and template
-  instances of one name stay apart.
+- In the IR a private entity's symbols and types carry its file (`inflate.kpp@<its file's
+  tag>::helper`), so two files' private functions, globals, classes, vtables and template
+  instances of one name stay apart. The tag is the one that names the file's lambdas, a hash of
+  its path under its root, unique in the program (B, 2026-11-04; it was the hash of the absolute
+  path, so the names, the PDB and the modules' hashes differed from checkout to checkout).
 - The compile server rebuilds in full when a function made private or global is added or removed
   (the private scope comes from a whole index); body edits in a file with private names stay
   incremental.
