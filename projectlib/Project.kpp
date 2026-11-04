@@ -68,6 +68,15 @@ struct Dependency
   Dependency& config(StringView name, StringView value) { kppConfig(configs, name, value); return *this; }
 };
 
+// A system library for one platform as kpp reads it (systemLibrary(NAME, PLATFORM)): "PLATFORM NAME",
+// the platform windows, linux, freebsd or mac.
+String kppPlatformLibrary(StringView name, Platform platform)
+{
+  StringView on = platform == Platform::Windows ? "windows" : platform == Platform::Linux ? "linux"
+                  : platform == Platform::FreeBSD ? "freebsd" : "mac";
+  return String(on) + " " + name;
+}
+
 void kppUse(Dependency& d, StringView name, StringView minimum, StringView path)
 {
   d.name = name;
@@ -85,6 +94,7 @@ struct Executable
   Vector<String> libraries; // what the link takes: a .lib, -lname, a .res (kppc's --lib)
   Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
+  Vector<String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
   Deque<Dependency> uses;  // the kpp libraries it uses besides the project's (use())
   Vector<String> configs;   // config:: constants of this target, NAME=VALUE (kppConfig)
   String beforeBuildCommand;
@@ -115,8 +125,11 @@ struct Executable
   }
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
-  // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
-  void systemLibrary(StringView name) { libraries.push_back(String("-l") + name); }
+  // A system library by its name (`gdi32`): kppc's --lib -lgdi32; with a platform, only a build for it
+  // (`systemLibrary("ssl", Platform::FreeBSD)`, its --target), as Library::systemLibrary. Each name is
+  // linked once with its libraries' (project.cpp).
+  void systemLibrary(StringView name) { systemLibraries.push_back(name); }
+  void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
   // A config:: constant in every configuration of this target, over the project's and the
   // configuration's.
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
@@ -229,12 +242,7 @@ struct Library
   // (`systemLibrary("ssl")`), as Executable::systemLibrary; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
-  void systemLibrary(StringView name, Platform platform)
-  {
-    StringView on = platform == Platform::Windows ? "windows" : platform == Platform::Linux ? "linux"
-                    : platform == Platform::FreeBSD ? "freebsd" : "mac";
-    systemLibraries.push_back(String(on) + " " + name);
-  }
+  void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
   // An option with its default: `option("debug", false, "Extra consistency checks")`; a string option
   // may list the values it can have: `option("mode", "fast", "Its speed", {"fast", "small"})`. Each
   // returns its LibraryOption. (Each emplaces itself: tests/spec/language/
@@ -559,6 +567,7 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   kppLines(out, "argument", e.arguments);
   kppLines(out, "library", project.libraries);
   kppLines(out, "library", e.libraries);
+  kppLines(out, "system-library", e.systemLibraries);
   kppLines(out, "cinclude", project.cIncludes);
   kppLines(out, "cinclude", e.cIncludes);
   kppLine(out, "before-build", e.beforeBuildCommand);

@@ -419,6 +419,19 @@ if (Run 'syslibs')
       $output = (Kpp @('--no-server')) -join "`n"
       if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a library's system libraries '$($case[0])': the link did not fail on $($case[1]): exit $code`n$output" }
     }
+    # An executable's own, with a platform too (Executable::systemLibrary(NAME, PLATFORM), 2026-11-05):
+    # sys names none now; app's version.dll for Windows links, its nosuchlibrary for FreeBSD is left
+    # out; for every platform, the link fails on it.
+    Set-Content 'libraries\sys\build.kpp' ($sysBuild -replace 'LINKS', '')
+    foreach ($case in @(@("app.systemLibrary(`"version`", Platform::Windows);`n  app.systemLibrary(`"nosuchlibrary`", Platform::FreeBSD);", 0),
+                        @("app.systemLibrary(`"version`");`n  app.systemLibrary(`"nosuchlibrary`");", 1)))
+    {
+      Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n  $($case[0])`n}"
+      $output = @(Kpp @('--no-server', '--run'))
+      if ($case[1] -eq 0 -and ($code -ne 0 -or $output[-1] -ne 'versioned')) { Fail "an executable's system libraries for a platform, kpp --run: exit $code`n$($output -join "`n")" }
+      if ($case[1] -eq 1 -and ($code -eq 0 -or ($output -join "`n") -notmatch 'nosuchlibrary')) { Fail "an executable's system library for every platform: the link did not fail on nosuchlibrary: exit $code`n$($output -join "`n")" }
+    }
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
     # `kpp --run` of a program for another platform: an error before the build (kppc --run's too), never a
     # build that then fails to start an ELF. No sysroot needed: nothing is built.
     if (Test-Path 'build\debug\app') { Remove-Item 'build\debug\app' }

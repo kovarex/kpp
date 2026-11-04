@@ -71,7 +71,7 @@ namespace
   {
     std::string configuration;
     std::vector<std::string> roots, excluded, libraries, cIncludes, links;
-    std::vector<std::string> systemLibraries; // a library's own when its tests are built (libraryProgram)
+    std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME: an executable's own (Executable::systemLibrary), a library's when its tests are built (libraryProgram)
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
@@ -326,6 +326,7 @@ namespace
         else if (key == "debug-arguments") p.debugArguments = value;
         else if (key == "debug-directory") p.debugDirectory = value;
         else if (key == "link") p.links.push_back(value);
+        else if (key == "system-library") p.systemLibraries.push_back(value);
       }
     }
     return d;
