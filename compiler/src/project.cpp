@@ -3,6 +3,7 @@
 #include "run.hpp"
 #include "source.hpp"
 #include "target.hpp"
+#include "config.hpp"
 #include <algorithm>
 #include <atomic>
 #include <map>
@@ -37,6 +38,7 @@ namespace
     std::string name, type, defaultValue, description;
     bool required = false;
     std::vector<std::string> allowed;
+    std::string declaredType, declaredAt; // one declared in the library's source (config TYPE NAME): its type and where
   };
 
   // One library found for a program: where it is, which build.kpp asked for it first, its options and
@@ -453,6 +455,55 @@ namespace
                 file.c_str(), l.name.c_str(), l.name.c_str());
         out.errors.push_back(l.name);
       }
+    // A library's config:: constants declared in its source (`config i32 level = 6;`, config.cpp;
+    // design.md, "config:: defaults in source") are its options as option()'s are: set by its users,
+    // checked, listed by `kpp options` with the default. One name declared both ways is an error.
+    for (KppLibrary& l : out.libraries)
+      for (const std::string& r : l.roots)
+        for (const fs::path& path : collectFiles((fs::path(r).is_absolute() ? fs::path(r) : root / r).lexically_normal(), {".kpp"}))
+        {
+          if (path.lexically_normal() == (root / "build.kpp").lexically_normal())
+            continue;
+          std::vector<ConfigDeclaration> declared;
+          std::vector<ConfigError> errors;
+          findConfigDeclarations(readText(path), declared, errors);
+          for (const ConfigError& e : errors)
+          {
+            fprintf(stderr, "%s: error: %s\n", sourceLocation(path.string(), e.line, e.column).c_str(), e.message.c_str());
+            out.errors.push_back(e.message);
+          }
+          for (const ConfigDeclaration& d : declared)
+          {
+            std::string at = sourceLocation(path.string(), d.line);
+            auto same = std::find_if(l.options.begin(), l.options.end(), [&](const Option& o) { return o.name == d.name; });
+            if (same != l.options.end() && !same->declaredAt.empty())
+            {
+              if (same->defaultValue != d.value || same->required != d.required || same->declaredType != d.type)
+              {
+                fprintf(stderr, "%s: error: config::%s::%s is declared again, differently, at %s\n", at.c_str(), l.name.c_str(),
+                        d.name.c_str(), same->declaredAt.c_str());
+                out.errors.push_back(d.name);
+              }
+              continue;
+            }
+            if (same != l.options.end())
+            {
+              fprintf(stderr, "%s: error: config::%s::%s is declared here and by build.kpp's option(\"%s\"): one declaration per name\n",
+                      at.c_str(), l.name.c_str(), d.name.c_str(), d.name.c_str());
+              out.errors.push_back(d.name);
+              continue;
+            }
+            Option o;
+            o.name = d.name;
+            o.type = d.kind == "enum" ? "string" : d.kind; // kppc checks the value against its type (an enumerator's name, an integer's range)
+            o.declaredType = d.type;
+            o.declaredAt = at;
+            o.defaultValue = d.value;
+            o.required = d.required;
+            o.description = (d.description.empty() ? "config " + d.type : d.description) + " (" + at + ")";
+            l.options.push_back(o);
+          }
+        }
     return out.errors.empty() && !out.configurations.empty();
   }
 
@@ -672,7 +723,7 @@ namespace
       }
       for (const Option& o : f.options)
       {
-        ProjectOption result{f.name, o.name, o.type, o.defaultValue, o.defaultValue, o.required ? "" : "the default", o.description, o.required, o.allowed};
+        ProjectOption result{f.name, o.name, o.declaredType.empty() ? o.type : o.declaredType, o.defaultValue, o.defaultValue, o.required ? "" : "the default", o.description, o.required, o.allowed};
         for (const auto& [item, by] : f.configs)
         {
           std::string name, value;

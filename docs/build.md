@@ -397,6 +397,44 @@ project.configuration("debug").config("zlib::debug", true);
   result, `use("zlib").config("a", 1).config("b", 2)`, still fail at compile time ("memory ... is
   never freed"), not yet reduced to a snippet: write one `config()` per statement until D's fix.
 
+#### config:: defaults in source (decided 2026-11-04, working now)
+
+```cpp
+// libraries/zlib/src/Deflate.kpp
+// How hard deflate tries, 1 to 9.
+config i32 level = 6;
+config bool checked;          // no default: its users must set it
+
+// the program's own, src/BuildConstants.kpp
+// Leaves out the developer-only code, as Factorio's FinalRelease build.
+config bool finalRelease = false;
+```
+
+- **A declaration** stands at a file's top level, first on its line: `config TYPE NAME = DEFAULT;`,
+  or `config TYPE NAME;` for a required one. Types: bool, the integer types (i8 to u64, int,
+  unsigned...; the default must fit), StringView (a plain `"..."` default) and an enumeration
+  (`Platform`, `zlib::Mode`: named as from the global scope, the default `TYPE::NAME`). The `//`
+  lines right above it are its description.
+- **Its name** is `config::NAME` in the program, `config::LIB::NAME` in a library (its options'
+  scope). The constant has the declared type.
+- **Who wins:** its default is the lowest value. A library's are its options, as build.kpp's
+  `option()`s are: set by `use("zlib").config(...)`, a `zlib::NAME` constant of the project, a
+  configuration, a target or a cell, or `kpp --config zlib::level=9`, and listed by `kpp options`
+  ("set by the default", with the declaration's FILE:LINE). The program's are set by its own
+  constants of build.kpp and `--config`, as before. kppc alone takes them too: `kppc --exe a.exe
+  src` with no `--config` builds with the defaults.
+- **Errors**, each at the declaration: a required one nothing sets; two declarations of one name
+  that differ (both named); a value of another type (`--config level=x`, an i8's 300, a bool's 1);
+  `debug`, `platform`, `mingw` or `tests` (kppc's own); a library's name declared both in source and
+  by `option()`; a malformed declaration, one not first on its line, and one anywhere but a file's
+  top level. A top-level `config` followed by a name is always a declaration.
+- **How:** kppc reads the declarations from the tokens of the files that may hold one (src/config.cpp:
+  a text check picks them, the lexer decides, so a commented-out one is not one), before any file is
+  parsed, and writes them into `<config>` with their types; the parser drops their tokens. A compile
+  server's build whose `<config>` changed (an edited default) is not incremental. kpp reads a used
+  library's declarations the same way from its roots.
+- **Open:** whether these replace build.kpp's `option()` (both work today).
+
 #### Library scopes (decided 2026-11-01, design.md 16; the lookup is not in kppc yet)
 
 kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove

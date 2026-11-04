@@ -1,0 +1,20 @@
+// spec: a config:: constant's --config value wins over its default declared in source, the value checked against the declared type (as kpp's project, configuration and target values reach kppc)
+// factorio: the final configuration sets finalRelease, the others leave its default
+// kppc: --config finalRelease=true --config level=9 --config mode=small --config home=Windows
+config bool finalRelease = false;
+config i32 level = -3;
+config StringView mode = "fast";
+config Platform home = Platform::Linux;
+if constexpr (config::finalRelease)
+{
+  const char* build() { return "final"; }
+}
+else
+{
+  const char* build() { return "developer"; }
+}
+int main()
+{
+  println(StringView(build()), " ", config::level, " ", config::mode, " ", config::home == Platform::Windows);
+  return 0;
+}

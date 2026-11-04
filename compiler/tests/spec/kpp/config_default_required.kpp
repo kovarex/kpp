@@ -1,0 +1,5 @@
+// spec: a config declaration with no default (`config i32 port;`) is required: a build where nothing sets it is an error at the declaration that names it
+// factorio: none
+// error: config_default_required.kpp:4: error: config::port (config i32) has no default, and nothing sets it
+config i32 port;
+int main() { return config::port; }

@@ -1,0 +1,8 @@
+// spec: a library's config declaration is config::LIB::NAME (its options' scope, design.md 16): its default when its user sets nothing, its user's value (--config zlib::checked=true, what use("zlib").config gives through kpp) when it does
+// factorio: none yet; the libraries/ projects' options can move into their source
+// kppc: --config zlib::checked=true
+int main()
+{
+  println(zlib::levelOf(), " ", config::zlib::level, " ", config::zlib::checked);
+  return 0;
+}

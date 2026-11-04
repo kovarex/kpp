@@ -20,6 +20,7 @@ add_executable(kppc
   src/consteval.cpp
   src/instance.cpp
   src/source.cpp
+  src/config.cpp
   src/server.cpp
   src/lsp.cpp
   src/natvis.cpp

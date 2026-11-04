@@ -1,0 +1,8 @@
+// spec: a config declaration stands at a file's top level, first on its line; one in a namespace is an error, never a constant of that namespace or one taken anyway
+// factorio: none
+// error: a config declaration (config TYPE NAME = DEFAULT;) stands at a file's top level, first on its line
+namespace settings
+{
+  config bool verbose = true;
+}
+int main() { return 0; }

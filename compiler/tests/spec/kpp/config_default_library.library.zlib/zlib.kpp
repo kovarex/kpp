@@ -1,0 +1,5 @@
+// How hard deflate tries, 1 to 9.
+config i32 level = 6;
+// Extra consistency checks.
+config bool checked = false;
+int levelOf() { return config::zlib::level; }

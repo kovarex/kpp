@@ -356,6 +356,28 @@ void build(Project& project)
       if ($platform -eq 'Linux' -and ($code -ne 0 -or $output -match 'nosuchlibrary' -or -not (Test-Path 'build\debug\app'))) { Fail "a library's system library for Linux, kpp --target freebsd: not left out: exit $code`n$output" }
     }
   }
+  # A library's config:: constants declared in its source (design.md, "config:: defaults in source",
+  # 2026-11-04) are its options: the default where nothing sets it, use().config's value, kpp
+  # --config's; `kpp options` lists them with the declaration's file and line; a required one nothing
+  # sets and a name option() declares too are errors.
+  New-Item -ItemType Directory -Force 'libraries\deflate\src' | Out-Null
+  Set-Content 'libraries\deflate\build.kpp' "void build(Project& project)`n{`n  Library& deflate = project.library(`"deflate`");`n  deflate.version = `"1.0.0`";`n}"
+  Set-Content 'libraries\deflate\src\deflate.kpp' "// How hard it tries.`nconfig i32 level = 6;`nconfig bool checked;`nint levelOf() { return config::deflate::level; }"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(deflate::levelOf(), `" `", config::deflate::checked);`n  return 0;`n}"
+  $deflateApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  USE`n}"
+  Set-Content 'build.kpp' ($deflateApp -replace 'USE', 'app.use("deflate");')
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'needs its option checked \(bool') { Fail "a library's required config declaration nothing sets: exit $code`n$output" }
+  Set-Content 'build.kpp' ($deflateApp -replace 'USE', 'app.use("deflate").config("checked", true);')
+  $output = Kpp @('--no-server', '--run')
+  if ($code -ne 0 -or $output[-1] -ne '6 true') { Fail "a library's config declarations, its default and use().config's value: exit $code`n$($output -join "`n")" }
+  $output = Kpp @('--no-server', '--config', 'deflate::level=9', '--run')
+  if ($code -ne 0 -or $output[-1] -ne '9 true') { Fail "a library's config declaration, kpp --config deflate::level=9: exit $code`n$($output -join "`n")" }
+  $output = (Kpp @('options')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch 'deflate::level = 6  i32, default 6; set by the default' -or $output -notmatch 'How hard it tries\. \(.*deflate\.kpp:2\)') { Fail "kpp options, a library's config declaration: exit $code`n$output" }
+  Set-Content 'libraries\deflate\build.kpp' "void build(Project& project)`n{`n  Library& deflate = project.library(`"deflate`");`n  deflate.version = `"1.0.0`";`n  deflate.option(`"level`", 3, `"Its level`");`n}"
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'deflate\.kpp:2: error: config::deflate::level is declared here and by build\.kpp''s option') { Fail "a library's config declared in source and by option(): exit $code`n$output" }
   # A converted library's shape: root(".") (its own build.kpp is not one of its sources) and C
   # headers beside its kpp, which the cell's --ext .kpp leaves out of the library's roots too.
   New-Item -ItemType Directory -Force 'libraries\conv' | Out-Null

@@ -1,0 +1,9 @@
+// spec: `config` followed by a name at a file's top level is a config declaration (design.md "config:: defaults in source"): a program's own type named config used there is an error, never read as a variable of that type
+// factorio: none
+// error: expected the config constant's name after its type c
+struct config
+{
+  int x = 1;
+};
+config c;
+int main() { return 0; }

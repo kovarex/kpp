@@ -613,6 +613,25 @@ project, a configuration, a target or a cell, or `--config zlib::NAME=VALUE`. An
 option, an undeclared one and a value of the wrong type are errors; `kpp options` lists each cell's
 values and who set them. Details: [build.md](build.md), "Library options".
 
+**config:: defaults in source (decided 2026-11-04).** kovarex: "yes config:: default should exist. I
+would imagine, that libraries can also define their own configs, which can have default, so the
+library can be used without filling many values, but the library user can specify them if they
+want." A file declares one at its top level, first on its line: `config bool finalRelease = false;`,
+`config i32 level = 6;`, `config StringView mode = "fast";`, `config Platform home = Platform::Linux;`
+(an enumeration named as from the global scope); `config i32 port;` has no default and is required.
+A library's is `config::LIB::NAME`, the program's `config::NAME`. The default is the lowest value:
+anything that sets it (build.kpp's project, configuration, target, cell, use(), `--config`) wins, its
+value checked against the declared type. Errors: a required one nothing sets, two declarations of one
+name that differ, a value of the wrong type, a declaration of kppc's own (debug, platform, mingw,
+tests), a library's name declared both in source and by build.kpp's option(), and a `config`
+declaration anywhere else (in a namespace, a class, a block). A top-level `config` followed by a name
+is always one: a type named `config` there is an error. kppc reads the declarations from the tokens
+(src/config.cpp) before any file is parsed, since the parser's declaration-scope if constexpr,
+`when` and `requires` read config:: values; the parser never sees one. kpp takes a library's as its
+options (`kpp options` shows the default and where it is declared). option() stays for now; whether
+source declarations replace it is open. Details: [build.md](build.md), "config:: defaults in
+source"; specs tests/spec/kpp/config_default_*.
+
 **The game's DEBUG as config::debug (decided by kovarex, 2026-11-02).** "Obviously we need B the
 proper way, we need to have debug and release configuration working properly." The converter
 preprocessed the game as Factorio's FastDebug (DEBUG and _DEBUG defined), so the kpp release build

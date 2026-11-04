@@ -1,0 +1,5 @@
+// spec: two declarations of one config:: constant with different defaults (or types) are an error naming both, never one of them taken
+// factorio: none
+// error: config::verbose is declared again, differently
+config bool verbose = false;
+int main() { return config::verbose ? 1 : 0; }

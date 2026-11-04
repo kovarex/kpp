@@ -1,0 +1,26 @@
+// spec: a config:: constant declared in source with its default (`config bool finalRelease = false;`, design.md "config:: defaults in source") is read where nothing sets it: in an expression, a declaration-scope if constexpr and a when, with its declared type (bool, i32, StringView, an enumeration)
+// factorio: BuildConstants' finalRelease (convert.cmd passed --config finalRelease=false until then)
+// Leaves out the developer-only code, as Factorio's FinalRelease build.
+config bool finalRelease = false;
+config i32 level = -3;
+config StringView mode = "fast";
+config Platform home = Platform::Linux;
+if constexpr (config::finalRelease)
+{
+  const char* build() { return "final"; }
+}
+else
+{
+  const char* build() { return "developer"; }
+}
+struct Counters
+{
+  int always = 1;
+  when (!config::finalRelease) int checks = 2;
+};
+int main()
+{
+  Counters c;
+  println(StringView(build()), " ", c.checks, " ", config::level, " ", config::mode, " ", config::mode.size(), " ", config::home == Platform::Linux);
+  return 0;
+}

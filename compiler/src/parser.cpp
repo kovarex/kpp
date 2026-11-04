@@ -3,6 +3,7 @@
 // expression, template-id vs. less-than), this parser uses purely syntactic heuristics; the
 // resolver later checks the guesses. Unknown macros are recognised by their ALL_CAPS spelling.
 #include "parser.hpp"
+#include "config.hpp"
 #include "tests.hpp"
 #include <algorithm>
 #include <atomic>
@@ -1653,6 +1654,16 @@ namespace
           out.diagnostics.push_back({pos, "private is for a file's top-level declarations, not a namespace's"});
         filePrivate = !currentParent && !cMode;
         advance();
+      }
+      // `config TYPE NAME = DEFAULT;` (design.md, "config:: defaults in source") is read before parsing
+      // and its tokens dropped (dropConfigDeclarations) where it may stand: first on its line at the
+      // file's top level. One the parser meets stands elsewhere.
+      if (kppSource && tok().getKind() == TokenKind::Identifier && tok().id == kwConfig &&
+          (at(TokenKind::Identifier, 1) || at(TokenKind::Keyword, 1)))
+      {
+        error("a config declaration (config TYPE NAME = DEFAULT;) stands at a file's top level, first on its line");
+        recover();
+        return;
       }
       parseDeclarationInner(scope, {});
       if (filePrivate && !inRecovery)
@@ -6087,6 +6098,8 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     }
     tokens = std::move(kept);
   }
+  if (!cMode && out.path.ends_with(".kpp"))
+    dropConfigDeclarations(tokens, text); // read before parsing (config.cpp)
   out.tokens = &tokens;
   out.text = text;
   out.arena.reserve(tokens.size() * 40 + 4096); // Measured: about 30 bytes of AST per token.
