@@ -112,7 +112,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
      "    <StringView>smallChars,[" + mark + "]s8</StringView>\n"
      "    <Expand>\n"
      "      <Item Name=\"[length]\" Condition=\"large()\">heapLength</Item>\n"
-     "      <Item Name=\"[length]\" Condition=\"!large()\">" + mark + "</Item>\n"
+     "      <Item Name=\"[length]\" Condition=\"!large()\">(int)" + mark + "</Item>\n"
      "      <Item Name=\"[capacity]\" Condition=\"large()\">heapCapacity</Item>\n"
      "    </Expand>\n"
      "  </Type>\n"},
@@ -257,6 +257,61 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
              "      </CustomListItems>\n"
              "    </Expand>\n"
              "  </Type>\n";
+    }
+    for (const auto& [name, xml] : byName)
+      out += xml;
+  }
+  // A typed union (`union enum`, design.md 8.5) as its active alternative: its tag (ClassDecl::tagField,
+  // valued in the alternatives' order) and each alternative's storage (ClassDecl::alternatives), by
+  // the names the parser gave them, which the PDB's are. One rule per class, and per instance of one
+  // in a template.
+  {
+    std::set<const ClassDecl*> unions;
+    std::function<void(Span<Decl*>)> find = [&](Span<Decl*> decls)
+    {
+      for (const Decl* d : decls)
+        if (d->kind == NodeKind::NamespaceDecl)
+          find(static_cast<const NamespaceDecl*>(d)->decls);
+        else if (d->kind == NodeKind::ClassDecl)
+        {
+          auto* c = static_cast<const ClassDecl*>(d);
+          if (c->isTypedUnion && c->isDefinition && c->tagField)
+            unions.insert(c);
+          find(c->members);
+        }
+    };
+    for (const ParsedFile* f : files)
+      find(f->decls);
+    TypeTable& types = global.types();
+    std::vector<const Ty*> instances;
+    for (const ClassDecl* c : unions)
+      if (c->templateParams.empty())
+        if (const Ty* t = global.typeOfDecl(const_cast<ClassDecl*>(c)); t && t->kind == TyKind::Class)
+          instances.push_back(t);
+    for (const Ty* t : types.classInstances())
+      if (t->decl && t->decl->kind == NodeKind::ClassDecl && unions.count(static_cast<const ClassDecl*>(t->decl)) && !t->isConst && !t->isVolatile &&
+          !types.isDependent(t))
+        instances.push_back(t);
+    std::map<std::string, std::string> byName;
+    for (const Ty* t : instances)
+    {
+      auto* c = static_cast<const ClassDecl*>(t->decl);
+      std::string name = types.toString(t, &symbols, true);
+      std::string tag = nameOf(static_cast<const VariableDecl*>(c->tagField)->name, symbols);
+      std::string shown, items;
+      for (size_t i = 0; i < c->alternatives.size(); ++i)
+      {
+        std::string storage = nameOf(static_cast<const VariableDecl*>(c->alternatives[i])->name, symbols);
+        std::string alternative = storage.rfind("__alt_", 0) == 0 ? storage.substr(6) : storage;
+        std::string when = "(int)" + tag + " == " + std::to_string(i);
+        shown += "    <DisplayString Condition=\"" + when + "\">" + escape(alternative) + " {" + storage + "}</DisplayString>\n";
+        items += "      <Item Name=\"" + escape(alternative) + "\" Condition=\"" + when + "\">" + storage + "</Item>\n";
+      }
+      byName[name] = "  <Type Name=\"" + escape(name) + "\">\n" + shown +
+                     "    <Expand>\n"
+                     "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
+                     "    </Expand>\n"
+                     "  </Type>\n";
     }
     for (const auto& [name, xml] : byName)
       out += xml;

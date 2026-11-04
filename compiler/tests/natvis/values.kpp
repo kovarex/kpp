@@ -1,9 +1,15 @@
 // The natvis kppc links into the PDB of a build with debug information (tests\natvis.ps1,
-// docs/debugging.md, "Values in Visual Studio"): a value of each library type it has a rule for.
+// docs/debugging.md, "Values in Visual Studio"): a value of each library type it has a rule for, and
+// a typed union.
 struct Point
 {
   int x = 0;
   int y = 0;
+};
+
+union enum Property : uint8_t
+{
+  { {int, Integer}, {double, Real}, {String, Text} }
 };
 
 int main()
@@ -23,6 +29,11 @@ int main()
   Optional<int> none;
   UniquePtr<Point> point = makeUnique<Point>();
   point->x = 4;
-  println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x);
+  Property count;
+  count[Property::Integer] = 12;
+  Property name;
+  name[Property::Text] = String("gear");
+  println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
+          count[Property::Integer], " ", name[Property::Text]);
   return 0;
 }

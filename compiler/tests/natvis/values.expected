@@ -10,3 +10,4 @@ HashMap<*>
 HashSet<*>
 HashTable<Pair<String, int32>, String, HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>
 HashTable<int32, int32, HashSetKey<int32>, Hash<int32>, EqualTo<int32>, true>
+Property

@@ -144,7 +144,10 @@ shows the library's values as values (compiler\src\natvis.cpp):
 - `Vector<*>` and `Span<*>` as their elements, `UniquePtr<*>`, `SharedPtr<*>` and `Optional<*>` as
   what they hold (or `empty`), `Pair<*>` as `(first, second)`;
 - `HashMap<*>` and `HashSet<*>` as their entries: one rule per HashTable instance the program has,
-  which casts the slots to its entry type by name.
+  which casts the slots to its entry type by name;
+- a typed union (`union enum`) as its active alternative, `Integer 12`: one rule per class (and per
+  instance of one in a template) by its tag `__tag`, valued in the alternatives' order, and the
+  alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps.
 
 The type names are kppc's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
 HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), which are the PDB's: agreed with
@@ -156,7 +159,24 @@ by name, so the file does not depend on the threads.
 `tests\natvis.ps1` (run by run_tests.cmd) builds `tests\natvis\values.kpp` with `--debug-info` and
 checks that kppc warned of nothing, that the .natvis is valid by Visual Studio's natvis.xsd, that
 the PDB holds it (its named stream `/src/files/PATH`) and that its rules are `values.expected`.
-What a rule shows in Visual Studio can be checked only once the PDB has the types (thread B).
+Checked in Visual Studio 17.14.42 on 2026-11-04, once the PDB had the types (thread B's bcbbed6e):
+values.kpp as a project of its own, Debug, stopped on its `println`, each local read through DTE's
+GetExpression, which applies the natvis:
+
+| local | Visual Studio shows | expanded |
+|---|---|---|
+| `Vector<int32>` | `{ length=2 }` | `[capacity] 4`, `[0] 2`, `[1] 3` |
+| `String` (small) | `"kpp"` | `[length] 3` |
+| `String` (heap) | `"a string longer than thirty characters, on the heap"` | `[length] 51`, `[capacity] 51` |
+| `StringView` | its text | `[length] 51` |
+| `HashMap<String, int32, Hash<String>, EqualTo<String>, true>` | `{ count=2 }` | `[capacity] 16`, `("alan", 41)`, `("ada", 36)` |
+| `HashSet<int32, Hash<int32>, EqualTo<int32>, true>` | `{ count=1 }` | `7` |
+| `Optional<int32>` | `5`, `empty` | |
+| `UniquePtr<Point, DefaultDelete<Point>>` | `{x=4 y=0 }` | `x 4`, `y 0` |
+| `Property` (a typed union) | `Integer 12`, `Text "gear"` | `[tag] Integer`, `Integer 12` |
+
+Every one has its `[Raw View]` too. (tools\vs\vsix\natvis-check.ps1; not part of run_tests, which
+has no Visual Studio session.)
 
 ## How kppc emits it
 

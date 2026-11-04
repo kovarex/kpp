@@ -23,7 +23,7 @@ if ($code -ne 0) { "FAIL natvis: compile (exit $code)"; $log | Select-Object -La
 $warnings = @($log | Where-Object { $_ -match 'warning: natvis' })
 if ($warnings) { "FAIL natvis: kppc left rules out"; $warnings | ForEach-Object { "  $_" }; exit 1 }
 $out = & $exe
-if ("$out" -ne '2 kpp 51 2 1 5 false 4') { "FAIL natvis: the program printed $out"; exit 1 }
+if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear') { "FAIL natvis: the program printed $out"; exit 1 }
 if (-not (Test-Path $natvis)) { "FAIL natvis: no $natvis"; exit 1 }
 
 # Visual Studio's schema.
