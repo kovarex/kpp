@@ -82,6 +82,9 @@ Decided by kovarex; every thread follows them.
   each pending spec exactly one owner.
 - Measure, don't guess: paired binaries on the same converted tree, interleaved rounds; every speed
   claim names the command and the numbers.
+- CI stays green (kovarex, 2026-11-04): a push is done only when its CI run on master is green; the
+  pusher checks it (`gh run list`), and a red run is the pusher's first task, before new work. A
+  cancelled run (superseded by a newer push) is not green: check the newer one.
 - Game speed: a kpp release (or final) build is compared against C++ FinalRelease, the build players
   get, built from the same Factorio commit; C++ Release only as an extra column (kovarex, 2026-11-04).
 - Determinism: the front end and the whole IR are byte-identical at 1, 8 and 32 threads.
