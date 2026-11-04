@@ -36,7 +36,8 @@ only the choice of kppc's arguments.
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
 | `--clang-flags F` | more flags for clang's compile of the modules (`-fsanitize=address`) |
-| `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects |
+| `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects; the modules have no section per function (the link keeps every function) |
+| `--file-prefix-map FROM=TO` | the source paths the program's text holds (an assertion's message, a `CallerLocation`'s file) start with TO in place of the directory FROM, `/` between names; diagnostics and debug info keep theirs. kpp's release and final builds pass the standard library's as `stdlib`, each kpp library's as its name, and the project's as nothing (`src/main.kpp`), so that a release binary holds no path of the machine that built it |
 | `--no-inline` | kppc emits no trivial function into its callers (a diagnostic tool; inlining is on by default) |
 | `--keep-going`, `--stub-missing` | bring-up tools: link what was emitted despite errors, stub what is missing |
 | `--server` | build through a persistent compile server ([compile-speed.md](compile-speed.md)) |

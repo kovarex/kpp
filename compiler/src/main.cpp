@@ -94,6 +94,7 @@ namespace
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
     std::vector<std::string> keepSymbols;  // --keep-symbol NAME: linked in although nothing names it
     std::vector<std::string> excluded;     // --exclude FILE: a file under the roots left out
+    std::vector<std::pair<std::string, std::string>> filePrefixMap; // --file-prefix-map FROM=TO (source.hpp's programPath)
     bool showImportErrors = false; // --errors given: list parse errors in imported headers too
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
     bool debug = true;             // config::debug
@@ -172,6 +173,9 @@ namespace
             "  --keep-symbol S  link in what defines the symbol S although nothing names it (a library's object that\n"
             "                registers itself), with any toolchain: link.exe's /INCLUDE:S, the GNU driver's -u S (repeatable)\n"
             "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
+            "  --file-prefix-map FROM=TO  the paths the program's text holds (an assertion's message, a\n"
+            "                CallerLocation's file) under the directory FROM start with TO (repeatable; kpp's\n"
+            "                release and final builds: no path of this machine in the program)\n"
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
             "  --optimize, --no-optimize  clang -O2 (ThinLTO, a whole link) or -O0, whatever config::debug is\n"
@@ -4088,7 +4092,7 @@ namespace
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--lto", 1}, {"--lto-partitions", 1},
     {"--opt-level", 1},
-    {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
+    {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
     {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--no-run", 0}};
@@ -4345,6 +4349,17 @@ int compile(int argc, char** argv)
       options.keepSymbols.push_back(argv[++i]);
     else if (arg == "--exclude" && i + 1 < argc)
       options.excluded.push_back(argv[++i]);
+    else if (arg == "--file-prefix-map" && i + 1 < argc)
+    {
+      std::string item = argv[++i];
+      size_t equals = item.find('=');
+      if (equals == std::string::npos || equals == 0)
+      {
+        fprintf(stderr, "error: --file-prefix-map takes FROM=TO, a directory and what its paths start with instead, not %s\n", item.c_str());
+        return 2;
+      }
+      options.filePrefixMap.push_back({item.substr(0, equals), item.substr(equals + 1)});
+    }
     else if ((arg == "--library-root" || arg == "--unscoped-library-root") && i + 2 < argc)
     {
       options.libraryRoots.push_back({argv[i + 1], argv[i + 2], arg == "--library-root"});
@@ -4445,6 +4460,10 @@ int compile(int argc, char** argv)
   }
 
   using Clock = std::chrono::steady_clock;
+
+  // The paths the program's text holds (codegen's programPathOf): this build's map, none by default
+  // (a compile server's builds each set theirs).
+  setFilePrefixMap(options.filePrefixMap);
 
   // Phase 0: find and read all files. Reading is I/O bound, so it is timed separately.
   auto startCollect = Clock::now();

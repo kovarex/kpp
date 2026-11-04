@@ -1178,6 +1178,18 @@ namespace
       for (const std::string& e : l.excluded)
         args.push_back("--exclude"), args.push_back(e);
     }
+    // A release or final build (optimized, no debug info) holds no path of this machine: the paths its
+    // text gives (an assertion's message, a CallerLocation's file) are the standard library's as
+    // stdlib/..., a kpp library's under its name, the project's relative to its directory
+    // (--file-prefix-map). A debug build keeps them whole, as its debugger and IDE open them.
+    if (p.optimize && !p.debugInfo)
+    {
+      args.push_back("--file-prefix-map"), args.push_back(defaultStdlib(compilerPath()).string() + "=stdlib");
+      for (const ProjectLibrary& l : p.kppLibraries)
+        for (const std::string& r : l.roots)
+          args.push_back("--file-prefix-map"), args.push_back(rooted(root, r).string() + "=" + l.name);
+      args.push_back("--file-prefix-map"), args.push_back(root.string() + "=");
+    }
     args.insert(args.end(), request.passed.begin(), request.passed.end());
     args.push_back("--exe");
     args.push_back(exeOf(root, p, request).string());

@@ -117,6 +117,42 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column)
   return msvcDiagnostics ? path + "(" + std::to_string(line) + ")" : path + ":" + std::to_string(line);
 }
 
+namespace
+{
+  std::vector<std::pair<std::string, std::string>> filePrefixMap; // FROM absolute, '/' between its names, none at its end; TO
+
+  std::string comparablePath(const std::string& path)
+  {
+    std::error_code ec;
+    std::string p = std::filesystem::absolute(path, ec).lexically_normal().generic_string();
+    while (p.size() > 1 && p.back() == '/')
+      p.pop_back();
+    return p;
+  }
+}
+
+void setFilePrefixMap(const std::vector<std::pair<std::string, std::string>>& map)
+{
+  filePrefixMap.clear();
+  for (const auto& [from, to] : map)
+    filePrefixMap.push_back({comparablePath(from), to});
+  std::stable_sort(filePrefixMap.begin(), filePrefixMap.end(), [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+}
+
+std::string programPath(const std::string& path)
+{
+  if (filePrefixMap.empty())
+    return path;
+  std::string full = comparablePath(path);
+  for (const auto& [from, to] : filePrefixMap)
+    if (full.size() > from.size() && full[from.size()] == '/' && _strnicmp(full.c_str(), from.c_str(), from.size()) == 0)
+    {
+      std::string rest = full.substr(from.size() + 1);
+      return to.empty() ? rest : to + "/" + rest;
+    }
+  return path;
+}
+
 std::filesystem::path compilerPath()
 {
   wchar_t buffer[MAX_PATH];

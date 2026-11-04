@@ -41,6 +41,15 @@ std::string overlayKey(const std::filesystem::path& path);
 extern bool msvcDiagnostics, diagnosticColumns;
 std::string sourceLocation(const std::string& path, size_t line, size_t column = 0);
 
+// --file-prefix-map FROM=TO (each one): the source paths a program's own text holds (an assertion's
+// message, a CallerLocation's file) start with TO in place of the directory FROM, '/' between their
+// names, so that a binary does not hold this machine's paths (kpp's release and final builds: the
+// standard library's directory as stdlib, each kpp library's as its name, the project's as nothing).
+// The longest FROM a path is under is taken; an empty TO leaves the path relative to FROM.
+// Diagnostics and debug info keep the paths as they are: an IDE and a debugger open them.
+void setFilePrefixMap(const std::vector<std::pair<std::string, std::string>>& map);
+std::string programPath(const std::string& path);
+
 // The running compiler's executable, and the standard library a compiler at `compiler` uses
 // unless --std names one: stdlib\ next to it in an installation (docs/build.md, "Installing"),
 // ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kppc

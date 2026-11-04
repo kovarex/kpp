@@ -192,6 +192,7 @@ else
   # with ld.lld and the sysroot (it said "msvc toolchain"), and the debug build links whole (kpp passed
   # it --incremental-link, link.exe's, which kppc refuses for FreeBSD).
   $project = Join-Path $work 'freebsdproject'
+  if (Test-Path "$project\build") { cmd /c rd /s /q "$project\build" }
   New-Item -ItemType Directory -Force "$project\src" | Out-Null
   [IO.File]::WriteAllText((Join-Path $project 'build.kpp'), "void build(Project& project)`n{`n  project.executable(`"hello`", {`"src`"});`n}`n")
   [IO.File]::WriteAllText((Join-Path $project 'src\main.kpp'), "int main()`n{`n  println(`"hello`");`n  return 0;`n}`n")

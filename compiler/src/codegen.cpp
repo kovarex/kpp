@@ -6396,6 +6396,17 @@ namespace
     }
 
     std::unordered_map<const ParsedFile*, std::string> debugFiles; // a file's DIFile, its absolute path
+    std::unordered_map<const ParsedFile*, std::string> programPaths; // a file's path as the program's text holds it
+
+    // The path an assertion's message and a CallerLocation give for a file: --file-prefix-map's
+    // (programPath), the debug info keeping the path itself (debugFileOf).
+    const std::string& programPathOf(const ParsedFile* file)
+    {
+      auto [it, added] = programPaths.try_emplace(file);
+      if (added)
+        it->second = programPath(file->path);
+      return it->second;
+    }
 
     const std::string& debugFileOf(const ParsedFile* file)
     {
@@ -10377,7 +10388,7 @@ namespace
       Decl* writtenIn = lambdaContext ? lambdaContext->parent : nullptr;
       FunctionDecl* named = writtenIn && writtenIn->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(writtenIn) : currentFunction;
       std::string function = named ? qualifiedName(named) : std::string();
-      fn += "  store ptr " + cStringConstant(currentFile->path) + ", ptr " + gep(info.name, addr, 0) + "\n";
+      fn += "  store ptr " + cStringConstant(programPathOf(currentFile)) + ", ptr " + gep(info.name, addr, 0) + "\n";
       fn += "  store i32 " + std::to_string(line) + ", ptr " + gep(info.name, addr, 1) + "\n";
       fn += "  store i32 " + std::to_string(column) + ", ptr " + gep(info.name, addr, 2) + "\n";
       fn += "  store ptr " + cStringConstant(function) + ", ptr " + gep(info.name, addr, 3) + "\n";
@@ -19064,14 +19075,14 @@ namespace
           {
             // check and require in a test (design.md 8.6): the test runner records the failure; a
             // require's call throws to end the test (compiler/src/tests.cpp).
-            emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+            emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
                              std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ", i32 " +
                              std::to_string(a->testKind) + ")", a->testKind == 2);
             emitBranch(okL);
             startBlock(okL);
             break;
           }
-          emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+          emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
                            std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ")", false);
           fn += "  unreachable\n";
           usesAssert = true;
@@ -19439,7 +19450,7 @@ namespace
         fn += "  br i1 " + same + ", label %" + okL + ", label %" + failL + "\n";
         startBlock(failL);
         auto [line, column] = lineColumnOf(at->token);
-        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant("the typed union holds another alternative") + ")", false);
         fn += "  unreachable\n";
         usesAssert = true;
@@ -20207,7 +20218,7 @@ namespace
       {
         startBlock(invalidL);
         auto [line, column] = lineColumnOf(sw->token);
-        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + qualifiedName(condTy->decl)) + ")", false);
         fn += "  unreachable\n";
         usesAssert = true;

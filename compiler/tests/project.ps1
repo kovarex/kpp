@@ -525,5 +525,31 @@ void build(Project& project)
   Kpp @('--stop-server') | Out-Null
 }
 finally { Pop-Location }
+# The paths a program's text holds (an assertion's message, a CallerLocation's file): a release build
+# writes the project's relative to its directory and the standard library's under stdlib/
+# (--file-prefix-map), so that its binary holds no path of this machine; a debug build keeps them
+# whole, as its IDE and debugger open them.
+$paths = Join-Path $work 'paths'
+New-Item -ItemType Directory -Force "$paths\src" | Out-Null
+Push-Location $paths
+try
+{
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"paths`", {`"src`"});`n}"
+  Set-Content 'src\main.kpp' "void where(CallerLocation here = caller) { println(StringView(here.file_name())); }`nint main()`n{`n  println(format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  where();`n  return 0;`n}"
+  $root = (Get-Location).Path
+  $stdlib = [IO.Path]::GetFullPath((Join-Path (Split-Path $Kppc) '..\..\stdlib'))
+  $output = @(Kpp @('--release', '--no-server', '--run'))
+  $printed = if ($output.Count) { $output[-1] } else { '' }
+  if ($code -ne 0 -or $printed -ne 'src/main.kpp') { Fail "a release build's CallerLocation file is '$printed', not src/main.kpp`n$($output -join "`n")" }
+  $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $paths 'build\release\paths.exe')))
+  foreach ($held in $root, $stdlib)
+  {
+    if ($text.IndexOf($held, [StringComparison]::OrdinalIgnoreCase) -ge 0) { Fail "the release build's executable holds the path $held" }
+  }
+  $output = @(Kpp @('--debug', '--no-server', '--run'))
+  $printed = if ($output.Count) { $output[-1] } else { '' }
+  if ($code -ne 0 -or $printed -ne (Join-Path $root 'src\main.kpp')) { Fail "a debug build's CallerLocation file is '$printed', not $(Join-Path $root 'src\main.kpp')`n$($output -join "`n")" }
+}
+finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed
