@@ -957,9 +957,10 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   Without it: KPP_CLANG, else the installation's `bin\` when it has one, else Visual Studio's. The
   bundled toolchain with `--target windows` (it has no MSVC headers) and Visual Studio's clang with
   `--target windows-gnu` are errors. kpp's build line names the one taken (`(debug, bundled
-  toolchain, total ...)`), and the build's report says more (`toolchain: ... (bundled, windows-gnu:
-  links with lld)`). A compile server takes `bin\`
-  next to its client's kpp.exe. A project's C libraries compile with clang's own flags under the
+  toolchain, total ...)`). For Linux and FreeBSD it names that toolchain's clang, which links with
+  ld.lld and the target's sysroot, whole in debug too (`(debug, freebsd: Visual Studio's clang and
+  ld.lld, total ...)`). The build's report says more (`toolchain: ... (bundled, windows-gnu: links
+  with lld)`). A compile server takes `bin\` next to its client's kpp.exe. A project's C libraries compile with clang's own flags under the
   bundled toolchain, with clang-cl's (`clang --driver-mode=cl`) under Visual Studio's.
 - **The link:** the bundled toolchain links with lld, debug builds too. `--incremental-link`
   (link.exe `/INCREMENTAL`, the debug edit loop's link) is Visual Studio's: with the bundled

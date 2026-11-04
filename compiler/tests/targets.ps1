@@ -168,6 +168,28 @@ else
     $problems = ElfProblems $elf 1403
     if ($problems) { Fail "freebsd cgi: $problems" }
   }
+  # A kpp project built for FreeBSD, in debug and release: kpp's build line names that toolchain, clang
+  # with ld.lld and the sysroot (it said "msvc toolchain"), and the debug build links whole (kpp passed
+  # it --incremental-link, link.exe's, which kppc refuses for FreeBSD).
+  $project = Join-Path $work 'freebsdproject'
+  New-Item -ItemType Directory -Force "$project\src" | Out-Null
+  [IO.File]::WriteAllText((Join-Path $project 'build.kpp'), "void build(Project& project)`n{`n  project.executable(`"hello`", {`"src`"});`n}`n")
+  [IO.File]::WriteAllText((Join-Path $project 'src\main.kpp'), "int main()`n{`n  println(`"hello`");`n  return 0;`n}`n")
+  $kpp = (Resolve-Path $Kppc).Path # (run_tests passes it relative to compiler\)
+  Push-Location $project
+  try
+  {
+    foreach ($configuration in 'debug', 'release')
+    {
+      $ErrorActionPreference = 'Continue'
+      try { $output = @(& $kpp $configuration --no-server --target freebsd --sysroot $freebsdSysroot 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+      catch { $output = @("$_"); $code = -1 }
+      $ErrorActionPreference = 'Stop'
+      $line = @($output | Where-Object { $_ -like 'kpp: built *' }) -join ''
+      if ($code -ne 0 -or $line -notmatch "\($configuration, freebsd: (Visual Studio's|the bundled|KPP_CLANG's) clang and ld\.lld, total") { Fail "a kpp project built for freebsd ($configuration): exit $code, its build line '$line': $($output -join ' ')" }
+    }
+  }
+  finally { Pop-Location }
 }
 
 # Linux, under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every run_tests): 30 s
