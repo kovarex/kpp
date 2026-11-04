@@ -17,6 +17,7 @@ Deque<*>
 HashTable<Pair<String, int32>, String, HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>
 HashTable<Pair<int32, Vector<int32> >, int32, HashMapKey<int32, Vector<int32> >, Hash<int32>, EqualTo<int32>, true>
 HashTable<int32, int32, HashSetKey<int32>, Hash<int32>, EqualTo<int32>, true>
+Point^
 List<String>
 ForwardList<int32>
 RbTree<Pair<String, int32>, String, MapKey<String, int32>, Less<String> >

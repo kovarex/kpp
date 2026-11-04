@@ -1446,6 +1446,10 @@ UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
 - **Printing.** Errors and the language server's hover print `UniquePtr<T, DefaultDelete<T>>` as
   `T^` (types.cpp, toString). Qualified names (the IR's, debug information's) keep the class's own,
   so the IR does not change; the debugger's display names are F's (natvis, debug type names).
+  The debug information names the class `T^` (its identifier stays the qualified name), so Visual
+  Studio's Watch and Locals show `Item^` as the type (docs/debugging.md, "Values in Visual
+  Studio"); its evaluator reads `^` in an expression as C++/CLI's handle, so a cast to `Item^*`
+  does not evaluate there.
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 

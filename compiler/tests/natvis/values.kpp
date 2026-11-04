@@ -27,7 +27,7 @@ int main()
   seen.insert(7);
   Optional<int> some = 5;
   Optional<int> none;
-  UniquePtr<Point> point = makeUnique<Point>();
+  Point^ point = makeUnique<Point>(); // (UniquePtr<Point>, named Point^ in the PDB)
   point->x = 4;
   Property count;
   count[Property::Integer] = 12;

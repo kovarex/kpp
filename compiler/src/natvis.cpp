@@ -97,6 +97,14 @@ std::string debuggerTypeName(std::string name)
   return name;
 }
 
+std::string debuggerClassName(const TypeTable& types, const Ty* t, const SymbolTable& symbols)
+{
+  if (t && t->kind == TyKind::Class && !t->isConst && !t->isVolatile && !t->args.empty())
+    if (std::string shown = types.toString(t, &symbols); !shown.empty() && shown.back() == '^')
+      return debuggerTypeName(types.toString(t->args[0], &symbols, true)) + "^";
+  return debuggerTypeName(types.toString(t, &symbols, true));
+}
+
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, std::vector<std::string>& problems)
 {
   // The library's class definitions at namespace scope, by name.
@@ -363,7 +371,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   // above (HashIterator::skipFree).
   for (const auto& [name, t] : instancesOf("HashTable", 6))
   {
-    std::string entry = debuggerTypeName(types.toString(t->args[0], &symbols, true));
+    std::string entry = debuggerClassName(types, t->args[0], symbols); // (`Item^`, a UniquePtr's name)
     bool stable = t->args[5]->kind == TyKind::Value && t->args[5]->value != 0;
     std::string item = stable ? "*((" + entry + "**)slots)[i]" : "((" + entry + "*)slots)[i]";
     out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
@@ -382,6 +390,17 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
            "    </Expand>\n"
            "  </Type>\n";
   }
+  // A UniquePtr with its default deleter is named `Item^` (debuggerClassName), which the rule for
+  // UniquePtr<*> does not match: the same rule by each such name.
+  for (const auto& [name, t] : instancesOf("UniquePtr", 2))
+    if (std::string shown = debuggerClassName(types, t, symbols); !shown.empty() && shown.back() == '^')
+      out += "  <Type Name=\"" + escape(shown) + "\">\n"
+             "    <DisplayString Condition=\"held == 0\">empty</DisplayString>\n"
+             "    <DisplayString>{*held}</DisplayString>\n"
+             "    <Expand>\n"
+             "      <ExpandedItem Condition=\"held != 0\">*held</ExpandedItem>\n"
+             "    </Expand>\n"
+             "  </Type>\n";
   // A List's nodes: a ring through its sentinel, `length` of them after it.
   for (const auto& [name, t] : instancesOf("List", 1))
   {

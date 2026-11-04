@@ -47,5 +47,8 @@ try
 finally
 {
   try { $dte.Documents.CloseAll(2) } catch { }
-  $dte.Quit()
+  try { $dte.Quit() } catch { }
+  # (Quit after a debugging session can leave it running, holding kppc.exe through its language
+  # server: the instance this script started is ended.)
+  if (-not $devenv.WaitForExit(60000)) { Stop-Process -Id $devenv.Id -Force -ErrorAction SilentlyContinue }
 }

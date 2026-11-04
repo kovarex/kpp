@@ -234,7 +234,15 @@ thread B (2026-11-04), whose types carry each instance's full argument list. Bot
 angle brackets apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs do (debuggerTypeName in
 natvis.hpp): Visual Studio's expression evaluator reads `>>` as a shift, and with the PDB's
 `RbNode<Pair<String, int32>>` neither a cast to it nor a rule for `RbTree<..., Less<String>>` was
-possible (`Map<String, int32>` showed raw). A rule reads the
+possible (`Map<String, int32>` showed raw).
+
+A UniquePtr with its default deleter is named as the program writes it, `Point^` (design.md 20;
+debuggerClassName in natvis.hpp): the Watch, Locals and Autos windows show `Point^` as its type,
+and the natvis has the UniquePtr rule once more by each such name, which `UniquePtr<*>` does not
+match. Visual Studio's expression evaluator reads `Point^` in an expression as a C++/CLI handle,
+so a cast to it (`(Point^*)p`) is "a handle to a non-managed class is not allowed"; `p.held->x`
+reads the object. (`p->x` does not evaluate with either name: the evaluator does not call
+UniquePtr's operator->.) Checked in Visual Studio 17.14 on 2026-11-04. A rule reads the
 library's members by their names; each is checked against the library's classes as they are, and
 one whose member is gone is left out with `warning: natvis: ...`. The per-instance rules are sorted
 by name, so the file does not depend on the threads.
@@ -255,7 +263,7 @@ GetExpression, which applies the natvis:
 | `HashMap<String, int32, Hash<String>, EqualTo<String>, true>` | `{ count=2 }` | `[capacity] 16`, `("alan", 41)`, `("ada", 36)` |
 | `HashSet<int32, Hash<int32>, EqualTo<int32>, true>` | `{ count=1 }` | `7` |
 | `Optional<int32>` | `5`, `empty` | |
-| `UniquePtr<Point, DefaultDelete<Point>>` | `{x=4 y=0 }` | `x 4`, `y 0` |
+| `Point^` (UniquePtr<Point>) | `{x=4 y=0 }` | `x 4`, `y 0` |
 | `Property` (a typed union) | `Integer 12`, `Text "gear"` | `[tag] Integer`, `Integer 12` |
 | `Deque<int32>` (40 elements, 3 blocks) | `{ length=40 }` | `[0] -20` ... `[39] 19` |
 | `List<String>` | `{ length=2 }` | `"belt"`, `"cog"` |

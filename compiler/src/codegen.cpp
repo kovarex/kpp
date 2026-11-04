@@ -6579,7 +6579,7 @@ namespace
           // alone (homeDebugClasses), every other module's reference resolved by the identifier.
           auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
           const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
-          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerTypeName(spelling)) + ", flags: DIFlagFwdDecl, identifier: " +
+          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerClassName(types, t, symbols)) + ", flags: DIFlagFwdDecl, identifier: " +
                      metadataString(spelling) + ")");
         }
         case TyKind::Function:
@@ -6770,7 +6770,7 @@ namespace
       std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
       uint32_t list = next++;
       nodes += debugId(list) + " = !{ " + elements + "}\n";
-      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerTypeName(*spelling)) : std::string()) +
+      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerClassName(types, ct, symbols)) : std::string()) +
                ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
                (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
                (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";
