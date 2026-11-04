@@ -1447,7 +1447,14 @@ UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
   `T^` (types.cpp, toString). Qualified names (the IR's, debug information's) keep the class's own,
   so the IR does not change; the debugger's display names are F's (natvis, debug type names).
 
-## Code packages (proposed 2026-10-27, not yet decided by kovarex)
+## Code packages (proposed 2026-10-27, decided 2026-11-04)
+
+**Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
+README.md documents it; package names never appear in code. Changed from the proposal: no
+`package.kpp` and no display name other than the directory's, and the description is the README's
+first paragraph. Rollout: first `kppc --packages` and the language server's package tree and symbol
+search with the package path; `packageof(T)` and the standard library's split into directories
+after kovarex has seen the tree on the game.
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
 `Vector` by walking *Standard Library > Containers > Vector*, or find the inserter code in
@@ -1469,18 +1476,22 @@ extended to the library.
   is a child package. A file belongs to the package of the directory it is in. There is no
   per-file `package` statement: the directory is the single source of truth, so the tree cannot
   drift from the files, and moving a class to another package is moving its file.
-- **An optional `package.kpp` in the directory names and describes it**, for the tree's
-  display. Without it the directory name is used.
-  ```cpp
-  // stdlib/containers/package.kpp
-  package "Containers"
-  {
-      description = "Owning sequences and maps: Vector, HashMap, HashSet, UniqueArray.";
-      order = 1;   // position among its siblings in the tree; alphabetical when absent
-  }
+- **The package's name is its directory's name**, always: there is no other display name.
+- **An optional `README.md` in the directory documents the package** (kovarex, 2026-11-04: an md
+  file, "so there can be more thorough document about the workings of the package"). Its first
+  paragraph is the short description tools show (the tree's hover, `kppc --packages`); the rest
+  is free documentation. Pictures and diagrams sit in the same directory, next to the README, and
+  are linked by their bare file name (`![belts](belts.png)`); Mermaid blocks are fine for text
+  diagrams. The compiler reads only `.kpp` files, so none of these affect compilation.
   ```
-  `package.kpp` may contain only this declaration. It has no effect on compilation other than
-  appearing in reflection and diagnostics.
+  stdlib/containers/README.md
+  # containers
+
+  Owning sequences and maps: Vector, HashMap, HashSet, UniqueArray.
+
+  ![how a HashMap's slots are laid out](hashmap.svg)
+  ```
+- Siblings are listed alphabetically.
 - C++ `namespace` stays what it is (an ordinary qualifying scope), for the code that wants
   qualification on purpose: Factorio's `agui::`, `ActionData::` and the `config::` constants.
   Packages and namespaces are independent: a namespace may span packages and a package may hold
@@ -1536,8 +1547,9 @@ extended to the library.
   changes. A rename of a class is the only refactor that touches its users.
 - `kppc --packages` prints the tree with the declarations in each package (for the command line
   and for scripts), and diagnostics name the package along with the file.
-- Reflection: `packageof(T)` gives a constant descriptor (`name`, `description`, `parent`), so
-  for example the test runner can run all tests of one package (`--run-test "Factorio > Train"`).
+- Reflection (step 2): `packageof(T)` gives a constant descriptor (`name`, `description`,
+  `parent`), so for example the test runner can run all tests of one package (`--run-test
+  "Factorio > Train"`).
 - Cost to the compiler: the package is a field of the file, found once when the file list is
   built. Name lookup does not look at it, so it changes nothing in the front-end numbers.
 
@@ -1547,9 +1559,9 @@ extended to the library.
   directories under `src/` (AI, Belt, Blueprint, CircuitNetwork, Entity, Gui, Train...) are the
   second level, and the 340 files directly in `src/` are in *Factorio* itself until someone
   sorts them. CommonUtil and Agui are top-level packages of their own. The converter writes a
-  `package.kpp` only when it has a description to give. Factorio's namespaces (`agui`,
+  README.md only when it has a description to give. Factorio's namespaces (`agui`,
   `ActionData`, `MTL`...) stay namespaces, because the code refers to them qualified.
-- `stdlib/core` (23 files) would split into directories: *Containers* (Vector, HashMap,
+- `stdlib/core` (23 files) would split into directories (step 2): *Containers* (Vector, HashMap,
   HashSet, UniqueArray, InitializerList), *Text* (String, StringView, WString, Format),
   *Memory* (Memory, UniquePtr, SharedPtr), *Functional* (Function, Algorithm, Hash, Utility,
   Optional), *Math*, *Threads* (Thread, Time) and *Language* (TypeInfo, Location). The move
@@ -1562,7 +1574,7 @@ extended to the library.
 | Part of a name | yes, `std::chrono::seconds` | yes, `java.util.List` | no, only `Vector` |
 | Needs context to use a short name | `using namespace` / `using` | `import` per file | never |
 | Same name in two places | allowed, disambiguated by qualification | allowed, disambiguated by import | compile error |
-| Declared by | `namespace x { }` blocks, anywhere | `package a.b;` in each file, must match the directory | the directory, plus an optional `package.kpp` |
+| Declared by | `namespace x { }` blocks, anywhere | `package a.b;` in each file, must match the directory | the directory, plus an optional README.md |
 | What it is for | avoiding clashes, ADL | avoiding clashes, access control (package-private) | browsing and navigation only |
 | A snippet means the same in any file | no (depends on usings and the enclosing namespace) | no (depends on imports) | yes |
 
@@ -3318,8 +3330,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **Library names and program names share one global scope.** The first clash happened on
   2026-10-24: a test's own `struct Pair` against the library's `Pair`. Options: the library in a
   namespace (`kpp::`) that programs see through an implicit `using`; or program declarations
-  shadowing library ones; or simply distinct names. Not decided; the test was renamed.
-  The proposal in "Code packages" above answers it with distinct names checked by the compiler.
+  shadowing library ones; or simply distinct names. Answered by "Code packages" (decided
+  2026-11-04) with distinct names checked by the compiler, and by section 16's scoped libraries.
 
 - **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
   LSP adapter first, then an editor written in kpp with a DbgEng debugger and hot reload. Its eight

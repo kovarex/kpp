@@ -50,7 +50,7 @@ after, as a dogfooding target, when the standard library has networking.
 - `kppc` takes the program's files, compiles the standard library from source with every program
   (`--std DIR`, `--no-std`), and links C libraries given with `--lib`; `extern "C" import "h.h";`
   imports C headers found through `--cinclude DIR` ([design.md](design.md) section 5).
-- Code packages (proposed 2026-10-27): a directory is a package, the source roots (program,
+- Code packages (decided 2026-11-04): a directory is a package, the source roots (program,
   `stdlib/`, "each library") are the top-level packages, package names never appear in code, and
   all top-level names are in **one global scope**, so a clash between two packages is a compile
   error that names both. Libraries are now scoped by their name unless they say otherwise
@@ -184,8 +184,8 @@ The two C++ package managers, both built around compiling native code for many c
 ## Design for kpp
 
 ### What a library is
-- **A directory of kpp source**, which becomes a top-level code package when added (its
-  `package.kpp` names it in the tree: *JSON*, *Lua*, *Steamworks*). Subdirectories are child
+- **A directory of kpp source**, which becomes a top-level code package when added, named after
+  its directory (`json`, `lua`, `steamworks`), its README.md describing it. Subdirectories are child
   packages as usual. No prebuilt kpp objects: the persistent compiler parses a library once and
   keeps it, and the front end handles the whole Factorio benchmark corpus in 0.32 s of wall time
   ([prototype-results.md](prototype-results.md)), so a few libraries are noise for it. Instantiations
@@ -814,7 +814,7 @@ C source parts, MVS with one version) before any server code is written.
 - **Moderation load** grows with users; phase 1's pull-request model does not scale past a few
   hundred libraries, which is when phase 2 is needed anyway.
 - **Language not stable yet**: libraries published now will break with language changes (struct
-  and class, code packages are still proposals). The minimum-kppc-version field and a kppc
+  and class and code packages are decided, 2026-11-01 and 2026-11-04, but more will come). The minimum-kppc-version field and a kppc
   version in the lockfile make the breakage visible; the registry can rebuild all releases with a
   new kppc before it ships (crater-style) to see what breaks.
 

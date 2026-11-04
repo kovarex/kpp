@@ -149,7 +149,7 @@ display, computed from tokens on the server.
 | `definition(decl)`, `declarations(decl)` | where it is defined; every redeclaration and out-of-line definition | the index |
 | `references(decl)` | every use, paged; in instances mapped back to the template's tokens | the reference index (new: 0.1 s and 24 MB on the game, updated per changed file) |
 | `symbols(file)`, `search(text)` | a file's outline; go to symbol with package paths (design.md, "Tools and the IDE") | the global index, the symbol table |
-| `packages()` | the package tree | the files' directories and `package.kpp`, once packages are decided |
+| `packages()` | the package tree | the files' directories and their README.md's first paragraphs (design.md, "Code packages", decided 2026-11-04) |
 | `dependents(decl)` | the bodies and instances that read it | step 2's records |
 | `overrides`, `callers`, `hierarchy` | virtual overrides, the call graph, bases and derived classes | the resolver's scopes; codegen's per-function request lists |
 | `rename(decl, name)` | the edits, or the clash it would make | `references` and the one-global-scope check |
@@ -280,8 +280,8 @@ until then its users are the stdlib, the spec snippets, `programs/` and the comp
 From design.md and compile-speed.md; each needs a place in the query layer, not a special case in
 the editor.
 
-- **Code packages** (proposed): the package tree is the IDE's project view; search shows package
-  paths. Until decided, the tree is the directories.
+- **Code packages** (decided 2026-11-04): the package tree, the directories with their README.md's
+  first paragraph on hover, is the IDE's project view; search shows package paths.
 - **Tests in the compiler** (design.md 8: `test "name" { ... }`, `kppc --tests`, `--run-test`):
   run the test under the cursor, a package's tests, failures with their operand values as
   diagnostics. Thread G's work on testing kpp code defines the runner's output; the IDE consumes it.
