@@ -1032,6 +1032,16 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **publish:** on master only, and only when every job above is green (run_tests' halves, every
   spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
   no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
+- **libraries_freebsd_build, libraries_freebsd_run:** nightly and by hand only, after build; publish
+  does not wait for them (kovarex, 2026-11-04: FreeBSD binaries' correctness belongs to kpp's own
+  tests). `libraries\target-tests.ps1 -Target freebsd` builds every library's tests and kppsite's for
+  FreeBSD 14.3 (`kpp --target freebsd --no-run --test` in each project; a project that does not
+  build fails the job unless `libraries\target-known-failures.txt` lists it, and a listed one that
+  builds fails it too); the bundle (each test program, `run.sh`) then runs in a FreeBSD 14.3 VM
+  (vmactions/freebsd-vm, as the spec's FreeBSD run) from the checkout, httpclient's HTTPS test
+  included (`HTTPCLIENT_TEST_HTTPS`: the VM reaches the internet). Its last line, `libraries freebsd:
+  ALL PASSED (12 programs, 70 tests)`, goes to the run's summary. The same scripts run the Linux
+  build in WSL by hand (`-Target linux`, then `sh run.sh CHECKOUT` there).
 
 **The release check** (`.github/workflows/release-check.yml`, kovarex, 2026-11-03) tests what was
 published, not the checkout: daily at 04:17 UTC (an hour after the nightly run below publishes), or

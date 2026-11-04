@@ -1,0 +1,4 @@
+# A project of libraries\ (or kppsite) that does not build for a target yet: "TARGET NAME", one per line
+# (target-tests.ps1). A listed one that builds fails the run, so the line goes with the fix.
+# httpclient: its client is FreeBSD's (OpenSSL), and the Linux sysroot has no OpenSSL yet.
+linux httpclient

@@ -404,6 +404,111 @@ jobs:
           { echo '### spec on FreeBSD 14.3'; echo; echo "    $last"; grep -E '^(FAIL|FIXED)' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
           case "$last" in "spec freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
 
+  # The libraries' tests and kppsite's on FreeBSD (libraries/targets.md; kovarex, 2026-11-04: "If we
+  # want to make sure freeBSD binaries are correct, it should be part of kpp workflow testing"): each
+  # project's tests built for FreeBSD 14.3 here (libraries\target-tests.ps1: kpp --target freebsd
+  # --no-run --test; a project that does not build fails unless target-known-failures.txt lists it),
+  # then run in a FreeBSD 14.3 VM from the checkout (libraries_freebsd_run), httpclient's HTTPS test
+  # included (EGD over TLS, an expired certificate refused). Nightly and by hand only, like the spec's
+  # FreeBSD jobs; publish does not wait for them.
+  libraries_freebsd_build:
+    needs: build
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kppc
+          path: compiler/build
+
+      - name: FreeBSD sysroot cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/sysroots/freebsd-x86_64
+          key: freebsd-sysroot-${{ hashFiles('tools/sysroot/freebsd.ps1') }}
+
+      - name: FreeBSD sysroot
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the Clang component' }
+          $env:KPP_CLANG = "$vs\VC\Tools\Llvm\x64\bin\clang.exe"
+          "KPP_CLANG=$env:KPP_CLANG" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\sysroot\freebsd.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'tools\sysroot\freebsd.ps1 failed' }
+
+      # The bundle is uploaded whatever built; the step after it fails on a new build failure.
+      - name: libraries built for FreeBSD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -File libraries\target-tests.ps1 -Target freebsd 2>&1 | ForEach-Object { "$_" }
+          $code = $LASTEXITCODE
+          $out
+          @('### libraries built for FreeBSD 14.3', '', '    ' + ($out | Select-Object -Last 1)) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "KPP_LIBRARIES_BUILD=$code" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libraries-freebsd
+          path: |
+            compiler/build/libraries-freebsd/run.sh
+            compiler/build/libraries-freebsd/projects.txt
+            compiler/build/libraries-freebsd/*.elf
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: New build failures
+        shell: powershell
+        run: if ($env:KPP_LIBRARIES_BUILD -ne '0') { throw 'a library fails to build for FreeBSD that target-known-failures.txt does not list, or a listed one builds (libraries built for FreeBSD, above)' }
+
+  # The bundle in a FreeBSD 14.3 VM, as freebsd_run, with the checkout beside it: the tests read files
+  # of their projects (kppsite's fixture, json's suite).
+  libraries_freebsd_run:
+    needs: libraries_freebsd_build
+    # (also after a new build failure there: the projects that did build still run)
+    if: ${{ !cancelled() && needs.libraries_freebsd_build.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libraries-freebsd
+          path: libraries-freebsd
+
+      - name: libraries on FreeBSD 14.3
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: '14.3'
+          sync: rsync
+          copyback: true
+          run: |
+            freebsd-version
+            HTTPCLIENT_TEST_HTTPS=1 sh libraries-freebsd/run.sh "$PWD" > libraries-freebsd/run.log 2>&1 || true
+            cat libraries-freebsd/run.log
+
+      # The step fails unless run.sh reached its last line and that says ALL PASSED.
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          log=libraries-freebsd/run.log
+          last=$(tail -n 1 "$log" 2>/dev/null || true)
+          [ -n "$last" ] || last='no result: run.sh did not finish (the VM step failed)'
+          { echo '### libraries on FreeBSD 14.3'; echo; echo "    $last"; grep -E '^FAIL' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
+          case "$last" in "libraries freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
+
   # On master, kpp is packaged while the tests run (kovarex, 2026-11-02), and handed to publish as
   # the artifact "package". Packaging publishes nothing.
   package:
