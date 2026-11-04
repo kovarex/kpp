@@ -7130,6 +7130,11 @@ struct GlobalScope::Impl
       case NodeKind::ThrowExpr:
         constWhy() = constThrown(static_cast<ThrowExpr*>(e), ctx, depth); // (no constant: C++ rejects a throw in one)
         return std::nullopt;
+      case NodeKind::NoexceptExpr:
+        // The walk's answer (canThrow); its operand is not evaluated.
+        if (static_cast<NoexceptExpr*>(e)->value < 0)
+          return std::nullopt;
+        return ConstValue::integer(static_cast<NoexceptExpr*>(e)->value, types.boolType());
       case NodeKind::SizeofExpr:
       {
         auto* s = static_cast<SizeofExpr*>(e);
@@ -23077,6 +23082,92 @@ struct GlobalScope::Impl
       return t && t->isConst ? d : nullptr;
     }
 
+    // Whether e can throw, for the noexcept operator ([expr.unary.noexcept]): a call of a function
+    // not noexcept (its noexcept condition evaluated under the walk's substitution), a throw, a new
+    // that allocates; scalar arithmetic, names, literals and the operators of scalars cannot. What it
+    // does not decide yet (an overloaded operator, a constructor, a call through a pointer) is named
+    // in unsupported, an error, never a guess.
+    bool canThrow(Expr* e, std::string& unsupported)
+    {
+      if (!e || !unsupported.empty())
+        return false;
+      auto scalar = [&](const Expr* x)
+      {
+        const Ty* t = x && x->ty ? types.unqualified(types.stripRef(x->ty)) : nullptr;
+        return t && t->isKnown() && t->kind != TyKind::Class;
+      };
+      switch (e->kind)
+      {
+        case NodeKind::LiteralExpr: case NodeKind::NameExpr: case NodeKind::ThisExpr: case NodeKind::SizeofExpr:
+        case NodeKind::NameofExpr: case NodeKind::NoexceptExpr:
+          return false;
+        case NodeKind::ParenExpr: return canThrow(static_cast<ParenExpr*>(e)->inner, unsupported);
+        case NodeKind::ThrowExpr: return true;
+        case NodeKind::UnaryExpr:
+          if (!scalar(static_cast<UnaryExpr*>(e)->operand))
+            break; // (an overloaded operator)
+          return canThrow(static_cast<UnaryExpr*>(e)->operand, unsupported);
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          if (!scalar(b->lhs) || !scalar(b->rhs))
+            break;
+          bool l = canThrow(b->lhs, unsupported), r = canThrow(b->rhs, unsupported);
+          return l || r;
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          if (!scalar(e))
+            break;
+          bool any = canThrow(c->cond, unsupported);
+          any = canThrow(c->then, unsupported) || any;
+          return canThrow(c->else_, unsupported) || any;
+        }
+        case NodeKind::CallExpr:
+        {
+          auto* c = static_cast<CallExpr*>(e);
+          Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(c->callee)->resolved
+                         : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
+                                                                                : nullptr;
+          if (!callee || callee->kind != NodeKind::FunctionDecl || (callee->flags & DF_Constructor))
+          {
+            unsupported = callee && (callee->kind == NodeKind::ClassDecl || (callee->flags & DF_Constructor)) ? "a construction of a class"
+                                                                                                              : "a call through a pointer or a closure";
+            return false;
+          }
+          if (!scalar(e) && !(e->ty && e->ty->kind == TyKind::Void))
+          {
+            unsupported = "a call returning a class (its construction and destruction)";
+            return false;
+          }
+          bool any = false;
+          for (Expr* a : c->args)
+          {
+            if (!scalar(a))
+            {
+              unsupported = "a call with an argument of class type";
+              return false;
+            }
+            any = canThrow(a, unsupported) || any;
+          }
+          if (c->callee->kind == NodeKind::MemberExpr)
+            any = canThrow(static_cast<MemberExpr*>(c->callee)->base, unsupported) || any;
+          std::optional<bool> noexcept_ = impl.isNoexcept(static_cast<FunctionDecl*>(callee), activeSubst);
+          if (!noexcept_)
+          {
+            unsupported = "a call of a function whose noexcept condition is no constant here";
+            return false;
+          }
+          return any || !*noexcept_;
+        }
+        default:
+          break;
+      }
+      unsupported = std::string("its operand (") + nodeKindName(e->kind) + ")";
+      return false;
+    }
+
     // rangeExpr: the range written, for a free begin(range).
     const Ty* elementTypeOf(const Ty* range, Expr* rangeExpr)
     {
@@ -24368,6 +24459,21 @@ struct GlobalScope::Impl
         case NodeKind::NameofExpr:
           walkExpr(static_cast<NameofExpr*>(e)->operand);
           return record(e, types.pointer(types.qualified(types.charType(), true, false)));
+        case NodeKind::NoexceptExpr:
+        {
+          auto* n = static_cast<NoexceptExpr*>(e);
+          walkExpr(n->operand);
+          if (!inGenericTemplate())
+          {
+            std::string unsupported;
+            bool throws = canThrow(n->operand, unsupported);
+            if (!unsupported.empty())
+              impl.reportCheckerError(file, e->token, "the noexcept operator does not decide " + unsupported + " yet");
+            else
+              n->value = throws ? 0 : 1;
+          }
+          return record(e, types.boolType());
+        }
         case NodeKind::LiteralExpr: return record(e, typeOfLiteral(static_cast<LiteralExpr*>(e)));
         case NodeKind::ThisExpr: return record(e, thisType ? thisType : unknown(Why::Unsupported));
         case NodeKind::CallExpr: return record(e, typeOfCall(static_cast<CallExpr*>(e)));

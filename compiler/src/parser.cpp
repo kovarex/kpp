@@ -5075,13 +5075,14 @@ namespace
           case Kw::noexcept_:
             if (at(P::LParen, 1))
             {
-              // The noexcept operator: an error until the checker decides whether its operand can
-              // throw (it was `true` whatever the operand, a silent wrong answer for a call of a
-              // function not declared noexcept).
-              error("the noexcept operator is not supported yet");
+              // The noexcept operator: whether its operand cannot throw, which the resolver decides
+              // (GlobalScope::canThrow; it was `true` whatever the operand, a silent wrong answer).
+              NoexceptExpr* n = node<NoexceptExpr>(start);
               advance();
-              skipBalanced();
-              return node<ErrorExpr>(start);
+              advance();
+              n->operand = parseExpression();
+              expect(P::RParen, "expected ')' after the noexcept operator's operand");
+              return n;
             }
             break;
           case Kw::new_:
@@ -5974,6 +5975,7 @@ namespace
   template<> constexpr NodeKind Parser::nodeKindOf<AssertStmt>() { return NodeKind::AssertStmt; }
   template<> constexpr NodeKind Parser::nodeKindOf<CallerExpr>() { return NodeKind::CallerExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<NameofExpr>() { return NodeKind::NameofExpr; }
+  template<> constexpr NodeKind Parser::nodeKindOf<NoexceptExpr>() { return NodeKind::NoexceptExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<BlockStmt>() { return NodeKind::BlockStmt; }
   template<> constexpr NodeKind Parser::nodeKindOf<ExprStmt>() { return NodeKind::ExprStmt; }
   template<> constexpr NodeKind Parser::nodeKindOf<DeclStmt>() { return NodeKind::DeclStmt; }

@@ -298,6 +298,7 @@ namespace
           expr(static_cast<SizeofExpr*>(e)->operand);
           break;
         case NodeKind::NameofExpr: expr(static_cast<NameofExpr*>(e)->operand); break;
+        case NodeKind::NoexceptExpr: expr(static_cast<NoexceptExpr*>(e)->operand); break;
         case NodeKind::NewExpr:
         {
           auto* c = static_cast<NewExpr*>(e);

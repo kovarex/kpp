@@ -5767,6 +5767,7 @@ namespace
         case NodeKind::ThrowExpr: visit(static_cast<ThrowExpr*>(n)->operand); break;
         case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); break;
         case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
+        case NodeKind::NoexceptExpr: break; // (its operand is not evaluated)
         case NodeKind::LambdaExpr:
         {
           auto* l = static_cast<LambdaExpr*>(n);
@@ -16016,6 +16017,14 @@ namespace
             unsupported(e, "a TypeInfo class without its name field");
           fn += "  store ptr " + namePtr + ", ptr " + gep(info.name, slot, fieldIndexOf(info, info.fieldDecls[0])) + "\n";
           return {slot, infoTy, true};
+        }
+        case NodeKind::NoexceptExpr:
+        {
+          // The walk's answer (GlobalScope::canThrow); its operand is not evaluated.
+          int8_t value = static_cast<NoexceptExpr*>(e)->value;
+          if (value < 0)
+            unsupported(e, "a noexcept operator the checker did not decide");
+          return {value > 0 ? "true" : "false", types.boolType()};
         }
         case NodeKind::NameofExpr:
         {

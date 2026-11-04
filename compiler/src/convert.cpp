@@ -9386,6 +9386,7 @@ namespace
         case NodeKind::NamedCastExpr: walkExpr(static_cast<NamedCastExpr*>(e)->operand, owner); break;
         case NodeKind::SizeofExpr: walkExpr(static_cast<SizeofExpr*>(e)->operand, owner); break;
         case NodeKind::NameofExpr: walkExpr(static_cast<NameofExpr*>(e)->operand, owner); break;
+        case NodeKind::NoexceptExpr: walkExpr(static_cast<NoexceptExpr*>(e)->operand, owner); break;
         case NodeKind::NewExpr:
           walkExprs(static_cast<NewExpr*>(e)->placement, owner);
           walkExprs(static_cast<NewExpr*>(e)->args, owner);

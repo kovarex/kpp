@@ -520,6 +520,14 @@ Expr* InstanceCopier::expr(const Expr* e)
       out = c;
       break;
     }
+    case NodeKind::NoexceptExpr:
+    {
+      auto* c = raw(static_cast<const NoexceptExpr*>(e));
+      c->operand = expr(c->operand);
+      c->value = -1; // (each instance's walk decides)
+      out = c;
+      break;
+    }
     case NodeKind::NewExpr:
     {
       auto* c = raw(static_cast<const NewExpr*>(e));
@@ -842,6 +850,7 @@ void InstanceCopier::fixReferences(Node* root)
       case NodeKind::NamedCastExpr: push(static_cast<NamedCastExpr*>(n)->type); push(static_cast<NamedCastExpr*>(n)->operand); break;
       case NodeKind::SizeofExpr: push(static_cast<SizeofExpr*>(n)->type); push(static_cast<SizeofExpr*>(n)->operand); break;
       case NodeKind::NameofExpr: push(static_cast<NameofExpr*>(n)->operand); break;
+      case NodeKind::NoexceptExpr: push(static_cast<NoexceptExpr*>(n)->operand); break;
       case NodeKind::NewExpr:
         push(static_cast<NewExpr*>(n)->type);
         for (Expr* a : static_cast<NewExpr*>(n)->placement)
