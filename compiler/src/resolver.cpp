@@ -22916,6 +22916,62 @@ struct GlobalScope::Impl
       return member && v->type && v->type->kind == NodeKind::ArrayType && !static_cast<ArrayType*>(v->type)->size ? v : nullptr;
     }
 
+    // The variable declared const (a local, a parameter by value, a global or a static) whose
+    // object, or a member or element of it, a placement new's place visibly names: `&limit`,
+    // `&limit.x`, `&table[i]`, `table` (an array); else null. Through a pointer (`p->x`, `*p`, a
+    // cast, const_cast included) nothing is visible (design.md 21).
+    Decl* constObjectPlaced(Expr* place)
+    {
+      auto bare = [](Expr* e)
+      {
+        while (e && e->kind == NodeKind::ParenExpr)
+          e = static_cast<ParenExpr*>(e)->inner;
+        return e;
+      };
+      Expr* e = bare(place);
+      bool addressTaken = false;
+      if (e && e->kind == NodeKind::UnaryExpr)
+      {
+        auto* u = static_cast<UnaryExpr*>(e);
+        if (u->isKeyword || u->postfix || u->op != uint32_t(P::Amp))
+          return nullptr;
+        e = bare(u->operand);
+        addressTaken = true;
+      }
+      auto declaredArray = [&](Decl* d)
+      {
+        const Ty* t = d ? impl.declaredTypeOf(d, activeSubst, 0) : nullptr;
+        return t && t->kind == TyKind::Array;
+      };
+      for (;;)
+      {
+        if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op == P::Dot && addressTaken)
+          e = bare(static_cast<MemberExpr*>(e)->base);
+        else if (e && e->kind == NodeKind::IndexExpr && addressTaken)
+        {
+          Expr* base = bare(static_cast<IndexExpr*>(e)->base);
+          if (!base || base->kind != NodeKind::NameExpr || !declaredArray(static_cast<NameExpr*>(base)->resolved))
+            return nullptr; // (a pointer's element: not visibly the object)
+          e = base;
+        }
+        else
+          break;
+      }
+      if (!e || e->kind != NodeKind::NameExpr)
+        return nullptr;
+      Decl* d = static_cast<NameExpr*>(e)->resolved;
+      if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & DF_Typedef))
+        return nullptr;
+      if (!addressTaken && !declaredArray(d))
+        return nullptr; // (a pointer variable's value is the place, not its own object)
+      const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
+      if (!t || t->kind == TyKind::LRef || t->kind == TyKind::RRef)
+        return nullptr; // (a reference names an object declared elsewhere, maybe not const)
+      while (t && t->kind == TyKind::Array)
+        t = t->inner;
+      return t && t->isConst ? d : nullptr;
+    }
+
     // rangeExpr: the range written, for a free begin(range).
     const Ty* elementTypeOf(const Ty* range, Expr* rangeExpr)
     {
@@ -24347,6 +24403,14 @@ struct GlobalScope::Impl
         {
           auto* n = static_cast<NewExpr*>(e);
           walkExprs(n->placement);
+          if (n->placement.size() == 1)
+            if (Decl* constant = constObjectPlaced(n->placement[0]))
+            {
+              uint32_t name = constant->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(constant)->name
+                                                                     : static_cast<VariableDecl*>(constant)->name.last().symbol;
+              impl.reportCheckerError(file, n->token, "a placement new over " + (name == UINT32_MAX ? std::string("an object") : "'" + std::string(symbols.name(name)) + "'") +
+                                                          ", which is declared const: a const object is never replaced (design.md 21)");
+            }
           walkType(n->type);
           walkExprs(n->args);
           const Ty* t = typeOf(n->type);

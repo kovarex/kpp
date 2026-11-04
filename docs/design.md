@@ -1452,6 +1452,29 @@ UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
   Studio"); its evaluator reads `^` in an expression as C++/CLI's handle, so a cast to `Item^*`
   does not evaluate there.
 
+### 21. Placement new over const objects (decided 2026-11-04)
+A placement new ends the object in its place and starts another there. kovarex's three rules ("Ok,
+to all", 2026-11-04):
+- **Over an object declared const: an error.** A const local, a parameter taken by value, a const
+  global or static, a member or element of one, where the place visibly names it: `new (&limit)
+  int(4)`, `new (&pair.b) int(7)`, `new (&table[1]) int(10)`, `new (table) ...` for a const array.
+  "a placement new over 'limit', which is declared const: a const object is never replaced". A
+  const object's value may be folded where it is read, and its storage may be read-only; C++ makes
+  replacing one undefined ([basic.life]/10). A reference names an object declared elsewhere and
+  is not visibly const; neither is anything reached through a pointer.
+- **Over an object with const or reference members: allowed, replaced transparently** (C++20's
+  [basic.life]/8 without its exceptions): the old name, an old pointer and an old reference reach the
+  new object, its const members' and references' new values included. kpp has no `launder`; the code
+  generator never assumes a const member or a reference member unchanged across a placement new
+  (no invariant loads, no folding of a member's value from its initializer).
+- **Through a pointer, const_cast's included: allowed, as in C++.** The containers of const
+  elements construct into their storage through a `const T*` (section "kpp v0", pointer
+  conversions), and `new (const_cast<T*>(view)) T(...)` over an object not declared const is
+  C++'s rule. Over one declared const it is undefined; a Debug check that the address is not in
+  read-only memory is allowed by the decision and not built (a thread that adds it says so here).
+
+Specs: language/placement_new_over_const_object_is_error, language/placement_new_replaces_transparently.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
@@ -2325,7 +2348,8 @@ The smallest language that is still kpp, as the target of the first code generat
   to and from `void*`. Two pointers compare as their composite pointer type (a `const Derived*`
   against a `Base*` as a `const Base*`, moved to the base part). Placement new takes any object
   pointer as its place, a const one too (the library's containers of const elements construct
-  into their storage so, where C++'s construct_at casts). Specs:
+  into their storage so, where C++'s construct_at casts); over an object declared const, named
+  visibly, it is an error (section 21). Specs:
   expressions/pointer_of_other_type_is_error, expressions/pointer_conversions_without_cast,
   expressions/function_pointer_of_other_type_is_error.
 - **A C-variadic call is never format-checked** (2026-11-01, kovarex, section 14; it replaced

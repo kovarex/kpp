@@ -1,0 +1,22 @@
+// spec: a placement new over an object declared const is an error (kovarex, 2026-11-04; design.md 21): a const global, a const local, a member of one and an element of a const array, where the place visibly names it; through a pointer (const_cast included) it is allowed, as are objects with const or reference members
+// error: a placement new over 'limit', which is declared const: a const object is never replaced (design.md 21)
+// error: a placement new over 'local', which is declared const: a const object is never replaced (design.md 21)
+// error: a placement new over 'pair', which is declared const: a const object is never replaced (design.md 21)
+// error: a placement new over 'table', which is declared const: a const object is never replaced (design.md 21)
+struct Corner
+{
+  int a;
+  int b;
+};
+const int limit = 3;
+int main()
+{
+  new (&limit) int(4);
+  const Corner local{1, 2};
+  new (&local) Corner{3, 4};
+  const Corner pair{5, 6};
+  new (&pair.b) int(7);
+  const int table[2] = {8, 9};
+  new (&table[1]) int(10);
+  return 0;
+}

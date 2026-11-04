@@ -1,0 +1,21 @@
+// spec: a placement new over an object with a const member and a reference member replaces it transparently, as C++20 does ([basic.life]/8, kovarex 2026-11-04; design.md 21): the old name and an old pointer reach the new object, its const member's and reference's new values (kpp has no launder); through a const_cast pointer to an object not declared const it is allowed, as in C++
+struct Entry
+{
+  const int id;
+  int& count;
+  Entry(int i, int& c) : id(i), count(c) {}
+};
+int main()
+{
+  int first = 10, second = 20;
+  Entry entry(1, first);
+  Entry* old = &entry;
+  entry.~Entry();
+  new (&entry) Entry(2, second);
+  old->count += 1;
+  int plain = 5;
+  const int* view = &plain;
+  new (const_cast<int*>(view)) int(6);
+  println(entry.id, " ", entry.count, " ", old->id, " ", first, " ", second, " ", plain);
+  return 0;
+}
