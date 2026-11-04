@@ -52,7 +52,100 @@ namespace platform
   // C's errno of the calling thread.
   int* errnoLocation() { return _errno(); }
 
+  // The UCRT's errno values where the C libraries differ (errno.h; Errc).
+  const int errnoAgain = 11;
+  const int errnoDeadlock = 36;
+  const int errnoNameTooLong = 38;
+  const int errnoNoSys = 40;
+  const int errnoNotEmpty = 41;
+  const int errnoNotSupported = 129;
+  const int errnoOpNotSupported = 130;
+  const int errnoTimedOut = 138;
+
+  // The text Windows has for a system error (what GetLastError returns): FormatMessage's, in UTF-8,
+  // without its line end.
+  String systemErrorMessage(int value)
+  {
+    wchar_t buffer[512];
+    unsigned long count = win32::FormatMessageW(0x1000 | 0x200, nullptr, (unsigned long)value, 0, buffer, 512, nullptr); // FROM_SYSTEM | IGNORE_INSERTS
+    while (count > 0 && (buffer[count - 1] == L'\r' || buffer[count - 1] == L'\n' || buffer[count - 1] == L' '))
+      --count;
+    if (count == 0)
+      return String("unknown error ") + toString(value);
+    char narrow[1536];
+    int length = win32::WideCharToMultiByte(65001, 0, buffer, (int)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
+    return String(narrow, length);
+  }
+  // The condition (an Errc's value) a system error means, or 0.
+  int errcOfSystemError(int value) { return errcOfWindowsError(value); }
+
   // Installs the terminate handler and returns the one before: the UCRT's, which its terminate()
   // calls.
   TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return set_terminate(handler); }
+
+  // --- Threads and locks (Thread.kpp, SharedPtr.kpp) ---
+
+  // A lock for one thread at a time, or for many readers (Mutex, SharedMutex, the library's own
+  // locks): an SRWLOCK, one pointer, zero when unlocked, with nothing to release. Lock and SharedLock
+  // are one type here; on POSIX a Lock is a mutex, which a Condition waits with, and a SharedLock a
+  // read-write lock.
+  struct Lock
+  {
+    void* srw = nullptr;
+
+    Lock() {}
+    Lock(const Lock&) = delete;
+    Lock& operator=(const Lock&) = delete;
+
+    void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->srw)); }
+    void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->srw)); }
+    bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->srw)) != 0; }
+    void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this->srw)); }
+    void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this->srw)); }
+    bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this->srw)) != 0; }
+  };
+  using SharedLock = Lock;
+
+  // A condition variable that waits with a Lock: a CONDITION_VARIABLE, one pointer, zero when
+  // initialised.
+  struct Condition
+  {
+    void* condition = nullptr;
+
+    Condition() {}
+    Condition(const Condition&) = delete;
+    Condition& operator=(const Condition&) = delete;
+
+    void notifyOne() { win32::WakeConditionVariable(win32::conditionVariable(&this->condition)); }
+    void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this->condition)); }
+    // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
+    void wait(Lock& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), 0xFFFFFFFFu, 0); }
+    // The same for at most d (whole milliseconds, rounded up): false when the time ran out first.
+    template<typename Rep, typename Period>
+    bool waitFor(Lock& lock, const Duration<Rep, Period>& d)
+    {
+      return win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), waitMilliseconds(d), 0) != 0;
+    }
+  };
+
+  // What a thread runs: a function of one pointer, and what it returns (CreateThread's).
+  using ThreadFunction = unsigned long (*)(void*);
+  using ThreadResult = unsigned long;
+  const ThreadResult threadDone = 0;
+
+  // Starts start(parameter) on a new thread: its handle, null when the system cannot start one, and
+  // its id in *id.
+  void* startThread(ThreadFunction start, void* parameter, unsigned long* id) { return win32::CreateThread(nullptr, 0, start, parameter, 0, id); }
+  // Waits until the thread has finished, and releases its handle.
+  void joinThread(void* handle)
+  {
+    win32::WaitForSingleObject(handle, 0xFFFFFFFFu);
+    win32::CloseHandle(handle);
+  }
+  // Lets the thread run on its own: its handle is released.
+  void detachThread(void* handle) { win32::CloseHandle(handle); }
+  // The calling thread's id: never 0.
+  unsigned long currentThreadId() { return win32::GetCurrentThreadId(); }
+  // The machine's logical processors, in all its processor groups.
+  unsigned int processorCount() { return (unsigned int)win32::GetActiveProcessorCount(0xFFFF); }
 }

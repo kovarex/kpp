@@ -22,8 +22,8 @@ struct OverflowError : RuntimeError
 
 // --- Error codes (std::error_code, std::errc, std::system_error); specified in docs/stdlib/filesystem.md ---
 
-// What an error code's value means (std::error_category): an errno value (generic) or a Windows
-// error code, what GetLastError returns (system).
+// What an error code's value means (std::error_category): an errno value (generic) or the system's
+// error code (system): what GetLastError returns on Windows, errno elsewhere.
 struct ErrorCategory
 {
   bool system = false;
@@ -35,7 +35,8 @@ struct ErrorCategory
 ErrorCategory genericCategory() { return ErrorCategory{false}; }
 ErrorCategory systemCategory() { return ErrorCategory{true}; }
 
-// Portable error conditions (std::errc), with the C library's errno values.
+// Portable error conditions (std::errc), with the C library's errno values: the same on every target
+// but those platform:: gives (the UCRT's, glibc's and FreeBSD's differ).
 enum class Errc
 {
   operation_not_permitted = 1,
@@ -43,7 +44,7 @@ enum class Errc
   no_such_process = 3,
   interrupted = 4,
   io_error = 5,
-  resource_unavailable_try_again = 11,
+  resource_unavailable_try_again = platform::errnoAgain,
   permission_denied = 13,
   device_or_resource_busy = 16,
   file_exists = 17,
@@ -56,13 +57,13 @@ enum class Errc
   file_too_large = 27,
   no_space_on_device = 28,
   read_only_file_system = 30,
-  resource_deadlock_would_occur = 36,
-  filename_too_long = 38,
-  function_not_supported = 40,
-  directory_not_empty = 41,
-  not_supported = 129,
-  operation_not_supported = 130,
-  timed_out = 138,
+  resource_deadlock_would_occur = platform::errnoDeadlock,
+  filename_too_long = platform::errnoNameTooLong,
+  function_not_supported = platform::errnoNoSys,
+  directory_not_empty = platform::errnoNotEmpty,
+  not_supported = platform::errnoNotSupported,
+  operation_not_supported = platform::errnoOpNotSupported,
+  timed_out = platform::errnoTimedOut,
 };
 
 // The condition a Windows error means, as std::system_category's equivalence maps it, or 0.
@@ -87,8 +88,9 @@ int errcOfWindowsError(int error)
   }
 }
 
-// An error value with its category (std::error_code); 0 is no error. Compared with an Errc, a
-// Windows error equals the condition it means (ERROR_FILE_NOT_FOUND is no_such_file_or_directory).
+// An error value with its category (std::error_code); 0 is no error. Compared with an Errc, a system
+// error equals the condition it means (Windows' ERROR_FILE_NOT_FOUND is no_such_file_or_directory;
+// elsewhere a system error is an errno value: platform::errcOfSystemError).
 struct ErrorCode
 {
   int value_ = 0;
@@ -110,20 +112,13 @@ struct ErrorCode
     this->value_ = value;
     this->category_ = category;
   }
-  // The text the system has for the value: FormatMessage's for a Windows error, strerror's for errno.
+  // The text the system has for the value: platform::systemErrorMessage's for a system error (Windows'
+  // FormatMessage), strerror's for errno.
   String message() const
   {
     if (!this->category_.system)
       return String(strerror(this->value_));
-    wchar_t buffer[512];
-    unsigned long count = win32::FormatMessageW(0x1000 | 0x200, nullptr, (unsigned long)this->value_, 0, buffer, 512, nullptr); // FROM_SYSTEM | IGNORE_INSERTS
-    while (count > 0 && (buffer[count - 1] == L'\r' || buffer[count - 1] == L'\n' || buffer[count - 1] == L' '))
-      --count;
-    if (count == 0)
-      return String("unknown error ") + toString(this->value_);
-    char narrow[1536];
-    int length = win32::WideCharToMultiByte(65001, 0, buffer, (int)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
-    return String(narrow, length);
+    return platform::systemErrorMessage(this->value_);
   }
   bool operator==(const ErrorCode& other) const { return this->value_ == other.value_ && this->category_ == other.category_; }
   bool operator!=(const ErrorCode& other) const { return !(*this == other); }
@@ -131,7 +126,7 @@ struct ErrorCode
   {
     if (this->value_ == 0)
       return false;
-    return (this->category_.system ? errcOfWindowsError(this->value_) : this->value_) == int(condition);
+    return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == int(condition);
   }
   bool operator!=(Errc condition) const { return !(*this == condition); }
 };

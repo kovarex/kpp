@@ -2718,6 +2718,15 @@ The semantics of section 9 hold on every target:
   - `setTerminate`: the UCRT's `set_terminate` on Windows; elsewhere kpp's own handler
     (`platform::terminateHandler`, an Atomic), as no C++ runtime is linked there. Stage 3's
     terminate calls it.
+  - Threads and locks (Thread.kpp, SharedPtr.kpp): `Lock`, `SharedLock` and `Condition`, and
+    `startThread`, `joinThread`, `detachThread`, `currentThreadId`, `processorCount`. On Windows
+    Lock and SharedLock are one SRW lock (one pointer, as before), Condition a
+    CONDITION_VARIABLE. Elsewhere they are a `pthread_mutex_t`, a `pthread_rwlock_t` and a
+    `pthread_cond_t` of the C library's size (glibc 40, 56 and 48 bytes; FreeBSD a pointer each),
+    zeroed, which both C libraries take for the static initializers, and destroyed with their
+    owner (FreeBSD allocates them on first use). A timed wait's deadline is on the realtime clock,
+    pthread_cond_t's default. A thread's id is its `pthread_t` (`pthread_self`), the processor
+    count `sysconf(_SC_NPROCESSORS_ONLN)`.
 
 ### 4. Toolchains: what links for each target, from each host
 

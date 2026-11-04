@@ -10,19 +10,8 @@
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
 
 # Stage 4: the standard library's Win32 and UCRT calls (threads, time, files, errno, terminate).
-build language/thread_local_globals  stage 4: CreateThread
-build language/thread_local_locals  stage 4: CreateThread
-build library/async_launch  stage 4: CreateThread
-build library/atomic_wait_notify  stage 4: CreateThread
-build library/exception_ptr_promise  stage 4: WakeAllConditionVariable
 build library/filesystem_equivalent  stage 4: GetFileAttributesExW
 build library/filesystem_path  stage 4: WideCharToMultiByte
-build library/future_get_releases_state  stage 4: CreateThread
-build library/recursive_mutex  stage 4: CreateThread
-build library/shared_future_deferred_runs_once_across_threads  stage 4: CreateThread
-build library/shared_ptr_atomic  stage 4: AcquireSRWLockShared
-build library/thread_like_std  stage 4: CreateThread
-build library/threads_atomics  stage 4: CreateThread
 build library/unsigned_size_traps  stage 4: WideCharToMultiByte
 
 # FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).

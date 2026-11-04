@@ -1,10 +1,24 @@
 requires config::platform == Platform::Linux;
 // What glibc has its own way in the platform layer (PlatformPosix.kpp; PlatformFreeBSD.kpp).
 
+// pthreads' types, as glibc's bits/pthreadtypes.h names them (a union each, pthread_attr_t's tagged,
+// the others' typedefs of untagged ones, which the C import names by the typedef): declared, not
+// defined, so that a program's import of pthread.h declares the functions that take them the same way,
+// and the library passes its own storage of their sizes.
+union pthread_attr_t;
+union pthread_mutex_t;
+union pthread_cond_t;
+union pthread_rwlock_t;
+
 namespace posix
 {
   // errno, which glibc's errno.h defines as (*__errno_location()).
   extern "C" int* __errno_location();
+  using pthread_t = unsigned long;
+  using pthread_attr_t = ::pthread_attr_t;
+  using pthread_mutex_t = ::pthread_mutex_t;
+  using pthread_cond_t = ::pthread_cond_t;
+  using pthread_rwlock_t = ::pthread_rwlock_t;
 }
 
 namespace platform
@@ -13,6 +27,26 @@ namespace platform
   const int clockRealtime = 0;
   const int clockMonotonic = 1;
 
+  // The locks' sizes in 8-byte words (bits/pthreadtypes-arch.h, x86-64): pthread_mutex_t 40 bytes,
+  // pthread_cond_t 48, pthread_rwlock_t 56.
+  const int mutexWords = 5;
+  const int conditionWords = 6;
+  const int rwlockWords = 7;
+  // sysconf's name for the processors online (bits/confname.h).
+  const int scNprocessorsOnln = 84;
+  // A thread's pthread_t from the handle startThread gave.
+  posix::pthread_t threadOf(void* handle) { return (unsigned long)handle; }
+
   // C's errno of the calling thread.
   int* errnoLocation() { return posix::__errno_location(); }
+
+  // glibc's errno values where the C libraries differ (asm-generic/errno-base.h, errno.h; Errc).
+  const int errnoAgain = 11;
+  const int errnoDeadlock = 35;
+  const int errnoNameTooLong = 36;
+  const int errnoNoSys = 38;
+  const int errnoNotEmpty = 39;
+  const int errnoNotSupported = 95;
+  const int errnoOpNotSupported = 95;
+  const int errnoTimedOut = 110;
 }

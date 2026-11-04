@@ -34,7 +34,8 @@ is not joinable.
   with `Errc::invalid_argument` when it is not joinable.
 - `getId()` / `get_id()`: the thread's Id, or `Id()` when not joinable.
 - `swap(other)`.
-- `nativeHandle()` / `native_handle()`: the Windows HANDLE of the thread, or null.
+- `nativeHandle()` / `native_handle()`: the Windows HANDLE of the thread (elsewhere its `pthread_t`,
+  as a pointer), or null.
 - `static hardwareConcurrency()` / `hardware_concurrency()`: how many threads can run at once:
   the machine's logical processors in all its processor groups (never 0).
 

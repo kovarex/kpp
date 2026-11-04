@@ -66,10 +66,155 @@ namespace platform
   // Lets another thread run.
   void yield() { posix::sched_yield(); }
 
+  // The text the C library has for a system error, an errno value here: strerror's.
+  String systemErrorMessage(int value) { return String(strerror(value)); }
+  // The condition (an Errc's value) a system error means: itself, an errno value.
+  int errcOfSystemError(int value) { return value; }
+
   // The terminate handler: kpp's own, as no C++ runtime is linked here. Called by nothing yet: an
   // exception does not unwind on these targets before stage 3 (stdlib-conformance.md).
   Atomic<TerminateHandlerFunction> terminateHandler;
 
   // Installs the terminate handler and returns the one before.
   TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return terminateHandler.exchange(handler); }
+}
+
+namespace posix
+{
+  // (pthread_t and the locks' types are the C library's: PlatformLinux.kpp, PlatformFreeBSD.kpp. The
+  // library passes its own storage of their sizes.)
+  extern "C" int pthread_create(pthread_t* thread, const pthread_attr_t* attributes, void* (*start)(void*), void* argument);
+  extern "C" int pthread_join(pthread_t thread, void** result);
+  extern "C" int pthread_detach(pthread_t thread);
+  extern "C" pthread_t pthread_self();
+  extern "C" int pthread_mutex_lock(pthread_mutex_t* mutex);
+  extern "C" int pthread_mutex_trylock(pthread_mutex_t* mutex);
+  extern "C" int pthread_mutex_unlock(pthread_mutex_t* mutex);
+  extern "C" int pthread_mutex_destroy(pthread_mutex_t* mutex);
+  extern "C" int pthread_rwlock_rdlock(pthread_rwlock_t* lock);
+  extern "C" int pthread_rwlock_tryrdlock(pthread_rwlock_t* lock);
+  extern "C" int pthread_rwlock_wrlock(pthread_rwlock_t* lock);
+  extern "C" int pthread_rwlock_trywrlock(pthread_rwlock_t* lock);
+  extern "C" int pthread_rwlock_unlock(pthread_rwlock_t* lock);
+  extern "C" int pthread_rwlock_destroy(pthread_rwlock_t* lock);
+  extern "C" int pthread_cond_signal(pthread_cond_t* condition);
+  extern "C" int pthread_cond_broadcast(pthread_cond_t* condition);
+  extern "C" int pthread_cond_wait(pthread_cond_t* condition, pthread_mutex_t* mutex);
+  extern "C" int pthread_cond_timedwait(pthread_cond_t* condition, pthread_mutex_t* mutex, const timespec* deadline);
+  extern "C" int pthread_cond_destroy(pthread_cond_t* condition);
+  extern "C" long sysconf(int name);
+}
+
+namespace platform
+{
+  // --- Threads and locks (Thread.kpp, SharedPtr.kpp) ---
+
+  // A lock for one thread at a time (Mutex, the library's own locks): a pthread_mutex_t of the C
+  // library's size, zeroed, which both C libraries take for PTHREAD_MUTEX_INITIALIZER (FreeBSD's
+  // allocates its mutex on first use, which pthread_mutex_destroy releases).
+  struct Lock
+  {
+    uint64_t storage[mutexWords];
+
+    Lock() { memset(this->storage, 0, sizeof(this->storage)); }
+    posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this->storage; }
+    Lock(const Lock&) = delete;
+    Lock& operator=(const Lock&) = delete;
+    ~Lock() { posix::pthread_mutex_destroy(this->mutex()); }
+
+    void lock() { posix::pthread_mutex_lock(this->mutex()); }
+    void unlock() { posix::pthread_mutex_unlock(this->mutex()); }
+    bool tryLock() { return posix::pthread_mutex_trylock(this->mutex()) == 0; }
+  };
+
+  // A lock for one writer or many readers (SharedMutex, Atomic<SharedPtr>): a pthread_rwlock_t,
+  // zeroed as PTHREAD_RWLOCK_INITIALIZER.
+  struct SharedLock
+  {
+    uint64_t storage[rwlockWords];
+
+    SharedLock() { memset(this->storage, 0, sizeof(this->storage)); }
+    posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this->storage; }
+    SharedLock(const SharedLock&) = delete;
+    SharedLock& operator=(const SharedLock&) = delete;
+    ~SharedLock() { posix::pthread_rwlock_destroy(this->rwlock()); }
+
+    void lock() { posix::pthread_rwlock_wrlock(this->rwlock()); }
+    void unlock() { posix::pthread_rwlock_unlock(this->rwlock()); }
+    bool tryLock() { return posix::pthread_rwlock_trywrlock(this->rwlock()) == 0; }
+    void lockShared() { posix::pthread_rwlock_rdlock(this->rwlock()); }
+    void unlockShared() { posix::pthread_rwlock_unlock(this->rwlock()); }
+    bool tryLockShared() { return posix::pthread_rwlock_tryrdlock(this->rwlock()) == 0; }
+  };
+
+  // A condition variable that waits with a Lock: a pthread_cond_t, zeroed as PTHREAD_COND_INITIALIZER
+  // (its clock the realtime one).
+  struct Condition
+  {
+    uint64_t storage[conditionWords];
+
+    Condition() { memset(this->storage, 0, sizeof(this->storage)); }
+    posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this->storage; }
+    Condition(const Condition&) = delete;
+    Condition& operator=(const Condition&) = delete;
+    ~Condition() { posix::pthread_cond_destroy(this->cond()); }
+
+    void notifyOne() { posix::pthread_cond_signal(this->cond()); }
+    void notifyAll() { posix::pthread_cond_broadcast(this->cond()); }
+    // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
+    void wait(Lock& lock) { posix::pthread_cond_wait(this->cond(), lock.mutex()); }
+    // The same for at most d: false when the time ran out first. The deadline is on the realtime
+    // clock, the condition's: a change of the system time ends the wait early or late, and the
+    // caller's loop on its own clock waits for the rest.
+    template<typename Rep, typename Period>
+    bool waitFor(Lock& lock, const Duration<Rep, Period>& d)
+    {
+      long long nanoseconds = ceil<Nanoseconds>(d).count();
+      if (nanoseconds < 0)
+        nanoseconds = 0;
+      TimeSpec deadline = clockTime(clockRealtime);
+      deadline.seconds += nanoseconds / 1000000000;
+      deadline.nanoseconds += nanoseconds % 1000000000;
+      if (deadline.nanoseconds >= 1000000000)
+      {
+        deadline.seconds += 1;
+        deadline.nanoseconds -= 1000000000;
+      }
+      return posix::pthread_cond_timedwait(this->cond(), lock.mutex(), (const timespec*)&deadline) == 0;
+    }
+  };
+
+  // What a thread runs: a function of one pointer, and what it returns (pthread_create's).
+  using ThreadFunction = void* (*)(void*);
+  using ThreadResult = void*;
+  const ThreadResult threadDone = nullptr;
+
+  // Starts start(parameter) on a new thread: its pthread_t as a pointer, null when the system cannot
+  // start one, and the same as its id in *id (pthread_self's in the thread).
+  void* startThread(ThreadFunction start, void* parameter, unsigned long* id)
+  {
+    uint64_t thread = 0; // a pthread_t: an unsigned long (glibc) or a pointer (FreeBSD)
+    if (posix::pthread_create((posix::pthread_t*)&thread, nullptr, start, parameter) != 0)
+      return nullptr;
+    *id = (unsigned long)thread;
+    return (void*)thread;
+  }
+  // Waits until the thread has finished.
+  void joinThread(void* handle) { posix::pthread_join(threadOf(handle), nullptr); }
+  // Lets the thread run on its own.
+  void detachThread(void* handle) { posix::pthread_detach(threadOf(handle)); }
+  // The calling thread's id: its pthread_t, never 0.
+  unsigned long currentThreadId()
+  {
+    posix::pthread_t self = posix::pthread_self();
+    uint64_t id = 0;
+    memcpy(&id, &self, sizeof(self));
+    return (unsigned long)id;
+  }
+  // The processors online (sysconf's _SC_NPROCESSORS_ONLN).
+  unsigned int processorCount()
+  {
+    long count = posix::sysconf(scNprocessorsOnln);
+    return count > 0 ? (unsigned int)count : 1;
+  }
 }

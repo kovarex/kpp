@@ -1,10 +1,12 @@
-// kpp standard library: threads and what keeps them apart, on the Windows API (what std::thread,
+// kpp standard library: threads and what keeps them apart (what std::thread,
 // std::this_thread, std::mutex, std::lock_guard, std::unique_lock, std::condition_variable and
 // std::atomic convert to). Specified in docs/stdlib/thread.md (Atomic: docs/stdlib/atomic.md).
-// Mutex is an SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed;
+// Mutex, SharedMutex and ConditionVariable hold the platform's lock and condition variable
+// (platform::Lock, SharedLock and Condition: an SRW lock and a CONDITION_VARIABLE on Windows,
+// pthreads' elsewhere);
 // Atomic<T> holds a T of 1, 2, 4 or 8 bytes (integers, floating point, enums, pointers, small
 // structs) and works on its bits with the processor's atomic instructions; Atomic<SharedPtr<T>>
-// takes a lock. The Win32 functions are in core/Win32.kpp.
+// takes a lock. The system calls are platform::'s (stdlib/platform).
 
 // The compiler turns these into atomic instructions (sequentially consistent); they are not
 // functions of any library.
@@ -56,12 +58,12 @@ struct ThreadCall
   F function;
   ThreadArguments<Args...> arguments;
   ThreadCall(F function, Args... arguments) : function(move(function)), arguments(move(arguments)...) {}
-  static unsigned long start(void* parameter)
+  static platform::ThreadResult start(void* parameter)
   {
     ThreadCall<F, Args...>* call = (ThreadCall<F, Args...>*)parameter;
     call->arguments.invokeWith(call->function);
     delete call;
-    return 0;
+    return platform::threadDone;
   }
 };
 
@@ -94,7 +96,7 @@ struct Thread
   {
     ThreadCall<F, Args...>* call = new ThreadCall<F, Args...>(move(function), move(arguments)...);
     unsigned long id = 0;
-    this->handle = win32::CreateThread(nullptr, 0, &ThreadCall<F, Args...>::start, call, 0, &id);
+    this->handle = platform::startThread(&ThreadCall<F, Args...>::start, call, &id);
     if (!this->handle)
     {
       delete call;
@@ -132,8 +134,7 @@ struct Thread
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::join");
     if (this->threadId == thisThread::getId())
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), "Thread::join");
-    win32::WaitForSingleObject(this->handle, 0xFFFFFFFFu);
-    win32::CloseHandle(this->handle);
+    platform::joinThread(this->handle);
     this->handle = nullptr;
     this->threadId = Id();
   }
@@ -143,7 +144,7 @@ struct Thread
   {
     if (!this->joinable())
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::detach");
-    win32::CloseHandle(this->handle);
+    platform::detachThread(this->handle);
     this->handle = nullptr;
     this->threadId = Id();
   }
@@ -155,12 +156,14 @@ struct Thread
   // The thread's Id, or Id() when not joinable.
   Id getId() const { return this->threadId; }
   Id get_id() const { return this->threadId; }
-  // The system's handle of the thread (a Windows HANDLE), or null when not joinable.
+  // The system's handle of the thread (a Windows HANDLE; elsewhere its pthread_t), or null when not
+  // joinable.
   void* nativeHandle() const { return this->handle; }
   void* native_handle() const { return this->handle; }
-  // How many threads can run at once: the machine's logical processors, in all its processor groups
-  // (std::thread::hardware_concurrency, which may also say 0 for "not known"; this never does).
-  static unsigned int hardwareConcurrency() { return (unsigned int)win32::GetActiveProcessorCount(0xFFFF); }
+  // How many threads can run at once: the machine's logical processors (on Windows in all its
+  // processor groups; elsewhere those online) (std::thread::hardware_concurrency, which may also say 0
+  // for "not known"; this never does).
+  static unsigned int hardwareConcurrency() { return platform::processorCount(); }
   static unsigned int hardware_concurrency() { return Thread::hardwareConcurrency(); }
 };
 
@@ -169,7 +172,7 @@ size_t hashOf(Thread::Id id) { return hashOf((unsigned int)id.value); }
 // The calling thread (what std::this_thread converts to).
 namespace thisThread
 {
-  Thread::Id getId() { return Thread::Id(win32::GetCurrentThreadId()); }
+  Thread::Id getId() { return Thread::Id(platform::currentThreadId()); }
   Thread::Id get_id() { return getId(); }
   // Lets another thread run (std::this_thread::yield).
   void yield() { platform::yield(); }
@@ -195,15 +198,15 @@ namespace thisThread
 // for itself forever).
 struct Mutex
 {
-  void* lock_ = nullptr; // SRWLOCK
+  platform::Lock lock_;
 
   Mutex() {}
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock_)); }
-  void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock_)); }
-  bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->lock_)) != 0; }
+  void lock() { this->lock_.lock(); }
+  void unlock() { this->lock_.unlock(); }
+  bool tryLock() { return this->lock_.tryLock(); }
   bool try_lock() { return this->tryLock(); }
 };
 
@@ -220,7 +223,7 @@ struct RecursiveMutex
 
   void lock()
   {
-    unsigned long self = win32::GetCurrentThreadId();
+    unsigned long self = platform::currentThreadId();
     if (this->owner.load() == self)
     {
       ++this->depth;
@@ -232,7 +235,7 @@ struct RecursiveMutex
   }
   bool tryLock()
   {
-    unsigned long self = win32::GetCurrentThreadId();
+    unsigned long self = platform::currentThreadId();
     if (this->owner.load() == self)
     {
       ++this->depth;
@@ -258,19 +261,19 @@ struct RecursiveMutex
 // A mutex that many readers may hold at once, or one writer (std::shared_mutex).
 struct SharedMutex
 {
-  void* lock_ = nullptr;
+  platform::SharedLock lock_;
 
   SharedMutex() {}
   SharedMutex(const SharedMutex&) = delete;
   SharedMutex& operator=(const SharedMutex&) = delete;
 
-  void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock_)); }
-  void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock_)); }
-  bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->lock_)) != 0; }
+  void lock() { this->lock_.lock(); }
+  void unlock() { this->lock_.unlock(); }
+  bool tryLock() { return this->lock_.tryLock(); }
   bool try_lock() { return this->tryLock(); }
-  void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this->lock_)); }
-  void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this->lock_)); }
-  bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this->lock_)) != 0; }
+  void lockShared() { this->lock_.lockShared(); }
+  void unlockShared() { this->lock_.unlockShared(); }
+  bool tryLockShared() { return this->lock_.tryLockShared(); }
   void lock_shared() { this->lockShared(); }
   void unlock_shared() { this->unlockShared(); }
   bool try_lock_shared() { return this->tryLockShared(); }
@@ -482,19 +485,19 @@ enum class CvStatus { no_timeout, timeout };
 // timeout when its time has passed on its clock (wait_for: the steady clock).
 struct ConditionVariable
 {
-  void* condition = nullptr; // CONDITION_VARIABLE
+  platform::Condition condition;
 
   ConditionVariable() {}
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
 
-  void notifyOne() { win32::WakeConditionVariable(win32::conditionVariable(&this->condition)); }
-  void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this->condition)); }
+  void notifyOne() { this->condition.notifyOne(); }
+  void notifyAll() { this->condition.notifyAll(); }
   void notify_one() { this->notifyOne(); }
   void notify_all() { this->notifyAll(); }
 
   // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
-  void wait(UniqueLock<Mutex>& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.mutex_->lock_), 0xFFFFFFFFu, 0); }
+  void wait(UniqueLock<Mutex>& lock) { this->condition.wait(lock.mutex_->lock_); }
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
@@ -510,7 +513,7 @@ struct ConditionVariable
       auto now = Clock::now();
       if (!(now < t))
         return CvStatus::timeout;
-      if (win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.mutex_->lock_), waitMilliseconds(t - now), 0))
+      if (this->condition.waitFor(lock.mutex_->lock_, t - now))
         return CvStatus::no_timeout; // woken: by a notify, or spuriously
       // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
     }
@@ -698,10 +701,10 @@ struct Atomic
   {
     AtomicWaitSlot& slot = atomicWaitSlot(this);
     Word oldWord = Atomic::wordOf(old);
-    win32::AcquireSRWLockExclusive(win32::srwLock(&slot.lock));
+    slot.lock.lock();
     while (Atomic::wordOf(this->load()) == oldWord)
-      win32::SleepConditionVariableSRW(win32::conditionVariable(&slot.condition), win32::srwLock(&slot.lock), 0xFFFFFFFFu, 0);
-    win32::ReleaseSRWLockExclusive(win32::srwLock(&slot.lock));
+      slot.condition.wait(slot.lock);
+    slot.lock.unlock();
   }
   // Wakes the waiters on this Atomic. notifyOne wakes all of the slot's waiters too (each checks
   // its own value again and sleeps on), which C++'s "at least one" allows.
@@ -715,15 +718,15 @@ struct Atomic
 // address; Atomics that share one wake each other's waiters, who check their values again.
 struct AtomicWaitSlot
 {
-  void* lock = nullptr;      // SRWLOCK
-  void* condition = nullptr; // CONDITION_VARIABLE
+  platform::Lock lock;
+  platform::Condition condition;
 };
 AtomicWaitSlot atomicWaitSlots[64];
 AtomicWaitSlot& atomicWaitSlot(const void* address) { return atomicWaitSlots[((uintptr_t)address >> 3) % 64]; }
 void atomicNotify(const void* address)
 {
   AtomicWaitSlot& slot = atomicWaitSlot(address);
-  win32::AcquireSRWLockExclusive(win32::srwLock(&slot.lock));
-  win32::WakeAllConditionVariable(win32::conditionVariable(&slot.condition));
-  win32::ReleaseSRWLockExclusive(win32::srwLock(&slot.lock));
+  slot.lock.lock();
+  slot.condition.notifyAll();
+  slot.lock.unlock();
 }
