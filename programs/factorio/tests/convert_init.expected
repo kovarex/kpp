@@ -1,0 +1,12 @@
+limit 7
+widget 3, area 20, const 6
+bag 3 of 4
+color 1
+aliased 8
+flag 1
+text text, const text
+pointer 7
+station 9 station
+version 1.2.3 84321 win64
+registered 12
+inner 10, bag 2 of 11

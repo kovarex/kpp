@@ -1386,6 +1386,26 @@ namespace
     return out;
   }
 
+  // Text of the game's C++ carried into the output by hand (a default argument a declaration that
+  // goes had, a type written again): the game's class names and std:: names mapped as the token
+  // pass maps them (`std::atomic<bool>` is Atomic<bool>, `template<class V = Vector>` is Vector2D).
+  std::string mapStdText(std::string value)
+  {
+    value = renameGameClassNames(value, nullptr);
+    for (size_t at = value.find("std::"); at != std::string::npos; at = value.find("std::", at))
+    {
+      size_t nameEnd = at + 5;
+      while (nameEnd < value.size() && (isalnum((unsigned char)value[nameEnd]) || value[nameEnd] == '_'))
+        ++nameEnd;
+      std::string name = value.substr(at + 5, nameEnd - at - 5);
+      auto it = stdNames.find(name);
+      std::string to = it == stdNames.end() ? name : it->second;
+      value.replace(at, nameEnd - at, to);
+      at += to.size();
+    }
+    return value;
+  }
+
   // The aliases the program declares (`using X = ...;` and typedefs), at any scope: their name,
   // the file, and whether at namespace scope (in C++ a .cpp file's namespace-scope alias is its
   // own; in kpp every namespace-scope name is the program's).
@@ -2414,6 +2434,33 @@ namespace
     return !name.empty() && names.count(name);
   }
 
+  // Whether a class has an initializer-list constructor (C++'s: its first parameter a
+  // std::initializer_list, by value or reference, the others defaulted): kpp's braces choose it
+  // first (design.md: list-initialization), so `T x(3, 4)` is not `T x{3, 4}` for it. A list later
+  // among the parameters (UnitTest++'s SuiteModpackAdder(Suite*, initializer_list)) is no such one.
+  bool hasListConstructor(const ClassDecl* cls, const SymbolTable& symbols)
+  {
+    for (Decl* m : cls->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(m)->params.empty())
+        continue;
+      Span<Decl*> params = static_cast<FunctionDecl*>(m)->params;
+      bool othersDefaulted = true;
+      for (size_t k = 1; k < params.size(); ++k)
+        othersDefaulted = othersDefaulted && params[k]->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(params[k])->defaultValue;
+      Type* t = params[0]->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(params[0])->type : nullptr;
+      while (t && (t->kind == NodeKind::ConstType || t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType))
+        t = t->kind == NodeKind::ConstType  ? static_cast<ConstType*>(t)->inner
+            : t->kind == NodeKind::LRefType ? static_cast<LRefType*>(t)->referenced
+                                            : static_cast<RRefType*>(t)->referenced;
+      if (othersDefaulted && t && t->kind == NodeKind::NamedType)
+        for (const NamePart& part : static_cast<NamedType*>(t)->name.parts)
+          if (part.symbol != UINT32_MAX && symbols.name(part.symbol) == "initializer_list")
+            return true;
+    }
+    return false;
+  }
+
   struct FileConverter
   {
     const ConvertInput& in;
@@ -2432,6 +2479,7 @@ namespace
     const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
+    const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
     // The files the conversion leaves out: a class defined only in one of them is defined nowhere
     // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
     const std::set<const ParsedFile*>* leftOutFiles = nullptr;
@@ -4396,7 +4444,109 @@ namespace
     {
       // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
       // release_assert-like macro).
-      return this->renameOutsideArguments(withFileAndLine(untagged(rescanMacros(expandMacroOnce(m, args, spellings, useOffset), useOffset), true), useOffset));
+      std::string text = this->renameOutsideArguments(withFileAndLine(untagged(rescanMacros(expandMacroOnce(m, args, spellings, useOffset), useOffset), true), useOffset));
+      return atDeclarationScope(useOffset) ? bracedObjects(std::move(text)) : text;
+    }
+    // Whether the text at offset stands at namespace or class scope, outside every function body:
+    // where kpp reads `T f(...)` as a function (in a body it is an object, and a macro's
+    // `Serialiser::TagWriter _(output, "entity", ...)` stays as the printf rewrite reads it). Each
+    // `{` is a scope's when its statement names namespace, class, struct, union or enum (or is
+    // `extern "C"`), an initializer's after `=`, `(`, `,` or `{` (its enclosing one's), a body's
+    // otherwise; inside a body everything is.
+    std::vector<uint8_t> tokenInBody;
+    bool atDeclarationScope(uint32_t offset)
+    {
+      if (tokenInBody.empty() && !toks.empty())
+      {
+        tokenInBody.assign(toks.size(), 0);
+        std::vector<uint8_t> stack;
+        uint32_t statementStart = 0;
+        for (uint32_t k = 0; k < toks.size(); ++k)
+        {
+          tokenInBody[k] = !stack.empty() && stack.back();
+          if (toks[k].is(P::LBrace))
+          {
+            bool parentBody = !stack.empty() && stack.back();
+            bool scope = false;
+            for (uint32_t j = statementStart; j < k && !scope; ++j)
+              if (toks[j].getKind() == TokenKind::Keyword && !(j > 0 && (toks[j - 1].is(P::Less) || toks[j - 1].is(P::Comma)))) // (not a template parameter's `class T`)
+              {
+                std::string_view w = spelling(j);
+                scope = w == "namespace" || w == "class" || w == "struct" || w == "union" || w == "enum" || w == "extern";
+              }
+              else if (toks[j].getKind() == TokenKind::Identifier)
+              {
+                // (a macro that opens a namespace: UnitTest++'s `SUITE(Name) { ... }`, whose TESTs
+                // stand at namespace scope)
+                auto macro = localMacros.find(std::string(spelling(j)));
+                if (macro != localMacros.end())
+                  for (const LocalMacro& m : macro->second)
+                    scope = scope || m.body.find("namespace") != std::string::npos;
+              }
+            bool initializer = k > 0 && (toks[k - 1].is(P::Assign) || toks[k - 1].is(P::LParen) || toks[k - 1].is(P::Comma) || toks[k - 1].is(P::LBrace));
+            stack.push_back(parentBody || (!scope && !initializer));
+            statementStart = k + 1;
+          }
+          else if (toks[k].is(P::RBrace))
+          {
+            if (!stack.empty())
+              stack.pop_back();
+            statementStart = k + 1;
+          }
+          else if (toks[k].is(P::Semi) || toks[k].getKind() == TokenKind::Directive)
+            statementStart = k + 1;
+        }
+      }
+      auto at = std::lower_bound(toks.begin(), toks.end(), offset, [](const Token& t, uint32_t o) { return t.offset < o; });
+      return at == toks.end() || !tokenInBody[size_t(at - toks.begin())];
+    }
+    // An object a macro's expansion declares by parentheses, `UnitTest::ListAdder adderX (List,
+    // &testX);` (TEST's, at namespace scope, where kpp reads `T f(...)` as a function): braces, when
+    // its class is the program's and braces construct it as parentheses do (braceableClasses). A
+    // statement's start only (after `;`, `{`, `}` or the text's start), its `)` ending the statement.
+    std::string bracedObjects(std::string text) const
+    {
+      if (in.c || !braceableClasses || braceableClasses->empty())
+        return text;
+      for (size_t i = 0; i < text.size(); ++i)
+      {
+        if (!(isalpha((unsigned char)text[i]) || text[i] == '_') || (i > 0 && (isIdentChar(text[i - 1]) || text[i - 1] == ':')))
+          continue;
+        size_t before = text.find_last_not_of(" \t\r\n", i == 0 ? std::string::npos : i - 1);
+        if (i > 0 && before != std::string::npos && !strchr(";{}", text[before]))
+          continue;
+        size_t typeEnd = i;
+        while (typeEnd < text.size() && (isIdentChar(text[typeEnd]) || (text[typeEnd] == ':' && typeEnd + 1 < text.size() && text[typeEnd + 1] == ':')))
+          typeEnd += text[typeEnd] == ':' ? 2 : 1;
+        std::string type = text.substr(i, typeEnd - i);
+        if (!braceableClasses->count(type))
+          continue;
+        size_t name = text.find_first_not_of(" \t", typeEnd);
+        if (name == std::string::npos || name == typeEnd || !(isalpha((unsigned char)text[name]) || text[name] == '_'))
+          continue;
+        size_t nameEnd = name;
+        while (nameEnd < text.size() && isIdentChar(text[nameEnd]))
+          ++nameEnd;
+        size_t open = text.find_first_not_of(" \t", nameEnd);
+        if (open == std::string::npos || text[open] != '(')
+          continue;
+        size_t close = open;
+        for (int depth = 0; close < text.size(); ++close)
+          if (text[close] == '(')
+            ++depth;
+          else if (text[close] == ')' && --depth == 0)
+            break;
+        if (close >= text.size())
+          continue;
+        size_t after = text.find_first_not_of(" \t", close + 1);
+        if (after != std::string::npos && text[after] != ';')
+          continue;
+        text[open] = '{';
+        text[close] = '}';
+        text.erase(nameEnd, open - nameEnd); // (`adderX {...}`: no space before the brace)
+        i = close - (open - nameEnd);
+      }
+      return text;
     }
     // C's `assert(c)` where an expression stands (llimits.h's `#define check_exp(c,e)
     // (lua_assert(c), (e))`): kpp's assert is a statement, so the assert goes in a lambda called on
@@ -7832,6 +7982,8 @@ namespace
           case NodeKind::FunctionDecl:
           {
             auto* f = static_cast<FunctionDecl*>(d);
+            if (objectOfMacroArguments(f))
+              break;
             // (an interface header's function, defined in the library's files: listed in its file,
             // the interface's own record of it once the declaration goes)
             if (isScopeHeader() && namespaceScope && !f->body && f->name.parts.size() == 1 && f->name.last().symbol != UINT32_MAX)
@@ -7895,6 +8047,7 @@ namespace
             auto* v = static_cast<VariableDecl*>(d);
             recordVariantDeclaration(d, true);
             walkExpr(v->init, nullptr);
+            directInitialization(v);
             break;
           }
           case NodeKind::UsingAliasDecl:
@@ -7949,6 +8102,137 @@ namespace
           default: break;
         }
       }
+    }
+
+    // A namespace- or class-scope object initialized by parentheses, `Widget w(Size(x));`: at those
+    // scopes kpp reads `T f(...)` as a function always (design.md 4, most vexing parse), so the
+    // object is written with braces, `Widget w{Size(x)};`, or, where braces would choose another
+    // constructor or say something else, with `=`:
+    // - a class of the program without an InitializerList constructor (an enumeration too): braces;
+    // - a pointer, a reference or a built-in type, one argument: `T* p = x;`, `i32 n = x;`;
+    // - anything else (a class with an InitializerList constructor, whose list kpp's braces would
+    //   choose, as Vector's, a library class, an alias, a template parameter): `T x = T(args);`.
+    void directInitialization(VariableDecl* v)
+    {
+      // (C has no `T x(args)` object: its parentheses after a name are a function's, `double
+      // trio_nzero(void)`)
+      if (in.c || !v->init || v->init->kind != NodeKind::FunctionalCastExpr || !v->type)
+        return;
+      auto* c = static_cast<FunctionalCastExpr*>(v->init);
+      if (c->braced || c->type != v->type || c->token >= toks.size() || v->name.empty())
+        return;
+      // (the resolver's object from a declaration the parser read as a function, `Color color(Color::Green);`
+      // with only names in the parentheses: its initializer starts at the declaration; the
+      // parenthesis is the one after the name)
+      directInitialization(v->type, v->name, v->token, v->endToken, c->token, c->args.size());
+    }
+
+    // A declaration the parser read as a function with unnamed parameters, `const ApplicationVersion
+    // ApplicationVersion::currentVersion(VERSION_STRING, BUILD_VERSION, PLATFORM);`, whose names are
+    // macros the conversion writes out (string or number macros: values, no types): C++ preprocessed
+    // it into an object, and so is it written.
+    bool objectOfMacroArguments(FunctionDecl* f)
+    {
+      if (in.c || f->objectArgs.empty() || f->body || !f->returnType || f->name.empty() || objectMacros.empty())
+        return false;
+      // (one value is enough: a literal is no parameter's type; the other names, BUILD_VERSION, are
+      // then values too)
+      bool value = false;
+      for (Expr* a : f->objectArgs)
+        if (a->kind == NodeKind::NameExpr && a->token < toks.size())
+          if (auto macro = objectMacros.find(std::string(spelling(a->token)));
+              macro != objectMacros.end() && macroHoldsAt(macro->first, toks[a->token].offset) && !isQualifiedName(macro->second) &&
+              !isAliasMacro(macro->first, macro->second))
+            value = true;
+      if (!value)
+        return false;
+      directInitialization(f->returnType, f->name, f->token, f->endToken, f->token, f->objectArgs.size());
+      return true;
+    }
+
+    void directInitialization(Type* type, const QualifiedName& declName, uint32_t declToken, uint32_t declEnd, uint32_t open, size_t argCount)
+    {
+      if (!toks[open].is(P::LParen))
+      {
+        uint32_t name = declName.last().symbol;
+        uint32_t at = open;
+        open = UINT32_MAX;
+        for (uint32_t k = declToken; k + 1 < declEnd && k + 1 < toks.size(); ++k)
+          if (toks[k].getKind() == TokenKind::Identifier && toks[k].id == name && toks[k + 1].is(P::LParen))
+          {
+            open = k + 1;
+            break;
+          }
+        if (open == UINT32_MAX)
+        {
+          todo(toks[at].offset, "a namespace- or class-scope object initialized by parentheses whose parenthesis was not found: written as it was");
+          return;
+        }
+      }
+      uint32_t close = open;
+      for (int depth = 0; close < toks.size(); ++close)
+        if (toks[close].is(P::LParen))
+          ++depth;
+        else if (toks[close].is(P::RParen) && --depth == 0)
+          break;
+      if (close >= toks.size())
+        return;
+      Type* t = type;
+      while (t->kind == NodeKind::ConstType)
+        t = static_cast<ConstType*>(t)->inner;
+      auto braces = [&](const char* what)
+      {
+        replace(toks[open].offset, 1, "{");
+        replace(toks[close].offset, 1, "}");
+        counts.add(std::string("namespace- and class-scope objects initialized by parentheses written with braces: ") + what);
+      };
+      if (t->kind == NodeKind::PointerType || t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType ||
+          t->kind == NodeKind::BuiltinType || t->kind == NodeKind::MemberPointerType)
+      {
+        if (argCount == 1)
+        {
+          replace(toks[open].offset, 1, " = ");
+          remove(toks[close].offset, 1);
+          counts.add("namespace- and class-scope objects initialized by parentheses written with =: a pointer, reference or built-in type");
+        }
+        else
+          todo(toks[open].offset, "an object of a pointer, reference or built-in type initialized by parentheses with other than one argument");
+        return;
+      }
+      if (t->kind == NodeKind::NamedType)
+      {
+        Decl* resolved = static_cast<NamedType*>(t)->resolved;
+        if (resolved && resolved->kind == NodeKind::EnumDecl)
+          return braces("an enumeration");
+        if (resolved && resolved->kind == NodeKind::ClassDecl)
+        {
+          Decl* def = global.definitionOf(resolved);
+          auto* cls = static_cast<ClassDecl*>(def && def->kind == NodeKind::ClassDecl ? def : resolved);
+          bool listConstructor = hasListConstructor(cls, symbols);
+          if (!listConstructor && cls->isDefinition)
+            return braces("a class of the program");
+        }
+      }
+      // `T x = T(args)`: the type written again (its C++ text, mapped as the token pass maps it),
+      // without the declaration's own const.
+      uint32_t nameStart = open;
+      if (nameStart > 0 && toks[nameStart - 1].getKind() == TokenKind::Identifier)
+        --nameStart;
+      while (nameStart >= 2 && toks[nameStart - 1].is(P::ColonColon) && toks[nameStart - 2].getKind() == TokenKind::Identifier)
+        nameStart -= 2;
+      uint32_t typeStart = t->token;
+      std::string typeText = typeStart < nameStart ? std::string(text.substr(toks[typeStart].offset, endOffset(nameStart - 1) - toks[typeStart].offset)) : "";
+      while (!typeText.empty() && isspace((unsigned char)typeText.back()))
+        typeText.pop_back();
+      if (typeText.size() > 6 && typeText.compare(typeText.size() - 6, 6, " const") == 0)
+        typeText.resize(typeText.size() - 6);
+      if (typeText.empty() || typeText.find_first_of("&*(") != std::string::npos)
+      {
+        todo(toks[open].offset, "a namespace- or class-scope object initialized by parentheses whose type could not be written again: written as it was");
+        return;
+      }
+      insert(toks[open].offset, " = " + mapStdText(typeText));
+      counts.add("namespace- and class-scope objects initialized by parentheses written `= T(args)` (a library class, an alias, a class with an InitializerList constructor)");
     }
 
     // A std::variant alias or member of this file (one of `variants`): what run() turns into a union enum.
@@ -12801,6 +13085,23 @@ std::set<std::string> libraryFunctionNames(const std::filesystem::path& libraryD
 }
 
 // --convert-library (setConvertLibraries): the scoped libraries the converted program uses.
+// The program's classes that braces construct as parentheses do (defined, no InitializerList
+// constructor), by qualified name: a macro's expansion text names them (UnitTest++'s TEST, its
+// `UnitTest::ListAdder adder##Fixture##Name (List, &test##Fixture##Name##Instance);`).
+static void collectBraceableClasses(Span<Decl*> decls, GlobalScope& global, const SymbolTable& symbols, std::set<std::string>& out)
+{
+  for (Decl* d : decls)
+    if (d->kind == NodeKind::NamespaceDecl)
+      collectBraceableClasses(static_cast<NamespaceDecl*>(d)->decls, global, symbols, out);
+    else if (d->kind == NodeKind::ClassDecl)
+    {
+      auto* c = static_cast<ClassDecl*>(d);
+      if (c->isDefinition && !c->name.empty() && c->templateParams.empty() && !hasListConstructor(c, symbols))
+        out.insert(global.qualifiedName(c));
+      collectBraceableClasses(c->members, global, symbols, out);
+    }
+}
+
 // The classes Factorio's ENUM(Name, ...) and BITFIELD(Name, ...) define at namespace scope, by
 // qualified name (`ns::Name`). The resolver sees the macro's use, not the class the converter writes
 // for it, so a forward declaration of one (Entity.hpp's `class DrawingFlags;`) finds no definition;
@@ -13674,22 +13975,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         inputOf[in.parsed] = &in;
     // std:: names in carried text, mapped as the token pass maps them, after the game's classes
     // whose names the library uses are renamed (`template<class V = Vector>` is Vector2D).
-    auto mapStd = [&](std::string value)
-    {
-      value = renameGameClassNames(value, nullptr);
-      for (size_t at = value.find("std::"); at != std::string::npos; at = value.find("std::", at))
-      {
-        size_t nameEnd = at + 5;
-        while (nameEnd < value.size() && (isalnum((unsigned char)value[nameEnd]) || value[nameEnd] == '_'))
-          ++nameEnd;
-        std::string name = value.substr(at + 5, nameEnd - at - 5);
-        auto it = stdNames.find(name);
-        std::string to = it == stdNames.end() ? name : it->second;
-        value.replace(at, nameEnd - at, to);
-        at += to.size();
-      }
-      return value;
-    };
+    auto mapStd = [&](std::string value) { return mapStdText(std::move(value)); };
     // The defaults of a template's parameters on a declaration that goes, for the definition's
     // parameters that have none.
     auto carryTemplateDefaults = [&](Decl* declaration, Decl* def)
@@ -13828,6 +14114,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
   std::set<std::string> macroClasses = collectMacroClasses(inputs);
+  std::set<std::string> braceableClasses;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported && !in.c)
+      collectBraceableClasses(in.parsed->decls, global, symbols, braceableClasses);
   Variants variants;
   std::map<std::string, ClassBases> classBases;
   for (const ConvertInput& in : inputs)
@@ -14017,6 +14307,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.libraryTypes = &libraryTypes;
     fc.opaqueKept = &opaqueKept;
     fc.macroClasses = &macroClasses;
+    fc.braceableClasses = &braceableClasses;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
     if (auto renames = fileAliasRenames.find(&in); renames != fileAliasRenames.end())

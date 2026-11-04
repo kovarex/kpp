@@ -20,7 +20,7 @@ rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rule
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
 rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
-rem errors 0, smoke tests 12/12, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
+rem errors 0, smoke tests 13/13, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
 rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -228,6 +228,12 @@ if exist kpp\convert_formats rd /s /q kpp\convert_formats
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
+echo == namespace-scope objects: tests\convert_init\init.cpp, objects initialized by parentheses at namespace and class scope, converted to braces or `= T(args)` (kpp reads `T f(...)` there as a function) and run, prints what its C++ build prints (tests\convert_init.expected)
+if exist kpp\convert_init rd /s /q kpp\convert_init
+%KPPC% --no-std --quiet --convert kpp\convert_init --ext .cpp tests\convert_init || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_init.exe kpp\convert_init || goto :failed
+kpp\convert_init.exe > kpp\convert_init.out.txt
+fc /w kpp\convert_init.out.txt tests\convert_init.expected > nul && (echo namespace-scope objects: output as expected& set /a SMOKES+=1) || (echo namespace-scope objects: OUTPUT DIFFERS & fc /w kpp\convert_init.out.txt tests\convert_init.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
@@ -259,7 +265,7 @@ rem declaration of a class the program defines (tests\converted-text.ps1).
 set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/12, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/13, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)
