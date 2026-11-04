@@ -1,0 +1,65 @@
+// spec: a const or constexpr static local that a lambda, a generic lambda a template's instance calls first, a function template instance's lambda or a local class's virtual function names (code that may be emitted in another module or piece, before or after the function, in a build of 64 modules and the release suite's) reads the function's value from all of them, as the function itself does (`8 13 203 30 60 1677721`)
+// factorio: none known; language/static_local_constant_initialization's constants are those only their function names: one that a lambda or a local class names stays the function's shared static (codegen's staticLocal), whose copies elsewhere are set on the function's first pass
+// kppc: --modules 64
+struct Fixed
+{
+  long long value;
+  constexpr Fixed(double d) : value((long long)(d * 16777216.0)) {}
+};
+
+class Shape
+{
+public:
+  virtual int sides() const = 0;
+  virtual ~Shape() {}
+};
+
+template<typename F>
+int callTwice(F f) { return f(1) + f(2); }
+
+int viaLambda()
+{
+  static constexpr int step = 7;
+  auto add = [](int x) { return x + step; };
+  return add(1);
+}
+
+int viaLocalClass()
+{
+  static const int bonus = 9;
+  class Square : public Shape
+  {
+  public:
+    int sides() const override { return 4 + bonus; }
+  };
+  Square square;
+  const Shape& shape = square;
+  return shape.sides();
+}
+
+int viaGenericLambda()
+{
+  static constexpr int offset = 100;
+  return callTwice([](auto x) { return x + offset; });
+}
+
+template<int N>
+int viaInstanceLambda()
+{
+  static constexpr int scaled = N * 10;
+  auto get = [] { return scaled; };
+  return get();
+}
+
+long long viaObject()
+{
+  static constexpr Fixed least = Fixed(0.1);
+  auto read = [] { return least.value; };
+  return read();
+}
+
+int main()
+{
+  println(viaLambda(), " ", viaLocalClass(), " ", viaGenericLambda(), " ", viaInstanceLambda<3>(), " ", viaInstanceLambda<6>(), " ", viaObject());
+  return 0;
+}

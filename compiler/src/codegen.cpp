@@ -17856,6 +17856,31 @@ namespace
       return name;
     }
 
+    // A const static local's initializer as a constant of type t, lowered as globalForOnce lowers a
+    // global's (a scalar folded, a string literal, an object or array the interpreter computes), or
+    // nothing (it is built on the first pass).
+    std::optional<std::string> staticConstant(VariableDecl* v, const Ty* t)
+    {
+      const Ty* st = types.unqualified(t);
+      ConstContextScope context(*this, v); // traits in the initializer resolve their names in the declaration's context
+      if (std::optional<ConstValue> c = foldAs(foldConst(v->init), st); c && c->isScalar())
+      {
+        if ((st->kind == TyKind::Int || st->kind == TyKind::Char || st->kind == TyKind::Enum) && !c->isFloat())
+          return std::to_string(c->i);
+        if (st->kind == TyKind::Float)
+          return floatConstant(c->isFloat() ? c->f : double(c->i), st->bits);
+        if (st->kind == TyKind::Bool)
+          return std::string(c->truthy() ? "true" : "false");
+      }
+      if (st->kind == TyKind::Pointer && v->init->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(v->init)->keyword == Kw::nullptr_)
+        return std::string("null");
+      if (st->kind == TyKind::Pointer && v->init->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(v->init)->literalKind == TokenKind::String)
+        return stringConstant(static_cast<LiteralExpr*>(v->init));
+      if (isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer)
+        return constantData(st, v->init, v, currentArgs ? *currentArgs : TemplateArgs(), v);
+      return std::nullopt;
+    }
+
     // `static T x = ...;` inside a function: a global of the program (in the module of the function),
     // constructed on the first pass through the declaration, never destroyed. Not thread-safe yet.
     // `thread_local T x;` (static or not): one per thread, the guard too, so each thread builds its
@@ -17874,6 +17899,24 @@ namespace
       bool shared = nestedNamesOf(bodyNow).named.count(v) != 0;
       FunctionDecl* plain = shared ? plainWriter(v) : nullptr;
       std::string name = staticLocalName(plain ? functionName(plain, {}, nullptr) : currentFunctionName, v);
+      // Constant initialization (C++'s [basic.start.static]): a const or constexpr one whose initializer
+      // folds, as a global's does (globalForOnce), is a constant of the program, with no guard and nothing
+      // done on the pass. FluidBuffer::getFlowRate's `static constexpr double MAX_FLOW_MULTIPLIER = 0.8`
+      // checked a guard and loaded the double from memory on every call. (Not one a lambda or a local
+      // class names: its copies elsewhere are zero-initialized and set by the guarded pass,
+      // staticLocalElsewhere.)
+      if (!shared && !isRef && v->init && !(v->flags & DF_ThreadLocal) && isConstValue(v))
+        if (std::optional<std::string> init = staticConstant(v, t))
+        {
+          addOwnedEntry(name + " = internal " + (hasMutableMember(t, v) ? "global " : "constant ") + llType(t, v) + " " + *init +
+                        alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
+          {
+            auto lock = sharedLock();
+            globals[v] = name;
+          }
+          locals[v] = {name, t, false};
+          return;
+        }
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       std::string storage = (v->flags & DF_ThreadLocal) ? " = internal thread_local global " : " = internal global ";
       if (shared)

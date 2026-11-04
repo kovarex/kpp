@@ -179,6 +179,10 @@ rem --keep-going --stub-missing with an error the checker reported (tests\stubs.
 rem left out is a stub in the module that calls it, in one module, four and a release build.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\stubs.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "stubs") else (call :ok)
+rem Static locals with constant initialization (tests\staticconstants.ps1): a const or constexpr one
+rem whose initializer folds is a constant in the IR, with no guard; a call's keeps its guard.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\staticconstants.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "static constants") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

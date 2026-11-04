@@ -1,0 +1,94 @@
+// spec: a const or constexpr static local whose initializer is a constant is that constant from the start, as C++'s constant initialization makes it (no guard, nothing done on the pass): a double, an object a constexpr constructor builds, an array, one of a template's instance with that instance's arguments (two instances of a function template, two of a class template's member function: each its own), one of an inline function the optimizer inlines into two callers (one object, the same address from both); a const object with a mutable member stays writable; one whose initializer calls a function, or reads a parameter, is initialized on the first pass, once (the first call's value); in a build of 64 modules (and the release suite's) (`10 1677721 31 12 20 16 2 0.5 true 3 2 1 10`)
+// factorio: FluidBuffer::getFlowRate's `static constexpr FluidAmount MIN_FLOW = FluidAmount(0.1)` and `static constexpr double MAX_FLOW_MULTIPLIER = 0.8`, a guard checked and the double loaded from memory on every call in kpp's release game (1,935 such statics); compiler/tests/staticconstants.ps1 checks the IR
+// kppc: --modules 64
+struct Fixed
+{
+  long long value;
+  constexpr Fixed(double d) : value((long long)(d * 16777216.0)) {}
+};
+
+struct Counter
+{
+  int base;
+  mutable int hits;
+};
+
+int calls = 0;
+int nextCall() { return ++calls; }
+
+double scaled(double x)
+{
+  static constexpr double factor = 0.8;
+  return x * factor;
+}
+
+long long minimum()
+{
+  static constexpr Fixed least = Fixed(0.1);
+  return least.value;
+}
+
+int sumTable()
+{
+  static constexpr int table[] = {1, 2, 4, 8, 16};
+  int sum = 0;
+  for (int value : table)
+    sum += value;
+  return sum;
+}
+
+template<int N>
+int timesFour()
+{
+  static constexpr int product = N * 4;
+  return product;
+}
+
+template<typename T>
+struct Box
+{
+  static int scale()
+  {
+    static constexpr int factor = sizeof(T) * 2;
+    return factor;
+  }
+};
+
+inline const double& rate()
+{
+  static constexpr double value = 0.25;
+  return value;
+}
+
+double rateTwice() { return rate() + rate(); }
+const double* rateAddress() { return &rate(); }
+
+int counted()
+{
+  static const Counter counter = {1, 0};
+  return counter.base + ++counter.hits;
+}
+
+int once()
+{
+  static const int first = nextCall();
+  return first;
+}
+
+int firstArgument(int n)
+{
+  static const int remembered = n * 2;
+  return remembered;
+}
+
+int main()
+{
+  int hits = counted();
+  hits = counted();
+  int a = once();
+  int b = once();
+  println(scaled(12.5), " ", minimum(), " ", sumTable(), " ", timesFour<3>(), " ", timesFour<5>(), " ", Box<long long>::scale(), " ", Box<char>::scale(), " ",
+          rateTwice(), " ", rateAddress() == &rate(), " ", hits, " ", a + b, " ", calls, " ",
+          firstArgument(5) + firstArgument(7) - firstArgument(9));
+  return 0;
+}
