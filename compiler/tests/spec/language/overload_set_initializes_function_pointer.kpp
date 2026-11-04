@@ -1,15 +1,20 @@
-// spec: a name of several functions initializing or assigned to a function pointer variable is the overload of the pointer's type (C++'s address of an overloaded function, [over.over]): `AreaFn f = Shape::area;` with area(int) and area(const char*) takes area(const char*), written alone and with `&`
+// spec: a name of several functions initializing or assigned to a function pointer variable is the overload of the pointer's type (C++'s address of an overloaded function, [over.over]): `AreaFn f = Shape::area;` with area(int) and area(const char*) takes area(const char*), written alone and with `&`; so for a member function pointer, a function reference and an array's elements, and a function template assigned is the instance of the pointer's type (`t = doubled;` is doubled<int>)
 // factorio: none found yet; found beside the access checks (NoiseExpressionParser passes such a name as an argument, which works: language/overload_set_as_function_pointer)
-// pending: the first overload is taken: "a pointer (int32(int32)*) does not convert to int32(const char*)* without a cast" (owner: the coordinator assigns; overloads are D's)
 class Shape
 {
 public:
+  int size = 2;
+  int scaled(int k) const { return size * k; }
+  int scaled(const char* name) const { return 100; }
   static int area(int side) { return side * side; }
   static int area(const char* name) { return 5; }
 };
 int twice(int x) { return 2 * x; }
 int twice(double x) { return 3; }
+template<typename T>
+T doubled(T x) { return x + x; }
 using AreaFn = int (*)(const char*);
+using IntFn = int (*)(int);
 int main()
 {
   AreaFn f = Shape::area;
@@ -17,5 +22,12 @@ int main()
   int (*h)(double) = twice;
   h = &twice;
   println(f("x"), " ", g("y"), " ", h(1.5));
+  int (Shape::*m)(const char*) const = &Shape::scaled;
+  Shape s;
+  int (&r)(double) = twice;
+  AreaFn table[] = {Shape::area, &Shape::area};
+  IntFn t = nullptr;
+  t = doubled;
+  println((s.*m)("z"), " ", r(1.0), " ", table[1]("a"), " ", t(21));
   return 0;
 }

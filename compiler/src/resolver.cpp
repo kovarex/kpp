@@ -20797,7 +20797,13 @@ struct GlobalScope::Impl
         f = only;
       }
       if (f->templateParams.empty())
+      {
+        // `AreaFn f = Shape::area;` beside an area(int): of the name's functions, the one of the pointer's type, as for
+        // an argument (bindOverloadSets).
+        if (OverloadSetArgument set; !n->name.last().hasTemplateArgs && overloadSetArgument(a, 0, set))
+          bindOverloadSet(set, target);
         return;
+      }
       const Ty* pt = types.unqualified(types.stripRef(target));
       const Ty* want = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
       if (!want || want->kind != TyKind::Function || !want->isKnown() || types.isDependent(want))
@@ -20909,49 +20915,52 @@ struct GlobalScope::Impl
       }
     }
 
+    // Binds overload set s to its overload of the type that pt, what it initializes, takes: a function pointer's or
+    // reference's function, or a member pointer's (C++ [over.over]). Several or none of that type leave it as it is.
+    void bindOverloadSet(const OverloadSetArgument& s, const Ty* pt)
+    {
+      pt = pt ? types.unqualified(types.stripRef(pt)) : nullptr;
+      const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
+      if (!target || target->kind != TyKind::Function || types.isDependent(target))
+        return;
+      Subst qs = s.name->name.parts.size() > 1 ? impl.qualifierSubst(s.name->name, ctx(), 0, s.set.foundIn) : Subst{};
+      FunctionDecl* chosen = nullptr;
+      const Ty* chosenTy = nullptr;
+      bool several = false;
+      for (const Entry& e : *s.set.overloads)
+      {
+        if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty())
+          continue;
+        const Ty* ot = impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0);
+        if (ot != target)
+          continue;
+        several = several || chosen;
+        chosen = static_cast<FunctionDecl*>(e.decl);
+        chosenTy = ot;
+      }
+      if (!chosen || several || chosen == s.name->resolved)
+        return;
+      s.name->resolved = chosen;
+      record(s.name, chosenTy);
+      if (s.address && s.address->ty)
+      {
+        const Ty* was = s.address->ty;
+        if (was->kind == TyKind::MemberPointer && !was->args.empty())
+          record(s.address, types.memberPointer(chosenTy, was->args[0]));
+        else if (was->kind == TyKind::Pointer)
+          record(s.address, types.pointer(chosenTy));
+      }
+    }
+
     // Binds each overload-set argument to the overload of the type the chosen callee's parameter
-    // takes (fnTy: the callee's function type): a function pointer's or reference's function, or a
-    // member pointer's. Several or none of that type leave the argument as it is.
+    // takes (fnTy: the callee's function type), as bindOverloadSet does.
     void bindOverloadSets(const std::vector<OverloadSetArgument>& sets, const Ty* fnTy)
     {
       if (!fnTy || fnTy->kind != TyKind::Function)
         return;
       for (const OverloadSetArgument& s : sets)
-      {
-        if (s.index >= fnTy->args.size())
-          continue;
-        const Ty* pt = types.unqualified(types.stripRef(fnTy->args[s.index]));
-        const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
-        if (!target || target->kind != TyKind::Function || types.isDependent(target))
-          continue;
-        Subst qs = s.name->name.parts.size() > 1 ? impl.qualifierSubst(s.name->name, ctx(), 0, s.set.foundIn) : Subst{};
-        FunctionDecl* chosen = nullptr;
-        const Ty* chosenTy = nullptr;
-        bool several = false;
-        for (const Entry& e : *s.set.overloads)
-        {
-          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty())
-            continue;
-          const Ty* ot = impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0);
-          if (ot != target)
-            continue;
-          several = several || chosen;
-          chosen = static_cast<FunctionDecl*>(e.decl);
-          chosenTy = ot;
-        }
-        if (!chosen || several || chosen == s.name->resolved)
-          continue;
-        s.name->resolved = chosen;
-        record(s.name, chosenTy);
-        if (s.address && s.address->ty)
-        {
-          const Ty* was = s.address->ty;
-          if (was->kind == TyKind::MemberPointer && !was->args.empty())
-            record(s.address, types.memberPointer(chosenTy, was->args[0]));
-          else if (was->kind == TyKind::Pointer)
-            record(s.address, types.pointer(chosenTy));
-        }
-      }
+        if (s.index < fnTy->args.size())
+          bindOverloadSet(s, fnTy->args[s.index]);
     }
 
     // `NamedFunction(move(parameters), create, Expression::computeConstant)`: the constructor of
@@ -22482,6 +22491,15 @@ struct GlobalScope::Impl
     {
       const Ty* l = walkExpr(b->lhs);
       const Ty* r = walkExpr(b->rhs);
+      if (!b->isKeyword && P(b->op) == P::Assign && l && !probesSharedNodes())
+        if (const Ty* target = types.unqualified(types.stripRef(l));
+            (target->kind == TyKind::Pointer || target->kind == TyKind::MemberPointer) && target->inner && target->inner->kind == TyKind::Function)
+        {
+          // `h = &twice;` beside a twice(int), `make = construct<Add>;`: the function of the pointer's type, as for an
+          // initializer (bindTemplateAddresses).
+          bindTemplateAddresses(b->rhs, target);
+          r = b->rhs->ty ? b->rhs->ty : r;
+        }
       if (b->isKeyword)
       {
         switch (Kw(b->op))
