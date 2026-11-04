@@ -317,6 +317,13 @@ void build(Project& project)
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.
+- **System libraries** (2026-11-04, for httpclient's OpenSSL on FreeBSD): `lib.systemLibrary("ssl")`
+  is linked by every program that uses the library, its own tests included, as
+  `Executable::systemLibrary` is for one executable (kppc's `--lib -lssl`). With a platform,
+  `systemLibrary("ssl", Platform::FreeBSD)`, only a build for that platform (its `--target`, from
+  build.kpp's arguments or the command line; windows without one) links it. Each name is linked once
+  however many libraries name it. Tested by `tests/project.ps1` (a library linking version.dll for
+  Windows, and a library no platform has for FreeBSD, left out).
 - **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
   tests") of the executables and libraries named, all when none is: each one's roots, a
   library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter

@@ -2,6 +2,7 @@
 #include "generate.hpp"
 #include "run.hpp"
 #include "source.hpp"
+#include "target.hpp"
 #include <algorithm>
 #include <atomic>
 #include <map>
@@ -68,6 +69,7 @@ namespace
   {
     std::string configuration;
     std::vector<std::string> roots, excluded, libraries, cIncludes, links;
+    std::vector<std::string> systemLibraries; // a library's own when its tests are built (libraryProgram)
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
@@ -81,6 +83,7 @@ namespace
     std::string name, version, license, minimumKpp;
     bool unscoped = false; // its names bare everywhere (design.md 16)
     std::vector<std::string> roots, testRoots;
+    std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME (Library::systemLibrary)
     std::vector<ProjectLibrary> kppLibraries;
     std::vector<Use> uses;
     std::vector<Option> options;
@@ -286,6 +289,7 @@ namespace
         else if (key == "unscoped") l.unscoped = value == "1";
         else if (key == "root") l.roots.push_back(value);
         else if (key == "test-root") l.testRoots.push_back(value);
+        else if (key == "system-library") l.systemLibraries.push_back(value);
         else if (key == "option") l.options.push_back({value});
         else if (l.options.empty()) continue;
         else if (key == "option-type") l.options.back().type = value;
@@ -570,6 +574,7 @@ namespace
       }
       found.push_back({use.name, directory, user, library->options, configs});
       ProjectLibrary& used = libraries.emplace_back(ProjectLibrary{use.name, {}, library->unscoped});
+      used.systemLibraries = library->systemLibraries;
       fs::path buildFile = directory / "build.kpp";
       for (const std::string& r : library->roots)
       {
@@ -1082,6 +1087,24 @@ namespace
     return toolchain;
   }
 
+  // The platform a program is built for, as Library::systemLibrary names it (windows, linux, freebsd):
+  // the last --target of build.kpp's arguments and the command line's, windows without one. One kppc
+  // does not know is windows here, and kppc reports it.
+  std::string targetPlatform(const Program& p, const Request& request)
+  {
+    Target target;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+        if ((*list)[i] == "--target")
+        {
+          std::string why;
+          Target named;
+          if (targetNamed((*list)[i + 1], named, why))
+            target = named;
+        }
+    return target.os == Target::Os::Linux ? "linux" : target.os == Target::Os::FreeBSD ? "freebsd" : "windows";
+  }
+
   // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
   // in the order the project, the configuration, the target and configure() set them, so that the
   // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
@@ -1113,6 +1136,24 @@ namespace
       args.push_back("--cinclude"), args.push_back(rooted(root, c).string());
     for (const std::string& l : p.libraries)
       args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
+    // The system libraries of the kpp libraries it uses (Library::systemLibrary), a library's own for
+    // its tests, each once, those of another platform left out.
+    std::string platform = targetPlatform(p, request);
+    std::vector<std::string> systemLibraries;
+    std::vector<const std::vector<std::string>*> lists = {&p.systemLibraries};
+    for (const ProjectLibrary& l : p.kppLibraries)
+      lists.push_back(&l.systemLibraries);
+    for (const std::vector<std::string>* list : lists)
+      for (const std::string& s : *list)
+      {
+        size_t blank = s.find(' ');
+        std::string name = blank == std::string::npos ? s : s.substr(blank + 1);
+        if ((blank == std::string::npos || s.substr(0, blank) == platform) &&
+            std::find(systemLibraries.begin(), systemLibraries.end(), name) == systemLibraries.end())
+          systemLibraries.push_back(name);
+      }
+    for (const std::string& name : systemLibraries)
+      args.push_back("--lib"), args.push_back("-l" + name);
     for (const std::string& name : p.links)
       if (const CLibrary* c = findLibrary(d, name))
         for (const fs::path& file : libraryFiles(root, *c, p.cFlags))
@@ -1295,6 +1336,7 @@ namespace
     p.roots = l.roots;
     p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
     p.kppLibraries = l.kppLibraries;
+    p.systemLibraries = l.systemLibraries; // its own, which its tests link as its users do
     std::vector<std::string> allUsed;
     for (const Found& f : l.used)
       allUsed.push_back(f.name);

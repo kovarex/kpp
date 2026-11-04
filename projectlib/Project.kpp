@@ -221,9 +221,20 @@ struct Library
   // Its names are qualified by its name for its users (zlib::compress), bare inside it; unscoped:
   // bare everywhere, sharing the one global scope (the stdlib is). design.md 16.
   bool unscoped = false;
+  Vector<String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
 
   void root(StringView path) { roots.push_back(path); }
   void test(StringView path) { testRoots.push_back(path); }
+  // A system library every program using this one links, its own tests too: kppc's --lib -lNAME
+  // (`systemLibrary("ssl")`), as Executable::systemLibrary; with a platform, only a build for it
+  // (`systemLibrary("ssl", Platform::FreeBSD)`).
+  void systemLibrary(StringView name) { systemLibraries.push_back(name); }
+  void systemLibrary(StringView name, Platform platform)
+  {
+    StringView on = platform == Platform::Windows ? "windows" : platform == Platform::Linux ? "linux"
+                    : platform == Platform::FreeBSD ? "freebsd" : "mac";
+    systemLibraries.push_back(String(on) + " " + name);
+  }
   // An option with its default: `option("debug", false, "Extra consistency checks")`; a string option
   // may list the values it can have: `option("mode", "fast", "Its speed", {"fast", "small"})`. Each
   // returns its LibraryOption. (Each emplaces itself: tests/spec/language/
@@ -632,6 +643,7 @@ String describe(const Project& project)
       kppLine(out, "root", "src");
     kppLines(out, "root", l.roots);
     kppLines(out, "test-root", l.testRoots);
+    kppLines(out, "system-library", l.systemLibraries);
     // Per option: `option NAME`, its type, its default (none when required: `option-required`), its
     // values and its description.
     for (const LibraryOption& o : l.options)

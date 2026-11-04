@@ -54,6 +54,7 @@ struct ProjectLibrary
   std::vector<std::string> roots;
   bool unscoped = false;
   std::vector<std::string> excluded; // files under its roots that are not its sources: its build.kpp
+  std::vector<std::string> systemLibraries; // what a program using it links: NAME or PLATFORM NAME (Library::systemLibrary)
 };
 struct ProjectCell
 {

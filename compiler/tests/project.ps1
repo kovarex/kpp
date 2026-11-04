@@ -289,6 +289,29 @@ void build(Project& project)
   Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"jsno`");`n}"
   $output = (Kpp @('--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
+  # A library's system libraries (Library::systemLibrary, 2026-11-04: httpclient's OpenSSL on
+  # FreeBSD): sys calls version.dll's GetFileVersionInfoSizeA, which kppc does not link by itself.
+  # systemLibrary("version", Platform::Windows) reaches the link of app, which uses sys, and of sys's
+  # own tests; one for FreeBSD is left out (no such library here); without them, or with that one
+  # for every platform, the link fails.
+  New-Item -ItemType Directory -Force 'libraries\sys\src' | Out-Null
+  $sysBuild = "void build(Project& project)`n{`n  Library& sys = project.library(`"sys`");`n  sys.version = `"1.0.0`";`n  LINKS`n}"
+  Set-Content 'libraries\sys\src\sys.kpp' "extern `"C`" unsigned long GetFileVersionInfoSizeA(const char* name, unsigned long* handle);`nbool versioned() { unsigned long h = 0; return GetFileVersionInfoSizeA(`"kernel32.dll`", &h) > 0; }`ntest `"kernel32 has a version`"`n{`n  check(versioned());`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  if (sys::versioned())`n    println(`"versioned`");`n  else`n    println(`"none`");`n  return 0;`n}"
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
+  Set-Content 'libraries\sys\build.kpp' ($sysBuild -replace 'LINKS', "sys.systemLibrary(`"version`", Platform::Windows);`n  sys.systemLibrary(`"nosuchlibrary`", Platform::FreeBSD);")
+  $output = Kpp @('--no-server', '--run')
+  if ($code -ne 0 -or $output[-1] -ne 'versioned') { Fail "a library's system library, kpp --run: exit $code`n$($output -join "`n")" }
+  Push-Location 'libraries\sys'
+  $output = (Kpp @('--test', '--no-server')) -join "`n"
+  Pop-Location
+  if ($code -ne 0 -or $output -notmatch '\b1 test, 0 failed') { Fail "a library's system library in its own tests: exit $code`n$output" }
+  foreach ($case in @(@('', 'GetFileVersionInfoSizeA'), @("sys.systemLibrary(`"version`");`n  sys.systemLibrary(`"nosuchlibrary`");", 'nosuchlibrary')))
+  {
+    Set-Content 'libraries\sys\build.kpp' ($sysBuild -replace 'LINKS', $case[0])
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a library's system libraries '$($case[0])': the link did not fail on $($case[1]): exit $code`n$output" }
+  }
   # A converted library's shape: root(".") (its own build.kpp is not one of its sources) and C
   # headers beside its kpp, which the cell's --ext .kpp leaves out of the library's roots too.
   New-Item -ItemType Directory -Force 'libraries\conv' | Out-Null
