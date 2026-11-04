@@ -325,6 +325,26 @@ void build(Project& project)
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a library's system libraries '$($case[0])': the link did not fail on $($case[1]): exit $code`n$output" }
   }
+  # The other side of the platform: `kpp --target freebsd` links what a library keeps for FreeBSD and
+  # leaves out what it keeps for Linux. bsd calls nothing of Windows; with
+  # systemLibrary("nosuchlibrary", Platform::FreeBSD) the link fails on it, with Platform::Linux it
+  # links. Needs FreeBSD's sysroot beside kppc (tools\sysroot\freebsd.ps1), skipped without it.
+  if (-not (Test-Path (Join-Path (Split-Path $Kppc) 'sysroots\freebsd-x86_64\usr\lib\libc.a'))) { "skip project: a library's system library for freebsd (no sysroot beside kppc: tools\sysroot\freebsd.ps1)" }
+  else
+  {
+    New-Item -ItemType Directory -Force 'libraries\bsd\src' | Out-Null
+    Set-Content 'libraries\bsd\src\bsd.kpp' "int answer() { return 42; }"
+    Set-Content 'src\main.kpp' "int main()`n{`n  println(bsd::answer());`n  return 0;`n}"
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"bsd`");`n}"
+    foreach ($platform in @('FreeBSD', 'Linux'))
+    {
+      Set-Content 'libraries\bsd\build.kpp' "void build(Project& project)`n{`n  Library& bsd = project.library(`"bsd`");`n  bsd.version = `"1.0.0`";`n  bsd.systemLibrary(`"nosuchlibrary`", Platform::$platform);`n}"
+      if (Test-Path 'build\debug\app') { Remove-Item 'build\debug\app' }
+      $output = (Kpp @('--no-server', '--target', 'freebsd')) -join "`n"
+      if ($platform -eq 'FreeBSD' -and ($code -eq 0 -or $output -notmatch 'nosuchlibrary')) { Fail "a library's system library for FreeBSD, kpp --target freebsd: the link did not fail on nosuchlibrary: exit $code`n$output" }
+      if ($platform -eq 'Linux' -and ($code -ne 0 -or $output -match 'nosuchlibrary' -or -not (Test-Path 'build\debug\app'))) { Fail "a library's system library for Linux, kpp --target freebsd: not left out: exit $code`n$output" }
+    }
+  }
   # A converted library's shape: root(".") (its own build.kpp is not one of its sources) and C
   # headers beside its kpp, which the cell's --ext .kpp leaves out of the library's roots too.
   New-Item -ItemType Directory -Force 'libraries\conv' | Out-Null

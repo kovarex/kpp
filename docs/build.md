@@ -329,7 +329,8 @@ void build(Project& project)
   `systemLibrary("ssl", Platform::FreeBSD)`, only a build for that platform (its `--target`, from
   build.kpp's arguments or the command line; windows without one) links it. Each name is linked once
   however many libraries name it. Tested by `tests/project.ps1` (a library linking version.dll for
-  Windows, and a library no platform has for FreeBSD, left out).
+  Windows, and a library no platform has for FreeBSD, left out; with FreeBSD's sysroot beside kppc,
+  `kpp --target freebsd` fails to link that one and leaves out the same library for Linux).
 - **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
   tests") of the executables and libraries named, all when none is: each one's roots, a
   library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter
