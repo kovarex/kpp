@@ -14,7 +14,8 @@ runs.
 
 **Latest** (2026-11-04, Factorio 4c178a5b915): kpp release is **0.97x** C++ FinalRelease on
 performance.zip and **0.98x** on kovarex_modern_playthrough_155 (C++ Release: 1.10x on both). The
-details are in "The benchmark" below.
+details are in "The benchmark" below. On the 45 menu maps it is **0.87x** (C++ Release: 1.01x;
+[test-matrix.md](test-matrix.md)).
 
 Source: C:\Factorio 4c178a5b915 (2.1.25), `fastbuild/fbuild.bff`, `.BuildVanillaRelease` (line 1303)
 and `.BuildVanillaFinalRelease` (line 1373). `.BuildRelease` and `.BuildFinalRelease` add `SPACE_AGE` to

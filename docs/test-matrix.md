@@ -17,9 +17,11 @@ benchmark against C++ FinalRelease.
 
 **Game speed is compared against C++ FinalRelease** (kovarex, 2026-11-04). kpp's release and final
 builds are measured against the C++ FinalRelease build of the same Factorio commit, the build the
-official releases come from. C++ Release is at most an extra column. The latest numbers: kpp release
-**0.97x C++ FinalRelease** on performance.zip and **0.98x** on modern_playthrough_155 (C++ Release:
-1.10x on both; [final-release.md](final-release.md), "The benchmark"). Thread H rebuilds C++
+official releases come from. C++ Release is at most an extra column. The latest numbers for kpp
+release:
+- **0.97x C++ FinalRelease** on performance.zip and **0.98x** on modern_playthrough_155 (C++ Release:
+  1.10x on both; [final-release.md](final-release.md), "The benchmark");
+- **0.87x** on the 45 menu maps (C++ Release: 1.01x; the section below). Thread H rebuilds C++
 FinalRelease whenever the converted Factorio commit moves, and keeps its benchmark root
 (`scratch\configs\bench\cppfinal`) for every thread's runs.
 
@@ -33,6 +35,40 @@ The commands: `compiler\tests\run_tests.cmd`; `compiler\tests\spec.cmd [--releas
 [--release] --version` (the game builds and starts); `python -I programs\factorio\menu-checksums.py
 GAME_DIR` (the 45 menu maps' checksums, with test_mod removed from the game's mods);
 `programs\factorio\tests.cmd [--release] DIR` (the unit tests).
+
+## Game speed against C++ FinalRelease: the 45 menu maps (2026-11-04)
+
+The builds, all from Factorio 4c178a5b915 (2.1.25):
+- **C++ FinalRelease:** built on 2026-11-03 ([final-release.md](final-release.md)).
+- **kpp release:** B's plan-B game, kpp 0.2.170 (master 29007274) building factorio-in-kpp c9cda971
+  with `kpp factorio release`. ThinLTO, with FINAL_RELEASE's checks still in: not the final cell.
+- **C++ Release:** factorio-run.exe of 2026-10-31.
+
+The method:
+- the script: `python -I bench-menu-final.py 3 cppfinal kpprel cpprel`, in thread H's scratch
+  (`scratch\configs\bench`, with the roots of [final-release.md](final-release.md)'s benchmark);
+- every map 600 ticks with `--benchmark`, the three builds in turn with the order rotated by map and
+  by round, three rounds; the time is the game's own "Performed 600 updates in X ms";
+- each map's three runs are kept only if the machine's load was under 10% before them and other work
+  took under 10% of the machine during them, and they wait while another thread's measurement runs.
+  8 maps' runs were redone for that. The load before them ranged from 0.1% to 9.5%, 03:39–04:05 UTC.
+
+The total is the sum over the 45 maps of each map's median.
+
+| Build | 45 maps | per round | vs C++ FinalRelease |
+|---|---:|---|---:|
+| C++ FinalRelease | 11,943 ms | 12,180 / 11,952 / 11,777 | 1.00x |
+| kpp release | **10,444 ms** | 10,623 / 10,471 / 10,219 | **0.87x** |
+| C++ Release | 12,037 ms | 12,179 / 12,066 / 11,908 | 1.01x |
+
+What the per-map results show:
+- **Checksums:** no map's differs, between builds or rounds.
+- **kpp release** is faster than C++ FinalRelease on all 45 maps: from 0.79x (artillery, 242.8
+  against 305.5 ms; nauvis-river-bridge 0.80x, nauvis-power-up 0.80x) to 0.96x
+  (fulgora-recycling-hell, gleba-grotto; aquilo-starter 0.95x).
+- **C++ Release** is within 0.92x to 1.09x of FinalRelease per map and faster on 16 maps: on 600
+  ticks of a menu map, FinalRelease gains about 1% over Release. On the two big saves of
+  final-release.md it gains about 9%.
 
 ## kppc b96ea59a, Factorio 4c178a5b915 (2.1.25, 2026-10-31): current
 
@@ -51,8 +87,7 @@ every checksum differs from the 2.1.0 menu-checksums.txt, which C replaces with 
 ### Runtime: the 45 menu maps
 
 This measurement predates the rule that game speed is compared against C++ FinalRelease: it compares
-against C++ Release and C++ Debug. The next run of the 45 maps adds C++ FinalRelease as the
-reference. Against FinalRelease, see [final-release.md](final-release.md) (the two saves).
+against C++ Release and C++ Debug. The 45 maps against FinalRelease are in the section above.
 
 `python -I bench-menu.py 3 kppc-release=GAME cpp-release=cpp:C:\Factorio\bin\Releasex64vs2022\factorio-run.exe
 kppc-debug=GAME cpp-debug=cpp:C:\Factorio\bin\Debugx64vs2022\factorio-run.exe` (thread H's scratch
