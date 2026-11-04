@@ -1,0 +1,22 @@
+// spec: a class where a scalar is expected, an argument for a parameter that is no class or a copy-initialized variable's initializer, is the checker's error when the class has no implicit conversion operator to a scalar: an Item^ (a UniquePtr<Item>) for an int or an Item* parameter, a member function's included, or initializing an int or an Item* (C++ converts a class only through its conversion operators; the code generator stopped there as at a construct not supported yet)
+// error: class_to_scalar_without_conversion_is_error.kpp:15: error: a class (Item^) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: class_to_scalar_without_conversion_is_error.kpp:16: error: a class (Item^) does not convert to Item*: it has no implicit conversion operator to a scalar
+// error: class_to_scalar_without_conversion_is_error.kpp:18: error: a class (Item^) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: class_to_scalar_without_conversion_is_error.kpp:19: error: a class (Item^) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: class_to_scalar_without_conversion_is_error.kpp:20: error: a class (Item^) does not convert to Item*: it has no implicit conversion operator to a scalar
+extern "C" import "stdio.h";
+struct Item { int v = 3; };
+struct Counter { int total = 0; void add(int n) { total += n; } };
+void takeInt(int x) { printf("%d\n", x); }
+void takePtr(Item* p) { printf("%d\n", p->v); }
+int main()
+{
+  Item^ item = makeUnique<Item>();
+  takeInt(item);
+  takePtr(item);
+  Counter counter;
+  counter.add(item);
+  int count = item;
+  Item* raw = item;
+  return 0;
+}

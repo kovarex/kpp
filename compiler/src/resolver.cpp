@@ -17237,6 +17237,39 @@ struct GlobalScope::Impl
     return false;
   }
 
+  // Whether class a, or a base of it, has a conversion operator to a type that is no class, what the code generator
+  // takes for a class where a scalar is wanted (its conversionOperator): any such non-explicit one, explicit ones too
+  // with allowExplicit (a bool wanted), and an operator template, whatever it gives. True where this cannot tell (a
+  // class not defined, bases or a result not known): the code generator decides those.
+  bool hasScalarConversion(const Ty* a, bool allowExplicit, int baseDepth = 0)
+  {
+    if (baseDepth > 8)
+      return true;
+    Scope* s = classScopeOf(a);
+    ClassDecl* def = classDefinition(a);
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl || !def)
+      return true;
+    Subst subst = substFor(a);
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
+        continue;
+      if (!m->templateParams.empty())
+        return true;
+      const Ty* ft = declaredTypeOf(m, &subst, 0);
+      const Ty* result = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
+      if (!result || !result->isKnown() || types.isDependent(result) || result->kind != TyKind::Class)
+        return true;
+    }
+    std::vector<const Ty*> bases;
+    if (!directBases(a, def, bases))
+      return true;
+    for (const Ty* b : bases)
+      if (b->kind != TyKind::Class || hasScalarConversion(b, allowExplicit, baseDepth + 1))
+        return true;
+    return false;
+  }
+
   // The conversion function of class a (or of a base, whose arguments subst gets) to exactly the
   // type target, as a conversion-function-id names it: `commands.operator AllowedCommands::Enum()`.
   FunctionDecl* conversionFunctionTo(const Ty* a, const Ty* target, Subst& subst, int baseDepth = 0)
@@ -20976,6 +21009,46 @@ struct GlobalScope::Impl
           bindOverloadSet(s, fnTy->args[s.index]);
     }
 
+    // A class value where a scalar is wanted, an argument for a parameter that is no class or a copy-initialized
+    // variable's initializer (`takeInt(item)`, `Item* raw = item;` with a UniquePtr<Item>): C++ converts it only through
+    // a conversion operator of the class. Without any it can take the checker's error, where the code generator stopped
+    // at it as at a construct not supported yet. What the code generator takes is never one: a non-explicit conversion
+    // operator to a type that is no class, an explicit one for a bool (hasScalarConversion), a lambda without captures as
+    // a pointer to function. Only in code walked where it is written, not in a template's instance: there the walk's
+    // candidate need not be the code generator's callee (a CRTP base's `triggered(x)`, which the derived class's
+    // overload answers), and the code generator reports what it cannot convert, as before.
+    void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token)
+    {
+      if (probing || activeSubst || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) ||
+          types.isDependent(to))
+        return;
+      const Ty* f = types.unqualified(types.stripRef(from));
+      const Ty* t = types.unqualified(types.stripRef(to));
+      if (f->kind != TyKind::Class || f->isBraceList() || Impl::lambdaOf(f) || Impl::mentionsUnknown(f) || (f->decl && (f->decl->attributes & ATTR_Draft)))
+        return;
+      if (!t->isArithmetic() && t->kind != TyKind::Enum && t->kind != TyKind::Pointer)
+        return;
+      if (impl.hasScalarConversion(f, t->kind == TyKind::Bool))
+        return;
+      impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
+                                             ": it has no implicit conversion operator to a scalar");
+    }
+
+    // Each argument of a call of f (fnTy: its type), the single plain candidate whose parameters the arguments do not
+    // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not
+    // for a function template's call, nor one with an expansion among its arguments.
+    void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args)
+    {
+      if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy))
+        return;
+      std::vector<const Ty*> argTypes = argTypesOf(args);
+      if (argTypes.size() != args.size())
+        return;
+      for (size_t i = 0; i < args.size() && i < fnTy->args.size(); ++i)
+        if (args[i] && args[i]->kind != NodeKind::BraceInitExpr && argTypes[i] && argTypes[i]->kind != TyKind::Pack)
+          checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token);
+    }
+
     // `NamedFunction(move(parameters), create, Expression::computeConstant)`: the constructor of
     // class type t the arguments choose, its parameters binding the overload sets among them.
     void bindOverloadSetsToConstructor(const std::vector<OverloadSetArgument>& sets, const Ty* t, Span<Expr*> args)
@@ -21903,6 +21976,8 @@ struct GlobalScope::Impl
             c->templateArgCount = 0;
             if (!onlyPlainCandidate(d, l.overloads))
               n->resolved = nullptr;
+            else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
+              checkScalarArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
             record(n, types.unknown());
             return unknown(Why::Overload);
           }
@@ -22059,6 +22134,8 @@ struct GlobalScope::Impl
             c->templateArgCount = 0; // as for a name
             if (!onlyPlainCandidate(r.decl, r.overloads))
               m->resolved = nullptr;
+            else // `counter.add(item)` with a UniquePtr<Item>, as for a name
+              checkScalarArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
             record(m, types.unknown());
             return unknown(Why::Overload);
           }
@@ -23291,6 +23368,11 @@ struct GlobalScope::Impl
           checkTextVariable(v, declared);
           if (v->init && declared && !impl.containsAuto(declared))
             checkClosureTo(v->init, declared, v->token); // `Function<void()> f = [&] { ... text ... };`
+          // `int count = item;`, `Item* raw = item;`: a class copy-initializing a scalar (not `T x(args)` or a brace list,
+          // which take explicit conversion operators too).
+          if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind != NodeKind::BraceInitExpr &&
+              !(v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type))
+            checkClassToScalar(initTy, declared, v->init->token);
           bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
           if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
           {
