@@ -21618,6 +21618,19 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     auto it = sh.fileModule.find(f->file);
     level.push_back({f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0});
   }
+  // definedIn and declareLines get every definition's name, and requestDeclarations level 0's requests, under
+  // definitionsMutex (Emitter::addDefinition): a rehash of one stopped every emitter that added a definition
+  // meanwhile, 156.5 ms in the game's level 12 as the maps passed 262,144 names (docs/codegen-speed.md, step 6).
+  // Reserved for what the program will define: its own functions and startup globals and the function instances
+  // the resolver made, twice over (their lambdas' operators, thunks, constructors; the game's 162,129 made 257,344
+  // definitions), at most 2 million names. A program past the estimate rehashes as before.
+  {
+    size_t own = level.size() + startupCount;
+    size_t expected = std::min<size_t>(2 * (own + global.instantiationStats().functions), size_t(1) << 21);
+    sh.definedIn.reserve(expected);
+    sh.declareLines.reserve(expected);
+    sh.requestDeclarations.reserve(std::min<size_t>(own, size_t(1) << 21));
+  }
   auto emitOne = [&](Emitter& em, const Instantiation& item) { emitInstantiation(em, item); };
   auto nextLevel = [&]() { collectNextLevel(emitters, level); };
   std::atomic<bool> outOfMemory{false};
@@ -21908,27 +21921,45 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.erroring.insert(em->erroring.begin(), em->erroring.end());
   bool keepTexts = ((checkRebuild && !failed) || (keep && (!failed || keptAcrossErrors))) && sh.moduleCount > 1;
   gatherProgramFunctions(sh, emitters);
-  for (unsigned k = 0; k < sh.moduleCount; ++k)
+  // Each module's own texts finished, on the emitters' threads: a module's touch only its own data, and read the
+  // program's functions and the shared literals. On one thread this was 130 ms of the game's codegen
+  // (docs/codegen-speed.md, step 6).
+  std::atomic<unsigned> nextFinished{0};
+  std::atomic<bool> finishOutOfMemory{false};
+  auto finishModules = [&](unsigned)
   {
-    // A program piece the barrier does not have whole (Shared::latePieces).
-    if (sh.splitPieces && sh.barrierTaken)
+    try
     {
-      bool late = false;
-      for (size_t i = sh.barrierCounts[k]; i < sh.definitions[k].size() && !late; ++i)
-        late = sh.programOwned(sh.definitions[k][i].owner);
-      for (size_t i = sh.barrierOwned[k]; i < sh.ownedEntries[k].size() && !late; ++i)
-        late = sh.programOwned(sh.ownedEntries[k][i].owner);
-      sh.latePieces[k] = sh.latePieces[k] || late;
+      for (unsigned k; (k = nextFinished++) < sh.moduleCount;)
+      {
+        // A program piece the barrier does not have whole (Shared::latePieces).
+        if (sh.splitPieces && sh.barrierTaken)
+        {
+          bool late = false;
+          for (size_t i = sh.barrierCounts[k]; i < sh.definitions[k].size() && !late; ++i)
+            late = sh.programOwned(sh.definitions[k][i].owner);
+          for (size_t i = sh.barrierOwned[k]; i < sh.ownedEntries[k].size() && !late; ++i)
+            late = sh.programOwned(sh.ownedEntries[k][i].owner);
+          sh.latePieces[k] = sh.latePieces[k] || late;
+        }
+        // The definitions in the order SharedText puts entries: by their text.
+        std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
+                  [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
+        dropSharedLiterals(sh, sh.moduleDecls[k].entries);
+        if (keepTexts)
+          sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
+        appendOwnedEntries(sh, k, sh.moduleDecls[k].entries);
+        sh.moduleDecls[k].finish();
+      }
     }
-    // The definitions in the order SharedText puts entries: by their text.
-    std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
-              [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
-    dropSharedLiterals(sh, sh.moduleDecls[k].entries);
-    if (keepTexts)
-      sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
-    appendOwnedEntries(sh, k, sh.moduleDecls[k].entries);
-    sh.moduleDecls[k].finish();
-  }
+    catch (const std::bad_alloc&)
+    {
+      finishOutOfMemory = true; // (thrown again below, on this thread, as the loop on one thread threw it)
+    }
+  };
+  onThreads(std::max(1u, std::min(unsigned(emitters.size()), sh.moduleCount)), finishModules);
+  if (finishOutOfMemory)
+    throw std::bad_alloc();
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
