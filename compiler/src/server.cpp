@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <regex>
@@ -888,6 +889,17 @@ bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, 
   logLine("build %zu: no input changed, the previous build's output sent again", builds);
   exitCode = kept.exitCode;
   return true;
+}
+
+bool leftAsKept(const std::string& path)
+{
+  if (!kept.valid)
+    return false;
+  std::string want = std::filesystem::absolute(path).lexically_normal().string();
+  for (size_t i = 0; i < kept.left.size(); ++i)
+    if (std::filesystem::path(kept.left[i]).lexically_normal().string() == want)
+      return stampOf(kept.left[i]) == kept.stamps[i];
+  return false;
 }
 
 void buildDone(int exitCode)

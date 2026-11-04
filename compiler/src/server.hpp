@@ -58,6 +58,12 @@ int buildInThisProcess(CompileFunction compile, std::vector<std::string> args, s
 bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, const std::function<std::vector<std::string>()>& left,
                  bool headersUnchanged, int& exitCode);
 
+// Whether path, a file this server's last kept build left (replayBuild's left), is still as that
+// build left it: not removed, not written since. False for any other file, and outside a server.
+// Another server of the same outputs (Visual Studio's builds have --msvc-diagnostics, a terminal's do
+// not) writes them too: its objects are not this server's program.
+bool leftAsKept(const std::string& path);
+
 // --verify-incremental: after a replayed build, the server builds again from scratch (through
 // compile, with replay off) and compares what it printed and wrote: any difference is an error.
 bool replayDisabled();

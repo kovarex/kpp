@@ -3970,6 +3970,11 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       std::string base = kept.options.exe + "." + std::to_string(k);
       if (!kept.options.check && (kept.options.exe.empty() || !std::filesystem::exists(base + ".o", ec) || !std::filesystem::exists(base + ".hash", ec)))
         inFull("module " + std::to_string(k) + "'s object is missing");
+      // Written since by another build of the same outputs (another server: Visual Studio's and a
+      // terminal's): its objects hold that build's program, never this one's (2026-11-04: a build
+      // after the other server's linked the other's code, silently).
+      else if (!kept.options.check && (!leftAsKept(base + ".o") || !leftAsKept(base + ".hash")))
+        inFull("module " + std::to_string(k) + "'s object was written by another build");
     }
     kept.rebuildCodegen = codegenCanFollow && kept.codegen && (!kept.options.exe.empty() || kept.options.check);
     if (!kept.rebuildCodegen)

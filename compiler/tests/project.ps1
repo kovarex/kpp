@@ -41,6 +41,20 @@ try
     if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
     { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
   }
+  # Two compile servers of one cell's outputs (2026-11-04): Visual Studio's builds pass
+  # --msvc-diagnostics and have a server of their own, a terminal's builds another, and both write
+  # build\debug. Each build's program prints what its source says, whichever server built last: one
+  # linked the other's objects as its own (source "one", the program "two").
+  $main = Get-Content -Raw 'src\main.kpp'
+  foreach ($step in @(@('one', '--msvc-diagnostics'), @('one', ''), @('two', '--msvc-diagnostics'), @('one', ''), @('three', ''), @('two', '--msvc-diagnostics')))
+  {
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), ($main -replace 'Hello from kpp', "Hello $($step[0])"))
+    $output = Kpp (@($step[1] | Where-Object { $_ }) + @('--run'))
+    if ($code -ne 0 -or ($output -join "`n") -notmatch "(?m)^Hello $($step[0])$")
+    { Fail "two servers (the source says `"Hello $($step[0])`", built $(if ($step[1]) { 'with' } else { 'without' }) --msvc-diagnostics): exit $code`n$($output -join "`n")"; break }
+  }
+  [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), $main)
+  Kpp @('--msvc-diagnostics', '--stop-server') | Out-Null
   # A build with an option of its own has a server of its own: kpp --stop-server stops it with the
   # others and says which (2026-11-02).
   Kpp @('--verbose', '--run') | Out-Null
