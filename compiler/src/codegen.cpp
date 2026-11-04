@@ -607,6 +607,9 @@ namespace
       uint32_t definitionGeneration = UINT32_MAX;
     };
     std::unordered_map<uint64_t, DebugTypeText> debugTypes;
+    // --debug-info's globals (Emitter::debugGlobal), by their IR names' hash: the metadata of each,
+    // which the module whose text defines it gets (appendDebugTypes).
+    std::unordered_map<uint64_t, std::string> debugGlobals;
     uint32_t debugGeneration = 0;
     std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
@@ -656,11 +659,12 @@ namespace
     return used;
   }
 
-  // --debug-info with variables: the key of a type placeholder at text[at] (`!T` and 16 hex digits,
-  // after a blank, before a delimiter: Emitter::debugTypePlaceholder), or nothing.
-  static std::optional<uint64_t> debugTypeKeyAt(std::string_view text, size_t at)
+  // --debug-info with variables: the key of a placeholder at text[at] (`!` and its letter, `T` a
+  // type's, `G` a global's, and 16 hex digits, after a blank, before a delimiter:
+  // Emitter::debugTypePlaceholder, debugGlobal), or nothing.
+  static std::optional<uint64_t> debugTypeKeyAt(std::string_view text, size_t at, char letter = 'T')
   {
-    if (at == 0 || text[at - 1] != ' ' || at + 18 > text.size() || text.compare(at, 2, "!T") != 0 ||
+    if (at == 0 || text[at - 1] != ' ' || at + 18 > text.size() || text[at] != '!' || text[at + 1] != letter ||
         (at + 18 < text.size() && !strchr(",)} \n", text[at + 18])))
       return std::nullopt;
     uint64_t key = 0;
@@ -682,12 +686,61 @@ namespace
   // definitions: homed, Shared::debugHomes; every other class its declaration), each once: appended
   // to out with ids from nextDebugId on, in their keys' order (the text does not depend on the order
   // of emission), and every placeholder in out from `from` on replaced in place by its type's id,
-  // padded with blanks to the placeholder's width. Returns the id of the list of the classes
-  // defined here (0: none), the compile unit's retainedTypes (debugModuleTailFor): LLVM's CodeView
-  // writer emits a type only when something in its module names it, and a class's home may not.
-  static uint32_t appendDebugTypes(const std::unordered_map<uint64_t, Shared::DebugTypeText>& debugTypes, std::string& out, size_t from, uint32_t& nextDebugId,
-                                   const std::vector<uint64_t>* homed = nullptr)
+  // padded with blanks to the placeholder's width. Before them the globals the module's text defines
+  // (a definition's `!dbg` placeholder, `!G` and a key, anywhere in out: Emitter::debugGlobal), each
+  // one's metadata once. Returns the ids of the list of the classes defined here, the compile unit's
+  // retainedTypes (LLVM's CodeView writer emits a type only when something in its module names it,
+  // and a class's home may not), and of the list of those globals, its globals (0: none), for
+  // debugModuleTailFor.
+  struct DebugLists
   {
+    uint32_t retained = 0, globals = 0;
+  };
+  static DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr)
+  {
+    const std::unordered_map<uint64_t, Shared::DebugTypeText>& debugTypes = sh.debugTypes;
+    DebugLists lists;
+    auto listOf = [&](const std::vector<uint32_t>& ids) -> uint32_t
+    {
+      if (ids.empty())
+        return 0;
+      char head[24];
+      snprintf(head, sizeof head, "!%010u = !{", nextDebugId);
+      std::string line = head;
+      for (size_t i = 0; i < ids.size(); ++i)
+      {
+        char id[16];
+        snprintf(id, sizeof id, "!%010u", ids[i]);
+        line += std::string(i ? ", " : " ") + id;
+      }
+      out += line + "}\n";
+      return nextDebugId++;
+    };
+    std::unordered_map<uint64_t, uint32_t> globalIds;
+    std::vector<uint32_t> globalList;
+    size_t globalsEnd = out.size();
+    for (size_t at = out.find("!G"); at != std::string::npos && at < globalsEnd; at = out.find("!G", at + 2))
+      if (std::optional<uint64_t> key = debugTypeKeyAt(out, at, 'G'); key && !globalIds.count(*key))
+        if (auto it = sh.debugGlobals.find(*key); it != sh.debugGlobals.end() && !it->second.empty())
+        {
+          globalIds[*key] = nextDebugId;
+          globalList.push_back(nextDebugId);
+          size_t start = out.size();
+          out += it->second;
+          nextDebugId += renumberDebugIds(out.data() + start, it->second.size(), nextDebugId);
+        }
+    for (size_t at = out.find("!G"); at != std::string::npos && at < globalsEnd; at = out.find("!G", at + 2))
+      if (std::optional<uint64_t> key = debugTypeKeyAt(out, at, 'G'))
+      {
+        if (auto it = globalIds.find(*key); it != globalIds.end())
+        {
+          char text[24];
+          snprintf(text, sizeof text, "!%010u       ", it->second);
+          memcpy(&out[at], text, 18);
+        }
+        else if (at >= 7 && out.compare(at - 7, 7, ", !dbg ") == 0)
+          memset(&out[at - 7], ' ', 25); // (a global no emitter described: no attachment)
+      }
     std::set<uint64_t> keys;
     std::vector<uint64_t> work;
     auto defined = [&](uint64_t key) { return homed && std::binary_search(homed->begin(), homed->end(), key); };
@@ -731,20 +784,13 @@ namespace
           snprintf(text, sizeof text, "%-18s", "null"); // (a type no emitter made: none)
         memcpy(&out[at], text, 18);
       }
-    std::string retained;
+    std::vector<uint32_t> retained;
     for (uint64_t key : keys)
       if (auto it = ids.find(key); it != ids.end() && defined(key) && !debugTypes.at(key).definition.empty())
-      {
-        char id[16];
-        snprintf(id, sizeof id, "!%010u", it->second);
-        retained += (retained.empty() ? " " : ", ") + std::string(id);
-      }
-    if (retained.empty())
-      return 0;
-    char line[24];
-    snprintf(line, sizeof line, "!%010u = !{", nextDebugId);
-    out += line + retained + "}\n";
-    return nextDebugId++;
+        retained.push_back(it->second);
+    lists.retained = listOf(retained);
+    lists.globals = listOf(globalList);
+    return lists;
   }
 
   // --debug-info: what every module's line tables refer to (the definitions' `unit: !0`, `type: !2`).
@@ -761,16 +807,18 @@ namespace
   // DWARF's DW_AT_producer) is kppc with kpp's release version, without the commit and "+dirty": the
   // objects of one version are the same (docs/build.md, "Versions"). An unoptimized build's has
   // variables and types (Shared::fullDebugInfo): FullDebug.
-  static std::string debugModuleTailFor(const Target& target, bool full, uint32_t retained = 0)
+  static std::string debugModuleTailFor(const Target& target, bool full, DebugLists lists = {})
   {
     std::string tail = debugModuleTail;
     if (full)
     {
       const std::string kind = "emissionKind: LineTablesOnly";
-      char types[40] = "";
-      if (retained)
-        snprintf(types, sizeof types, ", retainedTypes: !%010u", retained);
-      tail.replace(tail.find(kind), kind.size(), std::string("emissionKind: FullDebug") + types);
+      char types[40] = "", globals[40] = "";
+      if (lists.retained)
+        snprintf(types, sizeof types, ", retainedTypes: !%010u", lists.retained);
+      if (lists.globals)
+        snprintf(globals, sizeof globals, ", globals: !%010u", lists.globals);
+      tail.replace(tail.find(kind), kind.size(), std::string("emissionKind: FullDebug") + types + globals);
     }
     std::string version = kppVersion();
     version.erase(std::min(version.find('+'), version.size()));
@@ -952,6 +1000,7 @@ namespace
       size_t line = 0;
       uint32_t block = 0, arg = 0;
       bool artificial = false;
+      bool defined = false; // its address is an instruction's in the body (a lambda's capture: its field), declared after it
     };
     std::vector<DebugVariable> debugVariables;
     struct DebugBlock
@@ -6523,11 +6572,46 @@ namespace
     // 1) held at address (its alloca, or the pointer a parameter passed by address is), whose value is
     // of type t (a reference's own: its slot holds the pointer), in the current block. Not one of a
     // body inlined into its caller (its instructions are the call's).
-    void debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg = 0, bool artificial = false)
+    void debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg = 0, bool artificial = false, bool defined = false)
     {
       if (!sh.fullDebugInfo || !debugFile || debugFile != currentFile || !inlining.empty() || !t || !t->isKnown() || types.isDependent(t))
         return;
-      debugVariables.push_back({address, std::move(name), debugType(t), at ? lineOf(at, currentFile) : 0, arg ? 0 : debugBlock, arg, artificial});
+      debugVariables.push_back({address, std::move(name), debugType(t), at ? lineOf(at, currentFile) : 0, arg ? 0 : debugBlock, arg, artificial, defined});
+    }
+
+    // --debug-info with variables: the attachment of global `name`'s definition line (`, !dbg ` and a
+    // placeholder, `!G` and the hash of its IR name), its metadata made here into Shared::debugGlobals:
+    // a DIGlobalVariableExpression of a DIGlobalVariable named as the IR names it (game::counter,
+    // Vector<int32>::empty: a static member's storage is Class::member, where the debugger reads its
+    // value), at its definition's line, of type t. Module assembly gives it to the module whose text
+    // defines the global (appendDebugTypes), its home in a debug build; a declaration has none
+    // (externalDeclarationOf).
+    std::string debugGlobal(const std::string& name, VariableDecl* def, const Ty* t)
+    {
+      if (!sh.fullDebugInfo || !def || !def->file || !t || !t->isKnown() || types.isDependent(t))
+        return std::string();
+      std::string bare = name.rfind("@\"", 0) == 0 ? name.substr(2, name.size() - 3) : name.substr(1);
+      uint64_t key = 14695981039346656037ull;
+      for (unsigned char c : bare)
+        key = (key ^ c) * 1099511628211ull;
+      char placeholder[24];
+      snprintf(placeholder, sizeof placeholder, "!G%016llx", (unsigned long long)key);
+      std::string text = debugId(0) + " = !DIGlobalVariableExpression(var: " + debugId(1) + ", expr: !DIExpression())\n" + debugId(1) +
+                         " = distinct !DIGlobalVariable(name: " + metadataString(bare) + ", scope: !0, file: " + debugFileOf(def->file) +
+                         ", line: " + std::to_string(lineOf(def, def->file)) + ", type: " + debugType(t) + ", isLocal: false, isDefinition: true)\n";
+      auto lock = sharedLock();
+      sh.debugGlobals[key] = std::move(text);
+      return std::string(", !dbg ") + placeholder;
+    }
+
+    // A variable's or parameter's name for the debugger, or "" for one without (a structured binding's).
+    std::string debugName(Decl* d)
+    {
+      if (d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+        return sym(static_cast<VariableDecl*>(d)->name.last().symbol);
+      if (d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name != UINT32_MAX)
+        return sym(static_cast<ParamDecl*>(d)->name);
+      return std::string();
     }
 
     // Class ct's layout as codegen made it, or null for one never laid out (a class the program only
@@ -6570,11 +6654,25 @@ namespace
       }
       std::string elements;
       auto element = [&](uint32_t id) { elements += (elements.empty() ? "" : ", ") + debugId(id); };
-      auto member = [&](const std::string& name, const std::string& type, uint64_t bits, uint64_t offset, const std::string& more)
+      // A member's access as written (`public:` in a class, `private:` in a struct); none for the
+      // default, which the tag gives (a class's members private, a struct's public).
+      auto access = [](Access a) -> std::string
+      {
+        return a == Access::Public ? "DIFlagPublic" : a == Access::Protected ? "DIFlagProtected" : a == Access::Private ? "DIFlagPrivate" : "";
+      };
+      auto flagsOf = [](std::initializer_list<std::string> flags)
+      {
+        std::string text;
+        for (const std::string& f : flags)
+          if (!f.empty())
+            text += (text.empty() ? ", flags: " : " | ") + f;
+        return text;
+      };
+      auto member = [&](const std::string& name, const std::string& type, uint64_t bits, uint64_t offset, const std::string& flags, const std::string& extra = "")
       {
         uint32_t id = next++;
         nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_member" + (name.empty() ? std::string() : ", name: " + metadataString(name)) +
-                 ", scope: " + debugId(self) + ", baseType: " + type + ", size: " + std::to_string(bits) + ", offset: " + std::to_string(offset) + more + ")\n";
+                 ", scope: " + debugId(self) + ", baseType: " + type + ", size: " + std::to_string(bits) + ", offset: " + std::to_string(offset) + flags + extra + ")\n";
         element(id);
       };
       if (info.polymorphic && !info.primaryBase && !info.isUnion && !info.fieldTypes.empty())
@@ -6584,14 +6682,16 @@ namespace
         uint32_t shape = next++, pointer = next++;
         nodes += debugId(shape) + " = !DIDerivedType(tag: DW_TAG_pointer_type, name: \"__vtbl_ptr_type\", baseType: null, size: " + std::to_string(slots * 64) + ")\n";
         nodes += debugId(pointer) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + debugId(shape) + ", size: 64)\n";
-        member("_vptr$" + (c->name.empty() ? std::string("?") : sym(c->name.last().symbol)), debugId(pointer), 64, 0, ", flags: DIFlagArtificial");
+        member("_vptr$" + (c->name.empty() ? std::string("?") : sym(c->name.last().symbol)), debugId(pointer), 64, 0, flagsOf({"DIFlagArtificial"}));
       }
-      for (const auto& [base, index] : info.bases)
-        if (index < info.fieldTypes.size())
+      // The bases in the order written, their access too where the layout's are the written ones.
+      for (size_t b = 0; b < info.bases.size(); ++b)
+        if (uint32_t index = info.bases[b].second; index < info.fieldTypes.size())
         {
           uint32_t id = next++;
           nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_inheritance, scope: " + debugId(self) + ", baseType: " + debugType(info.fieldTypes[index]) +
-                   ", offset: " + std::to_string(offsets[index] * 8) + ", extraData: i32 0)\n";
+                   ", offset: " + std::to_string(offsets[index] * 8) + flagsOf({info.bases.size() == c->bases.size() ? access(c->bases[b].access) : ""}) +
+                   ", extraData: i32 0)\n";
           element(id);
         }
       for (Decl* m : info.fieldDecls)
@@ -6610,7 +6710,7 @@ namespace
             continue;
           uint32_t composite = next++;
           debugComposite(inner, *innerInfo, composite, nullptr, nodes, next, depth + 1);
-          member("", debugId(composite), sizeOf(inner, nullptr) * 8, offset * 8, "");
+          member("", debugId(composite), sizeOf(inner, nullptr) * 8, offset * 8, flagsOf({access(m->access)}));
           continue;
         }
         auto* v = static_cast<VariableDecl*>(m);
@@ -6619,14 +6719,29 @@ namespace
         {
           const Ty* declared = global.typeOfDeclIn(m, args);
           if (declared && declared->isKnown() && !types.isDependent(declared))
-            member(name, debugType(declared), bits->second.second, offset * 8 + bits->second.first,
-                   ", flags: DIFlagBitField, extraData: i64 " + std::to_string(offset * 8));
+            member(name, debugType(declared), bits->second.second, offset * 8 + bits->second.first, flagsOf({"DIFlagBitField", access(m->access)}),
+                   ", extraData: i64 " + std::to_string(offset * 8));
           continue;
         }
         const Ty* mt = info.isUnion ? global.typeOfDeclIn(m, args) : info.fieldTypes[index];
         if (!mt || !mt->isKnown() || types.isDependent(mt))
           continue;
-        member(name, debugType(mt), sizeOf(mt, nullptr) * 8, offset * 8, "");
+        member(name, debugType(mt), sizeOf(mt, nullptr) * 8, offset * 8, flagsOf({access(m->access)}));
+      }
+      // Its static data members (CodeView's LF_STMEMBER): their storage is a global of the program,
+      // named Class::member (debugGlobal), where the debugger reads their values.
+      for (Decl* m : c->members)
+      {
+        if (m->kind != NodeKind::VariableDecl || !(m->flags & DF_Static) || (m->flags & (DF_Typedef | DF_Friend)) || m->builtin)
+          continue;
+        auto* v = static_cast<VariableDecl*>(m);
+        const Ty* st = v->name.empty() ? nullptr : global.typeOfDeclIn(m, args);
+        if (!st || !st->isKnown() || types.isDependent(st))
+          continue;
+        uint32_t id = next++;
+        nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_member, name: " + metadataString(sym(v->name.last().symbol)) + ", scope: " + debugId(self) +
+                 ", baseType: " + debugType(st) + flagsOf({"DIFlagStaticMember", access(m->access)}) + ")\n";
+        element(id);
       }
       std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
       uint32_t list = next++;
@@ -6721,6 +6836,19 @@ namespace
         return it->second;
       };
       currentRef = ", !dbg " + debugId(idFor(current));
+      // A variable's declaration, located at its own line and in its block: after the allocas, or for
+      // one whose address an instruction of the body computes (a capture's field), before the
+      // instruction after that one (a record goes before an instruction).
+      auto declare = [&](size_t i)
+      {
+        const DebugVariable& v = debugVariables[i];
+        return "    #dbg_declare(ptr " + v.address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(), " +
+               debugId(idFor({v.line ? v.line : declLine, v.block})) + ")\n";
+      };
+      std::vector<size_t> defined, pending;
+      for (size_t i = 0; i < debugVariables.size(); ++i)
+        if (debugVariables[i].defined)
+          defined.push_back(i);
       for (const std::string* part : {&allocas, &fn, &ehBlocks})
       {
         std::string_view text = *part;
@@ -6745,16 +6873,27 @@ namespace
             }
             continue;
           }
+          bool instruction = l.starts_with("  ") && !l.starts_with("    ") && !l.starts_with("  ;");
+          if (instruction && !pending.empty())
+          {
+            for (size_t i : pending)
+              out += declare(i);
+            pending.clear();
+          }
           out.append(l);
-          if (l.starts_with("  ") && !l.starts_with("    ") && !l.starts_with("  ;") && !l.ends_with("["))
+          if (instruction && !l.ends_with("["))
             out += currentRef;
           out += '\n';
+          if (instruction)
+            for (size_t i : defined)
+              if (l.size() > debugVariables[i].address.size() + 5 && l.substr(2, debugVariables[i].address.size()) == debugVariables[i].address &&
+                  l.substr(2 + debugVariables[i].address.size(), 3) == " = ")
+                pending.push_back(i);
         }
-        // Each variable's declaration after the allocas, located at its own line and in its block.
         if (part == &allocas)
           for (size_t i = 0; i < debugVariables.size(); ++i)
-            out += "    #dbg_declare(ptr " + debugVariables[i].address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(), " +
-                   debugId(idFor({debugVariables[i].line ? debugVariables[i].line : declLine, debugVariables[i].block})) + ")\n";
+            if (!debugVariables[i].defined)
+              out += declare(i);
       }
       out += "}\n";
       const std::string& file = debugFileOf(debugFile);
@@ -6886,9 +7025,14 @@ namespace
             fn += "  " + loaded + " = load ptr, ptr " + field + "\n";
             fn += "  store ptr " + loaded + ", ptr " + thisSlot + "\n";
             locals[nullptr] = {thisSlot, nullptr, false};
+            if (currentClassTy)
+              debugVariable("this", l, thisSlot, types.pointer(currentClassTy));
             continue;
           }
           locals[d] = {field, info.byRef[i] ? types.lref(info.fieldTypes[i]) : info.fieldTypes[i], info.byRef[i]};
+          // (by value the capture is its field; by reference the field holds its address: a reference)
+          if (std::string name = debugName(d); !name.empty())
+            debugVariable(name, d, field, info.byRef[i] ? types.lref(info.fieldTypes[i]) : info.fieldTypes[i], 0, false, true);
         }
         for (size_t i = 0; i < l->params.size() && i < callTy->args.size(); ++i)
         {
@@ -10571,6 +10715,8 @@ namespace
     static std::string externalDeclarationOf(std::string_view line, std::string_view& name)
     {
       static constexpr std::string_view mark = " = linkonce_odr ";
+      if (size_t debug = line.find(", !dbg !G"); debug != std::string_view::npos)
+        line = line.substr(0, debug); // (--debug-info's attachment is the definition's: Emitter::debugGlobal)
       size_t eq = line.find(mark);
       if (eq == std::string_view::npos || line.empty() || line[0] != '@' || line.find(", comdat") == std::string_view::npos)
         return {};
@@ -11343,12 +11489,11 @@ namespace
         if (sh.debugInfo)
           nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
       }
-      uint32_t retained = 0;
+      DebugLists lists;
       if (sh.fullDebugInfo)
-        retained = appendDebugTypes(sh.debugTypes, out, definitionsAt, nextDebugId,
-                                    (!sh.splitPieces || instancePiece) && k < sh.debugHomes.size() ? &sh.debugHomes[k] : nullptr);
+        lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId, (!sh.splitPieces || instancePiece) && k < sh.debugHomes.size() ? &sh.debugHomes[k] : nullptr);
       if (sh.debugInfo)
-        out += debugModuleTailFor(sh.target, sh.fullDebugInfo, retained);
+        out += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
       return out;
     }
 
@@ -13209,7 +13354,7 @@ namespace
         currentFile = saved;
         if (threadLocal)
           unsupported(at, "a thread_local reference");
-        decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat\n";
+        decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat" + debugGlobal(name, def, t) + "\n";
         if (value)
           emitGlobalConstructor(v, name, t, value, at, false, def);
         return name;
@@ -13255,7 +13400,7 @@ namespace
       decls += "$" + name.substr(1) + " = comdat any\n";
       decls += name + " = linkonce_odr " + (threadLocal ? "thread_local " : "") +
                (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
-               alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
+               alignSuffix(st, variableAlignment(def, def, at), at) + debugGlobal(name, def, t) + "\n";
       if (constructed)
         emitGlobalConstructor(v, name, st, value, at, threadLocal, def);
       return name;
@@ -21216,8 +21361,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     std::sort(part->begin(), part->end());
     part->erase(std::unique(part->begin(), part->end()), part->end());
   }
-  std::string tail = sh.debugInfo ? debugModuleTailFor(sh.target, sh.fullDebugInfo) : std::string();
-  size_t size = prefix.size() + 1 + tail.size();
+  size_t size = prefix.size() + 1 + (sh.debugInfo ? 1024 : 0); // (and the tail)
   for (const std::vector<std::string_view>* part : {&types, &lines, &owned, &declarations})
     for (std::string_view text : *part)
       size += text.size() + 1;
@@ -21249,9 +21393,11 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     if (sh.debugInfo)
       nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
   }
+  DebugLists lists;
   if (sh.fullDebugInfo)
-    appendDebugTypes(sh.debugTypes, out, definitionsAt, nextDebugId);
-  out += tail;
+    lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId);
+  if (sh.debugInfo)
+    out += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
   return out;
 }
 
@@ -21747,11 +21893,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     if (sh.fullDebugInfo)
       e.homeDebugClasses(); // (one module: every class is defined in it)
     result.ir.append(std::move(e.body.text));
-    uint32_t retained = 0;
+    DebugLists lists;
     if (sh.fullDebugInfo)
-      retained = appendDebugTypes(sh.debugTypes, result.ir, bodyAt, nextDebugId, &sh.debugHomes[0]);
+      lists = appendDebugTypes(sh, result.ir, bodyAt, nextDebugId, &sh.debugHomes[0]);
     if (sh.debugInfo)
-      result.ir += debugModuleTailFor(sh.target, sh.fullDebugInfo, retained);
+      result.ir += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
     if (failed)
     {
       std::unordered_set<std::string> stubbed;

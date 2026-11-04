@@ -94,14 +94,24 @@ function Summary([string]$pdb)
     if ($current) { $script:records[$current].Add($line) }
   }
   $out = New-Object System.Collections.Generic.List[string]
+  # inspect's and its lambda's variables, each function's lines in the order the PDB has them, the
+  # functions in their names' order (where a module puts them depends on the module count).
   $symbols = @(& $pdbutil dump -symbols $pdb)
+  $functions = @{}
   $depth = 0
+  $lines = $null
   for ($i = 0; $i -lt $symbols.Count; ++$i)
   {
     $line = $symbols[$i]
     if ($depth -eq 0)
     {
-      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect\(.*\))`') { $out.Add("function $($Matches[1])"); $depth = 1 }
+      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\)))`')
+      {
+        $lines = New-Object System.Collections.Generic.List[string]
+        $functions[$Matches[1]] = $lines
+        $lines.Add("function $($Matches[1])")
+        $depth = 1
+      }
       continue
     }
     if ($line -match '\| S_LOCAL \[size = \d+\] `(.*)`')
@@ -110,12 +120,13 @@ function Summary([string]$pdb)
       if ($symbols[$i + 1] -match 'type=(0x[0-9A-F]+(?: \(.*\))?), flags = (\w+)')
       {
         $kind = if ($Matches[2] -eq 'param') { 'parameter' } else { 'local' }
-        $out.Add(('  ' * $depth) + "$kind $name $(TypeName $Matches[1])")
+        $lines.Add(('  ' * $depth) + "$kind $name $(TypeName $Matches[1])")
       }
     }
-    elseif ($line -match '\| S_BLOCK32') { $out.Add(('  ' * $depth) + 'block'); ++$depth }
-    elseif ($line -match '\| S_END') { if (--$depth -eq 0) { break } }
+    elseif ($line -match '\| S_BLOCK32') { $lines.Add(('  ' * $depth) + 'block'); ++$depth }
+    elseif ($line -match '\| S_END') { --$depth }
   }
+  foreach ($name in ($functions.Keys | Sort-Object)) { $out.AddRange($functions[$name]) }
   foreach ($name in 'game::Point', 'game::Shape', 'game::Square', 'Flags', 'Value', 'Vector<int32>', 'game::Mode', 'game::Mask')
   {
     $pattern = 'LF_(CLASS|STRUCTURE|UNION|ENUM) \[size = \d+\] `' + [regex]::Escape($name) + '`'
@@ -130,12 +141,22 @@ function Summary([string]$pdb)
     {
       $f = $fields[$k]
       if ($f -match '- LF_VFUNCTAB') { $out.Add('  vtable pointer') }
-      elseif ($f -match '- LF_BCLASS' -and $fields[$k + 1] -match 'type = (0x[0-9A-F]+), offset = (\d+)') { $offset = $Matches[2]; $out.Add("  base $(TypeName $Matches[1]) at $offset") }
-      elseif ($f -match '- LF_MEMBER \[name = `(.*)`, Type = (0x[0-9A-F]+(?: \([^)]*\))?), offset = (\d+)') { $member = $Matches[1]; $offset = $Matches[3]; $out.Add("  member $member $(TypeName $Matches[2]) at $offset") }
+      elseif ($f -match '- LF_BCLASS' -and $fields[$k + 1] -match 'type = (0x[0-9A-F]+), offset = (\d+), attrs = (\w+)') { $offset = $Matches[2]; $access = $Matches[3]; $out.Add("  base $(TypeName $Matches[1]) at $offset, $access") }
+      elseif ($f -match '- LF_MEMBER \[name = `(.*)`, Type = (0x[0-9A-F]+(?: \([^)]*\))?), offset = (\d+), attrs = (\w+)') { $member = $Matches[1]; $offset = $Matches[3]; $access = $Matches[4]; $out.Add("  member $member $(TypeName $Matches[2]) at $offset, $access") }
+      elseif ($f -match '- LF_STMEMBER \[name = `(.*)`, type = (0x[0-9A-F]+(?: \([^)]*\))?), attrs = (\w+)') { $member = $Matches[1]; $access = $Matches[3]; $out.Add("  static member $member $(TypeName $Matches[2]), $access") }
       elseif ($f -match '- LF_ENUMERATE \[(.*) = (-?\d+)\]') { $out.Add("  $($Matches[1]) = $($Matches[2])") }
     }
   }
-  $udts = @(& $pdbutil dump -globals $pdb | ForEach-Object { if ($_ -cmatch 'S_UDT \[size = \d+\] `(u?int(8|16|32|64))`') { $Matches[1] } } | Sort-Object -CaseSensitive -Unique)
+  $globals = @(& $pdbutil dump -globals $pdb)
+  $variables = @()
+  for ($i = 0; $i -lt $globals.Count; ++$i)
+  {
+    if ($globals[$i] -notmatch 'S_GDATA32 \[size = \d+\] `(game::counter|game::Shape::made)`') { continue }
+    $name = $Matches[1]
+    if ($globals[$i + 1] -match 'type = (0x[0-9A-F]+(?: \([^)]*\))?)') { $variables += "global $name $(TypeName $Matches[1])" }
+  }
+  foreach ($variable in ($variables | Sort-Object)) { $out.Add($variable) }
+  $udts = @($globals | ForEach-Object { if ($_ -cmatch 'S_UDT \[size = \d+\] `(u?int(8|16|32|64))`') { $Matches[1] } } | Sort-Object -CaseSensitive -Unique)
   $out.Add("typedefs $($udts -join ' ')")
   return $out
 }
@@ -148,7 +169,7 @@ foreach ($modules in '1', '64')
   & $Kppc --quiet --debug-info --modules $modules --exe $exe (Join-Path $PSScriptRoot 'debuginfo\values.kpp')
   if ($LASTEXITCODE -ne 0) { "FAIL debug info: values.kpp at $modules module(s): compile"; exit 1 }
   $printed = & $exe
-  if ("$printed" -ne '23') { "FAIL debug info: values.kpp at $modules module(s) printed $printed"; exit 1 }
+  if ("$printed" -ne '27') { "FAIL debug info: values.kpp at $modules module(s) printed $printed"; exit 1 }
   $summary = @(Summary ([IO.Path]::ChangeExtension($exe, '.pdb')))
   if (Compare-Object $expectedValues $summary -SyncWindow 0)
   {

@@ -29,8 +29,8 @@ with `/DEBUG` already, for the crash report's function names).
   class with its members, bases and vtable pointer as kppc lays it out, named as kppc's IR names it
   (`game::Entity`, `Vector<int32>`). An optimized build with `--debug-info` (build.kpp's fastdebug)
   keeps the line tables alone (`emissionKind: LineTablesOnly`).
-- Not covered: the startup functions of global initializers (no lines); globals, static members and
-  a lambda's captures (no variables yet).
+- Not covered: the startup functions of global initializers (no lines); a function's static locals
+  (globals of the program, not described yet).
 
 `tests\debuginfo.ps1` (run by run_tests.cmd) builds `tests\debuginfo\lines.kpp`, runs it and checks
 the lines of each of its functions in the PDB (llvm-pdbutil) against `lines.expected`, then
@@ -45,14 +45,23 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   at its declaration's line, in the lexical block of the block statement it is declared in (a
   function's own body is the function's scope, as clang has it): the debugger shows a block's
   variables where its code is. A variable's address is its alloca, or the pointer a parameter
-  passed by address is; a reference's type is the reference, its slot holding the pointer.
+  passed by address is; a reference's type is the reference, its slot holding the pointer. A
+  lambda's captures are its operator's variables by their names: one by value is its field of the
+  closure, one by reference that field's reference (`int&`), a captured `this` the enclosing class's
+  pointer.
+- **Globals**: each global of the program by the name kppc's IR gives it (`game::counter`,
+  `PrototypeList<EntityPrototype>::sorted`; a static data member's storage is `Class::member`), where
+  the debugger reads it: the module whose text defines it (its home, in a debug build) describes it
+  (S_GDATA32, S_GTHREAD32 for a thread_local one).
 - **Basic types** as CodeView has them, without names of their own (`int`, `__int64`, `unsigned
   char`, `double`), each of kpp's integers a typedef of its name too: the PDB's S_UDT `int32`,
   `uint8`, which a natvis rule's `$T1` parses.
 - **Pointers, references, const, arrays** (their length), function pointers.
 - **Enums** with their enumerators and underlying type.
 - **Classes** with their data members at their offsets in kppc's own layout (a bit field at its
-  bits), their bases at theirs, a polymorphic class's vtable pointer (CodeView's LF_VFUNCTAB), an
+  bits), each with its access as written (`private:` in a class's public part, and so on), their
+  static data members (LF_STMEMBER), their bases at their offsets with their access, a polymorphic
+  class's vtable pointer (CodeView's LF_VFUNCTAB), an
   anonymous struct's or union's members as the enclosing class's (as MSVC's PDBs list them:
   String's `heapChars`). A class or enum is named as kppc's IR names it, the whole spelling
   (TypeTable::toString, qualified: `game::Entity`, `Vector<Vector<int32>>`, every template argument
@@ -204,3 +213,10 @@ program has is laid out) for their home's instance piece (a debug build's progra
 assembled earlier, so they declare every class). A compile server's build makes a type's text
 again when it first names the type (an edited enum's enumerators), and keeps the texts its kept
 definitions name.
+
+A global's definition line ends with `, !dbg` and its placeholder, `!G` and the hash of its IR name
+(`Emitter::debugGlobal`, which makes its DIGlobalVariableExpression into Shared::debugGlobals); a
+module whose text holds that line appends the global's metadata and lists it in its compile unit's
+`globals`, and the external declaration other modules get (`externalDeclarationOf`) has none. A
+lambda's capture is declared (`#dbg_declare`) right after the instruction that computes its field's
+address, before the next instruction, not with the allocas.

@@ -4,35 +4,42 @@ function inspect(const game::Point&, int32, game::Mode)
   parameter mode game::Mode
   local sum int
   local mask game::Mask
+  local scaled inspect::__lambda_69_0
   local values Vector<int32>
   block
     local half double
     local flags Flags
     local square game::Square
     local value Value
+function inspect::__lambda_69_0::operator()(int32)
+  parameter k int
+  local sum int
+  local mask game::Mask&
 class game::Point, 8 bytes
-  member x int at 0
-  member y int at 4
+  member x int at 0, public
+  member y int at 4, public
 class game::Shape, 16 bytes
   vtable pointer
-  member id int at 8
-class game::Square, 32 bytes
-  base game::Shape at 0
-  member side int at 16
-  member next game::Shape* at 24
+  member id int at 8, public
+  static member made int, public
+class game::Square, 40 bytes
+  base game::Shape at 0, public
+  member side int at 16, public
+  member next game::Shape* at 24, public
+  member secret int at 32, private
 class Flags, 12 bytes
-  member on bool bits 1 at 0 at 0
-  member level unsigned bits 3 at 0 at 4
-  member whole int at 8
-  member part float at 8
+  member on bool bits 1 at 0 at 0, public
+  member level unsigned bits 3 at 0 at 4, public
+  member whole int at 8, public
+  member part float at 8, public
 class Value, 16 bytes
-  member __tag Value::Tag at 0
-  member __alt_Integer int at 8
-  member __alt_Real double at 8
+  member __tag Value::Tag at 0, public
+  member __alt_Integer int at 8, public
+  member __alt_Real double at 8, public
 class Vector<int32>, 24 bytes
-  member items int* at 0
-  member length unsigned __int64 at 8
-  member allocated unsigned __int64 at 16
+  member items int* at 0, public
+  member length unsigned __int64 at 8, public
+  member allocated unsigned __int64 at 16, public
 enum game::Mode, unsigned char
   Off = 0
   On = 1
@@ -40,4 +47,6 @@ enum game::Mode, unsigned char
 enum game::Mask, unsigned __int64
   None = 0
   All = 18446744073709551615
+global game::counter int
+global game::Shape::made int
 typedefs int16 int32 int64 int8 uint16 uint32 uint64 uint8
