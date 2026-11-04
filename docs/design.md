@@ -2640,14 +2640,14 @@ byte for byte unless a difference is shown to be a fix.
 3. macOS arm64, with Linux arm64 alongside: one AArch64 lowering serves both.
 4. macOS x86-64.
 
-| Target | Triple | Object, linker | C calling convention | Exceptions | Tested on |
-|---|---|---|---|---|---|
-| Windows x64 (default) | `x86_64-pc-windows-msvc` | COFF, lld-link | MS x64 | SEH (today's) | this machine, CI |
-| Linux x86-64 | `x86_64-unknown-linux-gnu` | ELF, ld.lld | SysV AMD64 | Itanium tables, kpp's personality | WSL here, CI ubuntu |
-| FreeBSD x86-64 | `x86_64-unknown-freebsd14` | ELF, ld.lld | SysV AMD64 | the same | NFS, or a FreeBSD VM (Q3) |
-| Linux arm64 | `aarch64-unknown-linux-gnu` | ELF, ld.lld | AAPCS64 | the same | CI ubuntu arm64, qemu-user in WSL |
-| macOS arm64 | `arm64-apple-macosx11.0.0` | Mach-O, ld64 (or ld64.lld) | Apple's AAPCS64 | the same, compact unwind | CI macOS arm64 (Q5) |
-| macOS x86-64 | `x86_64-apple-macosx10.15.0` | Mach-O, ld64 | SysV AMD64 | the same | CI macOS x86-64 (Q5) |
+| Target | Triple | Object, linker | C calling convention | Exceptions | Oldest system (Q6) | Tested on |
+|---|---|---|---|---|---|---|
+| Windows x64 (default) | `x86_64-pc-windows-msvc` | COFF, lld-link | MS x64 | SEH (today's) | Windows 10 | this machine, CI |
+| Linux x86-64 | `x86_64-unknown-linux-gnu` | ELF, ld.lld | SysV AMD64 | Itanium tables, kpp's personality | glibc 2.31 (Debian 11, Ubuntu 20.04) | WSL here, CI ubuntu |
+| FreeBSD x86-64 | `x86_64-unknown-freebsd14` | ELF, ld.lld | SysV AMD64 | the same | FreeBSD 14 | NFS, or a FreeBSD VM (Q3) |
+| Linux arm64 | `aarch64-unknown-linux-gnu` | ELF, ld.lld | AAPCS64 | the same | glibc 2.31 | CI ubuntu arm64, qemu-user in WSL |
+| macOS arm64 | `arm64-apple-macosx11.0.0` | Mach-O, ld64 (or ld64.lld) | Apple's AAPCS64 | the same, compact unwind | macOS 11.0 | CI macOS arm64 (Q5) |
+| macOS x86-64 | `x86_64-apple-macosx10.15.0` | Mach-O, ld64 | SysV AMD64 | the same | macOS 10.15 | CI macOS x86-64 (Q5) |
 
 ### What exists (surveyed 2026-10-31 on a52cb2a8)
 
@@ -3315,8 +3315,14 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **Q5:** (to decide when macOS comes, kovarex 2026-11-01) CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
   10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
   runner.
-- **Q6:** The minimum macOS (11.0 for arm64 and 10.15 for x86-64 proposed) and glibc (2.31,
-  Ubuntu 20.04, proposed) versions to support.
+- **Q6:** decided 2026-11-04 (kovarex: "the targets are ok as they are"): the oldest systems a
+  kpp program runs on are Windows 10 x64, FreeBSD 14, glibc 2.31 (Debian 11, Ubuntu 20.04; Steam's
+  Linux runtime "sniper" is Debian 11) and, when macOS work starts, macOS 11.0 arm64 and 10.15
+  x86-64 (the target table above). Factorio states Windows 10, OS X 10.10 and "Linux (tarball
+  installation)" with no glibc (factorio.com/buy, Steam, 2026-11-04). The Linux sysroot is copied
+  from WSL's Ubuntu 24.04 today, so programs need glibc 2.39 until a pinned Debian 11 sysroot
+  replaces it (tools/sysroot/linux.ps1, as freebsd.ps1 is: a pinned download checked by its
+  SHA-256).
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -3343,7 +3349,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
-- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
