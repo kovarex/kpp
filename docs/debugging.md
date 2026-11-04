@@ -160,7 +160,8 @@ kpp's own edit loop on the game (its compile server; link.exe's `/time+`): a cha
 (0.76 s as the first edit after the server started), a grown function 0.51 to 0.62 s, a new
 function and its removal 0.36 s each. Every link stayed incremental.
 
-Two more levers were measured, neither taken (relative to one section per module):
+Two more levers were measured, neither taken (relative to one section per module; kovarex,
+2026-11-04: "Ok, with E5, leave it"):
 - CodeView function names without the parameter list (`Map<...>::erase`): 0.35 s, -5%. Overloads
   would share a name in the PDB, so a crash report's stack could not tell them apart.
 - Short linkage names (`k` and 16 hex digits): 0.34 s, -8%. Link errors, `--emit-llvm` and every
