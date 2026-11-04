@@ -1,4 +1,5 @@
 #include "run.hpp"
+#include "target.hpp"
 
 #include <windows.h>
 #include <algorithm>
@@ -215,6 +216,30 @@ int runProgram(int argc, char** argv, int runIndex)
     return 2;
   }
 
+  // --no-run: build only, and name the executable. A program for another --target does not run here:
+  // without --no-run that is an error before the build, never a build that silently runs nothing.
+  auto noRunAt = std::find(options.begin(), options.end(), "--no-run");
+  bool noRun = noRunAt != options.end();
+  if (noRun)
+    options.erase(noRunAt);
+  Target target;
+  for (size_t k = 0; k + 1 < options.size(); ++k)
+    if (options[k] == "--target")
+    {
+      std::string why;
+      if (!targetNamed(options[k + 1], target, why))
+      {
+        fprintf(stderr, "--target %s %s\n", options[k + 1].c_str(), why.c_str());
+        return 2;
+      }
+    }
+  if (!target.windows() && !noRun)
+  {
+    fprintf(stderr, "kppc %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
+            argv[runIndex], target.name.c_str());
+    return 2;
+  }
+
   std::error_code ec;
   uint64_t h = 1469598103934665603ull;
   auto mix = [&](const std::string& bytes)
@@ -304,6 +329,11 @@ int runProgram(int argc, char** argv, int runIndex)
   {
     fprintf(stderr, "kppc %s: the build reported an error; not running it\n", argv[runIndex]);
     return 1;
+  }
+  if (noRun)
+  {
+    printf("kppc %s: built %s (not run: --no-run)\n", argv[runIndex], exe.c_str());
+    return 0;
   }
   return runAndWait(exe, programArgs);
 }

@@ -233,7 +233,9 @@ namespace
             "  --tests       build the program's `test \"name\" { }` declarations with the test runner as main\n"
             "                (config::tests is true; docs/design.md 8.6)\n"
             "  --test F... [-- ARGS]  build the tests of F (files or directories) with the options before --test\n"
-            "                and run them; ARGS go to the runner: --filter TEXT, --list, --report FILE\n");
+            "                and run them; ARGS go to the runner: --filter TEXT, --list, --report FILE\n"
+            "  --no-run      with --run or --test: build only, and name the executable (one for another\n"
+            "                --target, which this machine does not run, needs it)\n");
   }
 
   // `kpp --version` (docs/build.md, "Versions"): the version and commit kppc was built from, the
@@ -4071,7 +4073,7 @@ namespace
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
-    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}};
+    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--no-run", 0}};
 }
 
 int compileOptionValues(const std::string& arg)
@@ -4274,6 +4276,11 @@ int compile(int argc, char** argv)
     }
     else if (arg == "--sysroot" && i + 1 < argc)
       options.sysroot = argv[++i];
+    else if (arg == "--no-run")
+    {
+      fprintf(stderr, "--no-run goes with --run or --test\n");
+      return 2;
+    }
     else if (arg == "--keep-going")
       options.keepGoing = true;
     else if (arg == "--stub-missing")

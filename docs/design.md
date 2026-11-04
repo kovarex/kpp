@@ -2393,7 +2393,11 @@ cache keeps the 100 most recently used directories. A run holds its directory's 
 deletable by no one else, from before its build until its program ends, and the time of last use is
 that file's; the cleanup, at the end of each run, deletes a directory only while it holds its lock
 file alone (a run that finds it held waits, then makes the directory again), and one from before the
-lock file only once it has been unchanged for an hour (tests\runcache.ps1). The build is a
+lock file only once it has been unchanged for an hour (tests\runcache.ps1). `--no-run` among the
+options builds only and names the executable (`kppc --run: built PATH (not run: --no-run)`); a
+program for another `--target`, which this machine does not run, is an error without it, before
+any build (2026-11-04: CI builds the libraries' tests for FreeBSD with `kpp --target freebsd
+--no-run --test` and runs them in a FreeBSD VM). The build is a
 kppc process of its own (a build ends its process when done), a client of the compile server: it
 starts the server when none runs, and the server stops after an hour idle (one per kppc binary,
 directory and argument list; 25-48 MB each for small programs). `--no-server` among the options
