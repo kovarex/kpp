@@ -5295,6 +5295,31 @@ struct GlobalScope::Impl
     std::erase_if(layoutAsserts, [&](const LayoutAssert& a) { return a.unit && units.count(a.unit); });
   }
 
+  // A declaration removed from a kept build (a compile server's, step 4: unindexFunction,
+  // unindexMember): its walk's recorded reads go, and the errors its walk and its declared type
+  // reported with them. Its walk is never run again to take them back, as a changed body's is, so a
+  // removed function's error stayed in every later build until the server ended (E, 2026-11-04).
+  void forgetUnitsOf(const Decl* d)
+  {
+    std::unordered_set<const void*> units;
+    std::unique_ptr<Dependencies> walk; // (freed once its errors are forgotten: they name it)
+    {
+      uintptr_t key = reinterpret_cast<uintptr_t>(d) + UNIT_Walk;
+      DeclDependencyShard& shard = declDependencies[(key >> 6) % std::size(declDependencies)];
+      std::lock_guard lock(shard.mutex);
+      if (auto it = shard.map.find(key); it != shard.map.end())
+      {
+        walk = std::move(it->second);
+        shard.map.erase(it);
+      }
+    }
+    if (walk)
+      units.insert(walk.get());
+    if (Dependencies* type = d->typeDependencies.load(std::memory_order_acquire))
+      units.insert(type);
+    forgetErrorsOf(units);
+  }
+
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
@@ -27169,11 +27194,7 @@ void GlobalScope::unindexFunction(FunctionDecl* f)
         shard.map.erase(it);
     }
   }
-  // Its walk's recorded reads go with it.
-  uintptr_t key = reinterpret_cast<uintptr_t>(f) + Impl::UNIT_Walk;
-  Impl::DeclDependencyShard& shard = impl->declDependencies[(key >> 6) % std::size(impl->declDependencies)];
-  std::lock_guard lock(shard.mutex);
-  shard.map.erase(key);
+  impl->forgetUnitsOf(f);
   impl->forgetMergedOverloads();
 }
 
@@ -27194,11 +27215,7 @@ void GlobalScope::unindexMember(VariableDecl* v)
         shard.map.erase(it);
     }
   }
-  // Its walk's recorded reads go with it (its initializer's).
-  uintptr_t key = reinterpret_cast<uintptr_t>(v) + Impl::UNIT_Walk;
-  Impl::DeclDependencyShard& shard = impl->declDependencies[(key >> 6) % std::size(impl->declDependencies)];
-  std::lock_guard lock(shard.mutex);
-  shard.map.erase(key);
+  impl->forgetUnitsOf(v); // (its initializer's walk)
 }
 
 void GlobalScope::indexMembers(const std::vector<VariableDecl*>& added)
