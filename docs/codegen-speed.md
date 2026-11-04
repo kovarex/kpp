@@ -647,6 +647,32 @@ instances.
   against 47.1 s on 2.63 s. The kernel's wake-ups were about a sixth of the waits. The rest is
   queueing, on definitionsMutex (14.9 s) and on the shared lock in structFor (11.4 s) first: item 6's
   next levers.
+- **Those next levers, measured: no gain (the same day; not landed).** Each was added on the spin
+  locks at 9ce78be2, and each one's objects were identical to the spin locks'. The patches are in thread
+  D's scratch: `cg\lockdefs.py`, `lockglobals.py`, `lockstruct.py`.
+  - Per-emitter definitions: an emitter keeps its definitions during a level, and they are added once
+    its threads are joined, so no definitionsMutex while emitting.
+  - Published globals: a defined global's name and thread-local initializer go in FinalAnswers, so an
+    emitter's first use of one takes no shared lock.
+  - Canonical layouts: a layout is published under its canonical class once its build returns, at any
+    lock depth, and a new spelling is found there without the lock. structFor's locked lookups went
+    from 77,650 to 35,949, and 25,738 of those are the builds.
+
+  The probe's waits fell from 46.1 s to 32.6, 33.4 and 31.1 s, and its acquisitions from 1.29 to 0.97
+  million. Codegen did not get faster. Paired clean builds, 3 interleaved rounds on a quiet machine,
+  the undisturbed ones (`cg\lockways-measure.ps1`):
+
+  | kppc | codegen |
+  |---|---:|
+  | the spin locks | 4.39 to 4.59 s |
+  | + per-emitter definitions | 4.44 s |
+  | + published globals | 4.48 to 4.57 s |
+  | + canonical layouts | 4.47 to 4.61 s |
+
+  So after the spin locks, the threads' waits are not what limits codegen, as step 1's trial of
+  per-emitter definitions had found. Where its time goes is the next measurement. Candidates: the
+  levels' tails, the work between levels, and contention the probe does not see (the type table, the
+  heap).
 
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
@@ -733,7 +759,7 @@ gains overlap: 3 and 4 both shorten the back end.
 | 3 | `--debug-info` builds with homes and the back end in kpp | **done**: −2.6 to −2.9 s measured (estimate −2.3 s) | medium | D, B reviewed | 1a8e88c5, 8b5c902c; below |
 | 4 | streaming (step 4: done, P1 4d884644 and P2 91671241, measured −2.4 s; clang's processes not streamed) | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
 | 5 | the debug link: `/DEBUG:FASTLINK` | **none**: this link.exe (MSVC 14.44) no longer supports it ("LNK4315: /DEBUG:FASTLINK is no longer supported. Using /DEBUG:FULL instead"); both links 1.54–1.59 s, the same 207 MB PDB (cg\linkfast.ps1) | — | — | struck |
-| 6 | codegen's locks, second round: mutexes that spin before they sleep (**done**, step 5: codegen −0.2 to −0.3 s), then short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds; after step 5, 47.1 s on 2.63 s |
+| 6 | codegen's locks, second round: mutexes that spin before they sleep (**done**, step 5), then shorter holds (per-emitter definitions, published globals, layouts found by their canonical class without the shared lock: measured, no gain, step 5) | **−0.2 to −0.3 s** of codegen measured (the estimate was −0.5 to −1.5 s) | medium | D | before: 4.94 s at 70 s CPU, 62.6 s of waits on 3.4 s of holds; after the spin locks: 47.1 s of waits on 2.63 s, and cutting a third of them gained no codegen time |
 | 7 | FastISel lowering Win64 arguments, upstream in LLVM | −0.3 to −0.5 s | an LLVM patch and a release | D | SelectionDAG is 13 s of the back end's 149 s CPU |
 
 **Item 3, done (thread D, 2026-11-02; B reviewed).**
