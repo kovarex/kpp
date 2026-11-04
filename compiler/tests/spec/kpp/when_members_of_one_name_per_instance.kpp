@@ -1,6 +1,5 @@
-// spec: two `when` members of one name in a class template, on complementary conditions on T (design.md 19, as an #ifdef/#else pair), are one member in each instance, each instance's own: its type, its uses and its layout (`1234567890123 12 8 2`)
+// spec: two `when` members of one name in a class template, on complementary conditions on T (design.md 19, as an #ifdef/#else pair), are one member in each instance, each instance's own: its type, its uses (through an object, and unqualified in the class's members, sizeof included) and its layout (`1234567890123 12 8 2`, `8 2 5 6`)
 // factorio: the game's class templates under #ifdef DEBUG members with an #else of another type
-// pending: the layout has each instance's own member, but the checker's member lookup takes the first member of the name in every instance: Store<Handle>'s copy is typed as Handle, "assigning a non-class to a class" (D: the uses and the per-instance condition)
 struct Handle
 {
   int id = 7;
@@ -12,6 +11,8 @@ struct Store
 {
   when (isTriviallyCopyable<T>) T copy;
   when (!isTriviallyCopyable<T>) short copy;
+  int width() const { return int(sizeof(copy)); }
+  void set(int v) { copy = v; }
 };
 
 int main()
@@ -21,5 +22,8 @@ int main()
   Store<Handle> b;
   b.copy = 12;
   println(a.copy, " ", b.copy, " ", sizeof(Store<long long>), " ", sizeof(Store<Handle>));
+  a.set(5);
+  b.set(6);
+  println(a.width(), " ", b.width(), " ", a.copy, " ", b.copy);
   return 0;
 }

@@ -7160,6 +7160,23 @@ struct GlobalScope::Impl
         // an enumerator's its enumeration (`sizeof(E::X)`: its underlying type's size, an unscoped
         // enumeration's int's).
         Decl* named = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
+        // `sizeof(copy)` in a class template's member, copy one of several `when` data members of the name (design.md 19):
+        // the instance's own, whose condition holds under its arguments (none or two: no constant).
+        if (named && named->kind == NodeKind::VariableDecl && named->when && named->whenKnown < 0 && ctx.subst && named->parent &&
+            named->parent->kind == NodeKind::ClassDecl)
+        {
+          bool bound = true;
+          for (Decl* p : effectiveParams(named->parent))
+            bound = bound && ctx.subst->find(p);
+          if (bound)
+          {
+            int holding = 0;
+            bool undecided = false;
+            named = whenMemberOf(named, *ctx.subst, holding, undecided, depth);
+            if (!named)
+              return std::nullopt;
+          }
+        }
         if (named && (((named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && !(named->flags & DF_Typedef)) ||
                       named->kind == NodeKind::EnumeratorDecl))
           t = declaredTypeOf(named, ctx.subst, depth + 1);
@@ -17270,6 +17287,62 @@ struct GlobalScope::Impl
     return false;
   }
 
+  // Whether data member m of a class template, a `when` member on its parameters (design.md 19), exists in the
+  // instance whose arguments subst binds: its condition folded there, in the class's scope, as the layout folds it
+  // (codegen's whenMemberHolds). Nothing when the condition is no constant here.
+  std::optional<bool> whenMemberHolds(Decl* m, const Subst& subst, int depth = 0)
+  {
+    Decl* c = m ? m->parent : nullptr;
+    if (!m || !m->when || !c || c->kind != NodeKind::ClassDecl)
+      return std::nullopt;
+    LocalStack params;
+    for (Decl* p : effectiveParams(c))
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    TypeContext wctx{c->ownScope ? c->ownScope : lexicalScopeOf(m), &params, &subst, m->file ? m->file->tokens : nullptr,
+                     m->file ? m->file->text : std::string_view()};
+    return constCondition(m->when, wctx, depth + 1);
+  }
+
+  // Of the data members a class template declares with m's name, m a `when` one decided per instance (design.md 19:
+  // `when (isTriviallyCopyable<T>) T copy; when (!isTriviallyCopyable<T>) short copy;`), the one that exists in the
+  // instance whose arguments subst binds (holding 1), or how many do (holding 0 or 2 and more: an error where it is
+  // named). Null with undecided when a condition is no constant here.
+  Decl* whenMemberOf(Decl* m, const Subst& subst, int& holding, bool& undecided, int depth = 0)
+  {
+    holding = 0;
+    undecided = false;
+    Decl* c = m ? m->parent : nullptr;
+    if (!m || m->kind != NodeKind::VariableDecl || static_cast<VariableDecl*>(m)->name.empty() || !c || c->kind != NodeKind::ClassDecl || !c->ownScope)
+    {
+      undecided = true;
+      return nullptr;
+    }
+    Lookup l;
+    if (!lookupInScope(c->ownScope, static_cast<VariableDecl*>(m)->name.last().symbol, l, depth + 1) || !l.overloads)
+    {
+      holding = 1;
+      return m;
+    }
+    Decl* chosen = nullptr;
+    for (const Entry& e : *l.overloads)
+    {
+      if (!e.decl || e.decl->kind != NodeKind::VariableDecl || e.decl->parent != c)
+        continue;
+      std::optional<bool> holds = e.decl->when && e.decl->whenKnown < 0 ? whenMemberHolds(e.decl, subst, depth) : std::optional<bool>(e.decl->whenKnown != 0);
+      if (!holds)
+      {
+        undecided = true;
+        return nullptr;
+      }
+      if (*holds)
+      {
+        chosen = chosen ? chosen : e.decl;
+        ++holding;
+      }
+    }
+    return holding == 1 ? chosen : nullptr;
+  }
+
   // The conversion function of class a (or of a base, whose arguments subst gets) to exactly the
   // type target, as a conversion-function-id names it: `commands.operator AllowedCommands::Enum()`.
   FunctionDecl* conversionFunctionTo(const Ty* a, const Ty* target, Subst& subst, int baseDepth = 0)
@@ -20088,10 +20161,35 @@ struct GlobalScope::Impl
         r.type = types.param(l.decl);
         return r;
       }
-      const Ty* declared = impl.declaredTypeOf(l.decl, &r.subst, 0);
+      // Several `when` data members of the name in a class template (design.md 19, an #ifdef/#else pair: `when
+      // (isTriviallyCopyable<T>) T copy; when (!isTriviallyCopyable<T>) short copy;`): the instance's is the one whose
+      // condition holds under its arguments, as its layout has it (codegen's whenMemberHolds). None, or two, is an error.
+      if (l.decl->kind == NodeKind::VariableDecl && l.decl->when && l.decl->whenKnown < 0 && l.overloads && l.overloads->size() > 1 &&
+          !types.isDependent(owner) && !r.subst.empty())
+      {
+        int holding = 0;
+        bool undecided = false;
+        if (Decl* chosen = impl.whenMemberOf(l.decl, r.subst, holding, undecided))
+        {
+          r.decl = chosen;
+          r.overloads = nullptr;
+        }
+        else if (!undecided)
+        {
+          if (file && !file->isImported && !probing && token)
+            impl.reportCheckerError(file, token, "'" + std::string(symbols.name(symbol)) + "' " +
+                                                     (holding == 0 ? "does not exist in " + types.toString(owner, &symbols) + ": none of its `when` conditions holds there"
+                                                                   : "is declared twice in " + types.toString(owner, &symbols) + ": the `when` conditions of " +
+                                                                       std::to_string(holding) + " of its declarations hold there") +
+                                                     " (design.md 19)");
+          r.type = types.unknown();
+          return r;
+        }
+      }
+      const Ty* declared = impl.declaredTypeOf(r.decl, &r.subst, 0);
       if (impl.containsAuto(declared))
       {
-        auto* v = l.decl->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(l.decl) : nullptr;
+        auto* v = r.decl->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(r.decl) : nullptr;
         declared = v && v->init && v->init->ty ? impl.deduceAuto(declared, v->init->ty) : types.unknown();
         if (!declared->isKnown())
           r.why = Why::Auto;
@@ -23849,6 +23947,9 @@ struct GlobalScope::Impl
     // names (whenUse); false after an error, or where this walk cannot tell which.
     bool whenLookup(Lookup& l, NameExpr* n)
     {
+      if (l.found == Found::Member && activeSubst && l.decl && l.decl->kind == NodeKind::VariableDecl && l.decl->when && l.decl->whenKnown < 0 &&
+          l.overloads && l.overloads->size() > 1 && n->name.parts.size() == 1)
+        return whenMemberLookup(l, n);
       if (l.found != Found::Local || !l.decl || !l.decl->when || n->name.parts.size() != 1)
         return true;
       bool undecided = false;
@@ -23858,6 +23959,38 @@ struct GlobalScope::Impl
       l.decl = named;
       n->resolved = named;
       return true;
+    }
+
+    // An unqualified use, in a member of a class template's instance, of a name that several `when` data members
+    // of the class declare (design.md 19): the instance's own, whose condition holds under its arguments, as memberOf
+    // takes it for `object.name`; none or two is an error there. As before where this walk does not bind the class's
+    // arguments or the name was found in a base.
+    bool whenMemberLookup(Lookup& l, NameExpr* n)
+    {
+      Decl* c = l.decl->parent;
+      if (!c || c->kind != NodeKind::ClassDecl || l.foundIn != c->ownScope)
+        return true;
+      for (Decl* p : Impl::effectiveParams(c))
+        if (!activeSubst->find(p))
+          return true;
+      int holding = 0;
+      bool undecided = false;
+      Decl* chosen = impl.whenMemberOf(l.decl, *activeSubst, holding, undecided);
+      if (undecided)
+        return true;
+      if (chosen)
+      {
+        l.decl = chosen;
+        l.overloads = nullptr;
+        n->resolved = chosen;
+        return true;
+      }
+      reportInInstance(n->token, "'" + std::string(symbols.name(n->name.parts[0].symbol)) + "' " +
+                                   (holding == 0 ? std::string("does not exist in this instance: none of its `when` conditions holds there")
+                                                 : "is declared twice in this instance: the `when` conditions of " + std::to_string(holding) +
+                                                     " of its declarations hold there") +
+                                   " (design.md 19)");
+      return false;
     }
 
     // A condition made of config constants and literals (names in the `config` namespace, already
