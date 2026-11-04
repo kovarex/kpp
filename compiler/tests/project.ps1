@@ -88,6 +88,25 @@ void build(Project& project)
   }
 
   $good = Get-Content 'build.kpp' -Raw
+  # A configuration with C flags of its own and whole-program optimization, as factorio-in-kpp's final
+  # (build.kpp's cFlag, kppc --lto full): its C library is compiled with them (-DPLUS=2 after the
+  # library's PLUS=1: tests 43) into a directory of those flags', as bitcode (-flto) that the link
+  # optimizes with the program's modules as one; the release build's objects stay where they are,
+  # untouched. Every C library is compiled without stack cookies (/GS-, as Factorio's C++ builds).
+  $releaseLib = (Get-Item 'build\clib\plus.lib').LastWriteTimeUtc
+  $flags = Get-Content 'build\clib\plus\flags.txt' -Raw
+  if ($flags -notmatch '/GS-|-fno-stack-protector') { Fail "the C library is compiled with stack cookies: $flags" }
+  Set-Content 'build.kpp' ($good -replace '\}\s*$', "  Configuration& whole = project.configuration(`"whole`", `"release`");`n  whole.argument(`"--lto`");`n  whole.argument(`"full`");`n  whole.cFlag(`"-flto`");`n  whole.cFlag(`"-DPLUS=2`");`n}`n")
+  $output = Kpp @('game-tests', 'whole', '--no-server', '--set', "INCLUDE_ROOT=$root")
+  $tests = if ($code -eq 0) { & '.\build\whole\game-tests.exe' } else { '' }
+  $objects = @(Get-ChildItem 'build\clib\flags-*\plus\*.obj' -ErrorAction SilentlyContinue)
+  $notBitcode = @($objects | Where-Object { $b = [IO.File]::ReadAllBytes($_.FullName); -not ($b[0] -eq 0x42 -and $b[1] -eq 0x43 -and $b[2] -eq 0xC0 -and $b[3] -eq 0xDE) })
+  $link = if (Test-Path 'build\whole\game-tests.exe.link.rsp') { @(Get-Content 'build\whole\game-tests.exe.link.rsp') } else { @() }
+  if ($code -ne 0 -or "$tests" -ne 'tests 43') { Fail "kpp game-tests whole (--lto full, cFlag -DPLUS=2): exit $code, printed '$tests'`n$($output -join "`n")" }
+  elseif ($objects.Count -eq 0 -or $notBitcode.Count -gt 0) { Fail "the whole configuration's C library objects are not all bitcode (-flto): $($objects.Name -join ', ')" }
+  elseif ($link -notcontains '-flto') { Fail "the whole configuration's link is no full LTO: $($link -join ' ')" }
+  elseif ((Get-Item 'build\clib\plus.lib').LastWriteTimeUtc -ne $releaseLib) { Fail "the whole configuration's build rebuilt the release build's C library" }
+  Set-Content 'build.kpp' $good
   # A C library's resource script (llvm-rc) naming a file next to it and one outside its directory, as
   # factorio-in-kpp's names its icon in ..\..\data. With the outside one missing the build fails, and
   # what llvm-rc wrote before it failed is no .res that the next build takes as made (it was linked,

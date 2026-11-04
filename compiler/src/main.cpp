@@ -98,6 +98,9 @@ namespace
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
     bool debug = true;             // config::debug
     int optimize = -1;             // --optimize 1, --no-optimize 0, unset -1: clang -O2 (ThinLTO, a whole link) when !debug
+    bool fullLTO = false;          // --lto full: an optimized build is one optimization over the whole program (--lto thin: ThinLTO)
+    unsigned ltoPartitions = 0;    // --lto-partitions N: full LTO's code generated in N partitions (0: one per thread)
+    int optLevel = 2;              // --opt-level 2|3: clang's -O for an optimized build's modules and its link
     unsigned modules = 0;          // --modules N: IR modules compiled in parallel (0: 2 per thread, 1: one module)
     unsigned codegenThreads = 0;   // --codegen-threads N: threads emitting IR (0: --threads)
     std::string convertDir;        // --convert DIR: write the inputs as kpp sources there
@@ -173,6 +176,13 @@ namespace
             "  --release     the same as --config debug=false\n"
             "  --optimize, --no-optimize  clang -O2 (ThinLTO, a whole link) or -O0, whatever config::debug is\n"
             "                (default: -O2 when config::debug is false; build.kpp's fastdebug: asserts in, optimized)\n"
+            "  --lto thin|full  how an optimized build optimizes across its modules, in the link (lld): ThinLTO (the\n"
+            "                default: each module with what it imports from the others, in parallel), or full LTO (one\n"
+            "                optimization over the whole program, its code generated in one partition per thread:\n"
+            "                build.kpp's final, as FinalRelease's /GL and /LTCG)\n"
+            "  --lto-partitions N  full LTO's code generated in N partitions (default: one per thread); 1 when C\n"
+            "                libraries built with -flto join it (their statics stay theirs: docs/build.md)\n"
+            "  --opt-level N  clang's -O for an optimized build's modules and its link: 2 (the default) or 3\n"
             "  --modules N   split the program into N IR modules compiled in parallel (default: four per thread, two in a release build)\n"
             "  --codegen-threads N  threads emitting IR (default: --threads; the IR does not depend on it)\n"
             "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
@@ -857,6 +867,25 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     for (const std::string& lib : options.libs)
       flags += " \"" + lib + "\"";
     return flags;
+  }
+
+  // An optimized build's LTO options for lld beyond what clang's driver passes it: --lto full's code
+  // generated in one partition per thread or --lto-partitions' (FinalRelease's /LTCG has /CGTHREADS;
+  // lld's MinGW driver, windows-gnu's, has no such option: one), and --opt-level 3 for the link's
+  // optimization (lld's own is 2).
+  std::string ltoLinkFlags(const Options& options)
+  {
+    std::string flags;
+    if (!options.optimize)
+      return flags;
+    bool msvc = options.target.msvc();
+    std::string partitions = std::to_string(options.ltoPartitions ? options.ltoPartitions : std::max(1u, options.threads));
+    std::string level = std::to_string(options.optLevel);
+    if (options.fullLTO && !options.target.gnu)
+      flags += msvc ? " -Wl,/opt:lldltopartitions=" + partitions : " -Wl,--lto-partitions=" + partitions;
+    if (options.optLevel != 2)
+      flags += msvc ? " -Wl,/opt:lldlto=" + level : " -Wl,--lto-O" + level;
+    return flags.empty() ? flags : flags.substr(1);
   }
 
   // Whether the program's files define a global wmain and no main (the game's entry on Windows).
@@ -1808,9 +1837,14 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
     // link optimises them in parallel with what each needs from the others imported, so that calls
     // into another module's instantiations inline as they do in one module (optimised separately,
-    // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower).
-    bool thinLTO = options.optimize && modules > 1;
-    const char* level = !options.optimize ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
+    // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower). --lto full makes
+    // them (one module too) bitcode for one optimization over the whole program in the link, with
+    // the C libraries' bitcode (build.kpp's final configuration builds them with -flto).
+    bool fullLTO = options.optimize && options.fullLTO;
+    bool thinLTO = options.optimize && modules > 1 && !fullLTO;
+    const std::string optLevel = "-O" + std::to_string(options.optLevel);
+    const std::string levelText = !options.optimize ? "-O0" : fullLTO ? optLevel + " -flto" : thinLTO ? optLevel + " -flto=thin" : optLevel;
+    const char* level = levelText.c_str();
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");
@@ -2008,7 +2042,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
         return;
       std::string command = "\"\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
-                            linkFlags(options, definesWideEntryOnly(parsed, symbols)) + "\"";
+                            (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, definesWideEntryOnly(parsed, symbols)) + "\"";
       if (options.deferLink) // (one module: its compile goes with the link)
       {
         deferLinkCommand(options, command);
@@ -2164,7 +2198,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     {
       // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
       // modules that did not change (the cache next to the executable).
-      response += "-fuse-ld=lld\n-flto=thin\n-O2\n";
+      response += "-fuse-ld=lld\n-flto=thin\n" + optLevel + "\n";
       if (options.target.msvc())
       {
         response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
@@ -2176,6 +2210,10 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         response += "\"-Wl,--thinlto-cache-dir=" + slashes(options.exe) + ".ltocache\"\n";
       }
     }
+    else if (fullLTO)
+      response += "-fuse-ld=lld\n-flto\n" + optLevel + "\n";
+    for (const std::string& flag : splitFlags(ltoLinkFlags(options)))
+      response += flag + "\n";
     for (const std::string& flag : splitFlags(linkFlags(options, definesWideEntryOnly(parsed, symbols))))
     {
       // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
@@ -3997,7 +4035,8 @@ namespace
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
-    {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1},
+    {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--lto", 1}, {"--lto-partitions", 1},
+    {"--opt-level", 1},
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
@@ -4184,6 +4223,36 @@ int compile(int argc, char** argv)
       options.noInline = true;
     else if (arg == "--clang-flags" && i + 1 < argc)
       options.clangFlags = argv[++i];
+    else if (arg == "--lto" && i + 1 < argc)
+    {
+      std::string mode = argv[++i];
+      if (mode != "thin" && mode != "full")
+      {
+        fprintf(stderr, "--lto %s: thin or full\n", mode.c_str());
+        return 2;
+      }
+      options.fullLTO = mode == "full";
+    }
+    else if (arg == "--lto-partitions" && i + 1 < argc)
+    {
+      int n = atoi(argv[++i]);
+      if (n < 1)
+      {
+        fprintf(stderr, "--lto-partitions %s: a number of partitions, 1 or more\n", argv[i]);
+        return 2;
+      }
+      options.ltoPartitions = unsigned(n);
+    }
+    else if (arg == "--opt-level" && i + 1 < argc)
+    {
+      std::string level = argv[++i];
+      if (level != "2" && level != "3")
+      {
+        fprintf(stderr, "--opt-level %s: 2 or 3\n", level.c_str());
+        return 2;
+      }
+      options.optLevel = level[0] - '0';
+    }
     else if (arg == "--codegen-threads" && i + 1 < argc)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)

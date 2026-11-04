@@ -26,6 +26,7 @@ struct Configuration
   Optional<bool> debugInfo;  // line tables and a PDB (kppc --debug-info)
   Vector<String> configs;    // config:: constants, NAME=VALUE (kppConfig)
   Vector<String> clangFlags; // kppc's --clang-flags, joined by blanks
+  Vector<String> cFlags;     // the C libraries' compiles, after kpp's own flags (clang-cl's, or clang's for windows-gnu)
   Vector<String> arguments;  // more kppc options, one per entry
 
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
@@ -33,6 +34,7 @@ struct Configuration
   void config(StringView name, const char* value) { kppConfig(configs, name, value); }
   void config(StringView name, StringView value) { kppConfig(configs, name, value); }
   void clangFlag(StringView flag) { clangFlags.push_back(flag); }
+  void cFlag(StringView flag) { cFlags.push_back(flag); }
   void argument(StringView option) { arguments.push_back(option); }
 };
 
@@ -509,6 +511,7 @@ void kppResolve(const Project& project, const Configuration& configuration, Conf
       resolved.debugInfo = c.debugInfo;
     kppAppend(resolved.configs, c.configs);
     kppAppend(resolved.clangFlags, c.clangFlags);
+    kppAppend(resolved.cFlags, c.cFlags);
     kppAppend(resolved.arguments, c.arguments);
   }
 }
@@ -521,6 +524,7 @@ void kppConfigurationLines(String& out, const Project& project, const Configurat
   kppConfigs(out, "project", project.configs);
   kppConfigs(out, "configuration", c.configs);
   kppLines(out, "clang-flag", c.clangFlags);
+  kppLines(out, "c-flag", c.cFlags);
 }
 
 // One cell: configure(cell) on copies of the target and the resolved configuration, then its lines.

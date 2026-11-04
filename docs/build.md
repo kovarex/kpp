@@ -30,6 +30,9 @@ only the choice of kppc's arguments.
 | `--config N=V` | a constant `config::N` (bool, integer, enumerator, string) the code reads with `if constexpr` |
 | `--release` | the same as `--config debug=false` |
 | `--optimize`, `--no-optimize` | clang `-O2` (ThinLTO, a whole link) or `-O0`, whatever `config::debug` is; unset, `-O2` when `config::debug` is false |
+| `--lto thin\|full` | an optimized build's optimization across modules, in lld's link: ThinLTO (the default) or full LTO, one optimization over the whole program ("Whole-program optimization" below) |
+| `--lto-partitions N` | full LTO's code generated in N partitions (the default: one per thread); 1 when C libraries built with `-flto` join it |
+| `--opt-level N` | clang's `-O` for an optimized build's modules and its link: 2 (the default) or 3 |
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
 | `--clang-flags F` | more flags for clang's compile of the modules (`-fsanitize=address`) |
@@ -50,6 +53,28 @@ fastdebug is `config::debug` true, optimized):
 | link (`--optimize` decides) | link.exe, `--incremental-link` allowed | lld, whole program; `--incremental-link` is an error |
 | debug info | only with `--debug-info` (CodeView line tables, a PDB; ee17f9a8) | the same |
 | kppc inlining of trivial functions | on | on |
+
+**Whole-program optimization (2026-11-04).** `--lto full` is kppc's part of factorio-in-kpp's final
+configuration, kpp's FinalRelease ([final-release.md](final-release.md)): the official Factorio builds
+are compiled with `/GL` and linked with `/LTCG`, one optimization over the whole program, its C and
+C++ libraries included. With `--lto full` the modules become bitcode for full LTO (`-flto`, not
+`-flto=thin`), and lld merges them, with the C libraries a configuration builds with `-flto`
+(build.kpp's `cFlag`), into one module, optimizes it once, and generates its code in one partition
+per thread (`/opt:lldltopartitions`, as `/LTCG`'s `/CGTHREADS`; lld's MinGW driver has no such
+option, so windows-gnu generates it in one). C libraries built with `-flto` join it only with one
+partition (`--lto-partitions 1`): to generate the partitions in parallel, LLVM's module splitting makes
+every static two partitions share external under its own name, and the game's SDL (hidapi's
+`CM_Locate_DevNodeW`, `PKEY_DeviceInterface_Bluetooth_*`) then collides with SETUPAPI.lib's and
+uuid.lib's symbols of those names (B, 2026-11-04; the game measured no gain from its C libraries in
+the LTO). ThinLTO, the release default, optimizes each module
+with what it imports from the others, in parallel, and keeps the unchanged modules' results in a
+cache. `--opt-level 3` makes the modules' and the link's optimization `-O3` (lld's `/opt:lldlto=3`,
+`--lto-O3`). Either way the C runtime is the static one (`/MT`: clang links libcmt, and the
+executable imports no VCRUNTIME or api-ms-win-crt DLL), and lld's LTO puts every function and datum
+in a section of its own, as `/Gy` and `/Gw` do, for `/OPT:REF`. kpp compiles every C library
+without stack cookies (`/GS-`, clang's `-fno-stack-protector`), as both of Factorio's C++ builds do;
+clang-cl's default put them in until 2026-11-04. tests\lto.ps1 builds a program both ways for Windows
+and windows-gnu; tests\project.ps1 builds a configuration with `--lto full` and C flags of its own.
 
 **The compile server.** `--server` anywhere on the line makes kppc a client. The server is keyed by
 kppc's path, the working directory and the argument list, so every distinct argument list has its
@@ -552,7 +577,12 @@ void configure(Cell& cell)
   - `optimize`: clang -O2 and ThinLTO and a whole link (kppc `--optimize`), or -O0 and an
     incremental link;
   - `debugInfo`: line tables and a PDB;
-  - `clangFlag(F)` (kppc `--clang-flags`) and `argument(OPTION)` (any kppc option).
+  - `clangFlag(F)` (kppc `--clang-flags`) and `argument(OPTION)` (any kppc option);
+  - `cFlag(F)`: one more flag for its C libraries' compiles, after kpp's own (clang-cl's, or clang's
+    for windows-gnu). A configuration with C flags builds its C libraries in a directory of those
+    flags' own, `build\clib\flags-HASH`, which configurations with the same flags share: building it
+    leaves the others' objects as they are. With `-flto` its C libraries join a full LTO, at one
+    partition ("Whole-program optimization" below).
 
   The built-in two (thread H's contents, adopted):
 

@@ -183,6 +183,10 @@ rem Static locals with constant initialization (tests\staticconstants.ps1): a co
 rem whose initializer folds is a constant in the IR, with no guard; a call's keeps its guard.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\staticconstants.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "static constants") else (call :ok)
+rem --lto full and --opt-level 3 (tests\lto.ps1, docs/build.md "Whole-program optimization"): a
+rem program built as one optimization over the whole program, for Windows and windows-gnu.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\lto.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "lto") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

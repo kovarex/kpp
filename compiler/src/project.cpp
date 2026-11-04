@@ -57,6 +57,7 @@ namespace
     std::string name;
     bool optimize = false, debugInfo = false;
     std::vector<std::string> configs, clangFlags, arguments;
+    std::vector<std::string> cFlags; // its C libraries' compiles, after kpp's own flags (build.kpp's cFlag)
     std::vector<std::string> configFrom; // per config, who set it: project, configuration, target, cell, option
   };
 
@@ -261,7 +262,7 @@ namespace
         else uses.back().path = value;
       }
       else if ((section == configuration || section == program) &&
-               (key == "optimize" || key == "debug-info" || key == "config" || key == "clang-flag" || key == "argument"))
+               (key == "optimize" || key == "debug-info" || key == "config" || key == "clang-flag" || key == "c-flag" || key == "argument"))
       {
         Configuration& c = section == program ? d.programs.back() : d.configurations.back();
         if (key == "optimize") c.optimize = value == "1";
@@ -273,6 +274,7 @@ namespace
           c.configs.push_back(blank == std::string::npos ? "" : value.substr(blank + 1));
         }
         else if (key == "clang-flag") c.clangFlags.push_back(value);
+        else if (key == "c-flag") c.cFlags.push_back(value);
         else c.arguments.push_back(value);
       }
       else if (section == library)
@@ -761,18 +763,35 @@ namespace
     return nullptr;
   }
 
-  fs::path libraryDirectory(const fs::path& root, const CLibrary& c) { return root / "build" / "clib" / c.name; }
+  // Where a program's C libraries are built: build\clib, or for a configuration with C flags of its
+  // own (build.kpp's cFlag: the final configuration's -flto) build\clib\flags-HASH, those flags' own,
+  // which configurations with the same flags share (each library's flags.txt says them). Building
+  // one configuration then leaves another's objects as they are.
+  fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags)
+  {
+    if (cFlags.empty())
+      return root / "build" / "clib";
+    uint32_t hash = 2166136261u;
+    for (const std::string& flag : cFlags)
+      for (unsigned char ch : flag + '\n')
+        hash = (hash ^ ch) * 16777619u;
+    char name[24];
+    snprintf(name, sizeof name, "flags-%08x", hash);
+    return root / "build" / "clib" / name;
+  }
+
+  fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags) { return clibDirectory(root, cFlags) / c.name; }
 
   // What linking a C library takes: its prebuilt .lib files or the one kpp builds, and its .res files.
-  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c)
+  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags)
   {
     std::vector<fs::path> files;
     for (const std::string& lib : c.prebuilt)
       files.push_back(rooted(root, lib));
     if (c.prebuilt.empty() && !c.sources.empty())
-      files.push_back(root / "build" / "clib" / (c.name + ".lib"));
+      files.push_back(clibDirectory(root, cFlags) / (c.name + ".lib"));
     for (const std::string& rc : c.resources)
-      files.push_back(libraryDirectory(root, c) / (fs::path(rc).stem().string() + ".res"));
+      files.push_back(libraryDirectory(root, c, cFlags) / (fs::path(rc).stem().string() + ".res"));
     return files;
   }
 
@@ -872,11 +891,12 @@ namespace
     std::unique_ptr<std::atomic<bool>[]> failed; // by command
   };
 
-  bool prepareLibrary(const fs::path& root, const CLibrary& c, LibraryJob& job, std::unordered_map<std::string, fs::file_time_type>& times)
+  bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, LibraryJob& job,
+                      std::unordered_map<std::string, fs::file_time_type>& times)
   {
     fs::path tools = fs::path(clangPath()).parent_path();
     job.library = &c;
-    job.directory = libraryDirectory(root, c);
+    job.directory = libraryDirectory(root, c, cFlags);
     std::error_code ec;
     fs::create_directories(job.directory, ec);
     if (c.prebuilt.empty() && !c.sources.empty())
@@ -894,12 +914,13 @@ namespace
         fprintf(stderr, "error: the C library %s has no .c, .cc or .cpp file in its sources\n", c.name.c_str());
         return false;
       }
-      // The flags of every object: Factorio's prebuilt libraries' (/O2 /MT, no assertions), the
-      // library's includes and defines; no warnings, since the code is the library's own. The bundled
+      // The flags of every object: Factorio's prebuilt libraries' (/O2 /MT, no stack cookies as in
+      // both of Factorio's C++ builds' /GS-, no assertions), the library's includes and defines; no
+      // warnings, since the code is the library's own; then the configuration's (cFlag). The bundled
       // toolchain (llvm-mingw) builds Windows' GNU dialect (design.md 17): clang's own flags, its
       // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's.
       bool gnu = job.gnu = bundledToolchain();
-      std::string flags = gnu ? "-c -O2 -DNDEBUG -w" : "/nologo /c /O2 /MT /DNDEBUG /w";
+      std::string flags = gnu ? "-c -O2 -DNDEBUG -w -fno-stack-protector" : "/nologo /c /O2 /MT /GS- /DNDEBUG /w";
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
       // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
       fs::path installation = tools.parent_path().parent_path().parent_path().parent_path().parent_path();
@@ -912,6 +933,8 @@ namespace
         flags += (gnu ? " -I" : " /I") + quoteArg(rooted(root, i).string());
       for (const std::string& d : c.defines)
         flags += (gnu ? " -D" : " /D") + quoteArg(d);
+      for (const std::string& f : cFlags)
+        flags += " " + quoteArg(f);
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
@@ -940,7 +963,7 @@ namespace
                                  " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
       }
       job.compiles = job.commands.size();
-      job.lib = root / "build" / "clib" / (c.name + ".lib");
+      job.lib = clibDirectory(root, cFlags) / (c.name + ".lib");
       job.archive = !job.commands.empty() || !fs::exists(job.lib, ec);
       if (job.archive)
         printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), clangPath().c_str(),
@@ -1087,7 +1110,7 @@ namespace
       args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
     for (const std::string& name : p.links)
       if (const CLibrary* c = findLibrary(d, name))
-        for (const fs::path& file : libraryFiles(root, *c))
+        for (const fs::path& file : libraryFiles(root, *c, p.cFlags))
           args.push_back("--lib"), args.push_back(file.string());
     for (const std::string& e : p.excluded)
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
@@ -1147,7 +1170,7 @@ namespace
         fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), p.links[i].c_str());
         return 1;
       }
-      if (!prepareLibrary(root, *c, jobs[i], times))
+      if (!prepareLibrary(root, *c, p.cFlags, jobs[i], times))
         return 1;
     }
     // The C libraries' files compile in one pool while kppc builds the program (its front end, code
