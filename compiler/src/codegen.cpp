@@ -10017,7 +10017,7 @@ namespace
         size_t open = s.find('(', q);
         size_t close = s.rfind(')');
         if (open != std::string_view::npos && close != std::string_view::npos && close > open)
-          out.assign(s.substr(open + 1, close - open - 1));
+          appendRawStringBody(out, s.substr(open + 1, close - open - 1));
         return out;
       }
       for (size_t i = q + 1; i < s.size() && s[i] != quote; ++i)

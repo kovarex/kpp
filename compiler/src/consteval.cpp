@@ -1,4 +1,5 @@
 #include "consteval.hpp"
+#include "lexer.hpp"
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -25,7 +26,7 @@ bool decodeNarrowString(std::string_view s, std::string& out)
     size_t delim = open - q - 1, closing = 1 + delim + 1;
     if (s.size() < open + 1 + closing)
       return false;
-    out.append(s.substr(open + 1, s.size() - open - 1 - closing));
+    appendRawStringBody(out, s.substr(open + 1, s.size() - open - 1 - closing));
     return true;
   }
   auto utf8 = [&](uint32_t c) {

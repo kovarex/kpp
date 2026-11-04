@@ -1,0 +1,39 @@
+// spec: a raw string literal in a file of CRLF line ends: each line end in it is one newline (10), as C++'s translation phase 1 maps CRLF to a newline before the literal is read; a backslash ending a line in it stays, with its newline (a raw string takes no splice); a constant's (the evaluator's), a delimited one's and a wide one's the same
+// found by G in gorating (a CRLF checkout): R"(a<CRLF>b)" was the bytes 97 13 10 98, where C++ gives 97 10 98
+constexpr int crs(const char* s)
+{
+  int n = 0;
+  for (int i = 0; s[i]; ++i)
+    if (s[i] == '\r')
+      ++n;
+  return n;
+}
+static_assert(crs(R"(a
+b
+)") == 0);
+constexpr const char* constant = R"(c
+d)";
+static_assert(constant[1] == '\n' && constant[2] == 'd');
+String bytes(const char* s)
+{
+  String out;
+  for (int i = 0; s[i]; ++i)
+    out = out + format("{} ", int((unsigned char)s[i]));
+  return out;
+}
+int main()
+{
+  println(bytes(R"(a
+b)"));
+  println(bytes(R"--(1\
+2
+)--"));
+  println(bytes(constant));
+  const wchar_t* w = LR"(e
+f)";
+  String wide;
+  for (int i = 0; w[i]; ++i)
+    wide = wide + format("{} ", int(w[i]));
+  println(wide);
+  return 0;
+}

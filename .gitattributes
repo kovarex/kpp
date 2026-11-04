@@ -1,3 +1,6 @@
 # cmd.exe finds labels (goto, call :label) unreliably in a batch file of LF line ends: CRLF in
 # the working tree, LF in the repository.
 *.cmd text eol=crlf
+
+# A snippet about a CRLF file (a raw string literal across its line ends) keeps its CRs as committed.
+compiler/tests/spec/language/raw_string_in_crlf_file.kpp -text

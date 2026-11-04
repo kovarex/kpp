@@ -549,6 +549,13 @@ std::string_view tokenSpelling(std::string_view text, const Token& t, std::strin
   return buffer;
 }
 
+void appendRawStringBody(std::string& out, std::string_view body)
+{
+  for (size_t i = 0; i < body.size(); ++i)
+    if (!(body[i] == '\r' && i + 1 < body.size() && body[i + 1] == '\n'))
+      out += body[i];
+}
+
 const char* tokenKindName(TokenKind kind)
 {
   switch (kind)

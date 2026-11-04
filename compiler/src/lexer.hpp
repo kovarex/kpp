@@ -113,3 +113,10 @@ const char* tokenKindName(TokenKind kind);
 // ends a line) taken out. Only a string or char literal has one (the lexer marks it, and a splice
 // anywhere else in a token is an error); its spelling is then made in buffer.
 std::string_view tokenSpelling(std::string_view text, const Token& t, std::string& buffer);
+
+// A raw string literal's body (between `delimiter(` and `)delimiter`) as C++ reads it, appended to
+// out: a CRLF line end of the source is one newline, as translation phase 1 maps it before the
+// literal is read (a CRLF file's R"(a<CRLF>b)" is the bytes 97 10 98, never 97 13 10 98). Nothing
+// else changes: a raw string takes no splice and no escape. Every decoder of a raw string's bytes
+// takes them from here.
+void appendRawStringBody(std::string& out, std::string_view body);
