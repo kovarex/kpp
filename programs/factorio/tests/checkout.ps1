@@ -74,6 +74,11 @@ Remove-Tree $Root
 $main = Join-Path $Root 'main'
 New-Item -ItemType Directory -Force $main | Out-Null
 RunGit $main @('init', '-q', '-b', 'master') | Out-Null
+# Its files as they are, whatever the machine's git config says (a CI runner's core.autocrlf=true
+# checked the copy out with CRLF, which the next checkout took for local changes): attributes win
+# over every config, and the repository's own config over the global one.
+RunGit $main @('config', 'core.autocrlf', 'false') | Out-Null
+Write-File (Join-Path $main '.gitattributes') "* -text`n"
 Write-File (Join-Path $main '.gitignore') "/config-path.cfg`n/config/`n"
 Write-File (Join-Path $main 'data\core\a.lua') "a = 1`n"
 Write-File (Join-Path $main 'data\base\b.lua') "b = 2`n"
