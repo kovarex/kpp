@@ -80,11 +80,14 @@ double stod(const String& str, size_t* idx = nullptr)
   return value;
 }
 
+// strtod, not strtold: kpp's long double is a double, and off Windows C's is x87's 80 bits, which
+// strtold returns in a register a double is not read from (stold gave whatever was there, 0 for
+// "0.125" on FreeBSD and Linux). On Windows the UCRT's strtold is strtod.
 long double stold(const String& str, size_t* idx = nullptr)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
-  long double value = strtold(str.c_str(), &end);
+  long double value = strtod(str.c_str(), &end);
   checkStringConversion(str, end, "stold", idx);
   return value;
 }

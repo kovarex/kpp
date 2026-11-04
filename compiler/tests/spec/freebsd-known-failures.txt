@@ -8,7 +8,6 @@
 
 # Found by the FreeBSD run, each B's.
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
-run library/string_to_number  the same: stold's strtold returns x87's 80 bits, read as a double (0 for 0.125; Linux too)
 
 # Stage 4: the standard library's Win32 and UCRT calls (threads, time, files, errno, terminate).
 build language/thread_local_globals  stage 4: CreateThread
