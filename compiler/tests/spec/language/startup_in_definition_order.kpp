@@ -8,9 +8,9 @@ public:
 };
 int sizeOf(const Table& t) { return t.size; }
 int firstSize();
-const Table first("first", 3);
-const Table second("second", firstSize() * 2);
-const Table third("third", sizeOf(second) + 1);
+const Table first{"first", 3};
+const Table second{"second", firstSize() * 2};
+const Table third{"third", sizeOf(second) + 1};
 int main()
 {
   println(third.size, " ", second.size, " ", first.size);

@@ -1,7 +1,7 @@
 // spec: Atomic<T>::wait(old) (std::atomic::wait) blocks while the value's bytes equal old's and returns once a notifyOne/notifyAll (notify_one, notify_all) after a store has made them differ; it returns at once when they differ already
 // factorio: LuaDebugAdapter's std::atomic<bool> launchReady and configDone: `launchReady.wait(false)`, `configDone.notify_all()` (4c178a5b915)
-Atomic<bool> ready(false);
-Atomic<int> stage(0);
+Atomic<bool> ready{false};
+Atomic<int> stage{0};
 int main()
 {
   ready.wait(true); // differs already: returns at once

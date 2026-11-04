@@ -1,4 +1,4 @@
-// spec: a namespace-scope variable initialized with parentheses whose first argument is a name and a later one a literal, `Box other(HeavyMode::Disabled, 4);`, is a variable (no parameter starts with a literal), also when the first name could be a type
+// spec: a namespace-scope variable initialized with parentheses whose first argument is a name and a later one a literal, `Box other(HeavyMode::Disabled, 4);`, is a variable (no parameter starts with a literal), also when the first name could be a type (since design.md 22 (2026-11-04) such an object at namespace scope is written with braces, as here: there `T x(...)` declares a function)
 // factorio: the second constructor argument of MainLoop's globals; read as a function, the parse failed at the literal
 enum class Mode { Off, On };
 struct Box
@@ -12,8 +12,8 @@ struct Grid
   int cells = 0;
   Grid(Mode, int cells) : cells(cells) {}
 };
-Box box(Mode::On, 4);
-Grid grid(Mode::Off, 9);
+Box box{Mode::On, 4}; // (braces at namespace scope: design.md 22)
+Grid grid{Mode::Off, 9};
 Array<int, 2> pair;
 int main()
 {

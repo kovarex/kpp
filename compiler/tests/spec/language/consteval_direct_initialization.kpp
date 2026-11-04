@@ -25,8 +25,8 @@ struct Holder
   Base base;
   Bits bits;
 };
-constexpr Flags flags(21);
-constexpr Holder holder(Derived{});
+constexpr Flags flags{21};
+constexpr Holder holder{Derived{}};
 static_assert(flags.bits.value == 42);
 static_assert(holder.base.a == 1 && holder.bits.value == 7);
 template<int N>

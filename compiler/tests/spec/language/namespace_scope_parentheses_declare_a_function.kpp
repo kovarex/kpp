@@ -1,0 +1,13 @@
+// spec: at namespace scope `T x(args);` declares a function, whatever the parentheses hold (design.md 22): an argument that is a value is then no parameter type, an error; the object is written `T x{args};` or `T x = T(args);`
+// error: namespace_scope_parentheses_declare_a_function.kpp:9: error: 'four' is a variable, not a type: `a * b;` and `a b;` declare b, `T f(a)` at namespace scope a function (design.md 22)
+struct Box
+{
+  int count;
+  Box(int c) : count(c) {}
+};
+constexpr int four = 4;
+Box box(four);
+int main()
+{
+  return 0;
+}

@@ -1,8 +1,8 @@
-// spec: a variable direct-initialised with a functional cast, at namespace scope and in a function: `constexpr ID EMPTY(ID(-1));` declares a variable (its parenthesised initializer is an expression, so it is not a function declaration)
+// spec: a variable direct-initialised with a functional cast, at namespace scope and in a function: `constexpr ID EMPTY{ID(-1)};` at namespace scope, written with braces there (in parentheses it declares a function, design.md 22), `ID local(ID(5));` in a body
 // factorio: Space/CargoDelivery/CargoStationID.hpp (`static constexpr CargoStationID EMPTY_CARGO_STATION_ID(CargoStationID(-1));`, used in 15 places)
 using ID = unsigned int;
-constexpr ID EMPTY(ID(-1));
-const int SMALL(int(3.7));
+constexpr ID EMPTY{ID(-1)};
+const int SMALL{int(3.7)};
 int main()
 {
   ID local(ID(5));

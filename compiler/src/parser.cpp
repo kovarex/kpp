@@ -151,6 +151,7 @@ namespace
   public:
     bool externC = false; // Inside extern "C".
     bool cMode = false;   // Preprocessed C text (imported headers): no macro heuristics.
+    bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
     bool kppSource = false; // A .kpp file: no C macro idioms (the converter's C++ input has them).
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
@@ -2217,7 +2218,9 @@ namespace
       {
         Declarator d;
         d.type = first ? type : baseType;
+        typedefDeclarators = (flags & DF_Typedef) != 0;
         parseDeclarator(d, scope);
+        typedefDeclarators = false;
         if (inRecovery)
           return;
         // `Buf;`, `const Buf*;`: a type and no name declares nothing, which C++ makes ill-formed
@@ -2504,7 +2507,7 @@ namespace
         // at the contents: a parameter list starts with a type or is empty.
         if (looksLikeParameterList(scope))
         {
-          if (scope == Scope::Namespace && !cMode)
+          if (scope == Scope::Namespace && !cMode && !kppSource) // (in kpp it is a function: design.md 22)
             d.objectArgs = bareNameArguments();
           d.isFunction = true;
           parseFunctionSuffix(d);
@@ -2589,6 +2592,12 @@ namespace
 
     bool looksLikeParameterList(Scope scope)
     {
+      // kpp's own sources (design.md 22, the most vexing parse): in a body `T x(...)` is a variable,
+      // `T x();` too (value-initialized); at namespace and class scope `T f(...)` is a function, and a
+      // variable there is written with `=` or `{}`. A typedef's declarator is a function type when it
+      // looks like one, wherever it stands; the converter's C++ input keeps C++'s guesses.
+      if (kppSource && !cMode && !typedefDeclarators)
+        return scope != Scope::Local;
       if (at(TokenKind::Number, 1) || at(TokenKind::String, 1) || at(TokenKind::Char, 1) || at(P::Minus, 1) ||
           at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1))
         return false;

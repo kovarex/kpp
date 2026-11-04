@@ -1,4 +1,4 @@
-// spec: no most vexing parse (design.md, kpp v0 rules 2 and 4): at namespace scope `Type(args)` and `Type{args}` inside a declarator's parentheses are expressions, so `Widget copied(Size(base));` and `Widget fresh(Size());` are variables; parameter lists still declare functions, a parenthesised declarator among them only when a parameter list or an array bound follows (`int (*f)(int)`)
+// spec: no most vexing parse (design.md, kpp v0 rules 2 and 4): at namespace scope `Type(args)` and `Type{args}` inside a declarator's parentheses are expressions, so `Widget copied(Size(base));` and `Widget fresh(Size());` are variables; parameter lists still declare functions, a parenthesised declarator among them only when a parameter list or an array bound follows (`int (*f)(int)`) (since design.md 22 (2026-11-04) such an object at namespace scope is written with braces, as here: there `T x(...)` declares a function)
 // factorio: the direct-initialised constants in headers (language/direct_init_functional_cast) next to the function declarations there
 struct Size { int w; };
 struct Widget
@@ -7,10 +7,10 @@ struct Widget
   Widget(Size s) : w(s.w) {}
 };
 Size base{6};
-Widget copied(Size(base));
-Widget fresh(Size());
-const Size* NOWHERE(nullptr);
-int counter(int(7.9));
+Widget copied{Size(base)}; // (braces at namespace scope: design.md 22)
+Widget fresh{Size()};
+const Size* NOWHERE{nullptr};
+int counter{int(7.9)};
 int twice(int x);
 int apply(int (*f)(int), int v);
 int noArgs();

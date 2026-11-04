@@ -1511,11 +1511,12 @@ name lookup" (kovarex, 2026-11-04).
   function, and a variable there is written with `=` or `{}` (`Widget global{1, 2};`). Before, both
   were guessed from the parentheses' contents (a literal or an expression made a namespace-scope
   variable, empty or a builtin type a local function). kpp's own sources only: the converter's C++
-  input keeps the guesses. **Not built yet** (spec language/most_vexing_parse_by_scope is pending):
-  the converted game writes namespace- and class-scope objects `T x(args)` (`static constexpr
-  CargoStationID EMPTY_CARGO_STATION_ID(CargoStationID(-1));`): with the rule its headline went
-  from 0 to 84 errors, and the libraries (html's templates, kppsite) and 13 specs write them so too; the converter writes them `T x{args}`
-  first, then the rule replaces kpp v0's rule 2 below.
+  input keeps the guesses, and the converter writes the game's namespace- and class-scope objects
+  `T x{args}` (`static constexpr CargoStationID EMPTY_CARGO_STATION_ID{CargoStationID(-1)};`). A
+  typedef's declarator is a function type wherever it looks like one (`typedef int Local(int, int);`
+  in a body). A function's parameter whose type names a variable is an error, so `Box box(four);`
+  at namespace scope is "'four' is a variable, not a type", never an object. This replaces kpp v0's
+  rule 2 below.
 
 Specs: language/statement_type_star_name_is_declaration, statement_variable_star_name_is_error,
 functional_cast_statement_is_expression, chained_comparison_is_error,
@@ -2440,10 +2441,11 @@ The smallest language that is still kpp, as the target of the first code generat
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
      an identifier is a declaration (`Foo* p;`); as an expression it would be useless anyway.
   2. `Type name(args)` is a declaration; `Type(args)` is an expression (no most vexing parse).
-     At namespace scope, `T name(a, m);` with only names in the parentheses is an object
-     constructed from them when they are variables (enumerators, functions), and a function with
-     unnamed parameters when they are types: the resolver decides once every name is indexed
-     (2026-10-29, spec language/object_declaration_from_variables).
+     Replaced by section 22 (2026-11-04): in a body `T x(...)` is a variable, at namespace and
+     class scope a function; an object there is written `T x{args}`. (Until then, at namespace
+     scope `T name(a, m);` with only names in the parentheses was an object when they were
+     variables, decided by the resolver: spec language/object_declaration_from_variables, now
+     written with braces.)
   3. `name<...>` is a template-id in type positions always. In expression positions it is one
      when one of its arguments can only be a type (a type keyword, `const`, a pointer, reference,
      array or function type, `decltype`, `typename`), whatever follows: `pi_v<float> * x`

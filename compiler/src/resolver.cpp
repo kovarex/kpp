@@ -23433,6 +23433,29 @@ struct GlobalScope::Impl
       }
     }
 
+    // A declaration's type that names a variable (`a * b;`, `a b;`, a parameter `Box box(four)` at
+    // namespace scope): an error (design.md 22), never the variable's type, which is the reading only
+    // sizeof's operand has (`sizeof(prefixes)`).
+    void checkTypeNamesNoVariable(Node* base, uint32_t token)
+    {
+      for (;;)
+        if (base && base->kind == NodeKind::PointerType)
+          base = static_cast<PointerType*>(base)->pointee;
+        else if (base && base->kind == NodeKind::LRefType)
+          base = static_cast<LRefType*>(base)->referenced;
+        else if (base && base->kind == NodeKind::RRefType)
+          base = static_cast<RRefType*>(base)->referenced;
+        else if (base && base->kind == NodeKind::ConstType)
+          base = static_cast<ConstType*>(base)->inner;
+        else
+          break;
+      Decl* named = base && base->kind == NodeKind::NamedType ? static_cast<NamedType*>(base)->resolved : nullptr;
+      if (named && (named->kind == NodeKind::ParamDecl || (named->kind == NodeKind::VariableDecl && !(named->flags & DF_Typedef))) && file &&
+          !file->isImported)
+        impl.reportCheckerError(file, token, "'" + std::string(symbols.name(static_cast<NamedType*>(base)->name.last().symbol)) +
+                                                 "' is a variable, not a type: `a * b;` and `a b;` declare b, `T f(a)` at namespace scope a function (design.md 22)");
+    }
+
     void walkParam(ParamDecl* p)
     {
       walkType(p->type);
@@ -23682,7 +23705,10 @@ struct GlobalScope::Impl
               walkType(part.convType);
           }
           for (Decl* p : f->params)
+          {
             walkParam(static_cast<ParamDecl*>(p));
+            checkTypeNamesNoVariable(static_cast<ParamDecl*>(p)->type, p->token); // (a function's own: not a function type's, `gcd(P1::num, P2::num)`, which may be a call)
+          }
           walkType(f->trailingReturn);
           walkExpr(f->requiresClause);
           walkExpr(f->condition);
@@ -23771,27 +23797,7 @@ struct GlobalScope::Impl
           if (v->when && v->whenKnown < 0 && v->parent && v->parent->kind == NodeKind::ClassDecl)
             walkExpr(v->when);
           walkType(v->type);
-          // `a * b;` is a declaration (design.md 22): with `a` a variable it is an error, never `a`'s
-          // type (the reading sizeof's operand has: `sizeof(prefixes)`).
-          {
-            Node* base = v->type;
-            for (;;)
-              if (base && base->kind == NodeKind::PointerType)
-                base = static_cast<PointerType*>(base)->pointee;
-              else if (base && base->kind == NodeKind::LRefType)
-                base = static_cast<LRefType*>(base)->referenced;
-              else if (base && base->kind == NodeKind::RRefType)
-                base = static_cast<RRefType*>(base)->referenced;
-              else if (base && base->kind == NodeKind::ConstType)
-                base = static_cast<ConstType*>(base)->inner;
-              else
-                break;
-            Decl* named = base && base->kind == NodeKind::NamedType ? static_cast<NamedType*>(base)->resolved : nullptr;
-            if (named && (named->kind == NodeKind::ParamDecl || (named->kind == NodeKind::VariableDecl && !(named->flags & DF_Typedef))) && file &&
-                !file->isImported)
-              impl.reportCheckerError(file, v->token, "'" + std::string(symbols.name(static_cast<NamedType*>(base)->name.last().symbol)) +
-                                                          "' is a variable, not a type: `a * b;` and `a b;` declare b (design.md 22)");
-          }
+          checkTypeNamesNoVariable(v->type, v->token);
           checkArrayBounds(v);
           walkExpr(v->bitfield);
           Scope* saved = scope;

@@ -63,7 +63,7 @@ struct Counted
 };
 int counter = 0;
 int next() { return ++counter; }
-Id globalId(9);
+Id globalId{9};
 void show(Id id) { print(id.getIndex(), " "); }
 int main()
 {

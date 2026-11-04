@@ -11,8 +11,8 @@ struct Checked
   }
 };
 
-constexpr Checked good(1);
-constexpr Checked bad(-1);
+constexpr Checked good{1};
+constexpr Checked bad{-1};
 
 int main()
 {

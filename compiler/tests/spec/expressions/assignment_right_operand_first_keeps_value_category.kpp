@@ -34,7 +34,7 @@ struct Table
     return this->items[0];
   }
 };
-Tracked source(7);
+Tracked source{7};
 Tracked& leftTracked() { note(1); return slots[0]; }
 Sum& leftSum() { note(1); return sums[0]; }
 Flags& leftFlags() { note(1); return flags[0]; }
