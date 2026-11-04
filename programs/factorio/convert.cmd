@@ -108,9 +108,6 @@ powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\native-rc.ps1 -Native "%NATIVE%" || goto :failed
 set STEP=the conversion into kpp\
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
-rem (and the game's FinalRelease constant, config::finalRelease: false but in build.kpp's final configuration;
-rem docs/final-release.md)
-set CINC=%CINC% --config finalRelease=false
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
@@ -233,9 +230,9 @@ kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
-%KPPC% --std ..\..\stdlib --quiet --config finalRelease=false --exe kpp\configurations-debug.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
-%KPPC% --std ..\..\stdlib --quiet --release --config finalRelease=false --exe kpp\configurations-release.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
-%KPPC% --std ..\..\stdlib --quiet --release --config finalRelease=true --exe kpp\configurations-final.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --release --exe kpp\configurations-release.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --release --config finalRelease=true --exe kpp\configurations-final.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
 kpp\configurations-debug.exe > kpp\configurations.out.txt
 kpp\configurations-release.exe >> kpp\configurations.out.txt
 kpp\configurations-final.exe >> kpp\configurations.out.txt
@@ -257,6 +254,10 @@ rem Every file the conversion wrote ends its lines with LF alone, in the checkou
 rem both is "inconsistent" to Visual Studio): tests\line-endings.ps1.
 set STEP=the line ends (a converted file has a CR)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\line-endings.ps1 -Checkout "%WHOLE%" -Also kpp || goto :failed
+rem The converted files read as the program's own: no first line naming the sources, no forward
+rem declaration of a class the program defines (tests\converted-text.ps1).
+set STEP=the converted text (a source line or a needless forward declaration)
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
 set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/12, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed

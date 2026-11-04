@@ -710,10 +710,11 @@ together, so one constant, `config::finalRelease`, chooses them:
   `release`, with the reason). There are five: SpriteLoaders' PACKAGED_BUILD condition, the developer
   options frame, and three cxxopts developer options. So the kpp final game keeps those developer
   options, and refuses only the internal mods' 16-bit sprites, as Release does.
-- The program sets the constant in every build: factorio-in-kpp's build.kpp sets it false for the
-  project and true in its final configuration; convert.cmd, run.cmd and tests.cmd pass
-  `--config finalRelease=false` (link-settings.cmd's CINC). A kppc command of the converted game
-  without it stops: config::finalRelease is not declared.
+- The program declares the constant with its default (build.md, "config:: defaults in source"):
+  libraries/CommonUtil/FinalRelease.kpp, an added file of the conversion, holds `config bool
+  finalRelease = false;` (CommonUtil, as Agui reads it too). factorio-in-kpp's final configuration
+  sets it true; every other build, kppc alone included, takes the default (until 2026-11-04 the
+  scripts passed `--config finalRelease=false`).
 
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:

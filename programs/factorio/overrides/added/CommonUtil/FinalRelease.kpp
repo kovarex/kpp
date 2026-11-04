@@ -1,0 +1,4 @@
+// Factorio's FinalRelease build (FINAL_RELEASE): it leaves out the developer-only code, as the
+// packages players get do. Declared here, in CommonUtil, as Agui reads it too; the game's final
+// configuration (factorio-in-kpp's build.kpp) sets it.
+config bool finalRelease = false;

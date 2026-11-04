@@ -2431,6 +2431,7 @@ namespace
     const ScopeNames* scopeNames = nullptr;
     const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
+    const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
     // The files the conversion leaves out: a class defined only in one of them is defined nowhere
     // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
     const std::set<const ParsedFile*>* leftOutFiles = nullptr;
@@ -7760,7 +7761,10 @@ namespace
               bool specializedOnly = def && def != c && def->kind == NodeKind::ClassDecl && !c->templateParams.empty() &&
                                      !static_cast<ClassDecl*>(def)->name.empty() && static_cast<ClassDecl*>(def)->name.last().hasTemplateArgs;
               bool definedInLeftOutFile = def && leftOutFiles && leftOutFiles->count(def->file);
-              if (namespaceScope && opaqueKept && (!def || def == c || specializedOnly || definedInLeftOutFile) &&
+              // (a class ENUM or BITFIELD defines has a definition the resolver does not see: its
+              // declaration goes as any other's)
+              bool macroDefined = !def && macroClasses && macroClasses->count(global.qualifiedName(c));
+              if (namespaceScope && opaqueKept && !macroDefined && (!def || def == c || specializedOnly || definedInLeftOutFile) &&
                   opaqueKept->insert(global.qualifiedName(c)).second)
               {
                 // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through
@@ -12796,10 +12800,64 @@ std::set<std::string> libraryFunctionNames(const std::filesystem::path& libraryD
 }
 
 // --convert-library (setConvertLibraries): the scoped libraries the converted program uses.
+// The classes Factorio's ENUM(Name, ...) and BITFIELD(Name, ...) define at namespace scope, by
+// qualified name (`ns::Name`). The resolver sees the macro's use, not the class the converter writes
+// for it, so a forward declaration of one (Entity.hpp's `class DrawingFlags;`) finds no definition;
+// with this set it goes as any class's forward declaration does.
+static std::set<std::string> collectMacroClasses(const std::vector<ConvertInput>& inputs)
+{
+  std::set<std::string> classes;
+  for (const ConvertInput& in : inputs)
+  {
+    if (!in.parsed || in.parsed->isImported || !in.tokens)
+      continue;
+    const std::vector<Token>& toks = *in.tokens;
+    auto spelling = [&](size_t k) { return in.text.substr(toks[k].offset, toks[k].length); };
+    std::vector<std::pair<std::string, int>> namespaces; // a namespace's name ("" anonymous) and the brace depth inside it
+    int depth = 0;
+    for (size_t k = 0; k < toks.size(); ++k)
+    {
+      if (toks[k].is(P::LBrace))
+        ++depth;
+      else if (toks[k].is(P::RBrace))
+      {
+        if (!namespaces.empty() && namespaces.back().second == depth)
+          namespaces.pop_back();
+        --depth;
+      }
+      else if (toks[k].getKind() == TokenKind::Keyword && spelling(k) == "namespace")
+      {
+        // `namespace a::b {`, `namespace {`; an alias (`namespace fs = ...;`) opens nothing
+        std::string name;
+        size_t j = k + 1;
+        while (j < toks.size() && (toks[j].getKind() == TokenKind::Identifier || toks[j].is(P::ColonColon)))
+          name += spelling(j++);
+        if (j < toks.size() && toks[j].is(P::LBrace))
+        {
+          namespaces.push_back({name, depth + 1});
+          ++depth;
+          k = j;
+        }
+      }
+      else if (toks[k].getKind() == TokenKind::Identifier && (spelling(k) == "ENUM" || spelling(k) == "BITFIELD") && k + 2 < toks.size() &&
+               toks[k + 1].is(P::LParen) && toks[k + 2].getKind() == TokenKind::Identifier &&
+               depth == (namespaces.empty() ? 0 : namespaces.back().second))
+      {
+        std::string qualified;
+        for (const auto& [name, inside] : namespaces)
+          if (!name.empty())
+            qualified += name + "::";
+        classes.insert(qualified + std::string(spelling(k + 2)));
+      }
+    }
+  }
+  return classes;
+}
+
 static std::vector<std::pair<std::string, std::filesystem::path>> convertLibraries;
 void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::path>> libraries) { convertLibraries = std::move(libraries); }
 
-// The line a converted interface header's file starts with (after the "Converted from" line).
+// The line a converted interface header's file starts with.
 static const char* const scopeInterfaceLine =
   "// The library's interface (interface.txt): its users write its names qualified (design.md 16).";
 // The line after it that lists the interface's functions, whose declarations the conversion removes
@@ -13768,6 +13826,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
+  std::set<std::string> macroClasses = collectMacroClasses(inputs);
   Variants variants;
   std::map<std::string, ClassBases> classBases;
   for (const ConvertInput& in : inputs)
@@ -13956,6 +14015,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopeNames = &scopeNames;
     fc.libraryTypes = &libraryTypes;
     fc.opaqueKept = &opaqueKept;
+    fc.macroClasses = &macroClasses;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
     if (auto renames = fileAliasRenames.find(&in); renames != fileAliasRenames.end())
@@ -14115,10 +14175,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::error_code ec;
     std::filesystem::create_directories(outPath.parent_path(), ec);
     OverrideFile* ov = overrideFor(key);
-    std::string text = "// Converted from";
-    for (const Piece& p : pieces)
-      text += " " + std::filesystem::path(p.source).filename().string();
-    text += " by kppc --convert; see CONVERSION.md.\n\n";
+    // (no line naming the sources: the file reads as the program's own, kovarex 2026-11-04;
+    // CONVERSION.md lists what each file was converted from)
+    std::string text;
     // (the line kppc --convert-library finds a library's interface files by: scopedNamesOf)
     if (std::any_of(pieces.begin(), pieces.end(), [](const Piece& p) { return p.scopeInterface; }))
     {
