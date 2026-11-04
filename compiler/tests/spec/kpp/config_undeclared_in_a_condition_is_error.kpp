@@ -1,0 +1,10 @@
+// spec: a namespace-scope when or if constexpr whose condition names a config:: constant nothing sets and no source declares says so ("config::finalRelease is not declared"), not only that the condition is no constant
+// factorio: converted code read with neither `--config finalRelease=...` nor BuildConstants' `config bool finalRelease = false;`
+// error: config_undeclared_in_a_condition_is_error.kpp:5: error: config::finalRelease is not declared
+// error: config_undeclared_in_a_condition_is_error.kpp:6: error: config::verbose is not declared
+when (config::finalRelease) int extra = 1;
+if constexpr (!config::verbose)
+{
+  int quiet() { return 1; }
+}
+int main() { return 0; }

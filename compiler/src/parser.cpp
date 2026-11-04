@@ -95,7 +95,12 @@ namespace
         expect(P::Semi, "expected ';' after the file's requires condition");
         std::optional<ConfigValue> value = configValue(cond);
         if (!value || !value->isNumber)
-          error("a file's requires condition needs config constants and literals");
+        {
+          if (const char* undeclared = undeclaredConfig(cond))
+            out.diagnostics.push_back({cond->token, undeclared}); // (at the name, as a when's)
+          else
+            error("a file's requires condition needs config constants and literals");
+        }
         else if (value->number == 0)
         {
           out.decls = makeSpan<Decl*>(mark);
@@ -1392,6 +1397,44 @@ namespace
     // Evaluates a condition made of literals, config constants (`config::name`) and the operators
     // ! && || == != < > <= >= + - on them. An enum-valued config constant compares equal to a
     // qualified name whose last part spells its value: `config::platform == Platform::Windows`.
+    // The first config:: constant a condition names that nothing sets and no source declares, as a
+    // message (in the file's arena); null when there is none. A when's, an if constexpr's or a requires'
+    // condition that is no constant names it so: "config::finalRelease is not declared".
+    const char* undeclaredConfig(Expr* e, int depth = 0)
+    {
+      if (!e || !config || depth > 32)
+        return nullptr;
+      switch (e->kind)
+      {
+        case NodeKind::ParenExpr: return undeclaredConfig(static_cast<ParenExpr*>(e)->inner, depth + 1);
+        case NodeKind::UnaryExpr: return undeclaredConfig(static_cast<UnaryExpr*>(e)->operand, depth + 1);
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          const char* m = undeclaredConfig(b->lhs, depth + 1);
+          return m ? m : undeclaredConfig(b->rhs, depth + 1);
+        }
+        case NodeKind::NameExpr:
+        {
+          auto* n = static_cast<NameExpr*>(e);
+          if (n->name.parts.size() < 2 || n->name.parts[0].symbol != kwConfig)
+            return nullptr;
+          std::string name;
+          for (size_t k = 1; k < n->name.parts.size(); ++k)
+            name += (k > 1 ? "::" : "") + std::string(symbols.name(n->name.parts[k].symbol));
+          if (config->count(name))
+            return nullptr;
+          std::string text = "config::" + name + " is not declared: nothing sets it (--config " + name +
+                             "=VALUE, build.kpp) and no source declares it (`config bool " + name.substr(name.rfind(':') + 1) +
+                             " = false;` at a file's top level, design.md \"config:: defaults in source\")";
+          char* kept = static_cast<char*>(out.arena.allocate(text.size() + 1, 1));
+          memcpy(kept, text.c_str(), text.size() + 1);
+          return kept;
+        }
+        default: return nullptr;
+      }
+    }
+
     std::optional<ConfigValue> configValue(Expr* e, int depth = 0)
     {
       if (!e || depth > 32)
@@ -1538,8 +1581,10 @@ namespace
           perInstance = true;
         else
         {
-          out.diagnostics.push_back({cond->token, "a when at namespace scope or in a class that is no template needs a condition made of config "
-                                                  "constants and literals (design.md 19)"});
+          const char* undeclared = undeclaredConfig(cond);
+          out.diagnostics.push_back({cond->token, undeclared ? undeclared
+                                                             : "a when at namespace scope or in a class that is no template needs a condition made of config "
+                                                               "constants and literals (design.md 19)"});
           inRecovery = true;
           return;
         }
@@ -1637,7 +1682,12 @@ namespace
       expect(P::RParen, "expected ')'");
       std::optional<ConfigValue> value = configValue(cond);
       if (!value || !value->isNumber)
-        error("if constexpr at declaration scope needs a condition made of config constants and literals");
+      {
+        if (const char* undeclared = undeclaredConfig(cond))
+          out.diagnostics.push_back({cond->token, undeclared}); // (at the name, as a when's)
+        else
+          error("if constexpr at declaration scope needs a condition made of config constants and literals");
+      }
       bool take = !alreadyTaken && value && value->isNumber && value->number != 0;
       parseStaticIfBranch(scope, take);
       if (accept(Kw::else_))
