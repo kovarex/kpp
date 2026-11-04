@@ -1237,17 +1237,27 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   - A header-only library defines macros inside its functions (stb_truetype's STBTT__CSERR): only a
     #define at the file's scope is an interface name (a header's `extern "C" {` block is the file's
     scope). The others stay the local macros they were.
-  - The harness prints its 9 constants' values and sizes and its 13 enumerators' values (their sizes
-    follow with stb_image's, now that sizeof takes an enumerator), 3,289 lines, the same in both builds. In the
-    game, 52 uses of `fontstash::`.
-- **Not yet scoped:**
-  - stb_image: the game imports more of its directory than its interface (stb_dxt.h,
-    stb_image_resize.h, and the kpp_stb__ names DXTCompression uses), and an interface's global
-    variable (`stbi_write_png_compression_level`) is not yet qualified for its users.
-  - trio: its users (Lua's override_printf.h, StringUtil) took C's standard headers through
-    trio.h's own includes (limits.h's UCHAR_MAX for Lua's MAXUPVAL, stdio.h's BUFSIZ). A scoped
-    header that is no longer imported must leave its users those.
-  - Both their harnesses are byte-identical as scoped libraries (4,236 and 2,278 lines).
+  - The harness prints its 9 constants' and 13 enumerators' values and sizes (an enumerator's size
+    since sizeof takes one, 7bdb93be), 3,289 lines, the same in both builds. In the game, 52 uses of
+    `fontstash::`.
+- **stb_image and trio (2026-11-04):** stb_image's interface is stb_image.hpp and
+  stb_image_write.h; trio's is trio.h and triodef.h. With them every C library the game converts is
+  scoped but ogg and glad.
+  - Counts: stb_image has 6 constants and 17 functions, trio 11 functions and 2 aliases. Not
+    expressed: stb_image 20 (its configuration macros naming the C runtime's functions, STBI_MALLOC,
+    STBI_ASSERT, stbi_lrot), trio 12 (TRIO_CONST, TRIO_PROTO_PRINTF and the like, words of its
+    declarations). The game uses none of them.
+  - Only an interface header's include is removed: another header of the library's directory
+    (stb_dxt.h, stb_image_resize.h) stays the C import it was.
+  - A scoped header's include still gives its includer the C headers the library imports (its
+    c-imports.kpp's): Lua's override_printf.h took limits.h's UCHAR_MAX (for MAXUPVAL) and
+    stdio.h's BUFSIZ (LUAL_BUFFERSIZE) through trio.h.
+  - A global written `::name` is `stb_image::name` (stbi_write_png_compression_level), and a name
+    of the library inside a macro's expansion text is qualified too (Lua's override_printf.h
+    defines fprintf as trio_fprintf, so lauxlib's `fprintf(stderr, ...)` is `trio::trio_fprintf`).
+  - The harnesses: 4,236 and 2,278 lines, the same in the C and the converted builds. In the game,
+    13 uses of `stb_image::` (2 files) and 20 of `trio::` (7 files, Lua's and CommonUtil's,
+    TrioPieces.kpp's floating text among them).
 
 **The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
 

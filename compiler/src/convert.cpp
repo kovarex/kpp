@@ -2824,6 +2824,7 @@ namespace
     const std::map<std::string, std::string>* scopedLibraryNames = nullptr; // name -> its library
     const std::set<std::string>* scopedLibraries = nullptr;
     const std::set<std::string>* scopedHeaders = nullptr; // their interface headers' names (zlib.h), included as "zlib.h" too
+    const std::map<std::string, std::vector<std::string>>* scopedHeaderImports = nullptr; // what an include of one still imports
     // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
     // std::ostream;`), by their kpp names: its later unqualified uses are the library's.
     std::map<std::string, std::string> stdUsingNames;
@@ -3259,6 +3260,16 @@ namespace
     // whose arithmetic is the macro's on the argument's type), and one that is neither (a stringized
     // version, `ZSTD_LIB_VERSION`'s `1.4.0`) a TODO of the report, never left out silently. A guard,
     // an empty one and a linkage word (ZSTDLIB_API) are no value.
+    // A macro's text that is one name of a scoped library (Lua's override_printf.h, `#define sprintf
+    // trio_sprintf`), written qualified as the name is where the code spells it: `trio::trio_sprintf`.
+    std::string scopedQualified(const std::string& text) const
+    {
+      if (!scopedLibraryNames || text.empty() || !std::all_of(text.begin(), text.end(), [](char c) { return isIdentChar(c); }))
+        return text;
+      auto library = scopedLibraryNames->find(text);
+      return library == scopedLibraryNames->end() ? text : library->second + "::" + text;
+    }
+
     // Whether a position of the file is at its scope: outside every function's, class's and
     // initializer's braces (a header's `extern "C" {` block is the file's scope), comments, literals
     // and preprocessor lines skipped. A header-only library's implementation defines macros in its
@@ -3985,11 +3996,20 @@ namespace
             counts.add("includes removed");
             continue;
           }
-          // A scoped library's header (`zstd/zstd.h`, --convert-library): nothing to import, its names
-          // are the library's, written qualified (convertTokens).
-          if (scopedLibraries && ((header.find('/') != std::string::npos && scopedLibraries->count(header.substr(0, header.find('/')))) ||
-                                    (scopedHeaders && scopedHeaders->count(base))))
+          // A scoped library's interface header (`zstd/zstd.h`, --convert-library): nothing to import, its
+          // names are the library's, written qualified (convertTokens). Another header of its directory
+          // (stb_image's stb_dxt.h, which is no interface of it) stays a C import.
+          if (scopedLibraries && scopedHeaders && scopedHeaders->count(base))
           {
+            // (the C headers the library's header gave its includer stay imported: its library's C
+            // imports, scopedHeaderImports)
+            if (scopedHeaderImports)
+            {
+              auto imports = scopedHeaderImports->find(base);
+              if (imports != scopedHeaderImports->end())
+                for (const std::string& imported : imports->second)
+                  importC(imported);
+            }
             remove(offset, removeLength);
             counts.add("includes of a scoped library's headers removed");
             continue;
@@ -4653,12 +4673,59 @@ namespace
       return result;
     }
 
+    // The names of a scoped library in text that never was tokens, qualified as convertTokens
+    // qualifies them in code (design.md 16): a function-like macro's body through an alias macro,
+    // Lua's `lua_number2str(s,n)` writing `sprintf` that override_printf.h made `trio_sprintf`, is
+    // `trio::trio_sprintf`. Literals, members (after `.` or `->`) and qualified names stay.
+    std::string qualifyScopedNames(const std::string& s)
+    {
+      if (!scopedLibraryNames || scopedLibraryNames->empty())
+        return s;
+      std::string out;
+      for (size_t i = 0; i < s.size();)
+      {
+        char c = s[i];
+        if (c == '"' || (c == '\'' && !isDigitSeparator(s, i)))
+        {
+          size_t j = i + 1;
+          while (j < s.size() && s[j] != c)
+            j += s[j] == '\\' ? 2 : 1;
+          j = std::min(j + 1, s.size());
+          out.append(s, i, j - i);
+          i = j;
+          continue;
+        }
+        if (!(isalpha((unsigned char)c) || c == '_') || (i > 0 && isIdentChar(s[i - 1])))
+        {
+          out += c;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < s.size() && isIdentChar(s[j]))
+          ++j;
+        std::string word = s.substr(i, j - i);
+        size_t p = out.size();
+        while (p > 0 && out[p - 1] == ' ')
+          --p;
+        bool reached = p > 0 && (out[p - 1] == '.' || (out[p - 1] == '>' && p > 1 && out[p - 2] == '-') || (out[p - 1] == ':' && p > 1 && out[p - 2] == ':'));
+        auto library = reached ? scopedLibraryNames->end() : scopedLibraryNames->find(word);
+        if (library != scopedLibraryNames->end())
+        {
+          out += library->second + "::";
+          counts.add("names of a scoped library qualified");
+        }
+        out += word;
+        i = j;
+      }
+      return out;
+    }
     // The game's classes whose names the library uses, renamed in text that never was tokens; in C,
     // and this file's renamed statics and private names (cStaticRenames) too: trio's math.c names
     // its ieee_double_shape_type in its EXTRACT_WORDS macros, whose expansions are such text.
     std::string renameGameClasses(const std::string& s)
     {
-      std::string renamed = renameGameClassNames(s, &counts);
+      std::string renamed = renameGameClassNames(qualifyScopedNames(s), &counts);
       if (!in.c || !cStaticRenames || cStaticRenames->empty())
         return renamed;
       std::string out;
@@ -6315,12 +6382,19 @@ namespace
           }
         // A name of a scoped library the program uses (--convert-library), qualified by the library:
         // `zstd::ZSTD_compress(...)`, `zstd::ZSTD_inBuffer in = {}` (design.md 16).
+        // (a global one, C++'s `::stbi_write_png_compression_level` in MemoryBitmap.cpp, is the
+        // library's too: `stb_image::stbi_write_png_compression_level`)
+        bool globalQualifier = i > 0 && toks[i - 1].is(P::ColonColon) &&
+                               (i < 2 || !(toks[i - 2].getKind() == TokenKind::Identifier || toks[i - 2].is(P::Greater)));
         if (scopedLibraryNames && !scopedLibraryNames->empty() && t.getKind() == TokenKind::Identifier &&
-            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || (toks[i - 1].is(P::ColonColon) && !globalQualifier))))
           if (auto library = scopedLibraryNames->find(std::string(spelling(i)));
               library != scopedLibraryNames->end() && !shadowedAt(library->first, t.offset)) // (a local `compress`, BitmapUtil's)
           {
-            replace(t.offset, t.length, library->second + "::" + library->first);
+            if (globalQualifier)
+              replace(toks[i - 1].offset, t.offset + t.length - toks[i - 1].offset, library->second + "::" + library->first);
+            else
+              replace(t.offset, t.length, library->second + "::" + library->first);
             counts.add("names of a scoped library qualified");
             continue;
           }
@@ -6518,7 +6592,7 @@ namespace
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset) &&
               !cNamedConstant(macro->first))
           {
-            replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : macro->second);
+            replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : scopedQualified(macro->second));
             counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
                        : isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second) ? "name macros written out"
                                                                                                       : "spliced macros written out");
@@ -6528,7 +6602,7 @@ namespace
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
           if (auto alias = headerAliases->find(std::string(spelling(i))); alias != headerAliases->end())
           {
-            replace(t.offset, t.length, alias->second);
+            replace(t.offset, t.length, scopedQualified(alias->second));
             counts.add("C header alias macros expanded");
             continue;
           }
@@ -12749,7 +12823,9 @@ static std::set<std::string> scopedNamesOf(const std::filesystem::path& dir, std
     std::string text;
     if (!readFile(entry.path(), text) || text.find(scopeInterfaceLine) == std::string::npos)
       continue;
-    headers.insert(entry.path().stem().string() + ".h"); // (its C header's name: zlib.kpp is zlib.h's)
+    // (its C header's name: zlib.kpp is zlib.h's, stb_image.kpp stb_image.hpp's)
+    headers.insert(entry.path().stem().string() + ".h");
+    headers.insert(entry.path().stem().string() + ".hpp");
     if (size_t list = text.find(scopeFunctionsLine); list != std::string::npos)
     {
       size_t at = list + strlen(scopeFunctionsLine);
@@ -12949,6 +13025,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   std::map<std::string, std::string> scopedLibraryNames;
   std::set<std::string> scopedLibraries;
   std::set<std::string> scopedHeaders; // their interface headers' names
+  // What an include of a scoped library's header still imports, by the header's name and by the
+  // library's: its library's C imports (its c-imports.kpp's). A user took C's headers through the
+  // library's header (Lua's override_printf.h included trio.h, and with it limits.h's UCHAR_MAX), and
+  // keeps them when the header itself is the library's.
+  std::map<std::string, std::vector<std::string>> scopedHeaderImports;
   for (const auto& [library, dir] : convertLibraries)
   {
     scopedLibraries.insert(library);
@@ -12956,6 +13037,17 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (const std::string& name : scopedNamesOf(dir, headers))
       scopedLibraryNames.emplace(name, library);
     scopedHeaders.insert(headers.begin(), headers.end());
+    std::vector<std::string> imports;
+    if (std::string text; readFile(dir / "c-imports.kpp", text))
+      for (size_t at = text.find("import \""); at != std::string::npos; at = text.find("import \"", at + 1))
+      {
+        size_t start = at + 8, end = text.find('"', start);
+        if (end != std::string::npos)
+          imports.push_back(text.substr(start, end - start));
+      }
+    scopedHeaderImports[library] = imports;
+    for (const std::string& header : headers)
+      scopedHeaderImports[header] = imports;
   }
   // (a name the program or its C imports declare is theirs, as a bare name resolves: Windows' BYTE,
   // which zstd's mem.h declares too; the library's is reached qualified only)
@@ -13852,6 +13944,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopedLibraryNames = &scopedLibraryNames;
     fc.scopedLibraries = &scopedLibraries;
     fc.scopedHeaders = &scopedHeaders;
+    fc.scopedHeaderImports = &scopedHeaderImports;
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
     fc.classesByName = &classesByName;

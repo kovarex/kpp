@@ -163,21 +163,25 @@ if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc cra
 set "STEP=smoke test"
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)
 setlocal EnableDelayedExpansion
+rem (CommonUtil's StringUtil prints through trio: the scoped library converted, trio::trio_snprintf, or
+rem the C one)
+set TRIOLINK=--lib C:\Factorio\vs2022\Releasex64\trio.lib
+if exist c-libraries\trio\interface.txt set TRIOLINK=--library-root trio kpp\trio
 set FILES=
 for %%f in (kpp\CommonUtil\*.kpp) do if not %%~nf==SystemClipboard set FILES=!FILES! %%f
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\smoke.kpp %TRIOLINK% || goto :failed
 kpp\smoke.exe > kpp\smoke.out.txt
 fc /w kpp\smoke.out.txt tests\smoke.expected > nul && (echo smoke test: output as expected& set /a SMOKES+=1) || (echo smoke test: OUTPUT DIFFERS & fc /w kpp\smoke.out.txt tests\smoke.expected & goto :failed)
 set "STEP=Agui smoke test"
 echo == Agui smoke test: tests\agui_smoke.kpp against the converted Agui (Void backend)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\stubs\AguiGameWidgets.kpp kpp\Agui tests\agui_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\stubs\AguiGameWidgets.kpp kpp\Agui tests\agui_smoke.kpp %TRIOLINK% || goto :failed
 kpp\agui_smoke.exe > kpp\agui_smoke.out.txt
 fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && (echo agui smoke test: output as expected& set /a SMOKES+=1) || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & goto :failed)
 set "STEP=Util smoke test"
 echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, GameRuntimeError and prefetch stubbed)
 set UFILES=
 for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFILES=!UFILES! %%f
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\c-imports.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\c-imports.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp %TRIOLINK% || goto :failed
 kpp\util_smoke.exe > kpp\util_smoke.out.txt
 fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && (echo util smoke test: output as expected& set /a SMOKES+=1) || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & goto :failed)
 set "STEP=imgui smoke test"
@@ -193,7 +197,7 @@ kpp\glm_smoke.exe > kpp\glm_smoke.out.txt
 fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && (echo glm smoke test: output as expected& set /a SMOKES+=1) || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & goto :failed)
 set "STEP=Lua compatibility check"
 echo == Lua compatibility check: tests\lua_compat.lua run by the converted Lua (tests\lua_compat.kpp with kpp\Lua) prints what the game's lua.lib prints (tests\lua_compat.expected, from tests\lua_compat.cpp)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_compat.exe tests\lua_compat.kpp kpp\Lua --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_compat.exe tests\lua_compat.kpp kpp\Lua %TRIOLINK% || goto :failed
 kpp\lua_compat.exe tests\lua_compat.lua > kpp\lua_compat.out.txt
 fc /w kpp\lua_compat.out.txt tests\lua_compat.expected > nul && (echo Lua compatibility check: output as expected& set /a SMOKES+=1) || (echo Lua compatibility check: OUTPUT DIFFERS & fc /w kpp\lua_compat.out.txt tests\lua_compat.expected & goto :failed)
 set "STEP=GDI+ smoke test"

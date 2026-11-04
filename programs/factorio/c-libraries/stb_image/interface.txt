@@ -1,0 +1,7 @@
+# stb_image's interface, converted into its scope (design.md 16): the game writes
+# stb_image::stbi_load_from_memory, stb_image::stbi_write_png_to_func. The two headers are the whole
+# library (header-only, their implementation in them), so they are its sources too. Their number
+# macros are constants of the scope, their string, type and function-like macros a constant array,
+# aliases and functions; a macro that is none is a TODO of the report.
+stb_image.hpp
+stb_image_write.h

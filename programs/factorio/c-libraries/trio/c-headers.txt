@@ -1,4 +1,0 @@
-# trio's interface: these headers stay C, imported by the converted files and by the game (Lua and
-# CommonUtil format through trio's printf).
-trio.h
-triodef.h

@@ -4,8 +4,8 @@
 // digit from the exact rounding). The stdlib's fixed, significant and scientific are the exact text
 // (docs/stdlib/text.md); the printf rewrite (design.md 14) writes these pieces instead for the
 // floating conversions of ssprintf and of the functions that format through it, so that the game's
-// text, which its saves and checksums hold, stays the C++ build's.
-extern "C" import "trio.h";
+// text, which its saves and checksums hold, stays the C++ build's. trio is a scoped library (kpp's
+// design.md 16): its names are trio::trio_snprintf.
 
 struct TrioFloating
 {
@@ -17,7 +17,7 @@ struct TrioFloating
   {
     char format[5] = {'%', '.', '*', this->conversion, 0};
     char buffer[512];
-    int written = trio_snprintf(buffer, sizeof(buffer), format, this->precision, this->value);
+    int written = trio::trio_snprintf(buffer, sizeof(buffer), format, this->precision, this->value);
     if (written < 0)
       return;
     if (size_t(written) < sizeof(buffer))
@@ -27,7 +27,7 @@ struct TrioFloating
     }
     // (%f of a large value: its digits, all of them)
     String longer(size_t(written) + 1, '\0');
-    trio_snprintf(longer.data(), longer.size(), format, this->precision, this->value);
+    trio::trio_snprintf(longer.data(), longer.size(), format, this->precision, this->value);
     out.append(longer.data(), size_t(written));
   }
 };

@@ -247,12 +247,6 @@ static void constant(const char* name, long long value, size_t size, int isSigne
   printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
 }
 
-// An enumerator's value alone: kpp's sizeof of an enumerator is pending (language/sizeof_enumerator).
-static void enumerator(const char* name, long long value)
-{
-  printf("%s = %lld\n", name, value);
-}
-
 static void interface(void)
 {
   constant("FONS_INVALID", (long long)FONS_INVALID, sizeof(FONS_INVALID), FONS_INVALID * 0 - 1 < 0);
@@ -264,19 +258,19 @@ static void interface(void)
   constant("FONS_VERTEX_COUNT", (long long)FONS_VERTEX_COUNT, sizeof(FONS_VERTEX_COUNT), FONS_VERTEX_COUNT * 0 - 1 < 0);
   constant("FONS_MAX_STATES", (long long)FONS_MAX_STATES, sizeof(FONS_MAX_STATES), FONS_MAX_STATES * 0 - 1 < 0);
   constant("FONS_MAX_FALLBACKS", (long long)FONS_MAX_FALLBACKS, sizeof(FONS_MAX_FALLBACKS), FONS_MAX_FALLBACKS * 0 - 1 < 0);
-  enumerator("FONS_ZERO_TOPLEFT", (long long)FONS_ZERO_TOPLEFT);
-  enumerator("FONS_ZERO_BOTTOMLEFT", (long long)FONS_ZERO_BOTTOMLEFT);
-  enumerator("FONS_ALIGN_LEFT", (long long)FONS_ALIGN_LEFT);
-  enumerator("FONS_ALIGN_CENTER", (long long)FONS_ALIGN_CENTER);
-  enumerator("FONS_ALIGN_RIGHT", (long long)FONS_ALIGN_RIGHT);
-  enumerator("FONS_ALIGN_TOP", (long long)FONS_ALIGN_TOP);
-  enumerator("FONS_ALIGN_MIDDLE", (long long)FONS_ALIGN_MIDDLE);
-  enumerator("FONS_ALIGN_BOTTOM", (long long)FONS_ALIGN_BOTTOM);
-  enumerator("FONS_ALIGN_BASELINE", (long long)FONS_ALIGN_BASELINE);
-  enumerator("FONS_ATLAS_FULL", (long long)FONS_ATLAS_FULL);
-  enumerator("FONS_SCRATCH_FULL", (long long)FONS_SCRATCH_FULL);
-  enumerator("FONS_STATES_OVERFLOW", (long long)FONS_STATES_OVERFLOW);
-  enumerator("FONS_STATES_UNDERFLOW", (long long)FONS_STATES_UNDERFLOW);
+  constant("FONS_ZERO_TOPLEFT", (long long)FONS_ZERO_TOPLEFT, sizeof(FONS_ZERO_TOPLEFT), FONS_ZERO_TOPLEFT * 0 - 1 < 0);
+  constant("FONS_ZERO_BOTTOMLEFT", (long long)FONS_ZERO_BOTTOMLEFT, sizeof(FONS_ZERO_BOTTOMLEFT), FONS_ZERO_BOTTOMLEFT * 0 - 1 < 0);
+  constant("FONS_ALIGN_LEFT", (long long)FONS_ALIGN_LEFT, sizeof(FONS_ALIGN_LEFT), FONS_ALIGN_LEFT * 0 - 1 < 0);
+  constant("FONS_ALIGN_CENTER", (long long)FONS_ALIGN_CENTER, sizeof(FONS_ALIGN_CENTER), FONS_ALIGN_CENTER * 0 - 1 < 0);
+  constant("FONS_ALIGN_RIGHT", (long long)FONS_ALIGN_RIGHT, sizeof(FONS_ALIGN_RIGHT), FONS_ALIGN_RIGHT * 0 - 1 < 0);
+  constant("FONS_ALIGN_TOP", (long long)FONS_ALIGN_TOP, sizeof(FONS_ALIGN_TOP), FONS_ALIGN_TOP * 0 - 1 < 0);
+  constant("FONS_ALIGN_MIDDLE", (long long)FONS_ALIGN_MIDDLE, sizeof(FONS_ALIGN_MIDDLE), FONS_ALIGN_MIDDLE * 0 - 1 < 0);
+  constant("FONS_ALIGN_BOTTOM", (long long)FONS_ALIGN_BOTTOM, sizeof(FONS_ALIGN_BOTTOM), FONS_ALIGN_BOTTOM * 0 - 1 < 0);
+  constant("FONS_ALIGN_BASELINE", (long long)FONS_ALIGN_BASELINE, sizeof(FONS_ALIGN_BASELINE), FONS_ALIGN_BASELINE * 0 - 1 < 0);
+  constant("FONS_ATLAS_FULL", (long long)FONS_ATLAS_FULL, sizeof(FONS_ATLAS_FULL), FONS_ATLAS_FULL * 0 - 1 < 0);
+  constant("FONS_SCRATCH_FULL", (long long)FONS_SCRATCH_FULL, sizeof(FONS_SCRATCH_FULL), FONS_SCRATCH_FULL * 0 - 1 < 0);
+  constant("FONS_STATES_OVERFLOW", (long long)FONS_STATES_OVERFLOW, sizeof(FONS_STATES_OVERFLOW), FONS_STATES_OVERFLOW * 0 - 1 < 0);
+  constant("FONS_STATES_UNDERFLOW", (long long)FONS_STATES_UNDERFLOW, sizeof(FONS_STATES_UNDERFLOW), FONS_STATES_UNDERFLOW * 0 - 1 < 0);
 }
 
 int main(int argc, char** argv)

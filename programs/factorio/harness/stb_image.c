@@ -188,20 +188,14 @@ static void constant(const char* name, long long value, size_t size, int isSigne
   printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
 }
 
-// An enumerator's value alone: kpp's sizeof of an enumerator is pending (language/sizeof_enumerator).
-static void enumerator(const char* name, long long value)
-{
-  printf("%s = %lld\n", name, value);
-}
-
 static void interface(void)
 {
   constant("STBI_VERSION", (long long)STBI_VERSION, sizeof(STBI_VERSION), STBI_VERSION * 0 - 1 < 0);
-  enumerator("STBI_default", (long long)STBI_default);
-  enumerator("STBI_grey", (long long)STBI_grey);
-  enumerator("STBI_grey_alpha", (long long)STBI_grey_alpha);
-  enumerator("STBI_rgb", (long long)STBI_rgb);
-  enumerator("STBI_rgb_alpha", (long long)STBI_rgb_alpha);
+  constant("STBI_default", (long long)STBI_default, sizeof(STBI_default), STBI_default * 0 - 1 < 0);
+  constant("STBI_grey", (long long)STBI_grey, sizeof(STBI_grey), STBI_grey * 0 - 1 < 0);
+  constant("STBI_grey_alpha", (long long)STBI_grey_alpha, sizeof(STBI_grey_alpha), STBI_grey_alpha * 0 - 1 < 0);
+  constant("STBI_rgb", (long long)STBI_rgb, sizeof(STBI_rgb), STBI_rgb * 0 - 1 < 0);
+  constant("STBI_rgb_alpha", (long long)STBI_rgb_alpha, sizeof(STBI_rgb_alpha), STBI_rgb_alpha * 0 - 1 < 0);
 }
 
 int main(int argc, char** argv)
