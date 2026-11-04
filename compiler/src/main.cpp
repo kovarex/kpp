@@ -4913,7 +4913,7 @@ int compile(int argc, char** argv)
         fprintf(stderr, "--target %s needs the target's C headers and libraries to link: --sysroot DIR, or %s (%s)\n", options.target.name.c_str(),
                 (compilerPath().parent_path() / "sysroots" / name).string().c_str(),
                 options.target.os == Target::Os::FreeBSD ? "a release's installer puts it there; in a build of kppc, tools\\sysroot\\freebsd.ps1"
-                                                         : "tests\\targets.ps1 makes it from WSL; tools\\sysroot\\linux-from-wsl.sh");
+                                                         : "tools\\sysroot\\linux.ps1, Debian 11's glibc 2.31, which tests\\targets.ps1 runs");
         return 2;
       }
     }

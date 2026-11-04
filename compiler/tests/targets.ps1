@@ -1,15 +1,17 @@
 # --target (docs/design.md, "Targets and hosts"): tests\targets\ built for each target kppc has.
-# Windows: built and run here. Linux: built here against a glibc sysroot and run under WSL (made from
-# WSL's Ubuntu by tools\sysroot\linux-from-wsl.sh into build\sysroots\linux-x86_64 when missing, or
-# KPP_SYSROOT_LINUX); skipped without WSL. FreeBSD: the IR and an object, and with its sysroot a
-# static executable whose ELF headers are checked (nothing runs it here). run_tests.cmd runs it.
-# Every call of wsl.exe has a timeout: a WSL that does not answer the first in 30 s skips Linux, and
-# one that stops answering later fails the check; neither hangs it. Exit 0: passed; 1: failed;
-# 3: passed, Linux skipped (no WSL); 4: passed, Linux skipped (WSL did not answer in 30 s).
+# Windows: built and run here. Linux: built and linked here against Debian 11's glibc 2.31 sysroot
+# (tools\sysroot\linux.ps1 into build\sysroots\linux-x86_64, made again whenever its stamp is not
+# linux.ps1's, a copy of WSL's Ubuntu that linux-from-wsl.sh made included; or KPP_SYSROOT_LINUX), and
+# run under WSL; without WSL nothing runs. A failed download or a wrong SHA-256 fails the check.
+# FreeBSD: the IR and an object, and with its sysroot a static executable whose ELF headers are
+# checked (nothing runs it here). run_tests.cmd runs it.
+# Every call of wsl.exe has a timeout: a WSL that does not answer the first in 30 s runs no Linux
+# program, and one that stops answering later fails the check; neither hangs it. Exit 0: passed;
+# 1: failed; 3: passed, Linux not run (no WSL); 4: passed, Linux not run (WSL did not answer in 30 s).
 # run_tests.cmd lists a skip in its summary.
-# -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout). -NoLinux: Linux left out (exit 5),
-# for run_tests' quick run: under other threads' load a program's run under WSL timed out (2026-11-05),
-# and the full run (thread H's batch on master) has it.
+# -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout). -NoLinux: Linux's programs not run
+# (exit 5), for run_tests' quick run: under other threads' load a program's run under WSL timed out
+# (2026-11-05), and the full run (thread H's batch on master) has it. They are still built and linked.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$WslExe = 'wsl.exe', [switch]$NoLinux)
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\targets'
@@ -228,8 +230,8 @@ else
   elseif ($problems = ElfProblems $built 1403) { Fail "kppc --target freebsd --no-run --run: $built`: $problems" }
 }
 
-# Linux, under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every run_tests): 30 s
-# for the first, which also starts WSL's virtual machine, then 120 s for a program, 600 s for the sysroot.
+# Linux: built here, run under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every
+# run_tests): 30 s for the first, which also starts WSL's virtual machine, then 120 s for a program.
 $wslSkip = $null
 if ($NoLinux) { $wslSkip = 'left to the full run' }
 elseif (-not (Get-Command $WslExe -ErrorAction SilentlyContinue)) { $wslSkip = 'no WSL' }
@@ -243,8 +245,10 @@ $hasWsl = -not $wslSkip
 # A command under WSL (Run's result); one that does not finish in time fails the check, and after
 # that no command runs under WSL (each would wait its own timeout).
 $wslHung = $false
+# Without WSL: nothing ($null), and the program is not run.
 function Wsl([string]$what, [string[]]$arguments, [int]$seconds = 120)
 {
+  if (-not $hasWsl) { return $null }
   if ($script:wslHung) { return [pscustomobject]@{ exit = -1; out = ''; err = ''; timedOut = $true } }
   $r = Run $WslExe (@('-e') + $arguments) $seconds
   if ($r.timedOut)
@@ -255,25 +259,31 @@ function Wsl([string]$what, [string[]]$arguments, [int]$seconds = 120)
   return $r
 }
 # A Windows path as WSL names it (/mnt/c/...).
-function WslPath([string]$path) { (Wsl "wslpath $path" @('wslpath', '-a', $path) 30).out.Trim() }
-if (-not $hasWsl) { "skip targets: linux ($wslSkip)" }
-else
+function WslPath([string]$path) { if (-not $hasWsl) { return '' } (Wsl "wslpath $path" @('wslpath', '-a', $path) 30).out.Trim() }
+if (-not $hasWsl) { "targets: linux built and linked, not run ($wslSkip)" }
+# (the sysroot: linux.ps1's, which returns at once when its stamp is its own and makes it again
+# otherwise; KPP_SYSROOT_LINUX's as it is)
+$sysroot = if ($env:KPP_SYSROOT_LINUX) { $env:KPP_SYSROOT_LINUX } else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\sysroots\linux-x86_64')) }
+$sysrootMade = $true
+if (-not $env:KPP_SYSROOT_LINUX)
 {
-  $sysroot = if ($env:KPP_SYSROOT_LINUX) { $env:KPP_SYSROOT_LINUX } else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\sysroots\linux-x86_64')) }
-  if (-not (Test-Path (Join-Path $sysroot 'usr\lib\x86_64-linux-gnu\libc.so.6')))
-  {
-    $script = WslPath ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\tools\sysroot\linux-from-wsl.sh')))
-    $target = WslPath $sysroot
-    $r = Wsl 'sysroot' @('sh', $script, $target) 600
-    if ($r.exit -ne 0 -and -not $r.timedOut) { Fail "linux sysroot: $($r.err)" }
-  }
+  $made = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\..\tools\sysroot\linux.ps1') -Out $sysroot 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) { $sysrootMade = $false; Fail "linux sysroot (tools\sysroot\linux.ps1): $($made.Trim())" }
+}
+elseif (-not (Test-Path (Join-Path $sysroot 'usr\lib\x86_64-linux-gnu\libc.so.6')))
+{
+  $sysrootMade = $false
+  Fail "linux sysroot: KPP_SYSROOT_LINUX ($sysroot) has no usr\lib\x86_64-linux-gnu\libc.so.6"
+}
+if ($sysrootMade)
+{
   foreach ($configuration in @(@('debug'), @('release', '--release'), @('debug-info', '--debug-info')))
   {
     $name = $configuration[0]
     $elf = Join-Path $work "hello.$name.elf"
     if (-not (Build (@('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf) + $configuration[1..9] + @((Join-Path $src 'hello.kpp'))))) { continue }
     $r = Wsl "hello ($name)" @((WslPath $elf), 'a', 'b')
-    if ($r.timedOut) { continue }
+    if (-not $r -or $r.timedOut) { continue }
     if ($r.out -ne 'hello, world! 2 argument(s), sum 30, posix' -or $r.exit -ne 3) { Fail "linux hello ($name): '$($r.out)', exit $($r.exit) $($r.err)" }
   }
   # The target's own headers (glibc's, from the sysroot): C's long 64 bits.
@@ -281,7 +291,7 @@ else
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'imports.kpp')))
   {
     $r = Wsl 'imports' @(WslPath $elf)
-    if (-not $r.timedOut -and ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0)) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
+    if ($r -and -not $r.timedOut -and ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0)) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
   }
   # C's long is 64 bits on Linux and 32 on Windows, decided at compile time for each target (Q1): the
   # same static_assert compiles for one and is an error for the other. (C-variadic calls are not
@@ -299,14 +309,14 @@ else
   {
     $r = Wsl 'uncaught' @(WslPath $elf)
     # (the search finds no handler: reported from the throw site, then abort's SIGABRT, 134)
-    if (-not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+    if ($r -and -not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -ne 134)) { Fail "linux uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
     $r = Wsl 'uncaught, a heap message' @((WslPath $elf), 'large')
-    if (-not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom, with a message too long for the object' -or $r.exit -ne 134)) { Fail "linux uncaught, a heap message: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+    if ($r -and -not $r.timedOut -and ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom, with a message too long for the object' -or $r.exit -ne 134)) { Fail "linux uncaught, a heap message: '$($r.out)' '$($r.err)', exit $($r.exit)" }
   }
 }
 
 if ($failed) { exit 1 }
-"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' })$(if ($hasWsl) { ', linux run under WSL' } else { ", linux skipped: $wslSkip" }))"
+"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' }), linux linked against glibc 2.31$(if ($hasWsl) { ' and run under WSL' } else { ", not run: $wslSkip" }))"
 if ($NoLinux) { exit 5 }
 if ($wslSkip -eq 'no WSL') { exit 3 }
 if ($wslSkip) { exit 4 }

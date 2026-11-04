@@ -1,6 +1,8 @@
 #!/bin/sh
 # A glibc x86-64 sysroot for kppc --target linux, copied from a Linux system (WSL's Ubuntu on
-# Windows): the C headers, the C runtime's start files and libraries, and gcc's runtime (crtbegin,
+# Windows), whose programs then need that system's glibc. The default is linux.ps1's (Debian 11,
+# glibc 2.31, the oldest kpp targets: docs/design.md, Q6); this one is for trying another glibc.
+#the C headers, the C runtime's start files and libraries, and gcc's runtime (crtbegin,
 # libgcc), with every symbolic link resolved (a Windows linker does not follow them).
 # Usage: sh linux-from-wsl.sh <output directory>, for example
 #   wsl -e sh tools/sysroot/linux-from-wsl.sh /mnt/c/kpp-sandbox/sysroots/linux-x86_64

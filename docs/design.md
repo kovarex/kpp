@@ -3176,8 +3176,9 @@ All of this goes through the coordinator.
     which may serve the platform layer instead of directories.
   - Library functions that call Win32 or the UCRT (`_errno` in `stod`, Filesystem, Thread) link
     only while unused: a program for Linux that calls one fails to link, by name.
-- **A sysroot for Linux** comes from WSL's Ubuntu (`tools/sysroot/linux-from-wsl.sh`, glibc
-  2.39). Its link takes 0.03 s. The WSL root itself is no sysroot: ld.lld cannot follow
+- **A sysroot for Linux** came from WSL's Ubuntu (`tools/sysroot/linux-from-wsl.sh`, glibc
+  2.39); since 2026-11-04 it is Debian 11's, glibc 2.31 (`tools/sysroot/linux.ps1`, Q6), which
+  targets.ps1 makes, or makes again over a copy of WSL's, with no WSL needed. Its link takes 0.03 s. The WSL root itself is no sysroot: ld.lld cannot follow
   `\\wsl.localhost`'s symbolic links, and the attempt took 16 s.
 - **Test:** `tests/targets.ps1` in run_tests:
   - Windows: hello world, and an uncaught exception's report;
@@ -3454,10 +3455,11 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   kpp program runs on are Windows 10 x64, FreeBSD 14, glibc 2.31 (Debian 11, Ubuntu 20.04; Steam's
   Linux runtime "sniper" is Debian 11) and, when macOS work starts, macOS 11.0 arm64 and 10.15
   x86-64 (the target table above). Factorio states Windows 10, OS X 10.10 and "Linux (tarball
-  installation)" with no glibc (factorio.com/buy, Steam, 2026-11-04). The Linux sysroot is copied
-  from WSL's Ubuntu 24.04 today, so programs need glibc 2.39 until a pinned Debian 11 sysroot
-  replaces it (tools/sysroot/linux.ps1, as freebsd.ps1 is: a pinned download checked by its
-  SHA-256).
+  installation)" with no glibc (factorio.com/buy, Steam, 2026-11-04). The Linux sysroot, a copy of
+  WSL's Ubuntu 24.04 until then (programs needed glibc 2.39), is Debian 11's since 2026-11-04
+  (tools/sysroot/linux.ps1, as freebsd.ps1 is: pinned packages checked by their SHA-256, from
+  bullseye's signed index); a hello world and an uncaught exception linked with it need no glibc
+  symbol newer than GLIBC_2.14.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
