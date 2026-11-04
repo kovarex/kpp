@@ -423,6 +423,50 @@ std::string vswhere(const std::string& arguments)
 // The clang of the newest Visual Studio with its Clang component, any edition, a prerelease one
 // (Preview, Insiders) only when no other has it; empty when there is none (never another one guessed
 // in its place). Asked once per vswhere.
+namespace
+{
+  // What the installed Visual Studios are as vswhere reads them: each instance's state.json under
+  // %ProgramData%\Microsoft\VisualStudio\Packages\_Instances, by its size and time of writing (an
+  // install, a modification adding the Clang component, an update or a removal changes it). Empty
+  // when the directory cannot be read.
+  std::string visualStudioInstancesStamp()
+  {
+    const char* data = getenv("ProgramData");
+    if (!data)
+      return "";
+    std::error_code ec;
+    std::filesystem::path instances = std::filesystem::path(data) / "Microsoft" / "VisualStudio" / "Packages" / "_Instances";
+    std::vector<std::string> parts;
+    for (std::filesystem::directory_iterator i(instances, ec), end; !ec && i != end; i.increment(ec))
+    {
+      std::filesystem::path state = i->path() / "state.json";
+      std::error_code e2;
+      auto size = std::filesystem::file_size(state, e2);
+      auto time = std::filesystem::last_write_time(state, e2);
+      if (e2)
+        return "";
+      parts.push_back(i->path().filename().string() + " " + std::to_string(size) + " " + std::to_string(time.time_since_epoch().count()));
+    }
+    if (ec)
+      return "";
+    std::sort(parts.begin(), parts.end());
+    std::string stamp;
+    for (const std::string& p : parts)
+      stamp += p + "\n";
+    return stamp;
+  }
+
+  // vswhere's answer (visualStudioClang) kept in %TEMP%\kpp-visual-studio-clang.txt while the
+  // instances are as they were: running vswhere was 50 to 60 ms of every kppc process, every spec
+  // snippet's included (2026-11-04). Not with KPP_VSWHERE (a test's own vswhere).
+  std::string cachedVisualStudioClangPath()
+  {
+    char temp[MAX_PATH + 1];
+    DWORD n = GetTempPathA(DWORD(sizeof temp), temp);
+    return n ? std::string(temp, n) + "kpp-visual-studio-clang.txt" : std::string();
+  }
+}
+
 std::string visualStudioClang()
 {
   static std::mutex mutex;
@@ -430,6 +474,26 @@ std::string visualStudioClang()
   const char* own = getenv("KPP_VSWHERE");
   std::lock_guard lock(mutex);
   auto [it, added] = found.try_emplace(own ? own : "");
+  std::string stamp, cachePath;
+  if (added && !own)
+  {
+    stamp = visualStudioInstancesStamp();
+    cachePath = cachedVisualStudioClangPath();
+    std::string cached;
+    if (!stamp.empty() && !cachePath.empty() && readFile(cachePath, cached))
+    {
+      size_t split = cached.rfind('\n', cached.size() > 1 ? cached.size() - 2 : 0);
+      std::string clang = split == std::string::npos ? "" : cached.substr(split + 1);
+      while (!clang.empty() && (clang.back() == '\n' || clang.back() == '\r'))
+        clang.pop_back();
+      std::error_code ec;
+      if (split != std::string::npos && cached.compare(0, split + 1, stamp) == 0 && !clang.empty() && std::filesystem::exists(clang, ec))
+      {
+        it->second = clang;
+        return it->second;
+      }
+    }
+  }
   if (added)
     for (const char* prerelease : {"", " -prerelease"})
     {
@@ -443,6 +507,20 @@ std::string visualStudioClang()
         break;
       }
     }
+  if (added && !own && !stamp.empty() && !cachePath.empty() && !it->second.empty())
+  {
+    // (written whole under another name and renamed: another kppc reading it meanwhile sees the
+    // old file or the new one)
+    std::string part = cachePath + "." + std::to_string(GetCurrentProcessId());
+    if (FILE* f = fopen(part.c_str(), "wb"))
+    {
+      std::string text = stamp + it->second + "\n";
+      bool written = fwrite(text.data(), 1, text.size(), f) == text.size();
+      written = fclose(f) == 0 && written;
+      if (!written || !MoveFileExA(part.c_str(), cachePath.c_str(), MOVEFILE_REPLACE_EXISTING))
+        DeleteFileA(part.c_str());
+    }
+  }
   return it->second;
 }
 
