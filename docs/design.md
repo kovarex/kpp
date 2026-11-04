@@ -1668,6 +1668,17 @@ extended to the library.
   changes. A rename of a class is the only refactor that touches its users.
 - `kppc --packages` prints the tree with the declarations in each package (for the command line
   and for scripts), and diagnostics name the package along with the file.
+  - Done 2026-11-04 (step 1, the language server's tree and search to follow): the build's front
+    end, then one line per package, its path from its root (the standard library's directory, a
+    library's name, the program's directory), a `: ` and its README's first paragraph when it has
+    one; under it each file with the names it declares at its top level, by kind:
+    ```
+    shop/orders: Orders and their lines.
+      Order.kpp: types Order, OrderState, OrderId; functions orderCount; variables maxOrders
+    ```
+    An out-of-line member's definition is its class's, and a name declared twice (overloads) is
+    listed once. A directory with no files of its own but packages under it is listed too.
+    compiler/tests/packages.ps1 checks it (run_tests).
 - Reflection (step 2): `packageof(T)` gives a constant descriptor (`name`, `description`,
   `parent`), so for example the test runner can run all tests of one package (`--run-test
   "Factorio > Train"`).

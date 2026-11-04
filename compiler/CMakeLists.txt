@@ -26,6 +26,7 @@ add_executable(kppc
   src/natvis.cpp
   src/run.cpp
   src/generate.cpp
+  src/packages.cpp
   src/project.cpp
   src/tests.cpp
   src/ast_walk.cpp

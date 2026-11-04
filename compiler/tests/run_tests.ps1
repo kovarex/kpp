@@ -80,6 +80,9 @@ Add 'generate' (PsCheck 'tests\generate.ps1') -part 2 -seconds 11
 Add 'project' (PsCheck 'tests\project.ps1') -part 2 -seconds 133
 # Part 1 again.
 Add 'lower case' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'tests\lowercase.ps1') -seconds 1
+# Code packages (tests\packages.ps1, docs/design.md): kppc --packages lists each directory as a package,
+# with its README.md's first paragraph and the names each file declares.
+Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
 Add 'lsp' (PsCheck 'tests\lsp.ps1') -seconds 9
 $skipped = New-Object System.Collections.Generic.List[string]
 if (Get-Command node -ErrorAction SilentlyContinue) { Add 'lsp-smoke' @('node', '..\tools\vscode\test\lsp-smoke.js', $kppc, '--lsp') -seconds 3 }

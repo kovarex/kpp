@@ -189,7 +189,8 @@ namespace
   // so a changed flag or input list goes to another server, never to one holding older state.
   // --msvc-diagnostics is not in it: it changes no build, only the form the client prints a
   // diagnostic's place in (renderDiagnostics, source.hpp), so Visual Studio's builds and a terminal's
-  // share one server and its kept build.
+  // share one server and its kept build. Nor is --packages, a listing, whose build the server never
+  // keeps or replays (main.cpp's compile).
   // A file's size and time of writing (or that it is missing): what tells a rebuilt or reinstalled
   // kppc from the one before, a changed output of a kept build from the one it left.
   std::string stampOf(const std::string& path)
@@ -207,7 +208,7 @@ namespace
     for (char c : cwd)
       text += char(tolower(static_cast<unsigned char>(c)));
     for (const std::string& arg : args)
-      if (arg != "--verify-incremental" && arg != "--msvc-diagnostics") // a check of the server's build; the client's form
+      if (arg != "--verify-incremental" && arg != "--msvc-diagnostics" && arg != "--packages") // a check of the server's build; the client's form; a listing
         text += std::string(1, '\0') + arg;
     uint64_t h = 1469598103934665603ull;
     for (unsigned char c : text)

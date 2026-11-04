@@ -15,6 +15,7 @@
 #include "natvis.hpp"
 #include "source.hpp"
 #include "backend.hpp"
+#include "packages.hpp"
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -123,6 +124,7 @@ namespace
     std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
+    bool packages = false;         // --packages: the code packages and what each file declares (design.md, "Code packages")
     Target target;                 // --target: the platform the program is built for (Windows x64 by default)
     bool targetChosen = false;     // --target was given (else the toolchain's own: windows-gnu for the bundled one)
     std::string sysroot;           // --sysroot: the target's headers and libraries, for another platform than the host
@@ -169,6 +171,8 @@ namespace
             "  --emit-llvm F write LLVM IR for the program to F\n"
             "  --exe F       compile the program to the executable F (needs clang)\n"
             "  --check       every error a build reports, codegen's included, writing nothing\n"
+            "  --packages    the code packages (each directory, named as it is; docs/design.md, \"Code packages\")\n"
+            "                with their README.md's first paragraph and the names each file declares\n"
             "  --lsp [OPTIONS SOURCES]  a language server for an editor, on stdin and stdout (docs/ide.md)\n"
             "  --std DIR     standard library sources (default: stdlib next to the compiler)\n"
             "  --no-std      compile without the standard library\n"
@@ -469,6 +473,7 @@ namespace
     std::vector<ResolveStats> stats;
     std::vector<int> fileLibrary; // (files[i]'s: its options.libraryRoots entry, -1 for the program's; the files the driver adds are the program's)
     std::vector<uint32_t> lambdaTags; // (files[i]'s: what names its lambdas' closures, ParsedFile::lambdaTag; lambdaTags)
+    std::vector<PackageOf> packages; // --packages: files[i]'s code package (packages.hpp)
     // What the reports print that a later build of the kept program cannot recompute.
     std::string importsLine, indexLine;
     std::map<std::string, ConfigDeclared> configDeclared; // the config:: constants its sources declare (configDeclarations)
@@ -3008,6 +3013,13 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     // the types, the instances and the IR text cost about 5 s on the full game (docs/compile-speed.md,
     // "End to end"), and the operating system takes the memory back at once. Everything the run
     // writes is closed by now. A compile server answers its client here and frees afterwards.
+    if (options.packages)
+    {
+      std::vector<std::filesystem::path> paths;
+      for (const SourceFile& f : files)
+        paths.push_back(f.path);
+      printPackages(build.packages, paths, parsed, symbols);
+    }
     if (!options.dumpTokens)
       buildDone(codegenExit);
   }
@@ -4333,7 +4345,7 @@ namespace
   const std::pair<const char*, int> compileOptions[] = {
     {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
     {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--zero-null-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
-    {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
+    {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--packages", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--lto", 1}, {"--lto-partitions", 1},
@@ -4514,6 +4526,8 @@ int compile(int argc, char** argv)
       diagnosticColumns = true;
     else if (arg == "--check")
       options.check = true;
+    else if (arg == "--packages")
+      options.packages = options.quiet = true; // (the tree alone on stdout, not the front end's statistics)
     else if (arg == "--emit-llvm" && i + 1 < argc)
       options.emitLLVM = argv[++i];
     else if (arg == "--exe" && i + 1 < argc)
@@ -4724,11 +4738,26 @@ int compile(int argc, char** argv)
   // under the root after "std/" for the standard library's, "<library>/" for a library's and the
   // root directory's own name for the program's; a file given alone, its file name)
   std::vector<std::string> pathNames;
+  // (paths[i]'s code package, for --packages: its root's directory and the directory under it, design.md
+  // "Code packages"; a library's root is named as the library is)
+  std::vector<PackageOf> pathPackages;
   auto collect = [&](const std::filesystem::path& root, std::string prefix, int library)
   {
     auto found = collectFiles(root, options.extensions, &stamps);
     std::error_code ec;
     bool alone = std::filesystem::is_regular_file(root, ec);
+    {
+      std::filesystem::path dir = std::filesystem::absolute(alone ? root.parent_path() : root, ec).lexically_normal();
+      if (!dir.has_filename()) // (`src\`)
+        dir = dir.parent_path();
+      std::string rootName = library >= 0 && !options.libraryRoots[size_t(library)].name.empty() ? options.libraryRoots[size_t(library)].name
+                                                                                                 : dir.filename().generic_string();
+      for (const std::filesystem::path& p : found)
+      {
+        std::filesystem::path under = std::filesystem::absolute(p, ec).lexically_normal().parent_path().lexically_relative(dir);
+        pathPackages.push_back({dir, rootName, under == "." ? std::string() : under.generic_string()});
+      }
+    }
     if (prefix.empty() && !alone)
     {
       std::filesystem::path dir = std::filesystem::absolute(root, ec).lexically_normal();
@@ -4773,6 +4802,7 @@ int compile(int argc, char** argv)
         paths[kept] = std::move(paths[i]);
         pathLibrary[kept] = pathLibrary[i];
         pathNames[kept] = std::move(pathNames[i]);
+        pathPackages[kept] = std::move(pathPackages[i]);
         stamps[kept++] = stamps[i];
       }
     if (kept == paths.size())
@@ -4783,6 +4813,7 @@ int compile(int argc, char** argv)
     paths.resize(kept);
     pathLibrary.resize(kept);
     pathNames.resize(kept);
+    pathPackages.resize(kept);
     stamps.resize(kept);
   }
   // A compile server's builds run one at a time up to the point each keeps what it made, so that a
@@ -4951,7 +4982,7 @@ int compile(int argc, char** argv)
   build->lambdaTags = lambdaTags(pathNames);
   // A compile server's build whose every input is as the previous one's (step 3a of the
   // persistent compiler, docs/compile-speed.md): the previous build's output again.
-  if (servingBuild() && options.convertDir.empty())
+  if (servingBuild() && options.convertDir.empty() && !options.packages) // (--packages prints what the front end read: a build of its own)
   {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&](std::string_view bytes)
@@ -5007,7 +5038,7 @@ int compile(int argc, char** argv)
       return replayed;
     // Step 3b: the kept build with the changed function bodies checked again, when that is all
     // that changed.
-    if (keptBuild && !replayDisabled() && options.repeat == 1 && !options.dumpTokens && options.parse) // (--verify-incremental's build is from scratch)
+    if (keptBuild && !replayDisabled() && options.repeat == 1 && !options.dumpTokens && options.parse && !options.packages) // (--verify-incremental's build is from scratch)
     {
       bool keptChanged = false;
       if (incrementalBuild(*keptBuild, files, seconds(Clock::now() - startCollect), headersSame, keptChanged))
@@ -5094,7 +5125,9 @@ int compile(int argc, char** argv)
       if (options.parse)
       {
         build->options = options;
-        build->keepable = options.repeat == 1 && options.convertDir.empty() && !options.dumpTokens;
+        build->keepable = options.repeat == 1 && options.convertDir.empty() && !options.dumpTokens && !options.packages;
+        if (options.packages)
+          build->packages = pathPackages;
         runParse(*build);
       }
       if (options.dumpTokens)
