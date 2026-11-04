@@ -3123,6 +3123,28 @@ struct GlobalScope::Impl
     return out;
   }
 
+  // A C header's struct and function of one name, which C keeps apart (a struct's name is its tag):
+  // `struct stat` and stat(), statvfs. Where a name is a value (a call's callee, an identifier, the
+  // operand of &), it is the function, or the variable or enumerator, as C++ hides the class there
+  // ([basic.scope.hiding]/2); as a type it stays the struct (pick: no `struct` needed). Only the
+  // imported headers': two of the program's declarations of one name are the global clash, and an
+  // imported and a program's one too, so kpp's own names never meet this.
+  static void preferImportedValue(Lookup& l)
+  {
+    if (!l.decl || !l.overloads || (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::EnumDecl) || !l.decl->file ||
+        !l.decl->file->isImported)
+      return;
+    for (const Entry& e : *l.overloads)
+      if (e.decl->file && e.decl->file->isImported &&
+          (e.decl->kind == NodeKind::FunctionDecl || e.decl->kind == NodeKind::EnumeratorDecl ||
+           (e.decl->kind == NodeKind::VariableDecl && !(e.decl->flags & DF_Typedef))))
+      {
+        l.decl = e.decl;
+        l.scope = nullptr;
+        return;
+      }
+  }
+
   // `using lib::size;` in namespace wrap beside wrap's own size(int) (Filesystem's `using
   // __fs::file_size;`): the functions the namespace's using-declarations of the name stand for and
   // its own, as one overload set (kept for the run); l itself when none of its entries is such a
@@ -19525,6 +19547,7 @@ struct GlobalScope::Impl
       Lookup l = impl.lookupQualified(e->name, scope, &locals, 0, activeSubst);
       if (l.found == Found::No && e->name.parts.size() > 1)
         l = memberOfQualifierInstance(e);
+      Impl::preferImportedValue(l); // (`&stat`: the function, not the struct)
       reportAmbiguity(l, e->name, e->token);
       // `using Colors::shade;` in a namespace: the name is the variable it names (functions stay the
       // using-declaration's overload set, which a call takes through withNamespaceUsings).
@@ -21590,6 +21613,7 @@ struct GlobalScope::Impl
           }
         }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        Impl::preferImportedValue(l); // (`stat("/", &s)`: the function, not the struct's aggregate initialisation)
         if (!whenLookup(l, n))
         {
           record(n, types.unknown());
