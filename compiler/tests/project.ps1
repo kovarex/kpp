@@ -7,7 +7,23 @@
 # run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
-$work = Join-Path $PSScriptRoot '..\build\tests\project'
+$work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\project'))
+# The compile servers of this test's projects: those whose KEY.args (in %TEMP%\kppc-server, server.cpp)
+# starts with a working directory under $work, each stopped through its process, KEY.exe. A failed check
+# left them running (thread B, 2026-11-04), holding $work, which the next run could not delete; never
+# kpp --stop-all-servers, which would stop other threads' servers too.
+function StopTestServers()
+{
+  $dir = Join-Path $env:TEMP 'kppc-server'
+  foreach ($record in @(Get-ChildItem (Join-Path $dir '*.args') -ErrorAction SilentlyContinue))
+  {
+    $cwd = ([IO.File]::ReadAllText($record.FullName) -split "`0")[0]
+    if (-not $cwd.StartsWith($work, [StringComparison]::OrdinalIgnoreCase)) { continue }
+    $exe = Join-Path $dir ($record.BaseName + '.exe')
+    Get-Process | Where-Object { $_.Path -and $_.Path -ieq $exe } | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit(10000) | Out-Null }
+  }
+}
+StopTestServers
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work | Out-Null
 $Kppc = (Resolve-Path $Kppc).Path
@@ -604,5 +620,6 @@ try
   if ($code -ne 0 -or $printed -ne (Join-Path $root 'src\main.kpp')) { Fail "a debug build's CallerLocation file is '$printed', not $(Join-Path $root 'src\main.kpp')`n$($output -join "`n")" }
 }
 finally { Pop-Location }
+StopTestServers
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed
