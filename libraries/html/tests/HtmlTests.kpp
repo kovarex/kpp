@@ -1,10 +1,10 @@
 // The html library's tests: escaping, templates made at compile time, and the errors of templates
 // made at run time.
 
-constexpr HtmlTemplate htmlTestCard("<div class=\"card {{kind}}\"><a href=\"{{url}}\">{{name}}</a><p>{{summary}}</p></div>");
-constexpr HtmlTemplate htmlTestSearch("<a href=\"/library/{{name}}?q={{query}}#{{part}}\">x</a>");
-constexpr HtmlTemplate htmlTestPage("<!DOCTYPE html>\n<html><head><title>{{title}}</title><style>p { color: red; }</style></head>"
-                                    "<body><!-- a comment -->{{content}}<br><img src=\"logo.png\" alt=\"{{title}}\"/></body></html>");
+constexpr HtmlTemplate htmlTestCard{"<div class=\"card {{kind}}\"><a href=\"{{url}}\">{{name}}</a><p>{{summary}}</p></div>"};
+constexpr HtmlTemplate htmlTestSearch{"<a href=\"/library/{{name}}?q={{query}}#{{part}}\">x</a>"};
+constexpr HtmlTemplate htmlTestPage{"<!DOCTYPE html>\n<html><head><title>{{title}}</title><style>p { color: red; }</style></head>"
+                                    "<body><!-- a comment -->{{content}}<br><img src=\"logo.png\" alt=\"{{title}}\"/></body></html>"};
 
 test "escaping"
 {
