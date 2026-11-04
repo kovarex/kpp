@@ -2,8 +2,13 @@
 # "Parallel front end"). Builds a few test programs at -j 1, -j 8 and -j 32 and compares the IR
 # byte for byte and the report (timings masked); then, when programs\factorio\kpp exists (after
 # convert.cmd), the headline tree at -j 1, -j 8 and twice at -j 32: its report and its whole IR.
-# run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+# run_tests.cmd runs it: with -Full (run_tests --full, the batch run on master) all of that; without, the
+# quick gate's (coordinator, 2026-11-05): the test programs at -j 1 and -j 32, and the headline tree's
+# front end at -j 8 and -j 32 (its -j 1 build was 61 of the check's 149 s on a loaded machine). The
+# builds compared with each other run at once, each in its own process: what they are compared on is
+# their own output, which another process's load must not change either.
+param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Full)
+$threadCounts = if ($Full) { @('1', '8', '32') } else { @('1', '32') }
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\determinism'
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -22,12 +27,21 @@ function Normalize([string[]]$lines)
   }
 }
 
-function Run([string[]]$arguments, [string]$label)
+# A kppc run started, its stdout and stderr to files of its label. Waited for by its own process
+# (WaitForExit), never by Start-Process -Wait, which also waits for what it started (link.exe's
+# vctip.exe lingers: tests\concurrency.ps1).
+function Start-Run([string[]]$arguments, [string]$label)
 {
   $out = Join-Path $work "$label.out.txt"
   $err = Join-Path $work "$label.err.txt"
-  $p = Start-Process -FilePath $Kppc -ArgumentList $arguments -NoNewWindow -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
-  return [pscustomobject]@{ label = $label; out = @(Normalize (Get-Content $out)); err = @(Normalize (Get-Content $err)) }
+  $p = Start-Process -FilePath $Kppc -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+  return [pscustomobject]@{ label = $label; process = $p; outFile = $out; errFile = $err }
+}
+
+function Wait-Run($started)
+{
+  $started.process.WaitForExit()
+  return [pscustomobject]@{ label = $started.label; out = @(Normalize (Get-Content $started.outFile)); err = @(Normalize (Get-Content $started.errFile)) }
 }
 
 function Compare-Runs($runs, [string]$what, [string[]]$irFiles)
@@ -54,48 +68,61 @@ function Compare-Runs($runs, [string]$what, [string[]]$irFiles)
   return $ok
 }
 
+# The test programs, and --debug-info's lines (each module numbers its metadata in the order of its
+# definitions): every build started at once, then each group compared.
+$groups = [ordered]@{}
 foreach ($name in @('containers', 'templates', 'format'))
 {
   $src = Join-Path $PSScriptRoot "run\$name.kpp"
-  $runs = @(); $irs = @()
-  foreach ($j in @('1', '8', '32'))
+  $groups[$name] = @(foreach ($j in $threadCounts)
   {
     $ir = Join-Path $work "$name.j$j.ll"
-    $runs += Run @('-j', $j, '--emit-llvm', $ir, $src) "$name -j $j"
-    $irs += $ir
-  }
-  if (Compare-Runs $runs $name $irs) { "ok   determinism $name" } else { $failed++ }
+    [pscustomobject]@{ run = Start-Run @('-j', $j, '--emit-llvm', $ir, $src) "$name -j $j"; ir = $ir }
+  })
 }
-
-# --debug-info: each module numbers its metadata in the order of its definitions.
 $src = Join-Path $PSScriptRoot 'debuginfo\lines.kpp'
-$runs = @(); $irs = @()
-foreach ($j in @('1', '8', '32'))
+$groups['debuginfo'] = @(foreach ($j in $threadCounts)
 {
   $ir = Join-Path $work "debuginfo.j$j.ll"
-  $runs += Run @('-j', $j, '--debug-info', '--emit-llvm', $ir, $src) "debuginfo -j $j"
-  $irs += $ir
+  [pscustomobject]@{ run = Start-Run @('-j', $j, '--debug-info', '--emit-llvm', $ir, $src) "debuginfo -j $j"; ir = $ir }
+})
+foreach ($name in $groups.Keys)
+{
+  $runs = @($groups[$name] | ForEach-Object { Wait-Run $_.run })
+  $irs = @($groups[$name] | ForEach-Object { $_.ir })
+  if (Compare-Runs $runs $name $irs) { "ok   determinism $name" } else { $failed++ }
 }
-if (Compare-Runs $runs 'debuginfo' $irs) { "ok   determinism debuginfo" } else { $failed++ }
 
 # --debug-info's variables and types in a build of 8 modules (debuginfo\values.kpp: each class defined
 # in its home module, declared in the others; the types appended in their keys' order): every
 # module's text, by the hash kppc keeps beside its object, the same at -j 1, -j 8 and -j 32.
 $src = Join-Path $PSScriptRoot 'debuginfo\values.kpp'
-$hashes = @{}
-foreach ($j in 1, 8, 32)
+$started = @(foreach ($j in $threadCounts)
 {
   $exe = Join-Path $work "values.j$j.exe"
   Remove-Item "$exe*" -ErrorAction SilentlyContinue
-  & $Kppc --quiet -j $j --debug-info --modules 8 --exe $exe $src 2>&1 | Out-Null
-  $hashes[$j] = @(Get-ChildItem "$exe.*.hash" -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { "$($_.Name.Substring($exe.Length - $work.Length - 1)) $(Get-Content -Raw $_.FullName)".Trim() }) -join "`n"
+  [pscustomobject]@{ j = $j; exe = $exe; run = Start-Run @('--quiet', '-j', $j, '--debug-info', '--modules', '8', '--exe', $exe, $src) "values -j $j" }
+})
+$hashes = @{}
+foreach ($s in $started)
+{
+  $s.run.process.WaitForExit()
+  $hashes[$s.j] = @(Get-ChildItem "$($s.exe).*.hash" -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { "$($_.Name.Substring($s.exe.Length - $work.Length - 1)) $(Get-Content -Raw $_.FullName)".Trim() }) -join "`n"
 }
-if ($hashes[1] -and $hashes[1] -eq $hashes[8] -and $hashes[1] -eq $hashes[32]) { "ok   determinism debuginfo modules" }
+if ($hashes['1'] -and @($threadCounts | Where-Object { $hashes[$_] -ne $hashes['1'] }).Count -eq 0) { "ok   determinism debuginfo modules" }
 else
 {
   "FAIL determinism debuginfo modules: the module texts' hashes differ (or are missing)"
-  foreach ($j in 1, 8, 32) { "  -j ${j}:"; $hashes[$j] -split "`n" | ForEach-Object { "    $_" } }
+  foreach ($j in $threadCounts) { "  -j ${j}:"; $hashes[$j] -split "`n" | ForEach-Object { "    $_" } }
   $failed++
+}
+
+# The names in a program's IR, of a build started with Start-Run, once it has ended: every match of the pattern, each once.
+function NamesIn($started, [string]$ir, [string]$pattern)
+{
+  $started.process.WaitForExit()
+  if (-not (Test-Path $ir)) { return @() }
+  return @(Select-String -Path $ir -Pattern $pattern -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
 }
 
 # A lambda's closure is named by its file's name under its root and its number in the file
@@ -108,19 +135,6 @@ $program = "int main()`n{`n  auto twice = [](int v) { return v * 2; };`n  return
 [IO.File]::WriteAllText((Join-Path $lambdas 'main.kpp'), $program)
 [IO.File]::WriteAllText((Join-Path $lambdas 'elsewhere\main.kpp'), $program)
 [IO.File]::WriteAllText((Join-Path $lambdas 'before.kpp'), "int before()`n{`n  auto f = [](int v) { return v + 1; };`n  return f(1);`n}`n")
-function ClosureNames([string[]]$sources, [string]$label)
-{
-  $ir = Join-Path $lambdas "$label.ll"
-  Remove-Item $ir -ErrorAction SilentlyContinue
-  & $Kppc --quiet --emit-llvm $ir @sources 2>&1 | Out-Null
-  if (-not (Test-Path $ir)) { return @() }
-  return @(Select-String -Path $ir -Pattern 'main::__lambda_[0-9a-f]+_[0-9]+' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
-}
-$alone = ClosureNames @((Join-Path $lambdas 'main.kpp')) 'alone'
-$after = ClosureNames @((Join-Path $lambdas 'before.kpp'), (Join-Path $lambdas 'main.kpp')) 'after'
-$moved = ClosureNames @((Join-Path $lambdas 'elsewhere\main.kpp')) 'moved'
-if ($alone.Count -eq 1 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism lambda names ($alone)" }
-else { "FAIL determinism lambda names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
 
 # A file's private entities (design.md 15) are named by the file's name and the same tag
 # (`main.kpp@<tag>::helper`, filePrivatePrefix): the same with another file before it and with the
@@ -132,17 +146,29 @@ $program = "private int helper(int v) { return v * 2; }`nprivate struct Box { in
 [IO.File]::WriteAllText((Join-Path $privates 'main.kpp'), $program)
 [IO.File]::WriteAllText((Join-Path $privates 'elsewhere\main.kpp'), $program)
 [IO.File]::WriteAllText((Join-Path $privates 'before.kpp'), "private int helper(int v) { return v + 1; }`nint before() { return helper(1); }`n")
-function PrivateNames([string[]]$sources, [string]$label)
+
+# The six builds of both checks at once.
+$names = [ordered]@{}
+foreach ($check in @(@{ dir = $lambdas; kind = 'lambdas' }, @{ dir = $privates; kind = 'privates' }))
 {
-  $ir = Join-Path $privates "$label.ll"
-  Remove-Item $ir -ErrorAction SilentlyContinue
-  & $Kppc --quiet --emit-llvm $ir @sources 2>&1 | Out-Null
-  if (-not (Test-Path $ir)) { return @() }
-  return @(Select-String -Path $ir -Pattern '(same<)?main\.kpp@[0-9a-f]+::(helper|Box)' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
+  foreach ($case in @(@{ label = 'alone'; sources = @('main.kpp') }, @{ label = 'after'; sources = @('before.kpp', 'main.kpp') }, @{ label = 'moved'; sources = @('elsewhere\main.kpp') }))
+  {
+    $ir = Join-Path $check.dir "$($case.label).ll"
+    Remove-Item $ir -ErrorAction SilentlyContinue
+    $sources = @($case.sources | ForEach-Object { Join-Path $check.dir $_ })
+    $names["$($check.kind) $($case.label)"] = [pscustomobject]@{ ir = $ir; run = Start-Run (@('--quiet', '--emit-llvm', $ir) + $sources) "$($check.kind) $($case.label)" }
+  }
 }
-$alone = PrivateNames @((Join-Path $privates 'main.kpp')) 'alone'
-$after = PrivateNames @((Join-Path $privates 'before.kpp'), (Join-Path $privates 'main.kpp')) 'after'
-$moved = PrivateNames @((Join-Path $privates 'elsewhere\main.kpp')) 'moved'
+$closure = 'main::__lambda_[0-9a-f]+_[0-9]+'
+$alone = NamesIn $names['lambdas alone'].run $names['lambdas alone'].ir $closure
+$after = NamesIn $names['lambdas after'].run $names['lambdas after'].ir $closure
+$moved = NamesIn $names['lambdas moved'].run $names['lambdas moved'].ir $closure
+if ($alone.Count -eq 1 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism lambda names ($alone)" }
+else { "FAIL determinism lambda names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
+$private = '(same<)?main\.kpp@[0-9a-f]+::(helper|Box)'
+$alone = NamesIn $names['privates alone'].run $names['privates alone'].ir $private
+$after = NamesIn $names['privates after'].run $names['privates after'].ir $private
+$moved = NamesIn $names['privates moved'].run $names['privates moved'].ir $private
 if ($alone.Count -eq 3 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism private names ($alone)" }
 else { "FAIL determinism private names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
 
@@ -157,18 +183,20 @@ if (Test-Path (Join-Path $tree 'src'))
     '--config', 'finalRelease=false', # (the game's FINAL_RELEASE code: link-settings.cmd's CINC)
     '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\src")
   # The whole IR too (--emit-llvm), byte for byte: a name the code generator gives one of two
-  # classes that print alike must not depend on which thread reached it first.
-  $runs = @()
+  # classes that print alike must not depend on which thread reached it first. The quick gate's: the
+  # front end's report alone, at -j 8 and -j 32.
+  $started = @()
   $irs = @()
   $n = 0
-  foreach ($j in @('1', '8', '32', '32'))
+  foreach ($j in $(if ($Full) { @('1', '8', '32', '32') } else { @('8', '32') }))
   {
     $n++
     $ir = Join-Path $work "headline.run$n.ll"
-    $runs += Run (@('-j', $j, '--emit-llvm', $ir) + $common) "headline -j $j (run $n)"
+    $started += Start-Run ($(if ($Full) { @('-j', $j, '--emit-llvm', $ir) } else { @('-j', $j) }) + $common) "headline -j $j (run $n)"
     $irs += $ir
   }
-  if (Compare-Runs $runs "headline" $irs) { "ok   determinism headline (front end and IR)" } else { $failed++ }
+  $runs = @($started | ForEach-Object { Wait-Run $_ })
+  if (Compare-Runs $runs "headline" $(if ($Full) { $irs } else { $null })) { "ok   determinism headline ($(if ($Full) { 'front end and IR' } else { 'front end at -j 8 and -j 32; run_tests --full for -j 1 and the IR' }))" } else { $failed++ }
   $irs | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
 }
 else { "skip determinism headline front end: programs\factorio\kpp missing (run convert.cmd)" }

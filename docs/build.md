@@ -1096,7 +1096,11 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **run_tests:** `compiler\tests\run_tests.cmd --part 1` and `--part 2` in 2 jobs, after build:
   part 2 is determinism, concurrency, generate and project, part 1 everything else (about 2
   minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part 2/2:
-  checks 4/4)`; without `--part` it runs both, as by hand.
+  checks 4/4)`; without `--part` it runs both, as by hand. `--full` runs the determinism check in
+  full, the batch run on master's: the test programs at -j 1, -j 8 and -j 32 and, where convert.cmd
+  has made programs\factorio\kpp, the game's front end and IR at -j 1, -j 8 and twice at -j 32.
+  Without it, the quick gate's: the test programs at -j 1 and -j 32, the game's front end at -j 8
+  and -j 32 (12 s against 73 s, both with their builds run at once, on a loaded machine).
 - **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4` in 4 jobs, after build. A shard is
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only

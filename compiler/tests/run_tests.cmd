@@ -7,11 +7,30 @@ rem A check that cannot run here (lsp-smoke without Node.js) is added as ", skip
 rem --part 1 or --part 2 runs one half, for CI's two parallel jobs (docs/build.md, "Continuous
 rem integration"): part 2 is determinism, concurrency, generate and project, part 1 the rest; its
 rem line names it: run_tests: ALL PASSED (part 2/2: checks 4/4).
+rem --full runs determinism in full, every thread count and the converted game's IR (tests\determinism.ps1
+rem -Full): the batch run on master (H's). Without it, the quick gate's (coordinator, 2026-11-05).
 setlocal EnableDelayedExpansion
 set PART=
-if "%~1"=="--part" set "PART=%~2"
-if not "%~1"=="" if not "%PART%"=="1" if not "%PART%"=="2" (
-  echo run_tests.cmd takes --part 1 or --part 2, or nothing
+set FULL=
+:arguments
+if "%~1"=="" goto :argumentsdone
+if "%~1"=="--full" (
+  set FULL=1
+  shift
+  goto :arguments
+)
+if "%~1"=="--part" (
+  set "PART=%~2"
+  shift
+  shift
+  goto :arguments
+)
+echo run_tests.cmd takes --part 1 or --part 2, --full, or nothing
+echo run_tests: FAILED: bad arguments %*
+exit /b 2
+:argumentsdone
+if not "%PART%"=="" if not "%PART%"=="1" if not "%PART%"=="2" (
+  echo run_tests.cmd takes --part 1 or --part 2, --full, or nothing
   echo run_tests: FAILED: bad arguments %*
   exit /b 2
 )
@@ -241,8 +260,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ..\programs\factorio\tests\c
 if errorlevel 1 (call :fail "checkout") else (call :ok)
 if "%PART%"=="1" goto :afterpart2
 :part2
-rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
+rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md):
+rem in full with --full, else the quick gate's (fewer thread counts, the game's front end alone).
+set DETERMINISM=
+if "%FULL%"=="1" set DETERMINISM=-Full
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC% %DETERMINISM%
 if errorlevel 1 (
   echo FAIL determinism: the output depends on the thread count
   call :fail "determinism"
