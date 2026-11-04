@@ -1911,12 +1911,15 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
   // The errors the checker found itself (a static_assert that fails or cannot be evaluated).
   // laidOut: codegen ran and checked the asserts on sizes and alignments (its errors), and the
   // static_asserts of the first instancesChecked class template instances.
-  void reportCheckerErrors(GlobalScope& global, bool laidOut = false, size_t instancesChecked = 0)
+  // (how many errors it printed)
+  size_t reportCheckerErrors(GlobalScope& global, bool laidOut = false, size_t instancesChecked = 0)
   {
+    size_t errors = 0;
     for (const std::string& e : global.checkerErrors(instancesChecked))
     {
       fprintf(stderr, "%s\n", e.c_str());
       codegenExit = 1;
+      ++errors;
     }
     if (size_t waiting = global.layoutStaticAsserts().size())
       report(laidOut ? "static_assert: %zu on a class's size or alignment, checked with codegen's layouts\n"
@@ -1924,6 +1927,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
              waiting);
     if (size_t unused = global.unusedFailedAsserts())
       report("static_assert: %zu failed in template instances' functions never emitted (unused, so not errors, as in C++)\n", unused);
+    return errors;
   }
 
   // --access-warnings: the warnings to stderr (no error: the exit code stays), the counts with the
@@ -2832,6 +2836,22 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       fprintf(stderr, "error: %zu top-level name(s) declared twice: no code generated\n", build.clashes.size());
       global.setCodeGenerated(false);
       reportCheckerErrors(global);
+      build.codegenBehind = true;
+    }
+    else if (generatesCode(options) && options.check && !build.rebuildCodegen && global.hasCheckerErrors())
+    {
+      // kppc --check (`kppc --lsp`'s checks) of a program the front end found errors in, when codegen
+      // has no kept session to follow the edit: the front end's errors are the answer, codegen's own
+      // come once they are fixed. Codegen keeps no session across some errors (a failure remembered for
+      // every use, one it cannot give to a function), so while they persisted every check generated the
+      // whole program again: the game with 264 errors (`when` conditions naming an undeclared config
+      // constant) took 17-22 s a check, with 1,602 errors 6-9 s, for a front end of 0.4 s. With a kept
+      // session that can follow, codegen runs as before, so a typo's error shows beside codegen's own
+      // (a member that does not exist). The next check that generates code emits what changed
+      // meanwhile (codegenBehind).
+      global.setCodeGenerated(false);
+      size_t errors = reportCheckerErrors(global);
+      fprintf(stderr, "error: %zu error(s) before code generation: no code generated (--check without a kept session)\n", errors);
       build.codegenBehind = true;
     }
     else if (generatesCode(options))

@@ -422,7 +422,12 @@ when a command-line build server for the same sources also runs (the full game: 
 **Errors as you type.** After every change, once no other message is waiting, the program is checked
 with `--check` (new): every error a build reports, codegen's included, nothing written. Codegen is
 needed: the checker's type errors (`int n = "s";`, a member that does not exist) are reported by
-codegen, not by the front end. Diagnostics are published per file, only when they changed, and
+codegen, not by the front end. A check whose codegen has no kept session to follow the edit (the
+first, or one after codegen could not keep its session across errors) stops at the front end's
+errors when there are any, and codegen's show once they are fixed (main.cpp, reportResolve;
+tests\checkerrors.ps1). Codegen keeps no session across some errors, so while many persisted every
+check generated the whole program again: the game took 17-22 s a check with 264 errors and 6-9 s with
+1,602, for a front end of 0.4 s. Diagnostics are published per file, only when they changed, and
 cleared when gone. `--diagnostic-columns` (new) adds the column where the error's maker knows the
 token: parse errors and the resolver's checker errors (`path:line:column`); their range is the
 token. Codegen's errors carry the line only (its range is the line's text): a gap.

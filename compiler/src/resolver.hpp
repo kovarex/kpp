@@ -234,6 +234,10 @@ public:
   // instances the code generator of this same build checked already (checkInstanceStaticAsserts'
   // result), 0 for all.
   std::vector<std::string> checkerErrors(size_t instancesChecked = 0);
+  // Whether the checker has reported an error in the program (checkerErrors' own, before any
+  // instance codegen emits is checked): kppc --check stops before codegen then, when codegen has no
+  // session to follow the edit (main.cpp, reportResolve).
+  bool hasCheckerErrors();
   // Access checking, warnings only, after enableAccessWarnings() before the resolve (kppc
   // --access-warnings; design.md, "struct and class"): the uses of private and protected members
   // outside their class, its derived classes (protected) and its friends, and the structs with a

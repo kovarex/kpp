@@ -25234,6 +25234,12 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
   return out;
 }
 
+bool GlobalScope::hasCheckerErrors()
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  return !impl->checkerErrorSet.empty();
+}
+
 void GlobalScope::functionEmitted(const FunctionDecl* f)
 {
   std::lock_guard lock(impl->checkerErrorsMutex);

@@ -231,6 +231,10 @@ if errorlevel 1 (call :fail "servers") else (call :ok)
 rem An edit's check through the compile server takes well under the first build (tests\editcost.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\editcost.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "edit cost") else (call :ok)
+rem An editor's check of a program with front-end errors and no codegen session to follow the edit
+rem stops at those errors; a server's session still shows codegen's (tests\checkerrors.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\checkerrors.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "check errors") else (call :ok)
 rem A thread's factorio-in-kpp copy never reaches the main checkout's files, through any git command in
 rem it (programs\factorio\tests\checkout.ps1, on a throwaway main checkout).
 powershell -NoProfile -ExecutionPolicy Bypass -File ..\programs\factorio\tests\checkout.ps1
