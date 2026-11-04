@@ -20,6 +20,7 @@
 #endif
 #include <numeric>
 #include <optional>
+#include <queue>
 #include <thread>
 #include <unordered_map>
 #ifdef _WIN32
@@ -21049,7 +21050,8 @@ static void emitInstantiation(Emitter& em, const Instantiation& item)
 
 // The next level: what the emitters asked for (each function once: the names were claimed), in
 // the order of their names, each with its first requester by name over all emitters
-// (Emitter::levelRequests).
+// (Emitter::levelRequests). A large one is collected on the emitters' threads (collectInParallel).
+static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, std::vector<Instantiation>& level);
 static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, std::vector<Instantiation>& level)
 {
   level.clear();
@@ -21059,6 +21061,8 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
       level.push_back(std::move(item));
     em->worklist.clear();
   }
+  if (collectInParallel(emitters, level))
+    return;
   std::unordered_map<std::string, Request*> first;
   for (const Instantiation& item : level)
     first.emplace(item.name, nullptr);
@@ -21075,6 +21079,85 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
   for (auto& em : emitters)
     em->levelRequests.clear();
   std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
+}
+
+// collectNextLevel's work for a level of at least 4,096 functions, on as many threads as there are emitters, with
+// its result: the emitters' requests scanned and freed each on its emitter's thread, the level's chunks given their
+// items' first requesters and sorted each on a thread of its own, then merged. On one thread the game's collections
+// took 513 to 537 ms between its levels, with the other 31 cores idle (42,420 items: 157 ms, 103 ms of it a map of
+// the names copied). This way costs about 5 ms of its own (three thread starts, the index, the merge), the serial
+// one 2.5 us an item. False (nothing done) for a smaller level, and for a name twice or an empty one, whose order
+// only the serial way gives.
+static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, std::vector<Instantiation>& level)
+{
+  const size_t n = level.size();
+  const unsigned threads = unsigned(emitters.size());
+  if (threads < 2 || n < 4096 || n >= UINT32_MAX)
+    return false;
+  std::unordered_map<std::string_view, uint32_t> index; // the names, each item's (views into level: it stays put until the merge)
+  index.reserve(n);
+  for (uint32_t i = 0; i < n; ++i)
+    if (level[i].name.empty() || !index.emplace(level[i].name, i).second)
+      return false;
+  // Chunk c is level[bounds[c], bounds[c + 1]).
+  std::vector<size_t> bounds(threads + 1);
+  for (unsigned c = 0; c <= threads; ++c)
+    bounds[c] = size_t(c) * n / threads;
+  auto chunkOf = [&](uint32_t i) { return unsigned(std::upper_bound(bounds.begin(), bounds.end(), size_t(i)) - bounds.begin() - 1); };
+  // Each emitter's requests of the level's names, by the chunk of the item named.
+  std::vector<std::vector<std::vector<std::pair<uint32_t, const Request*>>>> found(threads, std::vector<std::vector<std::pair<uint32_t, const Request*>>>(threads));
+  auto scan = [&](unsigned e)
+  {
+    for (auto& [name, r] : emitters[e]->levelRequests)
+      if (auto it = index.find(name); it != index.end())
+        found[e][chunkOf(it->second)].push_back({it->second, &r});
+  };
+  onThreads(threads, scan);
+  // Each chunk: its items' first requesters by name (over the emitters in their order, as the serial way takes
+  // them: of two equal ones, the first emitter's), then its items sorted by name.
+  auto byName = [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; };
+  auto merge = [&](unsigned c)
+  {
+    std::vector<const Request*> best(bounds[c + 1] - bounds[c], nullptr);
+    for (unsigned e = 0; e < threads; ++e)
+      for (auto [i, r] : found[e][c])
+        if (const Request*& b = best[i - bounds[c]]; !b || r->by < b->by)
+          b = r;
+    for (size_t i = bounds[c]; i < bounds[c + 1]; ++i)
+      if (const Request* r = best[i - bounds[c]])
+      {
+        level[i].requestedBy = r->by;
+        level[i].depth = r->depth;
+      }
+    std::sort(level.begin() + bounds[c], level.begin() + bounds[c + 1], byName);
+  };
+  onThreads(threads, merge);
+  // The requests and what pointed into them, freed on the emitters' threads.
+  auto release = [&](unsigned e)
+  {
+    emitters[e]->levelRequests.clear();
+    std::vector<std::vector<std::pair<uint32_t, const Request*>>>().swap(found[e]);
+  };
+  onThreads(threads, release);
+  // The sorted chunks merged (the names are unique: one order, the serial sort's).
+  std::vector<Instantiation> merged;
+  merged.reserve(n);
+  std::vector<size_t> at(bounds.begin(), bounds.end() - 1);
+  auto later = [&](unsigned a, unsigned b) { return level[at[a]].name > level[at[b]].name; };
+  std::priority_queue<unsigned, std::vector<unsigned>, decltype(later)> heads(later);
+  for (unsigned c = 0; c < threads; ++c)
+    if (at[c] < bounds[c + 1])
+      heads.push(c);
+  while (!heads.empty())
+  {
+    unsigned c = heads.top();
+    heads.pop();
+    merged.push_back(std::move(level[at[c]]));
+    if (++at[c] < bounds[c + 1])
+      heads.push(c);
+  }
+  level = std::move(merged);
+  return true;
 }
 
 // Every name the build's texts define so far, each with the line defining it (a global's) or empty

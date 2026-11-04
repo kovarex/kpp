@@ -674,6 +674,49 @@ instances.
   levels' tails, the work between levels, and contention the probe does not see (the type table, the
   heap).
 
+**Step 6: codegen's time level by level, and the collection between levels on the emitters' threads
+(thread D, 2026-11-04).**
+- **The timeline.** `cg\timeline-levels.py` is temporary instrumentation, never committed. It records,
+  per level and per thread, the time running, waiting and idle. It counts the waits on codegen's spin
+  locks, on SharedText's mutex, on another emitter's global and on the type table's interning, and
+  the CPU cycles each thread's busy time got. The game's clean build at master 360712a2, 3 runs,
+  codegen 4.42 to 4.43 s:
+
+  | part | wall |
+  |---|---:|
+  | before the levels | 50 ms |
+  | 18 levels | 3.40 s: level 0 1.21 s, level 1 0.84 s, level 2 0.48 s, level 3 0.18 s, the rest 0.70 s |
+  | serial, between the levels | 513 to 537 ms (157 to 168 ms after level 1) |
+  | serial, after the last level | 447 to 453 ms |
+
+  - In the levels the threads are busy 98% of their time: their tails are 1.7 s of 108.6 s. But they
+    are on CPU for only 44.3 to 44.8 s of their 106.2 to 106.4 s busy. Of that busy time, 44.4 to
+    45.9 s is waits on the spin locks, and about 17 s is neither.
+  - What the lock probe does not see is small: SharedText 3 ms, another emitter's global 46 ms, the
+    type table's interning 0.5 s. The interning's thread caches, made anew with each level's threads
+    (529 of them), cost 11 ms in all.
+  - Level 12 (784 items) stalls for 155 to 157 ms in every run: the other 31 threads wait 4.7 s while
+    0.19 s is on CPU. No hold of the shared lock is over 15.3 ms (the longest is
+    LuaBinder<LuaCommandable>::getFunctionMap()'s), so the cause is still to identify.
+- **The collection between levels on the emitters' threads (collectInParallel).**
+  - **Before:** collectNextLevel walked every emitter's requests on one thread, against a map of the
+    next level's names (copied), then freed them and sorted the level. That took 157 ms for the 42,420
+    items after level 1, 103 ms of it the map (`cg\collect-timing.py`).
+  - **Now,** for a level of at least 4,096 functions:
+    - each emitter's thread scans its own requests against an index of the names (views) and frees
+      them;
+    - each chunk of the level takes its items' first requesters and is sorted on a thread of its own;
+    - the sorted chunks are merged.
+
+    The result is the same level, item for item. The parallel way costs about 5 ms of its own, the
+    serial one 2.5 µs an item. The game's objects are identical to master's.
+  - **Measured, preliminary:** the measurement window was disturbed, and 3 clean pairs are to follow.
+    - With the timeline, the serial gaps between levels went from 513 to 537 ms to 329 ms, and the
+      one after level 1 from 157 to 168 ms to 59 ms.
+    - Paired builds of the game, every round disturbed: the collection's best codegen was 4.248 and
+      4.251 s, against master's 4.457 s. The gate's own builds: 4.327 against 4.587 s.
+    - Indicated: −0.2 to −0.27 s of codegen.
+
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for
