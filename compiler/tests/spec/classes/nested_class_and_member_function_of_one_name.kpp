@@ -1,5 +1,4 @@
 // spec: a nested class and a member function of one name in one class, as C++ allows: where the name is a value (a call through an object, the member function's address) it is the function, which hides the class there ([basic.scope.hiding]/2); as a type it is the class (kpp needs no `struct` before it)
-// pending: the checker passes it, and codegen fails: "does not support taking the address of Reading yet" and, for p.Reading(3), "does not support a member access that did not resolve to a field yet" (A, found 2026-11-04 beside the C imports' struct stat and stat())
 struct Probe
 {
   struct Reading
