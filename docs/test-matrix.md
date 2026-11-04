@@ -15,6 +15,14 @@ A third, final, is planned: the game as Factorio's official FinalRelease build m
 optimization, `FINAL_RELEASE`). [final-release.md](final-release.md) has what that needs and its
 benchmark against C++ FinalRelease.
 
+**Game speed is compared against C++ FinalRelease** (kovarex, 2026-11-04). kpp's release and final
+builds are measured against the C++ FinalRelease build of the same Factorio commit, the build the
+official releases come from. C++ Release is at most an extra column. The latest numbers: kpp release
+**0.97x C++ FinalRelease** on performance.zip and **0.98x** on modern_playthrough_155 (C++ Release:
+1.10x on both; [final-release.md](final-release.md), "The benchmark"). Thread H rebuilds C++
+FinalRelease whenever the converted Factorio commit moves, and keeps its benchmark root
+(`scratch\configs\bench\cppfinal`) for every thread's runs.
+
 kppc's trivial inlining is on in all of them (`--no-inline` turns it off). The converted game is
 always Factorio's FastDebug preprocessing (`_DEBUG`, `DEBUG`, `LUA_USE_APICHECK`: convert.cpp's
 `buildDefines`), so the kppc release game is FastDebug code without asserts at -O2, not Factorio's
@@ -41,6 +49,10 @@ The baseline is `menu-checksums.py --baseline` run on this C++ Debug build (2.1.
 every checksum differs from the 2.1.0 menu-checksums.txt, which C replaces with the 2.1.25 one.
 
 ### Runtime: the 45 menu maps
+
+This measurement predates the rule that game speed is compared against C++ FinalRelease: it compares
+against C++ Release and C++ Debug. The next run of the 45 maps adds C++ FinalRelease as the
+reference. Against FinalRelease, see [final-release.md](final-release.md) (the two saves).
 
 `python -I bench-menu.py 3 kppc-release=GAME cpp-release=cpp:C:\Factorio\bin\Releasex64vs2022\factorio-run.exe
 kppc-debug=GAME cpp-debug=cpp:C:\Factorio\bin\Debugx64vs2022\factorio-run.exe` (thread H's scratch

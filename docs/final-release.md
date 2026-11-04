@@ -6,6 +6,16 @@ comparison puts kpp's best release build against that, not against C++ Release (
 the same program, and the measurements. Thread H leads it. The converter's part belongs to C, the
 build cell's to B.
 
+**The rule** (kovarex, 2026-11-04, CLAUDE.md): the game speed of kpp's release and final builds is
+always given against C++ FinalRelease of the same Factorio commit. C++ Release appears only as an
+extra column. Thread H rebuilds FinalRelease whenever the converted commit moves (FASTBuild through
+the coordinator) and keeps its benchmark root, `scratch\configs\bench\cppfinal`, for every thread's
+runs.
+
+**Latest** (2026-11-04, Factorio 4c178a5b915): kpp release is **0.97x** C++ FinalRelease on
+performance.zip and **0.98x** on kovarex_modern_playthrough_155 (C++ Release: 1.10x on both). The
+details are in "The benchmark" below.
+
 Source: C:\Factorio 4c178a5b915 (2.1.25), `fastbuild/fbuild.bff`, `.BuildVanillaRelease` (line 1303)
 and `.BuildVanillaFinalRelease` (line 1373). `.BuildRelease` and `.BuildFinalRelease` add `SPACE_AGE` to
 them; the vanilla builds are the same without it.
