@@ -1,0 +1,28 @@
+// spec: --zero-null-warnings (kovarex, 2026-11-04: kpp is to require nullptr; design.md 4): each literal 0 that becomes a pointer or member pointer without a cast is a warning at the 0 token itself (with --diagnostic-columns its column, inside parentheses too), for C's fix-it to rewrite: an initializer, a parenthesised one, a member pointer, an argument, a comparison, a template's return (once, however many instances); nullptr is none; the program runs as without the option
+// kppc: --zero-null-warnings --diagnostic-columns
+// warning: zero_null_warnings.kpp:15:41: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings.kpp:18:13: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings.kpp:19:14: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings.kpp:21:19: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings.kpp:22:17: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings.kpp:23:20: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+struct Node
+{
+  int value;
+  int Node::* member;
+};
+int count(Node* n) { return n ? n->value : -1; }
+template<typename T> T* none() { return 0; }
+int main()
+{
+  Node* a = 0;
+  Node* b = (0);
+  Node* c = nullptr;
+  int Node::* m = 0;
+  int x = count(0) + count(c);
+  bool same = a == 0;
+  int* p = none<int>();
+  long* q = none<long>();
+  println(x, " ", same, " ", b == nullptr, " ", m == nullptr, " ", p == nullptr, " ", q == nullptr);
+  return 0;
+}

@@ -72,6 +72,7 @@ namespace
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
     bool accessWarnings = false; // --access-warnings
     bool returnCopyWarnings = false; // --return-copy-warnings
+    bool zeroNullWarnings = false; // --zero-null-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
@@ -150,6 +151,8 @@ namespace
             "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
             "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
             "                (docs/design.md, \"struct and class\"); no error, no other change\n"
+            "  --zero-null-warnings  warn of each literal 0 of the program's sources that converts to a pointer or member\n"
+            "                pointer: kpp is to require nullptr (docs/design.md 4); with --diagnostic-columns the 0's column\n"
             "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"
             "                the result's place (a named return), and why; no error, no other change\n"
             "  --struct-rule  a struct is a public value type: one with a private or protected section, a base that is not\n"
@@ -2180,6 +2183,9 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     reportCheckerErrors(global, true, cg.instanceAssertsChecked);
     reportAccessWarnings(build);
     reportReturnCopyWarnings(build);
+    if (options.zeroNullWarnings)
+      for (const std::string& w : takeZeroNullWarnings())
+        fprintf(stderr, "%s\n", w.c_str());
     if (options.check)
       return; // the errors are all it is for
     std::string clang = clangPath();
@@ -2801,6 +2807,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
     if (options.accessWarnings)
       global.enableAccessWarnings();
+    setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's; a server's incremental build has only its changed functions')
     if (options.convertDir.empty())
       global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
     if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)
@@ -4325,7 +4332,7 @@ namespace
 {
   const std::pair<const char*, int> compileOptions[] = {
     {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
-    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
+    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--zero-null-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
@@ -4493,6 +4500,8 @@ int compile(int argc, char** argv)
       options.accessWarnings = true;
     else if (arg == "--return-copy-warnings")
       options.returnCopyWarnings = true;
+    else if (arg == "--zero-null-warnings")
+      options.zeroNullWarnings = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <atomic>
 #include <map>
+#include <set>
 #include <mutex>
 #include <unordered_map>
 #include <cstdio>
@@ -541,4 +542,35 @@ std::string visualStudioMissing()
   return "needs Visual Studio 2022 or its Build Tools, and none is installed: install it with \"Desktop development with C++\" and, "
          "under Individual components, \"C++ Clang Compiler for Windows\"";
 }
+}
+
+namespace
+{
+  std::atomic<bool> zeroNullWarningsEnabled{false};
+  std::mutex zeroNullMutex;
+  std::set<std::string> zeroNullNotes; // (sorted, each token once)
+}
+
+void setZeroNullWarnings(bool on)
+{
+  std::lock_guard lock(zeroNullMutex);
+  zeroNullNotes.clear();
+  zeroNullWarningsEnabled = on;
+}
+
+bool zeroNullWarningsOn() { return zeroNullWarningsEnabled; }
+
+void noteZeroNullWarning(const std::string& warning)
+{
+  std::lock_guard lock(zeroNullMutex);
+  zeroNullNotes.insert(warning);
+}
+
+std::vector<std::string> takeZeroNullWarnings()
+{
+  std::lock_guard lock(zeroNullMutex);
+  std::vector<std::string> out(zeroNullNotes.begin(), zeroNullNotes.end());
+  zeroNullNotes.clear();
+  sortDiagnostics(out); // (as a build without a server orders them: source.hpp)
+  return out;
 }

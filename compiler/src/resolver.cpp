@@ -22101,6 +22101,9 @@ struct GlobalScope::Impl
           const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
           record(n, fnTy);
           bindOverloadSets(sets, fnTy);
+          if (fnTy && fnTy->kind == TyKind::Function)
+            for (size_t i = 0; i < c->args.size() && i < fnTy->args.size(); ++i)
+              noteZeroNull(c->args[i], fnTy->args[i]); // `count(0)` for a Node*
           return returnTypeOfCall(f, classSubst, c->args, &n->name.last(), c);
         }
         // Constructor call, functional cast, callable variable...
@@ -22258,6 +22261,9 @@ struct GlobalScope::Impl
           m->resolved = f;
           const Ty* fnTy = impl.declaredTypeOf(f, &r.subst, 0);
           record(m, fnTy);
+          if (fnTy && fnTy->kind == TyKind::Function)
+            for (size_t i = 0; i < c->args.size() && i < fnTy->args.size(); ++i)
+              noteZeroNull(c->args[i], fnTy->args[i]);
           if (types.isDependent(fnTy))
             ++stats.membersDependent;
           else
@@ -22691,6 +22697,12 @@ struct GlobalScope::Impl
     {
       const Ty* l = walkExpr(b->lhs);
       const Ty* r = walkExpr(b->rhs);
+      if (!b->isKeyword && (P(b->op) == P::Assign || P(b->op) == P::EqEq || P(b->op) == P::NotEq))
+      {
+        noteZeroNull(b->rhs, l); // `p = 0`, `p == 0`
+        if (P(b->op) != P::Assign)
+          noteZeroNull(b->lhs, r); // `0 != p`
+      }
       if (!b->isKeyword && P(b->op) == P::Assign && l && !probesSharedNodes())
         if (const Ty* target = types.unqualified(types.stripRef(l));
             (target->kind == TyKind::Pointer || target->kind == TyKind::MemberPointer) && target->inner && target->inner->kind == TyKind::Function)
@@ -23168,6 +23180,31 @@ struct GlobalScope::Impl
       return false;
     }
 
+    // --zero-null-warnings (design.md 4): e, the literal 0 of kpp's own sources (in parentheses or
+    // not), made a pointer or member pointer of type target without a cast.
+    void noteZeroNull(Expr* e, const Ty* target)
+    {
+      if (!zeroNullWarningsOn() || !file || file->isImported || probing || inGenericTemplate())
+        return;
+      target = target ? types.unqualified(types.stripRef(target)) : nullptr;
+      if (!target || (target->kind != TyKind::Pointer && target->kind != TyKind::MemberPointer))
+        return;
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e || e->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(e)->literalKind != TokenKind::Number)
+        return;
+      auto* l = static_cast<LiteralExpr*>(e);
+      const ParsedFile* in = l->file ? l->file : file;
+      if (!in || in->isImported || !in->tokens || l->token >= in->tokens->size())
+        return;
+      const Token& t = (*in->tokens)[l->token];
+      std::string_view text = in->text.substr(t.offset, t.length);
+      static const char* zeros[] = {"0", "0u", "0U", "0l", "0L", "0ll", "0LL", "0ul", "0UL", "0ull", "0ULL"};
+      if (std::none_of(std::begin(zeros), std::end(zeros), [&](const char* z) { return text == z; }))
+        return;
+      noteZeroNullWarning(Impl::locationOf(in, l->token) + ": warning: the literal 0 is no pointer: write nullptr (design.md 4)");
+    }
+
     // rangeExpr: the range written, for a free begin(range).
     const Ty* elementTypeOf(const Ty* range, Expr* rangeExpr)
     {
@@ -23639,6 +23676,8 @@ struct GlobalScope::Impl
           if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
             bindTemplateAddresses(v->init, declared); // `const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;`
           checkTextVariable(v, declared);
+          if (v->init && !v->bracedInit)
+            noteZeroNull(v->init, declared); // `Node* a = 0;`
           if (v->init && declared && !impl.containsAuto(declared))
             checkClosureTo(v->init, declared, v->token); // `Function<void()> f = [&] { ... text ... };`
           // `int count = item;`, `Item* raw = item;`: a class copy-initializing a scalar (not `T x(args)` or a brace list,
