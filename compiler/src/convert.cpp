@@ -14043,7 +14043,6 @@ namespace
     size_t byAsserts = 0; // groups whose debug text is the release one with asserts (differsByAsserts)
     size_t when = 0; // declarations of one configuration written `when (config::debug)` (design.md 19)
     size_t perConfiguration = 0; // declarations whose initializer alone differs, `= config::debug ? a : b`
-    size_t aliases = 0; // aliases of one configuration written in both (conditionalGroup)
     size_t final = 0; // groups whose final text alone differs, written with config::finalRelease
     size_t allThree = 0; // groups whose three texts all differ (problems)
     std::map<std::string, std::string> choices; // "FILE GROUP" -> the configuration whose text both get
@@ -14581,29 +14580,9 @@ namespace
         ++report.perConfiguration;
         return chosen;
       }
-    // An alias's name (`using MapType = ...;`, ""): an alias of one configuration is written in both,
-    // as it has no storage and no constructor (a `when` in a block declares a variable alone), its
-    // type checked in both (a type of one configuration's in it is an error in the other, never a
-    // wrong one), unless the other configuration declares the name too: then the two are `when`s.
-    auto aliasName = [&](const std::string& item) -> std::string
-    {
-      std::string_view code = codeStart(item);
-      if (code.substr(0, 6) != "using " || !declaresName(item))
-        return "";
-      size_t b = code.find_first_not_of(" \t", 6), e = b;
-      while (e < code.size() && isIdentChar(code[e]))
-        ++e;
-      return std::string(code.substr(b, e - b));
-    };
-    std::set<std::string> debugAliases, releaseAliases;
-    for (const std::string& item : debugItems)
-      if (std::string name = aliasName(item); !name.empty())
-        debugAliases.insert(name);
-    for (const std::string& item : releaseItems)
-      if (std::string name = aliasName(item); !name.empty())
-        releaseAliases.insert(name);
-    // One configuration's items: each declaration a `when`, each run of statements one block.
-    auto items = [&](const std::vector<std::string>& list, const char* condition, const std::set<std::string>& otherAliases)
+    // One configuration's items: each declaration a `when` (an alias too: Gui.cpp's debug-only
+    // `using MapType`, design.md 19), each run of statements one block.
+    auto items = [&](const std::vector<std::string>& list, const char* condition)
     {
       std::string out, statements;
       auto flush = [&]
@@ -14615,13 +14594,7 @@ namespace
         statements.clear();
       };
       for (const std::string& item : list)
-        if (std::string alias = aliasName(item); !alias.empty() && !otherAliases.count(alias))
-        {
-          flush();
-          out += item;
-          ++report.aliases;
-        }
-        else if (std::string_view code = codeStart(item); code.substr(0, 14) == "static_assert(")
+        if (std::string_view code = codeStart(item); code.substr(0, 14) == "static_assert(")
         {
           // A static_assert of one configuration (Map.cpp's FINAL_RELEASE one, at namespace scope,
           // where no `if constexpr` stands): one checked where its configuration's is,
@@ -14672,7 +14645,7 @@ namespace
       flush();
       return out;
     };
-    return items(debugItems, dimension.on, releaseAliases) + items(releaseItems, dimension.off, debugAliases);
+    return items(debugItems, dimension.on) + items(releaseItems, dimension.off);
   }
 
   // Whether a group's debug text is its release text with asserts (Lua's check_exp, `(lua_assert(c),
@@ -14987,7 +14960,6 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
                         "\n- #if groups whose configurations differ, written with `when (config::debug)` and `if constexpr (config::debug)` (design.md 19): " + std::to_string(report.conditional) +
                         "\n- their declarations, each `when (config::debug)` or `when (!config::debug)`: " + std::to_string(report.when) +
                         "\n- their declarations whose initializer alone differs, `= config::debug ? a : b`: " + std::to_string(report.perConfiguration) +
-                        "\n- their aliases of one configuration, written in both (no storage; their types checked in both): " + std::to_string(report.aliases) +
                         "\n- groups whose final text alone differs (FinalRelease's), written with `when (config::finalRelease)` and `if constexpr (config::finalRelease)`: " +
                         std::to_string(report.final) + "\n- groups whose debug, release and final texts all differ (problems): " + std::to_string(report.allThree) +
                         "\n- groups whose configurations differ by asserts alone, written as the debug one (kpp's assert is the configuration's): " +
