@@ -849,7 +849,11 @@ set (they are in its key, or hashed and checked per build).
   --stop-all-servers`, in a project's directory too) stops every server of this user, of any
   arguments and any kppc: each runs from its `%TEMP%\kppc-server\KEY.exe`, which it finds them by.
 - **Key:** FNV-1a of the kppc binary's path, size and write time, the working directory
-  (lowercased) and the arguments. One server per key, on the named pipe
+  (lowercased) and the arguments, all but `--msvc-diagnostics` and `--verify-incremental`. The
+  server writes each diagnostic's place marked (`\1path:line[\2column]\3`), and the client prints
+  it as its own `--msvc-diagnostics` asks (renderDiagnostics, source.hpp): kept errors and a
+  replayed build's output serve Visual Studio's builds and a terminal's alike. Errors sort as a
+  build without a server writes them (plainDiagnostic). One server per key, on the named pipe
   `\\.\pipe\kppc-server-KEY` (one instance, local clients only). Another binary, directory or
   argument list is another server, so a server never serves a build it did not start for; the
   files' contents and the stdlib are read again on every build at step 1, and from step 3 on are

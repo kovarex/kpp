@@ -41,10 +41,10 @@ try
     if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
     { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
   }
-  # Two compile servers of one cell's outputs (2026-11-04): Visual Studio's builds pass
-  # --msvc-diagnostics and have a server of their own, a terminal's builds another, and both write
-  # build\debug. Each build's program prints what its source says, whichever server built last: one
-  # linked the other's objects as its own (source "one", the program "two").
+  # Visual Studio's builds and a terminal's (2026-11-04): VS's pass --msvc-diagnostics, and both
+  # write build\debug. Each build's program prints what its source says, whichever built last: when
+  # they had a server each, one linked the other's objects as its own (source "one", the program
+  # "two"). They share one server now (server.cpp, serverKey), which the loop below checks too.
   $main = Get-Content -Raw 'src\main.kpp'
   foreach ($step in @(@('one', '--msvc-diagnostics'), @('one', ''), @('two', '--msvc-diagnostics'), @('one', ''), @('three', ''), @('two', '--msvc-diagnostics')))
   {
@@ -52,6 +52,17 @@ try
     $output = Kpp (@($step[1] | Where-Object { $_ }) + @('--run'))
     if ($code -ne 0 -or ($output -join "`n") -notmatch "(?m)^Hello $($step[0])$")
     { Fail "two servers (the source says `"Hello $($step[0])`", built $(if ($step[1]) { 'with' } else { 'without' }) --msvc-diagnostics): exit $code`n$($output -join "`n")"; break }
+  }
+  # One server for both: its diagnostics are in each client's form, `main.kpp(N)` for VS and
+  # `main.kpp:N` for a terminal, the same error kept by the server (the second and third builds
+  # are its replays: no input changed).
+  [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), $main + "`nint broken = noSuchName;`n")
+  foreach ($step in @('--msvc-diagnostics', '', '--msvc-diagnostics'))
+  {
+    $output = (Kpp (@('--debug') + @($step | Where-Object { $_ }))) -join "`n"
+    $place = if ($step) { '\(\d+\)' } else { ':\d+' }
+    if ($code -eq 0 -or $output -notmatch "main\.kpp$place`: error: .*noSuchName" -or $output -match "[\x01\x02\x03]")
+    { Fail "one server's error in the client's form (kpp $step): exit $code`n$output"; break }
   }
   [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), $main)
   Kpp @('--stop-server') | Out-Null

@@ -41,6 +41,23 @@ std::string overlayKey(const std::filesystem::path& path);
 extern bool msvcDiagnostics, diagnosticColumns;
 std::string sourceLocation(const std::string& path, size_t line, size_t column = 0);
 
+// In a compile server, a diagnostic's place is written marked and the client that prints it gives
+// it its form (renderDiagnostics): Visual Studio's builds (--msvc-diagnostics) and a terminal's share
+// one server, whose kept errors and replayed output were written for one of them (server.hpp,
+// serverKey). The mark: '\1' path ':' line [ '\2' column ] '\3', the column with --diagnostic-columns
+// alone (which stays in the server's key: it decides which errors are one error). Set once, by the
+// server before its first build.
+void markDiagnosticLocations();
+// text with each marked place written as sourceLocation writes it for msvc (`path(line)`) or not
+// (`path:line`); what is not a whole mark stays as it is.
+std::string renderDiagnostics(std::string_view text, bool msvc);
+// A diagnostic as it sorts: a marked place as `path:line[:column]`, as a build outside a server
+// writes it without --msvc-diagnostics, so that a server's diagnostics come in the same order as that
+// build's (text without a mark is returned as it is).
+std::string plainDiagnostic(std::string_view text);
+// Sorts diagnostics as their texts outside a server sort (by plainDiagnostic).
+void sortDiagnostics(std::vector<std::string>& diagnostics);
+
 // --file-prefix-map FROM=TO (each one): the source paths a program's own text holds (an assertion's
 // message, a CallerLocation's file) start with TO in place of the directory FROM, '/' between their
 // names, so that a binary does not hold this machine's paths (kpp's release and final builds: the

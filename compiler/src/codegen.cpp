@@ -1178,6 +1178,15 @@ namespace
       return sourceLocation(file->path, tokenLine, 1 + toks[token].offset - starts[tokenLine - 1]);
     }
 
+    // "file:line" of a node, written into the program itself (what --stub-missing's stub says): the
+    // same in every build, whatever form its diagnostics take (--msvc-diagnostics, a compile server's
+    // marked places, source.hpp).
+    std::string programLocationOf(Node* at, ParsedFile* file)
+    {
+      size_t line = lineOf(at, file);
+      return line ? file->path + ":" + std::to_string(line) : std::string("?");
+    }
+
     // The line a node starts on in its file (from 1), 0 when unknown.
     size_t lineOf(Node* at, ParsedFile* file)
     {
@@ -20562,7 +20571,7 @@ namespace
       catch (Unsupported&)
       {
         failedFunctions.push_back(currentFunctionName);
-        failedAt[currentFunctionName] = qualifiedName(original) + " at " + locationOf(original, original->file); // what --stub-missing's stub says
+        failedAt[currentFunctionName] = qualifiedName(original) + " at " + programLocationOf(original, original->file); // what --stub-missing's stub says
       }
       currentArgs = nullptr;
       currentClassTy = nullptr;
@@ -21786,7 +21795,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         sh.stubMessages.emplace(name, where);
     for (auto& [name, f] : sh.undefinedUses)
       if (!sh.definedIn.count(name))
-        sh.stubMessages.emplace(name, e.qualifiedName(f) + " at " + e.locationOf(f, f->file) + " (used, but no definition of it was found)");
+        sh.stubMessages.emplace(name, e.qualifiedName(f) + " at " + e.programLocationOf(f, f->file) + " (used, but no definition of it was found)");
     e.finishStubRuntime();
   }
   // A closure that functions name but whose lambda was never laid out: the function it is written
@@ -21844,7 +21853,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.failedFunctions.insert(result.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
     result.hiddenErrors += em->hiddenErrors;
   }
-  std::sort(result.errors.begin(), result.errors.end());
+  sortDiagnostics(result.errors);
   std::sort(result.failedFunctions.begin(), result.failedFunctions.end());
   if (outOfMemory)
     result.errors.push_back("codegen: out of memory after " + std::to_string(emitted) + " functions");
@@ -22990,7 +22999,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       out.failedFunctions.insert(out.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
       out.hiddenErrors += em->hiddenErrors;
     }
-    std::sort(out.errors.begin(), out.errors.end());
+    sortDiagnostics(out.errors);
     std::sort(out.failedFunctions.begin(), out.failedFunctions.end());
     out.functions = sh.functions;
     out.structs = session.result.structs;

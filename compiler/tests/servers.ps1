@@ -126,6 +126,44 @@ $ErrorActionPreference = 'Continue'
 & $copy --stop-all-servers 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
 
+# 4. One server for Visual Studio's builds and a terminal's: --msvc-diagnostics is not in the key
+# (server.cpp, serverKey). The server marks each diagnostic's place and the client writes it in its
+# own form (source.hpp, renderDiagnostics): `path(line)` with --msvc-diagnostics, `path:line`
+# without, with the column under --diagnostic-columns (which is in the key: another server). The
+# errors come in the order and the words of a build without a server; a replay (no input changed)
+# is in the asking client's form, not the first's.
+Set-Content -Encoding ascii "$work\bad.kpp" "int main()`n{`n  int a = noSuchName;`n  return otherMissing;`n}"
+function Errors([string[]]$options)
+{
+  $ErrorActionPreference = 'Continue'
+  $out = & $copy @options --std $std --exe "$work\bad.exe" "$work\bad.kpp" 2>&1 | ForEach-Object { "$_" }
+  $ErrorActionPreference = 'Stop'
+  return @($out | Where-Object { $_ -match ': error: ' })
+}
+foreach ($columns in @($false, $true))
+{
+  $c = @(if ($columns) { '--diagnostic-columns' })
+  $alone = Errors $c
+  foreach ($msvc in @($true, $false, $true))
+  {
+    $m = @(if ($msvc) { '--msvc-diagnostics' })
+    $place = if ($msvc) { if ($columns) { '\(3,\d+\)' } else { '\(3\)' } } else { if ($columns) { ':3:\d+' } else { ':3' } }
+    $got = Errors (@('--server') + $m + $c)
+    $want = Errors ($m + $c)
+    $what = "kppc --server $($m + $c -join ' ')"
+    if ($got.Count -ne 2 -or $got[0] -notmatch "bad\.kpp$place`: error: .*noSuchName") { Fail "${what}: the errors are not in its form:`n$($got -join "`n")" }
+    elseif (($got -join "`n") -match "[\x01\x02\x03]") { Fail "${what}: a marked place was written as it is" }
+    elseif (-not $msvc -and ($got -join "`n") -ne ($alone -join "`n")) { Fail "${what}: not what a build without a server writes:`n$($got -join "`n")`nwithout a server:`n$($alone -join "`n")" }
+    elseif ($msvc -and ((@($got) | Sort-Object) -join "`n") -ne ((@($want) | Sort-Object) -join "`n")) { Fail "${what}: other errors than without a server:`n$($got -join "`n")`nwithout a server:`n$($want -join "`n")" }
+  }
+  $running = @((Servers).Values | Where-Object { Alive $_ })
+  if ($running.Count -ne 1) { Fail "kppc --server $($c -join ' '), with and without --msvc-diagnostics: $($running.Count) servers running, 1 expected" }
+  $ErrorActionPreference = 'Continue'
+  & $copy --stop-all-servers 2>&1 | Out-Null
+  $ErrorActionPreference = 'Stop'
+  foreach ($id in $running) { Ended $id 10 | Out-Null }
+}
+
 StopLeftovers
-if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all, stale server files go" }
+if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form" }
 exit $failed

@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "source.hpp"
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -186,6 +187,9 @@ namespace
   // The key of a server: the kppc binary (path, size and time: a rebuilt kppc is another server),
   // the working directory and the arguments. A server only ever builds its own key's arguments,
   // so a changed flag or input list goes to another server, never to one holding older state.
+  // --msvc-diagnostics is not in it: it changes no build, only the form the client prints a
+  // diagnostic's place in (renderDiagnostics, source.hpp), so Visual Studio's builds and a terminal's
+  // share one server and its kept build.
   // A file's size and time of writing (or that it is missing): what tells a rebuilt or reinstalled
   // kppc from the one before, a changed output of a kept build from the one it left.
   std::string stampOf(const std::string& path)
@@ -203,7 +207,7 @@ namespace
     for (char c : cwd)
       text += char(tolower(static_cast<unsigned char>(c)));
     for (const std::string& arg : args)
-      if (arg != "--verify-incremental") // a check of the server's build, not another build
+      if (arg != "--verify-incremental" && arg != "--msvc-diagnostics") // a check of the server's build; the client's form
         text += std::string(1, '\0') + arg;
     uint64_t h = 1469598103934665603ull;
     for (unsigned char c : text)
@@ -844,7 +848,7 @@ void logBuildNote(const std::string& note)
     session->notes.push_back(note);
   }
   else if (session)
-    logLine("build %zu: %s", builds, note.c_str());
+    logLine("build %zu: %s", builds, plainDiagnostic(note).c_str()); // (a place in it, marked: as a terminal writes it)
 }
 
 std::string environmentBlock()
@@ -957,6 +961,26 @@ int runClient(int argc, char** argv, CompileFunction compile)
   }
   putString(request, environment);
   DWORD serverProcess = 0;
+  // The server marks each diagnostic's place (source.hpp, markDiagnosticLocations): written here in
+  // this client's form. A mark that a frame cuts is held until its end comes.
+  bool msvc = std::find(args.begin(), args.end(), "--msvc-diagnostics") != args.end();
+  std::string held[2]; // stdout's, stderr's
+  auto print = [&](int stream, const char* data, size_t size, bool last)
+  {
+    std::string& h = held[stream];
+    h.append(data, size);
+    size_t keep = h.size();
+    if (!last)
+      if (size_t mark = h.rfind('\1'); mark != std::string::npos && h.find('\3', mark) == std::string::npos && h.size() - mark < (1 << 16))
+        keep = mark;
+    if (keep == 0)
+      return;
+    std::string text = renderDiagnostics(std::string_view(h).substr(0, keep), msvc);
+    FILE* to = stream ? stderr : stdout;
+    fwrite(text.data(), 1, text.size(), to);
+    fflush(to);
+    h.erase(0, keep);
+  };
   if (writeAll(pipe, request.data(), request.size()))
   {
     std::string data;
@@ -975,6 +999,8 @@ int runClient(int argc, char** argv, CompileFunction compile)
         int code = 0;
         memcpy(&code, data.data(), 4);
         CloseHandle(pipe);
+        print(0, nullptr, 0, true);
+        print(1, nullptr, 0, true);
         return code;
       }
       if (head[0] == processFrame && size == 4)
@@ -982,11 +1008,11 @@ int runClient(int argc, char** argv, CompileFunction compile)
         memcpy(&serverProcess, data.data(), 4);
         continue;
       }
-      FILE* to = head[0] == stderrFrame ? stderr : stdout;
-      fwrite(data.data(), 1, size, to);
-      fflush(to);
+      print(head[0] == stderrFrame, data.data(), size, false);
     }
   }
+  print(0, nullptr, 0, true); // (what came before the server went)
+  print(1, nullptr, 0, true);
   DWORD readError = GetLastError();
   CloseHandle(pipe);
   // The server is gone or going: before building here, wait until it has ended (its job ends
@@ -1017,6 +1043,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
     return 1; // another server has the key
   serverLog = logPath(key);
   logLine("started");
+  markDiagnosticLocations(); // each client prints them in its own form
   // The processes a build starts (clang, its link) end with the server, whatever ends it: a client
   // that lost its server must not find the server's link still writing the executable.
   if (HANDLE job = CreateJobObjectA(nullptr, nullptr))

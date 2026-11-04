@@ -18716,9 +18716,14 @@ struct GlobalScope::Impl
       }
       if (!first)
         return;
+      // (in the same file: its line, which was the text after the place's last ':', the column with
+      // --diagnostic-columns and not a line in Visual Studio's form)
       std::string where = Impl::locationOf(first->file, first->token);
-      if (first->file == file)
-        where = "line " + where.substr(where.rfind(':') + 1); // (in the same file)
+      if (first->file == file && first->file->tokens && first->token < first->file->tokens->size())
+      {
+        size_t offset = std::min<size_t>((*first->file->tokens)[first->token].offset, first->file->text.size());
+        where = "line " + std::to_string(1 + std::count(first->file->text.begin(), first->file->text.begin() + offset, '\n'));
+      }
       impl.reportCheckerError(file, f->token, "the function " + impl.namePartText(f->name.last()) + " is defined twice (first at " + where + ")");
     }
 
@@ -25168,9 +25173,11 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
 std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
 {
   checkInstanceStaticAsserts(instancesChecked);
-  // By file, then line number, then text.
-  auto key = [](const std::string& e)
+  // By file, then line number, then text: as a build outside a compile server writes them, a
+  // server's marked places too (plainDiagnostic, source.hpp).
+  auto key = [](const std::string& marked)
   {
+    std::string e = plainDiagnostic(marked);
     size_t error = e.find(": error: ");
     size_t colon = e.rfind(':', error == std::string::npos ? std::string::npos : error - 1);
     if (error == std::string::npos || colon == std::string::npos || colon == 0)
@@ -27772,8 +27779,9 @@ std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*
                std::to_string(n[4]) + " with a virtual function, " + std::to_string(n[5]) + " more polymorphic through a base only\n";
   summary += "  (" + std::to_string(structWarnings) + " structs would have to become classes; constructors are checked where code calls them)";
   // By file, then line number, then text, as checkerErrors.
-  auto key = [](const std::string& w)
+  auto key = [](const std::string& marked)
   {
+    std::string w = plainDiagnostic(marked);
     size_t kind = w.find(": warning: ") != std::string::npos ? w.find(": warning: ") : w.find(": note: ");
     size_t colon = kind == std::string::npos || kind == 0 ? std::string::npos : w.rfind(':', kind - 1);
     if (colon == std::string::npos || colon == 0)

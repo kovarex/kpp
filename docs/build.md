@@ -82,8 +82,10 @@ kppc's path, the working directory and the argument list, so every distinct argu
 own server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
 and ends after an hour idle, or as soon as the kppc it was started from changes (a rebuild, an
 install). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kppc's or
-kpp's) stops every compile server of this user. A Visual Studio
-build (`--msvc-diagnostics`) therefore has a server of its own, apart from the command line's.
+kpp's) stops every compile server of this user. `--msvc-diagnostics` is left out of the key: it changes
+only the form a diagnostic's place is printed in, which the client gives it (the server marks each
+place), so a Visual Studio build and the command line's share one server and its kept build, each
+reading its errors in its own form.
 
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPPC`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows

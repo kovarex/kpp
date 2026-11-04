@@ -109,8 +109,93 @@ bool readFile(const std::filesystem::path& path, std::string& out)
 
 bool msvcDiagnostics = false, diagnosticColumns = false;
 
+namespace
+{
+  bool markedLocations = false;
+
+  // The mark at text[at] ('\1'): its path, line and column (0: none) and its end (past '\3'); false
+  // when it is not a whole mark.
+  bool readMark(std::string_view text, size_t at, std::string_view& path, std::string_view& line, std::string_view& column, size_t& end)
+  {
+    size_t close = text.find('\3', at + 1);
+    if (close == std::string_view::npos)
+      return false;
+    std::string_view body = text.substr(at + 1, close - at - 1);
+    size_t columnAt = body.find('\2');
+    std::string_view place = body.substr(0, columnAt);
+    column = columnAt == std::string_view::npos ? std::string_view() : body.substr(columnAt + 1);
+    size_t colon = place.rfind(':');
+    if (colon == std::string_view::npos || colon == 0 || colon + 1 == place.size() || place.find('\1') != std::string_view::npos)
+      return false;
+    path = place.substr(0, colon);
+    line = place.substr(colon + 1);
+    auto digits = [](std::string_view s) { return std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; }); };
+    if (!digits(line) || !digits(column) || (columnAt != std::string_view::npos && column.empty()))
+      return false;
+    end = close + 1;
+    return true;
+  }
+
+  template <class Write>
+  std::string rewriteMarks(std::string_view text, const Write& write)
+  {
+    std::string out;
+    out.reserve(text.size());
+    size_t from = 0;
+    for (size_t at = text.find('\1'); at != std::string_view::npos; at = text.find('\1', at + 1))
+    {
+      std::string_view path, line, column;
+      size_t end = 0;
+      if (!readMark(text, at, path, line, column, end))
+        continue;
+      out.append(text.substr(from, at - from));
+      write(out, path, line, column);
+      from = end;
+      at = end - 1;
+    }
+    out.append(text.substr(from));
+    return out;
+  }
+}
+
+void markDiagnosticLocations() { markedLocations = true; }
+
+std::string renderDiagnostics(std::string_view text, bool msvc)
+{
+  if (text.find('\1') == std::string_view::npos)
+    return std::string(text);
+  return rewriteMarks(text, [&](std::string& out, std::string_view path, std::string_view line, std::string_view column)
+  {
+    out.append(path);
+    out += msvc ? '(' : ':';
+    out.append(line);
+    if (!column.empty())
+    {
+      out += msvc ? ',' : ':';
+      out.append(column);
+    }
+    if (msvc)
+      out += ')';
+  });
+}
+
+std::string plainDiagnostic(std::string_view text) { return renderDiagnostics(text, false); }
+
+void sortDiagnostics(std::vector<std::string>& diagnostics)
+{
+  std::vector<std::pair<std::string, std::string>> keyed; // (plain, as written)
+  keyed.reserve(diagnostics.size());
+  for (std::string& d : diagnostics)
+    keyed.emplace_back(plainDiagnostic(d), std::move(d));
+  std::sort(keyed.begin(), keyed.end());
+  for (size_t i = 0; i < keyed.size(); ++i)
+    diagnostics[i] = std::move(keyed[i].second);
+}
+
 std::string sourceLocation(const std::string& path, size_t line, size_t column)
 {
+  if (markedLocations)
+    return '\1' + path + ':' + std::to_string(line) + (diagnosticColumns && column ? '\2' + std::to_string(column) : std::string()) + '\3';
   if (diagnosticColumns && column)
     return msvcDiagnostics ? path + "(" + std::to_string(line) + "," + std::to_string(column) + ")"
                            : path + ":" + std::to_string(line) + ":" + std::to_string(column);
