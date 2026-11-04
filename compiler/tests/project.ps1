@@ -352,6 +352,11 @@ void build(Project& project)
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a library's system libraries '$($case[0])': the link did not fail on $($case[1]): exit $code`n$output" }
   }
+  # `kpp --run` of a program for another platform: an error before the build (kppc --run's too), never a
+  # build that then fails to start an ELF. No sysroot needed: nothing is built.
+  if (Test-Path 'build\debug\app') { Remove-Item 'build\debug\app' }
+  $output = (Kpp @('--no-server', '--target', 'freebsd', '--run')) -join "`n"
+  if ($code -ne 2 -or $output -notmatch 'app debug is built for freebsd, which does not run on this machine' -or (Test-Path 'build\debug\app')) { Fail "kpp --target freebsd --run: exit $code`n$output" }
   # The other side of the platform: `kpp --target freebsd` links what a library keeps for FreeBSD and
   # leaves out what it keeps for Linux. bsd calls nothing of Windows; with
   # systemLibrary("nosuchlibrary", Platform::FreeBSD) the link fails on it, with Platform::Linux it

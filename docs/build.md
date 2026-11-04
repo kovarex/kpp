@@ -230,7 +230,8 @@ run_tests.cmd.
   never sources:
   - `kpp [targets] [configurations]` builds those cells, every target when none is named, debug
     when no configuration is;
-  - `kpp NAME --run ARGS` builds and runs one;
+  - `kpp NAME --run ARGS` builds and runs one; one built for another platform (`--target freebsd`,
+    linux) is an error before the build, as `kppc --run`'s: build it without `--run`;
   - `--generate-visual-studio-files` and `--generate-vs-code-files` write one solution for all
     executables, whose builds run `kpp NAME CONFIGURATION --msvc-diagnostics`, so an edit of build.kpp
     needs no new project files;

@@ -1728,6 +1728,15 @@ namespace
       fprintf(stderr, "error: --run needs one target in one configuration; this names %zu cells\n", chosen.size());
       return 2;
     }
+    // A program for another platform does not run here: an error before the build, as kppc --run's
+    // (run.cpp), never a build that then fails to start an ELF.
+    if (request.run && targetPlatform(*chosen[0], request) != "windows")
+    {
+      fprintf(stderr, "error: %s %s is built for %s, which does not run on this machine: build it without --run (%s)\n",
+              chosen[0]->name.c_str(), chosen[0]->configuration.c_str(), targetPlatform(*chosen[0], request).c_str(),
+              exeOf(root, *chosen[0], request).string().c_str());
+      return 2;
+    }
     if (chosen.empty())
       printf("kpp: build.kpp describes no executable; kpp --test builds and runs its library's tests\n");
     for (const Program* p : chosen)
