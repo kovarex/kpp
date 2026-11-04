@@ -4896,6 +4896,17 @@ namespace
           continue;
         }
         Expr* rhs = parseBinary(prec + 1);
+        // No chained comparison without parentheses (design.md 22): `a < b > c` (which C++ reads as
+        // `(a < b) > c`, a template-id to a reader), `a < b < c`, `a == b != c`. kpp's own sources
+        // only: the converter's C++ input keeps C++'s reading.
+        if (kppSource && !isKeyword && lhs->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(lhs)->isKeyword)
+        {
+          auto relational = [](uint32_t o) { return o == uint32_t(P::Less) || o == uint32_t(P::Greater) || o == uint32_t(P::LessEq) || o == uint32_t(P::GreaterEq); };
+          auto equality = [](uint32_t o) { return o == uint32_t(P::EqEq) || o == uint32_t(P::NotEq); };
+          uint32_t inner = static_cast<BinaryExpr*>(lhs)->op;
+          if ((relational(op) && relational(inner)) || (equality(op) && equality(inner)))
+            out.diagnostics.push_back({opTok, "a comparison of a comparison needs parentheses: `(a < b) > c`, or `a < b && b > c` (design.md 22)"});
+        }
         BinaryExpr* b = node<BinaryExpr>(opTok);
         b->lhs = lhs;
         b->rhs = rhs;

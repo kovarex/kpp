@@ -1,0 +1,14 @@
+// spec: a statement `T(x);` is always an expression, a temporary T made from x, never a declaration of x as C++ reads it (design.md 22); parentheses in a declarator only group (`int (*twice)(int)`, a pointer to a function)
+struct Counter
+{
+  Counter(int v) { println("made ", v); }
+};
+int doubled(int v) { return 2 * v; }
+int main()
+{
+  int x = 7;
+  Counter(x);
+  int (*twice)(int) = doubled;
+  println(x + 1, " ", twice(x));
+  return 0;
+}

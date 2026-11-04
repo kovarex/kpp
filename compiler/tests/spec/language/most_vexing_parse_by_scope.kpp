@@ -1,0 +1,25 @@
+// spec: the most vexing parse by scope (kovarex, 2026-11-04; design.md 22): in a body `T x(...)` is always a variable, `T x();` too (value-initialized, where C++ declares a function); at namespace and class scope `T f(...)` is always a function, a variable there written with `{}` or `=`
+// pending: today a body's `Widget w();` declares a function, and namespace-scope `T x(args)` objects are read as variables; the rule lands with the converter writing them `T x{args}` and the libraries' and specs' own rewritten (A, with C)
+struct Widget
+{
+  int v;
+  Widget() : v(5) {}
+  Widget(int a, int b) : v(a + b) {}
+};
+Widget made();
+Widget made() { return Widget(1, 2); }
+Widget global{4, 5};
+struct Holder
+{
+  Widget get();
+};
+Widget Holder::get() { return Widget(3, 4); }
+int main()
+{
+  Widget w();
+  Widget x(made());
+  Widget y(2, 2);
+  Holder h;
+  println(w.v, " ", x.v, " ", y.v, " ", h.get().v, " ", global.v);
+  return 0;
+}

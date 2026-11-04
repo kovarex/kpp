@@ -1,0 +1,14 @@
+// spec: a statement `a * b;` is always a declaration of b, a pointer to a (kovarex, 2026-11-04; design.md 22): the parser decides it without knowing what a names
+struct Box
+{
+  int v = 4;
+};
+int main()
+{
+  Box box;
+  Box * b;
+  b = &box;
+  Box * c = &box;
+  println(b->v, " ", c->v);
+  return 0;
+}

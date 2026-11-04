@@ -1,0 +1,13 @@
+// spec: a comparison of a comparison without parentheses is an error (kovarex, 2026-11-04; design.md 22): `a < b > c`, which C++ reads as `(a < b) > c` and a reader as a template-id, `a < b < c`, `a == b != c`; parenthesized, or a relational inside an equality (`a < b == c < d`), it is as C++
+// error: a comparison of a comparison needs parentheses: `(a < b) > c`, or `a < b && b > c` (design.md 22)
+// error: a comparison of a comparison needs parentheses: `(a < b) > c`, or `a < b && b > c` (design.md 22)
+// error: a comparison of a comparison needs parentheses: `(a < b) > c`, or `a < b && b > c` (design.md 22)
+int main()
+{
+  int a = 1, b = 2, c = 3, d = 4;
+  bool x = a < b > c;
+  bool y = a < b < c;
+  bool z = a == b != c;
+  bool fine = (a < b) > c || a < b == c < d;
+  return x + y + z + fine;
+}

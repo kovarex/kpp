@@ -1,0 +1,10 @@
+// spec: a `<` is template arguments when its matching `>` is followed by `(`, `::`, `)`, `,` and the like (C#'s rule; kovarex, 2026-11-04, design.md 22): `f(pick<char, short>(1))` calls pick<char, short>; followed by a name or a literal it is a comparison: `f(a < b, c > d)` passes two bools
+template<typename T, typename U> int pick(int v) { return v + int(sizeof(T) + sizeof(U)); }
+int f(int v) { return v; }
+int g(bool x, bool y) { return int(x) * 10 + int(y); }
+int main()
+{
+  int a = 1, b = 2, c = 3, d = 4;
+  println(f(pick<char, short>(1)), " ", g(a < b, c > d));
+  return 0;
+}

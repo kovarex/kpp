@@ -1475,6 +1475,49 @@ to all", 2026-11-04):
 
 Specs: language/placement_new_over_const_object_is_error, language/placement_new_replaces_transparently.
 
+### 22. A grammar without name lookup (decided 2026-11-04)
+kppc parses every file before any name is known (section 2), so where C++ needs to know whether a
+name is a type or a template, kpp decides by syntax alone and the resolver rejects what does not
+fit, never reading it another way. This settles the open question "Syntax must be parseable without
+name lookup" (kovarex, 2026-11-04).
+- **`a * b;` is a declaration.** A statement of a name, `*` (or `&`, `&&`, `^`) and a name, then `;`,
+  `=`, `{`, `(`, `,` or `[`, declares the second name, a pointer to (reference to, owner of) the
+  first. With `a` a variable it is an error ("'a' is a variable, not a type"), never a product whose
+  value is dropped; `a b;` the same (before this a variable's name used as a type silently meant
+  its type, the reading that only sizeof's operand has).
+- **`T(x);` is an expression**, a temporary T made from x (C++ declares x there). Parentheses in a
+  declarator only group: `int (*twice)(int)`, `int (&row)[4]`; `int (x);` is the expression
+  `int(x)`.
+- **No chained comparisons without parentheses.** A relational operator with a relational operand,
+  or an equality operator with an equality operand, is an error: `a < b > c` (C++'s
+  `(a < b) > c`, a template-id to a reader), `a < b < c`, `a == b != c`. Parenthesised, or a
+  relational inside an equality (`a < b == c < d`), it is as C++. kpp's own sources only: the
+  converter's C++ input keeps C++'s reading.
+- **Template arguments by the token after `>`** (C#'s rule). In an expression, `name<...>` is a
+  template-id when the token after its matching `>` is `(`, `::`, `{`, `)`, `,`, `>`, `;`, `]`, `.`,
+  `->`, `...`, `>>`, `}`, `:` or the end, or a binary operator that cannot start an operand (`==`,
+  `!=`, `&&`, `||`, `?`, `/`, `%`, `|`, `^`, `=`, `<`, `<=`, `<<`, `<=>`); so `f(a<b, c>(d))` is a
+  call of the template a, and `f(a < b, c > d)` passes two comparisons. An argument that can only be
+  a type (`v<const T*>`) makes it a template-id whatever follows; one with `&&` or `||` at its top
+  level makes it a comparison. With the comparison chains an error, the guess can no longer pick a
+  silent wrong reading: `a < b > c` is an error either way.
+- **The most vexing parse, by scope** (kovarex accepted the coordinator's proposal, 2026-11-04). In a
+  body `T x(...)` is always a variable, `T x();` too (value-initialized, where C++ declares a
+  function); a body declares no function. At namespace and class scope `T f(...)` is always a
+  function, and a variable there is written with `=` or `{}` (`Widget global{1, 2};`). Before, both
+  were guessed from the parentheses' contents (a literal or an expression made a namespace-scope
+  variable, empty or a builtin type a local function). kpp's own sources only: the converter's C++
+  input keeps the guesses. **Not built yet** (spec language/most_vexing_parse_by_scope is pending):
+  the converted game writes namespace- and class-scope objects `T x(args)` (`static constexpr
+  CargoStationID EMPTY_CARGO_STATION_ID(CargoStationID(-1));`): with the rule its headline went
+  from 0 to 84 errors, and the libraries (html's templates, kppsite) and 13 specs write them so too; the converter writes them `T x{args}`
+  first, then the rule replaces kpp v0's rule 2 below.
+
+Specs: language/statement_type_star_name_is_declaration, statement_variable_star_name_is_error,
+functional_cast_statement_is_expression, chained_comparison_is_error,
+template_arguments_by_the_token_after, most_vexing_parse_by_scope,
+namespace_scope_parentheses_declare_a_function.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
@@ -3360,7 +3403,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   (candidates: a different template-argument bracket or a required disambiguation, no
   most-vexing-parse, declaration statements recognisable from their first tokens). The prototype
   parser uses heuristics that work on 99.2% of Factorio files; the resolver can flag misparses
-  later, but a real compiler should not have to guess.
+  later, but a real compiler should not have to guess. Decided 2026-11-04 (section 22).
 
 - **Library names and program names share one global scope.** The first clash happened on
   2026-10-24: a test's own `struct Pair` against the library's `Pair`. Options: the library in a
