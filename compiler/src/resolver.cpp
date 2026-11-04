@@ -5937,12 +5937,25 @@ struct GlobalScope::Impl
       // `static const int LIMIT;` in the class, `const int Gui::LIMIT = 21;` outside; of an instance
       // with an explicit specialisation of the member, that one.
       VariableDecl* def = v->init ? v : variableDefinitionFor(v, member ? memberArgs : nullptr);
-      if (!def->init || !v->type)
+      if (!v->type)
         return std::nullopt;
       TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
       const Ty* t = convertType(v->type, vctx, depth + 1);
       if (!(v->flags & DF_Constexpr) && !(t && t->isConst))
         return std::nullopt;
+      if (!def->init)
+      {
+        // `const InPlaceSecond inPlaceSecond;` (the library's tag, which Map's and HashMap's operator[] pass): a const
+        // object of a class defined at namespace scope without an initializer is zero-initialized and
+        // default-initialized, as the program's static storage is: its members from their default member
+        // initializers, its default constructor run (constEmpty). Not one declared extern or by a C import, whose
+        // definition is elsewhere, a class's static member or a function's local.
+        const Ty* u = t ? types.unqualified(t) : nullptr;
+        if (!u || u->kind != TyKind::Class || member || (v->flags & (DF_Extern | DF_ExternC)) || (v->file && v->file->isImported) ||
+            (v->parent && v->parent->kind == NodeKind::FunctionDecl))
+          return std::nullopt;
+        return constEmpty(u, true, depth + 1);
+      }
       // The definition's initializer, read from its file, evaluated where the declaration is (the class).
       // A constant local to a function body (`constexpr bool sign = isSigned<T>;`): its initializer
       // under the context it is used in, which has the instantiation's arguments.

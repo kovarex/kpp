@@ -1,0 +1,18 @@
+// spec: at compile time a const object of a class defined at namespace scope without an initializer has its value as at run time: zero-initialized, then its members from their default member initializers and its default constructor run (`const InPlaceSecond inPlaceSecond;`, the library's tag Map's and HashMap's operator[] pass) (`1 45 7 | 1 45 7`)
+// found with language/consteval_map_and_hash_containers
+extern "C" import "stdio.h";
+struct Tag {};
+struct Defaults { int a = 4; int b = 5; };
+struct Counted { int a; Counted() { a = 7; } };
+const Tag tag;
+const Defaults defaults;
+const Counted counted;
+constexpr int one(Tag t) { return 1; }
+static_assert(one(tag) == 1);
+constexpr int fromDefaults = defaults.a * 10 + defaults.b;
+constexpr int fromConstructor = counted.a;
+int main()
+{
+  printf("%d %d %d | %d %d %d\n", one(tag), fromDefaults, fromConstructor, one(tag), defaults.a * 10 + defaults.b, counted.a);
+  return 0;
+}
