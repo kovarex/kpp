@@ -8,7 +8,10 @@
 # `git worktree prune` (worktree remove deletes through the junctions), leaving the main checkout whole. Before --unlink, git
 # 2.37 and later took the old copy's files outside its patterns, seen through the junctions, for its
 # own, and the first checkout deleted the main checkout's data\ (C:\factorio-in-kpp's, 2026-11-03).
-param([string]$Root = (Join-Path $env:TEMP 'kpp-checkout-test'))
+# (Root: under this worktree's compiler\build\tests, never a TEMP folder every worktree shares: two
+# threads' run_tests at once deleted each other's main checkout, 2026-11-04.)
+param([string]$Root = (Join-Path $PSScriptRoot '..\..\..\compiler\build\tests\checkout'))
+$Root = [IO.Path]::GetFullPath($Root)
 $ErrorActionPreference = 'Stop'
 $setup = Join-Path $PSScriptRoot '..\setup-checkout.cmd'
 $failures = New-Object System.Collections.Generic.List[string]

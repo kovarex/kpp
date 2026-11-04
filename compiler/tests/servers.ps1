@@ -35,7 +35,13 @@ function Servers()
   }
   return $out
 }
-function Alive([int]$id) { return $null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue) }
+# (Alive only while the process runs from this test's folder: a server that ended may have its id reused
+# by another process, and with other threads' builds running, one was, giving "3 servers running", 2026-11-04.)
+function Alive([int]$id)
+{
+  $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+  return $null -ne $process -and $process.Path -and $process.Path.StartsWith([IO.Path]::GetFullPath($work), [StringComparison]::OrdinalIgnoreCase)
+}
 function Build([string]$name)
 {
   $ErrorActionPreference = 'Continue'
