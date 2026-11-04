@@ -479,6 +479,22 @@ public:
   // gives it (a draft, ATTR_Draft) so that checking goes on; "?" for any other declaration.
   std::string draftName(const Decl* d);
   bool isExternC(FunctionDecl* f);
+  // The named return variable of f (NRVO, kovarex 2026-11-04): the one automatic local every
+  // `return` of f names (`return v;`, nested lambdas' and local classes' returns aside), of f's
+  // return class (cv aside), built in the result's place with no copy, no move and no constructor
+  // needed. Null when f has none: a return of something else or of another variable, v a
+  // parameter, static, thread_local, extern, volatile, a reference, a structured binding, a catch's
+  // parameter, a compile-time loop's variable, absent by its `when`, or of another type. v is
+  // declared where codegen builds it at the result: a declaration statement (an init and a
+  // condition are ones) or a range-for's variable. An instance's (its own typed body) per instance.
+  // why: when none, the reason, for --return-copy-warnings.
+  VariableDecl* namedReturnVariable(const FunctionDecl* f, std::string* why = nullptr);
+  // The same over any body given the type it returns: a lambda's call operator's, whose body
+  // codegen emits from the LambdaExpr (no FunctionDecl).
+  VariableDecl* namedReturnVariable(const Stmt* body, const Ty* result, std::string* why = nullptr);
+  // --return-copy-warnings: each `return x;` of a local or parameter of class type that is copied
+  // or moved, not built in the result's place, with why (the program's files; not templates yet).
+  std::vector<std::string> returnCopyWarnings(const std::vector<ParsedFile*>& files);
   bool isTemplateContext(Decl* d);               // Inside a template (any enclosing declaration has parameters).
   // Instantiation queries, single-threaded (code generation):
   const Ty* typeOfDeclIn(Decl* d, const TemplateArgs& args);

@@ -1,0 +1,49 @@
+// spec: --return-copy-warnings (kovarex's NRVO rule, 2026-11-04; GlobalScope::namedReturnVariable): a function whose every return names one local of its return class builds that local in the result's place and is not warned of (built, which returns w); each other `return x;` of a class object is a warning with why: two variables returned, a parameter, another type (a const Wire returned as an Optional<Wire> copies, as in C++), a range-for's variable returned beside another; the program runs as without the option
+// kppc: --return-copy-warnings
+// warning: named_return_copy_warnings.kpp:25: warning: the return of 'a' copies or moves it, not built in the result's place: two variables are returned
+// warning: named_return_copy_warnings.kpp:26: warning: the return of 'c' copies or moves it, not built in the result's place: two variables are returned
+// warning: named_return_copy_warnings.kpp:28: warning: the return of 'p' copies or moves it, not built in the result's place: a parameter is returned
+// warning: named_return_copy_warnings.kpp:32: warning: the return of 'w' copies or moves it, not built in the result's place: the variable's type, const Wire, is not the returned Optional<Wire>: a copy or a conversion
+// warning: named_return_copy_warnings.kpp:38: warning: the return of 'w' copies or moves it, not built in the result's place: two variables are returned
+// warning: named_return_copy_warnings.kpp:40: warning: the return of 'none' copies or moves it, not built in the result's place: two variables are returned
+struct Wire
+{
+  int v;
+  Wire(int x) : v(x) {}
+};
+Wire built(int x)
+{
+  Wire w(x);
+  w.v += 1;
+  return w;
+}
+Wire either(bool b)
+{
+  Wire a(1);
+  Wire c(2);
+  if (b)
+    return a;
+  return c;
+}
+Wire param(Wire p) { return p; }
+Optional<Wire> other(int x)
+{
+  const Wire w(x);
+  return w;
+}
+Wire looped(const Vector<Wire>& all)
+{
+  for (Wire w : all)
+    if (w.v > 1)
+      return w;
+  Wire none(0);
+  return none;
+}
+int main()
+{
+  Vector<Wire> all;
+  all.push_back(Wire(1));
+  all.push_back(Wire(5));
+  println(built(1).v, " ", either(true).v, " ", param(Wire(3)).v, " ", other(4)->v, " ", looped(all).v);
+  return 0;
+}

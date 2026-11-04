@@ -26308,6 +26308,127 @@ std::string GlobalScope::qualifiedName(Decl* d)
 
 bool GlobalScope::isExternC(FunctionDecl* f) { return (f->flags & DF_ExternC) != 0; }
 
+VariableDecl* GlobalScope::namedReturnVariable(const FunctionDecl* f, std::string* why)
+{
+  if (!f || !f->body)
+  {
+    if (why)
+      *why = "no body";
+    return nullptr;
+  }
+  const Ty* ft = typeOfDecl(const_cast<FunctionDecl*>(f));
+  return namedReturnVariable(f->body, ft && ft->kind == TyKind::Function ? ft->inner : nullptr, why);
+}
+
+VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* result, std::string* why)
+{
+  auto no = [&](std::string reason) -> VariableDecl*
+  {
+    if (why)
+      *why = std::move(reason);
+    return nullptr;
+  };
+  if (!body)
+    return no("no body");
+  if (!result || result->kind != TyKind::Class)
+    return no("the function returns no class by value"); // (a reference, a scalar, void, unknown)
+  // What nested lambdas and local classes hold: their returns are their own.
+  std::unordered_set<const Node*> nested;
+  std::vector<const ReturnStmt*> returns;
+  std::unordered_set<const Decl*> buildable; // declared by a declaration statement or a range-for
+  forEachNode(const_cast<Stmt*>(body), [&](Node* n)
+  {
+    if ((n->kind == NodeKind::LambdaExpr || n->kind == NodeKind::ClassDecl) && !nested.count(n))
+      forEachNode(n, [&](Node* inner) { if (inner != n) nested.insert(inner); });
+    if (n->kind == NodeKind::ReturnStmt)
+      returns.push_back(static_cast<const ReturnStmt*>(n));
+    else if (n->kind == NodeKind::DeclStmt)
+      for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+        buildable.insert(d);
+    else if (n->kind == NodeKind::RangeForStmt)
+      buildable.insert(static_cast<RangeForStmt*>(n)->var);
+  });
+  VariableDecl* v = nullptr;
+  size_t own = 0;
+  for (const ReturnStmt* r : returns)
+  {
+    if (nested.count(r))
+      continue;
+    ++own;
+    const Expr* e = r->value;
+    if (!e || e->kind != NodeKind::NameExpr)
+      return no("a return of something other than a variable's name");
+    const Decl* d = static_cast<const NameExpr*>(e)->resolved;
+    if (d && d->kind == NodeKind::ParamDecl)
+      return no("a parameter is returned");
+    if (!d || d->kind != NodeKind::VariableDecl)
+      return no("a return of something other than a local variable");
+    if (v && d != v)
+      return no("two variables are returned");
+    v = const_cast<VariableDecl*>(static_cast<const VariableDecl*>(d));
+  }
+  if (!v || !own)
+    return no("no return names a variable");
+  if (v->flags & (DF_Static | DF_ThreadLocal | DF_Extern))
+    return no("the variable is static, thread_local or extern");
+  if (!v->structuredBindings.empty() || v->tupleBinding)
+    return no("the variable is a structured binding");
+  if (v->when && v->whenKnown == 0)
+    return no("the variable is absent by its when");
+  if (!buildable.count(v) || nested.count(v))
+    return no("the variable is no declaration statement's or range-for's (a catch's parameter, a compile-time loop's)");
+  const Ty* vt = typeOfDecl(v);
+  if (vt && vt->isVolatile)
+    return no("the variable is volatile");
+  if (!vt || vt->kind != TyKind::Class || impl->types.unqualified(vt) != impl->types.unqualified(result))
+    return no(std::string("the variable's type, ") + (vt ? impl->types.toString(vt, &impl->symbols) : std::string("?")) + ", is not the returned " +
+              impl->types.toString(result, &impl->symbols) + ": a copy or a conversion");
+  return v;
+}
+
+std::vector<std::string> GlobalScope::returnCopyWarnings(const std::vector<ParsedFile*>& files)
+{
+  std::vector<std::string> out;
+  for (ParsedFile* file : files)
+  {
+    if (!file || file->isImported || file->isLibrary)
+      continue;
+    forEachNode(file->decls, [&](Node* n)
+    {
+      if (n->kind != NodeKind::FunctionDecl)
+        return;
+      auto* f = static_cast<FunctionDecl*>(n);
+      if (!f->body || !f->templateParams.empty() || isTemplateContext(f))
+        return; // (a template's: decided per instance, not warned of yet)
+      std::string why;
+      if (namedReturnVariable(f, &why))
+        return;
+      // Each `return x;` of a local of class type: copied or moved, not built in place.
+      std::unordered_set<const Node*> nested;
+      forEachNode(f->body, [&](Node* m)
+      {
+        if ((m->kind == NodeKind::LambdaExpr || m->kind == NodeKind::ClassDecl) && !nested.count(m))
+          forEachNode(m, [&](Node* inner) { if (inner != m) nested.insert(inner); });
+        if (m->kind != NodeKind::ReturnStmt || nested.count(m))
+          return;
+        const Expr* e = static_cast<ReturnStmt*>(m)->value;
+        const Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<const NameExpr*>(e)->resolved : nullptr;
+        if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & (DF_Static | DF_Extern)))
+          return;
+        const Ty* t = typeOfDecl(const_cast<Decl*>(d));
+        if (!t || t->kind != TyKind::Class)
+          return;
+        uint32_t name = d->kind == NodeKind::ParamDecl ? static_cast<const ParamDecl*>(d)->name : static_cast<const VariableDecl*>(d)->name.last().symbol;
+        out.push_back(Impl::locationOf(f->file, m->token) + ": warning: the return of '" + std::string(impl->symbols.name(name)) +
+                      "' copies or moves it, not built in the result's place: " + why);
+      });
+    });
+  }
+  sortDiagnostics(out);
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
+}
+
 bool GlobalScope::isTemplateContext(Decl* d)
 {
   for (Decl* p = d; p; p = p->parent)

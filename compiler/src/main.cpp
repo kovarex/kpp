@@ -71,6 +71,7 @@ namespace
     int showWhy = 0; // --why N
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
     bool accessWarnings = false; // --access-warnings
+    bool returnCopyWarnings = false; // --return-copy-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
@@ -149,6 +150,8 @@ namespace
             "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
             "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
             "                (docs/design.md, \"struct and class\"); no error, no other change\n"
+            "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"
+            "                the result's place (a named return), and why; no error, no other change\n"
             "  --struct-rule  a struct is a public value type: one with a private or protected section, a base that is not\n"
             "                public or a virtual function, or deriving from a polymorphic class is an error (docs/design.md,\n"
             "                \"struct and class\"; the default: accepted, it changes nothing)\n"
@@ -1931,6 +1934,20 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     return errors;
   }
 
+  // --return-copy-warnings: each `return x;` of a class object that is copied or moved instead of
+  // built in the result's place (GlobalScope::namedReturnVariable), with why; warnings, the exit
+  // code stays.
+  void reportReturnCopyWarnings(Build& build)
+  {
+    if (!build.options.returnCopyWarnings || !build.global)
+      return;
+    std::vector<ParsedFile*> files;
+    for (const std::unique_ptr<ParsedFile>& p : build.parsed)
+      files.push_back(p.get());
+    for (const std::string& w : build.global->returnCopyWarnings(files))
+      fprintf(stderr, "%s\n", w.c_str());
+  }
+
   // --access-warnings: the warnings to stderr (no error: the exit code stays), the counts with the
   // statistics.
   void reportAccessWarnings(Build& build)
@@ -2162,6 +2179,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       codegenExit = 1;
     reportCheckerErrors(global, true, cg.instanceAssertsChecked);
     reportAccessWarnings(build);
+    reportReturnCopyWarnings(build);
     if (options.check)
       return; // the errors are all it is for
     std::string clang = clangPath();
@@ -2937,6 +2955,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     {
       reportCheckerErrors(global);
       reportAccessWarnings(build);
+      reportReturnCopyWarnings(build);
       if (!options.runBuild.empty() && !codegenExit)
       {
         // `--run-build debug,release`: build.kpp's description of each configuration, computed by
@@ -4306,7 +4325,7 @@ namespace
 {
   const std::pair<const char*, int> compileOptions[] = {
     {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
-    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
+    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
@@ -4472,6 +4491,8 @@ int compile(int argc, char** argv)
       options.whyAt = argv[++i];
     else if (arg == "--access-warnings")
       options.accessWarnings = true;
+    else if (arg == "--return-copy-warnings")
+      options.returnCopyWarnings = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")
