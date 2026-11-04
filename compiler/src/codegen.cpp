@@ -1027,6 +1027,12 @@ namespace
     const FunctionDecl* checkerChecked = nullptr;
     const Ty* currentReturn = nullptr;
     std::string sretAddr; // Hidden return slot when returning a class.
+    // Named return elision (design.md 23): the local the function's every return returns, built in
+    // the caller's result (sretAddr) instead of a slot of its own; null when there is none.
+    VariableDecl* namedReturn = nullptr;
+    // While a return of namedReturn leaves its scopes: the result's address, whose object (that
+    // local) they do not destroy (destroyOnExit). Empty otherwise.
+    std::string keptOnReturn;
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
     struct ConstContextScope // restores constContext when an Unsupported leaves the fold
     {
@@ -4416,6 +4422,122 @@ namespace
       return d;
     }
 
+    // Named return elision, guaranteed (design.md 23, kovarex 2026-11-04): the local that every return
+    // of body returns, which is built in the caller's result (sretAddr) instead of a slot of its own,
+    // so that no return copies or moves it, and its class needs neither constructor; null when there
+    // is none. Eligible: one VariableDecl (two blocks' `T a; return a;` are two), an automatic local
+    // (not static, thread_local or extern), not volatile, not a reference, a structured binding or a
+    // catch parameter, of the result's class, cv ignored; every return of the body names it (those of
+    // a lambda or a local class in it are their own functions'), at least one. (A stand-in for the
+    // resolver's GlobalScope::namedReturnVariable, A's, which keeps the same rule.)
+    VariableDecl* namedReturnVariable(Stmt* body)
+    {
+      if (!body || sretAddr.empty() || !currentReturn || !isClass(types.unqualified(currentReturn)))
+        return nullptr;
+      VariableDecl* named = nullptr;
+      bool eligible = true;
+      size_t returns = 0;
+      std::unordered_set<Decl*> catchParams;
+      // The variables the body's statements declare in the ways codegen can build at the result's
+      // address (declareLocal: a declaration statement, a for's, if's or switch's init, a condition;
+      // rangeFor: a range-for's variable). Direction::fromString's `for (Direction direction : ...)
+      // ... return direction;` was elided before rangeFor knew: the variable got a slot of its own and
+      // the caller's result was never written (the game's fusion reactor's connection graphics all
+      // went to one direction).
+      std::unordered_set<Decl*> declared;
+      auto declares = [&](Node* n)
+      {
+        if (n && n->kind == NodeKind::DeclStmt)
+          for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+            declared.insert(d);
+      };
+      std::function<void(Stmt*)> walk = [&](Stmt* s)
+      {
+        if (!s || !eligible)
+          return;
+        switch (s->kind)
+        {
+          case NodeKind::BlockStmt:
+            for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+              walk(inner);
+            break;
+          case NodeKind::DeclStmt: declares(s); break;
+          case NodeKind::IfStmt:
+            walk(static_cast<IfStmt*>(s)->init);
+            declares(static_cast<IfStmt*>(s)->cond);
+            walk(static_cast<IfStmt*>(s)->then);
+            walk(static_cast<IfStmt*>(s)->else_);
+            break;
+          case NodeKind::ForStmt:
+            walk(static_cast<ForStmt*>(s)->init);
+            declares(static_cast<ForStmt*>(s)->cond);
+            walk(static_cast<ForStmt*>(s)->body);
+            break;
+          case NodeKind::RangeForStmt:
+            declared.insert(static_cast<RangeForStmt*>(s)->var);
+            walk(static_cast<RangeForStmt*>(s)->body);
+            break;
+          case NodeKind::ForConstexprStmt: walk(static_cast<ForConstexprStmt*>(s)->body); break;
+          case NodeKind::WhileStmt:
+            declares(static_cast<WhileStmt*>(s)->cond);
+            walk(static_cast<WhileStmt*>(s)->body);
+            break;
+          case NodeKind::DoStmt: walk(static_cast<DoStmt*>(s)->body); break;
+          case NodeKind::SwitchStmt:
+            walk(static_cast<SwitchStmt*>(s)->init);
+            declares(static_cast<SwitchStmt*>(s)->cond);
+            walk(static_cast<SwitchStmt*>(s)->body);
+            break;
+          case NodeKind::TryStmt:
+          {
+            auto* t = static_cast<TryStmt*>(s);
+            walk(t->body);
+            for (const TryStmt::Handler& h : t->handlers)
+            {
+              if (h.param)
+                catchParams.insert(h.param);
+              walk(h.body);
+            }
+            break;
+          }
+          case NodeKind::ReturnStmt:
+          {
+            ++returns;
+            Expr* value = static_cast<ReturnStmt*>(s)->value;
+            while (value && value->kind == NodeKind::ParenExpr)
+              value = static_cast<ParenExpr*>(value)->inner;
+            Decl* d = value && value->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(value)->resolved : nullptr;
+            if (!d || d->kind != NodeKind::VariableDecl || (named && d != named))
+              eligible = false;
+            else
+              named = static_cast<VariableDecl*>(d);
+            break;
+          }
+          default:
+            break; // (a declaration's lambdas and local classes are functions of their own)
+        }
+      };
+      walk(body);
+      // (and not alignas: the caller's object has its class's alignment alone)
+      if (!eligible || !named || !returns || !declared.count(named) || catchParams.count(named) ||
+          (named->flags & (DF_Static | DF_ThreadLocal | DF_Extern | DF_Volatile)) || !named->structuredBindings.empty() || named->tupleBinding ||
+          named->alignment)
+        return nullptr;
+      const Ty* t = localType(named);
+      if (!t || !t->isKnown() || types.isDependent(t) || t->isReference() || t->isVolatile || !isClass(types.unqualified(t)) ||
+          classKey(types.unqualified(t)) != classKey(types.unqualified(currentReturn)))
+        return nullptr;
+      return named;
+    }
+
+    // Whether e (a return's value) names the function's namedReturn.
+    bool returnsNamedReturn(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      return namedReturn && e && e->kind == NodeKind::NameExpr && static_cast<NameExpr*>(e)->resolved == namedReturn;
+    }
+
     // A bit field's value: the storage unit shifted and masked (sign-extended for signed types).
     Value loadBitfield(const std::string& addr, const BitfieldInfo& bits, const Ty* memberTy, Node* at)
     {
@@ -6332,13 +6454,15 @@ namespace
       std::vector<DebugVariable> debugVariables;
       std::vector<DebugBlock> debugBlocks;
       uint32_t debugBlock;
+      VariableDecl* namedReturn;
+      std::string keptOnReturn;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
               currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, itaniumCleanup, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
-              bodyNow, debugVariables, debugBlocks, debugBlock};
+              bodyNow, debugVariables, debugBlocks, debugBlock, namedReturn, keptOnReturn};
     }
 
     void restoreState(FunctionState& s)
@@ -6371,11 +6495,15 @@ namespace
       debugVariables = s.debugVariables;
       debugBlocks = s.debugBlocks;
       debugBlock = s.debugBlock;
+      namedReturn = s.namedReturn;
+      keptOnReturn = s.keptOnReturn;
     }
 
     void resetFunctionState()
     {
       bodyNow = nullptr;
+      namedReturn = nullptr;
+      keptOnReturn.clear();
       returnLabel.clear();
       fn.clear();
       allocas.clear();
@@ -7106,6 +7234,7 @@ namespace
           if (pd && pd->name != UINT32_MAX)
             debugVariable(sym(pd->name), pd, ps, pt, uint32_t(i + 1));
         }
+        namedReturn = namedReturnVariable(l->body);
         statement(l->body);
         if (!blockTerminated)
         {
@@ -17662,7 +17791,7 @@ namespace
     // only an exception leaving does (Object::unwindOnly).
     void destroyOnExit(const Object& o)
     {
-      if (!o.unwindOnly)
+      if (!o.unwindOnly && !(!keptOnReturn.empty() && o.addr == keptOnReturn && !o.exception && !o.freeMemory))
         destroyObject(o);
     }
 
@@ -18919,8 +19048,14 @@ namespace
         return;
       }
       bool isRef = t->isReference();
-      std::string slot = "%v" + std::to_string(temp++);
-      allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v) + alignSuffix(t, variableAlignment(v, typingContext(), v), v)) + "\n";
+      std::string slot;
+      if (v == namedReturn && !isRef)
+        slot = sretAddr; // built in the caller's result: every return returns it (namedReturnVariable)
+      else
+      {
+        slot = "%v" + std::to_string(temp++);
+        allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v) + alignSuffix(t, variableAlignment(v, typingContext(), v), v)) + "\n";
+      }
       locals[v] = {slot, t, isRef};
       if (!v->name.empty())
         debugVariable(sym(v->name.last().symbol), v, slot, t);
@@ -19111,7 +19246,18 @@ namespace
           {
             if (!r->value)
               unsupported(s, "return without a value");
-            if (returnedLocalObject(r->value))
+            if (returnsNamedReturn(r->value))
+            {
+              // Built in the result already: the scopes left keep it (design.md 23). A declaration
+              // namedReturnVariable took for one that is built elsewhere would return the result
+              // unwritten: an error, never that.
+              auto local = locals.find(namedReturn);
+              if (local == locals.end() || local->second.addr != sretAddr)
+                fail(s, "the named return " + (namedReturn->name.empty() ? std::string("?") : sym(namedReturn->name.last().symbol)) +
+                            " was not built in the result (namedReturnVariable took a declaration codegen builds elsewhere)");
+              keptOnReturn = sretAddr;
+            }
+            else if (returnedLocalObject(r->value))
               moveConstruct(sretAddr, lvalue(r->value), currentReturn, s); // `return result;`: the local is moved, as in C++
             else if (const Ty* local = localObjectOfOtherClass(r->value); local && findConstructor(currentReturn, {types.rref(local)}, s))
             {
@@ -19174,6 +19320,7 @@ namespace
           }
           else
             leaveScopes(0);
+          keptOnReturn.clear();
           if (retLl.empty() && !returnLabel.empty())
             fn += "  br label %" + returnLabel + "\n"; // a destructor's: its members and bases are destroyed there
           else if (retLl.empty())
@@ -19470,7 +19617,10 @@ namespace
       }
       else
       {
-        allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
+        if (v == namedReturn)
+          slot = sretAddr; // built in the caller's result, each iteration (namedReturnVariable)
+        else
+          allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
         if (elementMadeInto(element.ty, vt))
         {
           // `for (String name : names)` over a Vector<const char*>: made from the element.
@@ -20211,7 +20361,10 @@ namespace
       }
       else
       {
-        allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
+        if (v == namedReturn)
+          slot = sretAddr; // built in the caller's result, each iteration (namedReturnVariable)
+        else
+          allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
         if (elementMadeInto(elementTy, vt))
           makeFromElement(slot, vt, element, elementTy, v);
         else if (isClass(vt))
@@ -20696,6 +20849,7 @@ namespace
           // member in the hub's list, and destroying the hub faulted).
           returnLabel = newLabel("dtor.members");
         }
+        namedReturn = namedReturnVariable(f->body);
         statement(f->body);
         if (destructor)
         {

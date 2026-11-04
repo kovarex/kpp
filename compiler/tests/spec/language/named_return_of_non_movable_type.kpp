@@ -1,0 +1,29 @@
+// spec: an object of a class that can be neither copied nor moved can be returned by name when every return returns that local: it is built in the caller's result (named return elision, guaranteed: design.md 23), and destroyed once, there
+struct Lock
+{
+  int id = 0;
+  Lock() {}
+  Lock(const Lock&) = delete;
+  Lock(Lock&&) = delete;
+  ~Lock() { println("released ", id); }
+};
+Lock acquire(int id)
+{
+  Lock lock;
+  lock.id = id;
+  if (id < 0)
+  {
+    lock.id = 0;
+    return lock;
+  }
+  return lock;
+}
+int main()
+{
+  {
+    Lock a = acquire(3);
+    println("held ", a.id);
+  }
+  println("done");
+  return 0;
+}

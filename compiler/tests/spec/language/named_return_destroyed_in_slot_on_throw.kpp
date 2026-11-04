@@ -1,0 +1,46 @@
+// spec: a function that throws after building the local it returns by name (built in the caller's result: named return elision, design.md 23) destroys that object once, where it was built, and the caller's object is never made; returned, the object is destroyed once, by the caller
+int destroyed = 0;
+struct Resource
+{
+  int id = 0;
+  Resource() {}
+  Resource(const Resource& o) : id(o.id) { println("copied"); }
+  Resource(Resource&& o) : id(o.id) { println("moved"); }
+  ~Resource()
+  {
+    ++destroyed;
+    println("destroyed ", id);
+  }
+};
+Resource open(bool fail)
+{
+  Resource r;
+  r.id = 4;
+  if (fail)
+    throw 1;
+  r.id = 5;
+  return r;
+}
+int main()
+{
+  try
+  {
+    Resource ok = open(false);
+    println("opened ", ok.id);
+  }
+  catch (int)
+  {
+    println("not thrown");
+  }
+  try
+  {
+    Resource bad = open(true);
+    println("not reached ", bad.id);
+  }
+  catch (int e)
+  {
+    println("caught ", e);
+  }
+  println("destroyed ", destroyed, " times");
+  return 0;
+}

@@ -1,0 +1,57 @@
+// spec: when not every return returns the same local object (two locals of one name in two blocks, two locals, a temporary on another path, a parameter), `return name;` moves the object into the result, never copies it (C++'s implicit move: design.md 23)
+int copies = 0;
+int moves = 0;
+struct Tracked
+{
+  int value = 0;
+  Tracked() {}
+  Tracked(const Tracked& o) : value(o.value) { ++copies; }
+  Tracked(Tracked&& o) : value(o.value) { ++moves; }
+};
+Tracked either(bool first)
+{
+  Tracked a;
+  a.value = 1;
+  Tracked b;
+  b.value = 2;
+  if (first)
+    return a;
+  return b;
+}
+Tracked blocks(bool first)
+{
+  if (first)
+  {
+    Tracked t;
+    t.value = 3;
+    return t;
+  }
+  Tracked t;
+  t.value = 4;
+  return t;
+}
+Tracked localOrTemporary(bool local)
+{
+  Tracked t;
+  t.value = 5;
+  if (local)
+    return t;
+  return Tracked();
+}
+Tracked parameter(Tracked p)
+{
+  p.value = 6;
+  return p;
+}
+int main()
+{
+  Tracked a = either(true);
+  Tracked b = either(false);
+  Tracked c = blocks(true);
+  Tracked d = blocks(false);
+  Tracked e = localOrTemporary(true);
+  Tracked f = parameter(Tracked());
+  println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value);
+  println(copies, " copies, ", moves, " moves");
+  return 0;
+}

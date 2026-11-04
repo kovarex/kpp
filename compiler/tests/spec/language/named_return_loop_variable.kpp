@@ -1,0 +1,46 @@
+// spec: a range-for's loop variable that every return returns is built in the caller's result too, at each iteration (named return elision: design.md 23): the iterations' copies of the elements are made there, and the return copies and moves nothing; over an array and over a Vector
+// factorio: Direction::fromString's `for (Direction direction : Direction::allDirections) if (direction.luaKeyStr() == input) return direction;` (the first elision built the variable in a slot of its own and returned the caller's result unwritten: every record of the fusion reactor's direction_to_connections_graphics went to one direction, "contains 16 values but 8 were expected")
+int copies = 0;
+int moves = 0;
+const void* last = nullptr;
+struct Item
+{
+  int id = 0;
+  Item() {}
+  Item(int i) : id(i) {}
+  Item(const Item& o) : id(o.id)
+  {
+    ++copies;
+    last = this;
+  }
+  Item(Item&& o) : id(o.id) { ++moves; }
+};
+Item items[4] = {Item(1), Item(2), Item(3), Item(4)};
+Item find(int id)
+{
+  for (Item item : items)
+    if (item.id == id)
+      return item;
+  throw 0;
+}
+Item findIn(const Vector<Item>& list, int id)
+{
+  for (Item item : list)
+    if (item.id == id)
+      return item;
+  throw 0;
+}
+int main()
+{
+  Vector<Item> list;
+  list.push_back(Item(5));
+  list.push_back(Item(6));
+  copies = 0;
+  moves = 0;
+  Item a = find(3);
+  bool sameA = last == &a;
+  Item b = findIn(list, 6);
+  bool sameB = last == &b;
+  println(a.id, " ", b.id, " ", copies, " copies, ", moves, " moves, ", sameA, " ", sameB);
+  return 0;
+}

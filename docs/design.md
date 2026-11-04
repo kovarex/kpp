@@ -1522,6 +1522,35 @@ functional_cast_statement_is_expression, chained_comparison_is_error,
 template_arguments_by_the_token_after, most_vexing_parse_by_scope,
 namespace_scope_parentheses_declare_a_function.
 
+### 23. Named return elision is guaranteed (decided 2026-11-04)
+kovarex, 2026-11-04: "OK, guaranteed." C++ allows a compiler to build a returned local in the
+caller's result (NRVO) and lets it copy or move instead; kpp always elides, so that what a return
+costs, and whether it runs a constructor, does not depend on the optimizer or the build.
+- **The rule.** When every `return` of a function returns the same local variable, that variable is
+  built in the caller's result: no copy and no move, in debug and release alike, and its class need
+  not be copyable or movable. "The same" is one declaration, not one name (two blocks' `T a;
+  return a;` are two); the variable is automatic (not static, thread_local or extern), not volatile,
+  not a reference, a structured binding, a catch parameter or a `when` declaration absent in the
+  configuration, and of the function's result class, cv ignored (`const T t; return t;` is elided;
+  with `auto` the deduced type is compared). The returns of a lambda or a local class in the body are
+  their own functions'. A function with no return of it, or one that can fall off its end, has none.
+  Every return naming the variable lies in its scope, so that scope covers them all.
+- **Otherwise** `return name;` of a local or by-value parameter is C++'s implicit move
+  ([class.copy.elision]/3): the name is an rvalue first, so the object is moved, never copied when it
+  can be moved. A const local returned as another class binds the copy constructor through
+  `const T&&`, as in C++ (WireAddedUndoAction::getWire's `const Wire` returned as `Optional<Wire>`).
+  `--return-copy-warnings` (off by default) names each return that copies or moves, and why.
+- **Lifetime.** The variable's object is the caller's: leaving its scope without returning (a loop's
+  iteration) destroys it there, a throw after it is built destroys it in the result, and a return of
+  it destroys every other local and leaves it built.
+- **As built.** The rule is the resolver's (`GlobalScope::namedReturnVariable`, A, cached per function
+  and template instance); codegen builds the variable at the result's address (`sretAddr`; its debug
+  variable there) and skips its destructor on the return path alone (B); the interpreter elides too
+  (D), so that a class that cannot be moved returns by name in a constant expression as well; kppc's
+  inliner keeps the result's slot (D). Specs language/named_return_elided,
+  named_return_of_non_movable_type, named_return_fallback_moves,
+  named_return_destroyed_in_slot_on_throw, named_return_loop_variable.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
@@ -2220,7 +2249,8 @@ class's own copy and move constructors with C++'s value categories: `T b = a;` c
 `static_cast<T&&>(b)`, `move(b)` and `forward<T>(x)` of an rvalue move (the source's place given to
 the constructor, so a move empties it), a by-value parameter is copied or moved from its argument,
 `return local;` moves (a constant evaluation elides no named object, [class.copy.elision]/1; the
-program does not either), a prvalue initializes its object directly, and an implicit copy or move
+program elides it where section 23's rule holds, and the interpreter is to follow, D), a prvalue
+initializes its object directly, and an implicit copy or move
 runs the members' and elements' own (spec language/consteval_runs_copy_and_move_constructors).
 Destructors run where the program runs them: a scope's locals at its end, the last first, also on
 return, break and continue; a by-value parameter's at the end of its call; a temporary's at the end

@@ -1,0 +1,64 @@
+// spec: a function whose every return returns the same local object builds that object in the caller's result (named return elision, guaranteed: design.md 23): no copy and no move, in debug and release alike; the callee's local and the caller's object are one object, also in a template's instance, a member function and a lambda
+// factorio: functions that build a String, a Vector or a ByteVector in a local and return it (InputActionList::tryDemangleName's `const String normal = name; ... return normal;`)
+int copies = 0;
+int moves = 0;
+const void* built = nullptr;
+struct Tracked
+{
+  int value = 0;
+  Tracked() { built = this; }
+  Tracked(const Tracked& o) : value(o.value) { ++copies; }
+  Tracked(Tracked&& o) : value(o.value) { ++moves; }
+};
+Tracked make(bool early)
+{
+  Tracked t;
+  t.value = 5;
+  if (early)
+    return t;
+  t.value = 7;
+  return t;
+}
+const Tracked makeConst()
+{
+  const Tracked t;
+  return t;
+}
+template<typename T>
+T makeOf(int v)
+{
+  T t;
+  t.value = v;
+  return t;
+}
+struct Factory
+{
+  int base = 10;
+  Tracked make() const
+  {
+    Tracked t;
+    t.value = base;
+    return t;
+  }
+};
+int main()
+{
+  Tracked a = make(true);
+  bool sameA = built == &a;
+  Tracked b = make(false);
+  bool sameB = built == &b;
+  Tracked c = makeOf<Tracked>(3);
+  bool sameC = built == &c;
+  Factory factory;
+  Tracked d = factory.make();
+  bool sameD = built == &d;
+  auto lambda = [](int v) { Tracked t; t.value = v; return t; };
+  Tracked e = lambda(4);
+  bool sameE = built == &e;
+  const Tracked f = makeConst();
+  bool sameF = built == &f;
+  println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value);
+  println(copies, " copies, ", moves, " moves");
+  println(sameA, " ", sameB, " ", sameC, " ", sameD, " ", sameE, " ", sameF);
+  return 0;
+}
