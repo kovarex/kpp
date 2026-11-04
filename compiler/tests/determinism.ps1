@@ -98,6 +98,30 @@ else
   $failed++
 }
 
+# A lambda's closure is named by its file's name under its root and its number in the file
+# (`main::__lambda_<tag>_0`, ParsedFile::lambdaTag): the same with another file before it in the
+# program and with the file somewhere else (by its index, two standard library files added once
+# renamed every later file's lambdas, in the IR, the PDB and every module's hash).
+$lambdas = Join-Path $work 'lambdas'
+New-Item -ItemType Directory -Force (Join-Path $lambdas 'elsewhere') | Out-Null
+$program = "int main()`n{`n  auto twice = [](int v) { return v * 2; };`n  return twice(21) - 42;`n}`n"
+[IO.File]::WriteAllText((Join-Path $lambdas 'main.kpp'), $program)
+[IO.File]::WriteAllText((Join-Path $lambdas 'elsewhere\main.kpp'), $program)
+[IO.File]::WriteAllText((Join-Path $lambdas 'before.kpp'), "int before()`n{`n  auto f = [](int v) { return v + 1; };`n  return f(1);`n}`n")
+function ClosureNames([string[]]$sources, [string]$label)
+{
+  $ir = Join-Path $lambdas "$label.ll"
+  Remove-Item $ir -ErrorAction SilentlyContinue
+  & $Kppc --quiet --emit-llvm $ir @sources 2>&1 | Out-Null
+  if (-not (Test-Path $ir)) { return @() }
+  return @(Select-String -Path $ir -Pattern 'main::__lambda_[0-9a-f]+_[0-9]+' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
+}
+$alone = ClosureNames @((Join-Path $lambdas 'main.kpp')) 'alone'
+$after = ClosureNames @((Join-Path $lambdas 'before.kpp'), (Join-Path $lambdas 'main.kpp')) 'after'
+$moved = ClosureNames @((Join-Path $lambdas 'elsewhere\main.kpp')) 'moved'
+if ($alone.Count -eq 1 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { "ok   determinism lambda names ($alone)" }
+else { "FAIL determinism lambda names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
+
 $tree = Join-Path $PSScriptRoot '..\..\programs\factorio\kpp'
 if (Test-Path (Join-Path $tree 'src'))
 {

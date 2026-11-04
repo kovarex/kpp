@@ -5676,11 +5676,14 @@ namespace
       expect(P::RBracket, "expected ']' after captures");
       l->captures = makeSpanOf(captures);
       // The closure type: a synthetic class with a unique name, never indexed as a declaration.
-      // Named by the file's index and the lambda's number in it, the same in every run.
+      // Named by its file's tag and the lambda's number in the file (`__lambda_6c1f0e2a_0`): the same
+      // in every run, wherever the sources are and whatever files come before it (ParsedFile::lambdaTag).
       ClassDecl* closure = decl<ClassDecl>(start);
       closure->keyword = Kw::struct_;
       NamePart part;
-      part.symbol = symbols.intern("__lambda_" + std::to_string(out.index) + "_" + std::to_string(lambdaCount++));
+      char tag[16];
+      snprintf(tag, sizeof tag, out.lambdaTag ? "%08x" : "%u", out.lambdaTag ? out.lambdaTag : out.index);
+      part.symbol = symbols.intern("__lambda_" + std::string(tag) + "_" + std::to_string(lambdaCount++));
       closure->name.parts = makeSpanOf(std::vector<NamePart>{part});
       closure->isClosure = true;
       closure->lambda = l;

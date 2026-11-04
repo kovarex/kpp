@@ -419,6 +419,7 @@ namespace
     std::unique_ptr<GlobalScope> global;
     std::vector<ResolveStats> stats;
     std::vector<int> fileLibrary; // (files[i]'s: its options.libraryRoots entry, -1 for the program's; the files the driver adds are the program's)
+    std::vector<uint32_t> lambdaTags; // (files[i]'s: what names its lambdas' closures, ParsedFile::lambdaTag; lambdaTags)
     // What the reports print that a later build of the kept program cannot recompute.
     std::string importsLine, indexLine;
     double indexTime = 0, finishTime = 0; // (the index line again, when a later build changed the entries)
@@ -459,7 +460,7 @@ namespace
     std::vector<uint64_t> textHashes;
     // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
     // closure, or moved a template's position-named entity: names in the code are the position's
-    // (`f::__lambda_3_1@2045`, a static local's `.2051`), so codegen runs in full (its session keeps
+    // (`f::Local@2045`, a static local's `.2051`), so codegen runs in full (its session keeps
     // the types' names). See remapKeptFile.
     bool positionalCodegenInFull = false;
     CodegenSessionPtr codegen;
@@ -2377,6 +2378,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         parsed[i] = std::make_unique<ParsedFile>();
         parsed[i]->path = files[i].path.string();
         parsed[i]->index = uint32_t(i);
+        parsed[i]->lambdaTag = i < build.lambdaTags.size() ? build.lambdaTags[i] : 0;
         std::string library = options.libraryRoot.string();
         parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
         if (i < build.fileLibrary.size() && build.fileLibrary[i] >= 0)
@@ -2861,6 +2863,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     out.parsed = std::make_unique<ParsedFile>();
     out.parsed->path = old.path;
     out.parsed->index = old.index;
+    out.parsed->lambdaTag = old.lambdaTag;
     out.parsed->isLibrary = old.isLibrary;
     out.parsed->library = old.library;
     out.parsed->libraryScope = old.libraryScope;
@@ -3048,12 +3051,12 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
                      const std::unordered_set<const Decl*>& staleSources, const ParsedFile& fresh)
   {
     // Names the code gives by position: a function's local types (`f::Local@2045`; its lambdas'
-    // closures by the parser's numbers in the file's order alone, `f::__lambda_3_1`), its static
-    // locals, catch filters and static initializer lists (by their tokens). A build from scratch of
-    // the new text names them by their new places, so a kept function holding one that moves is
-    // emitted again (in full, for a local type: codegen's session keeps the types' names; and for a
-    // template's, whose instances it cannot emit again alone), and a kept closure takes the name the
-    // new parse gives the lambda at its new place.
+    // closures by their file's tag and the parser's numbers in the file's order,
+    // `f::__lambda_6c1f0e2a_1`), its static locals, catch filters and static initializer lists (by
+    // their tokens). A build from scratch of the new text names them by their new places, so a kept
+    // function holding one that moves is emitted again (in full, for a local type: codegen's session
+    // keeps the types' names; and for a template's, whose instances it cannot emit again alone), and a
+    // kept closure takes the name the new parse gives the lambda at its new place.
     std::unordered_map<uint32_t, ClassDecl*> freshClosures; // new token -> the new parse's closure there
     forEachNode(fresh.decls, [&](Node* n)
     {
@@ -3101,11 +3104,11 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       else if (positional)
         kept.changedBodies.push_back(d.f);
     }
-    // The closures outside function bodies, named alike (a global's initializer `{ [](int v) {...},
-    // ... }`, a default member initializer, a default argument): the instances made from them carry
-    // their names (`FunctionImpl<int32, int32>::call<__lambda_3_2>`), so a renamed one is emitted in
-    // full too. (Only renamed: outside a function their names carry no token. The ones in bodies
-    // again: renamed already.)
+    // The closures outside function bodies, named alike (a global's initializer `{ [](int v) {...}, ...
+    // }`, a default member initializer, a default argument): the instances made from them carry their
+    // names (`FunctionImpl<int32, int32>::call<__lambda_6c1f0e2a_2>`), so a renamed one is emitted in
+    // full too. (Only renamed: outside a function their names carry no token. The ones in bodies again:
+    // renamed already.)
     forEachNode(file.decls, [&](Node* n)
     {
       if (!skip.count(n) && n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n)))
@@ -3298,6 +3301,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     out.parsed = std::make_unique<ParsedFile>();
     out.parsed->path = old.path;
     out.parsed->index = old.index;
+    out.parsed->lambdaTag = old.lambdaTag;
     out.parsed->isLibrary = old.isLibrary;
     out.parsed->library = old.library;
     out.parsed->libraryScope = old.libraryScope;
@@ -4132,6 +4136,34 @@ int main(int argc, char** argv)
   return compile(argc, argv);
 }
 
+namespace
+{
+  // Each file's tag for its lambdas' closures (ParsedFile::lambdaTag): the FNV-1a hash of its name
+  // under its root (names[i]), so the same wherever the sources are and whatever other files the
+  // program has; unique in the program (a clash, which two names' hashes can make, takes the hash of
+  // the later file's name with "#1", "#2", ... instead) and never 0 (unset).
+  std::vector<uint32_t> lambdaTags(const std::vector<std::string>& names)
+  {
+    auto hash = [](const std::string& name)
+    {
+      uint32_t h = 2166136261u;
+      for (unsigned char c : name)
+        h = (h ^ c) * 16777619u;
+      return h;
+    };
+    std::vector<uint32_t> tags;
+    std::unordered_set<uint32_t> taken;
+    for (const std::string& name : names)
+    {
+      uint32_t tag = hash(name);
+      for (int k = 1; tag == 0 || !taken.insert(tag).second; ++k)
+        tag = hash(name + "#" + std::to_string(k));
+      tags.push_back(tag);
+    }
+    return tags;
+  }
+}
+
 int compile(int argc, char** argv)
 {
   codegenExit = 0;
@@ -4370,9 +4402,24 @@ int compile(int argc, char** argv)
   std::vector<std::filesystem::path> paths;
   std::vector<FileStamp> stamps; // (paths[i]'s)
   std::vector<int> pathLibrary;  // (paths[i]'s: the index of its options.libraryRoots entry, -1 for the program's)
-  auto collect = [&](const std::filesystem::path& root, int library)
+  // (paths[i]'s: its name under its root, which names its lambdas' closures (lambdaTags): the path
+  // under the root after "std/" for the standard library's, "<library>/" for a library's and the
+  // root directory's own name for the program's; a file given alone, its file name)
+  std::vector<std::string> pathNames;
+  auto collect = [&](const std::filesystem::path& root, std::string prefix, int library)
   {
     auto found = collectFiles(root, options.extensions, &stamps);
+    std::error_code ec;
+    bool alone = std::filesystem::is_regular_file(root, ec);
+    if (prefix.empty() && !alone)
+    {
+      std::filesystem::path dir = std::filesystem::absolute(root, ec).lexically_normal();
+      if (!dir.has_filename()) // (`src\`)
+        dir = dir.parent_path();
+      prefix = dir.filename().generic_string() + "/";
+    }
+    for (const std::filesystem::path& p : found)
+      pathNames.push_back(prefix + (alone ? p.filename() : p.lexically_relative(root)).generic_string());
     paths.insert(paths.end(), found.begin(), found.end());
     pathLibrary.resize(paths.size(), library);
   };
@@ -4391,11 +4438,11 @@ int compile(int argc, char** argv)
   // The standard library first, then the libraries in the order given, then the program.
   size_t stdRoots = options.libraryRoot.empty() ? 0 : 1;
   for (size_t i = 0; i < stdRoots; ++i)
-    collect(options.roots[i], -1);
+    collect(options.roots[i], "std/", -1);
   for (size_t i = 0; i < options.libraryRoots.size(); ++i)
-    collect(options.libraryRoots[i].dir, int(i));
+    collect(options.libraryRoots[i].dir, options.libraryRoots[i].name.empty() ? "" : options.libraryRoots[i].name + "/", int(i));
   for (size_t i = stdRoots; i < options.roots.size(); ++i)
-    collect(options.roots[i], -1);
+    collect(options.roots[i], "", -1);
   // --exclude: files under the roots that are not part of this program (another program's main).
   for (const std::string& excluded : options.excluded)
   {
@@ -4407,6 +4454,7 @@ int compile(int argc, char** argv)
       {
         paths[kept] = std::move(paths[i]);
         pathLibrary[kept] = pathLibrary[i];
+        pathNames[kept] = std::move(pathNames[i]);
         stamps[kept++] = stamps[i];
       }
     if (kept == paths.size())
@@ -4416,6 +4464,7 @@ int compile(int argc, char** argv)
     }
     paths.resize(kept);
     pathLibrary.resize(kept);
+    pathNames.resize(kept);
     stamps.resize(kept);
   }
   // A compile server's builds run one at a time up to the point each keeps what it made, so that a
@@ -4551,6 +4600,12 @@ int compile(int argc, char** argv)
       files.push_back(std::move(runner));
     }
   }
+  // What names each file's lambdas' closures: its name under its root (the files the driver adds,
+  // their own: "<config>").
+  pathNames.resize(files.size());
+  for (size_t i = paths.size(); i < files.size(); ++i)
+    pathNames[i] = files[i].path.generic_string();
+  build->lambdaTags = lambdaTags(pathNames);
   // A compile server's build whose every input is as the previous one's (step 3a of the
   // persistent compiler, docs/compile-speed.md): the previous build's output again.
   if (servingBuild() && options.convertDir.empty())

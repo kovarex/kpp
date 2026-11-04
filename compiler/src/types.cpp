@@ -579,9 +579,9 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         name = function + "::" + name;
         local = true;
       }
-    // (Not a lambda's closure, which its file's number tells apart, `__lambda_3_1`: its place would
-    // rename it whenever a line is added above it in its function, and a compile server's codegen
-    // keeps the types' names.)
+    // (Not a lambda's closure, which its file's tag and its number tell apart, `__lambda_6c1f0e2a_1`:
+    // its place would rename it whenever a line is added above it in its function, and a compile
+    // server's codegen keeps the types' names.)
     if (local && !(d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->lambda))
     {
       char at[32];

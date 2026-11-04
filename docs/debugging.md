@@ -14,7 +14,11 @@ with `/DEBUG` already, for the crash report's function names).
 ## What is in it
 
 - Each function and lambda is a `DISubprogram` at its declaration's line, named by its IR name
-  (`square(int32)`, `Counter::add(int32)`).
+  (`square(int32)`, `Counter::add(int32)`). A lambda's closure is named by its file's tag and its
+  number in the file (`inspect::__lambda_f9e4fd6c_0::operator()(int32)`): the tag is a hash of the
+  file's path under its root (`std/...` for the standard library's, the root directory's name and
+  the path under it for the program's), so the name is the same wherever the sources are and
+  whatever files come before it.
 - Every statement starts a line: its instructions are at the statement's first line. A `for`'s
   condition and step, a `while`'s and `do`'s condition and a range-`for`'s advance are at their own
   lines, so stepping through a loop comes back to its header. A `switch`'s cases are at their own

@@ -4,14 +4,14 @@ function inspect(const game::Point&, int32, game::Mode)
   parameter mode game::Mode
   local sum int
   local mask game::Mask
-  local scaled inspect::__lambda_69_0
+  local scaled inspect::__lambda_f9e4fd6c_0
   local values Vector<int32>
   block
     local half double
     local flags Flags
     local square game::Square
     local value Value
-function inspect::__lambda_69_0::operator()(int32)
+function inspect::__lambda_f9e4fd6c_0::operator()(int32)
   parameter k int
   local sum int
   local mask game::Mask&

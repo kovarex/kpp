@@ -464,7 +464,12 @@ struct ParsedFile
   std::string library;
   uint32_t libraryScope = UINT32_MAX;
   struct NamespaceDecl* libraryNamespace = nullptr;
-  uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files, closure names.
+  uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files.
+  // What names its lambdas' closures apart from other files' (`__lambda_<tag>_<n>`, the parser's): a
+  // hash of the file's name under its root, so that a closure's name (in the IR, the PDB, a module's
+  // hash) is the same wherever the sources are and whatever files come before it (main.cpp,
+  // lambdaTags). 0, unset: the index names them.
+  uint32_t lambdaTag = 0;
   std::vector<Diagnostic> diagnostics;
   // The struct rule's breaks in it (design.md "struct and class": a struct is a public value type),
   // which the resolver reports as errors under kppc --struct-rule.
