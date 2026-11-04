@@ -17,12 +17,12 @@ converted commit moves (FASTBuild through the coordinator) and keeps its benchma
 
 | build | performance.zip | modern_playthrough_155 |
 |---|---:|---:|
-| kpp final, full LTO (B's final cell) | **0.99x** | **0.97x** |
-| kpp final at -O3 | 0.98x | 0.97x |
-| kpp release (ThinLTO) | 0.98x | 0.99x |
-| C++ FinalRelease, factorio-run | 1.01x | 1.00x |
+| **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.95x** | **0.97x** |
+| kpp release (ThinLTO) | 0.97x | 0.96x |
+| C++ FinalRelease, factorio-run | 1.00x | 1.00x |
 
-The details are in "The benchmark against the all-in-one" below. On the 45 menu maps kpp release is
+These are from the fair benchmark below: the same configuration on both sides (FINAL_RELEASE,
+PACKAGED_BUILD and ALL_IN_ONE). On the 45 menu maps kpp release is
 **0.87x** C++ FinalRelease's factorio-run, which is within 1% of the all-in-one on the two saves
 (C++ Release: 1.01x; [test-matrix.md](test-matrix.md)).
 
@@ -226,7 +226,57 @@ The benchmark root copies it as `bench\cppaio\bin\FinalReleasex64\factorio-run.e
 factorio-run.exe as C++ (without kpp's `--no-crash-handler`), and the game finds its paths from its
 folder, not its name.
 
+## The fair benchmark: kpp final against the all-in-one (2026-11-04)
+
+kpp final now builds the game in FinalRelease's own configuration: factorio-in-kpp 76a1ede1 has the
+code of FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE as `config::finalRelease`, and build.kpp's final
+configuration sets it (kpp 6167873d).
+
+- **The build:** `kpp factorio final` (compiler\build\kppc.exe at 6167873d) in a copy of
+  factorio-in-kpp at 76a1ede1 (`setup-checkout.cmd`). Visual Studio's toolchain, full LTO.
+  - 198.3 s in all: C libraries 18.5 s alongside kpp's 31.1 s, then the link 167.2 s. The machine
+    was at 81% load at the start.
+  - No errors, stubs or unresolved names. factorio.exe is 62.9 MB.
+- **The menu maps:** all 45 give C++'s checksums (`menu-checksums.py COPY --bin FinalReleasex64`).
+
+The method is that of the sections below, in a quiet window the coordinator declared, 14:31–14:44
+UTC:
+- `--benchmark SAVE --benchmark-ticks 1000`, 5 rounds interleaved with the order rotated, each build
+  from its own root;
+- each run waits for the load to be under 10% before it starts. It is run again if other work took
+  10% or more of the machine during it: the system's CPU time less the game's.
+- Over the 40 runs, the load before was at most 3.4% and the other work at most 2.7%, so none was run
+  again. Checksums were equal in every run.
+
+performance.zip (checksum 21933964):
+
+| build | rounds (ms) | median | vs all-in-one |
+|---|---|---:|---:|
+| C++ FinalRelease all-in-one | 7276, 7174, 7263, 7179, 7061 | 7,179 | 1.00x |
+| **kpp final** | 6737, 6819, 6891, 6799, 7043 | 6,819 | **0.95x** |
+| kpp release | 7051, 7115, 6929, 6822, 6883 | 6,929 | 0.97x |
+| C++ FinalRelease, factorio-run | 7306, 7103, 7237, 7140, 7198 | 7,198 | 1.00x |
+
+kovarex_modern_playthrough_155.zip (checksum 816201650):
+
+| build | rounds (ms) | median | vs all-in-one |
+|---|---|---:|---:|
+| C++ FinalRelease all-in-one | 8223, 8377, 8136, 8412, 8086 | 8,223 | 1.00x |
+| **kpp final** | 7585, 8084, 7691, 8097, 7984 | 7,984 | **0.97x** |
+| kpp release | 7882, 7929, 8082, 7929, 8056 | 7,929 | 0.96x |
+| C++ FinalRelease, factorio-run | 8296, 8211, 8256, 8404, 8129 | 8,256 | 1.00x |
+
+What these show:
+- In the same configuration as the official build, kpp final is 5% faster on performance.zip and 3%
+  faster on the modern save.
+- On the modern save, kpp final and kpp release are level within the rounds' spread (7,984 against
+  7,929 ms).
+- The C++ all-in-one and factorio-run are within 0.4% of each other here.
+
 ## The benchmark against the all-in-one (2026-11-04)
+
+This one was before kpp final had FinalRelease's configuration: B's final-cell builds still ran
+FINAL_RELEASE's checks and the runtime test flags.
 
 The same method as the next section, in a quiet slot from 08:29 to 08:44 UTC:
 - `--benchmark SAVE --benchmark-ticks 1000`, 5 rounds interleaved with the order rotated, each build

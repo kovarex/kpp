@@ -19,11 +19,11 @@ benchmark against C++ FinalRelease.
 and final builds are measured against FinalRelease of the factorio-all-in-one target, of the same
 Factorio commit: the build the packaged releases come from. C++ Release, and FinalRelease's
 factorio-run, are at most extra columns. The latest numbers ([final-release.md](final-release.md),
-"The benchmark against the all-in-one"):
-- kpp final (B's final cell, full LTO): **0.99x** on performance.zip, **0.97x** on
-  modern_playthrough_155;
-- kpp release: **0.98x** and **0.99x**;
-- FinalRelease's factorio-run: 1.01x and 1.00x.
+"The fair benchmark"):
+- kpp final (`kpp factorio final`, FinalRelease's own configuration, full LTO): **0.95x** on
+  performance.zip, **0.97x** on modern_playthrough_155;
+- kpp release: **0.97x** and **0.96x**;
+- FinalRelease's factorio-run: 1.00x on both.
 
 On the 45 menu maps, kpp release is **0.87x** FinalRelease's factorio-run (the section below; C++
 Release 1.01x), which is within 1% of the all-in-one on the two saves. Thread H rebuilds the C++
