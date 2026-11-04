@@ -1,0 +1,8 @@
+// spec: an enumeration's config default, or a --config value, that names no enumerator of it is an error at the declaration (`Platform::Haiku`), never one <config> fails to build
+// factorio: none
+// error: config_default_unknown_enumerator_is_error.kpp:5: error: config::home: Platform has no enumerator Haiku
+// error: config_default_unknown_enumerator_is_error.kpp:7: error: config::mode: Mode has no enumerator Slow
+config Platform home = Platform::Haiku;
+enum class Mode { Fast, Small };
+config Mode mode = Mode::Slow;
+int main() { return 0; }

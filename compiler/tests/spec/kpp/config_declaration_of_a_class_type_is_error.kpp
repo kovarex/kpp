@@ -1,0 +1,10 @@
+// spec: a config constant's type other than bool, an integer type and StringView is an enumeration: a class named there is an error at the declaration (`config Box b = Box::x;`), never a constant <config> fails to build
+// factorio: none
+// error: config_declaration_of_a_class_type_is_error.kpp:9: error: config::b: its type Box is a class, not an enumeration
+class Box
+{
+public:
+  int x = 1;
+};
+config Box b = Box::x;
+int main() { return 0; }

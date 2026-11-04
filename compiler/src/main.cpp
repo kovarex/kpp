@@ -441,6 +441,13 @@ namespace
     bool templated; // a template's or a class template's: its instances are checked again (step 4)
     bool constant;  // constexpr or consteval: what the evaluator computed by running it is found (step 4)
   };
+  // A config:: constant declared in source (config.cpp): its declaration and its file.
+  struct ConfigDeclared
+  {
+    ConfigDeclaration declaration;
+    std::string path;
+  };
+
   // Everything one build made, from the files read to the resolved program. A compile server keeps
   // it for the next request: a request that changes only function bodies is built from it, the
   // changed bodies checked again and nothing else (docs/compile-speed.md, step 3b).
@@ -458,6 +465,7 @@ namespace
     std::vector<uint32_t> lambdaTags; // (files[i]'s: what names its lambdas' closures, ParsedFile::lambdaTag; lambdaTags)
     // What the reports print that a later build of the kept program cannot recompute.
     std::string importsLine, indexLine;
+    std::map<std::string, ConfigDeclared> configDeclared; // the config:: constants its sources declare (configDeclarations)
     double indexTime = 0, finishTime = 0; // (the index line again, when a later build changed the entries)
     size_t indexScopes = 0, indexEntries = 0; // as the index left them (the resolve adds instances' after)
     std::vector<std::string> clashes;
@@ -990,13 +998,6 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     v.isNumber = false;
     return v;
   }
-
-  // A config:: constant declared in source (config.cpp): its declaration and its file.
-  struct ConfigDeclared
-  {
-    ConfigDeclaration declaration;
-    std::string path;
-  };
 
   // A string as a kpp literal's text: its quotes and backslashes escaped.
   std::string escapedString(const std::string& text)
@@ -2407,6 +2408,79 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       codegenExit = 1;
   }
 
+  // A config:: constant of an enumeration type (config.cpp takes any other name for one: `config Mode
+  // m = Mode::Fast;`): when the parsed program declares its type as a class, or as an enumeration
+  // without that enumerator, an error at its declaration, not at <config>'s constant. A type it does
+  // not find (an alias, a template's) is the resolver's. The number of errors.
+  size_t checkConfigEnumerations(Build& build)
+  {
+    if (build.configDeclared.empty())
+      return 0;
+    SymbolTable& symbols = *build.symbols;
+    std::map<std::string, std::vector<std::string>> enumerations; // qualified name: its enumerators
+    std::set<std::string> classes;
+    std::function<void(Span<Decl*>, const std::string&)> walk = [&](Span<Decl*> decls, const std::string& scope)
+    {
+      for (Decl* d : decls)
+      {
+        if (!d)
+          continue;
+        if (d->kind == NodeKind::NamespaceDecl)
+        {
+          auto* n = static_cast<NamespaceDecl*>(d);
+          std::string inner = scope;
+          if (!n->nested.empty())
+            for (const NamePart& p : n->nested.parts)
+              inner += (p.symbol == UINT32_MAX ? "" : std::string(symbols.name(p.symbol))) + "::";
+          else if (n->name != UINT32_MAX)
+            inner += std::string(symbols.name(n->name)) + "::";
+          walk(n->decls, inner);
+        }
+        else if (d->kind == NodeKind::ClassDecl)
+        {
+          auto* c = static_cast<ClassDecl*>(d);
+          if (c->name.empty() || c->name.last().symbol == UINT32_MAX)
+            continue;
+          std::string name = scope + std::string(symbols.name(c->name.last().symbol));
+          classes.insert(name);
+          walk(c->members, name + "::");
+        }
+        else if (d->kind == NodeKind::EnumDecl)
+        {
+          auto* e = static_cast<EnumDecl*>(d);
+          if (e->name.empty() || e->name.last().symbol == UINT32_MAX || !e->isDefinition)
+            continue;
+          std::vector<std::string>& names = enumerations[scope + std::string(symbols.name(e->name.last().symbol))];
+          for (Decl* x : e->enumerators)
+            if (x && x->kind == NodeKind::EnumeratorDecl)
+              names.push_back(std::string(symbols.name(static_cast<EnumeratorDecl*>(x)->name)));
+        }
+      }
+    };
+    for (const std::unique_ptr<ParsedFile>& p : build.parsed)
+      if (p && !p->isImported)
+        walk(p->decls, p->libraryScope == UINT32_MAX ? "" : std::string(symbols.name(p->libraryScope)) + "::");
+    size_t errors = 0;
+    for (const auto& [name, source] : build.configDeclared)
+    {
+      const ConfigDeclaration& d = source.declaration;
+      auto value = build.options.configValues.find(name);
+      if (d.kind != "enum" || value == build.options.configValues.end())
+        continue;
+      std::string problem;
+      auto e = enumerations.find(d.type);
+      if (classes.count(d.type) && e == enumerations.end())
+        problem = "its type " + d.type + " is a class, not an enumeration";
+      else if (e != enumerations.end() && std::find(e->second.begin(), e->second.end(), value->second.text) == e->second.end())
+        problem = d.type + " has no enumerator " + value->second.text;
+      if (problem.empty())
+        continue;
+      ++errors;
+      fprintf(stderr, "%s: error: config::%s: %s\n", sourceLocation(source.path, d.line, d.column).c_str(), name.c_str(), problem.c_str());
+    }
+    return errors;
+  }
+
   void runResolve(Build& build);
   void reportParse(Build& build, double parseTime);
   void reportResolve(Build& build);
@@ -2573,6 +2647,9 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     importCHeaders(files, lexed, parsed, symbols, options);
     build.importsLine = lastImportsLine;
     reportParse(build, parseTime);
+    build.parseErrors += checkConfigEnumerations(build);
+    if (build.parseErrors && options.convertDir.empty())
+      codegenExit = 1;
     runResolve(build);
   }
 
@@ -4823,6 +4900,7 @@ int compile(int argc, char** argv)
     SourceFile config;
     config.path = "<config>";
     config.text = configSource(options.configValues, declared);
+    build->configDeclared = declared;
     totalBytes += config.text.size();
     files.push_back(std::move(config));
     // --tests: the runner is one more source file (tests.hpp).
