@@ -1,0 +1,36 @@
+// spec: `T^` is the library's UniquePtr<T> written short, sugar and not a type of its own (kovarex, 2026-11-04): a declarator beside `*` and `&` (a local, a parameter, a return type, a member, a template argument as in Vector<Item^>, a pointer to one); `const Item^` owns a const Item and `Item^ const&` is a const owner, as with `*`; it is the same type as UniquePtr<Item> (one type, one overload); `^` between two operands stays exclusive or, in a template argument too
+struct Item
+{
+  int value;
+  Item(int v) : value(v) {}
+};
+struct Holder
+{
+  Item^ item;
+};
+static_assert(isSame<Item^, UniquePtr<Item>>);
+static_assert(isSame<const Item^, UniquePtr<const Item>>);
+static_assert(isSame<Item^ const&, const UniquePtr<Item>&>);
+static_assert(isSame<Vector<Item^>, Vector<UniquePtr<Item>>>);
+constexpr int six = 6, three = 3;
+static_assert(sizeof(Array<int, six ^ three>) == 5 * sizeof(int)); // (exclusive or in a template argument)
+Item^ make(int v) { return makeUnique<Item>(v); }
+int read(Item^ const& p) { return p->value; }
+int readLong(const UniquePtr<Item>& p) { return p->value; }
+int readConst(const Item^ p) { return p->value; }
+int main()
+{
+  Item^ a = make(3);
+  Vector<Item^> items;
+  items.push_back(make(4));
+  items.emplace_back(new Item(5));
+  Holder h{make(6)};
+  Item^* to = &a;
+  const Item^ c = UniquePtr<const Item>(new Item(7));
+  int x = 6, y = 3;
+  int z = x ^ y;
+  z = z ^ (x);
+  println(read(a), " ", readLong(items[0]), " ", items[1]->value, " ", h.item->value, " ", (*to)->value, " ", c->value, " ",
+          readConst(make(8)), " ", z);
+  return 0;
+}

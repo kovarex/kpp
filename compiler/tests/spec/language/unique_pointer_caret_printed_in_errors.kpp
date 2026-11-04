@@ -1,0 +1,16 @@
+// spec: an error prints a UniquePtr<T> (with the default deleter) as `T^`, as it may be written (design.md 20): `const Item^` owns a const Item, and it does not convert to an Item*
+// error: a conversion from const Item^ to Item*
+struct Item
+{
+  int value;
+};
+int read(const Item^& owner)
+{
+  Item* raw = owner;
+  return raw->value;
+}
+int main()
+{
+  Item^ owner = makeUnique<Item>();
+  return read(owner);
+}

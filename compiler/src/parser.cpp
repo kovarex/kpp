@@ -51,6 +51,7 @@ namespace
       kwTypes = symbols.intern("types");
       kwFromStr = symbols.intern("fromStr");
       kwOptional = symbols.intern("Optional");
+      kwUniquePtr = symbols.intern("UniquePtr");
       kwText = symbols.intern("text");
       kwTag = symbols.intern("Tag");
       kwTagField = symbols.intern("__tag");
@@ -71,7 +72,7 @@ namespace
     bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
@@ -1031,6 +1032,21 @@ namespace
       return parseTypeSuffixes(type);
     }
 
+    // Whether the `^` at pos ends a type (`T^`, design.md "T^") rather than being exclusive or: what
+    // follows it cannot start an operand. An identifier may follow (`Item^ item;`, a declarator's
+    // name): where a type is only tried (a template argument, a cast's parentheses), `a ^ b` is then
+    // no type and is read again as an expression. A parenthesis may not (`a ^ (b)` is exclusive or:
+    // no function type returns an owner written `T^(...)`), nor a literal or a unary operator.
+    bool caretDeclarator() const
+    {
+      const Token& next = tok(1);
+      if (next.getKind() == TokenKind::Number || next.getKind() == TokenKind::String || next.getKind() == TokenKind::Char)
+        return false;
+      return !(next.is(P::LParen) || next.is(P::Minus) || next.is(P::Plus) || next.is(P::Bang) || next.is(P::Tilde) ||
+               next.is(P::Caret) || next.is(P::PlusPlus) || next.is(P::MinusMinus) || next.is(Kw::sizeof_) || next.is(Kw::new_) ||
+               next.is(Kw::true_) || next.is(Kw::false_) || next.is(Kw::nullptr_) || next.is(Kw::this_));
+    }
+
     // Pointer, reference, member-pointer and pack suffixes with their cv-qualifiers.
     Type* parseTypeSuffixes(Type* type)
     {
@@ -1057,6 +1073,20 @@ namespace
           advance();
           r->referenced = type;
           type = r;
+        }
+        else if (at(P::Caret) && !cMode && caretDeclarator())
+        {
+          // `T^`: the library's UniquePtr<T> written short, `::UniquePtr<T>` and nothing else (sugar,
+          // design.md "T^"; printed back as `T^`, types.cpp).
+          NamedType* owner = node<NamedType>(pos);
+          advance();
+          NamePart part;
+          part.symbol = kwUniquePtr;
+          part.hasTemplateArgs = true;
+          part.templateArgs = makeSpanOf(std::vector<Node*>{type});
+          owner->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          owner->name.global = true;
+          type = owner;
         }
         else if (at(Kw::const_) || at(Kw::volatile_))
         {
@@ -4276,8 +4306,10 @@ namespace
                      at(P::LBracket, 1);
           if (atIdent() && !result)
           {
-            // `T x` followed by anything else (e.g. a macro suffix) is still most likely a declaration.
-            result = !at(P::ColonColon, 1) && !at(P::Less, 1) && !at(P::Dot, 1) && !at(P::Arrow, 1) && !at(P::LParen, 1);
+            // `T x` followed by anything else (e.g. a macro suffix) is still most likely a declaration;
+            // not after an owner's `^` (`mask ^ out << flags;` is exclusive or: design.md 20).
+            result = !toks[pos - 1].is(P::Caret) && !at(P::ColonColon, 1) && !at(P::Less, 1) && !at(P::Dot, 1) && !at(P::Arrow, 1) &&
+                     !at(P::LParen, 1);
             if (at(P::LParen, 1))
               result = true;
           }

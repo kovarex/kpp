@@ -526,10 +526,31 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
   if (!t)
     return "<null>";
   std::string s;
+  // `T^` (design.md "T^"): the standard library's UniquePtr<T> with its default deleter, printed as
+  // it is written short (errors, the language server's hover). Not in a qualified name (the IR's,
+  // debug info's), which stays UniquePtr<T, DefaultDelete<T>>.
+  const Ty* owned = nullptr;
+  if (!qualified && symbols && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && t->decl->file &&
+      t->decl->file->isLibrary && !t->args.empty() && t->args.size() <= 2)
+  {
+    const QualifiedName& name = static_cast<ClassDecl*>(t->decl)->name;
+    auto named = [&](const Decl* d, std::string_view want)
+    {
+      const QualifiedName& n = static_cast<const ClassDecl*>(d)->name;
+      return !n.empty() && n.last().symbol != UINT32_MAX && symbols->name(n.last().symbol) == want;
+    };
+    const Ty* deleter = t->args.size() == 2 ? t->args[1] : nullptr;
+    if (!name.empty() && named(t->decl, "UniquePtr") &&
+        (!deleter || (deleter->kind == TyKind::Class && deleter->decl && deleter->decl->kind == NodeKind::ClassDecl &&
+                      deleter->decl->file == t->decl->file && named(deleter->decl, "DefaultDelete") && deleter->args.size() == 1 &&
+                      deleter->args[0] == t->args[0] && !deleter->isConst && !deleter->isVolatile)))
+      owned = t->args[0];
+  }
   // A const pointer has its qualifiers after the `*` (`Widget* const`): before it they read as the
   // pointee's, and `const Widget**` and `Widget* const*` printed alike, one IR name for two
-  // classes (ReverseIterator's methods were emitted for whichever of the two came first).
-  bool qualifiersAfter = t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer;
+  // classes (ReverseIterator's methods were emitted for whichever of the two came first). An owner
+  // the same (`Item^ const`, a const owner; `const Item^` owns a const Item).
+  bool qualifiersAfter = t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer || owned;
   if (t->isConst && !qualifiersAfter)
     s += "const ";
   if (t->isVolatile && !qualifiersAfter)
@@ -632,6 +653,11 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       break;
     case TyKind::Class:
     case TyKind::Enum:
+      if (owned)
+      {
+        s += toString(owned, symbols, qualified) + "^";
+        break;
+      }
       s += declName(t->decl);
       if (!t->args.empty())
       {

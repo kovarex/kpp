@@ -1410,6 +1410,31 @@ per configuration converts to `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`;
 exists only in some configurations is a `when`. kovarex: "it solves at least 2-3 problems we had, and
 is simple."
 
+### 20. `T^`: the library's UniquePtr<T> written short (decided 2026-11-04)
+`T^` is sugar for the standard library's `UniquePtr<T>` (with its default deleter), and nothing
+else: the compiler has no owner type of its own, so overloads, templates, deduction, traits, layout,
+destruction and the C++ guarantees are UniquePtr's (docs/stdlib/uniqueptr.md). `Item^` and
+`UniquePtr<Item>` are one type. Deleters and arrays keep their library names (`UniquePtr<T, D>`,
+`UniqueArray<T>`). kovarex wants it for reading, `Vector<Item^>` over `Vector<UniquePtr<Item>>`, and
+decided against a built-in after the lesson of Rust's `~T`: it was replaced by the library's
+`Box<T>` because a type built into the compiler (its own deref, move and drop, no allocator
+parameter, no methods or impls of its own) made library pointers second-class. That lesson is about
+where the type lives, not the spelling; Swift's `[T]` and `T?` are sugar printed back as sugar.
+kovarex: "lets learn from mistake of others, and make it syntactic sugar, while still being the
+UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
+- **Grammar.** `^` is a declarator beside `*`, `&` and `&&`, with the same rules for `const`:
+  `const Item^` owns a const Item, `Item^ const` is a const owner (`Item^ const&` for a parameter),
+  `Item^*` a pointer to an owner. The parser writes it as `::UniquePtr<T>`. It is the declarator
+  only where what follows cannot start an operand: not before `(`, a literal, a unary operator,
+  `sizeof`, `new`, `this`, `true`, `false` or `nullptr`, so `a ^ (b)` and `x ^ 3` stay exclusive or.
+  A name may follow (`Item^ item;`); where a type is only tried (a template argument, a cast's
+  parentheses) `a ^ b` is then no type and is read again as an expression; as a statement, `a ^ b;`
+  is a declaration, as `a * b;` is. There is no functional cast through `^` (`UniquePtr<A>(p)` keeps
+  the long name, as C++ has no `T*(x)`). Imported C headers keep `^` as exclusive or.
+- **Printing.** Errors and the language server's hover print `UniquePtr<T, DefaultDelete<T>>` as
+  `T^` (types.cpp, toString). Qualified names (the IR's, debug information's) keep the class's own,
+  so the IR does not change; the debugger's display names are F's (natvis, debug type names).
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
