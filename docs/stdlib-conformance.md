@@ -22,6 +22,11 @@ installs and returns kpp's own handler there, as no C++ runtime is linked, and n
 yet: an exception does not unwind off Windows before stage 3 (design.md, "Targets and hosts"), and
 a throw prints and aborts. Stage 3's terminate calls `platform::terminateHandler`.
 
+**A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
+`filesystem::path::value_type` is char and its native string the path's bytes; kpp's stays wchar_t
+(UTF-32 there), converted to UTF-8 at each system call. A name that is not UTF-8 reads as U+FFFD
+where its bytes are not, and is not given back as the same bytes. docs/stdlib/filesystem.md.
+
 **Sizes are unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
 unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned
 and as wide as std's `size_t`: `u64`, the one width (common.md; design.md, "Container sizes are

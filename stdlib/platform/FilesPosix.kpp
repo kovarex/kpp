@@ -1,0 +1,387 @@
+requires config::platform != Platform::Windows;
+// The file system's calls on Linux and FreeBSD (filesystem's, core/Filesystem.kpp): POSIX's, the
+// path's wide text (UTF-32) as UTF-8 (FilesWindows.kpp for Windows). The structs whose layouts
+// differ (stat, statvfs, dirent) are read at their C library's offsets: PlatformLinux.kpp,
+// PlatformFreeBSD.kpp.
+
+// The C library's structs, declared by their tags as its headers name them, so that a program's
+// import of sys/stat.h, sys/statvfs.h or dirent.h declares these functions the same way; the library
+// passes its own storage of their sizes.
+struct stat;
+struct statvfs;
+struct dirent;
+
+namespace posix
+{
+  extern "C" int stat(const char* path, ::stat* out);
+  extern "C" int lstat(const char* path, ::stat* out);
+  extern "C" int statvfs(const char* path, ::statvfs* out);
+  extern "C" DIR* opendir(const char* path);
+  extern "C" dirent* readdir(DIR* directory);
+  extern "C" int closedir(DIR* directory);
+  extern "C" char* realpath(const char* path, char* resolved);
+  extern "C" char* getcwd(char* buffer, size_t size);
+  extern "C" int chdir(const char* path);
+  extern "C" int mkdir(const char* path, mode_t mode);
+  extern "C" int rmdir(const char* path);
+  extern "C" int unlink(const char* path);
+  extern "C" int chmod(const char* path, mode_t mode);
+}
+
+namespace platform
+{
+  // UTF-8 to the wide text (UTF-32 here) and back; an invalid sequence, or a wide character that is
+  // no Unicode scalar value, becomes U+FFFD.
+  WString widenUtf8(const char* text, int length)
+  {
+    WString result;
+    if (length <= 0)
+      return result;
+    StringView view(text, (ContainerSize)length);
+    for (ContainerSize at = 0; at < view.size();)
+    {
+      Utf8Decoded decoded = utf8Decode(view, at);
+      result.push_back((wchar_t)decoded.codePoint);
+      at += decoded.length;
+    }
+    return result;
+  }
+  String narrowWide(const wchar_t* text, int length)
+  {
+    String result;
+    for (int i = 0; i < length; ++i)
+    {
+      u32 c = (u32)text[i];
+      appendUtf8(result, isScalarValue(c) ? c : 0xFFFD);
+    }
+    return result;
+  }
+  String utf8Of(const filesystem::path& p) { return narrowWide(p.text.c_str(), (int)p.text.size()); }
+
+  // The calling thread's errno, of the system category (a system error is an errno value here).
+  ErrorCode lastFileError() { return ErrorCode(*errnoLocation(), systemCategory()); }
+  // The errors that mean the path does not resolve: ENOENT, ENOTDIR (the same values in both C
+  // libraries).
+  bool isNotFoundError(int error) { return error == 2 || error == 20; }
+  // mkdir's error when the path is there already: EEXIST.
+  bool isAlreadyThereError(int error) { return error == 17; }
+
+  // A struct stat's storage (glibc's is 144 bytes, FreeBSD's 224), read at the C library's offsets.
+  struct StatBuffer
+  {
+    uint64_t words[32];
+
+    uint64_t at64(int offset) const
+    {
+      uint64_t value = 0;
+      memcpy(&value, (const char*)this->words + offset, 8);
+      return value;
+    }
+    // st_mode: 32 bits in glibc, 16 in FreeBSD, at the same offset; its bits fit in 16.
+    unsigned int mode() const
+    {
+      uint16_t value = 0;
+      memcpy(&value, (const char*)this->words + statModeOffset, 2);
+      return value;
+    }
+  };
+
+  filesystem::file_type typeOfMode(unsigned int mode)
+  {
+    switch (mode & 0170000) // S_IFMT
+    {
+      case 0100000: return filesystem::file_type::regular;
+      case 0040000: return filesystem::file_type::directory;
+      case 0120000: return filesystem::file_type::symlink;
+      case 0060000: return filesystem::file_type::block;
+      case 0020000: return filesystem::file_type::character;
+      case 0010000: return filesystem::file_type::fifo;
+      case 0140000: return filesystem::file_type::socket;
+      default: return filesystem::file_type::unknown;
+    }
+  }
+
+  // stat (links followed) or lstat of p; false (and ec) on an error.
+  bool statOf(const filesystem::path& p, bool followLinks, StatBuffer& out, ErrorCode& ec)
+  {
+    String name = utf8Of(p);
+    int result = followLinks ? posix::stat(name.c_str(), (::stat*)out.words) : posix::lstat(name.c_str(), (::stat*)out.words);
+    if (result != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // What p names: with followLinks what a link leads to (stat), without p itself (lstat).
+  bool fileInfo(const filesystem::path& p, bool followLinks, filesystem::FileInfo& out, ErrorCode& ec)
+  {
+    StatBuffer buffer;
+    if (!statOf(p, followLinks, buffer, ec))
+      return false;
+    unsigned int mode = buffer.mode();
+    out.type = typeOfMode(mode);
+    out.directory = out.type == filesystem::file_type::directory;
+    out.permissions = filesystem::perms(mode & 07777);
+    out.size = buffer.at64(statSizeOffset);
+    out.sizeKnown = out.type == filesystem::file_type::regular;
+    out.writeTime = buffer.at64(statWriteTimeOffset) * 1000000000 + buffer.at64(statWriteTimeOffset + 8);
+    return true;
+  }
+
+  // Whether a and b name the same file or directory, links followed (the same st_dev and st_ino);
+  // false (and ec) when either does not resolve.
+  bool sameFile(const filesystem::path& a, const filesystem::path& b, bool& same, ErrorCode& ec)
+  {
+    StatBuffer first, second;
+    if (!statOf(a, true, first, ec) || !statOf(b, true, second, ec))
+      return false;
+    same = first.at64(0) == second.at64(0) && first.at64(8) == second.at64(8);
+    return true;
+  }
+
+  // A directory's entries in the order the file system gives them, `.` and `..` left out: opendir
+  // and readdir, and lstat of each entry for what it is.
+  struct DirectoryReader
+  {
+    posix::DIR* directory = nullptr;
+    filesystem::path path;
+
+    DirectoryReader() {}
+    DirectoryReader(const DirectoryReader&) = delete;
+    ~DirectoryReader()
+    {
+      if (this->directory)
+        posix::closedir(this->directory);
+    }
+    // False on an error (ec); a directory without entries opens, and next() ends at once.
+    bool open(const filesystem::path& p, ErrorCode& ec)
+    {
+      this->directory = posix::opendir(utf8Of(p).c_str());
+      if (!this->directory)
+      {
+        ec = lastFileError();
+        return false;
+      }
+      this->path = p;
+      ec.clear();
+      return true;
+    }
+    // The next entry's name and what it is (lstat); false at the end (or on an error, ec).
+    bool next(WString& name, filesystem::FileInfo& info, ErrorCode& ec)
+    {
+      ec.clear();
+      for (;;)
+      {
+        *errnoLocation() = 0;
+        dirent* entry = posix::readdir(this->directory);
+        if (!entry)
+        {
+          if (*errnoLocation() != 0)
+            ec = lastFileError();
+          return false;
+        }
+        const char* found = (const char*)entry + direntNameOffset;
+        if (found[0] == '.' && (found[1] == 0 || (found[1] == '.' && found[2] == 0)))
+          continue;
+        name = widenUtf8(found, (int)strlen(found));
+        ErrorCode probe;
+        if (!fileInfo(this->path / filesystem::path(name), false, info, probe))
+          info = filesystem::FileInfo(); // gone since the listing: asked anew when it matters
+        return true;
+      }
+    }
+  };
+
+  filesystem::path currentPath(ErrorCode& ec)
+  {
+    char* buffer = posix::getcwd(nullptr, 0); // allocated to fit (glibc, FreeBSD)
+    if (!buffer)
+    {
+      ec = lastFileError();
+      return filesystem::path();
+    }
+    ec.clear();
+    filesystem::path result = filesystem::path(widenUtf8(buffer, (int)strlen(buffer)));
+    free(buffer);
+    return result;
+  }
+  void setCurrentPath(const filesystem::path& p, ErrorCode& ec)
+  {
+    if (posix::chdir(utf8Of(p).c_str()) == 0)
+      ec.clear();
+    else
+      ec = lastFileError();
+  }
+
+  // p made absolute: as it is when it is, else the current directory joined with it (std's for
+  // POSIX: `.` and `..` stay).
+  filesystem::path absolutePath(const filesystem::path& p, ErrorCode& ec)
+  {
+    ec.clear();
+    if (p.is_absolute())
+      return p;
+    filesystem::path current = currentPath(ec);
+    if (ec)
+      return filesystem::path();
+    return current / p;
+  }
+
+  // The absolute path of what p names with every link resolved (realpath); p must exist.
+  filesystem::path canonicalPath(const filesystem::path& p, ErrorCode& ec)
+  {
+    char* resolved = posix::realpath(utf8Of(p).c_str(), nullptr); // allocated to fit
+    if (!resolved)
+    {
+      ec = lastFileError();
+      return filesystem::path();
+    }
+    ec.clear();
+    filesystem::path result = filesystem::path(widenUtf8(resolved, (int)strlen(resolved)));
+    free(resolved);
+    return result;
+  }
+
+  // TMPDIR, TMP, TEMP or TEMPDIR, the first one set, else /tmp (std's for POSIX).
+  filesystem::path tempDirectoryPath(ErrorCode& ec)
+  {
+    ec.clear();
+    for (const char* name : {"TMPDIR", "TMP", "TEMP", "TEMPDIR"})
+      if (const char* value = getenv(name); value && value[0] != 0)
+        return filesystem::path(widenUtf8(value, (int)strlen(value)));
+    return filesystem::path(L"/tmp");
+  }
+
+  // The space of the file system p is on (statvfs: its fragments' size times their counts).
+  bool spaceOf(const filesystem::path& p, filesystem::space_info& result, ErrorCode& ec)
+  {
+    uint64_t words[16];
+    if (posix::statvfs(utf8Of(p).c_str(), (::statvfs*)words) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    auto field = [&](int offset) {
+      uint64_t value = 0;
+      memcpy(&value, (const char*)words + offset, 8);
+      return value;
+    };
+    uint64_t fragment = field(statvfsFragmentSizeOffset);
+    result.capacity = field(statvfsBlocksOffset) * fragment;
+    result.free = field(statvfsFreeOffset) * fragment;
+    result.available = field(statvfsAvailableOffset) * fragment;
+    return true;
+  }
+
+  bool createDirectory(const filesystem::path& p, ErrorCode& ec)
+  {
+    if (posix::mkdir(utf8Of(p).c_str(), (posix::mode_t)0777) == 0)
+    {
+      ec.clear();
+      return true;
+    }
+    ec = lastFileError();
+    return false;
+  }
+
+  // Removes the directory (rmdir) or the file or link (unlink) p names.
+  bool removePath(const filesystem::path& p, bool directory, ErrorCode& ec)
+  {
+    String name = utf8Of(p);
+    if ((directory ? posix::rmdir(name.c_str()) : posix::unlink(name.c_str())) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // Moves from to to, replacing a file there (C's rename; not across file systems, which is
+  // errc::cross_device_link).
+  bool renamePath(const filesystem::path& from, const filesystem::path& to, ErrorCode& ec)
+  {
+    if (::rename(utf8Of(from).c_str(), utf8Of(to).c_str()) == 0)
+    {
+      ec.clear();
+      return true;
+    }
+    ec = lastFileError();
+    return false;
+  }
+
+  // Copies the regular file from over to, its bytes and then its permission bits.
+  bool copyFileContents(const filesystem::path& from, const filesystem::path& to, ErrorCode& ec)
+  {
+    StatBuffer source;
+    if (!statOf(from, true, source, ec))
+      return false;
+    String fromName = utf8Of(from);
+    String toName = utf8Of(to);
+    FILE* in = fopen(fromName.c_str(), "rb");
+    if (!in)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    FILE* out = fopen(toName.c_str(), "wb");
+    if (!out)
+    {
+      ec = lastFileError();
+      fclose(in);
+      return false;
+    }
+    char buffer[65536];
+    bool ok = true;
+    for (;;)
+    {
+      size_t count = fread(buffer, 1, sizeof(buffer), in);
+      if (count == 0)
+        break;
+      if (fwrite(buffer, 1, count, out) != count)
+      {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok)
+      ec = lastFileError();
+    fclose(in);
+    if (fclose(out) != 0 && ok)
+    {
+      ok = false;
+      ec = lastFileError();
+    }
+    if (ok && posix::chmod(toName.c_str(), (posix::mode_t)(source.mode() & 07777)) != 0)
+    {
+      ok = false;
+      ec = lastFileError();
+    }
+    if (ok)
+      ec.clear();
+    return ok;
+  }
+
+  // Sets p's permission bits (replace, add or remove the bits given): chmod.
+  void changePermissions(const filesystem::path& p, filesystem::perms permissions, filesystem::perm_options options, ErrorCode& ec)
+  {
+    StatBuffer buffer;
+    if (!statOf(p, true, buffer, ec))
+      return;
+    filesystem::perms current = filesystem::perms(buffer.mode() & 07777);
+    filesystem::perms result = permissions;
+    if ((options & filesystem::perm_options::add) != filesystem::perm_options(0))
+      result = current | permissions;
+    else if ((options & filesystem::perm_options::remove) != filesystem::perm_options(0))
+      result = current & ~permissions;
+    if (posix::chmod(utf8Of(p).c_str(), (posix::mode_t)((unsigned int)result & 07777)) != 0)
+    {
+      ec = lastFileError();
+      return;
+    }
+    ec.clear();
+  }
+}

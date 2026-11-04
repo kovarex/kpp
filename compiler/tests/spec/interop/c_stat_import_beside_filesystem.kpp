@@ -1,0 +1,29 @@
+// spec: off Windows a program that imports sys/stat.h, sys/statvfs.h, dirent.h and unistd.h uses the standard library's filesystem beside the imports' own functions: the library's declarations of stat, lstat, statvfs, opendir, readdir, mkdir, chmod and the rest (stdlib/platform/FilesPosix.kpp) are the same C functions as the imports', and the sizes it gives struct stat and struct statvfs hold the C library's
+// factorio: none: the game runs on Windows; kpp.net's server for FreeBSD, which imports C headers beside the library's filesystem
+// (lstat here: a call of stat, the name of a struct too, is interop/c_function_named_as_a_struct_is_callable's)
+// target: linux (glibc's sys/stat.h)
+extern "C" import "sys/stat.h";
+extern "C" import "sys/statvfs.h";
+extern "C" import "dirent.h";
+extern "C" import "unistd.h";
+
+int main()
+{
+  filesystem::path dir = filesystem::temp_directory_path() / "kpp-spec-stat-import";
+  filesystem::remove_all(dir);
+  filesystem::create_directory(dir);
+  {
+    OutFileStream out((dir / "a.txt").string());
+    out << "abc";
+  }
+  struct stat own;
+  bool statted = lstat((dir / "a.txt").string().c_str(), &own) == 0;
+  println(statted, " ", own.st_size, " ", filesystem::file_size(dir / "a.txt"), " ", sizeof(struct stat) <= 256, " ", sizeof(struct statvfs) <= 128);
+  DIR* listing = opendir(dir.string().c_str());
+  int entries = 0;
+  while (dirent* entry = readdir(listing))
+    ++entries;
+  closedir(listing);
+  println(entries, " ", filesystem::remove_all(dir));
+  return 0;
+}

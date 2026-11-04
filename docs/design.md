@@ -2727,6 +2727,17 @@ The semantics of section 9 hold on every target:
     owner (FreeBSD allocates them on first use). A timed wait's deadline is on the realtime clock,
     pthread_cond_t's default. A thread's id is its `pthread_t` (`pthread_self`), the processor
     count `sysconf(_SC_NPROCESSORS_ONLN)`.
+  - Files (Filesystem.kpp; `stdlib/platform/FilesWindows.kpp`, `FilesPosix.kpp`): a file's
+    information (`FileInfo`: type, permissions, size, write time), a directory reader, the
+    absolute and canonical paths, the current and temporary directories, space, and creating,
+    removing, renaming, copying and the permissions. Windows' calls are as before. Elsewhere they are
+    stat and lstat, opendir and readdir (each entry lstat'ed), realpath, getcwd and chdir,
+    statvfs, mkdir, rmdir and unlink, C's rename, a copy through fopen with the source's mode, and
+    chmod, with the path in UTF-8. struct stat, statvfs and dirent are read at their C library's
+    offsets (glibc's and FreeBSD's differ). A path stays wide text (UTF-32 there), with `/` the
+    one separator and no root name.
+  - Stage 4 is done: no library snippet fails to build for FreeBSD for the library's Win32 or
+    UCRT calls any more.
 
 ### 4. Toolchains: what links for each target, from each host
 

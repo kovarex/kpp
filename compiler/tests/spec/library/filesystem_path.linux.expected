@@ -1,0 +1,10 @@
+[] [] [] [C:\a\b.txt] [C:\a\b] [.txt] false | [C:\a\b.txt]
+[] [] [a/b] [] [] [] false | [a][b][]
+[] [] [] [C:x] [C:x] [] false | [C:x]
+[] [] [] [\\server\share\f] [\\server\share\f] [] false | [\\server\share\f]
+[] [] [] [.profile] [.profile] [] false | [.profile]
+[C:/a] [a/b] [a/C:\abs] [a/b/c/\d]
+[a/c] [a/] [.] [x]
+[../b/c] [.]
+[dir/file.tar.png] false true
+true true false

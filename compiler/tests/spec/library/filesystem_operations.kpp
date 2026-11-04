@@ -1,0 +1,48 @@
+// spec: the filesystem operations behave alike on every target (Windows' Win32 calls, POSIX's elsewhere, docs/design.md "Targets and hosts" stage 4): create_directory (false for one already there), status and its types, file_size (an error for a directory), a directory's listing, copy_file (file_exists without overwrite_existing), rename, remove (false for a missing path), permissions (a file with no write bit, then writable again), current_path, canonical, absolute, space, is_empty
+// factorio: Filesystem's wrappers over std::filesystem in the game's save, mod and log handling (create_directories, copy_file, rename, remove, directory iteration)
+String names(const filesystem::path& dir)
+{
+  Vector<String> found;
+  for (const filesystem::directory_entry& entry : filesystem::directory_iterator(dir))
+    found.push_back(entry.path().filename().string() + (entry.is_directory() ? "/" : ":" + toString(entry.file_size())));
+  sort(found.begin(), found.end());
+  String result;
+  for (const String& name : found)
+    result << name << " ";
+  return result;
+}
+
+int main()
+{
+  filesystem::path dir = filesystem::temp_directory_path() / "kpp-spec-operations";
+  filesystem::remove_all(dir);
+  println(filesystem::create_directory(dir), " ", filesystem::create_directory(dir), " ", filesystem::is_empty(dir));
+  filesystem::create_directory(dir / "sub");
+  {
+    OutFileStream out((dir / "a.txt").string());
+    out << "hello";
+  }
+  println(filesystem::is_regular_file(dir / "a.txt"), " ", filesystem::is_directory(dir / "sub"), " ", filesystem::exists(dir / "none"), " ",
+          filesystem::file_size(dir / "a.txt"), " ", filesystem::symlink_status(dir / "a.txt").type() == filesystem::file_type::regular);
+  ErrorCode ec;
+  filesystem::file_size(dir / "sub", ec);
+  println("file_size of a directory: ", ec == Errc::is_a_directory);
+  filesystem::copy_file(dir / "a.txt", dir / "b.txt");
+  filesystem::copy_file(dir / "a.txt", dir / "b.txt", ec);
+  println("copy over b.txt: ", ec == Errc::file_exists, " ", filesystem::copy_file(dir / "a.txt", dir / "b.txt", filesystem::copy_options::overwrite_existing));
+  filesystem::rename(dir / "b.txt", dir / "sub" / "c.txt");
+  println(names(dir), "| ", names(dir / "sub"));
+  filesystem::permissions(dir / "a.txt", filesystem::perms::owner_write | filesystem::perms::group_write | filesystem::perms::others_write, filesystem::perm_options::remove);
+  bool readOnly = (filesystem::status(dir / "a.txt").permissions() & filesystem::perms::owner_write) == filesystem::perms::none;
+  filesystem::permissions(dir / "a.txt", filesystem::perms::owner_write, filesystem::perm_options::add);
+  bool writable = (filesystem::status(dir / "a.txt").permissions() & filesystem::perms::owner_write) != filesystem::perms::none;
+  println("read-only, then writable: ", readOnly, " ", writable);
+  filesystem::path before = filesystem::current_path();
+  filesystem::current_path(dir);
+  bool relative = filesystem::exists("a.txt") && filesystem::equivalent(filesystem::current_path(), dir);
+  filesystem::current_path(before);
+  println("current_path: ", relative, " ", filesystem::current_path() == before);
+  println("canonical: ", filesystem::canonical(dir / "sub" / "..") == filesystem::canonical(dir), " ", filesystem::absolute("x").is_absolute(), " ", filesystem::space(dir).capacity > 0);
+  println(filesystem::remove(dir / "a.txt"), " ", filesystem::remove(dir / "a.txt"), " ", filesystem::remove_all(dir), " ", filesystem::exists(dir));
+  return 0;
+}

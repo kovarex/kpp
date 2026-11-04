@@ -1,0 +1,12 @@
+// spec: an imported C function whose name is also a struct's tag (sys/stat.h's `int stat(const char*, struct stat*)` beside `struct stat`, sys/statvfs.h's statvfs) is called by its name, as in C: C keeps tags apart from other names, so `stat(path, &s)` is the function and `struct stat` the type
+// pending: the call takes the name for the struct, an initialization of struct stat from the arguments ("a pointer (const char*) does not convert to unsigned long without a cast"), with or without the standard library (C's import; found by thread C's filesystem port, 2026-11-04)
+// factorio: none: the game runs on Windows; kpp.net's server for FreeBSD, which imports C headers
+// target: linux (glibc's sys/stat.h)
+extern "C" import "sys/stat.h";
+
+int main()
+{
+  struct stat s;
+  println(stat("/", &s) == 0, " ", (s.st_mode & 0170000) == 0040000);
+  return 0;
+}

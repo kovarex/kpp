@@ -9,10 +9,5 @@
 # Found by the FreeBSD run, each B's.
 run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
 
-# Stage 4: the standard library's Win32 and UCRT calls (threads, time, files, errno, terminate).
-build library/filesystem_equivalent  stage 4: GetFileAttributesExW
-build library/filesystem_path  stage 4: WideCharToMultiByte
-build library/unsigned_size_traps  stage 4: WideCharToMultiByte
-
 # FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).
 build interop/c_math_classification_macros  _Generic math macros

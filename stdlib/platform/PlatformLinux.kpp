@@ -9,6 +9,8 @@ union pthread_attr_t;
 union pthread_mutex_t;
 union pthread_cond_t;
 union pthread_rwlock_t;
+// A directory stream, as dirent.h names it: `typedef struct __dirstream DIR;`.
+struct __dirstream;
 
 namespace posix
 {
@@ -19,6 +21,8 @@ namespace posix
   using pthread_mutex_t = ::pthread_mutex_t;
   using pthread_cond_t = ::pthread_cond_t;
   using pthread_rwlock_t = ::pthread_rwlock_t;
+  using DIR = __dirstream;
+  using mode_t = unsigned int;
 }
 
 namespace platform
@@ -36,6 +40,18 @@ namespace platform
   const int scNprocessorsOnln = 84;
   // A thread's pthread_t from the handle startThread gave.
   posix::pthread_t threadOf(void* handle) { return (unsigned long)handle; }
+
+  // Where the file system's structs keep what FilesPosix.kpp reads (glibc x86-64): struct stat (144
+  // bytes) st_mode at 24, st_size at 48, st_mtim at 88 (st_dev at 0, st_ino at 8); struct statvfs
+  // f_frsize at 8, f_blocks 16, f_bfree 24, f_bavail 32; struct dirent's d_name at 19.
+  const int statModeOffset = 24;
+  const int statSizeOffset = 48;
+  const int statWriteTimeOffset = 88;
+  const int statvfsFragmentSizeOffset = 8;
+  const int statvfsBlocksOffset = 16;
+  const int statvfsFreeOffset = 24;
+  const int statvfsAvailableOffset = 32;
+  const int direntNameOffset = 19;
 
   // C's errno of the calling thread.
   int* errnoLocation() { return posix::__errno_location(); }

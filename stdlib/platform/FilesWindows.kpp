@@ -1,0 +1,434 @@
+requires config::platform == Platform::Windows;
+// The file system's calls on Windows (filesystem's, core/Filesystem.kpp): the Win32 wide-character
+// API, the path's UTF-16 text as it is (FilesPosix.kpp for Linux and FreeBSD).
+
+namespace platform
+{
+  struct Win32FileTime
+  {
+    unsigned long low;
+    unsigned long high;
+  };
+  // WIN32_FILE_ATTRIBUTE_DATA
+  struct Win32AttributeData
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+  };
+  // BY_HANDLE_FILE_INFORMATION
+  struct Win32HandleInformation
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long volumeSerial;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+    unsigned long links;
+    unsigned long indexHigh;
+    unsigned long indexLow;
+  };
+  // WIN32_FIND_DATAW
+  struct Win32FindData
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+    unsigned long reserved0;
+    unsigned long reserved1;
+    wchar_t name[260];
+    wchar_t alternateName[14];
+  };
+  const unsigned long invalidAttributes = 0xFFFFFFFF;
+  // INVALID_HANDLE_VALUE, the pointer of all ones (written through a 64-bit integer: `(void*)-1`
+  // zero-extends -1 today, language/negative_integer_to_pointer).
+  void* const invalidHandle = (void*)(long long)-1;
+  const unsigned long attributeReadOnly = 0x1;
+  const unsigned long attributeDirectory = 0x10;
+  const unsigned long attributeReparsePoint = 0x400;
+
+  // UTF-8 to UTF-16 and back (CP_UTF8); an invalid sequence becomes U+FFFD.
+  WString widenUtf8(const char* text, int length)
+  {
+    if (length <= 0)
+      return WString();
+    int count = win32::MultiByteToWideChar(65001, 0, text, length, nullptr, 0);
+    WString result;
+    result.resize(count);
+    win32::MultiByteToWideChar(65001, 0, text, length, result.data(), count);
+    return result;
+  }
+  String narrowWide(const wchar_t* text, int length)
+  {
+    if (length <= 0)
+      return String();
+    int count = win32::WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
+    String result;
+    result.resize(count);
+    win32::WideCharToMultiByte(65001, 0, text, length, result.data(), count, nullptr, nullptr);
+    return result;
+  }
+
+  // The calling thread's last error (GetLastError), of the system category.
+  ErrorCode lastFileError() { return ErrorCode((int)win32::GetLastError(), systemCategory()); }
+  // Win32 errors that mean the path does not resolve: file, path not found; a bad name, network
+  // path, net name, path.
+  bool isNotFoundError(int error) { return error == 2 || error == 3 || error == 123 || error == 53 || error == 67 || error == 161; }
+  // The errors of CreateDirectory that may mean the directory is there already:
+  // ERROR_ALREADY_EXISTS, and ACCESS_DENIED for a drive's root.
+  bool isAlreadyThereError(int error) { return error == 183 || error == 5; }
+
+  filesystem::FileInfo infoOfAttributes(unsigned long attributes, unsigned long sizeHigh, unsigned long sizeLow, Win32FileTime write)
+  {
+    filesystem::FileInfo info;
+    info.permissions = (attributes & attributeReadOnly) != 0 ? filesystem::perms(0555) : filesystem::perms::all;
+    info.directory = (attributes & attributeDirectory) != 0;
+    if ((attributes & attributeReparsePoint) != 0)
+      info.type = filesystem::file_type::symlink;
+    else
+      info.type = info.directory ? filesystem::file_type::directory : filesystem::file_type::regular;
+    info.size = ((uint64_t)sizeHigh << 32) | sizeLow;
+    info.sizeKnown = info.type == filesystem::file_type::regular;
+    info.writeTime = ((uint64_t)write.high << 32) | write.low;
+    return info;
+  }
+
+  // The attributes, size and write time of what p names, links followed (a reparse point is opened
+  // and asked).
+  bool attributesOf(const filesystem::path& p, Win32HandleInformation& out, ErrorCode& ec)
+  {
+    Win32AttributeData data;
+    if (!win32::GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &data))
+    {
+      ec = lastFileError();
+      return false;
+    }
+    if ((data.attributes & attributeReparsePoint) != 0)
+    {
+      void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+      if (file == invalidHandle)
+      {
+        ec = lastFileError();
+        return false;
+      }
+      bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
+      if (!ok)
+        ec = lastFileError();
+      win32::CloseHandle(file);
+      if (!ok)
+        return false;
+      ec.clear();
+      return true;
+    }
+    out.attributes = data.attributes;
+    out.sizeHigh = data.sizeHigh;
+    out.sizeLow = data.sizeLow;
+    out.write = data.write;
+    ec.clear();
+    return true;
+  }
+
+  // What p names: with followLinks what a link leads to (attributesOf); without, p itself, a reparse
+  // point (a symbolic link or a junction) a symlink.
+  bool fileInfo(const filesystem::path& p, bool followLinks, filesystem::FileInfo& out, ErrorCode& ec)
+  {
+    if (followLinks)
+    {
+      Win32HandleInformation info;
+      if (!attributesOf(p, info, ec))
+        return false;
+      out = infoOfAttributes(info.attributes & ~attributeReparsePoint, info.sizeHigh, info.sizeLow, info.write);
+      return true;
+    }
+    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
+    if (attributes == invalidAttributes)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    out = infoOfAttributes(attributes, 0, 0, Win32FileTime{0, 0});
+    out.sizeKnown = false;
+    return true;
+  }
+
+  // The identity of what p names, links followed: its volume's serial number and its index there.
+  bool identityOf(const filesystem::path& p, Win32HandleInformation& out, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
+    if (!ok)
+      ec = lastFileError();
+    win32::CloseHandle(file);
+    return ok;
+  }
+  // Whether a and b name the same file or directory, links followed; false (and ec) when either
+  // does not resolve.
+  bool sameFile(const filesystem::path& a, const filesystem::path& b, bool& same, ErrorCode& ec)
+  {
+    Win32HandleInformation first, second;
+    if (!identityOf(a, first, ec) || !identityOf(b, second, ec))
+      return false;
+    ec.clear();
+    same = first.volumeSerial == second.volumeSerial && first.indexHigh == second.indexHigh && first.indexLow == second.indexLow;
+    return true;
+  }
+
+  // A directory's entries in the order the file system gives them, `.` and `..` left out:
+  // FindFirstFile and FindNextFile.
+  struct DirectoryReader
+  {
+    void* find = invalidHandle;
+    Win32FindData data;
+    bool pending = false; // data holds an entry next() has not given yet
+
+    DirectoryReader() {}
+    DirectoryReader(const DirectoryReader&) = delete;
+    ~DirectoryReader()
+    {
+      if (this->find != invalidHandle)
+        win32::FindClose(this->find);
+    }
+    // False on an error (ec), or when the directory is there but empty (no ec).
+    bool open(const filesystem::path& p, ErrorCode& ec)
+    {
+      ec.clear();
+      filesystem::path pattern = p / filesystem::path(L"*");
+      this->find = win32::FindFirstFileW(pattern.c_str(), (_WIN32_FIND_DATAW*)(void*)&this->data);
+      if (this->find == invalidHandle)
+      {
+        // ERROR_FILE_NOT_FOUND or ERROR_NO_MORE_FILES on a directory that is there: an empty
+        // listing; on a missing one, its own error.
+        ErrorCode failure = lastFileError();
+        if (failure.value() != 2 && failure.value() != 18)
+          ec = failure;
+        else
+        {
+          filesystem::FileInfo info;
+          if (!fileInfo(p, true, info, ec))
+            return false;
+          if (info.type != filesystem::file_type::directory)
+            ec = make_error_code(Errc::not_a_directory);
+        }
+        return false;
+      }
+      this->pending = true;
+      return true;
+    }
+    // The next entry's name and what the listing says of it; false at the end (or on an error, ec).
+    bool next(WString& name, filesystem::FileInfo& info, ErrorCode& ec)
+    {
+      ec.clear();
+      for (;;)
+      {
+        if (!this->pending && !win32::FindNextFileW(this->find, (_WIN32_FIND_DATAW*)(void*)&this->data))
+        {
+          int error = (int)win32::GetLastError();
+          if (error != 18)
+            ec = ErrorCode(error, systemCategory());
+          return false;
+        }
+        this->pending = false;
+        const wchar_t* found = this->data.name;
+        if (found[0] == L'.' && (found[1] == 0 || (found[1] == L'.' && found[2] == 0)))
+          continue;
+        name = WString(found);
+        info = infoOfAttributes(this->data.attributes, this->data.sizeHigh, this->data.sizeLow, this->data.write);
+        return true;
+      }
+    }
+  };
+
+  // A path a Win32 function writes (its size, its buffer -> the length, or the size it needs).
+  WString systemPath(unsigned long (*get)(unsigned long, wchar_t*))
+  {
+    wchar_t buffer[520];
+    unsigned long n = get(520, buffer);
+    if (n < 520)
+      return WString(buffer, (ContainerSize)n);
+    WString big;
+    big.resize((ContainerSize)n);
+    n = get(n, big.data());
+    big.resize((ContainerSize)n);
+    return big;
+  }
+
+  // p made absolute against the current directory (GetFullPathName, which also resolves `.` and `..`).
+  filesystem::path absolutePath(const filesystem::path& p, ErrorCode& ec)
+  {
+    ec.clear();
+    wchar_t buffer[520];
+    unsigned long n = win32::GetFullPathNameW(p.c_str(), 520, buffer, nullptr);
+    if (n == 0)
+    {
+      ec = lastFileError();
+      return filesystem::path();
+    }
+    if (n < 520)
+      return filesystem::path(WString(buffer, (ContainerSize)n));
+    WString big;
+    big.resize((ContainerSize)n);
+    n = win32::GetFullPathNameW(p.c_str(), n, big.data(), nullptr);
+    big.resize((ContainerSize)n);
+    return filesystem::path(big);
+  }
+
+  // The absolute path of what p names with every link resolved; p must exist. The system's `\\?\`
+  // prefix is removed (`\\?\UNC\` becomes `\\`).
+  filesystem::path canonicalPath(const filesystem::path& p, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0, 7, nullptr, 3, 0x02000000, nullptr); // no access, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastFileError();
+      return filesystem::path();
+    }
+    wchar_t buffer[520];
+    unsigned long n = win32::GetFinalPathNameByHandleW(file, buffer, 520, 0);
+    WString result;
+    if (n > 0 && n < 520)
+      result = WString(buffer, (ContainerSize)n);
+    else if (n >= 520)
+    {
+      result.resize((ContainerSize)n);
+      n = win32::GetFinalPathNameByHandleW(file, result.data(), n, 0);
+      result.resize((ContainerSize)n);
+    }
+    if (n == 0)
+      ec = lastFileError();
+    else
+      ec.clear();
+    win32::CloseHandle(file);
+    if (ec)
+      return filesystem::path();
+    if (result.find(L"\\\\?\\UNC\\") == 0)
+      result = L"\\\\" + result.substr(8);
+    else if (result.find(L"\\\\?\\") == 0)
+      result = result.substr(4);
+    return filesystem::path(result);
+  }
+
+  filesystem::path currentPath(ErrorCode& ec)
+  {
+    ec.clear();
+    return filesystem::path(systemPath(win32::GetCurrentDirectoryW));
+  }
+  void setCurrentPath(const filesystem::path& p, ErrorCode& ec)
+  {
+    if (win32::SetCurrentDirectoryW(p.c_str()))
+      ec.clear();
+    else
+      ec = lastFileError();
+  }
+  filesystem::path tempDirectoryPath(ErrorCode& ec)
+  {
+    ec.clear();
+    return filesystem::path(systemPath(win32::GetTempPathW));
+  }
+
+  // The space of the volume p is on; false (and ec) on an error.
+  bool spaceOf(const filesystem::path& p, filesystem::space_info& result, ErrorCode& ec)
+  {
+    unsigned long long available = 0;
+    unsigned long long total = 0;
+    unsigned long long free = 0;
+    if (!win32::GetDiskFreeSpaceExW(p.c_str(), (_ULARGE_INTEGER*)&available, (_ULARGE_INTEGER*)&total, (_ULARGE_INTEGER*)&free))
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    result.capacity = total;
+    result.free = free;
+    result.available = available;
+    return true;
+  }
+
+  bool createDirectory(const filesystem::path& p, ErrorCode& ec)
+  {
+    if (win32::CreateDirectoryW(p.c_str(), nullptr))
+    {
+      ec.clear();
+      return true;
+    }
+    ec = lastFileError();
+    return false;
+  }
+
+  // Removes the directory (RemoveDirectory) or the file (DeleteFile) p names, a link itself.
+  bool removePath(const filesystem::path& p, bool directory, ErrorCode& ec)
+  {
+    bool ok = directory ? win32::RemoveDirectoryW(p.c_str()) != 0 : win32::DeleteFileW(p.c_str()) != 0;
+    if (!ok)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // Moves from to to, replacing a file there (MoveFileEx with MOVEFILE_REPLACE_EXISTING: not across
+  // volumes, which is errc::cross_device_link).
+  bool renamePath(const filesystem::path& from, const filesystem::path& to, ErrorCode& ec)
+  {
+    if (win32::MoveFileExW(from.c_str(), to.c_str(), 1))
+    {
+      ec.clear();
+      return true;
+    }
+    ec = lastFileError();
+    return false;
+  }
+
+  // Copies the regular file from over to (CopyFile).
+  bool copyFileContents(const filesystem::path& from, const filesystem::path& to, ErrorCode& ec)
+  {
+    if (!win32::CopyFileW(from.c_str(), to.c_str(), 0))
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // Sets p's permissions (replace, add or remove the bits given): Windows keeps only whether it is
+  // read-only, which it is when the result has no write bit.
+  void changePermissions(const filesystem::path& p, filesystem::perms permissions, filesystem::perm_options options, ErrorCode& ec)
+  {
+    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
+    if (attributes == invalidAttributes)
+    {
+      ec = lastFileError();
+      return;
+    }
+    filesystem::perms current = (attributes & attributeReadOnly) != 0 ? filesystem::perms(0555) : filesystem::perms::all;
+    filesystem::perms result = permissions;
+    if ((options & filesystem::perm_options::add) != filesystem::perm_options(0))
+      result = current | permissions;
+    else if ((options & filesystem::perm_options::remove) != filesystem::perm_options(0))
+      result = current & ~permissions;
+    bool readOnly = (result & (filesystem::perms::owner_write | filesystem::perms::group_write | filesystem::perms::others_write)) == filesystem::perms::none;
+    unsigned long wanted = readOnly ? (attributes | attributeReadOnly) : (attributes & ~attributeReadOnly);
+    if (wanted != attributes && !win32::SetFileAttributesW(p.c_str(), wanted))
+    {
+      ec = lastFileError();
+      return;
+    }
+    ec.clear();
+  }
+}

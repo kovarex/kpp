@@ -1,94 +1,30 @@
 // kpp standard library: the file system, what std::filesystem converts to (namespace filesystem,
-// std's names). Windows only, over the Win32 wide-character API; paths are UTF-16 as Windows
-// keeps them. Specified in docs/stdlib/filesystem.md.
+// std's names). Paths are wide text on every target (UTF-16 as Windows keeps them, UTF-32 where
+// wchar_t is 32 bits), and the system's calls are platform::'s (stdlib/platform): the Win32
+// wide-character API on Windows, POSIX's elsewhere, with the path in UTF-8. Specified in
+// docs/stdlib/filesystem.md.
 
 namespace filesystem
 {
-  struct Win32FileTime
-  {
-    unsigned long low;
-    unsigned long high;
-  };
-  // WIN32_FILE_ATTRIBUTE_DATA
-  struct Win32AttributeData
-  {
-    unsigned long attributes;
-    Win32FileTime creation;
-    Win32FileTime access;
-    Win32FileTime write;
-    unsigned long sizeHigh;
-    unsigned long sizeLow;
-  };
-  // BY_HANDLE_FILE_INFORMATION
-  struct Win32HandleInformation
-  {
-    unsigned long attributes;
-    Win32FileTime creation;
-    Win32FileTime access;
-    Win32FileTime write;
-    unsigned long volumeSerial;
-    unsigned long sizeHigh;
-    unsigned long sizeLow;
-    unsigned long links;
-    unsigned long indexHigh;
-    unsigned long indexLow;
-  };
-  // WIN32_FIND_DATAW
-  struct Win32FindData
-  {
-    unsigned long attributes;
-    Win32FileTime creation;
-    Win32FileTime access;
-    Win32FileTime write;
-    unsigned long sizeHigh;
-    unsigned long sizeLow;
-    unsigned long reserved0;
-    unsigned long reserved1;
-    wchar_t name[260];
-    wchar_t alternateName[14];
-  };
-  const unsigned long invalidAttributes = 0xFFFFFFFF;
-  // INVALID_HANDLE_VALUE, the pointer of all ones (written through a 64-bit integer: `(void*)-1`
-  // zero-extends -1 today, language/negative_integer_to_pointer).
-  void* const invalidHandle = (void*)(long long)-1;
-  const unsigned long attributeReadOnly = 0x1;
-  const unsigned long attributeDirectory = 0x10;
-  const unsigned long attributeReparsePoint = 0x400;
-
-  // UTF-8 to UTF-16 and back (CP_UTF8); an invalid sequence becomes U+FFFD.
-  WString widenUtf8(const char* text, int length)
-  {
-    if (length <= 0)
-      return WString();
-    int count = win32::MultiByteToWideChar(65001, 0, text, length, nullptr, 0);
-    WString result;
-    result.resize(count);
-    win32::MultiByteToWideChar(65001, 0, text, length, result.data(), count);
-    return result;
-  }
-  String narrowUtf16(const wchar_t* text, int length)
-  {
-    if (length <= 0)
-      return String();
-    int count = win32::WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
-    String result;
-    result.resize(count);
-    win32::WideCharToMultiByte(65001, 0, text, length, result.data(), count, nullptr, nullptr);
-    return result;
-  }
+  // UTF-8 to the wide text and back (platform::widenUtf8, narrowWide); an invalid sequence becomes
+  // U+FFFD.
+  WString widenUtf8(const char* text, int length) { return platform::widenUtf8(text, length); }
+  String narrowUtf16(const wchar_t* text, int length) { return platform::narrowWide(text, length); }
 
   // --- path ---
 
   struct pathIterator;
 
-  // A path: UTF-16 text in Windows form, with `\` and `/` both separators (std::filesystem::path).
+  // A path (std::filesystem::path): wide text in the target's form. On Windows `\` and `/` are both
+  // separators and a root name is a drive `C:` or a server `\\name`; elsewhere `/` is the one
+  // separator (a `\` is part of a name) and there is no root name.
   struct path
   {
     using value_type = wchar_t;
     using string_type = WString;
     using iterator = pathIterator;
     using const_iterator = pathIterator;
-    static const wchar_t preferred_separator = L'\\';
+    static const wchar_t preferred_separator = config::platform == Platform::Windows ? L'\\' : L'/';
 
     WString text;
 
@@ -129,13 +65,15 @@ namespace filesystem
       return *this;
     }
 
-    static bool isSeparator(wchar_t c) { return c == L'\\' || c == L'/'; }
+    static bool isSeparator(wchar_t c) { return c == L'/' || (config::platform == Platform::Windows && c == L'\\'); }
 
     // The parts, as offsets into the text: the root name ends at rootNameEnd (a drive `C:` or a
-    // server `\\name`), the root directory is the one separator after it, and the relative path
-    // starts after every separator there.
+    // server `\\name`, on Windows), the root directory is the one separator after it, and the
+    // relative path starts after every separator there.
     ContainerSize rootNameEnd() const
     {
+      if constexpr (config::platform != Platform::Windows)
+        return 0;
       const WString& t = this->text;
       ContainerSize n = t.size();
       if (n >= 2 && t[1] == L':' && ((t[0] >= L'A' && t[0] <= L'Z') || (t[0] >= L'a' && t[0] <= L'z')))
@@ -187,7 +125,7 @@ namespace filesystem
         return *this;
       }
       if (this->has_filename() || (!this->has_root_directory() && this->is_absolute()))
-        this->text.push_back(L'\\');
+        this->text.push_back(path::preferred_separator);
       this->text.append(p.text.c_str() + otherRootName, p.text.size() - otherRootName);
       return *this;
     }
@@ -226,11 +164,13 @@ namespace filesystem
     path& concat(const path& p) { return *this += p; }
 
     void clear() { this->text.clear(); }
+    // `/` as `\` on Windows; nothing elsewhere, where `/` is the one separator.
     path& make_preferred()
     {
-      for (wchar_t& c : this->text)
-        if (c == L'/')
-          c = L'\\';
+      if constexpr (config::platform == Platform::Windows)
+        for (wchar_t& c : this->text)
+          if (c == L'/')
+            c = L'\\';
       return *this;
     }
     path& remove_filename()
@@ -269,9 +209,10 @@ namespace filesystem
     WString generic_wstring() const
     {
       WString generic = this->text;
-      for (wchar_t& c : generic)
-        if (c == L'\\')
-          c = L'/';
+      if constexpr (config::platform == Platform::Windows)
+        for (wchar_t& c : generic)
+          if (c == L'\\')
+            c = L'/';
       return generic;
     }
     String generic_string() const
@@ -341,8 +282,9 @@ namespace filesystem
     bool has_filename() const { return this->filenameStart() < this->text.size(); }
     bool has_stem() const { return !this->stem().empty(); }
     bool has_extension() const { return !this->extension().empty(); }
-    // Absolute on Windows: a root name and a root directory (`C:\x`, `\\server\share`).
-    bool is_absolute() const { return this->has_root_name() && this->has_root_directory(); }
+    // Absolute on Windows: a root name and a root directory (`C:\x`, `\\server\share`); elsewhere a
+    // root directory (`/x`).
+    bool is_absolute() const { return (config::platform != Platform::Windows || this->has_root_name()) && this->has_root_directory(); }
     bool is_relative() const { return !this->is_absolute(); }
 
     path lexically_normal() const;
@@ -541,17 +483,17 @@ namespace filesystem
     WString result = this->root_name().text;
     for (wchar_t& c : result)
       if (c == L'/')
-        c = L'\\';
+        c = path::preferred_separator;
     if (this->has_root_directory())
-      result.push_back(L'\\');
+      result.push_back(path::preferred_separator);
     for (ContainerSize i = 0; i < parts.size(); ++i)
     {
       if (i > 0)
-        result.push_back(L'\\');
+        result.push_back(path::preferred_separator);
       result.append(parts[i]);
     }
     if (trailing && !parts.empty() && parts.back() != L"..")
-      result.push_back(L'\\');
+      result.push_back(path::preferred_separator);
     if (result.empty())
       result = L".";
     return path(result);
@@ -734,61 +676,31 @@ namespace filesystem
     const path& path2() const { return this->path2Value; }
   };
 
-  ErrorCode lastError() { return ErrorCode((int)win32::GetLastError(), systemCategory()); }
-  // Win32 errors that mean the path does not resolve: file, path not found; a bad name, network
-  // path, net name, path.
-  bool isNotFound(int error) { return error == 2 || error == 3 || error == 123 || error == 53 || error == 67 || error == 161; }
+  // What the system says of a file (platform::fileInfo, and a directory listing's entries): its type
+  // (a symlink only when links are not followed), whether it is a directory (a link to one too, on
+  // Windows), its permissions, its size when sizeKnown (a regular file's), and its last write time in
+  // the system's ticks (only compared).
+  struct FileInfo
+  {
+    file_type type = file_type::none;
+    bool directory = false;
+    perms permissions = perms::unknown;
+    uint64_t size = 0;
+    bool sizeKnown = false;
+    uint64_t writeTime = 0;
+  };
+
+  bool isNotFound(int error) { return platform::isNotFoundError(error); }
 
   // --- what a path names ---
-
-  file_status statusOfAttributes(unsigned long attributes)
-  {
-    perms permissions = (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all;
-    if ((attributes & attributeDirectory) != 0)
-      return file_status(file_type::directory, permissions);
-    return file_status(file_type::regular, permissions);
-  }
-
-  // The attributes and size of what p names, links followed (a reparse point is opened and asked).
-  bool attributesOf(const path& p, Win32HandleInformation& out, ErrorCode& ec)
-  {
-    Win32AttributeData data;
-    if (!win32::GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &data))
-    {
-      ec = lastError();
-      return false;
-    }
-    if ((data.attributes & attributeReparsePoint) != 0)
-    {
-      void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
-      if (file == invalidHandle)
-      {
-        ec = lastError();
-        return false;
-      }
-      bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
-      if (!ok)
-        ec = lastError();
-      win32::CloseHandle(file);
-      if (!ok)
-        return false;
-      ec.clear();
-      return true;
-    }
-    out.attributes = data.attributes;
-    out.sizeHigh = data.sizeHigh;
-    out.sizeLow = data.sizeLow;
-    ec.clear();
-    return true;
-  }
 
   // What p names, links followed: not_found when it does not resolve (ec says why, as std's does).
   file_status status(const path& p, ErrorCode& ec)
   {
-    Win32HandleInformation info;
-    if (!attributesOf(p, info, ec))
+    FileInfo info;
+    if (!platform::fileInfo(p, true, info, ec))
       return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
-    return statusOfAttributes(info.attributes);
+    return file_status(info.type, info.permissions);
   }
   file_status status(const path& p)
   {
@@ -798,19 +710,14 @@ namespace filesystem
       throw filesystem_error(String("status"), p, ec);
     return s;
   }
-  // What p itself is: a reparse point (a symbolic link or a junction) is a symlink.
+  // What p itself is: a link (on Windows a reparse point, a symbolic link or a junction) is a
+  // symlink.
   file_status symlink_status(const path& p, ErrorCode& ec)
   {
-    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
-    if (attributes == invalidAttributes)
-    {
-      ec = lastError();
+    FileInfo info;
+    if (!platform::fileInfo(p, false, info, ec))
       return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
-    }
-    ec.clear();
-    if ((attributes & attributeReparsePoint) != 0)
-      return file_status(file_type::symlink, (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all);
-    return statusOfAttributes(attributes);
+    return file_status(info.type, info.permissions);
   }
   file_status symlink_status(const path& p)
   {
@@ -841,15 +748,15 @@ namespace filesystem
   // The size of the regular file p, links followed; an error for a directory or a missing file.
   uint64_t file_size(const path& p, ErrorCode& ec)
   {
-    Win32HandleInformation info;
-    if (!attributesOf(p, info, ec))
+    FileInfo info;
+    if (!platform::fileInfo(p, true, info, ec))
       return (uint64_t)-1;
-    if ((info.attributes & attributeDirectory) != 0)
+    if (info.type == file_type::directory)
     {
       ec = make_error_code(Errc::is_a_directory);
       return (uint64_t)-1;
     }
-    return ((uint64_t)info.sizeHigh << 32) | info.sizeLow;
+    return info.size;
   }
   uint64_t file_size(const path& p)
   {
@@ -860,30 +767,14 @@ namespace filesystem
     return size;
   }
 
-  // The identity of what p names, links followed: its volume's serial number and its index there.
-  bool identityOf(const path& p, Win32HandleInformation& out, ErrorCode& ec)
-  {
-    void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
-    if (file == invalidHandle)
-    {
-      ec = lastError();
-      return false;
-    }
-    bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
-    if (!ok)
-      ec = lastError();
-    win32::CloseHandle(file);
-    return ok;
-  }
   // Whether a and b name the same file or directory, links followed; an error (and false) when
   // either does not resolve.
   bool equivalent(const path& a, const path& b, ErrorCode& ec)
   {
-    Win32HandleInformation first, second;
-    if (!identityOf(a, first, ec) || !identityOf(b, second, ec))
+    bool same = false;
+    if (!platform::sameFile(a, b, same, ec))
       return false;
-    ec.clear();
-    return first.volumeSerial == second.volumeSerial && first.indexHigh == second.indexHigh && first.indexLow == second.indexLow;
+    return same;
   }
   bool equivalent(const path& a, const path& b)
   {
@@ -896,13 +787,12 @@ namespace filesystem
 
   // --- directories ---
 
-  // A directory's entry: its path, and the status the listing gave (std::filesystem::directory_entry).
+  // A directory's entry: its path, and what the listing said of it (std::filesystem::directory_entry).
   struct directory_entry
   {
     filesystem::path pathValue;
-    unsigned long attributes = 0;
-    uint64_t size = 0;
-    bool listed = false; // attributes and size came with the listing
+    FileInfo info;
+    bool listed = false; // info came with the listing
 
     directory_entry() {}
     explicit directory_entry(const filesystem::path& p) : pathValue(p) {}
@@ -918,10 +808,10 @@ namespace filesystem
     // The listing's status, links followed (a link is asked anew).
     file_status status(ErrorCode& ec) const
     {
-      if (this->listed && (this->attributes & attributeReparsePoint) == 0)
+      if (this->listed && this->info.type != file_type::symlink)
       {
         ec.clear();
-        return statusOfAttributes(this->attributes);
+        return file_status(this->info.type, this->info.permissions);
       }
       return filesystem::status(this->pathValue, ec);
     }
@@ -938,9 +828,7 @@ namespace filesystem
       if (this->listed)
       {
         ec.clear();
-        if ((this->attributes & attributeReparsePoint) != 0)
-          return file_status(file_type::symlink, (this->attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all);
-        return statusOfAttributes(this->attributes);
+        return file_status(this->info.type, this->info.permissions);
       }
       return filesystem::symlink_status(this->pathValue, ec);
     }
@@ -955,10 +843,10 @@ namespace filesystem
     bool is_symlink() const { return filesystem::is_symlink(this->symlink_status()); }
     uint64_t file_size(ErrorCode& ec) const
     {
-      if (this->listed && (this->attributes & (attributeReparsePoint | attributeDirectory)) == 0)
+      if (this->listed && this->info.sizeKnown)
       {
         ec.clear();
-        return this->size;
+        return this->info.size;
       }
       return filesystem::file_size(this->pathValue, ec);
     }
@@ -978,30 +866,12 @@ namespace filesystem
   // A directory listing in progress, which copies of a directory_iterator share.
   struct DirectoryListing
   {
-    void* find = invalidHandle;
-    Win32FindData data;
+    platform::DirectoryReader reader;
     path directory;
     directory_entry entry;
 
     DirectoryListing() {}
     DirectoryListing(const DirectoryListing&) = delete;
-    ~DirectoryListing()
-    {
-      if (this->find != invalidHandle)
-        win32::FindClose(this->find);
-    }
-    // The entry of the current find data; false for `.` and `..`, which listings skip.
-    bool take()
-    {
-      const wchar_t* name = this->data.name;
-      if (name[0] == L'.' && (name[1] == 0 || (name[1] == L'.' && name[2] == 0)))
-        return false;
-      this->entry.pathValue = this->directory / path(name);
-      this->entry.attributes = this->data.attributes;
-      this->entry.size = ((uint64_t)this->data.sizeHigh << 32) | this->data.sizeLow;
-      this->entry.listed = true;
-      return true;
-    }
   };
 
   // The entries of a directory, `.` and `..` left out, in the order the file system gives them
@@ -1040,40 +910,26 @@ namespace filesystem
       ec.clear();
       SharedPtr<DirectoryListing> state = makeShared<DirectoryListing>();
       state->directory = p;
-      path pattern = p / path(L"*");
-      state->find = win32::FindFirstFileW(pattern.c_str(), (_WIN32_FIND_DATAW*)(void*)&state->data);
-      if (state->find == invalidHandle)
-      {
-        // ERROR_FILE_NOT_FOUND or ERROR_NO_MORE_FILES on a directory that is there: an empty
-        // listing; on a missing one, its own error.
-        ErrorCode failure = lastError();
-        if (failure.value() != 2 && failure.value() != 18)
-          ec = failure;
-        else if (file_status s = status(p, ec); !is_directory(s))
-          ec = ec ? ec : make_error_code(Errc::not_a_directory);
-        return;
-      }
+      if (!state->reader.open(p, ec))
+        return; // an error, or an empty directory (the end)
       this->listing = state;
-      if (!this->listing->take())
-        this->advance(ec);
+      this->advance(ec);
     }
     // The next entry; the end when there is none (or on an error, which ec reports).
     void advance(ErrorCode& ec)
     {
       ec.clear();
-      while (this->listing)
+      if (!this->listing)
+        return;
+      WString name;
+      DirectoryListing& state = *this->listing;
+      if (!state.reader.next(name, state.entry.info, ec))
       {
-        if (!win32::FindNextFileW(this->listing->find, (_WIN32_FIND_DATAW*)(void*)&this->listing->data))
-        {
-          int error = (int)win32::GetLastError();
-          if (error != 18)
-            ec = ErrorCode(error, systemCategory());
-          this->listing = SharedPtr<DirectoryListing>();
-          return;
-        }
-        if (this->listing->take())
-          return;
+        this->listing = SharedPtr<DirectoryListing>();
+        return;
       }
+      state.entry.pathValue = state.directory / path(name);
+      state.entry.listed = true;
     }
     directory_iterator& increment(ErrorCode& ec)
     {
@@ -1098,40 +954,14 @@ namespace filesystem
 
   // --- paths from the system ---
 
-  // A path a Win32 function writes (its size, its buffer -> the length, or the size it needs).
-  WString systemPath(unsigned long (*get)(unsigned long, wchar_t*))
-  {
-    wchar_t buffer[520];
-    unsigned long n = get(520, buffer);
-    if (n < 520)
-      return WString(buffer, (ContainerSize)n);
-    WString big;
-    big.resize((ContainerSize)n);
-    n = get(n, big.data());
-    big.resize((ContainerSize)n);
-    return big;
-  }
-
-  // p made absolute against the current directory (GetFullPathName, which also resolves `.` and `..`).
+  // p made absolute against the current directory (on Windows GetFullPathName, which also resolves
+  // `.` and `..`; elsewhere the current directory joined with p).
   path absolute(const path& p, ErrorCode& ec)
   {
     ec.clear();
     if (p.empty())
       return path();
-    wchar_t buffer[520];
-    unsigned long n = win32::GetFullPathNameW(p.c_str(), 520, buffer, nullptr);
-    if (n == 0)
-    {
-      ec = lastError();
-      return path();
-    }
-    if (n < 520)
-      return path(WString(buffer, (ContainerSize)n));
-    WString big;
-    big.resize((ContainerSize)n);
-    n = win32::GetFullPathNameW(p.c_str(), n, big.data(), nullptr);
-    big.resize((ContainerSize)n);
-    return path(big);
+    return platform::absolutePath(p, ec);
   }
   path absolute(const path& p)
   {
@@ -1142,40 +972,9 @@ namespace filesystem
     return result;
   }
 
-  // The absolute path of what p names with every link resolved; p must exist. The system's
-  // `\\?\` prefix is removed (`\\?\UNC\` becomes `\\`).
-  path canonical(const path& p, ErrorCode& ec)
-  {
-    void* file = win32::CreateFileW(p.c_str(), 0, 7, nullptr, 3, 0x02000000, nullptr); // no access, share all, OPEN_EXISTING, BACKUP_SEMANTICS
-    if (file == invalidHandle)
-    {
-      ec = lastError();
-      return path();
-    }
-    wchar_t buffer[520];
-    unsigned long n = win32::GetFinalPathNameByHandleW(file, buffer, 520, 0);
-    WString result;
-    if (n > 0 && n < 520)
-      result = WString(buffer, (ContainerSize)n);
-    else if (n >= 520)
-    {
-      result.resize((ContainerSize)n);
-      n = win32::GetFinalPathNameByHandleW(file, result.data(), n, 0);
-      result.resize((ContainerSize)n);
-    }
-    if (n == 0)
-      ec = lastError();
-    else
-      ec.clear();
-    win32::CloseHandle(file);
-    if (ec)
-      return path();
-    if (result.find(L"\\\\?\\UNC\\") == 0)
-      result = L"\\\\" + result.substr(8);
-    else if (result.find(L"\\\\?\\") == 0)
-      result = result.substr(4);
-    return path(result);
-  }
+  // The absolute path of what p names with every link resolved; p must exist (on Windows the
+  // system's `\\?\` prefix is removed, `\\?\UNC\` becoming `\\`).
+  path canonical(const path& p, ErrorCode& ec) { return platform::canonicalPath(p, ec); }
   path canonical(const path& p)
   {
     ErrorCode ec;
@@ -1228,23 +1027,13 @@ namespace filesystem
     return result;
   }
 
-  path current_path(ErrorCode& ec)
-  {
-    ec.clear();
-    return path(systemPath(win32::GetCurrentDirectoryW));
-  }
+  path current_path(ErrorCode& ec) { return platform::currentPath(ec); }
   path current_path()
   {
     ErrorCode ec;
     return current_path(ec);
   }
-  void current_path(const path& p, ErrorCode& ec)
-  {
-    if (win32::SetCurrentDirectoryW(p.c_str()))
-      ec.clear();
-    else
-      ec = lastError();
-  }
+  void current_path(const path& p, ErrorCode& ec) { platform::setCurrentPath(p, ec); }
   void current_path(const path& p)
   {
     ErrorCode ec;
@@ -1252,11 +1041,9 @@ namespace filesystem
     if (ec)
       throw filesystem_error(String("current_path"), p, ec);
   }
-  path temp_directory_path(ErrorCode& ec)
-  {
-    ec.clear();
-    return path(systemPath(win32::GetTempPathW));
-  }
+  // The directory for temporary files: GetTempPath's on Windows; elsewhere TMPDIR (or TMP, TEMP,
+  // TEMPDIR), else /tmp.
+  path temp_directory_path(ErrorCode& ec) { return platform::tempDirectoryPath(ec); }
   path temp_directory_path()
   {
     ErrorCode ec;
@@ -1266,21 +1053,12 @@ namespace filesystem
   space_info space(const path& p, ErrorCode& ec)
   {
     space_info result;
-    unsigned long long available = 0;
-    unsigned long long total = 0;
-    unsigned long long free = 0;
-    if (!win32::GetDiskFreeSpaceExW(p.c_str(), (_ULARGE_INTEGER*)&available, (_ULARGE_INTEGER*)&total, (_ULARGE_INTEGER*)&free))
+    if (!platform::spaceOf(p, result, ec))
     {
-      ec = lastError();
       result.capacity = (uint64_t)-1;
       result.free = (uint64_t)-1;
       result.available = (uint64_t)-1;
-      return result;
     }
-    ec.clear();
-    result.capacity = total;
-    result.free = free;
-    result.available = available;
     return result;
   }
   space_info space(const path& p)
@@ -1297,13 +1075,10 @@ namespace filesystem
   // Creates the directory p; false (and no error) when a directory is there already.
   bool create_directory(const path& p, ErrorCode& ec)
   {
-    if (win32::CreateDirectoryW(p.c_str(), nullptr))
-    {
-      ec.clear();
+    if (platform::createDirectory(p, ec))
       return true;
-    }
-    ErrorCode failure = lastError();
-    if ((failure.value() == 183 || failure.value() == 5) && is_directory(p, ec)) // ERROR_ALREADY_EXISTS; ACCESS_DENIED for a drive's root
+    ErrorCode failure = ec;
+    if (platform::isAlreadyThereError(failure.value()) && is_directory(p, ec))
     {
       ec.clear();
       return false;
@@ -1356,30 +1131,18 @@ namespace filesystem
     return created;
   }
 
-  // Removes the file or empty directory p; false (and no error) when there is none. A read-only
-  // file is not removed (the error is access denied), as with MSVC.
+  // Removes the file or empty directory p (a link itself); false (and no error) when there is none.
+  // On Windows a read-only file is not removed (the error is access denied), as with MSVC.
   bool remove(const path& p, ErrorCode& ec)
   {
-    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
-    if (attributes == invalidAttributes)
+    FileInfo info;
+    if (!platform::fileInfo(p, false, info, ec))
     {
-      ErrorCode failure = lastError();
-      if (isNotFound(failure.value()))
-      {
+      if (isNotFound(ec.value()))
         ec.clear();
-        return false;
-      }
-      ec = failure;
       return false;
     }
-    bool ok = (attributes & attributeDirectory) != 0 ? win32::RemoveDirectoryW(p.c_str()) != 0 : win32::DeleteFileW(p.c_str()) != 0;
-    if (!ok)
-    {
-      ec = lastError();
-      return false;
-    }
-    ec.clear();
-    return true;
+    return platform::removePath(p, info.directory, ec);
   }
   bool remove(const path& p)
   {
@@ -1430,15 +1193,8 @@ namespace filesystem
     return count;
   }
 
-  // Moves from to to, replacing a file there (MoveFileEx with MOVEFILE_REPLACE_EXISTING: not
-  // across volumes, which is errc::cross_device_link).
-  void rename(const path& from, const path& to, ErrorCode& ec)
-  {
-    if (win32::MoveFileExW(from.c_str(), to.c_str(), 1))
-      ec.clear();
-    else
-      ec = lastError();
-  }
+  // Moves from to to, replacing a file there (not across volumes, which is errc::cross_device_link).
+  void rename(const path& from, const path& to, ErrorCode& ec) { platform::renamePath(from, to, ec); }
   void rename(const path& from, const path& to)
   {
     ErrorCode ec;
@@ -1453,27 +1209,23 @@ namespace filesystem
   bool copy_file(const path& from, const path& to, copy_options options, ErrorCode& ec)
   {
     ec.clear();
-    Win32AttributeData source;
-    Win32AttributeData target;
-    if (!win32::GetFileAttributesExW(from.c_str(), GetFileExInfoStandard, &source))
-    {
-      ec = lastError();
+    FileInfo source;
+    FileInfo target;
+    if (!platform::fileInfo(from, true, source, ec))
       return false;
-    }
-    if ((source.attributes & attributeDirectory) != 0)
+    if (source.type == file_type::directory)
     {
       ec = make_error_code(Errc::is_a_directory);
       return false;
     }
-    if (win32::GetFileAttributesExW(to.c_str(), GetFileExInfoStandard, &target))
+    ErrorCode probe;
+    if (platform::fileInfo(to, true, target, probe))
     {
       if ((options & copy_options::skip_existing) != copy_options::none)
         return false;
       if ((options & copy_options::update_existing) != copy_options::none)
       {
-        uint64_t sourceTime = ((uint64_t)source.write.high << 32) | source.write.low;
-        uint64_t targetTime = ((uint64_t)target.write.high << 32) | target.write.low;
-        if (sourceTime <= targetTime)
+        if (source.writeTime <= target.writeTime)
           return false;
       }
       else if ((options & copy_options::overwrite_existing) == copy_options::none)
@@ -1482,12 +1234,7 @@ namespace filesystem
         return false;
       }
     }
-    if (!win32::CopyFileW(from.c_str(), to.c_str(), 0))
-    {
-      ec = lastError();
-      return false;
-    }
-    return true;
+    return platform::copyFileContents(from, to, ec);
   }
   bool copy_file(const path& from, const path& to, ErrorCode& ec) { return copy_file(from, to, copy_options::none, ec); }
   bool copy_file(const path& from, const path& to, copy_options options)
@@ -1563,31 +1310,9 @@ namespace filesystem
   }
   void copy(const path& from, const path& to) { copy(from, to, copy_options::none); }
 
-  // Sets p's permissions (replace, add or remove the bits given): Windows keeps only whether it
-  // is read-only, which it is when the result has no write bit.
-  void permissions(const path& p, perms permissions, perm_options options, ErrorCode& ec)
-  {
-    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
-    if (attributes == invalidAttributes)
-    {
-      ec = lastError();
-      return;
-    }
-    perms current = (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all;
-    perms result = permissions;
-    if ((options & perm_options::add) != perm_options(0))
-      result = current | permissions;
-    else if ((options & perm_options::remove) != perm_options(0))
-      result = current & ~permissions;
-    bool readOnly = (result & (perms::owner_write | perms::group_write | perms::others_write)) == perms::none;
-    unsigned long wanted = readOnly ? (attributes | attributeReadOnly) : (attributes & ~attributeReadOnly);
-    if (wanted != attributes && !win32::SetFileAttributesW(p.c_str(), wanted))
-    {
-      ec = lastError();
-      return;
-    }
-    ec.clear();
-  }
+  // Sets p's permissions (replace, add or remove the bits given). Windows keeps only whether it is
+  // read-only, which it is when the result has no write bit; elsewhere chmod.
+  void permissions(const path& p, perms permissions, perm_options options, ErrorCode& ec) { platform::changePermissions(p, permissions, options, ec); }
   void permissions(const path& p, perms permissions, ErrorCode& ec) { filesystem::permissions(p, permissions, perm_options::replace, ec); }
   void permissions(const path& p, perms permissions, perm_options options)
   {

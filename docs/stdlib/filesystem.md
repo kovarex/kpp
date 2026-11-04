@@ -3,15 +3,21 @@
 What `std::filesystem` converts to: namespace `filesystem`, with std's names (`filesystem::path`,
 `filesystem::exists`, ...), so that code which reaches it through a namespace alias or a
 using-directive (Factorio's `namespace __fs = std::filesystem;` with `using namespace __fs;`)
-reads the same. Windows only: paths are UTF-16 text as Windows keeps them, and every operation is
-a Win32 wide-character call. The error types it reports with (ErrorCode, Errc, SystemError) are
-specified at the end.
+reads the same. On Windows paths are UTF-16 text as Windows keeps them, and every operation is a
+Win32 wide-character call. On Linux and FreeBSD paths are wide text too (UTF-32: wchar_t is 32 bits
+there), and every operation is a POSIX call with the path in UTF-8 (stat, opendir, realpath, ...;
+stdlib/platform/FilesPosix.kpp). *Difference from C++*: there std's `path::value_type` is char and
+its native string the bytes; kpp keeps one wide type on every target. The error types it reports
+with (ErrorCode, Errc, SystemError) are specified at the end.
 
 ## path
 
-A path is text in Windows form: `\` and `/` are both separators, `preferred_separator` is `\`.
-It is stored as a WString (`native()`, `c_str()`, and an implicit conversion to WString, the native
-string); `value_type` is wchar_t.
+On Windows a path is text in Windows form: `\` and `/` are both separators, `preferred_separator`
+is `\`. On Linux and FreeBSD `/` is the one separator and `preferred_separator`; a `\` is part of a
+name, a path has no root name, `make_preferred()` changes nothing and the generic forms are the
+text itself, as std's are there. The rest of this section is Windows' form; elsewhere read it
+without root names, with `/` for `\`. It is stored as a WString (`native()`, `c_str()`, and an
+implicit conversion to WString, the native string); `value_type` is wchar_t.
 
 Construction (implicit, except the two-pointer forms): from a WString, a `const wchar_t*`, or a
 `[first, last)` range of wchar_t; from a String, a `const char*`, a StringView or a range of char,
@@ -32,8 +38,8 @@ The parts of a path, by example (`C:\a\b.txt`):
   (`a\b\` gives `a\b`, `a\b` gives `a`, `\a` gives `\`, `a` gives an empty path); a path without a
   relative path is its own parent.
 - Each `has_x()` says whether x is non-empty. `is_absolute()`: a root name and a root directory
-  (`C:\x`, `\\server\share`); `C:x` and `\x` are relative, as on Windows. `is_relative()`: not
-  absolute. `empty()`.
+  (`C:\x`, `\\server\share`); `C:x` and `\x` are relative, as on Windows. Elsewhere a root
+  directory (`/x`). `is_relative()`: not absolute. `empty()`.
 
 Elements, for iteration (`begin()`, `end()`, bidirectional; each element a path): the root name,
 the root directory, each filename of the relative path in order, and an empty element when the
@@ -161,13 +167,14 @@ ones are), `hash_value`, and paths' stream operators.
 
 What `std::error_code`, `std::errc` and `std::system_error` convert to (global names).
 
-`ErrorCategory`: what an error value means: `systemCategory()` (a Windows error, what
-GetLastError returns) or `genericCategory()` (an errno value); `name()` is "system" or "generic".
+`ErrorCategory`: what an error value means: `systemCategory()` (the system's error: on Windows what
+GetLastError returns, elsewhere an errno value) or `genericCategory()` (an errno value); `name()` is
+"system" or "generic".
 
 `ErrorCode`: a value and a category. `ErrorCode()` is 0 in the system category, no error.
 `value()`, `category()`, `explicit operator bool` (value is not 0), `clear()`, `assign(value,
-category)`, `message()`: the system's text for a Windows error (FormatMessage, without its
-trailing line break, as UTF-8), strerror's for a generic one. `==`, `!=` with another ErrorCode
+category)`, `message()`: the system's text for a system error (on Windows FormatMessage's, without
+its trailing line break, as UTF-8; elsewhere strerror's), strerror's for a generic one. `==`, `!=` with another ErrorCode
 compare value and category.
 
 `Errc`: the portable conditions with their errno values (operation_not_permitted 1,
@@ -177,9 +184,13 @@ file_exists 17, cross_device_link 18, no_such_device 19, not_a_directory 20, is_
 invalid_argument 22, too_many_files_open 24, file_too_large 27, no_space_on_device 28,
 read_only_file_system 30, resource_deadlock_would_occur 36, filename_too_long 38,
 function_not_supported 40, directory_not_empty 41, not_supported 129,
-operation_not_supported 130, timed_out 138). `make_error_code(e)`: the ErrorCode of e in the
+operation_not_supported 130, timed_out 138: the UCRT's; glibc's and FreeBSD's for the eight that differ there,
+resource_unavailable_try_again, resource_deadlock_would_occur, filename_too_long,
+function_not_supported, directory_not_empty, not_supported, operation_not_supported and timed_out,
+stdlib/platform). `make_error_code(e)`: the ErrorCode of e in the
 generic category. `ec == e` (and `!=`) for an ErrorCode and an Errc: a generic code equals the
-condition of its value; a system code equals the condition its Windows error means: file, path
+condition of its value; a system code equals, elsewhere than Windows, the condition of its value,
+and on Windows the condition its Windows error means: file, path
 or network path not found, a bad name: no_such_file_or_directory; access denied, write
 protected, sharing violation: permission_denied; already exists: file_exists; not same device:
 cross_device_link; directory not empty: directory_not_empty; a directory name expected:
