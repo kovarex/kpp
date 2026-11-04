@@ -7,6 +7,7 @@ snippet says what it is about:
     // spec: default arguments
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
+    // pending on windows linux: why            (a known gap of those targets alone: windows, linux, freebsd)
     // kppc: --release                           (kppc options this snippet is always built with: a
                                                   gap that only one configuration shows)
     // error: static assertion failed            (the program must not compile, and the compiler's
@@ -169,12 +170,17 @@ def header(path):
             "exit": None, "kppc": "", "target": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending|error|warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
                 continue
-            if m.group(1) in ("error", "warning"):
+            if m.group(1).startswith("pending on "):
+                # (`// pending on windows: why`: a gap of those targets alone; windows-gnu is Windows)
+                here = "windows" if TARGET in (None, "windows-gnu") else TARGET
+                if here in m.group(1)[len("pending on "):].split():
+                    info["pending"] = m.group(2).strip()
+            elif m.group(1) in ("error", "warning"):
                 info[m.group(1) + "s"].append(m.group(2).strip())
             else:
                 info[m.group(1)] = m.group(2).strip()

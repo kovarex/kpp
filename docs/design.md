@@ -2767,7 +2767,7 @@ The semantics of section 9 hold on every target:
   - `errnoLocation`: `_errno()`, `__errno_location()`, `__error()`.
   - `setTerminate`: the UCRT's `set_terminate` on Windows; elsewhere kpp's own handler
     (`platform::terminateHandler`, an Atomic), as no C++ runtime is linked there. Stage 3's
-    terminate calls it.
+    `kpp_eh_terminate` calls it, through `kpp_terminate_handler` (2026-11-04).
   - Threads and locks (Thread.kpp, SharedPtr.kpp): `Lock`, `SharedLock` and `Condition`, and
     `startThread`, `joinThread`, `detachThread`, `currentThreadId`, `processorCount`. On Windows
     Lock and SharedLock are one SRW lock (one pointer, as before), Condition a
@@ -3175,8 +3175,12 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     so the program terminates in phase 1.
   - **Throw:** `kpp_throw` puts the object, its descriptor and its destructor after the unwinder's
     32-byte header and calls `_Unwind_RaiseException`. When that returns (no handler),
-    `kpp_eh_terminate` prints "unhandled exception of type T: message" from the throw site and
-    aborts. With no memory for the header, it says so and aborts.
+    `kpp_eh_terminate` prints "unhandled exception of type T: message" from the throw site, then
+    calls the terminate handler `setTerminate` installed, if any, and aborts if it returns
+    (2026-11-04). The handler is read through the standard library's `extern "C"
+    kpp_terminate_handler` (platform/PlatformPosix.kpp), as the runtime is IR text and names no kpp
+    function; without the standard library (--no-std) there is none. With no memory for the
+    header, it says so and aborts.
 - **The unwinder:** FreeBSD's static link takes it from libgcc_eh (LLVM's libunwind in 14.3), and
   glibc's from libgcc_s. kpp's functions have unwind tables by default (they are not `nounwind`).
 - **Found on the way:** the first personality took a pc-relative zero, catch (...)'s, for an
@@ -3187,14 +3191,22 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `kpp/asserts_and_config` and `config_values`, are the runner's: its `.linux.expected` wins over
   `.release.expected`.
   - FreeBSD: every snippet builds (928, 19 known not to), and the 25 stage-3 lines of
-    freebsd-known-failures.txt are gone, for CI's VM to confirm.
+    freebsd-known-failures.txt are gone. CI's VM confirmed it (run 41835608420, at 44e4f1f9):
+    `spec freebsd: ALL PASSED (956 pass, 3 known)`.
+  - A snippet's `// pending on windows: why` is a gap of the targets it names alone (run_spec.py,
+    2026-11-04): language/noexcept_violation_terminates_at_the_throw and
+    uncaught_exception_calls_the_terminate_handler pass on Linux and FreeBSD and are pending on
+    Windows.
 - **The libraries' tests on Linux**: base64 (3), bcrypt (5), html (6), json (13), markdown (10),
   net (3), sha256 (6) and url (6) all pass. Each stopped at its first throw before.
 - **Not yet:**
   - noexcept on Windows (the pending spec): its SEH filter would report and end the program in the
     search.
-  - The terminate handler off Windows: `setTerminate` and `uncaught_exceptions()`, which call the
-    UCRT today (stage 4, the standard library's).
+  - On Windows, an exception nobody catches does not call the terminate handler: `@main`'s handler
+    prints and aborts (language/uncaught_exception_calls_the_terminate_handler, pending on
+    Windows). Calling the UCRT's `terminate()` there instead of `abort()` changes Windows' IR.
+  - `uncaught_exceptions()` off Windows: it calls the UCRT's `__uncaught_exceptions`, which is not
+    there. kpp's runtime would count from `kpp_throw` to `kpp_eh_enter`.
 
 ### Questions for kovarex
 

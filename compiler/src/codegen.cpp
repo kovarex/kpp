@@ -18284,6 +18284,13 @@ namespace
         decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
         shared += baseSearchFunction("@kpp_eh_offset");
         std::string message = exceptionMessage(fmt2);
+        // After the report, the terminate handler setTerminate installed (the stdlib's
+        // kpp_terminate_handler, platform/PlatformPosix.kpp), if one is; abort when it returns. A
+        // program without the stdlib (--no-std) has none: its name is claimed only by its definition.
+        std::string handler;
+        if (declaredNames.contains("@kpp_terminate_handler"))
+          handler = "  %handler = call ptr @kpp_terminate_handler()\n  %unset = icmp eq ptr %handler, null\n  br i1 %unset, label %abort, label %call\n"
+                    "call:\n  call void %handler()\n  br label %abort\nabort:\n";
         shared += sharedComdat("@kpp_throw") +
                   std::string(kppThrowHeader) + "\nentry:\n"
                   "  %h = call ptr @malloc(i64 64)\n  %none = icmp eq ptr %h, null\n  br i1 %none, label %nomemory, label %raise\n"
@@ -18309,7 +18316,7 @@ namespace
                   "  %fmt0 = select i1 %isNoexcept, ptr " + throughNoexcept + ", ptr " + uncaught + "\n"
                   "  %fmt = select i1 %isUnlisted, ptr " + unlisted + ", ptr %fmt0\n"
                   "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %fmt, ptr %name)\n" + message +
-                  "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
+                  "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n" + handler + "  call void @abort()\n  unreachable\n}\n";
         shared += sharedComdat("@kpp_eh_enter") +
                   std::string(kppEhEnterHeader) + "\nentry:\n"
                   "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  %object = load ptr, ptr %op\n"
