@@ -24,13 +24,47 @@ with `/DEBUG` already, for the crash report's function names).
 - A trivial callee inlined into its caller (docs/compile-speed.md, "Design: inlining trivial
   functions in kppc") has no lines of its own: its instructions are at the call's line, and stepping
   into it steps over it. `--no-inline` keeps every call, for stepping into getters.
-- Only lines (`emissionKind: LineTablesOnly`): no types and no variables yet (thread B adds them), so a debugger shows the
-  stack, the source and the registers, but not locals by name.
-- Not covered: the startup functions of global initializers (no lines).
+- Variables and types, in an unoptimized build (2026-11-04, "Variables and types" below): every
+  parameter and local, `this` too, by its kpp name and visible in its block, with its type; every
+  class with its members, bases and vtable pointer as kppc lays it out, named as kppc's IR names it
+  (`game::Entity`, `Vector<int32>`). An optimized build with `--debug-info` (build.kpp's fastdebug)
+  keeps the line tables alone (`emissionKind: LineTablesOnly`).
+- Not covered: the startup functions of global initializers (no lines); globals, static members and
+  a lambda's captures (no variables yet).
 
 `tests\debuginfo.ps1` (run by run_tests.cmd) builds `tests\debuginfo\lines.kpp`, runs it and checks
-the lines of each of its functions in the PDB (llvm-pdbutil) against `lines.expected`;
-determinism.ps1 checks that the IR with `--debug-info` does not depend on the thread count.
+the lines of each of its functions in the PDB (llvm-pdbutil) against `lines.expected`, then
+`tests\debuginfo\values.kpp` as one module and as 64, and its variables and types in the PDB against
+`values.expected`; determinism.ps1 checks that the IR with `--debug-info` does not depend on the
+thread count.
+
+## Variables and types
+
+In a debug build (unoptimized) `--debug-info` describes the program's data too (2026-11-04):
+- **Variables**: each parameter (`this` artificial, the object pointer) and local by its kpp name,
+  at its declaration's line, in the lexical block of the block statement it is declared in (a
+  function's own body is the function's scope, as clang has it): the debugger shows a block's
+  variables where its code is. A variable's address is its alloca, or the pointer a parameter
+  passed by address is; a reference's type is the reference, its slot holding the pointer.
+- **Basic types** as CodeView has them, without names of their own (`int`, `__int64`, `unsigned
+  char`, `double`), each of kpp's integers a typedef of its name too: the PDB's S_UDT `int32`,
+  `uint8`, which a natvis rule's `$T1` parses.
+- **Pointers, references, const, arrays** (their length), function pointers.
+- **Enums** with their enumerators and underlying type.
+- **Classes** with their data members at their offsets in kppc's own layout (a bit field at its
+  bits), their bases at theirs, a polymorphic class's vtable pointer (CodeView's LF_VFUNCTAB), an
+  anonymous struct's or union's members as the enclosing class's (as MSVC's PDBs list them:
+  String's `heapChars`). A class or enum is named as kppc's IR names it, the whole spelling
+  (TypeTable::toString, qualified: `game::Entity`, `Vector<Vector<int32>>`, every template argument
+  with the defaults), which identifies it too: the natvis rules match these names (agreed with
+  thread F, "Values in Visual Studio" below).
+
+Each class is defined once in the program, in its home module (the hash of its name over the
+modules, as a first use's home), and declared in every other module that names it (DIFlagFwdDecl,
+the same identifier): lld-link merges the modules' types into the PDB and Visual Studio resolves a
+declaration by the identifier. A home lists its classes in its compile unit's retainedTypes (LLVM's
+CodeView writer emits a type only when something in its module names it). A class the program only
+points to, never laid out, has its declaration alone.
 
 ## What it costs
 
@@ -82,8 +116,8 @@ kpp extension installed; scratch programs, not a test of run_tests):
   stack `fmain(int32, char16_t**)`, `kpp.wmain`. Step into stops in SystemUtil.kpp at
   preventSleep's line 695, step over at 699, step out back in Main.kpp at line 30. A second
   breakpoint, line 35, is hit.
-- Locals and watches show nothing ("identifier "values" is undefined"): the line tables have no
-  variables. Thread B adds them, with the types ("Values in Visual Studio" below).
+- Locals and watches showed nothing ("identifier "values" is undefined"): the line tables had no
+  variables. A debug build has them since 2026-11-04 ("Variables and types" above).
 
 ## Values in Visual Studio
 
@@ -119,3 +153,19 @@ its text does not depend on where it lands; module assembly (`renumberDebugIds`)
 place to the module's, after the module's fixed `!0` to `!15` (`debugModuleTail`: the compile unit,
 a placeholder file, the empty subroutine type and the CodeView flags). The file of each function is
 an inline `!DIFile` with the source's absolute path.
+
+With variables (an unoptimized build): a block statement opens a lexical block (`openDebugBlock`),
+which the markers then name (`  ;@LINE:BLOCK`: a location per line and block); each parameter and
+local is recorded (`Emitter::debugVariable`) and gets a `#dbg_declare` after the allocas. A
+function's own ids are then 0 its DISubprogram, 1 its file, its blocks, its variables, its
+locations. A variable's type is a placeholder in the function's text, `!T` and 16 hex digits: the
+hash of the type's IR spelling (`Emitter::debugType`), whose metadata text is made once per build
+into Shared::debugTypes, its own ids from 0 as a function's. Module assembly (`appendDebugTypes`)
+collects the placeholders its definitions name and the types those name, appends each type's text
+once in key order (so the text does not depend on the threads), renumbers it after the
+definitions' ids, and writes each placeholder's id over it in place, padded with blanks. Classes
+are defined after the emission (`homeDebugClasses`, from prepareModuleTexts: then every layout the
+program has is laid out) for their home's instance piece (a debug build's program pieces are
+assembled earlier, so they declare every class). A compile server's build makes a type's text
+again when it first names the type (an edited enum's enumerators), and keeps the texts its kept
+definitions name.

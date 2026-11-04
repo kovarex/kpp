@@ -1,0 +1,70 @@
+// --debug-info's variables and types (docs/debugging.md, "Variables and types"): debuginfo.ps1 builds
+// this at one module and at 64, runs it, and checks what the PDB says of inspect's parameters, locals
+// and block, of these classes, this enum and this typed union (its tag and its alternatives' storage),
+// and of the library's Vector<int32> against values.expected.
+namespace game
+{
+  enum class Mode : unsigned char { Off, On, Broken = 7 };
+
+  struct Point
+  {
+    int x;
+    int y;
+  };
+
+  class Shape
+  {
+  public:
+    virtual ~Shape() {}
+    virtual int area() const { return 0; }
+    int id = 1;
+  };
+
+  class Square : public Shape
+  {
+  public:
+    int area() const override { return this->side * this->side; }
+    int side = 3;
+    Shape* next = nullptr;
+  };
+}
+
+struct Flags
+{
+  bool on : 1;
+  unsigned level : 3;
+  union
+  {
+    int whole;
+    float part;
+  };
+};
+
+union enum Value : uint8_t
+{
+  { {int, Integer}, {double, Real} }
+};
+
+int inspect(const game::Point& point, int scale, game::Mode mode)
+{
+  int sum = point.x * scale;
+  Vector<int> values;
+  values.push_back(sum);
+  {
+    double half = sum / 2.0;
+    Flags flags{};
+    flags.level = 2;
+    game::Square square;
+    Value value;
+    value[Value::Real] = half;
+    sum += (int)half + (int)flags.level + square.area() + (int)mode + (value == Value::Real ? 1 : 0);
+  }
+  return sum + (int)values.size();
+}
+
+int main()
+{
+  game::Point point{3, 4};
+  println(inspect(point, 2, game::Mode::On));
+  return 0;
+}

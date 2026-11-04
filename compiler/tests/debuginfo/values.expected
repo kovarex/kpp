@@ -1,0 +1,39 @@
+function inspect(const game::Point&, int32, game::Mode)
+  parameter point const game::Point&
+  parameter scale int
+  parameter mode game::Mode
+  local sum int
+  local values Vector<int32>
+  block
+    local half double
+    local flags Flags
+    local square game::Square
+    local value Value
+class game::Point, 8 bytes
+  member x int at 0
+  member y int at 4
+class game::Shape, 16 bytes
+  vtable pointer
+  member id int at 8
+class game::Square, 32 bytes
+  base game::Shape at 0
+  member side int at 16
+  member next game::Shape* at 24
+class Flags, 12 bytes
+  member on bool bits 1 at 0 at 0
+  member level unsigned bits 3 at 0 at 4
+  member whole int at 8
+  member part float at 8
+class Value, 16 bytes
+  member __tag Value::Tag at 0
+  member __alt_Integer int at 8
+  member __alt_Real double at 8
+class Vector<int32>, 24 bytes
+  member items int* at 0
+  member length unsigned __int64 at 8
+  member allocated unsigned __int64 at 16
+enum game::Mode, unsigned char
+  Off = 0
+  On = 1
+  Broken = 7
+typedefs int16 int32 int64 int8 uint16 uint32 uint64 uint8

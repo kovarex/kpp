@@ -589,6 +589,26 @@ namespace
     std::vector<bool> unassembled;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
+    bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
+    // --debug-info's types, each made once per build by its key (Emitter::debugType: its IR spelling's
+    // hash): its metadata text, numbered from 0 as a function's, naming other types by placeholders
+    // (`!T` and a key's 16 hex digits) that module assembly resolves (appendDebugTypes). A compile
+    // server's build (rebuildLLVM, a generation of its own) makes a type's text again when it first
+    // names the type, an edited enum's enumerators then the new ones; the definitions it kept name the
+    // types their own build made.
+    // A class's text is its declaration (DIFlagFwdDecl, by its identifier); its definition, made once
+    // the emission is done (Emitter::homeDebugClasses), is in its home's text alone (debugHomes).
+    struct DebugTypeText
+    {
+      std::string text;
+      uint32_t generation = 0;
+      const Ty* type = nullptr;       // a class's, as its build named it
+      std::string definition;         // a class's members, bases and vtable pointer
+      uint32_t definitionGeneration = UINT32_MAX;
+    };
+    std::unordered_map<uint64_t, DebugTypeText> debugTypes;
+    uint32_t debugGeneration = 0;
+    std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
     explicit Shared(CodegenResult& result) : result(result) {}
@@ -636,6 +656,97 @@ namespace
     return used;
   }
 
+  // --debug-info with variables: the key of a type placeholder at text[at] (`!T` and 16 hex digits,
+  // after a blank, before a delimiter: Emitter::debugTypePlaceholder), or nothing.
+  static std::optional<uint64_t> debugTypeKeyAt(std::string_view text, size_t at)
+  {
+    if (at == 0 || text[at - 1] != ' ' || at + 18 > text.size() || text.compare(at, 2, "!T") != 0 ||
+        (at + 18 < text.size() && !strchr(",)} \n", text[at + 18])))
+      return std::nullopt;
+    uint64_t key = 0;
+    for (size_t i = at + 2; i < at + 18; ++i)
+    {
+      char c = text[i];
+      if (c >= '0' && c <= '9')
+        key = key * 16 + uint64_t(c - '0');
+      else if (c >= 'a' && c <= 'f')
+        key = key * 16 + uint64_t(c - 'a' + 10);
+      else
+        return std::nullopt;
+    }
+    return key;
+  }
+
+  // --debug-info with variables: the types a module's definitions (out from `from` on) name by
+  // placeholder (Emitter::debugType), with the types those name, and the classes homed here (their
+  // definitions: homed, Shared::debugHomes; every other class its declaration), each once: appended
+  // to out with ids from nextDebugId on, in their keys' order (the text does not depend on the order
+  // of emission), and every placeholder in out from `from` on replaced in place by its type's id,
+  // padded with blanks to the placeholder's width. Returns the id of the list of the classes
+  // defined here (0: none), the compile unit's retainedTypes (debugModuleTailFor): LLVM's CodeView
+  // writer emits a type only when something in its module names it, and a class's home may not.
+  static uint32_t appendDebugTypes(const std::unordered_map<uint64_t, Shared::DebugTypeText>& debugTypes, std::string& out, size_t from, uint32_t& nextDebugId,
+                                   const std::vector<uint64_t>* homed = nullptr)
+  {
+    std::set<uint64_t> keys;
+    std::vector<uint64_t> work;
+    auto defined = [&](uint64_t key) { return homed && std::binary_search(homed->begin(), homed->end(), key); };
+    auto textOf = [&](const Shared::DebugTypeText& t, uint64_t key) -> const std::string& { return defined(key) && !t.definition.empty() ? t.definition : t.text; };
+    auto collect = [&](std::string_view text)
+    {
+      for (size_t at = text.find("!T"); at != std::string_view::npos; at = text.find("!T", at + 2))
+        if (std::optional<uint64_t> key = debugTypeKeyAt(text, at); key && keys.insert(*key).second)
+          work.push_back(*key);
+    };
+    collect(std::string_view(out).substr(from));
+    if (homed)
+      for (uint64_t key : *homed)
+        if (keys.insert(key).second)
+          work.push_back(key);
+    while (!work.empty())
+    {
+      uint64_t key = work.back();
+      work.pop_back();
+      if (auto it = debugTypes.find(key); it != debugTypes.end())
+        collect(textOf(it->second, key));
+    }
+    std::unordered_map<uint64_t, uint32_t> ids;
+    for (uint64_t key : keys)
+      if (auto it = debugTypes.find(key); it != debugTypes.end() && !textOf(it->second, key).empty())
+      {
+        const std::string& text = textOf(it->second, key);
+        ids[key] = nextDebugId;
+        size_t at = out.size();
+        out += text;
+        nextDebugId += renumberDebugIds(out.data() + at, text.size(), nextDebugId);
+      }
+    for (size_t at = out.find("!T", from); at != std::string::npos; at = out.find("!T", at + 2))
+      if (std::optional<uint64_t> key = debugTypeKeyAt(out, at))
+      {
+        char text[24];
+        auto it = ids.find(*key);
+        if (it != ids.end())
+          snprintf(text, sizeof text, "!%010u       ", it->second);
+        else
+          snprintf(text, sizeof text, "%-18s", "null"); // (a type no emitter made: none)
+        memcpy(&out[at], text, 18);
+      }
+    std::string retained;
+    for (uint64_t key : keys)
+      if (auto it = ids.find(key); it != ids.end() && defined(key) && !debugTypes.at(key).definition.empty())
+      {
+        char id[16];
+        snprintf(id, sizeof id, "!%010u", it->second);
+        retained += (retained.empty() ? " " : ", ") + std::string(id);
+      }
+    if (retained.empty())
+      return 0;
+    char line[24];
+    snprintf(line, sizeof line, "!%010u = !{", nextDebugId);
+    out += line + retained + "}\n";
+    return nextDebugId++;
+  }
+
   // --debug-info: what every module's line tables refer to (the definitions' `unit: !0`, `type: !2`).
   // The functions' own ids start after these.
   static const char* const debugModuleTail = "!llvm.dbg.cu = !{!0}\n"
@@ -648,10 +759,19 @@ namespace
                                              "!4 = !{i32 2, !\"Debug Info Version\", i32 3}\n";
   // The tail for a target: DWARF instead of CodeView off Windows. The producer (CodeView's S_COMPILE3,
   // DWARF's DW_AT_producer) is kppc with kpp's release version, without the commit and "+dirty": the
-  // objects of one version are the same (docs/build.md, "Versions").
-  static std::string debugModuleTailFor(const Target& target)
+  // objects of one version are the same (docs/build.md, "Versions"). An unoptimized build's has
+  // variables and types (Shared::fullDebugInfo): FullDebug.
+  static std::string debugModuleTailFor(const Target& target, bool full, uint32_t retained = 0)
   {
     std::string tail = debugModuleTail;
+    if (full)
+    {
+      const std::string kind = "emissionKind: LineTablesOnly";
+      char types[40] = "";
+      if (retained)
+        snprintf(types, sizeof types, ", retainedTypes: !%010u", retained);
+      tail.replace(tail.find(kind), kind.size(), std::string("emissionKind: FullDebug") + types);
+    }
     std::string version = kppVersion();
     version.erase(std::min(version.find('+'), version.size()));
     const std::string producer = "producer: \"kppc\"";
@@ -822,6 +942,25 @@ namespace
     // file, or null for a definition without line information (a global's startup function).
     Node* debugAt = nullptr;
     ParsedFile* debugFile = nullptr;
+    // --debug-info unoptimized (Shared::fullDebugInfo): the definition's variables (the address that
+    // holds one, its name, its type's placeholder, its line and block, its parameter number from 1),
+    // its lexical blocks (the enclosing block, 0 for the function's own scope, and the line) and the
+    // block the code being emitted is in; debugLines makes them metadata.
+    struct DebugVariable
+    {
+      std::string address, name, type;
+      size_t line = 0;
+      uint32_t block = 0, arg = 0;
+      bool artificial = false;
+    };
+    std::vector<DebugVariable> debugVariables;
+    struct DebugBlock
+    {
+      uint32_t parent = 0;
+      size_t line = 0;
+    };
+    std::vector<DebugBlock> debugBlocks;
+    uint32_t debugBlock = 0;
     uint32_t temp = 0;
     uint32_t label = 0;
     bool blockTerminated = false;
@@ -6113,13 +6252,16 @@ namespace
       Node* debugAt;
       ParsedFile* debugFile;
       Node* bodyNow;
+      std::vector<DebugVariable> debugVariables;
+      std::vector<DebugBlock> debugBlocks;
+      uint32_t debugBlock;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
               currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, itaniumCleanup, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
-              bodyNow};
+              bodyNow, debugVariables, debugBlocks, debugBlock};
     }
 
     void restoreState(FunctionState& s)
@@ -6149,6 +6291,9 @@ namespace
       debugAt = s.debugAt;
       debugFile = s.debugFile;
       bodyNow = s.bodyNow;
+      debugVariables = s.debugVariables;
+      debugBlocks = s.debugBlocks;
+      debugBlock = s.debugBlock;
     }
 
     void resetFunctionState()
@@ -6170,6 +6315,9 @@ namespace
       inlineSlots.clear();
       debugAt = nullptr;
       debugFile = nullptr;
+      debugVariables.clear();
+      debugBlocks.clear();
+      debugBlock = 0;
       temp = 0;
       label = 0;
       blockTerminated = false;
@@ -6223,10 +6371,321 @@ namespace
       return text;
     }
 
+    // A metadata string's text: `\` and `"` and control characters as \XX.
+    static std::string metadataString(std::string_view s)
+    {
+      std::string out = "\"";
+      for (char c : s)
+        if (c == '\\' || c == '"' || (unsigned char)c < 0x20)
+        {
+          char hex[4];
+          snprintf(hex, sizeof hex, "\\%02X", (unsigned char)c);
+          out += hex;
+        }
+        else
+          out += c;
+      return out + "\"";
+    }
+
+    // --debug-info: the placeholder that names a type's metadata in a definition's text (`!T` and the
+    // key's 16 hex digits, as wide as module assembly's id and its padding: appendDebugTypes).
+    static std::string debugTypePlaceholder(uint64_t key)
+    {
+      char text[24];
+      snprintf(text, sizeof text, "!T%016llx", (unsigned long long)key);
+      return text;
+    }
+
+    // --debug-info with variables: the placeholder of type t's metadata, made the first time any
+    // emitter names the type (Shared::debugTypes). Its key is its IR spelling's hash (irString tells
+    // every type apart: a class's path, its template's arguments, where a local class is declared).
+    std::string debugType(const Ty* t)
+    {
+      std::string spelling = irString(t);
+      uint64_t key = 14695981039346656037ull;
+      for (unsigned char c : spelling)
+        key = (key ^ c) * 1099511628211ull;
+      std::string placeholder = debugTypePlaceholder(key);
+      {
+        auto lock = sharedLock();
+        auto [it, isNew] = sh.debugTypes.try_emplace(key);
+        if (!isNew && it->second.generation == sh.debugGeneration)
+          return placeholder; // (made, or being made: a type that names itself goes through a pointer)
+        it->second.generation = sh.debugGeneration;
+      }
+      std::string text = debugTypeText(t, spelling);
+      bool isClass = (t->kind == TyKind::Class || t->kind == TyKind::Lambda) && !t->isConst && !t->isVolatile;
+      auto lock = sharedLock();
+      Shared::DebugTypeText& made = sh.debugTypes[key];
+      made.text = std::move(text);
+      made.type = isClass ? t : nullptr;
+      return placeholder;
+    }
+
+    // Type t's metadata: node 0 the type, the nodes it needs after it, other types by placeholder.
+    // Basic types as CodeView names them (its simple types have no names of their own: int32 is
+    // `int`), each of kpp's integers a typedef of its name too (int32, uint8: an S_UDT, so that a
+    // natvis rule's $T1 parses). A class or enum is named as kppc's IR names it (game::Entity,
+    // Vector<int32>), the whole spelling, and identified by it.
+    std::string debugTypeText(const Ty* t, const std::string& spelling)
+    {
+      auto basic = [](const char* name, uint64_t bits, const char* encoding)
+      { return std::string("!DIBasicType(name: \"") + name + "\", size: " + std::to_string(bits) + ", encoding: " + encoding + ")"; };
+      auto one = [](const std::string& node) { return debugId(0) + " = " + node + "\n"; };
+      // (`T* const`'s qualifier is the pointer's: its unqualified type is the pointer.)
+      if (const Ty* bare = types.unqualified(t); bare != t)
+        return one(std::string("!DIDerivedType(tag: ") + (t->isConst ? "DW_TAG_const_type" : "DW_TAG_volatile_type") + ", baseType: " + debugType(bare) + ")");
+      switch (t->kind)
+      {
+        case TyKind::Bool: return one(basic("bool", 8, "DW_ATE_boolean"));
+        case TyKind::Char:
+          if (t->bits == 8)
+            return one(t->isUnsigned ? basic("unsigned char", 8, "DW_ATE_unsigned_char") : basic("char", 8, "DW_ATE_signed_char"));
+          return one(basic(t->bits == 16 ? "char16_t" : "char32_t", t->bits, "DW_ATE_UTF"));
+        case TyKind::Float: return one(basic(t->bits == 32 ? "float" : "double", t->bits, "DW_ATE_float"));
+        case TyKind::Nullptr: return one("!DIBasicType(tag: DW_TAG_unspecified_type, name: \"decltype(nullptr)\")");
+        case TyKind::Int:
+        {
+          if (t->isLong())
+            return one(basic(t->isUnsigned ? "unsigned long" : "long", t->bits, t->isUnsigned ? "DW_ATE_unsigned" : "DW_ATE_signed"));
+          static const char* const names[2][4] = {{"signed char", "short", "int", "long long"}, {"unsigned char", "unsigned short", "unsigned int", "unsigned long long"}};
+          int size = t->bits == 8 ? 0 : t->bits == 16 ? 1 : t->bits == 32 ? 2 : 3;
+          const char* encoding = t->isUnsigned ? (size == 0 ? "DW_ATE_unsigned_char" : "DW_ATE_unsigned") : (size == 0 ? "DW_ATE_signed_char" : "DW_ATE_signed");
+          return debugId(0) + " = !DIDerivedType(tag: DW_TAG_typedef, name: " + metadataString(spelling) + ", baseType: " + debugId(1) + ")\n" + debugId(1) + " = " +
+                 basic(names[t->isUnsigned][size], t->bits, encoding) + "\n";
+        }
+        case TyKind::Pointer:
+          return one("!DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + (types.unqualified(t->inner)->kind == TyKind::Void ? std::string("null") : debugType(t->inner)) +
+                     ", size: 64)");
+        case TyKind::LRef:
+        case TyKind::RRef:
+          return one(std::string("!DIDerivedType(tag: ") + (t->kind == TyKind::LRef ? "DW_TAG_reference_type" : "DW_TAG_rvalue_reference_type") +
+                     ", baseType: " + debugType(t->inner) + ", size: 64)");
+        case TyKind::Array:
+          if (t->count)
+            return one("!DICompositeType(tag: DW_TAG_array_type, baseType: " + debugType(t->inner) + ", size: " + std::to_string(sizeOf(t) * 8) +
+                       ", elements: " + debugId(1) + ")") +
+                   debugId(1) + " = !{ " + debugId(2) + "}\n" + debugId(2) + " = !DISubrange(count: " + std::to_string(t->count) + ")\n";
+          break;
+        case TyKind::Enum:
+          if (t->decl && t->decl->kind == NodeKind::EnumDecl)
+          {
+            auto* e = static_cast<EnumDecl*>(t->decl);
+            const Ty* underlying = enumUnderlying(e);
+            std::string elements, enumerators;
+            uint32_t next = 2;
+            for (Decl* d : e->enumerators)
+            {
+              if (d->kind != NodeKind::EnumeratorDecl)
+                continue;
+              auto* en = static_cast<EnumeratorDecl*>(d);
+              elements += (elements.empty() ? "" : ", ") + debugId(next);
+              enumerators += debugId(next++) + " = !DIEnumerator(name: " + metadataString(sym(en->name)) + ", value: " + std::to_string(enumeratorValue(en)) +
+                             (underlying && underlying->isUnsigned ? ", isUnsigned: true" : "") + ")\n";
+            }
+            return one("!DICompositeType(tag: DW_TAG_enumeration_type, name: " + metadataString(spelling) +
+                       (underlying ? ", baseType: " + debugType(underlying) : std::string()) + ", size: " + std::to_string(sizeOf(t) * 8) +
+                       (e->isClass ? ", flags: DIFlagEnumClass" : "") + ", elements: " + debugId(1) + ", identifier: " + metadataString(spelling) + ")") +
+                   debugId(1) + " = !{ " + elements + "}\n" + enumerators; // (`!{ `: renumberDebugIds takes an id after a blank)
+          }
+          break;
+        case TyKind::Class:
+        case TyKind::Lambda:
+        {
+          // Its declaration, with the definition's tag (debugComposite): the definition is its home's
+          // alone (homeDebugClasses), every other module's reference resolved by the identifier.
+          auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
+          const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
+          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(spelling) + ", flags: DIFlagFwdDecl, identifier: " +
+                     metadataString(spelling) + ")");
+        }
+        case TyKind::Function:
+          return one("!DISubroutineType(types: !{})");
+        default:
+          break;
+      }
+      // What a debugger has no type for (a pointer to a member): an unsigned integer of its size.
+      return one(basic("unsigned long long", 64, "DW_ATE_unsigned"));
+    }
+
+    // --debug-info with variables (Shared::fullDebugInfo): a local or parameter (arg: its number from
+    // 1) held at address (its alloca, or the pointer a parameter passed by address is), whose value is
+    // of type t (a reference's own: its slot holds the pointer), in the current block. Not one of a
+    // body inlined into its caller (its instructions are the call's).
+    void debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg = 0, bool artificial = false)
+    {
+      if (!sh.fullDebugInfo || !debugFile || debugFile != currentFile || !inlining.empty() || !t || !t->isKnown() || types.isDependent(t))
+        return;
+      debugVariables.push_back({address, std::move(name), debugType(t), at ? lineOf(at, currentFile) : 0, arg ? 0 : debugBlock, arg, artificial});
+    }
+
+    // Class ct's layout as codegen made it, or null for one never laid out (a class the program only
+    // points to): the debugger gets its declaration alone.
+    const StructInfo* laidOutClass(const Ty* ct)
+    {
+      auto lock = sharedLock();
+      const StructInfo* info = nullptr;
+      if (auto it = sh.structsByType.find(ct); it != sh.structsByType.end())
+        info = it->second;
+      else if (auto s = sh.structs.find(ct); s != sh.structs.end())
+        info = &s->second;
+      return info && info->complete && !info->failed ? info : nullptr;
+    }
+
+    // --debug-info with variables: the composite node `self` of class ct as laid out (info), its
+    // members' nodes appended to nodes with ids from next on: its vtable pointer (a class with its
+    // own, at offset 0), its bases, its data members at their offsets (a bit field at its bits, an
+    // anonymous struct's or union's in an unnamed member of that class's own composite, made here:
+    // LLVM's CodeView writer lists them as the enclosing class's, as MSVC's PDBs do). Named (its
+    // spelling, which identifies it) or, for an anonymous member's class, not.
+    void debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth = 0)
+    {
+      auto* c = static_cast<ClassDecl*>(ct->decl);
+      TemplateArgs args = global.classArgsOf(ct);
+      // Each field's offset, as memberOffset computes it (an empty base's: no storage).
+      std::vector<uint64_t> offsets(info.fieldTypes.size(), 0);
+      uint64_t at = 0;
+      for (size_t i = 0; i < info.fieldTypes.size() && !info.isUnion; ++i)
+      {
+        if (i < info.zeroSize.size() && info.zeroSize[i])
+        {
+          offsets[i] = at;
+          continue;
+        }
+        uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[i], nullptr);
+        at = (at + a - 1) / a * a;
+        offsets[i] = at;
+        at += sizeOf(info.fieldTypes[i], nullptr);
+      }
+      std::string elements;
+      auto element = [&](uint32_t id) { elements += (elements.empty() ? "" : ", ") + debugId(id); };
+      auto member = [&](const std::string& name, const std::string& type, uint64_t bits, uint64_t offset, const std::string& more)
+      {
+        uint32_t id = next++;
+        nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_member" + (name.empty() ? std::string() : ", name: " + metadataString(name)) +
+                 ", scope: " + debugId(self) + ", baseType: " + type + ", size: " + std::to_string(bits) + ", offset: " + std::to_string(offset) + more + ")\n";
+        element(id);
+      };
+      if (info.polymorphic && !info.primaryBase && !info.isUnion && !info.fieldTypes.empty())
+      {
+        // Its own vtable pointer: a pointer to the vtable's shape (CodeView's LF_VTSHAPE, one entry a slot).
+        uint64_t slots = info.vtables.empty() ? 1 : std::max<uint64_t>(1, info.vtables[0].slots.size());
+        uint32_t shape = next++, pointer = next++;
+        nodes += debugId(shape) + " = !DIDerivedType(tag: DW_TAG_pointer_type, name: \"__vtbl_ptr_type\", baseType: null, size: " + std::to_string(slots * 64) + ")\n";
+        nodes += debugId(pointer) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + debugId(shape) + ", size: 64)\n";
+        member("_vptr$" + (c->name.empty() ? std::string("?") : sym(c->name.last().symbol)), debugId(pointer), 64, 0, ", flags: DIFlagArtificial");
+      }
+      for (const auto& [base, index] : info.bases)
+        if (index < info.fieldTypes.size())
+        {
+          uint32_t id = next++;
+          nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_inheritance, scope: " + debugId(self) + ", baseType: " + debugType(info.fieldTypes[index]) +
+                   ", offset: " + std::to_string(offsets[index] * 8) + ", extraData: i32 0)\n";
+          element(id);
+        }
+      for (Decl* m : info.fieldDecls)
+      {
+        auto found = info.fieldIndex.find(m);
+        if (found == info.fieldIndex.end())
+          continue;
+        uint32_t index = found->second;
+        uint64_t offset = info.isUnion || index >= offsets.size() ? 0 : offsets[index];
+        if (m->kind == NodeKind::ClassDecl)
+        {
+          // An anonymous struct or union: its own composite here, with no name, an unnamed member.
+          const Ty* inner = types.classType(m, ct->args);
+          const StructInfo* innerInfo = depth < 8 ? laidOutClass(inner) : nullptr;
+          if (!innerInfo)
+            continue;
+          uint32_t composite = next++;
+          debugComposite(inner, *innerInfo, composite, nullptr, nodes, next, depth + 1);
+          member("", debugId(composite), sizeOf(inner, nullptr) * 8, offset * 8, "");
+          continue;
+        }
+        auto* v = static_cast<VariableDecl*>(m);
+        std::string name = v->name.empty() ? std::string() : sym(v->name.last().symbol);
+        if (auto bits = info.bitfields.find(m); bits != info.bitfields.end())
+        {
+          const Ty* declared = global.typeOfDeclIn(m, args);
+          if (declared && declared->isKnown() && !types.isDependent(declared))
+            member(name, debugType(declared), bits->second.second, offset * 8 + bits->second.first,
+                   ", flags: DIFlagBitField, extraData: i64 " + std::to_string(offset * 8));
+          continue;
+        }
+        const Ty* mt = info.isUnion ? global.typeOfDeclIn(m, args) : info.fieldTypes[index];
+        if (!mt || !mt->isKnown() || types.isDependent(mt))
+          continue;
+        member(name, debugType(mt), sizeOf(mt, nullptr) * 8, offset * 8, "");
+      }
+      std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
+      uint32_t list = next++;
+      nodes += debugId(list) + " = !{ " + elements + "}\n";
+      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(*spelling) : std::string()) +
+               ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
+               (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
+               (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";
+    }
+
+    // --debug-info with variables, once the emission is done (prepareModuleTexts; a build of one
+    // module before it assembles its text): every class a definition or a type named (each one
+    // Shared::debugTypes has: a debug build's program pieces are assembled, and their texts freed,
+    // before this), and the classes their definitions name, each defined (debugComposite) for its
+    // home module alone (Shared::debugHomes, the key's remainder by the module count: where it lands
+    // does not depend on who named it first); every other module declares it. A compile server's
+    // build makes the definitions of the classes it named itself (their types are its own) and keeps
+    // the others'.
+    void homeDebugClasses()
+    {
+      std::set<uint64_t> done;
+      for (bool more = true; more;)
+      {
+        more = false;
+        std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> entries;
+        {
+          auto lock = sharedLock();
+          for (auto& [key, entry] : sh.debugTypes)
+            if (!done.count(key))
+              entries.push_back({key, &entry}); // (an element stays where it is as others are added)
+        }
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (auto& [key, entry] : entries)
+        {
+          done.insert(key);
+          more = true;
+          if (!entry->type || entry->generation != sh.debugGeneration || entry->definitionGeneration == sh.debugGeneration)
+            continue;
+          entry->definitionGeneration = sh.debugGeneration;
+          std::string definition;
+          if (const StructInfo* info = laidOutClass(entry->type))
+          {
+            std::string spelling = irString(entry->type);
+            uint32_t next = 1;
+            debugComposite(entry->type, *info, 0, &spelling, definition, next); // (the types its members name join debugTypes)
+          }
+          // (A compile server's build, rebuildLLVM's generation, assembles the modules it changed: a
+          // class's new definition is its home's change too.)
+          if (sh.debugGeneration > 0 && definition != entry->definition && sh.moduleCount)
+          {
+            sh.unassembled.resize(sh.moduleCount);
+            sh.unassembled[key % sh.moduleCount] = true;
+          }
+          entry->definition = std::move(definition);
+        }
+      }
+      sh.debugHomes.assign(std::max(1u, sh.moduleCount), {});
+      for (uint64_t key : done)
+        if (auto it = sh.debugTypes.find(key); it != sh.debugTypes.end() && !it->second.definition.empty())
+          sh.debugHomes[key % sh.debugHomes.size()].push_back(key);
+    }
+
     // The definition with line information: every instruction gets the line of the statement whose
     // marker (`  ;@LINE`, from statement()) precedes it, those before the first the declaration's
     // line; then the function's DISubprogram and DILocations (one per line). A switch's case lines
-    // belong to the instruction they end with (`  ]`).
+    // belong to the instruction they end with (`  ]`). With variables (Shared::fullDebugInfo) a marker
+    // names its lexical block too (`  ;@LINE:BLOCK`, a location per line and block), and after the
+    // allocas a #dbg_declare gives each variable its address. Ids: 0 the DISubprogram; with blocks or
+    // variables 1 the file's node, then the blocks (DILexicalBlock), then the variables
+    // (DILocalVariable, their types by placeholder); then the locations.
     std::string debugLines(std::string header, size_t declLine)
     {
       size_t name = header.find('@');
@@ -6235,18 +6694,22 @@ namespace
       header.insert(header.rfind("{\nentry:"), "!dbg " + debugId(0) + " ");
       std::string out = std::move(header);
       out.reserve(out.size() + (allocas.size() + fn.size() + ehBlocks.size()) * 5 / 4);
-      std::vector<size_t> lines{declLine};                 // local id - 1 -> its line
-      std::unordered_map<size_t, uint32_t> ids;
-      size_t current = declLine;
+      bool variables = !debugBlocks.empty() || !debugVariables.empty();
+      const uint32_t fileId = 1, blocksBase = 1, variablesBase = 2 + uint32_t(debugBlocks.size());
+      const uint32_t firstLocation = variables ? variablesBase + uint32_t(debugVariables.size()) : 1;
+      auto scope = [&](uint32_t block) { return debugId(block ? blocksBase + block : 0); };
+      std::vector<std::pair<size_t, uint32_t>> locations; // id - firstLocation -> its line and block
+      std::map<std::pair<size_t, uint32_t>, uint32_t> ids;
+      std::pair<size_t, uint32_t> current{declLine, 0};
       std::string currentRef;
-      auto refFor = [&](size_t line)
+      auto idFor = [&](std::pair<size_t, uint32_t> location)
       {
-        auto [it, isNew] = ids.emplace(line, uint32_t(ids.size() + 1));
+        auto [it, isNew] = ids.emplace(location, firstLocation + uint32_t(ids.size()));
         if (isNew)
-          lines.push_back(line);
-        return ", !dbg " + debugId(it->second);
+          locations.push_back(location);
+        return it->second;
       };
-      currentRef = refFor(current);
+      currentRef = ", !dbg " + debugId(idFor(current));
       for (const std::string* part : {&allocas, &fn, &ehBlocks})
       {
         std::string_view text = *part;
@@ -6259,11 +6722,15 @@ namespace
           pos = end + 1;
           if (l.starts_with("  ;@"))
           {
-            size_t line = strtoull(std::string(l.substr(4)).c_str(), nullptr, 10);
-            if (line != current)
+            std::string marker(l.substr(4));
+            char* rest = nullptr;
+            std::pair<size_t, uint32_t> location{strtoull(marker.c_str(), &rest, 10), 0};
+            if (rest && *rest == ':')
+              location.second = uint32_t(strtoul(rest + 1, nullptr, 10));
+            if (location != current)
             {
-              current = line;
-              currentRef = refFor(line);
+              current = location;
+              currentRef = ", !dbg " + debugId(idFor(location));
             }
             continue;
           }
@@ -6272,13 +6739,33 @@ namespace
             out += currentRef;
           out += '\n';
         }
+        // Each variable's declaration after the allocas, located at its own line and in its block.
+        if (part == &allocas)
+          for (size_t i = 0; i < debugVariables.size(); ++i)
+            out += "    #dbg_declare(ptr " + debugVariables[i].address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(), " +
+                   debugId(idFor({debugVariables[i].line ? debugVariables[i].line : declLine, debugVariables[i].block})) + ")\n";
       }
       out += "}\n";
       const std::string& file = debugFileOf(debugFile);
       out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName + "\", scope: " + file + ", file: " + file + ", line: " +
              std::to_string(declLine) + ", type: !2, scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0)\n";
-      for (uint32_t k = 1; k < lines.size(); ++k)
-        out += debugId(k) + " = !DILocation(line: " + std::to_string(lines[k]) + ", scope: " + debugId(0) + ")\n";
+      if (variables)
+      {
+        out += debugId(fileId) + " = " + file + "\n";
+        for (uint32_t b = 1; b <= debugBlocks.size(); ++b)
+          out += debugId(blocksBase + b) + " = distinct !DILexicalBlock(scope: " + scope(debugBlocks[b - 1].parent) + ", file: " + debugId(fileId) +
+                 ", line: " + std::to_string(debugBlocks[b - 1].line ? debugBlocks[b - 1].line : declLine) + ")\n";
+        for (size_t i = 0; i < debugVariables.size(); ++i)
+        {
+          const DebugVariable& v = debugVariables[i];
+          out += debugId(variablesBase + uint32_t(i)) + " = !DILocalVariable(name: " + metadataString(v.name) +
+                 (v.arg ? ", arg: " + std::to_string(v.arg) : std::string()) + ", scope: " + scope(v.block) + ", file: " + debugId(fileId) +
+                 ", line: " + std::to_string(v.line ? v.line : declLine) + ", type: " + v.type +
+                 (v.artificial ? ", flags: DIFlagArtificial | DIFlagObjectPointer" : "") + ")\n";
+        }
+      }
+      for (size_t k = 0; k < locations.size(); ++k)
+        out += debugId(firstLocation + uint32_t(k)) + " = !DILocation(line: " + std::to_string(locations[k].first) + ", scope: " + scope(locations[k].second) + ")\n";
       out += '\n';
       return out;
     }
@@ -6395,11 +6882,14 @@ namespace
         for (size_t i = 0; i < l->params.size() && i < callTy->args.size(); ++i)
         {
           const Ty* pt = callTy->args[i];
+          auto* pd = l->params[i]->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(l->params[i]) : nullptr;
           if (isAggregate(pt))
           {
             locals[l->params[i]] = {paramNames[i], pt, false};
             if (needsDestruction(pt, l))
               scopes.back().push_back({paramNames[i], pt});
+            if (pd && pd->name != UINT32_MAX)
+              debugVariable(sym(pd->name), pd, paramNames[i], pt, uint32_t(i + 1));
             continue;
           }
           bool isRef = pt->isReference();
@@ -6407,6 +6897,8 @@ namespace
           allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : llType(pt, l)) + "\n";
           fn += "  store " + (isRef ? std::string("ptr") : llType(pt, l)) + " " + paramNames[i] + ", ptr " + ps + "\n";
           locals[l->params[i]] = {ps, pt, isRef};
+          if (pd && pd->name != UINT32_MAX)
+            debugVariable(sym(pd->name), pd, ps, pt, uint32_t(i + 1));
         }
         statement(l->body);
         if (!blockTerminated)
@@ -10197,6 +10689,8 @@ namespace
       sh.homedComdats.clear();
       sh.namedByShared.clear();
       sh.homeNames.clear();
+      if (sh.fullDebugInfo)
+        homeDebugClasses();
       if (!sh.homeGlobals)
         return;
       sh.homeNames.assign(moduleCount, {});
@@ -10830,6 +11324,7 @@ namespace
       out += declares;
       out += '\n';
       uint32_t nextDebugId = debugFirstId;
+      size_t definitionsAt = out.size();
       for (const Shared::Definition* d : definitions)
       {
         size_t at = out.size();
@@ -10837,8 +11332,12 @@ namespace
         if (sh.debugInfo)
           nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
       }
+      uint32_t retained = 0;
+      if (sh.fullDebugInfo)
+        retained = appendDebugTypes(sh.debugTypes, out, definitionsAt, nextDebugId,
+                                    (!sh.splitPieces || instancePiece) && k < sh.debugHomes.size() ? &sh.debugHomes[k] : nullptr);
       if (sh.debugInfo)
-        out += debugModuleTailFor(sh.target);
+        out += debugModuleTailFor(sh.target, sh.fullDebugInfo, retained);
       return out;
     }
 
@@ -18090,6 +18589,8 @@ namespace
       std::string slot = "%v" + std::to_string(temp++);
       allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v) + alignSuffix(t, variableAlignment(v, typingContext(), v), v)) + "\n";
       locals[v] = {slot, t, isRef};
+      if (!v->name.empty())
+        debugVariable(sym(v->name.last().symbol), v, slot, t);
       if (isRef)
       {
         if (!v->init)
@@ -18163,12 +18664,27 @@ namespace
 
     // --debug-info: the instructions from here on are at the line `at` starts on (debugLines makes
     // the marker their location): a statement's, a loop's step or condition emitted after its body.
-    // Not in a body inlined into its caller: those instructions are the call's.
+    // Not in a body inlined into its caller: those instructions are the call's. With variables
+    // (Shared::fullDebugInfo) the marker names the lexical block too, `  ;@LINE:BLOCK`.
     void debugLine(Node* at)
     {
       if (debugFile && debugFile == currentFile && inlining.empty())
         if (size_t line = lineOf(at, currentFile))
-          fn += "  ;@" + std::to_string(line) + "\n";
+          fn += "  ;@" + std::to_string(line) + (debugBlock ? ":" + std::to_string(debugBlock) : std::string()) + "\n";
+    }
+
+    // --debug-info with variables: a block statement's lexical block (not the function's body, whose
+    // variables are the function's own, as clang's), which the variables declared in it belong to; the
+    // previous block again when it ends (debugLine names it at the next statement).
+    uint32_t openDebugBlock(Node* at)
+    {
+      uint32_t outer = debugBlock;
+      if (sh.fullDebugInfo && debugFile && debugFile == currentFile && inlining.empty() && at != bodyNow)
+      {
+        debugBlocks.push_back({outer, lineOf(at, currentFile)});
+        debugBlock = uint32_t(debugBlocks.size());
+      }
+      return outer;
     }
 
     void statement(Stmt* s)
@@ -18187,11 +18703,15 @@ namespace
       switch (s->kind)
       {
         case NodeKind::BlockStmt:
+        {
+          uint32_t outer = openDebugBlock(s);
           pushScope();
           for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
             statement(inner);
           popScope();
+          debugBlock = outer;
           break;
+        }
         case NodeKind::ExprStmt:
           if (static_cast<ExprStmt*>(s)->expr)
           {
@@ -19730,6 +20250,8 @@ namespace
           allocas += "  " + thisSlot + " = alloca ptr\n";
           fn += "  store ptr " + paramNames[slot] + ", ptr " + thisSlot + "\n";
           locals[nullptr] = {thisSlot, nullptr, false};
+          if (currentClassTy)
+            debugVariable("this", f, thisSlot, types.pointer(currentClassTy), 1, true);
           ++slot;
         }
         if (s.hasSret)
@@ -19768,6 +20290,10 @@ namespace
               fn += "  store " + (isRef ? std::string("ptr") : llType(pt, f)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
               local = {ps, pt, isRef};
             }
+            // (a pack's elements are the debugger's as one each: name#k)
+            if (pd->name != UINT32_MAX)
+              debugVariable(sym(pd->name) + (pd->isPack ? "#" + std::to_string(k) : std::string()), pd, local.addr, pt,
+                            uint32_t(slot + 1 - (s.hasSret ? 1 : 0)));
             if (pd->isPack)
               packLocals[pd].push_back(local);
             else
@@ -20679,7 +21205,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     std::sort(part->begin(), part->end());
     part->erase(std::unique(part->begin(), part->end()), part->end());
   }
-  std::string tail = sh.debugInfo ? debugModuleTailFor(sh.target) : std::string();
+  std::string tail = sh.debugInfo ? debugModuleTailFor(sh.target, sh.fullDebugInfo) : std::string();
   size_t size = prefix.size() + 1 + tail.size();
   for (const std::vector<std::string_view>* part : {&types, &lines, &owned, &declarations})
     for (std::string_view text : *part)
@@ -20704,6 +21230,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   }
   out += '\n';
   uint32_t nextDebugId = debugFirstId;
+  size_t definitionsAt = out.size();
   for (const Shared::Definition* d : definitions)
   {
     size_t at = out.size();
@@ -20711,6 +21238,8 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     if (sh.debugInfo)
       nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
   }
+  if (sh.fullDebugInfo)
+    appendDebugTypes(sh.debugTypes, out, definitionsAt, nextDebugId);
   out += tail;
   return out;
 }
@@ -20753,6 +21282,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     sh.target = *target;
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
+  sh.fullDebugInfo = debugInfo && !optimize; // (an optimized build keeps its line tables alone)
   sh.setModules(moduleCount);
   // A release build (ThinLTO) puts its short definitions in modules of their own (Emitter::placeShortDefinitions).
   if (!debug && sh.moduleCount >= 2)
@@ -21189,11 +21719,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.ir.append(ctors);
     result.ir.push_back('\n');
     result.ir.append(e.shared.text);
+    uint32_t nextDebugId = debugFirstId;
     if (sh.debugInfo)
     {
       // One definition after another, each numbering its metadata from 0 (Emitter::debugLines).
       std::string& body = e.body.text;
-      uint32_t nextDebugId = debugFirstId;
       for (size_t at = 0; at < body.size();)
       {
         size_t next = body.find("\ndefine ", at);
@@ -21202,9 +21732,15 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         at = next;
       }
     }
+    size_t bodyAt = result.ir.size();
+    if (sh.fullDebugInfo)
+      e.homeDebugClasses(); // (one module: every class is defined in it)
     result.ir.append(std::move(e.body.text));
+    uint32_t retained = 0;
+    if (sh.fullDebugInfo)
+      retained = appendDebugTypes(sh.debugTypes, result.ir, bodyAt, nextDebugId, &sh.debugHomes[0]);
     if (sh.debugInfo)
-      result.ir += debugModuleTailFor(sh.target);
+      result.ir += debugModuleTailFor(sh.target, sh.fullDebugInfo, retained);
     if (failed)
     {
       std::unordered_set<std::string> stubbed;
@@ -21389,6 +21925,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   }
   session.usable = false; // until this rebuild is done: one that fails leaves the session to a build from scratch
   Shared& sh = *session.shared;
+  ++sh.debugGeneration; // (--debug-info's types are made again as this build names them)
   std::vector<std::unique_ptr<Emitter>>& emitters = session.emitters;
   Emitter& e = *emitters[0];
   for (auto& em : emitters)
