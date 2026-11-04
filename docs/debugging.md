@@ -81,6 +81,21 @@ machine, so the seconds are noisy):
 The executable is the same size (147.6 MB), and with line tables its 45 menu maps end 600 ticks with
 the C++ build's checksums, as without.
 
+Variables and types (2026-11-04): factorio-in-kpp c9cda971 in its debug configuration (`kpp factorio
+debug`: debug info, 256 modules, the compile server, link.exe incremental), built by kpp master with
+the line tables alone and with variables and types (B's scratch bench\measure-debuginfo.ps1: per
+round, each kpp's server stopped and build\debug deleted, the clean build, then the edit of one
+function in AnimationBank.kpp built and put back; 2 rounds interleaved; other threads' load 11-17%,
+so the seconds are noisy):
+
+| | IR | codegen | clang | link | clean build | PDB | the edit | undone |
+|---|---:|---|---|---|---|---:|---|---|
+| line tables | 1,091 MB | 6.98 6.79 s | 4.42 4.16 s | 2.2 1.7 s | 16.0 14.8 s | 208 MB | 1.81 1.63 s | 1.56 1.74 s |
+| variables and types | 1,366 MB | 7.37 7.74 s | 5.06 4.85 s | 2.2 1.8 s | 17.0 16.6 s | 244 MB | 1.83 1.72 s | 1.78 1.65 s |
+
+The IR is 25% more and the PDB 17% (Entity, FluidBox and Vector<int32> complete classes in it); a
+clean build about 1.4 s longer; an edit's build the same within the noise.
+
 The first such build found invalid exception-handling IR that every build had: a handler's
 cleanups unwound to the caller instead of to where the handler's catchswitch unwinds. LLVM's
 verifier rejects that only when the module has debug info (51 of the 64 modules); spec
