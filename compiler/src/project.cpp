@@ -940,6 +940,11 @@ namespace
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
       job.stamp = flags + cppFlags + "\n" + clangPath();
       bool flagsChanged = readText(job.directory / "flags.txt") != job.stamp;
+      // Gone until all of this build's objects are made (written before the archive): a build that
+      // fails part way leaves objects of the new flags beside the old ones, which the old flags'
+      // stamp would vouch for in a later build (another toolchain's objects in its archive).
+      if (flagsChanged)
+        fs::remove(job.directory / "flags.txt", ec);
       for (size_t n = 0; n < sources.size(); ++n)
       {
         const fs::path& source = sources[n];

@@ -121,6 +121,20 @@ void build(Project& project)
   elseif ($link -notcontains '-flto') { Fail "the whole configuration's link is no full LTO: $($link -join ' ')" }
   elseif ((Get-Item 'build\clib\plus.lib').LastWriteTimeUtc -ne $releaseLib) { Fail "the whole configuration's build rebuilt the release build's C library" }
   Set-Content 'build.kpp' $good
+  # A C library whose build failed part way under other flags (another toolchain's, here two defines)
+  # is compiled again whole under its old ones: plus.c compiled under PLUS=5 and other.c did not, and
+  # the old flags' stamp (flags.txt) took plus.c's object as theirs, linked (tests 46).
+  Set-Content 'libs\plus\other.c' "#ifdef FAIL_OTHER`n#error other.c fails under FAIL_OTHER`n#endif`nint other_value(void) { return 1; }"
+  $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
+  if ($code -ne 0) { Fail "kpp --release with other.c: exit $code`n$($output -join "`n")" }
+  Set-Content 'build.kpp' ($good -replace 'plus\.define\("PLUS=1"\);', 'plus.define("PLUS=5"); plus.define("FAIL_OTHER");')
+  $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
+  if ($code -eq 0) { Fail "kpp --release built with other.c failing under FAIL_OTHER`n$($output -join "`n")" }
+  Set-Content 'build.kpp' $good
+  $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
+  $tests = if ($code -eq 0) { & '.\build\release\game-tests.exe' } else { '' }
+  if ($code -ne 0 -or "$tests" -ne 'tests 42') { Fail "kpp --release after a build failed under other flags: exit $code, printed '$tests' (46: the failed build's plus.c object linked)`n$($output -join "`n")" }
+  Remove-Item 'libs\plus\other.c'
   # A C library's resource script (llvm-rc) naming a file next to it and one outside its directory, as
   # factorio-in-kpp's names its icon in ..\..\data. With the outside one missing the build fails, and
   # what llvm-rc wrote before it failed is no .res that the next build takes as made (it was linked,
