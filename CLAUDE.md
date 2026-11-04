@@ -82,6 +82,8 @@ Decided by kovarex; every thread follows them.
   each pending spec exactly one owner.
 - Measure, don't guess: paired binaries on the same converted tree, interleaved rounds; every speed
   claim names the command and the numbers.
+- Game speed: a kpp release (or final) build is compared against C++ FinalRelease, the build players
+  get, built from the same Factorio commit; C++ Release only as an extra column (kovarex, 2026-11-04).
 - Determinism: the front end and the whole IR are byte-identical at 1, 8 and 32 threads.
   `--no-inline` output is byte-identical apart from inlining. Any inlining path outside `inlineCall`
   calls `noteInlined(written)`.
