@@ -4,8 +4,6 @@ requires config::platform == Platform::Windows;
 
 // errno, which the UCRT defines as (*_errno()).
 extern "C" int* _errno();
-// std::set_terminate: the C runtime's terminate handler.
-extern "C" TerminateHandlerFunction set_terminate(TerminateHandlerFunction handler);
 
 namespace platform
 {
@@ -78,10 +76,6 @@ namespace platform
   }
   // The condition (an Errc's value) a system error means, or 0.
   int errcOfSystemError(int value) { return errcOfWindowsError(value); }
-
-  // Installs the terminate handler and returns the one before: the UCRT's, which its terminate()
-  // calls.
-  TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return set_terminate(handler); }
 
   // --- Threads and locks (Thread.kpp, SharedPtr.kpp) ---
 

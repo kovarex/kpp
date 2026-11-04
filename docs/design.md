@@ -494,7 +494,9 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   the throw and the handler run in cleanup funclets; a handler owns the object and destroys it on
   exit unless it rethrows. Calls that may throw become `invoke`s only where something has to
   happen on the way out, so code without destructible locals and without `try` is unchanged.
-  Uncaught exceptions print `unhandled exception of type T: message` and abort. Rules that follow
+  Uncaught exceptions print `unhandled exception of type T: message`, call the terminate handler
+  `setTerminate` installed (one for the program, kpp's own on every target), and abort; the search
+  ends the program before anything unwinds, the throw site on the stack (2026-11-04). Rules that follow
   from this: destructors do not throw; `extern "C"` functions do not throw (calls to them stay
   plain calls); an exception cannot pass through a C callback frame that was not compiled for
   unwinding; `catch` by pointer matches the pointee type's spelling only (no base conversion);
@@ -2744,7 +2746,8 @@ The semantics of section 9 hold on every target:
   applied.
 - The objects between the throw and the handler are destroyed in order.
 - A destructor that throws while unwinding terminates.
-- An uncaught exception prints its type and message, then aborts.
+- An uncaught exception prints its type and message from the search, the throw site on the stack,
+  then calls the terminate handler and aborts.
 - Descriptors, the record a handler owns, `throw;`, and the current-exception stack are the same.
 
 - **Windows keeps SEH**, unchanged.
@@ -2831,9 +2834,9 @@ The semantics of section 9 hold on every target:
     SwitchToThread on Windows; `clock_gettime`, `nanosleep` and `sched_yield` elsewhere
     (CLOCK_MONOTONIC is 1 on Linux, 4 on FreeBSD).
   - `errnoLocation`: `_errno()`, `__errno_location()`, `__error()`.
-  - `setTerminate`: the UCRT's `set_terminate` on Windows; elsewhere kpp's own handler
-    (`platform::terminateHandler`, an Atomic), as no C++ runtime is linked there. Stage 3's
-    `kpp_eh_terminate` calls it, through `kpp_terminate_handler` (2026-11-04).
+  - `setTerminate` is kpp's own on every target since 2026-11-04 (core/Error.kpp, an Atomic, one for
+    the program; it was the UCRT's per-thread `set_terminate` on Windows). The exception runtime
+    calls it through `kpp_terminate_handler`.
   - Threads and locks (Thread.kpp, SharedPtr.kpp): `Lock`, `SharedLock` and `Condition`, and
     `startThread`, `joinThread`, `detachThread`, `currentThreadId`, `processorCount`. On Windows
     Lock and SharedLock are one SRW lock (one pointer, as before), Condition a
@@ -3244,7 +3247,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     `kpp_eh_terminate` prints "unhandled exception of type T: message" from the throw site, then
     calls the terminate handler `setTerminate` installed, if any, and aborts if it returns
     (2026-11-04). The handler is read through the standard library's `extern "C"
-    kpp_terminate_handler` (platform/PlatformPosix.kpp), as the runtime is IR text and names no kpp
+    kpp_terminate_handler` (core/Error.kpp), as the runtime is IR text and names no kpp
     function; without the standard library (--no-std) there is none. With no memory for the
     header, it says so and aborts.
 - **The unwinder:** FreeBSD's static link takes it from libgcc_eh (LLVM's libunwind in 14.3), and
@@ -3260,17 +3263,22 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     freebsd-known-failures.txt are gone. CI's VM confirmed it (run 41835608420, at 44e4f1f9):
     `spec freebsd: ALL PASSED (956 pass, 3 known)`.
   - A snippet's `// pending on windows: why` is a gap of the targets it names alone (run_spec.py,
-    2026-11-04): language/noexcept_violation_terminates_at_the_throw and
-    uncaught_exception_calls_the_terminate_handler pass on Linux and FreeBSD and are pending on
-    Windows.
+    2026-11-04): language/noexcept_violation_terminates_at_the_throw passes on Linux and FreeBSD
+    and is pending on Windows.
+  - On Windows, an exception nobody catches ends the program from the search too (2026-11-04, B's
+    review): `@main`'s filter (`kpp.eh.filter.any`), which the search reaches only when no handler
+    of the program takes a kpp exception, calls `kpp_eh_unhandled`: the report, the terminate
+    handler, abort. Nothing unwinds first, as off Windows, so a handler that logs the stack sees the
+    throw site. Before, `@main`'s handler reported after the frames had unwound
+    (language/uncaught_exception_calls_the_terminate_handler).
 - **The libraries' tests on Linux**: base64 (3), bcrypt (5), html (6), json (13), markdown (10),
   net (3), sha256 (6) and url (6) all pass. Each stopped at its first throw before.
 - **Not yet:**
   - noexcept on Windows (the pending spec): its SEH filter would report and end the program in the
     search.
-  - On Windows, an exception nobody catches does not call the terminate handler: `@main`'s handler
-    prints and aborts (language/uncaught_exception_calls_the_terminate_handler, pending on
-    Windows). Calling the UCRT's `terminate()` there instead of `abort()` changes Windows' IR.
+  - On Windows, an exception that leaves a thread's function (Thread, CreateThread's start) meets
+    no kpp filter: the system's unhandled-exception path ends the process with 0xE0000001 and no
+    report or terminate handler. Off Windows kpp_throw reports it from any thread.
   - `uncaught_exceptions()` off Windows: it calls the UCRT's `__uncaught_exceptions`, which is not
     there. kpp's runtime would count from `kpp_throw` to `kpp_eh_enter`.
 

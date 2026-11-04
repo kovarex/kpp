@@ -70,17 +70,6 @@ namespace platform
   String systemErrorMessage(int value) { return String(strerror(value)); }
   // The condition (an Errc's value) a system error means: itself, an errno value.
   int errcOfSystemError(int value) { return value; }
-
-  // The terminate handler: kpp's own, as no C++ runtime is linked here. The exception runtime calls
-  // it when an exception ends the program (stdlib-conformance.md).
-  Atomic<TerminateHandlerFunction> terminateHandler;
-
-  // Installs the terminate handler and returns the one before.
-  TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return terminateHandler.exchange(handler); }
-
-  // The terminate handler as the exception runtime reads it (codegen's kpp_eh_terminate, off Windows),
-  // by a C name: the runtime is written as IR and names no kpp function.
-  extern "C" TerminateHandlerFunction kpp_terminate_handler() { return terminateHandler.load(); }
 }
 
 namespace posix

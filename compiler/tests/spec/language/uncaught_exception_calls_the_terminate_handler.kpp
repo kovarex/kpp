@@ -1,6 +1,7 @@
-// spec: an exception nobody catches ends the program through the terminate handler setTerminate installed (C++'s std::terminate, [except.terminate]), called from the search with the throw site still on the stack; kpp's report of the exception comes first, on stderr
-// pending on windows: an exception nobody catches prints its report and aborts on Windows: @main's handler does not call the UCRT's terminate()
+// spec: an exception nobody catches ends the program through the terminate handler setTerminate installed (C++'s std::terminate, [except.terminate]), from the search with the throw site still on the stack (no destructor between the throw and main runs); kpp's report of the exception comes first, on stderr
 struct Boom : Exception { Boom() : Exception("boom") {} };
+struct Noisy { ~Noisy() { println("destroyed before the terminate handler"); } };
+void thrower() { Noisy n; throw Boom(); }
 void onTerminate()
 {
   println("terminate");
@@ -10,6 +11,6 @@ void onTerminate()
 int main()
 {
   setTerminate(onTerminate);
-  throw Boom();
+  thrower();
   return 0;
 }

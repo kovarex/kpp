@@ -18263,6 +18263,18 @@ namespace
              "  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %data)\n  br label %end\n";
     }
 
+    // The lines that call the terminate handler setTerminate installed (the stdlib's `extern "C"
+    // kpp_terminate_handler`, platform/), if one is, after the report of an exception that ends the
+    // program; the caller's abort follows. A program without the stdlib (--no-std) has none: the name
+    // is claimed only by its definition.
+    std::string terminateHandlerCall()
+    {
+      if (!declaredNames.contains("@kpp_terminate_handler"))
+        return "";
+      return "  %handler = call ptr @kpp_terminate_handler()\n  %unset = icmp eq ptr %handler, null\n  br i1 %unset, label %abort, label %call\n"
+             "call:\n  call void %handler()\n  br label %abort\nabort:\n";
+    }
+
     // The exception runtime (linkonce_odr, in every module) and the real @main, which calls the
     // program's main and reports an exception nobody caught.
     void finishExceptionRuntime()
@@ -18295,14 +18307,7 @@ namespace
         std::string err = stderrStream();
         decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
         shared += baseSearchFunction("@kpp_eh_offset");
-        std::string message = exceptionMessage(fmt2);
-        // After the report, the terminate handler setTerminate installed (the stdlib's
-        // kpp_terminate_handler, platform/PlatformPosix.kpp), if one is; abort when it returns. A
-        // program without the stdlib (--no-std) has none: its name is claimed only by its definition.
-        std::string handler;
-        if (declaredNames.contains("@kpp_terminate_handler"))
-          handler = "  %handler = call ptr @kpp_terminate_handler()\n  %unset = icmp eq ptr %handler, null\n  br i1 %unset, label %abort, label %call\n"
-                    "call:\n  call void %handler()\n  br label %abort\nabort:\n";
+        std::string message = exceptionMessage(fmt2), handler = terminateHandlerCall();
         shared += sharedComdat("@kpp_throw") +
                   std::string(kppThrowHeader) + "\nentry:\n"
                   "  %h = call ptr @malloc(i64 64)\n  %none = icmp eq ptr %h, null\n  br i1 %none, label %nomemory, label %raise\n"
@@ -18417,14 +18422,18 @@ namespace
         shared += sharedComdat("@kpp.eh.filter.any") +
                   std::string(kppEhFilterAnyHeader) + "\nentry:\n"
                   "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"
-                  "  br i1 %is, label %yes, label %no\nyes:\n  call void @kpp_eh_push(ptr %rec, i32 0, i64 0)\n  ret i32 1\nno:\n  ret i32 0\n}\n";
-        std::string message = exceptionMessage(fmt2);
+                  "  br i1 %is, label %yes, label %no\n"
+                  // (no handler took it: the search ends the program here, the throw site on the stack)
+                  "yes:\n  %op = getelementptr inbounds i8, ptr %rec, i64 32\n  %obj = load ptr, ptr %op\n"
+                  "  %tp = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tp\n"
+                  "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti)\n  unreachable\nno:\n  ret i32 0\n}\n";
+        std::string message = exceptionMessage(fmt2), handler = terminateHandlerCall();
         shared += sharedComdat("@kpp_eh_unhandled") +
                   std::string(kppEhUnhandledHeader) + "\nentry:\n"
                   "  %flushed = call i32 @fflush(ptr null)\n" // (the program's output first: abort writes no buffer out)
                   "  %err = call ptr @__acrt_iob_func(i32 2)\n  %name = load ptr, ptr %typeinfo\n"
                   "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
-                  "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
+                  "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n" + handler + "  call void @abort()\n  unreachable\n}\n";
         declareOnce("@llvm.memcpy.p0.p0.i64", "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)");
       }
       // @main, or @wmain for a program whose entry takes wide arguments (the game's, on Windows: the
@@ -18448,20 +18457,19 @@ namespace
         return;
       bool args = declare.find("(i32, ptr)") != std::string::npos || declare.find("(i32 %p0, ptr %p1)") != std::string::npos;
       std::string call = "i32 " + mainName + (args ? "(i32 %argc, ptr %argv)" : "()");
-      bool reports = usesExceptions && sh.target.windows(); // (off Windows, kpp_throw reports and aborts itself)
+      // On Windows the program's main runs under a handler whose filter (kpp.eh.filter.any) the search
+      // reaches when no handler of the program takes a kpp exception: it reports the exception and ends
+      // the program from the search, so the handler itself is never entered. (Off Windows, kpp_throw
+      // reports and aborts itself.)
+      bool reports = usesExceptions && sh.target.windows();
       std::string text = "define i32 @" + entry + "(i32 %argc, ptr %argv) " + std::string(reports ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
       if (!reports)
         text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
       else
-        text += "  %out = alloca [6 x i64]\n  %r = invoke " + call + " to label %done unwind label %dispatch\n"
+        text += "  %r = invoke " + call + " to label %done unwind label %dispatch\n"
                 "done:\n  ret i32 %r\n"
                 "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
-                "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n"
-                "  call void @kpp_eh_begin(ptr %out) [ \"funclet\"(token %pad) ]\n"
-                "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
-                "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti) [ \"funclet\"(token %pad) ]\n"
-                "  catchret from %pad to label %failed\n"
-                "failed:\n  ret i32 3\n}\n\n";
+                "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n  unreachable\n}\n\n";
       if (moduleCount <= 1)
         body += text;
       else

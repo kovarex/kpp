@@ -17,14 +17,13 @@ the converted game. The four listed until 2026-10-29 pass now (language/brace_ar
 templates/forwarding_reference_to_function, language/array_new_and_delete with
 library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
 
-**The terminate handler** (platform/PlatformPosix.kpp, platform/PlatformWindows.kpp; 2026-11-04):
-an exception that ends the program (nobody catches it, or it leaves a noexcept function) prints its
-type and message on stderr first, and only then calls the handler setTerminate installed, where
-C++'s terminate calls the handler alone (its default one is what reports). Off Windows that is kpp's
-own handler (no C++ runtime is linked), called by the exception runtime through
-`kpp_terminate_handler`. On Windows it is the UCRT's, kept per thread, and an exception nobody
-catches does not call it yet: it prints and aborts (language/uncaught_exception_calls_the_terminate_handler,
-pending on Windows), and an exception passes through a noexcept function there
+**The terminate handler** (core/Error.kpp, 2026-11-04): an exception that ends the program (nobody
+catches it, or it leaves a noexcept function) prints its type and message on stderr first, and only
+then calls the handler setTerminate installed, where C++'s terminate calls the handler alone (its
+default one is what reports). The handler is kpp's own on every target, one for the program as the
+standard's is, called by the exception runtime through `kpp_terminate_handler`. A C++ library built
+with MSVC that a program links still uses the UCRT's handler (set_terminate, per thread), which
+kpp's setTerminate does not install. On Windows an exception passes through a noexcept function
 (language/noexcept_violation_terminates_at_the_throw, pending on Windows).
 
 **A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
