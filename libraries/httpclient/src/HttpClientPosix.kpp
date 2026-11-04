@@ -1,6 +1,354 @@
-requires config::platform != Platform::Windows;
-// FreeBSD and Linux have no client here yet: fetch(3) (FreeBSD's base system) and libcurl are the
-// plans (README.md). A program using httpclient is an error on them until one is written and tested.
-static_assert(config::platform == Platform::Windows, "httpclient has no HTTP client for this platform yet (libraries/httpclient/README.md)");
+requires config::platform == Platform::FreeBSD;
+// FreeBSD: HTTP/1.1 over net's TCP, and TLS through the base system's OpenSSL 3 (libssl and
+// libcrypto, which every program using the library links: build.kpp's systemLibrary) with the
+// system's certificates (/etc/ssl) and the host name checked. fetch(3), the base system's client, cannot
+// POST, send headers, give the response's headers or a response with an error status. No proxy.
+// Each request has a connection of its own (Connection: close); the body comes by Content-Length,
+// chunked, or until the server closes.
 
-HttpClientResponse httpClientFetch(const HttpClientRequest& request);
+// OpenSSL's functions this needs (its headers' macros wrap SSL_ctrl, called here directly).
+extern "C" const void* TLS_client_method();
+extern "C" void* SSL_CTX_new(const void* method);
+extern "C" int SSL_CTX_set_default_verify_paths(void* context);
+extern "C" void SSL_CTX_set_verify(void* context, int mode, void* callback);
+extern "C" void SSL_CTX_free(void* context);
+extern "C" void* SSL_new(void* context);
+extern "C" int SSL_set_fd(void* ssl, int fd);
+extern "C" long SSL_ctrl(void* ssl, int command, long number, void* pointer);
+extern "C" int SSL_set1_host(void* ssl, const char* host);
+extern "C" int SSL_connect(void* ssl);
+extern "C" int SSL_read(void* ssl, void* buffer, int capacity);
+extern "C" int SSL_write(void* ssl, const void* buffer, int size);
+extern "C" int SSL_get_error(const void* ssl, int result);
+extern "C" long SSL_get_verify_result(const void* ssl);
+extern "C" void SSL_free(void* ssl);
+extern "C" const char* X509_verify_cert_error_string(long code);
+extern "C" unsigned long ERR_get_error();
+extern "C" void ERR_error_string_n(unsigned long code, char* buffer, size_t size);
+
+// One connection: TCP, with TLS over it for https.
+struct HttpClientConnection
+{
+  net::TcpStream stream;
+  void* context = nullptr;
+  void* ssl = nullptr;
+  String url; // for the errors
+
+  HttpClientConnection() {}
+  HttpClientConnection(const HttpClientConnection&) = delete;
+  HttpClientConnection& operator=(const HttpClientConnection&) = delete;
+  ~HttpClientConnection()
+  {
+    if (this->ssl != nullptr)
+      SSL_free(this->ssl);
+    if (this->context != nullptr)
+      SSL_CTX_free(this->context);
+  }
+
+  // OpenSSL's reason for a failed call: the socket's timeout, the certificate, or its error queue.
+  [[noreturn]] void fail(StringView what, int result)
+  {
+    int error = SSL_get_error(this->ssl, result);
+    int code = *platform::errnoLocation();
+    // SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE, or SSL_ERROR_SYSCALL with EAGAIN: the timeout.
+    if (error == 2 || error == 3 || (error == 5 && code == 35))
+      throw HttpClientError(format("{} {}: timed out", what, this->url));
+    long verify = SSL_get_verify_result(this->ssl);
+    if (verify != 0)
+      throw HttpClientError(format("{} {}: the certificate is not valid: {}", what, this->url,
+                                   StringView(X509_verify_cert_error_string(verify))));
+    unsigned long queued = ERR_get_error();
+    if (queued != 0)
+    {
+      char text[256];
+      ERR_error_string_n(queued, text, 256);
+      throw HttpClientError(format("{} {}: {}", what, this->url, StringView(text)));
+    }
+    if (error == 6) // SSL_ERROR_ZERO_RETURN
+      throw HttpClientError(format("{} {}: the server closed the connection", what, this->url));
+    throw HttpClientError(format("{} {}: TLS error {} (errno {})", what, this->url, error, code));
+  }
+
+  void open(const HttpClientTarget& target, int timeoutMilliseconds)
+  {
+    try
+    {
+      this->stream = net::TcpStream::connect(target.host, target.port);
+      this->stream.setTimeout(timeoutMilliseconds);
+    }
+    catch (const net::NetError& e)
+    {
+      throw HttpClientError(format("connecting for {}: {}", this->url, StringView(e.what())));
+    }
+    if (!target.secure)
+      return;
+    this->context = SSL_CTX_new(TLS_client_method());
+    if (this->context == nullptr || SSL_CTX_set_default_verify_paths(this->context) != 1)
+      throw HttpClientError(format("TLS for {}: OpenSSL cannot start or has no certificates", this->url));
+    SSL_CTX_set_verify(this->context, 1, nullptr); // SSL_VERIFY_PEER
+    this->ssl = SSL_new(this->context);
+    if (this->ssl == nullptr || SSL_set_fd(this->ssl, (int)this->stream.handle) != 1)
+      throw HttpClientError(format("TLS for {}: OpenSSL cannot make a connection", this->url));
+    // SSL_set_tlsext_host_name: SSL_CTRL_SET_TLSEXT_HOSTNAME (55), TLSEXT_NAMETYPE_host_name (0).
+    if (SSL_ctrl(this->ssl, 55, 0, (void*)target.host.c_str()) != 1 || SSL_set1_host(this->ssl, target.host.c_str()) != 1)
+      throw HttpClientError(format("TLS for {}: OpenSSL does not take the host name {}", this->url, target.host));
+    int result = SSL_connect(this->ssl);
+    if (result != 1)
+      this->fail("TLS handshake with", result);
+  }
+
+  void write(StringView data)
+  {
+    if (this->ssl == nullptr)
+    {
+      try
+      {
+        this->stream.write(data);
+      }
+      catch (const net::NetError& e)
+      {
+        throw HttpClientError(format("sending to {}: {}", this->url, StringView(e.what())));
+      }
+      return;
+    }
+    ContainerSize at = 0;
+    while (at < data.size())
+    {
+      ContainerSize left = data.size() - at;
+      int size = left > 1048576 ? 1048576 : (int)left;
+      int written = SSL_write(this->ssl, data.data() + at, size);
+      if (written <= 0)
+        this->fail("sending to", written);
+      at += (ContainerSize)written;
+    }
+  }
+
+  // What has arrived, at least one byte; 0 when the server has closed the connection.
+  int64_t read(char* buffer, int capacity)
+  {
+    if (this->ssl == nullptr)
+    {
+      try
+      {
+        return this->stream.read(buffer, capacity);
+      }
+      catch (const net::NetError& e)
+      {
+        throw HttpClientError(format("reading from {}: {}", this->url, StringView(e.what())));
+      }
+    }
+    int got = SSL_read(this->ssl, buffer, capacity);
+    if (got > 0)
+      return got;
+    int error = SSL_get_error(this->ssl, got);
+    // SSL_ERROR_ZERO_RETURN: the server's close_notify; SSL_ERROR_SYSCALL with nothing queued and no
+    // errno: a close without one, which servers that send Connection: close often do.
+    if (error == 6 || (error == 5 && ERR_get_error() == 0 && *platform::errnoLocation() == 0))
+      return 0;
+    this->fail("reading from", got);
+  }
+};
+
+// The bytes a response arrives in, read from its connection as they are needed.
+struct HttpClientReader
+{
+  HttpClientConnection* connection = nullptr;
+  String data;
+  ContainerSize at = 0;
+  bool closed = false;
+
+  // Reads more; false when the connection has closed.
+  bool more()
+  {
+    if (this->closed)
+      return false;
+    char buffer[16384];
+    *platform::errnoLocation() = 0;
+    int64_t got = this->connection->read(buffer, 16384);
+    if (got == 0)
+    {
+      this->closed = true;
+      return false;
+    }
+    this->data.append(StringView(buffer, (ContainerSize)got));
+    return true;
+  }
+
+  // The text up to the next CRLF (or LF), which it passes.
+  String line()
+  {
+    for (;;)
+    {
+      ContainerSize end = this->data.find('\n', this->at);
+      if (end != String::npos)
+      {
+        ContainerSize stop = end > this->at && this->data[end - 1] == '\r' ? end - 1 : end;
+        String text = this->data.substr(this->at, stop - this->at);
+        this->at = end + 1;
+        return text;
+      }
+      if (!this->more())
+        throw HttpClientError(format("the response of {} ends in the middle of a line", this->connection->url));
+    }
+  }
+
+  // The next n bytes.
+  String take(ContainerSize n)
+  {
+    while (this->data.size() - this->at < n)
+      if (!this->more())
+        throw HttpClientError(format("the response of {} ends {} bytes early", this->connection->url,
+                                     (int64_t)(n - (this->data.size() - this->at))));
+    String text = this->data.substr(this->at, n);
+    this->at += n;
+    return text;
+  }
+
+  // Everything until the server closes the connection.
+  String rest()
+  {
+    while (this->more())
+    {
+    }
+    String text = this->data.substr(this->at);
+    this->at = this->data.size();
+    return text;
+  }
+};
+
+int64_t httpClientNumber(StringView text, int base, StringView what, StringView url)
+{
+  if (text.empty())
+    throw HttpClientError(format("the response of {} has no {}", url, what));
+  int64_t value = 0;
+  for (char c : text)
+  {
+    int digit = c >= '0' && c <= '9' ? c - '0' : base == 16 && c >= 'a' && c <= 'f' ? c - 'a' + 10
+                : base == 16 && c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+    if (digit < 0 || value > (int64_t)1 << 48)
+      throw HttpClientError(format("the response of {} has a {} that is not a number: {}", url, what, text));
+    value = value * base + digit;
+  }
+  return value;
+}
+
+// One request on a connection of its own; its response, any status.
+HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringView method, StringView url, StringView body)
+{
+  HttpClientTarget target = httpClientTarget(url);
+  HttpClientConnection connection;
+  connection.url = String(url);
+  connection.open(target, request.timeoutMilliseconds);
+
+  String host = target.host.find(':') != String::npos ? String("[") + target.host + "]" : target.host;
+  if (target.port != (target.secure ? 443 : 80))
+    host = format("{}:{}", host, (int)target.port);
+  String head = format("{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n", method, target.path, host);
+  for (const HttpClientHeader& h : request.headers)
+    head.append(h.name + ": " + h.value + "\r\n");
+  if (!body.empty() || method == "POST" || method == "PUT")
+    head.append(format("Content-Length: {}\r\n", (int64_t)body.size()));
+  head.append("\r\n");
+  connection.write(head + body);
+
+  HttpClientReader reader;
+  reader.connection = &connection;
+  HttpClientResponse response;
+  // An informational response (100 Continue) comes before the real one.
+  do
+  {
+    String status = reader.line();
+    if (!status.starts_with("HTTP/1.") || status.size() < 12 || status[8] != ' ')
+      throw HttpClientError(format("the response of {} does not start with an HTTP status line: {}", url, status.substr(0, 80)));
+    response.status = (int)httpClientNumber(StringView(status).substr(9, 3), 10, "status", url);
+    String headers;
+    for (String line = reader.line(); !line.empty(); line = reader.line())
+      headers.append(line + "\n");
+    response.headers = httpClientParseHeaders(headers);
+  } while (response.status >= 100 && response.status < 200);
+
+  const String* encoding = response.header("Transfer-Encoding");
+  const String* length = response.header("Content-Length");
+  if (method == "HEAD" || response.status == 204 || response.status == 304)
+    return response;
+  if (encoding != nullptr && httpClientEqualIgnoringCase(*encoding, "chunked"))
+  {
+    for (;;)
+    {
+      String size = reader.line();
+      ContainerSize extension = size.find(';');
+      if (extension != String::npos)
+        size = size.substr(0, extension);
+      while (!size.empty() && (size[size.size() - 1] == ' ' || size[size.size() - 1] == '\t'))
+        size = size.substr(0, size.size() - 1);
+      int64_t n = httpClientNumber(size, 16, "chunk size", url);
+      if (n == 0)
+        break;
+      response.body.append(reader.take((ContainerSize)n));
+      if (!reader.line().empty())
+        throw HttpClientError(format("a chunk of the response of {} is longer than its size", url));
+    }
+    // (the trailer's fields, if any, are not read: the connection closes)
+  }
+  else if (encoding != nullptr && !httpClientEqualIgnoringCase(*encoding, "identity"))
+    throw HttpClientError(format("the response of {} has the transfer encoding {}", url, *encoding));
+  else if (length != nullptr)
+    response.body = reader.take((ContainerSize)httpClientNumber(*length, 10, "Content-Length", url));
+  else
+    response.body = reader.rest();
+  return response;
+}
+
+// Location against the address it answered: absolute, scheme-relative, absolute path or relative.
+String httpClientResolve(StringView base, StringView location)
+{
+  if (location.starts_with("http://") || location.starts_with("https://"))
+    return String(location);
+  bool secure = base.starts_with("https://");
+  StringView scheme = secure ? "https:" : "http:";
+  if (location.starts_with("//"))
+    return String(scheme) + location;
+  StringView rest = base.substr(scheme.size() + 2);
+  ContainerSize pathStart = rest.find('/');
+  ContainerSize question = rest.find('?');
+  if (question < pathStart)
+    pathStart = question;
+  String origin = String(base.substr(0, scheme.size() + 2)) + (pathStart == StringView::npos ? rest : rest.substr(0, pathStart));
+  if (location.starts_with("/"))
+    return origin + location;
+  StringView path = pathStart == StringView::npos ? StringView("/") : rest.substr(pathStart);
+  ContainerSize query = path.find('?');
+  if (query != StringView::npos)
+    path = path.substr(0, query);
+  if (location.starts_with("?"))
+    return origin + path + location;
+  return origin + path.substr(0, path.rfind('/') + 1) + location;
+}
+
+HttpClientResponse httpClientFetch(const HttpClientRequest& request)
+{
+  String url = request.url;
+  String method = request.method;
+  String body = request.body;
+  // Redirects as WinHTTP follows them: at most 10, never from https to http; 303, and 301 or 302
+  // after a POST, become a GET without the body.
+  for (int redirects = 0;; ++redirects)
+  {
+    HttpClientResponse response = httpClientExchange(request, method, url, body);
+    int s = response.status;
+    const String* location = response.header("Location");
+    if (!request.followRedirects || location == nullptr || !(s == 301 || s == 302 || s == 303 || s == 307 || s == 308))
+      return response;
+    String next = httpClientResolve(url, *location);
+    if (url.starts_with("https://") && next.starts_with("http://"))
+      return response;
+    if (redirects == 10)
+      throw HttpClientError(format("{} redirects more than 10 times", request.url));
+    if (s == 303 || ((s == 301 || s == 302) && method == "POST"))
+    {
+      method = "GET";
+      body = String();
+    }
+    url = next;
+  }
+}

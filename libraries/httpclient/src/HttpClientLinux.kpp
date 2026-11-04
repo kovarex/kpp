@@ -1,0 +1,7 @@
+requires config::platform == Platform::Linux;
+// Linux has no client here yet: HttpClientPosix.kpp's (HTTP/1.1 and OpenSSL) waits for OpenSSL's
+// headers and libraries in the Linux sysroot (README.md). A program using httpclient is an error
+// there until then.
+static_assert(config::platform != Platform::Linux, "httpclient has no HTTP client for Linux yet: OpenSSL is not in the Linux sysroot (libraries/httpclient/README.md)");
+
+HttpClientResponse httpClientFetch(const HttpClientRequest& request);

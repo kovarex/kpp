@@ -8,6 +8,9 @@ void build(Project& project)
   httpclient.minimumKpp = "0.1.0";
   httpclient.root("src");
   httpclient.test("tests");
-  // Its tests answer the requests they make over the loopback with net.
+  // FreeBSD's client is HTTP/1.1 over net's sockets (its tests answer over the loopback with net too),
+  // with TLS through the base system's OpenSSL.
   httpclient.use("net");
+  httpclient.systemLibrary("ssl", Platform::FreeBSD);
+  httpclient.systemLibrary("crypto", Platform::FreeBSD);
 }

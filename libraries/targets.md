@@ -8,8 +8,9 @@ run on its own (`--list`, then `--filter NAME`): Linux in WSL (Ubuntu 24.04, gli
 the CI FreeBSD 14.3 VM (vmactions/freebsd-vm, as ci.yml's freebsd_run; run 41825053585 of a
 temporary branch, deleted since).
 
-The two targets give the same result, test for test: 11 of the 12 projects build, and all 67 of
-their tests pass. httpclient does not build.
+The two targets give the same result, test for test, apart from httpclient: on FreeBSD all 12
+projects build and all 70 of their tests pass; on Linux 11 build and their 67 tests pass, and
+httpclient is a compile error there.
 
 | Project | Builds | Tests on Linux and FreeBSD |
 |---|---|---|
@@ -23,11 +24,12 @@ their tests pass. httpclient does not build.
 | net | yes | 3 pass |
 | mariadb | yes | 7 pass (the live server test skipped: MARIADB_TEST_PORT not set) |
 | http | yes | 5 pass |
-| httpclient | no: a compile error, on purpose | - |
+| httpclient | FreeBSD: yes; Linux: no, a compile error on purpose | FreeBSD: 3 pass, HTTPS included (`HTTPCLIENT_TEST_HTTPS` set: EGD over TLS, an expired certificate refused; run 41825880355) |
 | kppsite | yes | 3 pass |
 
-**httpclient (the library; G).** It has no client off Windows yet: HttpClientPosix.kpp is a
-static_assert until one is written and tested (README.md).
+**httpclient on Linux (the library; G).** FreeBSD's client (HTTP/1.1 over net, TLS through the base
+system's OpenSSL, README.md) needs OpenSSL's headers and libraries, which the Linux sysroot does not
+have yet; until then HttpClientLinux.kpp is a static_assert.
 
 On 2026-11-03 http and mariadb did not link (the stdlib's threads and system error text called
 Win32, stage 4) and 12 tests ended at a throw (stage 3); both are in.

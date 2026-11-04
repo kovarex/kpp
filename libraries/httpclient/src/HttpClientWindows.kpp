@@ -115,56 +115,6 @@ String httpClientNarrow(const wchar_t* text, int length)
   throw HttpClientError(format("{} {}: {} (error {})", what, url, StringView(buffer, (ContainerSize)length), (int64_t)code));
 }
 
-// The parts WinHTTP takes: secure, host, port, and the path with its query.
-struct HttpClientTarget
-{
-  bool secure = false;
-  String host;
-  unsigned short port = 0;
-  String path;
-};
-
-HttpClientTarget httpClientTarget(StringView url)
-{
-  HttpClientTarget target;
-  target.secure = url.starts_with("https://");
-  StringView rest = url.substr(target.secure ? 8 : 7);
-  ContainerSize slash = rest.find('/');
-  ContainerSize question = rest.find('?');
-  ContainerSize end = slash < question ? slash : question;
-  StringView authority = end == StringView::npos ? rest : rest.substr(0, end);
-  target.path = end == StringView::npos ? String("/") : String(rest.substr(end));
-  if (!target.path.starts_with("/"))
-    target.path = String("/") + target.path;
-  if (authority.find('@') != StringView::npos)
-    throw HttpClientError(format("an address with a user name: {}", url));
-  ContainerSize colon = authority.rfind(':');
-  bool bracketed = authority.starts_with("[");
-  if (colon != StringView::npos && (!bracketed || authority.find(']') < colon))
-  {
-    StringView port = authority.substr(colon + 1);
-    int value = 0;
-    for (char c : port)
-    {
-      if (c < '0' || c > '9' || value > 65535)
-        throw HttpClientError(format("the port of {} is not a number", url));
-      value = value * 10 + (c - '0');
-    }
-    if (port.empty() || value == 0 || value > 65535)
-      throw HttpClientError(format("the port of {} is not a port", url));
-    target.port = (unsigned short)value;
-    authority = authority.substr(0, colon);
-  }
-  else
-    target.port = target.secure ? 443 : 80;
-  if (bracketed)
-    authority = authority.substr(1, authority.size() - 2);
-  if (authority.empty())
-    throw HttpClientError(format("an address without a host: {}", url));
-  target.host = String(authority);
-  return target;
-}
-
 HttpClientResponse httpClientFetch(const HttpClientRequest& request)
 {
   const WinHttp& w = winHttp();
