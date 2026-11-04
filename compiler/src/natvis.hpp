@@ -14,3 +14,9 @@ class SymbolTable;
 
 // The .natvis for a program's files (the library's among them) and its class instances.
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, std::vector<std::string>& problems);
+
+// A type's name in the debug information and the natvis: kppc's (TypeTable::toString, qualified)
+// with closing angle brackets kept apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs write
+// them. Visual Studio's expression evaluator reads `>>` as a shift, so it could not name, cast to or
+// match a natvis rule to a type whose name ends two template argument lists at once.
+std::string debuggerTypeName(std::string name);

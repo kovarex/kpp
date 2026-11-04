@@ -1,6 +1,6 @@
 // The natvis kppc links into the PDB of a build with debug information (tests\natvis.ps1,
 // docs/debugging.md, "Values in Visual Studio"): a value of each library type it has a rule for, and
-// a typed union.
+// a typed union; containers with more than one block or node.
 struct Point
 {
   int x = 0;
@@ -33,7 +33,33 @@ int main()
   count[Property::Integer] = 12;
   Property name;
   name[Property::Text] = String("gear");
+  Deque<int> queue;
+  for (int i = 0; i < 20; ++i)
+    queue.push_back(i);
+  for (int i = 1; i <= 20; ++i)
+    queue.push_front(-i);
+  List<String> words;
+  words.push_back("cog");
+  words.push_front("belt");
+  ForwardList<int> stack;
+  stack.push_front(8);
+  stack.push_front(9);
+  Map<String, int> heights;
+  heights["inserter"] = 3;
+  heights["chest"] = 1;
+  heights["assembler"] = 2;
+  HashMap<int, Vector<int>> groups; // (an entry type ending in >>)
+  groups[1].push_back(5);
+  Set<int> ids;
+  ids.insert(30);
+  ids.insert(10);
+  ids.insert(20);
+  SharedPtr<Point> shared = makeShared<Point>();
+  shared->y = 6;
+  SharedPtr<Point> again = shared;
+  WeakPtr<Point> weak = shared;
   println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
-          count[Property::Integer], " ", name[Property::Text]);
+          count[Property::Integer], " ", name[Property::Text], " ", queue.size(), " ", queue[0], " ", words.size(), " ", stack.front(), " ",
+          heights.size(), " ", groups.size(), " ", ids.size(), " ", again.use_count(), " ", weak.expired(), " ", shared->y);
   return 0;
 }

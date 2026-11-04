@@ -1,6 +1,7 @@
 #include "codegen.hpp"
 #include "ast_walk.hpp"
 #include "consteval.hpp"
+#include "natvis.hpp"
 #include "source.hpp"
 #include <map>
 #include <set>
@@ -6496,7 +6497,8 @@ namespace
     // Basic types as CodeView names them (its simple types have no names of their own: int32 is
     // `int`), each of kpp's integers a typedef of its name too (int32, uint8: an S_UDT, so that a
     // natvis rule's $T1 parses). A class or enum is named as kppc's IR names it (game::Entity,
-    // Vector<int32>), the whole spelling, and identified by it.
+    // Vector<int32>), the whole spelling, its closing brackets apart (debuggerTypeName), and
+    // identified by it.
     std::string debugTypeText(const Ty* t, const std::string& spelling)
     {
       auto basic = [](const char* name, uint64_t bits, const char* encoding)
@@ -6564,7 +6566,7 @@ namespace
               enumerators += debugId(next++) + " = !DIEnumerator(name: " + metadataString(sym(en->name)) + ", value: " + valueText +
                              (underlying && underlying->isUnsigned ? ", isUnsigned: true" : "") + ")\n";
             }
-            return one("!DICompositeType(tag: DW_TAG_enumeration_type, name: " + metadataString(spelling) +
+            return one("!DICompositeType(tag: DW_TAG_enumeration_type, name: " + metadataString(debuggerTypeName(spelling)) +
                        (underlying ? ", baseType: " + debugType(underlying) : std::string()) + ", size: " + std::to_string(sizeOf(t) * 8) +
                        (e->isClass ? ", flags: DIFlagEnumClass" : "") + ", elements: " + debugId(1) + ", identifier: " + metadataString(spelling) + ")") +
                    debugId(1) + " = !{ " + elements + "}\n" + enumerators; // (`!{ `: renumberDebugIds takes an id after a blank)
@@ -6577,7 +6579,7 @@ namespace
           // alone (homeDebugClasses), every other module's reference resolved by the identifier.
           auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
           const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
-          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(spelling) + ", flags: DIFlagFwdDecl, identifier: " +
+          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerTypeName(spelling)) + ", flags: DIFlagFwdDecl, identifier: " +
                      metadataString(spelling) + ")");
         }
         case TyKind::Function:
@@ -6604,8 +6606,9 @@ namespace
     // placeholder, `!G` and the hash of its IR name), its metadata made here into Shared::debugGlobals:
     // a DIGlobalVariableExpression of a DIGlobalVariable named as the IR names it (game::counter,
     // Vector<int32>::empty: a static member's storage is Class::member, where the debugger reads its
-    // value), at its definition's line, of type t. Module assembly gives it to the module whose text
-    // defines the global (appendDebugTypes), its home in a debug build; a declaration has none
+    // value; its class's closing brackets apart, debuggerTypeName), at its definition's line, of
+    // type t. Module assembly gives it to the module whose text defines the global
+    // (appendDebugTypes), its home in a debug build; a declaration has none
     // (externalDeclarationOf).
     std::string debugGlobal(const std::string& name, VariableDecl* def, const Ty* t)
     {
@@ -6618,7 +6621,7 @@ namespace
       char placeholder[24];
       snprintf(placeholder, sizeof placeholder, "!G%016llx", (unsigned long long)key);
       std::string text = debugId(0) + " = !DIGlobalVariableExpression(var: " + debugId(1) + ", expr: !DIExpression())\n" + debugId(1) +
-                         " = distinct !DIGlobalVariable(name: " + metadataString(bare) + ", scope: !0, file: " + debugFileOf(def->file) +
+                         " = distinct !DIGlobalVariable(name: " + metadataString(debuggerTypeName(bare)) + ", scope: !0, file: " + debugFileOf(def->file) +
                          ", line: " + std::to_string(lineOf(def, def->file)) + ", type: " + debugType(t) + ", isLocal: false, isDefinition: true)\n";
       auto lock = sharedLock();
       sh.debugGlobals[key] = std::move(text);
@@ -6767,7 +6770,7 @@ namespace
       std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
       uint32_t list = next++;
       nodes += debugId(list) + " = !{ " + elements + "}\n";
-      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(*spelling) : std::string()) +
+      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerTypeName(*spelling)) : std::string()) +
                ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
                (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
                (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";

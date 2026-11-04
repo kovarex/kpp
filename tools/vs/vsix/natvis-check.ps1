@@ -3,7 +3,7 @@
 # installed by test.ps1 before), stops at Main:Line and prints each expression as the debugger gives
 # it, the natvis applied, with Depth levels of members. A kpp project's generated solution, Debug.
 #   natvis-check.ps1 -Sln build\visual-studio\x.sln -Main src\main.kpp -Line 36 -Exprs 'numbers,small,ages'
-param([string]$Sln, [string]$Main, [int]$Line, [string]$Exprs, [int]$Depth = 1)
+param([string]$Sln, [string]$Main, [int]$Line, [string]$Exprs, [int]$Depth = 1, [string]$Separator = ",")
 $ErrorActionPreference = 'Stop'
 $test = [IO.File]::ReadAllText("$PSScriptRoot\test.ps1")
 $a = $test.IndexOf('Add-Type @"'); $b = $test.IndexOf('[KppVsMessageFilter]::Register()')
@@ -36,7 +36,7 @@ try
   $dte.Debugger.Go($false)
   $t = [Diagnostics.Stopwatch]::StartNew(); while ($dte.Debugger.CurrentMode -ne 2 -and $t.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 200 }
   "break: mode {0}, {1:N1} s, frame {2}" -f $dte.Debugger.CurrentMode, $t.Elapsed.TotalSeconds, $dte.Debugger.CurrentStackFrame.FunctionName
-  foreach ($e in ($Exprs -split ','))
+  foreach ($e in ($Exprs.Split($Separator)))
   {
     $x = $dte.Debugger.GetExpression($e, $true, 5000)
     "== {0} : {1} = {2}" -f $e, $x.Type, $x.Value

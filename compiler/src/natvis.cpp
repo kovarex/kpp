@@ -45,13 +45,30 @@ namespace
         dataMembers(static_cast<const ClassDecl*>(m), symbols, out);
   }
 
-  // A rule for the library's classes: the classes and members it reads, and its XML.
+  // A rule for the library's classes: the classes it names and the members it reads of each, its
+  // XML, and the members it reads of other classes (by name: a specialization of those is no
+  // concern, the rule naming only the classes it reads through).
   struct Rule
   {
     std::vector<std::string> classes;
     std::vector<std::string> members;
     std::string xml;
+    std::vector<std::pair<std::string, std::vector<std::string>>> reads = {};
   };
+
+  // A declaration's text, its tokens joined by one space: what a rule that copies the library's
+  // computation compares with.
+  std::string tokenText(const Decl* d, const std::vector<Token>& tokens, std::string_view text)
+  {
+    std::string out;
+    for (uint32_t i = d->token; i < d->endToken && i < tokens.size(); ++i)
+    {
+      if (!out.empty())
+        out += ' ';
+      out += text.substr(tokens[i].offset, tokens[i].length);
+    }
+    return out;
+  }
 
   // The library's literal: largeMark's `0x80`, for the rule to compare with.
   bool literalOf(const ClassDecl* c, const std::string& member, const SymbolTable& symbols, const std::vector<Token>& tokens, std::string_view text,
@@ -71,6 +88,13 @@ namespace
       }
     return false;
   }
+}
+
+std::string debuggerTypeName(std::string name)
+{
+  for (size_t i = name.find(">>"); i != std::string::npos; i = name.find(">>", i))
+    name.insert(i + 1, " ");
+  return name;
 }
 
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, std::vector<std::string>& problems)
@@ -95,10 +119,14 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     if (f->isLibrary)
       collect(f->decls, f);
 
+  std::set<std::string> broken; // rules left out for what they compute: by their first class
   std::string largeMark;
   if (auto s = library.find("String"); s == library.end() || !s->second.second->tokens ||
                                        !literalOf(s->second.first, "largeMark", symbols, *s->second.second->tokens, s->second.second->text, largeMark))
+  {
     problems.push_back("String's largeMark is no number literal: the String rule is left out");
+    broken.insert("String");
+  }
 
   // `mark` is a String's last byte: a small string's length, or largeMark for one on the heap.
   const std::string mark = "(unsigned char)smallChars[sizeof(smallChars) - 1]";
@@ -153,12 +181,54 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
      "      <ExpandedItem Condition=\"held != 0\">*held</ExpandedItem>\n"
      "    </Expand>\n"
      "  </Type>\n"},
+    // A SharedControl's strong count is the owners'; its weak one the weak references' plus one
+    // while an owner lives (sharedReleaseWeak).
     {{"SharedPtr"}, {"pointer", "control"},
      "  <Type Name=\"SharedPtr&lt;*&gt;\">\n"
      "    <DisplayString Condition=\"pointer == 0\">empty</DisplayString>\n"
-     "    <DisplayString>{*pointer}</DisplayString>\n"
+     "    <DisplayString Condition=\"control == 0\">{*pointer}</DisplayString>\n"
+     "    <DisplayString>{*pointer} [{control-&gt;strong.value} strong]</DisplayString>\n"
      "    <Expand>\n"
+     "      <Item Name=\"[use count]\" Condition=\"control != 0\">control-&gt;strong.value</Item>\n"
+     "      <Item Name=\"[weak count]\" Condition=\"control != 0\">control-&gt;weak.value - (control-&gt;strong.value != 0)</Item>\n"
      "      <ExpandedItem Condition=\"pointer != 0\">*pointer</ExpandedItem>\n"
+     "    </Expand>\n"
+     "  </Type>\n",
+     {{"SharedControl", {"strong", "weak"}}, {"Atomic", {"value"}}}},
+    {{"WeakPtr"}, {"pointer", "control"},
+     "  <Type Name=\"WeakPtr&lt;*&gt;\">\n"
+     "    <DisplayString Condition=\"control == 0\">empty</DisplayString>\n"
+     "    <DisplayString Condition=\"control-&gt;strong.value == 0\">expired</DisplayString>\n"
+     "    <DisplayString>{*pointer} [{control-&gt;strong.value} strong]</DisplayString>\n"
+     "    <Expand>\n"
+     "      <Item Name=\"[use count]\" Condition=\"control != 0\">control-&gt;strong.value</Item>\n"
+     "      <ExpandedItem Condition=\"control != 0 &amp;&amp; control-&gt;strong.value != 0\">*pointer</ExpandedItem>\n"
+     "    </Expand>\n"
+     "  </Type>\n",
+     {{"SharedControl", {"strong", "weak"}}, {"Atomic", {"value"}}}},
+    {{"Map", "Set", "MultiMap", "MultiSet"}, {"tree"},
+     "  <Type Name=\"Map&lt;*&gt;\">\n"
+     "    <DisplayString>{tree}</DisplayString>\n"
+     "    <Expand>\n"
+     "      <ExpandedItem>tree</ExpandedItem>\n"
+     "    </Expand>\n"
+     "  </Type>\n"
+     "  <Type Name=\"Set&lt;*&gt;\">\n"
+     "    <DisplayString>{tree}</DisplayString>\n"
+     "    <Expand>\n"
+     "      <ExpandedItem>tree</ExpandedItem>\n"
+     "    </Expand>\n"
+     "  </Type>\n"
+     "  <Type Name=\"MultiMap&lt;*&gt;\">\n"
+     "    <DisplayString>{tree}</DisplayString>\n"
+     "    <Expand>\n"
+     "      <ExpandedItem>tree</ExpandedItem>\n"
+     "    </Expand>\n"
+     "  </Type>\n"
+     "  <Type Name=\"MultiSet&lt;*&gt;\">\n"
+     "    <DisplayString>{tree}</DisplayString>\n"
+     "    <Expand>\n"
+     "      <ExpandedItem>tree</ExpandedItem>\n"
      "    </Expand>\n"
      "  </Type>\n"},
     {{"OptionalTrivialValue", "OptionalCopiedValue", "OptionalOwnedValue"}, {"storage", "present"},
@@ -187,7 +257,41 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
      "    </Expand>\n"
      "  </Type>\n"},
     {{"HashTable"}, {"tags", "slots", "capacity", "count"}, ""},
+    // The rules of these are per instance (below): a node's cast names its element type.
+    {{"List"}, {"sentinel", "length"}, "", {{"ListLinks", {"next"}}, {"ListNode", {"value"}}}},
+    {{"ForwardList"}, {"beforeHead"}, "", {{"ForwardLinks", {"next"}}, {"ForwardNode", {"value"}}}},
+    {{"RbTree"}, {"header", "count"}, "", {{"RbNodeBase", {"parent", "left", "right"}}, {"RbNode", {"entry"}}}},
+    // Element i is at position start + i of the map's space: block (start + i) / blockSize() at
+    // that offset. block() is Deque::blockSize() (checked below), sizeof(T) taken as sizeof(**map).
+    {{"Deque"}, {"map", "start", "length"},
+     "  <Type Name=\"Deque&lt;*&gt;\">\n"
+     "    <Intrinsic Name=\"block\" Expression=\"sizeof(**map) &gt; 16 ? 16 : sizeof(**map) &gt; 8 ? 32 : sizeof(**map) &gt; 4 ? 64 : "
+     "sizeof(**map) &gt; 2 ? 128 : sizeof(**map) &gt; 1 ? 256 : 512\"/>\n"
+     "    <DisplayString>{{ length={length} }}</DisplayString>\n"
+     "    <Expand>\n"
+     "      <IndexListItems>\n"
+     "        <Size>length</Size>\n"
+     "        <ValueNode>map[(start + $i) / block()][(start + $i) % block()]</ValueNode>\n"
+     "      </IndexListItems>\n"
+     "    </Expand>\n"
+     "  </Type>\n"},
   };
+  // The Deque rule's block() is this blockSize: elements per block, about 512 bytes' worth, a power
+  // of two, at least 16.
+  if (auto d = library.find("Deque"); d != library.end())
+  {
+    const ParsedFile* file = d->second.second;
+    std::string found;
+    for (const Decl* m : d->second.first->members)
+      if (m->kind == NodeKind::FunctionDecl && nameOf(static_cast<const FunctionDecl*>(m)->name, symbols) == "blockSize" && file->tokens)
+        found = tokenText(m, *file->tokens, file->text);
+    const std::string expected = "static int blockSize ( ) { int size = 16 ; while ( ( size_t ) size * 2 * sizeof ( T ) <= 512 ) size *= 2 ; return size ; }";
+    if (found != expected)
+    {
+      problems.push_back("Deque's blockSize is not the one its rule computes (" + found + "): the Deque rule is left out");
+      broken.insert("Deque");
+    }
+  }
 
   std::string out = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
                     "<!-- Written by kppc for a build with debug information (docs/debugging.md, \"Values in Visual Studio\"). -->\n"
@@ -195,24 +299,31 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   std::set<std::string> ruleOut; // classes whose rule is left out
   for (const Rule& r : rules)
   {
-    bool ok = !(r.classes[0] == "String" && largeMark.empty());
+    bool ok = !broken.count(r.classes[0]);
+    // The classes it names, with its members, then those it reads through.
+    std::vector<std::pair<std::string, std::vector<std::string>>> checked;
     for (const std::string& cls : r.classes)
     {
       if (specialized.count(cls))
         problems.push_back("the library specializes " + cls + ", whose rule names only its primary template: add a rule for the specialization");
+      checked.emplace_back(cls, r.members);
+    }
+    checked.insert(checked.end(), r.reads.begin(), r.reads.end());
+    for (const auto& [cls, read] : checked)
+    {
       auto found = library.find(cls);
       if (found == library.end())
       {
-        problems.push_back("the library has no class " + cls + ": its rule is left out");
+        problems.push_back("the library has no class " + cls + ": the rule of " + r.classes[0] + " is left out");
         ok = false;
         continue;
       }
       std::set<std::string> members;
       dataMembers(found->second.first, symbols, members);
-      for (const std::string& m : r.members)
+      for (const std::string& m : read)
         if (!members.count(m))
         {
-          problems.push_back(cls + " has no data member " + m + ": its rule is left out");
+          problems.push_back(cls + " has no data member " + m + ": the rule of " + r.classes[0] + " is left out");
           ok = false;
         }
     }
@@ -222,44 +333,107 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
       ruleOut.insert(r.classes.begin(), r.classes.end());
   }
 
-  // A HashTable's entries: in its slots (E) or behind them (E*, stable), where its tag is 0x80 or
-  // above (HashIterator::skipFree). One rule per instance: the cast names its entry type.
-  if (!ruleOut.count("HashTable"))
+  // Rules per instance of a library class, whose casts name its element's type. By name: the
+  // instances are made in the threads' order. (natvis matches a type by its unqualified name.)
+  TypeTable& types = global.types();
+  auto instancesOf = [&](const std::string& cls, size_t arity)
   {
-    TypeTable& types = global.types();
-    std::map<std::string, std::string> byName; // (by name: the instances are made in the threads' order)
+    std::map<std::string, const Ty*> found;
+    auto lib = library.find(cls);
+    if (lib == library.end() || ruleOut.count(cls))
+      return found;
     for (const Ty* t : types.classInstances())
-    {
-      if (!t->decl || t->decl->kind != NodeKind::ClassDecl || nameOf(static_cast<const ClassDecl*>(t->decl)->name, symbols) != "HashTable" ||
-          t->args.size() != 6 || t->isConst || t->isVolatile || types.isDependent(t)) // (natvis matches a type by its unqualified name)
-        continue;
-      auto lib = library.find("HashTable");
-      if (lib == library.end() || t->decl != lib->second.first)
-        continue;
-      std::string name = types.toString(t, &symbols, true);
-      if (byName.count(name))
-        continue;
-      std::string entry = types.toString(t->args[0], &symbols, true);
-      bool stable = t->args[5]->kind == TyKind::Value && t->args[5]->value != 0;
-      std::string item = stable ? "*((" + entry + "**)slots)[i]" : "((" + entry + "*)slots)[i]";
-      byName[name] = "  <Type Name=\"" + escape(name) + "\">\n"
-             "    <DisplayString>{{ count={count} }}</DisplayString>\n"
+      if (t->decl == lib->second.first && t->args.size() == arity && !t->isConst && !t->isVolatile && !types.isDependent(t))
+        found.emplace(types.toString(t, &symbols, true), t);
+    return found;
+  };
+  // The name of the library's node class `cls` of element `element` (ListNode<T>): empty when the
+  // program has none, so no node of it either.
+  auto nodeName = [&](const std::string& cls, const Ty* element)
+  {
+    auto lib = library.find(cls);
+    if (lib != library.end())
+      for (const Ty* t : types.classInstances())
+        if (t->decl == lib->second.first && t->args.size() == 1 && t->args[0] == element && !t->isConst && !t->isVolatile)
+          return types.toString(t, &symbols, true);
+    return std::string();
+  };
+
+  // A HashTable's entries: in its slots (E) or behind them (E*, stable), where its tag is 0x80 or
+  // above (HashIterator::skipFree).
+  for (const auto& [name, t] : instancesOf("HashTable", 6))
+  {
+    std::string entry = debuggerTypeName(types.toString(t->args[0], &symbols, true));
+    bool stable = t->args[5]->kind == TyKind::Value && t->args[5]->value != 0;
+    std::string item = stable ? "*((" + entry + "**)slots)[i]" : "((" + entry + "*)slots)[i]";
+    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+           "    <DisplayString>{{ count={count} }}</DisplayString>\n"
+           "    <Expand>\n"
+           "      <Item Name=\"[capacity]\" ExcludeView=\"simple\">capacity</Item>\n"
+           "      <CustomListItems MaxItemsPerView=\"5000\">\n"
+           "        <Variable Name=\"i\" InitialValue=\"0\"/>\n"
+           "        <Loop Condition=\"i &lt; capacity\">\n"
+           "          <If Condition=\"tags[i] &gt;= 0x80\">\n"
+           "            <Item>" + escape(item) + "</Item>\n"
+           "          </If>\n"
+           "          <Exec>i++</Exec>\n"
+           "        </Loop>\n"
+           "      </CustomListItems>\n"
+           "    </Expand>\n"
+           "  </Type>\n";
+  }
+  // A List's nodes: a ring through its sentinel, `length` of them after it.
+  for (const auto& [name, t] : instancesOf("List", 1))
+  {
+    std::string node = escape(debuggerTypeName(nodeName("ListNode", t->args[0])));
+    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+           "    <DisplayString>{{ length={length} }}</DisplayString>\n";
+    if (!node.empty())
+      out += "    <Expand>\n"
+             "      <LinkedListItems>\n"
+             "        <Size>length</Size>\n"
+             "        <HeadPointer>(" + node + "*)sentinel.next</HeadPointer>\n"
+             "        <NextPointer>(" + node + "*)next</NextPointer>\n"
+             "        <ValueNode>value</ValueNode>\n"
+             "      </LinkedListItems>\n"
+             "    </Expand>\n";
+    out += "  </Type>\n";
+  }
+  // A ForwardList's nodes: from beforeHead.next to a null next.
+  for (const auto& [name, t] : instancesOf("ForwardList", 1))
+  {
+    std::string node = escape(debuggerTypeName(nodeName("ForwardNode", t->args[0])));
+    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+           "    <DisplayString Condition=\"beforeHead.next == 0\">empty</DisplayString>\n";
+    if (!node.empty())
+      out += "    <DisplayString>{{ front={((" + node + "*)beforeHead.next)-&gt;value} }}</DisplayString>\n"
              "    <Expand>\n"
-             "      <Item Name=\"[capacity]\" ExcludeView=\"simple\">capacity</Item>\n"
-             "      <CustomListItems MaxItemsPerView=\"5000\">\n"
-             "        <Variable Name=\"i\" InitialValue=\"0\"/>\n"
-             "        <Loop Condition=\"i &lt; capacity\">\n"
-             "          <If Condition=\"tags[i] &gt;= 0x80\">\n"
-             "            <Item>" + escape(item) + "</Item>\n"
-             "          </If>\n"
-             "          <Exec>i++</Exec>\n"
-             "        </Loop>\n"
-             "      </CustomListItems>\n"
-             "    </Expand>\n"
-             "  </Type>\n";
-    }
-    for (const auto& [name, xml] : byName)
-      out += xml;
+             "      <LinkedListItems>\n"
+             "        <HeadPointer>(" + node + "*)beforeHead.next</HeadPointer>\n"
+             "        <NextPointer>(" + node + "*)next</NextPointer>\n"
+             "        <ValueNode>value</ValueNode>\n"
+             "      </LinkedListItems>\n"
+             "    </Expand>\n";
+    out += "  </Type>\n";
+  }
+  // An RbTree's (Map's, Set's, MultiMap's, MultiSet's) entries in order: its root is header.parent,
+  // a missing child null.
+  for (const auto& [name, t] : instancesOf("RbTree", 4))
+  {
+    std::string node = escape(debuggerTypeName(nodeName("RbNode", t->args[0])));
+    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+           "    <DisplayString>{{ count={count} }}</DisplayString>\n";
+    if (!node.empty())
+      out += "    <Expand>\n"
+             "      <TreeItems>\n"
+             "        <Size>count</Size>\n"
+             "        <HeadPointer>(" + node + "*)header.parent</HeadPointer>\n"
+             "        <LeftPointer>(" + node + "*)left</LeftPointer>\n"
+             "        <RightPointer>(" + node + "*)right</RightPointer>\n"
+             "        <ValueNode>entry</ValueNode>\n"
+             "      </TreeItems>\n"
+             "    </Expand>\n";
+    out += "  </Type>\n";
   }
   // A typed union (`union enum`, design.md 8.5) as its active alternative: its tag (ClassDecl::tagField,
   // valued in the alternatives' order) and each alternative's storage (ClassDecl::alternatives), by
@@ -282,7 +456,6 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     };
     for (const ParsedFile* f : files)
       find(f->decls);
-    TypeTable& types = global.types();
     std::vector<const Ty*> instances;
     for (const ClassDecl* c : unions)
       if (c->templateParams.empty())
@@ -307,7 +480,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
         shown += "    <DisplayString Condition=\"" + when + "\">" + escape(alternative) + " {" + storage + "}</DisplayString>\n";
         items += "      <Item Name=\"" + escape(alternative) + "\" Condition=\"" + when + "\">" + storage + "</Item>\n";
       }
-      byName[name] = "  <Type Name=\"" + escape(name) + "\">\n" + shown +
+      byName[name] = "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n" + shown +
                      "    <Expand>\n"
                      "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
                      "    </Expand>\n"

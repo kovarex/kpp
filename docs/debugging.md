@@ -194,15 +194,29 @@ shows the library's values as values (compiler\src\natvis.cpp):
   the heap's mark, largeMark, taken from the library's literal);
 - `Vector<*>` and `Span<*>` as their elements, `UniquePtr<*>`, `SharedPtr<*>` and `Optional<*>` as
   what they hold (or `empty`), `Pair<*>` as `(first, second)`;
+- `SharedPtr<*>` and `WeakPtr<*>` with their use count (`[2 strong]`; a SharedPtr's `[weak count]`
+  too, the control block's weak count less the one the owners hold), a WeakPtr as `expired` once
+  its object is gone;
+- `Deque<*>` as its elements, element i in block (start + i) / blockSize() of its map. The rule
+  computes blockSize() from `sizeof(**map)`, so it is checked against Deque::blockSize's text: a
+  changed blockSize leaves the rule out with a warning;
 - `HashMap<*>` and `HashSet<*>` as their entries: one rule per HashTable instance the program has,
   which casts the slots to its entry type by name;
+- `List<T>` and `ForwardList<T>` as their elements, `Map<*>`, `Set<*>`, `MultiMap<*>` and
+  `MultiSet<*>` as their entries in order (the RbTree, as a tree); one rule per instance of List,
+  ForwardList and RbTree, which casts its links to its node type (ListNode<T>, ForwardNode<T>,
+  RbNode<E>) by name;
 - a typed union (`union enum`) as its active alternative, `Integer 12`: one rule per class (and per
   instance of one in a template) by its tag `__tag`, valued in the alternatives' order, and the
   alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps.
 
 The type names are kppc's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
 HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), which are the PDB's: agreed with
-thread B (2026-11-04), whose types carry each instance's full argument list. A rule reads the
+thread B (2026-11-04), whose types carry each instance's full argument list. Both write closing
+angle brackets apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs do (debuggerTypeName in
+natvis.hpp): Visual Studio's expression evaluator reads `>>` as a shift, and with the PDB's
+`RbNode<Pair<String, int32>>` neither a cast to it nor a rule for `RbTree<..., Less<String>>` was
+possible (`Map<String, int32>` showed raw). A rule reads the
 library's members by their names; each is checked against the library's classes as they are, and
 one whose member is gone is left out with `warning: natvis: ...`. The per-instance rules are sorted
 by name, so the file does not depend on the threads.
@@ -225,6 +239,14 @@ GetExpression, which applies the natvis:
 | `Optional<int32>` | `5`, `empty` | |
 | `UniquePtr<Point, DefaultDelete<Point>>` | `{x=4 y=0 }` | `x 4`, `y 0` |
 | `Property` (a typed union) | `Integer 12`, `Text "gear"` | `[tag] Integer`, `Integer 12` |
+| `Deque<int32>` (40 elements, 3 blocks) | `{ length=40 }` | `[0] -20` ... `[39] 19` |
+| `List<String>` | `{ length=2 }` | `"belt"`, `"cog"` |
+| `ForwardList<int32>` | `{ front=9 }` | `9`, `8` |
+| `Map<String, int32, Less<String>>` | `{ count=3 }` | `("assembler", 2)`, `("chest", 1)`, `("inserter", 3)` |
+| `Set<int32, Less<int32>>` | `{ count=3 }` | `10`, `20`, `30` |
+| `HashMap<int32, Vector<int32>, ...>` | `{ count=1 }` | `(1, { length=1 })` |
+| `SharedPtr<Point>` (two owners, one WeakPtr) | `{x=0 y=6 } [2 strong]` | `[use count] 2`, `[weak count] 1`, `x 0`, `y 6` |
+| `WeakPtr<Point>` | `{x=0 y=6 } [2 strong]` | `[use count] 2`, `x 0`, `y 6` |
 
 Every one has its `[Raw View]` too. (tools\vs\vsix\natvis-check.ps1; not part of run_tests, which
 has no Visual Studio session.)
