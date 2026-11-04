@@ -697,7 +697,16 @@ instances.
     (529 of them), cost 11 ms in all.
   - Level 12 (784 items) stalls for 155 to 157 ms in every run: the other 31 threads wait 4.7 s while
     0.19 s is on CPU. No hold of the shared lock is over 15.3 ms (the longest is
-    LuaBinder<LuaCommandable>::getFunctionMap()'s), so the cause is still to identify.
+    LuaBinder<LuaCommandable>::getFunctionMap()'s).
+  - The stall is a hold of definitionsMutex (`cg\timeline-l2.py`: every spin-lock hold over 20 ms):
+    156.5 ms in level 12, 106.6 ms in level 1 and 29.8 ms in level 0. The likely cause, not yet
+    measured: addDefinition inserts each function's name into definedIn and declareLines, maps that
+    reach about 260 k entries. MSVC rehashes such a map as it passes 65,536, 131,072 and 262,144
+    entries, re-hashing every name under the lock. That predicts about 26, 50 to 100 and 157 ms for the
+    two maps.
+  - The 475 ms after the last level are mostly two parts: 254 ms of module assembly (already on the
+    threads), and a 130 ms serial loop over the 256 modules (each one's definitions sorted, its
+    declarations finished).
 - **The collection between levels on the emitters' threads (collectInParallel).**
   - **Before:** collectNextLevel walked every emitter's requests on one thread, against a map of the
     next level's names (copied), then freed them and sorted the level. That took 157 ms for the 42,420
@@ -710,12 +719,16 @@ instances.
 
     The result is the same level, item for item. The parallel way costs about 5 ms of its own, the
     serial one 2.5 µs an item. The game's objects are identical to master's.
-  - **Measured, preliminary:** the measurement window was disturbed, and 3 clean pairs are to follow.
-    - With the timeline, the serial gaps between levels went from 513 to 537 ms to 329 ms, and the
-      one after level 1 from 157 to 168 ms to 59 ms.
-    - Paired builds of the game, every round disturbed: the collection's best codegen was 4.248 and
-      4.251 s, against master's 4.457 s. The gate's own builds: 4.327 against 4.587 s.
-    - Indicated: −0.2 to −0.27 s of codegen.
+  - **Measured.** Paired clean builds of the game (`cg\l1-pairs.ps1`, 3 interleaved rounds, the order
+    alternating, load 0 to 4%, 0 stderr lines), master 12432596 against the collection on that base:
+
+    | | master | the collection on the threads |
+    |---|---:|---:|
+    | codegen | 4.396 to 4.432 s | 4.146 to 4.203 s |
+    | wall | 8.84 to 8.92 s | 8.62 to 8.75 s |
+
+    That is −0.23 to −0.26 s of codegen. With the timeline, the serial gaps between levels went from
+    513 to 537 ms to 307 to 329 ms, and the one after level 1 from 157 to 168 ms to 59 ms.
 
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
