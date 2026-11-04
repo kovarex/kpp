@@ -1,6 +1,5 @@
 // spec: `const` after a type's name is that type const (east const), as after a builtin type: a parameter `U32 const x`, a local `U32 const y = 2;`, a pointer to `Box const`
 // factorio: zstd and xxhash (converted as C) write it throughout (`U32 const current = ...`, `ZSTD_window_t const window`); the converter writes them `const U32` until this passes
-// pending: after a name the parse fails ("expected ')' (at 'const')" for the parameter; the local is no declaration: "'y' is not declared") (A)
 typedef unsigned U32;
 struct Box
 {

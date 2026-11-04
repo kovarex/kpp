@@ -520,7 +520,12 @@ namespace
       }
       // MACRO followed by a keyword, or by an identifier that is itself followed by a type-like
       // continuation (`MACRO Foo x`, `MACRO Foo* x`). `ETA getETA(` and `ID id;` are types, not macros.
-      if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)))
+      // A name before `const` or `volatile` is a type's east const (`U32 const x`, `Box const* p`)
+      // unless a type follows the qualifier (`MACRO const Foo* x`, `MACRO const int x`).
+      bool qualifier = at(Kw::const_, 1) || at(Kw::volatile_, 1);
+      bool typeAfterQualifier = (atIdent(2) && (atIdent(3) || at(P::Star, 3) || at(P::Amp, 3) || at(P::AndAnd, 3) || at(P::ColonColon, 3) || at(P::Less, 3))) ||
+                                (at(TokenKind::Keyword, 2) && isBuiltinTypeKeyword(Kw(tok(2).id)));
+      if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)) && (!qualifier || typeAfterQualifier))
       {
         advance();
         return true;
