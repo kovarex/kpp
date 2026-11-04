@@ -36,8 +36,24 @@ PrivilegesRequired=admin
 ChangesEnvironment=yes
 UninstallDisplayName=kpp {#Version}
 
+; FreeBSD 14.3's headers and libraries (sysroots\freebsd-x86_64, about 90 MB installed), so that `kpp
+; --target freebsd` builds as installed: a component, chosen by default (kovarex, 2026-11-04);
+; without it, --target freebsd needs --sysroot. Unchosen in a later install, the earlier one's goes.
+#if DirExists(Source + "\sysroots\freebsd-x86_64")
+[Components]
+Name: main; Description: "kpp (the compiler, its standard library and toolchain)"; Types: full compact custom; Flags: fixed
+Name: freebsd; Description: "FreeBSD 14.3 headers and libraries, for kpp --target freebsd (about 90 MB)"; Types: full
+
+[Files]
+Source: "{#Source}\*"; DestDir: "{app}"; Excludes: "\sysroots"; Flags: recursesubdirs ignoreversion; Components: main
+Source: "{#Source}\sysroots\freebsd-x86_64\*"; DestDir: "{app}\sysroots\freebsd-x86_64"; Flags: recursesubdirs ignoreversion; Components: freebsd
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\sysroots\freebsd-x86_64"; Components: not freebsd
+#else
 [Files]
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+#endif
 
 ; Earlier releases' name for the VS Code extension, which opened in Visual Studio's installer.
 [InstallDelete]

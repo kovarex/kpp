@@ -133,6 +133,21 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
   return (directory / ".." / ".." / "stdlib").lexically_normal();
 }
 
+std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what)
+{
+  std::filesystem::path root = compiler.parent_path() / "sysroots" / name;
+  std::error_code ec;
+  if (!std::filesystem::is_directory(root / "usr" / "include", ec))
+    return {};
+  if (what)
+  {
+    std::string text;
+    if (readFile(root / "kpp-sysroot.txt", text))
+      *what = text.substr(0, text.find_first_of("\r\n"));
+  }
+  return root;
+}
+
 namespace
 {
   std::string chosenClang; // --toolchain's (selectToolchain), for this build

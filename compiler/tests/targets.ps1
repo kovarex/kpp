@@ -158,6 +158,26 @@ else
     $problems = ElfProblems $elf 1403
     if ($problems) { Fail "freebsd hello ($name): $problems" }
   }
+  # Without --sysroot (2026-11-04): the sysroot that comes with kppc, sysroots\freebsd-x86_64 beside
+  # it (a release brings it; compiler\build\sysroots in this repository), when $Kppc has one.
+  $beside = Join-Path (Split-Path $Kppc) 'sysroots\freebsd-x86_64'
+  if (Test-Path (Join-Path $beside 'usr\lib\libc.a'))
+  {
+    $elf = Join-Path $work 'hello.freebsd.beside.elf'
+    if (Build @('--target', 'freebsd', '--exe', $elf, (Join-Path $src 'hello.kpp')))
+    {
+      $problems = ElfProblems $elf 1403
+      if ($problems) { Fail "freebsd hello without --sysroot: $problems" }
+    }
+  }
+  # A kppc with no sysroot beside it: a link for freebsd without --sysroot is an error naming where it
+  # looked, never one against no headers and libraries.
+  $alone = [IO.Path]::GetFullPath((Join-Path $work 'kppc-alone'))
+  New-Item -ItemType Directory -Force $alone | Out-Null
+  Copy-Item $Kppc "$alone\kppc.exe" -Force
+  $stdlib = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\stdlib'))
+  $r = Run "$alone\kppc.exe" @('--quiet', '--std', $stdlib, '--target', 'freebsd', '--exe', (Join-Path $work 'hello.freebsd.none.elf'), (Join-Path $src 'hello.kpp'))
+  if ($r.exit -ne 2 -or "$($r.err)" -notmatch [regex]::Escape("$alone\sysroots\freebsd-x86_64")) { Fail "freebsd without --sysroot and none beside kppc: exit $($r.exit): $($r.err) $($r.out)" }
   # The libraries kpp.net's programs use (their FreeBSD side: BSD sockets, environ), with FreeBSD's
   # own headers.
   $libraries = Join-Path $PSScriptRoot '..\..\libraries'

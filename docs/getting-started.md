@@ -6,7 +6,9 @@ and building a project. The decided language rules are in [design.md](design.md)
 ## Install
 
 kpp runs on 64-bit Windows 10 and 11, and builds programs for Linux and FreeBSD too (`--target`);
-other hosts are [planned](../readme.md#planned).
+other hosts are [planned](../readme.md#planned). A release brings FreeBSD 14.3's headers and libraries
+(the installer's FreeBSD component, chosen by default), so `kpp --target freebsd` works as installed;
+for Linux, give `--sysroot`.
 
 1. Download the newest release from
    [github.com/kovarex/kpp/releases/latest](https://github.com/kovarex/kpp/releases/latest):

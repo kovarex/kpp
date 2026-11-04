@@ -26,7 +26,8 @@ if (-not $sha256) { throw "freebsd.ps1: base.txz of $release has no pinned SHA-2
 New-Item -ItemType Directory -Force $Out, $Download | Out-Null
 $Out = (Resolve-Path $Out).Path
 $stamp = Join-Path $Out 'kpp-sysroot.txt'
-if ((Test-Path $stamp) -and (Get-Content $stamp -Raw).Trim() -eq "FreeBSD $release $sha256") { $Out; exit 0 }
+# (A sysroot made before it kept the licences, COPYRIGHT and LLVM's, is made again.)
+if ((Test-Path $stamp) -and (Get-Content $stamp -Raw).Trim() -eq "FreeBSD $release $sha256" -and (Test-Path (Join-Path $Out 'COPYRIGHT'))) { $Out; exit 0 }
 
 $txz = Join-Path (Resolve-Path $Download).Path "freebsd-$release-base.txz"
 if (-not (Test-Path $txz) -or (Get-Item $txz).Length -ne $size -or (Get-FileHash $txz -Algorithm SHA256).Hash -ne $sha256)
@@ -50,7 +51,9 @@ Get-ChildItem $Out -Force | ForEach-Object { if ($_.PSIsContainer) { & cmd /c rd
 $wanted = 'lib/', 'usr/include/', 'usr/lib/'
 $ErrorActionPreference = 'Continue'
 # (Links come out as errors or as empty files: they are replaced below. Only the wanted trees.)
-& "$env:SystemRoot\System32\tar.exe" -xf $tar -C $Out --exclude 'usr/lib/debug/*' lib usr/include usr/lib 2>$null
+# Also the licences a copy of it carries (kpp's release: docs/build.md, "Installing"): FreeBSD's
+# COPYRIGHT, and LLVM's for the libc++, libcxxrt and compiler-rt in usr\lib.
+& "$env:SystemRoot\System32\tar.exe" -xf $tar -C $Out --exclude 'usr/lib/debug/*' lib usr/include usr/lib COPYRIGHT usr/share/doc/llvm/LICENSE.TXT 2>$null
 $ErrorActionPreference = 'Stop'
 
 # Every link in the wanted trees becomes a copy of what it points to (relative to the link's own
@@ -113,7 +116,8 @@ foreach ($f in Get-ChildItem (Join-Path $Out 'usr\lib') -File | Where-Object { $
   if ($LASTEXITCODE -ne 0) { throw "llvm-objcopy --strip-debug $($f.FullName) failed" }
 }
 
-foreach ($need in 'usr\lib\crt1.o', 'usr\lib\crti.o', 'usr\lib\crtbeginT.o', 'usr\lib\libc.a', 'usr\lib\libthr.a', 'usr\lib\libm.a', 'usr\lib\libgcc.a', 'usr\include\stdio.h', 'lib\libc.so.7')
+foreach ($need in 'usr\lib\crt1.o', 'usr\lib\crti.o', 'usr\lib\crtbeginT.o', 'usr\lib\libc.a', 'usr\lib\libthr.a', 'usr\lib\libm.a', 'usr\lib\libgcc.a', 'usr\include\stdio.h', 'lib\libc.so.7',
+                 'COPYRIGHT', 'usr\share\doc\llvm\LICENSE.TXT')
 {
   if (-not (Test-Path (Join-Path $Out $need)) -or (Get-Item (Join-Path $Out $need)).Length -eq 0) { throw "the sysroot has no $need" }
 }

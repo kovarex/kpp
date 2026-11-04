@@ -2819,7 +2819,9 @@ The semantics of section 9 hold on every target:
   - Windows: today's vswhere search.
   - Linux and FreeBSD: `clang` and `ld.lld` on PATH, or an LLVM release directory.
   - macOS: `xcrun --find clang`.
-  - Everywhere: `KPP_CLANG`, and a `--sysroot` or build.kpp's `project.sysroot`.
+  - Everywhere: `KPP_CLANG`, and a `--sysroot` or build.kpp's `project.sysroot`; without one, the
+    sysroot beside kppc, `sysroots\freebsd-x86_64` or `linux-x86_64` (a release brings FreeBSD's:
+    docs/build.md, "Installing"; 2026-11-04).
 
   One clang major version is supported per release (19 today).
 - **Testing per target:**

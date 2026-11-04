@@ -50,6 +50,11 @@ std::filesystem::path compilerPath();
 // back end below codegen's threads (main.cpp, BackEndPool).
 void setThreadBelowNormal(bool below);
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
+// A target's sysroot (its C headers and libraries) that comes with kppc: sysroots\NAME next to it,
+// NAME freebsd-x86_64 or linux-x86_64 (a release brings FreeBSD's; tools\sysroot\freebsd.ps1 and
+// tests\targets.ps1 make them in compiler\build\sysroots for a build of kppc). "" when there is none.
+// what is the sysroot's own description (its kpp-sysroot.txt: "FreeBSD 14.3-RELEASE ..."), if any.
+std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what = nullptr);
 
 // kpp's version, MAJOR.MINOR.PATCH with "+dirty" for a build of uncommitted changes, or "unknown"
 // outside git, and the commit it was built from ("" when unknown): compiler/version.cmake writes them

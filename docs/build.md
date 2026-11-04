@@ -826,6 +826,22 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
+- **FreeBSD as installed** (kovarex, 2026-11-04): a release brings FreeBSD 14.3's headers and static
+  libraries in `sysroots\freebsd-x86_64`, so `kpp --target freebsd` builds and links with no
+  `--sysroot` (kppc takes `sysroots\NAME` beside itself for `--target freebsd` and `linux`, where
+  tools\sysroot\freebsd.ps1 also puts it in a build of kppc; a link without either is an error naming
+  the path; `kpp --version` names it). package.ps1 copies a cut of freebsd.ps1's sysroot: the
+  headers, the start files and every static library, no shared libraries (kpp links FreeBSD programs
+  statically), with FreeBSD's COPYRIGHT, LLVM's licence for libc++, libcxxrt and compiler-rt, and a
+  NOTICE naming OpenSSL 3.0.16 (Apache-2.0).
+  - Sizes measured 2026-11-04: the whole sysroot 250.5 MB (zip 76.6 MB); this cut 90.6 MB, 3,253
+    files (zip 24.2 MB, 16.5 MB in the installer's lzma2); a minimal cut (libc, libm, libthr,
+    libgcc, libssl, libcrypto, libc++, libz...) 45.0 MB (zip 12.2 MB, 8.9 MB), with which the whole
+    FreeBSD spec built and linked too. The release grew from 47 to 60 MB (installer) and 76 to 97 MB
+    (zip).
+  - The installer has it as a component, chosen by default; a later install without it removes it.
+  - Not downloaded on first use: base.txz is 210 MB, from FreeBSD's archive over http only, and
+    needs xz.
 - **`kpp --version`** prints the version and commit kppc was built from ("Versions" below), the
   compiler's path, the toolchain a build takes without `--toolchain`, and the standard library.
   `kpp --help` lists the options. Both work only alone; in a project's directory they print and

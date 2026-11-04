@@ -154,6 +154,33 @@ The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 
 - llvm-mingw's own scripts: ISC.
 "@ | Set-Content "$kpp\NOTICE-toolchain.txt"
 
+# FreeBSD 14.3's sysroot, so that `--target freebsd` builds as installed (kpp takes sysroots\NAME beside
+# itself; kovarex, 2026-11-04): tools\sysroot\freebsd.ps1's (base.txz pinned by its SHA-256, kept once
+# unpacked), the static cut: its headers, start files and static libraries (kpp links FreeBSD
+# programs statically), no shared libraries; with FreeBSD's COPYRIGHT and the notices of the
+# libraries in it under other licences.
+$freebsd = & "$repository\tools\sysroot\freebsd.ps1" | Select-Object -Last 1
+if (-not (Test-Path "$freebsd\usr\lib\libc.a")) { throw "tools\sysroot\freebsd.ps1 made no sysroot ($freebsd)" }
+$sysroot = "$kpp\sysroots\freebsd-x86_64"
+CopyTree "$freebsd\usr\include" "$sysroot\usr\include"
+New-Item -ItemType Directory -Force "$sysroot\usr\lib" | Out-Null
+Get-ChildItem "$freebsd\usr\lib" -File | Where-Object { $_.Extension -in '.a', '.o' } | Copy-Item -Destination "$sysroot\usr\lib"
+Copy-Item "$freebsd\kpp-sysroot.txt", "$freebsd\COPYRIGHT" $sysroot
+Copy-Item "$freebsd\usr\share\doc\llvm\LICENSE.TXT" "$sysroot\LICENSE-llvm.txt"
+$openssl = (Select-String -Path "$freebsd\usr\include\openssl\opensslv.h" -Pattern 'OPENSSL_VERSION_TEXT "(OpenSSL [^ ]+)').Matches.Groups[1].Value
+@"
+FreeBSD 14.3-RELEASE's headers and static libraries for building FreeBSD x86-64 programs (kpp
+--target freebsd), taken unchanged from its base.txz (tools\sysroot\freebsd.ps1, which pins it), but
+for the debug information taken out of its objects. They keep their own licences:
+- FreeBSD's base system: the BSD licences in COPYRIGHT, and those in the headers and sources.
+- $openssl (libssl.a, libcrypto.a, include\openssl): Apache License 2.0, the text in ..\..\LICENSE.txt
+  (kpp's, the same licence). Copyright 1995-2025 The OpenSSL Project Authors, and the further
+  holders its headers name (Oracle, Nokia).
+- LLVM's libc++, libcxxrt and compiler-rt (libc++.a, libcxxrt.a, libcompiler_rt.a): Apache-2.0 WITH
+  LLVM-exception, LICENSE-llvm.txt.
+"@ | Set-Content "$sysroot\NOTICE.txt"
+Lap 'freebsd sysroot'
+
 CopyTree "$repository\stdlib" "$kpp\stdlib"
 CopyTree "$repository\projectlib" "$kpp\projectlib"
 New-Item -ItemType Directory -Force "$kpp\grammar" | Out-Null
@@ -169,7 +196,9 @@ kpp --generate-visual-studio-files. kpp new makes a project. Documentation: http
 Nothing else is needed: kpp brings its own toolchain (bin\: llvm-mingw's clang and lld with
 MinGW-w64, NOTICE-toolchain.txt), and its programs use only DLLs every Windows 10 and 11 has.
 kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on request.
-
+$(if (Test-Path "$kpp\sysroots\freebsd-x86_64") { "kpp --target freebsd builds FreeBSD x86-64 programs with FreeBSD 14.3's headers and libraries
+(sysroots\freebsd-x86_64, sysroots\freebsd-x86_64\NOTICE.txt), no --sysroot needed.
+" })
 kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
 
 Editors:
@@ -215,10 +244,17 @@ try
   $foreign = @($dlls | Where-Object { $_ -notmatch '^(ucrtbase|api-ms-win-crt-[a-z0-9-]+|kernel32|user32|advapi32|shell32|ole32|ws2_32|ntdll)\.dll$' })
   if (-not $dlls -or $foreign.Count) { throw "the smoke program imports $($foreign -join ', '), which Windows does not have (all: $($dlls -join ', '))" }
   Write-Output "smoke test: built with the bundled toolchain for windows-gnu; the program imports $($dlls -join ', ')"
+  # FreeBSD as installed: no --sysroot, the package's own (an ELF FreeBSD program; linked, not run).
+  Set-Content "$smoke\freebsd.kpp" "int main()`n{`n  println(`"Hello from kpp`");`n  return 0;`n}"
+  $output = (& "$kpp\kpp.exe" --target freebsd --exe "$smoke\freebsd.elf" "$smoke\freebsd.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $elf = if (Test-Path "$smoke\freebsd.elf") { [IO.File]::ReadAllBytes("$smoke\freebsd.elf") } else { @() }
+  if ($LASTEXITCODE -ne 0 -or $elf.Count -lt 8 -or $elf[0] -ne 0x7f -or $elf[1] -ne 0x45 -or $elf[7] -ne 9) { throw "the packaged kpp did not build for FreeBSD without --sysroot:`n$output" } # (EI_OSABI 9: FreeBSD)
+  Write-Output "smoke test: --target freebsd built an ELF FreeBSD program with the package's sysroot"
   # In the project's directory, as kovarex ran it: the version, never a build.
   $printed = (& "$kpp\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
   if ($LASTEXITCODE -ne 0 -or $printed -notmatch "^kpp $([regex]::Escape($Version))" -or
-      $printed -notmatch [regex]::Escape("toolchain: $kpp\bin\clang.exe (bundled") -or $printed -notmatch "(?m)^stdlib: $([regex]::Escape("$kpp\stdlib"))$") { throw "kpp --version printed:`n$printed" }
+      $printed -notmatch [regex]::Escape("toolchain: $kpp\bin\clang.exe (bundled") -or $printed -notmatch "(?m)^stdlib: $([regex]::Escape("$kpp\stdlib"))$" -or
+      $printed -notmatch "(?m)^sysroot freebsd-x86_64: $([regex]::Escape("$kpp\sysroots\freebsd-x86_64")) \(FreeBSD 14\.3-RELEASE") { throw "kpp --version printed:`n$printed" }
   Write-Output $printed
 }
 finally

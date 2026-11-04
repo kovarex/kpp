@@ -271,6 +271,17 @@ namespace
         printf("toolchain msvc: %s (Visual Studio's: --toolchain msvc)\n", msvc.c_str());
     }
     printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows or windows-gnu (clang otherwise)" : "clang's");
+    // The sysroots --target freebsd and linux take without --sysroot (FreeBSD's always shown: a release
+    // brings it; Linux's when there is one).
+    for (const char* name : {"freebsd-x86_64", "linux-x86_64"})
+    {
+      std::string what;
+      std::filesystem::path root = defaultSysroot(compiler, name, &what);
+      if (!root.empty())
+        printf("sysroot %s: %s%s\n", name, root.string().c_str(), what.empty() ? "" : (" (" + what + ")").c_str());
+      else if (std::string_view(name) == "freebsd-x86_64")
+        printf("sysroot %s: none (--target freebsd needs --sysroot)\n", name);
+    }
     std::filesystem::path stdlib = defaultStdlib(compiler);
     printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");
     return 0;
@@ -4579,6 +4590,25 @@ int compile(int argc, char** argv)
       fprintf(stderr, "--target windows-gnu needs the bundled toolchain's MinGW-w64 (llvm-mingw): --toolchain bundled, or KPP_CLANG "
                       "naming such a clang\n");
       return 2;
+    }
+    // Another platform's C headers and libraries (design.md, "Targets and hosts"): --sysroot, else the
+    // one that comes with kppc, sysroots\freebsd-x86_64 or linux-x86_64 beside it (a release brings
+    // FreeBSD's: `--target freebsd` works as installed, 2026-11-04). A link without either is an error
+    // naming where it looked; an --emit-llvm build needs none.
+    if (options.target.posix() && options.sysroot.empty())
+    {
+      const char* name = options.target.os == Target::Os::FreeBSD ? "freebsd-x86_64" : "linux-x86_64";
+      std::filesystem::path beside = defaultSysroot(compilerPath(), name);
+      if (!beside.empty())
+        options.sysroot = beside.string();
+      else if (!options.exe.empty())
+      {
+        fprintf(stderr, "--target %s needs the target's C headers and libraries to link: --sysroot DIR, or %s (%s)\n", options.target.name.c_str(),
+                (compilerPath().parent_path() / "sysroots" / name).string().c_str(),
+                options.target.os == Target::Os::FreeBSD ? "a release's installer puts it there; in a build of kppc, tools\\sysroot\\freebsd.ps1"
+                                                         : "tests\\targets.ps1 makes it from WSL; tools\\sysroot\\linux-from-wsl.sh");
+        return 2;
+      }
     }
     if (options.incrementalLink && bundledToolchain())
     {

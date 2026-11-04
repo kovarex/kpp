@@ -534,6 +534,15 @@ jobs:
           path: build/llvm-mingw
           key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
 
+      # FreeBSD 14.3's sysroot, which the package carries (sysroots\freebsd-x86_64; package.ps1 runs
+      # tools\sysroot\freebsd.ps1): the freebsd_build job's cache, kept under the script's hash (which
+      # pins base.txz's SHA-256), so that a hit downloads nothing from FreeBSD's archive.
+      - name: FreeBSD sysroot cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/sysroots/freebsd-x86_64
+          key: freebsd-sysroot-${{ hashFiles('tools/sysroot/freebsd.ps1') }}
+
       # The package's version is kppc's own (docs/build.md, "Versions": VERSION and the commits since it
       # changed), which package.ps1 takes from kppc --version; never "+dirty" or unknown here. A push
       # run's release is tagged v<version>; the nightly run's, of a commit a push run has released

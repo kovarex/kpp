@@ -2,7 +2,7 @@
 # nightly release check, .github/workflows/release-check.yml): `kpp --version` names the release's
 # version and commit and the bundled toolchain; `kpp new hello` and `kpp hello --run`; a project with
 # a C library and a build.kpp setting (--set); each in debug and release with --toolchain bundled; and
-# that the programs import only Windows' own DLLs. PATH is cut to the installation, System32 and the
+# that the programs import only Windows' own DLLs; `kpp --target freebsd` with the release's sysroot. PATH is cut to the installation, System32 and the
 # Windows directory, and a Visual Studio environment (VSINSTALLDIR, INCLUDE, LIB...) or KPP_CLANG is a
 # failure, not something to clear. -Summary appends the results to a Markdown file (the run's summary).
 # Exit code 1 when anything failed; the last line says ALL PASSED or how many failed.
@@ -125,6 +125,18 @@ try
     }
     finally { Pop-Location }
   }
+
+  # FreeBSD as installed (2026-11-04): `kpp --target freebsd` with no --sysroot takes the release's
+  # sysroots\freebsd-x86_64, which --version names, and links an ELF FreeBSD program (not run here).
+  $r = Run 'kpp' @('--version')
+  if ($r.text -notmatch "(?m)^sysroot freebsd-x86_64: $([regex]::Escape("$Install\sysroots\freebsd-x86_64")) \(FreeBSD 14\.3-RELEASE") { Fail "kpp --version does not name the release's FreeBSD sysroot $Install\sysroots\freebsd-x86_64" }
+  else { Pass "kpp --version: $(($r.text -split "`n") -match '^sysroot freebsd-x86_64: ')" }
+  Set-Content -Encoding ascii 'freebsd.kpp' "int main()`n{`n  println(`"Hello from kpp`");`n  return 0;`n}"
+  Remove-Item 'freebsd.elf' -ErrorAction SilentlyContinue
+  $r = Run 'kpp' @('--target', 'freebsd', '--exe', 'freebsd.elf', 'freebsd.kpp')
+  $elf = if (Test-Path 'freebsd.elf') { [IO.File]::ReadAllBytes((Resolve-Path 'freebsd.elf').Path) } else { @() }
+  if ($r.exit -ne 0 -or $elf.Count -lt 8 -or $elf[0] -ne 0x7f -or $elf[1] -ne 0x45 -or $elf[7] -ne 9) { Fail "kpp --target freebsd (no --sysroot): exit $($r.exit), no ELF FreeBSD program: $($r.text)" } # (EI_OSABI 9: FreeBSD)
+  else { Pass 'kpp --target freebsd (no --sysroot): an ELF FreeBSD program, linked with the release''s sysroot' }
 
   # A C library built from its source, with a define from a build.kpp setting (PLUS, --set PLUS=2).
   if (Test-Path clib) { cmd /c rd /s /q clib }
