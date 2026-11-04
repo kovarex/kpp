@@ -1,0 +1,6 @@
+even 0
+even 2
+zero
+other
+passed
+release_assert failed: a == 2 (with its place)

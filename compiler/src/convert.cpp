@@ -7,6 +7,7 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace
@@ -2815,6 +2816,36 @@ namespace
     // Function-like macros defined in this file, expanded at their uses; a name can be defined,
     // undefined and defined again (`#define INCREMENT(NAME) 1+` then with four parameters).
     std::map<std::string, std::vector<LocalMacro>> localMacros;
+    // The game's release_assert (Util/ReleaseAssert.hpp), `do { if (!(value)) F(__FILE__, __LINE__,
+    // #value); } while (false)`: kpp's own release_assert statement, which takes the file, the line
+    // and the expression's text itself (design.md section 2), so its uses stay as written and are no
+    // macro expansions. Its definition becomes the hook a failure calls, kpp_assert_failed, calling
+    // F as the macro did. Returns F, or nothing when the macro is not of that form (then it is
+    // expanded as any other).
+    static std::optional<std::string> kppReleaseAssert(const std::string& name, const std::vector<std::string>& params, const std::string& body)
+    {
+      if (name != "release_assert" || params.size() != 1)
+        return std::nullopt;
+      std::string text;
+      for (char c : body)
+        if (!isspace((unsigned char)c) && c != '\\')
+          text += c;
+      const std::string& value = params[0];
+      std::string head = "do{if(!(" + value + "))", tail = "(__FILE__,__LINE__,#" + value + ");}while(";
+      if (text.compare(0, head.size(), head) != 0)
+        return std::nullopt;
+      size_t call = text.find('(', head.size());
+      if (call == std::string::npos || call == head.size())
+        return std::nullopt;
+      std::string failure = text.substr(head.size(), call - head.size());
+      for (char c : failure)
+        if (!isIdentChar(c) && c != ':')
+          return std::nullopt;
+      std::string rest = text.substr(call);
+      if (rest != tail + "false)" && rest != tail + "0)")
+        return std::nullopt;
+      return failure;
+    }
     // Function-like macros of the C headers the program imports (Lua's lua_pop and the rest, from the
     // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
     // headers give kpp their functions and constants, not their macros.
@@ -3145,7 +3176,7 @@ namespace
           // its definition.
           static const std::set<std::string> rewrittenByName = {"ENUM", "ENUM_IMPL", "ENUM_IMPL_NOSTRING", "BITFIELD", "MAKE_OPTIONAL"};
           if (knownMacros.count(name) || knownFunctionMacros.count(name) || argumentMacros.count(name) || rewrittenByName.count(name) ||
-              localMacros.count(name))
+              localMacros.count(name) || kppReleaseAssert(name, macro.first, macro.second))
             continue;
           LocalMacro m;
           m.params = macro.first;
@@ -3701,6 +3732,16 @@ namespace
             m.body.erase(m.body.begin());
           while (!m.body.empty() && isspace((unsigned char)m.body.back()))
             m.body.pop_back();
+          if (std::optional<std::string> failure = kppReleaseAssert(name, m.params, m.body))
+          {
+            counts.add("release_assert written as kpp's statement");
+            return line.substr(0, line.find('#')) +
+                   "// release_assert is kpp's own statement, which takes its file, line and expression text where\n"
+                   "// it is written. A failing one, and a failing assert, comes here, to " + *failure + "\n"
+                   "// as the macro called it.\n"
+                   "extern \"C\" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* expression) { " + *failure +
+                   "(file, line, expression); }" + trailing;
+          }
           // (one that is nothing, too: GameRenderer.cpp's CHECK_AND_ADVANCE_STATE in Release; its uses
           // go)
           endLocalMacro(name, offset); // a redefinition without #undef replaces the earlier one
@@ -4437,6 +4478,148 @@ namespace
           return k;
       }
       return std::string::npos;
+    }
+
+    // Calls visit(k, depth) for each character of s outside strings and comments, depth counting the
+    // brackets of every kind open before it (a closing one is at its own depth); stops when visit
+    // returns false.
+    template<typename Visit>
+    static void eachCodeChar(const std::string& s, Visit visit)
+    {
+      int depth = 0;
+      for (size_t k = 0; k < s.size(); ++k)
+      {
+        if (size_t raw = rawStringEnd(s, k); raw != std::string_view::npos)
+          k = raw - 1;
+        else if (size_t end = commentEnd(s, k); end != std::string::npos)
+          k = end - 1;
+        else if (s[k] == '"' || (s[k] == '\'' && !isDigitSeparator(s, k)))
+        {
+          char quote = s[k];
+          for (++k; k < s.size() && s[k] != quote; ++k)
+            if (s[k] == '\\')
+              ++k;
+        }
+        else
+        {
+          bool closing = s[k] == ')' || s[k] == ']' || s[k] == '}';
+          depth -= closing;
+          if (!visit(k, depth))
+            return;
+          depth += s[k] == '(' || s[k] == '[' || s[k] == '{';
+        }
+      }
+    }
+    static std::string trimmed(const std::string& s)
+    {
+      size_t b = s.find_first_not_of(" \t\r\n"), e = s.find_last_not_of(" \t\r\n");
+      return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+    }
+    // A statement macro's expansion in C's do/while form, `do { BODY } while (false)` (or `(0)`),
+    // which exists only to make `MACRO(x);` one statement wherever a statement stands: BODY, else
+    // nothing.
+    static std::optional<std::string> doWhileBody(const std::string& expansion)
+    {
+      std::string s = trimmed(expansion);
+      if (s.compare(0, 2, "do") != 0 || s.size() < 3 || isIdentChar(s[2]))
+        return std::nullopt;
+      size_t open = s.find_first_not_of(" \t", 2);
+      if (open == std::string::npos || s[open] != '{')
+        return std::nullopt;
+      size_t close = std::string::npos;
+      eachCodeChar(s, [&](size_t k, int depth)
+      {
+        if (k > open && s[k] == '}' && depth == 0)
+        {
+          close = k;
+          return false;
+        }
+        return true;
+      });
+      if (close == std::string::npos)
+        return std::nullopt;
+      std::string after;
+      for (char c : s.substr(close + 1))
+        if (!isspace((unsigned char)c))
+          after += c;
+      if (after != "while(false)" && after != "while(0)")
+        return std::nullopt;
+      // (a `break` or `continue` of its own leaves the do/while: without the wrapper it would leave
+      // the loop around the use, so such a macro keeps it. One inside a block of a switch or a loop
+      // of the body is that statement's; one anywhere else keeps the wrapper.)
+      std::string body = trimmed(s.substr(open + 1, close - open - 1));
+      auto wordAt = [&](size_t k, const char* word)
+      {
+        size_t n = strlen(word);
+        return body.compare(k, n, word) == 0 && (k == 0 || !isIdentChar(body[k - 1])) && (k + n == body.size() || !isIdentChar(body[k + n]));
+      };
+      auto blockEnd = [&](size_t from) // the `}` closing the block that opens at body[from] == '{'
+      {
+        size_t end = std::string::npos;
+        std::string rest = body.substr(from);
+        eachCodeChar(rest, [&](size_t k, int depth)
+        {
+          if (k > 0 && rest[k] == '}' && depth == 0)
+          {
+            end = from + k;
+            return false;
+          }
+          return true;
+        });
+        return end;
+      };
+      bool leaves = false;
+      size_t skipTo = 0;
+      eachCodeChar(body, [&](size_t k, int)
+      {
+        if (k < skipTo)
+          return true;
+        for (const char* statement : {"switch", "for", "while", "do"})
+          if (wordAt(k, statement))
+          {
+            size_t at = k + strlen(statement);
+            if (strcmp(statement, "do") != 0)
+            {
+              size_t paren = body.find_first_not_of(" \t", at);
+              size_t closeParen = paren != std::string::npos && body[paren] == '(' ? closingParen(body, paren) : std::string::npos;
+              at = closeParen == std::string::npos ? std::string::npos : closeParen + 1;
+            }
+            size_t brace = at == std::string::npos ? at : body.find_first_not_of(" \t", at);
+            if (brace != std::string::npos && body[brace] == '{')
+              if (size_t end = blockEnd(brace); end != std::string::npos)
+                skipTo = end + 1;
+            return true;
+          }
+        if (wordAt(k, "break") || wordAt(k, "continue"))
+          leaves = true;
+        return !leaves;
+      });
+      if (leaves)
+        return std::nullopt;
+      return body;
+    }
+    // Whether body is one statement (`if (c) { ... }`, `f(x);`), which stands where the do/while did
+    // without braces: no `;` before its end and no `else`, at its top level.
+    static bool oneStatement(const std::string& body)
+    {
+      if (body.empty() || (body.back() != ';' && body.back() != '}'))
+        return false;
+      bool one = true;
+      std::string head = body.substr(0, 2);
+      eachCodeChar(body, [&](size_t k, int depth)
+      {
+        if (depth != 0)
+          return true;
+        if ((body[k] == ';' && k + 1 != body.size()) || (body[k] == '}' && k + 1 != body.size()) ||
+            (body.compare(k, 4, "else") == 0 && (k == 0 || !isIdentChar(body[k - 1])) && (k + 4 == body.size() || !isIdentChar(body[k + 4]))))
+          one = false;
+        // (a block of its own at the top, `{ ... }`, is a statement only with an if, a switch or a loop
+        // before it)
+        if (body[k] == '{' && head != "if" && body.compare(0, 3, "for") != 0 && body.compare(0, 5, "while") != 0 && body.compare(0, 6, "switch") != 0)
+          one = false;
+        return one;
+      });
+      return one;
     }
 
     // useOffset is where the macro is used, for __FILE__ and __LINE__ in known macros' replacements.
@@ -11080,6 +11263,29 @@ namespace
                 spellings.push_back(std::string(text.substr(b, e - b)));
               }
               std::string expansion = rewritePrintfText(expandMacro(*use.macro, args, use.begin, &spellings));
+              // A statement macro in the do/while form, used as a statement (`blueprintAssert(x);`):
+              // its body without the wrapper, which only made the use one statement. The use's `;`
+              // goes with it; a body of several statements keeps braces, and so does one before an
+              // `else` (`if (a) M(x); else`, where an `if` of its own would take the else).
+              uint32_t end = use.end;
+              if (level == 0)
+                if (std::optional<std::string> body = doWhileBody(expansion))
+                {
+                  size_t semicolon = text.find_first_not_of(" \t", use.end);
+                  size_t next = semicolon == std::string_view::npos ? semicolon : text.find_first_not_of(" \t\r\n", semicolon + 1);
+                  bool elseNext = next != std::string_view::npos && text.compare(next, 4, "else") == 0 &&
+                                  (next + 4 == text.size() || !isIdentChar(text[next + 4]));
+                  if (semicolon != std::string_view::npos && text[semicolon] == ';')
+                  {
+                    expansion = body->empty() ? std::string(elseNext ? "{}" : "") : oneStatement(*body) && !elseNext ? *body : "{ " + *body + " }";
+                    // (one that is nothing in this configuration, the final build's ASSERT_RENDER_THREAD,
+                    // keeps its `;` after the marks: the merge writes the other configurations' text
+                    // as `if constexpr (!config::finalRelease) { release_assert(...); }`)
+                    if (!body->empty() || !convertMarks || elseNext)
+                      end = uint32_t(semicolon + 1);
+                    counts.add("do/while statement macros written without the wrapper");
+                  }
+                }
               // (marked: the macro may be defined otherwise in the other configuration, Lua's api_check
               // an assert in one and a check that aborts in the other; the use's offset is its id)
               if (convertMarks)
@@ -11087,7 +11293,7 @@ namespace
                 std::string id = in.path.filename().string() + ":@" + std::to_string(use.begin);
                 expansion = "/*kpp:if " + id + "*/" + expansion + "/*kpp:endif " + id + "*/";
               }
-              edits.push_back({use.begin, use.end - use.begin, expansion});
+              edits.push_back({use.begin, end - use.begin, expansion});
             }
           std::stable_sort(edits.begin(), edits.end(), byOffset);
         }

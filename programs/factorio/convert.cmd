@@ -20,7 +20,7 @@ rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rule
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
 rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
-rem errors 0, smoke tests 13/13, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
+rem errors 0, smoke tests 14/14, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
 rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -234,6 +234,15 @@ if exist kpp\convert_init rd /s /q kpp\convert_init
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_init.exe kpp\convert_init || goto :failed
 kpp\convert_init.exe > kpp\convert_init.out.txt
 fc /w kpp\convert_init.out.txt tests\convert_init.expected > nul && (echo namespace-scope objects: output as expected& set /a SMOKES+=1) || (echo namespace-scope objects: OUTPUT DIFFERS & fc /w kpp\convert_init.out.txt tests\convert_init.expected & goto :failed)
+set "STEP=asserts"
+echo == asserts: tests\convert_asserts\asserts.cpp, the game's release_assert written as kpp's release_assert statement (its file, line and text taken where it stands; the macro's handler called through kpp_assert_failed) and a do/while statement macro without its wrapper, converted and run, prints what its C++ build prints (tests\convert_asserts.expected), and its text has no do/while
+if exist kpp\convert_asserts rd /s /q kpp\convert_asserts
+%KPPC% --no-std --quiet --convert kpp\convert_asserts --ext .cpp tests\convert_asserts || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_asserts.exe kpp\convert_asserts || goto :failed
+kpp\convert_asserts.exe > kpp\convert_asserts.out.txt
+findstr /c:"while (false)" kpp\convert_asserts\convert_asserts\asserts.kpp > nul && (echo asserts: A DO/WHILE IS LEFT& goto :failed)
+findstr /c:"release_assert(this->value == 3);" kpp\convert_asserts\convert_asserts\asserts.kpp > nul || (echo asserts: RELEASE_ASSERT NOT WRITTEN AS KPP'S& goto :failed)
+fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected > nul && (echo asserts: output as expected& set /a SMOKES+=1) || (echo asserts: OUTPUT DIFFERS & fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
@@ -265,7 +274,7 @@ rem declaration of a class the program defines (tests\converted-text.ps1).
 set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/13, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/14, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)
