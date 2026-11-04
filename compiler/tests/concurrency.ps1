@@ -45,17 +45,21 @@ $sources += Join-Path $work 'returned_lambdas.kpp'
 $copiesOf = @($Copies) * ($programs.Count - 1) + [Math]::Max(1, [int]($Copies / 2))
 [IO.File]::WriteAllText($sources[-1], $lambdas.ToString())
 
-function Start-Build([string]$src, [string]$ir, [string]$j)
+# kppc started on its own: the process's WaitForExit and HasExited are kppc's alone. (Start-Process -Wait
+# waits for every process it leaves too, and a build that links leaves link.exe's vctip.exe, which
+# outlives it on CI's runners: run_tests' part 2 waited there until the job's hour ran out.)
+function Start-Kppc([string]$arguments)
 {
   $info = New-Object System.Diagnostics.ProcessStartInfo
   $info.FileName = $Kppc
-  $info.Arguments = "--quiet -j $j --emit-llvm `"$ir`" `"$src`""
+  $info.Arguments = $arguments
   $info.UseShellExecute = $false
   $info.CreateNoWindow = $true
   $info.RedirectStandardOutput = $false
   $info.RedirectStandardError = $false
   return [System.Diagnostics.Process]::Start($info)
 }
+function Start-Build([string]$src, [string]$ir, [string]$j) { return Start-Kppc "--quiet -j $j --emit-llvm `"$ir`" `"$src`"" }
 
 $failed = 0
 $reference = @{}
@@ -138,7 +142,8 @@ foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sourc
     $dir = Join-Path $work "placement.$($placed[0] -replace ' ', '_').$run"
     New-Item -ItemType Directory -Force $dir | Out-Null
     $j = if ($run -eq 'j1') { '1' } else { '32' }
-    $proc = Start-Process -FilePath $Kppc -ArgumentList @('--quiet', '-j', $j, '--modules', '8', '--exe', "`"$(Join-Path $dir 'p.exe')`"", "`"$($placed[1])`"") -NoNewWindow -PassThru -Wait
+    $proc = Start-Kppc "--quiet -j $j --modules 8 --exe `"$(Join-Path $dir 'p.exe')`" `"$($placed[1])`""
+    $proc.WaitForExit()
     $hashes = @(Get-ChildItem $dir -Filter 'p.exe.*.hash' | Sort-Object Name)
     if ($proc.ExitCode -ne 0 -or $hashes.Count -eq 0) { Write-Host "FAIL concurrency: the $($placed[0])' program does not build with modules (exit $($proc.ExitCode))"; exit 1 }
     $moduleTexts[$run] = ($hashes | ForEach-Object { $_.Name + '=' + (Get-Content $_.FullName -Raw) }) -join ';'
