@@ -233,20 +233,68 @@ namespace
     }
   }
 
+  // The server directory stays bounded: every key had its copy of kppc (KEY.exe, 42 MB with LLVM's
+  // back end), and every rebuilt kppc and every set of arguments is a key, so nothing ever went: 4,044
+  // copies, 53.3 GB, and 6,300 other files on 2026-11-04. Each server start removes what is more than
+  // ten minutes old and in no one's use: a copy whose server has ended (a running server's copy is its
+  // image, which Windows does not delete), then the files of a key whose copy is gone (KEY.log,
+  // KEY.args) and what a verify or a copy left (verify.PID.out and .err, KEY.exe.PID). A copy that a
+  // client is about to start is held open against deletion (startServer), and keep's files stay.
+  void pruneServerDirectory(const std::string& dir, const std::string& keep)
+  {
+    const uint64_t margin = 10ull * 60 * 10000000; // ten minutes, in FILETIME's 100 ns
+    FILETIME nowTime;
+    GetSystemTimeAsFileTime(&nowTime);
+    auto value = [](const FILETIME& t) { return uint64_t(t.dwHighDateTime) << 32 | t.dwLowDateTime; };
+    uint64_t now = value(nowTime);
+    std::vector<std::string> exes, others;
+    WIN32_FIND_DATAA found;
+    HANDLE search = FindFirstFileA((dir + "*").c_str(), &found);
+    if (search == INVALID_HANDLE_VALUE)
+      return;
+    do
+    {
+      if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        continue;
+      std::string name = found.cFileName;
+      std::string stem = name.substr(0, name.find('.'));
+      // (A copy's time of writing is its kppc's; when it was made is its creation.)
+      if (stem == keep || now - std::max(value(found.ftCreationTime), value(found.ftLastWriteTime)) < margin)
+        continue;
+      bool exe = name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0;
+      (exe ? exes : others).push_back(name);
+    } while (FindNextFileA(search, &found));
+    FindClose(search);
+    for (const std::string& name : exes)
+      DeleteFileA((dir + name).c_str());
+    for (const std::string& name : others)
+    {
+      std::string stem = name.substr(0, name.find('.'));
+      if (GetFileAttributesA((dir + stem + ".exe").c_str()) == INVALID_FILE_ATTRIBUTES) // (its server runs otherwise)
+        DeleteFileA((dir + name).c_str());
+    }
+  }
+
   // Starts a server for the key. It runs from a copy of kppc in the temp directory, so that kppc
   // itself can be rebuilt while a server runs (Windows keeps a running executable locked).
   bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
   {
     std::string dir = serverDirectory();
     CreateDirectoryA(dir.c_str(), nullptr);
+    pruneServerDirectory(dir, key);
     std::string copy = dir + key + ".exe";
-    if (GetFileAttributesA(copy.c_str()) == INVALID_FILE_ATTRIBUTES)
+    // The copy is held open, without sharing its deletion, until its server runs from it: another
+    // client's pruneServerDirectory cannot delete it in between.
+    auto hold = [&] { return CreateFileA(copy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); };
+    HANDLE held = hold();
+    if (held == INVALID_HANDLE_VALUE)
     {
       std::string part = copy + "." + std::to_string(GetCurrentProcessId());
       if (!CopyFileA(exe.c_str(), part.c_str(), FALSE))
         return false;
       if (!MoveFileA(part.c_str(), copy.c_str()))
         DeleteFileA(part.c_str()); // another client put it there first
+      held = hold();
     }
     // The kppc it was started from and that kppc's stamp, as the key has it: the server exits once
     // they differ (runServer).
@@ -261,8 +309,11 @@ namespace
     // console, about 30 ms apiece (a small program's edit: clang 61 to 69 ms instead of 35 to 39,
     // the link 102 to 107 instead of 70 to 74).
     const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
-    if (!CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi) &&
-        !CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi))
+    bool started = CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi) ||
+                   CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi);
+    if (held != INVALID_HANDLE_VALUE)
+      CloseHandle(held);
+    if (!started)
       return false;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
@@ -654,6 +705,8 @@ namespace
     std::string problem;
     std::string keptOut = normalized(printedOut), freshOut = normalized(slurp(outPath));
     std::string keptErr = normalized(printedErr), freshErr = normalized(slurp(errPath));
+    DeleteFileA(outPath.c_str()); // (read: 868 pairs were left in the server directory)
+    DeleteFileA(errPath.c_str());
     std::string after = writtenContents(outputs);
     if (fresh != builtExit)
       problem = "exit code " + std::to_string(builtExit) + " kept, " + std::to_string(fresh) + " from scratch";

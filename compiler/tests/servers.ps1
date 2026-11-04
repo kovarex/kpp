@@ -81,6 +81,51 @@ $ErrorActionPreference = 'Stop'
 if ($said -notmatch '2 compile servers stopped') { Fail "--stop-all-servers said: $said" }
 foreach ($id in $running) { if (-not (Ended $id 10)) { Fail "the server $id still runs after --stop-all-servers" } }
 
+# 3. The server directory stays bounded: a server's start removes what is more than ten minutes old and
+# in no one's use (a copy of kppc whose server ended, the files of a key without a copy, a verify's
+# outputs, a copy's part), and leaves a running server's copy and its files, a copy a client holds
+# open (one it is starting) and what is younger.
+$dir = "$work\tmp\kppc-server"
+function Plant([string]$name, [bool]$old)
+{
+  $path = "$dir\$name"
+  Set-Content -Encoding ascii $path 'planted'
+  if ($old) { $t = (Get-Date).AddHours(-2); (Get-Item $path).CreationTime = $t; (Get-Item $path).LastWriteTime = $t }
+}
+# What the servers above left (their copies and logs, none running now) is made two hours old: the
+# copy of the replaced kppc's server goes, the one 'one' runs from again (below) stays.
+$earlier = @(Get-ChildItem $dir -File)
+foreach ($f in $earlier) { $t = (Get-Date).AddHours(-2); $f.CreationTime = $t; $f.LastWriteTime = $t }
+# The server of 1., which ended when its kppc was replaced: its copy and log, old and unused.
+$replaced = @(Select-String -Path "$dir\*.log" -SimpleMatch 'changed: exiting' | ForEach-Object Path)
+if ($replaced.Count -ne 1) { Fail "$($replaced.Count) logs of a server whose kppc changed, 1 expected" }
+$replaced += $replaced | ForEach-Object { $_ -replace '\.log$', '.exe' }
+$gone = 'aaaaaaaaaaaaaaaa.exe', 'aaaaaaaaaaaaaaaa.log', 'aaaaaaaaaaaaaaaa.args', 'dddddddddddddddd.log', 'verify.4242.out', 'verify.4242.err', 'eeeeeeeeeeeeeeee.exe.999'
+$stay = 'bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log', 'cccccccccccccccc.exe', 'cccccccccccccccc.log'
+foreach ($name in $gone + 'bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log') { Plant $name $true }
+foreach ($name in 'cccccccccccccccc.exe', 'cccccccccccccccc.log') { Plant $name $false }
+$held = [IO.File]::Open("$dir\bbbbbbbbbbbbbbbb.exe", 'Open', 'Read', 'Read') # (as startServer holds the copy it starts)
+# A running server whose copy and log are old ('one' runs again from its aged copy): its copy is its
+# image, which is not deleted.
+Build 'one'
+# (A key's log is appended to: its latest server is its last "started" line, not Servers' first.)
+$runningServer = @(Get-ChildItem "$dir\*.log" | ForEach-Object {
+  $last = @(Select-String -Path $_.FullName -Pattern '\[(\d+)\] started') | Select-Object -Last 1
+  if ($last) { [pscustomobject]@{ Key = $_.FullName; Value = [int]$last.Matches[0].Groups[1].Value } }
+} | Where-Object { Alive $_.Value }) | Select-Object -First 1
+if (-not $runningServer) { Fail "no server runs after building one" }
+$runningCopy = $runningServer.Key -replace '\.log$', '.exe'
+if ((Get-Item $runningCopy).CreationTime -gt (Get-Date).AddHours(-1)) { Fail "'one' did not run from its aged copy: the check proves nothing" }
+Build 'two' # (another key: its server's start prunes)
+$held.Close()
+foreach ($name in $gone) { if (Test-Path "$dir\$name") { Fail "$name is still in the server directory: stale and in no one's use" } }
+foreach ($name in $stay) { if (-not (Test-Path "$dir\$name")) { Fail "$name was deleted: held open, or younger than ten minutes" } }
+foreach ($path in $runningCopy, $runningServer.Key) { if (-not (Test-Path $path)) { Fail "a running server's $(Split-Path -Leaf $path) was deleted" } }
+foreach ($path in $replaced) { if (Test-Path $path) { Fail "$(Split-Path -Leaf $path), of the server whose kppc was replaced, is still there" } }
+$ErrorActionPreference = 'Continue'
+& $copy --stop-all-servers 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
+
 StopLeftovers
-if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all" }
+if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all, stale server files go" }
 exit $failed
