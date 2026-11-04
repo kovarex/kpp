@@ -126,7 +126,9 @@ jobs:
           if-no-files-found: error
 
   # run_tests in 2 halves at once (run_tests.cmd --part 1|2: part 2 is determinism, concurrency,
-  # generate and project, about 2 minutes either way).
+  # generate and project, about 2 minutes either way), in full (--full): what a thread's quick gate
+  # leaves out before its push (concurrency, incremental, windows-gnu, determinism's full mode) runs
+  # here on every push.
   run_tests:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
@@ -167,7 +169,7 @@ jobs:
 
       - name: run_tests
         shell: cmd
-        run: compiler\tests\run_tests.cmd --part ${{ matrix.part }}
+        run: compiler\tests\run_tests.cmd --full --part ${{ matrix.part }}
 
   # The spec in 4 shards (run_spec.py --shard I/4), debug on every run, and --release and --debug-info
   # on the nightly and hand-started ones: 4 or 12 jobs at once.

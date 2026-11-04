@@ -7,8 +7,10 @@
 # one that stops answering later fails the check; neither hangs it. Exit 0: passed; 1: failed;
 # 3: passed, Linux skipped (no WSL); 4: passed, Linux skipped (WSL did not answer in 30 s).
 # run_tests.cmd lists a skip in its summary.
-# -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout).
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$WslExe = 'wsl.exe')
+# -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout). -NoLinux: Linux left out (exit 5),
+# for run_tests' quick run: under other threads' load a program's run under WSL timed out (2026-11-05),
+# and the full run (thread H's batch on master) has it.
+param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$WslExe = 'wsl.exe', [switch]$NoLinux)
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\targets'
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -229,7 +231,8 @@ else
 # Linux, under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every run_tests): 30 s
 # for the first, which also starts WSL's virtual machine, then 120 s for a program, 600 s for the sysroot.
 $wslSkip = $null
-if (-not (Get-Command $WslExe -ErrorAction SilentlyContinue)) { $wslSkip = 'no WSL' }
+if ($NoLinux) { $wslSkip = 'left to the full run' }
+elseif (-not (Get-Command $WslExe -ErrorAction SilentlyContinue)) { $wslSkip = 'no WSL' }
 else
 {
   $r = Run $WslExe @('-e', 'true') 30
@@ -304,5 +307,6 @@ else
 
 if ($failed) { exit 1 }
 "ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' })$(if ($hasWsl) { ', linux run under WSL' } else { ", linux skipped: $wslSkip" }))"
+if ($NoLinux) { exit 5 }
 if ($wslSkip -eq 'no WSL') { exit 3 }
 if ($wslSkip) { exit 4 }

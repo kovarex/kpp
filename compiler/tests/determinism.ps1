@@ -35,6 +35,9 @@ function Start-Run([string[]]$arguments, [string]$label)
   $out = Join-Path $work "$label.out.txt"
   $err = Join-Path $work "$label.err.txt"
   $p = Start-Process -FilePath $Kppc -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+  # (its handle taken at once: WaitForExit on a process that ended before anyone held its handle
+  # throws "The parameter is incorrect", which run_tests' quick run hit, 2026-11-05)
+  $null = $p.Handle
   return [pscustomobject]@{ label = $label; process = $p; outFile = $out; errFile = $err }
 }
 

@@ -1095,14 +1095,22 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 2026-11-02: the repository is public, so GitHub's standard runners cost nothing):
 - **build:** kppc, once, with `compiler\build.cmd` through ccache (below), handed to the other
   jobs as the artifact `kppc` (compiler\build\kppc.exe, kept 3 days).
-- **run_tests:** `compiler\tests\run_tests.cmd --part 1` and `--part 2` in 2 jobs, after build:
-  part 2 is determinism, concurrency, generate and project, part 1 everything else (about 2
-  minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part 2/2:
-  checks 4/4)`; without `--part` it runs both, as by hand. `--full` runs the determinism check in
-  full, the batch run on master's: the test programs at -j 1, -j 8 and -j 32 and, where convert.cmd
-  has made programs\factorio\kpp, the game's front end and IR at -j 1, -j 8 and twice at -j 32.
-  Without it, the quick gate's: the test programs at -j 1 and -j 32, the game's front end at -j 8
-  and -j 32 (12 s against 73 s, both with their builds run at once, on a loaded machine).
+- **run_tests:** `compiler\tests\run_tests.cmd --full --part 1` and `--full --part 2` in 2 jobs,
+  after build: part 2 is determinism, concurrency, generate and project, part 1 everything else
+  (about 2 minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part
+  2/2: checks 4/4)`; without `--part` it runs both, as by hand. run_tests runs its checks side by
+  side, each a process of its own (tests\run_tests.ps1 lists them; `--jobs N` at once, by default a
+  third of the logical processors, 4 to 12), and prints each one's output when it ends.
+  `--full` is all of it, as CI and thread H's batch run on master run it. Without it, the quick
+  gate's run (kovarex, 2026-11-04: speed over zero risk): concurrency, incremental and windows-gnu
+  left out, the Linux targets not run under WSL, and the determinism check's quick mode: the test
+  programs at -j 1 and -j 32 and the game's front end at -j 8 and -j 32, against -j 1, -j 8 and -j
+  32 and the game's front end and IR at -j 1, -j 8 and twice at -j 32 in full (12 s against 73 s,
+  both with their builds run at once, on a loaded machine).
+- **Before a push (by hand):** `compiler\tests\gate.cmd`, run_tests' quick run and the spec side by
+  side, ending `gate: ALL PASSED (...)` and exit 0: about 3 minutes on PC-PRACOVNA with other
+  threads' work running, against about 14 for run_tests and then the spec one after another before
+  (2026-11-05). What it leaves out runs here on every push.
 - **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4` in 4 jobs, after build. A shard is
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
