@@ -7,6 +7,8 @@
 {"jsonrpc":"2.0","id":2,"method":"kpp/cells","params":{}}
 // A library option in the cell: its value, who set it, its default and description (hover on config::sound::volume).
 {"jsonrpc":"2.0","id":20,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/libraries/sound/src/sound.kpp"},"position":{"line":0,"character":39}}}
+// A name in a declaration's `when` condition (design.md 19): hover on config::debug in `when (config::debug)`.
+{"jsonrpc":"2.0","id":21,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":2,"character":15}}}
 // Visual Studio's solution configuration names the cell: the game's release cell, with its error.
 {"jsonrpc":"2.0","id":3,"method":"kpp/selectCell","params":{"target":"game","configuration":"Release|x64"}}
 // The setting's way: the tool, still release. The game's error goes: the game's files are not the tool's.

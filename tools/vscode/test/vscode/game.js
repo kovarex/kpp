@@ -88,7 +88,8 @@ async function run()
   // config::debug's hover, then a switch to release and back.
   const dx = 'src/Graphics/DX11/VideoBitmapDX11.kpp';
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri(dx)));
-  const debug = await find(dx, 'config::debug', 'debug');
+  // (In an `if constexpr`, there in every configuration: a `when (config::debug)` member is gone in release.)
+  const debug = await find(dx, 'if constexpr (config::debug)', 'debug');
   const h1 = await hover(dx, debug);
   check('hover config::debug (factorio | debug)', /cell \*factorio, debug\*/.test(h1), short(h1));
   for (const configuration of ['release', 'debug', 'release'])

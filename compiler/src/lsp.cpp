@@ -791,17 +791,70 @@ namespace
   }
 
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
-  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global)
+  // The configuration's constants (main.cpp's namespace config, a library's config::LIB) by the
+  // symbols of their qualified names, for the names in a `when` condition the parser decided.
+  using ConfigNames = std::map<std::vector<uint32_t>, Decl*>;
+  ConfigNames configNames(const KeptProgram& program)
+  {
+    ConfigNames out;
+    std::vector<uint32_t> path;
+    std::function<void(Span<Decl*>)> collect = [&](Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+        if (d->kind == NodeKind::NamespaceDecl && static_cast<NamespaceDecl*>(d)->name != UINT32_MAX)
+        {
+          path.push_back(static_cast<NamespaceDecl*>(d)->name);
+          collect(static_cast<NamespaceDecl*>(d)->decls);
+          path.pop_back();
+        }
+        else if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.parts.empty())
+        {
+          std::vector<uint32_t> key = path;
+          key.push_back(static_cast<VariableDecl*>(d)->name.last().symbol);
+          out.emplace(std::move(key), d);
+        }
+    };
+    for (const ParsedFile* f : program.files)
+      for (Decl* d : f->decls)
+        if (d->kind == NodeKind::NamespaceDecl && static_cast<NamespaceDecl*>(d)->name != UINT32_MAX &&
+            program.symbols->name(static_cast<NamespaceDecl*>(d)->name) == "config")
+          collect(Span<Decl*>{&d, 1});
+    return out;
+  }
+
+  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const ConfigNames* configs)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
       return out;
     const std::vector<Token>& tokens = *file.tokens;
-    forEachNode(file.decls, [&](Node* n)
+    std::function<void(Node*)> visit = [&](Node* n)
     {
       if (isDeclarationNode(n))
       {
         Decl* d = static_cast<Decl*>(n);
+        // Its `when` condition (design.md 19), which the walk over the tree does not visit. One the
+        // parser decided (of config constants and literals) has no names resolved: its config
+        // constants are found by name.
+        if (d->when && d->file == &file)
+          forEachNode(d->when, [&](Node* w)
+          {
+            auto* name = static_cast<NameExpr*>(w);
+            if (w->kind != NodeKind::NameExpr || name->resolved || !configs)
+              return visit(w);
+            std::vector<uint32_t> key;
+            for (const NamePart& part : name->name.parts)
+              if (part.symbol != UINT32_MAX)
+                key.push_back(part.symbol);
+            auto found = configs->find(key);
+            if (found == configs->end())
+              return;
+            if (uint32_t t = nameToken(tokens, name->name, w->token, w->token + 64); t != UINT32_MAX)
+            {
+              out.push_back({t, found->second, w, false});
+              addQualifiers(out, tokens, name->name, w, found->second, global, w->token, t + 1);
+            }
+          });
         if (d->file == &file)
           if (uint32_t t = declarationNameToken(d); t != UINT32_MAX)
           {
@@ -834,7 +887,8 @@ namespace
       }
       if (t != UINT32_MAX)
         out.push_back({t, d, n, false});
-    });
+    };
+    forEachNode(file.decls, visit);
     std::sort(out.begin(), out.end(), [](const Occurrence& a, const Occurrence& b) { return a.token != b.token ? a.token < b.token : a.declaration > b.declaration; });
     out.erase(std::unique(out.begin(), out.end(), [](const Occurrence& a, const Occurrence& b) { return a.token == b.token; }), out.end());
     return out;
@@ -918,9 +972,22 @@ namespace
       };
       std::vector<Symbol> symbols;
       bool symbolsKnown = false;
+      bool configsKnown = false;
+      ConfigNames configs;
     };
     Cache cache;
     GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
+    const KeptProgram* currentProgram = nullptr;
+
+    const ConfigNames& configsOf(const KeptProgram& program)
+    {
+      if (!cache.configsKnown)
+      {
+        cache.configs = configNames(program);
+        cache.configsKnown = true;
+      }
+      return cache.configs;
+    }
 
     std::string uriOf(const std::string& key, const fs::path& path)
     {
@@ -1475,8 +1542,10 @@ namespace
       withKeptProgram([&](const KeptProgram& program)
       {
         currentGlobal = program.global;
+        currentProgram = &program;
         f(program);
         currentGlobal = nullptr;
+        currentProgram = nullptr;
       });
     }
 
@@ -1492,7 +1561,7 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal)).first;
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, currentProgram ? &configsOf(*currentProgram) : nullptr)).first;
       return found->second;
     }
 
@@ -1765,10 +1834,11 @@ namespace
         if (!cache.occurrences.count(f))
           files.push_back(f);
       std::vector<std::vector<Occurrence>> found(files.size());
+      const ConfigNames* configs = &configsOf(program);
       std::atomic<size_t> next{0};
       std::vector<std::thread> threads;
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global); });
+        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, configs); });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)

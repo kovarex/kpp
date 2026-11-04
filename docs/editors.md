@@ -70,7 +70,10 @@ Status (2026-11-03):
   - incremental text sync;
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the
     editor has not opened;
-  - hover, go to definition, references, document symbols, workspace symbols;
+  - hover, go to definition, references, document symbols, workspace symbols; also on the names
+    in a declaration's `when (...)` condition. One the parser decided (of config constants and
+    literals, at namespace or class scope) has no names resolved, so its config constants are
+    found by name in the configuration's `namespace config`;
   - completion, triggered by `.`, `>` and `:`;
   - rename, with prepareRename.
 - **Positions** are UTF-16 columns, the protocol's default.
@@ -130,6 +133,13 @@ The extension is in `tools/vscode`; its README covers the details.
     takes 16.0 and 15.0 s (its first check), back to debug 0.7 and 1.5 s, to release again 3.7 and
     5.8 s (kept cells). The check after an erroring one is slow: typing `SystemUtil::` checks in
     0.6 s with its error, the undo that fixes it in 11.3 s.
+  - The game again on 2026-11-04 (factorio-in-kpp a5dd79ef, kpp 21ac9322 with the `when` hover):
+    every check passes. The first check takes 11.3 s; completion after `SystemUtil::` 1.5 s; a
+    typed error is shown after 1.3 s (the server's check 0.85 s, the session kept across the
+    error) and gone 0.8 s after undo; the switch to release 8.9 s, back to debug 0.9 s, to release
+    again 2.4 s. The slow erroring checks below no longer happen. game.js hovers the
+    `config::debug` of an `if constexpr`: the converter now writes debug-only members as
+    `when (config::debug)`, gone in release, and the hover there finds nothing to answer.
 
 ## Visual Studio 2022
 
@@ -188,7 +198,8 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   | gone after undo | 1.8 s (1.5 s) | 4.6 s (1.4 s) |
 
   The editors add little; the server's check of an edit that adds an error is most of each step.
-  It took 7.5 to 19.5 s here, where a day earlier it took 0.6 s and the check after it 11 s.
+  It took 7.5 to 19.5 s here, where a day earlier it took 0.6 s and the check after it 11 s (on
+  2026-11-04 with kpp 21ac9322: 0.85 and 1.1 s, see "VS Code").
   Visual Studio's Error List takes about 3 s more than VS Code to clear an error.
 - **The cell** (see "Cells") is the solution's. In a solution kppc generated (one project per
   target, named after it), the startup project is the target and the active configuration is the
