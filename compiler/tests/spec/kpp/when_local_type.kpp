@@ -1,0 +1,20 @@
+// spec: `when (condition)` on a local class (design.md 19): a type a function declares only in debug, and a `when` local of it, exist only where the condition holds; in release neither exists and the class's body is not checked (it names a debug-only function)
+// factorio: debug-only helper structs declared in a function under #ifdef DEBUG, converted to `when (config::debug)`
+when (config::debug) int checkedTwice(int x) { return x * 2; }
+
+int main()
+{
+  when (config::debug) struct Stats
+  {
+    int hits = 0;
+    int doubled() const { return checkedTwice(hits); }
+  };
+  when (config::debug) Stats stats;
+  for (int i = 0; i < 3; ++i)
+    if constexpr (config::debug)
+      ++stats.hits;
+  if constexpr (config::debug)
+    println("hits ", stats.hits, " ", stats.doubled());
+  println("done");
+  return 0;
+}

@@ -1,0 +1,17 @@
+// spec: `when (condition)` on a structured binding (design.md 19): its names exist in the block only where the condition holds, and the initializer is neither evaluated nor checked where it does not (bounds() is called once in debug, never in release)
+// factorio: debug-only `auto [a, b] = ...;` under #ifdef DEBUG, converted to `when (config::debug)`
+int calls = 0;
+Pair<int, int> bounds()
+{
+  ++calls;
+  return {2, 9};
+}
+
+int main()
+{
+  when (config::debug) auto [low, high] = bounds();
+  if constexpr (config::debug)
+    println("bounds ", low, " ", high);
+  println("calls ", calls);
+  return 0;
+}
