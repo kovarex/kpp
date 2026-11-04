@@ -8,6 +8,9 @@ rem (vs2022\, bin\) are always C:\Factorio's.
 if not defined FACTORIO set FACTORIO=C:\Factorio
 set KPPC=..\..\compiler\build\kppc.exe
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
+rem (and the game's FinalRelease constant, config::finalRelease: false but in build.kpp's final configuration;
+rem docs/final-release.md)
+set CINC=%CINC% --config finalRelease=false
 rem The C libraries converted to kpp (c-libraries.cmd) are compiled with the game (CLIBKPP, kpp\NAME,
 rem as convert.cmd writes them), not linked, and their headers imported.
 call "%~dp0c-libraries.cmd"

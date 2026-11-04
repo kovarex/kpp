@@ -77,14 +77,19 @@ void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::pat
 // defines (NDEBUG) instead of FastDebug's; and whether it marks each #if group (--convert-marks), for
 // convertMerge. Set before the configuration is built.
 void setConvertRelease();
+// kppc --convert-final: FinalRelease's (Release's with FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE).
+void setConvertFinal();
 void setConvertMarks();
 // kppc --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).
 // choicesFile lists the groups no `if constexpr` can choose between, each taken from one
 // configuration: `FILE GROUP debug|release  why` (programs/factorio/overrides/configuration-choices.txt).
+// finalDir, when given, is the FinalRelease conversion (--convert-final): a group whose final text
+// alone differs is written with config::finalRelease, and one whose three texts all differ is a
+// problem.
 int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::path& releaseDir, const std::filesystem::path& outDir,
-                 const std::filesystem::path& choicesFile = {});
+                 const std::filesystem::path& choicesFile = {}, const std::filesystem::path& finalDir = {});
 
 // The errors the last convertToKpp found that leave its output wrong, which it printed: C, an #if
 // name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kppc

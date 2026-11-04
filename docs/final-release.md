@@ -119,6 +119,13 @@ levels up, as Release does.
 
 ## For C: the converter
 
+As built (thread C, 2026-11-04): a third configuration, `kppc --convert-final` (Release's defines with
+FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE=1), merged with the other two under
+`config::finalRelease`, which factorio-in-kpp's build.kpp sets in its final configuration. 197 #if
+groups differ in final alone, and 2 differ in all three. Details, and the five groups taken from
+Release, are in design.md 12 ("The game's FinalRelease as config::finalRelease"). The plan as it was
+written:
+
 The converted game has two configurations, FastDebug and Release, merged under `config::debug`
 (design.md 12; convert.cpp's `buildDefines`). Neither defines `FINAL_RELEASE` or `PACKAGED_BUILD`, so
 today's converted game is Release in both respects: every `#ifndef FINAL_RELEASE` block is in.

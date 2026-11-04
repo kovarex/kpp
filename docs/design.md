@@ -665,6 +665,32 @@ As converted (thread C, 2026-11-02):
   that exists; LogisticManager's neighbors, DeliverJob's point, LatencyOneTimeEffect's itTick and
   TextureCopyHelperDX11's sourceWidth are `when` locals.
 
+**The game's FinalRelease as config::finalRelease (thread C, 2026-11-04; docs/final-release.md).**
+The official builds are FinalRelease of the all-in-one target: Release with FINAL_RELEASE,
+PACKAGED_BUILD and ALL_IN_ONE=1. `kppc --convert-final` converts the game so (with --convert-marks),
+and `--convert-merge DEBUG RELEASE OUT CHOICES FINAL` merges the three. All three defines come and go
+together, so one constant, `config::finalRelease`, chooses them:
+- A group whose release and final texts are the same is chosen by `config::debug` as before. One
+  whose debug and release texts are the same, but whose final text differs, is chosen by
+  `config::finalRelease` the same way: `when`, `config::finalRelease ? a : b`, `if constexpr` (197 in
+  the game). A final build is never a debug one (BuildConstants.hpp's #error).
+- One whose three texts all differ (2: IMGUI_ENABLED blocks, which FinalRelease leaves out, with
+  DEBUG groups inside) has its debug and release texts merged first, and that text against the final
+  one. A `when` inside reads `when (!config::finalRelease && config::debug)`.
+- Links of an if-else chain that one configuration alone has (`#ifndef FINAL_RELEASE else if (b)
+  {...} #endif`: Main.cpp, PlayerData.cpp, the tests' TestRun.cpp) keep their places, each condition
+  joined with the configuration's: `else if (!config::finalRelease && (b))`, `else if
+  (!config::finalRelease) x;`. A static_assert of one configuration (Map.cpp's) is
+  `static_assert(!config::finalRelease || (c), "...")`.
+- A group inside an expression is taken from one configuration (overrides\configuration-choices.txt,
+  `release`, with the reason). There are five: SpriteLoaders' PACKAGED_BUILD condition, the developer
+  options frame, and three cxxopts developer options. So the kpp final game keeps those developer
+  options, and refuses only the internal mods' 16-bit sprites, as Release does.
+- The program sets the constant in every build: factorio-in-kpp's build.kpp sets it false for the
+  project and true in its final configuration; convert.cmd, run.cmd and tests.cmd pass
+  `--config finalRelease=false` (link-settings.cmd's CINC). A kppc command of the converted game
+  without it stops: config::finalRelease is not declared.
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".

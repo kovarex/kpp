@@ -264,7 +264,11 @@ namespace
   // .BuildVanillaRelease). With --convert-marks each #if group is marked where its first and last
   // directive stood (`/*kpp:if FILE:N*/`, `/*kpp:endif FILE:N*/`), and convertMerge writes a group
   // whose two texts differ as `if constexpr (config::debug)`.
+  // With kppc --convert-final, the official builds' FinalRelease: Release's defines with FINAL_RELEASE
+  // and PACKAGED_BUILD (fbuild.bff's .BuildVanillaFinalRelease) and ALL_IN_ONE=1, which the
+  // factorio-all-in-one build that packages are made from adds (docs/final-release.md).
   bool convertRelease = false;
+  bool convertFinal = false;
   bool convertMarks = false;
   const std::map<std::string, std::string>& buildDefines()
   {
@@ -276,7 +280,15 @@ namespace
       d["NDEBUG"] = "";
       return d;
     }();
-    return convertRelease ? release : fastDebugDefines;
+    static const std::map<std::string, std::string> final = []
+    {
+      std::map<std::string, std::string> d = release;
+      d["FINAL_RELEASE"] = "";
+      d["PACKAGED_BUILD"] = "";
+      d["ALL_IN_ONE"] = "1";
+      return d;
+    }();
+    return convertFinal ? final : convertRelease ? release : fastDebugDefines;
   }
   // The build a C library converted as C (kppc --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's
@@ -13927,6 +13939,12 @@ void setConvertRelease()
   convertRelease = true;
 }
 
+void setConvertFinal()
+{
+  convertRelease = true;
+  convertFinal = true;
+}
+
 void setConvertMarks()
 {
   convertMarks = true;
@@ -14026,10 +14044,25 @@ namespace
     size_t when = 0; // declarations of one configuration written `when (config::debug)` (design.md 19)
     size_t perConfiguration = 0; // declarations whose initializer alone differs, `= config::debug ? a : b`
     size_t aliases = 0; // aliases of one configuration written in both (conditionalGroup)
+    size_t final = 0; // groups whose final text alone differs, written with config::finalRelease
+    size_t allThree = 0; // groups whose three texts all differ (problems)
     std::map<std::string, std::string> choices; // "FILE GROUP" -> the configuration whose text both get
     std::set<std::string> chosen;
     std::vector<std::string> problems;
   };
+
+  // The configuration constant a group's two texts are chosen by: config::debug between FastDebug's
+  // (on) and Release's text, or config::finalRelease between FinalRelease's (on) and Release's (a
+  // final build is never a debug one: BuildConstants.hpp's #error).
+  struct MergeDimension
+  {
+    const char* on;      // the condition of the first text
+    const char* off;     // of the second
+    const char* onName;  // the configurations' names in problems
+    const char* offName;
+  };
+  const MergeDimension debugDimension = {"config::debug", "!config::debug", "debug", "release"};
+  const MergeDimension finalDimension = {"config::finalRelease", "!config::finalRelease", "final", "release"};
 
   // The last character of code in a text, comments and white space left out (0 for none).
   char lastCodeChar(std::string_view text)
@@ -14080,14 +14113,144 @@ namespace
   {
     std::string_view tail = before.substr(before.size() > 4096 ? before.size() - 4096 : 0);
     char previous = lastCodeChar(tail);
-    if (previous == 0 || previous == ';' || previous == '{' || previous == '}' || previous == ':' || previous == ')')
+    if (previous == 0 || previous == ';' || previous == '{' || previous == '}' || previous == ':')
       return true;
+    // (a `)` closes a statement's condition only after if, while, for or switch: a call's, a chain
+    // of cxxopts' `("w,wait", "...")`, is an expression's part)
+    if (previous == ')')
+    {
+      size_t close = tail.find_last_of(')');
+      int depth = 0;
+      size_t open = close;
+      for (; open != std::string_view::npos; --open)
+      {
+        depth += tail[open] == ')';
+        depth -= tail[open] == '(';
+        if (depth == 0 || open == 0)
+          break;
+      }
+      if (depth != 0)
+        return false;
+      size_t end = tail.find_last_not_of(" \t\r\n", open == 0 ? std::string_view::npos : open - 1);
+      if (end == std::string_view::npos || open == 0)
+        return false;
+      size_t start = end;
+      while (start > 0 && isIdentChar(tail[start - 1]))
+        --start;
+      std::string_view word = tail.substr(start, end + 1 - start);
+      return word == "if" || word == "while" || word == "for" || word == "switch" || word == "constexpr";
+    }
     size_t end = tail.find_last_not_of(" \t\r\n");
     for (std::string_view word : {"else", "do"})
       if (end != std::string_view::npos && end + 1 >= word.size() && tail.substr(end + 1 - word.size(), word.size()) == word &&
           (end + 1 == word.size() || !isIdentChar(tail[end - word.size()])))
         return true;
     return false;
+  }
+
+  // A group's text that continues an if-else chain, links alone (`#ifndef FINAL_RELEASE else if (b)
+  // {...} #endif`: `else if (c) A`, `else B`), with each link's condition joined with the
+  // configuration's: `else if (!config::finalRelease && (c)) A`, `else if (!config::finalRelease) B`.
+  // In the configuration without the text no link is taken, as no link was there. "" when the text
+  // is no such links.
+  std::string elseLinksWhen(const std::string& text, const char* condition)
+  {
+    auto skip = [&](size_t k)
+    {
+      while (k < text.size())
+      {
+        if (isspace((unsigned char)text[k]))
+          ++k;
+        else if (text.compare(k, 2, "//") == 0)
+          k = std::min(text.find('\n', k), text.size());
+        else if (text.compare(k, 2, "/*") == 0)
+        {
+          size_t e = text.find("*/", k + 2);
+          k = e == std::string::npos ? text.size() : e + 2;
+        }
+        else
+          break;
+      }
+      return k;
+    };
+    // (the position after the bracket that closes the one at k, string and character literals skipped)
+    auto matching = [&](size_t k) -> size_t
+    {
+      int depth = 0;
+      for (; k < text.size(); ++k)
+      {
+        char c = text[k];
+        if (c == '"' || (c == '\'' && !isDigitSeparator(text, k)))
+        {
+          for (++k; k < text.size() && text[k] != c; ++k)
+            k += text[k] == '\\';
+          continue;
+        }
+        depth += c == '(' || c == '{';
+        depth -= c == ')' || c == '}';
+        if (depth == 0)
+          return k + 1;
+      }
+      return std::string::npos;
+    };
+    // (the end of the statement at k: a block, or up to its `;` outside brackets)
+    auto statementEnd = [&](size_t k) -> size_t
+    {
+      k = skip(k);
+      if (k < text.size() && text[k] == '{')
+        return matching(k);
+      for (; k < text.size(); ++k)
+      {
+        if (text[k] == '(' || text[k] == '{')
+        {
+          k = matching(k);
+          if (k == std::string::npos)
+            return k;
+          --k;
+        }
+        else if (text[k] == ';')
+          return k + 1;
+      }
+      return std::string::npos;
+    };
+    std::string out;
+    bool any = false;
+    for (size_t i = 0;;)
+    {
+      size_t k = skip(i);
+      out += text.substr(i, k - i);
+      i = k;
+      if (i >= text.size())
+        break;
+      if (text.compare(i, 4, "else") != 0 || (i + 4 < text.size() && isIdentChar(text[i + 4])))
+        return "";
+      size_t j = skip(i + 4);
+      size_t end;
+      if (text.compare(j, 2, "if") == 0 && (j + 2 >= text.size() || !isIdentChar(text[j + 2])))
+      {
+        size_t open = skip(j + 2);
+        if (open >= text.size() || text[open] != '(')
+          return "";
+        size_t close = matching(open);
+        if (close == std::string::npos)
+          return "";
+        out += text.substr(i, open + 1 - i) + condition + " && (" + text.substr(open + 1, close - 1 - (open + 1)) + "))";
+        end = statementEnd(close);
+        if (end == std::string::npos)
+          return "";
+        out += text.substr(close, end - close);
+      }
+      else
+      {
+        end = statementEnd(i + 4);
+        if (end == std::string::npos)
+          return "";
+        out += "else if (" + std::string(condition) + ")" + text.substr(i + 4, end - (i + 4));
+      }
+      i = end;
+      any = true;
+    }
+    return any ? out : "";
   }
 
   std::string_view codeStart(std::string_view item);
@@ -14314,7 +14477,7 @@ namespace
   // A declaration that differs per configuration only in its initializer (`constexpr i32 ROW_STEP = 4;`
   // in debug, `= 2;` in release): one declaration choosing by the configuration, design.md 19's
   // `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`. "" when the two are not so.
-  std::string perConfigurationInitializer(const std::string& debug, const std::string& release)
+  std::string perConfigurationInitializer(const std::string& debug, const std::string& release, const MergeDimension& dimension)
   {
     auto split = [](const std::string& item, std::string& head, std::string& value, std::string& tail)
     {
@@ -14356,7 +14519,7 @@ namespace
     std::string dh, dv, dt, rh, rv, rt;
     if (!split(debug, dh, dv, dt) || !split(release, rh, rv, rt) || dh != rh || dv == rv || !literal(dv) || !literal(rv))
       return "";
-    return dh + " = config::debug ? " + dv + " : " + rv + dt;
+    return dh + " = " + dimension.on + " ? " + dv + " : " + rv + dt;
   }
 
   // A group whose configurations' texts differ, where declarations and statements stand (after `;`,
@@ -14370,7 +14533,7 @@ namespace
   // - the other items, statements, are `if constexpr (config::debug) { ... }` blocks, in order.
   // Anywhere else (an initializer list, a parameter list, an expression) is a problem, reported.
   std::string conditionalGroup(const std::string& debug, const std::string& release, std::string_view before, const std::string& where,
-                               MergeReport& report)
+                               MergeReport& report, const MergeDimension& dimension)
   {
     auto whole = [](const std::string& text)
     {
@@ -14379,8 +14542,8 @@ namespace
     };
     if (!statementAfter(before) || !whole(debug) || !whole(release))
     {
-      report.problems.push_back(where + ": the configurations differ where no statement or declaration stands (debug `" + firstLine(debug) +
-                                "`, release `" + firstLine(release) + "`)");
+      report.problems.push_back(where + ": the configurations differ where no statement or declaration stands (" + dimension.onName + " `" +
+                                firstLine(debug) + "`, " + dimension.offName + " `" + firstLine(release) + "`)");
       return debug;
     }
     ++report.conditional;
@@ -14413,7 +14576,7 @@ namespace
       return code;
     };
     if (std::vector<std::string> d = onlyCode(debugItems), r = onlyCode(releaseItems); d.size() == 1 && r.size() == 1 && declaresName(d[0]))
-      if (std::string chosen = perConfigurationInitializer(d[0], r[0]); !chosen.empty())
+      if (std::string chosen = perConfigurationInitializer(d[0], r[0], dimension); !chosen.empty())
       {
         ++report.perConfiguration;
         return chosen;
@@ -14458,6 +14621,43 @@ namespace
           out += item;
           ++report.aliases;
         }
+        else if (std::string_view code = codeStart(item); code.substr(0, 14) == "static_assert(")
+        {
+          // A static_assert of one configuration (Map.cpp's FINAL_RELEASE one, at namespace scope,
+          // where no `if constexpr` stands): one checked where its configuration's is,
+          // `static_assert(!config::finalRelease || (condition), "...")`.
+          flush();
+          size_t comma = 14;
+          for (int depth = 0; comma < code.size(); ++comma)
+          {
+            if (code[comma] == '"')
+              break;
+            depth += code[comma] == '(';
+            depth -= code[comma] == ')';
+            if (depth < 0 || (depth == 0 && code[comma] == ','))
+              break;
+          }
+          size_t at = item.size() - code.size();
+          std::string negated = condition[0] == '!' ? std::string(condition + 1) : "!" + std::string(condition);
+          out += item.substr(0, at) + "static_assert(" + negated + " || (" + std::string(code.substr(14, comma - 14)) + ")" + std::string(code.substr(comma));
+        }
+        else if (std::string_view code = codeStart(item); code.substr(0, 6) == "when (")
+        {
+          // A `when` of the other dimension's merge (the debug and release texts made one, in a group
+          // whose three texts differ): one `when` of both conditions.
+          flush();
+          size_t close = 5;
+          for (int depth = 0; close < code.size(); ++close)
+          {
+            depth += code[close] == '(';
+            depth -= code[close] == ')';
+            if (depth == 0)
+              break;
+          }
+          size_t at = item.size() - code.size();
+          out += item.substr(0, at) + "when (" + condition + " && " + std::string(code.substr(6, close - 6)) + ")" + std::string(code.substr(close + 1));
+          ++report.when;
+        }
         else if (declaresName(item))
         {
           flush();
@@ -14472,7 +14672,7 @@ namespace
       flush();
       return out;
     };
-    return items(debugItems, "config::debug", releaseAliases) + items(releaseItems, "!config::debug", debugAliases);
+    return items(debugItems, dimension.on, releaseAliases) + items(releaseItems, dimension.off, debugAliases);
   }
 
   // Whether a group's debug text is its release text with asserts (Lua's check_exp, `(lua_assert(c),
@@ -14539,23 +14739,27 @@ namespace
   // The two configurations' parts as one text: their text parts the same, each group the same (its
   // text once) or written by conditionalGroup. False where a text part differs or the parts do not
   // match (a mark the conversion lost in one of them).
-  bool mergeParts(const std::vector<MarkedPart>& debug, const std::vector<MarkedPart>& release, std::string& out, const std::string& file,
-                  MergeReport& report)
+  // With a third configuration (final, FinalRelease's parts; null for none): a group whose release
+  // and final texts are the same is chosen by config::debug as above; one whose debug and release
+  // texts are the same by config::finalRelease (final the first text); one whose three texts all
+  // differ is a problem, reported.
+  bool mergeParts(const std::vector<MarkedPart>& debug, const std::vector<MarkedPart>& release, const std::vector<MarkedPart>* final, std::string& out,
+                  const std::string& file, MergeReport& report)
   {
-    if (debug.size() != release.size())
+    if (debug.size() != release.size() || (final && final->size() != debug.size()))
       return false;
-    size_t conditionalBefore = report.conditional, problemsBefore = report.problems.size();
+    MergeReport before = report;
     std::string merged;
     size_t skipSemicolon = std::string::npos; // the next text part's `;`, which a statement's group took
     for (size_t i = 0; i < debug.size(); ++i)
     {
       const MarkedPart& d = debug[i];
       const MarkedPart& r = release[i];
-      bool same = d.group == r.group && (!d.group.empty() || d.text == r.text);
+      const MarkedPart* f = final ? &(*final)[i] : nullptr;
+      bool same = d.group == r.group && (!f || f->group == d.group) && (!d.group.empty() || (d.text == r.text && (!f || f->text == d.text)));
       if (!same)
       {
-        report.conditional = conditionalBefore;
-        report.problems.resize(problemsBefore);
+        report = before;
         return false;
       }
       if (d.group.empty())
@@ -14565,65 +14769,107 @@ namespace
         continue;
       }
       std::string inner;
-      if (mergeParts(d.parts, r.parts, inner, file, report))
+      if (mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report))
         merged += inner;
       else if (auto choice = report.choices.find(file + " " + d.group); choice != report.choices.end())
       {
-        merged += flattened(choice->second == "release" ? r.parts : d.parts);
+        merged += flattened(choice->second == "release" ? r.parts : choice->second == "final" && f ? f->parts : d.parts);
         report.chosen.insert(choice->first);
       }
       else
       {
         std::string dt = flattened(d.parts), rt = flattened(r.parts);
-        if (differsByAsserts(dt, rt))
+        std::string ft = f ? flattened(f->parts) : rt;
+        const MergeDimension* dimension = &debugDimension;
+        std::string on = dt, off = rt;
+        if (ft != rt)
+        {
+          // All three differ (an IMGUI_ENABLED block that FinalRelease leaves out, its DEBUG groups
+          // inside): the debug and release texts made one first, chosen by config::debug, and that
+          // text against the final one by config::finalRelease (conditionalGroup joins a `when` in
+          // it: `when (!config::finalRelease && config::debug)`).
+          if (dt != rt)
+          {
+            std::string debugAndRelease;
+            if (!mergeParts(d.parts, r.parts, nullptr, debugAndRelease, file, report))
+              debugAndRelease = conditionalGroup(dt, rt, out + merged, file + " (#if group " + d.group + ")", report, debugDimension);
+            off = debugAndRelease;
+            ++report.allThree;
+          }
+          dimension = &finalDimension;
+          on = ft;
+          ++report.final;
+        }
+        // (an assert is the configuration's own, config::debug's; a release_assert is in every build)
+        else if (differsByAsserts(dt, rt))
         {
           merged += dt;
           ++report.byAsserts;
           continue;
         }
+        // Links of an if-else chain that one configuration alone has: each link's condition joined
+        // with the configuration's (elseLinksWhen).
+        if (blankText(on) != blankText(off))
+          if (std::string joined = elseLinksWhen(blankText(on) ? off : on, blankText(on) ? dimension->off : dimension->on); !joined.empty())
+          {
+            merged += joined;
+            ++report.conditional;
+            continue;
+          }
         // A macro's use within a line (its id `FILE:@OFFSET`): as a statement, the `;` after it
         // closes it, `if constexpr (config::debug) { debug; } else { release; }`.
-        bool inLine = dt.find('\n') == std::string::npos && rt.find('\n') == std::string::npos;
+        bool inLine = on.find('\n') == std::string::npos && off.find('\n') == std::string::npos;
         const MarkedPart* next = i + 1 < debug.size() && debug[i + 1].group.empty() ? &debug[i + 1] : nullptr;
         size_t semicolon = next ? next->text.find_first_not_of(" \t") : std::string::npos;
         if (inLine && semicolon != std::string::npos && next->text[semicolon] == ';' && statementAfter(out + merged))
         {
           auto statement = [](const std::string& text) { return blankText(text) ? std::string() : " " + text + ";"; };
-          merged += blankText(dt) ? "if constexpr (!config::debug) {" + statement(rt) + " }"
-                                  : "if constexpr (config::debug) {" + statement(dt) + " }" + (blankText(rt) ? "" : " else {" + statement(rt) + " }");
+          merged += blankText(on) ? "if constexpr (" + std::string(dimension->off) + ") {" + statement(off) + " }"
+                                  : "if constexpr (" + std::string(dimension->on) + ") {" + statement(on) + " }" +
+                                      (blankText(off) ? "" : " else {" + statement(off) + " }");
           ++report.conditional;
           skipSemicolon = semicolon;
         }
         else
-          merged += conditionalGroup(dt, rt, out + merged, file + " (#if group " + d.group + ")", report);
+          merged += conditionalGroup(on, off, out + merged, file + " (#if group " + d.group + ")", report, *dimension);
       }
     }
     out += merged;
     return true;
   }
 
-  std::string mergedConfigurations(const std::string& file, const std::string& debug, const std::string& release, MergeReport& report)
+  // (final: FinalRelease's text, or null without a third configuration)
+  std::string mergedConfigurations(const std::string& file, const std::string& debug, const std::string& release, const std::string* final,
+                                   MergeReport& report)
   {
-    std::vector<MarkedPart> d, r;
-    size_t a = 0, b = 0;
-    std::vector<std::string> openD, openR;
-    if (!parseMarked(debug, a, "", d, openD) || !parseMarked(release, b, "", r, openR))
+    std::vector<MarkedPart> d, r, f;
+    size_t a = 0, b = 0, c = 0;
+    std::vector<std::string> openD, openR, openF;
+    if (!parseMarked(debug, a, "", d, openD) || !parseMarked(release, b, "", r, openR) || (final && !parseMarked(*final, c, "", f, openF)))
     {
       report.problems.push_back(file + ": its #if marks do not nest");
       return debug;
     }
     std::string out;
-    if (mergeParts(d, r, out, file, report))
+    if (mergeParts(d, r, final ? &f : nullptr, out, file, report))
       return out;
-    // (the first line where they differ)
+    // (the first line where they differ: debug's and release's, else release's and final's)
     std::string fd = flattened(d), fr = flattened(r);
+    const char* firstName = "debug";
+    const char* secondName = "release";
+    if (final && fd == fr)
+    {
+      fr = flattened(f);
+      firstName = "release";
+      secondName = "final";
+    }
     size_t at = 0, line = 1;
     while (at < fd.size() && at < fr.size() && fd[at] == fr[at])
       line += fd[at++] == '\n';
     size_t lineStart = fd.rfind('\n', at == 0 ? 0 : at - 1);
     lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
-    report.problems.push_back(file + ":" + std::to_string(line) + ": the configurations differ outside an #if group (debug `" +
-                              firstLine(fd.substr(lineStart)) + "`, release `" + firstLine(fr.substr(lineStart)) + "`)");
+    report.problems.push_back(file + ":" + std::to_string(line) + ": the configurations differ outside an #if group (" + firstName + " `" +
+                              firstLine(fd.substr(lineStart)) + "`, " + secondName + " `" + firstLine(fr.substr(lineStart)) + "`)");
     return fd;
   }
 
@@ -14649,11 +14895,11 @@ namespace
 }
 
 int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::path& releaseDir, const std::filesystem::path& outDir,
-                 const std::filesystem::path& choicesFile)
+                 const std::filesystem::path& choicesFile, const std::filesystem::path& finalDir)
 {
   MergeReport report;
   // The groups whose texts no `if constexpr` can choose between (an expression's part), each taken
-  // from one configuration for both: `FILE GROUP debug|release  why`, reviewed by hand.
+  // from one configuration for all: `FILE GROUP debug|release|final  why`, reviewed by hand.
   if (!choicesFile.empty())
   {
     std::string text;
@@ -14670,10 +14916,10 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
         continue;
       char file[512], group[256], configuration[16];
       if (sscanf(line.c_str(), "%511s %255s %15s", file, group, configuration) == 3 &&
-          (std::string(configuration) == "debug" || std::string(configuration) == "release"))
+          (std::string(configuration) == "debug" || std::string(configuration) == "release" || std::string(configuration) == "final"))
         report.choices[std::string(file) + " " + group] = configuration;
       else
-        report.problems.push_back(choicesFile.generic_string() + ": not `FILE GROUP debug|release why`: " + line);
+        report.problems.push_back(choicesFile.generic_string() + ": not `FILE GROUP debug|release|final why`: " + line);
     }
   }
   std::map<std::string, std::string> merged; // the converted files, by path below outDir
@@ -14690,7 +14936,7 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
     if (!entry.is_regular_file(ec))
       continue;
     std::string rel = entry.path().lexically_relative(debugDir).generic_string();
-    std::string debug, release;
+    std::string debug, release, final;
     readFile(entry.path(), debug);
     if (entry.path().extension() != ".kpp")
     {
@@ -14703,15 +14949,27 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
       report.problems.push_back(rel + ": only the debug configuration writes it");
       merged[rel] = debug;
     }
-    else if (debug == release && debug.find("/*kpp:") == std::string::npos)
+    else if (!finalDir.empty() && !readFile(finalDir / rel, final))
+    {
+      report.problems.push_back(rel + ": the final configuration does not write it");
+      merged[rel] = mergedConfigurations(rel, debug, release, nullptr, report);
+    }
+    else if (debug == release && (finalDir.empty() || final == release) && debug.find("/*kpp:") == std::string::npos)
       write(rel, debug); // (a hand-written file, or one without an #if)
+    else if (entry.path().filename() == "c-imports.kpp")
+      merged[rel] = finalDir.empty() ? mergedImports(debug, release) : mergedImports(mergedImports(debug, release), final);
     else
-      merged[rel] = entry.path().filename() == "c-imports.kpp" ? mergedImports(debug, release) : mergedConfigurations(rel, debug, release, report);
+      merged[rel] = mergedConfigurations(rel, debug, release, finalDir.empty() ? nullptr : &final, report);
   }
   for (const auto& entry : std::filesystem::recursive_directory_iterator(releaseDir, ec))
     if (entry.is_regular_file(ec) && entry.path().extension() == ".kpp" &&
         !std::filesystem::exists(debugDir / entry.path().lexically_relative(releaseDir), ec))
       report.problems.push_back(entry.path().lexically_relative(releaseDir).generic_string() + ": only the release configuration writes it");
+  if (!finalDir.empty())
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(finalDir, ec))
+      if (entry.is_regular_file(ec) && entry.path().extension() == ".kpp" &&
+          !std::filesystem::exists(debugDir / entry.path().lexically_relative(finalDir), ec))
+        report.problems.push_back(entry.path().lexically_relative(finalDir).generic_string() + ": only the final configuration writes it");
   // The cleanups again, now that the marks are gone: an #if group's marks held a namespace open, and
   // their lines stood between blank ones.
   std::set<std::string> holding;
@@ -14720,14 +14978,18 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
   size_t namespacesRemoved = 0, namespacesKept = 0, blankLines = 0;
   for (auto& [rel, text] : merged)
     write(rel, withTidyBlankLines(withoutEmptyNamespaces(text, holding, namespacesRemoved, namespacesKept), blankLines));
+  // (a choice of a file this merge has not, the tests' in the conversion without them, is another
+  // merge's)
   for (const auto& [key, configuration] : report.choices)
-    if (!report.chosen.count(key))
+    if (!report.chosen.count(key) && std::filesystem::exists(debugDir / key.substr(0, key.find(' ')), ec))
       report.problems.push_back(choicesFile.generic_string() + ": `" + key + "` chooses for no group whose configurations differ");
   std::string summary = "\n## The two configurations made one (kppc --convert-merge)\n\n- files: " + std::to_string(files) +
                         "\n- #if groups whose configurations differ, written with `when (config::debug)` and `if constexpr (config::debug)` (design.md 19): " + std::to_string(report.conditional) +
                         "\n- their declarations, each `when (config::debug)` or `when (!config::debug)`: " + std::to_string(report.when) +
                         "\n- their declarations whose initializer alone differs, `= config::debug ? a : b`: " + std::to_string(report.perConfiguration) +
                         "\n- their aliases of one configuration, written in both (no storage; their types checked in both): " + std::to_string(report.aliases) +
+                        "\n- groups whose final text alone differs (FinalRelease's), written with `when (config::finalRelease)` and `if constexpr (config::finalRelease)`: " +
+                        std::to_string(report.final) + "\n- groups whose debug, release and final texts all differ (problems): " + std::to_string(report.allThree) +
                         "\n- groups whose configurations differ by asserts alone, written as the debug one (kpp's assert is the configuration's): " +
                         std::to_string(report.byAsserts) + "\n- groups taken from one configuration (" + choicesFile.filename().string() + "): " +
                         std::to_string(report.chosen.size()) + "\n- empty namespaces removed once the marks were gone: " + std::to_string(namespacesRemoved) +
@@ -14735,8 +14997,8 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
   for (const std::string& p : report.problems)
     summary += "  - " + p + "\n";
   writeConvertedFile(outDir / "CONVERSION.md", summary, "ab");
-  printf("convert-merge: %zu files, %zu groups whose configurations differ (%zu declarations when, %zu initializers config::debug ? a : b), %zu differing by asserts alone, %zu problems\n",
-         files, report.conditional, report.when, report.perConfiguration, report.byAsserts, report.problems.size());
+  printf("convert-merge: %zu files, %zu groups whose configurations differ (%zu declarations when, %zu initializers chosen by the configuration), %zu of them final's, %zu differing by asserts alone, %zu problems\n",
+         files, report.conditional, report.when, report.perConfiguration, report.final, report.byAsserts, report.problems.size());
   for (const std::string& p : report.problems)
     fprintf(stderr, "convert-merge: %s\n", p.c_str());
   return report.problems.empty() ? 0 : 1;

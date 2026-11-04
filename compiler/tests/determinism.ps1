@@ -130,6 +130,7 @@ if (Test-Path (Join-Path $tree 'src'))
     '--cinclude', 'C:\Factorio\libraries\SDL3\include', '--cinclude', 'C:\Factorio\libraries\SDL_Mixer\include',
     '--cinclude', 'C:\Factorio\libraries\Lua', '--cinclude', 'C:\Factorio\libraries', '--cinclude', 'C:\Factorio\libraries\curl\include',
     '--cinclude', 'C:\Factorio\libraries\glad\include', '--cinclude', 'C:\Factorio\libraries\trio', '--cinclude', "$factorio\native\include",
+    '--config', 'finalRelease=false', # (the game's FINAL_RELEASE code: link-settings.cmd's CINC)
     '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\src")
   # The whole IR too (--emit-llvm), byte for byte: a name the code generator gives one of two
   # classes that print alike must not depend on which thread reached it first.

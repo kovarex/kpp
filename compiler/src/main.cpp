@@ -212,8 +212,9 @@ namespace
             "  --convert D   rewrite the C++ inputs as kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --convert-base B  with --convert: each file at its input's path below B, not below its input\n"
             "  --convert-release with --convert: preprocess as the game's Release (NDEBUG), not FastDebug\n"
+            "  --convert-final   with --convert: preprocess as the game's FinalRelease (Release, FINAL_RELEASE, ALL_IN_ONE)\n"
             "  --convert-marks   with --convert: mark each #if group, for --convert-merge\n"
-            "  --convert-merge D R OUT [CHOICES]  the two configurations' marked conversions D and R as one, into OUT\n"
+            "  --convert-merge D R OUT [CHOICES [F]]  the configurations' marked conversions D and R (and the final F) as one, into OUT\n"
             "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
             "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"
             "  --convert-library NAME DIR  with --convert: the program uses the scoped library NAME, converted\n"
@@ -4059,7 +4060,7 @@ namespace
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
-    {"--convert-release", 0}, {"--convert-marks", 0}};
+    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}};
 }
 
 int compileOptionValues(const std::string& arg)
@@ -4117,8 +4118,8 @@ int main(int argc, char** argv)
     return usage(stdout), 0;
   // The game's two configurations' conversions made one (convert.hpp): `kppc --convert-merge DEBUG
   // RELEASE OUT`.
-  if ((argc == 5 || argc == 6) && std::string(argv[1]) == "--convert-merge")
-    return convertMerge(argv[2], argv[3], argv[4], argc == 6 ? argv[5] : "");
+  if ((argc >= 5 && argc <= 7) && std::string(argv[1]) == "--convert-merge")
+    return convertMerge(argv[2], argv[3], argv[4], argc >= 6 ? argv[5] : "", argc == 7 ? argv[6] : "");
   // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")
@@ -4345,6 +4346,8 @@ int compile(int argc, char** argv)
     }
     else if (arg == "--convert-release")
       setConvertRelease();
+    else if (arg == "--convert-final")
+      setConvertFinal();
     else if (arg == "--convert-marks")
       setConvertMarks();
     else if (arg[0] == '-')

@@ -82,10 +82,13 @@ rem Both configurations (docs/design.md 12, "The game's DEBUG as config::debug")
 rem FastDebug and its Release preprocess it, each #if group marked, made one text by --convert-merge,
 rem a group whose two texts differ written as `if constexpr (config::debug)`
 rem (overrides\configuration-choices.txt: the few no `if constexpr` can choose between).
-for %%c in (debug release) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%c
+for %%c in (debug release final) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%c
 %KPPC% --no-std --quiet --convert-marks --convert kpp\whole-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 %KPPC% --no-std --quiet --convert-marks --convert-release --convert kpp\whole-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --convert-merge kpp\whole-debug kpp\whole-release %WHOLE% overrides\configuration-choices.txt || goto :failed
+rem And the official builds' FinalRelease (docs/final-release.md): Release's defines with FINAL_RELEASE,
+rem PACKAGED_BUILD and ALL_IN_ONE, a group whose text it alone has written with config::finalRelease.
+%KPPC% --no-std --quiet --convert-marks --convert-final --convert kpp\whole-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --convert-merge kpp\whole-debug kpp\whole-release %WHOLE% overrides\configuration-choices.txt kpp\whole-final || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
@@ -104,13 +107,17 @@ powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\native-rc.ps1 -Native "%NATIVE%" || goto :failed
 set STEP=the conversion into kpp\
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
+rem (and the game's FinalRelease constant, config::finalRelease: false but in build.kpp's final configuration;
+rem docs/final-release.md)
+set CINC=%CINC% --config finalRelease=false
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
-for %%c in (debug release) do if exist kpp\conv-%%c rd /s /q kpp\conv-%%c
+for %%c in (debug release final) do if exist kpp\conv-%%c rd /s /q kpp\conv-%%c
 %KPPC% --no-std --quiet --convert-marks --convert kpp\conv-debug %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
 %KPPC% --no-std --quiet --convert-marks --convert-release --convert kpp\conv-release %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
-%KPPC% --convert-merge kpp\conv-debug kpp\conv-release kpp overrides\configuration-choices.txt || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-final --convert kpp\conv-final %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
+%KPPC% --convert-merge kpp\conv-debug kpp\conv-release kpp overrides\configuration-choices.txt kpp\conv-final || goto :failed
 type kpp\CONVERSION.md | findstr /B "Files -"
 set CINC=%CINC% %CLIBINC%
 rem (and their own headers: the configured imports, minizip's)
@@ -220,11 +227,13 @@ if exist kpp\convert_formats rd /s /q kpp\convert_formats
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
 set "STEP=configurations check"
-echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug in debug and in release, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
-%KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
-%KPPC% --std ..\..\stdlib --quiet --release --exe kpp\configurations-release.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
+%KPPC% --std ..\..\stdlib --quiet --config finalRelease=false --exe kpp\configurations-debug.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --release --config finalRelease=false --exe kpp\configurations-release.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --release --config finalRelease=true --exe kpp\configurations-final.exe kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
 kpp\configurations-debug.exe > kpp\configurations.out.txt
 kpp\configurations-release.exe >> kpp\configurations.out.txt
+kpp\configurations-final.exe >> kpp\configurations.out.txt
 python -I debug-only.py kpp >> kpp\configurations.out.txt
 fc /w kpp\configurations.out.txt tests\configurations.expected > nul && (echo configurations: output as expected& set /a SMOKES+=1) || (echo configurations: OUTPUT DIFFERS & fc /w kpp\configurations.out.txt tests\configurations.expected & goto :failed)
 set "STEP=C rules"

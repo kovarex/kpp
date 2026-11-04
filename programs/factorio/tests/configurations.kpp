@@ -1,8 +1,11 @@
-// The game's DEBUG code is config::debug's (docs/design.md 12, "The game's DEBUG as config::debug"):
-// built with the converted BuildConstants in debug and in release (convert.cmd), each prints its
-// configuration's IsDebug, which C++'s `#ifdef DEBUG` chose.
+// The game's DEBUG code is config::debug's and its FINAL_RELEASE code config::finalRelease's
+// (docs/design.md 12, "The game's DEBUG as config::debug"; docs/final-release.md): built with the
+// converted BuildConstants in debug, release and final (convert.cmd), each prints its configuration's
+// IsDebug, IsFinalRelease and IsPackagedBuild, which C++'s `#ifdef DEBUG`, `#ifdef FINAL_RELEASE` and
+// `#ifdef PACKAGED_BUILD` chose.
 int main()
 {
-  println(StringView(config::debug ? "debug" : "release"), " IsDebug ", BuildConstants::IsDebug);
+  println(StringView(config::debug ? "debug" : config::finalRelease ? "final" : "release"), " IsDebug ", BuildConstants::IsDebug, " IsFinalRelease ",
+          BuildConstants::IsFinalRelease, " IsPackagedBuild ", BuildConstants::IsPackagedBuild);
   return 0;
 }
