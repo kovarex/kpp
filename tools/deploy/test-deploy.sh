@@ -47,7 +47,9 @@ refused "pending migrations" "needs these migrations" $deploy --from "$package" 
 check "--migrate and install v1" $deploy --migrate --from "$package" v1
 mode=$(ls -l "$root/public/gorating.cgi" | cut -c1-10)
 [ "$mode" = "-rwxr-xr-x" ] && echo "ok   the program's mode" || { echo "FAIL the program is $mode"; failed=$((failed + 1)); }
-[ -f "$root/public/.htaccess" ] && [ -f "$root/public/style2.css" ] && echo "ok   the static files" || { echo "FAIL static files missing"; failed=$((failed + 1)); }
+# Every file of the package's public/ in PUBLIC (gorating's CSS and JS are named by their contents).
+missing=$(cd "$root/state/releases/v1/site/public" && find . -type f | while read -r file; do [ -f "$root/public/$file" ] || echo "$file"; done)
+[ -f "$root/public/.htaccess" ] && [ -z "$missing" ] && echo "ok   the static files" || { echo "FAIL static files missing:" $missing; failed=$((failed + 1)); }
 check "a second install, nothing pending" $deploy --from "$package" v2
 check "--status" $deploy --status
 
