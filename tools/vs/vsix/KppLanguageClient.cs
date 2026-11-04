@@ -77,7 +77,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
     /// <summary>
     /// The cell the solution is in (<see cref="Cell"/>): the server checks it from the start. And
     /// inactiveRegions: this client cannot add clangd's capability, so it asks for the notification
-    /// (<see cref="InactiveCode"/>) here.
+    /// (<see cref="InactiveCode"/>) here; and semanticColors: the extension draws the semantic tokens itself (<see cref="SemanticTokens"/>).
     /// </summary>
     public object? InitializationOptions
     {
@@ -85,6 +85,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
         {
             var options = this.cell is null ? new JObject() : (JObject)this.cell.DeepClone();
             options["inactiveRegions"] = true;
+            options["semanticColors"] = true;
             return options;
         }
     }

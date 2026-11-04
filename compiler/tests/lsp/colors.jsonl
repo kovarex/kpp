@@ -1,0 +1,9 @@
+// Visual Studio's way to the semantic tokens (docs/editors.md, "Colors"), for tests\lsp.ps1 on a
+// copy of tests\lsp\program: with initializationOptions' semanticColors the client is offered no
+// semanticTokensProvider (its extension draws the tokens), and kpp/semanticTokensChanged follows
+// each check. shapes.kpp's tokens: the global units::scale has the modifier globalScope (8).
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"semanticColors":true}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+{"jsonrpc":"2.0","id":3,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

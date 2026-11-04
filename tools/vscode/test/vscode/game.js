@@ -103,6 +103,11 @@ async function run()
   }
   await vscode.workspace.getConfiguration('kpp').update('configuration', 'debug', vscode.ConfigurationTarget.Workspace);
   await sleep(3000);
+  // The colors (docs/editors.md, "Colors"): the semantic tokens VS Code has for the file.
+  const legend = await vscode.commands.executeCommand('vscode.provideDocumentSemanticTokensLegend', uri(dx));
+  const tokens = await vscode.commands.executeCommand('vscode.provideDocumentSemanticTokens', uri(dx));
+  const n = tokens && tokens.data ? tokens.data.length / 5 : 0;
+  check('semantic tokens of ' + dx, n > 100, `${n} tokens, legend ${legend ? legend.tokenTypes.length : 0} types, editor.semanticHighlighting.enabled ${vscode.workspace.getConfiguration('editor').get('semanticHighlighting.enabled')}, theme ${vscode.workspace.getConfiguration('workbench').get('colorTheme')}`);
   fs.writeFileSync(out + '.screenshot', 'now');
   await sleep(6000);
   log(`done, ${failures} failed`);

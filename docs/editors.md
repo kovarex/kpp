@@ -98,6 +98,16 @@ Status (2026-11-03):
 
   Checked by tests\lsp\inactive (the transcript inactive), and in both editors: `inactive.js` and
   `test.ps1 -InactiveFile`.
+- **Colors** (kovarex, 2026-11-04: types and functions in colors of their own, locals in the
+  text's): the server's semantic tokens (`textDocument/semanticTokens/full`) name each name's
+  kind: namespace, type, class, enum, struct, typeParameter, parameter, variable, property,
+  enumMember, function, method; modifiers declaration, defaultLibrary, static (a class's static
+  member) and globalScope (a variable of a namespace or the file, clangd's). A client is told to
+  ask again after each check: `workspace/semanticTokens/refresh` to one with
+  `workspace.semanticTokens.refreshSupport` (VS Code), `kpp/semanticTokensChanged` to Visual
+  Studio's extension (initializationOptions' `semanticColors`, which also leaves the capability
+  out, see "Visual Studio 2022"). Until the refresh, a client that asked before the first check
+  had none. Checked by the transcripts refresh and colors.
 - **Checked by** `tools\vscode\test\lsp-smoke.js`: `node lsp-smoke.js kppc.exe --lsp`. It
   initializes, expects these capabilities, expects an error for an undeclared name and expects
   it gone after the fix, then asks a hover. It needs only Node.js.
@@ -112,6 +122,10 @@ The extension is in `tools/vscode`; its README covers the details.
   client that starts `kpp --lsp` for the open folder.
 - **Settings:** `kpp.path`, `kpp.configuration`, `kpp.target` (`kpp.executable`, its old name, is
   still read), `kpp.settings`, `kpp.inactiveCodeOpacity` and `kpp.trace.server`.
+- **Colors:** the server's semantic tokens, colored by the theme. The extension turns
+  `editor.semanticHighlighting.enabled` on for .kpp files; a theme colors what it maps the token
+  types to (VS Code's new default theme, Dark 2026, colors only keywords, strings and comments,
+  with or without them). `game.js` checks that VS Code has the tokens of a game file (882).
 - **Inactive code** is drawn faded (`kpp.inactiveCodeOpacity`, 0.55; 1 draws it as the rest).
   `inactive.js` checks it on tests\lsp\inactive: the regions in debug, then after a switch to
   release (0.4 to 1.0 s).
@@ -163,6 +177,16 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   so the extension asks for the regions in initializationOptions. `test.ps1 -InactiveFile` checks
   them on tests\lsp\inactive as its generated solution: the regions the extension received in Debug,
   in Release (0.3 s after the switch) and in Debug again, with screenshots.
+- **Colors** are Visual Studio's C++ colors (Tools > Options > Fonts and Colors, "C++ Types",
+  "C++ Functions", ...): `SemanticColors.cs` asks for a file's semantic tokens when it opens and
+  after each check (`kpp/semanticTokensChanged`) and draws types as cppType, functions as
+  cppFunction, member functions as cppMemberFunction (cppStaticMemberFunction), parameters as
+  cppParameter, data members as cppMemberField (cppStaticMemberField), globals as
+  cppGlobalVariable, enumerators as cppEnumerator and namespaces as cppNamespace. Locals are left
+  as the grammar draws them, in the text's color, and so are keywords. Visual Studio's own client
+  takes semantic tokens too, but draws types and functions in one color, so the server offers the
+  capability to the extension alone. In the default light theme: types teal, functions brown,
+  parameters grey, the rest black. `test.ps1` checks that the extension received -File's tokens.
 - **Hover is plain text in Visual Studio.** Its client names hover's `contentFormat` as plain text
   alone. Given markdown, it showed only the code block (`const int volume`, without the value,
   the cell or the description). The server sends markdown only to a client that names it, so

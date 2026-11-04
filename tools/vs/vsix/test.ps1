@@ -11,6 +11,7 @@
 # -InactiveFile FILE with -InactiveDebug LINES: the extension's log must give FILE's inactive regions
 # (docs/editors.md, "Inactive code") as LINES ("8-10 25-26"); with -Solution and -InactiveRelease, in
 # Release too. Each is shot (NAME-inactive-*.png), where the faded code shows.
+# The extension's semantic tokens of -File (its colors) must be in the log, at least one token.
 # -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
@@ -397,6 +398,10 @@ finally
   if (-not $devenv.WaitForExit(60000)) { "test.ps1: Visual Studio $($devenv.Id) did not quit" }
 }
 $log = "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log"
+# The colors (docs/editors.md, "Colors"): the extension took -File's semantic tokens after a check.
+$leaf = Split-Path $File -Leaf
+$colored = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match "^kpp: semantic tokens in .*\\$([regex]::Escape($leaf)): ([0-9]+)$" -and [int]$Matches[1] -gt 0 })
+Check "semantic tokens of $File" ($colored.Count -gt 0) $(if ($colored) { $colored[-1] } else { 'none in the log' })
 if (Test-Path $log)
 {
   "the server's log: $log"

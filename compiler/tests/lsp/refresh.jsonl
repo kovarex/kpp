@@ -1,0 +1,15 @@
+// Semantic tokens asked for again after each check (docs/editors.md, "Colors"), for tests\lsp.ps1
+// on a copy of tests\lsp\program: a client with workspace.semanticTokens.refreshSupport gets
+// workspace/semanticTokens/refresh after every check, and its answer (null) is taken as it comes.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"workspace":{"semanticTokens":{"refreshSupport":true}}}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main()\n{\n  Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}}}
+{"jsonrpc":"2.0","id":"kpp-refresh-1","result":null}
+// The tokens: Vector, Shape (types), shapes, square (locals), width, height (members), push_back,
+// println, totalArea (functions).
+{"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/main.kpp"}}}
+// An edit, checked again: another refresh.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":4,"character":17},"end":{"line":4,"character":18}},"text":"4"}]}}
+{"jsonrpc":"2.0","id":"kpp-refresh-2","result":null}
+{"jsonrpc":"2.0","id":3,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

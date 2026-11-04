@@ -54,6 +54,13 @@ internal static class InactiveCode
 /// </summary>
 internal sealed class ServerNotifications
 {
+    /// <summary>
+    /// The server checked again: the open files' semantic tokens are asked for again
+    /// (<see cref="SemanticTokens"/>).
+    /// </summary>
+    [JsonRpcMethod("kpp/semanticTokensChanged")]
+    public void SemanticTokensChanged() => SemanticTokens.Refresh();
+
     [JsonRpcMethod("textDocument/inactiveRegions", UseSingleObjectParameterDeserialization = true)]
     public void InactiveRegions(JToken parameters)
     {

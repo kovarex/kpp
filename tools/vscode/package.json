@@ -22,6 +22,9 @@
     "grammars": [
       { "language": "kpp", "scopeName": "source.kpp", "path": "./syntaxes/kpp.tmLanguage.json" }
     ],
+    "configurationDefaults": {
+      "[kpp]": { "editor.semanticHighlighting.enabled": true }
+    },
     "configuration": {
       "title": "kpp",
       "properties": {

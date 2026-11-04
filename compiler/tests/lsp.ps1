@@ -7,6 +7,8 @@
 # as VS Code starts it. failed: a check that fails without a diagnostic is shown (window/showMessage).
 # nested: cells opened from below its build.kpp, as Visual Studio opens a generated solution.
 # inactive: the code the cell does not build (textDocument/inactiveRegions), debug then release.
+# refresh: workspace/semanticTokens/refresh after each check, to a client that takes it. colors:
+# Visual Studio's extension's semantic tokens (semanticColors, kpp/semanticTokensChanged).
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -19,7 +21,8 @@ $failed = 0
 
 foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio' }, @{ Name = 'cells'; Program = 'cells'; Args = '--stdio' },
                       @{ Name = 'failed'; Program = 'program'; Args = '--no-such-option' }, @{ Name = 'nested'; Program = 'cells'; Args = '--stdio' },
-                      @{ Name = 'inactive'; Program = 'inactive'; Args = '--stdio' }))
+                      @{ Name = 'inactive'; Program = 'inactive'; Args = '--stdio' }, @{ Name = 'refresh'; Program = 'program'; Args = '--stdio' },
+                      @{ Name = 'colors'; Program = 'program'; Args = '--stdio' }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program

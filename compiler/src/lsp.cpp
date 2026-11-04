@@ -944,6 +944,9 @@ namespace
     std::string shownFailure;                   // the diagnostic-less failure last shown (check)
     bool markdownHover = false;                 // the client renders hover's markdown (else plain text)
     bool inactiveRegions = false;               // the client takes textDocument/inactiveRegions (clangd's)
+    bool semanticTokensRefresh = false;         // the client takes workspace/semanticTokens/refresh
+    bool semanticColors = false;                // the client's extension asks for the tokens itself (kpp/semanticTokensChanged)
+    size_t refreshes = 0;                       // the refresh requests sent (their ids)
     std::map<std::string, std::string> inactiveSent; // the regions last sent per open document (overlayKey -> JSON)
     size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
@@ -1409,6 +1412,12 @@ namespace
       for (const std::string& note : notes)
         log("  %s", note.c_str());
       sendInactiveRegions();
+      // Semantic tokens are of the checked program: a client asks for them again after each check
+      // (it may have asked before the first one, when there was nothing to answer).
+      if (semanticTokensRefresh)
+        send(Json::object().set("jsonrpc", "2.0").set("id", "kpp-refresh-" + std::to_string(++refreshes)).set("method", "workspace/semanticTokens/refresh"));
+      if (semanticColors)
+        notify("kpp/semanticTokensChanged", Json::object());
     }
 
     // ---- inactive code (docs/editors.md, "Inactive code") ----
@@ -2693,6 +2702,25 @@ namespace
       }
     }
 
+    // The legend's modifiers past declaration (1) and defaultLibrary (2): static (4), a class's
+    // static member; globalScope (8, clangd's), a variable of a namespace or the file. A client
+    // tells a global from a local, and a static member from an instance's, by them (Visual Studio's
+    // C++ colors: cppGlobalVariable, cppStaticMemberField, cppStaticMemberFunction).
+    int scopeModifiers(const KeptProgram& program, Decl* d)
+    {
+      if (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl)
+        return 0;
+      Decl* declared = d;
+      if (d->kind == NodeKind::FunctionDecl)
+        if (FunctionDecl* f = program.global->declarationOf(static_cast<FunctionDecl*>(d)))
+          declared = f;
+      if (program.global->owningClass(d)) // (a data member defined outside its class, `int Shape::count = 0;`, is a static one)
+        return declared->flags & DF_Static || (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() > 1) ? 4 : 0;
+      if (d->kind == NodeKind::VariableDecl && (!d->parent || d->parent->kind == NodeKind::NamespaceDecl))
+        return 8;
+      return 0;
+    }
+
     Json semanticTokens(const Json& params)
     {
       Json data = Json::array();
@@ -2711,7 +2739,7 @@ namespace
           const Token& t = (*f->tokens)[o.token];
           size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t(t.offset)) - starts.begin()) - 1;
           size_t start = utf16Units(f->text, starts[line], t.offset);
-          int modifiers = (o.declaration ? 1 : 0) | (o.decl->file && o.decl->file->isLibrary ? 2 : 0);
+          int modifiers = (o.declaration ? 1 : 0) | (o.decl->file && o.decl->file->isLibrary ? 2 : 0) | scopeModifiers(program, o.decl);
           data.push(line - previousLine).push(line == previousLine ? start - previousStart : start)
             .push(utf16Units(f->text, t.offset, size_t(t.offset) + t.length)).push(type).push(modifiers);
           previousLine = line;
@@ -2841,14 +2869,14 @@ namespace
       for (const char* t : tokenTypes)
         types.push(t);
       return Json::object()
-        .set("legend", Json::object().set("tokenTypes", std::move(types)).set("tokenModifiers", Json::array().push("declaration").push("defaultLibrary")))
+        .set("legend", Json::object().set("tokenTypes", std::move(types)).set("tokenModifiers", Json::array().push("declaration").push("defaultLibrary").push("static").push("globalScope")))
         .set("full", true);
     }
 
     Json capabilities()
     {
-      return Json::object()
-        .set("positionEncoding", "utf-16")
+      Json c = Json::object();
+      c.set("positionEncoding", "utf-16")
         .set("textDocumentSync", Json::object()
                                    .set("openClose", true)
                                    .set("change", 2) // incremental
@@ -2856,13 +2884,15 @@ namespace
         .set("hoverProvider", true)
         .set("completionProvider", Json::object().set("triggerCharacters", Json::array().push(".").push(">").push(":")))
         .set("signatureHelpProvider", Json::object().set("triggerCharacters", Json::array().push("(").push(",")))
-        .set("renameProvider", Json::object().set("prepareProvider", true))
-        .set("semanticTokensProvider", semanticTokensOptions())
-        .set("definitionProvider", true)
+        .set("renameProvider", Json::object().set("prepareProvider", true));
+      if (!semanticColors)
+        c.set("semanticTokensProvider", semanticTokensOptions());
+      c.set("definitionProvider", true)
         .set("declarationProvider", true)
         .set("referencesProvider", true)
         .set("documentSymbolProvider", true)
         .set("workspaceSymbolProvider", true);
+      return c;
     }
 
     // One message; false when the server is to end (exit).
@@ -2905,6 +2935,12 @@ namespace
         // one (Visual Studio's in-process client).
         inactiveRegions = params["capabilities"]["textDocument"]["inactiveRegionsCapabilities"]["inactiveRegions"].boolean ||
                           params["initializationOptions"]["inactiveRegions"].boolean;
+        // The protocol's capability (VS Code's). Visual Studio's client takes the tokens too, but
+        // draws types and functions alike in kpp's colors; its extension asks for them itself and
+        // draws them in Visual Studio's C++ colors (initializationOptions' semanticColors): the
+        // client is not offered them, and the extension is told after each check.
+        semanticTokensRefresh = params["capabilities"]["workspace"]["semanticTokens"]["refreshSupport"].boolean;
+        semanticColors = params["initializationOptions"]["semanticColors"].boolean;
         ProjectCheck wanted = project;
         readOptions(params["initializationOptions"], wanted);
         std::string error;
@@ -2989,7 +3025,11 @@ namespace
       else if (method == "textDocument/signatureHelp")
         respond(id, signatureHelp(params));
       else if (method == "textDocument/semanticTokens/full")
-        respond(id, semanticTokens(params));
+      {
+        Json tokens = semanticTokens(params);
+        log("semantic tokens: %s, %zu", params["textDocument"]["uri"].text.c_str(), tokens["data"].items.size() / 5);
+        respond(id, std::move(tokens));
+      }
       else if (method == "textDocument/hover")
         respond(id, hover(params));
       else if (method == "textDocument/definition")
