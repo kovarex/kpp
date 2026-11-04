@@ -7113,9 +7113,12 @@ struct GlobalScope::Impl
           return ConstValue::integer(int64_t(pack->args.size()), types.sizeType());
         }
         const Ty* t = nullptr;
-        // `sizeof(grid)`: the parser reads a lone name as a type; a variable's is its declared one.
+        // `sizeof(grid)`: the parser reads a lone name as a type; a variable's is its declared one, and
+        // an enumerator's its enumeration (`sizeof(E::X)`: its underlying type's size, an unscoped
+        // enumeration's int's).
         Decl* named = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
-        if (named && (named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && !(named->flags & DF_Typedef))
+        if (named && (((named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && !(named->flags & DF_Typedef)) ||
+                      named->kind == NodeKind::EnumeratorDecl))
           t = declaredTypeOf(named, ctx.subst, depth + 1);
         else if (s->type)
           t = convertType(s->type, ctx, depth + 1);
