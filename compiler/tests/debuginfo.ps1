@@ -116,7 +116,7 @@ function Summary([string]$pdb)
     elseif ($line -match '\| S_BLOCK32') { $out.Add(('  ' * $depth) + 'block'); ++$depth }
     elseif ($line -match '\| S_END') { if (--$depth -eq 0) { break } }
   }
-  foreach ($name in 'game::Point', 'game::Shape', 'game::Square', 'Flags', 'Value', 'Vector<int32>', 'game::Mode')
+  foreach ($name in 'game::Point', 'game::Shape', 'game::Square', 'Flags', 'Value', 'Vector<int32>', 'game::Mode', 'game::Mask')
   {
     $pattern = 'LF_(CLASS|STRUCTURE|UNION|ENUM) \[size = \d+\] `' + [regex]::Escape($name) + '`'
     $record = @($script:records.Keys | Where-Object { $l = $script:records[$_]; $l[0] -match $pattern -and ($l -join ' ') -notmatch 'forward ref' } | Sort-Object) | Select-Object -First 1

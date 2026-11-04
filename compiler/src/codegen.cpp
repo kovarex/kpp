@@ -6480,7 +6480,18 @@ namespace
                 continue;
               auto* en = static_cast<EnumeratorDecl*>(d);
               elements += (elements.empty() ? "" : ", ") + debugId(next);
-              enumerators += debugId(next++) + " = !DIEnumerator(name: " + metadataString(sym(en->name)) + ", value: " + std::to_string(enumeratorValue(en)) +
+              // An unsigned enumeration's value as its type holds it (`Top = ~0ull`, `None = -1`: LLVM
+              // rejects an unsigned enumerator with a negative value).
+              int64_t value = enumeratorValue(en);
+              std::string valueText = std::to_string(value);
+              if (underlying && underlying->isUnsigned)
+              {
+                uint64_t bits = uint64_t(value);
+                if (underlying->bits && underlying->bits < 64)
+                  bits &= (uint64_t(1) << underlying->bits) - 1;
+                valueText = std::to_string(bits);
+              }
+              enumerators += debugId(next++) + " = !DIEnumerator(name: " + metadataString(sym(en->name)) + ", value: " + valueText +
                              (underlying && underlying->isUnsigned ? ", isUnsigned: true" : "") + ")\n";
             }
             return one("!DICompositeType(tag: DW_TAG_enumeration_type, name: " + metadataString(spelling) +

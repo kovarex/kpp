@@ -3,6 +3,7 @@ function inspect(const game::Point&, int32, game::Mode)
   parameter scale int
   parameter mode game::Mode
   local sum int
+  local mask game::Mask
   local values Vector<int32>
   block
     local half double
@@ -36,4 +37,7 @@ enum game::Mode, unsigned char
   Off = 0
   On = 1
   Broken = 7
+enum game::Mask, unsigned __int64
+  None = 0
+  All = 18446744073709551615
 typedefs int16 int32 int64 int8 uint16 uint32 uint64 uint8

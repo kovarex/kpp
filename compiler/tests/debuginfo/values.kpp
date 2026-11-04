@@ -5,6 +5,8 @@
 namespace game
 {
   enum class Mode : unsigned char { Off, On, Broken = 7 };
+  // (an unsigned enumerator whose value is negative as an int64: LLVM rejects it printed signed)
+  enum class Mask : uint64_t { None = 0, All = ~0ull };
 
   struct Point
   {
@@ -48,6 +50,7 @@ union enum Value : uint8_t
 int inspect(const game::Point& point, int scale, game::Mode mode)
 {
   int sum = point.x * scale;
+  game::Mask mask = game::Mask::All;
   Vector<int> values;
   values.push_back(sum);
   {
@@ -57,7 +60,7 @@ int inspect(const game::Point& point, int scale, game::Mode mode)
     game::Square square;
     Value value;
     value[Value::Real] = half;
-    sum += (int)half + (int)flags.level + square.area() + (int)mode + (value == Value::Real ? 1 : 0);
+    sum += (int)half + (int)flags.level + square.area() + (int)mode + (value == Value::Real ? 1 : 0) + (mask == game::Mask::All ? 0 : 1);
   }
   return sum + (int)values.size();
 }
