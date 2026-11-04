@@ -146,7 +146,12 @@ To match FinalRelease:
    in COMDATs) has an equivalent in `-fdata-sections`.
 3. **The game's FINAL_RELEASE configuration**, from C (above).
 4. **The same runtime and checks as far as they matter:** `/MT` (the static CRT; the libraries are
-   /MT already) and `/GS-` (no stack cookies: check that kppc's clang adds no stack protector).
+   /MT already) and `/GS-` (no stack cookies). kppc's own IR gets no stack protector. The libraries
+   (Lua, zlib and the game's other C and C++ libraries) are a different case: kpp compiles them with
+   clang-cl `/nologo /c /O2 /MT /DNDEBUG /w` (project.cpp:902, with no flags from build.kpp's
+   `fromSource`), and clang-cl's `/GS` is on by default. So kpp's libraries carry stack cookies,
+   which both C++ builds compile out with `/GS-`. Every kpp release number so far, B's plan-B run
+   of 2026-11-03 included, has them. The final cell passes `/GS-` (B).
    `/Oi /Ot /Ob2` are what clang's -O2 does by default.
 
 Optimization level: `/O2` is MSVC's highest. The fair comparison is kpp's best: -O2 and -O3 both
@@ -154,6 +159,59 @@ measured, with the faster one kept and named.
 
 ## C++ FinalRelease build
 
-`cd C:\Factorio\fastbuild && FBuild.exe -clean -summary vs2022-FinalReleasex64-factorio-run`. It
-writes `build\FinalReleasex64vs2022` and `bin\FinalReleasex64vs2022`. Its time, and the benchmark,
-follow when measured.
+`cd C:\Factorio\fastbuild && FBuild.exe -clean -summary vs2022-FinalReleasex64-factorio-run`, run on
+C:\Factorio 4c178a5b915 (2026-11-03 22:58 UTC). It writes `vs2022\FinalReleasex64` and
+`bin\FinalReleasex64vs2022`.
+
+| | |
+|---|---|
+| Wall time | **3 min 48.4 s** |
+| Of that, the LTCG link (`/CGTHREADS:20`) | 157.4 s |
+| CPU | 23 min 17.6 s (6.1:1), 862 objects |
+| The machine | loaded: 100% CPU at the start, from other threads' gates. A rough figure only. |
+| Result | factorio-run.exe 49.4 MB (Release's 65.1 MB), "2.1.25 (build 87847, win64, full)" |
+
+## The benchmark: C++ FinalRelease, C++ Release, kpp release (2026-11-04)
+
+The method is B's from 2026-11-03 (the bench.py in thread B's scratch), copied:
+- `--benchmark SAVE --benchmark-ticks 1000`, 5 rounds interleaved with the order rotated;
+- each build from its own root, with read-data C:/Factorio/data and write-data that root;
+- the machine's load logged before each run: 0.3–0.9% throughout, in a quiet slot from 23:54 to
+  00:03 UTC;
+- the game's own "Performed 1000 updates in X ms" is the time, and the median of 5 rounds is the
+  result;
+- checksums equal in all 15 runs of each save.
+
+The builds:
+- **C++ FinalRelease:** the build above.
+- **C++ Release:** factorio-run.exe of 2026-10-31, the same source.
+- **kpp release:** B's plan-B game: kpp 0.2.170 (master 29007274) building factorio-in-kpp c9cda971,
+  converted from the same source, with `kpp factorio release`. This is ThinLTO, with its C
+  libraries outside the LTO and compiled with stack cookies (above), and FINAL_RELEASE's checks
+  still in. It is not yet the final cell.
+
+performance.zip (checksum 21933964):
+
+| build | rounds (ms) | median | ms/tick | vs C++ FinalRelease |
+|---|---|---:|---:|---:|
+| C++ FinalRelease | 7210, 7038, 7279, 7076, 7115 | 7,115 | 7.12 | 1.00x |
+| C++ Release | 7812, 8051, 7821, 7868, 7861 | 7,861 | 7.86 | 1.10x |
+| kpp release | 6853, 6888, 6863, 6958, 6988 | 6,888 | 6.89 | **0.97x** |
+
+kovarex_modern_playthrough_155.zip (checksum 816201650):
+
+| build | rounds (ms) | median | ms/tick | vs C++ FinalRelease |
+|---|---|---:|---:|---:|
+| C++ FinalRelease | 8213, 8099, 8085, 8082, 8191 | 8,099 | 8.10 | 1.00x |
+| C++ Release | 8851, 8878, 8853, 8907, 8923 | 8,878 | 8.88 | 1.10x |
+| kpp release | 8474, 7809, 7960, 8135, 7944 | 7,960 | 7.96 | **0.98x** |
+
+What these show:
+- FinalRelease's whole-program optimization and FINAL_RELEASE make the C++ game 9.5% faster on
+  performance.zip and 8.8% faster on the modern save than Release.
+- kpp's release game is 0.88x and 0.90x C++ Release here, as B measured (0.88x, 0.89x). It is
+  already 3% and 2% faster than the official build's configuration, before a final cell exists.
+- The kpp final cell is the next row: full LTO with the libraries in it, `/GS-`, and C's
+  FINAL_RELEASE configuration.
+
+Raw output: `C:\kpp-sandbox\scratch\configs\bench\runs.txt` (thread H's scratch).
