@@ -92,10 +92,23 @@ if (Run 'basic')
     foreach ($removed in @(@('the output directory', 'build\debug'), @("one module's object", "$program.0.o"), @('the executable', $program), @('the .pdb', $pdb)))
     {
       if ($removed[1] -eq 'build\debug') { cmd /c rd /s /q build\debug } else { Remove-Item -LiteralPath $removed[1] }
+      $savedLink = $env:LINK
+      if ($removed[1] -eq $pdb) { $env:LINK = '/time+' } # (link.exe's phases in the link's output, kpp's)
       $output = Kpp @('--run')
+      $env:LINK = $savedLink
       $missing = @($program, "$program.0.o", $pdb) | Where-Object { -not (Test-Path -LiteralPath $_) }
       if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
       { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
+      # Without its .pdb the link starts from nothing (project.cpp: the .ilk and the executable go too).
+      # Given the rest of its incremental state, link.exe said "program database ... missing; performing
+      # full link" and linked over it, and that link crashed now and then (LNK1000 in
+      # IMAGE::BuildImage.FinalPhase, CI runs 41825684415 and 41927566409).
+      if ($removed[1] -eq $pdb)
+      {
+        $linkSaid = @($output | Where-Object { $_ -match 'Linker: (Pass 1|IncrPass)|performing full link' })
+        if (-not ($linkSaid -match 'Pass 1') -or ($linkSaid -match 'IncrPass|performing full link'))
+        { Fail "the .pdb deleted, the relink was not one from nothing (link.exe: $($linkSaid -join '; '))" }
+      }
     }
     # Visual Studio's builds and a terminal's (2026-11-04): VS's pass --msvc-diagnostics, and both
     # write build\debug. Each build's program prints what its source says, whichever built last: when

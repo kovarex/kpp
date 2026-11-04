@@ -1326,6 +1326,18 @@ namespace
     fs::path pdb = fs::path(exe).replace_extension(".pdb");
     bool linked = fs::exists(exe, ec) && !(p.debugInfo && exe.extension() == ".exe" && !fs::exists(pdb, ec));
     bool linkPending = fs::exists(pending, ec) || (code == 0 && !linked);
+    // An incremental link's state (the .ilk beside the executable) without the executable or its .pdb
+    // goes, and what is left of the two with it: the link starts from nothing. link.exe's incremental
+    // link with its PDB deleted crashed now and then, "LNK1000: Internal error during
+    // IMAGE::BuildImage.FinalPhase" (CI runs 41825684415 and 41927566409, project.ps1's ".pdb deleted
+    // under the compile server").
+    fs::path ilk = fs::path(exe).replace_extension(".ilk");
+    if (!linked && fs::exists(ilk, ec))
+    {
+      fs::remove(ilk, ec);
+      fs::remove(exe, ec);
+      fs::remove(pdb, ec);
+    }
     if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
     {
       auto linkStart = Clock::now();
