@@ -240,6 +240,45 @@ static void font(const char* path, const unsigned char* fallback, int fallbackSi
   free(data);
 }
 
+// The interface's constants, as the converted library's scope has them (design.md 16): value, size
+// and signedness, the same in the C and the kpp build.
+static void constant(const char* name, long long value, size_t size, int isSigned)
+{
+  printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
+}
+
+// An enumerator's value alone: kpp's sizeof of an enumerator is pending (language/sizeof_enumerator).
+static void enumerator(const char* name, long long value)
+{
+  printf("%s = %lld\n", name, value);
+}
+
+static void interface(void)
+{
+  constant("FONS_INVALID", (long long)FONS_INVALID, sizeof(FONS_INVALID), FONS_INVALID * 0 - 1 < 0);
+  constant("FONS_SCRATCH_BUF_SIZE", (long long)FONS_SCRATCH_BUF_SIZE, sizeof(FONS_SCRATCH_BUF_SIZE), FONS_SCRATCH_BUF_SIZE * 0 - 1 < 0);
+  constant("FONS_HASH_LUT_SIZE", (long long)FONS_HASH_LUT_SIZE, sizeof(FONS_HASH_LUT_SIZE), FONS_HASH_LUT_SIZE * 0 - 1 < 0);
+  constant("FONS_INIT_FONTS", (long long)FONS_INIT_FONTS, sizeof(FONS_INIT_FONTS), FONS_INIT_FONTS * 0 - 1 < 0);
+  constant("FONS_INIT_GLYPHS", (long long)FONS_INIT_GLYPHS, sizeof(FONS_INIT_GLYPHS), FONS_INIT_GLYPHS * 0 - 1 < 0);
+  constant("FONS_INIT_ATLAS_NODES", (long long)FONS_INIT_ATLAS_NODES, sizeof(FONS_INIT_ATLAS_NODES), FONS_INIT_ATLAS_NODES * 0 - 1 < 0);
+  constant("FONS_VERTEX_COUNT", (long long)FONS_VERTEX_COUNT, sizeof(FONS_VERTEX_COUNT), FONS_VERTEX_COUNT * 0 - 1 < 0);
+  constant("FONS_MAX_STATES", (long long)FONS_MAX_STATES, sizeof(FONS_MAX_STATES), FONS_MAX_STATES * 0 - 1 < 0);
+  constant("FONS_MAX_FALLBACKS", (long long)FONS_MAX_FALLBACKS, sizeof(FONS_MAX_FALLBACKS), FONS_MAX_FALLBACKS * 0 - 1 < 0);
+  enumerator("FONS_ZERO_TOPLEFT", (long long)FONS_ZERO_TOPLEFT);
+  enumerator("FONS_ZERO_BOTTOMLEFT", (long long)FONS_ZERO_BOTTOMLEFT);
+  enumerator("FONS_ALIGN_LEFT", (long long)FONS_ALIGN_LEFT);
+  enumerator("FONS_ALIGN_CENTER", (long long)FONS_ALIGN_CENTER);
+  enumerator("FONS_ALIGN_RIGHT", (long long)FONS_ALIGN_RIGHT);
+  enumerator("FONS_ALIGN_TOP", (long long)FONS_ALIGN_TOP);
+  enumerator("FONS_ALIGN_MIDDLE", (long long)FONS_ALIGN_MIDDLE);
+  enumerator("FONS_ALIGN_BOTTOM", (long long)FONS_ALIGN_BOTTOM);
+  enumerator("FONS_ALIGN_BASELINE", (long long)FONS_ALIGN_BASELINE);
+  enumerator("FONS_ATLAS_FULL", (long long)FONS_ATLAS_FULL);
+  enumerator("FONS_SCRATCH_FULL", (long long)FONS_SCRATCH_FULL);
+  enumerator("FONS_STATES_OVERFLOW", (long long)FONS_STATES_OVERFLOW);
+  enumerator("FONS_STATES_UNDERFLOW", (long long)FONS_STATES_UNDERFLOW);
+}
+
 int main(int argc, char** argv)
 {
   if (argc < 2)
@@ -247,6 +286,7 @@ int main(int argc, char** argv)
     printf("usage: fontstash LISTFILE\n");
     return 2;
   }
+  interface();
   FILE* list = fopen(argv[1], "r");
   if (!list)
   {

@@ -3259,10 +3259,72 @@ namespace
     // whose arithmetic is the macro's on the argument's type), and one that is neither (a stringized
     // version, `ZSTD_LIB_VERSION`'s `1.4.0`) a TODO of the report, never left out silently. A guard,
     // an empty one and a linkage word (ZSTDLIB_API) are no value.
+    // Whether a position of the file is at its scope: outside every function's, class's and
+    // initializer's braces (a header's `extern "C" {` block is the file's scope), comments, literals
+    // and preprocessor lines skipped. A header-only library's implementation defines macros in its
+    // functions (stb_image's STBI__COMBO, stb_truetype's STBTT__CSERR): those are no interface names.
+    bool atFileScope(uint32_t offset) const
+    {
+      std::vector<bool> counted; // each open brace: whether it is a scope's (not extern "C"'s)
+      int depth = 0;
+      bool lineStart = true;
+      for (size_t i = 0; i < offset && i < text.size(); ++i)
+      {
+        char c = text[i];
+        if (c == '\n')
+        {
+          lineStart = true;
+          continue;
+        }
+        if (isspace((unsigned char)c))
+          continue;
+        if (lineStart && c == '#')
+        {
+          for (; i < text.size() && text[i] != '\n'; ++i)
+            if (text[i] == '\\' && i + 1 < text.size() && (text[i + 1] == '\n' || text[i + 1] == '\r'))
+              i += text[i + 1] == '\r' && i + 2 < text.size() && text[i + 2] == '\n' ? 2 : 1;
+          lineStart = true;
+          continue;
+        }
+        lineStart = false;
+        if (c == '/' && i + 1 < text.size() && text[i + 1] == '/')
+        {
+          while (i < text.size() && text[i] != '\n')
+            ++i;
+          lineStart = true;
+        }
+        else if (c == '/' && i + 1 < text.size() && text[i + 1] == '*')
+        {
+          size_t e = text.find("*/", i + 2);
+          i = e == std::string_view::npos ? text.size() : e + 1;
+        }
+        else if (c == '"' || c == '\'')
+        {
+          for (++i; i < text.size() && text[i] != c && text[i] != '\n'; ++i)
+            i += text[i] == '\\';
+        }
+        else if (c == '{')
+        {
+          size_t k = i;
+          while (k > 0 && isspace((unsigned char)text[k - 1]))
+            --k;
+          bool externC = k >= 3 && text.substr(k - 3, 3) == "\"C\"";
+          counted.push_back(!externC);
+          depth += !externC;
+        }
+        else if (c == '}' && !counted.empty())
+        {
+          depth -= counted.back();
+          counted.pop_back();
+        }
+      }
+      return depth == 0;
+    }
+
     std::string macroToKpp(const std::string& line, uint32_t offset)
     {
       std::string out = macroToKppText(line, offset);
-      if (!isScopeHeader())
+      if (!isScopeHeader() || !atFileScope(offset))
         return out;
       size_t p = line.find("define") + 6;
       while (p < line.size() && isspace((unsigned char)line[p]))

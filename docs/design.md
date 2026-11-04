@@ -1207,6 +1207,26 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   - The harnesses print every constant's value and size (zlib 4,115 lines, minizip 1,015), and the
     C and converted builds print the same bytes. In the game, 75 uses of `zlib::` and 62 of
     `minizip::` (4 files each).
+- **fontstash (2026-11-04):** fontstash.h and the stb_truetype.h it includes are the whole library
+  (header-only), so its interface headers are its sources too. Its c-headers.txt is gone: a header
+  that file lists stays a C import, and its declarations are left out of the conversion.
+  - Counts: 21 constants, 11 functions and an alias in the scope. Not expressed: 19 (stb_truetype's
+    configuration macros, which name the C runtime's functions, STBTT_sqrt and STBTT_malloc, and
+    FONS_NOTUSED). The game uses none of them.
+  - A header-only library defines macros inside its functions (stb_truetype's STBTT__CSERR): only a
+    #define at the file's scope is an interface name (a header's `extern "C" {` block is the file's
+    scope). The others stay the local macros they were.
+  - The harness prints its 9 constants' values and sizes and its 13 enumerators' values (their sizes
+    follow with stb_image's, now that sizeof takes an enumerator), 3,289 lines, the same in both builds. In the
+    game, 52 uses of `fontstash::`.
+- **Not yet scoped:**
+  - stb_image: the game imports more of its directory than its interface (stb_dxt.h,
+    stb_image_resize.h, and the kpp_stb__ names DXTCompression uses), and an interface's global
+    variable (`stbi_write_png_compression_level`) is not yet qualified for its users.
+  - trio: its users (Lua's override_printf.h, StringUtil) took C's standard headers through
+    trio.h's own includes (limits.h's UCHAR_MAX for Lua's MAXUPVAL, stdio.h's BUFSIZ). A scoped
+    header that is no longer imported must leave its users those.
+  - Both their harnesses are byte-identical as scoped libraries (4,236 and 2,278 lines).
 
 **The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
 

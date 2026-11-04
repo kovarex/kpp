@@ -101,6 +101,9 @@ if exist c-libraries\%NAME%\uses.txt for /f "usebackq eol=# delims=" %%u in ("c-
 set KLINKS=
 if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call :linkUnlessUsed %%i
 %KPPC% --no-std --quiet %CMODE% %USED% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+rem (the hand-written files the library adds, written at their path below Factorio's repository,
+rem libraries\NAME\: beside its converted ones, which a list of sources puts at NAME\, stb_image's)
+if exist %OUT%\library\libraries\%NAME% xcopy /s /y /q %OUT%\library\libraries\%NAME% %OUT%\library\%NAME%\ >nul
 %KPPC% --no-std --quiet --c-sources %USED% --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 %KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% %USEDROOTS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 goto :run

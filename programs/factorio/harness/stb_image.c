@@ -181,6 +181,29 @@ static void image(const char* path, int index)
   free(data);
 }
 
+// The interface's constants, as the converted library's scope has them (design.md 16): value, size
+// and signedness, the same in the C and the kpp build.
+static void constant(const char* name, long long value, size_t size, int isSigned)
+{
+  printf("%s = %lld, %u bytes, %s\n", name, value, (unsigned)size, isSigned ? "signed" : "unsigned");
+}
+
+// An enumerator's value alone: kpp's sizeof of an enumerator is pending (language/sizeof_enumerator).
+static void enumerator(const char* name, long long value)
+{
+  printf("%s = %lld\n", name, value);
+}
+
+static void interface(void)
+{
+  constant("STBI_VERSION", (long long)STBI_VERSION, sizeof(STBI_VERSION), STBI_VERSION * 0 - 1 < 0);
+  enumerator("STBI_default", (long long)STBI_default);
+  enumerator("STBI_grey", (long long)STBI_grey);
+  enumerator("STBI_grey_alpha", (long long)STBI_grey_alpha);
+  enumerator("STBI_rgb", (long long)STBI_rgb);
+  enumerator("STBI_rgb_alpha", (long long)STBI_rgb_alpha);
+}
+
 int main(int argc, char** argv)
 {
   if (argc < 2)
@@ -188,6 +211,7 @@ int main(int argc, char** argv)
     printf("usage: stb_image LISTFILE\n");
     return 2;
   }
+  interface();
   FILE* list = fopen(argv[1], "r");
   if (!list)
   {

@@ -1,0 +1,5 @@
+# fontstash's interface, converted into its scope (design.md 16): the game writes
+# fontstash::fonsCreateInternal, fontstash::FONS_ALIGN_LEFT. fontstash.h and the stb_truetype.h it
+# includes are the whole library (header-only), so they are its sources too.
+fontstash.h
+stb_truetype.h
