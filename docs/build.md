@@ -1237,6 +1237,42 @@ LLVM step downloads and unpacks the 845 MB archive in 56 to 65 s, and kppc's cle
 (run 191, 9 min 47 s in all). Now the run is build, then run_tests' longer half, then publish, half
 of it GitHub's upload of the three files (about 146 MB), which alone varies from 95 s to 3 min 40 s.
 
+## Deploying a kpp web app
+
+kovarex, 2026-11-04: "one simple command on the prod server to pull the new version and download
+the new binary as deploy". A kpp web app (gorating.com first, kpp.net later) is a CGI program and
+its static files; its CI builds the program for the server's target with a pinned kpp release,
+tests it there, and publishes a package as a GitHub Release asset: a tar.gz holding `public/` (the
+program and the static files, as the web root has them), `migrations/` (SQL, run in name order),
+and `MANIFEST` (`app NAME`, `version`, `migration FILE` lines), with a `.sha256` file beside it.
+Nothing in CI connects to the server.
+
+`tools/deploy/kpp-deploy.sh`, run by hand on the server (POSIX sh, FreeBSD's base tools, or
+Linux's curl, sha256sum and GNU stat), installs one:
+- `kpp-deploy.sh [VERSION]` (the latest release without one), or `--from FILE` for a package file;
+- it checks the SHA-256 (integrity: both files come from GitHub) and that the MANIFEST names the
+  app;
+- migrations not in the database's `deploy_migration` table stop the install and are listed;
+  `--migrate` runs them in order and records each; none runs silently. `--mark-applied NAME...`
+  records ones applied by hand (and makes the table);
+- the configuration's mode and group are checked (`-rw-r-----`, `web` on NearlyFreeSpeech.NET),
+  never its contents;
+- the static files are copied, then the program as `PROGRAM.new` with mode 755, the current one
+  kept as `PROGRAM.previous`, and `.new` renamed over it (atomic);
+- each smoke path (`SMOKE`) runs through the program as Apache runs it; one that does not answer
+  200 puts the previous program and static files back by itself;
+- `--rollback` does the same by hand (the replaced program stays as `PROGRAM.failed`); `--status`
+  names the installed version and the migrations applied. The database is never rolled back.
+
+The app's settings are the script's first lines (gorating's: its repository, asset, web root,
+program, configuration, the database client's defaults file, the smoke paths), or a file named by
+`DEPLOY_CONF`. `tools/deploy/test-deploy.sh PACKAGE DATABASE` runs it against a package in a
+made-up server (a fresh install refused without the migrations' table and with pending ones, then
+`--migrate`; the program's mode, the static files, a second install, `--rollback`, a broken
+program rolled back by itself, a wrong SHA-256): gorating's CI runs it in its FreeBSD VM against
+its package and MariaDB; it passed on Linux (WSL) with a made-up package and database client
+(2026-11-04).
+
 ## Questions for kovarex
 
 Answered 2026-10-31: the build description is `build.kpp` in kpp, with `src/` and `libraries/`
