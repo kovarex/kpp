@@ -187,6 +187,10 @@ rem --lto full and --opt-level 3 (tests\lto.ps1, docs/build.md "Whole-program op
 rem program built as one optimization over the whole program, for Windows and windows-gnu.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\lto.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "lto") else (call :ok)
+rem A section per function where the link drops what nobody calls, none in an --incremental-link
+rem build, whose link keeps every function (tests\sections.ps1, docs/debugging.md "The edit's link").
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\sections.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "sections") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

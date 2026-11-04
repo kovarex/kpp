@@ -1857,6 +1857,11 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     const std::string optLevel = "-O" + std::to_string(options.optLevel);
     const std::string levelText = !options.optimize ? "-O0" : fullLTO ? optLevel + " -flto" : thinLTO ? optLevel + " -flto=thin" : optLevel;
     const char* level = levelText.c_str();
+    // Every function and global in its own section (compileFlags, the back end in kppc alike), but in
+    // an --incremental-link build: its link (link.exe /INCREMENTAL, /OPT:NOREF) keeps every function,
+    // so the sections drop nothing there and cost every edit's link (the game's 650,000 section
+    // contributions in its PDB, half its .ilk: about a fifth of the link; docs/debugging.md).
+    const bool functionSections = !options.incrementalLink;
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");
@@ -1899,7 +1904,8 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
     const char* brokenAsm = getenv("KPP_TEST_BROKEN_ASM");
     // Whether module k keeps the last build's object (counted unchanged): its hash file has the hash of
-    // its text (a KPP_TEST_BROKEN_* function added first), the optimisation level and --clang-flags.
+    // its text (a KPP_TEST_BROKEN_* function added first), the optimisation level, --clang-flags and
+    // whether its functions have sections of their own.
     // Otherwise hashText is what the hash file gets once the module is compiled.
     auto unchangedObject = [&](size_t k, std::string& text, const char* level, std::string& hashText)
     {
@@ -1915,6 +1921,8 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         h = (h ^ (unsigned char)*c) * 1099511628211ull;
       for (unsigned char c : options.clangFlags)
         h = (h ^ c) * 1099511628211ull;
+      if (!functionSections)
+        h = (h ^ 0xff) * 1099511628211ull;
       hashText = std::to_string(h);
       std::error_code ec;
       if (readWholeFile(options.exe + "." + std::to_string(k) + ".hash") == hashText && std::filesystem::exists(objects[k], ec))
@@ -1933,6 +1941,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       BackendOptions backend;
       backend.path = llPath;
       backend.module = unsigned(k);
+      backend.functionSections = functionSections;
       bool compiled = compileModule(text, backend, object, error);
       if (compiled && !writeFile(objects[k], object))
         error = "cannot write " + objects[k];
@@ -2015,14 +2024,16 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
            bundledToolchain() ? "bundled" : getenv("KPP_CLANG") ? "KPP_CLANG" : "Visual Studio's", options.target.name.c_str(),
            !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
     // Every function in its own section, so that the linker drops the ones nobody calls (and
-    // the libraries they would need): a program pays only for what it uses.
+    // the libraries they would need): a program pays only for what it uses. (Not in an
+    // --incremental-link build, whose link keeps them all: functionSections above.)
     // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
     // /fp:strict, design.md section 2)
     // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kppc does
     // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
     // bug of kppc's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
     // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
-    const char* compileFlags = "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code";
+    const char* compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
+                                                : "-ffp-contract=off -fverify-intermediate-code";
     // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
     // linked; the functions errors left out are listed next to the executable for the link's report.
     bool stop = codegenExit && !options.keepGoing;

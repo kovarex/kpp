@@ -114,6 +114,44 @@ cleanups unwound to the caller instead of to where the handler's catchswitch unw
 verifier rejects that only when the module has debug info (51 of the 64 modules); spec
 language/throw_from_handler_cleans_up_enclosing_scope builds with `--debug-info` to keep it so.
 
+## The edit's link
+
+A debug build's edit relinks with link.exe's incremental link (`--incremental-link`: `/INCREMENTAL
+/OPT:NOREF`), which updates the executable, its .ilk and the PDB in place.
+
+Profiled on the game (factorio-in-kpp c9cda971 in debug: 256 modules, link.exe 14.51; B's
+scratch\codegen\linkprof, 2026-11-04):
+- The edit of one function relinks in 0.45-0.51 s on a quiet machine, and in 0.7-1.5 s while other
+  builds run, for the same CPU time.
+- The edit's size hardly matters: a changed object of 13 MB costs what one of 1.5 MB does, and 8
+  changed objects cost 0.05 s more than one.
+- About 60% is the PDB's update; without `/DEBUG` the link takes 0.18 s.
+  - link.exe reads the PDB's global streams, 134 MB: symbol records 70 MB, IPI 31 MB, DBI 19 MB,
+    TPI 12 MB, publics 6 MB, globals 2 MB.
+  - That is about 420 bytes per function: its public, its procedure reference, its LF_FUNC_ID and
+    three section contributions.
+  - It writes 33 MB.
+- The rest is the image: the .ilk (298 MB) and the executable.
+- What does not help:
+  - `/NATVIS` costs nothing;
+  - lld-link `/DEBUG:GHASH` links the whole program every time (2.2 s; its type merging is only
+    0.06 s, each class being defined once);
+  - link.exe 14.51 no longer has `/DEBUG:FASTLINK`.
+
+An --incremental-link build compiles its modules without `-ffunction-sections -fdata-sections`.
+Its link keeps every function anyway, so a module's functions share one section instead of one each.
+The PDB's section contributions go from 650,000 to about 130,000 and the .ilk from 298 to 157 MB.
+
+With the machine shared (tests\sections.ps1 checks the sections and an edit loop):
+
+| | before | with one section per module |
+|---|---:|---:|
+| edit's link, a changed string | 0.46 s | 0.37 s |
+| edit's link, a function grown | 0.75 s | 0.55 s |
+| clean build's link | 1.54 s | 1.16 s |
+
+Every link stayed incremental, adding a function and removing it included.
+
 ## The crash report
 
 The game's crash report (programs\factorio\native\crash_report.c, linked by run.cmd) names each frame

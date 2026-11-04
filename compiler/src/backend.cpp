@@ -177,13 +177,14 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   }
   // As clang -O0 -c -ffunction-sections -fdata-sections -ffp-contract=off sets them for its back end
   // (the driver's own compile line; `clang -###` shows the cc1 flags): sections per function and per
-  // global, address-significance tables, strict floating-point contraction, position-independent
-  // code, the generic x86-64 CPU; and per target what Visual Studio's clang (windows) and llvm-mingw's
-  // (windows-gnu, the same LLVM 19.1.7) set apart.
+  // global (not in an --incremental-link build, whose compile line has neither), address-significance
+  // tables, strict floating-point contraction, position-independent code, the generic x86-64 CPU; and
+  // per target what Visual Studio's clang (windows) and llvm-mingw's (windows-gnu, the same LLVM
+  // 19.1.7) set apart.
   llvm::Triple parsed(triple);
   llvm::TargetOptions targetOptions;
-  targetOptions.FunctionSections = true;
-  targetOptions.DataSections = true;
+  targetOptions.FunctionSections = options.functionSections;
+  targetOptions.DataSections = options.functionSections;
   targetOptions.EmitAddrsig = true;
   targetOptions.AllowFPOpFusion = llvm::FPOpFusion::Strict;
   if (parsed.isWindowsGNUEnvironment())

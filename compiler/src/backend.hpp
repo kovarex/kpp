@@ -12,6 +12,7 @@ struct BackendOptions
   std::string path;    // the module's IR file, where clang would have read it: its file name is the object's
                        // `.file` symbol, and the text is written there only when LLVM fails on it
   unsigned module = 0; // its number, for the messages
+  bool functionSections = true; // -ffunction-sections -fdata-sections: not in an --incremental-link build (main.cpp)
 };
 
 // Whether this kppc was built with LLVM's back end in it.
