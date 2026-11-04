@@ -15,6 +15,9 @@
 #include <functional>
 #include <mutex>
 #include <condition_variable>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>
+#endif
 #include <numeric>
 #include <optional>
 #include <thread>
@@ -197,12 +200,89 @@ namespace
     }
   };
 
+  // A mutex for the short holds that many emitters take (the shared lock, the definitions', the shards
+  // below): a waiter spins a while before it sleeps. With std::mutex a waiter slept at once and was
+  // woken by the kernel, which takes longer than the holds it waits for (2.3 us on average in the
+  // game's codegen), so 32 threads formed a convoy: 66.7 s waited on 3.05 s held, 12 threads blocked on
+  // average (docs/codegen-speed.md, step 5). The state is Drepper's: 0 free, 1 held, 2 held with a
+  // sleeper (std::atomic's wait and notify: WaitOnAddress).
+  class SpinMutex
+  {
+    std::atomic<uint32_t> state{0};
+
+  public:
+    static constexpr int spins = 1000;
+    void lock()
+    {
+      for (int i = 0; i < spins; ++i)
+      {
+        uint32_t free = 0;
+        if (state.load(std::memory_order_relaxed) == 0 && state.compare_exchange_weak(free, 1, std::memory_order_acquire, std::memory_order_relaxed))
+          return;
+#if defined(_M_X64) || defined(__x86_64__)
+        _mm_pause();
+#endif
+      }
+      while (state.exchange(2, std::memory_order_acquire) != 0)
+        state.wait(2, std::memory_order_relaxed);
+    }
+    bool try_lock()
+    {
+      uint32_t free = 0;
+      return state.compare_exchange_strong(free, 1, std::memory_order_acquire, std::memory_order_relaxed);
+    }
+    void unlock()
+    {
+      if (state.exchange(0, std::memory_order_release) == 2)
+        state.notify_one();
+    }
+  };
+  // std::recursive_mutex's semantics on a SpinMutex: the thread holding it may take it again.
+  class SpinRecursiveMutex
+  {
+    SpinMutex mutex;
+    std::atomic<std::thread::id> owner{};
+    unsigned count = 0;
+
+  public:
+    void lock()
+    {
+      std::thread::id me = std::this_thread::get_id();
+      if (owner.load(std::memory_order_relaxed) != me)
+      {
+        mutex.lock();
+        owner.store(me, std::memory_order_relaxed);
+      }
+      ++count;
+    }
+    bool try_lock()
+    {
+      std::thread::id me = std::this_thread::get_id();
+      if (owner.load(std::memory_order_relaxed) != me)
+      {
+        if (!mutex.try_lock())
+          return false;
+        owner.store(me, std::memory_order_relaxed);
+      }
+      ++count;
+      return true;
+    }
+    void unlock()
+    {
+      if (--count == 0)
+      {
+        owner.store(std::thread::id(), std::memory_order_relaxed);
+        mutex.unlock();
+      }
+    }
+  };
+
   // A set of IR names several emitters mark, in shards with a lock each (marking is frequent).
   struct NameSet
   {
     struct Shard
     {
-      std::mutex mutex;
+      SpinMutex mutex;
       std::unordered_set<std::string> names;
     };
     Shard shards[64];
@@ -242,7 +322,7 @@ namespace
   {
     struct Shard
     {
-      std::mutex mutex;
+      SpinMutex mutex;
       std::unordered_map<K, V> answers;
     };
     Shard shards[64];
@@ -287,7 +367,7 @@ namespace
   // caches of what only depends on the program).
   struct Shared
   {
-    std::recursive_mutex mutex;
+    SpinRecursiveMutex mutex;
     CodegenResult& result;
     unsigned moduleCount = 1;
     bool debug = true; // config::debug: asserts are compiled in
@@ -477,7 +557,7 @@ namespace
     }
     // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
     // are emitted, read once they all are), and to name a constant (constantName).
-    std::mutex definitionsMutex, constantsMutex;
+    SpinMutex definitionsMutex, constantsMutex;
     // A module declaration a function's emission adds every time it runs (a static local and its
     // guard, a static InitializerList's array), not once at a first use: it belongs to that function
     // (owner), and an incremental build replaces it with the function. Joins the module's
@@ -698,9 +778,9 @@ namespace
     int sharedDepth = 0;
     struct SharedLock
     {
-      std::unique_lock<std::recursive_mutex> lock;
+      std::unique_lock<SpinRecursiveMutex> lock;
       int& depth;
-      SharedLock(std::recursive_mutex& m, int& depth) : lock(m), depth(depth) { ++depth; }
+      SharedLock(SpinRecursiveMutex& m, int& depth) : lock(m), depth(depth) { ++depth; }
       ~SharedLock() { --depth; }
     };
     SharedLock sharedLock() { return SharedLock(sh.mutex, sharedDepth); }

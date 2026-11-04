@@ -625,6 +625,29 @@ instances.
   - on the first base (b83dbe94), the 45 menu maps and the unit tests 9,501/9,501 with 0 CRC mismatches
     against C++ Debug.
 
+**Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
+- **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had
+  codegen at 20.5 of 32 cores, its threads waiting 66.7 s on locks held 3.05 s in all: 1.3 million
+  short holds, 2.3 µs on average, and 305 µs per contended wait. A waiter on std::mutex sleeps at
+  once, and the kernel's wake-up takes longer than the hold it waits for.
+- **What.** SpinMutex spins a while (1,000 pauses) before it sleeps (std::atomic's wait,
+  WaitOnAddress); SpinRecursiveMutex gives the shared lock std::recursive_mutex's semantics on it.
+  They are the shared lock, definitionsMutex, constantsMutex and the shards of NameSet and
+  FinalAnswers. No critical section changed, and the output is byte-identical.
+- **Measured.** Paired clean builds of the game (`cg\lockspin-measure.ps1`, master b93b3731, 3
+  interleaved rounds with the order alternating, load 0 to 3%, 0 stderr lines on both):
+
+  | | master | spin |
+  |---|---:|---:|
+  | codegen | 4.76 to 4.78 s | 4.48 to 4.56 s |
+  | wall | 9.98 to 10.51 s | 9.70 to 9.82 s |
+  | kppc's kernel CPU | 7.4 to 8.3 s | 6.5 to 8.0 s |
+
+- **What is left.** The probe (`cg\lockprobe-any.py`, one build each): 55.1 s waited on 2.72 s held,
+  against 47.1 s on 2.63 s. The kernel's wake-ups were about a sixth of the waits. The rest is
+  queueing, on definitionsMutex (14.9 s) and on the shared lock in structFor (11.4 s) first: item 6's
+  next levers.
+
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for
@@ -710,7 +733,7 @@ gains overlap: 3 and 4 both shorten the back end.
 | 3 | `--debug-info` builds with homes and the back end in kpp | **done**: −2.6 to −2.9 s measured (estimate −2.3 s) | medium | D, B reviewed | 1a8e88c5, 8b5c902c; below |
 | 4 | streaming (step 4: done, P1 4d884644 and P2 91671241, measured −2.4 s; clang's processes not streamed) | about −2.5 s (−1.8 s after 3) | large | D, B reviewing | P0: instance pieces alone take about half the back end; the back end after codegen would be about 2.7 s instead of 5.4 s |
 | 5 | the debug link: `/DEBUG:FASTLINK` | **none**: this link.exe (MSVC 14.44) no longer supports it ("LNK4315: /DEBUG:FASTLINK is no longer supported. Using /DEBUG:FULL instead"); both links 1.54–1.59 s, the same 207 MB PDB (cg\linkfast.ps1) | — | — | struck |
-| 6 | codegen's locks, second round: short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds |
+| 6 | codegen's locks, second round: mutexes that spin before they sleep (**done**, step 5: codegen −0.2 to −0.3 s), then short holds (the definition and the maps' entries made outside definitionsMutex, laid-out types found without the shared lock) | −0.5 to −1.5 s (estimate) | medium; measure first: step 1's trial of per-emitter definition buffers gained nothing | D | 4.94 s at 70 s CPU; 62.6 s of waits on 3.4 s of holds; after step 5, 47.1 s on 2.63 s |
 | 7 | FastISel lowering Win64 arguments, upstream in LLVM | −0.3 to −0.5 s | an LLVM patch and a release | D | SelectionDAG is 13 s of the back end's 149 s CPU |
 
 **Item 3, done (thread D, 2026-11-02; B reviewed).**
