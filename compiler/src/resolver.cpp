@@ -14938,6 +14938,13 @@ struct GlobalScope::Impl
         for (Decl* p : f->params)
         {
           const Ty* pt = convertType(static_cast<ParamDecl*>(p)->type, ctx, depth + 1);
+          // As a function's own (FunctionDecl): an array parameter is a pointer to its element
+          // (`unsigned (*)(unsigned rep[3])` is `unsigned (*)(unsigned*)`), a top-level const is no
+          // part of the type.
+          if (pt && pt->kind == TyKind::Array)
+            pt = types.decay(pt);
+          if (pt && !pt->isReference() && pt->kind != TyKind::Pack)
+            pt = types.unqualified(pt);
           if (pt && pt->kind == TyKind::Pack)
             for (const Ty* e : pt->args)
               params.push_back(e); // `R (*)(Args...)` under an instantiation: one parameter per element

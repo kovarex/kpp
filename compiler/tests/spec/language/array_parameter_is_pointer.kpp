@@ -1,6 +1,5 @@
 // spec: a parameter declared as an array is a pointer to its element (C's and C++'s adjustment): `void f(unsigned rep[3])` is `void f(unsigned* rep)`, so a pointer is an argument for it; and in a function pointer type too: `unsigned (*)(unsigned rep[3])` is `unsigned (*)(unsigned*)`
 // factorio: zstd (converted as C): ZSTD_blockCompressor's `U32 rep[ZSTD_REP_NUM]` parameter, with the functions of that pointer type taking `U32 rep[ZSTD_REP_NUM]` and called with `zc->blockState.nextCBlock->rep` decayed; the converter writes `U32* rep` until this passes
-// pending: the parameter stays an array: "a pointer (...(uint32*)...) does not convert to ...(uint32[3])...", "codegen does not support a conversion from uint32* to uint32[3]" (D)
 typedef unsigned (*Summer)(unsigned rep[3]);
 
 unsigned sum(unsigned rep[3])
