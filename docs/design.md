@@ -580,7 +580,10 @@ is in `src/`, its own libraries and forks in `libraries/`; registry libraries st
 cache, pinned in `build.lock`. One project may build several executables from shared sources, a
 target leaving files out (Factorio's `Main`) rather than having its `main` replaced. With no
 build.kpp, `src/` is one executable with debug and release. Writing `project.use("json")` adds a
-library: the next build finds it (`libraries/`, cache, registry) and records it in build.lock. In
+library: the next build finds it (`libraries/`, cache, registry) and records it in build.lock. Until
+the registry exists, a release brings the official libraries in its `libraries\`, found after the
+project's own copy (kovarex, 2026-11-04: the installed kpp alone is enough; build.md, "Where
+`use("json")` looks"). In
 the project's directory the compiler alone builds it (`kpp`, `kpp --release`). A kpp library is a
 project without an executable: its build.kpp says `project.library(NAME)` with its version,
 license, minimum kpp, source roots and test roots, its sources join the program of whatever uses

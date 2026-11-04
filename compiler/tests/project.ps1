@@ -288,7 +288,20 @@ void build(Project& project)
   if ($code -eq 0 -or $output -notmatch 'it uses the library greet 0\.3 or later, and .* has 0\.2\.1') { Fail "a minimum version above the library's: exit $code`n$output" }
   Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"jsno`");`n}"
   $output = (Kpp @('--no-server')) -join "`n"
-  if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
+  if ($code -eq 0 -or $output -notmatch 'the library jsno is neither in .*libraries\\jsno nor among kpp''s own libraries') { Fail "a missing library: exit $code`n$output" }
+  # kpp's own libraries (2026-11-04: a release brings them): base64, of which the project has no
+  # copy, comes from the libraries\ beside stdlib\ (the checkout's, for this kppc); a copy in the
+  # project's libraries\ comes first.
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"base64`");`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(base64::base64Encode(`"kpp`"));`n  return 0;`n}"
+  $output = (Kpp @('--no-server', '--run')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch '(?m)^a3Bw$') { Fail "base64 from kpp's own libraries: exit $code`n$output" }
+  New-Item -ItemType Directory -Force 'libraries\base64\src' | Out-Null
+  Set-Content 'libraries\base64\build.kpp' "void build(Project& project)`n{`n  Library& base64 = project.library(`"base64`");`n  base64.version = `"9.0.0`";`n  base64.root(`"src`");`n}"
+  Set-Content 'libraries\base64\src\Base64.kpp' "String base64Encode(StringView data) { return `"the project's own base64`"; }"
+  $output = (Kpp @('--no-server', '--run')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch "(?m)^the project's own base64$") { Fail "a project's own base64 before kpp's: exit $code`n$output" }
+  cmd /c rd /s /q 'libraries\base64'
   # A library's system libraries (Library::systemLibrary, 2026-11-04: httpclient's OpenSSL on
   # FreeBSD): sys calls version.dll's GetFileVersionInfoSizeA, which kppc does not link by itself.
   # systemLibrary("version", Platform::Windows) reaches the link of app, which uses sys, and of sys's
@@ -460,7 +473,7 @@ $output = (& "$installation\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -
 $ErrorActionPreference = 'Stop'
 $env:KPP_CLANG, $env:KPP_VSWHERE = $saved
 if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(missing\)$' -or
-    $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own') { Fail "an installation's kpp --version:`n$output" }
+    $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own' -or $output -notmatch '(?m)^libraries: .*\(none\)$') { Fail "an installation's kpp --version:`n$output" }
 
 # kpp measure (docs/build.md, "kpp measure"): build.kpp's edit made, built, put back and built, the
 # clean build and each executable's whole build, in two rounds; the table's rows, each the average

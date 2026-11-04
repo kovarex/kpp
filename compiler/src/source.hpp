@@ -55,6 +55,9 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 // tests\targets.ps1 make them in compiler\build\sysroots for a build of kppc). "" when there is none.
 // what is the sysroot's own description (its kpp-sysroot.txt: "FreeBSD 14.3-RELEASE ..."), if any.
 std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what = nullptr);
+// The official libraries kpp brings (libraries\ beside stdlib\: a release's, or a checkout's for a
+// build of kppc), where use("NAME") looks last (docs/build.md, "kpp libraries").
+std::filesystem::path defaultLibraries(const std::filesystem::path& compiler);
 
 // kpp's version, MAJOR.MINOR.PATCH with "+dirty" for a build of uncommitted changes, or "unknown"
 // outside git, and the commit it was built from ("" when unknown): compiler/version.cmake writes them

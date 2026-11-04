@@ -284,6 +284,13 @@ namespace
     }
     std::filesystem::path stdlib = defaultStdlib(compiler);
     printf("stdlib: %s%s\n", stdlib.string().c_str(), std::filesystem::is_directory(stdlib, ec) ? "" : " (missing)");
+    // The official libraries use("NAME") finds when a project has no copy of its own.
+    std::filesystem::path libraries = defaultLibraries(compiler);
+    std::string names;
+    for (std::filesystem::directory_iterator i(libraries, ec), end; !ec && i != end; i.increment(ec))
+      if (std::filesystem::is_regular_file(i->path() / "build.kpp", ec))
+        names += (names.empty() ? "" : ", ") + i->path().filename().string();
+    printf("libraries: %s (%s)\n", libraries.string().c_str(), names.empty() ? "none" : names.c_str());
     return 0;
   }
 

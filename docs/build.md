@@ -307,7 +307,12 @@ void build(Project& project)
   2. for a library in a directory named `libraries`, next to it (`libraries/base64` for
      `libraries/json`), so the libraries of one `libraries/` directory use each other and each
      builds and tests on its own;
-  3. later, the registry; now a missing library is an error naming where it looked.
+  3. kpp's own libraries: `libraries\` beside `stdlib\`, a release's (the official libraries,
+     this release's versions: so the installed kpp alone builds a project that uses httpclient,
+     with no checkout; kovarex, 2026-11-04), or a checkout's for a build of kppc. `kpp --version`
+     names the directory and its libraries (`libraries: C:\Program Files\kpp\libraries (base64,
+     bcrypt, ...)`). The project's own copy, by 1 or by `local(...)`, comes first;
+  4. later, the registry; now a missing library is an error naming where it looked.
 - **What kpp does with it:** it describes the library's build.kpp (the same configuration and
   `--set` settings), checks the version and minimumKpp, gives kppc its roots as the library's, with
   its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. A
@@ -822,7 +827,7 @@ install. `install.cmd` links it there.
 
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
-- **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, the
+- **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, `libraries\`, the
   bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix, kpp-visualstudio.vsix and a README. kpp finds `stdlib\`,
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
@@ -843,6 +848,14 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   - The installer has it as a component, chosen by default; a later install without it removes it.
   - Not downloaded on first use: base.txz is 210 MB, from FreeBSD's archive over http only, and
     needs xz.
+- **The official libraries as installed** (kovarex, 2026-11-04: the installed kpp alone is enough,
+  until the registry exists): a release brings `libraries\` (json, sha256, base64, html, markdown,
+  url, bcrypt, net, mariadb, http, httpclient: each one's tracked files, 92 files, 0.95 MB, its tests
+  and third-party licence texts included), and `use("NAME")` finds them there when the project has
+  no copy of its own ("Where `use("json")` looks" above). They are the release's versions: a
+  project that needs another keeps its own copy. package.ps1's zip test unpacks the zip outside the
+  repository and builds and runs a project using httpclient and mariadb with it; the nightly release
+  check does the same with the installer's installation.
 - **`kpp --version`** prints the version and commit kppc was built from ("Versions" below), the
   compiler's path, the toolchain a build takes without `--toolchain`, and the standard library.
   `kpp --help` lists the options. Both work only alone; in a project's directory they print and

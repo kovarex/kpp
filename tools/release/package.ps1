@@ -1,5 +1,6 @@
 # Packages a built kppc as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
-# kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\, the TextMate
+# kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\,
+# libraries\ (the official libraries), sysroots\freebsd-x86_64, the TextMate
 # grammar, the VS Code extension kpp-vscode.vsix (tools/vscode), the Visual Studio extension
 # kpp-visualstudio.vsix (tools/vs/vsix) and the bundled toolchain (design.md 17:
 # llvm-mingw's clang, lld and MinGW-w64, so a program builds with nothing of Visual Studio's); then
@@ -183,6 +184,23 @@ Lap 'freebsd sysroot'
 
 CopyTree "$repository\stdlib" "$kpp\stdlib"
 CopyTree "$repository\projectlib" "$kpp\projectlib"
+# The official libraries (libraries\NAME: each one's tracked files, its tests and licence texts
+# included), which use("NAME") finds there when a project has no copy of its own (kovarex,
+# 2026-11-04: the installed kpp alone is enough). They are this release's versions.
+$libraries = @()
+foreach ($library in Get-ChildItem "$repository\libraries" -Directory | Where-Object { Test-Path "$($_.FullName)\build.kpp" })
+{
+  $files = @(& git -C $repository ls-files -- "libraries/$($library.Name)")
+  if ($LASTEXITCODE -ne 0 -or -not $files) { throw "git ls-files libraries/$($library.Name) failed or found nothing" }
+  foreach ($file in $files)
+  {
+    $to = Join-Path $kpp ($file -replace '/', '\')
+    New-Item -ItemType Directory -Force (Split-Path $to) | Out-Null
+    Copy-Item (Join-Path $repository $file) $to
+  }
+  $libraries += $library.Name
+}
+Copy-Item "$repository\libraries\README.md" "$kpp\libraries"
 New-Item -ItemType Directory -Force "$kpp\grammar" | Out-Null
 Copy-Item "$repository\tools\vs\kpp\Syntaxes\kpp.tmLanguage.json" "$kpp\grammar"
 Lap 'copy'
@@ -199,7 +217,13 @@ kpp --toolchain msvc builds with an installed Visual Studio's clang instead, on 
 $(if (Test-Path "$kpp\sysroots\freebsd-x86_64") { "kpp --target freebsd builds FreeBSD x86-64 programs with FreeBSD 14.3's headers and libraries
 (sysroots\freebsd-x86_64, sysroots\freebsd-x86_64\NOTICE.txt), no --sysroot needed.
 " })
-kpp is licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
+The official libraries are in libraries\ ($($libraries -join ', '); libraries\README.md): a
+project's build.kpp says project.use("json") and kpp finds them there, unless the project has its
+own copy (libraries\json in the project, or use("json", local("..."))).
+
+kpp and its libraries are licensed under the Apache License 2.0 with LLVM Exceptions: LICENSE.txt.
+Third-party code keeps its own licence, its text beside it (libraries\markdown: commonmark.js's
+and mdurl's; libraries\json\tests: JSONTestSuite's).
 
 Editors:
 $(if ($npm) { "- VS Code: kpp-vscode.vsix (colouring, and IntelliSense through kpp --lsp). The installer offers to
@@ -254,7 +278,8 @@ try
   $printed = (& "$kpp\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
   if ($LASTEXITCODE -ne 0 -or $printed -notmatch "^kpp $([regex]::Escape($Version))" -or
       $printed -notmatch [regex]::Escape("toolchain: $kpp\bin\clang.exe (bundled") -or $printed -notmatch "(?m)^stdlib: $([regex]::Escape("$kpp\stdlib"))$" -or
-      $printed -notmatch "(?m)^sysroot freebsd-x86_64: $([regex]::Escape("$kpp\sysroots\freebsd-x86_64")) \(FreeBSD 14\.3-RELEASE") { throw "kpp --version printed:`n$printed" }
+      $printed -notmatch "(?m)^sysroot freebsd-x86_64: $([regex]::Escape("$kpp\sysroots\freebsd-x86_64")) \(FreeBSD 14\.3-RELEASE" -or
+      $printed -notmatch "(?m)^libraries: $([regex]::Escape("$kpp\libraries ($($libraries -join ', '))"))$") { throw "kpp --version printed:`n$printed" }
   Write-Output $printed
 }
 finally
@@ -295,6 +320,54 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($kpp, "$out\kpp-$Version.zip", [IO.Compression.CompressionLevel]::Optimal, $false)
 Write-Output "wrote $out\kpp-$Version.zip"
 Lap 'zip'
+
+# The zip as a user meets it, away from any checkout: unpacked into %TEMP%\kpp-zip-test, a project
+# beside it whose build.kpp uses httpclient and mariadb by name alone (and so net, which both use)
+# builds and runs with that kpp, PATH cut as in the smoke test. Nothing there is the repository's.
+if (-not $NoSmokeTest)
+{
+  $zipTest = Join-Path ([IO.Path]::GetTempPath()) 'kpp-zip-test'
+  if (Test-Path $zipTest) { & cmd /c rd /s /q $zipTest }
+  [IO.Compression.ZipFile]::ExtractToDirectory("$out\kpp-$Version.zip", "$zipTest\kpp")
+  $project = "$zipTest\uses-libraries"
+  New-Item -ItemType Directory -Force "$project\src" | Out-Null
+  Set-Content "$project\build.kpp" "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"httpclient`");`n  project.use(`"mariadb`");`n}"
+  Set-Content "$project\src\main.kpp" @'
+int main()
+{
+  println("mariadb ", mariadb::mariaDbQuote("it's"));
+  try
+  {
+    httpclient::fetch("ftp://example.test/");
+  }
+  catch (const httpclient::HttpClientError& e)
+  {
+    println("httpclient ", e.message);
+  }
+  return 0;
+}
+'@
+  $saved = @{}
+  foreach ($name in 'PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'KPP_CLANG') { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+  Push-Location $project
+  try
+  {
+    $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+    foreach ($name in 'INCLUDE', 'LIB', 'LIBPATH', 'KPP_CLANG') { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+    $ErrorActionPreference = 'Continue' # (kpp's errors on stderr are its output here, for the message below)
+    $output = (& "$zipTest\kpp\kpp.exe" --no-server --run 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    $ErrorActionPreference = 'Stop'
+    if ($LASTEXITCODE -ne 0 -or $output -notmatch "mariadb 'it\\'s'" -or $output -notmatch 'httpclient not an http or https address: ftp://example.test/') { throw "the unpacked zip's kpp did not build and run a project using httpclient and mariadb:`n$output" }
+    Write-Output "zip test: the unpacked zip's kpp built a project using httpclient and mariadb from its libraries\ and ran it"
+  }
+  finally
+  {
+    foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    Pop-Location
+  }
+  & cmd /c rd /s /q $zipTest
+  Lap 'zip test'
+}
 
 $iscc = @($IsccPath, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { $_ } |
   Where-Object { Test-Path $_ } | Select-Object -First 1

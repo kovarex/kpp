@@ -133,6 +133,11 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
   return (directory / ".." / ".." / "stdlib").lexically_normal();
 }
 
+std::filesystem::path defaultLibraries(const std::filesystem::path& compiler)
+{
+  return defaultStdlib(compiler).parent_path() / "libraries";
+}
+
 std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what)
 {
   std::filesystem::path root = compiler.parent_path() / "sysroots" / name;

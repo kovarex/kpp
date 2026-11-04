@@ -482,7 +482,8 @@ namespace
 
   // The libraries uses names (by's build.kpp says use()), each found at its path, or else in the
   // project's libraries/NAME, or else next to by when by is in a directory named libraries (the
-  // libraries of one libraries/ directory use each other), then described (the same settings),
+  // libraries of one libraries/ directory use each other), or else among kpp's own (defaultLibraries:
+  // the release's libraries/, a checkout's for a build of kppc), then described (the same settings),
   // checked (its version, its minimum kpp), and then the libraries it uses, depth
   // first. Each library is added to libraries once, with its roots, absolute, and its scope. A name
   // found in two directories is an error: a program has one copy of each library.
@@ -493,8 +494,12 @@ namespace
     for (const Use& use : uses)
     {
       fs::path directory = use.path.empty() ? project / "libraries" / use.name : rooted(by, use.path);
+      fs::path looked = directory;
       if (use.path.empty() && !fs::is_regular_file(directory / "build.kpp", ec) && by.parent_path().filename() == "libraries")
         directory = by.parent_path() / use.name;
+      fs::path official = defaultLibraries(compilerPath()) / use.name;
+      if (use.path.empty() && !fs::is_regular_file(directory / "build.kpp", ec) && fs::is_regular_file(official / "build.kpp", ec))
+        directory = official;
       directory = fs::absolute(directory, ec).lexically_normal();
       std::string user = (by / "build.kpp").string();
       auto same = std::find_if(found.begin(), found.end(), [&](const Found& f) { return f.name == use.name; });
@@ -507,8 +512,9 @@ namespace
       if (!fs::is_regular_file(directory / "build.kpp", ec))
       {
         if (use.path.empty())
-          fprintf(stderr, "%s: error: the library %s is not in %s (no build.kpp there), and there is no registry yet\n",
-                  user.c_str(), use.name.c_str(), directory.string().c_str());
+          fprintf(stderr, "%s: error: the library %s is neither in %s nor among kpp's own libraries (%s); there is no registry yet\n",
+                  user.c_str(), use.name.c_str(), fs::absolute(looked, ec).lexically_normal().string().c_str(),
+                  defaultLibraries(compilerPath()).string().c_str());
         else
           fprintf(stderr, "%s: error: the library %s: %s has no build.kpp\n", user.c_str(), use.name.c_str(), directory.string().c_str());
         return false;

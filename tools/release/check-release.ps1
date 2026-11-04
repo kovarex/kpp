@@ -2,7 +2,7 @@
 # nightly release check, .github/workflows/release-check.yml): `kpp --version` names the release's
 # version and commit and the bundled toolchain; `kpp new hello` and `kpp hello --run`; a project with
 # a C library and a build.kpp setting (--set); each in debug and release with --toolchain bundled; and
-# that the programs import only Windows' own DLLs; `kpp --target freebsd` with the release's sysroot. PATH is cut to the installation, System32 and the
+# that the programs import only Windows' own DLLs; `kpp --target freebsd` with the release's sysroot; a project using httpclient and mariadb from the release's libraries\. PATH is cut to the installation, System32 and the
 # Windows directory, and a Visual Studio environment (VSINSTALLDIR, INCLUDE, LIB...) or KPP_CLANG is a
 # failure, not something to clear. -Summary appends the results to a Markdown file (the run's summary).
 # Exit code 1 when anything failed; the last line says ALL PASSED or how many failed.
@@ -137,6 +137,23 @@ try
   $elf = if (Test-Path 'freebsd.elf') { [IO.File]::ReadAllBytes((Resolve-Path 'freebsd.elf').Path) } else { @() }
   if ($r.exit -ne 0 -or $elf.Count -lt 8 -or $elf[0] -ne 0x7f -or $elf[1] -ne 0x45 -or $elf[7] -ne 9) { Fail "kpp --target freebsd (no --sysroot): exit $($r.exit), no ELF FreeBSD program: $($r.text)" } # (EI_OSABI 9: FreeBSD)
   else { Pass 'kpp --target freebsd (no --sysroot): an ELF FreeBSD program, linked with the release''s sysroot' }
+
+  # The official libraries as installed (2026-11-04): a project whose build.kpp uses httpclient and
+  # mariadb by name alone takes them (and net) from the installation's libraries\, which --version names.
+  $r = Run 'kpp' @('--version')
+  if ($r.text -notmatch "(?m)^libraries: $([regex]::Escape("$Install\libraries")) \(.*\bhttpclient\b.*\bmariadb\b") { Fail "kpp --version does not name the installation's libraries $Install\libraries with httpclient and mariadb" }
+  else { Pass "kpp --version: $(($r.text -split "`n") -match '^libraries: ')" }
+  if (Test-Path uses-libraries) { cmd /c rd /s /q uses-libraries }
+  New-Item -ItemType Directory -Force 'uses-libraries\src' | Out-Null
+  Push-Location uses-libraries
+  try
+  {
+    Set-Content -Encoding ascii 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"httpclient`");`n  project.use(`"mariadb`");`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "int main()`n{`n  try`n  {`n    httpclient::fetch(`"ftp://example.test/`");`n  }`n  catch (const httpclient::HttpClientError& e)`n  {`n    println(`"mariadb `", mariadb::mariaDbQuote(`"it's`"), `" httpclient `", e.message);`n  }`n  return 0;`n}"
+    Build 'httpclient and mariadb from the installation, debug' @('app', 'debug', '--toolchain', 'bundled', '--run') "mariadb 'it\'s' httpclient not an http or https address: ftp://example.test/" 'build\debug\app.exe'
+    $null = Run 'kpp' @('--stop-server')
+  }
+  finally { Pop-Location }
 
   # A C library built from its source, with a define from a build.kpp setting (PLUS, --set PLUS=2).
   if (Test-Path clib) { cmd /c rd /s /q clib }

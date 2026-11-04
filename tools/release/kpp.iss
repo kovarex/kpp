@@ -1,6 +1,6 @@
 ; The kpp installer (docs/build.md, "Installing"), built by package.ps1 with Inno Setup 6:
 ; ISCC /DVersion=X /DSource=<build\release\kpp> /O<output> kpp.iss
-; Installs kpp.exe, stdlib\ and projectlib\, and the bundled toolchain (bin\, include\, lib\,
+; Installs kpp.exe, stdlib\, projectlib\, libraries\ (the official libraries), and the bundled toolchain (bin\, include\, lib\,
 ; x86_64-w64-mingw32\: llvm-mingw, design.md 17) into Program Files\kpp and puts that directory on
 ; the system PATH; the uninstaller takes it off again. When VS Code is found (CodeCommand), it offers
 ; to install the VS Code extension kpp-vscode.vsix into it, as the user who started the installer
