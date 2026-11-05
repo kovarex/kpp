@@ -1315,6 +1315,20 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     // chars (the checker types it as the pointer it decays to, which is their address).
     if (types.unqualified(types.stripRef(pt))->kind == TyKind::Array && stringLiteralArray(arg, arg->ty, types))
       return "ptr " + rvalue(arg).text;
+    // `sum({1, 2, 3})` with `sum(const int (&)[3])`: a temporary array the list initializes, the
+    // elements it leaves out value-initialized ([dcl.init.list] 3.10), destroyed with the statement's
+    // temporaries; a non-const reference binds none. (Until 2026-11-05 "does not support the expression
+    // kind BraceInitExpr", once D's 94b4c0f7 made overload resolution choose such a candidate.)
+    if (const Ty* array = types.unqualified(types.stripRef(pt));
+        array->kind == TyKind::Array && arg->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(arg)->text)
+    {
+      refuseTemporary("a braced list");
+      std::string tmp = newObjectSlot(array, at);
+      initializeFrom(tmp, array, arg, at);
+      if (needsDestruction(array, at))
+        statementTemps.push_back({tmp, array});
+      return "ptr " + tmp;
+    }
     if (isAggregate(types.stripRef(pt)))
     {
       const Ty* cls = types.stripRef(pt);
