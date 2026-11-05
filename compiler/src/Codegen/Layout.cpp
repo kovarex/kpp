@@ -817,10 +817,13 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
       }
       std::string target = slot.function ? useFunction(slot.function, global.classArgsOf(slot.owner), slot.owner)
                                          : implicitDestructor(slot.owner, at); // a class declaring none still destroys its own members
-      if (!samePlace(slot.ownerPath, table.path))
+      // (a covariant override's result moved to the base its callers here expect: until 2026-11-05
+      // `Second* s = &both; s->self()` gave the whole object's address back as the Second)
+      ResultMove move = covariantMove(key, table, slot, at);
+      if (!samePlace(slot.ownerPath, table.path) || move.bytes)
       {
         std::string thunk = "@\"thunk." + classIrName(key, info) + "." + std::to_string(t) + "." + std::to_string(s) + "\"";
-        thunks += adjustingThunk(thunk, target, slot, subobjectAtNull(key, table.path, at), subobjectAtNull(key, slot.ownerPath, at), at);
+        thunks += adjustingThunk(thunk, target, slot, subobjectAtNull(key, table.path, at), subobjectAtNull(key, slot.ownerPath, at), at, move);
         target = thunk;
       }
       entries += ", ptr " + target;
@@ -835,7 +838,88 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
   info.vtableText = text + thunks;
 }
 
-auto codegen::Emitter::adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at) -> std::string
+auto codegen::Emitter::resultClassOf(FunctionDecl* f, const Ty* owner, bool& pointer) -> const Ty*
+{
+  TemplateArgs args = global.classArgsOf(owner);
+  ArgsScope scope(*this, &args);
+  const Ty* ft = declType(f);
+  if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
+    return nullptr;
+  const Ty* r = ft->inner;
+  const Ty* object = nullptr;
+  if (r->isReference())
+    object = types.stripRef(r);
+  else if (types.unqualified(r)->kind == TyKind::Pointer)
+  {
+    object = types.unqualified(r)->inner;
+    pointer = true;
+  }
+  object = object ? types.unqualified(object) : nullptr;
+  return object && isClass(object) && !types.isDependent(object) ? object : nullptr;
+}
+
+auto codegen::Emitter::baseOffsetIn(const Ty* derived, const Ty* base, Node* at) -> std::optional<uint64_t>
+{
+  std::vector<std::pair<std::string, uint32_t>> path;
+  if (!basePath(derived, base, path, at))
+    return std::nullopt;
+  uint64_t offset = 0;
+  const Ty* t = derived;
+  for (auto& step : path)
+  {
+    classSizeAndAlign(t, at);
+    StructInfo& info = structFor(t, at);
+    offset += fieldStart(info, step.second, at);
+    t = info.fieldTypes[step.second];
+  }
+  return offset;
+}
+
+auto codegen::Emitter::covariantMove(const Ty* key, const Vtable& table, const VtableSlot& slot, Node* at) -> ResultMove
+{
+  bool pointer = false;
+  const Ty* result = slot.function ? resultClassOf(slot.function, slot.owner, pointer) : nullptr;
+  if (!result)
+    return {};
+  // The classes whose callers reach the function through this table: the class at its path, and
+  // its primary bases, which share its vtable pointer; each expects the result its own view of
+  // the function declares (its primary vtable's slot of that key).
+  const Ty* sharer = key;
+  for (uint32_t index : table.path)
+    sharer = structFor(sharer, at).fieldTypes[index];
+  std::optional<uint64_t> common;
+  std::string commonView;
+  for (int depth = 0; sharer && depth < 64; ++depth)
+  {
+    const StructInfo& info = structFor(sharer, at);
+    const Ty* next = info.primaryBase;
+    const VtableSlot* seen = nullptr;
+    if (!info.vtables.empty())
+      for (const VtableSlot& s : info.vtables[0].slots)
+        if (s.key == slot.key)
+          seen = &s;
+    bool viewPointer = false;
+    const Ty* view = !seen || !seen->function ? nullptr
+                     : seen->function == slot.function && canonicalClass(seen->owner, at) == canonicalClass(slot.owner, at)
+                         ? result // (the override itself: its own result, nothing to move)
+                         : resultClassOf(seen->function, seen->owner, viewPointer);
+    std::optional<uint64_t> offset = view ? baseOffsetIn(result, view, at) : std::nullopt;
+    if (offset && !common)
+    {
+      common = offset;
+      commonView = types.toString(view, &symbols);
+    }
+    else if (offset && *offset != *common)
+      unsupported(at, "the covariant override " + qualifiedName(slot.function) + " in " + types.toString(key, &symbols) + ": callers through one vtable expect its " +
+                          types.toString(result, &symbols) + " as a " + commonView + " and as a " + types.toString(view, &symbols) +
+                          ", at different places of it (one vtable slot cannot give both)");
+    sharer = next;
+  }
+  return common && *common ? ResultMove{*common, pointer} : ResultMove{};
+}
+
+auto codegen::Emitter::adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at,
+                                      ResultMove move) -> std::string
 {
   Signature s;
   if (slot.function)
@@ -863,8 +947,14 @@ auto codegen::Emitter::adjustingThunk(const std::string& name, const std::string
                      "  %this1 = getelementptr i8, ptr %this, i64 %d\n";
   if (s.returnType == "void")
     body += "  tail call void " + target + "(ptr %this1" + args + ")\n  ret void\n";
-  else
+  else if (!move.bytes)
     body += "  %r = tail call " + s.returnType + " " + target + "(ptr %this1" + args + ")\n  ret " + s.returnType + " %r\n";
+  else
+  {
+    // The override's result moved to the base its callers here expect; a null pointer stays null.
+    body += "  %r = call ptr " + target + "(ptr %this1" + args + ")\n  %moved = getelementptr i8, ptr %r, i64 " + std::to_string(move.bytes) + "\n";
+    body += move.pointer ? "  %null = icmp eq ptr %r, null\n  %result = select i1 %null, ptr null, ptr %moved\n  ret ptr %result\n" : "  ret ptr %moved\n";
+  }
   return "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
 }
 

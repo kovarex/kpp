@@ -1,0 +1,43 @@
+// spec: a covariant override of a second base's virtual function (`Both* self()` for `Second* Second::self()`) called through that base gives the base's part of the object (`1 2 3`), a reference likewise (`1 2`), a null result stays null (`1`), through a pointer to member too (`1`), and through the class itself the whole object (`1 3`), as C++ has it; clang prints the same
+// found by thread B (2026-11-05), comparing with clang: the result came back unmoved, the whole object's address read as its Second part (`0 1` and which() through First's vtable)
+class First
+{
+public:
+  int a = 1;
+  virtual ~First() {}
+  virtual int first() const { return 1; }
+};
+class Second
+{
+public:
+  int b = 2;
+  virtual ~Second() {}
+  virtual Second* self() { return this; }
+  virtual Second* none() { return this; }
+  virtual Second& ref() { return *this; }
+  virtual int which() const { return 2; }
+};
+class Both : public First, public Second
+{
+public:
+  int c = 3;
+  Both* self() override { return this; }
+  Both* none() override { return nullptr; }
+  Both& ref() override { return *this; }
+  int which() const override { return 3; }
+};
+int main()
+{
+  Both object;
+  Second* s = &object;
+  Second* again = s->self();
+  println(again == s ? 1 : 0, " ", again->b, " ", again->which());
+  Second& r = s->ref();
+  println(&r == s ? 1 : 0, " ", r.b);
+  println(s->none() == nullptr ? 1 : 0);
+  Second* (Second::*pointer)() = &Second::self;
+  println((s->*pointer)() == s ? 1 : 0);
+  Both* whole = object.self();
+  println(whole == &object ? 1 : 0, " ", whole->c);
+  return 0;
+}

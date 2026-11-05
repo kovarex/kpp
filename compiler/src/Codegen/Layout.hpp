@@ -132,9 +132,32 @@
 
     void emitVtables(const Ty* key, StructInfo& info, Node* at);
 
+    // How far a vtable entry moves the result of its function: a covariant override returns a
+    // pointer or reference to its own result class, of which the callers through that vtable
+    // expect a base (the function as the classes sharing the table declare or inherit it: the class
+    // at the table's path and its primary bases), at bytes into it; a pointer may be null, which
+    // stays null. Callers that expect results at different places are an error (one slot cannot
+    // give both).
+    struct ResultMove
+    {
+      uint64_t bytes = 0;
+      bool pointer = false;
+    };
+    ResultMove covariantMove(const Ty* key, const Vtable& table, const VtableSlot& slot, Node* at);
+
+    // The class whose object f, a member of owner, returns a pointer or a reference to (pointer
+    // says which), or null for any other result.
+    const Ty* resultClassOf(FunctionDecl* f, const Ty* owner, bool& pointer);
+
+    // Where base's subobject starts in an object of class derived (0 for the class itself), or
+    // nothing when base is no base of it.
+    std::optional<uint64_t> baseOffsetIn(const Ty* derived, const Ty* base, Node* at);
+
     // A function that moves `this` from the subobject at `from` to the one at `to` (offsets as
-    // subobjectAtNull gives them) and calls target with the arguments it was given.
-    std::string adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at);
+    // subobjectAtNull gives them), calls target with the arguments it was given, and moves its
+    // result as covariantMove says.
+    std::string adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at,
+                               ResultMove move);
 
     // What a pointer to a member function of class cls holds when calling f with the object is not
     // enough: a virtual f calls the object's override (through the vtable pointer of owner, the class

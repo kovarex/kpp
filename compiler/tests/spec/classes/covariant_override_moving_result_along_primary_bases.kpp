@@ -1,0 +1,42 @@
+// spec: a covariant override along the primary bases whose result's class has the overridden function's result class at an offset (`Y* get()` for `X* A::get()`, Y's X after its Z): callers through A get the X part (`1 1`), callers through B the whole Y (`1 3`), as C++ has it; clang prints the same
+// pending: one vtable slot serves both callers, which expect the result at different places of it (C++ ABIs give the override a slot of its own); codegen says so rather than give one of them the wrong address
+// found by thread B (2026-11-05), writing the moved result of a covariant override through a second base (classes/covariant_override_through_second_base)
+class X
+{
+public:
+  int x = 1;
+  virtual ~X() {}
+};
+class Z
+{
+public:
+  int z = 2;
+  virtual ~Z() {}
+};
+class Y : public Z, public X
+{
+public:
+  int y = 3;
+};
+Y shared;
+class A
+{
+public:
+  virtual ~A() {}
+  virtual X* get() { return nullptr; }
+};
+class B : public A
+{
+public:
+  Y* get() override { return &shared; }
+};
+int main()
+{
+  B b;
+  A* a = &b;
+  X* part = a->get();
+  println(part == static_cast<X*>(&shared) ? 1 : 0, " ", part->x);
+  Y* whole = b.get();
+  println(whole == &shared ? 1 : 0, " ", whole->y);
+  return 0;
+}
