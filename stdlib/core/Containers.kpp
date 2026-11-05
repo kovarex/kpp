@@ -127,10 +127,7 @@ constexpr ContainerSize dynamicExtent = ContainerSize(-1);
 // A view of contiguous elements (what std::span converts to): a pointer and a count, over an
 // array, a Vector, an Array, a Subrange of pointers or another Span. Extent is the count when it
 // is fixed (std::span<T, N>), dynamicExtent otherwise. Specified in docs/stdlib/span.md.
-// Extent and the counts deduced from arrays are written `unsigned long long`, not ContainerSize,
-// until templates/constructor_deduces_value_of_alias_type passes (a value parameter whose type is
-// an alias is not deduced from an array's bound in a constructor template).
-template<typename T, unsigned long long Extent = dynamicExtent>
+template<typename T, ContainerSize Extent = dynamicExtent>
 struct Span
 {
   static constexpr ContainerSize extent = Extent;
@@ -166,7 +163,7 @@ struct Span
   implicit Span(Array<U, N>& values) : items(values.data()), length(N) {}
   template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
   implicit Span(const Array<U, N>& values) : items(values.data()), length(N) {}
-  template<unsigned long long N> requires (Extent == dynamicExtent || N == Extent)
+  template<ContainerSize N> requires (Extent == dynamicExtent || N == Extent)
   implicit Span(T (&a)[N]) : items(a), length(N) {}
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
   implicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
@@ -174,9 +171,9 @@ struct Span
   explicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
   // From a span of other elements (T const) or another extent: implicit when the length is sure
   // to fit, explicit from a span of any length to a fixed extent.
-  template<typename U, unsigned long long N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
+  template<typename U, ContainerSize N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
   implicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
-  template<typename U, unsigned long long N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
+  template<typename U, ContainerSize N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
   explicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
   ContainerSize size() const { return this->length; }
@@ -208,7 +205,7 @@ template<typename T>
 Span(T*, ContainerSize) -> Span<T>;
 template<typename T>
 Span(T*, T*) -> Span<T>;
-template<typename T, unsigned long long N>
+template<typename T, ContainerSize N>
 Span(T (&array)[N]) -> Span<T, N>;
 template<typename T, ContainerSize N>
 Span(Array<T, N>& values) -> Span<T, N>;
