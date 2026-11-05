@@ -16,10 +16,9 @@ struct RandomDevice
   }
 };
 
-struct DefaultRandomEngine
+class DefaultRandomEngine
 {
-  u64 state[4];
-
+public:
   DefaultRandomEngine()
   {
     RandomDevice rd;
@@ -66,14 +65,15 @@ struct DefaultRandomEngine
     for (u64 i = 0; i < count; ++i)
       (*this)();
   }
+
+private:
+  u64 state[4];
 };
 
 template<typename IntType = i32>
-struct UniformIntDistribution
+class UniformIntDistribution
 {
-  IntType low;
-  IntType high;
-
+public:
   UniformIntDistribution() : low(0), high(0) {}
   UniformIntDistribution(IntType low, IntType high) : low(low), high(high) {}
 
@@ -87,4 +87,8 @@ struct UniformIntDistribution
 
   IntType a() const { return this->low; }
   IntType b() const { return this->high; }
+
+private:
+  IntType low;
+  IntType high;
 };

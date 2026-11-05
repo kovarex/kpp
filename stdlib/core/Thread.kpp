@@ -71,8 +71,9 @@ struct ThreadCall
 
 // A thread of execution (std::thread): joinable from its start until join() or detach(), which
 // every Thread that started one must call; specified in docs/stdlib/thread.md.
-struct Thread
+class Thread
 {
+public:
   // A thread's identity (std::thread::id): the system's id of a thread of execution, or, when
   // default-constructed, no thread's. Equal for the same thread, ordered and hashable (hashOf).
   struct Id
@@ -84,9 +85,6 @@ struct Thread
     strong_ordering operator<=>(const Id& other) const = default;
   };
   using id = Id;
-
-  void* handle = nullptr;
-  Id threadId;
 
   Thread() {}
   // Runs invoke(function, arguments...) on a new thread, with copies of them made here (decayed: a
@@ -167,6 +165,10 @@ struct Thread
   // for "not known"; this never does).
   static u32 hardwareConcurrency() { return platform::processorCount(); }
   static u32 hardware_concurrency() { return Thread::hardwareConcurrency(); }
+
+private:
+  void* handle = nullptr;
+  Id threadId;
 };
 
 usize hashOf(Thread::Id id) { return hashOf((u32)id.value); }
@@ -299,15 +301,18 @@ const AdoptLock adoptLock;
 
 // Holds a mutex locked for its scope (std::lock_guard; also std::scoped_lock of one mutex).
 template<typename M>
-struct LockGuard
+class LockGuard
 {
-  M& mutex;
+public:
   explicit LockGuard(M& mutex) : mutex(mutex) { mutex.lock(); }
   // Takes over a mutex the calling thread has locked.
   LockGuard(M& mutex, AdoptLock) : mutex(mutex) {}
   LockGuard(const LockGuard<M>&) = delete;
   LockGuard<M>& operator=(const LockGuard<M>&) = delete;
   ~LockGuard() { this->mutex.unlock(); }
+
+private:
+  M& mutex;
 };
 template<typename M>
 using ScopedLock = LockGuard<M>;

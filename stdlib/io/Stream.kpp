@@ -1,10 +1,9 @@
 // File streams: a thin wrapper over C stdio that gives the interface std::ifstream/ofstream
 // convert to. FILE and stderr are declared in clib/CStdio.kpp and its platforms' files.
 
-struct InFileStream
+class InFileStream
 {
-  FILE* handle = nullptr;
-
+public:
   InFileStream() {}
   explicit InFileStream(const char* filename) { this->open(filename); }
   explicit InFileStream(const String& filename) { this->open(filename.c_str()); }
@@ -63,6 +62,9 @@ struct InFileStream
   {
     return this->handle ? ftell(this->handle) : -1;
   }
+
+private:
+  FILE* handle = nullptr;
 };
 
 // The output streams' base (what std::ostream is to code that writes to any stream: UnitTest++'s

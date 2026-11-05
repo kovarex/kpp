@@ -128,12 +128,10 @@ constexpr ContainerSize dynamicExtent = ContainerSize(-1);
 // array, a Vector, an Array, a Subrange of pointers or another Span. Extent is the count when it
 // is fixed (std::span<T, N>), dynamicExtent otherwise. Specified in docs/stdlib/span.md.
 template<typename T, ContainerSize Extent = dynamicExtent>
-struct Span
+class Span
 {
+public:
   static constexpr ContainerSize extent = Extent;
-
-  T* items = nullptr;
-  ContainerSize length = Extent == dynamicExtent ? 0 : Extent;
 
   using element_type = T;
   using iterator = T*;
@@ -196,6 +194,10 @@ struct Span
   Span<T> subspan(ContainerSize offset) const { return Span<T>(this->items + offset, this->length - offset); }
   Span<T> first(ContainerSize count) const { return Span<T>(this->items, count); }
   Span<T> last(ContainerSize count) const { return Span<T>(this->items + this->length - count, count); }
+
+private:
+  T* items = nullptr;
+  ContainerSize length = Extent == dynamicExtent ? 0 : Extent;
 };
 
 // Deduction (std::span's guides): `Span(weights)` of a Vector<float> is a Span<float>, of an Array

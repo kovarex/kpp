@@ -25,12 +25,11 @@ using Mega = Ratio<1000000, 1>;
 // --- Duration ---
 
 template<typename Rep, typename Period = Ratio<1>>
-struct Duration
+class Duration
 {
+public:
   using rep = Rep;
   using period = Period;
-
-  Rep ticks;
 
   constexpr Duration() : ticks(Rep()) {}
   // From a count of ticks.
@@ -38,7 +37,7 @@ struct Duration
   // From another duration, converted to this one's period: implicit when nothing is lost (this Rep
   // is floating point, or the other period is a whole multiple of this one), durationCast otherwise.
   template<typename Rep2, typename Period2> requires (isFloatingPoint<Rep> || (!isFloatingPoint<Rep2> && (Period2::num * Period::den) % (Period2::den * Period::num) == 0))
-  implicit Duration(const Duration<Rep2, Period2>& other) : ticks(convertDuration(other, (const Duration<Rep, Period>*)nullptr).ticks) {}
+  implicit Duration(const Duration<Rep2, Period2>& other) : ticks(convertDuration(other, (const Duration<Rep, Period>*)nullptr).count()) {}
 
   constexpr Rep count() const { return this->ticks; }
   static constexpr Duration<Rep, Period> zero() { return Duration<Rep, Period>(Rep()); }
@@ -84,28 +83,28 @@ struct Duration
   auto operator+(const Duration<Rep2, Period2>& other) const
   {
     auto sum = inCommonDuration(*this, other);
-    sum.ticks += inCommonDuration(other, *this).ticks;
+    sum.ticks += inCommonDuration(other, *this).count();
     return sum;
   }
   template<typename Rep2, typename Period2>
   auto operator-(const Duration<Rep2, Period2>& other) const
   {
     auto difference = inCommonDuration(*this, other);
-    difference.ticks -= inCommonDuration(other, *this).ticks;
+    difference.ticks -= inCommonDuration(other, *this).count();
     return difference;
   }
   template<typename Rep2, typename Period2>
   auto operator%(const Duration<Rep2, Period2>& other) const
   {
     auto rest = inCommonDuration(*this, other);
-    rest.ticks %= inCommonDuration(other, *this).ticks;
+    rest.ticks %= inCommonDuration(other, *this).count();
     return rest;
   }
   // How many times other fits in this duration.
   template<typename Rep2, typename Period2>
   auto operator/(const Duration<Rep2, Period2>& other) const
   {
-    return inCommonDuration(*this, other).ticks / inCommonDuration(other, *this).ticks;
+    return inCommonDuration(*this, other).count() / inCommonDuration(other, *this).count();
   }
   // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
   // (Members, one per scalar type: C++ takes any rep, in the common type of the two.)
@@ -130,6 +129,9 @@ struct Duration
   bool operator>(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) > 0; }
   template<typename Rep2, typename Period2>
   bool operator>=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) >= 0; }
+
+private:
+  Rep ticks;
 };
 
 // d in the duration type of target (which is only read for its type): exact when that is possible,
@@ -144,11 +146,11 @@ Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, const 
   multiplier /= common;
   divisor /= common;
   if constexpr (isFloatingPoint<ToRep> || isFloatingPoint<Rep>)
-    return Duration<ToRep, ToPeriod>((ToRep)((double)d.ticks * (double)multiplier / (double)divisor));
+    return Duration<ToRep, ToPeriod>((ToRep)((double)d.count() * (double)multiplier / (double)divisor));
   else if (divisor == 1)
-    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.ticks * multiplier));
+    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.count() * multiplier));
   else
-    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.ticks * multiplier / divisor));
+    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.count() * multiplier / divisor));
 }
 
 using Nanoseconds = Duration<i64, Nano>;
@@ -200,11 +202,11 @@ template<typename R1, typename P1, typename R2, typename P2>
 auto inCommonDuration(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
 {
   if constexpr ((P2::num * P1::den) % (P2::den * P1::num) == 0)
-    return Duration<decltype(a.ticks + b.ticks), P1>(a);
+    return Duration<decltype(a.count() + b.count()), P1>(a);
   else if constexpr ((P1::num * P2::den) % (P1::den * P2::num) == 0)
-    return Duration<decltype(a.ticks + b.ticks), P2>(a);
+    return Duration<decltype(a.count() + b.count()), P2>(a);
   else
-    return Duration<decltype(a.ticks + b.ticks), Ratio<gcd(P1::num, P2::num), P1::den / gcd(P1::den, P2::den) * P2::den>>(a);
+    return Duration<decltype(a.count() + b.count()), Ratio<gcd(P1::num, P2::num), P1::den / gcd(P1::den, P2::den) * P2::den>>(a);
 }
 
 // The ticks of a and b in their common duration, compared.
@@ -213,20 +215,19 @@ i32 compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
 {
   auto x = inCommonDuration(a, b);
   auto y = inCommonDuration(b, a);
-  return x.ticks < y.ticks ? -1 : y.ticks < x.ticks ? 1 : 0;
+  return x.count() < y.count() ? -1 : y.count() < x.count() ? 1 : 0;
 }
 // --- TimePoint and the clocks ---
 
 // A point in time of Clock: a Duration since the clock's epoch.
 template<typename Clock, typename Dur = typename Clock::duration>
-struct TimePoint
+class TimePoint
 {
+public:
   using clock = Clock;
   using duration = Dur;
   using rep = typename Dur::rep;
   using period = typename Dur::period;
-
-  Dur sinceEpoch;
 
   constexpr TimePoint() {}
   constexpr explicit TimePoint(const Dur& sinceEpoch) : sinceEpoch(sinceEpoch) {}
@@ -279,6 +280,9 @@ struct TimePoint
   bool operator>(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch > other.sinceEpoch; }
   template<typename Dur2>
   bool operator>=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch >= other.sinceEpoch; }
+
+private:
+  Dur sinceEpoch;
 };
 
 // A duration plus a time point, as the time point plus the duration.
@@ -287,7 +291,7 @@ auto operator+(const Duration<R, P>& d, const TimePoint<C, D>& t) { return t + d
 
 // t in another duration of the same clock (std::chrono::time_point_cast).
 template<typename To, typename C, typename D>
-TimePoint<C, To> timePointCast(const TimePoint<C, D>& t) { return TimePoint<C, To>(durationCast<To>(t.sinceEpoch)); }
+TimePoint<C, To> timePointCast(const TimePoint<C, D>& t) { return TimePoint<C, To>(durationCast<To>(t.time_since_epoch())); }
 
 // A monotonic clock in nanoseconds (std::chrono::steady_clock; also high_resolution_clock).
 struct SteadyClock
@@ -316,7 +320,7 @@ struct SystemClock
   // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.
   static i64 to_time_t(const TimePoint<SystemClock>& t)
   {
-    i64 ticks = t.sinceEpoch.ticks;
+    i64 ticks = t.time_since_epoch().count();
     return ticks >= 0 ? ticks / 10000000 : -((-ticks + 9999999) / 10000000);
   }
   static TimePoint<SystemClock> from_time_t(i64 seconds) { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000)); }
