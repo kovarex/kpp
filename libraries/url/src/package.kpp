@@ -1,3 +1,0 @@
-// Package: URL
-// URLs (RFC 3986): parsing, resolving a reference against a base, percent-encoding and query
-// strings. Documented in libraries/url/README.md.

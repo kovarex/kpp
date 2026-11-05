@@ -1,3 +1,0 @@
-// Package: HTTPCLIENT
-// HTTP and HTTPS requests (WinHTTP on Windows, HTTP/1.1 and OpenSSL on FreeBSD): fetch(),
-// HttpClientRequest, HttpClientResponse, HttpClientError. Documented in libraries/httpclient/README.md.

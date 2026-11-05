@@ -1,3 +1,0 @@
-// Package: JSON
-// JSON (RFC 8259) parsing and writing: JsonValue, parseJson, writeJson. Numbers round-trip
-// exactly. Documented in libraries/json/README.md.

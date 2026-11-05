@@ -1,3 +1,0 @@
-// Package: HTML
-// HTML escaping and templates that escape by context, checked when they are compiled: htmlEscape,
-// HtmlTemplate, SafeHtml. Documented in libraries/html/README.md.

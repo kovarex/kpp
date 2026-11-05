@@ -1,3 +1,0 @@
-// Package: NET
-// TCP: TcpStream (a connection), TcpListener, NetError. Winsock on Windows, BSD sockets on FreeBSD
-// and Linux. Documented in libraries/net/README.md.

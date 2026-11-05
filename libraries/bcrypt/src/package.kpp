@@ -1,3 +1,0 @@
-// Package: BCRYPT
-// bcrypt, the password hash of PHP's password_hash(): bcryptHash(), bcryptVerify(), bcryptCost(),
-// BcryptError. Documented in libraries/bcrypt/README.md.
