@@ -205,13 +205,25 @@ namespace filesystem
     String string() const { return narrowUtf16(this->text.c_str(), this->text.size()); }
     WString wstring() const { return this->text; }
     String u8string() const { return this->string(); }
+    // The generic forms are the target's C++ library's: on Windows (MSVC's STL) every `\` becomes `/`
+    // and runs stay; elsewhere (libstdc++) a run of `/` is one.
     WString generic_wstring() const
     {
       WString generic = this->text;
       if constexpr (config::platform == Platform::Windows)
+      {
         for (wchar_t& c : generic)
           if (c == L'\\')
             c = L'/';
+      }
+      else
+      {
+        ContainerSize kept = 0;
+        for (ContainerSize i = 0; i < generic.size(); ++i)
+          if (generic[i] != L'/' || kept == 0 || generic[kept - 1] != L'/')
+            generic[kept++] = generic[i];
+        generic.resize(kept);
+      }
       return generic;
     }
     String generic_string() const

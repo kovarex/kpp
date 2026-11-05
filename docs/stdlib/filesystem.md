@@ -15,7 +15,7 @@ with (ErrorCode, Errc, SystemError) are specified at the end.
 On Windows a path is text in Windows form: `\` and `/` are both separators, `preferred_separator`
 is `\`. On Linux and FreeBSD `/` is the one separator and `preferred_separator`; a `\` is part of a
 name, a path has no root name, `make_preferred()` changes nothing and the generic forms are the
-text itself, as std's are there. The rest of this section is Windows' form; elsewhere read it
+text with each run of `/` as one, as libstdc++'s are there. The rest of this section is Windows' form; elsewhere read it
 without root names, with `/` for `\`. It is stored as a WString (`native()`, `c_str()`, and an
 implicit conversion to WString, the native string); `value_type` is wchar_t.
 
