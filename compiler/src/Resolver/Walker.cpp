@@ -5710,6 +5710,16 @@ auto GlobalScope::Impl::Walker::configCondition(Node* n, int depth) -> bool
     case NodeKind::NameExpr:
     {
       Decl* d = static_cast<NameExpr*>(n)->resolved;
+      if (d && d->kind == NodeKind::EnumeratorDecl)
+      {
+        // `config::platform == Platform::Linux`: an enumerator of an enumeration no template
+        // declares, the same in every instance (Util::sleep_for's Windows branch named Sleep, which
+        // the template's own walk checked on Linux: templates/discarded_config_branch_in_template).
+        for (Decl* p = d->parent; p; p = p->parent)
+          if (p->isTemplate || !p->templateParams.empty())
+            return false;
+        return true;
+      }
       if (!d || d->kind != NodeKind::VariableDecl)
         return false;
       Decl* top = d->parent;

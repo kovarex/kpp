@@ -1,0 +1,18 @@
+// spec: in a function template's own walk, `if constexpr` and `when` on a condition of config constants, enumerators of an enumeration no template declares and literals (`config::platform == Platform::Windows`) are decided as in a function that is no template: the discarded branch, and the `when` declaration that does not exist, are not checked, so that a name only another platform declares is no error there, in a call that depends on no template parameter too
+// found by thread C (2026-11-05, B's Linux build): Factorio's src/Util/Sleep.kpp, `Sleep(milliseconds)` in the Windows branch of the template sleep_for<Rep, Period>, was "'Sleep' is not declared" on Linux, where the same branch in a function that is no template was skipped: the template's walk took `Platform::Windows`, an enumerator, for no config constant
+when (config::platform == Platform::Windows) int windowsOnly(int v) { return v + 1; }
+when (config::platform != Platform::Windows) int elsewhereOnly(int v) { return v + 1; }
+template<class T> int pick(T x)
+{
+  when (config::platform == Platform::Windows) int base = windowsOnly(1);
+  when (config::platform != Platform::Windows) int base = elsewhereOnly(1);
+  if constexpr (config::platform == Platform::Windows)
+    return windowsOnly(base) + int(x);
+  else
+    return elsewhereOnly(base) + int(x);
+}
+int main()
+{
+  println(pick(10), " ", pick(20.5));
+  return 0;
+}
