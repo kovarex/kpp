@@ -72,6 +72,11 @@
       bool isRef;
     };
     std::unordered_map<Decl*, Local> locals;
+    // One local per element of a parameter pack: the function's own parameters', or in a lambda's
+    // call operator the closure's fields that hold the elements of a pack of the function it is
+    // written in (the function's locals are other IR names: a lambda that read them printed its
+    // own parameters, templates/lambda_uses_parameter_pack_of_its_function).
+    std::unordered_map<Decl*, std::vector<Local>> packLocals;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     struct Object
     {

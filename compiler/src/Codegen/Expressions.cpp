@@ -488,6 +488,16 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
           for (auto& [p, t] : currentArgs->pairs)
             if (p == param && t && t->kind == TyKind::Pack)
               return {std::to_string(t->args.size()), types.sizeType()}; // `sizeof...(Args)` of a template pack
+        if (param && !packLocals.count(param) && param->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(param)->isPack)
+        {
+          // A pack of the function a lambda is written in, which the lambda captures nothing of
+          // (`sizeof...(ts)` names no element): as many as the instantiation's walk typed it with.
+          const Ty* pack = param->cachedType.load(std::memory_order_acquire);
+          if (!pack || pack->kind != TyKind::Pack)
+            pack = global.typeOfDecl(param);
+          if (pack && pack->kind == TyKind::Pack)
+            return {std::to_string(pack->args.size()), types.sizeType()};
+        }
         if (!param || !packLocals.count(param))
           unsupported(e, "sizeof... of something that is not a parameter pack");
         return {std::to_string(packLocals[param].size()), types.sizeType()};

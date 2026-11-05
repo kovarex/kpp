@@ -74,6 +74,7 @@ auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, s
     case NodeKind::BraceInitExpr: visitExprs(static_cast<BraceInitExpr*>(n)->args); break;
     case NodeKind::ThrowExpr: visit(static_cast<ThrowExpr*>(n)->operand); break;
     case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); break;
+    case NodeKind::FoldExpr: visit(static_cast<FoldExpr*>(n)->lhs); visit(static_cast<FoldExpr*>(n)->rhs); break; // (`(show(ts), ...)`)
     case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
     case NodeKind::NoexceptExpr: break; // (its operand is not evaluated)
     case NodeKind::LambdaExpr:
@@ -203,7 +204,35 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
   }
   if (thisCaptured)
     out.push_back({nullptr, true, nullptr});
-  return out;
+  // A parameter pack of the function around: a slot per element, in order. Its elements are the
+  // parameter's type under the instantiation's arguments, which only that function's emission has
+  // (currentArgs, in its body or in a lambda's in it): the parameter's own type is the template's
+  // (`Ts`), and the body's names of it are typed as the pack or as one element. Laid out by another
+  // function first (a caller that holds a closure an instance returned), it is an error.
+  // (A generic lambda's body is typed for each call as a whole, never per element of a pack it
+  // expands: GlobalScope::lambdaInstance.)
+  std::vector<CaptureSlot> expanded;
+  for (const CaptureSlot& s : out)
+  {
+    auto* pd = s.decl && !s.init && s.decl->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(s.decl) : nullptr;
+    if (!pd || !pd->isPack)
+    {
+      expanded.push_back(s);
+      continue;
+    }
+    if (!l->templateParams.empty())
+      unsupported(l, "a generic lambda that uses a parameter pack of the function it is written in");
+    Decl* writer = l->closure ? l->closure->parent : nullptr;
+    while (writer && writer->kind != NodeKind::FunctionDecl)
+      writer = writer->parent;
+    bool inWriter = writer && (writer == static_cast<const Decl*>(checkerChecked) || writer == currentFunction);
+    const Ty* pack = inWriter && currentArgs ? declType(pd) : nullptr;
+    if (!pack || pack->kind != TyKind::Pack)
+      unsupported(l, "laying out a closure that captures a parameter pack outside the function the lambda is written in");
+    for (size_t k = 0; k < pack->args.size(); ++k)
+      expanded.push_back({s.decl, s.byRef, nullptr, int(k), types.stripRef(pack->args[k])});
+  }
+  return expanded;
 }
 
 auto codegen::Emitter::bindsName(Decl* d, uint32_t symbol) -> bool
@@ -334,7 +363,8 @@ auto codegen::Emitter::layOutClosure(const Ty* t, Node* at) -> ClosureInfo&
     info.byRef.push_back(s.byRef);
     info.inits.push_back(s.init);
     // `this`: a pointer field; the class it points to is the writer's (enclosingClass).
-    info.fieldTypes.push_back(s.decl ? captureType(s.decl, s.init, useTypes, l) : types.pointer(types.voidType()));
+    // An element of a parameter pack: its own type (`Ts&... ts`: the object an element refers to).
+    info.fieldTypes.push_back(s.element >= 0 ? s.elementType : s.decl ? captureType(s.decl, s.init, useTypes, l) : types.pointer(types.voidType()));
   }
   std::string line = info.structName + " = type { ";
   for (size_t i = 0; i < info.fieldTypes.size(); ++i)
@@ -528,9 +558,22 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
       initializeFrom(field, info.fieldTypes[i], slots[i].init, l); // `[x = expr]`
       continue;
     }
-    if (!locals.count(d))
-      unsupported(l, "a capture of a variable the function being emitted does not have");
-    Local& local = locals[d];
+    Local* found = nullptr;
+    if (slots[i].element >= 0)
+    {
+      // An element of a parameter pack: the function's own (or, in a lambda, its closure's field).
+      auto pack = packLocals.find(d);
+      if (pack == packLocals.end() || size_t(slots[i].element) >= pack->second.size())
+        unsupported(l, "a capture of a parameter pack the function being emitted does not have");
+      found = &pack->second[slots[i].element];
+    }
+    else
+    {
+      if (!locals.count(d))
+        unsupported(l, "a capture of a variable the function being emitted does not have");
+      found = &locals[d];
+    }
+    Local& local = *found;
     std::string addr = local.addr;
     if (local.isRef)
     {
@@ -641,8 +684,16 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
   // one that happened to emit it first, a generic lambda's first caller): its operators and free
   // functions are looked up from there, `this` is that function's, and its nodes are that
   // function's to retype (a pack expansion, a for constexpr). Restored with the saved state.
+  FunctionDecl* emitting = currentFunction;
   if (l->closure && l->closure->parent && l->closure->parent->kind == NodeKind::FunctionDecl)
+  {
     currentFunction = static_cast<FunctionDecl*>(l->closure->parent);
+    // Written in an instantiation emitted from a private copy (emitFunction: one retyped per
+    // element), the lambda is the copy's and its closure the instantiation's, whose own copy other
+    // threads read: what a pack expansion or a for constexpr in the body retypes is the copy.
+    if (currentFunction == checkerChecked && emitting && emitting != currentFunction)
+      currentFunction = emitting;
+  }
   if (args)
   {
     currentArgs = args;
@@ -701,10 +752,23 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
           debugVariable("this", l, thisSlot, types.pointer(currentClassTy));
         continue;
       }
-      locals[d] = {field, info.byRef[i] ? types.lref(info.fieldTypes[i]) : info.fieldTypes[i], info.byRef[i]};
       // (by value the capture is its field; by reference the field holds its address: a reference)
+      const Ty* capturedTy = info.byRef[i] ? types.lref(info.fieldTypes[i]) : info.fieldTypes[i];
+      if (slots[i].element >= 0)
+      {
+        // An element of a parameter pack of the function around: what the body's expansions of
+        // the pack read (the function's own elements are other IR names).
+        std::vector<Local>& elements = packLocals[d];
+        if (elements.size() <= size_t(slots[i].element))
+          elements.resize(size_t(slots[i].element) + 1);
+        elements[slots[i].element] = {field, capturedTy, info.byRef[i]};
+        if (std::string name = debugName(d); !name.empty())
+          debugVariable(name + "#" + std::to_string(slots[i].element), d, field, capturedTy, 0, false, true);
+        continue;
+      }
+      locals[d] = {field, capturedTy, info.byRef[i]};
       if (std::string name = debugName(d); !name.empty())
-        debugVariable(name, d, field, info.byRef[i] ? types.lref(info.fieldTypes[i]) : info.fieldTypes[i], 0, false, true);
+        debugVariable(name, d, field, capturedTy, 0, false, true);
     }
     for (size_t i = 0; i < l->params.size() && i < callTy->args.size(); ++i)
     {

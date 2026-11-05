@@ -1,0 +1,13 @@
+// spec: a generic lambda written in a variadic function template folds over the function's parameter pack beside its own `auto` parameter
+// pending: a generic lambda's body is typed for each call's arguments as a whole (GlobalScope::lambdaInstance), never per element of a pack it expands, so codegen refuses its capture of the pack ("a generic lambda that uses a parameter pack of the function it is written in")
+template<typename... Ts>
+int viaGeneric(Ts... ts)
+{
+  auto g = [&](auto base) { return (base + ... + ts); };
+  return g(10);
+}
+int main()
+{
+  println(viaGeneric(1, 2, 3));
+  return 0;
+}

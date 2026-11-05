@@ -21,11 +21,15 @@
     // default capture picks up in the order first written, then `this`. The same list wherever the
     // closure is laid out or built, whichever function is emitted first (the body names the
     // instantiation's own locals: a capture's position, not its declaration, matches them up).
+    // A parameter pack of the function around the lambda is captured element by element, a slot
+    // (a field of the closure) each, in order.
     struct CaptureSlot
     {
       Decl* decl = nullptr; // the captured variable (null for `this`)
       bool byRef = false;
       Expr* init = nullptr; // an init-capture's initializer
+      int element = -1;     // decl a parameter pack: the element this slot holds
+      const Ty* elementType = nullptr; // and that element's type (references stripped)
     };
     std::vector<CaptureSlot> captureList(LambdaExpr* l, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr);
 

@@ -1,0 +1,55 @@
+// spec: a lambda written in a variadic function template uses the function's parameter pack: a fold over it and an expansion into a call's arguments read the elements the closure captured (a field per element, by reference with [&], copied with [=]), each typed as its own element, beside the lambda's own parameters; sizeof... counts them, and a lambda in the lambda captures them again
+// found by thread D (2026-11-05): the lambda's body read the function's own IR names for the elements (Emitter::packLocals outlived the function), so `[&](int a, int b) { show(a + b); (show(ts), ...); }` printed its own parameters, and with fewer of them LLVM rejected the module (use of undefined value '%p1')
+struct A { int v; };
+struct B { int v; };
+inline void show(int x) { println(x); }
+inline void show(const A& a) { println("A", a.v); }
+inline void show(const B& b) { println("B", b.v); }
+inline int digits(int a, int b, int c) { return a * 100 + b * 10 + c; }
+
+template<typename... Ts>
+void each(Ts... ts)
+{
+  auto g = [&](int a, int b) { show(a + b); (show(ts), ...); };
+  g(100, 200);
+}
+
+template<typename... Ts>
+int total(int k, Ts... ts)
+{
+  auto g = [=](int a) { return a + (k + ... + ts); };
+  return g(1000);
+}
+
+template<typename... Ts>
+int spread(Ts... ts)
+{
+  auto g = [&]() { return digits(ts...) + int(sizeof...(ts)) * 1000; };
+  return g();
+}
+
+template<typename... Ts>
+void bump(Ts&... ts)
+{
+  auto g = [&]() { ((ts += 1), ...); };
+  g();
+}
+
+template<typename... Ts>
+int nested(Ts... ts)
+{
+  auto outer = [&]() { auto inner = [&](int base) { return (base + ... + ts); }; return inner(10); };
+  return outer();
+}
+
+int main()
+{
+  each(7, A{8}, B{9});
+  println(total(5, 1, 2, 3));
+  println(spread(1, 2, 3));
+  int x = 1, y = 2;
+  bump(x, y);
+  println(x, " ", y);
+  println(nested(1, 2, 3, 4));
+  return 0;
+}

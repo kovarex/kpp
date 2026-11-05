@@ -148,7 +148,6 @@ namespace codegen
     const BinaryExpr* assignedAt = nullptr;
     std::string assignedPlace;
     const Expr* evaluatedFirst = nullptr; // the stand-in for an assignment's right operand evaluated before its left
-    std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
     // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
     // the compiler's and the name of it passed to the calls (one each per such loop).
     std::deque<VariableDecl> rangeVariables;

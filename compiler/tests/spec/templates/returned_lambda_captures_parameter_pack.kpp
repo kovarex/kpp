@@ -1,0 +1,13 @@
+// spec: a lambda that captures a parameter pack of the function template it is written in, returned to the caller and called there: its closure holds each element
+// pending: the caller holds the closure before the instance that writes it is emitted, and only that instance's emission has the arguments its pack's elements are typed with ("laying out a closure that captures a parameter pack outside the function the lambda is written in")
+template<typename... Ts>
+auto make(Ts... ts)
+{
+  return [=]() { return (ts + ...); };
+}
+int main()
+{
+  auto f = make(1, 2, 3);
+  println(f());
+  return 0;
+}
