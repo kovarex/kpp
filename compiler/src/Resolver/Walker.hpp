@@ -64,6 +64,9 @@
     // Per lambda / auto function this walk entered: whether it returns `decltype(auto)`, so that
     // its returns record their expression's decltype (`f(x)` returning int& stays int&).
     std::vector<bool> decltypeReturns;
+    // The variables the lambdas this walk is in capture by copy without being `mutable`: const in
+    // their bodies (a const local item over each), which a write's error names.
+    std::vector<Decl*> constCopyCaptures;
 
     // The type `decltype(e)` names, for a `decltype(auto)` return, given e's type t: a variable
     // or member named without parentheses has its declared type, any other lvalue is a reference
@@ -122,7 +125,8 @@
     // object is an error, as in C++ ([expr.ass]/1, [expr.pre.incr]: the operand is a modifiable
     // lvalue): through a `const T&`, a const local or member, a const getter's result. Not in a
     // template's own walk (its instances say). what: "assignment to", "increment of", "decrement of".
-    void checkConstModification(uint32_t token, const Ty* object, const char* what);
+    // operand: the expression written to, which names a lambda's capture by copy in the message.
+    void checkConstModification(uint32_t token, const Ty* object, const char* what, const Expr* operand = nullptr);
 
     // A checker error at token: in a template's instance once its function is emitted, never in the
     // template's own walk (its instances say), nowhere while probing or in imported C.

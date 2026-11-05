@@ -1,0 +1,19 @@
+// spec: in a lambda that is not `mutable` its captures by copy are const, as its operator() is ([expr.prim.lambda.closure]): writing one (`[n]() { return ++n; }`, `[=]() { n = 2; }`, an init-capture `[k = 1]() { k = 2; }`) is a compile error; a `mutable` lambda may change its copies, and a capture by reference (`[&n]`, `[&]`) refers to the variable, which it may change
+// found by thread D (2026-11-05): the parser dropped `mutable` and every lambda's copies were writable, a program C++ rejects
+// error: lambda_copy_capture_is_const_unless_mutable.kpp:15: error: increment of n, a capture by copy of a lambda that is not mutable (its copies are const)
+// error: lambda_copy_capture_is_const_unless_mutable.kpp:16: error: assignment to n, a capture by copy of a lambda that is not mutable (its copies are const)
+// error: lambda_copy_capture_is_const_unless_mutable.kpp:17: error: assignment to k, a capture by copy of a lambda that is not mutable (its copies are const)
+int main()
+{
+  int n = 0;
+  auto ok = [n]() mutable { return ++n; };
+  auto byRef = [&n]() { return ++n; };
+  auto all = [&]() { n += 1; };
+  ok();
+  byRef();
+  all();
+  auto a = [n]() { return ++n; };
+  auto b = [=]() { n = 2; };
+  auto c = [k = 1]() { k = 2; };
+  return n;
+}

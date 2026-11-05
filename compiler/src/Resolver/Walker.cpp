@@ -261,10 +261,20 @@ auto GlobalScope::Impl::Walker::reportInInstance(uint32_t token, std::string mes
   impl.instanceNameErrors[bodyOf].push_back(Impl::locationOf(file, token) + ": error: " + message);
 }
 
-auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty* object, const char* what) -> void
+auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty* object, const char* what, const Expr* operand) -> void
 {
   if (!object || !object->isConst || !object->isKnown())
     return;
+  while (operand && operand->kind == NodeKind::ParenExpr)
+    operand = static_cast<const ParenExpr*>(operand)->inner;
+  if (operand && operand->kind == NodeKind::NameExpr)
+    if (Decl* d = static_cast<const NameExpr*>(operand)->resolved;
+        d && std::find(constCopyCaptures.begin(), constCopyCaptures.end(), d) != constCopyCaptures.end())
+    {
+      reportCheck(token, std::string(what) + " " + std::string(symbols.name(static_cast<const NameExpr*>(operand)->name.last().symbol)) +
+                           ", a capture by copy of a lambda that is not mutable (its copies are const)");
+      return;
+    }
   reportCheck(token, std::string(what) + " a const value (" + types.toString(object, &impl.symbols) + ")");
 }
 
@@ -4310,7 +4320,7 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
     case P::PercentAssign: case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign:
     case P::ShrAssign:
-      checkConstModification(b->token, ls, "assignment to");
+      checkConstModification(b->token, ls, "assignment to", b->lhs);
       return l;
     case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
     case P::AndAnd: case P::OrOr:
@@ -4478,7 +4488,7 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
     case P::Bang: return types.boolType();
     case P::Minus: case P::Plus: case P::Tilde: return promote(t);
     case P::PlusPlus: case P::MinusMinus:
-      checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of");
+      checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);
       return u->postfix ? types.unqualified(s) : t;
     default: return unknown(Why::Unsupported);
   }
@@ -6340,6 +6350,80 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
           bool undecided = false;
           whenUse(cap.symbol, l->token, captured, undecided); // (design.md 19: a use of the local)
         }
+      // Its captures by copy as its body sees them: const where the lambda is not `mutable`, as its
+      // operator() is ([expr.prim.lambda.closure] 12), so that writing one is an error as in C++ (the
+      // parser dropped `mutable`, and every copy was writable:
+      // language/lambda_copy_capture_is_const_unless_mutable); a mutable one's as its variable is
+      // (over a const one of a lambda around it). An item over each, its type the copy's.
+      size_t copiesMark = constCopyCaptures.size();
+      {
+        auto variable = [](Decl* d) {
+          return d && (d->kind == NodeKind::ParamDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef))));
+        };
+        // The copy's type for the item at i: its variable's, a reference's referent, const unless mutable.
+        auto copyType = [&](size_t i) -> const Ty* {
+          const Ty* t = locals.items[i].type ? locals.items[i].type : impl.declaredTypeOf(locals.items[i].decl, activeSubst, 0);
+          if (!t || !t->isKnown() || impl.containsAuto(t))
+            return nullptr;
+          t = types.stripRef(t);
+          if (t->kind == TyKind::Array || t->kind == TyKind::Pack)
+            return nullptr; // (an array's elements, a pack's: not told here)
+          return l->isMutable ? t : types.qualified(t, true, t->isVolatile);
+        };
+        auto copy = [&](size_t i) {
+          if (const Ty* t = copyType(i))
+          {
+            LocalStack::Item item = locals.items[i];
+            item.type = t;
+            locals.items.push_back(item);
+            if (generic)
+              environment.push_back(item);
+            if (!l->isMutable)
+              constCopyCaptures.push_back(item.decl);
+          }
+        };
+        auto outer = [&](uint32_t symbol) -> std::optional<size_t> {
+          for (size_t i = std::min(mark, locals.items.size()); i-- > 0;)
+            if (locals.items[i].symbol == symbol)
+              return variable(locals.items[i].decl) ? std::optional<size_t>(i) : std::nullopt;
+          return std::nullopt;
+        };
+        std::vector<uint32_t> named;
+        for (const LambdaCapture& cap : l->captures)
+        {
+          if (cap.isThis)
+            continue;
+          named.push_back(cap.symbol);
+          if (cap.decl)
+          {
+            // `[k = 1]`: the closure's own variable, const too unless mutable (`[&k = x]` refers).
+            for (size_t i = locals.items.size(); i-- > mark;)
+              if (locals.items[i].decl == cap.decl)
+              {
+                if (const Ty* t = cap.byRef ? nullptr : copyType(i))
+                {
+                  locals.items[i].type = t;
+                  if (!l->isMutable)
+                    constCopyCaptures.push_back(cap.decl);
+                }
+                break;
+              }
+          }
+          else if (!cap.byRef)
+            if (std::optional<size_t> i = outer(cap.symbol))
+              copy(*i);
+        }
+        if (l->defaultCapture == 1) // `[=]`: every variable around it the body names, by copy
+          for (size_t i = std::min(mark, locals.items.size()); i-- > 0;)
+          {
+            uint32_t symbol = locals.items[i].symbol;
+            if (std::find(named.begin(), named.end(), symbol) != named.end())
+              continue;
+            named.push_back(symbol); // (the innermost of the name only)
+            if (variable(locals.items[i].decl))
+              copy(i);
+          }
+      }
       pushTemplateParams(l->templateParams);
       std::vector<const Ty*> params;
       for (Decl* p : l->params)
@@ -6380,6 +6464,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       if (generic && (!result->isKnown() || types.isDependent(result)))
         result = nullptr; // deduced per call
       locals.pop(mark);
+      constCopyCaptures.resize(copiesMark);
       // In a template, the lambda is a different type in each instantiation (its body differs).
       // The mark telling them apart is a hash of the arguments as printed (with their classes'
       // full paths: two classes named LineInfo are two arguments), in parameter-name order, so

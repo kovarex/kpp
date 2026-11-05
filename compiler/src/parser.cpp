@@ -5854,7 +5854,12 @@ namespace
       }
       for (;;)
       {
-        if (accept(Kw::mutable_) || accept(Kw::constexpr_) || accept(Kw::consteval_))
+        if (accept(Kw::mutable_))
+        {
+          l->isMutable = true; // its captures by copy writable (the walk makes them const without it)
+          continue;
+        }
+        if (accept(Kw::constexpr_) || accept(Kw::consteval_))
           continue;
         if (at(Kw::noexcept_))
         {
