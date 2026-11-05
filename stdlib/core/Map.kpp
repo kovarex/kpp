@@ -375,12 +375,11 @@ struct RbIterator
 // K, under the comparator Compare (`compare(a, b)` is a < b). It allows equal keys; the unique
 // containers look before they insert.
 template<typename E, typename K, typename KeyOf, typename Compare>
-struct RbTree
+class RbTree
 {
-  RbNodeBase header;
-  ContainerSize count = 0;
-  Compare compare;
-
+public:
+  ContainerSize size() const { return this->count; }
+  const Compare& keyCompare() const { return this->compare; }
   RbTree() { this->becomeEmpty(); }
   explicit RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
   RbTree(const RbTree<E, K, KeyOf, Compare>& other) : compare(other.compare)
@@ -631,7 +630,7 @@ struct RbTree
     this->count = 0;
   }
 
-  // Internals.
+private:
   static const K& keyOf(const RbNodeBase* node) { return KeyOf::of(((const RbNode<E>*)node)->entry); }
 
   void becomeEmpty()
@@ -689,6 +688,10 @@ struct RbTree
     other.becomeEmpty();
     other.count = 0;
   }
+
+  RbNodeBase header;
+  ContainerSize count = 0;
+  Compare compare;
 };
 
 // What extract() returns: an entry taken out of a Map or MultiMap together with its node, without
@@ -791,10 +794,9 @@ struct SetKey
 
 // An ordered map with unique keys: entries are Pair<K, V> in key order, ordered by Compare.
 template<typename K, typename V, typename Compare = Less<K>>
-struct Map
+class Map
 {
-  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
-
+public:
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
@@ -831,8 +833,8 @@ struct Map
   template<typename It>
   Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   // A const Map's positions are const_iterators: its entries are not changed through them.
   iterator begin() { return this->tree.begin(); }
   iterator end() { return this->tree.end(); }
@@ -842,7 +844,7 @@ struct Map
   const_iterator cend() const { return this->end(); }
   const_reverse_iterator crbegin() const { return this->rbegin(); }
   const_reverse_iterator crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.compare; }
+  Compare key_comp() const { return this->tree.keyCompare(); }
 
   // The lookups by K, and by any other type: with a transparent comparator that key itself is
   // compared, otherwise it is converted to K first.
@@ -899,7 +901,7 @@ struct Map
   V& operator[](const K& key)
   {
     RbIterator<Pair<K, V>> at = this->tree.lowerBound(key);
-    if (at != this->tree.end() && !this->tree.compare(key, at->first))
+    if (at != this->tree.end() && !this->tree.keyCompare()(key, at->first))
       return at->second;
     return this->tree.emplaceEqual(inPlaceSecond, key)->second;
   }
@@ -1069,14 +1071,16 @@ struct Map
   strong_ordering operator<=>(const Map<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Map<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
+
+private:
+  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 };
 
 // An ordered set of unique values, ordered by Compare.
 template<typename T, typename Compare = Less<T>>
-struct Set
+class Set
 {
-  RbTree<T, T, SetKey<T>, Compare> tree;
-
+public:
   using iterator = RbIterator<const T>; // a set's elements are its keys: const through every position
   using const_iterator = RbIterator<const T>;
   using value_type = T;
@@ -1111,15 +1115,15 @@ struct Set
   template<typename It>
   Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
   const_iterator cbegin() const { return this->begin(); }
   const_iterator cend() const { return this->end(); }
   auto crbegin() const { return this->rbegin(); }
   auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.compare; }
+  Compare key_comp() const { return this->tree.keyCompare(); }
 
   // The lookups by T, and by any other type: with a transparent comparator that key itself is
   // compared, otherwise it is converted to T first.
@@ -1262,14 +1266,16 @@ struct Set
   strong_ordering operator<=>(const Set<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Set<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
+
+private:
+  RbTree<T, T, SetKey<T>, Compare> tree;
 };
 
 // An ordered map that allows equivalent keys, kept in insertion order among themselves.
 template<typename K, typename V, typename Compare = Less<K>>
-struct MultiMap
+class MultiMap
 {
-  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
-
+public:
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
@@ -1303,8 +1309,8 @@ struct MultiMap
   template<typename It>
   MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   iterator begin() { return this->tree.begin(); }
   const_iterator begin() const { return this->tree.begin(); }
   iterator end() { return this->tree.end(); }
@@ -1313,7 +1319,7 @@ struct MultiMap
   const_iterator cend() const { return this->end(); }
   auto crbegin() const { return this->rbegin(); }
   auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.compare; }
+  Compare key_comp() const { return this->tree.keyCompare(); }
 
   // The lookups by K, and by any other type as in Map.
   iterator find(const K& key) { return this->tree.find(key); }
@@ -1450,14 +1456,16 @@ struct MultiMap
   strong_ordering operator<=>(const MultiMap<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiMap<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
+
+private:
+  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 };
 
 // An ordered set that allows equivalent values, kept in insertion order among themselves.
 template<typename T, typename Compare = Less<T>>
-struct MultiSet
+class MultiSet
 {
-  RbTree<T, T, SetKey<T>, Compare> tree;
-
+public:
   using iterator = RbIterator<const T>; // a set's elements are its keys: const through every position
   using const_iterator = RbIterator<const T>;
   using value_type = T;
@@ -1490,15 +1498,15 @@ struct MultiSet
   template<typename It>
   MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
   const_iterator cbegin() const { return this->begin(); }
   const_iterator cend() const { return this->end(); }
   auto crbegin() const { return this->rbegin(); }
   auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.compare; }
+  Compare key_comp() const { return this->tree.keyCompare(); }
 
   // The lookups by T, and by any other type as in Set.
   const_iterator find(const T& value) const { return this->tree.find(value); }
@@ -1614,4 +1622,7 @@ struct MultiSet
   strong_ordering operator<=>(const MultiSet<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiSet<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
+
+private:
+  RbTree<T, T, SetKey<T>, Compare> tree;
 };

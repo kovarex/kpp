@@ -37,9 +37,9 @@ class Value, 16 bytes
   member __alt_Integer int at 8, public
   member __alt_Real double at 8, public
 class Vector<int32>, 24 bytes
-  member items int* at 0, public
-  member length unsigned __int64 at 8, public
-  member allocated unsigned __int64 at 16, public
+  member items int* at 0, private
+  member length unsigned __int64 at 8, private
+  member allocated unsigned __int64 at 16, private
 enum game::Mode, unsigned char
   Off = 0
   On = 1

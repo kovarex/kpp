@@ -4,6 +4,13 @@
 // move constructors (an object that points to itself stays valid).
 extern "C" int printf(const char* format, ...);
 
+// A HashMap whose slots the churn check counts (its table is protected).
+class ChurnedMap : public HashMap<int, int>
+{
+public:
+  ContainerSize slots() const { return this->table.slotCount(); }
+};
+
 uint64_t state = 12345;
 int nextInt(int range)
 {
@@ -200,7 +207,7 @@ void sorting()
 void hashing()
 {
   // Insert and erase over and over: deleted entries must not grow the table without bound.
-  HashMap<int, int> churn;
+  ChurnedMap churn;
   for (int round = 0; round < 200; ++round)
   {
     for (int i = 0; i < 100; ++i)
@@ -208,7 +215,7 @@ void hashing()
     for (int i = 0; i < 100; ++i)
       churn.erase(round * 1000 + i);
   }
-  printf("%zu %d\n", churn.size(), churn.table.capacity <= 256 ? 1 : 0);
+  printf("%zu %d\n", churn.size(), churn.slots() <= 256 ? 1 : 0);
 
   // A copy keeps the deleted markers that later keys' probe paths run through.
   HashMap<String, int> map;

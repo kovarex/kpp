@@ -1,9 +1,8 @@
 // A fixed-size set of bits (what std::bitset<N> converts to). Specified in docs/stdlib/bitset.md.
 template<ContainerSize N>
-struct Bitset
+class Bitset
 {
-  u64 words[(N + 63) / 64] = {};
-
+public:
   // A bit of a Bitset that reads as a bool and assigns (std::bitset<N>::reference), what the
   // non-const operator[] gives.
   struct reference
@@ -192,4 +191,7 @@ struct Bitset
     return true;
   }
   bool operator!=(const Bitset<N>& other) const { return !(*this == other); }
+
+private:
+  u64 words[(N + 63) / 64] = {};
 };

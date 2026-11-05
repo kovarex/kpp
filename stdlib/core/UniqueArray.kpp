@@ -5,10 +5,9 @@
 // so `delete[]` destroys and frees any of them and release() hands one to code that will.
 // Specified in docs/stdlib/uniqueptr.md.
 template<typename T>
-struct UniqueArray
+class UniqueArray
 {
-  T* pointer = nullptr;
-
+public:
   UniqueArray() {}
   implicit UniqueArray(nullptr_t) {}
   // count value-initialized elements (std::make_unique<T[]>(count)): numbers are zero.
@@ -59,6 +58,9 @@ struct UniqueArray
     delete[] old;
   }
   void swap(UniqueArray<T>& other) { ::swap(this->pointer, other.pointer); }
+
+private:
+  T* pointer = nullptr;
 };
 
 template<typename T>

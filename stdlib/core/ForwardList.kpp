@@ -45,10 +45,9 @@ struct ForwardIterator
 };
 
 template<typename T>
-struct ForwardList
+class ForwardList
 {
-  ForwardLinks beforeHead; // its next is the first node; end() is null
-
+public:
   using iterator = ForwardIterator<T>;
   using const_iterator = ForwardIterator<T>;
   using value_type = T;
@@ -184,7 +183,7 @@ struct ForwardList
       this->erase_after(this->before_begin());
   }
 
-  // Internals.
+private:
   void destroyNode(ForwardLinks* node)
   {
     ((ForwardNode<T>*)node)->value.~T();
@@ -196,4 +195,6 @@ struct ForwardList
     for (const T& value : other)
       last = this->insert_after(last, value);
   }
+
+  ForwardLinks beforeHead; // its next is the first node; end() is null
 };

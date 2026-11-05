@@ -84,11 +84,9 @@ struct ListIterator
 };
 
 template<typename T>
-struct List
+class List
 {
-  ListLinks sentinel;
-  ContainerSize length = 0;
-
+public:
   using iterator = ListIterator<T>;
   using const_iterator = ListIterator<const T>;
   using reverse_iterator = ReverseIterator<iterator>;
@@ -335,7 +333,7 @@ struct List
     }
   }
 
-  // Internals.
+private:
   // Its length is a size (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
   ListNode<T>* allocateNode()
   {
@@ -372,4 +370,7 @@ struct List
     this->length = other.length;
     other.becomeEmpty();
   }
+
+  ListLinks sentinel;
+  ContainerSize length = 0;
 };

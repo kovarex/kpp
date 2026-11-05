@@ -98,16 +98,15 @@ struct HashIterator
 // The table behind the four containers: entries E with keys KeyOf::of(entry) of type K, in nodes
 // (stable) or in the slots.
 template<typename E, typename K, typename KeyOf, typename Hasher, typename KeyEqual, bool stable>
-struct HashTable
+class HashTable
 {
-  u8* tags = nullptr;
-  char* slots = nullptr; // capacity slots of E* (stable) or E
-  ContainerSize capacity = 0;      // always a power of two
-  ContainerSize count = 0;         // used slots
-  ContainerSize used = 0;          // used + deleted slots: what the load limit counts
-  Hasher hasher;
-  KeyEqual equal;
-
+public:
+  ContainerSize size() const { return this->count; }
+  const Hasher& hashFunction() const { return this->hasher; }
+  const KeyEqual& keyEqual() const { return this->equal; }
+  // Slots [0, slotCount()), each in use or not: an iteration over the table's storage.
+  ContainerSize slotCount() const { return this->capacity; }
+  bool slotUsed(ContainerSize i) const { return this->tags[i] >= 0x80; }
   HashTable() {}
   HashTable(const Hasher& hasher, const KeyEqual& equal) : hasher(hasher), equal(equal) {}
   HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : hasher(other.hasher), equal(other.equal) { this->copyFrom(other); }
@@ -375,7 +374,7 @@ struct HashTable
     this->used = 0;
   }
 
-  // Internals.
+private:
   static const K& keyOf(const E& entry) { return KeyOf::of(entry); }
   const K& keyAt(ContainerSize slot) const { return KeyOf::of(*this->entryAt(slot)); }
 
@@ -464,6 +463,14 @@ struct HashTable
     other.count = 0;
     other.used = 0;
   }
+
+  u8* tags = nullptr;
+  char* slots = nullptr; // capacity slots of E* (stable) or E
+  ContainerSize capacity = 0;      // always a power of two
+  ContainerSize count = 0;         // used slots
+  ContainerSize used = 0;          // used + deleted slots: what the load limit counts
+  Hasher hasher;
+  KeyEqual equal;
 };
 
 template<typename K, typename V>
@@ -480,10 +487,9 @@ struct HashSetKey
 
 // An unordered map with unique keys; entries are Pair<K, V>. `stable` false is FastHashMap.
 template<typename K, typename V, typename Hasher = Hash<K>, typename KeyEqual = EqualTo<K>, bool stable = true>
-struct HashMap
+class HashMap
 {
-  HashTable<Pair<K, V>, K, HashMapKey<K, V>, Hasher, KeyEqual, stable> table;
-
+public:
   using iterator = HashIterator<Pair<K, V>, stable>;
   using const_iterator = HashIterator<const Pair<K, V>, stable>;
   using value_type = Pair<K, V>;
@@ -518,8 +524,8 @@ struct HashMap
   template<typename It>
   HashMap(It first, It last) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->table.count; }
-  bool empty() const { return this->table.count == 0; }
+  ContainerSize size() const { return this->table.size(); }
+  bool empty() const { return this->table.size() == 0; }
   iterator begin() { return this->table.begin(); }
   const_iterator begin() const { return this->table.begin(); }
   iterator end() { return this->table.end(); }
@@ -714,28 +720,30 @@ struct HashMap
   void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
-  Hasher hash_function() const { return this->table.hasher; }
-  KeyEqual key_eq() const { return this->table.equal; }
+  Hasher hash_function() const { return this->table.hashFunction(); }
+  KeyEqual key_eq() const { return this->table.keyEqual(); }
 
   // Calls f(key, value) for every entry.
   template<typename F>
   void forEach(F f)
   {
-    for (ContainerSize i = 0; i < this->table.capacity; ++i)
-      if (this->table.tags[i] >= 0x80)
+    for (ContainerSize i = 0; i < this->table.slotCount(); ++i)
+      if (this->table.slotUsed(i))
       {
         Pair<K, V>* entry = this->table.entryAt(i);
         f(entry->first, entry->second);
       }
   }
+
+protected: // a derived class may see the table (tests/run/containers2.kpp)
+  HashTable<Pair<K, V>, K, HashMapKey<K, V>, Hasher, KeyEqual, stable> table;
 };
 
 // An unordered set of unique values. `stable` false is FastHashSet.
 template<typename T, typename Hasher = Hash<T>, typename KeyEqual = EqualTo<T>, bool stable = true>
-struct HashSet
+class HashSet
 {
-  HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;
-
+public:
   using iterator = HashIterator<const T, stable>; // a set's elements are its keys: const through every position
   using const_iterator = HashIterator<const T, stable>;
   using value_type = T;
@@ -769,8 +777,8 @@ struct HashSet
   template<typename It>
   HashSet(It first, It last) { this->insert(first, last); }
 
-  ContainerSize size() const { return this->table.count; }
-  bool empty() const { return this->table.count == 0; }
+  ContainerSize size() const { return this->table.size(); }
+  bool empty() const { return this->table.size() == 0; }
   const_iterator begin() const { return this->table.begin(); }
   const_iterator end() const { return this->table.end(); }
   const_iterator cbegin() const { return this->begin(); }
@@ -857,8 +865,11 @@ struct HashSet
   void swap(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
-  Hasher hash_function() const { return this->table.hasher; }
-  KeyEqual key_eq() const { return this->table.equal; }
+  Hasher hash_function() const { return this->table.hashFunction(); }
+  KeyEqual key_eq() const { return this->table.keyEqual(); }
+
+private:
+  HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;
 };
 
 // The faster tables, whose entries move when the table grows (docs/stdlib/hashmap.md).

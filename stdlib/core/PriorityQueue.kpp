@@ -3,11 +3,9 @@
 // any container with random access, push_back and pop_back). Specified in
 // docs/stdlib/priorityqueue.md.
 template<typename T, typename Container = Vector<T>, typename Compare = Less<T>>
-struct PriorityQueue
+class PriorityQueue
 {
-  Container heap;
-  Compare compare;
-
+public:
   using container_type = Container;
   using value_compare = Compare;
   using value_type = T;
@@ -67,7 +65,7 @@ struct PriorityQueue
   // kpp addition: removes every element.
   void clear() { this->heap.clear(); }
 
-  // Internals.
+private:
   void makeHeap()
   {
     for (ContainerSize i = this->heap.size() / 2; i-- > 0;) // size / 2 - 1 down to 0
@@ -102,4 +100,8 @@ struct PriorityQueue
       i = largest;
     }
   }
+
+protected: // as C++'s priority_queue's c and comp
+  Container heap;
+  Compare compare;
 };

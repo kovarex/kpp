@@ -42,7 +42,7 @@ struct String
 
   String() { this->becomeEmpty(); }
   implicit String(const char* text) { this->initialize(text, checkedSize(strlen(text), "string too long")); }
-  implicit String(StringView text) { this->initialize(text.chars, text.byteCount); }
+  implicit String(StringView text) { this->initialize(text.data(), text.size()); }
   String(const char* text, ContainerSize count) { this->initialize(text, count); }
   String(const char* first, const char* last) { this->initialize(first, checkedSize(last - first, "string too long")); }
   String(ContainerSize count, char c)
@@ -414,8 +414,8 @@ struct String
     const char* chars = this->data();
     ContainerSize length = this->size();
     for (ContainerSize i = from; i < length; ++i)
-      for (ContainerSize k = 0; k < set.byteCount; ++k)
-        if (chars[i] == set.chars[k])
+      for (ContainerSize k = 0; k < set.size(); ++k)
+        if (chars[i] == set.data()[k])
           return i;
     return npos;
   }

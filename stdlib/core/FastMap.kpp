@@ -133,12 +133,10 @@ struct BTreeIterator
 
 // The tree behind FastMap and FastSet: entries E, ordered by their keys KeyOf::of(entry), of type K.
 template<typename E, typename K, typename KeyOf>
-struct BTree
+class BTree
 {
-  BTreeNode<E>* root = nullptr;
-  BTreeNode<E>* rightmost = nullptr; // the last leaf: end() is (rightmost, its count)
-  ContainerSize count = 0;
-
+public:
+  ContainerSize size() const { return this->count; }
   BTree() {}
   BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
   BTree(BTree<E, K, KeyOf>&& other) : root(other.root), rightmost(other.rightmost), count(other.count)
@@ -304,7 +302,7 @@ struct BTree
     this->count = 0;
   }
 
-  // Internals.
+private:
   // The key of entry i of node.
   static const K& keyAt(const BTreeNode<E>* node, i32 i) { return KeyOf::of(node->entries[i]); }
   // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
@@ -570,6 +568,10 @@ struct BTree
       this->root = this->clone(other.root);
     this->count = other.count;
   }
+
+  BTreeNode<E>* root = nullptr;
+  BTreeNode<E>* rightmost = nullptr; // the last leaf: end() is (rightmost, its count)
+  ContainerSize count = 0;
 };
 
 template<typename K, typename V>
@@ -586,10 +588,9 @@ struct FastSetKey
 
 // An ordered map with unique keys, with Map's interface (only the invalidation rules differ).
 template<typename K, typename V>
-struct FastMap
+class FastMap
 {
-  BTree<Pair<K, V>, K, FastMapKey<K, V>> tree;
-
+public:
   using iterator = BTreeIterator<Pair<K, V>>;
   using const_iterator = BTreeIterator<const Pair<K, V>>;
   using reverse_iterator = ReverseIterator<iterator>;
@@ -619,8 +620,8 @@ struct FastMap
     return *this;
   }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   iterator begin() { return this->tree.begin(); }
   const_iterator begin() const { return this->tree.begin(); }
   iterator end() { return this->tree.end(); }
@@ -761,14 +762,16 @@ struct FastMap
     *this = move(held);
   }
   void clear() { this->tree.clear(); }
+
+private:
+  BTree<Pair<K, V>, K, FastMapKey<K, V>> tree;
 };
 
 // An ordered set of unique values, with Set's interface (only the invalidation rules differ).
 template<typename T>
-struct FastSet
+class FastSet
 {
-  BTree<T, T, FastSetKey<T>> tree;
-
+public:
   using iterator = BTreeIterator<const T>; // a set's elements are its keys: const through every position
   using const_iterator = BTreeIterator<const T>;
   using reverse_iterator = ReverseIterator<iterator>;
@@ -797,8 +800,8 @@ struct FastSet
     return *this;
   }
 
-  ContainerSize size() const { return this->tree.count; }
-  bool empty() const { return this->tree.count == 0; }
+  ContainerSize size() const { return this->tree.size(); }
+  bool empty() const { return this->tree.size() == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
   const_iterator cbegin() const { return this->begin(); }
@@ -875,4 +878,7 @@ struct FastSet
     *this = move(held);
   }
   void clear() { this->tree.clear(); }
+
+private:
+  BTree<T, T, FastSetKey<T>> tree;
 };
