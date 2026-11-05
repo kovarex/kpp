@@ -959,7 +959,9 @@ before relying on the recorded uses.
 - **3a** (resolver thread, landed): a request whose inputs are all as the previous build's is
   answered with that build's stdout, stderr and exit code, nothing built. The inputs: every
   source file's path and text (the stdlib's and the configuration's included), the environment
-  (TMP, which holds the C import cache, LIB, KPP_CLANG...), the stamps of the C headers the import
+  (TMP, which holds the C import cache, LIB, KPP_CLANG...; not Visual Studio's own VSTEL_*, ServiceHub*
+  and VsPerMonitorDpiAwarenessEnabled.*, which change with each of its builds or devenvs and no build
+  reads, 2026-11-05: until then no build from Visual Studio was a replay), the stamps of the C headers the import
   read (headersUnchanged), and the outputs (`--exe`, `--emit-llvm`) at the size and time the build
   left them; the arguments, the directory and the kppc binary are the server's key already.
   `--verify-incremental` (not part of the key) then builds from scratch in the same server, its

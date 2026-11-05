@@ -169,6 +169,27 @@ foreach ($columns in @($false, $true))
   foreach ($id in $running) { Ended $id 30 | Out-Null }
 }
 
+# A build with nothing changed is a replay (the server's log: "no input changed") whatever Visual
+# Studio's own variables say (VSTEL_CurrentSolutionBuildID changes with each of its builds; thread K,
+# 2026-11-05), and not one when a variable a build may read changed (any other: here KPP_FINGERPRINT_TEST).
+function Replays() { @(Get-ChildItem "$work\tmp\kppc-server\*.log" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'no input changed' }).Count }
+Build 'one'
+$before = Replays
+foreach ($step in @(@('VSTEL_CurrentSolutionBuildID', 1), @('ServiceHubLogSessionKey', 1), @("VsPerMonitorDpiAwarenessEnabled.$PID", 1), @('KPP_FINGERPRINT_TEST', 0)))
+{
+  Set-Item "env:$($step[0])" ([guid]::NewGuid().ToString())
+  Build 'one'
+  $after = Replays
+  if ($after - $before -ne $step[1]) { Fail "a build with nothing changed but $($step[0]): $(if ($step[1]) { 'not a replay' } else { 'a replay, though a variable a build may read changed' })" }
+  $before = $after
+  Remove-Item "env:$($step[0])"
+  Build 'one' # (the variable gone: a build of its own, then the next step's starts from it)
+  $before = Replays
+}
+$ErrorActionPreference = 'Continue'
+& $copy --stop-all-servers 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
+
 StopLeftovers
-if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form" }
+if ($failed -eq 0) { "ok   servers: one exits when its kppc changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay" }
 exit $failed

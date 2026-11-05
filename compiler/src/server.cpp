@@ -852,15 +852,26 @@ void logBuildNote(const std::string& note)
     logLine("build %zu: %s", builds, plainDiagnostic(note).c_str()); // (a place in it, marked: as a terminal writes it)
 }
 
+// The variables no build reads that change between builds anyway: Visual Studio's own, which it sets
+// for each build (VSTEL_CurrentSolutionBuildID) or each devenv (VSTEL_SolutionSessionID,
+// ServiceHub*, VsPerMonitorDpiAwarenessEnabled.<pid>). With them in the fingerprint, no build from
+// Visual Studio was ever a replay: each one with nothing changed checked and linked again, about 0.5 s
+// instead of 0.08 s (thread K on PC-OBYVAK, 2026-11-05). Every other variable counts (TMP, PATH, LIB,
+// INCLUDE, KPP_*...): one left out wrongly would make a replay of a build that differs.
+static bool readByNoBuild(const wchar_t* entry)
+{
+  auto startsWith = [&](const wchar_t* prefix) { return _wcsnicmp(entry, prefix, wcslen(prefix)) == 0; };
+  return startsWith(L"VSTEL_") || startsWith(L"ServiceHub") || startsWith(L"VsPerMonitorDpiAwarenessEnabled");
+}
+
 std::string environmentBlock()
 {
   std::string out;
   if (wchar_t* block = GetEnvironmentStringsW())
   {
-    const wchar_t* q = block;
-    while (*q)
-      q += wcslen(q) + 1;
-    out.assign(reinterpret_cast<const char*>(block), (q - block + 1) * sizeof(wchar_t));
+    for (const wchar_t* q = block; *q; q += wcslen(q) + 1)
+      if (!readByNoBuild(q))
+        out.append(reinterpret_cast<const char*>(q), (wcslen(q) + 1) * sizeof(wchar_t));
     FreeEnvironmentStringsW(block);
   }
   return out;
