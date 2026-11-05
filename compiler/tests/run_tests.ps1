@@ -98,6 +98,15 @@ $run = @($checks | Where-Object { (-not $Part -or $_.Part -eq [int]$Part) -and (
 $names = @($run | ForEach-Object Name)
 foreach ($c in $run) { $c.After = @($c.After | Where-Object { $names -contains $_ }) }
 
+# llvm-mingw (tools\sysroot\llvm-mingw.ps1: downloaded and unpacked once), which several checks use,
+# made before they start: on a fresh clone verifier.ps1 and toolchain.ps1 fetched it at once and the
+# second failed on its zip, "being used by another process" (thread K, 2026-11-05). A failure here is
+# the checks' to report.
+$ErrorActionPreference = 'Continue'
+$mingw = @(& powershell -NoProfile -ExecutionPolicy Bypass -File '..\tools\sysroot\llvm-mingw.ps1' 2>&1 | ForEach-Object { "$_" })
+if ($LASTEXITCODE -ne 0) { "llvm-mingw.ps1 failed (exit $LASTEXITCODE): $($mingw -join ' ')" }
+$ErrorActionPreference = 'Stop'
+
 # Runs them, -Jobs at once; a check waits for those in its After.
 $started = Get-Date
 $pending = New-Object System.Collections.ArrayList
