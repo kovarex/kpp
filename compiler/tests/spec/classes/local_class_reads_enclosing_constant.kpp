@@ -1,0 +1,27 @@
+// spec: a member function of a local class reads a constant of the enclosing function, constexpr or const with a constant initializer, as C++ lets it (no odr-use): `45 2.5`; a local that is no constant is an error there (classes/local_class_uses_enclosing_local_is_error)
+int constants()
+{
+  constexpr int k = 4;
+  const int n = 5;
+  class Local
+  {
+  public:
+    int get() { return k * 10 + n; }
+  };
+  return Local().get();
+}
+double half()
+{
+  constexpr double h = 2.5;
+  class Local
+  {
+  public:
+    double get() { return h; }
+  };
+  return Local().get();
+}
+int main()
+{
+  println(constants(), " ", half());
+  return 0;
+}

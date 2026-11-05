@@ -714,8 +714,9 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
     catch (Unsupported&)
     {
       // Every use, the first one like the others, reports the global unusable and why (the
-      // same lines whichever use comes first).
-      std::string why = "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastFailure + ")";
+      // same lines whichever use comes first). (A constant local of another function: why it is
+      // none, refuseOutsideItsFunction's.)
+      std::string why = isAutomaticLocal(v) ? lastFailure : "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastFailure + ")";
       sh.failedGlobals[key] = why;
       ++sh.failuresRemembered;
       errors.resize(errorsBefore);
@@ -845,6 +846,8 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   {
     // `static const Style& defaultWidgetStyle = getStyleStatic();`: a pointer, bound at startup.
     currentFile = saved;
+    if (isAutomaticLocal(v))
+      refuseOutsideItsFunction(v, at); // (globalAddress refuses it first)
     if (threadLocal)
       unsupported(at, "a thread_local reference");
     decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat" + debugGlobal(name, def, t) + "\n";
@@ -894,7 +897,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     else
     {
       // Built at startup, see emitGlobalConstructor: no value, or one that no LLVM constant
-      // expresses yet (a typed union's), which design.md's step 4 builds at startup.
+      // expresses yet (a typed union's), which design.md's step 4 builds at startup. Never a
+      // const local of another function, read from a local class's member function: its value is
+      // its function's, at run time.
+      if (isAutomaticLocal(v))
+        refuseOutsideItsFunction(v, at, true);
       constructed = true;
       // A constexpr variable needs its constant (design.md "A constexpr variable needs its
       // constant"): one the checker left to the code generator (its value needs exact layouts)
@@ -915,7 +922,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     if (std::optional<std::string> data = constantData(st, nullptr, def, classArgs, at))
       init = *data;
     else
+    {
+      if (isAutomaticLocal(v))
+        refuseOutsideItsFunction(v, at, true); // (as one with an initializer)
       constructed = true;
+    }
   }
   currentFile = saved;
   // Defined in every module, merged by the linker (one instance per program). Two entries: the

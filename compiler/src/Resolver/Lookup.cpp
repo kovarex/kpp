@@ -409,19 +409,37 @@ auto GlobalScope::Impl::absentStop(const Lookup& l) -> Lookup
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup
 {
   Lookup out;
-  if (locals)
-    for (size_t i = locals->items.size(); i-- > 0;)
+  // The locals below `from` down to `to`, the innermost first.
+  auto inLocals = [&](size_t from, size_t to)
+  {
+    for (size_t i = from; i-- > to;)
     {
       const LocalStack::Item& item = locals->items[i];
       if (item.symbol != symbol || (qualifierOnly && !namesScope(item.decl)))
         continue;
       Decl* d = item.decl;
+      out = Lookup{}; // (nothing of a scope searched before)
       out.decl = d;
       out.found = d->kind == NodeKind::TemplateParamDecl ? Found::Dependent : Found::Local;
       if (d->ownScope)
         out.scope = d->ownScope;
-      return out;
+      return true;
     }
+    return false;
+  };
+  // In a member function of a class declared in a function body, the function's locals come after
+  // the class's scope, its members and bases ([basic.lookup.unqual]): `int value = 3; class Local {
+  // int value = 7; int get() { return value; } };` is the member (until 2026-11-05 the local, which
+  // codegen built as a global). The locals of each such class's function are searched once the
+  // search has passed the class's scope (LocalStack::classFrames); where the search does not pass
+  // the innermost class's (a lookup from another context), every local comes first, as before.
+  size_t frames = 0;
+  if (locals && !locals->classFrames.empty())
+    for (Scope* s = context; s && !frames; s = s->parent)
+      if (s == locals->classFrames.back().classScope)
+        frames = locals->classFrames.size();
+  if (locals && inLocals(locals->items.size(), frames ? locals->classFrames[frames - 1].floor : 0))
+    return out;
   // A scope's entry of the name, or (qualifierOnly) the one of them that names a scope.
   auto found = [&](Lookup& l)
   {
@@ -442,8 +460,16 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
   // nearest enclosing namespace: tried where the search first reaches a namespace.
   bool usingsTried = !locals;
   std::vector<std::pair<Scope*, Scope*>> nominated; // (the namespace their names are visible in, the nominated namespace)
-  for (Scope* s = context; s; s = s->parent)
+  for (Scope* s = context, *passed = nullptr; s; passed = s, s = s->parent)
   {
+    // Past a local class's scope: the locals of the function it is declared in (down to the
+    // floor of the class around that function, if it is a member function of a local class too).
+    if (frames && passed == locals->classFrames[frames - 1].classScope)
+    {
+      size_t from = locals->classFrames[--frames].floor;
+      if (inLocals(from, frames ? locals->classFrames[frames - 1].floor : 0))
+        return out;
+    }
     // The file's private names (design.md 15) hide the global ones of the same spelling (in a
     // scoped library's file, the library's: design.md 16).
     if (s == &root || s->library)
@@ -506,6 +532,10 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
     if (own.absent)
       return absentStop(own);
   }
+  // (Classes the search never passed, which a scope chain without a namespace would leave: their
+  // functions' locals all the same.)
+  if (frames && inLocals(locals->classFrames[frames - 1].floor, 0))
+    return out;
   if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth) && found(out))
     return out;
   return out;

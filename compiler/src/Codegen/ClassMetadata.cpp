@@ -1803,6 +1803,8 @@ auto codegen::Emitter::addressOfDecl(Decl* d, Node* e) -> std::string
     }
     return globalAddress(static_cast<VariableDecl*>(d), e, qualifierClass(e, e));
   }
+  if (d->kind == NodeKind::ParamDecl && !packLocals.count(d))
+    refuseOutsideItsFunction(d, e); // (its own function's are its locals)
   unsupported(e, "taking the address of " + qualifiedName(d) + " (" + nodeKindName(d->kind) + (packLocals.count(d) ? ", a parameter pack outside its expansion" : "") + ")");
 }
 

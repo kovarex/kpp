@@ -640,6 +640,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         refuseCAddress(f, e);
         return useFunction(f, {}, nullptr, e);
       }
+      if (d->kind == NodeKind::ParamDecl && !packLocals.count(d))
+        refuseOutsideItsFunction(d, e); // (its own function's are its locals)
       unsupported(e, "taking the address of " + sym(n->name.last().symbol));
     }
     case NodeKind::MemberExpr:
@@ -1128,6 +1130,11 @@ auto codegen::Emitter::globalAddress(VariableDecl* v, Node* at, const Ty* classT
   }
   else
   {
+    // A local of another function: only a constant of it, whose constant data every function reads
+    // alike (globalForOnce refuses one built at startup); a variable lives in its function's frame.
+    if (isAutomaticLocal(v))
+      if (const Ty* t = global.typeOfDecl(v); !t || t->isReference() || !types.stripRef(t)->isConst || (v->flags & DF_Volatile))
+        refuseOutsideItsFunction(v, at);
     classTy = staticMemberClass(v, at, at, classTy);
     g = globalFor(v, at, classTy);
   }

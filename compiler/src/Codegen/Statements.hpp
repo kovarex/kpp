@@ -4,6 +4,16 @@
     // A static local: `static T x` or `thread_local T x` in a function body (staticLocal).
     static bool isStaticLocal(const VariableDecl* v);
 
+    // A parameter, or a variable of a function body that lives in its frame (not static, extern or
+    // thread_local), which only its function's own code reaches.
+    static bool isAutomaticLocal(const Decl* d);
+
+    // The error for a parameter or automatic local of another function than the one emitted (a
+    // member function of a local class, or a lambda, naming one it cannot reach): `value, a local of
+    // counted, is used outside its function...`; notConstant when it is const, but its value no
+    // constant (a constant of it is constant data, which every function reads alike).
+    [[noreturn]] void refuseOutsideItsFunction(Decl* d, Node* at, bool notConstant = false);
+
     // What the bodies nested in a body name (its lambdas', its local classes' member functions':
     // code that other emissions than the body's may write), and the variables declared in the body
     // itself, outside those.

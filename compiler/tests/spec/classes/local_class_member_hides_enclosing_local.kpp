@@ -1,0 +1,100 @@
+// spec: in a member function of a local class, a name is the class's own member (or a base's) before a local of the enclosing function, and that local before a global ([basic.lookup.unqual]): `7 7 7 70 9 8 2`, as clang++ prints
+// found by thread B (2026-11-05), building the game for Linux: AsyncScenarioSaver's Observer, a local class in a lambda whose member writeFd has the name of the lambda's parameter. kpp took the enclosing function's local, which codegen built as a global its initializer gave the value of: `3 3 3` for the first three
+int unchanged()
+{
+  int value = 3;
+  class Local
+  {
+  public:
+    int value = 7;
+    int get() { return value; }
+  };
+  return Local().get() + value * 0;
+}
+int assigned()
+{
+  int value = 3;
+  value = 5;
+  class Local
+  {
+  public:
+    int value = 7;
+    int get() { return value; }
+  };
+  return Local().get() + value * 0;
+}
+int three() { return 3; }
+int computed()
+{
+  int value = three();
+  class Local
+  {
+  public:
+    int value = 7;
+    int get() { return value; }
+  };
+  return Local().get() + value * 0;
+}
+int parameter(int value)
+{
+  class Local
+  {
+  public:
+    int value;
+    Local(int v) : value(v) {}
+    int get() { return value * 10; }
+  };
+  return Local(value + 2).get();
+}
+class Base
+{
+public:
+  int value = 9;
+};
+int inherited()
+{
+  int value = 3;
+  class Local : public Base
+  {
+  public:
+    int get() { return value; }
+  };
+  return Local().get() + value * 0;
+}
+int nested()
+{
+  int value = 3;
+  class Outer
+  {
+  public:
+    int value = 6;
+    int get()
+    {
+      int value = 4;
+      class Inner
+      {
+      public:
+        int value = 8;
+        int get() { return value; }
+      };
+      return Inner().get() + value * 0;
+    }
+  };
+  return Outer().get() + value * 0;
+}
+int shadowed = 1;
+int enclosingBeforeGlobal()
+{
+  constexpr int shadowed = 2;
+  class Local
+  {
+  public:
+    int get() { return shadowed; }
+  };
+  return Local().get();
+}
+int main()
+{
+  println(unchanged(), " ", assigned(), " ", computed(), " ", parameter(5), " ", inherited(), " ", nested(), " ", enclosingBeforeGlobal());
+  return 0;
+}

@@ -1,0 +1,41 @@
+// spec: a member function of a local class cannot use a variable or parameter of the enclosing function, nor a const local whose value is no constant ([class.local]: it would odr-use it; clang: "reference to local variable 'value' declared in enclosing function"): an error each, where kpp built the local as a global its initializer gave the value of, `3` for the `value += 1` below and `1 1` for the counter; a constant of it it reads (classes/local_class_reads_enclosing_constant)
+// error: local_class_uses_enclosing_local_is_error.kpp:14: error: value, a local of counted, is used outside its function (a member function of a local class, or a lambda that does not capture it), which reads only a constant of it
+// error: local_class_uses_enclosing_local_is_error.kpp:23: error: p, a parameter of fromParameter, is used outside its function (a member function of a local class, or a lambda that does not capture it), which reads only a constant of it
+// error: local_class_uses_enclosing_local_is_error.kpp:33: error: c, a local of notConstant, is used outside its function (a member function of a local class, or a lambda that does not capture it), which reads only a constant of it: its value is no constant
+int counter = 0;
+int next() { return ++counter; }
+int counted()
+{
+  int value = 3;
+  value += 1;
+  class Local
+  {
+  public:
+    int get() { return value; }
+  };
+  return Local().get();
+}
+int fromParameter(int p)
+{
+  class Local
+  {
+  public:
+    int get() { return p; }
+  };
+  return Local().get();
+}
+int notConstant()
+{
+  const int c = next();
+  class Local
+  {
+  public:
+    int get() { return c; }
+  };
+  return Local().get();
+}
+int main()
+{
+  println(counted(), " ", fromParameter(2), " ", notConstant(), " ", notConstant());
+  return 0;
+}

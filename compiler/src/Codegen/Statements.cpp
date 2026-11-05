@@ -9,6 +9,25 @@ auto codegen::Emitter::isStaticLocal(const VariableDecl* v) -> bool
          !(v->flags & (DF_Extern | DF_Typedef));
 }
 
+auto codegen::Emitter::isAutomaticLocal(const Decl* d) -> bool
+{
+  return d->kind == NodeKind::ParamDecl || (d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl &&
+                                            !(d->flags & (DF_Static | DF_ThreadLocal | DF_Extern | DF_Typedef)));
+}
+
+auto codegen::Emitter::refuseOutsideItsFunction(Decl* d, Node* at, bool notConstant) -> void
+{
+  // A member function of a local class names its function's variable (C++'s [class.local]: no
+  // odr-use of it), or a lambda one it does not capture. Until 2026-11-05 a variable was built as a
+  // global from its initializer: `int value = 3; value += 1;` read 3 there, and a local class's
+  // member hidden by it (the resolver searched the function's locals first) read the local.
+  std::string name = d->kind == NodeKind::ParamDecl ? sym(static_cast<ParamDecl*>(d)->name) : sym(static_cast<VariableDecl*>(d)->name.last().symbol);
+  std::string function = d->parent && d->parent->kind == NodeKind::FunctionDecl ? qualifiedName(d->parent) : std::string("its function");
+  fail(at, name + ", a " + (d->kind == NodeKind::ParamDecl ? "parameter" : "local") + " of " + function +
+               ", is used outside its function (a member function of a local class, or a lambda that does not capture it), which reads only a constant of it" +
+               (notConstant ? ": its value is no constant" : ""));
+}
+
 auto codegen::Emitter::nestedNamesOf(Node* body) -> const NestedNames&
 {
   auto [it, isNew] = nestedNamesByBody.try_emplace(body);

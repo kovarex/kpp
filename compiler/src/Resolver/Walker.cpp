@@ -5081,7 +5081,14 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         scope = semanticScopeFor(c->name);
       if (!activeSubst || c->ownScope != scope)
         thisType = computeThisType();
+      // A class declared in a function body: its member functions find the class's members and
+      // bases before the function's locals, which are below this frame (lookupUnqualified).
+      bool local = bodyOf && c->ownScope;
+      if (local)
+        locals.classFrames.push_back({locals.mark(), c->ownScope});
       walkDecls(c->members);
+      if (local)
+        locals.classFrames.pop_back();
       scope = saved;
       thisType = savedThis;
       break;

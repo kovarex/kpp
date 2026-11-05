@@ -449,6 +449,16 @@ namespace resolver_detail
       const Ty* type = nullptr;
     };
     std::vector<Item> items;
+    // A class declared in a function body (Walker's walk of its members): the items below floor
+    // are the locals of the functions around it, which a name in a member function finds only
+    // after the class's scope, its members and bases ([basic.lookup.unqual]; lookupUnqualified).
+    // The innermost class last.
+    struct ClassFrame
+    {
+      size_t floor;
+      Scope* classScope;
+    };
+    std::vector<ClassFrame> classFrames;
     // The symbol of an item that is a body's `using namespace N;` (decl the UsingDirectiveDecl):
     // no name, a namespace for unqualified lookups to try.
     static constexpr uint32_t usingDirective = UINT32_MAX - 1;
