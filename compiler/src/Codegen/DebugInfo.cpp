@@ -509,9 +509,14 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       self = &v;
   if (self && sh.target.windows() && currentClassTy && currentClassTy->isKnown() && !types.isDependent(currentClassTy))
   {
+    // (The function's name spells its class as the IR does, `Box<Box<int32>>::get()`; the PDB's
+    // name is then the class's debugger name and the rest, `Box<Box<int32> >::get()`.)
     const Ty* cls = types.unqualified(currentClassTy);
-    std::string prefix = debuggerClassName(cls) + "::";
-    if (spName.size() > prefix.size() && spName.compare(0, prefix.size(), prefix) == 0)
+    size_t prefix = 0;
+    for (const std::string& owner : {irString(cls), debuggerClassName(cls)})
+      if (!prefix && spName.size() > owner.size() + 2 && spName.compare(0, owner.size(), owner) == 0 && spName.compare(owner.size(), 2, "::") == 0)
+        prefix = owner.size() + 2;
+    if (prefix)
     {
       uint32_t extra = firstLocation + uint32_t(locations.size());
       std::string classType = debugType(cls);
@@ -527,7 +532,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       typeNodes = debugId(extra) + " = !DISubroutineType(types: " + debugId(extra + 1) + ")\n" + debugId(extra + 1) + " = !{ " + list + "}\n" +
                   debugId(extra + 2) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + classType +
                   ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
-      spName0 = spName.substr(prefix.size());
+      spName0 = spName.substr(prefix);
       spScope = classType;
       spType = debugId(extra);
     }

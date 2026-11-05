@@ -1,3 +1,7 @@
+function Cell<Cell<int32> >::bump(int32)
+  member of Cell<Cell<int32> >
+  parameter this Cell<Cell<int32> >*
+  parameter by int
 function game::Square::area() const
   member of game::Square
   parameter this game::Square*
@@ -10,6 +14,7 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   local mask game::Mask
   local scaled inspect::__lambda_f9e4fd6c_0
   local values Vector<int32>
+  local cell Cell<Cell<int32> >
   block
     local half double
     local flags Flags
