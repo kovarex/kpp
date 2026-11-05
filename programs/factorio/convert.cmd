@@ -176,8 +176,12 @@ set L=%WHOLE%\libraries
 python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
 rem And the Linux branches: Linux's build of the merged checkout (until it compiles, its other errors
 rem are B's list; the warnings of the code it reaches are written all the same).
+rem With the game's Linux sysroot (the -dev packages of linux-packages.txt: libudev, EGL, X11, dbus...),
+rem made once by tools\sysroot\linux.ps1, and the Linux build's own include (libbacktrace).
+set GAMESYSROOT=..\..\compiler\build\sysroots\linux-x86_64-factorio
+if not "%CONVERT_LINUX%"=="0" if not exist %GAMESYSROOT%\kpp-sysroot.txt powershell -NoProfile -ExecutionPolicy Bypass -File ..\..\tools\sysroot\linux.ps1 -ExtraPackages linux-packages.txt -Out %GAMESYSROOT% > kpp\sysroot.log 2>&1 || (type kpp\sysroot.log& goto :failed)
 if not "%CONVERT_LINUX%"=="0" (
-  %KPPC% --std ..\..\stdlib %CINC% --target linux --sysroot ..\..\compiler\build\sysroots\linux-x86_64 --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
+  %KPPC% --std ..\..\stdlib %CINC% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
   python -I fix-null.py kpp\zero-null-linux.txt "%WHOLE%" || goto :failed
 )
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):

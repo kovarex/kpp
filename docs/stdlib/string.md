@@ -65,7 +65,8 @@ Searching (each returns an index or npos; `from` is where the search starts):
 - `rfind(text, from)`, `rfind(c, from)`: the last occurrence starting at or before from (anywhere
   when from is npos or omitted). `find_first_of(set)`, `find_first_not_of(set)`,
   `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set;
-  `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c.
+  `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c; `find_first_not_of` takes a
+  `from` too (set or c), as C++'s pos.
 - `startsWith(prefix)`, `endsWith(suffix)` (kpp additions), and C++20's `starts_with(x)` and
   `ends_with(x)` of a text (a String, a StringView, a literal) or a char; StringView has the same.
 

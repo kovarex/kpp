@@ -1,7 +1,7 @@
 // String::compare(pos, count, other) compares the substring [pos, pos + count) (count clamped to
 // what there is) with other, as C++'s basic_string::compare does, and throws OutOfRange when pos is
 // past the end (the game's SystemUtil, Linux). MakeUnsigned<long> is unsigned long, C's long being
-// a type of its own (CommonUtil's Checks).
+// a type of its own (CommonUtil's Checks). find_first_not_of takes where to start, as C++'s pos.
 i32 main()
 {
   String s = "VmPeak: 1234 kB";
@@ -16,6 +16,8 @@ i32 main()
     thrown = true;
   }
   print(thrown, "\n");
+  String line = "NAME=  Debian";
+  print(line.find_first_not_of(" \t", 5), " ", line.find_first_not_of(' ', 6), " ", line.find_first_not_of(String("NAME="), 0), "\n");
   MakeUnsigned<long> u = 3;
   print(isSame<MakeUnsigned<long>, unsigned long>, " ", isSame<MakeUnsigned<unsigned long>, unsigned long>, " ", u, "\n");
   return 0;

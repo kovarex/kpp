@@ -421,7 +421,7 @@ struct String
   }
   ContainerSize find_first_of(StringView set) const { return this->find_first_of(set, 0); }
   ContainerSize find_first_of(const String& set) const { return this->find_first_of(set.c_str()); }
-  ContainerSize find_first_not_of(const String& set) const { return this->find_first_not_of(set.c_str()); }
+  ContainerSize find_first_not_of(const String& set, ContainerSize from = 0) const { return this->find_first_not_of(set.c_str(), from); }
   ContainerSize find_last_not_of(const String& set) const { return this->find_last_not_of(set.c_str()); }
   ContainerSize find_first_of(const char* set) const
   {
@@ -432,21 +432,22 @@ struct String
         return i;
     return npos;
   }
-  ContainerSize find_first_not_of(const char* set) const
+  // (from the byte at `from` on: SystemUtil's `find_first_not_of(" \t", prefix.size())`)
+  ContainerSize find_first_not_of(const char* set, ContainerSize from = 0) const
   {
     const char* chars = this->data();
     ContainerSize length = this->size();
-    for (ContainerSize i = 0; i < length; ++i)
+    for (ContainerSize i = from; i < length; ++i)
       if (!String::oneOf(chars[i], set))
         return i;
     return npos;
   }
   // The first (last) byte other than c (LocaleStringReplacer's `find_first_not_of('0')`).
-  ContainerSize find_first_not_of(char c) const
+  ContainerSize find_first_not_of(char c, ContainerSize from = 0) const
   {
     const char* chars = this->data();
     ContainerSize length = this->size();
-    for (ContainerSize i = 0; i < length; ++i)
+    for (ContainerSize i = from; i < length; ++i)
       if (chars[i] != c)
         return i;
     return npos;
