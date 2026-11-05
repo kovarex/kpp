@@ -1,0 +1,19 @@
+// spec: C++'s enumeration conversions: nothing converts to an enumeration without a cast (an integer, another enumeration), and an enum class converts to nothing (an integer, a bool in a condition) nor has arithmetic or comparisons with another type of its own; until 2026-11-05 each of these compiled, as clang refuses them
+// error: enum_conversions_need_a_cast.kpp:10: error: a value of type int32 does not convert to the enumeration Color without a cast
+// error: enum_conversions_need_a_cast.kpp:11: error: a value of type Mode does not convert to the enumeration Color without a cast
+// error: enum_conversions_need_a_cast.kpp:12: error: a value of the enum class Mode does not convert to int32 without a cast
+// error: enum_conversions_need_a_cast.kpp:13: error: + on a value of an enum class (Mode + int32): an enum class converts to a number only by a cast
+// error: enum_conversions_need_a_cast.kpp:14: error: a comparison of a value of an enum class with another type (Mode and int32): an enum class converts to a number only by a cast
+// error: enum_conversions_need_a_cast.kpp:15: error: a value of type int32 does not convert to the enumeration Mode without a cast
+enum Color { Red, Green };
+enum class Mode { Off, On };
+Color fromInt() { Color c = 1; return c; }
+Color fromOther() { Color c = Mode::On; return c; }
+int toInt() { int x = Mode::On; return x; }
+int add() { return (int)(Mode::On + 1); }
+bool compareInt() { return Mode::On == 1; }
+Mode assign() { Mode m = Mode::Off; m = 1; return m; }
+int main()
+{
+  return 0;
+}

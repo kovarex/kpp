@@ -96,6 +96,22 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   // A value whose type the checker did not find is no pointer to compare with null or pass on.
   if (!from->isKnown())
     unsupported(at, "a conversion from a value of unknown type to " + types.toString(to, &symbols));
+  // C++'s enumeration conversions ([conv.prom] 3, [expr.static.cast] 10): nothing converts to an
+  // enumeration without a cast (an integer, a bool, a floating value, another enumeration), and a
+  // scoped one (enum class) converts to nothing; an unscoped one to a number is implicit. Until
+  // 2026-11-05 `Color c = 1;`, `int x = Scoped::A;` and `Color c = Scoped::A;` compiled. Imported C
+  // keeps C's rule.
+  if (!explicitCast && !operandConversion && !(currentFile && currentFile->isImported))
+  {
+    const Ty* uf = types.unqualified(from), *ut = types.unqualified(to);
+    auto number = [](const Ty* t) { return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Float; };
+    auto scoped = [](const Ty* t) { return t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass; };
+    bool sameEnum = uf->kind == TyKind::Enum && ut->kind == TyKind::Enum && (uf == ut || uf->decl == ut->decl);
+    if (!sameEnum && ut->kind == TyKind::Enum && (uf->kind == TyKind::Enum || number(uf)))
+      fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the enumeration " + types.toString(to, &symbols) + " without a cast");
+    if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
+      fail(at, "a value of the enum class " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
+  }
   auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? TyKind::Int : t->kind; };
   TyKind fk = kindOf(from), tk = kindOf(to);
   auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };

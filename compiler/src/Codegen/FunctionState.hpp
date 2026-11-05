@@ -135,6 +135,9 @@
     // one per thread), since the function initialising the variable returns; never destroyed, as
     // the variable is not.
     std::string extendingStatic;
+    // While an operator converts its operands to their common type (arithmetic, compare): an
+    // enumeration's value is a number there, which convert's enumeration rule leaves to the operator.
+    bool operandConversion = false;
     bool extendingThreadLocal = false;
     uint32_t extendingCount = 0;
     struct Loop

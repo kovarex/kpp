@@ -298,6 +298,14 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
   {
     if (lp && rp && op == P::Minus)
     {
+      // Only pointers to one type subtract (C++'s [expr.add] 2): `&x - &y` of an int and a long
+      // long, or `q - p` of a long long* and an int*, counted a difference in the left's elements
+      // (an exact division by its size that is not exact is poison). Imported C keeps C's rule.
+      const Ty* li = l.ty->inner ? types.unqualified(l.ty->inner) : nullptr, *ri = r.ty->inner ? types.unqualified(r.ty->inner) : nullptr;
+      if (li && ri && li->isKnown() && ri->isKnown() && !types.isDependent(li) && !types.isDependent(ri) && !(currentFile && currentFile->isImported) &&
+          li != ri && !(isClass(li) && isClass(ri) && canonicalClass(li, at) == canonicalClass(ri, at)))
+        fail(at, "a difference of pointers to different types (" + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) +
+                     "): only pointers to one type subtract");
       std::string a = newTemp(), b = newTemp(), d = newTemp();
       fn += "  " + a + " = ptrtoint ptr " + l.text + " to i64\n";
       fn += "  " + b + " = ptrtoint ptr " + r.text + " to i64\n";
@@ -335,9 +343,19 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
   // A shift has its left operand's promoted type, the count converted to it (LLVM shifts two
   // operands of one type), never a type common to both: `position.x >> sideBitShift` with an
   // int32 x and a uint32 count is an arithmetic shift of an int32 (ChunkPosition(TilePosition)).
+  // An enum class has no arithmetic of its own (C++'s [expr.arith.conv]: no usual conversions for
+  // it): only its overloaded operators, chosen before this.
+  if (scopedEnum(l.ty) || scopedEnum(r.ty))
+    fail(at, std::string(punctuatorSpelling(op)) + " on a value of an enum class (" + types.toString(l.ty, &symbols) + " " + std::string(punctuatorSpelling(op)) + " " +
+                 types.toString(r.ty, &symbols) + "): an enum class converts to a number only by a cast");
   const Ty* ct = op == P::Shl || op == P::Shr ? promoted(l.ty) : commonArithmetic(l.ty, r.ty);
-  l = convert(l, ct, at);
-  r = convert(r, ct, at);
+  {
+    bool outer = operandConversion;
+    operandConversion = true;
+    l = convert(l, ct, at);
+    r = convert(r, ct, at);
+    operandConversion = outer;
+  }
   bool isFloat = ct->kind == TyKind::Float;
   bool isUnsigned = ct->isUnsigned;
   const char* ins = nullptr;
@@ -397,9 +415,19 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
     fn += "  " + res + " = icmp " + pred + " ptr " + l.text + ", " + r.text + "\n";
     return {res, types.boolType()};
   }
+  // An enum class compares with its own type only (C++: no usual conversions for it).
+  if ((scopedEnum(l.ty) || scopedEnum(r.ty)) && !(l.ty->kind == TyKind::Enum && r.ty->kind == TyKind::Enum &&
+                                                  types.unqualified(l.ty)->decl == types.unqualified(r.ty)->decl))
+    fail(at, "a comparison of a value of an enum class with another type (" + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) +
+                 "): an enum class converts to a number only by a cast");
   const Ty* ct = (l.ty->kind == TyKind::Bool && r.ty->kind == TyKind::Bool) ? types.boolType() : commonArithmetic(l.ty, r.ty);
-  l = convert(l, ct, at);
-  r = convert(r, ct, at);
+  {
+    bool outer = operandConversion;
+    operandConversion = true;
+    l = convert(l, ct, at);
+    r = convert(r, ct, at);
+    operandConversion = outer;
+  }
   if (ct->kind == TyKind::Float)
   {
     const char* pred = op == P::EqEq ? "oeq" : op == P::NotEq ? "une" : op == P::Less ? "olt" : op == P::LessEq ? "ole" : op == P::Greater ? "ogt" : "oge";

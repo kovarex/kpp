@@ -1,0 +1,22 @@
+// spec: the enumeration conversions C++ allows stay: an unscoped enumeration to an integer and in arithmetic, the same enumeration compared and assigned, an enum class compared with its own values and switched on, and casts both ways
+enum Color { Red, Green = 5 };
+enum class Mode { Off, On };
+int main()
+{
+  int x = Green;
+  Color c = Red;
+  c = Green;
+  Mode m = Mode::On;
+  bool on = m == Mode::On;
+  int fromMode = (int)m + static_cast<int>(Mode::On);
+  Mode back = static_cast<Mode>(0);
+  Color fromInt = (Color)5;
+  int sum = Green + 1;
+  switch (m)
+  {
+    case Mode::Off: println("off"); break;
+    case Mode::On: println("on"); break;
+  }
+  println(x, " ", c == Green, " ", on, " ", fromMode, " ", back == Mode::Off, " ", fromInt == Green, " ", sum, " ", Red < Green);
+  return 0;
+}

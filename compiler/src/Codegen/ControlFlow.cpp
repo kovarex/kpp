@@ -515,7 +515,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   const Ty* ct = cond.ty->kind == TyKind::Enum ? enumUnderlying(cond.ty->decl) : cond.ty;
   if (ct->kind != TyKind::Int && ct->kind != TyKind::Char && ct->kind != TyKind::Bool)
     unsupported(sw, "a switch on a non-integer");
-  cond = convert(cond, ct, sw);
+  cond = convert(cond, ct, sw, true); // (an enumeration's value as its underlying integer: the switch's own)
   destroyTemps();
   if (!sw->body || sw->body->kind != NodeKind::BlockStmt)
     unsupported(sw, "a switch whose body is not a block");

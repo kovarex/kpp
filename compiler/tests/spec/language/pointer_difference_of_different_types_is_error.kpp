@@ -1,0 +1,11 @@
+// spec: only pointers to one type subtract (C++'s [expr.add]/2): the difference of an int32* and an int64* is an error, where until 2026-11-05 it counted bytes in the left's elements (an inexact division, poison); const on either side is no other type
+// error: pointer_difference_of_different_types_is_error.kpp:9: error: a difference of pointers to different types (int64* and int32*): only pointers to one type subtract
+int main()
+{
+  int a[4] = { 1, 2, 3, 4 };
+  const int* first = &a[0];
+  println(&a[3] - first);
+  long long* wide = (long long*)&a[2];
+  println(wide - &a[0]);
+  return 0;
+}

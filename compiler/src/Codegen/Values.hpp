@@ -38,6 +38,12 @@
     // pointer). Imported C keeps C's rule. True when it failed.
     bool zeroIsNoPointer(Node* at);
 
+    // An enumeration declared `enum class` (or `enum struct`).
+    bool scopedEnum(const Ty* t) const
+    {
+      t = t ? types.unqualified(t) : nullptr;
+      return t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass;
+    }
     Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false);
 
     // Address of the `base` subobject inside the `derived` object at addr (false if not a base).
