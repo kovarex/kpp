@@ -313,7 +313,8 @@
         {
           // No such members: begin(__range) and end(__range), the free functions found for the
           // range's class, called with the range evaluated once (C++'s rule).
-          const Ty* rangeRef = types.lref(types.unqualified(range.ty));
+          // (its const kept, as the checker typed it: a const range's `begin(const Bag&)`)
+          const Ty* rangeRef = types.lref(types.stripRef(withCheckedConst(range, f->range).ty));
           FunctionDecl* freeBegin = recorded && !verifyDecisions() ? f->begin : global.findFreeFunction("begin", {rangeRef}, currentFunction);
           FunctionDecl* freeEnd = recorded && !verifyDecisions() ? f->end : global.findFreeFunction("end", {rangeRef}, currentFunction);
           if (recorded && verifyDecisions())
@@ -332,7 +333,7 @@
           name.kind = NodeKind::NameExpr;
           name.token = f->range->token;
           name.resolved = &var;
-          name.ty = types.unqualified(range.ty);
+          name.ty = types.stripRef(rangeRef);
           Expr* arg = &name;
           auto call = [&](FunctionDecl* callee) -> Value
           {

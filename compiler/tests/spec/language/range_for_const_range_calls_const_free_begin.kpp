@@ -1,0 +1,29 @@
+// spec: a range-for over a const object of a class without begin and end members calls the free begin(const T&) and end(const T&), over a non-const one begin(T&) and end(T&)
+// factorio: D's review of c61c4fa7: the free path took the range without its const in the checker and in codegen alike, so the decision cross-check could not see it
+struct Bag
+{
+  int values[3] = {1, 2, 3};
+};
+int constCalls = 0;
+int mutableCalls = 0;
+int* begin(Bag& b) { ++mutableCalls; return b.values; }
+int* end(Bag& b) { ++mutableCalls; return b.values + 3; }
+const int* begin(const Bag& b) { ++constCalls; return b.values + 1; }
+const int* end(const Bag& b) { ++constCalls; return b.values + 3; }
+int totalOf(const Bag& bag)
+{
+  int total = 0;
+  for (int v : bag)
+    total += v;
+  return total;
+}
+int main()
+{
+  Bag bag;
+  int a = totalOf(bag);
+  int b = 0;
+  for (int& v : bag)
+    b += v;
+  println(a, " ", b, " ", constCalls, " ", mutableCalls);
+  return 0;
+}

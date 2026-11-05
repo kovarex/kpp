@@ -656,7 +656,7 @@
     // the class's namespace or from here), the call a range-for makes then; null if none.
     const Ty* freeBeginType(const Ty* t, Expr* rangeExpr);
     // The free function `symbol(range)` a range-for over class t calls (begin or end), or null.
-    FunctionDecl* freeRangeFunction(const Ty* t, uint32_t symbol);
+    FunctionDecl* freeRangeFunction(const Ty* range, uint32_t symbol);
     // Records on f the begin and end a range-for over class range calls (design.md 24).
     void recordRangeFunctions(RangeForStmt* f, const Ty* range);
 

@@ -4210,9 +4210,11 @@ auto GlobalScope::Impl::Walker::typeOfLiteral(LiteralExpr* l) -> const Ty*
   }
 }
 
-auto GlobalScope::Impl::Walker::freeRangeFunction(const Ty* t, uint32_t symbol) -> FunctionDecl*
+auto GlobalScope::Impl::Walker::freeRangeFunction(const Ty* range, uint32_t symbol) -> FunctionDecl*
 {
-  std::vector<const Ty*> argTypes{types.lref(t)};
+  // The range as the argument, its const kept: a const range's `begin(const Bag&)`.
+  const Ty* t = types.unqualified(types.stripRef(range));
+  std::vector<const Ty*> argTypes{types.lref(types.stripRef(range))};
   for (Scope* place : {impl.lexicalScopeOf(t->decl), scope})
     for (Scope* s = place; s; s = s->parent)
     {
@@ -4223,8 +4225,9 @@ auto GlobalScope::Impl::Walker::freeRangeFunction(const Ty* t, uint32_t symbol) 
         continue;
       if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
       {
-        bool ambiguous;
-        return pickOverload(look.decl, look.overloads, argTypes, nullptr, nullptr, ambiguous);
+        bool ambiguous = false;
+        FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, nullptr, nullptr, ambiguous);
+        return ambiguous ? nullptr : f; // (an ambiguous call recorded as none: codegen decides, or fails, as before)
       }
       break;
     }
@@ -4248,15 +4251,17 @@ auto GlobalScope::Impl::Walker::recordRangeFunctions(RangeForStmt* f, const Ty* 
   {
     if (!begin.decl || !end.decl || begin.decl->kind != NodeKind::FunctionDecl || end.decl->kind != NodeKind::FunctionDecl)
       return;
-    bool ambiguous;
-    f->begin = pickOverload(begin.decl, begin.overloads, {}, &begin.subst, range, ambiguous);
-    f->end = pickOverload(end.decl, end.overloads, {}, &end.subst, range, ambiguous);
+    bool ambiguousBegin = false, ambiguousEnd = false;
+    f->begin = pickOverload(begin.decl, begin.overloads, {}, &begin.subst, range, ambiguousBegin);
+    f->end = pickOverload(end.decl, end.overloads, {}, &end.subst, range, ambiguousEnd);
+    if (ambiguousBegin || ambiguousEnd)
+      f->begin = f->end = nullptr; // (recorded as none: codegen decides, or fails, as before)
     f->rangeMembers = true;
   }
   else
   {
-    f->begin = freeRangeFunction(t, impl.symBegin);
-    f->end = freeRangeFunction(t, impl.symEnd);
+    f->begin = freeRangeFunction(range, impl.symBegin);
+    f->end = freeRangeFunction(range, impl.symEnd);
   }
   if (!f->begin || !f->end)
     f->begin = f->end = nullptr;
