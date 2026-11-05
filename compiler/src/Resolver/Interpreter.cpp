@@ -3569,10 +3569,22 @@ auto GlobalScope::Impl::constAddressArith(P op, const ConstValue& l, const Const
     return std::nullopt;
   if ((l.isAddress() || l.isMemberPointer()) && (r.isAddress() || r.isMemberPointer()))
   {
-    bool same = l.kind == r.kind && *l.target == *r.target;
+    // A pointer to a class and one to a base of it: the first converted to the base, as C++
+    // compares them (their composite pointer type), so that `d.prev == &d` holds with prev a Base*
+    // holding &d (which points at d's base part).
+    ConstTarget a = *l.target, b = *r.target;
+    const Ty* lp = l.isAddress() && l.type && l.type->kind == TyKind::Pointer && l.type->inner ? types.unqualified(l.type->inner) : nullptr;
+    const Ty* rp = r.isAddress() && r.type && r.type->kind == TyKind::Pointer && r.type->inner ? types.unqualified(r.type->inner) : nullptr;
+    if (lp && rp && lp != rp && lp->kind == TyKind::Class && rp->kind == TyKind::Class)
+    {
+      if (std::optional<std::vector<size_t>> up = constBasePath(rp, lp, 0); up && !up->empty())
+        b.path.insert(b.path.end(), up->begin(), up->end());
+      else if (std::optional<std::vector<size_t>> down = constBasePath(lp, rp, 0); down && !down->empty())
+        a.path.insert(a.path.end(), down->begin(), down->end());
+    }
+    bool same = l.kind == r.kind && a == b;
     if (equality)
       return boolean(op == P::EqEq ? same : !same);
-    const ConstTarget &a = *l.target, &b = *r.target;
     bool siblings = l.isAddress() && r.isAddress() && a.decl == b.decl && a.storage == b.storage && a.owner == b.owner && a.args == b.args && !a.path.empty() &&
                     a.path.size() == b.path.size() && std::equal(a.path.begin(), a.path.end() - 1, b.path.begin());
     if (!siblings)

@@ -1,0 +1,29 @@
+// spec: at compile time a pointer to a class compared with a pointer to one of its bases converts to the base first, as C++ compares them (their composite pointer type), so a base pointer holding the object's address equals it: `d.prev == &d` and `&d == d.prev` with prev a Links* (`1 1`), with the base second of two (`1`), and another object's base part is not the object (`0`); the constants equal what the program computes (`1 1 1 0` both)
+// found by thread D (2026-11-05) on the library's List at compile time (a node's links compared with the node): the interpreter compared the two addresses as they were, so `d.prev == &d` was 0 as a constant where the program gives 1 (silent)
+struct Links
+{
+  Links* prev = nullptr;
+};
+struct Derived : Links
+{
+  int value = 0;
+};
+struct Two
+{
+  int x = 0;
+};
+struct Multi : Two, Links
+{
+  int value = 0;
+};
+constexpr int same() { Derived d; d.prev = &d; return d.prev == &d ? 1 : 0; }
+constexpr int sameReversed() { Derived d; d.prev = &d; return &d == d.prev ? 1 : 0; }
+constexpr int sameMulti() { Multi m; m.prev = &m; return m.prev == &m ? 1 : 0; }
+constexpr int differ() { Derived a; Derived b; a.prev = &b; return a.prev == &a ? 1 : 0; }
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println(same(), " ", sameReversed(), " ", sameMulti(), " ", differ());
+  println(Show<same()>::value, " ", Show<sameReversed()>::value, " ", Show<sameMulti()>::value, " ", Show<differ()>::value);
+  return 0;
+}
