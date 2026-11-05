@@ -302,9 +302,10 @@ int compile(int argc, char** argv)
   // (paths[i]'s code package, for --packages: its root's directory and the directory under it, design.md
   // "Code packages"; a library's root is named as the library is)
   std::vector<PackageOf> pathPackages;
-  // A compile server's listings are kept and watched (collectFilesWatched; KPP_NO_WATCH=1 lists every
-  // time), except --verify-incremental's build from scratch, which lists.
-  bool watched = servingBuild() && !replayDisabled() && !getenv("KPP_NO_WATCH");
+  // A compile server's listings kept and watched (collectFilesWatched) with KPP_WATCH=1 alone, until
+  // thread A's review is answered (a write just before a build, a root swapped under its handle, a root
+  // deleted while watched: 2026-11-05); --verify-incremental's build from scratch always lists.
+  bool watched = servingBuild() && !replayDisabled() && getenv("KPP_WATCH");
   std::string watchNote;
   auto collect = [&](const std::filesystem::path& root, std::string prefix, int library)
   {

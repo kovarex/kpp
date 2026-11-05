@@ -18,6 +18,7 @@ Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct Li
 $libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's log names a build by its last argument)
 $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
+$env:KPP_WATCH = '1' # (the servers' watched listings, opt-in until thread A's review is answered)
 $started = Get-Date
 
 function Normalize([string[]]$lines)

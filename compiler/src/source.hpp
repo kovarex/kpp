@@ -29,7 +29,8 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
 // is stamped again alone, and a file or directory added, removed or renamed, lost notifications
 // (an overflow) or a watch that cannot be made list the directory again. An edit build of the game
 // listed its 3,500 files every time, 37 to 68 ms (2026-11-05). note says what it did, for the log.
-// KPP_WATCH_LOST=1 takes every notification as lost (tests/incremental.ps1).
+// KPP_WATCH_LOST=1 takes every notification as lost (tests/incremental.ps1). Used with KPP_WATCH=1 alone
+// until thread A's review is answered (Driver/Compile.inl).
 std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::path& root, const std::vector<std::string>& extensions,
                                                        std::vector<FileStamp>& stamps, std::string& note);
 
