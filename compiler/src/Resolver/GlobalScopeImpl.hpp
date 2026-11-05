@@ -646,9 +646,9 @@ struct GlobalScope::Impl
 #include "Lookup.hpp"
 #include "TypeOfAst.hpp"
 #include "AccessChecker.hpp"
-#include "Interpreter.inl"
-#include "Instantiation.inl"
-#include "OverloadResolution.inl"
+#include "Interpreter.hpp"
+#include "Instantiation.hpp"
+#include "OverloadResolution.hpp"
 #include "Walker.hpp"
 #include "InstanceTasks.hpp"
 };

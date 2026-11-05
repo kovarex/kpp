@@ -22,6 +22,9 @@ add_executable(kppc
   src/Resolver/TypeOfAst.cpp
   src/Resolver/Indexer.cpp
   src/Resolver/GlobalScope.cpp
+  src/Resolver/OverloadResolution.cpp
+  src/Resolver/Instantiation.cpp
+  src/Resolver/Interpreter.cpp
   src/types.cpp
   src/codegen.cpp
   src/consteval.cpp
