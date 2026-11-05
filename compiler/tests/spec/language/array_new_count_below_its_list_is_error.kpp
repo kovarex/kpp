@@ -1,0 +1,11 @@
+// spec: new[] of a count known at compile time that is below its initializer list's length is an error, as in C++ (clang: "excess elements in array initializer"), and so is a negative count (clang: "array size is negative")
+// found by thread B (2026-11-05), comparing with clang: `new int[2]{1, 2, 3}` wrote the third element past its block
+// error: array_new_count_below_its_list_is_error.kpp:5: error: new[] of 2 elements given 3 initializers
+// error: array_new_count_below_its_list_is_error.kpp:6: error: new[] of a negative count (-1)
+int* tooMany() { return new int[2]{1, 2, 3}; }
+int* negative() { return new int[-1]; }
+int main()
+{
+  println(tooMany()[0], " ", negative() == nullptr ? 1 : 0);
+  return 0;
+}

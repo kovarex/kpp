@@ -1,0 +1,61 @@
+// spec: a new[] whose element constructor throws destroys the elements it built, the last first, and frees its block, as C++'s [expr.new] 26 has it: from the list (`+11 +12 -12 -11`), in the default-constructed rest after a list (`+11 +101 -101 -11`) and with a count known only at run time (`+100 +101 +102 -102 -101 -100`), so every object built is destroyed (`built 0`); clang prints the same
+// found by thread B (2026-11-05), comparing with clang: the elements built before the throw were never destroyed, and the block was never freed
+int built = 0;
+int failAt = -1;
+class Piece
+{
+public:
+  int id;
+  Piece() : Piece(100 + built) {}
+  Piece(int i) : id(i)
+  {
+    if (i == failAt)
+      throw i;
+    print("+", id, " ");
+    ++built;
+  }
+  ~Piece()
+  {
+    print("-", id, " ");
+    --built;
+  }
+};
+int main()
+{
+  failAt = 13;
+  try
+  {
+    Piece* p = new Piece[4]{Piece(11), Piece(12), Piece(13), Piece(14)};
+    delete[] p;
+  }
+  catch (int v)
+  {
+    println("caught ", v, ", built ", built);
+  }
+  failAt = 102;
+  try
+  {
+    Piece* p = new Piece[5]{Piece(11)};
+    delete[] p;
+  }
+  catch (int v)
+  {
+    println("caught ", v, ", built ", built);
+  }
+  failAt = 103;
+  int n = 4;
+  try
+  {
+    Piece* p = new Piece[n];
+    delete[] p;
+  }
+  catch (int v)
+  {
+    println("caught ", v, ", built ", built);
+  }
+  failAt = -1;
+  Piece* whole = new Piece[2]{Piece(7), Piece(8)};
+  delete[] whole;
+  println("built ", built);
+  return 0;
+}

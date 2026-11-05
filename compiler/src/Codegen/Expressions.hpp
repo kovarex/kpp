@@ -73,7 +73,9 @@
 
     // `new T[n]`: n elements of T, each built by its default constructor in order (a scalar left as
     // it is, zero with `new T[n]()`); `new T[n]{a, b}` builds the first ones from the list and
-    // value-initializes the rest. Returns the address of the first element.
+    // value-initializes the rest. One that throws destroys those built, the last first, and frees
+    // the block. A count below the list's length, or negative, is an error when known here and
+    // stops the program at run time. Returns the address of the first element.
     std::string arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr);
 
     // `delete[] p`: with a cookie (arrayCookie), the n elements destroyed, the last first, then the

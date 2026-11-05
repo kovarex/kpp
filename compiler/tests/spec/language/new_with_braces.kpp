@@ -1,0 +1,26 @@
+// spec: `new int{}` is zero and `new int{7}` seven, as `new int()` and `new int(7)` are, `new double{}` and `new int*{}` zero and null; `new Meters[3]{...}` of a class with no default constructor builds its three elements from the list and needs none, and `new int[n]{3, 4, 5}` with a count known at run time builds the list and zeroes the rest (`3 4 5 0`); clang prints the same
+// found by thread B (2026-11-05), comparing with clang: `new int{}` was "codegen does not support the expression kind BraceInitExpr", and the array of Meters a default construction of Meters, which has none
+class Meters
+{
+public:
+  int value;
+  Meters(int v) : value(v) {}
+};
+int main(int argc, char** argv)
+{
+  int* zero = new int{};
+  int* seven = new int{7};
+  double* none = new double{};
+  int** null = new int*{};
+  Meters* three = new Meters[3]{Meters(1), Meters(20), Meters(300)};
+  println(*zero, " ", *seven, " ", *none, " ", *null == nullptr ? 1 : 0, " ", three[0].value + three[1].value + three[2].value);
+  int* fits = new int[argc + 3]{3, 4, 5};
+  println(fits[0], " ", fits[1], " ", fits[2], " ", fits[3]);
+  delete zero;
+  delete seven;
+  delete none;
+  delete null;
+  delete[] three;
+  delete[] fits;
+  return 0;
+}

@@ -796,9 +796,17 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       else if (!n->args.empty())
       {
         Expr* a = n->args[0];
-        if (a->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(a)->args.size() == 1)
-          a = static_cast<BraceInitExpr*>(a)->args[0];
-        store(rvalue(a), r, t, e);
+        size_t braced = a->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(a)->args.size() : 1;
+        if (braced > 1)
+          fail(e, "new of a scalar given " + std::to_string(braced) + " values in braces (it takes one at most)");
+        if (braced == 0)
+          storeZero(t, r, e); // `new int{}`: value-initialized, as `new int()` is
+        else
+        {
+          if (a->kind == NodeKind::BraceInitExpr)
+            a = static_cast<BraceInitExpr*>(a)->args[0];
+          store(rvalue(a), r, t, e);
+        }
       }
       else
         storeZero(t, r, e);
@@ -918,9 +926,53 @@ auto codegen::Emitter::arrayCookie(const Ty* t, Node* at) -> uint64_t
 
 auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std::string
 {
+  Span<Expr*> list;
+  bool valueInit = n->parenthesized;
+  if (n->braced)
+  {
+    list = static_cast<BraceInitExpr*>(n->args[0])->args;
+    valueInit = true;
+  }
+  else if (!n->args.empty())
+    unsupported(n, "new[] with constructor arguments");
+  // A count known here that is negative or below the list's length is C++'s error
+  // (`new int[2]{1, 2, 3}` wrote past its block until 2026-11-05); one equal to it leaves no rest
+  // to build (`new T[3]{a, b, c}` of a class with no default constructor).
+  std::optional<int64_t> known = evalConst(sizeExpr);
+  if (known && *known < 0)
+    fail(n, "new[] of a negative count (" + std::to_string(*known) + ")");
+  if (known && uint64_t(*known) < list.size())
+    fail(n, "new[] of " + std::to_string(*known) + " elements given " + std::to_string(list.size()) + " initializers");
   std::string count = convert(rvalue(sizeExpr), types.sizeType(), n).text;
   std::string stride = "ptrtoint (ptr getelementptr (" + llType(t, n) + ", ptr null, i32 1) to i64)"; // LLVM's own element size
   uint64_t cookie = arrayCookie(t, n);
+  if (!known)
+  {
+    // A count that is negative (a huge size_t), too large for the block's size to be computed, or
+    // below the list's length: C++ throws bad_array_new_length; kpp stops with a message, as for
+    // a failed dynamic_cast to a reference, where the size would wrap and the block be too small.
+    uint64_t element = std::max<uint64_t>(sizeOf(t, n), 1);
+    std::string bad = newTemp();
+    fn += "  " + bad + " = icmp ugt i64 " + count + ", " + std::to_string((uint64_t(INT64_MAX) - cookie) / element) + "\n";
+    if (!list.empty())
+    {
+      std::string fewer = newTemp(), either = newTemp();
+      fn += "  " + fewer + " = icmp ult i64 " + count + ", " + std::to_string(list.size()) + "\n";
+      fn += "  " + either + " = or i1 " + bad + ", " + fewer + "\n";
+      bad = either;
+    }
+    std::string okL = newLabel("newarray.ok"), failL = newLabel("newarray.fail");
+    fn += "  br i1 " + bad + ", label %" + failL + ", label %" + okL + "\n";
+    startBlock(failL);
+    auto [line, column] = lineColumnOf(n->token);
+    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+                     std::to_string(column) + ", ptr " +
+                     cStringConstant(list.empty() ? "new[]'s count is negative or too large" : "new[]'s count is negative, too large or below its initializer list's length") +
+                     ")", false);
+    fn += "  unreachable\n";
+    usesAssert = true;
+    startBlock(okL);
+  }
   ensureMalloc();
   std::string bytes = newTemp();
   fn += "  " + bytes + " = mul i64 " + count + ", " + stride + "\n";
@@ -941,15 +993,26 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     fn += "  " + countAddr + " = getelementptr inbounds i8, ptr " + base + ", i64 -8\n";
     fn += "  store i64 " + count + ", ptr " + countAddr + "\n";
   }
-  Span<Expr*> list;
-  bool valueInit = n->parenthesized;
-  if (n->braced)
+  // An element's constructor or an initializer of the list that throws leaves with the elements
+  // built so far destroyed, the last first, and the block freed ([expr.new] 26), as one object's
+  // new frees its memory: the elements built are counted in an i64 slot, which the loop over the
+  // rest uses as its index (until 2026-11-05 they were never destroyed, the block never freed).
+  size_t mark = statementTemps.size();
+  Object allocation{block, t};
+  allocation.unwindOnly = true;
+  allocation.freeMemory = true;
+  statementTemps.push_back(allocation);
+  std::string builtSlot = "%v" + std::to_string(temp++);
+  allocas += "  " + builtSlot + " = alloca i64\n";
+  fn += "  store i64 0, ptr " + builtSlot + "\n";
+  bool counted = needsDestruction(t, n);
+  if (counted)
   {
-    list = static_cast<BraceInitExpr*>(n->args[0])->args;
-    valueInit = true;
+    Object elements{base, types.array(t, 0)};
+    elements.unwindOnly = true;
+    elements.countSlot = builtSlot;
+    statementTemps.push_back(elements);
   }
-  else if (!n->args.empty())
-    unsupported(n, "new[] with constructor arguments");
   bool scalar = !isClass(t) && t->kind != TyKind::Array;
   if (scalar && valueInit)
   {
@@ -962,15 +1025,34 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     std::string element = newTemp();
     fn += "  " + element + " = getelementptr inbounds " + llType(t, n) + ", ptr " + base + ", i64 " + std::to_string(i) + "\n";
     initializeFrom(element, t, list[i], n);
+    if (counted)
+      fn += "  store i64 " + std::to_string(i + 1) + ", ptr " + builtSlot + "\n";
   }
-  if (!scalar && (valueInit || needsConstruction(t, n)))
-    forEachElement(base, t, std::to_string(list.size()), count, false, n, [&](const std::string& element)
-    {
-      if (isClass(t))
-        defaultConstruct(element, t, n);
-      else
-        constructArray(element, t, n);
-    });
+  bool rest = !known || uint64_t(*known) > list.size();
+  if (rest && !scalar && (valueInit || needsConstruction(t, n)))
+  {
+    fn += "  store i64 " + std::to_string(list.size()) + ", ptr " + builtSlot + "\n";
+    std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
+    emitBranch(loopL);
+    startBlock(loopL);
+    std::string index = newTemp(), done = newTemp();
+    fn += "  " + index + " = load i64, ptr " + builtSlot + "\n";
+    fn += "  " + done + " = icmp uge i64 " + index + ", " + count + "\n";
+    fn += "  br i1 " + done + ", label %" + endL + ", label %" + bodyL + "\n";
+    startBlock(bodyL);
+    std::string element = newTemp();
+    fn += "  " + element + " = getelementptr inbounds " + llType(t, n) + ", ptr " + base + ", i64 " + index + "\n";
+    if (isClass(t))
+      defaultConstruct(element, t, n);
+    else
+      constructArray(element, t, n);
+    std::string next = newTemp();
+    fn += "  " + next + " = add i64 " + index + ", 1\n";
+    fn += "  store i64 " + next + ", ptr " + builtSlot + "\n";
+    emitBranch(loopL);
+    startBlock(endL);
+  }
+  statementTemps.erase(statementTemps.begin() + mark, statementTemps.begin() + mark + (counted ? 2 : 1));
   return base;
 }
 
