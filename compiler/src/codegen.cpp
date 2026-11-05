@@ -9023,6 +9023,11 @@ namespace
     void inlineCall(FunctionDecl* def, const FunctionDecl* written, const TemplateArgs& args, const Ty* classTy, const Signature& s,
                     const std::string& thisArg, Span<Expr*> callArgs, Node* at, F&& emit)
     {
+      // A callee whose result is returned in memory is never inlined (inlinedBody and
+      // trivialDefinition refuse one before here): its named return variable (design.md 23) is
+      // built in the caller's destination, which these bindings of parameters do not make.
+      if (s.hasSret)
+        unsupported(at, "an inlined call whose result is returned in memory");
       noteInlined(written);
       size_t first = s.hasThis ? 1 : 0;
       std::vector<std::string> texts;

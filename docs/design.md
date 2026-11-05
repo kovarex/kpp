@@ -1548,9 +1548,17 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   and template instance); codegen builds the variable at the result's address (`sretAddr`; its debug
   variable there) and skips its destructor on the return path alone (B); the interpreter elides too
   (D), so that a class that cannot be moved returns by name in a constant expression as well; kppc's
-  inliner keeps the result's slot (D). Specs language/named_return_elided,
+  inliner inlines no function whose result is returned in memory, so it never meets the variable
+  (inlineCall refuses one, D). Specs language/named_return_elided,
   named_return_of_non_movable_type, named_return_fallback_moves,
   named_return_destroyed_in_slot_on_throw, named_return_loop_variable.
+- **At compile time** (D) the interpreter's `return v;` of the variable is the result, as at run time:
+  no copy or move constructor runs, v is destroyed once, with the result, and a template's variable
+  is decided under the evaluation's arguments (language/consteval_named_return_variable_is_the_result).
+  An address of v the evaluation took while it filled v (an element's through `operator[]`) names
+  v's place in the callee, which ends at the return: a read through it, or a comparison of it, is
+  then no constant, as C++'s constant evaluation rejects a pointer to an ended object, never an
+  answer other than the program's, where that address is the result's.
 
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
