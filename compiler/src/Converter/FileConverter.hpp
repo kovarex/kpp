@@ -1151,15 +1151,15 @@
       auto identStart = [](char c) { return isalpha((unsigned char)c) || c == '_'; };
       std::string out;
       out.reserve(text.size());
-      // The last two characters of code written (not of comments): `.` or `->` before a name makes it
+      // The last three characters of code written (not of comments): `.` or `->` before a name makes it
       // a member's (a comment ending with a period before a declaration does not).
-      char last = 0, beforeLast = 0;
+      char last = 0, beforeLast = 0, third = 0;
       auto code = [&](std::string_view written)
       {
         out.append(written);
         for (char ch : written)
           if (!isspace((unsigned char)ch))
-            beforeLast = last, last = ch;
+            third = beforeLast, beforeLast = last, last = ch;
       };
       for (size_t i = 0; i < text.size();)
       {
@@ -1309,10 +1309,14 @@
         }
         auto name = names.find(word);
         char before = last;
-        bool member = before == '.' || (before == '>' && beforeLast == '-');
+        // (`) -> T`, a trailing return type, is no member)
+        bool member = before == '.' || (before == '>' && beforeLast == '-' && third != ')');
+        // `::` before the name (one colon is an access specifier's, an enum's base, a bit-field's or
+        // `?:`'s, after which the name is renamed as anywhere).
+        bool qualified = before == ':' && beforeLast == ':';
         if (name != names.end() && !member)
         {
-          if (before == ':')
+          if (qualified)
           {
             // `::size_t`: kpp's name is a built-in, which no `::` qualifies; `glm::uint32_t` (a
             // qualified one, another namespace's) stays.
