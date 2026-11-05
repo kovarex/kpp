@@ -1,0 +1,64 @@
+// spec: a virtual call through a pointer or a reference to a base part runs the most-derived object's overrider, at compile time as at run time: `const A* a = &c; a->f()` is C's, an intermediate class's overrider runs on its own part (M::f of a B : M : A), so does one a non-virtual function of the base calls, through an array's element and a struct's member too; in a base's destructor, after the derived class's, the base's own (A::f after ~C)
+// found by thread D (2026-11-05): the interpreter dispatched on the type of the base part the pointer pointed at, so `a->f()` was A::f at compile time (1) and C::f at run time (2)
+class A
+{
+public:
+  int* log = nullptr;
+  virtual int f() const { return 1; }
+  int viaBase() const { return this->f(); }
+  virtual ~A()
+  {
+    if (this->log)
+      *this->log = *this->log * 10 + this->f();
+  }
+};
+class M : public A
+{
+public:
+  int f() const override { return 3; }
+};
+class B : public M
+{
+};
+class C : public A
+{
+public:
+  int f() const override { return 2; }
+  ~C() override
+  {
+    if (this->log)
+      *this->log = *this->log * 10 + this->f();
+  }
+};
+struct H
+{
+  C c;
+};
+constexpr int pointers()
+{
+  C c;
+  const A* a = &c;
+  B b;
+  const A* m = &b;
+  C cs[2];
+  const A* e = &cs[1];
+  H h;
+  const A& in = h.c;
+  return a->f() * 1000 + m->f() * 100 + e->viaBase() * 10 + in.f();
+}
+constexpr int destructors()
+{
+  int log = 0;
+  {
+    C c;
+    c.log = &log;
+  }
+  return log;
+}
+constexpr int p = pointers();
+constexpr int d = destructors();
+int main()
+{
+  println(p, " ", pointers(), " ", d, " ", destructors());
+  return 0;
+}

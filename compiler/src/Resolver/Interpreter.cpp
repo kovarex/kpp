@@ -2255,6 +2255,70 @@ auto GlobalScope::Impl::constOverrider(FunctionDecl* f, const Ty* t, int depth) 
   return f;
 }
 
+auto GlobalScope::Impl::constDyingPlaces() -> std::vector<ConstPlace>&
+{
+  static thread_local std::vector<ConstPlace> places;
+  return places;
+}
+
+auto GlobalScope::Impl::constDynamicPlace(const ConstPlace& place, int depth) -> ConstPlace
+{
+  ConstPlace p = constResolve(place);
+  if (p.path.empty() || !p.env || p.index >= p.env->size())
+    return p;
+  // Which of the path's steps are into a base part: the types along it from the binding's object.
+  const ConstBinding& b = p.binding();
+  const Ty* t = b.value.isObject() && b.value.type ? b.value.type : b.type;
+  std::vector<bool> intoBase;
+  for (size_t k = 0; k < p.path.size() && t; ++k)
+  {
+    t = types.unqualified(types.stripRef(t));
+    if (t->kind == TyKind::Array)
+    {
+      intoBase.push_back(false);
+      t = t->inner;
+      continue;
+    }
+    const ConstClassLayout* layout = t->kind == TyKind::Class ? constLayoutOf(t, depth + 1) : nullptr;
+    if (!layout)
+      break;
+    size_t i = p.path[k], nb = layout->bases.size();
+    intoBase.push_back(i < nb);
+    t = i < nb ? layout->bases[i] : i - nb < layout->fieldTypes.size() ? layout->fieldTypes[i - nb] : nullptr;
+  }
+  if (intoBase.size() != p.path.size())
+    return p; // (a path the layouts do not lead along: as it is)
+  auto dying = [&](size_t length) {
+    for (const ConstPlace& d : constDyingPlaces())
+      if (d.env == p.env && d.index == p.index && d.path.size() == length && std::equal(d.path.begin(), d.path.end(), p.path.begin()))
+        return true;
+    return false;
+  };
+  size_t keep = p.path.size();
+  while (keep > 0 && intoBase[keep - 1] && !dying(keep))
+    --keep;
+  p.path.resize(keep);
+  p.bits = 0;
+  return p;
+}
+
+auto GlobalScope::Impl::constBaseDeclaring(const Ty* t, const Decl* cls, std::vector<size_t>& path, int depth) -> const Ty*
+{
+  const ConstClassLayout* layout = t && depth <= 16 ? constLayoutOf(t, depth) : nullptr;
+  if (!layout)
+    return nullptr;
+  if (layout->decl == cls)
+    return t;
+  for (size_t b = 0; b < layout->bases.size(); ++b)
+  {
+    path.push_back(b);
+    if (const Ty* found = constBaseDeclaring(layout->bases[b], cls, path, depth + 1))
+      return found;
+    path.pop_back();
+  }
+  return nullptr;
+}
+
 auto GlobalScope::Impl::constValuesMade() -> uint64_t&
 {
   static thread_local uint64_t made = 0;
@@ -5274,6 +5338,18 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
     if (dtor->flags & DF_Delete)
       return cannot("the destruction of an object whose destructor is deleted:");
     std::optional<ConstValue> self = v;
+    // (its virtual calls are its class's while it runs, on a base part too: constDynamicPlace)
+    struct Dying
+    {
+      bool on;
+      ~Dying()
+      {
+        if (on)
+          constDyingPlaces().pop_back();
+      }
+    } dying{at != nullptr};
+    if (at)
+      constDyingPlaces().push_back(constResolve(*at));
     if (!constCallOn(dtor, layout->subst, {}, &self, depth + 1, at) || !self || !self->isObject())
       return false;
     if (at)
@@ -6430,7 +6506,31 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
     packedCategories.push_back(0);
     return constRun(f, packed, fctx, depth, self, &packedPlaces, &packedCategories, selfPlace, returnPlace);
   }
-  // A virtual function runs as the object's own class overrides it.
+  // A virtual function runs as the object's own class overrides it: the most-derived object's, which
+  // a base part's place leads to (`const A* a = &b; a->f()` ran A::f at compile time, B::f at run
+  // time: language/consteval_virtual_call_through_base_pointer), its overrider run on its part of
+  // the class that declares it.
+  if (self && *self && selfPlace && (f->flags & (DF_Virtual | DF_Override)) && !(f->flags & DF_Destructor))
+  {
+    ConstPlace whole = constDynamicPlace(*selfPlace, depth);
+    std::optional<ConstValue> object = whole.path.size() < constResolve(*selfPlace).path.size() ? constRead(whole) : std::nullopt;
+    if (object && object->isObject() && object->type && !object->type->isBraceList())
+      if (FunctionDecl* g = constOverrider(f, object->type, 0); g != f && constDefinition(g))
+      {
+        std::vector<size_t> path;
+        const Ty* owner = g->parent ? constBaseDeclaring(object->type, g->parent, path, 0) : nullptr;
+        if (!owner)
+          return std::nullopt;
+        ConstPlace at = whole;
+        at.path.insert(at.path.end(), path.begin(), path.end());
+        at.type = owner;
+        std::optional<ConstValue> part = constRead(at);
+        Subst subst = memberSubst(types.unqualified(object->type), g->parent->ownScope, 0);
+        std::optional<ConstValue> r = part ? constCallOn(g, subst, args, &part, depth + 1, &at, places, categories, returnPlace) : std::nullopt;
+        *self = constRead(*selfPlace); // (the object as the call left it)
+        return r;
+      }
+  }
   if (self && *self)
     if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && constDefinition(g))
     {

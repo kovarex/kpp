@@ -2408,7 +2408,10 @@ the operand where it is), `s[i]` through a pointer a call gives (String's `this-
 declaration order whatever order its initializers are written in (language/consteval_initialization_order),
 in the object where it is made, so that an initializer, a default member initializer included, reads
 the parts made before it, `this` and their addresses; one not made yet is unset, no constant
-(language/consteval_initializer_reads_earlier_member).
+(language/consteval_initializer_reads_earlier_member). A virtual call runs the overrider of the
+most-derived object that its object is a base part of, wherever a pointer or a reference to that part
+leads (an array's element, a member), and in a base's destructor the base's own
+(language/consteval_virtual_call_through_base_pointer).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

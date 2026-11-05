@@ -284,6 +284,14 @@
   // The function a virtual call on an object of dynamic type t runs: the final overrider of f
   // (the most derived class's function of its name and parameter types), or f.
   FunctionDecl* constOverrider(FunctionDecl* f, const Ty* t, int depth);
+  // The object a virtual call on the object at place runs on: the most-derived object that one is
+  // a base part of (`const A* a = &b; a->f()` is b's), the place with its trailing base steps left
+  // out, short of an object a destructor runs on (a base's destructor's calls are its own class's,
+  // [class.cdtor] 4). constDyingPlaces: the places of the destructors running now.
+  ConstPlace constDynamicPlace(const ConstPlace& place, int depth);
+  static std::vector<ConstPlace>& constDyingPlaces();
+  // The base of t that cls declares (t itself, path empty), the path to it in t's parts appended.
+  const Ty* constBaseDeclaring(const Ty* t, const Decl* cls, std::vector<size_t>& path, int depth);
 
 
   // The binding a member function or constructor runs with as `this`: the object it works on.
