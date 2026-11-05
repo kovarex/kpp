@@ -589,6 +589,22 @@ int compile(int argc, char** argv)
         mix(files[i].text);
     }
     mix(environmentBlock()); // TMP (the import cache), KPP_CLANG, LIB...
+    // The files the link reads besides the build's own, by their size and time: a .natvis (--natvis)
+    // or a library (--lib FILE) replaced with the same name is a new build, not the last one replayed
+    // (the PDB would keep the old rules, the executable the old library). A missing one mixes in as
+    // such, and the link reports it.
+    for (const std::vector<std::string>* list : {&options.natvisFiles, &options.libs})
+      for (const std::string& file : *list)
+      {
+        if (file.empty() || file[0] == '-') // (-lname: a system library, found by the linker)
+          continue;
+        std::error_code ec;
+        uintmax_t size = std::filesystem::file_size(file, ec);
+        auto time = std::filesystem::last_write_time(file, ec).time_since_epoch().count();
+        mix(file);
+        mix(std::string_view(reinterpret_cast<const char*>(&size), sizeof size));
+        mix(std::string_view(reinterpret_cast<const char*>(&time), sizeof time));
+      }
     std::vector<std::string> outputs;
     for (const std::string& o : {options.emitLLVM, options.exe})
       if (!o.empty())

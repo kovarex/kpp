@@ -72,5 +72,27 @@ $pdb = Get-ChildItem $project -Recurse -Filter 'values.pdb' | Select-Object -Fir
 $streams = if ($pdb) { (& $pdbutil dump --named-streams $pdb.FullName) -join "`n" } else { '' }
 if ($streams -notmatch '/src/files/\S*point\.natvis' -or $streams -notmatch '/src/files/\S*values\.natvis')
 { "FAIL natvis: the project's PDB lacks point.natvis or values.natvis"; exit 1 }
-"ok   natvis ($($names.Count) rules, $size bytes, in the PDB; a project's own .natvis beside it)"
+# Through a compile server: an edit of that .natvis alone is a new build, not the last one replayed
+# (its size and time are in the replay's fingerprint, Driver/Compile.cpp): the PDB takes the new rules.
+$served = Join-Path $work 'served'
+New-Item -ItemType Directory -Force $served | Out-Null
+$own = Join-Path $served 'point.natvis'
+Copy-Item (Join-Path $PSScriptRoot 'natvis\project\point.natvis') $own -Force
+$serverArgs = @('--quiet', '--debug-info', '--natvis', $own, '--exe', (Join-Path $served 'values.exe'), (Join-Path $PSScriptRoot 'natvis\values.kpp'))
+$sizes = @()
+foreach ($round in 1, 2)
+{
+  if ($round -eq 2) { Add-Content $own '<!-- edited: the rule file grows, nothing else changes -->' }
+  $ErrorActionPreference = 'Continue'
+  & $Kppc --server @serverArgs 2>&1 | Out-Null
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -ne 0) { & $Kppc --stop-server @serverArgs 2>&1 | Out-Null; "FAIL natvis: the build through a compile server failed (exit $code)"; exit 1 }
+  $streams = (& $pdbutil dump --named-streams (Join-Path $served 'values.pdb')) -join "`n"
+  $sizes += if ($streams -match '/src/files/\S*point\.natvis\s+Index: \d+\s+Size in bytes: (\d+)') { [int]$Matches[1] } else { 0 }
+}
+& $Kppc --stop-server @serverArgs 2>&1 | Out-Null
+if ($sizes[0] -le 0 -or $sizes[1] -ne (Get-Item $own).Length)
+{ "FAIL natvis: through a compile server the PDB's point.natvis is $($sizes -join ' then ') bytes, not the edited file's $((Get-Item $own).Length)"; exit 1 }
+"ok   natvis ($($names.Count) rules, $size bytes, in the PDB; a project's own .natvis beside it, taken again when edited through a compile server)"
 exit 0
