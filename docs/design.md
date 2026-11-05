@@ -1552,6 +1552,22 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   named_return_of_non_movable_type, named_return_fallback_moves,
   named_return_destroyed_in_slot_on_throw, named_return_loop_variable.
 
+### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
+kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
+capital letters, like LinkHelper.cpp", and refactorings that are clear wins are pushed without asking.
+- **Layout.** One directory per component under compiler/src (Resolver, Codegen, Converter, Driver,
+  Lsp), PascalCase file names, one class per file where there is a class (`Walker.hpp`,
+  `OverloadResolution.cpp`). A class too large for one file is split by topic into files named after
+  it (`WalkerCalls.cpp`, `WalkerOperators.cpp`).
+- **How it gets there.** Each split is a pure move first, pushed alone and checked byte-identical
+  (object code or the game's IR), then made into real headers and classes one push at a time, so
+  that other threads' rebases stay short. The files' line endings stay as they were (resolver LF,
+  codegen CRLF).
+- **Decisions are made once.** What the checker decides (an operator's or constructor's callee, a
+  conversion, the named return variable, a `when` member) is recorded on the typed tree, per template
+  instance, and codegen and the interpreter read it instead of deciding again. The refactoring list
+  and its evidence: the 2026-11-05 survey (items 1 to 14, tests T1 to T7).
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
