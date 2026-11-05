@@ -106,6 +106,9 @@ struct Executable
   // linkFile's older name, until factorio-in-kpp's build.kpp says linkFile.
   void library(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
+  // An include directory of the C import for one platform's build only (`cInclude("libraries/libbacktrace",
+  // Platform::Linux)`), as systemLibrary(NAME, PLATFORM).
+  void cInclude(StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
   // A kpp library (Project::use), for this executable only.
   Dependency& use(StringView name, StringView minimum = "")
   {
@@ -414,6 +417,7 @@ struct Project
   // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
   void linkFile(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
+  void cInclude(StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
   // A kpp library every executable uses (docs/build.md, "kpp libraries"): use("json") finds it in
   // libraries/json, use("json", "1.4") also states the lowest version that will do, and
   // use("json", local("../json")) gives its directory.

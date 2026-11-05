@@ -535,7 +535,9 @@ void build(Project& project)
   `prebuiltLibrary` and `resource` with a `Platform` second argument count only in a build for that
   platform (`numbers.define("PLATFORM_ID=2", Platform::Linux);`, kept as "linux PLATFORM_ID=2",
   compiler/src/Project/CLibraryBuild.cpp's forPlatform), and an entry without one counts on every
-  platform. An include directory that starts with `=` is in the target's sysroot, as GCC's `-I=`
+  platform. So does an include directory of the C import, an executable's or the project's
+  `cInclude` (kppc's `--cinclude`): `game.cInclude("libraries/libbacktrace", Platform::Linux)` for
+  the import only Linux's files have (2026-11-05). An include directory that starts with `=` is in the target's sysroot, as GCC's `-I=`
   (which Visual Studio's clang does not take with a Windows sysroot path): SDL3's
   `include("=/usr/include/dbus-1.0", Platform::Linux)`; in a build for Windows it is an error. A
   resource script in a build for Linux or FreeBSD is an error (only a Windows program links a

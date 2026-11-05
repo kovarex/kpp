@@ -1,4 +1,9 @@
 extern "C" import "numbers.h";
+extern "C" import "included_for.h";
+
+// The include directory of the target's platform alone (build.kpp's cInclude(..., Platform::X)):
+// another platform's on the path too would give its INCLUDED_FOR, or none at all.
+static_assert(INCLUDED_FOR == (config::platform == Platform::Windows ? 1 : config::platform == Platform::Linux ? 2 : 3));
 
 int main()
 {

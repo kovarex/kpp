@@ -131,13 +131,15 @@ namespace projects
       args.push_back("--clang-flags"), args.push_back(clangFlags);
     for (const std::string& a : p.arguments)
       args.push_back(a);
-    for (const std::string& c : p.cIncludes)
+    // The C import's include directories, another platform's left out (cInclude(path, Platform),
+    // kept as "PLATFORM PATH").
+    std::string platform = targetPlatform(p, request);
+    for (const std::string& c : forPlatform(p.cIncludes, platform))
       args.push_back("--cinclude"), args.push_back(rooted(root, c).string());
     for (const std::string& l : p.libraries)
       args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
     // The system libraries of the kpp libraries it uses (Library::systemLibrary), a library's own for
     // its tests, each once, those of another platform left out.
-    std::string platform = targetPlatform(p, request);
     std::vector<std::string> systemLibraries;
     std::vector<const std::vector<std::string>*> lists = {&p.systemLibraries};
     for (const ProjectLibrary& l : p.kppLibraries)

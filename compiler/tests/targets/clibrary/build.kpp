@@ -1,5 +1,6 @@
 // targets.ps1's project of a C library with a C and a C++ file and a define per platform
-// (CLibrary's define(..., Platform::X)), built for Windows, Linux and FreeBSD: `42 PLATFORM 10`.
+// (CLibrary's define(..., Platform::X)), and an include directory of the C import per platform
+// (Executable's cInclude(..., Platform::X)), built for Windows, Linux and FreeBSD: `42 PLATFORM 10`.
 void build(Project& project)
 {
   CLibrary& numbers = project.cLibrary("numbers");
@@ -18,4 +19,8 @@ void build(Project& project)
   app.link("numbers");
   app.link("kernel");
   app.cInclude("c");
+  // Each has an included_for.h, which main.kpp imports: its own platform's alone is on the path.
+  app.cInclude("include-windows", Platform::Windows);
+  app.cInclude("include-linux", Platform::Linux);
+  app.cInclude("include-freebsd", Platform::FreeBSD);
 }
