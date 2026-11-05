@@ -2422,7 +2422,9 @@ the parts made before it, `this` and their addresses; one not made yet is unset,
 (language/consteval_initializer_reads_earlier_member). A virtual call runs the overrider of the
 most-derived object that its object is a base part of, wherever a pointer or a reference to that part
 leads (an array's element, a member), and in a base's destructor the base's own
-(language/consteval_virtual_call_through_base_pointer).
+(language/consteval_virtual_call_through_base_pointer); a function named with its class (`A::f()`,
+`super::bump()`, `b.A::f()`) is that function, run on the object's part of its class
+(language/consteval_qualified_call_is_no_virtual_call).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

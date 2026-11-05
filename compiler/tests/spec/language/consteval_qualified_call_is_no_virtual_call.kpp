@@ -1,0 +1,55 @@
+// spec: at compile time a member function named with its class (`A::f()`, `super::bump()`, `this->A::f()`, `b.A::f()`) is that function, no virtual call ([class.virtual] 16), run on the object's part of its class, as at run time; and `d.Base::v` reads and writes the member of the base that the derived class hides
+// found by thread D (2026-11-05): the interpreter dispatched `A::f()` in B's override of f to B::f again, until calls nested 512 deep (no constant), and a qualified member was no constant; Factorio's overrides call their `super::` functions throughout
+class A
+{
+public:
+  int v = 1;
+  virtual int f() const { return this->v; }
+  virtual void bump() { this->v += 1; }
+  virtual ~A() {}
+};
+class B : public A
+{
+public:
+  using super = A;
+  int f() const override { return A::f() + 10; }
+  void bump() override
+  {
+    super::bump();
+    this->v *= 10;
+  }
+};
+class C : public A
+{
+public:
+  int f() const override { return this->A::f() + 100; }
+};
+struct Base
+{
+  int v = 1;
+};
+struct Derived : Base
+{
+  int v = 2;
+};
+constexpr int calls()
+{
+  B b;
+  b.bump();
+  const A* a = &b;
+  C c;
+  return a->f() * 1000 + b.A::f() * 10 + c.f() - 100;
+}
+constexpr int members()
+{
+  Derived d;
+  d.Base::v = 9;
+  return d.Base::v * 10 + d.v;
+}
+constexpr int c = calls();
+constexpr int m = members();
+int main()
+{
+  println(c, " ", calls(), " ", m, " ", members());
+  return 0;
+}

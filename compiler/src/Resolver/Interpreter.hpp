@@ -211,6 +211,11 @@
   // not run again for its value).
   static thread_local bool constCallPlaceRan;
 
+  // Set right before constRun runs a member function named with its class (`A::f()`,
+  // `super::update()`, `object.A::f()`): that function, no virtual call ([class.virtual] 16), which
+  // constRun reads and clears first.
+  static bool& constQualifiedCall();
+
   // A member function returning a reference, run on the object at self for the place its result
   // designates (`result[i]` through operator[], `front()`): `this` refers to self, so that the place
   // is in the caller's object (a write through it reaches the object); nullopt for a result that

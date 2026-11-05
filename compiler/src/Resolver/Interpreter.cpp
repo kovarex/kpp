@@ -339,8 +339,12 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       // enumerator or a static constexpr variable (a trait object's value), read for the
       // object's class instance.
       auto* m = static_cast<MemberExpr*>(e);
-      if (m->dynamicMember || m->member.parts.size() != 1)
+      if (m->dynamicMember || m->member.parts.empty())
         return std::nullopt;
+      if (m->member.parts.size() != 1)
+        return m->base && m->resolved && m->resolved->kind == NodeKind::VariableDecl && !(m->resolved->flags & (DF_Static | DF_Typedef))
+                 ? constMemberRead(m, ctx, depth) // `b.A::v`: the data member of the base the qualifier names
+                 : std::nullopt;
       Decl* d = m->resolved;
       if (d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static))
         return constMemberRead(m, ctx, depth); // `point.x`, `this->count`
@@ -1439,9 +1443,26 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   if (!self)
     return constRun(f, values, fctx, depth, nullptr, &places, &categories, nullptr, returnPlace);
   std::optional<ConstValue> object = constRead(*self);
+  // `A::f()`, `super::update()` (named with its class): that function, run on the object's part of
+  // its class, no virtual call ([class.virtual] 16).
+  bool qualified = callee->name.parts.size() > 1;
+  if (qualified && object && object->isObject() && object->type && f->parent)
+  {
+    std::vector<size_t> path;
+    if (const Ty* owner = constBaseDeclaring(object->type, f->parent, path, 0); owner && !path.empty())
+    {
+      self->path.insert(self->path.end(), path.begin(), path.end());
+      self->type = owner;
+      self->bits = 0;
+      object = constRead(*self);
+    }
+  }
+  if (!object)
+    return std::nullopt;
+  constQualifiedCall() = qualified;
   if (returnPlace)
-    return object ? constRun(f, values, fctx, depth, &object, &places, &categories, &*self, returnPlace) : std::nullopt;
-  std::optional<ConstValue> r = object ? constRun(f, values, fctx, depth, &object, &places, &categories) : std::nullopt;
+    return constRun(f, values, fctx, depth, &object, &places, &categories, &*self, returnPlace);
+  std::optional<ConstValue> r = constRun(f, values, fctx, depth, &object, &places, &categories);
   if (r && object && self->writable() && !(f->flags & DF_Const))
     constWrite(*self, *object);
   return r;
@@ -1450,9 +1471,12 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
 auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   auto* m = static_cast<MemberExpr*>(c->callee);
-  if (!m->base || m->dynamicMember || m->member.parts.size() != 1)
+  // `object.A::f()` (named with its class): the function the walk chose, run on the object's part of
+  // its class, no virtual call ([class.virtual] 16).
+  bool qualified = m->member.parts.size() > 1;
+  if (!m->base || m->dynamicMember || m->member.parts.empty() || (qualified && !(m->resolved && m->resolved->kind == NodeKind::FunctionDecl)))
     return std::nullopt;
-  if (m->member.parts[0].special == 1 && c->args.empty())
+  if (!qualified && m->member.parts[0].special == 1 && c->args.empty())
   {
     // `slots[i].~Text()`, `p->~T()`: the object destroyed where it is, its lifetime ended there
     // (what is left is no value: reading it is no constant).
@@ -1469,9 +1493,9 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   const Ty* object = constObjectType(m->base, ctx, m->op == P::Arrow);
   Scope* s = object ? classScopeOf(object) : nullptr;
   Lookup l;
-  if (!s || !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1))
+  if (!s || (!qualified && !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1)))
     return std::nullopt;
-  if (l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)))
+  if (!qualified && l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)))
     return constCallObject(m, c, ctx, depth, l.decl); // `this->hasher(key)`: a member object's operator()
   // Of the functions of the name, the one the call's arguments fill.
   FunctionDecl* f = nullptr;
@@ -1515,7 +1539,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   std::vector<uint8_t> categories;               // how by-value parameters are initialised
   if (!constArguments(c->args, ctx, depth, values, &places, &categories))
     return std::nullopt;
-  Subst bound = memberSubst(object, l.foundIn, depth + 1);
+  Subst bound = memberSubst(object, qualified ? (f->parent ? f->parent->ownScope : nullptr) : l.foundIn, depth + 1);
   LocalStack params;
   for (const Subst::Pair& p : bound.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
@@ -1525,7 +1549,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   // A member function template's arguments written (`object.get<0>()`, a tuple-like structured
   // binding's), as a free one's are.
   std::vector<const Ty*> given;
-  if (const NamePart& part = m->member.parts[0]; part.hasTemplateArgs && !f->templateParams.empty())
+  if (const NamePart& part = m->member.last(); part.hasTemplateArgs && !f->templateParams.empty())
     for (Node* w : part.templateArgs)
     {
       size_t n = f->templateParams.size();
@@ -1584,6 +1608,25 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
     held.reset();
   if (!held)
     return constRun(f, values, fctx, depth, nullptr, &places, &categories); // what the object's type decides (Array::size of a run-time array)
+  if (qualified && held->type && f->parent)
+  {
+    std::vector<size_t> path;
+    if (const Ty* owner = constBaseDeclaring(held->type, f->parent, path, 0); owner && !path.empty())
+    {
+      if (place)
+      {
+        place->path.insert(place->path.end(), path.begin(), path.end());
+        place->type = owner;
+        place->bits = 0;
+        held = constRead(*place);
+      }
+      else
+        held = constPart(*held, path);
+      if (!held)
+        return std::nullopt;
+    }
+  }
+  constQualifiedCall() = qualified;
   std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held, &places, &categories, place ? &*place : nullptr);
   return r;
 }
@@ -2260,6 +2303,12 @@ auto GlobalScope::Impl::constDyingPlaces() -> std::vector<ConstPlace>&
 {
   static thread_local std::vector<ConstPlace> places;
   return places;
+}
+
+auto GlobalScope::Impl::constQualifiedCall() -> bool&
+{
+  static thread_local bool qualified = false;
+  return qualified;
 }
 
 auto GlobalScope::Impl::constDynamicPlace(const ConstPlace& place, int depth) -> ConstPlace
@@ -5727,6 +5776,27 @@ auto GlobalScope::Impl::constFieldNamed(Decl* resolved, const QualifiedName& nam
 {
   if (resolved)
     return resolved;
+  if (name.parts.size() == 2 && !name.global && !name.parts[1].hasTemplateArgs)
+  {
+    // `b.A::v`: the data member of the base the qualifier names (one the derived class hides).
+    std::function<Decl*(const Ty*, int)> declaredIn = [&](const Ty* t, int depth) -> Decl* {
+      const ConstClassLayout* layout = t && depth <= 16 ? constLayoutOf(t, depth) : nullptr;
+      if (!layout)
+        return nullptr;
+      if (layout->decl && !layout->decl->name.empty() && layout->decl->name.last().symbol == name.parts[0].symbol)
+      {
+        for (VariableDecl* f : layout->fields)
+          if (f && !f->name.empty() && f->name.last().symbol == name.parts[1].symbol)
+            return f;
+        return nullptr;
+      }
+      for (const Ty* b : layout->bases)
+        if (Decl* d = declaredIn(b, depth + 1))
+          return d;
+      return nullptr;
+    };
+    return declaredIn(objectType, 0);
+  }
   if (name.parts.size() != 1 || name.global || name.parts[0].hasTemplateArgs)
     return nullptr;
   Scope* s = objectType ? classScopeOf(objectType) : nullptr;
@@ -6485,6 +6555,7 @@ auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t nam
 
 auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth, std::optional<ConstValue>* self, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, const ConstPlace* selfPlace, std::optional<ConstPlace>* returnPlace) -> std::optional<ConstValue>
 {
+  bool qualified = std::exchange(constQualifiedCall(), false); // (read first: no other run takes it)
   if (int which = intrinsicOf(f))
     return constIntrinsic(which, f, args, fctx.subst, depth);
   // A call of a function taking a Text the walk left as written (a template's own nodes): its
@@ -6505,13 +6576,15 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
     }
     packedPlaces.push_back(std::nullopt);
     packedCategories.push_back(0);
+    constQualifiedCall() = qualified;
     return constRun(f, packed, fctx, depth, self, &packedPlaces, &packedCategories, selfPlace, returnPlace);
   }
   // A virtual function runs as the object's own class overrides it: the most-derived object's, which
   // a base part's place leads to (`const A* a = &b; a->f()` ran A::f at compile time, B::f at run
   // time: language/consteval_virtual_call_through_base_pointer), its overrider run on its part of
-  // the class that declares it.
-  if (self && *self && selfPlace && (f->flags & (DF_Virtual | DF_Override)) && !(f->flags & DF_Destructor))
+  // the class that declares it. Not one named with its class (`A::f()` in B's override of f ran B's
+  // again, until calls nested 512 deep: language/consteval_qualified_call_is_no_virtual_call).
+  if (!qualified && self && *self && selfPlace && (f->flags & (DF_Virtual | DF_Override)) && !(f->flags & DF_Destructor))
   {
     ConstPlace whole = constDynamicPlace(*selfPlace, depth);
     std::optional<ConstValue> object = whole.path.size() < constResolve(*selfPlace).path.size() ? constRead(whole) : std::nullopt;
@@ -6532,7 +6605,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
         return r;
       }
   }
-  if (self && *self)
+  if (!qualified && self && *self)
     if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && constDefinition(g))
     {
       Subst subst = memberSubst(types.unqualified((*self)->type), g->parent ? g->parent->ownScope : nullptr, 0);
