@@ -1,0 +1,22 @@
+// spec: a class's implicit copy constructor is deleted when a member's or a base's copy constructor is deleted ([class.copy.ctor] 10): copying such a class (`U b = a;` with a member of a class T declaring `T(const T&) = delete`) is a compile error, as copying T itself is, never a copy of T's bytes
+// found by thread D (2026-11-05), comparing deleted special members with clang: kpp copied U, its member t too (`7 5`), where codegen refuses a T copied alone ("copying T, whose copy constructor is deleted") and a member whose class has a move constructor and no copy constructor
+// pending: codegen copies a class whose member's copy constructor is deleted (B)
+// error: implicit_copy_deleted_by_member_copy.kpp:20: error: copying
+struct T
+{
+  int v = 0;
+  T() {}
+  T(const T&) = delete;
+};
+struct U
+{
+  T t;
+  int w = 5;
+};
+int main()
+{
+  U a;
+  a.t.v = 7;
+  U b = a;
+  return b.t.v + b.w;
+}

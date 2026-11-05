@@ -1,0 +1,13 @@
+// spec: a parameter declared without a name may be a reference or a pointer to an array, as a named one may: `int (&)[3]`, `int (*)[3]`, and `T (&)[N]` in a template, its N deduced, as C++ reads them
+// found by thread D (2026-11-05), comparing template deduction with clang: kpp's parser stopped at the `(` ("expected ')' after parameters") where `int (*)(int)`, a pointer to a function, is read
+// pending: the parser reads no parameter that is an unnamed reference or pointer to an array (A)
+template<class T, int N> int length(T (&)[N]) { return N; }
+int first(int (&)[3]) { return 1; }
+int second(int (*)[3]) { return 2; }
+int main()
+{
+  int a[3] = {};
+  int b[5] = {};
+  println(length(a), " ", length(b), " ", first(a), " ", second(&a));
+  return 0;
+}
