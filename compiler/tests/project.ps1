@@ -756,6 +756,12 @@ if (Run 'paths')
     $output = @(Kpp @('--debug', '--no-server', '--run'))
     $printed = if ($output.Count) { $output[-1] } else { '' }
     if ($code -ne 0 -or $printed -ne (Join-Path $root 'src\main.kpp')) { Fail "a debug build's CallerLocation file is '$printed', not $(Join-Path $root 'src\main.kpp')`n$($output -join "`n")" }
+    # describe.txt's keys are one table (Project/DescribeFile.cpp, 2026-11-05): a line kpp does not know
+    # (projectlib and kppc of different releases) is an error naming it, never a setting dropped.
+    Add-Content 'build\kpp\describe.txt' 'frobnicate 1'
+    $output = (Kpp @('--debug', '--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'describe\.txt line \d+: `frobnicate` is no key kpp knows') { Fail "an unknown key in describe.txt: exit $code`n$output" }
+    Remove-Item 'build\kpp\describe.key'
   }
   finally { Pop-Location }
 }
