@@ -3720,6 +3720,15 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
   `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
 
+- **noexcept in the function type** (a known deviation, logged 2026-11-05, D; not implemented until
+  kovarex wants it). C++17 made noexcept part of a function's type: `void (*)() noexcept` and
+  `void (*)()` are two types, a pointer to a noexcept function converts to a plain one and never the
+  other way, and a template deduces it. kpp's function types carry no noexcept, so the two are one
+  type and `void (*f)() noexcept = plain;` (plain not noexcept) compiles, where clang refuses it
+  (thread A, comparing implicit conversions). A call through such a pointer is then not known to
+  stay noexcept. Making it part of the type touches type identity, deduction, overloads on it and
+  IR names; the converted game declares no noexcept function pointer type.
+
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
    lexer + parser + order-independent name resolution, benchmarked on Factorio. Whole front end
