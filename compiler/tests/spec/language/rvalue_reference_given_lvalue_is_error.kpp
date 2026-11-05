@@ -1,0 +1,32 @@
+// spec: an rvalue reference parameter given an lvalue of its own type is an error, as in C++ ([dcl.init.ref] 5.4.4; clang: "rvalue reference to type 'S' cannot bind to lvalue of type 'S'"): move(a) says the object may be moved from, a plain `a` never does; one of another type converts to a temporary, which it binds (classes/rvalue_reference_takes_a_converted_temporary), and so does a function lvalue (templates/forwarding_reference_to_function)
+// found by thread B (2026-11-05): kpp bound the variable itself, so `take(a)` with `take(S&&)` left a moved from (`[]`) and `takeInt(i)` with `takeInt(int&&)` changed i (`5`), where the program is no C++
+// error: rvalue_reference_given_lvalue_is_error.kpp:16: error: a S&& parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// error: rvalue_reference_given_lvalue_is_error.kpp:22: error: a int32&& parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+class S
+{
+public:
+  String s;
+};
+void take(S&& x) { S y = move(x); }
+void takeInt(int&& v) { v = 5; }
+String moved()
+{
+  S a;
+  a.s = "hi";
+  take(a);
+  return a.s;
+}
+int changed()
+{
+  int i = 1;
+  takeInt(i);
+  return i;
+}
+int main()
+{
+  S b;
+  take(move(b));
+  takeInt(3);
+  println("[", moved(), "] ", changed());
+  return 0;
+}

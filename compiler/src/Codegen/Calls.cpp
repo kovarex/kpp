@@ -1294,6 +1294,15 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     while (element && element->kind == TyKind::Array)
       element = element->inner; // (`const int (&)[2]` refers to const: an array's const is its elements')
     bool takesTemporary = pt->kind == TyKind::RRef || types.stripRef(pt)->isConst || (element && element->isConst);
+    // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4: `move(a)` says so;
+    // one of another type converts to a temporary, which it binds). Until 2026-11-05 it bound the
+    // variable itself: `take(a)` with `take(S&&)` left a moved from.
+    if (pt->kind == TyKind::RRef && isLvalueExpression(arg) && arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty))
+    {
+      const Ty* given = types.unqualified(types.stripRef(arg->ty)), *bound = types.unqualified(types.stripRef(pt));
+      if (given->kind != TyKind::Function && (given == bound || (isClass(given) && isClass(bound) && classKey(given) == classKey(bound)))) // (a function lvalue it binds: 5.3.1)
+        fail(at, "a " + types.toString(pt, &symbols) + " parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
+    }
     auto refuseTemporary = [&](const char* made)
     {
       if (!takesTemporary)
