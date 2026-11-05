@@ -2,4 +2,5 @@
 # the ones a known project's CI pins. A project that pins a kpp release adds its tag here in the same
 # change, or pins a nightly-<date> release, which is never deleted either. settle.ps1 keeps the newest
 # 50 push releases besides these (gorating's CI broke on 2026-11-05 when v0.2.242, its pin, went).
-v0.2.317 # gorating's CI (github.com/kovarex/gorating, branch kpp)
+v0.2.317 # gorating's CI before v0.2.519 (github.com/kovarex/gorating)
+v0.2.519 # gorating's CI (github.com/kovarex/gorating, master): the new html library (SafeHtml with <<)
