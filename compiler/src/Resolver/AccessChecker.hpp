@@ -155,8 +155,6 @@
   // always, and what it computes is kept.
   struct OrdinaryLayout
   {
-    bool exact = exactLayoutOnly, needed = layoutNeeded;
-    const ConstHooks* hooks = constHooks(); // and the code generator's hooks are not its
     OrdinaryLayout()
     {
       exactLayoutOnly = false;
@@ -169,6 +167,9 @@
       layoutNeeded = needed;
       constHooks() = hooks;
     }
+
+    bool exact = exactLayoutOnly, needed = layoutNeeded;
+    const ConstHooks* hooks = constHooks(); // and the code generator's hooks are not its
   };
 
   // An alignas(N) written in class cls (on it, or on one of its data members), N under the class's
@@ -203,9 +204,10 @@
   static thread_local int nameEvaluations;
   struct NameEvaluation
   {
-    bool ok;
     NameEvaluation() : ok(++nameEvaluations <= 1024 && stackRoomLeft()) {}
     ~NameEvaluation() { --nameEvaluations; }
+
+    bool ok;
   };
 
   // A static member's value for a class instance's arguments, kept: a template recursion asks for

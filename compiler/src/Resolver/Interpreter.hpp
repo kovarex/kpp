@@ -637,14 +637,15 @@
   // member function); a reference's place is what it refers to.
   struct ConstPlace
   {
+    ConstBinding& binding() const { return (*env)[index]; }
+    bool writable() const { return !readOnly && binding().writable; }
+
     std::vector<ConstBinding>* env = nullptr; // by index: the locals may grow meanwhile
     size_t index = 0;
     std::vector<size_t> path;
     const Ty* type = nullptr; // the part's type, which a stored value is converted to
     bool readOnly = false;    // reached through something const (a reference to const)
     uint8_t bits = 0;         // a bit field's width, which a stored value is fitted to
-    ConstBinding& binding() const { return (*env)[index]; }
-    bool writable() const { return !readOnly && binding().writable; }
   };
 
   // An operand of a binary operator: where its object is (an lvalue's place, a prvalue's
@@ -686,13 +687,14 @@
   static const ParsedFile*& constRunningFile();
   struct ConstRunning
   {
-    const ParsedFile* outer = constRunningFile();
     explicit ConstRunning(const ParsedFile* file)
     {
       if (file)
         constRunningFile() = file;
     }
     ~ConstRunning() { constRunningFile() = outer; }
+
+    const ParsedFile* outer = constRunningFile();
   };
   struct ConstWhere
   {
@@ -812,11 +814,12 @@
   // (constEndTemps), the last made first.
   struct ConstTemps
   {
+    ConstTemps() { constTempList() = &list; }
+    ~ConstTemps() { constTempList() = outer; }
+
     std::vector<ConstBinding> list;
     ConstFrame frame{&list};
     std::vector<ConstBinding>* outer = constTempList();
-    ConstTemps() { constTempList() = &list; }
-    ~ConstTemps() { constTempList() = outer; }
   };
 
   // What a throw in a constant evaluation throws, and where, as the reason it is no constant:

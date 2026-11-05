@@ -1429,9 +1429,10 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
 {
   struct Lent
   {
-    const ConstHooks* saved = Impl::constHooks();
     explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
     ~Lent() { Impl::constHooks() = saved; }
+
+    const ConstHooks* saved = Impl::constHooks();
   };
   if (!e)
   {
@@ -1987,9 +1988,6 @@ namespace
   // lookups there reach the base), or in any class for a member whose class is not known.
   struct NameReaders
   {
-    std::unordered_set<uint32_t> symbols;
-    std::unordered_set<RecordedName> members;
-    std::unordered_set<uint32_t> anyClass;
     bool reads(const DependencyList& l) const
     {
       if (symbols.empty() && members.empty() && anyClass.empty())
@@ -1999,6 +1997,10 @@ namespace
           return true;
       return false;
     }
+
+    std::unordered_set<uint32_t> symbols;
+    std::unordered_set<RecordedName> members;
+    std::unordered_set<uint32_t> anyClass;
   };
 
   // byClassOnly: a member's name is read only through its class or a class derived from it: a lookup

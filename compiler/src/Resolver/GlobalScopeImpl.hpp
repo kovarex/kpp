@@ -69,8 +69,6 @@ inline bool isMemberName(RecordedName n) { return (n >> 32) != 0; }
 
 struct DependencyList
 {
-  std::vector<RecordedName> names;
-  std::vector<std::pair<uint8_t, const void*>> uses;
   void tidy()
   {
     std::sort(names.begin(), names.end());
@@ -78,6 +76,9 @@ struct DependencyList
     std::sort(uses.begin(), uses.end());
     uses.erase(std::unique(uses.begin(), uses.end()), uses.end());
   }
+
+  std::vector<RecordedName> names;
+  std::vector<std::pair<uint8_t, const void*>> uses;
 };
 
 // A unit's dependencies. Several threads may record into one (a declared type two threads compute
@@ -87,11 +88,11 @@ struct Dependencies
   // A spin lock: a std::mutex is 80 bytes, in each of 400 k instance records, and the merges are short.
   struct Lock
   {
-    std::atomic<bool> held{false};
     void lock() { while (held.exchange(true, std::memory_order_acquire)) std::this_thread::yield(); }
     void unlock() { held.store(false, std::memory_order_release); }
+
+    std::atomic<bool> held{false};
   } mutex;
-  DependencyList list;
   void add(DependencyList& part)
   {
     if (part.names.empty() && part.uses.empty())
@@ -101,7 +102,6 @@ struct Dependencies
     list.uses.insert(list.uses.end(), part.uses.begin(), part.uses.end());
     tidied = false; // tidied when read (a declared type nobody caches is computed, and merged, again and again)
   }
-  bool tidied = true;
   DependencyList& read()
   {
     if (!tidied)
@@ -109,6 +109,9 @@ struct Dependencies
     tidied = true;
     return list;
   }
+
+  DependencyList list;
+  bool tidied = true;
 };
 
 // Whether this build records dependencies: a compile server's builds do (the incremental builds
@@ -131,7 +134,6 @@ namespace resolver_detail
 {
   struct FileOfLookups
   {
-    const ParsedFile* saved;
     explicit FileOfLookups(const ParsedFile* file) : saved(lookupFile)
     {
       if (file)
@@ -139,6 +141,8 @@ namespace resolver_detail
     }
     ~FileOfLookups() { lookupFile = saved; }
     FileOfLookups(const FileOfLookups&) = delete;
+
+    const ParsedFile* saved;
     FileOfLookups& operator=(const FileOfLookups&) = delete;
   };
 }
@@ -225,9 +229,6 @@ inline void recordUse(uint8_t kind, const void* what)
 // result's computation belong to that result, not to whoever happened to compute it first.
 struct RecordInto
 {
-  Dependencies* target;
-  DependencyList* saved;
-  DependencyList part;
   explicit RecordInto(Dependencies* into) : target(into), saved(recordingInto)
   {
     if (!recordingDependencies)
@@ -246,8 +247,6 @@ struct RecordInto
     savedReporting = reportingUnit;
     reportingUnit = into;
   }
-  uint32_t savedUnit = 0;
-  const void* savedReporting = nullptr;
   ~RecordInto()
   {
     if (!recordingDependencies)
@@ -263,6 +262,12 @@ struct RecordInto
       target->add(part);
   }
   RecordInto(const RecordInto&) = delete;
+
+  Dependencies* target;
+  DependencyList* saved;
+  DependencyList part;
+  uint32_t savedUnit = 0;
+  const void* savedReporting = nullptr;
   RecordInto& operator=(const RecordInto&) = delete;
 };
 
@@ -272,8 +277,6 @@ struct RecordInto
 // well. Only while recording.
 struct CollectUses
 {
-  std::vector<CollectedUse> uses;
-  std::vector<CollectedUse>* saved = usesCollector;
   CollectUses()
   {
     if (recordingDependencies)
@@ -288,6 +291,9 @@ struct CollectUses
       saved->insert(saved->end(), uses.begin(), uses.end());
   }
   CollectUses(const CollectUses&) = delete;
+
+  std::vector<CollectedUse> uses;
+  std::vector<CollectedUse>* saved = usesCollector;
   CollectUses& operator=(const CollectUses&) = delete;
 };
 
@@ -336,40 +342,12 @@ inline std::atomic<uint32_t> nextScopeId{0};
 
 struct Scope
 {
-  ScopeKind kind;
-  Scope* parent;
-  Decl* owner; // Null for the global namespace; one of possibly several NamespaceDecls otherwise.
-  uint32_t name = UINT32_MAX;
-  const ParsedFile* privateTo = nullptr; // a file's private names (design.md 15): that file
-  bool library = false; // a scoped library's names, the namespace of its name (design.md 16)
-  uint32_t id = nextScopeId.fetch_add(1, std::memory_order_relaxed); // what a lookup in it is recorded with (memberName)
-
   // Symbol table, sharded for the heavily shared namespace scopes.
   struct Shard
   {
     std::mutex mutex;
     std::unordered_map<uint32_t, std::vector<Entry>> map;
   };
-  std::unique_ptr<Shard[]> shards;
-  uint32_t shardCount;
-
-  // Lazily resolved relations (phase 2).
-  std::vector<Type*> baseTypes;          // From the class definition.
-  std::vector<Scope*> baseScopes;        // Resolved base class scopes.
-  std::atomic<int> baseState{0};         // 0 untouched, 1 resolving, 2 done
-  std::thread::id baseResolver;
-  std::vector<UsingDirectiveDecl*> usingDirectives;
-  std::vector<Scope*> usingScopes;
-  std::atomic<int> usingState{0};
-  std::vector<UsingNameDecl*> usingEnums; // `using enum E;` inside a class or namespace.
-  std::vector<Scope*> usingEnumScopes;
-  std::atomic<int> usingEnumState{0};
-  Span<Decl*> templateParams; // Of the owning class template.
-  std::vector<FunctionDecl*> outOfLineMembers; // `void Foo<T>::f() {}` definitions, attached by finishIndex.
-  // The names the false `when` declarations of this scope declare (design.md 19), which the parser
-  // dropped: a lookup stops at one (Lookup::absent), never reaching an outer scope's or a base's name
-  // of that spelling. Filled by the index (a namespace's under deferredMutex), read after it.
-  std::unordered_map<uint32_t, Decl*> absent;
   Decl* findAbsent(uint32_t symbol) const
   {
     if (absent.empty())
@@ -377,7 +355,6 @@ struct Scope
     auto it = absent.find(symbol);
     return it == absent.end() ? nullptr : it->second;
   }
-  Dependencies relationDeps; // what resolving the bases and using-directives read
 
   Scope(ScopeKind kind, Scope* parent, Decl* owner, uint32_t shardCount)
     : kind(kind), parent(parent), owner(owner), shards(new Shard[shardCount]), shardCount(shardCount)
@@ -432,6 +409,35 @@ struct Scope
     return ns;
   }
 
+  ScopeKind kind;
+  Scope* parent;
+  Decl* owner; // Null for the global namespace; one of possibly several NamespaceDecls otherwise.
+  uint32_t name = UINT32_MAX;
+  const ParsedFile* privateTo = nullptr; // a file's private names (design.md 15): that file
+  bool library = false; // a scoped library's names, the namespace of its name (design.md 16)
+  uint32_t id = nextScopeId.fetch_add(1, std::memory_order_relaxed); // what a lookup in it is recorded with (memberName)
+  std::unique_ptr<Shard[]> shards;
+  uint32_t shardCount;
+
+  // Lazily resolved relations (phase 2).
+  std::vector<Type*> baseTypes;          // From the class definition.
+  std::vector<Scope*> baseScopes;        // Resolved base class scopes.
+  std::atomic<int> baseState{0};         // 0 untouched, 1 resolving, 2 done
+  std::thread::id baseResolver;
+  std::vector<UsingDirectiveDecl*> usingDirectives;
+  std::vector<Scope*> usingScopes;
+  std::atomic<int> usingState{0};
+  std::vector<UsingNameDecl*> usingEnums; // `using enum E;` inside a class or namespace.
+  std::vector<Scope*> usingEnumScopes;
+  std::atomic<int> usingEnumState{0};
+  Span<Decl*> templateParams; // Of the owning class template.
+  std::vector<FunctionDecl*> outOfLineMembers; // `void Foo<T>::f() {}` definitions, attached by finishIndex.
+  // The names the false `when` declarations of this scope declare (design.md 19), which the parser
+  // dropped: a lookup stops at one (Lookup::absent), never reaching an outer scope's or a base's name
+  // of that spelling. Filled by the index (a namespace's under deferredMutex), read after it.
+  std::unordered_map<uint32_t, Decl*> absent;
+  Dependencies relationDeps; // what resolving the bases and using-directives read
+
 };
 
 namespace resolver_detail
@@ -449,7 +455,6 @@ namespace resolver_detail
       // several instantiations.
       const Ty* type = nullptr;
     };
-    std::vector<Item> items;
     // A class declared in a function body (Walker's walk of its members): the items below floor
     // are the locals of the functions around it, which a name in a member function finds only
     // after the class's scope, its members and bases ([basic.lookup.unqual]; lookupUnqualified).
@@ -459,7 +464,6 @@ namespace resolver_detail
       size_t floor;
       Scope* classScope;
     };
-    std::vector<ClassFrame> classFrames;
     // The symbol of an item that is a body's `using namespace N;` (decl the UsingDirectiveDecl):
     // no name, a namespace for unqualified lookups to try.
     static constexpr uint32_t usingDirective = UINT32_MAX - 1;
@@ -487,6 +491,9 @@ namespace resolver_detail
           return items[i].type;
       return nullptr;
     }
+
+    std::vector<Item> items;
+    std::vector<ClassFrame> classFrames;
   };
 
   enum class Found : uint8_t { No, Local, Member, Global, Dependent };
@@ -510,9 +517,6 @@ namespace resolver_detail
   class InlineVector
   {
     static_assert(std::is_trivially_copyable_v<T>);
-    T* items = inlineItems;
-    uint32_t count = 0, capacity = N;
-    T inlineItems[N];
 
     void grow(uint32_t wanted)
     {
@@ -531,7 +535,6 @@ namespace resolver_detail
       memcpy(static_cast<void*>(items), other.items, sizeof(T) * other.count);
       count = other.count;
     }
-
   public:
     InlineVector() = default;
     InlineVector(const InlineVector& other) { copyFrom(other); }
@@ -612,6 +615,10 @@ namespace resolver_detail
     const T& back() const { return items[count - 1]; }
     T& operator[](size_t i) { return items[i]; }
     const T& operator[](size_t i) const { return items[i]; }
+  private:
+    T* items = inlineItems;
+    uint32_t count = 0, capacity = N;
+    T inlineItems[N];
   };
 
   // Template parameter -> type, for members seen through an instantiation like Vector<int>.
@@ -622,7 +629,6 @@ namespace resolver_detail
       Decl* param;
       const Ty* type;
     };
-    InlineVector<Pair, 4> pairs;
     const Ty* find(Decl* param) const
     {
       for (const Pair& p : pairs)
@@ -631,6 +637,8 @@ namespace resolver_detail
       return nullptr;
     }
     bool empty() const { return pairs.empty(); }
+
+    InlineVector<Pair, 4> pairs;
   };
 
   inline bool isAllCaps(std::string_view s)

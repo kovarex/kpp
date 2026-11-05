@@ -1230,12 +1230,13 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   // caller runs it no second time for its value.
   struct Ran
   {
-    bool on;
     ~Ran()
     {
       if (on)
         constCallPlaceRan = true;
     }
+
+    bool on;
   } ran{returnPlace != nullptr};
   if (c->callee && c->callee->kind == NodeKind::MemberExpr)
   {
@@ -4219,8 +4220,9 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     return std::nullopt;
   struct Call
   {
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
     ~Call() { --constCalls(); }
+
+    bool ok = ++constCalls() <= 512 && stackRoomLeft();
   } call;
   if (!call.ok)
     return std::nullopt;
@@ -4329,8 +4331,9 @@ auto GlobalScope::Impl::constCallLambda(LambdaExpr* l, CallExpr* c, const TypeCo
   }
   struct Call
   {
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
     ~Call() { --constCalls(); }
+
+    bool ok = ++constCalls() <= 512 && stackRoomLeft();
   } call;
   if (!call.ok)
     return std::nullopt;
@@ -4422,8 +4425,9 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
 {
   struct Call
   {
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
     ~Call() { --constCalls(); }
+
+    bool ok = ++constCalls() <= 512 && stackRoomLeft();
   } call;
   if (!call.ok)
   {
@@ -5601,12 +5605,13 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
     // (its virtual calls are its class's while it runs, on a base part too: constDynamicPlace)
     struct Dying
     {
-      bool on;
       ~Dying()
       {
         if (on)
           constDyingPlaces().pop_back();
       }
+
+      bool on;
     } dying{at != nullptr};
     if (at)
       constDyingPlaces().push_back(constResolve(*at));
@@ -6911,8 +6916,9 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
     }
   struct Call
   {
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
     ~Call() { --constCalls(); }
+
+    bool ok = ++constCalls() <= 512 && stackRoomLeft();
   } call;
   if (!call.ok)
   {

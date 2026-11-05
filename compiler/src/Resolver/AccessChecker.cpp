@@ -588,8 +588,9 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
     enumeratorValues = &found;
     struct Pop
     {
-      EnumeratorValues& f;
       ~Pop() { enumeratorValues = f.outer; }
+
+      EnumeratorValues& f;
     } pop{found};
     ConstValue next = ConstValue::integer(0, enumType);
     for (Decl* m : e->enumerators)

@@ -8,8 +8,6 @@
   static thread_local std::string_view fallbackText;
   struct TokenScope
   {
-    const std::vector<Token>* savedTokens;
-    std::string_view savedText;
     TokenScope(const std::vector<Token>* tokens, std::string_view text) : savedTokens(fallbackTokens), savedText(fallbackText)
     {
       fallbackTokens = tokens;
@@ -20,6 +18,9 @@
       fallbackTokens = savedTokens;
       fallbackText = savedText;
     }
+
+    const std::vector<Token>* savedTokens;
+    std::string_view savedText;
   };
   Scope root{ScopeKind::Namespace, nullptr, nullptr, 256};
   std::mutex deferredMutex;
@@ -384,10 +385,6 @@
   };
   struct InstanceRecord
   {
-    std::atomic<int> state{0}; // 1 being built (by owner), 2 built
-    std::atomic<std::thread::id> owner; // who builds it (whoever takes a queued check over)
-    std::atomic<int> queued{0};         // 1: its check is queued, not started; taken by whoever exchanges it to 0 first
-    bool late = false;                  // made after the resolve (by codegen): a clean resolve may not make it (step 3b)
     // How it was checked, for checking it again when its template's body changes (a compile
     // server's build keeps it: step 4). A member of a class instance (member) or a function instance.
     struct Recheck
@@ -408,6 +405,11 @@
       bool collectWhy = false;
       const Ty* lambdaTy = nullptr; // a generic lambda's call operator: its closure type (subst: its own arguments)
     };
+
+    std::atomic<int> state{0}; // 1 being built (by owner), 2 built
+    std::atomic<std::thread::id> owner; // who builds it (whoever takes a queued check over)
+    std::atomic<int> queued{0};         // 1: its check is queued, not started; taken by whoever exchanges it to 0 first
+    bool late = false;                  // made after the resolve (by codegen): a clean resolve may not make it (step 3b)
     std::unique_ptr<Recheck> recheck;
     const Decl* of = nullptr; // what it is an instance of (claimInstance's f)
     std::unique_ptr<FunctionInstanceTask> task;
