@@ -329,60 +329,99 @@
       return result;
     }
 
-    // The layouts this emitter has used: complete (or failed) ones, which do not change any more,
-    // so they are read without the shared lock.
+    // The layouts this emitter has used: published ones, complete (or failed), which do not change
+    // any more, so they are read without a lock.
     std::unordered_map<const Ty*, StructInfo*> layoutCache;
+    // The layouts this emitter is building: its own copies, by key, until each is published (a class
+    // that comes back while it is being built, a member or base of its own type or its vtables
+    // asking for it, finds its copy here, as built so far). The copies another emitter published
+    // first are kept, so that nothing this emitter took from one points at freed memory.
+    std::unordered_map<const Ty*, StructInfo> privateLayouts;
+    std::vector<std::unordered_map<const Ty*, StructInfo>::node_type> droppedLayouts;
 
+    // A class's layout, built the first time any emitter asks for it. Without the shared lock: the
+    // emitter builds its own copy, its vtables included (buildStruct), and publishes it whole; when
+    // two build one class at once, the copy published first is the class's, the same either way,
+    // and the other is dropped. So nobody ever waits for a layout another emitter builds (no lock
+    // order to keep), and the struct's type line is added once, by the copy published.
     StructInfo& structFor(const Ty* classTy, Node* at)
     {
       if (auto mine = layoutCache.find(classTy); mine != layoutCache.end())
         return checkedLayout(*mine->second, classTy, at);
       if (StructInfo* known; sh.finalLayouts.find(classTy, known))
         return checkedLayout(*layoutCache.emplace(classTy, known).first->second, classTy, at);
-      auto lock = sharedLock();
       StructInfo* info = nullptr;
-      if (auto known = structsByType.find(classTy); known != structsByType.end())
-        info = known->second;
-      else
+      {
+        std::lock_guard lock(sh.structsMutex);
+        if (auto known = structsByType.find(classTy); known != structsByType.end())
+          info = known->second;
+      }
+      if (!info)
       {
         const Ty* key = canonicalClass(classTy, at);
-        auto it = structs.find(key);
-        if (it != structs.end())
+        if (auto own = privateLayouts.find(key); own != privateLayouts.end())
+          return checkedLayout(own->second, classTy, at); // (this emitter's copy, being built)
         {
-          structsByType.emplace(classTy, &it->second);
-          info = &it->second;
-        }
-        else
-        {
-          size_t errorsBefore = errors.size();
-          try
+          std::lock_guard lock(sh.structsMutex);
+          if (auto it = structs.find(key); it != structs.end())
           {
-            info = &buildStruct(key, at);
-          }
-          catch (Unsupported&)
-          {
-            // Every use reports what made it fail, at the use: the first use like the others
-            // (its own report came from inside the layout, wherever that was), so that the lines
-            // do not depend on which use comes first.
-            structs[key].failed = true;
-            structs[key].failedWhy = lastFailure;
-            structs[key].failedShown = lastFailureShown;
-            ++sh.failuresRemembered;
-            layoutCache.emplace(classTy, &structs[key]);
-            if (mayPublish())
-              sh.finalLayouts.publish(classTy, &structs[key]);
-            errors.resize(errorsBefore);
-            fail(at, structs[key].failedWhy, structs[key].failedShown);
+            structsByType.emplace(classTy, &it->second);
+            info = &it->second;
           }
         }
+        if (!info)
+          info = &buildAndPublish(key, classTy, at);
       }
-      if (info->complete || info->failed)
-      {
-        layoutCache.emplace(classTy, info);
-        if (mayPublish())
-          sh.finalLayouts.publish(classTy, info);
-      }
+      layoutCache.emplace(classTy, info);
+      sh.finalLayouts.publish(classTy, info);
       return checkedLayout(*info, classTy, at);
+    }
+
+    // Builds class key's layout as this emitter's copy and publishes it, or takes the copy another
+    // emitter published first (dropping this one). A layout that fails is published failed: every
+    // use reports what made it fail, at the use, the first use like the others (its own report came
+    // from inside the layout, wherever that was), so that the lines do not depend on which use comes
+    // first or which emitter built it.
+    StructInfo& buildAndPublish(const Ty* key, const Ty* classTy, Node* at)
+    {
+      StructInfo& mine = privateLayouts.try_emplace(key).first->second;
+      std::string typeLine;
+      size_t errorsBefore = errors.size();
+      try
+      {
+        buildStruct(key, at, mine, typeLine);
+      }
+      catch (Unsupported&)
+      {
+        mine.failed = true;
+        mine.failedWhy = lastFailure;
+        mine.failedShown = lastFailureShown;
+        errors.resize(errorsBefore);
+      }
+      catch (...)
+      {
+        privateLayouts.erase(key); // (no half-built copy left for a later use to find)
+        throw;
+      }
+      auto node = privateLayouts.extract(key);
+      StructInfo* published = nullptr;
+      bool first = false;
+      {
+        std::lock_guard lock(sh.structsMutex);
+        auto inserted = structs.insert(std::move(node));
+        first = inserted.inserted;
+        published = &inserted.position->second;
+        structsByType.emplace(classTy, published);
+        if (first && !typeLine.empty())
+          ++result.structs;
+        if (!first)
+          droppedLayouts.push_back(std::move(inserted.node));
+      }
+      if (first && !typeLine.empty())
+        decls += typeLine;
+      if (first && published->failed)
+        ++sh.failuresRemembered;
+      return *published;
     }
 
     // A failed layout gives every use the error its first use got (the same lines whichever use
@@ -405,9 +444,11 @@
       return nullptr;
     }
 
-    // Lays out a class: bases first, then its data members; every member and base must be known
-    // (a guess would be a wrong layout that compiles).
-    StructInfo& buildStruct(const Ty* key, Node* at)
+    // Lays out a class into info (this emitter's copy, structFor's): bases first, then its data
+    // members, its size, and for a polymorphic class its vtables; every member and base must be known
+    // (a guess would be a wrong layout that compiles). typeLine: the struct's type definition, which
+    // the copy published adds to the declarations.
+    void buildStruct(const Ty* key, Node* at, StructInfo& info, std::string& typeLine)
     {
       ClassDecl* c = static_cast<ClassDecl*>(key->decl);
       auto layoutError = [&](const std::string& why) { unsupported(at, "the layout of " + types.toString(key, &symbols) + ": " + why); };
@@ -451,7 +492,6 @@
       if (c->keyword == Kw::union_)
       {
         // A union is one block of storage; every member lives at its start.
-        StructInfo& info = structs[key];
         info.name = irTypeName("%struct.", key);
         info.isUnion = true;
         uint64_t size = 1, align = 1;
@@ -500,14 +540,12 @@
           info.align = align;
           info.overAligned = true;
         }
-        decls += info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
-        ++result.structs;
+        typeLine = info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
         if (!info.align) // (an over-aligned union's are set above)
           std::tie(info.size, info.align) = fieldsSize(info, key, at);
         info.complete = true;
-        return structs[key];
+        return;
       }
-      StructInfo& info = structs[key];
       info.name = irTypeName("%struct.", key);
       // Bases first (resolved before deciding on the vtable pointer).
       std::vector<const Ty*> baseKeys;
@@ -532,7 +570,7 @@
       // 9); info.bases keeps declaration order, the order bases are built in.
       int primary = -1;
       for (size_t i = 0; i < baseKeys.size() && primary < 0; ++i)
-        if (structs[baseKeys[i]].polymorphic)
+        if (structFor(baseKeys[i], at).polymorphic)
           primary = int(i);
       bool ownVptr = false;
       if (primary < 0)
@@ -547,7 +585,7 @@
       std::vector<uint32_t> baseIndex(baseKeys.size());
       for (bool polymorphicPass : {true, false})
         for (size_t i = 0; i < baseKeys.size(); ++i)
-          if (structs[baseKeys[i]].polymorphic == polymorphicPass)
+          if (structFor(baseKeys[i], at).polymorphic == polymorphicPass)
           {
             baseIndex[i] = uint32_t(info.fieldTypes.size());
             info.fieldTypes.push_back(baseKeys[i]);
@@ -665,7 +703,7 @@
       bool allBasesEmpty = true;
       for (auto& [baseDef, index] : info.bases)
       {
-        bool emptyBase = structs[info.fieldTypes[index]].empty;
+        bool emptyBase = structFor(info.fieldTypes[index], at).empty;
         allBasesEmpty = allBasesEmpty && emptyBase;
         info.zeroSize[index] = emptyBase && classKey(info.fieldTypes[index]) != firstMember;
       }
@@ -690,23 +728,21 @@
       if (tailPadding)
         line += ", [" + std::to_string(tailPadding) + " x i8]";
       line += info.packed ? " }>\n" : " }\n";
-      decls += line;
-      ++result.structs;
+      typeLine = line;
       // Its size and alignment, final with the layout (classSizeAndAlign reads them; alignPadding
       // sets them where alignas asks for padding).
       if (!info.align)
         std::tie(info.size, info.align) = fieldsSize(info, key, at);
       info.complete = true;
-      if (structs[key].polymorphic)
+      if (info.polymorphic)
       {
         // The base fields are final now (alignPadding may have moved them).
         std::vector<uint32_t> finalIndex;
-        for (auto& [baseDef, index] : structs[key].bases)
+        for (auto& [baseDef, index] : info.bases)
           finalIndex.push_back(index);
-        structs[key].vtables = collectVtables(key, c, args, baseKeys, finalIndex, primary);
-        emitVtables(key, at);
+        info.vtables = collectVtables(key, c, args, baseKeys, finalIndex, primary, at);
+        emitVtables(key, info, at);
       }
-      return structs[key];
     }
 
     // The vtables of class key (design.md section 9): the primary one extends the primary base's
@@ -715,12 +751,12 @@
     // virtual functions take the slots they override in all of them; one that overrides no slot of
     // the primary vtable also gets a slot there, so that a call through the class needs no thunk.
     std::vector<Vtable> collectVtables(const Ty* key, ClassDecl* c, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys,
-                                       const std::vector<uint32_t>& baseIndex, int primary)
+                                       const std::vector<uint32_t>& baseIndex, int primary, Node* at)
     {
       std::vector<Vtable> tables(1);
       for (size_t i = 0; i < baseKeys.size(); ++i)
       {
-        std::vector<Vtable> inherited = structs[baseKeys[i]].vtables;
+        std::vector<Vtable> inherited = structFor(baseKeys[i], at).vtables;
         for (size_t j = 0; j < inherited.size(); ++j)
         {
           Vtable& t = inherited[j];
@@ -832,9 +868,8 @@
       return name;
     }
 
-    void emitVtables(const Ty* key, Node* at)
+    void emitVtables(const Ty* key, StructInfo& info, Node* at)
     {
-      StructInfo& info = structs[key];
       std::string ti = descriptorFor(key, at);
       std::vector<Vtable> tables = info.vtables;
       std::string text, thunks;
@@ -873,11 +908,10 @@
         text += "$" + table.name.substr(1) + " = comdat any\n" + table.name + " = linkonce_odr constant " + tableType + " [" + entries + "], comdat\n";
         table.vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + table.name + ", i64 0, i64 2)";
       }
-      StructInfo& done = structs[key];
-      done.vtables = std::move(tables);
-      done.vtableName = done.vtables[0].name;
-      done.vptrValue = done.vtables[0].vptrValue;
-      done.vtableText = text + thunks;
+      info.vtables = std::move(tables);
+      info.vtableName = info.vtables[0].name;
+      info.vptrValue = info.vtables[0].vptrValue;
+      info.vtableText = text + thunks;
     }
 
     // A function that moves `this` from the subobject at `from` to the one at `to` (offsets as
@@ -948,39 +982,59 @@
     // The descriptor of a class (what slot -1 of its vtables points at, what dynamic_cast searches):
     // { name, number of direct bases, [{ base's descriptor, base's offset }] }, for any class (a
     // polymorphic class's bases need not be polymorphic). Built once, used per module (useDescriptor).
+    // Made without the shared lock: a published layout's descriptor under sh.descriptorsMutex
+    // (another emitter may make the same text at once: the first one set stays), the layout this
+    // emitter is building (its vtables' descriptor) as its own copy's.
     std::string descriptorFor(const Ty* cls, Node* at)
     {
-      auto lock = sharedLock();
       StructInfo& info = structFor(cls, at);
-      if (!info.typeInfoName.empty())
-        return info.typeInfoName;
       const Ty* key = canonicalClass(cls, at);
+      auto building = privateLayouts.find(key);
+      bool own = building != privateLayouts.end() && &building->second == &info;
+      {
+        std::unique_lock lock(sh.descriptorsMutex, std::defer_lock);
+        if (!own)
+          lock.lock();
+        if (!info.typeInfoName.empty())
+          return info.typeInfoName;
+      }
       std::string name = "@\"typeinfo." + classIrName(key, info) + "\"";
-      info.typeInfoName = name;
       bool savedShared = emittingShared;
       emittingShared = true; // the descriptor goes into every module that uses it
       std::string nameConstant = cStringConstant(types.toString(key, &symbols));
       emittingShared = savedShared;
-      std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
-      std::vector<const Ty*> fieldTypes = info.fieldTypes;
       std::string structName = info.name, list;
-      for (auto& [baseDef, index] : bases)
-        list += (list.empty() ? "" : ", ") + std::string("{ ptr, i64 } { ptr ") + descriptorFor(fieldTypes[index], at) +
+      for (auto& [baseDef, index] : info.bases)
+        list += (list.empty() ? "" : ", ") + std::string("{ ptr, i64 } { ptr ") + descriptorFor(info.fieldTypes[index], at) +
                 ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
-      std::string arrayType = "[" + std::to_string(bases.size()) + " x { ptr, i64 }]";
-      structFor(cls, at).descriptorText = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " +
-                                          nameConstant + ", i64 " + std::to_string(bases.size()) + ", " + arrayType + " " +
-                                          (bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n";
+      std::string arrayType = "[" + std::to_string(info.bases.size()) + " x { ptr, i64 }]";
+      std::string text = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " +
+                         nameConstant + ", i64 " + std::to_string(info.bases.size()) + ", " + arrayType + " " +
+                         (info.bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n";
+      std::unique_lock lock(sh.descriptorsMutex, std::defer_lock);
+      if (!own)
+        lock.lock();
+      if (info.typeInfoName.empty())
+      {
+        info.typeInfoName = name;
+        info.descriptorText = std::move(text);
+      }
       return name;
     }
 
     // A class's descriptor and its bases' in the module being emitted (each once).
     void useDescriptor(const StructInfo& info)
     {
-      auto lock = sharedLock();
-      if (info.descriptorText.empty() || !vtablesIn[currentModule].insert(info.typeInfoName).second)
+      std::string name, text;
+      {
+        std::lock_guard descriptors(sh.descriptorsMutex);
+        name = info.typeInfoName;
+        text = info.descriptorText;
+      }
+      auto lock = sharedLock(); // (vtablesIn)
+      if (text.empty() || !vtablesIn[currentModule].insert(name).second)
         return;
-      moduleDecls[currentModule] += info.descriptorText;
+      moduleDecls[currentModule] += text;
       for (auto& [baseDef, index] : std::vector<std::pair<Decl*, uint32_t>>(info.bases))
         useDescriptor(structFor(info.fieldTypes[index], nullptr));
     }

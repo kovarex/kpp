@@ -273,7 +273,7 @@
     // points to): the debugger gets its declaration alone.
     const StructInfo* laidOutClass(const Ty* ct)
     {
-      auto lock = sharedLock();
+      std::lock_guard lock(sh.structsMutex); // (the published layouts)
       const StructInfo* info = nullptr;
       if (auto it = sh.structsByType.find(ct); it != sh.structsByType.end())
         info = it->second;

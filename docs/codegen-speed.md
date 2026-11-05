@@ -778,6 +778,56 @@ D, 2026-11-04).**
   pass, 13 pending), spec `--debug-info` and `--release`; the game's 256 objects identical to
   master's, and at 1, 8 and 32 threads with the barrier check on.
 
+**Step 8: layouts off the shared lock (thread D, 2026-11-05; B agreed to the shape).**
+- **Why.** Level 0 was serialized by the shared lock's holds, 77% of them class layouts (a lock timeline
+  at 23890b5c). A throwaway kppc that splits the lock's layout time exclusively by kind
+  (`cg\probe-kinds.py`, master 01c6d615, the game's debug build at -j 32, two runs, codegen 7.6 and 7.7
+  s; ms over all levels, calls):
+
+  | kind | held |
+  |---|---:|
+  | useFunction from vtable slots | 513 / 508 ms (316,273) |
+  | descriptorFor | 534 / 571 ms (10,035) |
+  | collectVtables | 227 / 213 ms (4,260) |
+  | emitVtables' own text | 222 / 220 ms |
+  | destructor thunks' bodies | 175 / 169 ms (3,047) |
+  | the layouts themselves (buildStruct without its vtables) | 395 / 371 ms (25,743) |
+  | classSizeAndAlign's sums | 39 ms (15,209) |
+  | needsDestruction's | 21 ms (23,040) |
+
+  About 2.1 s a build held the lock, 80% of it vtables: claims on the layouts alone would have freed
+  0.4 s. descriptorFor and useFunction also take other locks inside (constantsMutex, the request and
+  declaration shards, decls), so part of their time is waits made while holding the shared lock.
+- **Step 1 (efcb5112).** A class's size and alignment are set when its layout completes, so
+  classSizeAndAlign reads a complete layout without the lock (the contains-itself guard is per emitter);
+  needsDestruction lays the class out before it locks; irTypeName's names have a mutex of their own.
+- **Step 2.** structFor builds a layout, its vtables and its descriptor included, as the emitter's own
+  copy without the shared lock, and publishes it whole under sh.structsMutex. When two emitters build
+  one class at once, the copy published first is the class's (the same either way) and the other is
+  kept aside, so nothing points at freed memory. Nobody waits for a layout another emitter builds, so
+  there is no lock order to keep. The struct's type line and result.structs are added once, by the
+  copy published; requests and declarations are by name, constants by their contents, destructor
+  helpers once by name. A published layout's descriptor is made on demand under sh.descriptorsMutex.
+- **Checks.** gate.cmd (spec 1,145); determinism.ps1 -Full's test programs at 1, 8 and 32 threads;
+  incremental.ps1 (its 12 layout edits); the game (factorio-in-kpp 3d7d6f99, debug): its IR identical
+  with step 1's, and its 256 objects identical at --codegen-threads 32, 32, 8 and 1 (KPP_CHECK_BARRIER)
+  and with step 1's (`cg\gate-spin2.ps1`).
+- **Measured.** Interleaved clean builds of the game (`cg\multi-codegen.ps1` with per-level timers,
+  `cg\probe-levels.py`, never committed; 6 rounds, the order rotated, each build after five samples under 15%
+  load where that came within 2 minutes; another thread's work loaded the machine in about half of them).
+  The builds started quiet (load under 10%) and undisturbed:
+
+  | kppc | codegen | level 0 |
+  |---|---:|---:|
+  | master a11f5c72 | 4.759, 4.776, 4.784 s | 1,164, 1,180, 1,198 ms |
+  | step 1 efcb5112 | 4.663 s | 1,128 ms |
+  | step 2 | 4.252, 4.310, 4.311, 4.445 s | 766, 782, 796, 837 ms |
+
+  Step 2 against master: −0.47 s of codegen between the medians (−0.31 to −0.53 s), and −0.39 s of
+  level 0 (−0.33 to −0.43 s), B's estimate −0.3 to −0.5 s. Step 1 alone is within the noise, as expected.
+  Counting every build, the loaded ones too, the medians were 4.84 s (master), 6.21 s (step 1, four of its six
+  builds under load) and 4.43 s (step 2).
+
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for

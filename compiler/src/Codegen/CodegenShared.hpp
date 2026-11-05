@@ -374,8 +374,13 @@
     std::unordered_map<std::string, std::string> literalContents;
     std::unordered_set<std::string> sharedLiterals;
     std::vector<std::unordered_set<std::string>> moduleLiterals;
+    // The layouts, published whole (vtables included) by the emitter that built one first: each
+    // builds a layout without the shared lock, as its own copy (Emitter::structFor), and the first
+    // copy published is the class's. Under structsMutex, held only to look up and publish.
     std::unordered_map<const Ty*, StructInfo> structs;
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
+    SpinMutex structsMutex;
+    SpinMutex descriptorsMutex; // a published layout's typeInfoName and descriptorText (descriptorFor makes them on demand)
     std::unordered_map<Decl*, std::string> globals;
     // A static local that code its function's emission does not write names too (Emitter::staticLocal):
     // its definition by name, which every module naming it has a copy of; a build of one module

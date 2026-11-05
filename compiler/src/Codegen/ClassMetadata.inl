@@ -343,9 +343,9 @@
       auto lock = sharedLock(); // remembered in the shared layout, computed under the lock
       if (info.needsDestruction)
       {
-        // Final unless this emitter is in the middle of computing it (the recursion guard below):
-        // nobody else computes while the lock is held.
-        if (destructionDepth == 0)
+        // Final unless this emitter is in the middle of computing it (the recursion guard below), or
+        // the layout is its own copy still being built: nobody else computes while the lock is held.
+        if (destructionDepth == 0 && info.complete)
         {
           destructionCache.emplace(t, *info.needsDestruction);
           if (mayPublish())

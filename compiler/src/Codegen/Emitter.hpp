@@ -62,11 +62,11 @@
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     uint64_t& exceptionMessageMark = sh.exceptionMessageMark;
     std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
-    // The shared lock, and how many times this emitter holds it. An answer is published for the
-    // other emitters (FinalAnswers) only while it holds the lock once: then no layout of its own is
-    // half built (buildStruct marks a layout complete before it makes its vtables, and a layout
-    // published from there had another emitter call a virtual function directly), and nobody else
-    // is building one (that is done under the lock).
+    // The shared lock, and how many times this emitter holds it. An answer computed under it is
+    // published for the other emitters (FinalAnswers) only while it holds the lock once: then it is
+    // in no other computation of its own half done. (Layouts are no such answer: structFor builds
+    // them without this lock and publishes each whole, its vtables included; a layout published
+    // before its vtables were made had another emitter call a virtual function directly.)
     int sharedDepth = 0;
     struct SharedLock
     {

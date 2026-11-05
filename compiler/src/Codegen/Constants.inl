@@ -802,6 +802,7 @@
       bitwiseRelocation.clear();
       bitwiseAssignment.clear();
       lvalueBitfield = {nullptr, nullptr}; // (a place in a layout that may go)
+      droppedLayouts.clear();              // (nothing points into them once the answers above go)
     }
 
     // A class type whose layout (or an answer computed from it) the function being emitted uses
