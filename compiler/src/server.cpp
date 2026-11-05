@@ -942,14 +942,20 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::vector<std::string> args = argumentsOf(argc, argv);
   std::string key = serverKey(exe, cwd, args), name = pipeName(key);
   HANDLE pipe = connectPipe(name, 0);
-  if (pipe == INVALID_HANDLE_VALUE && startServer(exe, key, cwd))
+  if (pipe == INVALID_HANDLE_VALUE)
   {
+    // KEY.args before the server starts: a stop of its project that comes meanwhile finds it (and
+    // waits for its pipe, stopKey); it goes again when no server could be started.
     std::string record = cwd + '\0';
     for (const std::string& a : args)
       record += a + '\0';
+    CreateDirectoryA(serverDirectory().c_str(), nullptr);
     if (FILE* f = fopen(argumentsPath(key).c_str(), "wb"))
       fwrite(record.data(), 1, record.size(), f), fclose(f);
-    pipe = connectPipe(name, 20000);
+    if (startServer(exe, key, cwd))
+      pipe = connectPipe(name, 20000);
+    else
+      DeleteFileA(argumentsPath(key).c_str());
   }
   if (pipe == INVALID_HANDLE_VALUE)
   {
@@ -1131,6 +1137,18 @@ namespace
   bool stopKey(const std::string& key)
   {
     HANDLE pipe = connectPipe(pipeName(key), 0);
+    // A server still starting (its client wrote KEY.args before starting it, runClient) has no pipe
+    // yet: its copy of kppc, KEY.exe, is in use (running, or held by the client that starts it), so
+    // that it cannot be opened for deletion. It is waited for as its client waits, never left
+    // running unseen (thread H, 2026-11-05: a stop could miss a server that came up a moment later).
+    if (pipe == INVALID_HANDLE_VALUE)
+    {
+      HANDLE copy = CreateFileA((serverDirectory() + key + ".exe").c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+      if (copy != INVALID_HANDLE_VALUE)
+        CloseHandle(copy);
+      else if (GetLastError() == ERROR_SHARING_VIOLATION)
+        pipe = connectPipe(pipeName(key), 20000);
+    }
     DeleteFileA(argumentsPath(key).c_str());
     if (pipe == INVALID_HANDLE_VALUE)
       return false;
