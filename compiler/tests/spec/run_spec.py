@@ -41,6 +41,14 @@ release build's ThinLTO are still exercised, in about 12 files of objects and IR
 snippet, came to 2.6 million files in one worktree, and the kernel kept a record of each in its pool
 (2026-11-03).
 
+A snippet of steps (`//--- step: TITLE` lines) is a compile server's builds after each edit: each step's
+text is the whole of the snippet's program at that point, written over one file and built through one
+server (`kppc --server --verify-incremental`, so each step's build is also compared with a build from
+scratch, and any difference fails it), the server stopped at the end. In a step, `// expect: TEXT`
+lines are what its program prints (none: nothing), `// error: TEXT` lines what its build must say
+instead (it must fail). The header above the first step applies to all (`kppc:`, `pending:`). Windows
+only (the server is).
+
 --out DIR and --snippets DIR replace build\\spec and compiler\\tests\\spec (tests\\specfiles.ps1 runs the
 runner itself on a snippet that passes and one that fails).
 
@@ -170,6 +178,8 @@ def header(path):
             "exit": None, "kppc": "", "target": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
+            if line.startswith("//--- step"):
+                break # (a snippet of steps: each step's own expect and error lines are its own)
             m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
@@ -253,6 +263,10 @@ def build_and_run(path, area, name, work):
         libs = ["--lib", obj]
     if info["run"] is not None or info["test"] is not None:
         return finish(run_command(path, info, modules + libs, expected_path, result))
+    if is_steps(path):
+        if TARGET:
+            result["status"] = "skip"; return result
+        return finish(run_steps(path, info, work, modules + libs, result))
     companions = os.path.splitext(path)[0] + ".files"
     sources = [path, companions] if os.path.isdir(companions) else [path]
     sources += library_roots(path)
@@ -348,6 +362,66 @@ def run_command(path, info, libs, expected_path, result):
         return result
     compare(r.stdout, expected_path, result)
     return result
+
+
+def is_steps(path):
+    with open(path, encoding="utf-8") as f:
+        return any(line.startswith("//--- step") for line in f)
+
+
+def run_steps(path, info, work, options, result):
+    """A snippet of steps: one compile server builds each step's version of the program, each build
+    checked against one from scratch (--verify-incremental) and against the step's expectations."""
+    text = open(path, encoding="utf-8").read().replace("\r\n", "\n")
+    parts = re.split(r"^//--- step:?[ \t]*(.*)$", text, flags=re.M)
+    source = os.path.join(work, os.path.basename(path))
+    exe = os.path.join(work, "steps.exe")
+    arguments = ["--quiet", *EXTRA, *shlex.split(info["kppc"]), *options, "--exe", exe, source]
+    try:
+        for i in range(1, len(parts), 2):
+            title, body = parts[i].strip(), parts[i + 1]
+            step = f"step {(i + 1) // 2} ({title})"
+            expect = re.findall(r"^//\s*expect:[ \t]?(.*)$", body, flags=re.M)
+            errors = [e.strip() for e in re.findall(r"^//\s*error:(.*)$", body, flags=re.M)]
+            with open(source, "w", encoding="utf-8", newline="\n") as f:
+                f.write(body.lstrip("\n"))
+            try:
+                c = subprocess.run([KPPC, "--server", "--verify-incremental", *arguments], capture_output=True, text=True, encoding="utf-8",
+                                   errors="replace", timeout=300)
+            except subprocess.TimeoutExpired:
+                result["status"] = "FAIL"; result["note"] = f"{step}: the compiler timed out"; return result
+            output = c.stdout + c.stderr
+            if "--verify-incremental:" in output:
+                result["status"] = "FAIL"
+                result["note"] = f"{step}: " + next(l.strip() for l in output.splitlines() if "--verify-incremental:" in l)
+                return result
+            if c.returncode not in (0, 1):
+                result["status"] = "FAIL"; result["note"] = f"{step}: the compiler crashed (exit 0x{c.returncode & 0xFFFFFFFF:X})"; return result
+            if errors:
+                missing = [e for e in errors if e not in output]
+                if c.returncode == 0:
+                    result["status"] = "FAIL"; result["note"] = f"{step}: built, but the error `{errors[0]}` was expected"; return result
+                if missing:
+                    result["status"] = "FAIL"
+                    result["note"] = f"{step}: no error `{missing[0]}`; the first complaint: " + (first_complaint(output) or "none")
+                    return result
+                continue
+            reported = next((l.strip() for l in output.splitlines() if ": error:" in l), None)
+            if c.returncode != 0 or reported or not os.path.exists(exe):
+                result["status"] = "FAIL"; result["note"] = f"{step}: " + (reported or first_complaint(output) or "the build failed"); return result
+            try:
+                r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+            except subprocess.TimeoutExpired:
+                result["status"] = "FAIL"; result["note"] = f"{step}: the program timed out"; return result
+            got, want = normalise(r.stdout), normalise("\n".join(expect))
+            if got != want:
+                result["status"] = "FAIL"
+                result["note"] = f"{step}: printed `{got.splitlines()[0] if got else ''}`, expected `{want.splitlines()[0] if want else ''}`"
+                return result
+        result["status"] = "pass"
+        return result
+    finally:
+        subprocess.run([KPPC, "--stop-server", *arguments], capture_output=True, text=True, timeout=60)
 
 
 def compare(stdout, expected_path, result):

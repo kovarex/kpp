@@ -1,0 +1,42 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a function with an error added and then removed takes its error with it (E's repro, 2026-11-04: the error stayed until the server ended); a body fixed in place too
+//--- step: the program
+int helper() { return 2; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// expect: 2
+//--- step: a function whose body names nothing declared
+int helper() { return 2; }
+int broken() { return nosuchname; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// error: 'nosuchname' is not declared
+//--- step: that function removed
+int helper() { return 2; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// expect: 2
+//--- step: an error typed into a body
+int helper() { return nosuchname; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// error: 'nosuchname' is not declared
+//--- step: the body fixed
+int helper() { return 3; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// expect: 3
