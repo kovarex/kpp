@@ -1,0 +1,15 @@
+// spec: an array type is a template argument as C++ has it: `Kind<int[3]>`, `Kind<int[]>`, `Kind<int[2][4]>` name arrays, a partial specialization `Kind<T[N]>` (N deduced from the bound), `Kind<T[]>` and `Kind<T[N][M]>` (the more specialized for an array of arrays) match them, and `Size<int[3]>` is 12 bytes; `Take<table[1]>` with a constant parameter is still the element (clang gives the same numbers)
+// found by thread D (2026-11-05), comparing kpp with clang on partial specializations: the parser read `T[N]` in a template argument list as an index of T, so `Kind<T[N]>` matched no array and `Kind<int[3]>` silently took the primary template (0 where clang gives 3), and `Size<int[3]>` had no size
+template<class T> struct K { static constexpr int v = 0; };
+template<class T, int N> struct K<T[N]> { static constexpr int v = N; };
+template<class T> struct K<T[]> { static constexpr int v = 100; };
+template<class T, int N, int M> struct K<T[N][M]> { static constexpr int v = N * 10 + M; };
+template<class T> struct Size { static constexpr int v = sizeof(T); };
+constexpr int table[3] = {7, 8, 9};
+template<int V> struct Take { static constexpr int v = V; };
+using Three = int[3];
+int main()
+{
+  println(K<int>::v, " ", K<int[3]>::v, " ", K<char[5]>::v, " ", K<int[]>::v, " ", K<int[2][4]>::v, " ", K<Three>::v, " ", Size<int[3]>::v, " ", Take<table[1]>::v);
+  return 0;
+}

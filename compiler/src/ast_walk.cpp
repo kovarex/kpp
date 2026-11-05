@@ -59,6 +59,7 @@ namespace
         case NodeKind::ArrayType:
           type(static_cast<ArrayType*>(t)->element);
           expr(static_cast<ArrayType*>(t)->size);
+          expr(static_cast<ArrayType*>(t)->asIndex);
           break;
         case NodeKind::FunctionType:
           type(static_cast<FunctionType*>(t)->result);

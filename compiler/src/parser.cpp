@@ -656,8 +656,9 @@ namespace
       switch (n->kind)
       {
         case NodeKind::BuiltinType: case NodeKind::PointerType: case NodeKind::LRefType: case NodeKind::RRefType:
-        case NodeKind::ConstType: case NodeKind::ArrayType: case NodeKind::DecltypeType: case NodeKind::MemberPointerType:
+        case NodeKind::ConstType: case NodeKind::DecltypeType: case NodeKind::MemberPointerType:
           return true;
+        case NodeKind::ArrayType: return !static_cast<ArrayType*>(n)->asIndex; // `table[2]` may be an index
         case NodeKind::FunctionType: return !static_cast<FunctionType*>(n)->asCall; // `gcd(N, M)` may be a call
         case NodeKind::NamedType: return static_cast<NamedType*>(n)->typename_ || static_cast<NamedType*>(n)->elaborated;
         case NodeKind::PackType: return typeOnlyArgument(static_cast<PackType*>(n)->pattern);
@@ -772,6 +773,31 @@ namespace
             out.diagnostics.resize(savedDiagnostics);
             restore(after);
             return f;
+          }
+          inRecovery = false;
+          out.diagnostics.resize(savedDiagnosticsForArg);
+        }
+        if (at(P::LBracket))
+        {
+          // An array type `T[N]`, `int[3]`, `T[]` (a partial specialization's `Kind<T[N]>`): its
+          // bounds after the type, as a declarator's are. It was read as an expression, an index of
+          // T, so `Kind<T[N]>` matched no array and `Kind<int[3]>` took the primary template.
+          // `Take<table[2]>` is also read as an index, which the resolver takes when the parameter
+          // is a constant (as `gcd(N, M)` is a call for one).
+          size_t savedDiagnostics = out.diagnostics.size();
+          Type* array = parseArraySuffixes(t);
+          if (!inRecovery && (at(P::Comma) || at(P::Greater) || at(P::Shr) || at(P::GreaterEq) || at(P::ShrAssign) || at(P::Ellipsis)))
+          {
+            uint32_t after = pos;
+            restore(save);
+            bool logical = false;
+            Expr* index = parseExpressionNoGreater(logical);
+            if (!inRecovery && pos == after && index && index->kind == NodeKind::IndexExpr)
+              static_cast<ArrayType*>(array)->asIndex = index;
+            inRecovery = false;
+            out.diagnostics.resize(savedDiagnostics);
+            restore(after);
+            return array;
           }
           inRecovery = false;
           out.diagnostics.resize(savedDiagnosticsForArg);

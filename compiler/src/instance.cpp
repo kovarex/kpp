@@ -108,6 +108,7 @@ Type* InstanceCopier::type(const Type* t)
       auto* c = raw(static_cast<const ArrayType*>(t));
       c->element = type(c->element);
       c->size = expr(c->size);
+      c->asIndex = expr(c->asIndex);
       return c;
     }
     case NodeKind::FunctionType:
@@ -702,7 +703,11 @@ void InstanceCopier::fixReferences(Node* root)
       case NodeKind::LRefType: push(static_cast<LRefType*>(n)->referenced); break;
       case NodeKind::RRefType: push(static_cast<RRefType*>(n)->referenced); break;
       case NodeKind::ConstType: push(static_cast<ConstType*>(n)->inner); break;
-      case NodeKind::ArrayType: push(static_cast<ArrayType*>(n)->element); push(static_cast<ArrayType*>(n)->size); break;
+      case NodeKind::ArrayType:
+        push(static_cast<ArrayType*>(n)->element);
+        push(static_cast<ArrayType*>(n)->size);
+        push(static_cast<ArrayType*>(n)->asIndex);
+        break;
       case NodeKind::FunctionType:
         push(static_cast<FunctionType*>(n)->result);
         for (Decl* p : static_cast<FunctionType*>(n)->params)

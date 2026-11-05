@@ -413,6 +413,9 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   if (arg->kind == NodeKind::FunctionType && static_cast<FunctionType*>(arg)->asCall && param && param->kind == NodeKind::TemplateParamDecl &&
       !static_cast<TemplateParamDecl*>(param)->isType)
     arg = static_cast<FunctionType*>(arg)->asCall; // `Frac<gcd(N, M)>`: a call, for a constant parameter
+  if (arg->kind == NodeKind::ArrayType && static_cast<ArrayType*>(arg)->asIndex && param && param->kind == NodeKind::TemplateParamDecl &&
+      !static_cast<TemplateParamDecl*>(param)->isType)
+    arg = static_cast<ArrayType*>(arg)->asIndex; // `Take<table[2]>`: an index, for a constant parameter
   std::optional<ConstValue> v;
   if (arg->kind == NodeKind::NamedType)
   {
@@ -2584,6 +2587,8 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
                                     : types.sizeType();
         out.pairs.push_back({pattern->decl, types.valueType(of && of->isKnown() ? of : types.sizeType(), int64_t(a->count))});
       }
+      else if (pattern->decl && a->kind == TyKind::Array && a->decl && !out.find(pattern->decl))
+        out.pairs.push_back({pattern->decl, types.param(a->decl)}); // `T[N]` from `U[M][K]` (partial ordering): N is M, the other's bound
       break;
     case TyKind::MemberPointer:
       if (a->kind == TyKind::MemberPointer)
@@ -3138,6 +3143,8 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
         const Ty* bound = s.find(t->decl);
         if (bound && bound->kind == TyKind::Value && !bound->decl && bound->value > 0)
           return types.array(substitute(t->inner, s, depth + 1), uint32_t(bound->value));
+        if (bound && bound->kind == TyKind::Param && bound->decl && bound->args.empty())
+          return types.dependentArray(substitute(t->inner, s, depth + 1), bound->decl); // N bound to another parameter M: `T[M]`
         return types.dependentArray(substitute(t->inner, s, depth + 1), t->decl);
       }
       return types.array(substitute(t->inner, s, depth + 1), t->count);
