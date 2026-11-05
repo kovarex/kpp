@@ -124,7 +124,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     f = global.privateInstance(original, args, classTy);
   if (!conditionHolds(f))
     return; // conditional(false): the function does not exist in this build
-  struct Restore { const FunctionDecl*& at; const FunctionDecl* saved; ~Restore() { at = saved; } } restore{checkerChecked, checkerChecked};
+  Restore<const FunctionDecl*> restore(checkerChecked);
   checkerChecked = checked;
   global.functionEmitted(checked);
   if (f != checked)

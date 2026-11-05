@@ -6,6 +6,7 @@
 #include "instance.hpp"
 #include "ast_walk.hpp"
 #include "source.hpp"
+#include "Restore.hpp"
 #include <array>
 #include <cctype>
 #include <set>

@@ -567,7 +567,7 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
   if (classTy)
     classArgs = global.definitionArgs(variableDefinition(v, classTy), global.classArgsOf(classTy));
   ArgsScope argsScope(*this, classTy ? &classArgs : nullptr);
-  struct ClassRestore { const Ty*& c; const Ty* saved; ~ClassRestore() { c = saved; } } classRestore{currentClassTy, currentClassTy};
+  Restore<const Ty*> classRestore(currentClassTy);
   currentClassTy = classTy;
   struct SharedScope
   {
@@ -584,7 +584,7 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
     return;
   Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
   const Ty* st = types.stripRef(t);
-  struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, currentFile};
+  Restore<ParsedFile*> fileRestore(currentFile);
   currentFile = def->file;
   if (!value)
   {
@@ -692,7 +692,7 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
         temp = tempBefore;
     }
   }
-  struct PreRestore { PreEvaluated*& p; PreEvaluated* saved; ~PreRestore() { p = saved; } } preRestore{preEvaluated, preEvaluated};
+  Restore<PreEvaluated*> preRestore(preEvaluated);
   preEvaluated = pre.value ? &pre : nullptr;
   {
     auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
@@ -774,7 +774,7 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   // The global's initializer under its own arguments and class, not those of the function that
   // happened to use it first.
   ArgsScope argsScope(*this, classTy ? &classArgs : nullptr);
-  struct ClassRestore { const Ty*& c; const Ty* saved; ~ClassRestore() { c = saved; } } classRestore{currentClassTy, currentClassTy};
+  Restore<const Ty*> classRestore(currentClassTy);
   currentClassTy = classTy;
   struct SharedScope
   {

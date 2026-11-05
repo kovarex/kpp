@@ -2301,7 +2301,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
     });
   }
   impl->rechecking = true;
-  struct Done { bool& flag; ~Done() { flag = false; } } done{impl->rechecking};
+  Restore<bool> done(impl->rechecking, false);
   std::unordered_set<const void*> requestedBefore; // the instances the old checks asked for
   for (Impl::InstanceRecord* r : stale)
   {

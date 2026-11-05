@@ -861,7 +861,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   currentFile = def->file;
   // Names in the initializer are typed from the declaration it belongs to (a member alias of
   // the class: `Limits<IDType::IndexType>::max()`), not from the root scope.
-  struct InitializerRestore { Decl*& d; Decl* saved; ~InitializerRestore() { d = saved; } } initializerRestore{initializerOf, initializerOf};
+  Restore<Decl*> initializerRestore(initializerOf);
   initializerOf = def;
   emittingShared = false;
   std::string fnName = std::string(perThread ? "@\"kpp.tlsinit." : "@\"kpp.init.") + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
@@ -877,10 +877,10 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   }
   // In the module its name hashes to, whoever uses the global first (the same in every run),
   // and its errors are its own, not of the function that happened to use it first.
-  struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
+  Restore<unsigned> moduleRestore(currentModule);
   currentModule = moduleCount <= 1 ? 0 : sh.emissionModule(std::hash<std::string>()(fnName));
   // What it adds (its static InitializerList arrays) belongs to it, not to its first user.
-  struct OwnerRestore { std::string& owner; std::string saved; ~OwnerRestore() { owner = saved; } } ownerRestore{owner, owner};
+  Restore<std::string> ownerRestore(owner);
   owner = fnName;
   // Nor is what it inlines its first user's (a global's initializer that reads an edited name
   // is the server's full codegen).

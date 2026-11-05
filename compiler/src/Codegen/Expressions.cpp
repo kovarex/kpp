@@ -1459,7 +1459,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     rvalueCast.operand = &place;
     rvalueCast.ty = object ? types.rref(rty) : rty;
     Expr* standIn = lvalueOperand ? static_cast<Expr*>(&place) : &rvalueCast;
-    struct Restore { const Expr*& slot; const Expr* saved; ~Restore() { slot = saved; } } restore{evaluatedFirst, evaluatedFirst};
+    Restore<const Expr*> restore(evaluatedFirst);
     evaluatedFirst = standIn;
     BinaryExpr assignment = *b;
     assignment.rhs = standIn;

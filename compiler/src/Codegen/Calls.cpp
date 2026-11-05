@@ -926,11 +926,11 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       {
         // Emitted from the callee's declaration: its own node (and file) for what it reports,
         // not the caller's token read in the callee's file.
-        struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, callerFile};
+        Restore<ParsedFile*> fileRestore(currentFile, callerFile);
         currentFile = f->file;
         // Names in it are the callee's (`Limits<ModifierValueType>::max()` with the class's
         // `using ModifierValueType = double;`), not those of the caller's scope.
-        struct ContextRestore { Decl*& d; Decl* saved; ~ContextRestore() { d = saved; } } contextRestore{initializerOf, initializerOf};
+        Restore<Decl*> contextRestore(initializerOf);
         initializerOf = instance;
         ArgsScope calleeArgs(*this, args.empty() ? currentArgs : &args); // CharacterModifier<double>'s ModifierValueType
         text = argumentText(pt, value, value);

@@ -665,16 +665,16 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
   const TemplateArgs* savedArgs = currentArgs;
   ParsedFile* savedFile = currentFile;
   std::string savedName = currentFunctionName;
-  struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = saved; } } nameRestore{currentFunctionName, savedName};
+  Restore<std::string> nameRestore(currentFunctionName, savedName);
   currentFunctionName = name; // what the operator's own statics and filters are named after
   // Its diagnostics name the function it is written in as the requester, not the function that
   // happened to emit it first.
-  NameRestore requesterRestore{currentRequestedBy, currentRequestedBy};
+  Restore<std::string> requesterRestore(currentRequestedBy);
   currentRequestedBy = writer.writtenIn;
   // As an error says it: the function it is written in and its line, which a lambda's closure
   // tag would not tell a reader (A, 2026-11-04).
-  NameRestore contextRestore1{currentContext, currentContext};
-  NameRestore contextRestore2{currentRequestedByContext, currentRequestedByContext};
+  Restore<std::string> contextRestore1(currentContext);
+  Restore<std::string> contextRestore2(currentRequestedByContext);
   {
     size_t line = lineOf(l, l->closure && l->closure->file ? l->closure->file : currentFile);
     currentContext = "a lambda" + (writer.writtenInContext.empty() ? std::string() : " in " + writer.writtenInContext) +

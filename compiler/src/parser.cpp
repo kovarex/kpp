@@ -5,6 +5,7 @@
 #include "parser.hpp"
 #include "config.hpp"
 #include "tests.hpp"
+#include "Restore.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -5175,7 +5176,7 @@ namespace
             // inside a requires clause (`requires requires (T t) { (int)t; }`).
             bool savedRequires = inRequires;
             inRequires = false;
-            struct RestoreRequires { bool& flag; bool saved; ~RestoreRequires() { flag = saved; } } restoreRequires{inRequires, savedRequires};
+            Restore<bool> restoreRequires(inRequires, savedRequires);
             if (accept(P::LParen))
             {
               size_t mark = scratch.size();

@@ -795,10 +795,10 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
   std::string text, thunks;
   // The vtable asks for its functions, not whichever function happened to need the layout first
   // (the requester the diagnostics name, the same in every run).
-  struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = std::move(saved); } } restore{currentFunctionName, currentFunctionName};
+  Restore<std::string> restore(currentFunctionName);
   currentFunctionName = "the vtable of " + types.toString(key, &symbols);
-  NameRestore contextRestore{currentContext, currentContext};
-  NameRestore requesterContextRestore{currentRequestedByContext, currentRequestedByContext};
+  Restore<std::string> contextRestore(currentContext);
+  Restore<std::string> requesterContextRestore(currentRequestedByContext);
   currentContext = currentFunctionName;
   currentRequestedByContext.clear();
   for (size_t t = 0; t < tables.size(); ++t)
