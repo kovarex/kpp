@@ -5,6 +5,3 @@
 # A known failure is reported as "known"; one that starts working fails the run until its line goes,
 # and so does a line naming no snippet. Pending snippets are known failures without a line here.
 # From CI run 41650507690 (2026-11-03, H's lists), less what has been fixed since.
-
-# FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).
-build interop/c_math_classification_macros  _Generic math macros

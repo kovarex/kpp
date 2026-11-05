@@ -15,3 +15,14 @@ extern "C" FILE* __stderrp;
 FILE* stdin  = __stdinp;
 FILE* stdout = __stdoutp;
 FILE* stderr = __stderrp;
+
+// math.h's fpclassify, a C11 _Generic macro of FreeBSD's over __fpclassifyf, __fpclassifyd and
+// __fpclassifyl: the import carries no function-like macro, so it is the C library's own classifiers,
+// whose results are FreeBSD's FP_INFINITE 1, FP_NAN 2, FP_NORMAL 4, FP_SUBNORMAL 8 and FP_ZERO 16
+// (isnan and the others: core/Math.kpp).
+extern "C" int __fpclassifyd(double value);
+extern "C" int __fpclassifyf(float value);
+int fpclassify(double value) { return __fpclassifyd(value); }
+int fpclassify(float value) { return __fpclassifyf(value); }
+template<typename T> requires isIntegral<T>
+int fpclassify(T value) { return fpclassify(double(value)); }
