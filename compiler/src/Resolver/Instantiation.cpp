@@ -1722,12 +1722,70 @@ auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int depth) -
   if (useCache && recordingDependencies)
     into.emplace(typeDependenciesOf(d));
   const Ty* result = computeDeclaredType(d, subst, depth);
+  // C's calling convention on what a C header declares (its functions' types, its typedefs', fields'
+  // and parameters' function pointers) and on an extern "C" function's own type (withCConvention).
+  if (result && result->isKnown() && d->file && d->file->isImported)
+    result = withCConvention(result, true);
+  else if (result && d->kind == NodeKind::FunctionDecl && (d->flags & DF_ExternC) && result->kind == TyKind::Function)
+    result = withCConvention(result, false);
   // Only a known type, auto-free: an unknown one may come from the depth limit of whoever asked
   // first (or a deduction not possible yet), and kept it would answer every later asker, so
   // later uses were typed or not by which thread asked first.
   if (useCache && result->isKnown() && !containsAuto(result))
     d->cachedType.store(result, std::memory_order_release);
   return result;
+}
+
+auto GlobalScope::Impl::withCConvention(const Ty* t, bool nested, int depth) -> const Ty*
+{
+  if (!t || depth > 16)
+    return t;
+  switch (t->kind)
+  {
+    case TyKind::Pointer:
+    case TyKind::LRef:
+    case TyKind::RRef:
+    case TyKind::Array:
+    {
+      const Ty* inner = withCConvention(t->inner, true, depth + 1);
+      if (inner == t->inner)
+        return t;
+      const Ty* r = t->kind == TyKind::Pointer ? types.pointer(inner)
+                    : t->kind == TyKind::LRef  ? types.lref(inner)
+                    : t->kind == TyKind::RRef  ? types.rref(inner)
+                                               : types.array(inner, t->count);
+      return types.qualified(r, t->isConst, t->isVolatile);
+    }
+    case TyKind::Function:
+    {
+      std::vector<const Ty*> params(t->args.begin(), t->args.end());
+      const Ty* result = t->inner;
+      bool changed = false;
+      if (nested)
+      {
+        for (const Ty*& p : params)
+        {
+          const Ty* q = withCConvention(p, true, depth + 1);
+          changed = changed || q != p;
+          p = q;
+        }
+        const Ty* r = withCConvention(result, true, depth + 1);
+        changed = changed || r != result;
+        result = r;
+      }
+      auto byValue = [&](const Ty* x)
+      {
+        x = x ? types.unqualified(x) : nullptr;
+        return x && x->kind == TyKind::Class;
+      };
+      bool c = t->isCConvention() || byValue(result) || std::any_of(params.begin(), params.end(), byValue);
+      if (!changed && c == t->isCConvention())
+        return t;
+      return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, t->variadic, c);
+    }
+    default:
+      return t;
+  }
 }
 
 auto GlobalScope::Impl::instanceSubstShard(const Decl* copy) -> InstanceSubstShard&
@@ -3075,7 +3133,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
       if (t->kind == TyKind::Pack)
         return types.pack(span);
       if (t->kind == TyKind::Function)
-        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic);
+        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention());
       if (t->kind == TyKind::Lambda)
         return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);
       if (args.size() == 1 && args[0] && args[0]->kind == TyKind::Function && isLibraryFunction(t->decl, false))

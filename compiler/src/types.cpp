@@ -285,12 +285,13 @@ const Ty* TypeTable::vectorType(const Ty* element, uint32_t count)
   return intern(t);
 }
 
-const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic)
+const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention)
 {
   Ty t{TyKind::Function};
   t.inner = result;
   t.args = params;
   t.variadic = variadic;
+  t.count = cConvention ? 1 : 0;
   return intern(t);
 }
 
@@ -646,7 +647,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       }
       [[fallthrough]];
     case TyKind::Function:
-      s += (t->kind == TyKind::Lambda ? "lambda " : "") + toString(t->inner, symbols, qualified) + "(";
+      s += (t->kind == TyKind::Lambda ? "lambda " : t->isCConvention() ? "extern C " : "") + toString(t->inner, symbols, qualified) + "(";
       for (size_t i = 0; i < t->args.size(); ++i)
         s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
       s += t->variadic ? ", ...)" : ")";

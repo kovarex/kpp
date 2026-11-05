@@ -53,6 +53,15 @@
     // The `declare` line's return type and parameters of C function f under its target's C calling
     // convention (signatureOf's, with its structs by value lowered).
     std::pair<std::string, std::string> cDeclaration(FunctionDecl* f, const Signature& s);
+    // cDeclaration's, for a function of result type ret and signature s (its kpp convention's).
+    std::pair<std::string, std::string> cDeclarationOf(const Ty* ret, const Signature& s, Node* at);
+
+    // A call through a pointer to a function of C's calling convention (Ty::isCConvention: a C
+    // function's type, or a C header's function pointer type, that takes or returns a class by
+    // value): its structs by value passed and its struct result taken as the target's C does, as a
+    // direct call to a C function passes them (callIndirect's for kpp's convention). C functions
+    // throw no kpp exception.
+    Value callIndirectC(const std::string& fnText, const Ty* ft, Span<Expr*> callArgs, const std::string& sret, Node* c);
 
     // Whether a C function of signature s (its result of type ret) takes or returns a struct by
     // value other than as kpp passes one (a pointer to a copy, a result slot): SysV's every one,
@@ -63,10 +72,11 @@
     // function's struct result in registers (cReturnParts) its parts loaded from the slot, returned.
     void emitReturnVoid();
 
-    // Refuses the address of a C function the program declares (extern "C": defined in kpp, or in a
-    // C library) that takes or returns a struct by value other than as kpp passes one: a call through
-    // a function pointer passes the struct as kpp does (callIndirect), which that function does not
-    // take (it read the registers of whatever came before: a silent wrong value).
+    // The address of a C function the program declares (extern "C": defined in kpp, or in a C
+    // library) that takes or returns a struct by value other than as kpp passes one: refused until
+    // 2026-11-05, since a call through a function pointer passed the struct as kpp does. Its type is
+    // now of C's convention (GlobalScope::Impl::withCConvention), and such a call is callIndirectC's;
+    // nothing to refuse.
     void refuseCAddress(FunctionDecl* f, Node* at);
 
     // A function (in every module) that moves `this` by the offset `at` (a pointer constant) and calls

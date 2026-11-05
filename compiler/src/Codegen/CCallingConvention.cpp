@@ -176,8 +176,11 @@ auto codegen::Emitter::cReturnType(const CPassing& p) -> std::string
 
 auto codegen::Emitter::cDeclaration(FunctionDecl* f, const Signature& s) -> std::pair<std::string, std::string>
 {
-  const Ty* ft = declType(f);
-  const Ty* ret = ft->inner;
+  return cDeclarationOf(declType(f)->inner, s, f);
+}
+
+auto codegen::Emitter::cDeclarationOf(const Ty* ret, const Signature& s, Node* f) -> std::pair<std::string, std::string>
+{
   std::string returnType = s.returnType, params;
   CRegisters left;
   if (s.hasSret)
@@ -255,12 +258,110 @@ auto codegen::Emitter::emitReturnVoid() -> void
 
 auto codegen::Emitter::refuseCAddress(FunctionDecl* f, Node* at) -> void
 {
-  if (!(f->flags & DF_ExternC) || (f->file && f->file->isImported))
-    return;
-  const Ty* ft = declType(f);
-  if (ft && ft->kind == TyKind::Function && cStructsByValue(signatureOf(f), ft->inner, at))
-    unsupported(at, "the address of a C-callable function that takes or returns a struct by value (" + qualifiedName(f) +
-                        "): a call through a function pointer passes the struct as kpp does, not as its target's C does");
+  (void)f, (void)at;
+}
+
+auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Span<Expr*> callArgs, const std::string& sret, Node* c) -> Value
+{
+  // The kpp convention's signature (a class result through a slot first, a class parameter as a
+  // pointer to a copy), which cDeclarationOf lowers as a C function's declaration is lowered.
+  const Ty* ret = ft->inner;
+  Signature s;
+  if (returnsInMemory(ret))
+  {
+    s.hasSret = true;
+    s.returnType = "void";
+    s.paramTypes.push_back("ptr");
+    s.paramTys.push_back(nullptr);
+  }
+  else if (!ret || !ret->isKnown())
+    unsupported(c, "a call through a pointer to a C function whose result type is not known");
+  else
+    s.returnType = ret->isReference() ? "ptr" : llType(ret, c);
+  for (const Ty* pt : ft->args)
+  {
+    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, c));
+    s.paramTys.push_back(pt);
+  }
+  s.variadic = ft->variadic;
+  CPassing cResult;
+  if (s.hasSret)
+    cResult = cPassing(ret, c);
+  std::string resultAddr = sret;
+  bool resultTemp = false;
+  if (s.hasSret && resultAddr.empty())
+  {
+    resultAddr = newObjectSlot(ret, c);
+    resultTemp = true;
+  }
+  // The arguments as argumentText gives them (a struct as a pointer to the call's copy), then their
+  // structs lowered (lowerCArguments), as a direct C call's are.
+  std::vector<std::pair<const Ty*, std::string>> argList;
+  size_t position = 0;
+  auto addArgument = [&](Expr* arg)
+  {
+    const Ty* pt = position < ft->args.size() ? ft->args[position] : nullptr;
+    std::string text = argumentText(pt, arg, c);
+    argList.push_back({pt ? pt : arg->ty ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr, std::move(text)});
+    ++position;
+  };
+  for (Expr* arg : callArgs)
+  {
+    if (isPackExpansion(arg))
+    {
+      Expr* pattern = static_cast<UnaryExpr*>(arg)->operand;
+      forEachPackElement(pattern, c, [&](size_t) { addArgument(pattern); });
+    }
+    else
+      addArgument(arg);
+  }
+  bool slot = s.hasSret && cResult.inMemory;
+  lowerCArguments(argList, slot, c);
+  std::string argText = slot ? "ptr " + resultAddr : std::string();
+  for (auto& [t, text] : argList)
+    argText += std::string(argText.empty() ? "" : ", ") + text;
+  auto [returnType, params] = cDeclarationOf(ret, s, c);
+  // (the call's function type takes no parameter attributes: a byval copy's are its argument's)
+  for (size_t at = params.find(" byval("); at != std::string::npos; at = params.find(" byval(", at))
+  {
+    size_t end = params.find(')', at);
+    size_t align = params.compare(end + 1, 7, " align ") == 0 ? params.find_first_not_of("0123456789", end + 8) : end + 1;
+    params.erase(at, (align == std::string::npos ? params.size() : align) - at);
+  }
+  std::string callee = returnType + " (" + params + ") " + fnText + "(" + argText + ")";
+  if (s.hasSret && !cResult.inMemory)
+  {
+    // The result in registers, stored into the slot part by part.
+    std::string r = newTemp();
+    emitCall(r + " = ", callee, false);
+    for (size_t i = 0; i < cResult.parts.size(); ++i)
+    {
+      std::string part = r;
+      if (cResult.parts.size() > 1)
+      {
+        part = newTemp();
+        fn += "  " + part + " = extractvalue " + returnType + " " + r + ", " + std::to_string(i) + "\n";
+      }
+      std::string at8 = newTemp();
+      fn += "  " + at8 + " = getelementptr inbounds i8, ptr " + resultAddr + ", i64 " + std::to_string(cResult.offsets[i]) + "\n";
+      fn += "  store " + cResult.parts[i] + " " + part + ", ptr " + at8 + "\n";
+    }
+    if (resultTemp)
+      statementTemps.push_back({resultAddr, ret});
+    return {resultAddr, ret, sret.empty()};
+  }
+  if (returnType == "void")
+  {
+    emitCall("", callee, false);
+    if (resultTemp)
+      statementTemps.push_back({resultAddr, ret});
+    if (s.hasSret)
+      return {resultAddr, ret, sret.empty()};
+    return {"", types.voidType()};
+  }
+  std::string r = newTemp();
+  emitCall(r + " = ", callee, false);
+  return {r, ret, false};
 }
 
 auto codegen::Emitter::sharedThunk(const std::string& name, const Signature& s, const std::string& at, const std::string& callee, int slot) -> std::string

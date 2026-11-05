@@ -447,7 +447,7 @@ auto GlobalScope::Impl::Walker::settledCalleeType(Expr* e, const Ty* t) -> const
   // Through the function's one instance, never through what its own file's walk cached: that is
   // there or not by which file was walked first, and the instance then walked or not.
   const Ty* r = instantiateFunction(static_cast<FunctionDecl*>(d), Subst{}, true, nullptr);
-  return r && r->isKnown() && !impl.containsAuto(r) ? types.function(r, t->args, t->variadic) : t;
+  return r && r->isKnown() && !impl.containsAuto(r) ? types.function(r, t->args, t->variadic, t->isCConvention()) : t;
 }
 
 auto GlobalScope::Impl::Walker::record(Expr* e, const Ty* t) -> const Ty*
@@ -4962,7 +4962,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           // Cache the deduced signature for callers in other files.
           const Ty* fnTy = impl.declaredTypeOf(f, nullptr, 0);
           std::vector<const Ty*> params(fnTy->args.begin(), fnTy->args.end());
-          f->cachedType.store(types.function(impl.deducedShape(fnTy->inner, deduced), Span<const Ty*>{params.data(), uint32_t(params.size())}, fnTy->variadic),
+          f->cachedType.store(types.function(impl.deducedShape(fnTy->inner, deduced), Span<const Ty*>{params.data(), uint32_t(params.size())}, fnTy->variadic,
+                                             fnTy->isCConvention()),
                               std::memory_order_release);
         }
       }

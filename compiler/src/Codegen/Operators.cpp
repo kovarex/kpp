@@ -812,6 +812,12 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
 
 auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, const std::string& thisArg, Span<Expr*> callArgs, const std::string& sret, Node* c) -> Value
 {
+  if (ft->isCConvention())
+  {
+    if (!thisArg.empty())
+      unsupported(c, "a call of C's calling convention through a pointer to a member function");
+    return callIndirectC(fnText, ft, callArgs, sret, c);
+  }
   Signature s;
   const Ty* ret = ft->inner;
   if (returnsInMemory(ret))

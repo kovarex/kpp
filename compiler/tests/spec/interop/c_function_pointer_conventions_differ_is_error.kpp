@@ -1,0 +1,21 @@
+// spec: a pointer to a function of C's calling convention that takes or returns a struct by value (a C function's, an extern "C" one's, a C header's pointer type) is another type than a function pointer written in kpp with the same signature, which passes the struct as kpp does: no conversion between the two, either way, where a call through it would pass the struct as the function does not take it; the error names both types (a function type of C's convention prints with extern C). A signature that passes no struct by value is one type for both
+// factorio: none; a call through such a pointer passed the struct as kpp does (a silent wrong value: interop/c_function_pointer_struct_by_value)
+// error: c_function_pointer_conventions_differ_is_error.kpp:12: error: a pointer (extern C int32(S8)*) does not convert to int32(S8)* without a cast (in toKpp())
+// error: c_function_pointer_conventions_differ_is_error.kpp:13: error: a pointer (int32(S8)*) does not convert to extern C int32(S8)* without a cast (in toC())
+struct S8 { int a, b; };
+extern "C" int cTake(S8 s) { return s.a + s.b; }
+int kppTake(S8 s) { return s.a - s.b; }
+extern "C" int cScalar(int x) { return x + 1; }
+decltype(&cTake) cPointer = cTake;
+int (*kppPointer)(S8) = kppTake;
+
+void toKpp() { kppPointer = cTake; }
+void toC() { cPointer = kppTake; }
+
+int main()
+{
+  toKpp();
+  toC();
+  int (*scalar)(int) = cScalar;
+  return scalar(1) != 2;
+}

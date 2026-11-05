@@ -1,0 +1,32 @@
+// spec: a call through a pointer to a C function that takes or returns a struct by value passes and receives it as the target's C does, as a direct call does: the pointer's function type is C's (the function's own, a C header's pointer type, a struct field a C header declares, filled in by C), whatever the struct's size: 8 bytes, 16 of doubles, 24 (`45 45 45`, `6 7 6 7`, `3 5 7.5`, `24 48`)
+// factorio: none yet (the game calls its C functions directly); a call through such a pointer passed the struct as kpp passes one, a pointer to a copy, which the function read as its registers: a silent wrong value (thread D's 088b6d2e, the callee side, left this one)
+extern "C" import "c_function_pointer_struct_by_value.h";
+
+int main()
+{
+  S8 s;
+  s.a = 4;
+  s.b = 5;
+  auto take = &take_s8;
+  TakeS8 typed = take_s8;
+  Ops o = ops();
+  println(take(s), " ", typed(s), " ", o.take(s));
+  auto make = &make_s8;
+  S8 m = make(6, 7);
+  S8 n = o.make(6, 7);
+  println(m.a, " ", m.b, " ", n.a, " ", n.b);
+  F16 v;
+  v.x = 1.5;
+  v.y = 2.5;
+  auto scale = &scale_f16;
+  F16 w = scale(v, 2.0);
+  F16 z = o.scale(v, 3.0);
+  println(w.x, " ", w.y, " ", z.y);
+  S24 t;
+  t.a = 1;
+  t.b = 3;
+  t.c = 8;
+  auto sum = &sum_s24;
+  println(sum(t, 2), " ", sum(t, 4));
+  return 0;
+}

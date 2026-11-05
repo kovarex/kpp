@@ -3332,6 +3332,27 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   `__get_cpuid` and `__get_cpuid_count`, inline functions whose bodies are inline asm (which codegen
   refuses), are its cpuid instruction, as MSVC's `__cpuid` is: the game's SystemUtil on Linux. Specs
   interop/c_gcc_builtins and interop/c_cpuid_header.
+- **Function types of C's calling convention (thread B, 2026-11-05, after thread D's 088b6d2e).** A
+  kpp function passes a struct by value as a pointer to a copy; a C function as its target's C does
+  (MS x64: 1, 2, 4 and 8 bytes in a register; SysV: up to 16 bytes in registers by class, larger on
+  the stack). A direct call knows which the callee is; a call through a function pointer did not, and
+  passed the struct kpp's way to a C function: a silent wrong value (`-627068060` for 45 on
+  Windows). Now a function type that takes or returns a class by value is of C's convention when it
+  is a C function's (an imported header's, or extern "C" in kpp), or a C header spells it (a
+  typedef's, a field's, a parameter's function pointer): TypeTable::function's cConvention,
+  GlobalScope::Impl::withCConvention in declaredTypeOf. A call through a pointer to one is lowered as
+  a direct C call is (codegen's callIndirectC), and it is another type than the function pointer type
+  kpp code writes with the same signature: no conversion between the two, either way ("a pointer
+  (extern C int32(S8)*) does not convert to int32(S8)*"), where the call would pass the struct as
+  the function does not take it. kpp code holds such a pointer by `auto`, `decltype` or the header's
+  typedef, and passes it to its own functions and templates (spec interop/c_function_pointer_parameter).
+  A signature that passes no struct by value is one type for both conventions, so nothing else
+  changes. No syntax is added: the type prints as `extern C int32(S8)`, without quotes, since a type's
+  printed form is part of codegen's quoted LLVM names (with them, `@"callIt(extern "C" ...)"` was
+  invalid IR). Specs
+  interop/c_function_pointer_struct_by_value (8, 16 and 24 bytes, a header's typedef, pointers C
+  filled in, on Windows and Linux), interop/c_callable_struct_by_value_through_pointer (D's, now
+  passing) and interop/c_function_pointer_conventions_differ_is_error.
 
 ### Stage 6, FreeBSD: the sysroot, the static link and the C import (2026-11-03)
 

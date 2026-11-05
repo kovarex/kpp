@@ -1,0 +1,17 @@
+// spec: a pointer to a function of C's calling convention (an extern "C" function taking a struct by value) is a parameter of a kpp function and a template's argument like any other type, and a call through it there passes the struct as C does: the function's name, which holds its parameters' types, is a valid LLVM name (`45 45 4`)
+// factorio: none; the C convention's first spelling, `extern "C" int32(S8)`, put quotes inside codegen's quoted LLVM names (`@"callIt(extern "C" int32(S8)*, S8)"`), which clang rejected
+struct S8 { int a, b; };
+extern "C" int cTake(S8 s) { return s.a * 10 + s.b; }
+
+int callIt(decltype(&cTake) f, S8 s) { return f(s); }
+
+template <typename F> int callAny(F f, S8 s) { return f(s); }
+
+int main()
+{
+  S8 s;
+  s.a = 4;
+  s.b = 5;
+  println(callIt(cTake, s), " ", callAny(&cTake, s), " ", callAny([](S8 x) { return x.a; }, s));
+  return 0;
+}

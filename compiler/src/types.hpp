@@ -57,6 +57,7 @@ struct Ty
   bool isKnown() const { return kind != TyKind::Unknown; }
   bool isBraceList() const { return kind == TyKind::Class && count == 1; }
   bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
+  bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
 };
 
 class TypeTable
@@ -100,7 +101,13 @@ public:
   // `T (&array)[N]` in a template: an array whose bound is the constant parameter N (decl), until
   // N is known; dependent.
   const Ty* dependentArray(const Ty* element, Decl* boundParam);
-  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic);
+  // cConvention: the function passes a class by value as its target's C does, not as kpp does (a
+  // pointer to a copy): a C function's type that takes or returns one, and such a function type a C
+  // header spells (GlobalScope::Impl::withCConvention). Another type than kpp's of the same signature
+  // (count = 1), so that no pointer of the one converts to the other, where a call through it would
+  // pass the class as the function does not take it. It prints as `extern C int32(S8)` (no quotes: a
+  // type's printed form is part of LLVM's quoted names).
+  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention = false);
   const Ty* classType(Decl* decl, Span<const Ty*> args);
   // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but
   // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other

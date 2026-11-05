@@ -199,6 +199,13 @@
   // template instantiations). Non-dependent results are cached on the declaration.
   const Ty* declaredTypeOf(Decl* d, const Subst* subst, int depth);
 
+  // t with C's calling convention on each function type in it (through pointers, references and
+  // arrays; nested: in a function type's parameters and result too) that takes or returns a class
+  // by value (TypeTable::function's cConvention): an imported C header's declaration's type, and an
+  // extern "C" function's own (nested false: its parameters are spelled in kpp). Thread B,
+  // 2026-11-05 (design.md, "Targets and hosts").
+  const Ty* withCConvention(const Ty* t, bool nested, int depth = 0);
+
   // The substitution each instantiation's copy of a function is typed under, as its walk recorded
   // it: a class declared in that body (its members, its bases) sees the instance's arguments.
   // Sharded by the copy's address: every instance walk records one, on every thread (one map
