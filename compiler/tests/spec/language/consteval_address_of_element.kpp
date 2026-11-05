@@ -1,0 +1,39 @@
+// spec: at compile time `&v[i]` of a container's element (Vector's, Array's operator[]) is the element's address where the run holds it: read and written through, indexed, compared, as at run time (`5 9 5 1` both)
+// found by thread D (2026-11-05): such an address was no constant
+constexpr int read()
+{
+  Vector<int> v;
+  v.push_back(4);
+  v.push_back(5);
+  int* p = &v[0];
+  return p[1];
+}
+constexpr int written()
+{
+  Vector<int> v;
+  v.push_back(4);
+  v.push_back(5);
+  int* p = &v[1];
+  *p = 9;
+  return v[1];
+}
+constexpr int array()
+{
+  Array<int, 3> a = {1, 2, 3};
+  int* p = &a[1];
+  return *p + p[1];
+}
+constexpr int compared()
+{
+  Vector<int> v;
+  v.push_back(4);
+  v.push_back(5);
+  return &v[0] + 1 == &v[1] ? 1 : 0;
+}
+constexpr int cr = read(), cw = written(), ca = array(), cc = compared();
+int main()
+{
+  println(read(), " ", written(), " ", array(), " ", compared());
+  println(cr, " ", cw, " ", ca, " ", cc);
+  return 0;
+}

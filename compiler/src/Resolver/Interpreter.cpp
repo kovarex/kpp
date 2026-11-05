@@ -3617,7 +3617,15 @@ auto GlobalScope::Impl::constAddressOf(Expr* operand, const TypeContext& ctx, in
   }
   std::optional<ConstDesignated> a = constDesignated(x, ctx, depth);
   if (!a)
-    return std::nullopt;
+  {
+    // `&v[0]`: an element a class's operator[] designates where the run holds it (a heap block, a
+    // local): its address. Only of an operand without side effects, which a designation that
+    // failed above may have evaluated already.
+    std::optional<ConstPlace> at = constPure(x) ? constPlaceOf(x, ctx, depth + 1, true) : std::nullopt;
+    if (!at || !at->type || at->type->isReference() || !constAddressable(*at))
+      return std::nullopt;
+    return ConstValue::address(types.pointer(at->type), constStorageTarget(*at));
+  }
   return ConstValue::address(types.pointer(a->type), std::move(a->target));
 }
 
