@@ -1,6 +1,5 @@
 // spec: a String assigned from a Vector<String>'s element reached through a const reference works at compile time as at run time (`5 5`): String::operator=(const String&) compares this with &other, a frame's object and a heap element
 // factorio: build.kpp: projectlib's kppLastTarget (name = arguments[i + 1], a cell's --target) stopped the interpreter, "the build description is no constant" at String.kpp's operator=; projectlib assigns through a StringView until this passes
-// pending: the interpreter stops at String::operator=(const String&) with a Vector element as other (D)
 extern "C" import "stdio.h";
 void last(String& name, const Vector<String>& arguments)
 {

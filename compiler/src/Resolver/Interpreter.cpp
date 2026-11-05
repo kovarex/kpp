@@ -1638,7 +1638,7 @@ auto GlobalScope::Impl::constFreeFunction(uint32_t symbol, const std::vector<con
   return friends.decl ? choose(friends) : nullptr;
 }
 
-auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories) -> std::optional<ConstPlace>
+auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::optional<ConstValue>* ran) -> std::optional<ConstPlace>
 {
   // Run as any call (constRun: parameter packs, defaults, the arguments' places), on the object
   // where it is, its reference result kept as a place.
@@ -1655,8 +1655,17 @@ auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, cons
   std::optional<ConstValue> object = constRead(self);
   std::optional<ConstPlace> out;
   constCallPlaceRan = constCallPlaceRan || object;
-  if (!object || !constRun(f, args, fctx, depth, &object, places, categories, &self, &out) || !out)
+  if (!object)
     return std::nullopt;
+  std::optional<ConstValue> value = constRun(f, args, fctx, depth, &object, places, categories, &self, &out);
+  if (!value)
+    return std::nullopt;
+  if (!out)
+  {
+    if (ran)
+      *ran = value; // (a reference the run holds no place of: what it refers to, as a value)
+    return std::nullopt;
+  }
   out->type = returns->inner;
   out->readOnly = out->readOnly || self.readOnly || returns->inner->isConst;
   return out;
@@ -1902,12 +1911,15 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
   }
   std::optional<ConstValue> value;
   std::optional<ConstPlace> returned; // the last operator's reference result, as a place
+  std::optional<ConstPlace> firstPlace; // an operand a call gives (`v[i] == name`), where it is
   if (castTo)
   {
     std::optional<ConstValue> r = constValue(chain.back()->rhs, ctx, depth + 1);
     value = r ? constConverted(constArith().unary(P(chain.back()->op), *r), castTo) : std::nullopt;
     chain.pop_back();
   }
+  else if (std::optional<std::optional<ConstValue>> placed = constPlacedOperand(first, ctx, depth, firstPlace))
+    value = *placed;
   else
     value = constValue(first, ctx, depth + 1);
   bool failed = !value;
@@ -1926,7 +1938,9 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
     // After an operand that is no constant the others are still evaluated: a class's size
     // one of them needs defers a static_assert to the code generator's layouts
     // (`sizeof(grid) == 18 && sizeof(TileID) == 2`, layoutNeeded).
-    std::optional<ConstValue> r = constValue(chain[i]->rhs, ctx, depth + 1);
+    std::optional<ConstPlace> rightPlace;
+    std::optional<std::optional<ConstValue>> placed = constPlacedOperand(chain[i]->rhs, ctx, depth, rightPlace);
+    std::optional<ConstValue> r = placed ? *placed : constValue(chain[i]->rhs, ctx, depth + 1);
     if (failed || !r)
     {
       failed = true;
@@ -1938,7 +1952,11 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
     if (*op != P::Comma && (value->isObject() || r->isObject()))
     {
       if (i + 1 == chain.size() && !castTo)
+      {
         left = constOperandOf(first, *value, ctx, depth);
+        if (firstPlace)
+          left.place = firstPlace;
+      }
       else if (returned)
         left.place = returned; // the previous operator's reference result: the object it refers to (`out << a << b`)
       else if (value->isObject() && value->type && types.unqualified(types.stripRef(value->type))->kind == TyKind::Class)
@@ -1947,6 +1965,8 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
         left.place = constMaterialize(*value, value->type);
       }
       right = constOperandOf(chain[i]->rhs, *r, ctx, depth);
+      if (rightPlace)
+        right.place = rightPlace;
     }
     returned.reset();
     value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth, &left, &right, &returned, chain[i]);
@@ -5077,7 +5097,7 @@ auto GlobalScope::Impl::constCallObject(Expr* object, CallExpr* c, const TypeCon
   return constCallOn(call, subst, values, &self, depth + 1, place ? &*place : nullptr, &places, &categories);
 }
 
-auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth, bool calls) -> std::optional<ConstPlace>
+auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth, bool calls, std::optional<ConstValue>* ran) -> std::optional<ConstPlace>
 {
   while (e && e->kind == NodeKind::ParenExpr)
     e = static_cast<ParenExpr*>(e)->inner;
@@ -5186,7 +5206,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       Subst subst;
       std::vector<const Ty*> indexType{x->args[0]->ty ? argumentType(x->args[0], x->args[0]->ty, types) : nullptr};
       FunctionDecl* f = constPlaceMember(at, opSymbols[uint32_t(P::LBracket)], 1, base->writable(), subst, depth + 1, nullptr, &indexType);
-      return f && f->templateParams.empty() ? constCallPlace(f, subst, {*index}, *base, depth + 1) : std::nullopt;
+      return f && f->templateParams.empty() ? constCallPlace(f, subst, {*index}, *base, depth + 1, nullptr, nullptr, ran) : std::nullopt;
     }
     if (!array || !array->isObject() || !at || at->kind != TyKind::Array || index->i < 0 || uint64_t(index->i) >= array->parts->size())
       return std::nullopt;
@@ -5212,7 +5232,10 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     // `add(uses, name)`: what a named function's reference result refers to (a part of an object
     // its arguments refer to), the function run once for it.
     std::optional<ConstPlace> out;
-    if (!constCall(static_cast<CallExpr*>(e), ctx, depth + 1, &out) || !out)
+    std::optional<ConstValue> value = constCall(static_cast<CallExpr*>(e), ctx, depth + 1, &out);
+    if (value && !out && ran)
+      *ran = value; // (a reference the run holds no place of: what it refers to, as a value)
+    if (!value || !out)
       return std::nullopt;
     out->type = e->ty->inner;
     out->readOnly = out->readOnly || e->ty->inner->isConst;
@@ -5255,8 +5278,40 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     LocalStack own;
     if (!f->templateParams.empty() && !constBindTemplate(f, {}, c, args, ctx, depth, subst, own))
       return std::nullopt; // `all.emplace_back().roots`: a member function template's own parameters
-    return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories);
+    return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran);
   }
+  return std::nullopt;
+}
+
+auto GlobalScope::Impl::constPlacedOperand(Expr* e, const TypeContext& ctx, int depth, std::optional<ConstPlace>& place)
+  -> std::optional<std::optional<ConstValue>>
+{
+  place.reset();
+  Expr* source = nullptr;
+  uint8_t category = constCategory(e, source);
+  if (category == 0 || !source || !source->ty || !source->ty->isKnown() || types.isDependent(source->ty))
+    return std::nullopt;
+  const Ty* t = types.unqualified(types.stripRef(source->ty));
+  // (Its object and index evaluated with no call, or its object so for a member function: a call
+  // that ran is the operand's own, never run again.)
+  auto* call = source->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(source) : nullptr;
+  auto* member = call && call->callee && call->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(call->callee) : nullptr;
+  bool called = (source->kind == NodeKind::IndexExpr && constPure(source)) ||
+                (call && source->ty->kind == TyKind::LRef &&
+                 ((member && member->base && constPure(member->base)) || (call->callee && call->callee->kind == NodeKind::NameExpr)));
+  if (t->kind != TyKind::Class || !called)
+    return std::nullopt;
+  constCallPlaceRan = false;
+  std::optional<ConstValue> ran;
+  if (std::optional<ConstPlace> at = constPlaceOf(source, ctx, depth + 1, true, &ran))
+  {
+    place = at;
+    return std::optional<std::optional<ConstValue>>(constPartOrUnset(*at));
+  }
+  if (ran)
+    return std::optional<std::optional<ConstValue>>(ran);
+  if (constCallPlaceRan)
+    return std::optional<std::optional<ConstValue>>(std::optional<ConstValue>()); // it ran, and gave nothing: never run twice
   return std::nullopt;
 }
 
@@ -5698,7 +5753,10 @@ auto GlobalScope::Impl::constBinding(uint32_t symbol, const ConstValue& v, const
 
 auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
-  std::optional<ConstValue> r = constValue(b->rhs, ctx, depth + 1); // the right operand first, as C++17 orders it
+  // The right operand first, as C++17 orders it; one a call gives (`x = v[i]`) where it is.
+  std::optional<ConstPlace> rightPlace;
+  std::optional<std::optional<ConstValue>> placed = constPlacedOperand(b->rhs, ctx, depth, rightPlace);
+  std::optional<ConstValue> r = placed ? *placed : constValue(b->rhs, ctx, depth + 1);
   std::optional<ConstPlace> place = r ? constPlaceOf(b->lhs, ctx, depth + 1, true) : std::nullopt;
   if (!place || !place->writable())
     return std::nullopt;
@@ -5722,10 +5780,10 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
       // `this == &other` compares and a move empties its source.
       Expr* source = nullptr;
       uint8_t category = constCategory(b->rhs, source);
-      std::optional<ConstPlace> right;
-      if (category != 0 && constPure(source))
+      std::optional<ConstPlace> right = rightPlace;
+      if (!right && category != 0 && constPure(source))
         right = constPlaceOf(source, ctx, depth + 1);
-      else if (category == 0 && r->isObject() && r->type && types.unqualified(types.stripRef(r->type))->kind == TyKind::Class)
+      else if (!right && category == 0 && r->isObject() && r->type && types.unqualified(types.stripRef(r->type))->kind == TyKind::Class)
         right = constMaterialize(*r, r->type);
       std::vector<std::optional<ConstPlace>> places{right};
       std::vector<uint8_t> categories{category};
@@ -5747,10 +5805,10 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
       // member, the right operand's parts referred to where they are (a move empties them).
       Expr* source = nullptr;
       uint8_t category = constCategory(b->rhs, source);
-      std::optional<ConstPlace> right;
-      if (category != 0 && constPure(source))
+      std::optional<ConstPlace> right = rightPlace;
+      if (!right && category != 0 && constPure(source))
         right = constPlaceOf(source, ctx, depth + 1);
-      else if (category == 0)
+      else if (!right && category == 0)
         right = constMaterialize(*r, r->type);
       if (!constAssignObject(*place, target, *r, right, category, depth + 1))
         return std::nullopt;

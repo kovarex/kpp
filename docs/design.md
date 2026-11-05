@@ -2292,7 +2292,9 @@ language/consteval_direct_initialization_copies_and_moves),
 `static_cast<T&&>(b)`, `move(b)` and `forward<T>(x)` of an rvalue move (the source's place given to
 the constructor, so a move empties it; an xvalue whose place the run does not know, `move(v[0])`,
 is no constant), a by-value parameter is copied or moved from its argument, an initializer is
-evaluated once (language/consteval_initializer_evaluated_once),
+evaluated once (language/consteval_initializer_evaluated_once), an operand of class type that a
+call gives as an lvalue (`x = v[i]` through operator[], `x == v.front()`) is the object where it
+is, the call run once on its object in place (language/consteval_operand_from_call_where_it_is),
 `return local;` moves (a constant evaluation elides no named object, [class.copy.elision]/1; the
 program elides it where section 23's rule holds, and the interpreter is to follow, D), a prvalue
 initializes its object directly, and an implicit copy or move

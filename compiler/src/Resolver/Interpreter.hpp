@@ -215,7 +215,8 @@
   // designates (`result[i]` through operator[], `front()`): `this` refers to self, so that the place
   // is in the caller's object (a write through it reaches the object); nullopt for a result that
   // is no part of it.
-  std::optional<ConstPlace> constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr);
+  // ran: set to the call's value when its result is no place the run holds.
+  std::optional<ConstPlace> constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr, std::optional<ConstValue>* ran = nullptr);
 
   // The member function of an object's class named symbol that a call with these arguments runs
   // for a place: one taking that many arguments, the non-const one where the object may be written.
@@ -810,7 +811,19 @@
   // bound to the operator() it calls), found in the object it is a member of.
   std::optional<ConstValue> constCallObject(Expr* object, CallExpr* c, const TypeContext& ctx, int depth, Decl* field = nullptr);
 
-  std::optional<ConstPlace> constPlaceOf(Expr* e, const TypeContext& ctx, int depth, bool calls = false);
+  // ran: where e is a call it runs (calls) whose reference result is no place the run holds (a
+  // reference into a global constant), that call's value, so that the caller takes it rather than
+  // running the call again.
+  std::optional<ConstPlace> constPlaceOf(Expr* e, const TypeContext& ctx, int depth, bool calls = false, std::optional<ConstValue>* ran = nullptr);
+
+  // An operand of class type that a call gives as an lvalue or an xvalue (`v[i]` through a class's
+  // operator[], `v.front()`, `get(v)`), for an operator's function that takes it by reference: the
+  // call run once, on the object where it is, for the place its result designates, the operand's
+  // value read there (place: set), so that `this != &other` in String's operator= compares; a
+  // reference result the run holds no place of gives the value the call computed. The outer
+  // nullopt: e is no such operand (the caller evaluates it as before); the inner: no constant (the
+  // call ran, and is never run again).
+  std::optional<std::optional<ConstValue>> constPlacedOperand(Expr* e, const TypeContext& ctx, int depth, std::optional<ConstPlace>& place);
 
   // The value at a place, unset included.
   static std::optional<ConstValue> constPartOrUnset(const ConstPlace& place);

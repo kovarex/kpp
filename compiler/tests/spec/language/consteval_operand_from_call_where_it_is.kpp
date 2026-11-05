@@ -1,0 +1,71 @@
+// spec: at compile time an operand of class type that a call gives as an lvalue (an element through Vector's operator[], `front()`) is the object where it is, as at run time: `x = v[0]`, `x = v.front()`, `x = v[0]` through a `const Vector<T>&`, `v[0] = v[0]` (operator= sees this == &other) and `a == v[0]` with an operator== that compares addresses first (`109 109 109 50 1 0` as constants and at run time)
+// found by thread D (2026-11-05) with thread E's language/consteval_string_assigned_from_vector_element: the interpreter evaluated such an operand as a copy, so operator= got no address for it and `this == &other` was no constant
+struct T
+{
+  int how = 0;
+  constexpr T() {}
+  constexpr T(const T&) : how(1) {}
+  constexpr T& operator=(const T& o)
+  {
+    how = this == &o ? 50 : o.how + 100;
+    return *this;
+  }
+  constexpr bool operator==(const T& o) const { return this == &o; }
+};
+constexpr Vector<T> nine()
+{
+  Vector<T> v;
+  v.push_back(T());
+  v[0].how = 9;
+  return v;
+}
+constexpr int fromElement()
+{
+  Vector<T> v = nine();
+  T x;
+  x = v[0];
+  return x.how;
+}
+constexpr int fromFront()
+{
+  Vector<T> v = nine();
+  T x;
+  x = v.front();
+  return x.how;
+}
+constexpr int fromConst(const Vector<T>& v)
+{
+  T x;
+  x = v[0];
+  return x.how;
+}
+constexpr int throughConst()
+{
+  Vector<T> v = nine();
+  return fromConst(v);
+}
+constexpr int selfAssigned()
+{
+  Vector<T> v = nine();
+  v[0] = v[0];
+  return v[0].how;
+}
+constexpr int same()
+{
+  Vector<T> v = nine();
+  return v[0] == v[0] ? 1 : 0;
+}
+constexpr int other()
+{
+  Vector<T> v = nine();
+  T x;
+  return x == v[0] ? 1 : 0;
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println(fromElement(), " ", fromFront(), " ", throughConst(), " ", selfAssigned(), " ", same(), " ", other());
+  println(Show<fromElement()>::value, " ", Show<fromFront()>::value, " ", Show<throughConst()>::value, " ", Show<selfAssigned()>::value, " ",
+          Show<same()>::value, " ", Show<other()>::value);
+  return 0;
+}
