@@ -5249,6 +5249,23 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     }
     return std::nullopt;
   }
+  if (e->kind == NodeKind::ConditionalExpr)
+  {
+    // `c ? a : b` of two lvalues (an lvalue itself): the place of the one the condition picks, which
+    // a reference bound to it refers to (`const int& r = c ? a : b;` followed a's later changes at run
+    // time and was a copy here: language/consteval_reference_to_conditional_lvalue). A condition
+    // with no side effect only, evaluated again by a caller that finds no place.
+    auto* c = static_cast<ConditionalExpr*>(e);
+    if (!c->then || !c->else_ || !c->then->ty || !c->else_->ty || !constPure(c->cond))
+      return std::nullopt;
+    Expr* source = nullptr;
+    if (constCategory(c->then, source) != 1 || constCategory(c->else_, source) != 1 ||
+        types.unqualified(types.stripRef(c->then->ty)) != types.unqualified(types.stripRef(c->else_->ty)))
+      return std::nullopt; // (a prvalue, of the two types' common one)
+    std::optional<ConstValue> cond = constValue(c->cond, ctx, depth + 1);
+    std::optional<bool> holds = cond ? constTruth(*cond, depth + 1) : std::nullopt;
+    return holds ? constPlaceOf(*holds ? c->then : c->else_, ctx, depth + 1, calls, ran) : std::nullopt;
+  }
   if (e->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(e)->op) == P::Star && !static_cast<UnaryExpr*>(e)->isKeyword &&
       static_cast<UnaryExpr*>(e)->operand && static_cast<UnaryExpr*>(e)->operand->kind == NodeKind::ThisExpr)
     return constThisPlace(ctx); // `*this`

@@ -1,0 +1,44 @@
+// spec: at compile time `c ? a : b` of two lvalues of one type is an lvalue, as at run time: a reference bound to it refers to the one the condition picks and follows its later changes (directly, and as a function's reference result `return i == 0 ? this->a : this->b;`), and an assignment to it assigns that one; of two types it is a prvalue, a temporary the reference keeps (`9 9 75 7` both)
+// found by thread D (2026-11-05): the interpreter bound such a reference to a copy, so the constants read 7 and 7 where the program reads 9 and 9 (a silent wrong answer), and the assignment was no constant
+struct Two
+{
+  int a = 7;
+  int b = 8;
+  const int& at(int i) const { return i == 0 ? this->a : this->b; }
+};
+constexpr int local()
+{
+  int a = 7, b = 8;
+  const int& r = a < b ? a : b;
+  a = 9;
+  return r;
+}
+constexpr int returned()
+{
+  Two t;
+  const int& r = t.at(0);
+  t.a = 9;
+  return r;
+}
+constexpr int assigned()
+{
+  int a = 7, b = 8;
+  int i = 1;
+  (i == 0 ? a : b) = 5;
+  return a * 10 + b;
+}
+constexpr int mixed()
+{
+  int a = 7;
+  long long b = 8;
+  const long long& r = a < b ? a : b;
+  a = 9;
+  return int(r);
+}
+constexpr int cl = local(), cr = returned(), ca = assigned(), cm = mixed();
+int main()
+{
+  println(local(), " ", returned(), " ", assigned(), " ", mixed());
+  println(cl, " ", cr, " ", ca, " ", cm);
+  return 0;
+}
