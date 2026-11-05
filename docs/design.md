@@ -546,9 +546,11 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   checker types the operators so (GlobalScope's bitFieldPromotion, a class template's width by
   its instance's arguments), codegen and the compile-time interpreter compute them so. Specs
   language/bit_field_promotes_as_cpp, language/bit_field_promotes_by_its_instance_width. Overload
-  resolution still ranks a bit field's argument by its declared type: `f(s.u3)` with f(int) and
-  f(long), or f(int) and f(double), is ambiguous in kpp where C++ calls f(int), the promotion (a
-  compile error, never a different call). And a structured binding of a bit field of 32 or 64 bits
+  resolution ranks a bit field argument's conversion to the type it promotes to as a promotion
+  (2026-11-06, [over.ics.scs]): `f(s.u3)` with f(int) and f(i64), or f(int) and f(double), calls
+  f(int), as clang does, where kpp found it ambiguous; its declared type stays an exact match
+  (h(unsigned) over h(int)), and a 32-bit unsigned field, which promotes to unsigned, takes
+  n(unsigned) over n(i64) (spec language/bit_field_argument_ranks_by_its_promotion). And a structured binding of a bit field of 32 or 64 bits
   (`auto [a, b] = s;` over `uint64_t w3 : 3`) promotes as its declared type, where C++ promotes it as
   the field: a binding is read and written as its field's bits (spec
   classes/structured_binding_of_bit_field_is_the_field), but the checker types its operators as a

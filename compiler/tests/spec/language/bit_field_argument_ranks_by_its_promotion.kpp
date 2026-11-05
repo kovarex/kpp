@@ -1,0 +1,39 @@
+// spec: a bit-field argument converts to the type it promotes to by its width ([conv.prom] 5) as a promotion, so overload resolution ranks f(int) above f(i64) and f(double) for an `unsigned u3 : 3` or a `uint64_t w3 : 3` (and for a signed `int s5 : 5`), a const int& as int; its declared type stays an exact match (h(unsigned), k(uint64_t)), and a 32-bit unsigned field, which promotes to unsigned, takes n(unsigned) over n(i64); for a member function and through parentheses alike. clang prints the same (C++20)
+// found by thread B's bit-field promotion (3a1af248, design.md's bit-field paragraph): kpp ranked the argument by its declared type alone, and f(s.u3) with f(int) and f(i64) was ambiguous
+struct S
+{
+  unsigned u3 : 3;
+  uint64_t w3 : 3;
+  unsigned u32 : 32;
+  int s5 : 5;
+};
+const char* f(int) { return "f(int)"; }
+const char* f(i64) { return "f(i64)"; }
+const char* g(int) { return "g(int)"; }
+const char* g(double) { return "g(double)"; }
+const char* h(unsigned) { return "h(unsigned)"; }
+const char* h(int) { return "h(int)"; }
+const char* k(int) { return "k(int)"; }
+const char* k(uint64_t) { return "k(uint64)"; }
+const char* m(const int&) { return "m(const int&)"; }
+const char* m(i64) { return "m(i64)"; }
+const char* n(i64) { return "n(i64)"; }
+const char* n(unsigned) { return "n(unsigned)"; }
+struct T
+{
+  const char* p(int) const { return "p(int)"; }
+  const char* p(double) const { return "p(double)"; }
+};
+int main()
+{
+  S s{};
+  s.u3 = 5;
+  s.w3 = 3;
+  s.u32 = 7;
+  s.s5 = -2;
+  T t;
+  println(StringView(f(s.u3)), " ", StringView(g(s.u3)), " ", StringView(h(s.u3)), " ", StringView(k(s.w3)));
+  println(StringView(f(s.w3)), " ", StringView(f(s.s5)), " ", StringView(m(s.u3)), " ", StringView(n(s.u32)));
+  println(StringView(t.p(s.u3)), " ", StringView(f((s.u3))));
+  return 0;
+}

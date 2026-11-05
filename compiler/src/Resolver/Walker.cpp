@@ -1958,8 +1958,19 @@ auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<En
     anyNull = anyNull || zero;
   }
   const std::vector<bool>* nulls = anyNull ? &nullConstants : nullptr;
+  // The arguments that are bit-fields promoting by their width (`unsigned u3 : 3` to int): their
+  // conversion to that type ranks as a promotion ([conv.prom] 5, [over.ics.scs]).
+  std::vector<const Ty*> promotions;
+  bool anyPromotion = false;
+  for (size_t i = 0; i < callArgs.size(); ++i)
+  {
+    const Ty* promoted = i < argTypes.size() ? impl.bitFieldPromotion(callArgs[i], argTypes[i], ctx().subst) : nullptr;
+    promotions.push_back(promoted);
+    anyPromotion = anyPromotion || promoted;
+  }
+  const std::vector<const Ty*>* bitFields = anyPromotion ? &promotions : nullptr;
   if (!namePart && !callSets)
-    return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls, tied);
+    return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls, tied, bitFields);
   // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
   // the list names (`typeIndex<T, Tail...>` with Tail known), and no pack to take the rest,
   // is not one, nor one whose parameter is of another kind than its argument. An overload set
@@ -1980,7 +1991,7 @@ auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<En
         return false; // `create<Abs>` names no `template<VoronoiType TYPE> create`
     return true;
   };
-  return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind, nulls, tied);
+  return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind, nulls, tied, bitFields);
 }
 
 auto GlobalScope::Impl::Walker::packParamIn(Node* n, int depth) -> Decl*

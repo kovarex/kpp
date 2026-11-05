@@ -2144,7 +2144,7 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   return typeAs(b, a) == matchedType(a);
 }
 
-auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit, const std::vector<bool>* nullConstants, std::vector<FunctionDecl*>* tiedOut) -> FunctionDecl*
+auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit, const std::vector<bool>* nullConstants, std::vector<FunctionDecl*>* tiedOut, const std::vector<const Ty*>* bitFieldPromotions) -> FunctionDecl*
 {
   bool argsConcrete = true;
   for (const Ty* at : argTypes)
@@ -2268,6 +2268,12 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
         break;
       }
       int r = conversionRank(argTypes[i], pt);
+      // (a bit-field's conversion to the type it promotes to by its width is a promotion; to its
+      // declared type it stays an exact match)
+      if (bitFieldPromotions && i < bitFieldPromotions->size() && (*bitFieldPromotions)[i] && r < NotViable && r > 2 &&
+          (!pt->isReference() || (pt->kind == TyKind::LRef && types.stripRef(pt)->isConst)) &&
+          types.unqualified(types.stripRef(pt)) == (*bitFieldPromotions)[i])
+        r = 2;
       if (r >= NotViable && nullConstants && i < nullConstants->size() && (*nullConstants)[i])
       {
         // `CoInitializeEx(0, ...)`, `f(0)` with `f(Entity*)`: the literal 0 is a null pointer, a

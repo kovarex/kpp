@@ -326,6 +326,9 @@
   // (`T load(Args&&...)` is no candidate for `load(x)`, whose T nothing gives).
   // nullConstants: per argument, whether it is the literal 0, which converts to any pointer (C++'s
   // null pointer constant; design.md 4).
+  // bitFieldPromotions: per argument, the type a bit-field argument promotes to by its width
+  // ([conv.prom] 5: an `unsigned u3 : 3` to int), or null: its conversion to that type, by value or
+  // to a const reference, is a promotion, as C++ ranks it (f(int) over f(i64) for s.u3).
   // ambiguousCallsAreErrors: a call that two functions take equally well is a checker error, as in
   // C++ (expressions/ambiguous_call_is_error). Two declarations of one C function with two types are
   // an error of their own (checkCFunctionTypes).
@@ -347,7 +350,7 @@
   // a header and the library both declare.
   bool sameFunction(FunctionDecl* a, FunctionDecl* b);
 
-  FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr, const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr);
+  FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr, const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr, const std::vector<const Ty*>* bitFieldPromotions = nullptr);
 
   // C++ ranks a class's member operator and the free ones together ([over.match.oper]); the checker
   // (Walker::operatorFunction) and the interpreter's own lookup rank them so: the member, unless a
