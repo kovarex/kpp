@@ -12,6 +12,257 @@ auto codegen::Emitter::valueMembers(ClassDecl* c) -> std::vector<Decl*>
   return members;
 }
 
+auto codegen::Emitter::partMembers(ClassDecl* c) -> std::vector<Decl*>
+{
+  std::vector<Decl*> members;
+  for (Decl* m : c->members)
+    if ((m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend))) ||
+        (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition))
+      members.push_back(m);
+  return members;
+}
+
+auto codegen::Emitter::partField(const StructInfo& info, Decl* m, uint32_t& index) -> bool
+{
+  if (m->kind == NodeKind::VariableDecl)
+  {
+    auto it = info.fieldIndex.find(m);
+    if (it == info.fieldIndex.end())
+      return false;
+    index = it->second;
+    return true;
+  }
+  for (const auto& [anonymous, field] : info.anonymous)
+    if (anonymous == m)
+    {
+      index = field;
+      return true;
+    }
+  return false;
+}
+
+auto codegen::Emitter::fieldStart(StructInfo& info, uint32_t index, Node* at) -> uint64_t
+{
+  uint64_t offset = 0;
+  for (uint32_t i = 0; i < index && i < info.fieldTypes.size(); ++i)
+  {
+    if (i < info.zeroSize.size() && info.zeroSize[i])
+      continue; // an empty base: no storage
+    uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[i], at);
+    offset = (offset + a - 1) / a * a + sizeOf(info.fieldTypes[i], at);
+  }
+  if (index < info.fieldTypes.size() && !(index < info.zeroSize.size() && info.zeroSize[index]))
+  {
+    uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[index], at);
+    offset = (offset + a - 1) / a * a;
+  }
+  return offset;
+}
+
+auto codegen::Emitter::constantBytes(const ConstValue& v, const Ty* t, std::vector<uint8_t>& out, uint64_t offset, Node* at, int depth) -> bool
+{
+  if (!t || depth > 64)
+    return false;
+  t = types.unqualified(t);
+  if (v.kind == ConstValue::Kind::Unset)
+    return true; // static storage starts zero
+  uint64_t size = sizeOf(t, at);
+  if (offset + size > out.size())
+    return false;
+  auto integer = [&](uint64_t bits, uint64_t bytes, bool negative)
+  {
+    for (uint64_t b = 0; b < bytes; ++b)
+      out[offset + b] = b < 8 ? uint8_t(bits >> (8 * b)) : negative ? 0xFF : 0x00;
+  };
+  switch (t->kind)
+  {
+    case TyKind::Bool:
+      if (v.kind != ConstValue::Kind::Int)
+        return false;
+      out[offset] = v.i ? 1 : 0;
+      return true;
+    case TyKind::Char: case TyKind::Int: case TyKind::Enum:
+      if (v.kind != ConstValue::Kind::Int)
+        return false;
+      integer(uint64_t(v.i), size, v.i < 0);
+      return true;
+    case TyKind::Float:
+    {
+      double d;
+      if (v.kind == ConstValue::Kind::Float)
+        d = v.f;
+      else if (v.kind == ConstValue::Kind::Int)
+        d = double(v.i);
+      else
+        return false;
+      if (t->bits == 32)
+      {
+        float f = float(d);
+        uint32_t bits;
+        memcpy(&bits, &f, sizeof bits);
+        integer(bits, 4, false);
+      }
+      else if (t->bits == 64)
+      {
+        uint64_t bits;
+        memcpy(&bits, &d, sizeof bits);
+        integer(bits, 8, false);
+      }
+      else
+        return false;
+      return true;
+    }
+    case TyKind::Pointer:
+      return v.kind == ConstValue::Kind::Int && v.i == 0; // a null pointer; an address is no bytes the compiler knows
+    case TyKind::Array:
+    {
+      if (v.kind != ConstValue::Kind::Object || !v.parts || v.parts->size() != t->count)
+        return false;
+      uint64_t element = sizeOf(t->inner, at);
+      for (size_t i = 0; i < v.parts->size(); ++i)
+        if (!constantBytes((*v.parts)[i], t->inner, out, offset + i * element, at, depth + 1))
+          return false;
+      return true;
+    }
+    case TyKind::Class:
+    {
+      if (v.kind != ConstValue::Kind::Object || !v.parts)
+        return false;
+      StructInfo& info = structFor(t, at);
+      ClassDecl* c = classDef(t->decl, at);
+      if (info.polymorphic)
+        return false; // its vtable pointer: an address
+      std::vector<Decl*> members = partMembers(c);
+      const Ty* canonical = canonicalClass(t, at);
+      if (info.isUnion)
+      {
+        // Its active member at its start: the one part that holds a value (an inactive member's
+        // part is unset, or an object of unset parts; none holding one: zero).
+        if (v.parts->size() != members.size())
+          return false;
+        std::function<bool(const ConstValue&)> unsetDeeply = [&](const ConstValue& p)
+        {
+          if (p.kind == ConstValue::Kind::Unset)
+            return true;
+          if (p.kind != ConstValue::Kind::Object || !p.parts)
+            return false;
+          for (const ConstValue& q : *p.parts)
+            if (!unsetDeeply(q))
+              return false;
+          return true;
+        };
+        for (size_t k = 0; k < members.size(); ++k)
+        {
+          const ConstValue& part = (*v.parts)[k];
+          if (unsetDeeply(part))
+            continue;
+          for (size_t other = k + 1; other < members.size(); ++other)
+            if (!unsetDeeply((*v.parts)[other]))
+              return false; // (two members alive: none the interpreter makes)
+          if (!info.fieldIndex.count(members[k]) && members[k]->kind == NodeKind::VariableDecl)
+            return false; // (a `when` member this instance does not have)
+          const Ty* mt = members[k]->kind == NodeKind::VariableDecl ? global.typeOfDeclIn(members[k], global.classArgsOf(canonical))
+                                                                     : types.classType(members[k], canonical->args);
+          if (!mt || !mt->isKnown() || types.isDependent(mt) || types.unqualified(mt)->isReference())
+            return false;
+          return constantBytes(part, mt, out, offset, at, depth + 1);
+        }
+        return true;
+      }
+      if (v.parts->size() != info.bases.size() + members.size())
+        return false;
+      for (size_t k = 0; k < info.bases.size(); ++k)
+      {
+        uint32_t index = info.bases[k].second;
+        if (index < info.zeroSize.size() && info.zeroSize[index])
+          continue; // an empty base: no storage of its own
+        if (!constantBytes((*v.parts)[k], info.fieldTypes[index], out, offset + fieldStart(info, index, at), at, depth + 1))
+          return false;
+      }
+      for (size_t k = 0; k < members.size(); ++k)
+      {
+        const ConstValue& part = (*v.parts)[info.bases.size() + k];
+        uint32_t index;
+        if (!partField(info, members[k], index) || index >= info.fieldTypes.size())
+          return false;
+        uint64_t at0 = offset + fieldStart(info, index, at);
+        if (auto bits = info.bitfields.find(members[k]); bits != info.bitfields.end())
+        {
+          // Its bits of the storage unit it shares (little-endian, as LLVM's integer is).
+          if (part.kind == ConstValue::Kind::Unset)
+            continue;
+          if (part.kind != ConstValue::Kind::Int)
+            return false;
+          uint64_t unitBytes = sizeOf(info.fieldTypes[index], at);
+          uint32_t shift = bits->second.shift, width = bits->second.width;
+          for (uint32_t b = 0; b < width && b < 64; ++b)
+            if ((uint64_t(part.i) >> b) & 1)
+            {
+              uint64_t bit = uint64_t(shift) + b;
+              if (bit / 8 >= unitBytes)
+                return false;
+              out[at0 + bit / 8] |= uint8_t(1u << (bit % 8));
+            }
+          continue;
+        }
+        if (info.fieldTypes[index]->isReference())
+          return false;
+        if (!constantBytes(part, info.fieldTypes[index], out, at0, at, depth + 1))
+          return false;
+      }
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+auto codegen::Emitter::unionConstant(const ConstValue& v, const Ty* t, StructInfo& info, Node* at, int depth) -> std::optional<std::string>
+{
+  if (v.kind == ConstValue::Kind::Unset)
+    return std::string("zeroinitializer");
+  const Ty* storage = info.fieldTypes.empty() ? nullptr : info.fieldTypes[0];
+  if (!storage || storage->kind != TyKind::Array || !storage->inner || storage->inner->kind != TyKind::Int)
+    return std::nullopt;
+  uint64_t unit = sizeOf(storage->inner, at);
+  std::vector<uint8_t> bytes(size_t(unit * storage->count), 0);
+  if (!constantBytes(v, t, bytes, 0, at, depth + 1))
+    return std::nullopt;
+  bool allZero = true;
+  for (uint8_t b : bytes)
+    allZero = allZero && b == 0;
+  if (allZero)
+    return std::string("zeroinitializer");
+  std::string element = llType(storage->inner, at), out = "{ " + llType(storage, at) + " [";
+  for (uint32_t i = 0; i < storage->count; ++i)
+  {
+    std::string digits;
+    if (unit <= 8)
+    {
+      uint64_t value = 0;
+      for (uint64_t b = unit; b-- > 0;)
+        value = (value << 8) | bytes[size_t(i * unit + b)];
+      if (unit < 8 && (value >> (unit * 8 - 1)) & 1)
+        value |= ~0ull << (unit * 8); // sign-extended: LLVM reads a decimal as the type's signed value
+      digits = std::to_string(int64_t(value));
+    }
+    else
+    {
+      // (i128, a 16-byte aligned union's: LLVM's unsigned hexadecimal, most significant byte first)
+      static const char hex[] = "0123456789abcdef";
+      digits = "u0x";
+      for (uint64_t b = unit; b-- > 0;)
+      {
+        uint8_t byte = bytes[size_t(i * unit + b)];
+        digits += hex[byte >> 4];
+        digits += hex[byte & 15];
+      }
+    }
+    out += (i ? ", " : "") + element + " " + digits;
+  }
+  return out + "] }";
+}
+
 auto codegen::Emitter::constantText(const ConstValue& v, const Ty* t, Node* at, int depth) -> std::optional<std::string>
 {
   if (!t || depth > 64)
@@ -92,11 +343,17 @@ auto codegen::Emitter::classConstant(const ConstValue& v, const Ty* t, Node* at,
 {
   StructInfo& info = structFor(t, at);
   ClassDecl* c = classDef(t->decl, at);
-  if (info.isUnion || c->isTypedUnion || info.polymorphic || !info.anonymous.empty())
+  if (info.polymorphic)
     return std::nullopt;
+  // A union, the storage of a typed union too: its active member's bytes as the storage's integers.
+  // (Until 2026-11-05 a union, a typed union and a class with an anonymous member were built at
+  // startup, which a global initialized before them in their file read as zero: thread D's note on
+  // FreeControllerNavigation's DEFAULT_NAVIGATOR_CONFIGURATION.)
+  if (info.isUnion)
+    return unionConstant(v, t, info, at, depth);
   if (v.kind == ConstValue::Kind::Unset)
     return std::string("zeroinitializer");
-  std::vector<Decl*> members = valueMembers(c);
+  std::vector<Decl*> members = partMembers(c); // (an anonymous member: one part, its class's object)
   if (v.kind != ConstValue::Kind::Object || !v.parts || v.parts->size() != info.bases.size() + members.size())
     return std::nullopt;
   std::vector<const Ty*> fieldTypes = info.fieldTypes;
@@ -117,10 +374,9 @@ auto codegen::Emitter::classConstant(const ConstValue& v, const Ty* t, Node* at,
   for (size_t k = 0; k < members.size(); ++k)
   {
     const ConstValue& part = (*v.parts)[info.bases.size() + k];
-    auto it = info.fieldIndex.find(members[k]);
-    if (it == info.fieldIndex.end())
+    uint32_t index;
+    if (!partField(info, members[k], index))
       return std::nullopt;
-    uint32_t index = it->second;
     if (auto bits = info.bitfields.find(members[k]); bits != info.bitfields.end())
     {
       if (part.kind != ConstValue::Kind::Int && part.kind != ConstValue::Kind::Unset)

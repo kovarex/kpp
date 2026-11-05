@@ -11,7 +11,8 @@ $work = Join-Path $PSScriptRoot '..\build\tests\checkerrors'
 function StopLeftovers()
 {
   $root = [IO.Path]::GetFullPath($work)
-  Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.Id -Force }
+  # (a process's Path read once: one that exits between two reads has none the second time)
+  Get-Process | Where-Object { $path = $_.Path; $path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
 }
 if (Test-Path $work) { StopLeftovers; cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force "$work\src", "$work\tmp" | Out-Null

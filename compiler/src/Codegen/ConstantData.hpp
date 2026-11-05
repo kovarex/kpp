@@ -8,13 +8,36 @@
     // The data members of class c as the interpreter's Object parts list them (after the bases).
     static std::vector<Decl*> valueMembers(ClassDecl* c);
 
+    // The members whose values the interpreter's Object parts are, after the bases, in declaration
+    // order (GlobalScope::Impl::constLayoutOf): the data members and the anonymous struct and union
+    // members, one part each (the anonymous class's object).
+    static std::vector<Decl*> partMembers(ClassDecl* c);
+
+    // The field of member m (a data member, or an anonymous member: info.anonymous) in t's layout.
+    static bool partField(const StructInfo& info, Decl* m, uint32_t& index);
+
+    // The offset of field index in info's layout: the fields before it, each at its alignment (an
+    // empty base none), as LLVM lays the struct out.
+    uint64_t fieldStart(StructInfo& info, uint32_t index, Node* at);
+
     // The LLVM constant value v of type t is (a global's initializer, ConstValue's contract in
     // consteval.hpp), or nothing when a part is none the IR can hold here: a polymorphic class, a
-    // union, a class with an anonymous member or a reference member, a member pointer, a part of a
-    // kind its type cannot take. Then the global is built at startup, as before.
+    // class with a reference member, a member pointer, a union member whose bytes the compiler does
+    // not know (an address), a part of a kind its type cannot take. Then the global is built at
+    // startup, as before.
     std::optional<std::string> constantText(const ConstValue& v, const Ty* t, Node* at, int depth = 0);
 
     std::optional<std::string> classConstant(const ConstValue& v, const Ty* t, Node* at, int depth);
+
+    // A union's value as its storage, the integers Layout.cpp gives it (`{ [2 x i32] }`): its active
+    // member's bytes (constantBytes), little-endian, the rest zero.
+    std::optional<std::string> unionConstant(const ConstValue& v, const Ty* t, StructInfo& info, Node* at, int depth);
+
+    // Writes the bytes of value v of type t at offset into out, as codegen lays t out (static
+    // storage: what is not written stays zero): integers, enums, floats, a null pointer, arrays,
+    // classes without a vtable pointer (bit fields in their units), a union's active member. False
+    // where a part's bytes are none the compiler knows: an address, a reference, a vtable pointer.
+    bool constantBytes(const ConstValue& v, const Ty* t, std::vector<uint8_t>& out, uint64_t offset, Node* at, int depth);
 
     // A Pointer value: into an array the evaluation made (a string literal's chars, a brace list's
     // elements), which becomes a constant (one object per contents in the program, as a string

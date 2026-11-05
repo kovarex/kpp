@@ -145,23 +145,7 @@ auto codegen::Emitter::memberOffset(const Ty* t, Decl* m, Node* at, int depth) -
   classSizeAndAlign(t, at); // laid out, the fields' sizes known
   auto lock = sharedLock();
   StructInfo& info = structFor(t, at);
-  auto start = [&](uint32_t index)
-  {
-    uint64_t offset = 0;
-    for (uint32_t i = 0; i < index && i < info.fieldTypes.size(); ++i)
-    {
-      if (i < info.zeroSize.size() && info.zeroSize[i])
-        continue; // an empty base: no storage
-      uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[i], at);
-      offset = (offset + a - 1) / a * a + sizeOf(info.fieldTypes[i], at);
-    }
-    if (index < info.fieldTypes.size() && !(index < info.zeroSize.size() && info.zeroSize[index]))
-    {
-      uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[index], at);
-      offset = (offset + a - 1) / a * a;
-    }
-    return offset;
-  };
+  auto start = [&](uint32_t index) { return fieldStart(info, index, at); };
   if (auto it = info.fieldIndex.find(m); it != info.fieldIndex.end())
     return info.isUnion ? 0 : start(it->second);
   for (const auto& [base, index] : info.bases)

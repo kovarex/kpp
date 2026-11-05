@@ -1,0 +1,67 @@
+// spec: a constexpr global holding a union, a typed union (`union enum`) or a class with an anonymous union member is constant data, as one holding a struct is, so that a global built at startup before it in its file reads its value, whichever alternative or member it holds: an int, a double, a struct of an int and a float, a typed union in a typed union, a float member of a union, a 16-byte aligned struct, bit fields in an anonymous struct (`7 2.5 3 1.5 9 2 0.75 -6 40 49`, twice)
+// factorio: FreeControllerNavigation's DEFAULT_NAVIGATOR_CONFIGURATION, whose ZoomSpecifications hold a `union enum` (thread D's note, 2026-11-05); built at startup, a global before it in its file read it as zero: `number[Value::Number]` gave 0 and `ratio[Value::Ratio]` stopped the program ("the typed union holds another alternative", its tag 0)
+struct Pair2 { int a; float b; };
+struct alignas(16) Wide { int a; int b; int c; int d; };
+union enum Inner : uint8_t
+{
+  { {int, Small}, {double, Large} }
+};
+union enum Value : uint8_t
+{
+  { {int, Number}, {double, Ratio}, {Pair2, Both}, {Inner, Nested} }
+};
+union Plain
+{
+  int i;
+  float f;
+  constexpr Plain(float x) : f(x) {}
+};
+union Aligned
+{
+  Wide wide;
+  char bytes[16];
+  constexpr Aligned() : wide{1, -2, 3, -4} {}
+};
+struct Packed
+{
+  union
+  {
+    struct
+    {
+      int length;
+      int capacity : 4;
+      int flag : 1;
+    };
+    char chars[12];
+  };
+  constexpr Packed(int n) { this->length = n; this->capacity = 5; this->flag = -1; }
+};
+
+int zero = 0; // (no constant: the globals that read it are built at startup, in this file's order)
+int earlyNumber = zero + number[Value::Number];
+double earlyRatio = zero + ratio[Value::Ratio];
+int earlyBothA = zero + both[Value::Both].a;
+float earlyBothB = zero + both[Value::Both].b;
+int earlyNested = zero + nested[Value::Nested][Inner::Small];
+int earlyTag = zero + int(both.tag());
+float earlyPlain = zero + plain.f;
+int earlyAligned = zero + aligned.wide.b + aligned.wide.d;
+int earlyLength = zero + packed.length;
+int earlyBits = zero + packed.capacity * 10 + packed.flag;
+
+constexpr Value number = 7;
+constexpr Value ratio = 2.5;
+constexpr Value both = Pair2{3, 1.5f};
+constexpr Value nested = Inner(9);
+constexpr Plain plain = Plain(0.75f);
+constexpr Aligned aligned = Aligned();
+constexpr Packed packed = Packed(40);
+
+int main()
+{
+  println(earlyNumber, " ", earlyRatio, " ", earlyBothA, " ", earlyBothB, " ", earlyNested, " ", earlyTag, " ", earlyPlain, " ", earlyAligned, " ",
+          earlyLength, " ", earlyBits);
+  println(number[Value::Number], " ", ratio[Value::Ratio], " ", both[Value::Both].a, " ", both[Value::Both].b, " ", nested[Value::Nested][Inner::Small], " ",
+          int(both.tag()), " ", plain.f, " ", aligned.wide.b + aligned.wide.d, " ", packed.length, " ", packed.capacity * 10 + packed.flag);
+  return 0;
+}
