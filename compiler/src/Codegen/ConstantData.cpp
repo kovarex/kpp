@@ -786,6 +786,9 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
   if (!t || !t->isKnown())
     unsupported(at, "a global of unknown type");
+  // (`const auto NOTHING = ((void)0);`: no `@"NOTHING" = external global void`, which clang rejects.)
+  if (types.unqualified(t)->kind == TyKind::Void)
+    fail(at, "the variable " + qualifiedName(v) + " is of type void, which holds no value");
   // A variable of C linkage (declared inside extern "C") has C's name, whatever namespace or
   // library scope it is declared in (design.md 16): http's `extern "C" char** environ`. (A
   // private one keeps its file's prefix, should the parser ever allow it: design.md 15 refuses

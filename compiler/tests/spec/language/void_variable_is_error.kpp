@@ -1,0 +1,17 @@
+// spec: a variable of type void is an error, as in C++ (clang: "variable has incomplete type 'void'"): `const auto NOTHING = ((void)0);` holds no value, and kpp emitted `@"NOTHING" = external global void`, which clang rejected as IR
+// found by thread B (2026-11-05), building the game for Linux: UnitTest++'s CheckMacros.kpp, `const auto BREAK_UNDER_DEBUGGER = ((void)0);`, Linux's macro that the converter made a variable
+// error: void_variable_is_error.kpp:6: error: a use of the global NOTHING, whose definition failed (the variable NOTHING is of type void, which holds no value)
+// error: void_variable_is_error.kpp:9: error: a use of the global NOTHING, whose definition failed (the variable NOTHING is of type void, which holds no value)
+// error: void_variable_is_error.kpp:13: error: the variable local is of type void, which holds no value
+const auto NOTHING = ((void)0);
+void touch()
+{
+  NOTHING;
+}
+int main()
+{
+  auto local = (void)0;
+  touch();
+  println(1);
+  return 0;
+}

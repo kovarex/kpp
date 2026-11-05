@@ -270,6 +270,8 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
   }
   if (!t || !t->isKnown() || types.isDependent(t))
     unsupported(v, "a local of unknown type (" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + ")");
+  if (types.unqualified(t)->kind == TyKind::Void)
+    fail(v, "the variable " + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + " is of type void, which holds no value");
   // `char buffer[N]` with N no constant the checker could evaluate has the length 0 (writes
   // would run past it).
   for (const Ty* a = types.unqualified(t); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
