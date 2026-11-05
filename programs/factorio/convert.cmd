@@ -141,12 +141,13 @@ rem Copy stubs for types that are outside the converted subset but needed for co
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 rem The nullptr pass (kovarex, 2026-11-04): each literal 0 that converts to a pointer or member pointer,
 rem as kppc's --zero-null-warnings finds it with kpp's own types, written nullptr (fix-null.py), in kpp\
-rem and in the checkout. The headline and the tests' count below take the warning too: one left is a line.
+rem and in the checkout (a build through codegen, where `return 0;` is reported too). The headline and the
+rem tests' count below take the warning too: one left is a line.
 set STEP=the nullptr pass
-%KPPC% --std ..\..\stdlib %CINC% --zero-null-warnings --diagnostic-columns --check kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\zero-null.txt
+%KPPC% --std ..\..\stdlib %CINC% --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\zero-null.txt
 python -I fix-null.py kpp\zero-null.txt kpp || goto :failed
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --zero-null-warnings --diagnostic-columns --check %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
+%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-whole.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
 python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
 rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
