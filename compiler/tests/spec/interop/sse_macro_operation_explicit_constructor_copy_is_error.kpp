@@ -1,6 +1,6 @@
 // spec: a class made of an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps) by copy-initialisation takes an implicit constructor only, as any value does in C++: `T x = op`, a parameter by value and by const reference, a return value and an assignment by an explicit one are errors (direct initialisation by one is right: interop/sse_macro_operation_made_into_class)
 // factorio: none (float32x4's constructor from __m128 is implicit)
-// pending: the checker takes an explicit constructor in copy-initialisation of any value (`Strict s = 5;` compiles too: thread D's, 2026-11-05), and the walker types these macros (interop/sse_macro_operation_deduces_template_argument); codegen's own check (constructFromVector) sees only an operation the walker does not type
+// fixed by thread D (2026-11-05): the checker reports a copy-initialisation of any value by an explicit constructor (language/copy_initialization_by_explicit_constructor_is_error), the walker typing these macros (interop/sse_macro_operation_deduces_template_argument)
 // error: sse_macro_operation_explicit_constructor_copy_is_error.kpp:16: error:
 // error: sse_macro_operation_explicit_constructor_copy_is_error.kpp:17: error:
 // error: sse_macro_operation_explicit_constructor_copy_is_error.kpp:18: error:

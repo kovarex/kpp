@@ -464,6 +464,19 @@
     // for a function template's call, nor one with an expansion among its arguments.
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
 
+    // Copy-initialisation of a class from a value of another type takes no explicit constructor
+    // ([over.match.copy]): with `explicit Strict(int)`, `Strict s = 5;`, an argument 5 for a Strict
+    // or const Strict& parameter, `return 5;` and `s = 5;` are errors, where `Strict s(5)` and
+    // `Strict(5)` take it. Reported where the class takes the value by no implicit conversion (another
+    // constructor, a conversion operator of the value's class) and its constructor for it is explicit.
+    // Only in code walked where it is written, as checkClassToScalar.
+    void checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token);
+    // `Strict s = {5};`, `return {5};`: copy-list-initialisation whose chosen constructor is explicit
+    // ([over.match.list]).
+    void checkExplicitListCopy(BraceInitExpr* b, const Ty* to);
+    // Each argument of a call of f (fnTy: its type) for a class parameter, checked (checkExplicitCopy).
+    void checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
+
     // `NamedFunction(move(parameters), create, Expression::computeConstant)`: the constructor of
     // class type t the arguments choose, its parameters binding the overload sets among them.
     void bindOverloadSetsToConstructor(const std::vector<OverloadSetArgument>& sets, const Ty* t, Span<Expr*> args);

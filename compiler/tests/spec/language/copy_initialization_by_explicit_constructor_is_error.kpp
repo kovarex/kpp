@@ -1,0 +1,25 @@
+// spec: copy-initialization takes no explicit constructor, as in C++ ([over.match.copy], [over.match.list]): with `explicit Strict(int)`, `Strict s = 5;`, `Strict b = {6};`, `return 8;` from a function returning Strict, `s = 9;` (its operator= takes a const Strict&) and an argument 7 for a Strict and for a const Strict& parameter are each an error; direct-initialization takes it (language/explicit_constructor_direct_initialization)
+// found by thread B (2026-11-05) on the SSE wrapper classes: kpp compiled each of these through the explicit constructor, and `lane(7)` stopped the code generator ("passing int32 where a pointer is expected")
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:16: error: copy-initialising Strict from int32 by its explicit constructor
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:19: error: copy-initialising Strict from int32 by its explicit constructor
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:20: error: copy-list-initialising Strict by its explicit constructor
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:21: error: copy-initialising Strict from int32 by its explicit constructor
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:22: error: copy-initialising Strict from int32 by its explicit constructor
+// error: copy_initialization_by_explicit_constructor_is_error.kpp:23: error: copy-initialising Strict from int32 by its explicit constructor
+struct Strict
+{
+  int v;
+  explicit Strict(int x) : v(x) {}
+};
+int byValue(Strict s) { return s.v; }
+int byReference(const Strict& s) { return s.v; }
+Strict returned() { return 8; }
+int main()
+{
+  Strict s = 5;
+  Strict b = {6};
+  s = 9;
+  int x = byValue(7);
+  int y = byReference(7);
+  return s.v + b.v + x + y + returned().v;
+}

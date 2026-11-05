@@ -1,0 +1,13 @@
+// spec: `static_cast<Strict>(9)` direct-initializes a Strict by its explicit constructor ([expr.static.cast] 4), as `Strict(9)` does (`9`)
+// pending: the code generator stops at it: "codegen does not support a conversion from int32 to Strict yet" (B)
+// found by thread D (2026-11-05) writing language/copy_initialization_by_explicit_constructor_is_error
+struct Strict
+{
+  int v;
+  explicit Strict(int x) : v(x) {}
+};
+int main()
+{
+  println(static_cast<Strict>(9).v);
+  return 0;
+}

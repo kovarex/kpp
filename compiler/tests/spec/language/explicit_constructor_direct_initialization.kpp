@@ -1,0 +1,13 @@
+// spec: direct-initialization takes an explicit constructor: `Strict t(6)`, `Strict u{7}`, `Strict(8)` and `Strict{9}` (`6 7 8 9`), where copy-initialization does not (language/copy_initialization_by_explicit_constructor_is_error)
+struct Strict
+{
+  int v;
+  explicit Strict(int x) : v(x) {}
+};
+int main()
+{
+  Strict t(6);
+  Strict u{7};
+  println(t.v, " ", u.v, " ", Strict(8).v, " ", Strict{9}.v);
+  return 0;
+}
