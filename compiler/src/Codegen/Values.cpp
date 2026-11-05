@@ -36,7 +36,8 @@ auto codegen::Emitter::integralConversionOperator(const Ty* from, Node* at, cons
   return conversionOf(from, nullptr, GlobalScope::ConversionKind::ToIntegral, false, at, foundIn, nullptr);
 }
 
-auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs) -> Value
+auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs,
+                                      bool keepReference) -> Value
 {
   std::string self = addr;
   if (owner != canonicalClass(objectTy, at) && !baseAddress(objectTy, owner, addr, self, at))
@@ -48,7 +49,8 @@ auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, cons
   if (op->templateParams.empty() && isClass(owner) && structFor(owner, at).polymorphic)
     if (int slot = slotOf(owner, op, at); slot >= 0)
       indirect = loadSlot(self, slot);
-  return callRvalue(callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at, indirect), at);
+  Value result = callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at, indirect);
+  return keepReference ? result : callRvalue(result, at); // (keepReference: a reference's address, for a reference to bind)
 }
 
 auto codegen::Emitter::zeroIsNoPointer(Node* at) -> bool

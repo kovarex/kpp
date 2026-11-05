@@ -1,0 +1,17 @@
+// spec: a `T&` parameter given a class whose conversion operator gives an lvalue of T binds that lvalue, as C++ does ([dcl.init.ref] 5.1.2): `operator int&()` returning a member that is not the class's first, which the function then changes: `0 8`
+// found by thread B (2026-11-05): ValueComparePointer's `operator T*&()` for ElementImageSet's loadImage(Image*&, Sprite&); kpp passed the object's own address, right there only because its member is its first, and `1 7` here
+class Slot
+{
+public:
+  int first = 0;
+  int second = 7;
+  implicit operator int&() { return this->second; }
+};
+void increment(int& value) { value += 1; }
+int main()
+{
+  Slot s;
+  increment(s);
+  println(s.first, " ", s.second);
+  return 0;
+}

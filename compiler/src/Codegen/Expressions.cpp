@@ -1125,11 +1125,11 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
         const Ty* foundIn = nullptr;
         std::vector<const Ty*> intArg = {types.intType(32)};
         FunctionDecl* pf = findMemberFunction(o.ty, opName, intArg, o.ty, u, &foundIn, true);
+        // No postfix operator++(int): an error, as in C++. (Until 2026-11-05 the prefix one was
+        // called, MSVC's extension: `C d = c++;` gave d the incremented value.)
         if (!pf)
-        {
-          // No postfix operator++(int): fall back to prefix operator++()
-          return callRvalue(operatorCall(o, opName, {}, u, true), u);
-        }
+          fail(u, types.toString(o.ty, &symbols) + " has no postfix " + opName + " (" + opName + "(int)), which x" +
+                      (op == P::PlusPlus ? "++" : "--") + " calls: C++ never takes the prefix one for it");
         std::string thisArg = o.text;
         if (canonicalClass(o.ty, u) != foundIn)
         {

@@ -1287,6 +1287,19 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     return "ptr " + textTemporary(static_cast<BraceInitExpr*>(arg), at); // a Text parameter's packed arguments (design.md 14)
   if (pt && pt->isReference())
   {
+    // A temporary binds a const lvalue reference or an rvalue reference, never a `T&` ([dcl.init.ref]
+    // 5): the function would change the temporary and leave the argument as it was. (Until
+    // 2026-11-05 made all the same: `bump(box)` with `bump(Holder&)` bumped a Holder made of box.)
+    const Ty* element = types.stripRef(pt);
+    while (element && element->kind == TyKind::Array)
+      element = element->inner; // (`const int (&)[2]` refers to const: an array's const is its elements')
+    bool takesTemporary = pt->kind == TyKind::RRef || types.stripRef(pt)->isConst || (element && element->isConst);
+    auto refuseTemporary = [&](const char* made)
+    {
+      if (!takesTemporary)
+        fail(at, "a " + types.toString(pt, &symbols) + " parameter given " + made +
+                     ": a non-const lvalue reference binds only an object of its type, never a temporary made for it, which the function would change instead");
+    };
     // `f("abc")` with `f(const char (&)[4])`, or `const T&` with T = char[4]: the literal's own
     // chars (the checker types it as the pointer it decays to, which is their address).
     if (types.unqualified(types.stripRef(pt))->kind == TyKind::Array && stringLiteralArray(arg, arg->ty, types))
@@ -1295,22 +1308,37 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     {
       const Ty* cls = types.stripRef(pt);
       if (arg->kind == NodeKind::BraceInitExpr && isInitializerListType(cls))
+      {
+        refuseTemporary("a braced list");
         return "ptr " + initializerListTemporary(cls, static_cast<BraceInitExpr*>(arg), at); // `max({a, b, c})`
+      }
       if (arg->kind == NodeKind::BraceInitExpr && isClass(cls))
+      {
+        refuseTemporary("a braced list");
         return "ptr " + convertedTemporary(cls, arg, at); // `f({a, b, c})` with `f(const Rect&)`
+      }
       const Ty* argTy = arg->ty && arg->ty->isKnown() && types.stripRef(arg->ty)->isKnown() && !types.isDependent(arg->ty) ? types.stripRef(arg->ty) : nullptr;
       if (argTy && isClass(cls) && !isClass(argTy))
+      {
+        refuseTemporary(("an argument of type " + types.toString(argTy, &symbols)).c_str());
         return "ptr " + convertedTemporary(cls, arg, at); // `f("text")` with `f(const String&)`, a lambda with `f(const Function<void()>&)`
+      }
       if (argTy && isClass(cls) && isClass(argTy) && classKey(argTy) != classKey(cls) && !baseInstantiation(argTy, classDef(cls->decl, at), at))
       {
         if (typedUnionOf(cls, at))
+        {
+          refuseTemporary(("an argument of type " + types.toString(argTy, &symbols)).c_str());
           return "ptr " + convertedTemporary(cls, arg, at); // `report(Patrolling{3})` with `report(const AIState&)`
+        }
         if (conversionOperator(argTy, types.unqualified(cls), at))
           return "ptr " + convert(rvalue(arg), types.unqualified(cls), at).text; // `f(lowercase)` through `operator const String&()`
         // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`;
         // a constructor inherited with `using Base::Base;` converts too, as the resolver ranks it)
         if (constructorFor(cls, Span<Expr*>{&arg, 1}, at) || global.converts(argumentType(arg, arg->ty, types), types.unqualified(cls)))
+        {
+          refuseTemporary(("an argument of type " + types.toString(argTy, &symbols)).c_str());
           return "ptr " + convertedTemporary(cls, arg, at); // `f(view)` with `f(const String&)`
+        }
       }
       Value o = rvalue(arg);
       if (o.ty && o.ty->kind == TyKind::Vector && isClass(cls) && (cls->isConst || pt->kind == TyKind::RRef))
@@ -1335,7 +1363,10 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
         // Fallback: try implicit constructor of the target class (e.g. Optional(const T&)
         // when passing T where const Optional<T>& is expected).
         if (constructorFor(cls, Span<Expr*>{&arg, 1}, at))
+        {
+          refuseTemporary(("an argument of type " + types.toString(o.ty, &symbols)).c_str());
           return "ptr " + convertedTemporary(cls, arg, at);
+        }
         if (conversionOperator(o.ty, types.unqualified(cls), at))
           return "ptr " + convert(o, types.unqualified(cls), at).text;
         unsupported(at, "binding an unrelated class to a reference (" + types.toString(o.ty, &symbols) + " to " + types.toString(pt, &symbols) + ")");
@@ -1369,6 +1400,33 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       fn += "  store " + llType(to, at) + " " + v.text + ", ptr " + slot + "\n";
       return "ptr " + slot;
     }
+    // A class whose conversion operator gives an lvalue of T (ValueComparePointer's `operator T*&()`
+    // for an `Image*&`): that lvalue, as C++ binds it ([dcl.init.ref] 5.1.2). Until 2026-11-05 the
+    // object's own address was passed, right only while the member it returns was its first.
+    if (!takesTemporary && argTy && isClass(argTy))
+    {
+      const Ty* owner = nullptr;
+      TemplateArgs opArgs;
+      if (FunctionDecl* op = conversionOperator(argTy, types.unqualified(referenced), at, &owner, false, &opArgs))
+      {
+        TemplateArgs classArgs = global.classArgsOf(owner);
+        const Ty* returned = nullptr;
+        {
+          ArgsScope scope(*this, &classArgs);
+          const Ty* fnTy = declType(op);
+          returned = fnTy ? fnTy->inner : nullptr;
+        }
+        if (returned && returned->kind == TyKind::LRef && !types.stripRef(returned)->isConst &&
+            types.unqualified(types.stripRef(returned)) == types.unqualified(referenced))
+          return "ptr " + callConversion(op, argTy, owner, lvalue(arg), at, &opArgs, true).text;
+      }
+    }
+    // A `T&` given another type's object (an int for a `double&`), or a bit-field: no object of T to
+    // bind (C++ rejects it). Until 2026-11-05 its address was passed: a double written into an int.
+    if (!takesTemporary && argTy && argTy->isKnown() && types.unqualified(referenced)->isKnown() && !types.isDependent(referenced) &&
+        arg->kind != NodeKind::BraceInitExpr && (argTy != types.unqualified(referenced) || namesBitField(arg)))
+      fail(at, "a " + types.toString(pt, &symbols) + " parameter given " + (namesBitField(arg) ? std::string("a bit-field") : "an argument of type " + types.toString(argTy, &symbols)) +
+                   ": a non-const lvalue reference binds only an object of its type");
     return "ptr " + lvalue(arg);
   }
   if (pt && isAggregate(pt))

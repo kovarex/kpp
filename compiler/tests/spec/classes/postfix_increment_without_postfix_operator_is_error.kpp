@@ -1,0 +1,28 @@
+// spec: `c++` and `c--` on a class that has only the prefix operator are errors, as in C++ (clang: "cannot increment value of type 'C'"), where kpp called the prefix one, MSVC's extension: `C d = c++;` gave d the incremented value, `1 1` for C++'s `1 0` had it compiled
+// found by thread B (2026-11-05), reading codegen's postfix operators
+// error: postfix_increment_without_postfix_operator_is_error.kpp:15: error: C has no postfix operator++ (operator++(int)), which x++ calls: C++ never takes the prefix one for it
+// error: postfix_increment_without_postfix_operator_is_error.kpp:21: error: C has no postfix operator-- (operator--(int)), which x-- calls: C++ never takes the prefix one for it
+class C
+{
+public:
+  int v = 0;
+  C& operator++() { ++v; return *this; }
+  C& operator--() { --v; return *this; }
+};
+int increment()
+{
+  C c;
+  C d = c++;
+  return d.v;
+}
+int decrement()
+{
+  C c;
+  C d = c--;
+  return d.v;
+}
+int main()
+{
+  println(increment(), " ", decrement());
+  return 0;
+}

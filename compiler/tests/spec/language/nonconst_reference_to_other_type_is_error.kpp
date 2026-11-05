@@ -1,0 +1,50 @@
+// spec: a non-const lvalue reference parameter binds only an object of its own type (or of a class derived from it), as in C++ ([dcl.init.ref] 5; clang: "non-const lvalue reference to type 'double' cannot bind to a value of unrelated type 'int'"): an int for a `double&`, a Box for a `Holder&` that Holder's constructor makes one of, a literal for a `String&` and a braced list for a `Point&` are errors each, where kpp passed the int's address as a double's (8 bytes written into 4: the program crashed) and made the others temporaries that the function changed instead of the argument
+// found by thread B (2026-11-05), reading codegen's argumentText
+// error: nonconst_reference_to_other_type_is_error.kpp:27: error: a double& parameter given an argument of type int32: a non-const lvalue reference binds only an object of its type
+// error: nonconst_reference_to_other_type_is_error.kpp:33: error: a Holder& parameter given an argument of type Box: a non-const lvalue reference binds only an object of its type, never a temporary made for it, which the function would change instead
+// error: nonconst_reference_to_other_type_is_error.kpp:38: error: a String& parameter given an argument of type const char*
+// error: nonconst_reference_to_other_type_is_error.kpp:42: error: a Point& parameter given a braced list: a non-const lvalue reference binds only an object of its type, never a temporary made for it, which the function would change instead
+class Box
+{
+public:
+  int v;
+  implicit Box(int x) : v(x) {}
+};
+class Holder
+{
+public:
+  Box b;
+  implicit Holder(const Box& x) : b(x) {}
+};
+struct Point { int x; int y; };
+void setHalf(double& d) { d = 1.5; }
+void bump(Holder& h) { h.b.v += 1; }
+void append(String& s) { s.append("!"); }
+void moveRight(Point& p) { p.x += 1; }
+int scalar()
+{
+  int i = 7;
+  setHalf(i);
+  return i;
+}
+int converted()
+{
+  Box box(5);
+  bump(box);
+  return box.v;
+}
+void literal()
+{
+  append("abc");
+}
+void braced()
+{
+  moveRight({1, 2});
+}
+int main()
+{
+  literal();
+  braced();
+  println(scalar(), " ", converted());
+  return 0;
+}
