@@ -58,12 +58,15 @@ Decided by kovarex; every thread follows them.
   copies, IR dumps and harness outputs go in C:\kpp-sandbox\scratch\<thread>, never in the session
   scratchpad (%LOCALAPPDATA%\Temp\claude\...): that is for small notes only, and kovarex cleans it. Delete with
   `cmd /c rd /s /q`, never PowerShell `Remove-Item -Recurse`, which can follow a junction into
-  C:\Factorio. Rebase onto origin/master; push fast-forward only when
-  `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). A change that can
-  alter the converted game also needs `convert.cmd`: headline 0, tests errors 0
+  C:\Factorio. Rebase onto origin/master; push fast-forward when `compiler\tests\gate.cmd` passes
+  (run_tests' quick run beside the spec, about 3 minutes; kovarex 2026-11-04: speed over zero risk)
+  and push again without re-gating when the rebase is clean. CI runs everything (run_tests --full,
+  every spec configuration, FreeBSD) on every push, and thread H runs `convert.cmd` and the game's
+  tests on master in batches and bisects a red one; whoever broke master fixes it first. A risky
+  codegen or converter change also needs `convert.cmd` before its push: headline 0, tests errors 0
   (kpp\tests-errors.txt: every one is a stubbed test function) and every smoke test. A gate passed
-  only when each script's last line says `ALL PASSED` and its exit code is 0 (run_tests, spec and
-  convert end with one summary line; grepping one part's count missed a red targets check). Commit small, push
+  only when each script's last line says `ALL PASSED` and its exit code is 0 (gate, run_tests, spec
+  and convert end with one summary line; grepping one part's count missed a red targets check). Commit small, push
   promptly. Never `git stash`: the stash is shared across worktrees. No DCO sign-off (kovarex removed
   it on 2026-11-02); keep the Co-Authored-By line. Stage explicit paths (`git add PATH`, never `-a` or
   `.`) and check `git show --stat` against the message before pushing.
@@ -106,10 +109,12 @@ Decided by kovarex; every thread follows them.
 ## Current phase
 Front end (lexer, parser, resolver, type checker, template instantiation) is done and measured
 (docs/prototype-results.md). Code generation for the kpp v0 subset works through textual LLVM IR
-and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run the end-to-end
-tests with `compiler\tests\run_tests.cmd` and the specification suite `compiler\tests\spec.cmd`
-(one snippet per construct, pass/pending, writes docs/spec-status.md) after every compiler
-change, and `programs\factorio\convert.cmd`, which converts the whole game into a factorio-in-kpp checkout (FACTORIO_IN_KPP, a thread's own copy; src\, tests\, libraries\CommonUtil\ ..., at their paths in Factorio's repository),
+and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run
+`compiler\tests\gate.cmd` after every compiler change: the end-to-end tests and checks
+(`compiler\tests\run_tests.cmd`, its quick run; `--full` for all of it) beside the specification
+suite `compiler\tests\spec.cmd` (one snippet per construct, pass/pending, writes
+docs/spec-status.md). `programs\factorio\convert.cmd` (for a risky codegen or converter change, and
+in thread H's batches on master) converts the whole game into a factorio-in-kpp checkout (FACTORIO_IN_KPP, a thread's own copy; src\, tests\, libraries\CommonUtil\ ..., at their paths in Factorio's repository),
 then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs their three smoke tests (the one check that runs converted game code) and the imgui, glm, Lua internals and GDI+ ones (imgui frames through the generated C interface, the glm port against glm, the Lua internals bridge against the C++ build's layout, the GDI+ classes against the SDK's gdiplus.h); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`
 before it is fixed. Measure, don't guess: every speed claim comes with the benchmark command and
