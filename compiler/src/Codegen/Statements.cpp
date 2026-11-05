@@ -461,12 +461,33 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       break;
     case NodeKind::GotoStmt:
     {
-      // A jump to a label of this function (no destructors run on the way: the labels Factorio
-      // uses jump forward out of loops, past nothing that needs destroying).
+      // A jump to a label of this function destroys what it leaves ([stmt.jump] 2): the objects of
+      // the scopes it leaves and, jumping back, those its label's scope built after the label. Until
+      // 2026-11-05 none (`{ M m(n); goto again; }` destroyed no m: its comment took Factorio's labels
+      // for jumps past nothing to destroy).
       uint32_t symbol = static_cast<GotoStmt*>(s)->label;
       if (!labelBlocks.count(symbol))
         labelBlocks[symbol] = newLabel("goto");
-      fn += "  br label %" + labelBlocks[symbol] + "\n";
+      if (auto place = labelPlaces.find(symbol); place != labelPlaces.end())
+      {
+        size_t common = 0;
+        while (common < place->second.ids.size() && common < scopeIds.size() && place->second.ids[common] == scopeIds[common])
+          ++common;
+        unwindRange(common, scopes.size());
+        if (common > 0 && common - 1 < place->second.counts.size())
+        {
+          std::vector<Object>& shared = scopes[common - 1];
+          for (size_t i = shared.size(); i-- > place->second.counts[common - 1];)
+            destroyOnExit(shared[i]); // (they stay listed: this path ends in the jump)
+        }
+        fn += "  br label %" + labelBlocks[symbol] + "\n";
+      }
+      else
+      {
+        std::string trampoline = newLabel("goto.leave");
+        pendingGotos[symbol].push_back({trampoline, scopeIds, scopes});
+        fn += "  br label %" + trampoline + "\n";
+      }
       blockTerminated = true;
       break;
     }
@@ -476,7 +497,29 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       if (!labelBlocks.count(symbol))
         labelBlocks[symbol] = newLabel("goto");
       emitBranch(labelBlocks[symbol]);
+      // The forward gotos to it: each one's trampoline destroys the objects of the scopes its jump
+      // leaves (those beyond the scopes it shares with the label), the innermost first.
+      if (auto pending = pendingGotos.find(symbol); pending != pendingGotos.end())
+      {
+        for (const PendingGoto& g : pending->second)
+        {
+          startBlock(g.trampoline);
+          size_t common = 0;
+          while (common < g.ids.size() && common < scopeIds.size() && g.ids[common] == scopeIds[common])
+            ++common;
+          for (size_t scope = g.objects.size(); scope-- > common;)
+            for (size_t i = g.objects[scope].size(); i-- > 0;)
+              destroyOnExit(g.objects[scope][i]);
+          emitBranch(labelBlocks[symbol]);
+        }
+        pendingGotos.erase(pending);
+      }
       startBlock(labelBlocks[symbol]);
+      LabelPlace place;
+      place.ids = scopeIds;
+      for (const std::vector<Object>& scope : scopes)
+        place.counts.push_back(scope.size());
+      labelPlaces[symbol] = place;
       break;
     }
     case NodeKind::DeclStmt:

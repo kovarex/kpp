@@ -102,6 +102,24 @@
       std::string countSlot;
     };
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
+    // Each open scope's id (pushScope), and the goto labels' places: the scopes' ids and their
+    // objects' counts at the label. A goto destroys what it leaves ([stmt.jump] 2): a backward one by
+    // its label's place, a forward one through a trampoline emitted at the label (GotoStmt, LabelStmt).
+    std::vector<uint32_t> scopeIds;
+    uint32_t nextScopeId = 0;
+    struct LabelPlace
+    {
+      std::vector<uint32_t> ids;
+      std::vector<size_t> counts;
+    };
+    std::unordered_map<uint32_t, LabelPlace> labelPlaces;
+    struct PendingGoto
+    {
+      std::string trampoline;
+      std::vector<uint32_t> ids;
+      std::vector<std::vector<Object>> objects;
+    };
+    std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
     struct Loop
     {

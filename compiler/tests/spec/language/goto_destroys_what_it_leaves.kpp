@@ -1,0 +1,55 @@
+// spec: a goto destroys the objects of the scopes it leaves, the innermost first, and jumping back, those its label's scope built after the label, as C++ does ([stmt.jump] 2): forward out of a block (`~2` before `at out`), back out of a block (each m destroyed before the next is built) and back within one scope past a declaration (`~6` before `M7`); as g++ prints
+// found by thread B (2026-11-05), comparing control flow with g++: kpp's goto was a plain branch, which destroyed nothing (`M1 M2 at out ~1`, `M100 M101 M102 ~102`)
+class M
+{
+public:
+  int id;
+  M(int i) : id(i) { print("M", id, " "); }
+  ~M() { print("~", id, " "); }
+};
+int forward(int k)
+{
+  M a(1);
+  {
+    M b(2);
+    if (k > 0)
+      goto out;
+    print("not jumped ");
+  }
+out:
+  print("at out ");
+  return k;
+}
+int backOutOfBlock()
+{
+  int n = 0;
+again:
+  {
+    M m(100 + n);
+    ++n;
+    if (n < 3)
+      goto again;
+  }
+  return n;
+}
+int backWithinScope()
+{
+  int n = 0;
+  M a(5);
+again:
+  M b(6 + n);
+  ++n;
+  if (n < 2)
+    goto again;
+  return n;
+}
+int main()
+{
+  int f = forward(1);
+  println("| ", f);
+  int b = backOutOfBlock();
+  println("| ", b);
+  int w = backWithinScope();
+  println("| ", w);
+  return 0;
+}

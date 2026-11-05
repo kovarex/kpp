@@ -22,7 +22,11 @@
     // is built and destroyed in its branch or iteration, not at the end of the enclosing block.
     void subStatement(Stmt* s);
 
-    void pushScope() { scopes.emplace_back(); }
+    void pushScope()
+    {
+      scopes.emplace_back();
+      scopeIds.push_back(nextScopeId++);
+    }
 
     void popScope();
 
