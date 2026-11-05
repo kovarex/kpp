@@ -81,6 +81,7 @@
       }
       resetFunctionState();
       currentFunction = f;
+      choicesRecorded = f == checked;
       bodyNow = f->body;
       nestedNamesByBody.clear();
       if (sh.debugInfo)

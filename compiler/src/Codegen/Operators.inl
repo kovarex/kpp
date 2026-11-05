@@ -275,6 +275,41 @@
           unsupported(at, qualifiedName(object.ty->decl) + " has no " + name);
         return {"", nullptr};
       }
+      return memberCall(object, f, foundIn, args, at, sret);
+    }
+
+    // The operator function the checker chose for e (design.md 24), when codegen calls the recorded
+    // choice: a function, in a body whose nodes its own walk typed (choicesRecorded). Null: codegen
+    // chooses itself (the built-in operator, a rewritten comparison, an undecided node).
+    template<class E>
+    FunctionDecl* recordedOperator(const E* e) const
+    {
+      return choicesRecorded && e->call == OperatorCall::Function ? e->callee : nullptr;
+    }
+
+    // The class that declares member f, objectTy's own class or one of its bases (as instantiated for
+    // objectTy): where a member the checker chose is called. Null when none does.
+    const Ty* declaringClass(const Ty* objectTy, FunctionDecl* f, Node* at)
+    {
+      std::function<const Ty*(const Ty*)> search = [&](const Ty* cls) -> const Ty*
+      {
+        if (classDef(cls->decl, at) == f->parent)
+          return cls;
+        StructInfo& info = structFor(cls, at);
+        std::vector<const Ty*> baseTypes;
+        for (auto& [baseDef, index] : info.bases)
+          baseTypes.push_back(info.fieldTypes[index]);
+        for (const Ty* b : baseTypes)
+          if (const Ty* found = search(b))
+            return found;
+        return nullptr;
+      };
+      return search(canonicalClass(types.unqualified(types.stripRef(objectTy)), at));
+    }
+
+    // Calls member operator f, declared in foundIn (the object's class or a base), on object.
+    Value memberCall(Value object, FunctionDecl* f, const Ty* foundIn, Span<Expr*> args, Node* at, const std::string& sret = "")
+    {
       std::string thisArg = object.text;
       if (canonicalClass(object.ty, at) != foundIn)
       {

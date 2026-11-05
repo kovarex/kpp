@@ -14,6 +14,12 @@
     const Ty* currentReturn = nullptr;
     std::string sretAddr; // Hidden return slot when returning a class.
     const Ty* currentClassTy = nullptr; // Instantiated class of the method being emitted.
+    // design.md 24: the body's nodes were typed by a walk for this function alone (a plain function's,
+    // an instantiation's own copy, a lambda in either), so what the checker recorded on them (an
+    // operator's callee) is this function's and codegen calls it instead of choosing again. False
+    // for a body re-typed per pack element (a private instance), a generic lambda's body emitted from
+    // its LambdaExpr under arguments, and a global's initializer: codegen chooses there itself.
+    bool choicesRecorded = false;
   };
 
   // What emitting a function's body builds up, from nothing for each function.

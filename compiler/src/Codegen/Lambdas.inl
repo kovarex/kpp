@@ -710,7 +710,10 @@
       if (l->closure && l->closure->parent && l->closure->parent->kind == NodeKind::FunctionDecl)
         currentFunction = static_cast<FunctionDecl*>(l->closure->parent);
       if (args)
+      {
         currentArgs = args;
+        choicesRecorded = false; // a generic lambda's own nodes, typed under each call's arguments in turn
+      }
       if (l->closure && l->closure->file)
         currentFile = l->closure->file;
       if (sh.debugInfo)

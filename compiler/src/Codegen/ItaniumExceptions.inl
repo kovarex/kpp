@@ -227,6 +227,7 @@
       destructorHelperFor = types.stripRef(t); // (its own body spells its destruction out)
       funcletOverride.clear();
       resetFunctionState();
+      choicesRecorded = false;
       try
       {
         destroy("%o", t, at);

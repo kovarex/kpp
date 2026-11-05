@@ -962,6 +962,7 @@
       funcletOverride.clear();
       resetFunctionState();
       currentFunction = nullptr;
+      choicesRecorded = false;
       VariableDecl* def = definition ? definition : variableDefinition(v);
       currentFile = def->file;
       // Names in the initializer are typed from the declaration it belongs to (a member alias of

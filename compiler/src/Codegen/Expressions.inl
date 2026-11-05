@@ -1149,6 +1149,13 @@
       // A free `Coin operator-(const Coin&)`, a class's friend operator among them, when the class
       // has no member operator: called with the operand as written.
       bool operatorLooked = false, noOperator = false; // (the class's member and free operators, looked up here)
+      // The operator function the checker chose (design.md 24); KPP_VERIFY_DECISIONS keeps codegen's
+      // own choice below, to compare.
+      if (FunctionDecl* chosen = verifyDecisions() ? nullptr : recordedOperator(u))
+      {
+        Expr* operand = u->operand;
+        return callChosenOperator(u, chosen, u->calleeMember, Span<Expr*>{&operand, 1});
+      }
       if (const Ty* ct = u->operand->ty && u->operand->ty->isKnown() ? types.unqualified(types.stripRef(u->operand->ty)) : nullptr; ct && isClass(ct))
       {
         const Ty* in = nullptr;
@@ -1259,6 +1266,34 @@
       return global.enumOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction) != nullptr;
     }
 
+    // Calls f, the operator function the checker chose for e (design.md 24), on operands (the left one
+    // first): a member on the first operand's object (the class or the base declaring it), a free
+    // function with them all, a template's arguments deduced from them, a friend's class's arguments
+    // from the operands' classes.
+    Value callChosenOperator(Expr* e, FunctionDecl* f, bool member, Span<Expr*> operands)
+    {
+      if (member)
+      {
+        Value object = withCheckedConst(rvalue(operands[0]), operands[0]);
+        const Ty* foundIn = isClass(object.ty) ? declaringClass(object.ty, f, e) : nullptr;
+        if (!foundIn)
+          unsupported(e, "a call of the operator " + qualifiedName(f) + " the checker chose, on an object of a class that does not declare it");
+        return callRvalue(memberCall(object, f, foundIn, Span<Expr*>{operands.begin() + 1, uint32_t(operands.size() - 1)}, e), e);
+      }
+      std::vector<const Ty*> argTypes;
+      for (Expr* o : operands)
+        argTypes.push_back(argumentType(o, o->ty, types));
+      const Ty* classTy = friendClass(f, argTypes, e);
+      TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
+      if (!f->templateParams.empty())
+      {
+        global.deduceArgs(f, argTypes, fnArgs);
+        if (fnArgs.pairs.size() < f->templateParams.size() + (operands.size() == 1 && classTy ? classTy->args.size() : 0)) // (as unary() and binary() had it)
+          unsupported(e, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
+      }
+      return callRvalue(callFunction(f, fnArgs, classTy, "", "", operands, e), e);
+    }
+
     Value binary(BinaryExpr* b)
     {
       if (b->isKeyword)
@@ -1272,7 +1307,8 @@
       // A class's own operator&& or operator|| is called like any overloaded operator (below), both
       // operands evaluated (C++ [over.match.oper]): NamedBool's `guiCheck || GuiCheck::fromBool(x)`.
       // The built-in, short-circuit one is for operands no such function takes.
-      if ((op == P::AndAnd || op == P::OrOr) && !userLogicalOperator(b, op) && !userEnumLogicalOperator(b, op))
+      FunctionDecl* chosen = verifyDecisions() ? nullptr : recordedOperator(b); // (design.md 24; below)
+      if ((op == P::AndAnd || op == P::OrOr) && !chosen && !userLogicalOperator(b, op) && !userEnumLogicalOperator(b, op))
       {
         verifyOperatorCall(b, OperatorCall::Builtin);
         return logical(op == P::AndAnd, b->lhs, b->rhs, b);
@@ -1362,6 +1398,13 @@
           constructAlternative(u, lt, obj, index, b->rhs, b);
           return {obj, lt, false};
         }
+      // The operator function the checker chose (design.md 24): a class's member or free operator, an
+      // enumeration's own. KPP_VERIFY_DECISIONS keeps codegen's own choice below, to compare.
+      if (chosen)
+      {
+        Expr* operands[2] = {b->lhs, b->rhs};
+        return callChosenOperator(b, chosen, b->calleeMember, Span<Expr*>{operands, 2});
+      }
       // `a | b` on an enum with its own `Flags operator|(Flags, Flags)`: the user's function, as the
       // resolver typed it (a scoped enum has no built-in one).
       if (op != P::Assign && !isClass(lt) && !isClass(rt) && ((lt && lt->kind == TyKind::Enum) || (rt && rt->kind == TyKind::Enum)) &&
