@@ -2544,31 +2544,53 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
       checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token);
 }
 
-auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
+auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee) -> void
 {
-  if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy) || inGenericTemplate())
+  if (!f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function)
     return;
+  checkReferenceBindings(callee.empty() ? std::string(symbols.name(f->name.last().symbol)) : callee, f->params, fnTy->args, args);
+}
+
+auto GlobalScope::Impl::Walker::checkReferenceBindings(const std::string& callee, Span<Decl*> params, Span<const Ty*> paramTypes, const Span<Expr*>& args) -> void
+{
+  if (probing || inGenericTemplate())
+    return;
+  for (const Ty* t : paramTypes)
+    if (!t || types.isDependent(t))
+      return;
   std::vector<const Ty*> argTypes = argTypesOf(args);
   if (argTypes.size() != args.size())
     return;
-  for (size_t i = 0; i < args.size() && i < fnTy->args.size() && i < f->params.size(); ++i)
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i)
   {
-    const Ty* param = fnTy->args[i];
+    const Ty* param = paramTypes[i];
     const Ty* given = argTypes[i];
     bool expansion = args[i] && args[i]->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(args[i])->isKeyword &&
                      static_cast<UnaryExpr*>(args[i])->postfix && P(static_cast<UnaryExpr*>(args[i])->op) == P::Ellipsis;
-    if (!args[i] || expansion || !param || param->kind != TyKind::LRef || !param->inner || param->inner->isConst || !given || !given->isKnown() ||
-        given->kind == TyKind::Pack || types.isDependent(given) || Impl::mentionsUnknown(given))
+    if (!args[i] || expansion || !param || !param->isReference() || !param->inner || (param->kind == TyKind::LRef && param->inner->isConst) || !given ||
+        !given->isKnown() || given->kind == TyKind::Pack || types.isDependent(given) || Impl::mentionsUnknown(given))
       continue;
     if (impl.conversionRank(given, param) < Impl::NotViable)
       continue;
-    auto* p = static_cast<ParamDecl*>(f->params[i]);
-    std::string name = p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : "#" + std::to_string(i + 1);
-    reportHere(args[i]->token, "the argument for " + name + " (" + types.toString(param, &symbols) + ") of " +
-                                   std::string(symbols.name(f->name.last().symbol)) + " is no lvalue of its type (it is " +
-                                   (given->isBraceList() ? std::string("a brace list") : types.toString(types.stripRef(given), &symbols)) +
-                                   "): a non-const reference binds an lvalue of its type, or of a class derived from it, never a temporary "
-                                   "([dcl.init.ref] 5)");
+    const Ty* a = types.unqualified(types.stripRef(given));
+    const Ty* pt = types.unqualified(param->inner);
+    // (A T&& given an lvalue of another type converts it to a temporary, which it binds: what is
+    // not viable there is another conversion's, the code generator's error.)
+    if (param->kind == TyKind::RRef &&
+        (given->kind != TyKind::LRef || a->kind == TyKind::Function || !(a == pt || (a->kind == TyKind::Class && pt->kind == TyKind::Class && impl.isBaseClass(pt, a)))))
+      continue;
+    auto* p = i < params.size() ? static_cast<ParamDecl*>(params[i]) : nullptr;
+    std::string name = p && p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : "#" + std::to_string(i + 1);
+    std::string argument = "the argument for " + name + " (" + types.toString(param, &symbols) + ") of " + callee;
+    if (param->kind == TyKind::RRef)
+      reportHere(args[i]->token, argument + " is an lvalue of " + types.toString(types.stripRef(given), &symbols) +
+                                     ": an rvalue reference binds a temporary or what move() gives, never an lvalue of its type or of a class "
+                                     "derived from it ([dcl.init.ref] 5.4.4)");
+    else
+      reportHere(args[i]->token, argument + " is no lvalue of its type (it is " +
+                                     (given->isBraceList() ? std::string("a brace list") : types.toString(types.stripRef(given), &symbols)) +
+                                     "): a non-const reference binds an lvalue of its type, or of a class derived from it, never a temporary "
+                                     "([dcl.init.ref] 5)");
   }
 }
 
@@ -3769,14 +3791,35 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
   t = types.stripRef(t);
   if (!t || !t->isKnown())
     return types.unknown();
+  // The value called as a message names it: a variable's name (`pointer(d)`, `sink(d)`).
+  auto calleeName = [&]() -> std::string
+  {
+    if (c && c->callee && c->callee->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(c->callee)->name.empty())
+      if (uint32_t s = static_cast<NameExpr*>(c->callee)->name.last().symbol; s != UINT32_MAX)
+        return std::string(symbols.name(s));
+    if (c && c->callee && c->callee->kind == NodeKind::MemberExpr && !static_cast<MemberExpr*>(c->callee)->member.empty())
+      if (uint32_t s = static_cast<MemberExpr*>(c->callee)->member.last().symbol; s != UINT32_MAX)
+        return std::string(symbols.name(s));
+    return "the function called";
+  };
   if (t->kind == TyKind::Function)
+  {
+    if (c)
+      checkReferenceBindings(calleeName(), {}, t->args, c->args);
     return t->inner;
+  }
   if (t->kind == TyKind::Pointer && t->inner->kind == TyKind::Function)
+  {
+    if (c)
+      checkReferenceBindings(calleeName(), {}, t->inner->args, c->args); // `pointer(d)` with a `void (*)(Base&&)`
     return t->inner->inner;
+  }
   if (t->kind == TyKind::Lambda)
   {
     if (c && Impl::isGenericLambda(t))
       return genericLambdaCall(t, c, written);
+    if (LambdaExpr* l = Impl::lambdaOf(t); c && l)
+      checkReferenceBindings(calleeName(), l->params, t->args, c->args); // `lambda(d)` with `[](Base&& x)`
     return t->inner ? t->inner : unknown(Why::AutoReturn);
   }
   if (t->kind == TyKind::Class)
@@ -3791,6 +3834,8 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
           checkConstObjectCall(f, t, c->token);
         return returnTypeOfCall(f, &r.subst, c->args, nullptr);
       }
+      if (onlyPlainCandidate(r.decl, r.overloads)) // `sink(d)` with a `void operator()(Base&& x)`, as for a name
+        checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args, calleeName());
       return unknown(Why::Overload);
     }
     return r.why == Why::Member ? unknown(Why::Member) : types.unknown();

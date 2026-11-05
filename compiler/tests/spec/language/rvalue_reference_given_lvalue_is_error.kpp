@@ -1,7 +1,7 @@
 // spec: an rvalue reference parameter given an lvalue of its own type is an error, as in C++ ([dcl.init.ref] 5.4.4; clang: "rvalue reference to type 'S' cannot bind to lvalue of type 'S'"): move(a) says the object may be moved from, a plain `a` never does; one of another type converts to a temporary, which it binds (classes/rvalue_reference_takes_a_converted_temporary), and so does a function lvalue (templates/forwarding_reference_to_function)
-// found by thread B (2026-11-05): kpp bound the variable itself, so `take(a)` with `take(S&&)` left a moved from (`[]`) and `takeInt(i)` with `takeInt(int&&)` changed i (`5`), where the program is no C++
-// error: rvalue_reference_given_lvalue_is_error.kpp:16: error: a S&& parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
-// error: rvalue_reference_given_lvalue_is_error.kpp:22: error: a int32&& parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// found by thread B (2026-11-05): kpp bound the variable itself, so `take(a)` with `take(S&&)` left a moved from (`[]`) and `takeInt(i)` with `takeInt(int&&)` changed i (`5`), where the program is no C++; the checker reports it since (thread D's checkReferenceBindings, with an lvalue of a derived class and every kind of call: language/rvalue_reference_given_lvalue_of_derived_class_is_error), codegen's own error behind it
+// error: rvalue_reference_given_lvalue_is_error.kpp:16: error: the argument for x (S&&) of take is an lvalue of S
+// error: rvalue_reference_given_lvalue_is_error.kpp:22: error: the argument for v (int32&&) of takeInt is an lvalue of int32
 class S
 {
 public:

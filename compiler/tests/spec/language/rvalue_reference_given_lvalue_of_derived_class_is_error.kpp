@@ -1,0 +1,46 @@
+// spec: an rvalue reference parameter binds no lvalue of its type, nor of a class derived from it, whatever the call ([dcl.init.ref] 5.4.4; clang: "rvalue reference to type 'Base' cannot bind to lvalue of type 'Derived'"): a function's, a member function's, a class's operator(), a lambda's or one through a pointer to a function, given such an lvalue (const or not), is the checker's error, never the object itself bound; what move() gives and a temporary bind, and an lvalue of another type converts to a temporary that the reference binds (`long&&` given an int)
+// found by thread D (2026-11-05), after thread B's codegen check (7f259f17, an lvalue of the parameter's own class): `take(d)` with `take(Base&&)` and a Derived d bound d's base part itself, which take changed (d.b became 7), and so did the member function, the operator(), the lambda and the pointer; the checker accepted each
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:39: error: the argument for x (Base&&) of take is an lvalue of Derived
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:40: error: the argument for x (Base&&) of put is an lvalue of Derived
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:41: error: the argument for x (Base&&) of sink is an lvalue of Derived
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:42: error: the argument for x (Base&&) of lambda is an lvalue of Derived
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:43: error: the argument for #1 (Base&&) of pointer is an lvalue of Derived
+// error: rvalue_reference_given_lvalue_of_derived_class_is_error.kpp:44: error: the argument for x (Base&&) of take is an lvalue of const Base
+struct Base { int b = 1; };
+struct Derived : Base { int d = 2; };
+struct Shelf
+{
+  int total = 0;
+  void put(Base&& x) { this->total += x.b; x.b = 7; }
+};
+struct Sink
+{
+  int total = 0;
+  void operator()(Base&& x) { this->total += x.b; x.b = 7; }
+};
+void take(Base&& x) { x.b = 7; }
+int readBoth(Base&& x, long&& n) { return x.b + int(n); }
+int main()
+{
+  Derived d;
+  take(move(d));
+  take(Derived());
+  int i = 3;
+  int sum = readBoth(Base(), i);
+  Shelf shelf;
+  shelf.put(Derived());
+  Sink sink;
+  sink(Derived());
+  auto lambda = [](Base&& x) { x.b = 7; };
+  lambda(Base());
+  void (*pointer)(Base&&) = take;
+  pointer(Base());
+  const Base c;
+  take(d);
+  shelf.put(d);
+  sink(d);
+  lambda(d);
+  pointer(d);
+  take(c);
+  return sum + d.b + shelf.total + sink.total;
+}

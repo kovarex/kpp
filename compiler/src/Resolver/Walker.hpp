@@ -467,11 +467,17 @@
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not
     // for a function template's call, nor one with an expansion among its arguments.
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
-    // The same call's arguments for its non-const lvalue reference parameters: each must be an
-    // lvalue of the parameter's type or of a class derived from it ([dcl.init.ref] 5), never a value
-    // a temporary would hold (an int for a `double&`, "abc" for a `String&`, `{1, 2}`), which the
-    // function would change in the argument's stead: an error.
-    void checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
+    // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
+    // callee if given (`sink(d)` of a class's operator()).
+    void checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee = {});
+    // A call's arguments for its reference parameters (paramTypes: the parameters' types, params:
+    // their declarations, empty through a pointer to a function), callee its name in the message. Each
+    // non-const lvalue reference must be given an lvalue of its type or of a class derived from it
+    // ([dcl.init.ref] 5), never a value a temporary would hold (an int for a `double&`, "abc" for a
+    // `String&`, `{1, 2}`), which the function would change in the argument's stead; an rvalue
+    // reference never an lvalue of its type or of a class derived from it (5.4.4: move() says the
+    // object may be moved from, the object itself never does). Either is an error.
+    void checkReferenceBindings(const std::string& callee, Span<Decl*> params, Span<const Ty*> paramTypes, const Span<Expr*>& args);
 
     // Copy-initialisation of a class from a value of another type takes no explicit constructor
     // ([over.match.copy]): with `explicit Strict(int)`, `Strict s = 5;`, an argument 5 for a Strict
