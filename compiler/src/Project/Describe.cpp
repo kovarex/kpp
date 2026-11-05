@@ -41,6 +41,33 @@ namespace projects
     return text;
   }
 
+  // text into path, its directory made first; false, having said which file and why, when it cannot be
+  // written (an installed kpp's libraries are under C:\Program Files\kpp, read-only for most users:
+  // describe() wrote their cache there and failed with no word, 2026-11-05).
+  bool writeText(const fs::path& path, const std::string& text, const char* what)
+  {
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    if (ec)
+    {
+      fprintf(stderr, "error: kpp cannot make %s for %s: %s\n", path.parent_path().string().c_str(), what, ec.message().c_str());
+      return false;
+    }
+    FILE* file = _wfopen(path.c_str(), L"wb");
+    if (!file)
+    {
+      fprintf(stderr, "error: kpp cannot write %s (%s): %s\n", path.string().c_str(), what, strerror(errno));
+      return false;
+    }
+    bool written = fwrite(text.data(), 1, text.size(), file) == text.size();
+    if (fclose(file) != 0 || !written)
+    {
+      fprintf(stderr, "error: kpp could not write all of %s (%s)\n", path.string().c_str(), what);
+      return false;
+    }
+    return true;
+  }
+
   std::vector<FileDeclarations> configDeclarationsOf(const std::vector<fs::path>& files, const std::vector<FileStamp>& stamps,
                                                      const fs::path& cache)
   {
@@ -108,13 +135,10 @@ namespace projects
       else
         changed = true;
     }
-    if (changed)
-    {
-      std::error_code ec;
-      fs::create_directories(cache.parent_path(), ec);
-      if (FILE* file = _wfopen(cache.c_str(), L"wb"))
-        fwrite(written.data(), 1, written.size(), file), fclose(file);
-    }
+    // A cache: one not written is read again next time, and the declarations are right either way, so
+    // a failure is a warning (writeText's line says which file), not a failed build.
+    if (changed && !writeText(cache, written, "a cache of the config:: declarations"))
+      fprintf(stderr, "warning: the config:: declarations are read from the sources again next time\n");
     return out;
   }
 
@@ -181,20 +205,22 @@ namespace projects
   // configuration, so the name `matrix` is not used), and prints the description. Through the
   // compile server unless --no-server, so that the standard library is not checked again for every
   // build.
-  std::vector<std::string> describeArguments(const fs::path& root, const Request& request)
+  std::vector<std::string> describeArguments(const fs::path& root, const Request& request, const fs::path& cache)
   {
     fs::path self = compilerPath();
     std::vector<std::string> args = {self.string(), "--quiet", "--run-build", "matrix"};
     if (request.msvc)
       args.push_back("--msvc-diagnostics");
-    for (const fs::path& a : {defaultStdlib(self).parent_path() / "projectlib", root / "build.kpp", root / "build" / "kpp" / "settings.kpp"})
+    for (const fs::path& a : {defaultStdlib(self).parent_path() / "projectlib", root / "build.kpp", descriptionCache(root, cache) / "settings.kpp"})
       args.push_back(a.string());
     return args;
   }
 
-  std::string describeCommand(const fs::path& root, const Request& request)
+  fs::path descriptionCache(const fs::path& root, const fs::path& cache) { return cache.empty() ? root / "build" / "kpp" : cache; }
+
+  std::string describeCommand(const fs::path& root, const Request& request, const fs::path& cache)
   {
-    std::vector<std::string> args = describeArguments(root, request);
+    std::vector<std::string> args = describeArguments(root, request, cache);
     if (request.server)
       args.insert(args.begin() + 1, "--server");
     std::string command;
@@ -206,13 +232,15 @@ namespace projects
   // build.kpp's description, every cell (describeCommand). Kept in build\kpp\describe.txt with a key
   // of everything it depends on, so that a build after no change of them compiles nothing. False,
   // with the errors printed, when it has an error line or names a target and a configuration alike.
-  bool describe(const fs::path& root, const Request& request, Description& out)
+  // The cache (describe.txt, its key, settings.kpp, the config:: declarations) is in cache, else in
+  // root's build\kpp: a used library's is in the using project's build\kpp\uses\NAME (resolveUses),
+  // never in the library's directory, which may be read-only (an installed kpp's libraries).
+  bool describe(const fs::path& root, const Request& request, Description& out, const fs::path& cache)
   {
     fs::path self = compilerPath();
     fs::path library = defaultStdlib(self).parent_path() / "projectlib";
-    fs::path directory = root / "build" / "kpp";
+    fs::path directory = descriptionCache(root, cache);
     std::error_code ec;
-    fs::create_directories(directory, ec);
     std::string source = settingsSource(root, request);
     uint64_t key = hashText(1469598103934665603ull, source);
     key = hashText(key, readText(root / "build.kpp"));
@@ -224,23 +252,18 @@ namespace projects
     fs::path described = directory / "describe.txt";
     if (readText(directory / "describe.key") != keyText || !fs::exists(described, ec))
     {
-      FILE* file = _wfopen((directory / "settings.kpp").c_str(), L"wb");
-      if (!file)
+      std::string what = "the description of " + (root / "build.kpp").string();
+      if (!writeText(directory / "settings.kpp", source, what.c_str()))
         return false;
-      fwrite(source.data(), 1, source.size(), file);
-      fclose(file);
       std::string text;
-      if (runAndRead(describeCommand(root, request), text) != 0 || text.find("configuration ") == std::string::npos)
+      if (runAndRead(describeCommand(root, request, cache), text) != 0 || text.find("configuration ") == std::string::npos)
       {
         fprintf(stderr, "%s: error: build.kpp did not describe the build (above)\n", (root / "build.kpp").string().c_str());
         return false;
       }
-      FILE* keep = _wfopen(described.c_str(), L"wb");
-      if (keep)
-        fwrite(text.data(), 1, text.size(), keep), fclose(keep);
-      FILE* keyFile = _wfopen((directory / "describe.key").c_str(), L"wb");
-      if (keyFile)
-        fwrite(keyText.data(), 1, keyText.size(), keyFile), fclose(keyFile);
+      // describe.txt first, its key last: a key is never kept beside a description it is not the key of.
+      if (!writeText(described, text, what.c_str()) || !writeText(directory / "describe.key", keyText, what.c_str()))
+        return false;
     }
     out = parse(readText(described));
     std::string file = (root / "build.kpp").string();
@@ -390,7 +413,9 @@ namespace projects
       Request serverless = request; // no compile server left running in a library for its description
       serverless.server = false;
       Description d;
-      if (!describe(directory, serverless, d))
+      // Its description kept in the using project's build (an installed kpp's libraries, under
+      // C:\Program Files\kpp, are read-only; one name is one directory, as checked above).
+      if (!describe(directory, serverless, d, project / "build" / "kpp" / "uses" / use.name))
         return false;
       const KppLibrary* library = nullptr;
       for (const KppLibrary& l : d.libraries)

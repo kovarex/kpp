@@ -47,7 +47,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'measure', 'paths'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'measure', 'paths', 'readonly'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -529,7 +529,7 @@ if (Run 'syslibs')
     $output = Kpp @('--no-server', '--config', 'deflate::level=9', '--run')
     if ($code -ne 0 -or $output[-1] -ne '9 true') { Fail "a library's config declaration, kpp --config deflate::level=9: exit $code`n$($output -join "`n")" }
     # Its default edited (one byte, the file's size the same): kpp reads it again, not its cache of the
-    # declarations (build\kpp\config-deflate.txt, kept by each file's time and size).
+    # declarations (build\kpp\uses\deflate\config-deflate.txt, kept by each file's time and size).
     Set-Content 'libraries\deflate\src\deflate.kpp' "// How hard it tries.`nconfig i32 level = 7;`nconfig bool checked;`nint levelOf() { return config::deflate::level; }"
     $output = Kpp @('--no-server', '--run')
     if ($code -ne 0 -or $output[-1] -ne '7 true') { Fail "a library's config default edited, kpp --run: exit $code`n$($output -join "`n")" }
@@ -694,6 +694,43 @@ if (Run 'outside')
   $env:KPP_CLANG, $env:KPP_VSWHERE = $saved
   if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(missing\)$' -or
       $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own' -or $output -notmatch '(?m)^libraries: .*\(none\)$') { Fail "an installation's kpp --version:`n$output" }
+}
+
+# A library in a directory this user cannot write (2026-11-05: an installed kpp's libraries, under
+# C:\Program Files\kpp, where describe() wrote the library's description cache, failed and said
+# nothing; gorating's `kpp --generate-visual-studio-files` exited 1 silently): its description is kept
+# in the using project's build\kpp\uses\NAME, and the program builds and runs. A project whose own
+# build directory cannot be written is an error that names it. The directories are denied this user's
+# writes by an ACL entry (writing data, adding files and directories, attributes), reset in finally.
+if (Run 'readonly')
+{
+  $readonly = Join-Path $work 'readonly'
+  if (Test-Path $readonly) { icacls $readonly /reset /T /Q | Out-Null; cmd /c rd /s /q $readonly }
+  New-Item -ItemType Directory -Force "$readonly\app\src", "$readonly\lib\src" | Out-Null
+  Push-Location "$readonly\app"
+  try
+  {
+    Set-Content '..\lib\build.kpp' "void build(Project& project)`n{`n  Library& lib = project.library(`"lib`");`n  lib.version = `"1.0.0`";`n}"
+    Set-Content '..\lib\src\lib.kpp' "config i32 answer = 42;`nint answer() { return config::lib::answer; }"
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"lib`", local(`"../lib`"));`n}"
+    Set-Content 'src\main.kpp' "int main() { println(lib::answer()); return 0; }"
+    $me = "$env:USERDOMAIN\$env:USERNAME"
+    icacls "$readonly\lib" /deny "${me}:(OI)(CI)(WD,AD,WEA,WA)" /Q | Out-Null
+    $writable = try { Set-Content '..\lib\probe.txt' 'x' -ErrorAction Stop; $true } catch { $false }
+    if ($writable) { Fail "a write-denied library directory: this user can still write it (icacls)" }
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '42' -or -not (Test-Path 'build\kpp\uses\lib\describe.txt') -or (Test-Path '..\lib\build')) { Fail "a library in a read-only directory, kpp --run: exit $code`n$($output -join "`n")" }
+    cmd /c rd /s /q build
+    New-Item -ItemType Directory 'build' | Out-Null
+    icacls "$readonly\app\build" /deny "${me}:(OI)(CI)(WD,AD,WEA,WA)" /Q | Out-Null
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -ne 1 -or $output -notmatch [regex]::Escape("error: kpp cannot make $readonly\app\build\kpp for the description of $readonly\app\build.kpp")) { Fail "a project whose build directory cannot be written: exit $code`n$output" }
+  }
+  finally
+  {
+    Pop-Location
+    icacls $readonly /reset /T /Q | Out-Null
+  }
 }
 
 # kpp measure (docs/build.md, "kpp measure"): build.kpp's edit made, built, put back and built, the

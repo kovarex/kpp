@@ -318,7 +318,10 @@ void build(Project& project)
      bcrypt, ...)`). The project's own copy, by 1 or by `local(...)`, comes first;
   4. later, the registry; now a missing library is an error naming where it looked.
 - **What kpp does with it:** it describes the library's build.kpp (the same configuration and
-  `--set` settings), checks the version and minimumKpp, gives kppc its roots as the library's, with
+  `--set` settings; the description is kept in the using project's `build\kpp\uses\NAME`, never in
+  the library's directory, which may be read-only: an installed kpp's libraries, under
+  `C:\Program Files\kpp`, failed every project that used one with no word, 2026-11-05; a file kpp
+  cannot write is an error that names it), checks the version and minimumKpp, gives kppc its roots as the library's, with
   its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. A
   library rooted at its own directory (`root(".")`, a converted C library's) keeps its build.kpp out
   of its sources (kpp passes `--exclude`); the cell's kppc options apply to its roots too, so a cell's
@@ -769,7 +772,7 @@ factorio-in-kpp's `kpp factorio debug --msvc-diagnostics` (Visual Studio's build
   names) ran before kppc, one library after another, 0.10 to 0.19 s of every build; it now runs on
   a thread per library alongside kppc, and only the link waits for it;
 - the libraries' config declarations (design.md, "config:: defaults in source") were read from every
-  file of the six used libraries, 25 ms; they are kept in `build\kpp\config-LIBRARY.txt` with each
+  file of the six used libraries, 25 ms; they are kept in `build\kpp\uses\LIBRARY\config-LIBRARY.txt` with each
   file's time and size, 8 to 10 ms;
 - the whole build with nothing changed: median 0.46 s before, 0.20 s after (paired binaries in
   alternating blocks, a loaded machine).

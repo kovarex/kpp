@@ -203,9 +203,12 @@ namespace projects
   const Program* findCell(const Description& d, const std::string& target, const std::string& configuration);
   std::vector<std::string> targetNames(const Description& d);
   int runAndRead(const std::string& command, std::string& out);
-  std::vector<std::string> describeArguments(const fs::path& root, const Request& request);
-  std::string describeCommand(const fs::path& root, const Request& request);
-  bool describe(const fs::path& root, const Request& request, Description& out);
+  // A description's cache: cache, else root's build\kpp (describe()).
+  fs::path descriptionCache(const fs::path& root, const fs::path& cache);
+  std::vector<std::string> describeArguments(const fs::path& root, const Request& request, const fs::path& cache = {});
+  std::string describeCommand(const fs::path& root, const Request& request, const fs::path& cache = {});
+  bool describe(const fs::path& root, const Request& request, Description& out, const fs::path& cache = {});
+  bool writeText(const fs::path& path, const std::string& text, const char* what);
   fs::path rooted(const fs::path& root, const std::string& path);
   bool versionNumbers(const std::string& text, std::vector<unsigned long>& numbers);
   bool resolveUses(const fs::path& project, const fs::path& by, const std::vector<Use>& uses, const Request& request,
