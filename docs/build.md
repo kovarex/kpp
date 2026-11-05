@@ -681,7 +681,16 @@ void configure(Cell& cell)
   a copy of the cell's target and configuration: `cell.target` and `cell.configuration` are
   readable and changeable for that cell only (`cell.target.linkFile(...)`,
   `cell.target.afterBuild(...)`, `cell.configuration.clangFlag(...)`), and `cell.config(NAME, VALUE)`
-  sets a constant for the cell. It still cannot act. A build.kpp without one gets projectlib's,
+  sets a constant for the cell. It still cannot act. `cell.platform` is the platform the cell is
+  built for (`Platform::Windows`, `Linux`, `FreeBSD`): the last `--target` of the project's, the
+  configuration's and the target's arguments, the command line's over them all (`kpp --target linux`,
+  which kpp gives build.kpp in build\kpp\settings.kpp, so the description is computed again when it
+  changes), Windows without one. A step only one platform can run is chosen by it, as the game's
+  cmd steps (mklink, config.ini) are Windows': `if (cell.platform == Platform::Windows)
+  cell.target.afterBuild(...)`. describe.txt keeps it (`platform linux`), and kpp checks it against
+  the platform it builds the cell for: a `--target` that configure(cell) adds itself comes too late
+  for `cell.platform`, and that build stops before it starts, never a Linux build that runs Windows'
+  steps (2026-11-05, for the game's Linux build). A build.kpp without one gets projectlib's,
   a template that does nothing (a function is chosen over a template). It runs for every cell, not
   lazily for the ones built: the description is computed once and kept (above), the Visual Studio
   files and the language server need every cell, and a cell costs little. Measured 2026-11-01 on

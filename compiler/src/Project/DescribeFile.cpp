@@ -90,6 +90,7 @@ namespace projects
       {"library", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().libraries.push_back(v); }},
       {"cinclude", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().cIncludes.push_back(v); }},
       {"before-build", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().beforeBuild = v; }},
+      {"platform", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().platform = v; }},
       {"after-build", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().afterBuild = v; }},
       {"debug-command", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugCommand = v; }},
       {"debug-arguments", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugArguments = v; }},

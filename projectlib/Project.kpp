@@ -156,6 +156,12 @@ struct Cell
   Configuration configuration;
   Executable target;
   Vector<String> configs; // this cell's config:: constants (config()), NAME=VALUE
+  // The platform the cell is built for (kppCellPlatform): the last --target of the project's, the
+  // configuration's and the target's arguments and the command line's, Windows without one; so that
+  // configure(cell) gives a Linux build its own steps (`if (cell.platform == Platform::Windows)`
+  // around a cmd command). A --target that configure(cell) adds is not in it, and kpp stops the build
+  // when the platform it builds for is not this one.
+  Platform platform = Platform::Windows;
 
   // A config:: constant of this cell, over the target's.
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
@@ -550,10 +556,46 @@ void kppConfigurationLines(String& out, const Project& project, const Configurat
   kppLines(out, "c-flag", c.cFlags);
 }
 
+// The platform a --target names, as kppc's targetNamed reads it (compiler/src/target.hpp): its names
+// and triples for Linux and FreeBSD, Windows for the rest (windows, windows-gnu; a name kppc does not
+// know fails kppc's build). kpp checks the cell's against its own (Project/Build.cpp), so that this
+// copy cannot go wrong silently.
+Platform kppTargetPlatform(StringView name)
+{
+  if (name == "linux" || name == "x86_64-unknown-linux-gnu" || name == "x86_64-linux-gnu" || name == "x86_64-pc-linux-gnu")
+    return Platform::Linux;
+  if (name == "freebsd" || name.startsWith("x86_64-unknown-freebsd"))
+    return Platform::FreeBSD;
+  return Platform::Windows;
+}
+
+// The last --target of arguments, into name.
+void kppLastTarget(String& name, const Vector<String>& arguments)
+{
+  for (u64 i = 0; i + 1 < arguments.size(); ++i)
+    if (arguments[i] == "--target")
+      name = StringView(arguments[i + 1]); // (tests/spec/language/consteval_string_assigned_through_reference)
+}
+
+// A cell's platform (Cell::platform): the last --target of its arguments in kppc's order (the
+// project's, the configuration's, the target's) and the command line's (kppCommandLineTarget, the
+// generated settings').
+Platform kppCellPlatform(const Project& project, const Configuration& resolved, const Executable& target)
+{
+  String name;
+  kppLastTarget(name, project.arguments);
+  kppLastTarget(name, resolved.arguments);
+  kppLastTarget(name, target.arguments);
+  if (kppCommandLineTarget().size() != 0)
+    name = kppCommandLineTarget();
+  return kppTargetPlatform(name);
+}
+
 // One cell: configure(cell) on copies of the target and the resolved configuration, then its lines.
 void kppCell(String& out, const Project& project, const Executable& target, const Configuration& resolved)
 {
   Cell cell{resolved, target}; // (not assigned: tests/spec/language/consteval_struct_copy_assignment)
+  cell.platform = kppCellPlatform(project, resolved, target);
   configure(cell);
   const Executable& e = cell.target;
   out << "cell ";
@@ -561,6 +603,7 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   out << ' ';
   out << resolved.name;
   out << '\n';
+  kppLine(out, "platform", config::platformName(cell.platform));
   kppConfigurationLines(out, project, cell.configuration);
   kppConfigs(out, "target", e.configs);
   kppConfigs(out, "cell", cell.configs);

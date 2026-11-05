@@ -126,8 +126,15 @@ namespace projects
                     "StringView kppSetting(StringView name, StringView otherwise)\n{\n";
     for (const auto& [name, value] : request.settings)
       s += "  if (name == " + kppString(name) + ")\n    return " + kppString(value) + ";\n";
+    // The command line's --target, its last one (Cell::platform, where it overrides build.kpp's own
+    // --target arguments): "" without one.
+    std::string target;
+    for (size_t i = 0; i + 1 < request.passed.size(); ++i)
+      if (request.passed[i] == "--target")
+        target = request.passed[i + 1];
     s += "  return otherwise;\n}\n"
-         "StringView kppProjectName() { return " + kppString(root.filename().string()) + "; }\n";
+         "StringView kppProjectName() { return " + kppString(root.filename().string()) + "; }\n"
+         "StringView kppCommandLineTarget() { return " + kppString(target) + "; }\n";
     return s;
   }
 

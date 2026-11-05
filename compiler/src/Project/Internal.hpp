@@ -81,6 +81,7 @@ namespace projects
     std::vector<std::string> roots, excluded, libraries, cIncludes, links;
     std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME: an executable's own (Executable::systemLibrary), a library's when its tests are built (libraryProgram)
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
+    std::string platform; // the platform configure(cell) saw (Cell::platform): windows, linux, freebsd
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
     std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the kpp libraries it uses

@@ -466,6 +466,31 @@ if (Run 'syslibs')
     if (Test-Path 'build\debug\app') { Remove-Item 'build\debug\app' }
     $output = (Kpp @('--no-server', '--target', 'freebsd', '--run')) -join "`n"
     if ($code -ne 2 -or $output -notmatch 'app debug is built for freebsd, which does not run on this machine' -or (Test-Path 'build\debug\app')) { Fail "kpp --target freebsd --run: exit $code`n$output" }
+    # Cell::platform (2026-11-05, the game's Linux build, whose configure(cell) gives Windows its cmd
+    # steps): the platform the cell is built for, the command line's --target over build.kpp's (a
+    # target's argument), which configure(cell) sees and describe.txt keeps. A --target configure(cell)
+    # adds itself comes too late for it: an error before the build, never Windows' steps in another's.
+    $cellBuild = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n  app.systemLibrary(`"version`");`n  TARGET`n}`n" +
+                 "void configure(Cell& cell)`n{`n  String c = `"echo `";`n  c << StringView(config::platformName(cell.platform)) << `">platform.txt`";`n  cell.target.afterBuild(c);`n  CONFIGURE`n}"
+    foreach ($case in @(@('', '', @(), 'windows'), @('', '', @('--target', 'freebsd', '--run'), 'freebsd'),
+                        @('app.argument("--target");  app.argument("linux");', '', @('--run'), 'linux'),
+                        @('app.argument("--target");  app.argument("linux");', '', @('--target', 'windows'), 'windows'),
+                        @('', 'cell.target.argument("--target");  cell.target.argument("freebsd");', @(), 'error')))
+    {
+      Set-Content 'build.kpp' $cellBuild.Replace('TARGET', $case[0]).Replace('CONFIGURE', $case[1])
+      if (Test-Path 'platform.txt') { Remove-Item 'platform.txt' }
+      $output = (Kpp (@('--no-server') + $case[2])) -join "`n"
+      $described = @(Select-String '^platform ' 'build\kpp\describe.txt' | ForEach-Object { $_.Line }) -join ','
+      $what = "cell.platform, build.kpp '$($case[0])$($case[1])', kpp $($case[2] -join ' '): exit $code, describe.txt $described`n$output"
+      if ($case[3] -eq 'error')
+      {
+        if ($code -ne 1 -or $output -notmatch 'app \(debug\) is built for freebsd, but build.kpp''s configure\(cell\) saw cell.platform windows' -or (Test-Path 'platform.txt')) { Fail $what }
+      }
+      elseif ($described -ne "platform $($case[3]),platform $($case[3])") { Fail $what }
+      elseif ($case[3] -eq 'windows' -and ($code -ne 0 -or (Get-Content 'platform.txt') -ne 'windows')) { Fail "$what`nplatform.txt: $(Get-Content 'platform.txt' -ErrorAction SilentlyContinue)" }
+    }
+    Remove-Item 'platform.txt' -ErrorAction SilentlyContinue
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
     # The other side of the platform: `kpp --target freebsd` links what a library keeps for FreeBSD and
     # leaves out what it keeps for Linux. bsd calls nothing of Windows; with
     # systemLibrary("nosuchlibrary", Platform::FreeBSD) the link fails on it, with Platform::Linux it

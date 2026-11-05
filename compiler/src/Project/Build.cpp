@@ -211,6 +211,17 @@ namespace projects
   {
     fs::path exe = exeOf(root, p, request);
     std::error_code ec;
+    // configure(cell) chose the cell's steps by cell.platform (projectlib's kppCellPlatform): a build for
+    // another platform would run them, Windows' cmd steps in a Linux build. They differ when configure
+    // adds a --target itself, or when projectlib's reading of a target name is not kppc's.
+    if (std::string platform = targetPlatform(p, request); !p.platform.empty() && p.platform != platform)
+    {
+      fprintf(stderr, "error: %s (%s) is built for %s, but build.kpp's configure(cell) saw cell.platform %s: a --target added in configure(cell) "
+              "comes too late for it (give it to the configuration or the target in build()); else projectlib's kppTargetPlatform reads the name otherwise "
+              "than kppc\n",
+              p.name.c_str(), p.configuration.c_str(), platform.c_str(), p.platform.c_str());
+      return 1;
+    }
     // The program's toolchain, its C libraries' too (a game that links Visual Studio's C++ libraries
     // asks for --toolchain msvc): one that is not there is said here, before anything compiles.
     std::string toolchain = toolchainOf(p, request);
