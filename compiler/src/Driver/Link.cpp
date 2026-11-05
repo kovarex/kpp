@@ -38,8 +38,11 @@ std::string linkFlags(const Options& options, bool wideEntry)
       flags += " \"--sysroot=" + options.sysroot + "\"";
     if (wideEntry)
       flags += " -municode";
+    // The PDB, with the .natvis in it as the MSVC link's /NATVIS puts it (lld's COFF option through
+    // --Xlink): Visual Studio shows the library's values in a windows-gnu build too, the bundled
+    // toolchain's default.
     if (options.debugInfo)
-      flags += " -g -Wl,--pdb=";
+      flags += " -g -Wl,--pdb= \"-Wl,--Xlink=/natvis:" + natvisPath(options) + "\"";
     for (const std::string& symbol : options.keepSymbols)
       flags += " -Wl,-u," + symbol;
     for (const std::string& lib : options.libs)

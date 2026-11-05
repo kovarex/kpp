@@ -25,6 +25,16 @@ try
   }
 }
 finally { Pop-Location }
+# A --debug-info build's PDB holds the .natvis as the MSVC target's does (lld's /natvis through
+# --Xlink), so Visual Studio shows the library's values in a windows-gnu program (docs/debugging.md).
+& $Kppc --quiet --target windows-gnu --debug-info --exe "$work\natvis.exe" "$PSScriptRoot\natvis\values.kpp" > "$work\natvis.compile.txt" 2>&1
+if ($LASTEXITCODE -ne 0) { $failed += "natvis (compile: $work\natvis.compile.txt)" }
+else
+{
+  $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+  $streams = (& (Join-Path $vs 'VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe') dump --named-streams "$work\natvis.pdb") -join "`n"
+  if ($streams -notmatch '/src/files/\S*natvis\.natvis') { $failed += "natvis (the PDB has no /src/files/...natvis.natvis)" }
+}
 foreach ($f in $failed) { "FAIL windows-gnu $f" }
-if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs" }
+if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs, and the .natvis in a --debug-info build's PDB" }
 exit $failed.Count

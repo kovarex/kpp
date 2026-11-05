@@ -206,8 +206,11 @@ kpp extension installed; scratch programs, not a test of run_tests):
 
 ## Values in Visual Studio
 
-A build with `--debug-info` for Windows (MSVC) also writes `NAME.natvis` beside `NAME.exe` and links it
-into the PDB (`/NATVIS`), where Visual Studio finds it with the program: nothing to install. It
+A build with `--debug-info` for Windows (MSVC, or windows-gnu, the bundled toolchain's default) also
+writes `NAME.natvis` beside `NAME.exe` and links it into the PDB (`/NATVIS`; lld's MinGW driver takes it
+as `--Xlink=/natvis:`), where Visual Studio finds it with the program: nothing to install. Until
+2026-11-05 a windows-gnu build had none, so a project built with an installed kpp showed `String` and
+`Vector` raw in Visual Studio (gorating with kpp 0.2.519); tests\windowsgnu.ps1 checks its PDB. It
 shows the library's values as values (compiler\src\natvis.cpp):
 - `String` and `StringView` as their text (a String's last byte tells a small string's length from
   the heap's mark, largeMark, taken from the library's literal);

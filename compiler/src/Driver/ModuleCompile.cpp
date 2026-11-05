@@ -534,8 +534,9 @@ void runCodegen(Build& build)
   }
   // --debug-info for Visual Studio: the .natvis that shows the library's values (a String's text, a
   // Vector's elements), linked into the PDB by linkFlags' /NATVIS (docs/debugging.md, "Values in
-  // Visual Studio"). A rule a library change broke is left out with a warning.
-  if (options.debugInfo && options.target.msvc() && !options.exe.empty())
+  // Visual Studio"), for the MSVC target and windows-gnu alike (both write a PDB). A rule a library
+  // change broke is left out with a warning.
+  if (options.debugInfo && options.target.windows() && !options.exe.empty())
   {
     std::vector<ParsedFile*> files;
     for (const std::unique_ptr<ParsedFile>& p : parsed)
