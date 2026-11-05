@@ -2532,6 +2532,34 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
       checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token);
 }
 
+auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
+{
+  if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy) || inGenericTemplate())
+    return;
+  std::vector<const Ty*> argTypes = argTypesOf(args);
+  if (argTypes.size() != args.size())
+    return;
+  for (size_t i = 0; i < args.size() && i < fnTy->args.size() && i < f->params.size(); ++i)
+  {
+    const Ty* param = fnTy->args[i];
+    const Ty* given = argTypes[i];
+    bool expansion = args[i] && args[i]->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(args[i])->isKeyword &&
+                     static_cast<UnaryExpr*>(args[i])->postfix && P(static_cast<UnaryExpr*>(args[i])->op) == P::Ellipsis;
+    if (!args[i] || expansion || !param || param->kind != TyKind::LRef || !param->inner || param->inner->isConst || !given || !given->isKnown() ||
+        given->kind == TyKind::Pack || types.isDependent(given) || Impl::mentionsUnknown(given))
+      continue;
+    if (impl.conversionRank(given, param) < Impl::NotViable)
+      continue;
+    auto* p = static_cast<ParamDecl*>(f->params[i]);
+    std::string name = p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : "#" + std::to_string(i + 1);
+    reportHere(args[i]->token, "the argument for " + name + " (" + types.toString(param, &symbols) + ") of " +
+                                   std::string(symbols.name(f->name.last().symbol)) + " is no lvalue of its type (it is " +
+                                   (given->isBraceList() ? std::string("a brace list") : types.toString(types.stripRef(given), &symbols)) +
+                                   "): a non-const reference binds an lvalue of its type, or of a class derived from it, never a temporary "
+                                   "([dcl.init.ref] 5)");
+  }
+}
+
 auto GlobalScope::Impl::Walker::bindOverloadSetsToConstructor(const std::vector<OverloadSetArgument>& sets, const Ty* t, Span<Expr*> args) -> void
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
@@ -3488,6 +3516,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         {
           checkScalarArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
+          checkReferenceArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args); // `setHalf(i)` for a double&
         }
         record(n, types.unknown());
         return unknown(Why::Overload);
@@ -3653,6 +3682,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         {
           checkScalarArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
+          checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
         }
         record(m, types.unknown());
         return unknown(Why::Overload);

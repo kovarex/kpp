@@ -1,9 +1,9 @@
 // spec: a non-const lvalue reference parameter binds only an object of its own type (or of a class derived from it), as in C++ ([dcl.init.ref] 5; clang: "non-const lvalue reference to type 'double' cannot bind to a value of unrelated type 'int'"): an int for a `double&`, a Box for a `Holder&` that Holder's constructor makes one of, a literal for a `String&` and a braced list for a `Point&` are errors each, where kpp passed the int's address as a double's (8 bytes written into 4: the program crashed) and made the others temporaries that the function changed instead of the argument
-// found by thread B (2026-11-05), reading codegen's argumentText
-// error: nonconst_reference_to_other_type_is_error.kpp:27: error: a double& parameter given an argument of type int32: a non-const lvalue reference binds only an object of its type
-// error: nonconst_reference_to_other_type_is_error.kpp:33: error: a Holder& parameter given an argument of type Box: a non-const lvalue reference binds only an object of its type, never a temporary made for it, which the function would change instead
-// error: nonconst_reference_to_other_type_is_error.kpp:38: error: a String& parameter given an argument of type const char*
-// error: nonconst_reference_to_other_type_is_error.kpp:42: error: a Point& parameter given a braced list: a non-const lvalue reference binds only an object of its type, never a temporary made for it, which the function would change instead
+// found by thread B (2026-11-05), reading codegen's argumentText; the checker reports it since (thread D's checkReferenceArguments), codegen's own error behind it
+// error: nonconst_reference_to_other_type_is_error.kpp:27: error: the argument for d (double&) of setHalf is no lvalue of its type (it is int32)
+// error: nonconst_reference_to_other_type_is_error.kpp:33: error: the argument for h (Holder&) of bump is no lvalue of its type (it is Box)
+// error: nonconst_reference_to_other_type_is_error.kpp:38: error: the argument for s (String&) of append is no lvalue of its type
+// error: nonconst_reference_to_other_type_is_error.kpp:42: error: the argument for p (Point&) of moveRight is no lvalue of its type (it is a brace list)
 class Box
 {
 public:

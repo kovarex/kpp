@@ -467,6 +467,11 @@
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not
     // for a function template's call, nor one with an expansion among its arguments.
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
+    // The same call's arguments for its non-const lvalue reference parameters: each must be an
+    // lvalue of the parameter's type or of a class derived from it ([dcl.init.ref] 5), never a value
+    // a temporary would hold (an int for a `double&`, "abc" for a `String&`, `{1, 2}`), which the
+    // function would change in the argument's stead: an error.
+    void checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
 
     // Copy-initialisation of a class from a value of another type takes no explicit constructor
     // ([over.match.copy]): with `explicit Strict(int)`, `Strict s = 5;`, an argument 5 for a Strict

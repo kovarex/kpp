@@ -550,10 +550,11 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       return types.unqualified(a) == types.unqualified(pt) ? 0 : NotViable;
     bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
     // `frame << agui::horizontalLine` with the helper's `operator HorizontalLine&()`: a class
-    // whose conversion operator gives an lvalue of pt's class or of one derived from it binds a
-    // non-const `pt&` (a user-defined conversion), whatever the object's own value category.
-    if (param->kind == TyKind::LRef && !pt->isConst && a->kind == TyKind::Class && pt->kind == TyKind::Class &&
-        types.unqualified(a) != types.unqualified(pt) && !isBaseClass(pt, a) && convertsByOperator(a, param, depth + 1))
+    // whose conversion operator gives an lvalue of pt's type (of a class derived from pt's class)
+    // binds a non-const `pt&` (a user-defined conversion), whatever the object's own value category;
+    // a pointer's too (Agui's ValueComparePointer<Image> with `operator T*&()` for an `Image*&`).
+    if (param->kind == TyKind::LRef && !pt->isConst && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
+        !(pt->kind == TyKind::Class && isBaseClass(pt, a)) && convertsByOperator(a, param, depth + 1))
       return 4;
     if (param->kind == TyKind::LRef && !pt->isConst && (!arg->isReference() || arg->kind == TyKind::RRef))
       return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
@@ -997,13 +998,18 @@ auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int dep
     return true; // (C++: an ambiguous conversion is still a user-defined one, the overload viable; a call that chooses it is an error)
   if (!f)
     return false;
-  if (rvalues)
+  bool lvalue = param->kind == TyKind::LRef && param->inner && !param->inner->isConst; // a non-const `T&`
+  if (rvalues || lvalue)
   {
     const Ty* ft = declaredTypeOf(f, args.empty() ? nullptr : &args, 0);
     const Ty* result = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
     if (result && !f->templateParams.empty())
       result = substitute(result, args);
-    if (result && result->kind == TyKind::LRef && result->inner && result->inner->kind != TyKind::Function)
+    if (rvalues && result && result->kind == TyKind::LRef && result->inner && result->inner->kind != TyKind::Function)
+      return false;
+    // A non-const `T&` binds the lvalue an operator returning `T&` gives, never the value one
+    // returning T gives (`operator T*()` for an `int*&`: a temporary, [dcl.init.ref] 5).
+    if (lvalue && result && !(result->kind == TyKind::LRef && result->inner && !result->inner->isConst))
       return false;
   }
   return true;

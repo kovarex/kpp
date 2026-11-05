@@ -1,0 +1,49 @@
+// spec: a non-const lvalue reference parameter binds an lvalue of its own type, or of a class derived from it, only ([dcl.init.ref] 5): given an int lvalue for a `double&`, a Box for a `Holder&`, a string literal for a `String&`, a brace list for a `Point&`, or a class whose conversion operator gives a value (`operator T*()`) for a `T*&`, the call is a compile error, as in C++, never a temporary the function changes in the argument's stead; a `const T&` takes all of them, `T&` an lvalue of T or of a derived class, and a class whose conversion operator gives an lvalue (`operator T*&()`, Agui's ValueComparePointer) binds it
+// found by thread B (2026-11-05): the checker accepted each (the one plain candidate, its arguments left to codegen): `setHalf(i)` passed the int's address as a double's and the program crashed, the others changed a temporary instead of the argument
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:41: error: the argument for d (double&) of setHalf is no lvalue of its type
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:43: error: the argument for h (Holder&) of bump is no lvalue of its type
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:44: error: the argument for s (String&) of append is no lvalue of its type
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:45: error: the argument for p (Point&) of moveRight is no lvalue of its type
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:47: error: the argument for slot (int32*&) of reset is no lvalue of its type
+struct Holder { int v = 0; };
+struct Box { int v = 0; };
+struct Point { int x; int y; };
+struct Special : Holder {};
+template<class T> struct Handle
+{
+  T* value = nullptr;
+  implicit operator T*&() { return this->value; }
+};
+template<class T> struct ValueOnly
+{
+  T* value = nullptr;
+  implicit operator T*() const { return this->value; }
+};
+void setHalf(double& d) { d = 0.5; }
+void bump(Holder& h) { h.v += 1; }
+void append(String& s) { s.append("x"); }
+void moveRight(Point& p) { p.x += 1; }
+void reset(int*& slot) { slot = nullptr; }
+int readHalf(const double& d) { return int(d * 2); }
+int readPoint(const Point& p) { return p.x + p.y; }
+int main()
+{
+  double x = 1.0;
+  setHalf(x);
+  Special s;
+  bump(s);
+  int i = 1;
+  int sum = readHalf(i) + readPoint({1, 2});
+  String text("a");
+  append(text);
+  Handle<int> handle;
+  reset(handle);
+  setHalf(i);
+  Box b;
+  bump(b);
+  append("abc");
+  moveRight({1, 2});
+  ValueOnly<int> copy;
+  reset(copy);
+  return sum;
+}
