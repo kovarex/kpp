@@ -3157,6 +3157,10 @@ The semantics of section 9 hold on every target:
     - FreeBSD's add more: clang's nullability qualifiers (`_Nonnull`, `_Nullable`), C99's
       `restrict` and C11's `_Noreturn`, which the importer drops. They also put
       `__attribute__((aligned(N)))` after a member's declarator, which the member takes.
+    - glibc's are read with `_GNU_SOURCE`, as g++ and clang++ read them for C++ (libstdc++ needs
+      it; 2026-11-05): the declarations C++ code on Linux is written against, GNU's own functions
+      (`pthread_setname_np`, which the game's Linux code calls) and GNU's variants where POSIX has
+      another (`strerror_r` returning the text, a `char*`).
     - What the importer still cannot read is never a silent wrong declaration:
       - a declaration it skips whole is not declared;
       - a struct or union whose body it could not read in full is an error where a use needs its

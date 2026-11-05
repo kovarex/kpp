@@ -1,0 +1,17 @@
+// spec: on Linux the C import reads glibc's headers with _GNU_SOURCE, as g++ and clang++ read them for C++: GNU's own functions are declared (pthread_setname_np and pthread_getname_np, which the game's SystemUtil calls), and GNU's variant where POSIX has another (strerror_r gives the text, a char*): `0 kpp-spec true`
+// found by thread B (2026-11-05), building the game for Linux: SystemUtil.kpp's pthread_setname_np was not declared
+// target: linux (glibc's pthread.h and string.h)
+extern "C" import "pthread.h";
+extern "C" import "string.h";
+extern "C" import "errno.h";
+
+int main()
+{
+  int set = pthread_setname_np(pthread_self(), "kpp-spec");
+  char name[16] = {};
+  pthread_getname_np(pthread_self(), name, sizeof(name));
+  char buffer[64] = {};
+  const char* text = strerror_r(ENOENT, buffer, sizeof(buffer)); // (GNU's: the text, in buffer or not)
+  println(set, " ", StringView(name), " ", text != nullptr && text[0] != 0);
+  return 0;
+}

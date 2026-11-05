@@ -888,6 +888,12 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   std::string includeArgs = targetFlags(options);
   if (!options.target.msvc() && !options.sysroot.empty())
     includeArgs += " \"--sysroot=" + options.sysroot + "\"";
+  // glibc's headers as g++ and clang++ read them for C++ (libstdc++ needs _GNU_SOURCE): GNU's own
+  // functions (pthread_setname_np, which the game's Linux code calls) and GNU's variants where
+  // POSIX has another (strerror_r's char*), the declarations C++ code on Linux is written against
+  // (design.md, "Targets and hosts").
+  if (options.target.os == Target::Os::Linux)
+    includeArgs += " -D_GNU_SOURCE";
   for (const std::string& dir : options.cIncludeDirs)
   {
     std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
