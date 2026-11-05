@@ -648,6 +648,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         // depthOrder)` in Tech<AmmoTag>'s member): the instance, as its address names it.
         if (!f->templateParams.empty() || global.isTemplateContext(f))
           return rvalue(e).text;
+        refuseCAddress(f, e);
         return useFunction(f, {}, nullptr);
       }
       unsupported(e, "taking the address of " + sym(n->name.last().symbol));

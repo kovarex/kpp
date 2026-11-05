@@ -1,0 +1,14 @@
+// spec: a C-callable function defined in kpp that takes a struct by value, called through a function pointer in kpp: the call passes the struct as the function takes it (as its target's C does)
+// pending: a call through a function pointer passes a struct as kpp does, and a function pointer's type does not say whose calling convention its function has, so taking the address of such a function is refused ("the address of a C-callable function that takes or returns a struct by value"); it read the registers of whatever came before (45 -1336165242 on Windows)
+struct S8 { int a, b; };
+extern "C" int kppTakeS8(S8 s) { return s.a * 10 + s.b; }
+
+int main()
+{
+  int (*pointer)(S8) = kppTakeS8;
+  S8 s;
+  s.a = 4;
+  s.b = 5;
+  println(kppTakeS8(s), " ", pointer(s));
+  return 0;
+}

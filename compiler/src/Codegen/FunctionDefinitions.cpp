@@ -194,24 +194,77 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   try
   {
     Signature s = signatureOf(original);
-    // A C-callable function defined in kpp takes a struct by value as kpp passes it (a pointer to
-    // a copy): what C passes otherwise (cPassing) is not received yet.
-    if (isCFunction(original))
-    {
-      const Ty* cft = declType(original);
-      for (size_t i = 0; i <= cft->args.size(); ++i)
-        if (const Ty* t = i < cft->args.size() ? cft->args[i] : cft->inner; t && isAggregate(t) && (!sh.target.windows() || !cPassing(t, f).inMemory))
-          unsupported(f, "a C-callable function (extern \"C\") defined in kpp that takes or returns a struct by value (" + irString(t) +
-                             "), which C passes " + (sh.target.windows() ? "in a register" : "by its target's convention") + " (docs/design.md, \"Targets and hosts\")");
-    }
-    std::string params;
+    std::string params, returnType = s.returnType;
     std::vector<std::string> paramNames;
-    for (size_t i = 0; i < s.paramTypes.size(); ++i)
+    if (isCFunction(original) && cStructsByValue(s, currentReturn, f))
     {
-      std::string pn = "%p" + std::to_string(i);
-      paramNames.push_back(pn);
-      params += (i ? ", " : "") + s.paramTypes[i] + " " + pn;
+      // A C-callable function (extern "C", or a C header's inline one) with a struct by value
+      // takes its parameters and returns its result as its target's C does, as a C caller passes
+      // them and kpp's own calls of it do (cDeclaration): a struct in registers is stored into a slot
+      // of its own, which the body has as kpp's pointer to a copy (a `byval` copy on the stack is
+      // that pointer already); a result in registers is built in a slot of its own, returned from
+      // there (emitReturnVoid); one in memory takes C's result slot, `sret`.
+      CRegisters left;
+      unsigned next = 0;
+      auto parameter = [&](const std::string& type)
+      {
+        std::string pn = "%p" + std::to_string(next++);
+        params += (params.empty() ? "" : ", ") + type + " " + pn;
+        return pn;
+      };
+      for (size_t i = 0; i < s.paramTypes.size(); ++i)
+      {
+        const Ty* pt = s.paramTys[i];
+        if (s.hasSret && i == 0)
+        {
+          const Ty* ret = currentReturn;
+          CPassing r = cPassing(ret, f);
+          if (r.inMemory)
+          {
+            left.ints -= 1;
+            paramNames.push_back(parameter("ptr sret(" + llType(ret, f) + ")"));
+            continue;
+          }
+          returnType = cReturnType(r);
+          cReturnParts = r.parts;
+          cReturnOffsets = r.offsets;
+          paramNames.push_back(newObjectSlot(ret, f));
+          continue;
+        }
+        if (!pt || !isAggregate(pt))
+        {
+          cScalarArgument(pt, left);
+          paramNames.push_back(parameter(s.paramTypes[i]));
+          continue;
+        }
+        CPassing p;
+        std::vector<std::string> passed = cArgumentTypes(pt, left, p, f);
+        if (p.inMemory)
+        {
+          paramNames.push_back(parameter(passed[0])); // (`ptr byval(...)`, or Windows' pointer to a copy)
+          continue;
+        }
+        std::string copy = newObjectSlot(pt, f);
+        for (size_t k = 0; k < p.parts.size(); ++k)
+        {
+          std::string pn = parameter(p.parts[k]), to = copy;
+          if (p.offsets[k])
+          {
+            to = newTemp();
+            fn += "  " + to + " = getelementptr inbounds i8, ptr " + copy + ", i64 " + std::to_string(p.offsets[k]) + "\n";
+          }
+          fn += "  store " + p.parts[k] + " " + pn + ", ptr " + to + "\n";
+        }
+        paramNames.push_back(copy);
+      }
     }
+    else
+      for (size_t i = 0; i < s.paramTypes.size(); ++i)
+      {
+        std::string pn = "%p" + std::to_string(i);
+        paramNames.push_back(pn);
+        params += (i ? ", " : "") + s.paramTypes[i] + " " + pn;
+      }
     if (s.variadic)
       params += params.empty() ? "..." : ", ...";
     std::string name = currentFunctionName;
@@ -220,7 +273,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     // module's copy is the only one, and ThinLTO dropped a linkonce_odr one that only other
     // modules called (`undefined symbol: floorl`).
     bool headerInline = original->file && original->file->isImported;
-    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + s.returnType + " " + name + "(" + params + ") " +
+    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + returnType + " " + name + "(" + params + ") " +
                          attributeText(f) + "{\nentry:\n";
     pushScope();
     size_t slot = 0;
@@ -357,7 +410,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     {
       popScope();
       if (currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn))
-        fn += "  ret void\n";
+        emitReturnVoid();
       else if (name == "@kpp.main" || name == "@kpp.wmain")
         fn += "  ret i32 0\n";
       else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow

@@ -70,6 +70,11 @@
     // While a return of namedReturn leaves its scopes: the result's address, whose object (that
     // local) they do not destroy (destroyOnExit). Empty otherwise.
     std::string keptOnReturn;
+    // A C-callable function's struct result that the target's C returns in registers (CPassing's
+    // parts, at their offsets): built in a slot of its own (sretAddr), then each `return` loads the
+    // parts from it and returns them (emitReturnVoid). Empty otherwise.
+    std::vector<std::string> cReturnParts;
+    std::vector<uint64_t> cReturnOffsets;
     struct Local
     {
       std::string addr; // Address of the variable (or of the pointer slot for references).

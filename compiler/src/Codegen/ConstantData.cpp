@@ -165,6 +165,7 @@ auto codegen::Emitter::addressConstant(const ConstTarget& target, Node* at) -> s
     TemplateArgs args;
     for (auto& p : target.args)
       args.pairs.push_back(p);
+    refuseCAddress(f, f);
     return useFunction(f, args, target.owner);
   }
   if (target.decl->kind != NodeKind::VariableDecl || (target.decl->parent && target.decl->parent->kind == NodeKind::FunctionDecl))

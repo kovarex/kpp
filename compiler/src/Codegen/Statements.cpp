@@ -533,7 +533,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       if (retLl.empty() && !returnLabel.empty())
         fn += "  br label %" + returnLabel + "\n"; // a destructor's: its members and bases are destroyed there
       else if (retLl.empty())
-        fn += "  ret void\n";
+        emitReturnVoid(); // (a C-callable function's struct result in registers: from its slot)
       else
         fn += "  ret " + retLl + " " + retText + "\n";
       blockTerminated = true;

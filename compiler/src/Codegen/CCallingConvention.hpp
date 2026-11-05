@@ -54,6 +54,21 @@
     // convention (signatureOf's, with its structs by value lowered).
     std::pair<std::string, std::string> cDeclaration(FunctionDecl* f, const Signature& s);
 
+    // Whether a C function of signature s (its result of type ret) takes or returns a struct by
+    // value other than as kpp passes one (a pointer to a copy, a result slot): SysV's every one,
+    // MS x64's of 1, 2, 4 or 8 bytes. Its definition is then lowered as cDeclaration says.
+    bool cStructsByValue(const Signature& s, const Ty* ret, Node* at);
+
+    // The `ret` of a function whose result is void or in a slot: `ret void`, or for a C-callable
+    // function's struct result in registers (cReturnParts) its parts loaded from the slot, returned.
+    void emitReturnVoid();
+
+    // Refuses the address of a C function the program declares (extern "C": defined in kpp, or in a
+    // C library) that takes or returns a struct by value other than as kpp passes one: a call through
+    // a function pointer passes the struct as kpp does (callIndirect), which that function does not
+    // take (it read the registers of whatever came before: a silent wrong value).
+    void refuseCAddress(FunctionDecl* f, Node* at);
+
     // A function (in every module) that moves `this` by the offset `at` (a pointer constant) and calls
     // callee, or the function in slot `slot` of the vtable `this` then has, with its other arguments.
     std::string sharedThunk(const std::string& name, const Signature& s, const std::string& at, const std::string& callee, int slot);

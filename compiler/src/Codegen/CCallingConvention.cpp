@@ -210,6 +210,59 @@ auto codegen::Emitter::cDeclaration(FunctionDecl* f, const Signature& s) -> std:
   return {returnType, params};
 }
 
+auto codegen::Emitter::cStructsByValue(const Signature& s, const Ty* ret, Node* at) -> bool
+{
+  for (size_t i = 0; i < s.paramTys.size(); ++i)
+  {
+    const Ty* t = s.hasSret && i == (s.hasThis ? 1u : 0u) ? ret : s.paramTys[i];
+    if (t && isAggregate(t) && (!sh.target.windows() || !cPassing(t, at).inMemory))
+      return true;
+  }
+  return false;
+}
+
+auto codegen::Emitter::emitReturnVoid() -> void
+{
+  if (cReturnParts.empty())
+  {
+    fn += "  ret void\n";
+    return;
+  }
+  CPassing p;
+  p.parts = cReturnParts;
+  std::string type = cReturnType(p), value = "undef";
+  for (size_t i = 0; i < cReturnParts.size(); ++i)
+  {
+    std::string from = sretAddr;
+    if (cReturnOffsets[i])
+    {
+      from = newTemp();
+      fn += "  " + from + " = getelementptr inbounds i8, ptr " + sretAddr + ", i64 " + std::to_string(cReturnOffsets[i]) + "\n";
+    }
+    std::string part = newTemp();
+    fn += "  " + part + " = load " + cReturnParts[i] + ", ptr " + from + "\n";
+    if (cReturnParts.size() == 1)
+    {
+      value = part;
+      break;
+    }
+    std::string whole = newTemp();
+    fn += "  " + whole + " = insertvalue " + type + " " + value + ", " + cReturnParts[i] + " " + part + ", " + std::to_string(i) + "\n";
+    value = whole;
+  }
+  fn += "  ret " + type + " " + value + "\n";
+}
+
+auto codegen::Emitter::refuseCAddress(FunctionDecl* f, Node* at) -> void
+{
+  if (!(f->flags & DF_ExternC) || (f->file && f->file->isImported))
+    return;
+  const Ty* ft = declType(f);
+  if (ft && ft->kind == TyKind::Function && cStructsByValue(signatureOf(f), ft->inner, at))
+    unsupported(at, "the address of a C-callable function that takes or returns a struct by value (" + qualifiedName(f) +
+                        "): a call through a function pointer passes the struct as kpp does, not as its target's C does");
+}
+
 auto codegen::Emitter::sharedThunk(const std::string& name, const Signature& s, const std::string& at, const std::string& callee, int slot) -> std::string
 {
   auto lock = sharedLock();
