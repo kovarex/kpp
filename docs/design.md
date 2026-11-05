@@ -3756,8 +3756,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   - A thread a program starts itself through CreateThread with a function of its own (the
     converted game's threads that do not go through Thread) has no noexcept frame: an exception
     leaving it on Windows still ends the process with no report, unless the function is noexcept.
-  - `uncaught_exceptions()` off Windows: it calls the UCRT's `__uncaught_exceptions`, which is not
-    there. kpp's runtime would count from `kpp_throw` to `kpp_eh_enter`.
+  - (`uncaught_exceptions()` off Windows, listed here until 2026-11-05: it counts kpp's own
+    exceptions on every target since b55e5442, library/uncaught_exceptions_during_unwinding.)
 
 ### Questions for kovarex
 
