@@ -823,6 +823,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
                     SymbolTable& symbols, const Options& options)
 {
   std::vector<std::string> headers;
+  std::vector<std::string> importedAt; // each header's first `extern "C" import`, `file:line`
   for (size_t i = 0; i < parsed.size(); ++i)
     for (Decl* d : parsed[i]->decls)
       if (d->kind == NodeKind::ImportDecl)
@@ -830,7 +831,11 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
         const Token& t = lexed[i].tokens[static_cast<ImportDecl*>(d)->pathToken];
         std::string path = files[i].text.substr(t.offset + 1, t.length - 2);
         if (std::find(headers.begin(), headers.end(), path) == headers.end())
+        {
           headers.push_back(path);
+          size_t line = 1 + size_t(std::count(files[i].text.begin(), files[i].text.begin() + t.offset, '\n'));
+          importedAt.push_back(files[i].path.string() + ":" + std::to_string(line));
+        }
       }
   if (headers.empty())
     return;
@@ -933,6 +938,34 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     int rc2 = system((base + " -E -dM -o \"" + defines.string() + "\"\"").c_str());
     if (rc != 0 || rc2 != 0)
     {
+      // Which of the headers the target does not have, each named where the program imports it
+      // (clang's own message names the wrapper's line in the import cache): one more preprocessing,
+      // `__has_include` of each.
+      std::string probe;
+      for (size_t i = 0; i < headers.size(); ++i)
+      {
+        std::string h = !options.target.windows() && headers[i] == "intrin.h" ? std::string("immintrin.h") : headers[i];
+        probe += "#if !__has_include(<" + h + ">)\nkpp_missing_header " + std::to_string(i) + "\n#endif\n";
+      }
+      std::filesystem::path probePath = cacheDir / (own + ".probe.c"), probed = cacheDir / (own + ".probe.pp");
+      if (FILE* p = fopen(probePath.string().c_str(), "wb"))
+      {
+        fwrite(probe.data(), 1, probe.size(), p);
+        fclose(p);
+        if (system((base.substr(0, base.rfind(" \"")) + " \"" + probePath.string() + "\" -E -P -o \"" + probed.string() + "\"\"").c_str()) == 0)
+        {
+          std::string out = readWholeFile(probed);
+          for (size_t at = out.find("kpp_missing_header "); at != std::string::npos; at = out.find("kpp_missing_header ", at + 1))
+          {
+            size_t i = size_t(strtoul(out.c_str() + at + 19, nullptr, 10));
+            if (i < headers.size())
+              fprintf(stderr, "%s: error: the C header %s is not found for %s: %s has it\n", importedAt[i].c_str(), headers[i].c_str(),
+                      options.target.name.c_str(), options.target.windows() ? "no include directory" : "neither the sysroot nor an include directory");
+          }
+        }
+        std::filesystem::remove(probePath, ec);
+        std::filesystem::remove(probed, ec);
+      }
       fprintf(stderr, "importing C headers failed (clang exit %d/%d)\n", rc, rc2);
       codegenExit = 1;
       return;

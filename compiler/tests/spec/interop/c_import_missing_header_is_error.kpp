@@ -1,0 +1,11 @@
+// spec: importing a C header the target does not have is an error named where the program imports it (`file:line`), each such header (clang's own message names only the import's wrapper file in the cache)
+// factorio: the merged tree built for Linux (thread B, 2026-11-05): the common import files still named Windows' io.h, conio.h and direct.h, and the build said only "fatal error: 'io.h' file not found" at a line of kpp-imports\<hash>.c
+// error: c_import_missing_header_is_error.kpp:5: error: the C header kpp_spec_no_such_header.h is not found for
+// error: c_import_missing_header_is_error.kpp:6: error: the C header kpp_spec_nor_this.h is not found for
+extern "C" import "kpp_spec_no_such_header.h";
+extern "C" import "kpp_spec_nor_this.h";
+extern "C" import "string.h";
+int main()
+{
+  return int(strlen("x")) - 1;
+}
