@@ -551,6 +551,14 @@ public:
   FunctionDecl* chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                                const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous = nullptr,
                                const std::vector<bool>* nullConstants = nullptr);
+  // The constructor of class classType (known, not dependent) a construction with these arguments
+  // runs (design.md 24: one rule for codegen, the interpreter and the checker): the class's own
+  // constructors and those it inherits by `using Base::Base;` (a base's copy and move constructors
+  // aside, and one with an own constructor's parameters hidden by it), chosen by overload
+  // resolution; null if none is viable. nullConstants as for chooseOverload. inheritedFrom, when
+  // given: the base class whose constructor won, else null.
+  FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes,
+                                  const std::vector<bool>* nullConstants = nullptr, const Ty** inheritedFrom = nullptr);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);

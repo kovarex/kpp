@@ -46,59 +46,14 @@
       ConstructorKey key{canonical, argTypes, nulls};
       if (auto it = constructors.find(key); it != constructors.end())
         return it->second;
-      auto* c = static_cast<ClassDecl*>(canonical->decl);
-      TemplateArgs args = global.classArgsOf(canonical);
-      std::vector<FunctionDecl*> candidates;
-      for (Decl* m : c->members)
-        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
-          candidates.push_back(static_cast<FunctionDecl*>(m));
-      // `using Text::Text;`: the base's constructors compete too, its copy and move ones aside (C++
-      // [over.match.funcs]/8) and one with an own constructor's parameters hidden by it. When one of
-      // them wins, null: constructInto builds that base from the arguments (`MoveOnly direct("abc")`
-      // takes Text(const char*), not the move constructor through a conversion by it).
-      size_t own = candidates.size();
-      auto parameterTypes = [&](FunctionDecl* f, const TemplateArgs& of)
-      {
-        ArgsScope scope(*this, &of);
-        std::vector<const Ty*> out;
-        for (Decl* p : f->params)
-          out.push_back(declType(p));
-        return out;
-      };
-      std::vector<std::vector<const Ty*>> ownParameters;
-      for (FunctionDecl* f : candidates)
-        ownParameters.push_back(f->templateParams.empty() ? parameterTypes(f, args) : std::vector<const Ty*>{});
-      std::vector<const Ty*> chain{canonical}; // the class, then each base whose constructors it inherits
-      for (int level = 0; level < 8; ++level)
-      {
-        std::optional<QualifiedName> base = inheritedConstructorBase(classDef(chain.back()->decl, at));
-        if (!base)
-          break;
-        FunctionDecl::CtorInit init{};
-        init.member = *base;
-        const Ty* bt = initializerClass(chain.back(), init, at);
-        if (!bt)
-          break;
-        chain.push_back(bt);
-        TemplateArgs baseArgs = global.classArgsOf(bt);
-        for (Decl* m : classDef(bt->decl, at)->members)
-        {
-          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
-            continue;
-          auto* f = static_cast<FunctionDecl*>(m);
-          std::vector<const Ty*> params = f->templateParams.empty() ? parameterTypes(f, baseArgs) : std::vector<const Ty*>{};
-          const Ty* first = !params.empty() && params[0] ? types.unqualified(types.stripRef(params[0])) : nullptr;
-          if (argTypes.size() == 1 && first && isClass(first) && !types.isDependent(first) &&
-              std::find(chain.begin(), chain.end(), canonicalClass(first, at)) != chain.end())
-            continue; // a copy or move constructor of the base, or one taking the class itself
-          if (!params.empty() && std::find(ownParameters.begin(), ownParameters.end(), params) != ownParameters.end())
-            continue;
-          candidates.push_back(f);
-        }
-        args.pairs.insert(args.pairs.end(), baseArgs.pairs.begin(), baseArgs.pairs.end());
-      }
-      FunctionDecl* chosen = global.chooseOverload(candidates, argTypes, args, nullptr, nullptr, nulls.empty() ? nullptr : &nulls);
-      if (chosen && std::find(candidates.begin() + own, candidates.end(), chosen) != candidates.end())
+      // The one rule (design.md 24, GlobalScope::chooseConstructor), for the interpreter and the checker
+      // to follow as well: the class's own constructors and those it inherits by `using
+      // Base::Base;`. When an inherited one wins, null: constructInto builds that base from the
+      // arguments (`MoveOnly direct("abc")` takes Text(const char*), not the move constructor through
+      // a conversion by it).
+      const Ty* inheritedFrom = nullptr;
+      FunctionDecl* chosen = global.chooseConstructor(canonical, argTypes, nulls.empty() ? nullptr : &nulls, &inheritedFrom);
+      if (inheritedFrom)
         chosen = nullptr;
       constructors.emplace(std::move(key), chosen);
       return chosen;
