@@ -5,11 +5,12 @@
 # one function (kpp measure's: src\AnimationBank.kpp), its undo, and a build with nothing changed.
 # Prints each round (the machine's load, the three times, KPP_STEP_TIMES' line) and each binary's medians.
 # Usage, in a factorio-in-kpp checkout (programs\factorio\setup-checkout.cmd makes one):
-#   powershell -File compiler\bench\vs-edit-pair.ps1 -Checkout DIR -Kppcs BEFORE.exe,AFTER.exe [-Blocks 3] [-PerBlock 3]
+#   powershell -File compiler\bench\vs-edit-pair.ps1 -Checkout DIR -Kppcs "BEFORE.exe,AFTER.exe" [-Blocks 3] [-PerBlock 3]
 # Each kppc.exe must sit in its own compiler\build (it finds the standard library beside it): copy the
 # first one's to compiler\build\kppc-before.exe before building the second.
-param([Parameter(Mandatory = $true)][string]$Checkout, [Parameter(Mandatory = $true)][string[]]$Kppcs, [int]$Blocks = 3, [int]$PerBlock = 3)
+param([Parameter(Mandatory = $true)][string]$Checkout, [Parameter(Mandatory = $true)][string]$Kppcs, [int]$Blocks = 3, [int]$PerBlock = 3)
 $ErrorActionPreference = 'Stop'
+$binaries = @($Kppcs -split ',') # (-File passes "BEFORE.exe,AFTER.exe" as one string)
 Set-Location $Checkout
 $file = Join-Path $Checkout 'src\AnimationBank.kpp'
 $a = 'Missing specification of animation with name'
@@ -18,7 +19,7 @@ $text = [IO.File]::ReadAllText($file)
 if (-not $text.Contains($a)) { throw "no '$a' in $file" }
 $env:KPP_STEP_TIMES = '1'
 $results = @{}
-foreach ($k in $Kppcs) { $results[$k] = @{ edit = @(); nothing = @() } }
+foreach ($k in $binaries) { $results[$k] = @{ edit = @(); nothing = @() } }
 function Build([string]$k)
 {
   $ErrorActionPreference = 'Continue'
@@ -34,9 +35,9 @@ try
 {
   for ($block = 0; $block -lt $Blocks; $block++)
   {
-    foreach ($k in $Kppcs)
+    foreach ($k in $binaries)
     {
-      foreach ($other in $Kppcs) { & $other factorio debug --msvc-diagnostics --stop-server | Out-Null }
+      foreach ($other in $binaries) { & $other factorio debug --msvc-diagnostics --stop-server | Out-Null }
       Build $k | Out-Null
       for ($i = 0; $i -lt $PerBlock; $i++)
       {
@@ -56,9 +57,9 @@ try
 finally
 {
   [IO.File]::WriteAllText($file, $text)
-  foreach ($k in $Kppcs) { & $k factorio debug --msvc-diagnostics --stop-server | Out-Null }
+  foreach ($k in $binaries) { & $k factorio debug --msvc-diagnostics --stop-server | Out-Null }
 }
-foreach ($k in $Kppcs)
+foreach ($k in $binaries)
 {
   "{0}: edit and undo median {1:N2} s (n {2}), nothing changed median {3:N3} s (n {4})" -f $k, (Median $results[$k].edit), $results[$k].edit.Count,
     (Median $results[$k].nothing), $results[$k].nothing.Count
