@@ -2314,6 +2314,16 @@ namespace
       return false;
     }
 
+    // kpp's contextual specifiers (implicit, both_const, accumulate) are specifiers only before a
+    // type, a name or another specifier, as `config` is; followed by anything else (`=`, `;`, `,`,
+    // `)`, `[`, `{`, `:`, `(`, `::`) the word is the declaration's own name, as C++ reads
+    // `int implicit = 3;` or `auto accumulate = f;` (read as the specifier until 2026-11-05, which
+    // declared a variable without a name: a call `accumulate(3, 4)` went to a global function)
+    bool atContextualSpecifier(uint32_t keyword) const
+    {
+      return atIdent(keyword) && (at(TokenKind::Identifier, 1) || at(TokenKind::Keyword, 1));
+    }
+
     void parseDeclSpecifiers(uint32_t& flags)
     {
       for (;;)
@@ -2338,9 +2348,9 @@ namespace
         else if (accept(Kw::typedef_)) flags |= DF_Typedef;
         else if (accept(Kw::register_)) flags |= DF_Register;
         else if (accept(Kw::export_)) flags |= DF_Export;
-        else if (atIdent(kwImplicit) && !at(P::LParen, 1)) { advance(); flags |= DF_Implicit; }
-        else if (atIdent(kwBothConst) && !at(P::LParen, 1)) { advance(); flags |= DF_BothConst; }
-        else if (atIdent(kwAccumulate) && !at(P::LParen, 1) && !at(P::ColonColon, 1)) { advance(); flags |= DF_Accumulate; }
+        else if (atContextualSpecifier(kwImplicit)) { advance(); flags |= DF_Implicit; }
+        else if (atContextualSpecifier(kwBothConst)) { advance(); flags |= DF_BothConst; }
+        else if (atContextualSpecifier(kwAccumulate)) { advance(); flags |= DF_Accumulate; }
         else if (atIdent(kwConditional) && at(P::LParen, 1))
         {
           // conditional(expr): the function exists only while expr, a config constant, is true.

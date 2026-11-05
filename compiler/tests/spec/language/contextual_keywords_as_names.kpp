@@ -1,0 +1,25 @@
+// spec: kpp's contextual specifiers (implicit, both_const, accumulate) are names where C++ code uses them as names, after a type and before `=`, `;`, `,`, `)`, `[`, `{` or `:`: a local `auto accumulate = ...` hides the global accumulate(int, int) and the library's, so the call runs the lambda (`12`), and `int implicit = 3;`, `int both_const[2]`, a parameter and a bit field are variables of those names; `implicit` before a constructor still makes it implicit (`5`), as clang prints
+// found by thread B (2026-11-05), comparing with clang: after a type the parser read the word as kpp's specifier and declared a variable without a name, so `accumulate(3, 4)` called the global function (`7`) and `implicit` was not declared
+int accumulate(int a, int b) { return a + b; }
+int twice(int implicit) { return implicit * 2; }
+struct Flags
+{
+  unsigned accumulate : 3;
+  unsigned both_const : 2;
+};
+class Meters
+{
+public:
+  int value;
+  implicit Meters(int v) : value(v) {}
+};
+int length(Meters m) { return m.value; }
+int main()
+{
+  auto accumulate = [](int a, int b) { return a * b; };
+  int implicit = 3;
+  int both_const[2] = {4, 6};
+  Flags flags{5, 2};
+  println(accumulate(3, 4), " ", implicit + both_const[0], " ", twice(both_const[1]), " ", flags.accumulate + flags.both_const, " ", length(5));
+  return 0;
+}
