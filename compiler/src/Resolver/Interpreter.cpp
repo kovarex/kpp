@@ -1148,8 +1148,18 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     auto* named = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee) : nullptr;
     if (!named || !named->resolved || named->resolved->kind != NodeKind::FunctionDecl || constLocal(named, ctx))
       return std::nullopt;
-    constCallPlaceRan = true;
   }
+  // Set again however the call ends (an evaluation inside it clears it for its own calls): the
+  // caller runs it no second time for its value.
+  struct Ran
+  {
+    bool on;
+    ~Ran()
+    {
+      if (on)
+        constCallPlaceRan = true;
+    }
+  } ran{returnPlace != nullptr};
   if (c->callee && c->callee->kind == NodeKind::MemberExpr)
   {
     // `piece.append(piece.object, out)`: through the function pointer a data member holds.
@@ -1697,6 +1707,7 @@ auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, cons
   if (!object)
     return std::nullopt;
   std::optional<ConstValue> value = constRun(f, args, fctx, depth, &object, places, categories, &self, &out);
+  constCallPlaceRan = true; // (an evaluation inside the run clears it for its own calls)
   if (!value)
     return std::nullopt;
   if (!out)
@@ -5784,6 +5795,34 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     base->bits = 0;
     return base;
   }
+  if (e->kind == NodeKind::CastExpr ||
+      (e->kind == NodeKind::NamedCastExpr && (static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::const_cast_)))
+  {
+    // `(T&&)value` (forward's, move's), `static_cast<const Base&>(derived)`: the operand's object
+    // (its base part) in another value category, which a reference bound to it refers to (it was a
+    // copy, blind to the object's later changes: language/consteval_reference_through_cast).
+    Type* written = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->type : static_cast<NamedCastExpr*>(e)->type;
+    Expr* operand = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->operand : static_cast<NamedCastExpr*>(e)->operand;
+    const Ty* t = written ? convertType(written, ctx, depth + 1) : nullptr;
+    if (!t || !t->isReference() || !t->inner || !t->inner->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    std::optional<ConstPlace> at = constPlaceOf(operand, ctx, depth + 1, calls, ran);
+    if (!at || !at->type)
+      return std::nullopt;
+    const Ty* want = types.unqualified(t->inner);
+    const Ty* have = types.unqualified(types.stripRef(at->type));
+    if (want != have)
+    {
+      std::optional<std::vector<size_t>> base = want->kind == TyKind::Class && have->kind == TyKind::Class ? constBasePath(have, want, depth + 1) : std::nullopt;
+      if (!base)
+        return std::nullopt; // (a cast to a derived class, or to another type: no place of it here)
+      at->path.insert(at->path.end(), base->begin(), base->end());
+      at->bits = 0;
+    }
+    at->type = t->inner;
+    at->readOnly = at->readOnly || t->inner->isConst;
+    return at;
+  }
   if (e->kind == NodeKind::BinaryExpr && calls && e->ty && e->ty->kind == TyKind::LRef && e->ty->inner && !static_cast<BinaryExpr*>(e)->isKeyword &&
       !isAssignmentOperator(P(static_cast<BinaryExpr*>(e)->op)))
   {
@@ -5795,19 +5834,22 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     out->readOnly = out->readOnly || e->ty->inner->isConst;
     return out;
   }
-  if (e->kind == NodeKind::CallExpr && calls && e->ty && e->ty->kind == TyKind::LRef && e->ty->inner && static_cast<CallExpr*>(e)->callee &&
+  if (e->kind == NodeKind::CallExpr && calls && e->ty && e->ty->isReference() && e->ty->inner && static_cast<CallExpr*>(e)->callee &&
       static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr)
   {
-    // `add(uses, name)`: what a named function's reference result refers to (a part of an object
-    // its arguments refer to), the function run once for it.
+    // `add(uses, name)`, `forward<U>(value)`, `move(x)`: what a named function's reference result
+    // refers to (a part of an object its arguments refer to), the function run once for it.
     std::optional<ConstPlace> out;
     std::optional<ConstValue> value = constCall(static_cast<CallExpr*>(e), ctx, depth + 1, &out);
     if (value && !out && ran)
       *ran = value; // (a reference the run holds no place of: what it refers to, as a value)
     if (!value || !out)
       return std::nullopt;
-    out->type = e->ty->inner;
-    out->readOnly = out->readOnly || e->ty->inner->isConst;
+    const Ty* referred = e->ty->inner->isKnown() && !types.isDependent(e->ty->inner) ? e->ty->inner : out->type; // (else the run's: a template's own call)
+    if (!referred)
+      return std::nullopt;
+    out->type = referred;
+    out->readOnly = out->readOnly || referred->isConst;
     return out;
   }
   if (e->kind == NodeKind::CallExpr && calls)
@@ -6039,11 +6081,14 @@ auto GlobalScope::Impl::constReferenceTo(Expr* x, const Ty* reference, const Typ
   if (!x || !referent || constCategory(x, source) == 0)
     return std::nullopt; // a prvalue: a temporary, which the member keeps a copy of (as before)
   std::optional<ConstValue> ran;
+  constCallPlaceRan = false;
   std::optional<ConstPlace> at = constPlaceOf(x, ctx, depth + 1, true, &ran);
   if (at && constAddressable(*at))
     return std::optional<ConstValue>(ConstValue::address(types.pointer(referent), constStorageTarget(*at)));
   if (ran)
     return std::optional<ConstValue>(constConvertTo(ran, referent, depth + 1)); // (a call that ran: its value, never run again)
+  if (!at && constCallPlaceRan)
+    return std::optional<std::optional<ConstValue>>(std::optional<ConstValue>()); // it ran, and gave nothing: never run twice
   if (!at && constPure(x))
     if (std::optional<ConstValue> a = constAddressOf(x, ctx, depth + 1);
         a && a->isAddress() && a->target && a->target->decl && a->target->decl->kind == NodeKind::VariableDecl)
@@ -6053,6 +6098,12 @@ auto GlobalScope::Impl::constReferenceTo(Expr* x, const Ty* reference, const Typ
       return std::optional<ConstValue>(r);
     }
   return std::nullopt;
+}
+
+auto GlobalScope::Impl::constDesignatesConstant(Expr* x, const TypeContext& ctx, int depth) -> bool
+{
+  std::optional<ConstDesignated> a = constDesignated(x, ctx, depth);
+  return a && !a->target.storage && a->target.decl && a->target.decl->kind == NodeKind::VariableDecl;
 }
 
 auto GlobalScope::Impl::constThroughReference(const ConstPlace& member, int depth) -> std::optional<ConstPlace>
@@ -6361,7 +6412,13 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
   if (!constEndLocals(env, 0, depth, flow != ConstFlow::Failed)) // the by-value parameters
     return std::nullopt;
   if (returnPlace)
-    return flow == ConstFlow::Returned && *returnPlace ? std::optional<ConstValue>(ConstValue::integer(0, types.voidType())) : std::nullopt;
+  {
+    if (flow != ConstFlow::Returned)
+      return std::nullopt;
+    if (*returnPlace)
+      return ConstValue::integer(0, types.voidType());
+    return result && returns ? constConvertTo(result, returns, depth + 1) : result; // a constant's value (the return statement's)
+  }
   if (isVoid && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
     return ConstValue::integer(0, types.voidType()); // a helper run for what it checks (asserts)
   if (flow != ConstFlow::Returned || !result)
@@ -6834,7 +6891,25 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
   {
     // `T& r = x;`: a reference to x's place; `const T& r = f();` and `T&& r = f();` keep the
     // temporary.
-    std::optional<ConstPlace> at = v->init ? constPlaceOf(v->init, ctx, depth + 1, true) : std::nullopt;
+    std::optional<ConstValue> ran;
+    constCallPlaceRan = false;
+    std::optional<ConstPlace> at = v->init ? constPlaceOf(v->init, ctx, depth + 1, true, &ran) : std::nullopt;
+    if (!at && ran)
+    {
+      // A call's reference result to a constant (`const int& r = next(c);`, next returning an
+      // element of a global): its value, the call run once.
+      std::optional<ConstValue> value = constConvertTo(ran, type, depth + 1);
+      if (!value)
+        return ConstFlow::Failed;
+      env.push_back(constBinding(symbol, *value, type));
+      return named(env.size() - 1);
+    }
+    if (!at && constCallPlaceRan)
+    {
+      if (constWhy().empty())
+        constWhy() = "a reference to the result of a call that refers to no object the evaluation holds";
+      return ConstFlow::Failed; // it ran: never twice
+    }
     if (at)
     {
       ConstBinding alias{symbol, ConstValue::unset(type)};
@@ -7028,9 +7103,21 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
       {
         // A reference result asked for as a place (`result[i] = x`): what the expression
         // designates, which must outlive the call (a part of the object it runs on).
-        std::optional<ConstPlace> at = constPlaceOf(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1, true);
+        Expr* value = static_cast<ReturnStmt*>(s)->value;
+        std::optional<ConstValue> ran;
+        std::optional<ConstPlace> at = constPlaceOf(value, ctx, depth + 1, true, &ran);
         if (!at)
-          return ConstFlow::Failed;
+        {
+          // No place the run holds: a constant's (a global's, a part of one), which no evaluation
+          // changes, given as its value, which the caller takes so rather than run the call again
+          // (`return table[c];` after `++c` ran twice: language/consteval_reference_call_runs_once).
+          if (!ran && constPure(value) && constDesignatesConstant(value, ctx, depth + 1))
+            ran = constValue(value, ctx, depth + 1);
+          if (!ran)
+            return ConstFlow::Failed;
+          result = ran;
+          return ConstFlow::Returned;
+        }
         ConstPlace resolved = constResolve(*at);
         resolved.type = at->type;
         resolved.bits = at->bits;

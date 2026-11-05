@@ -1,0 +1,73 @@
+// spec: a reference bound through a cast to a reference type (`(const int&)a`, `static_cast<int&&>(a)`, `static_cast<const Base&>(derived)`), through move() and forward() (whose `(T&&)value` is one), or by a class's forwarding constructor (`Pair<const int&, int> p(a, 2)`, `held(forward<U>(value))`) refers to the object, at compile time as at run time: it reads the object's later changes, and a write through it reaches the object
+// found by thread D (2026-11-05): the interpreter kept a copy where the cast or the forwarding call stood (it knew no place of a cast, nor of a call returning an rvalue reference), so `const int& r = forward<const int&>(a); a = 7; return r;` was 1 at compile time and 7 at run time
+struct Base
+{
+  int v = 1;
+};
+struct Derived : Base
+{
+  int w = 2;
+};
+template<class A> struct Holder
+{
+  A held;
+  template<class U> Holder(U&& value) : held(forward<U>(value)) {}
+};
+constexpr int casts()
+{
+  int a = 1;
+  const int& c = (const int&)a;
+  const int& s = static_cast<const int&>(a);
+  int&& x = static_cast<int&&>(a);
+  a = 7;
+  x = x + 1;
+  return c * 100 + s * 10 + a;
+}
+constexpr int moves()
+{
+  int a = 1;
+  int&& m = move(a);
+  int&& f = forward<int>(a);
+  a = 5;
+  m = m + 1;
+  return a * 10 + f;
+}
+constexpr int forwards()
+{
+  int a = 1;
+  const int& f = forward<const int&>(a);
+  int& g = forward<int&>(a);
+  a = 3;
+  g = g + 1;
+  return f * 10 + a;
+}
+constexpr int bases()
+{
+  Derived d;
+  const Base& b = static_cast<const Base&>(d);
+  Base& e = (Base&)d;
+  d.v = 7;
+  e.v = e.v + 1;
+  return b.v * 10 + d.w;
+}
+constexpr int pairs()
+{
+  int a = 1;
+  int b = 2;
+  Pair<const int&, int> p(a, 2);
+  Pair<int&, int> q(a, b);
+  Holder<const int&> h(a);
+  a = 9;
+  q.first = q.first + 1;
+  return p.first * 100 + h.held * 10 + q.second;
+}
+constexpr int c = casts();
+constexpr int m = moves();
+constexpr int f = forwards();
+constexpr int b = bases();
+constexpr int p = pairs();
+int main()
+{
+  println(c, " ", casts(), " ", m, " ", moves(), " ", f, " ", forwards(), " ", b, " ", bases(), " ", p, " ", pairs());
+  return 0;
+}

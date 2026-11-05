@@ -1,0 +1,47 @@
+// spec: a call whose reference result a reference is bound to runs once, at compile time as at run time: `const int& r = next(c);`, next incrementing c and returning `table[c]` (an element of a global, a constant), leaves c 1 and r the element at 1; so does a reference member bound to it, and a call returning one of its reference parameters (`pick(a, b, calls)`), through which a write reaches the caller's local
+// found by thread D (2026-11-05): the interpreter ran next for the place of its result, found none (a global's element), and ran it again for its value: c was 2 and r 30 at compile time (230), where the program has 1 and 20 (120)
+constexpr int table[3] = {10, 20, 30};
+const int& next(int& c)
+{
+  ++c;
+  return table[c];
+}
+struct Ref
+{
+  const int& to;
+  Ref(const int& r) : to(r) {}
+};
+int& pick(int& a, int& b, int& calls)
+{
+  ++calls;
+  return a < b ? b : a;
+}
+constexpr int local()
+{
+  int c = 0;
+  const int& r = next(c);
+  return r + c * 100;
+}
+constexpr int member()
+{
+  int c = 0;
+  Ref m(next(c));
+  return m.to + c * 100;
+}
+constexpr int picked()
+{
+  int a = 1;
+  int b = 2;
+  int calls = 0;
+  int& p = pick(a, b, calls);
+  p = 5;
+  return a * 100 + b * 10 + calls;
+}
+constexpr int l = local();
+constexpr int m = member();
+constexpr int p = picked();
+int main()
+{
+  println(l, " ", local(), " ", m, " ", member(), " ", p, " ", picked());
+  return 0;
+}

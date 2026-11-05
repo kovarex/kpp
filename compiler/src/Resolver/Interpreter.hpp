@@ -909,6 +909,10 @@
   std::optional<std::optional<ConstValue>> constReferenceTo(Expr* x, const Ty* reference, const TypeContext& ctx, int depth);
   bool constRefersTo(const ConstValue& part, const Ty* declared);
   std::optional<ConstPlace> constThroughReference(const ConstPlace& member, int depth);
+  // Whether x designates what a variable of static storage duration holds (a global, a static
+  // member, a part of one), which no evaluation writes: a reference to it may keep its value, where
+  // one to an object of the evaluation must keep its place. x without side effects (constPure).
+  bool constDesignatesConstant(Expr* x, const TypeContext& ctx, int depth);
 
   // `items[i]` of an array the evaluation holds, `text[i]` through a pointer into one, `names[i]`
   // of a class by its operator[]: the element, its index checked.
