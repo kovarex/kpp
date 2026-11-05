@@ -23,13 +23,13 @@ struct HttpClientRequest
   String url;                       // http://... or https://...
   Vector<HttpClientHeader> headers; // besides the ones the client adds (Host, Content-Length...)
   String body;
-  int timeoutMilliseconds = 30000;  // for connecting, sending and each read
+  i32 timeoutMilliseconds = 30000;  // for connecting, sending and each read
   bool followRedirects = true;      // to the same scheme or from http to https
 };
 
 struct HttpClientResponse
 {
-  int status = 0;
+  i32 status = 0;
   Vector<HttpClientHeader> headers; // names as the server sent them
   String body;
 
@@ -119,7 +119,7 @@ struct HttpClientTarget
 {
   bool secure = false;
   String host;
-  unsigned short port = 0;
+  u16 port = 0;
   String path;
 };
 
@@ -142,7 +142,7 @@ HttpClientTarget httpClientTarget(StringView url)
   if (colon != StringView::npos && (!bracketed || authority.find(']') < colon))
   {
     StringView port = authority.substr(colon + 1);
-    int value = 0;
+    i32 value = 0;
     for (char c : port)
     {
       if (c < '0' || c > '9' || value > 65535)
@@ -151,7 +151,7 @@ HttpClientTarget httpClientTarget(StringView url)
     }
     if (port.empty() || value == 0 || value > 65535)
       throw HttpClientError(format("the port of {} is not a port", url));
-    target.port = (unsigned short)value;
+    target.port = (u16)value;
     authority = authority.substr(0, colon);
   }
   else

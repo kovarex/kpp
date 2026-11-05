@@ -6,9 +6,9 @@
 struct HttpServerOptions
 {
   String address = "127.0.0.1";
-  int port = 8080;
-  int64_t maxRequests = -1;       // stop after this many (tests); -1: serve until the process ends
-  int64_t maxBodyBytes = 64 * 1024 * 1024;
+  i32 port = 8080;
+  i64 maxRequests = -1;       // stop after this many (tests); -1: serve until the process ends
+  i64 maxBodyBytes = 64 * 1024 * 1024;
   bool log = true;                // a line per request on stdout: method, target, status
 };
 
@@ -23,7 +23,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
   {
     if (data.size() > 64 * 1024)
       throw HttpError("the request's headers are over 64 KB", 431);
-    int64_t got = stream.read(buffer, 8192);
+    i64 got = stream.read(buffer, 8192);
     if (got == 0)
       throw HttpError("the connection closed before the request's headers ended");
     data.append(StringView(buffer, (ContainerSize)got));
@@ -58,14 +58,14 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
   if (request.header("transfer-encoding") != nullptr)
     throw HttpError("a chunked request body (only Content-Length is read)", 501);
   const String* length = request.header("content-length");
-  int64_t n = length == nullptr ? 0 : httpParseLength(*length);
+  i64 n = length == nullptr ? 0 : httpParseLength(*length);
   request.body = String(StringView(data).substr(headEnd + 4));
-  if ((int64_t)request.body.size() > n)
+  if ((i64)request.body.size() > n)
     throw HttpError("more bytes than the Content-Length (pipelining is not read)");
   if (n > 64 * 1024 * 1024)
     throw HttpError(format("a body of {} bytes", n), 413);
-  if ((int64_t)request.body.size() < n)
-    request.body.append(stream.readExactly(n - (int64_t)request.body.size()));
+  if ((i64)request.body.size() < n)
+    request.body.append(stream.readExactly(n - (i64)request.body.size()));
   return request;
 }
 
@@ -73,7 +73,7 @@ void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
 {
   String out = response.head(false);
   if (response.header("Content-Length") == nullptr)
-    out.append(format("Content-Length: {}\r\n", (int64_t)response.body.size()));
+    out.append(format("Content-Length: {}\r\n", (i64)response.body.size()));
   out.append("Connection: close\r\n\r\n");
   out.append(response.body);
   stream.write(out);
@@ -92,7 +92,7 @@ void httpServe(const HttpServerOptions& options, const Function<void(const HttpR
 void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
                  const Function<void(const HttpRequest&, HttpResponse&)>& handler)
 {
-  for (int64_t served = 0; options.maxRequests < 0 || served < options.maxRequests; ++served)
+  for (i64 served = 0; options.maxRequests < 0 || served < options.maxRequests; ++served)
   {
     net::TcpStream stream = listener.accept();
     stream.setTimeout(30000);

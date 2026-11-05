@@ -7,9 +7,9 @@
 class HttpError : public RuntimeError
 {
 public:
-  int status = 400; // what the server answers when the request was the problem
+  i32 status = 400; // what the server answers when the request was the problem
   HttpError() {}
-  HttpError(const String& message, int status = 400) : RuntimeError(message), status(status) {}
+  HttpError(const String& message, i32 status = 400) : RuntimeError(message), status(status) {}
 };
 
 struct HttpHeader
@@ -115,7 +115,7 @@ struct HttpRequest
 // not readable from JavaScript, sent on same-site requests and top-level links from elsewhere.
 struct HttpCookieOptions
 {
-  Optional<int64_t> maxAgeSeconds; // none: until the browser closes; 0: delete it now
+  Optional<i64> maxAgeSeconds; // none: until the browser closes; 0: delete it now
   String path = "/";
   bool httpOnly = true;
   bool secure = false;             // true on HTTPS, so it is never sent in clear
@@ -124,7 +124,7 @@ struct HttpCookieOptions
 
 struct HttpResponse
 {
-  int status = 200;
+  i32 status = 200;
   Vector<HttpHeader> headers;
   String body;
 
@@ -184,13 +184,13 @@ struct HttpResponse
   void deleteCookie(StringView name, StringView path = "/")
   {
     HttpCookieOptions options;
-    options.maxAgeSeconds = Optional<int64_t>(0);
+    options.maxAgeSeconds = Optional<i64>(0);
     options.path = String(path);
     this->setCookie(name, "", options);
   }
 
   // A redirect to location: 303 See Other (after a form's POST, the browser GETs it) unless said.
-  void redirect(StringView location, int status = 303)
+  void redirect(StringView location, i32 status = 303)
   {
     this->status = status;
     this->setHeader("Location", location);
@@ -209,7 +209,7 @@ struct HttpResponse
   }
 };
 
-StringView httpStatusText(int status)
+StringView httpStatusText(i32 status)
 {
   switch (status)
   {
@@ -292,7 +292,7 @@ void httpCheckCookie(StringView name, StringView value)
       throw HttpError(format("the cookie name \"{}\" is not a token", name), 500);
   for (ContainerSize i = 0; i < value.size(); ++i)
   {
-    unsigned char c = (unsigned char)value[i];
+    u8 c = (u8)value[i];
     if (c <= 0x20 || c >= 0x7f || c == '"' || c == ',' || c == ';' || c == '\\')
       throw HttpError(format("the value of the cookie {} has a character a cookie cannot have (encode it)", name), 500);
   }

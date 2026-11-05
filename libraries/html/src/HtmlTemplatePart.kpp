@@ -1,7 +1,7 @@
 // The parts a template is read into (HtmlTemplate).
 
 // What a part of a template is: its own text, or a hole and how its value is written.
-enum class HtmlHole : uint8_t
+enum class HtmlHole : u8
 {
   literal,   // the template's text, as it is
   text,      // in an element's text: escaped, or a SafeHtml as it is
@@ -13,10 +13,10 @@ enum class HtmlHole : uint8_t
 
 struct HtmlTemplatePart
 {
-  int start;  // in the template's text; a hole's name for a hole
-  int length;
+  i32 start;  // in the template's text; a hole's name for a hole
+  i32 length;
   HtmlHole kind;
 };
 
-constexpr int htmlTemplateMaxParts = 256;
-constexpr int htmlTemplateMaxDepth = 64;
+constexpr i32 htmlTemplateMaxParts = 256;
+constexpr i32 htmlTemplateMaxDepth = 64;

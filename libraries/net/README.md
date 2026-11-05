@@ -21,8 +21,8 @@ TcpStream client = listener.accept();
 |---|---|
 | `TcpStream::connect(StringView host, int port)` | a name or an address; each address the name has is tried |
 | `stream.write(StringView)` | all the bytes, or throws |
-| `stream.read(char* buffer, int64_t capacity)` | what has arrived, at least one byte; 0 when the other side closed |
-| `stream.readExactly(int64_t n)`, `stream.readAll()` | n bytes (closing early throws), or everything until the other side closes |
+| `stream.read(char* buffer, i64 capacity)` | what has arrived, at least one byte; 0 when the other side closed |
+| `stream.readExactly(i64 n)`, `stream.readAll()` | n bytes (closing early throws), or everything until the other side closes |
 | `stream.setTimeout(int milliseconds)` | for reads and writes; 0 waits forever (the default) |
 | `stream.shutdownWrite()`, `stream.close()`, `stream.isOpen()` | the destructor closes too; streams move, they do not copy |
 | `TcpListener::listen(StringView address, int port)`, `listener.port()`, `listener.accept()` | a numeric address ("127.0.0.1", "0.0.0.0", "::1") |

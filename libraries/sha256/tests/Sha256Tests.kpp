@@ -2,18 +2,18 @@
 // patterned messages' digests come from Python's hashlib and hmac (OpenSSL).
 
 // n bytes of a pattern: byte i is (i * 31 + 7) mod 256.
-String sha256Pattern(int n)
+String sha256Pattern(i32 n)
 {
   String out;
-  for (int i = 0; i < n; ++i)
+  for (i32 i = 0; i < n; ++i)
     out.append(char((i * 31 + 7) & 255));
   return out;
 }
 
-String sha256Repeat(char c, int n)
+String sha256Repeat(char c, i32 n)
 {
   String out;
-  for (int i = 0; i < n; ++i)
+  for (i32 i = 0; i < n; ++i)
     out.append(c);
   return out;
 }
@@ -41,7 +41,7 @@ test "lengths around the block boundaries"
   check(sha256(sha256Pattern(128)).hex() == "cc548ca2dec1f6fe4f58b2e27aa9c7521607df1130d140b55a4dad0665302356");
   // Every length from 0 to 299: the digest of their digests, one after another.
   Sha256 all;
-  for (int n = 0; n < 300; ++n)
+  for (i32 n = 0; n < 300; ++n)
     all.update(sha256(sha256Pattern(n)).view());
   check(all.finish().hex() == "82d1c86ef5eb80a2f7cb650e4770f5293bdbe86a5b577e54026c9295bbcf0e8d");
 }
@@ -50,10 +50,10 @@ test "data given in parts"
 {
   String message = sha256Pattern(1000);
   Sha256Digest whole = sha256(message);
-  for (int part = 1; part <= 130; part += 3)
+  for (i32 part = 1; part <= 130; part += 3)
   {
     Sha256 hash;
-    for (int at = 0; at < message.size(); at += part)
+    for (i32 at = 0; at < message.size(); at += part)
       hash.update(StringView(message).substr(at, part < message.size() - at ? part : message.size() - at));
     check(hash.finish() == whole);
   }
@@ -72,7 +72,7 @@ test "RFC 4231 HMAC-SHA-256"
   check(hmacSha256(sha256Repeat('\xaa', 20), sha256Repeat('\xdd', 50)).hex() ==
         "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe");
   String key4;
-  for (int i = 1; i <= 25; ++i)
+  for (i32 i = 1; i <= 25; ++i)
     key4.append(char(i));
   check(hmacSha256(key4, sha256Repeat('\xcd', 50)).hex() == "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b");
   // Test case 5 is truncated to 128 bits.
@@ -88,8 +88,8 @@ test "HMAC over key and message lengths"
 {
   // Keys of 0, 7, ... 133 bytes and messages of 0, 13, ... 130 bytes: the digest of their MACs.
   Sha256 all;
-  for (int k = 0; k < 140; k += 7)
-    for (int m = 0; m < 140; m += 13)
+  for (i32 k = 0; k < 140; k += 7)
+    for (i32 m = 0; m < 140; m += 13)
       all.update(hmacSha256(sha256Pattern(k), sha256Pattern(m)).view());
   check(all.finish().hex() == "e6a47fc3055e9e41f964aa69b0a3c029cdc1744554fbcf19881617d3c73d5ed7");
 }

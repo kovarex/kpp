@@ -5,7 +5,7 @@ struct JsonSuiteCase
 {
   const char* name;
   const char* text;
-  int length;
+  i32 length;
   bool accept; // y_ cases, and the i_ cases this library accepts
 };
 

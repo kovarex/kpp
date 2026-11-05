@@ -3,14 +3,14 @@
 // A SHA-256 digest: 32 bytes.
 struct Sha256Digest
 {
-  uint8_t bytes[32];
+  u8 bytes[32];
 
   // Lowercase hex, 64 characters.
   String hex() const
   {
     const char* digits = "0123456789abcdef";
     String out;
-    for (int i = 0; i < 32; ++i)
+    for (i32 i = 0; i < 32; ++i)
     {
       out.append(digits[this->bytes[i] >> 4]);
       out.append(digits[this->bytes[i] & 15]);
@@ -31,10 +31,10 @@ struct Sha256Digest
 // SHA-256 of data given in parts: update() any number of times, then finish() once.
 struct Sha256
 {
-  uint32_t state[8];
-  uint8_t block[64];
-  int blockLength = 0;      // bytes in block
-  uint64_t totalLength = 0; // bytes given
+  u32 state[8];
+  u8 block[64];
+  i32 blockLength = 0;      // bytes in block
+  u64 totalLength = 0; // bytes given
   bool finished = false;
 
   Sha256() { this->reset(); }
@@ -55,11 +55,11 @@ struct Sha256
     this->finished = false;
   }
 
-  void update(const void* data, int64_t length)
+  void update(const void* data, i64 length)
   {
     release_assert(!this->finished); // update() after finish(): reset() first
-    const uint8_t* bytes = (const uint8_t*)data;
-    this->totalLength += uint64_t(length);
+    const u8* bytes = (const u8*)data;
+    this->totalLength += u64(length);
     while (length > 0)
     {
       if (this->blockLength == 0 && length >= 64)
@@ -69,10 +69,10 @@ struct Sha256
         length -= 64;
         continue;
       }
-      int take = 64 - this->blockLength;
+      i32 take = 64 - this->blockLength;
       if (take > length)
-        take = int(length);
-      for (int i = 0; i < take; ++i)
+        take = i32(length);
+      for (i32 i = 0; i < take; ++i)
         this->block[this->blockLength + i] = bytes[i];
       this->blockLength += take;
       bytes += take;
@@ -90,25 +90,25 @@ struct Sha256
   Sha256Digest finish()
   {
     release_assert(!this->finished); // finish() twice: reset() first
-    uint64_t bits = this->totalLength * 8;
-    uint8_t padding[72];
-    int padLength = (this->blockLength < 56 ? 56 : 120) - this->blockLength;
+    u64 bits = this->totalLength * 8;
+    u8 padding[72];
+    i32 padLength = (this->blockLength < 56 ? 56 : 120) - this->blockLength;
     padding[0] = 0x80;
-    for (int i = 1; i < padLength; ++i)
+    for (i32 i = 1; i < padLength; ++i)
       padding[i] = 0;
-    for (int i = 0; i < 8; ++i)
-      padding[padLength + i] = uint8_t(bits >> (56 - 8 * i));
-    uint64_t total = this->totalLength;
+    for (i32 i = 0; i < 8; ++i)
+      padding[padLength + i] = u8(bits >> (56 - 8 * i));
+    u64 total = this->totalLength;
     this->update(padding, padLength + 8);
     this->totalLength = total;
     this->finished = true;
     Sha256Digest digest;
-    for (int i = 0; i < 8; ++i)
+    for (i32 i = 0; i < 8; ++i)
     {
-      digest.bytes[4 * i] = uint8_t(this->state[i] >> 24);
-      digest.bytes[4 * i + 1] = uint8_t(this->state[i] >> 16);
-      digest.bytes[4 * i + 2] = uint8_t(this->state[i] >> 8);
-      digest.bytes[4 * i + 3] = uint8_t(this->state[i]);
+      digest.bytes[4 * i] = u8(this->state[i] >> 24);
+      digest.bytes[4 * i + 1] = u8(this->state[i] >> 16);
+      digest.bytes[4 * i + 2] = u8(this->state[i] >> 8);
+      digest.bytes[4 * i + 3] = u8(this->state[i]);
     }
     return digest;
   }
@@ -119,18 +119,18 @@ struct Sha256
   {
     if (a.size() != b.size())
       return false;
-    uint8_t difference = 0;
-    for (int i = 0; i < a.size(); ++i)
-      difference |= uint8_t(a[i] ^ b[i]);
+    u8 difference = 0;
+    for (i32 i = 0; i < a.size(); ++i)
+      difference |= u8(a[i] ^ b[i]);
     return difference == 0;
   }
 
-  static uint32_t rotateRight(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+  static u32 rotateRight(u32 x, i32 n) { return (x >> n) | (x << (32 - n)); }
 
   // FIPS 180-4 6.2.2 on one 64-byte block.
-  void compress(const uint8_t* data)
+  void compress(const u8* data)
   {
-    static const uint32_t k[64] = {
+    static const u32 k[64] = {
       0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
       0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
       0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
@@ -139,25 +139,25 @@ struct Sha256
       0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
       0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
       0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u};
-    uint32_t w[64];
-    for (int i = 0; i < 16; ++i)
-      w[i] = (uint32_t(data[4 * i]) << 24) | (uint32_t(data[4 * i + 1]) << 16) | (uint32_t(data[4 * i + 2]) << 8) | uint32_t(data[4 * i + 3]);
-    for (int i = 16; i < 64; ++i)
+    u32 w[64];
+    for (i32 i = 0; i < 16; ++i)
+      w[i] = (u32(data[4 * i]) << 24) | (u32(data[4 * i + 1]) << 16) | (u32(data[4 * i + 2]) << 8) | u32(data[4 * i + 3]);
+    for (i32 i = 16; i < 64; ++i)
     {
-      uint32_t s0 = Sha256::rotateRight(w[i - 15], 7) ^ Sha256::rotateRight(w[i - 15], 18) ^ (w[i - 15] >> 3);
-      uint32_t s1 = Sha256::rotateRight(w[i - 2], 17) ^ Sha256::rotateRight(w[i - 2], 19) ^ (w[i - 2] >> 10);
+      u32 s0 = Sha256::rotateRight(w[i - 15], 7) ^ Sha256::rotateRight(w[i - 15], 18) ^ (w[i - 15] >> 3);
+      u32 s1 = Sha256::rotateRight(w[i - 2], 17) ^ Sha256::rotateRight(w[i - 2], 19) ^ (w[i - 2] >> 10);
       w[i] = w[i - 16] + s0 + w[i - 7] + s1;
     }
-    uint32_t a = this->state[0], b = this->state[1], c = this->state[2], d = this->state[3];
-    uint32_t e = this->state[4], f = this->state[5], g = this->state[6], h = this->state[7];
-    for (int i = 0; i < 64; ++i)
+    u32 a = this->state[0], b = this->state[1], c = this->state[2], d = this->state[3];
+    u32 e = this->state[4], f = this->state[5], g = this->state[6], h = this->state[7];
+    for (i32 i = 0; i < 64; ++i)
     {
-      uint32_t s1 = Sha256::rotateRight(e, 6) ^ Sha256::rotateRight(e, 11) ^ Sha256::rotateRight(e, 25);
-      uint32_t choose = (e & f) ^ (~e & g);
-      uint32_t t1 = h + s1 + choose + k[i] + w[i];
-      uint32_t s0 = Sha256::rotateRight(a, 2) ^ Sha256::rotateRight(a, 13) ^ Sha256::rotateRight(a, 22);
-      uint32_t majority = (a & b) ^ (a & c) ^ (b & c);
-      uint32_t t2 = s0 + majority;
+      u32 s1 = Sha256::rotateRight(e, 6) ^ Sha256::rotateRight(e, 11) ^ Sha256::rotateRight(e, 25);
+      u32 choose = (e & f) ^ (~e & g);
+      u32 t1 = h + s1 + choose + k[i] + w[i];
+      u32 s0 = Sha256::rotateRight(a, 2) ^ Sha256::rotateRight(a, 13) ^ Sha256::rotateRight(a, 22);
+      u32 majority = (a & b) ^ (a & c) ^ (b & c);
+      u32 t2 = s0 + majority;
       h = g;
       g = f;
       f = e;
@@ -189,26 +189,26 @@ Sha256Digest sha256(StringView data)
 // HMAC-SHA-256 (RFC 2104) of the message under the key; a key longer than 64 bytes is hashed first.
 Sha256Digest hmacSha256(StringView key, StringView message)
 {
-  uint8_t keyBlock[64];
-  for (int i = 0; i < 64; ++i)
+  u8 keyBlock[64];
+  for (i32 i = 0; i < 64; ++i)
     keyBlock[i] = 0;
   if (key.size() > 64)
   {
     Sha256Digest hashed = sha256(key);
-    for (int i = 0; i < 32; ++i)
+    for (i32 i = 0; i < 32; ++i)
       keyBlock[i] = hashed.bytes[i];
   }
   else
-    for (int i = 0; i < key.size(); ++i)
-      keyBlock[i] = uint8_t(key[i]);
-  uint8_t pad[64];
-  for (int i = 0; i < 64; ++i)
+    for (i32 i = 0; i < key.size(); ++i)
+      keyBlock[i] = u8(key[i]);
+  u8 pad[64];
+  for (i32 i = 0; i < 64; ++i)
     pad[i] = keyBlock[i] ^ 0x36;
   Sha256 inner;
   inner.update(pad, 64);
   inner.update(message);
   Sha256Digest innerDigest = inner.finish();
-  for (int i = 0; i < 64; ++i)
+  for (i32 i = 0; i < 64; ++i)
     pad[i] = keyBlock[i] ^ 0x5c;
   Sha256 outer;
   outer.update(pad, 64);

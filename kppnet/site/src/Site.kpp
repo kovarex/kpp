@@ -118,7 +118,7 @@ struct Site
   Vector<SiteAnchorLink> anchorLinks;
   Vector<String> htmlPaths; // the pages written, and their HTML, for the anchor check
   Vector<String> htmlTexts;
-  int written = 0;
+  i32 written = 0;
 
   explicit Site(const SiteOptions& options) : options(options) {}
 
@@ -234,7 +234,7 @@ struct Site
     for (const SiteAnchorLink& link : this->anchorLinks)
     {
       const String* html = nullptr;
-      for (int i = 0; i < this->htmlPaths.size(); ++i)
+      for (i32 i = 0; i < this->htmlPaths.size(); ++i)
         if (this->htmlPaths[i] == link.target)
           html = &this->htmlTexts[i];
       if (!html)
@@ -309,7 +309,7 @@ struct Site
   {
     html::SafeHtml rows;
     const json::JsonValue& releases = library["releases"];
-    for (int i = releases.size() - 1; i >= 0; --i)
+    for (i32 i = releases.size() - 1; i >= 0; --i)
     {
       const json::JsonValue& r = releases[i];
       const json::JsonValue* yanked = r.find("yanked");
@@ -328,7 +328,7 @@ struct Site
 String siteLatestVersion(const json::JsonValue& library)
 {
   const json::JsonValue& releases = library["releases"];
-  for (int i = releases.size() - 1; i >= 0; --i)
+  for (i32 i = releases.size() - 1; i >= 0; --i)
   {
     const json::JsonValue* yanked = releases[i].find("yanked");
     if (!yanked || yanked->isNull())
@@ -340,10 +340,10 @@ String siteLatestVersion(const json::JsonValue& library)
 // A page's title: its first "# " heading's text, or its path.
 String siteTitle(StringView text, StringView path)
 {
-  int at = 0;
+  i32 at = 0;
   while (at < text.size())
   {
-    int end = at;
+    i32 end = at;
     while (end < text.size() && text[end] != '\n' && text[end] != '\r')
       ++end;
     StringView line = text.substr(at, end - at);
@@ -364,11 +364,11 @@ String siteTitle(StringView text, StringView path)
 String siteSummary(StringView text)
 {
   String summary;
-  int at = 0;
+  i32 at = 0;
   bool started = false;
   while (at < text.size())
   {
-    int end = at;
+    i32 end = at;
     while (end < text.size() && text[end] != '\n' && text[end] != '\r')
       ++end;
     StringView line = text.substr(at, end - at);
@@ -384,7 +384,7 @@ String siteSummary(StringView text)
     started = true;
     if (!summary.empty())
       summary.append(' ');
-    for (int i = 0; i < line.size(); ++i)
+    for (i32 i = 0; i < line.size(); ++i)
     {
       char c = line[i];
       if (c == '`' || c == '*' || c == '[')
@@ -401,10 +401,10 @@ String siteSummary(StringView text)
   return summary;
 }
 
-int main(int argc, char** argv)
+i32 main(i32 argc, char** argv)
 {
   SiteOptions options;
-  for (int i = 1; i < argc; ++i)
+  for (i32 i = 1; i < argc; ++i)
   {
     String arg = argv[i];
     if (i + 1 < argc && arg == "--out")

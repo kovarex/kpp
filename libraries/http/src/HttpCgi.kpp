@@ -63,13 +63,13 @@ HttpRequest httpReadCgiRequest()
   const String* length = request.header("content-length");
   if (length != nullptr && !length->empty())
   {
-    int64_t n = httpParseLength(*length);
+    i64 n = httpParseLength(*length);
     if constexpr (config::platform == Platform::Windows)
       _setmode(0, 0x8000); // _O_BINARY
     request.body.resize((ContainerSize)n);
-    ContainerSize got = n == 0 ? 0 : fread(request.body.data(), 1, (size_t)n, stdin);
-    if ((int64_t)got != n)
-      throw HttpError(format("the body ended after {} of its {} bytes", (int64_t)got, n));
+    ContainerSize got = n == 0 ? 0 : fread(request.body.data(), 1, (usize)n, stdin);
+    if ((i64)got != n)
+      throw HttpError(format("the body ended after {} of its {} bytes", (i64)got, n));
   }
   return request;
 }
@@ -81,11 +81,11 @@ String httpCgiVariable(const char* name)
 }
 
 // A Content-Length: digits only.
-int64_t httpParseLength(StringView text)
+i64 httpParseLength(StringView text)
 {
   if (text.empty() || text.size() > 15)
     throw HttpError(format("a Content-Length of \"{}\"", text));
-  int64_t n = 0;
+  i64 n = 0;
   for (ContainerSize i = 0; i < text.size(); ++i)
   {
     if (text[i] < '0' || text[i] > '9')
@@ -101,7 +101,7 @@ void httpWriteCgiResponse(const HttpResponse& response)
     _setmode(1, 0x8000); // _O_BINARY
   String out = response.head(true);
   if (response.header("Content-Length") == nullptr)
-    out.append(format("Content-Length: {}\r\n", (int64_t)response.body.size()));
+    out.append(format("Content-Length: {}\r\n", (i64)response.body.size()));
   out.append("\r\n");
   out.append(response.body);
   fwrite(out.data(), 1, out.size(), stdout);
@@ -111,7 +111,7 @@ void httpWriteCgiResponse(const HttpResponse& response)
 // Answers the one request of this CGI process with handler. A request that cannot be read is a
 // 4xx response; an exception from handler is a 500 with no detail for the browser and the message
 // on stderr, which the web server writes to its error log. Returns main's exit code.
-int httpCgi(const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+i32 httpCgi(const Function<void(const HttpRequest&, HttpResponse&)>& handler)
 {
   HttpResponse response;
   try
@@ -133,7 +133,7 @@ int httpCgi(const Function<void(const HttpRequest&, HttpResponse&)>& handler)
   return 0;
 }
 
-HttpResponse httpErrorResponse(int status)
+HttpResponse httpErrorResponse(i32 status)
 {
   HttpResponse response;
   response.status = status;

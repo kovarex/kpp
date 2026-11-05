@@ -21,7 +21,7 @@ struct HttpClientTestServer
         ContainerSize headEnd = String::npos;
         while (headEnd == String::npos)
         {
-          int64_t got = stream.read(buffer, 4096);
+          i64 got = stream.read(buffer, 4096);
           if (got == 0)
             break;
           received.append(StringView(buffer, (ContainerSize)got));
@@ -33,7 +33,7 @@ struct HttpClientTestServer
           length = (ContainerSize)stoll(received.substr(at + 16, received.find("\r\n", at) - at - 16));
         while (received.size() < headEnd + 4 + length)
         {
-          int64_t got = stream.read(buffer, 4096);
+          i64 got = stream.read(buffer, 4096);
           if (got == 0)
             break;
           received.append(StringView(buffer, (ContainerSize)got));
@@ -105,7 +105,7 @@ bool httpClientThrows(StringView url, StringView expected)
 
 test "errors"
 {
-  int port = 0;
+  i32 port = 0;
   {
     net::TcpListener listener = net::TcpListener::listen("127.0.0.1", 0);
     port = listener.port();

@@ -107,10 +107,10 @@ struct MarkdownRenderer
     String text;
     markdownPlainText(text, heading);
     String id;
-    for (int i = 0; i < text.size();)
+    for (i32 i = 0; i < text.size();)
     {
-      int length = 1;
-      int c = markdownDecode(text, i, &length);
+      i32 length = 1;
+      i32 c = markdownDecode(text, i, &length);
       if (c == ' ')
         id.append('-');
       else if (markdownIsAlphanumeric(c) || c == '-' || c == '_')
@@ -120,7 +120,7 @@ struct MarkdownRenderer
       i += length;
     }
     String unique = id;
-    for (int n = 1;; ++n)
+    for (i32 n = 1;; ++n)
     {
       bool used = false;
       for (const String& existing : this->ids)
@@ -209,8 +209,8 @@ struct MarkdownRenderer
       case MarkdownType::codeBlock:
       {
         this->newline();
-        int end = 0;
-        while (end < node->info.size() && !markdownIsUnicodeWhitespace((unsigned char)node->info[end]))
+        i32 end = 0;
+        while (end < node->info.size() && !markdownIsUnicodeWhitespace((u8)node->info[end]))
           ++end;
         if (end > 0)
         {

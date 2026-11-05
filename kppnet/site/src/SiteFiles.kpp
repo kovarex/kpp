@@ -18,10 +18,10 @@ String siteReadFile(const String& path)
   char buffer[65536];
   while (true)
   {
-    size_t n = fread(buffer, 1, 65536, file);
+    usize n = fread(buffer, 1, 65536, file);
     if (n == 0)
       break;
-    text.append(buffer, int(n));
+    text.append(buffer, i32(n));
   }
   fclose(file);
   return text;
@@ -30,13 +30,13 @@ String siteReadFile(const String& path)
 // Writes the file, making its directories first.
 void siteWriteFile(const String& path, StringView content)
 {
-  int slash = path.rfind('/');
+  i32 slash = path.rfind('/');
   if (slash != String::npos && slash > 0)
     filesystem::create_directories(filesystem::path(String(StringView(path).substr(0, slash))));
   FILE* file = fopen(path.c_str(), "wb");
   if (!file)
     throw SiteError(format("cannot write {}", path));
-  bool written = fwrite(content.data(), 1, content.size(), file) == size_t(content.size());
+  bool written = fwrite(content.data(), 1, content.size(), file) == usize(content.size());
   if (fclose(file) != 0 || !written)
     throw SiteError(format("cannot write {}", path));
 }
@@ -67,7 +67,7 @@ void siteFindMarkdown(const String& repository, const String& directory, Vector<
 // The directory part of a repository path, with its '/': "docs/stdlib/" for docs/stdlib/time.md.
 StringView siteDirectoryOf(StringView path)
 {
-  int slash = path.rfind('/');
+  i32 slash = path.rfind('/');
   return slash == StringView::npos ? StringView() : path.substr(0, slash + 1);
 }
 
@@ -76,12 +76,12 @@ StringView siteDirectoryOf(StringView path)
 String siteRelativeLink(StringView from, StringView to)
 {
   StringView fromDirectory = siteDirectoryOf(from);
-  int common = 0;
-  for (int i = 0; i < fromDirectory.size() && i < to.size() && fromDirectory[i] == to[i]; ++i)
+  i32 common = 0;
+  for (i32 i = 0; i < fromDirectory.size() && i < to.size() && fromDirectory[i] == to[i]; ++i)
     if (fromDirectory[i] == '/')
       common = i + 1;
   String link;
-  for (int i = common; i < fromDirectory.size(); ++i)
+  for (i32 i = common; i < fromDirectory.size(); ++i)
     if (fromDirectory[i] == '/')
       link.append("../");
   link.append(to.substr(common));

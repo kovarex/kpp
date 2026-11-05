@@ -5,9 +5,9 @@
 String bcryptFromHex(const char* hex)
 {
   String out;
-  for (int i = 0; hex[i] != 0; i += 2)
+  for (i32 i = 0; hex[i] != 0; i += 2)
   {
-    auto digit = [](char c) -> int { return c <= '9' ? c - '0' : c - 'a' + 10; };
+    auto digit = [](char c) -> i32 { return c <= '9' ? c - '0' : c - 'a' + 10; };
     out.append(char(digit(hex[i]) * 16 + digit(hex[i + 1])));
   }
   return out;
@@ -43,7 +43,7 @@ test "crypt_blowfish's vectors"
 
 test "PHP's hashes"
 {
-  for (int i = 0; i < bcryptPhpVectorCount; ++i)
+  for (i32 i = 0; i < bcryptPhpVectorCount; ++i)
   {
     String password = bcryptFromHex(bcryptPhpVectors[i][0]);
     StringView hash = bcryptPhpVectors[i][1];

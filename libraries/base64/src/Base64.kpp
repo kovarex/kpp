@@ -5,9 +5,9 @@
 class Base64Error : public RuntimeError
 {
 public:
-  int offset = 0;
+  i32 offset = 0;
   Base64Error() {}
-  Base64Error(const String& message, int offset) : RuntimeError(message), offset(offset) {}
+  Base64Error(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
 };
 
 // Base64 with '+' and '/', padded with '='.
@@ -54,21 +54,21 @@ bool tryBase64UrlDecode(StringView text, String& out)
 String base64EncodeWith(StringView data, const char* alphabet, bool pad)
 {
   String out;
-  int i = 0;
+  i32 i = 0;
   for (; i + 3 <= data.size(); i += 3)
   {
-    uint32_t bits = (uint32_t(uint8_t(data[i])) << 16) | (uint32_t(uint8_t(data[i + 1])) << 8) | uint32_t(uint8_t(data[i + 2]));
+    u32 bits = (u32(u8(data[i])) << 16) | (u32(u8(data[i + 1])) << 8) | u32(u8(data[i + 2]));
     out.append(alphabet[(bits >> 18) & 63]);
     out.append(alphabet[(bits >> 12) & 63]);
     out.append(alphabet[(bits >> 6) & 63]);
     out.append(alphabet[bits & 63]);
   }
-  int rest = data.size() - i;
+  i32 rest = data.size() - i;
   if (rest > 0)
   {
-    uint32_t bits = uint32_t(uint8_t(data[i])) << 16;
+    u32 bits = u32(u8(data[i])) << 16;
     if (rest == 2)
-      bits |= uint32_t(uint8_t(data[i + 1])) << 8;
+      bits |= u32(u8(data[i + 1])) << 8;
     out.append(alphabet[(bits >> 18) & 63]);
     out.append(alphabet[(bits >> 12) & 63]);
     if (rest == 2)
@@ -80,7 +80,7 @@ String base64EncodeWith(StringView data, const char* alphabet, bool pad)
 }
 
 // The 6 bits a character stands for, or -1.
-int base64Value(char c, bool url)
+i32 base64Value(char c, bool url)
 {
   if (c >= 'A' && c <= 'Z')
     return c - 'A';
@@ -95,19 +95,19 @@ int base64Value(char c, bool url)
   return -1;
 }
 
-void base64Fail(int offset, const char* what) { throw Base64Error(format("{}: {}", offset, StringView(what)), offset); }
+void base64Fail(i32 offset, const char* what) { throw Base64Error(format("{}: {}", offset, StringView(what)), offset); }
 
 String base64DecodeWith(StringView text, bool url)
 {
   // The characters before the padding, which is '=' or "==" at the end.
-  int length = text.size();
-  int padding = 0;
+  i32 length = text.size();
+  i32 padding = 0;
   while (padding < 2 && length > 0 && text[length - 1] == '=')
   {
     --length;
     ++padding;
   }
-  for (int i = 0; i < length; ++i)
+  for (i32 i = 0; i < length; ++i)
     if (base64Value(text[i], url) < 0)
       base64Fail(i, text[i] == '=' ? "'=' before the end" : url ? "a character that is not base64url" : "a character that is not base64");
   if (padding > 0 || !url)
@@ -119,11 +119,11 @@ String base64DecodeWith(StringView text, bool url)
   if (padding > 0 && padding != 4 - length % 4)
     base64Fail(length, "the wrong number of '=' for the length");
   String out;
-  uint32_t bits = 0;
-  int count = 0;
-  for (int i = 0; i < length; ++i)
+  u32 bits = 0;
+  i32 count = 0;
+  for (i32 i = 0; i < length; ++i)
   {
-    bits = (bits << 6) | uint32_t(base64Value(text[i], url));
+    bits = (bits << 6) | u32(base64Value(text[i], url));
     if (++count == 4)
     {
       out.append(char(bits >> 16));

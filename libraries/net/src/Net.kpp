@@ -9,19 +9,19 @@ public:
 };
 
 // A port as sockaddr holds it: 2 bytes, big-endian.
-int netPortOf(const void* port)
+i32 netPortOf(const void* port)
 {
-  const uint8_t* bytes = (const uint8_t*)port;
+  const u8* bytes = (const u8*)port;
   return (bytes[0] << 8) | bytes[1];
 }
 
 // A TCP connection. It closes when destroyed; it moves but does not copy.
 struct TcpStream
 {
-  int64_t handle = -1;
+  i64 handle = -1;
 
   TcpStream() {}
-  explicit TcpStream(int64_t handle) : handle(handle) {}
+  explicit TcpStream(i64 handle) : handle(handle) {}
   TcpStream(const TcpStream&) = delete;
   TcpStream& operator=(const TcpStream&) = delete;
   TcpStream(TcpStream&& other) : handle(other.handle) { other.handle = -1; }
@@ -38,7 +38,7 @@ struct TcpStream
   ~TcpStream() { this->close(); }
 
   // Connects to host (a name or an address) at port, trying each address the name has.
-  static TcpStream connect(StringView host, int port) { return TcpStream(netConnect(host, port)); }
+  static TcpStream connect(StringView host, i32 port) { return TcpStream(netConnect(host, port)); }
 
   bool isOpen() const { return this->handle != -1; }
 
@@ -46,30 +46,30 @@ struct TcpStream
   void write(StringView data)
   {
     this->checkOpen();
-    int64_t sent = 0;
-    while (sent < (int64_t)data.size())
-      sent += netSend(this->handle, data.data() + sent, (int64_t)data.size() - sent);
+    i64 sent = 0;
+    while (sent < (i64)data.size())
+      sent += netSend(this->handle, data.data() + sent, (i64)data.size() - sent);
   }
 
   // Reads what has arrived, up to capacity bytes, waiting for at least one; 0 when the other side
   // has closed the connection.
-  int64_t read(char* buffer, int64_t capacity)
+  i64 read(char* buffer, i64 capacity)
   {
     this->checkOpen();
     return netReceive(this->handle, buffer, capacity);
   }
 
   // Reads exactly n bytes; the connection closing first throws.
-  String readExactly(int64_t n)
+  String readExactly(i64 n)
   {
     String out;
     char buffer[4096];
-    while ((int64_t)out.size() < n)
+    while ((i64)out.size() < n)
     {
-      int64_t want = n - (int64_t)out.size();
-      int64_t got = this->read(buffer, want < 4096 ? want : 4096);
+      i64 want = n - (i64)out.size();
+      i64 got = this->read(buffer, want < 4096 ? want : 4096);
       if (got == 0)
-        throw NetError(format("the connection closed after {} of {} bytes", (int64_t)out.size(), n));
+        throw NetError(format("the connection closed after {} of {} bytes", (i64)out.size(), n));
       out.append(StringView(buffer, (ContainerSize)got));
     }
     return out;
@@ -82,7 +82,7 @@ struct TcpStream
     char buffer[4096];
     for (;;)
     {
-      int64_t got = this->read(buffer, 4096);
+      i64 got = this->read(buffer, 4096);
       if (got == 0)
         return out;
       out.append(StringView(buffer, (ContainerSize)got));
@@ -90,7 +90,7 @@ struct TcpStream
   }
 
   // A read or a write that waits longer than this throws NetError; 0 waits forever (the default).
-  void setTimeout(int milliseconds)
+  void setTimeout(i32 milliseconds)
   {
     this->checkOpen();
     netSetTimeout(this->handle, milliseconds);
@@ -120,10 +120,10 @@ struct TcpStream
 // A listening TCP socket. It closes when destroyed; it moves but does not copy.
 struct TcpListener
 {
-  int64_t handle = -1;
+  i64 handle = -1;
 
   TcpListener() {}
-  explicit TcpListener(int64_t handle) : handle(handle) {}
+  explicit TcpListener(i64 handle) : handle(handle) {}
   TcpListener(const TcpListener&) = delete;
   TcpListener& operator=(const TcpListener&) = delete;
   TcpListener(TcpListener&& other) : handle(other.handle) { other.handle = -1; }
@@ -148,9 +148,9 @@ struct TcpListener
 
   // Listens on address ("127.0.0.1", "0.0.0.0", "::1"...) at port; port 0 picks a free one
   // (port() says which).
-  static TcpListener listen(StringView address, int port) { return TcpListener(netListen(address, port)); }
+  static TcpListener listen(StringView address, i32 port) { return TcpListener(netListen(address, port)); }
 
-  int port() const { return netLocalPort(this->handle); }
+  i32 port() const { return netLocalPort(this->handle); }
 
   // Waits for the next connection.
   TcpStream accept() { return TcpStream(netAccept(this->handle)); }

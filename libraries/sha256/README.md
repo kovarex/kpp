@@ -23,7 +23,7 @@ if (Sha256::constantTimeEqual(mac.view(), given)) ...
 |---|---|
 | `Sha256Digest sha256(StringView data)` | the digest of the bytes |
 | `Sha256Digest hmacSha256(StringView key, StringView message)` | HMAC-SHA-256; a key over 64 bytes is hashed first, as RFC 2104 says |
-| `Sha256` | `update(StringView)`, `update(const void*, int64_t)` any number of times, then `finish()` once; `reset()` starts again. Another `update` or `finish` after `finish` stops the program (`release_assert`) |
+| `Sha256` | `update(StringView)`, `update(const void*, i64)` any number of times, then `finish()` once; `reset()` starts again. Another `update` or `finish` after `finish` stops the program (`release_assert`) |
 | `Sha256::constantTimeEqual(StringView a, StringView b)` | equal bytes, in a time that depends on the lengths only |
 | `Sha256Digest` | `bytes[32]`; `hex()` (lowercase, 64 characters), `data()` (the 32 bytes as a String), `view()`; `==` compares in constant time; `str()` is `hex()` |
 

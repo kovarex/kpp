@@ -2,7 +2,7 @@
 // of one kind, linked as commonmark.js links them, so that emphasis can move a run of siblings into
 // a new node.
 
-enum class MarkdownType : uint8_t
+enum class MarkdownType : u8
 {
   document,
   blockQuote,
@@ -43,27 +43,27 @@ struct MarkdownNode
   String info; // a fenced code block's info string
 
   bool open = true;
-  int startLine = 0;
-  int endLine = 0;
-  int level = 0; // a heading's
+  i32 startLine = 0;
+  i32 endLine = 0;
+  i32 level = 0; // a heading's
 
   // A list's and an item's marker.
   bool ordered = false;
   bool tight = true;
   char bulletChar = 0;
   char delimiter = 0;
-  int start = 0;
-  int markerOffset = 0;
-  int padding = 0;
+  i32 start = 0;
+  i32 markerOffset = 0;
+  i32 padding = 0;
 
   // A code block's fence.
   bool fenced = false;
   char fenceChar = 0;
-  int fenceLength = 0;
-  int fenceOffset = 0;
+  i32 fenceLength = 0;
+  i32 fenceOffset = 0;
 
-  int htmlBlockType = 0;
-  int alignment = 0; // a table cell's: 0 none, 1 left, 2 center, 3 right
+  i32 htmlBlockType = 0;
+  i32 alignment = 0; // a table cell's: 0 none, 1 left, 2 center, 3 right
   bool header = false; // a table row's
 
   void appendChild(MarkdownNode* child)
@@ -133,52 +133,52 @@ struct MarkdownNodes
 
 // --- characters ---
 
-bool markdownIsSpaceOrTab(int c) { return c == ' ' || c == '\t'; }
-bool markdownIsAsciiPunctuation(int c)
+bool markdownIsSpaceOrTab(i32 c) { return c == ' ' || c == '\t'; }
+bool markdownIsAsciiPunctuation(i32 c)
 {
   return (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
 }
-bool markdownIsDigit(int c) { return c >= '0' && c <= '9'; }
-bool markdownIsLetter(int c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
-bool markdownIsAlphanumeric(int c) { return markdownIsLetter(c) || markdownIsDigit(c); }
-int markdownLower(int c) { return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c; }
+bool markdownIsDigit(i32 c) { return c >= '0' && c <= '9'; }
+bool markdownIsLetter(i32 c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+bool markdownIsAlphanumeric(i32 c) { return markdownIsLetter(c) || markdownIsDigit(c); }
+i32 markdownLower(i32 c) { return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c; }
 
 // The code point at text[at] (UTF-8), its length in *length; a byte that starts no sequence is
 // itself.
-int markdownDecode(StringView text, int at, int* length)
+i32 markdownDecode(StringView text, i32 at, i32* length)
 {
-  unsigned char c = (unsigned char)text[at];
-  int n = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+  u8 c = (u8)text[at];
+  i32 n = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
   if (at + n > text.size())
     n = 1;
-  int code = n == 1 ? c : n == 2 ? (c & 0x1F) : n == 3 ? (c & 0x0F) : (c & 0x07);
-  for (int i = 1; i < n; ++i)
-    code = (code << 6) | ((unsigned char)text[at + i] & 0x3F);
+  i32 code = n == 1 ? c : n == 2 ? (c & 0x1F) : n == 3 ? (c & 0x0F) : (c & 0x07);
+  for (i32 i = 1; i < n; ++i)
+    code = (code << 6) | ((u8)text[at + i] & 0x3F);
   *length = n;
   return code;
 }
 
 // The code point that ends before text[at].
-int markdownDecodeBefore(StringView text, int at)
+i32 markdownDecodeBefore(StringView text, i32 at)
 {
-  int start = at - 1;
-  while (start > 0 && at - start < 4 && ((unsigned char)text[start] & 0xC0) == 0x80)
+  i32 start = at - 1;
+  while (start > 0 && at - start < 4 && ((u8)text[start] & 0xC0) == 0x80)
     --start;
-  int length = 0;
+  i32 length = 0;
   return markdownDecode(text, start, &length);
 }
 
 // Unicode whitespace (CommonMark 2.1: Zs, tab, line feed, form feed, carriage return).
-bool markdownIsUnicodeWhitespace(int c)
+bool markdownIsUnicodeWhitespace(i32 c)
 {
   return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r' || c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
          c == 0x202F || c == 0x205F || c == 0x3000;
 }
 
 // Unicode punctuation (CommonMark 2.1: the P and S categories): MarkdownUnicode.kpp's table.
-bool markdownIsUnicodePunctuation(int c) { return c < 0x80 ? markdownIsAsciiPunctuation(c) : markdownIsNonAsciiPunctuation(c); }
+bool markdownIsUnicodePunctuation(i32 c) { return c < 0x80 ? markdownIsAsciiPunctuation(c) : markdownIsNonAsciiPunctuation(c); }
 
-void markdownAppendUtf8(String& out, int code)
+void markdownAppendUtf8(String& out, i32 code)
 {
   if (code < 0x80)
     out.append(char(code));

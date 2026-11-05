@@ -85,13 +85,13 @@ test "errors name the line and column"
 test "nesting is limited"
 {
   String deep;
-  for (int i = 0; i < 1001; ++i)
+  for (i32 i = 0; i < 1001; ++i)
     deep.append('[');
   check(jsonErrorOf(deep) == "1:1001: nesting deeper than 1000 levels");
   String ok;
-  for (int i = 0; i < 1000; ++i)
+  for (i32 i = 0; i < 1000; ++i)
     ok.append('[');
-  for (int i = 0; i < 1000; ++i)
+  for (i32 i = 0; i < 1000; ++i)
     ok.append(']');
   check(jsonErrorOf(ok) == "");
 }
@@ -148,7 +148,7 @@ bool jsonNumberRoundTrips(double value)
 {
   String text = writeJson(JsonValue(value));
   JsonValue back = parseJson(text);
-  if (back.type == JsonType::number && bitCast<uint64_t>(back.numberValue) == bitCast<uint64_t>(value))
+  if (back.type == JsonType::number && bitCast<u64>(back.numberValue) == bitCast<u64>(value))
     return true;
   println(text, " does not round-trip");
   return false;
@@ -169,9 +169,9 @@ test "numbers round-trip exactly"
     check(jsonNumberRoundTrips(-value));
   }
   // Every exponent, random mantissas: xorshift64 bits read as a double.
-  uint64_t state = 0x9E3779B97F4A7C15ull;
-  int failures = 0;
-  for (int i = 0; i < 200000; ++i)
+  u64 state = 0x9E3779B97F4A7C15ull;
+  i32 failures = 0;
+  for (i32 i = 0; i < 200000; ++i)
   {
     state ^= state << 13;
     state ^= state >> 7;
@@ -185,7 +185,7 @@ test "numbers round-trip exactly"
 
 test "integers round-trip exactly"
 {
-  long long values[] = {0, 1, -1, 9007199254740993ll, 9223372036854775807ll, -9223372036854775807ll - 1};
-  for (long long value : values)
+  i64 values[] = {0, 1, -1, 9007199254740993ll, 9223372036854775807ll, -9223372036854775807ll - 1};
+  for (i64 value : values)
     check(parseJson(writeJson(JsonValue(value))).asInteger() == value);
 }

@@ -17,7 +17,7 @@ test "a real server"
     return;
   }
   MariaDbOptions options;
-  options.port = (int)stoll(port);
+  options.port = (i32)stoll(port);
   options.user = mariaDbEnvironment("MARIADB_TEST_USER");
   options.password = mariaDbEnvironment("MARIADB_TEST_PASSWORD");
   options.database = mariaDbEnvironment("MARIADB_TEST_DATABASE");
@@ -58,7 +58,7 @@ test "a real server"
   MariaDbResult big = connection.query("SELECT REPEAT('x', 100000) AS a, seq FROM seq_1_to_200");
   check(big.size() == 200 && big.text(199, "a").size() == 100000 && big.text(199, "seq") == "200");
 
-  int code = 0;
+  i32 code = 0;
   try { connection.query("SELECT * FROM kpp_no_such_table"); } catch (const MariaDbError& e) { code = e.code; }
   check(code == 1146);
   // The connection goes on after an error.
@@ -69,7 +69,7 @@ test "a real server"
 
   MariaDbOptions wrong = options;
   wrong.password = "not the password";
-  int denied = 0;
+  i32 denied = 0;
   try { MariaDbConnection::connect(wrong); } catch (const MariaDbError& e) { denied = e.code; }
   check(denied == 1045);
 }

@@ -4,34 +4,34 @@
 // The 20 bytes of SHA-1 of data.
 String mariaDbSha1(StringView data)
 {
-  uint32_t h[5] = {0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
+  u32 h[5] = {0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
   String message(data);
-  uint64_t bits = (uint64_t)data.size() * 8;
+  u64 bits = (u64)data.size() * 8;
   message.append(char(0x80));
   while (message.size() % 64 != 56)
     message.append(char(0));
-  for (int i = 7; i >= 0; --i)
+  for (i32 i = 7; i >= 0; --i)
     message.append(char((bits >> (8 * i)) & 255));
-  uint32_t w[80];
+  u32 w[80];
   for (ContainerSize block = 0; block < message.size(); block += 64)
   {
-    for (int i = 0; i < 16; ++i)
-      w[i] = ((uint32_t)(uint8_t)message[block + 4 * i] << 24) | ((uint32_t)(uint8_t)message[block + 4 * i + 1] << 16) |
-             ((uint32_t)(uint8_t)message[block + 4 * i + 2] << 8) | (uint32_t)(uint8_t)message[block + 4 * i + 3];
-    for (int i = 16; i < 80; ++i)
+    for (i32 i = 0; i < 16; ++i)
+      w[i] = ((u32)(u8)message[block + 4 * i] << 24) | ((u32)(u8)message[block + 4 * i + 1] << 16) |
+             ((u32)(u8)message[block + 4 * i + 2] << 8) | (u32)(u8)message[block + 4 * i + 3];
+    for (i32 i = 16; i < 80; ++i)
     {
-      uint32_t x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      u32 x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
       w[i] = (x << 1) | (x >> 31);
     }
-    uint32_t a = h[0];
-    uint32_t b = h[1];
-    uint32_t c = h[2];
-    uint32_t d = h[3];
-    uint32_t e = h[4];
-    for (int i = 0; i < 80; ++i)
+    u32 a = h[0];
+    u32 b = h[1];
+    u32 c = h[2];
+    u32 d = h[3];
+    u32 e = h[4];
+    for (i32 i = 0; i < 80; ++i)
     {
-      uint32_t f = 0;
-      uint32_t k = 0;
+      u32 f = 0;
+      u32 k = 0;
       if (i < 20)
       {
         f = (b & c) | (~b & d);
@@ -52,7 +52,7 @@ String mariaDbSha1(StringView data)
         f = b ^ c ^ d;
         k = 0xca62c1d6u;
       }
-      uint32_t t = ((a << 5) | (a >> 27)) + f + e + k + w[i];
+      u32 t = ((a << 5) | (a >> 27)) + f + e + k + w[i];
       e = d;
       d = c;
       c = (b << 30) | (b >> 2);
@@ -66,8 +66,8 @@ String mariaDbSha1(StringView data)
     h[4] += e;
   }
   String out;
-  for (int i = 0; i < 5; ++i)
-    for (int j = 3; j >= 0; --j)
+  for (i32 i = 0; i < 5; ++i)
+    for (i32 j = 3; j >= 0; --j)
       out.append(char((h[i] >> (8 * j)) & 255));
   return out;
 }

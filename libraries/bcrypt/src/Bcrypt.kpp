@@ -12,12 +12,12 @@ public:
 // The hash of password with the 16 bytes of salt, at 2^cost rounds (4 to 31), as "$2y$...".
 // The salt must come from a cryptographically secure generator. A password over 72 bytes counts
 // its first 72 (as everywhere bcrypt is); one with a zero byte throws, as PHP 8.4 does.
-String bcryptHash(StringView password, int cost, StringView salt)
+String bcryptHash(StringView password, i32 cost, StringView salt)
 {
   if (cost < 4 || cost > 31)
     throw BcryptError(format("bcrypt's cost is 4 to 31, not {}", cost));
   if (salt.size() != 16)
-    throw BcryptError(format("bcrypt's salt is 16 bytes, not {}", (int)salt.size()));
+    throw BcryptError(format("bcrypt's salt is 16 bytes, not {}", (i32)salt.size()));
   bcryptCheckPassword(password);
   String out = "$2y$";
   out.append(char('0' + cost / 10));
@@ -41,15 +41,15 @@ bool bcryptVerify(StringView password, StringView hash)
     throw BcryptError(format("the bcrypt variant $2{}$ is not supported", variant));
   bcryptCheckPassword(password);
   if (variant == 'a')
-    for (int i = 0; i < (int)password.size(); ++i)
-      if ((unsigned char)password[i] >= 0x80)
+    for (i32 i = 0; i < (i32)password.size(); ++i)
+      if ((u8)password[i] >= 0x80)
         throw BcryptError("a $2a$ hash of a password with non-ASCII bytes: its variants differ there");
   if (hash[4] < '0' || hash[4] > '9' || hash[5] < '0' || hash[5] > '9')
     throw BcryptError("bcrypt's cost is two digits");
-  int cost = (hash[4] - '0') * 10 + (hash[5] - '0');
+  i32 cost = (hash[4] - '0') * 10 + (hash[5] - '0');
   if (cost < 4 || cost > 31)
     throw BcryptError(format("bcrypt's cost is 4 to 31, not {}", cost));
-  for (int i = 7; i < 60; ++i)
+  for (i32 i = 7; i < 60; ++i)
     if (bcryptDigit(hash[i]) < 0)
       throw BcryptError(format("not a bcrypt hash: '{}' at {}", hash[i], i));
   // The salt's last character carries 2 bits; the other 4 are ignored, as PHP does.
@@ -58,14 +58,14 @@ bool bcryptVerify(StringView password, StringView hash)
   bcryptEncode(expected, salt);
   bcryptAppendHash(expected, password, cost, salt);
   // Compare the hash part only: an uncanonical last salt character still verifies.
-  unsigned char difference = 0;
-  for (int i = 29; i < 60; ++i)
-    difference |= (unsigned char)(expected[i] ^ hash[i]);
+  u8 difference = 0;
+  for (i32 i = 29; i < 60; ++i)
+    difference |= (u8)(expected[i] ^ hash[i]);
   return difference == 0;
 }
 
 // The cost of a bcrypt hash, to decide whether to hash a password again with a higher one.
-int bcryptCost(StringView hash)
+i32 bcryptCost(StringView hash)
 {
   if (hash.size() != 60 || hash[0] != '$' || hash[1] != '2' || hash[3] != '$' || hash[6] != '$' ||
       hash[4] < '0' || hash[4] > '9' || hash[5] < '0' || hash[5] > '9')
@@ -75,7 +75,7 @@ int bcryptCost(StringView hash)
 
 void bcryptCheckPassword(StringView password)
 {
-  for (int i = 0; i < (int)password.size(); ++i)
+  for (i32 i = 0; i < (i32)password.size(); ++i)
     if (password[i] == 0)
       throw BcryptError("a password for bcrypt has no zero bytes");
 }
@@ -83,7 +83,7 @@ void bcryptCheckPassword(StringView password)
 // bcrypt's base64: "./A-Za-z0-9", unpadded.
 const char* bcryptAlphabet = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-int bcryptDigit(char c)
+i32 bcryptDigit(char c)
 {
   if (c == '.')
     return 0;
@@ -100,12 +100,12 @@ int bcryptDigit(char c)
 
 void bcryptEncode(String& out, StringView data)
 {
-  int n = (int)data.size();
-  for (int i = 0; i < n; i += 3)
+  i32 n = (i32)data.size();
+  for (i32 i = 0; i < n; i += 3)
   {
-    unsigned int b0 = (unsigned char)data[i];
-    unsigned int b1 = i + 1 < n ? (unsigned char)data[i + 1] : 0;
-    unsigned int b2 = i + 2 < n ? (unsigned char)data[i + 2] : 0;
+    u32 b0 = (u8)data[i];
+    u32 b1 = i + 1 < n ? (u8)data[i + 1] : 0;
+    u32 b2 = i + 2 < n ? (u8)data[i + 2] : 0;
     out.append(bcryptAlphabet[b0 >> 2]);
     out.append(bcryptAlphabet[((b0 & 3) << 4) | (b1 >> 4)]);
     if (i + 1 < n)
@@ -116,14 +116,14 @@ void bcryptEncode(String& out, StringView data)
 }
 
 // The first `bytes` bytes the characters encode (checked to be digits by the caller).
-String bcryptDecode(StringView text, int bytes)
+String bcryptDecode(StringView text, i32 bytes)
 {
   String out;
-  unsigned int bits = 0;
-  int count = 0;
-  for (int i = 0; i < (int)text.size() && (int)out.size() < bytes; ++i)
+  u32 bits = 0;
+  i32 count = 0;
+  for (i32 i = 0; i < (i32)text.size() && (i32)out.size() < bytes; ++i)
   {
-    bits = (bits << 6) | (unsigned int)bcryptDigit(text[i]);
+    bits = (bits << 6) | (u32)bcryptDigit(text[i]);
     count += 6;
     if (count >= 8)
     {
@@ -135,38 +135,38 @@ String bcryptDecode(StringView text, int bytes)
 }
 
 // Appends the 31 characters of the hash of password at 2^cost rounds with the 16-byte salt.
-void bcryptAppendHash(String& out, StringView password, int cost, StringView salt)
+void bcryptAppendHash(String& out, StringView password, i32 cost, StringView salt)
 {
   // The key is the password with its terminating zero byte, at most 72 bytes.
-  int keyLength = (int)password.size() + 1;
+  i32 keyLength = (i32)password.size() + 1;
   if (keyLength > 72)
     keyLength = 72;
-  uint8_t key[72];
-  for (int i = 0; i < keyLength; ++i)
-    key[i] = i < (int)password.size() ? (uint8_t)password[i] : 0;
-  uint8_t saltBytes[16];
-  for (int i = 0; i < 16; ++i)
-    saltBytes[i] = (uint8_t)salt[i];
+  u8 key[72];
+  for (i32 i = 0; i < keyLength; ++i)
+    key[i] = i < (i32)password.size() ? (u8)password[i] : 0;
+  u8 saltBytes[16];
+  for (i32 i = 0; i < 16; ++i)
+    saltBytes[i] = (u8)salt[i];
 
   Blowfish state;
   state.expand(saltBytes, 16, key, keyLength);
-  uint64_t rounds = (uint64_t)1 << cost;
-  for (uint64_t r = 0; r < rounds; ++r)
+  u64 rounds = (u64)1 << cost;
+  for (u64 r = 0; r < rounds; ++r)
   {
     state.expand(nullptr, 0, key, keyLength);
     state.expand(nullptr, 0, saltBytes, 16);
   }
 
   const char* magic = "OrpheanBeholderScryDoubt";
-  uint32_t text[6];
-  for (int i = 0; i < 6; ++i)
-    text[i] = ((uint32_t)(uint8_t)magic[4 * i] << 24) | ((uint32_t)(uint8_t)magic[4 * i + 1] << 16) |
-              ((uint32_t)(uint8_t)magic[4 * i + 2] << 8) | (uint32_t)(uint8_t)magic[4 * i + 3];
-  for (int i = 0; i < 64; ++i)
-    for (int j = 0; j < 6; j += 2)
+  u32 text[6];
+  for (i32 i = 0; i < 6; ++i)
+    text[i] = ((u32)(u8)magic[4 * i] << 24) | ((u32)(u8)magic[4 * i + 1] << 16) |
+              ((u32)(u8)magic[4 * i + 2] << 8) | (u32)(u8)magic[4 * i + 3];
+  for (i32 i = 0; i < 64; ++i)
+    for (i32 j = 0; j < 6; j += 2)
       state.encrypt(text[j], text[j + 1]);
   String bytes;
-  for (int i = 0; i < 6; ++i)
+  for (i32 i = 0; i < 6; ++i)
   {
     bytes.append(char(text[i] >> 24));
     bytes.append(char((text[i] >> 16) & 255));
@@ -180,14 +180,14 @@ void bcryptAppendHash(String& out, StringView password, int cost, StringView sal
 // Blowfish (Schneier 1993) with bcrypt's expensive key schedule.
 struct Blowfish
 {
-  uint32_t p[18];
-  uint32_t s[1024]; // the four S-boxes, one after another
+  u32 p[18];
+  u32 s[1024]; // the four S-boxes, one after another
 
   Blowfish()
   {
-    for (int i = 0; i < 18; ++i)
+    for (i32 i = 0; i < 18; ++i)
       this->p[i] = blowfishInitialP[i];
-    for (int i = 0; i < 256; ++i)
+    for (i32 i = 0; i < 256; ++i)
     {
       this->s[i] = blowfishInitialS0[i];
       this->s[256 + i] = blowfishInitialS1[i];
@@ -196,17 +196,17 @@ struct Blowfish
     }
   }
 
-  uint32_t f(uint32_t x) const
+  u32 f(u32 x) const
   {
     return ((this->s[x >> 24] + this->s[256 + ((x >> 16) & 255)]) ^ this->s[512 + ((x >> 8) & 255)]) +
            this->s[768 + (x & 255)];
   }
 
-  void encrypt(uint32_t& left, uint32_t& right) const
+  void encrypt(u32& left, u32& right) const
   {
-    uint32_t l = left;
-    uint32_t r = right;
-    for (int i = 0; i < 16; i += 2)
+    u32 l = left;
+    u32 r = right;
+    for (i32 i = 0; i < 16; i += 2)
     {
       l ^= this->p[i];
       r ^= this->f(l);
@@ -218,10 +218,10 @@ struct Blowfish
   }
 
   // The next 4 bytes of data, cycling, big-endian.
-  static uint32_t word(const uint8_t* data, int length, int& position)
+  static u32 word(const u8* data, i32 length, i32& position)
   {
-    uint32_t result = 0;
-    for (int i = 0; i < 4; ++i)
+    u32 result = 0;
+    for (i32 i = 0; i < 4; ++i)
     {
       result = (result << 8) | data[position];
       position = (position + 1) % length;
@@ -230,15 +230,15 @@ struct Blowfish
   }
 
   // bcrypt's ExpandKey(state, salt, key); with no salt (saltLength 0) it is Blowfish's key schedule.
-  void expand(const uint8_t* salt, int saltLength, const uint8_t* key, int keyLength)
+  void expand(const u8* salt, i32 saltLength, const u8* key, i32 keyLength)
   {
-    int keyPosition = 0;
-    for (int i = 0; i < 18; ++i)
+    i32 keyPosition = 0;
+    for (i32 i = 0; i < 18; ++i)
       this->p[i] ^= Blowfish::word(key, keyLength, keyPosition);
-    uint32_t l = 0;
-    uint32_t r = 0;
-    int saltPosition = 0;
-    for (int i = 0; i < 18 + 1024; i += 2)
+    u32 l = 0;
+    u32 r = 0;
+    i32 saltPosition = 0;
+    for (i32 i = 0; i < 18 + 1024; i += 2)
     {
       if (saltLength > 0)
       {

@@ -7,12 +7,12 @@
 class UrlError : public RuntimeError
 {
 public:
-  int offset = 0;
+  i32 offset = 0;
   UrlError() {}
-  UrlError(const String& message, int offset) : RuntimeError(message), offset(offset) {}
+  UrlError(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
 };
 
-void urlFail(int offset, const char* what) { throw UrlError(format("{}: {}", offset, StringView(what)), offset); }
+void urlFail(i32 offset, const char* what) { throw UrlError(format("{}: {}", offset, StringView(what)), offset); }
 
 // A URI reference's components, as written (percent-encoded). The has* flags tell an empty
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
@@ -34,15 +34,15 @@ struct Url
   bool isRelative() const { return this->scheme.empty(); }
 
   // The port as a number, or -1 when there is none or it is empty.
-  int portNumber() const
+  i32 portNumber() const
   {
     if (this->port.empty())
       return -1;
-    long long value = 0;
+    i64 value = 0;
     for (char c : this->port)
       if ((value = value * 10 + (c - '0')) > 65535)
         throw UrlError(format("port {} is out of range", this->port), 0);
-    return int(value);
+    return i32(value);
   }
 
   // The reference recomposed (RFC 3986 5.3).
@@ -94,7 +94,7 @@ bool urlIsSubDelimiter(char c)
 {
   return c == '!' || c == '$' || c == '&' || c == '\'' || c == '(' || c == ')' || c == '*' || c == '+' || c == ',' || c == ';' || c == '=';
 }
-int urlHexValue(char c)
+i32 urlHexValue(char c)
 {
   if (c >= '0' && c <= '9')
     return c - '0';
@@ -107,9 +107,9 @@ int urlHexValue(char c)
 
 // Checks text[from, to) of a component: each character is unreserved, a sub-delimiter, one of
 // `allowed`, or a valid %XX.
-void urlCheckComponent(StringView text, int from, int to, const char* allowed, const char* component)
+void urlCheckComponent(StringView text, i32 from, i32 to, const char* allowed, const char* component)
 {
-  for (int i = from; i < to; ++i)
+  for (i32 i = from; i < to; ++i)
   {
     char c = text[i];
     if (c == '%')
@@ -124,7 +124,7 @@ void urlCheckComponent(StringView text, int from, int to, const char* allowed, c
     if (urlIsUnreserved(c) || urlIsSubDelimiter(c))
       continue;
     bool ok = false;
-    for (int k = 0; allowed[k]; ++k)
+    for (i32 k = 0; allowed[k]; ++k)
       if (allowed[k] == c)
         ok = true;
     if (!ok)
@@ -136,11 +136,11 @@ void urlCheckComponent(StringView text, int from, int to, const char* allowed, c
 Url parseUrl(StringView text)
 {
   Url url;
-  int at = 0;
-  int end = text.size();
+  i32 at = 0;
+  i32 end = text.size();
   // A scheme: letters, digits, + - . after a letter, then ':', before any '/', '?' or '#'.
-  int colon = -1;
-  for (int i = 0; i < end; ++i)
+  i32 colon = -1;
+  for (i32 i = 0; i < end; ++i)
   {
     char c = text[i];
     if (c == '/' || c == '?' || c == '#')
@@ -156,7 +156,7 @@ Url parseUrl(StringView text)
   if (colon > 0)
   {
     bool letter = (text[0] >= 'a' && text[0] <= 'z') || (text[0] >= 'A' && text[0] <= 'Z');
-    for (int i = 1; letter && i < colon; ++i)
+    for (i32 i = 1; letter && i < colon; ++i)
     {
       char c = text[i];
       letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';
@@ -170,12 +170,12 @@ Url parseUrl(StringView text)
   if (end - at >= 2 && text[at] == '/' && text[at + 1] == '/')
   {
     url.hasAuthority = true;
-    int start = at + 2;
-    int stop = start;
+    i32 start = at + 2;
+    i32 stop = start;
     while (stop < end && text[stop] != '/' && text[stop] != '?' && text[stop] != '#')
       ++stop;
-    int hostStart = start;
-    for (int i = start; i < stop; ++i)
+    i32 hostStart = start;
+    for (i32 i = start; i < stop; ++i)
       if (text[i] == '@')
       {
         urlCheckComponent(text, start, i, ":", "user information");
@@ -184,10 +184,10 @@ Url parseUrl(StringView text)
         hostStart = i + 1;
         break;
       }
-    int hostEnd = stop;
+    i32 hostEnd = stop;
     if (hostStart < stop && text[hostStart] == '[')
     {
-      int close = hostStart;
+      i32 close = hostStart;
       while (close < stop && text[close] != ']')
         ++close;
       if (close == stop)
@@ -199,7 +199,7 @@ Url parseUrl(StringView text)
     }
     else
     {
-      for (int i = hostStart; i < stop; ++i)
+      for (i32 i = hostStart; i < stop; ++i)
         if (text[i] == ':')
         {
           hostEnd = i;
@@ -211,7 +211,7 @@ Url parseUrl(StringView text)
     if (hostEnd < stop)
     {
       url.hasPort = true;
-      for (int i = hostEnd + 1; i < stop; ++i)
+      for (i32 i = hostEnd + 1; i < stop; ++i)
         if (text[i] < '0' || text[i] > '9')
           urlFail(i, "a port that is not digits");
       url.port = String(text.substr(hostEnd + 1, stop - hostEnd - 1));
@@ -219,7 +219,7 @@ Url parseUrl(StringView text)
     at = stop;
   }
   // The path, query and fragment.
-  int pathEnd = at;
+  i32 pathEnd = at;
   while (pathEnd < end && text[pathEnd] != '?' && text[pathEnd] != '#')
     ++pathEnd;
   urlCheckComponent(text, at, pathEnd, ":@/", "path");
@@ -227,7 +227,7 @@ Url parseUrl(StringView text)
   at = pathEnd;
   if (at < end && text[at] == '?')
   {
-    int queryEnd = at + 1;
+    i32 queryEnd = at + 1;
     while (queryEnd < end && text[queryEnd] != '#')
       ++queryEnd;
     urlCheckComponent(text, at + 1, queryEnd, ":@/?", "query");
@@ -263,14 +263,14 @@ String urlRemoveDotSegments(StringView path)
     else if (in.startsWith("/../") || in == "/..")
     {
       input = in == "/.." ? String("/") : String(in.substr(3));
-      int slash = output.rfind('/');
+      i32 slash = output.rfind('/');
       output = slash == String::npos ? String() : String(StringView(output).substr(0, slash));
     }
     else if (in == "." || in == "..")
       input = String();
     else
     {
-      int next = in.find('/', in[0] == '/' ? 1 : 0);
+      i32 next = in.find('/', in[0] == '/' ? 1 : 0);
       if (next == StringView::npos)
         next = in.size();
       output.append(in.substr(0, next));
@@ -328,7 +328,7 @@ Url resolveUrl(const Url& base, const Url& reference)
           merged = "/" + reference.path;
         else
         {
-          int slash = base.path.rfind('/');
+          i32 slash = base.path.rfind('/');
           merged = slash == String::npos ? reference.path : String(StringView(base.path).substr(0, slash + 1)) + reference.path;
         }
         target.path = urlRemoveDotSegments(merged);
@@ -357,11 +357,11 @@ String urlEncodeKeeping(StringView text, const char* keep)
 {
   const char* hex = "0123456789ABCDEF";
   String out;
-  for (int i = 0; i < text.size(); ++i)
+  for (i32 i = 0; i < text.size(); ++i)
   {
-    unsigned char c = (unsigned char)text[i];
+    u8 c = (u8)text[i];
     bool kept = urlIsUnreserved(char(c));
-    for (int k = 0; !kept && keep[k]; ++k)
+    for (i32 k = 0; !kept && keep[k]; ++k)
       kept = keep[k] == char(c);
     if (kept)
       out.append(char(c));
@@ -381,15 +381,15 @@ String urlDecode(StringView text) { return urlDecodeWith(text, false); }
 String urlDecodeWith(StringView text, bool plusIsSpace)
 {
   String out;
-  for (int i = 0; i < text.size(); ++i)
+  for (i32 i = 0; i < text.size(); ++i)
   {
     char c = text[i];
     if (c == '%')
     {
       if (i + 2 >= text.size())
         urlFail(i, "a '%' without two hex digits after it");
-      int high = urlHexValue(text[i + 1]);
-      int low = urlHexValue(text[i + 2]);
+      i32 high = urlHexValue(text[i + 1]);
+      i32 low = urlHexValue(text[i + 2]);
       if (high < 0 || low < 0)
         urlFail(i, "a '%' without two hex digits after it");
       out.append(char(high * 16 + low));
@@ -416,16 +416,16 @@ struct UrlQueryParameter
 Vector<UrlQueryParameter> parseUrlQuery(StringView query)
 {
   Vector<UrlQueryParameter> parameters;
-  int at = 0;
+  i32 at = 0;
   while (at <= query.size())
   {
-    int end = at;
+    i32 end = at;
     while (end < query.size() && query[end] != '&')
       ++end;
     if (end > at)
     {
       StringView piece = query.substr(at, end - at);
-      int equals = piece.find('=');
+      i32 equals = piece.find('=');
       UrlQueryParameter p;
       p.name = urlDecodeWith(equals == StringView::npos ? piece : piece.substr(0, equals), true);
       p.value = equals == StringView::npos ? String() : urlDecodeWith(piece.substr(equals + 1), true);
@@ -440,7 +440,7 @@ Vector<UrlQueryParameter> parseUrlQuery(StringView query)
 String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
 {
   String out;
-  for (int i = 0; i < parameters.size(); ++i)
+  for (i32 i = 0; i < parameters.size(); ++i)
   {
     if (i > 0)
       out.append('&');
@@ -453,7 +453,7 @@ String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
 
 void urlAppendForm(String& out, StringView text)
 {
-  for (int i = 0; i < text.size(); ++i)
+  for (i32 i = 0; i < text.size(); ++i)
   {
     if (text[i] == ' ')
       out.append('+');

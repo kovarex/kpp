@@ -13,13 +13,13 @@ void netStartup()
   if (started)
     return;
   WSADATA data;
-  int result = WSAStartup(0x0202, &data);
+  i32 result = WSAStartup(0x0202, &data);
   if (result != 0)
     throw NetError(format("WSAStartup failed: {}", netSystemMessage(result)));
   started = true;
 }
 
-String netSystemMessage(int code)
+String netSystemMessage(i32 code)
 {
   char buffer[512];
   DWORD length = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, (DWORD)code, 0,
@@ -33,14 +33,14 @@ String netSystemMessage(int code)
 
 [[noreturn]] void netFail(StringView what)
 {
-  int code = WSAGetLastError();
+  i32 code = WSAGetLastError();
   if (code == WSAETIMEDOUT)
     throw NetError(format("{}: timed out", what));
   throw NetError(format("{}: {}", what, netSystemMessage(code)));
 }
 
 // The addresses of host at port, for a stream socket; passive for a listener.
-addrinfo* netResolve(StringView host, int port, bool passive)
+addrinfo* netResolve(StringView host, i32 port, bool passive)
 {
   netStartup();
   addrinfo hints;
@@ -53,16 +53,16 @@ addrinfo* netResolve(StringView host, int port, bool passive)
   String name(host);
   String service = format("{}", port);
   addrinfo* found = nullptr;
-  int result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
+  i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
     throw NetError(format("cannot resolve {}: {}", host, netSystemMessage(result)));
   return found;
 }
 
-int64_t netConnect(StringView host, int port)
+i64 netConnect(StringView host, i32 port)
 {
   addrinfo* found = netResolve(host, port, false);
-  int code = 0;
+  i32 code = 0;
   for (addrinfo* a = found; a != nullptr; a = a->ai_next)
   {
     SOCKET s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
@@ -71,10 +71,10 @@ int64_t netConnect(StringView host, int port)
       code = WSAGetLastError();
       continue;
     }
-    if (connect(s, a->ai_addr, (int)a->ai_addrlen) == 0)
+    if (connect(s, a->ai_addr, (i32)a->ai_addrlen) == 0)
     {
       freeaddrinfo(found);
-      return (int64_t)s;
+      return (i64)s;
     }
     code = WSAGetLastError();
     closesocket(s);
@@ -83,7 +83,7 @@ int64_t netConnect(StringView host, int port)
   throw NetError(format("cannot connect to {} port {}: {}", host, port, netSystemMessage(code)));
 }
 
-int64_t netListen(StringView address, int port)
+i64 netListen(StringView address, i32 port)
 {
   addrinfo* found = netResolve(address, port, true);
   SOCKET s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
@@ -93,23 +93,23 @@ int64_t netListen(StringView address, int port)
     netFail("socket");
   }
   // Only this program may bind the port (Windows lets another socket steal it otherwise).
-  int exclusive = 1;
+  i32 exclusive = 1;
   setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&exclusive, sizeof(exclusive));
-  if (bind(s, found->ai_addr, (int)found->ai_addrlen) != 0 || listen(s, SOMAXCONN) != 0)
+  if (bind(s, found->ai_addr, (i32)found->ai_addrlen) != 0 || listen(s, SOMAXCONN) != 0)
   {
-    int code = WSAGetLastError();
+    i32 code = WSAGetLastError();
     freeaddrinfo(found);
     closesocket(s);
     throw NetError(format("cannot listen on {} port {}: {}", address, port, netSystemMessage(code)));
   }
   freeaddrinfo(found);
-  return (int64_t)s;
+  return (i64)s;
 }
 
-int netLocalPort(int64_t handle)
+i32 netLocalPort(i64 handle)
 {
   sockaddr_storage address;
-  int length = sizeof(address);
+  i32 length = sizeof(address);
   if (getsockname((SOCKET)handle, (sockaddr*)&address, &length) != 0)
     netFail("getsockname");
   if (address.ss_family == AF_INET6)
@@ -117,33 +117,33 @@ int netLocalPort(int64_t handle)
   return netPortOf(&((sockaddr_in*)&address)->sin_port);
 }
 
-int64_t netAccept(int64_t handle)
+i64 netAccept(i64 handle)
 {
   SOCKET s = accept((SOCKET)handle, nullptr, nullptr);
   if (s == netInvalidSocket)
     netFail("accept");
-  return (int64_t)s;
+  return (i64)s;
 }
 
-int64_t netSend(int64_t handle, const char* data, int64_t length)
+i64 netSend(i64 handle, const char* data, i64 length)
 {
-  int chunk = length > 1 << 30 ? 1 << 30 : (int)length;
-  int sent = send((SOCKET)handle, data, chunk, 0);
+  i32 chunk = length > 1 << 30 ? 1 << 30 : (i32)length;
+  i32 sent = send((SOCKET)handle, data, chunk, 0);
   if (sent < 0)
     netFail("send");
   return sent;
 }
 
-int64_t netReceive(int64_t handle, char* buffer, int64_t capacity)
+i64 netReceive(i64 handle, char* buffer, i64 capacity)
 {
-  int chunk = capacity > 1 << 30 ? 1 << 30 : (int)capacity;
-  int got = recv((SOCKET)handle, buffer, chunk, 0);
+  i32 chunk = capacity > 1 << 30 ? 1 << 30 : (i32)capacity;
+  i32 got = recv((SOCKET)handle, buffer, chunk, 0);
   if (got < 0)
     netFail("recv");
   return got;
 }
 
-void netSetTimeout(int64_t handle, int milliseconds)
+void netSetTimeout(i64 handle, i32 milliseconds)
 {
   DWORD value = (DWORD)milliseconds;
   if (setsockopt((SOCKET)handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&value, sizeof(value)) != 0 ||
@@ -151,10 +151,10 @@ void netSetTimeout(int64_t handle, int milliseconds)
     netFail("setsockopt");
 }
 
-void netShutdownWrite(int64_t handle)
+void netShutdownWrite(i64 handle)
 {
   if (shutdown((SOCKET)handle, SD_SEND) != 0)
     netFail("shutdown");
 }
 
-void netClose(int64_t handle) { closesocket((SOCKET)handle); }
+void netClose(i64 handle) { closesocket((SOCKET)handle); }

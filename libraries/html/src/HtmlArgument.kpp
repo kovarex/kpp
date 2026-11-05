@@ -6,8 +6,8 @@ struct HtmlArgument
   HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
   HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
   HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.str()), safe(true) {}
-  HtmlArgument(const char* name, int value) : name(name), value(toString(value)) {}
-  HtmlArgument(const char* name, long long value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, i32 value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, i64 value) : name(name), value(toString(value)) {}
 
   const char* name;
   String value;

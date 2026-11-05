@@ -10,9 +10,9 @@ extern "C" import "string.h";
 extern "C" import "errno.h";
 
 // errno, a macro of a function the C library names its own way.
-extern "C" int* __error();
-extern "C" int* __errno_location();
-int netErrno()
+extern "C" i32* __error();
+extern "C" i32* __errno_location();
+i32 netErrno()
 {
   if constexpr (config::platform == Platform::FreeBSD)
     return *__error();
@@ -22,13 +22,13 @@ int netErrno()
 
 [[noreturn]] void netFail(StringView what)
 {
-  int code = netErrno();
+  i32 code = netErrno();
   if (code == EAGAIN || code == EWOULDBLOCK)
     throw NetError(format("{}: timed out", what));
   throw NetError(format("{}: {} (errno {})", what, StringView(strerror(code)), code));
 }
 
-addrinfo* netResolve(StringView host, int port, bool passive)
+addrinfo* netResolve(StringView host, i32 port, bool passive)
 {
   addrinfo hints;
   memset(&hints, 0, sizeof(hints));
@@ -40,19 +40,19 @@ addrinfo* netResolve(StringView host, int port, bool passive)
   String name(host);
   String service = format("{}", port);
   addrinfo* found = nullptr;
-  int result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
+  i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
     throw NetError(format("cannot resolve {}: {}", host, StringView(gai_strerror(result))));
   return found;
 }
 
-int64_t netConnect(StringView host, int port)
+i64 netConnect(StringView host, i32 port)
 {
   addrinfo* found = netResolve(host, port, false);
-  int code = 0;
+  i32 code = 0;
   for (addrinfo* a = found; a != nullptr; a = a->ai_next)
   {
-    int s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+    i32 s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
     if (s < 0)
     {
       code = netErrno();
@@ -70,21 +70,21 @@ int64_t netConnect(StringView host, int port)
   throw NetError(format("cannot connect to {} port {}: {} (errno {})", host, port, StringView(strerror(code)), code));
 }
 
-int64_t netListen(StringView address, int port)
+i64 netListen(StringView address, i32 port)
 {
   addrinfo* found = netResolve(address, port, true);
-  int s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
+  i32 s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
   if (s < 0)
   {
     freeaddrinfo(found);
     netFail("socket");
   }
   // A restarted server can take its port back at once.
-  int reuse = 1;
+  i32 reuse = 1;
   setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
   if (bind(s, found->ai_addr, found->ai_addrlen) != 0 || listen(s, SOMAXCONN) != 0)
   {
-    int code = netErrno();
+    i32 code = netErrno();
     freeaddrinfo(found);
     close(s);
     throw NetError(format("cannot listen on {} port {}: {} (errno {})", address, port, StringView(strerror(code)), code));
@@ -93,56 +93,56 @@ int64_t netListen(StringView address, int port)
   return s;
 }
 
-int netLocalPort(int64_t handle)
+i32 netLocalPort(i64 handle)
 {
   sockaddr_storage address;
   socklen_t length = sizeof(address);
-  if (getsockname((int)handle, (sockaddr*)&address, &length) != 0)
+  if (getsockname((i32)handle, (sockaddr*)&address, &length) != 0)
     netFail("getsockname");
   if (address.ss_family == AF_INET6)
     return netPortOf(&((sockaddr_in6*)&address)->sin6_port);
   return netPortOf(&((sockaddr_in*)&address)->sin_port);
 }
 
-int64_t netAccept(int64_t handle)
+i64 netAccept(i64 handle)
 {
-  int s = accept((int)handle, nullptr, nullptr);
+  i32 s = accept((i32)handle, nullptr, nullptr);
   if (s < 0)
     netFail("accept");
   return s;
 }
 
-int64_t netSend(int64_t handle, const char* data, int64_t length)
+i64 netSend(i64 handle, const char* data, i64 length)
 {
   // MSG_NOSIGNAL: a closed connection is an error here, not a SIGPIPE that ends the program.
-  ssize_t sent = send((int)handle, data, (size_t)length, MSG_NOSIGNAL);
+  i64 sent = send((i32)handle, data, (usize)length, MSG_NOSIGNAL);
   if (sent < 0)
     netFail("send");
   return sent;
 }
 
-int64_t netReceive(int64_t handle, char* buffer, int64_t capacity)
+i64 netReceive(i64 handle, char* buffer, i64 capacity)
 {
-  ssize_t got = recv((int)handle, buffer, (size_t)capacity, 0);
+  i64 got = recv((i32)handle, buffer, (usize)capacity, 0);
   if (got < 0)
     netFail("recv");
   return got;
 }
 
-void netSetTimeout(int64_t handle, int milliseconds)
+void netSetTimeout(i64 handle, i32 milliseconds)
 {
   timeval value;
   value.tv_sec = milliseconds / 1000;
   value.tv_usec = (milliseconds % 1000) * 1000;
-  if (setsockopt((int)handle, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(value)) != 0 ||
-      setsockopt((int)handle, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(value)) != 0)
+  if (setsockopt((i32)handle, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(value)) != 0 ||
+      setsockopt((i32)handle, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(value)) != 0)
     netFail("setsockopt");
 }
 
-void netShutdownWrite(int64_t handle)
+void netShutdownWrite(i64 handle)
 {
-  if (shutdown((int)handle, SHUT_WR) != 0)
+  if (shutdown((i32)handle, SHUT_WR) != 0)
     netFail("shutdown");
 }
 
-void netClose(int64_t handle) { close((int)handle); }
+void netClose(i64 handle) { close((i32)handle); }

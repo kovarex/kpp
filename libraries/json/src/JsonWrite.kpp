@@ -11,7 +11,7 @@ String writeJson(const JsonValue& value)
 }
 
 // One member or element per line, indented by indent spaces per level.
-String writeJsonPretty(const JsonValue& value, int indent = 2)
+String writeJsonPretty(const JsonValue& value, i32 indent = 2)
 {
   String out;
   jsonWrite(out, value, indent, 0);
@@ -19,7 +19,7 @@ String writeJsonPretty(const JsonValue& value, int indent = 2)
 }
 
 // Appends the value; indent < 0 is compact.
-void jsonWrite(String& out, const JsonValue& value, int indent, int level)
+void jsonWrite(String& out, const JsonValue& value, i32 indent, i32 level)
 {
   switch (value.type)
   {
@@ -33,7 +33,7 @@ void jsonWrite(String& out, const JsonValue& value, int indent, int level)
     {
       bool object = value.type == JsonType::object;
       out.append(object ? '{' : '[');
-      for (int i = 0; i < value.items.size(); ++i)
+      for (i32 i = 0; i < value.items.size(); ++i)
       {
         if (i > 0)
           out.append(',');
@@ -53,12 +53,12 @@ void jsonWrite(String& out, const JsonValue& value, int indent, int level)
   }
 }
 
-void jsonNewLine(String& out, int indent, int level)
+void jsonNewLine(String& out, i32 indent, i32 level)
 {
   if (indent < 0)
     return;
   out.append('\n');
-  for (int i = 0; i < indent * level; ++i)
+  for (i32 i = 0; i < indent * level; ++i)
     out.append(' ');
 }
 
@@ -70,15 +70,15 @@ void jsonWriteNumber(String& out, double value)
   if (!isfinite(value))
     throw JsonTypeError("JSON has no form for NaN or infinity");
   char buffer[40];
-  int n = 0;
-  for (int precision = 15; precision <= 17; ++precision)
+  i32 n = 0;
+  for (i32 precision = 15; precision <= 17; ++precision)
   {
     n = snprintf(buffer, 40, "%.*g", precision, value);
     if (strtod(buffer, nullptr) == value)
       break;
   }
   bool hasPoint = false;
-  for (int i = 0; i < n; ++i)
+  for (i32 i = 0; i < n; ++i)
     if (buffer[i] == '.' || buffer[i] == 'e')
       hasPoint = true;
   out.append(buffer, n);
@@ -92,9 +92,9 @@ void jsonWriteString(String& out, StringView text)
     throw JsonTypeError("a JSON string must be UTF-8");
   out.append('"');
   const char* hex = "0123456789abcdef";
-  for (int i = 0; i < text.size(); ++i)
+  for (i32 i = 0; i < text.size(); ++i)
   {
-    unsigned char c = (unsigned char)text[i];
+    u8 c = (u8)text[i];
     if (c == '"')
       out.append("\\\"");
     else if (c == '\\')

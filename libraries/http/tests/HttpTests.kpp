@@ -20,7 +20,7 @@ test "cookies"
 
   HttpResponse response;
   HttpCookieOptions options;
-  options.maxAgeSeconds = Optional<int64_t>(604800);
+  options.maxAgeSeconds = Optional<i64>(604800);
   options.secure = true;
   response.setCookie("gorating_id", "xyz", options);
   response.deleteCookie("old");
@@ -140,7 +140,7 @@ void httpRunTestServer(HttpTestServer* server)
   httpServeOn(server->listener, server->options, httpTestHandler);
 }
 
-String httpTestFetch(int port, StringView request)
+String httpTestFetch(i32 port, StringView request)
 {
   net::TcpStream stream = net::TcpStream::connect("127.0.0.1", port);
   stream.setTimeout(5000);
@@ -152,7 +152,7 @@ test "the built-in server"
 {
   HttpTestServer server;
   server.listener = net::TcpListener::listen("127.0.0.1", 0);
-  int port = server.listener.port();
+  i32 port = server.listener.port();
   Thread thread(httpRunTestServer, &server);
 
   String get = httpTestFetch(port, "GET /player%20page?id=5 HTTP/1.1\r\nHost: x\r\nCookie: session=s1\r\n\r\n");

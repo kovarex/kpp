@@ -4,7 +4,7 @@
 test "a connection both ways"
 {
   TcpListener listener = TcpListener::listen("127.0.0.1", 0);
-  int port = listener.port();
+  i32 port = listener.port();
   check(port > 0);
   TcpStream client = TcpStream::connect("127.0.0.1", port);
   TcpStream server = listener.accept();
@@ -12,7 +12,7 @@ test "a connection both ways"
   client.write("server");
   check(server.readExactly(13) == "hello, server");
   String big;
-  for (int i = 0; i < 100000; ++i)
+  for (i32 i = 0; i < 100000; ++i)
     big.append(char('a' + i % 26));
   server.write(big);
   server.shutdownWrite();
@@ -43,7 +43,7 @@ test "a timeout"
 test "errors"
 {
   // A port nobody listens on: take one, then close it.
-  int port = 0;
+  i32 port = 0;
   {
     TcpListener listener = TcpListener::listen("127.0.0.1", 0);
     port = listener.port();

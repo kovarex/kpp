@@ -6,7 +6,7 @@ struct JsonValue
 {
   JsonType type = JsonType::null;
   bool booleanValue = false;
-  long long integerValue = 0; // JsonType::integer: a number written without fraction or exponent
+  i64 integerValue = 0; // JsonType::integer: a number written without fraction or exponent
   double numberValue = 0;     // JsonType::number
   String stringValue;
   Vector<JsonValue> items; // an array's elements, or an object's values
@@ -14,8 +14,8 @@ struct JsonValue
 
   JsonValue() {}
   implicit JsonValue(bool value) : type(JsonType::boolean), booleanValue(value) {}
-  implicit JsonValue(int value) : type(JsonType::integer), integerValue(value) {}
-  implicit JsonValue(long long value) : type(JsonType::integer), integerValue(value) {}
+  implicit JsonValue(i32 value) : type(JsonType::integer), integerValue(value) {}
+  implicit JsonValue(i64 value) : type(JsonType::integer), integerValue(value) {}
   implicit JsonValue(double value) : type(JsonType::number), numberValue(value) {}
   implicit JsonValue(const char* value) : type(JsonType::string), stringValue(value) {}
   implicit JsonValue(StringView value) : type(JsonType::string), stringValue(value) {}
@@ -49,7 +49,7 @@ struct JsonValue
     this->expect(JsonType::boolean, "a boolean");
     return this->booleanValue;
   }
-  long long asInteger() const
+  i64 asInteger() const
   {
     this->expect(JsonType::integer, "an integer");
     return this->integerValue;
@@ -69,17 +69,17 @@ struct JsonValue
   }
 
   // An array's elements or an object's members; 0 for anything else.
-  int size() const { return this->items.size(); }
+  i32 size() const { return this->items.size(); }
 
   // An array's element; out of range or not an array throws.
-  const JsonValue& operator[](int index) const
+  const JsonValue& operator[](i32 index) const
   {
     this->expect(JsonType::array, "an array");
     if (index < 0 || index >= this->items.size())
       throw JsonTypeError(format("JSON array index {} out of range (size {})", index, this->items.size()));
     return this->items[index];
   }
-  JsonValue& operator[](int index)
+  JsonValue& operator[](i32 index)
   {
     this->expect(JsonType::array, "an array");
     if (index < 0 || index >= this->items.size())
@@ -91,7 +91,7 @@ struct JsonValue
   const JsonValue* find(StringView key) const
   {
     this->expect(JsonType::object, "an object");
-    for (int i = 0; i < this->keys.size(); ++i)
+    for (i32 i = 0; i < this->keys.size(); ++i)
       if (StringView(this->keys[i]) == key)
         return &this->items[i];
     return nullptr;
@@ -99,7 +99,7 @@ struct JsonValue
   JsonValue* find(StringView key)
   {
     this->expect(JsonType::object, "an object");
-    for (int i = 0; i < this->keys.size(); ++i)
+    for (i32 i = 0; i < this->keys.size(); ++i)
       if (StringView(this->keys[i]) == key)
         return &this->items[i];
     return nullptr;
@@ -144,7 +144,7 @@ struct JsonValue
   bool remove(StringView key)
   {
     this->expect(JsonType::object, "an object");
-    for (int i = 0; i < this->keys.size(); ++i)
+    for (i32 i = 0; i < this->keys.size(); ++i)
       if (StringView(this->keys[i]) == key)
       {
         this->keys.erase(this->keys.begin() + i);
@@ -172,7 +172,7 @@ struct JsonValue
       {
         if (this->keys.size() != other.keys.size())
           return false;
-        for (int i = 0; i < this->keys.size(); ++i)
+        for (i32 i = 0; i < this->keys.size(); ++i)
         {
           const JsonValue* member = other.find(this->keys[i]);
           if (!member || !(this->items[i] == *member))
