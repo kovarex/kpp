@@ -9,7 +9,8 @@
 # - A push release is tagged v<major>.<minor>.<patch>; a nightly one nightly-<date> (and, before
 #   kpp's versions, v0.1.<date>: a patch of 8 digits), which is never deleted: one durable release
 #   per day.
-#   powershell -File tools\release\settle.ps1 -ApiUrl URL -Repository owner/name -Keep 20
+# - A push release keep.txt names (one a known project's CI pins) is never deleted.
+#   powershell -File tools\release\settle.ps1 -ApiUrl URL -Repository owner/name -Keep 50
 # The token is KPP_FORGE_TOKEN, as publish.ps1's. On Forgejo (an -ApiUrl ending in /api/v1) there is
 # no "Latest" to set; old releases are deleted the same way.
 param(
@@ -55,6 +56,12 @@ if ($github) {
 }
 
 $pushes = @($runs | Where-Object { $_.Release.tag_name -match '^v\d+\.\d+\.\d{1,7}$' })
+# keep.txt's tags (the releases known projects' CI pins: gorating's broke on 2026-11-05 when its pin,
+# v0.2.242, was deleted) are never deleted, and do not count in -Keep.
+$pinned = @(Get-Content (Join-Path $PSScriptRoot 'keep.txt') -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ })
+foreach ($tag in $pinned) { if (-not ($pushes | Where-Object { $_.Release.tag_name -eq $tag })) { "settle: keep.txt names $tag, which is not a push release here" } }
+$pinnedHere = @($pushes | Where-Object { $pinned -contains $_.Release.tag_name }).Count
+$pushes = @($pushes | Where-Object { $pinned -notcontains $_.Release.tag_name })
 foreach ($old in ($pushes | Select-Object -Skip $Keep)) {
   $tag = $old.Release.tag_name
   Api DELETE "/releases/$($old.Release.id)" | Out-Null
@@ -63,4 +70,4 @@ foreach ($old in ($pushes | Select-Object -Skip $Keep)) {
   } catch { "settle: no tag $tag" }
   "settle: deleted $tag ($($old.Version))"
 }
-"settle: $([Math]::Min($pushes.Count, $Keep)) push releases kept, $(@($runs).Count - $pushes.Count) other"
+"settle: $([Math]::Min($pushes.Count, $Keep)) push releases kept and $pinnedHere of keep.txt, $(@($runs).Count - $pushes.Count - $pinnedHere) other"

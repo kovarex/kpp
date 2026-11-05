@@ -651,4 +651,4 @@ jobs:
         shell: powershell
         env:
           KPP_FORGE_TOKEN: ${{ github.token }}
-        run: tools\release\settle.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Keep 20
+        run: tools\release\settle.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Keep 50

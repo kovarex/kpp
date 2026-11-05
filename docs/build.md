@@ -1223,8 +1223,10 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   nightly release of one version, the push one (`v<version>`) is Latest. It goes by version, not by
   which run finished last: push, nightly and hand-started runs have concurrency groups of their
   own, so an older commit's run can finish after a newer one's, and it then leaves the newer one
-  Latest. It also deletes the push releases (`v<version>`) beyond the 20 highest versions, each
-  with its tag; the nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
+  Latest. It also deletes the push releases (`v<version>`) beyond the 50 highest versions, each
+  with its tag, but never one `tools/release/keep.txt` names: the releases known projects' CI pins
+  (gorating's broke on 2026-11-05 when its pin, v0.2.242, went with the 20 kept then; a project that
+  pins a release adds its tag there, or pins a nightly one). The nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
   prerelease `dev` and only the nightly a numbered release, so a green push left Latest old; the run
   deletes `dev` now. Releases by hand stay with release.yml.
 - **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
