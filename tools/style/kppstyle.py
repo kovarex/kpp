@@ -1,7 +1,7 @@
 """kpp's code style checker (docs/code-style.md): reports, by file and line, the rules a program can
 check in .kpp files, and with --fix corrects the empty lines and the spaces at line ends.
 
-  python tools/style/kppstyle.py [--fix] [--summary] [--rule NAME] PATH...
+  python tools/style/kppstyle.py [--fix] [--summary] [--rule NAME] [--fixable] [--tracked] PATH...
 
 PATH is a .kpp file or a directory searched for them. The exit code is 1 when something was found
 (after --fix: when something is left that --fix does not correct).
@@ -150,7 +150,9 @@ def check(path, text):
         # A brace at the end of a line that has code before it.
         before = code[oi][:oj].strip()
         # (Not an initializer's: `= {`, `f({`, `{a, {`, `return {`.)
-        if before and code[oi].rstrip().endswith('{') and not re.search(r'(=|\(|,|\{|\breturn|\bextern)$', before):
+        # (Nor a brace initialisation opening a raw string that runs over lines: `x{R"(<div>`.)
+        if before and code[oi].rstrip().endswith('{') and not re.search(r'(=|\(|,|\{|\breturn|\bextern)$', before) \
+                and not re.match(r'\s*(?:u8|u|U|L)?R"', lines[oi][oj + 1:]):
             found.append((oi + 1, 'egyptian-brace'))
         # An expanded definition among declarations: an empty line around it.
         if enclosing != 'declarations':
@@ -214,7 +216,14 @@ def fix(lines, findings):
     return [l.rstrip(' \t\r') for l in out]
 
 
-def files_under(paths):
+def files_under(paths, tracked):
+    if tracked:  # the files git tracks under the paths
+        import subprocess
+        out = subprocess.run(['git', 'ls-files', '-z', '--'] + paths, capture_output=True, check=True).stdout.decode('utf-8')
+        for name in sorted(out.split('\0')):
+            if name.endswith('.kpp'):
+                yield name
+        return
     for p in paths:
         if os.path.isdir(p):
             for root, dirs, names in os.walk(p):
@@ -232,11 +241,17 @@ def main():
     ap.add_argument('--fix', action='store_true')
     ap.add_argument('--summary', action='store_true')
     ap.add_argument('--rule', action='append', default=[])
+    ap.add_argument('--fixable', action='store_true', help='only the rules --fix corrects (run_tests checks these)')
+    ap.add_argument('--tracked', action='store_true', help='only the files git tracks')
     args = ap.parse_args()
+    if args.fixable:
+        args.rule += sorted(FIXABLE)
     counts = {}
     files_with = {}
     left = 0
-    for path in files_under(args.paths):
+    checked = 0
+    for path in files_under(args.paths, args.tracked):
+        checked += 1
         with open(path, encoding='utf-8', newline='') as f:
             raw = f.read()
         crlf = '\r\n' in raw
@@ -246,7 +261,7 @@ def main():
             findings = [f for f in findings if f[1] in args.rule]
         if args.fix and any(r in FIXABLE for _, r in findings):
             for _ in range(5):  # (a fix can make another: an empty line added before a `}`)
-                fixable = [f for f in findings if f[1] in FIXABLE]
+                fixable = [f for f in findings if f[1] in FIXABLE and (not args.rule or f[1] in args.rule)]
                 if not fixable:
                     break
                 lines = fix(lines, fixable)
@@ -266,6 +281,8 @@ def main():
         for rule in RULES:
             if rule in counts:
                 print('%-20s %6d in %d files' % (rule, counts[rule], len(files_with[rule])), file=sys.stderr if not args.summary else sys.stdout)
+    if not left and not args.summary:
+        print('ok   code style (%d files)' % checked)
     return 1 if left else 0
 
 
