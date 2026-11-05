@@ -273,7 +273,8 @@
   std::optional<ConstValue> constBinaryChain(BinaryExpr* e, const TypeContext& ctx, int depth, std::optional<ConstPlace>* place = nullptr);
 
   struct ConstOperand; // (after ConstPlace)
-  std::optional<ConstValue> constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth, const ConstOperand* lo = nullptr, const ConstOperand* ro = nullptr, std::optional<ConstPlace>* returned = nullptr);
+  // node: the expression evaluated, whose operator function the checker recorded (design.md 24), or null.
+  std::optional<ConstValue> constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth, const ConstOperand* lo = nullptr, const ConstOperand* ro = nullptr, std::optional<ConstPlace>* returned = nullptr, const BinaryExpr* node = nullptr);
 
   // The function a virtual call on an object of dynamic type t runs: the final overrider of f
   // (the most derived class's function of its name and parameter types), or f.

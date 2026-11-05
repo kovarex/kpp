@@ -2,6 +2,17 @@
 // "Compile-time evaluation: one interpreter"): a translation unit of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
 
+namespace
+{
+  // KPP_VERIFY_DECISIONS=1: the interpreter's own choice of an operator function too, compared with the
+  // one the checker recorded (design.md 24), as codegen's are (Emitter::verifyDecisions).
+  bool verifyInterpreterDecisions()
+  {
+    static const bool on = [] { const char* v = std::getenv("KPP_VERIFY_DECISIONS"); return v && *v && *v != '0'; }();
+    return on;
+  }
+}
+
 auto GlobalScope::Impl::constWhy() -> std::string&
 {
   static thread_local std::string why;
@@ -1947,7 +1958,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
       right = constOperandOf(chain[i]->rhs, *r, ctx, depth);
     }
     returned.reset();
-    value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth, &left, &right, &returned);
+    value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth, &left, &right, &returned, chain[i]);
     failed = !value;
   }
   if (place && !failed)
@@ -1955,7 +1966,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
   return failed ? std::nullopt : value;
 }
 
-auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth, const ConstOperand* lo, const ConstOperand* ro, std::optional<ConstPlace>* returned) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth, const ConstOperand* lo, const ConstOperand* ro, std::optional<ConstPlace>* returned, const BinaryExpr* node) -> std::optional<ConstValue>
 {
   if (l.isUnset() || r.isUnset() || depth > 512)
     return std::nullopt;
@@ -1989,13 +2000,58 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   bool comparison = op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq;
   // The class's own operator, run on the left object; then a free one. With the operands' places
   // (ao, bo): run where they are.
+  // KPP_VERIFY_DECISIONS: the operator function chosen here, against the one the checker recorded
+  // on the node (the node's own operator on its own operands only; a rewritten one is never recorded).
+  auto verify = [&](P o, FunctionDecl* chosen, bool member) {
+    if (!node || o != op || node->call != OperatorCall::Function || !verifyInterpreterDecisions())
+      return;
+    if (chosen && member == node->calleeMember && constDefinition(chosen) == constDefinition(node->callee))
+      return;
+    auto name = [&](FunctionDecl* f) {
+      if (!f)
+        return std::string("the built-in operator");
+      const NamePart& n = f->name.last();
+      return (n.special == 2 ? "operator" + std::string(punctuatorSpelling(P(n.opToken))) : debugName(n.symbol)) + " (" + locationOf(f->file, f->token) + ")";
+    };
+    fprintf(stderr, "%s: error: decision check (interpreter): it calls %s, the checker chose %s%s\n",
+            ctx.function && ctx.function->file ? locationOf(ctx.function->file, node->token).c_str() : "<interpreter>", name(chosen).c_str(),
+            name(node->callee).c_str(), node->calleeMember ? " (a member)" : "");
+  };
+  // The operator function the checker recorded on the node (design.md 24), for the node's own
+  // operator on its own operands: the one rule for which function `a op b` calls, which ranks a
+  // class's member and the free ones together (C++'s [over.match.oper]; this interpreter's own
+  // lookup below tries the member first). Not a template's (the arguments it was deduced with are
+  // not recorded) nor a friend of a class template's instance (its class's arguments neither).
+  auto recorded = [&](P o, const ConstOperand* ao, const ConstOperand* bo) -> FunctionDecl* {
+    if (!node || o != op || ao != lo || bo != ro || node->call != OperatorCall::Function || !node->callee || verifyInterpreterDecisions())
+      return nullptr;
+    FunctionDecl* f = node->callee;
+    if (!f->templateParams.empty())
+      return nullptr;
+    if (node->calleeMember)
+      return f->parent && f->parent->kind == NodeKind::ClassDecl && f->parent->ownScope ? f : nullptr;
+    if (f->flags & DF_Friend)
+      for (Decl* p = f->parent; p; p = p->parent)
+        if (!p->templateParams.empty())
+          return nullptr;
+    return f;
+  };
   auto direct = [&](P o, const ConstValue& a, const ConstValue& b, const ConstOperand* ao = nullptr,
                     const ConstOperand* bo = nullptr) -> std::optional<std::optional<ConstValue>> {
-    if (a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
+    FunctionDecl* chosen = recorded(o, ao, bo);
+    bool chosenFree = chosen && !node->calleeMember;
+    if (!chosenFree && a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
     {
       Subst subst;
-      if (FunctionDecl* f = constClassOperator(a.type, o, {constOperandType(b, bo)}, subst, depth))
+      FunctionDecl* f = chosen;
+      if (f)
+        subst = memberSubst(types.unqualified(types.stripRef(a.type)), f->parent->ownScope, depth + 1);
+      else
+        f = constClassOperator(a.type, o, {constOperandType(b, bo)}, subst, depth);
+      if (f)
       {
+        if (ao == lo && bo == ro)
+          verify(o, f, true);
         if (constDefaulted(f))
         {
           if (o == P::EqEq || o == P::NotEq)
@@ -2017,7 +2073,10 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
         return constCallOn(f, subst, {b}, &self, depth + 1);
       }
     }
-    if (FunctionDecl* f = constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope))
+    FunctionDecl* free = chosenFree ? chosen : constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope);
+    if (ao == lo && bo == ro)
+      verify(o, free, false);
+    if (FunctionDecl* f = free)
     {
       if (ao && bo)
       {
