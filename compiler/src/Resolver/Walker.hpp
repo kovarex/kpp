@@ -525,8 +525,8 @@
     // The elements of a brace list initializing an object of type to, each checked for narrowing
     // against what it initializes: a scalar's one element, an array's or an aggregate's elements in
     // order (a nested list the same way), an InitializerList's elements, the chosen constructor's
-    // parameters; an error for each that narrows. Not where brace elision leaves the targets
-    // unclear, nor in a template's instance (as checkExplicitListCopy).
+    // parameters; an error for each that narrows (a template's instance's too: `T{d}` with T int).
+    // Not where brace elision leaves the targets unclear.
     void checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth = 0);
     // Each argument of a call of f (fnTy: its type) for a class parameter, checked (checkExplicitCopy).
     void checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);

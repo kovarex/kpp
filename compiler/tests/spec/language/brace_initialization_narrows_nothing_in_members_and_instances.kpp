@@ -1,0 +1,18 @@
+// spec: a constructor's member initializer in braces (`: x{d}`) and a template's instance (`T{d}` with T int, `take({t})` with t a double) narrow nothing either, as C++ has it ([dcl.init.list] 7; language/brace_initialization_narrows_nothing): each is a compile error, an instance's where it is written
+// found by thread D (2026-11-05), comparing with clang after 2df72b1d: these compiled and truncated
+// error: brace_initialization_narrows_nothing_in_members_and_instances.kpp:9: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing_in_members_and_instances.kpp:11: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing_in_members_and_instances.kpp:13: error: a brace initialization narrows double to int32
+struct S
+{
+  int x;
+  S(double d) : x{d} {}
+};
+template<class T> T make(double d) { return T{d}; }
+int take(int v) { return v; }
+template<class T> int call(T t) { return take({t}); }
+int main()
+{
+  S s(1.5);
+  return s.x + make<int>(1.5) + call(1.5) + int(make<double>(2.5));
+}

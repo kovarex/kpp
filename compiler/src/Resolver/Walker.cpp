@@ -2737,7 +2737,7 @@ auto GlobalScope::Impl::Walker::narrows(Expr* e, const Ty* from, const Ty* to, s
 
 auto GlobalScope::Impl::Walker::checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth) -> void
 {
-  if (probing || activeSubst || !file || depth > 8 || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
+  if (probing || !file || depth > 8 || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
   // One element initializing what: a nested list the same way, an expression checked.
@@ -5759,6 +5759,16 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         for (Expr* a : init.args)
           walkExpr(a);
         initializersOf = savedInitializers;
+        // `x{d}` with a double d for an int member: a brace initialization that narrows.
+        if (init.braced && !init.isPack && l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::ClassDecl))
+        {
+          const Ty* target = l.decl->kind == NodeKind::VariableDecl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : impl.selfType(l.decl);
+          Span<Expr*> elements = init.args;
+          if (elements.size() == 1 && elements[0] && elements[0]->kind == NodeKind::BraceInitExpr)
+            elements = static_cast<BraceInitExpr*>(elements[0])->args;
+          if (target)
+            checkListNarrowing(elements, target);
+        }
         // `problem("bad ", point)` for a member (or base) constructed with a Text (design.md 14).
         if (!init.braced && !init.isPack && l.decl)
         {
