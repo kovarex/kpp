@@ -57,28 +57,11 @@
 
   struct FileConverter
   {
-    const ConvertInput& in;
-    GlobalScope& global;
-    const SymbolTable& symbols;
     bool isHeader() const
     {
       std::string ext = in.path.extension().string();
       return ext != ".cpp" && ext != ".cc" && ext != ".c";
     }
-    const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
-    std::map<std::string, MemberOverride>* memberOverrides = nullptr; // members a hand-written file adds to classes
-    const CarriedDefaults* carriedDefaults = nullptr;
-    const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
-    const ScopeNames* scopeNames = nullptr;
-    const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
-    std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
-    const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
-    const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
-    const InlineBodies* inlineBodies = nullptr; // collectInlineBodies
-    // The files the conversion leaves out: a class defined only in one of them is defined nowhere
-    // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
-    const std::set<const ParsedFile*>* leftOutFiles = nullptr;
-    const Variants* variants = nullptr;
     // A std::variant declared in this file, which becomes a union enum (run() writes it once the
     // edits inside its alternatives' types are known).
     struct VariantDeclaration
@@ -89,7 +72,6 @@
       uint32_t memberStart;                            // where the member's declaration starts (its line)
       std::vector<std::pair<uint32_t, uint32_t>> args; // the alternatives' types, as offsets
     };
-    std::vector<VariantDeclaration> variantDeclarations;
     // std::get<T>(x), std::holds_alternative<T>(x), std::get_if<T>(p), std::visit(f, x) on a variant.
     struct VariantUse
     {
@@ -100,8 +82,6 @@
       uint32_t typeBegin = 0, typeEnd = 0;             // T, as offsets
       bool noAlternative = false;                      // T is no variant's alternative (a template's parameter)
     };
-    std::vector<VariantUse> variantUses;
-    std::map<uint32_t, const VariantInfo*> callVariant; // a use's callee token -> the variant its argument is declared as
     // This file's namespaces and classes (and the class scope of out-of-line member definitions),
     // by text range: where a name would find something before the global library name.
     struct ScopeRange
@@ -110,7 +90,6 @@
       std::string key; // as ScopeNames has it
       bool classBody = false; // a class's definition (not a namespace, not an out-of-line member's scope)
     };
-    std::vector<ScopeRange> scopeRanges;
     void collectScopeRanges(Span<Decl*> decls, const std::string& prefix)
     {
       for (Decl* d : decls)
@@ -164,7 +143,6 @@
       std::string key;      // the namespace's ScopeNames key
       bool removed = false; // a source file's directive outside any block
     };
-    std::vector<DirectiveRange> directiveRanges;
     void collectDirectiveRanges()
     {
       if (!scopeNames)
@@ -262,16 +240,12 @@
     {
       return declaredCloser(name, offset) || (scopeNames && directiveFinding(name, offset));
     }
-    // The locals and parameters of the file's functions by name: where each declaration starts and
-    // where its function ends (the block it is in ends there or sooner: a `::` too many is harmless).
-    std::map<std::string, std::vector<std::pair<uint32_t, uint32_t>>> localNames;
     // The function definitions of the file: where each starts and ends, and its qualified name.
     struct FunctionRange
     {
       uint32_t begin, end;
       std::string name;
     };
-    std::vector<FunctionRange> functionRanges;
     void collectLocals(Span<Decl*> decls, const std::string& prefix = "")
     {
       for (Decl* d : decls)
@@ -320,8 +294,6 @@
     {
       uint32_t declared, end, nameToken;
     };
-    std::vector<UnderscoreLocal> underscoreLocals;
-    std::set<uint32_t> namedUnderscores;
     // `Filesystem::ErrorCode _; Filesystem::RemoveAll(path, _);` (WriteFileGuard): the `_` the call
     // reads is the latest `_` declared before it in the function; both become `ignored`.
     bool nameUnderscoreUse(uint32_t token)
@@ -407,9 +379,6 @@
       std::string body;
       uint32_t from = 0, to = UINT32_MAX; // the text where this definition holds: from its #define to an #undef or the next #define
     };
-    // Function-like macros defined in this file, expanded at their uses; a name can be defined,
-    // undefined and defined again (`#define INCREMENT(NAME) 1+` then with four parameters).
-    std::map<std::string, std::vector<LocalMacro>> localMacros;
     // The game's release_assert (Util/ReleaseAssert.hpp), `do { if (!(value)) F(__FILE__, __LINE__,
     // #value); } while (false)`: kpp's own release_assert statement, which takes the file, the line
     // and the expression's text itself (design.md section 2), so its uses stay as written and are no
@@ -440,47 +409,7 @@
         return std::nullopt;
       return failure;
     }
-    // Function-like macros of the C headers the program imports (Lua's lua_pop and the rest, from the
-    // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
-    // headers give kpp their functions and constants, not their macros.
-    const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
-    // The imported C headers' object-like macros that are another name (glad's glGenTextures is
-    // glad_glGenTextures): a use is written as that name.
-    const std::map<std::string, std::string>* headerAliases = nullptr;
-    // This .cpp file's namespace-scope aliases that another file declares too, with their own
-    // names (`using MyBinder = LuaBinder<LuaRocketSiloControlBehavior>;` is
-    // MyBinderOfLuaRocketSiloControlBehavior): file-local in C++, program-wide in kpp.
-    std::map<std::string, std::string> fileAliasRenames;
-    // The function-like macros of the game's headers this file includes, directly or through other
-    // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
-    // include order.
-    std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
-    // The includes of this file that name a converted file beside it (siblingIncludes): removed.
-    const std::set<std::string>* siblingIncludes = nullptr;
-    const std::set<std::string>* cInterfaceHeaders = nullptr; // overrides/c-headers.txt: included, imported
-    const std::map<std::string, std::set<size_t>>* cInterfaceNames = nullptr; // the functions those headers declare: their parameter counts
-    const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
-    bool cGivenHeader = false; // C: a header given alone, which holds a header-only library's implementation (stb_truetype.h)
-    // C: a header given alone that c-headers.txt keeps as C, which the program imports (fontstash.h):
-    // its text as the import configures it. What that leaves in is the import's, and goes.
-    const std::string* cInterfaceText = nullptr;
-    const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (zlib's inflate.h OS)
-    // C: the names this .c file (or C header given alone) keeps to itself, written `private`
-    // (design.md 15), and the declaration starts that have it already (`typedef struct {...} X;` is
-    // two declarations)
-    const std::set<std::string>* cPrivate = nullptr;
-    std::set<uint32_t> cPrivateAt;
-    const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
-    const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
-    const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
-    // C: the library's interface headers converted into its scope (overrides/interface.txt, design.md
-    // 16: zstd's zstd.h), whose number macros are constants of the scope and whose function-like
-    // macros of values are functions; and the constants they made, by name, which every file's uses
-    // write by name.
-    const std::set<std::string>* cScopeHeaders = nullptr;
-    std::map<std::string, std::string>* cScopeConstants = nullptr;
     bool isScopeHeader() const { return in.c && cScopeHeaders && cScopeHeaders->count(in.path.filename().string()); }
-    std::vector<std::string> scopeFunctions; // an interface header's functions, in its order
     bool redeclaresScopedName(Decl* d) const
     {
       return scopedLibraryNames && !scopedLibraryNames->empty() && redeclaresScoped(d, symbols, *scopedLibraryNames);
@@ -492,35 +421,11 @@
     {
       return cOwnConstant(name) || (cScopeConstants && cScopeConstants->count(name) && !isScopeHeader());
     }
-    // --convert-library: the scoped libraries this program uses, their names by library (design.md
-    // 16): a use of one is written qualified (zstd::ZSTD_compress), and an include of its headers
-    // (zstd/zstd.h) imports nothing.
-    const std::map<std::string, std::string>* scopedLibraryNames = nullptr; // name -> its library
-    const std::set<std::string>* scopedLibraries = nullptr;
-    const std::set<std::string>* scopedHeaders = nullptr; // their interface headers' names (zlib.h), included as "zlib.h" too
-    const std::map<std::string, std::vector<std::string>>* scopedHeaderImports = nullptr; // what an include of one still imports
-    // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
-    // std::ostream;`), by their kpp names: its later unqualified uses are the library's.
-    std::map<std::string, std::string> stdUsingNames;
-    // Every function-like macro's name (callsFunction): an object-like macro that calls something else
-    // is written out at its uses.
-    const std::set<std::string>* functionMacroNames = nullptr;
-    // The converted files' classes and aliases by their own name (convertToKpp), for the fixture of a
-    // fixture test.
-    const std::map<std::string, std::vector<Decl*>>* classesByName = nullptr;
-    // The tests the conversion leaves out (overrides/left-out-tests.txt: `Suite/Test` -> why), those
-    // found and the suites converted: the block of one goes, a comment in its place says why, and its
-    // suite runs its other tests (a stub would stop the suite where the test reaches it). The SUITE
-    // blocks seen so far tell a test's suite: the suite's name and its block's `{` and `}` tokens.
-    const std::map<std::string, std::string>* leftOutTests = nullptr;
-    std::set<std::string>* leftOutTestsFound = nullptr;
-    std::set<std::string>* suitesConverted = nullptr;
     struct SuiteBlock
     {
       std::string name;
       uint32_t open = 0, close = 0;
     };
-    std::vector<SuiteBlock> suiteBlocks;
     // The `}` token closing the `{` token open (0: none).
     uint32_t closingBrace(uint32_t open) const
     {
@@ -568,7 +473,6 @@
       std::set<std::string> members;
       std::vector<std::tuple<std::string, uint32_t, uint32_t>> locals;
     };
-    std::vector<FixtureBody> fixtureBodies;
     const FixtureBody* fixtureBodyAt(uint32_t token) const
     {
       for (const FixtureBody& b : fixtureBodies)
@@ -677,28 +581,6 @@
       counts.add("fixture test bodies");
       fixtureBodies.push_back(std::move(body));
     }
-    // The C libraries this file's library keeps calling, by include path prefix, imported where it
-    // includes them (Lua's override_printf.h includes trio.h, CommonUtil's StringUtil.cpp too; the
-    // includes of trio.h elsewhere, which call none of it, go).
-    const std::set<std::string>* keptCLibraries = nullptr;
-    // The object-like macros of this file and the headers it reaches that are written out at their
-    // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
-    // C++ concatenates them with a literal (`"\n" UTF8_BULLET " "`, since only literals concatenate),
-    // and those whose body is a qualified name everywhere (`#define vkCreateInstance
-    // VulkanImpl::CreateInstanceWrapper`: Vulkan through the function pointers the game loads).
-    std::map<std::string, std::string> objectMacros;
-    // Where this file's own #define of a name holds: from the #define to its #undef (a header's,
-    // seen through an include, holds everywhere).
-    std::map<std::string, std::pair<uint32_t, uint32_t>> ownMacroRanges;
-    // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
-    const Preprocessed* preprocessed = nullptr;
-    // `#pragma pack(push, 1)` to its `#pragma pack(pop)`: the classes defined there are [[packed]]
-    // (Tile, ImmutableStringTemplate, PropertyTree). A pack of 8, the largest alignment there is,
-    // changes nothing; another value gets a TODO.
-    std::vector<std::pair<uint32_t, uint32_t>> packedRanges;
-    std::vector<int> packStack;
-    int pack = 0; // 0: the default
-    uint32_t packedSince = 0;
     void notePack(const std::string& rest, uint32_t offset)
     {
       size_t p = rest.find("pack");
@@ -793,9 +675,6 @@
       if (it != localMacros.end() && !it->second.empty() && it->second.back().to == UINT32_MAX)
         it->second.back().to = offset;
     }
-    std::set<std::string> replacedFunctions;  // qualified names whose definitions were found and removed
-    std::set<std::string> replacedVariables;  // the same, of variables
-    std::vector<Edit> edits;
     // A use of an argument macro, expanded in run() once the edits inside its arguments are known.
     struct ArgumentMacroUse
     {
@@ -803,7 +682,6 @@
       std::vector<std::pair<uint32_t, uint32_t>> args; // offsets
       const std::string* replacement;
     };
-    std::vector<ArgumentMacroUse> argumentMacroUses;
     // A use of a local macro (this file's, or a header's it includes), expanded in run() once the
     // edits inside its arguments are known, as argument macros are: the arguments' tokens stay in
     // the stream, so the rewrites of code apply in them too (a renamed alias, a chrono literal,
@@ -815,27 +693,11 @@
       std::vector<std::pair<uint32_t, uint32_t>> args; // offsets; an empty argument is an empty range
       const LocalMacro* macro;
     };
-    std::vector<LocalMacroUse> localMacroUses;
-    std::vector<ClassDecl*> classStack; // the classes whose members convertDecls is in, outermost first
-    // The identifiers of allocator arguments dropped from std container types (convertTokens), by
-    // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).
-    std::map<uint32_t, std::string> droppedAllocators;
-    Counts counts;
-    // This file's #if groups (convertMarks): the next one's number, and those open, each with whether
-    // its #if line is written out.
-    uint32_t nextIfGroup = 0;
-    std::vector<std::pair<uint32_t, bool>> openIfGroups;
-    // The C headers this file imports, in its include order: written once per library, in its
-    // c-imports.kpp (writeLibraryImports), not in the file.
-    std::vector<std::string> cImports;
     void importC(const std::string& header)
     {
       if (std::find(cImports.begin(), cImports.end(), header) == cImports.end())
         cImports.push_back(header);
     }
-    std::vector<std::string> todos; // "line: text"
-    std::string_view text;
-    const std::vector<Token>& toks;
 
     FileConverter(const ConvertInput& in, GlobalScope& global, const SymbolTable& symbols)
       : in(in), global(global), symbols(symbols), text(in.text), toks(*in.tokens)
@@ -1476,4 +1338,143 @@
       }
       return out;
     }
+
+    const ConvertInput& in;
+    GlobalScope& global;
+    const SymbolTable& symbols;
+    const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
+    std::map<std::string, MemberOverride>* memberOverrides = nullptr; // members a hand-written file adds to classes
+    const CarriedDefaults* carriedDefaults = nullptr;
+    const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
+    const ScopeNames* scopeNames = nullptr;
+    const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
+    std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
+    const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
+    const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
+    const InlineBodies* inlineBodies = nullptr; // collectInlineBodies
+    // The files the conversion leaves out: a class defined only in one of them is defined nowhere
+    // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
+    const std::set<const ParsedFile*>* leftOutFiles = nullptr;
+    const Variants* variants = nullptr;
+    std::vector<VariantDeclaration> variantDeclarations;
+    std::vector<VariantUse> variantUses;
+    std::map<uint32_t, const VariantInfo*> callVariant; // a use's callee token -> the variant its argument is declared as
+    std::vector<ScopeRange> scopeRanges;
+    std::vector<DirectiveRange> directiveRanges;
+    // The locals and parameters of the file's functions by name: where each declaration starts and
+    // where its function ends (the block it is in ends there or sooner: a `::` too many is harmless).
+    std::map<std::string, std::vector<std::pair<uint32_t, uint32_t>>> localNames;
+    std::vector<FunctionRange> functionRanges;
+    std::vector<UnderscoreLocal> underscoreLocals;
+    std::set<uint32_t> namedUnderscores;
+    // Function-like macros defined in this file, expanded at their uses; a name can be defined,
+    // undefined and defined again (`#define INCREMENT(NAME) 1+` then with four parameters).
+    std::map<std::string, std::vector<LocalMacro>> localMacros;
+    // Function-like macros of the C headers the program imports (Lua's lua_pop and the rest, from the
+    // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
+    // headers give kpp their functions and constants, not their macros.
+    const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
+    // The imported C headers' object-like macros that are another name (glad's glGenTextures is
+    // glad_glGenTextures): a use is written as that name.
+    const std::map<std::string, std::string>* headerAliases = nullptr;
+    // This .cpp file's namespace-scope aliases that another file declares too, with their own
+    // names (`using MyBinder = LuaBinder<LuaRocketSiloControlBehavior>;` is
+    // MyBinderOfLuaRocketSiloControlBehavior): file-local in C++, program-wide in kpp.
+    std::map<std::string, std::string> fileAliasRenames;
+    // The function-like macros of the game's headers this file includes, directly or through other
+    // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
+    // include order.
+    std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
+    // The includes of this file that name a converted file beside it (siblingIncludes): removed.
+    const std::set<std::string>* siblingIncludes = nullptr;
+    const std::set<std::string>* cInterfaceHeaders = nullptr; // overrides/c-headers.txt: included, imported
+    const std::map<std::string, std::set<size_t>>* cInterfaceNames = nullptr; // the functions those headers declare: their parameter counts
+    const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
+    bool cGivenHeader = false; // C: a header given alone, which holds a header-only library's implementation (stb_truetype.h)
+    // C: a header given alone that c-headers.txt keeps as C, which the program imports (fontstash.h):
+    // its text as the import configures it. What that leaves in is the import's, and goes.
+    const std::string* cInterfaceText = nullptr;
+    const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (zlib's inflate.h OS)
+    // C: the names this .c file (or C header given alone) keeps to itself, written `private`
+    // (design.md 15), and the declaration starts that have it already (`typedef struct {...} X;` is
+    // two declarations)
+    const std::set<std::string>* cPrivate = nullptr;
+    std::set<uint32_t> cPrivateAt;
+    const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
+    const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
+    const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
+    // C: the library's interface headers converted into its scope (overrides/interface.txt, design.md
+    // 16: zstd's zstd.h), whose number macros are constants of the scope and whose function-like
+    // macros of values are functions; and the constants they made, by name, which every file's uses
+    // write by name.
+    const std::set<std::string>* cScopeHeaders = nullptr;
+    std::map<std::string, std::string>* cScopeConstants = nullptr;
+    std::vector<std::string> scopeFunctions; // an interface header's functions, in its order
+    // --convert-library: the scoped libraries this program uses, their names by library (design.md
+    // 16): a use of one is written qualified (zstd::ZSTD_compress), and an include of its headers
+    // (zstd/zstd.h) imports nothing.
+    const std::map<std::string, std::string>* scopedLibraryNames = nullptr; // name -> its library
+    const std::set<std::string>* scopedLibraries = nullptr;
+    const std::set<std::string>* scopedHeaders = nullptr; // their interface headers' names (zlib.h), included as "zlib.h" too
+    const std::map<std::string, std::vector<std::string>>* scopedHeaderImports = nullptr; // what an include of one still imports
+    // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
+    // std::ostream;`), by their kpp names: its later unqualified uses are the library's.
+    std::map<std::string, std::string> stdUsingNames;
+    // Every function-like macro's name (callsFunction): an object-like macro that calls something else
+    // is written out at its uses.
+    const std::set<std::string>* functionMacroNames = nullptr;
+    // The converted files' classes and aliases by their own name (convertToKpp), for the fixture of a
+    // fixture test.
+    const std::map<std::string, std::vector<Decl*>>* classesByName = nullptr;
+    // The tests the conversion leaves out (overrides/left-out-tests.txt: `Suite/Test` -> why), those
+    // found and the suites converted: the block of one goes, a comment in its place says why, and its
+    // suite runs its other tests (a stub would stop the suite where the test reaches it). The SUITE
+    // blocks seen so far tell a test's suite: the suite's name and its block's `{` and `}` tokens.
+    const std::map<std::string, std::string>* leftOutTests = nullptr;
+    std::set<std::string>* leftOutTestsFound = nullptr;
+    std::set<std::string>* suitesConverted = nullptr;
+    std::vector<SuiteBlock> suiteBlocks;
+    std::vector<FixtureBody> fixtureBodies;
+    // The C libraries this file's library keeps calling, by include path prefix, imported where it
+    // includes them (Lua's override_printf.h includes trio.h, CommonUtil's StringUtil.cpp too; the
+    // includes of trio.h elsewhere, which call none of it, go).
+    const std::set<std::string>* keptCLibraries = nullptr;
+    // The object-like macros of this file and the headers it reaches that are written out at their
+    // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
+    // C++ concatenates them with a literal (`"\n" UTF8_BULLET " "`, since only literals concatenate),
+    // and those whose body is a qualified name everywhere (`#define vkCreateInstance
+    // VulkanImpl::CreateInstanceWrapper`: Vulkan through the function pointers the game loads).
+    std::map<std::string, std::string> objectMacros;
+    // Where this file's own #define of a name holds: from the #define to its #undef (a header's,
+    // seen through an include, holds everywhere).
+    std::map<std::string, std::pair<uint32_t, uint32_t>> ownMacroRanges;
+    // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
+    const Preprocessed* preprocessed = nullptr;
+    // `#pragma pack(push, 1)` to its `#pragma pack(pop)`: the classes defined there are [[packed]]
+    // (Tile, ImmutableStringTemplate, PropertyTree). A pack of 8, the largest alignment there is,
+    // changes nothing; another value gets a TODO.
+    std::vector<std::pair<uint32_t, uint32_t>> packedRanges;
+    std::vector<int> packStack;
+    int pack = 0; // 0: the default
+    uint32_t packedSince = 0;
+    std::set<std::string> replacedFunctions;  // qualified names whose definitions were found and removed
+    std::set<std::string> replacedVariables;  // the same, of variables
+    std::vector<Edit> edits;
+    std::vector<ArgumentMacroUse> argumentMacroUses;
+    std::vector<LocalMacroUse> localMacroUses;
+    std::vector<ClassDecl*> classStack; // the classes whose members convertDecls is in, outermost first
+    // The identifiers of allocator arguments dropped from std container types (convertTokens), by
+    // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).
+    std::map<uint32_t, std::string> droppedAllocators;
+    Counts counts;
+    // This file's #if groups (convertMarks): the next one's number, and those open, each with whether
+    // its #if line is written out.
+    uint32_t nextIfGroup = 0;
+    std::vector<std::pair<uint32_t, bool>> openIfGroups;
+    // The C headers this file imports, in its include order: written once per library, in its
+    // c-imports.kpp (writeLibraryImports), not in the file.
+    std::vector<std::string> cImports;
+    std::vector<std::string> todos; // "line: text"
+    std::string_view text;
+    const std::vector<Token>& toks;
   };

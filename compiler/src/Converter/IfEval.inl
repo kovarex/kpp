@@ -9,12 +9,6 @@
   // converted file defines, in a branch this build drops) are collected in `undefined`.
   struct IfEval
   {
-    std::string s;
-    const MacroTable& table;
-    std::set<std::string>* undefined = nullptr;
-    const std::set<std::string>* known = nullptr;
-    int depth = 0;
-    size_t p = 0;
     bool unexpected(const std::string& name) const { return !undefinedOnPurpose.count(name) && !(known && known->count(name)); }
     void skipSpace()
     {
@@ -261,5 +255,12 @@
         l = l || r;
       }
     }
+
+    std::string s;
+    const MacroTable& table;
+    std::set<std::string>* undefined = nullptr;
+    const std::set<std::string>* known = nullptr;
+    int depth = 0;
+    size_t p = 0;
   };
 

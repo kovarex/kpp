@@ -325,17 +325,6 @@ static void blankForParse(Preprocessed& p, const CMacros* cMacros = nullptr)
 
 struct SourceConfiguration::Impl
 {
-  CMacros cMacros; // with cSources
-  std::vector<std::filesystem::path> includeDirectories; // with cSources: cIncludeDirectories
-  bool cBuild = false;        // with cSources: preprocessed as factorio-in-kpp builds a C library
-  MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
-  std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
-  std::set<std::string> cEmptyDefines;             // the defines.txt ones that are empty (trio's TRIO_PUBLIC=)
-  std::set<std::string> cPrivateNames;             // private-names.txt: names the library keeps to its files (stb_truetype's stbrp_*)
-  std::map<std::string, std::string> cIncluderHeaders; // includer-headers.txt: a header, by file name -> the header its includers include first
-  MacroTable cLibraryBase;                         // cDefines without the library's defines.txt: how the program's imports see its headers
-  std::set<std::string> cKnownUndefined;           // undefined.txt: the #if names the library's C build leaves undefined
-
   // A header as the program imports it (C: without the library's own defines, its *_IMPLEMENTATION
   // switches): the configured text, the branches it leaves out blank.
   std::string interfaceConfigured(size_t i)
@@ -346,13 +335,6 @@ struct SourceConfiguration::Impl
       return j == SIZE_MAX ? nullptr : of(j);
     }, &defines, &cLibraryBase).configured;
   }
-  std::vector<std::filesystem::path> paths;
-  std::vector<std::string_view> texts;
-  std::vector<std::filesystem::path> roots;
-  std::map<std::string, size_t> byPath; // pathKeyOf -> index
-  std::vector<std::unique_ptr<Preprocessed>> results;
-  std::vector<char> state; // 0: not yet, 1: being preprocessed (an include cycle stops there), 2: done
-  std::set<std::string> defines; // every name a `#define` of some file names, in any branch
 
   // The file a `#include` in file i names, among the configured ones: next to file i, or under a
   // root or the directory above it (`<Util/X.hpp>` under src, `<CommonUtil/X.hpp>` under libraries).
@@ -417,6 +399,24 @@ struct SourceConfiguration::Impl
     auto it = byPath.find(pathKeyOf(p));
     return it == byPath.end() ? nullptr : results[it->second].get();
   }
+
+  CMacros cMacros; // with cSources
+  std::vector<std::filesystem::path> includeDirectories; // with cSources: cIncludeDirectories
+  bool cBuild = false;        // with cSources: preprocessed as factorio-in-kpp builds a C library
+  MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
+  std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
+  std::set<std::string> cEmptyDefines;             // the defines.txt ones that are empty (trio's TRIO_PUBLIC=)
+  std::set<std::string> cPrivateNames;             // private-names.txt: names the library keeps to its files (stb_truetype's stbrp_*)
+  std::map<std::string, std::string> cIncluderHeaders; // includer-headers.txt: a header, by file name -> the header its includers include first
+  MacroTable cLibraryBase;                         // cDefines without the library's defines.txt: how the program's imports see its headers
+  std::set<std::string> cKnownUndefined;           // undefined.txt: the #if names the library's C build leaves undefined
+  std::vector<std::filesystem::path> paths;
+  std::vector<std::string_view> texts;
+  std::vector<std::filesystem::path> roots;
+  std::map<std::string, size_t> byPath; // pathKeyOf -> index
+  std::vector<std::unique_ptr<Preprocessed>> results;
+  std::vector<char> state; // 0: not yet, 1: being preprocessed (an include cycle stops there), 2: done
+  std::set<std::string> defines; // every name a `#define` of some file names, in any branch
 };
 
 // The function-like macros the C headers at paths define (in the branches their #if lines select, as

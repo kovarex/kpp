@@ -12,15 +12,16 @@
   // A file as the configuration preprocesses it.
   struct Preprocessed
   {
+    // What blankForParse took out of `configured` for the parse: [offset, offset + length) of the
+    // text, and what the conversion writes there instead.
+    struct Blank { uint32_t offset, length; std::string replacement; };
+
     std::string configured;                              // the text, the dropped lines and every conditional directive blanked
     std::vector<std::pair<uint32_t, uint32_t>> dropped;  // the [begin, end) offsets of the lines the configuration drops
     std::vector<std::pair<uint32_t, std::string>> notes; // the #if lines that test a symbol nothing defines, with a TODO text
     std::vector<std::set<std::string>> noteNames;        // and those symbols, a set per note
     MacroTable defined;                                  // the object-like macros it leaves defined beyond the build's (its includes' too)
     std::set<std::string> undefined;                     // the build's or its includes' macros it #undefs
-    // What blankForParse took out of `configured` for the parse: [offset, offset + length) of the
-    // text, and what the conversion writes there instead.
-    struct Blank { uint32_t offset, length; std::string replacement; };
     std::vector<Blank> blanked;
   };
 

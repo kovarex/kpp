@@ -773,11 +773,12 @@
     // an auto variable is its initialiser's or, for a range-for's, its range's element.
     struct SeenType
     {
+      bool known() const { return type || first; }
+
       Type* type = nullptr;
       Type* first = nullptr;
       Type* second = nullptr;
       bool iterator = false;
-      bool known() const { return type || first; }
     };
     std::map<Decl*, Expr*> rangeForRanges; // a range-for's variable: its range
     // A std container's element: a map's key and value pair, an array's or a sequence's T.
