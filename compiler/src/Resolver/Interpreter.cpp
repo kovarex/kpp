@@ -5645,12 +5645,32 @@ auto GlobalScope::Impl::constDelete(DeleteExpr* d, const TypeContext& ctx, int d
     return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory malloc allocated at " + constWhereText(a.allocated));
   if (a.isFreed)
     return fail("memory freed twice (first at " + constWhereText(a.freed) + ")");
-  if (a.array != d->isArray || p->target->path != (a.array ? std::vector<size_t>{0} : std::vector<size_t>{}))
+  const Ty* pointee = p->type && types.unqualified(types.stripRef(p->type))->kind == TyKind::Pointer ? types.unqualified(types.unqualified(types.stripRef(p->type))->inner) : nullptr;
+  // `delete base` of a derived object new made: through its base part, whose destructor is virtual
+  // ([expr.delete] 3), the whole object destroyed (its destructor first) and its block freed.
+  auto virtualDestructor = [&](const Ty* t) {
+    std::function<bool(const Ty*, int)> declares = [&](const Ty* c, int level) -> bool {
+      ClassDecl* def = c && level <= 16 ? classDefinition(c) : nullptr;
+      const ConstClassLayout* layout = def ? constLayoutOf(c, 0) : nullptr;
+      if (!layout)
+        return false;
+      for (Decl* m : membersRead(def))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (m->flags & (DF_Virtual | DF_Override)))
+          return true;
+      for (const Ty* b : layout->bases)
+        if (declares(b, level + 1))
+          return true;
+      return false;
+    };
+    return t && t->kind == TyKind::Class && declares(t, 0);
+  };
+  bool throughBase = !a.array && !d->isArray && !p->target->path.empty() && virtualDestructor(pointee) &&
+                     constDynamicPlace(ConstPlace{&constHeap(), index, p->target->path, pointee}, depth).path.empty();
+  if (a.array != d->isArray || (!throughBase && p->target->path != (a.array ? std::vector<size_t>{0} : std::vector<size_t>{})))
     return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory " + (a.array ? "new[]" : "new") + " allocated at " +
                 constWhereText(a.allocated) + (p->target->path.size() > (a.array ? 1u : 0u) ? ", through a pointer into it" : ""));
-  const Ty* pointee = p->type && types.unqualified(types.stripRef(p->type))->kind == TyKind::Pointer ? types.unqualified(types.unqualified(types.stripRef(p->type))->inner) : nullptr;
   const Ty* object = constHeap()[index].type;
-  if (!pointee || types.unqualified(a.array ? object->inner : object) != pointee)
+  if (!pointee || (!throughBase && types.unqualified(a.array ? object->inner : object) != pointee))
     return fail("a delete through a pointer of another type than the object's is not supported in a constant evaluation yet");
   ConstValue value = constHeap()[index].value;
   ConstPlace held{&constHeap(), index, {}, object};

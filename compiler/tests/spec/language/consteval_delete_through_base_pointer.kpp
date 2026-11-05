@@ -1,0 +1,47 @@
+// spec: at compile time `delete a` through a pointer to the base part of an object new made, the base's destructor virtual ([expr.delete] 3), destroys the whole object (the derived class's destructor first, then the base's) and frees its block, as at run time; so does a UniquePtr<A> holding a B
+// found by thread D (2026-11-05): it was no constant ("delete of memory new allocated, through a pointer into it")
+class A
+{
+public:
+  int* log = nullptr;
+  virtual ~A()
+  {
+    if (this->log)
+      *this->log = *this->log * 10 + 1;
+  }
+};
+class B : public A
+{
+public:
+  ~B() override
+  {
+    if (this->log)
+      *this->log = *this->log * 10 + 2;
+  }
+};
+constexpr int deleted()
+{
+  int log = 0;
+  B* b = new B();
+  b->log = &log;
+  A* a = b;
+  delete a;
+  return log;
+}
+constexpr int owned()
+{
+  int log = 0;
+  {
+    B* b = new B();
+    b->log = &log;
+    UniquePtr<A> u(b);
+  }
+  return log;
+}
+constexpr int d = deleted();
+constexpr int o = owned();
+int main()
+{
+  println(d, " ", deleted(), " ", o, " ", owned());
+  return 0;
+}
