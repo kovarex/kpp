@@ -1,0 +1,39 @@
+// spec: at compile time free takes a pointer to the start of the block malloc gave, whatever type it points through: the node's first base (`free(base)` with base a Links*, as ForwardList's destroyNode frees a ForwardLinks*) and the void* malloc returned after the block holds ints (`5 3` both)
+// found with the library's node containers at compile time (language/consteval_node_containers): ForwardList and Set stopped at "free of a pointer into memory allocated at Sizes.kpp:59"
+extern "C" import "stdlib.h";
+struct Links
+{
+  Links* next = nullptr;
+};
+struct Node : Links
+{
+  int value;
+};
+constexpr int throughBase()
+{
+  Node* n = (Node*)allocateBytes(sizeof(Node));
+  n->next = nullptr;
+  n->value = 5;
+  Links* base = n;
+  int v = ((Node*)base)->value;
+  free(base);
+  return v;
+}
+constexpr int throughVoid()
+{
+  void* block = malloc(2 * sizeof(int));
+  int* ints = (int*)block;
+  ints[0] = 3;
+  ints[1] = 4;
+  int v = ints[0];
+  free(block);
+  return v;
+}
+constexpr int base = throughBase();
+constexpr int plain = throughVoid();
+int main()
+{
+  println(throughBase(), " ", throughVoid());
+  println(base, " ", plain);
+  return 0;
+}

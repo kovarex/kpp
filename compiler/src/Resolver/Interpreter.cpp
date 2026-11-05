@@ -4156,6 +4156,44 @@ auto GlobalScope::Impl::constCAllocation(std::string_view name, const std::vecto
       return std::nullopt;
     return it->second.index;
   };
+  // Whether path designates the start of the object of type t, whose address is that object's:
+  // element 0, each class's first base, or its first member where it has none, in classes with no
+  // virtual function, own or a base's (no vtable pointer before them, nor bases reordered).
+  // `free(node)` with node a ForwardLinks*, the ForwardNode's base: the block malloc gave.
+  std::function<bool(const ConstClassLayout*, int)> polymorphic = [&](const ConstClassLayout* l, int d) {
+    if (!l || !l->decl || d > 32)
+      return true;
+    for (Decl* m : membersRead(l->decl))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)))
+        return true;
+    for (const Ty* b : l->bases)
+      if (polymorphic(constLayoutOf(b, depth + 1), d + 1))
+        return true;
+    return false;
+  };
+  auto atStart = [&](const Ty* t, const std::vector<size_t>& path) -> bool {
+    for (size_t k = 0; k < path.size(); ++k)
+    {
+      t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+      if (!t || path[k] != 0)
+        return false;
+      if (t->kind == TyKind::Array)
+      {
+        t = t->inner;
+        continue;
+      }
+      const ConstClassLayout* l = t->kind == TyKind::Class ? constLayoutOf(t, depth + 1) : nullptr;
+      if (!l || l->anonymous || polymorphic(l, 0))
+        return false;
+      if (!l->bases.empty())
+        t = l->bases[0];
+      else if (!l->fieldTypes.empty() && !l->fieldBits[0])
+        t = l->fieldTypes[0];
+      else
+        return false;
+    }
+    return true;
+  };
   auto release = [&](const ConstValue& p, const char* what) -> std::optional<size_t> {
     std::optional<size_t> index = block(p);
     if (!index || !constAllocations()[*index].raw)
@@ -4170,8 +4208,8 @@ auto GlobalScope::Impl::constCAllocation(std::string_view name, const std::vecto
       fail("memory freed twice (first at " + constWhereText(a.freed) + ")");
       return std::nullopt;
     }
-    bool typed = constHeap()[*index].type != nullptr;
-    if (p.target->path != (typed ? std::vector<size_t>{0} : std::vector<size_t>{}))
+    const Ty* typed = constHeap()[*index].type; // (the array of objects made in it, if any)
+    if (typed ? !atStart(typed, p.target->path) : !p.target->path.empty())
     {
       fail(std::string(what) + " of a pointer into memory allocated at " + constWhereText(a.allocated));
       return std::nullopt;
