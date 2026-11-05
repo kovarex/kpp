@@ -130,6 +130,10 @@ set WHOLEIN=kpp\whole-both
 :wholemerge
 %KPPC% --convert-merge %WHOLEIN%-debug %WHOLEIN%-release %WHOLE% overrides\configuration-choices.txt %WHOLEIN%-final || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
+set STEP=the debugger rules
+rem The game's own Visual Studio rules (utils\tools\vs15\Visualizers\factorio.natvis) for the converted
+rem types: tools\factorio.natvis, which the checkout's build.kpp gives both executables.
+python -I natvis.py %FACTORIO% %WHOLE% %WHOLE%\tools\factorio.natvis || goto :failed
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
 rem with the headers they include from Factorio's src\ (which the checkout has as kpp only) and the
