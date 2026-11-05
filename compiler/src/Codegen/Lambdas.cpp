@@ -556,6 +556,7 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
   if (slots.size() != info.captured.size())
     unsupported(l, "a lambda whose captures differ from its closure's");
   std::string slot = into.empty() ? newObjectSlot(t, l) : into;
+  InlineParts parts(*this, l); // (each capture made is destroyed if a later one's copy throws)
   for (size_t i = 0; i < info.captured.size(); ++i)
   {
     std::string field = gep(info.structName, slot, uint32_t(i));
@@ -576,6 +577,7 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
     if (slots[i].init)
     {
       initializeFrom(field, info.fieldTypes[i], slots[i].init, l); // `[x = expr]`
+      parts.built(field, info.fieldTypes[i]);
       continue;
     }
     Local* found = nullptr;
@@ -608,6 +610,7 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
         copyConstruct(field, addr, info.fieldTypes[i], l);
       else
         copyClosure(field, addr, info.fieldTypes[i], l, false); // `[f]` of a closure
+      parts.built(field, info.fieldTypes[i]);
     }
     else
       store(load(addr, info.fieldTypes[i], l), field, info.fieldTypes[i], l);

@@ -1,0 +1,40 @@
+// spec: the parts of an object built without a constructor function of its own are destroyed when a later part's construction throws, the last first, as C++ requires ([except.ctor] 3): an array's default-constructed elements (`M arr[3]` whose second throws destroys the first), a braced aggregate's members, an implicit copy constructor's member copies, and a lambda's captures by copy; the same as g++ prints
+// found by thread B (2026-11-05): kpp registered no cleanup for them, so each left what it had built undestroyed (`M1 | array`, `M31c | copy`); a written constructor's body had them, and an implicit constructor's members since 53738d4c
+int counter = 0;
+class M
+{
+public:
+  int id;
+  M() : id(++counter) { if (id == 2) throw RuntimeError("second"); print("M", id, " "); }
+  M(int i) : id(i) { print("M", id, " "); }
+  M(const M& o) : id(o.id + 10) { if (o.id == 22) throw RuntimeError("copy"); print("M", id, "c "); }
+  ~M() { print("~M", id, " "); }
+};
+int fail(int x) { if (x > 0) throw RuntimeError("no"); return x; }
+struct Couple
+{
+  M first;
+  M second;
+};
+class Holder
+{
+public:
+  M a{21};
+  M b{22};
+};
+int main()
+{
+  try { M arr[3]; } catch (...) { println("| array"); }
+  try { Couple p{M(5), M(fail(1))}; } catch (...) { println("| aggregate"); }
+  Holder h;
+  println("| made");
+  try { Holder copy(h); } catch (...) { println("| copy"); }
+  try
+  {
+    M one(31);
+    M two(22);
+    auto f = [one, two]() { return one.id + two.id; };
+  }
+  catch (...) { println("| lambda"); }
+  return 0;
+}

@@ -47,6 +47,26 @@
     // that appends it (resolver: textPieceOf); the Text a pointer to them and their count.
     std::string textTemporary(BraceInitExpr* b, Node* at);
 
+    // The parts of an object built inline (no constructor function of their own: an implicit
+    // constructor's bases and members, a memberwise copy's, a braced aggregate's, a closure's
+    // captures, an array's elements), each destroyed if a later part's construction throws
+    // ([except.ctor] 3): unwind-only cleanups that go with the statement's temporaries (so that
+    // unwinding destroys them before a new-expression frees the memory), dropped when this ends,
+    // the object whole (its owner destroys it then). Until 2026-11-05 only a written constructor's
+    // body had them: `class Implicit { M a{3}; M b{fail(1)}; }` left a undestroyed.
+    struct InlineParts
+    {
+      Emitter& e;
+      Node* at;
+      std::vector<std::string> parts;
+      InlineParts(Emitter& emitter, Node* where) : e(emitter), at(where) {}
+      InlineParts(const InlineParts&) = delete;
+      void built(const std::string& addr, const Ty* t);
+      // An array's elements built in a loop: the first *countSlot of them (an i64 the loop keeps).
+      void builtCounted(const std::string& addr, const Ty* arrayTy, const std::string& countSlot);
+      ~InlineParts();
+    };
+
     // Default-constructs every element of an array of objects at addr: one after the other for a
     // few, in a loop for more (an array of a thousand would otherwise be a thousand copies).
     void constructArray(const std::string& addr, const Ty* t, Node* at);

@@ -1,0 +1,6 @@
+M1 ~M1 | array
+M5 ~M5 | aggregate
+M21 M22 | made
+M31c ~M31 | copy
+M31 M22 M41c ~M41 ~M22 ~M31 | lambda
+~M22 ~M21 

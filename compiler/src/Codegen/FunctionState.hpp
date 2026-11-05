@@ -97,6 +97,9 @@
       // constructor's bases and members as it builds them, which outlive it when it returns.
       bool unwindOnly = false;
       bool freeMemory = false; // `new`'s allocation while its constructor runs: freed, not destroyed
+      // An array built in a loop (InlineParts::builtCounted): only its first elements are built,
+      // as many as the i64 at countSlot says, and only those are destroyed, the last first.
+      std::string countSlot;
     };
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.

@@ -208,8 +208,39 @@ auto codegen::Emitter::textTemporary(BraceInitExpr* b, Node* at) -> std::string
   return text;
 }
 
+auto codegen::Emitter::InlineParts::built(const std::string& addr, const Ty* t) -> void
+{
+  if (!e.needsDestruction(t, at))
+    return;
+  Object o{addr, t};
+  o.unwindOnly = true;
+  e.statementTemps.push_back(o);
+  parts.push_back(addr);
+}
+
+auto codegen::Emitter::InlineParts::builtCounted(const std::string& addr, const Ty* arrayTy, const std::string& countSlot) -> void
+{
+  if (!e.needsDestruction(arrayTy, at))
+    return;
+  Object o{addr, arrayTy};
+  o.unwindOnly = true;
+  o.countSlot = countSlot;
+  e.statementTemps.push_back(o);
+  parts.push_back(addr);
+}
+
+codegen::Emitter::InlineParts::~InlineParts()
+{
+  if (parts.empty())
+    return;
+  e.statementTemps.erase(std::remove_if(e.statementTemps.begin(), e.statementTemps.end(),
+                                        [&](const Object& o) { return o.unwindOnly && std::find(parts.begin(), parts.end(), o.addr) != parts.end(); }),
+                         e.statementTemps.end());
+}
+
 auto codegen::Emitter::constructArray(const std::string& addr, const Ty* t, Node* at) -> void
 {
+  InlineParts parts(*this, at);
   auto constructAt = [&](const std::string& index)
   {
     std::string element = newTemp();
@@ -220,16 +251,18 @@ auto codegen::Emitter::constructArray(const std::string& addr, const Ty* t, Node
       constructArray(element, t->inner, at);
     else
       storeZero(t->inner, element, at);
+    return element;
   };
   if (t->count <= 8)
   {
     for (uint32_t i = 0; i < t->count; ++i)
-      constructAt(std::to_string(i));
+      parts.built(constructAt(std::to_string(i)), t->inner);
     return;
   }
   std::string slot = "%v" + std::to_string(temp++);
   allocas += "  " + slot + " = alloca i64\n";
   fn += "  store i64 0, ptr " + slot + "\n";
+  parts.builtCounted(addr, t, slot); // (the loop's count: the elements built before the one under way)
   std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
   emitBranch(loopL);
   startBlock(loopL);
@@ -720,33 +753,16 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
   // the memory, and are dropped once the object is whole, which its owner destroys then. Until
   // 2026-11-05 the inline parts had none: `class Implicit { M a{3}; M b{fail(1)}; };` left a
   // undestroyed when b's initializer threw.
-  std::vector<std::string> inlineParts;
-  struct DropInlineParts
-  {
-    Emitter& e;
-    std::vector<std::string>& parts;
-    ~DropInlineParts()
-    {
-      if (parts.empty())
-        return;
-      e.statementTemps.erase(std::remove_if(e.statementTemps.begin(), e.statementTemps.end(),
-                                            [&](const Object& o)
-                                            { return o.unwindOnly && std::find(parts.begin(), parts.end(), o.addr) != parts.end(); }),
-                             e.statementTemps.end());
-    }
-  } dropInlineParts{*this, inlineParts};
+  InlineParts inlineParts(*this, at);
   auto builtPart = [&](const std::string& part, const Ty* pt)
   {
-    if (!needsDestruction(pt, at))
-      return;
-    Object o{part, pt};
-    o.unwindOnly = true;
-    if (built)
-      scopes.back().push_back(o);
-    else
+    if (!built)
+      inlineParts.built(part, pt);
+    else if (needsDestruction(pt, at))
     {
-      statementTemps.push_back(o);
-      inlineParts.push_back(part);
+      Object o{part, pt};
+      o.unwindOnly = true;
+      scopes.back().push_back(o);
     }
   };
   auto initFor = [&](uint32_t symbol) -> const FunctionDecl::CtorInit*
@@ -1393,16 +1409,20 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, info.fieldDecls[0]));
         if (args.size() > ft->count)
           unsupported(at, "more values than the array of " + qualifiedName(c) + " holds");
+        InlineParts parts(*this, at);
         for (size_t i = 0; i < args.size(); ++i)
         {
           std::string element = newTemp();
           fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(i) + "\n";
           initializeFrom(element, ft->inner, args[i], at);
+          parts.built(element, ft->inner);
         }
         return;
       }
     }
-    // C++17 aggregate init: base sub-objects consume the first args, then data members.
+    // C++17 aggregate init: base sub-objects consume the first args, then data members; each part
+    // made is destroyed if a later one's initializer throws (InlineParts).
+    InlineParts parts(*this, at);
     size_t argIdx = 0;
     if (!info.bases.empty() && designators.empty())
     {
@@ -1413,6 +1433,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         std::string baseAddr = gep(info.name, addr, baseFieldIdx);
         const Ty* bt = info.fieldTypes[baseFieldIdx];
         initializeFrom(baseAddr, bt, args[argIdx++], at);
+        parts.built(baseAddr, bt);
       }
       storeVptrs(addr, info); // the bases built pointed it at theirs
     }
@@ -1503,6 +1524,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
           std::string element = newTemp();
           fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(e) + "\n";
           initializeFrom(element, ft->inner, elided[i][e], at);
+          if (!info.isUnion)
+            parts.built(element, ft->inner);
         }
         ++i;
         continue;
@@ -1523,7 +1546,11 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         if (reference)
           bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at); // `Ref r{x}`: the member refers to x
         else
+        {
           initializeFrom(fieldAddr, ft, value, at);
+          if (!info.isUnion)
+            parts.built(fieldAddr, ft);
+        }
         continue;
       }
       if (d->kind != NodeKind::VariableDecl)
@@ -1537,6 +1564,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         defaultConstruct(fieldAddr, ft, at);
       else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
         constructArray(fieldAddr, ft, at);
+      if (!reference && !info.isUnion)
+        parts.built(fieldAddr, ft);
     }
     return;
   }
@@ -2079,14 +2108,17 @@ auto codegen::Emitter::memberwiseConstruct(const std::string& dst, const std::st
       storeVptrs(dst, structFor(t, at)); // the source may be of a derived class (a slicing copy)
     return;
   }
-  // Memberwise: bases and members in order, each with its own copy semantics.
+  // Memberwise: bases and members in order, each with its own copy semantics, each destroyed if a
+  // later one's copy throws.
   const StructInfo& info = structFor(t, at);
+  InlineParts parts(*this, at);
   for (auto& [baseDef, index] : info.bases)
   {
     if (move)
       moveConstruct(gep(info.name, dst, index), gep(info.name, src, index), info.fieldTypes[index], at);
     else
       copyConstruct(gep(info.name, dst, index), gep(info.name, src, index), info.fieldTypes[index], at);
+    parts.built(gep(info.name, dst, index), info.fieldTypes[index]);
   }
   storeVptrs(dst, info); // after the bases, whose constructors pointed it at theirs
   for (Decl* d : info.fieldDecls)
@@ -2106,6 +2138,8 @@ auto codegen::Emitter::memberwiseConstruct(const std::string& dst, const std::st
     {
       copyBytes(to, from, ft, at);
     }
+    if (!info.isUnion)
+      parts.built(to, ft);
   }
 }
 
@@ -2117,6 +2151,7 @@ auto codegen::Emitter::transferArray(const std::string& dst, const std::string& 
     copyBytes(dst, src, t, at);
     return;
   }
+  InlineParts parts(*this, at); // (constructing, not assigning: the elements built so far)
   auto transferAt = [&](const std::string& index)
   {
     std::string to = newTemp(), from = newTemp();
@@ -2131,16 +2166,23 @@ auto codegen::Emitter::transferArray(const std::string& dst, const std::string& 
       moveConstruct(to, from, element, at);
     else
       copyConstruct(to, from, element, at);
+    return to;
   };
   if (t->count <= 8)
   {
     for (uint32_t i = 0; i < t->count; ++i)
-      transferAt(std::to_string(i));
+    {
+      std::string to = transferAt(std::to_string(i));
+      if (!assign)
+        parts.built(to, t->inner);
+    }
     return;
   }
   std::string slot = "%v" + std::to_string(temp++);
   allocas += "  " + slot + " = alloca i64\n";
   fn += "  store i64 0, ptr " + slot + "\n";
+  if (!assign)
+    parts.builtCounted(dst, t, slot);
   std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
   emitBranch(loopL);
   startBlock(loopL);

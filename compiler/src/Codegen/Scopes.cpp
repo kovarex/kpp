@@ -34,6 +34,31 @@ auto codegen::Emitter::destroyObject(const Object& o) -> void
     ensureMalloc();
     fn += "  call void @free(ptr " + o.addr + ")" + bundle() + "\n";
   }
+  else if (!o.countSlot.empty())
+  {
+    // The elements an array built in a loop has so far (InlineParts::builtCounted), the last first.
+    const Ty* t = types.unqualified(types.stripRef(o.ty));
+    std::string index = "%v" + std::to_string(temp++);
+    allocas += "  " + index + " = alloca i64\n";
+    std::string count = newTemp();
+    fn += "  " + count + " = load i64, ptr " + o.countSlot + "\n";
+    fn += "  store i64 " + count + ", ptr " + index + "\n";
+    std::string loopL = newLabel("unbuild.loop"), bodyL = newLabel("unbuild.body"), endL = newLabel("unbuild.end");
+    emitBranch(loopL);
+    startBlock(loopL);
+    std::string i = newTemp(), done = newTemp();
+    fn += "  " + i + " = load i64, ptr " + index + "\n";
+    fn += "  " + done + " = icmp eq i64 " + i + ", 0\n";
+    fn += "  br i1 " + done + ", label %" + endL + ", label %" + bodyL + "\n";
+    startBlock(bodyL);
+    std::string previous = newTemp(), element = newTemp();
+    fn += "  " + previous + " = sub i64 " + i + ", 1\n";
+    fn += "  store i64 " + previous + ", ptr " + index + "\n";
+    fn += "  " + element + " = getelementptr inbounds " + llType(t, nullptr) + ", ptr " + o.addr + ", i64 0, i64 " + previous + "\n";
+    destroy(element, t->inner, nullptr);
+    emitBranch(loopL);
+    startBlock(endL);
+  }
   else
     destroy(o.addr, o.ty, nullptr);
 }
