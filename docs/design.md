@@ -2286,9 +2286,13 @@ RendererContainer's instances (2), which the code generator evaluates.
 
 *Objects of the run, 2026-10-31 (for build.kpp, section 12).* The interpreter runs the program's
 object lifetimes, so that build.kpp can compute with Vector and String. Copies and moves run the
-class's own copy and move constructors with C++'s value categories: `T b = a;` copies,
+class's own copy and move constructors with C++'s value categories: `T b = a;` copies, as do
+`T b(a)`, `T b{a}`, `T(a)`, `T{a}` and an aggregate's `W b{a}` (spec
+language/consteval_direct_initialization_copies_and_moves),
 `static_cast<T&&>(b)`, `move(b)` and `forward<T>(x)` of an rvalue move (the source's place given to
-the constructor, so a move empties it), a by-value parameter is copied or moved from its argument,
+the constructor, so a move empties it; an xvalue whose place the run does not know, `move(v[0])`,
+is no constant), a by-value parameter is copied or moved from its argument, an initializer is
+evaluated once (language/consteval_initializer_evaluated_once),
 `return local;` moves (a constant evaluation elides no named object, [class.copy.elision]/1; the
 program elides it where section 23's rule holds, and the interpreter is to follow, D), a prvalue
 initializes its object directly, and an implicit copy or move

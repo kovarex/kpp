@@ -385,8 +385,27 @@
   // An object of class t initialised from expression init, a value of t itself, as C++ initialises one:
   // a prvalue is the object (elided); an lvalue is copied and an xvalue (`move(x)`) moved by t's copy
   // or move constructor (constCopyConstruct). The outer nullopt: init is not such a copy, or copying t
-  // runs no code.
-  std::optional<std::optional<ConstValue>> constCopyInit(Expr* init, const Ty* t, const TypeContext& ctx, int depth, bool moving = false);
+  // runs no code. evaluated: set to init's value when it was evaluated and is of another class (a
+  // converting constructor's argument), which the caller then takes rather than evaluating init
+  // again (`C c = *it++;` advanced it twice). An xvalue whose place is not known is no constant:
+  // its move would leave the object it names as it was.
+  std::optional<std::optional<ConstValue>> constCopyInit(Expr* init, const Ty* t, const TypeContext& ctx, int depth, bool moving = false,
+                                                         std::optional<ConstValue>* evaluated = nullptr);
+
+  // Whether v is an object of class u itself (cv-qualification and references aside).
+  bool constIsObjectOf(const ConstValue& v, const Ty* u);
+
+  // The object of class u made from v, an object of u itself, as the category of the expression
+  // that gave it chooses (0 a prvalue, 1 an lvalue, 2 an xvalue; at: where it is, when known): a
+  // prvalue is the object itself, an lvalue is copied and an xvalue moved by u's own constructor
+  // (design.md "Objects of the run"); an xvalue whose place is not known is no constant.
+  std::optional<ConstValue> constFromObject(const Ty* u, const ConstValue& v, const std::optional<ConstPlace>& at, uint8_t category, int depth);
+
+  // `T(args)`, a functional cast or a call of the class's name (`T b(a)` too, which the parser
+  // writes as `T b = T(a)`): the object the constructor the arguments choose makes, one argument
+  // that is an object of the class itself copied or moved by the class's constructor
+  // (constFromObject), which constConstruct, given values without their categories, takes as it is.
+  std::optional<ConstValue> constConstructFrom(const Ty* t, Span<Expr*> args, const TypeContext& ctx, int depth);
 
   std::optional<ConstValue> constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth);
 
@@ -418,8 +437,9 @@
   std::optional<ConstValue> constConvertTo(std::optional<ConstValue> v, const Ty* t, int depth);
 
   // `T(args)`: the object the constructor the arguments choose makes (only one marked implicit
-  // when the construction is an implicit conversion); an object of T given alone is copied; an
-  // aggregate takes the arguments as its members (C++20).
+  // when the construction is an implicit conversion); an object of T given alone is taken as it
+  // is, its category not known here (a caller that knows it copies or moves it by T's constructor
+  // first: constFromObject); an aggregate takes the arguments as its members (C++20).
   // written: the argument expressions, when the construction has them: where the values' types leave
   // two constructors equally good (`Pair(A&&, B&&)` and `Pair(const A&, B&&)` for a string literal
   // and an enumerator), the types the walk gave them, value categories included, decide.
@@ -438,13 +458,18 @@
   // object of no type. A designated list is no value without its type.
   static bool constIsBraceList(const ConstValue& v) { return v.isObject() && (!v.type || v.type->isBraceList()); }
 
-  std::optional<ConstValue> constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth);
+  // places, categories: the elements' places and value categories, as constArguments gives them.
+  std::optional<ConstValue> constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places = nullptr,
+                                           std::vector<uint8_t>* categories = nullptr);
 
   // A brace list value given the type it initializes: an InitializerList of its elements, an
   // array's elements, a class's InitializerList constructor (C++'s list-initialization tries
   // those first) or else the constructor the elements choose (an aggregate's members), a scalar's
-  // one element or zero.
-  std::optional<ConstValue> constFromBraceList(const ConstValue& list, const Ty* t, int depth, const Span<Expr*>* written = nullptr);
+  // one element or zero. With the elements' places and categories (constBraceList's), one element
+  // that is an object of the class itself is copied or moved (constFromObject).
+  std::optional<ConstValue> constFromBraceList(const ConstValue& list, const Ty* t, int depth, const Span<Expr*>* written = nullptr,
+                                               const std::vector<std::optional<ConstPlace>>* places = nullptr,
+                                               const std::vector<uint8_t>* categories = nullptr);
 
   // An InitializerList<E> of these elements: a constant array of them converted to E (what the
   // brace list makes) and the list's two fields, a pointer to its first element and the count

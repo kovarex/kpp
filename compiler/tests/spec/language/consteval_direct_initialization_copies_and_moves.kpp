@@ -1,0 +1,58 @@
+// spec: a compile-time evaluation runs the class's own copy or move constructor for a direct-initialization from an object of the class, as the object's category chooses, as the program does: `T b(a)`, `T b{a}`, `T(a)`, `T{a}`, `T b(move(a))`, `T b{move(a)}`, an aggregate whose member copies itself (`W b(a)`, `W b{a}`), a trivially copyable aggregate (`P b{a}`) and a Vector's element (`T t(v[0])`, `String name(v[0])` then appended to); the constants equal what the program computes at run time (`111122 11534 165` both)
+// found by thread D (2026-11-05) from thread E's language/consteval_string_assigned_from_vector_element: for `T(x)` and `T{x}` the interpreter took an object of the class as it was, a copy member by member that ran no constructor, so `T b(a)` was 7 as a constant where the program gives 1 (silent), and `String name(v[0])` shared the element's characters ("memory freed twice")
+struct T
+{
+  int how = 0; // 1: copied, 2: moved, 7: the source's own value, taken as it was
+  constexpr T() {}
+  constexpr T(const T&) : how(1) {}
+  constexpr T(T&&) : how(2) {}
+};
+struct W
+{
+  T t;
+  int k;
+};
+struct P
+{
+  int x;
+  int y;
+};
+constexpr int classes()
+{
+  T a;
+  a.how = 7;
+  T b(a);
+  T c{a};
+  T d(move(a));
+  T e{move(a)};
+  return b.how * 100000 + c.how * 10000 + T(a).how * 1000 + T{a}.how * 100 + d.how * 10 + e.how;
+}
+constexpr int aggregates()
+{
+  W a{T(), 5};
+  a.t.how = 7;
+  W b(a);
+  W c{a};
+  P p{3, 4};
+  P q{p};
+  return b.t.how * 10000 + c.t.how * 1000 + b.k * 100 + q.x * 10 + q.y;
+}
+constexpr int elements()
+{
+  Vector<T> v;
+  v.push_back(T());
+  v[0].how = 7;
+  T t(v[0]);
+  Vector<String> names;
+  names.push_back("linux");
+  String name(names[0]);
+  name.append('!');
+  return t.how * 100 + int(name.size()) * 10 + int(names[0].size());
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println(classes(), " ", aggregates(), " ", elements());
+  println(Show<classes()>::value, " ", Show<aggregates()>::value, " ", Show<elements()>::value);
+  return 0;
+}

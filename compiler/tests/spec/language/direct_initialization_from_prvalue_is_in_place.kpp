@@ -1,0 +1,29 @@
+// spec: a direct-initialization from a prvalue of the class itself makes the object in place, with no move (C++17's guaranteed elision, [dcl.init] 17.6.1): `T a(T{})`, `T b(make())`, `T c(T(5))`, `new T(T())` and a member initializer `t(T())` run no move constructor, as `T d = T{};` runs none (`0 0 15 0 0 0`)
+// pending: the program moves the prvalue into the object where C++ makes it in place (`2 2 2 2 2 0`, silent where the move constructor does more than move); a compile-time evaluation makes it in place already (B)
+// found by thread D (2026-11-05) comparing the interpreter's copies and moves with the program's
+struct T
+{
+  int how = 0; // 1: copied, 2: moved, 0: made in place (10 + h by T(h))
+  T() {}
+  T(int h) : how(10 + h) {}
+  T(const T&) : how(1) {}
+  T(T&&) : how(2) {}
+};
+T make() { return T(); }
+struct M
+{
+  T t;
+  M() : t(T()) {}
+};
+int main()
+{
+  T a(T{});
+  T b(make());
+  T c(T(5));
+  T* p = new T(T());
+  M m;
+  T d = T{};
+  println(a.how, " ", b.how, " ", c.how, " ", p->how, " ", m.t.how, " ", d.how);
+  delete p;
+  return 0;
+}

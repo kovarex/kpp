@@ -443,10 +443,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
           list.args = f->args.size() == 1 && f->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(f->args[0])->args : f->args;
           return constBraceInit(types.unqualified(t), &list, ctx, depth + 1);
         }
-        std::vector<ConstValue> values;
-        if (!constArguments(f->args, ctx, depth, values))
-          return std::nullopt;
-        return constConstruct(types.unqualified(t), values, false, depth + 1, values.size() == f->args.size() ? &f->args : nullptr);
+        return constConstructFrom(t, f->args, ctx, depth); // `T b(a)` copies a by T's copy constructor
       }
       if (noValue)
         return constConverted(ConstValue::integer(0), t); // `int()`, `T{}`: zero
@@ -1202,10 +1199,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     if (to && to->kind == TyKind::Class && !isUndeducedClassTemplate(to))
     {
       // `Conditional<wide, Size, Small>(3, 4)`: the object the constructor the arguments choose makes, as below.
-      std::vector<ConstValue> values;
-      if (!constArguments(c->args, ctx, depth, values))
-        return std::nullopt;
-      return constConstruct(to, values, false, depth + 1, values.size() == c->args.size() ? &c->args : nullptr);
+      return constConstructFrom(to, c->args, ctx, depth);
     }
     return std::nullopt; // (a pointer the trait gives: not evaluated yet)
   }
@@ -1291,10 +1285,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
         t = deduced;
     if (!t || t->kind != TyKind::Class || isUndeducedClassTemplate(t))
       return std::nullopt;
-    std::vector<ConstValue> values;
-    if (!constArguments(c->args, ctx, depth, values))
-      return std::nullopt;
-    return constConstruct(t, values, false, depth + 1, values.size() == c->args.size() ? &c->args : nullptr);
+    return constConstructFrom(t, c->args, ctx, depth);
   }
   if (d->kind != NodeKind::FunctionDecl)
     return std::nullopt;
@@ -2682,7 +2673,8 @@ auto GlobalScope::Impl::constAssignObject(const ConstPlace& place, const Ty* t, 
   return true;
 }
 
-auto GlobalScope::Impl::constCopyInit(Expr* init, const Ty* t, const TypeContext& ctx, int depth, bool moving) -> std::optional<std::optional<ConstValue>>
+auto GlobalScope::Impl::constCopyInit(Expr* init, const Ty* t, const TypeContext& ctx, int depth, bool moving, std::optional<ConstValue>* evaluated)
+  -> std::optional<std::optional<ConstValue>>
 {
   if (!init || !constCopyRunsCode(t))
     return std::nullopt;
@@ -2693,9 +2685,48 @@ auto GlobalScope::Impl::constCopyInit(Expr* init, const Ty* t, const TypeContext
   moving = moving || category == 2;
   std::optional<ConstValue> v = constValue(source, ctx, depth + 1);
   if (!v || !v->isObject() || !v->type || types.unqualified(types.stripRef(v->type)) != types.unqualified(types.stripRef(t)))
-    return std::nullopt; // (another class: its converting constructor, as before)
+  {
+    // Another class: its converting constructor, as before, from this value (`move(x)` and
+    // `forward<T>(x)` give x's), never from init evaluated again.
+    Expr* bare = init;
+    while (bare && bare->kind == NodeKind::ParenExpr)
+      bare = static_cast<ParenExpr*>(bare)->inner;
+    if (evaluated && v && (source == bare || bare->kind == NodeKind::CallExpr))
+      *evaluated = v;
+    return std::nullopt;
+  }
   std::optional<ConstPlace> at = constPlaceOf(source, ctx, depth + 1);
+  if (category == 2 && !at)
+    return std::optional<std::optional<ConstValue>>(std::optional<ConstValue>()); // (moved where it is not known: no constant)
   return std::optional<std::optional<ConstValue>>(constCopyConstruct(t, *v, at, moving, depth + 1));
+}
+
+auto GlobalScope::Impl::constIsObjectOf(const ConstValue& v, const Ty* u) -> bool
+{
+  return u && v.isObject() && v.type && !v.type->isBraceList() && types.unqualified(types.stripRef(v.type)) == types.unqualified(types.stripRef(u));
+}
+
+auto GlobalScope::Impl::constFromObject(const Ty* u, const ConstValue& v, const std::optional<ConstPlace>& at, uint8_t category, int depth)
+  -> std::optional<ConstValue>
+{
+  if (category == 0)
+    return v; // a prvalue: the object itself
+  if (category == 2 && !at && constCopyRunsCode(u))
+    return std::nullopt; // its move would leave the object it names as it was
+  return constCopyConstruct(u, v, at, category == 2, depth + 1);
+}
+
+auto GlobalScope::Impl::constConstructFrom(const Ty* t, Span<Expr*> args, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  std::vector<ConstValue> values;
+  std::vector<std::optional<ConstPlace>> places;
+  std::vector<uint8_t> categories;
+  if (!constArguments(args, ctx, depth, values, &places, &categories))
+    return std::nullopt;
+  const Ty* u = types.unqualified(types.stripRef(t));
+  if (values.size() == 1 && places.size() == 1 && categories.size() == 1 && constIsObjectOf(values[0], u))
+    return constFromObject(u, values[0], places[0], categories[0], depth);
+  return constConstruct(u, values, false, depth + 1, values.size() == args.size() ? &args : nullptr);
 }
 
 auto GlobalScope::Impl::constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
@@ -2716,8 +2747,13 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
       return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth) : constBraceInit(u, b, ctx, depth);
     }
     if (!t->isReference())
-      if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init, u, ctx, depth))
+    {
+      std::optional<ConstValue> evaluated;
+      if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init, u, ctx, depth, false, &evaluated))
         return *copied;
+      if (evaluated)
+        return constConvertTo(evaluated, u, depth); // (evaluated once: `C c = *it++;`)
+    }
     if (std::optional<ConstValue> chars = constCharArrayFromLiteral(u, init, ctx, depth))
       return chars;
     return constConvertTo(constValue(init, ctx, depth + 1), u, depth);
@@ -2832,11 +2868,27 @@ auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const Type
   if (expands)
   {
     // `Point{args...}`: the values the expansion gives, as a brace list's (no brace elision).
-    std::optional<ConstValue> list = constBraceList(b, ctx, depth);
-    return list ? constFromBraceList(*list, t, depth) : std::nullopt;
+    std::vector<std::optional<ConstPlace>> places;
+    std::vector<uint8_t> categories;
+    std::optional<ConstValue> list = constBraceList(b, ctx, depth, &places, &categories);
+    return list ? constFromBraceList(*list, t, depth, nullptr, &places, &categories) : std::nullopt;
   }
   if (constIsAggregate(t, depth))
   {
+    // `W b{a}` with a an object of the aggregate itself (as the walk typed it): a copy of a, as
+    // C++ makes it ([dcl.init.list] 3.2), not its first member initialized from it.
+    if (Expr* a = b->args.size() == 1 && b->designators.empty() ? b->args[0] : nullptr;
+        a && a->kind != NodeKind::BraceInitExpr && !constIsExpansion(a) && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) &&
+        types.unqualified(types.stripRef(a->ty)) == types.unqualified(t))
+    {
+      std::vector<ConstValue> values;
+      std::vector<std::optional<ConstPlace>> places;
+      std::vector<uint8_t> categories;
+      if (!constArguments(b->args, ctx, depth, values, &places, &categories) || values.size() != 1 || places.size() != 1 ||
+          categories.size() != 1 || !constIsObjectOf(values[0], t))
+        return std::nullopt;
+      return constFromObject(types.unqualified(t), values[0], places[0], categories[0], depth);
+    }
     if (b->designators.empty())
       return constArrayInit(t, b->args, ctx, depth);
     // `{.x = 1, .z = 3}`: each member its designator names, the rest from their defaults.
@@ -2859,9 +2911,11 @@ auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const Type
     return ConstValue::object(t, std::move(parts));
   }
   // Not an aggregate: an InitializerList, a class taking the list by an InitializerList
-  // constructor, or the constructor the elements choose.
-  std::optional<ConstValue> list = constBraceList(b, ctx, depth);
-  return list ? constFromBraceList(*list, t, depth, &b->args) : std::nullopt;
+  // constructor, or the constructor the elements choose (`T b{a}` copies a by T's own).
+  std::vector<std::optional<ConstPlace>> places;
+  std::vector<uint8_t> categories;
+  std::optional<ConstValue> list = constBraceList(b, ctx, depth, &places, &categories);
+  return list ? constFromBraceList(*list, t, depth, &b->args, &places, &categories) : std::nullopt;
 }
 
 auto GlobalScope::Impl::constConvertTo(std::optional<ConstValue> v, const Ty* t, int depth) -> std::optional<ConstValue>
@@ -3068,12 +3122,13 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   return std::nullopt; // (inherited from an indirect base: not evaluated)
 }
 
-auto GlobalScope::Impl::constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places,
+                                       std::vector<uint8_t>* categories) -> std::optional<ConstValue>
 {
   if (!b->designators.empty() || !constMayMake(b->args.size()))
     return std::nullopt;
   std::vector<ConstValue> elements;
-  if (!constArguments(b->args, ctx, depth, elements))
+  if (!constArguments(b->args, ctx, depth, elements, places, categories))
     return std::nullopt;
   const Ty* first = nullptr;
   for (const ConstValue& v : elements)
@@ -3088,7 +3143,9 @@ auto GlobalScope::Impl::constBraceList(BraceInitExpr* b, const TypeContext& ctx,
   return v;
 }
 
-auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, int depth, const Span<Expr*>* written) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, int depth, const Span<Expr*>* written,
+                                           const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories)
+  -> std::optional<ConstValue>
 {
   const Ty* u = types.unqualified(types.stripRef(t));
   const std::vector<ConstValue>& elements = *list.parts;
@@ -3117,6 +3174,10 @@ auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, 
   {
     if (std::optional<ConstValue> v = constByInitializerList(u, elements, depth))
       return v;
+    // `T b{a}`, `T{move(a)}`: an object of the class itself copied or moved by its own
+    // constructor ([dcl.init.list] 3.7), which constConstruct would take as it is.
+    if (elements.size() == 1 && places && categories && places->size() == 1 && categories->size() == 1 && constIsObjectOf(elements[0], u))
+      return constFromObject(u, elements[0], (*places)[0], (*categories)[0], depth);
     return constConstruct(u, elements, false, depth + 1, written);
   }
   return elements.size() == 1 && !constIsBraceList(elements[0]) ? constAsDeclared(elements[0], t) : std::nullopt;
@@ -3785,9 +3846,10 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
           // (sliced), is copied.
           // `a(x)`: copied (or moved, `a(move(x))`) by the class's copy constructor, an implicit
           // one member by member.
-          if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init.args[0], tu, fctx, depth + 1))
+          std::optional<ConstValue> evaluated;
+          if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init.args[0], tu, fctx, depth + 1, false, &evaluated))
             return *copied;
-          std::optional<ConstValue> v = constValue(init.args[0], fctx, depth + 1);
+          std::optional<ConstValue> v = evaluated ? evaluated : constValue(init.args[0], fctx, depth + 1); // (evaluated once: `c(*it++)`)
           if (!v)
             return std::nullopt;
           if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == tu)
@@ -4617,9 +4679,10 @@ auto GlobalScope::Impl::constNewObject(NewExpr* n, const Ty* t, const TypeContex
   {
     if (u->kind != TyKind::Class)
       return constConvertTo(constValue(n->args[0], ctx, depth + 1), u, depth + 1);
-    if (std::optional<std::optional<ConstValue>> copied = constCopyInit(n->args[0], u, ctx, depth))
+    std::optional<ConstValue> evaluated;
+    if (std::optional<std::optional<ConstValue>> copied = constCopyInit(n->args[0], u, ctx, depth, false, &evaluated))
       return *copied;
-    std::optional<ConstValue> v = constValue(n->args[0], ctx, depth + 1);
+    std::optional<ConstValue> v = evaluated ? evaluated : constValue(n->args[0], ctx, depth + 1); // (evaluated once: `new C(*it++)`)
     if (!v)
       return std::nullopt;
     if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u)

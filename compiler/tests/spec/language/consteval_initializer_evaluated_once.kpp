@@ -1,0 +1,62 @@
+// spec: a compile-time evaluation evaluates an initializer once where a class is made from an object of another class by its converting constructor: `C c = *it++;`, a member's `c(*it++)`, `new C(*it++)`, `C c(*it++)` and `C c{*it++}` each take the first element and advance the pointer once, as the program does (`101 101 101 101 101` as constants and at run time)
+// found by thread D (2026-11-05): copy-initialization evaluated `*it++` to see whether it was an object of the class itself, and again for the converting constructor, so `C c = *it++;` was 202 as a constant where the program gives 101 (silent); a member initializer and new did the same
+struct U
+{
+  int v;
+};
+struct C
+{
+  int how = 0;
+  constexpr C() {}
+  constexpr C(const C&) : how(1) {}
+  constexpr C(const U& u) : how(u.v) {}
+};
+struct Holder
+{
+  C c;
+  U* rest;
+  constexpr Holder(U* it) : c(*it++), rest(it) {}
+};
+constexpr int copyInitialized()
+{
+  U items[3] = {{10}, {20}, {30}};
+  U* it = items;
+  C c = *it++;
+  return c.how * 10 + int(it - items);
+}
+constexpr int member()
+{
+  U items[3] = {{10}, {20}, {30}};
+  Holder h(items);
+  return h.c.how * 10 + int(h.rest - items);
+}
+constexpr int made()
+{
+  U items[3] = {{10}, {20}, {30}};
+  U* it = items;
+  C* c = new C(*it++);
+  int r = c->how * 10 + int(it - items);
+  delete c;
+  return r;
+}
+constexpr int parens()
+{
+  U items[3] = {{10}, {20}, {30}};
+  U* it = items;
+  C c(*it++);
+  return c.how * 10 + int(it - items);
+}
+constexpr int braces()
+{
+  U items[3] = {{10}, {20}, {30}};
+  U* it = items;
+  C c{*it++};
+  return c.how * 10 + int(it - items);
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println(copyInitialized(), " ", member(), " ", made(), " ", parens(), " ", braces());
+  println(Show<copyInitialized()>::value, " ", Show<member()>::value, " ", Show<made()>::value, " ", Show<parens()>::value, " ", Show<braces()>::value);
+  return 0;
+}
