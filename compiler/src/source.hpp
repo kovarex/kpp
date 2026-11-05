@@ -24,6 +24,15 @@ struct FileStamp
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
                                                 const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps = nullptr);
 
+// collectFiles for a compile server: the listing of a directory is kept between its builds and
+// brought up to date by the directory's change notifications (ReadDirectoryChangesW): a file written
+// is stamped again alone, and a file or directory added, removed or renamed, lost notifications
+// (an overflow) or a watch that cannot be made list the directory again. An edit build of the game
+// listed its 3,500 files every time, 37 to 68 ms (2026-11-05). note says what it did, for the log.
+// KPP_WATCH_LOST=1 takes every notification as lost (tests/incremental.ps1).
+std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::path& root, const std::vector<std::string>& extensions,
+                                                       std::vector<FileStamp>& stamps, std::string& note);
+
 bool readFile(const std::filesystem::path& path, std::string& out);
 // Whether readFile gives an overlay's text for path (setFileOverlay), not the file's.
 bool hasFileOverlay(const std::filesystem::path& path);

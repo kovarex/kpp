@@ -142,6 +142,13 @@ $steps = @(
   @{ name = 'a call of a function declared nowhere typed into a body (the checker''s error; codegen''s failure on the call follows from it, not shown)'; expect = '(build exit 1)'; edit = { Edit 'locals.kpp' '+ depth(1); }' '+ depth(1) + lateHelper(0); }' } },
   @{ name = 'that function defined in a new file (no edit of the body that calls it)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; edit = { Set-Content (Join-Path $src 'late.kpp') 'int lateHelper(int v) { return v; }' } },
   @{ name = 'the call and the file taken out'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; edit = { Edit 'locals.kpp' '+ depth(1) + lateHelper(0); }' '+ depth(1); }'; Remove-Item (Join-Path $src 'late.kpp') } },
+  # The server's listing is kept and watched (collectFilesWatched, 2026-11-05): an edit stamps its file
+  # again, notifications lost (KPP_WATCH_LOST, as an overflow) list the directory again, and so does a
+  # file in a new directory; each build as one from scratch (--verify-incremental).
+  @{ name = 'a body edit seen through the watch'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .*: 1 file\(s\) stamped again'; edit = { Edit 'locals.kpp' '+ depth(1); }' '+ depth(1) + 0; }' } },
+  @{ name = 'that edit back, the watch''s notifications lost'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { $env:KPP_WATCH_LOST = '1'; Edit 'locals.kpp' '+ depth(1) + 0; }' '+ depth(1); }' } },
+  @{ name = 'a file in a new directory (listed again)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { Remove-Item env:KPP_WATCH_LOST; New-Item -ItemType Directory -Force (Join-Path $src 'deeper') | Out-Null; Set-Content (Join-Path $src 'deeper\deep.kpp') 'int deepHelper() { return 5; }' } },
+  @{ name = 'that directory removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { cmd /c rd /s /q (Join-Path $src 'deeper') } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 89 344 15 12 7'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } },
   # A name private to its file (design.md 15): the file's own overload, which no other file sees,
@@ -195,6 +202,8 @@ foreach ($step in $steps)
   # A step builds from the kept program unless it names why not (full: the front end's reason,
   # codegenFull: codegen's), as the servers' log gives it: a silent fallback to a build from scratch
   # (the wide edit's, 2026-11-02: 1.9 s became 20 to 60 s) fails here, whatever the output.
+  # A step's `log`: a line of the server's log in this step must say so (the watched listing's).
+  if ($step.log -and -not ((ServerLog $stepStart) -match $step.log)) { $ok = $false; "FAIL incremental ${n} ($($step.name)): no server log line matches '$($step.log)'" }
   foreach ($line in (ServerLog $stepStart))
   {
     if ($line -match 'not incremental: (.*)')

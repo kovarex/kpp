@@ -302,9 +302,13 @@ int compile(int argc, char** argv)
   // (paths[i]'s code package, for --packages: its root's directory and the directory under it, design.md
   // "Code packages"; a library's root is named as the library is)
   std::vector<PackageOf> pathPackages;
+  // A compile server's listings are kept and watched (collectFilesWatched; KPP_NO_WATCH=1 lists every
+  // time), except --verify-incremental's build from scratch, which lists.
+  bool watched = servingBuild() && !replayDisabled() && !getenv("KPP_NO_WATCH");
+  std::string watchNote;
   auto collect = [&](const std::filesystem::path& root, std::string prefix, int library)
   {
-    auto found = collectFiles(root, options.extensions, &stamps);
+    auto found = watched ? collectFilesWatched(root, options.extensions, stamps, watchNote) : collectFiles(root, options.extensions, &stamps);
     std::error_code ec;
     bool alone = std::filesystem::is_regular_file(root, ec);
     {
@@ -351,6 +355,8 @@ int compile(int argc, char** argv)
     collect(options.libraryRoots[i].dir, options.libraryRoots[i].name.empty() ? "" : options.libraryRoots[i].name + "/", int(i));
   for (size_t i = stdRoots; i < options.roots.size(); ++i)
     collect(options.roots[i], "", -1);
+  if (!watchNote.empty())
+    logBuildNote(watchNote.substr(0, watchNote.size() - 2));
   // --exclude: files under the roots that are not part of this program (another program's main).
   for (const std::string& excluded : options.excluded)
   {
