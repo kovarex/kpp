@@ -735,7 +735,10 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
   if (args)
   {
     currentArgs = args;
-    choicesRecorded = false; // a generic lambda's own nodes, typed under each call's arguments in turn
+    // A generic lambda's call operator from its instance's own copy of the body (lambdaInstance's,
+    // typed for these arguments by a walk of its own, which recorded its choices: design.md 24).
+    // From a private copy retyped per element, or for a lambda emitted on demand, codegen chooses.
+    choicesRecorded = !l->templateParams.empty() && !retypedLambda;
   }
   if (l->closure && l->closure->file)
     currentFile = l->closure->file;
