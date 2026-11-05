@@ -1453,7 +1453,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
     else if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1))
       place = constStoragePlace(*p, "a destruction of", depth);
     std::optional<ConstValue> value = place ? constRead(*place) : std::nullopt;
-    if (!value || !constDestroy(value->type ? value->type : place->type, *value, depth + 1) || !constWrite(*place, ConstValue::unset(value->type)))
+    if (!value || !constDestroy(value->type ? value->type : place->type, *value, depth + 1, &*place) || !constWrite(*place, ConstValue::unset(value->type)))
       return std::nullopt;
     return ConstValue::integer(0, types.voidType());
   }
@@ -2479,7 +2479,7 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
   return ConstValue::object(types.array(types.qualified(ch, true, false), uint32_t(chars.size())), std::move(chars));
 }
 
-auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth, const ConstPlace* target) -> std::optional<ConstValue>
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
   if (!t || depth > 64)
@@ -2528,7 +2528,7 @@ auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth) -> std::op
     return std::nullopt;
   }
   if (defaultConstructor)
-    return constRunConstructor(defaultConstructor, t, {}, depth + 1);
+    return constRunConstructor(defaultConstructor, t, {}, depth + 1, nullptr, nullptr, nullptr, target);
   std::vector<ConstValue> parts;
   if (!constMayMake(layout->bases.size() + layout->fields.size()))
     return std::nullopt;
@@ -3779,7 +3779,7 @@ auto GlobalScope::Impl::constRangeEnd(const ConstValue& range, uint32_t symbol, 
   return constCallOn(f, subst, {}, &self, depth + 1, at);
 }
 
-auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target) -> std::optional<ConstValue>
 {
   struct Call
   {
@@ -3803,7 +3803,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     FunctionDecl* def = constDefinition(ctor);
     if (!def || def->params.size() != ctor->params.size())
       return std::nullopt;
-    return constRunConstructor(def, t, args, depth, own, ctor, places);
+    return constRunConstructor(def, t, args, depth, own, ctor, places, target);
   }
   if (!ctor->body)
   {
@@ -3989,7 +3989,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
       std::optional<ConstValue> whole = initialize(t);
       if (!whole)
         return std::nullopt;
-      return constRunBody(ctor, t, *whole, fctx, env, depth);
+      return constRunBody(ctor, t, *whole, fctx, env, depth, target);
     }
     if (!found)
       return std::nullopt; // a base named through an alias, a member the layout does not hold
@@ -4012,12 +4012,27 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     object.push_back(*part);
   }
   constFitBitFields(*layout, object);
-  return constRunBody(ctor, t, ConstValue::object(t, std::move(object)), fctx, env, depth);
+  return constRunBody(ctor, t, ConstValue::object(t, std::move(object)), fctx, env, depth, target);
 }
 
-auto GlobalScope::Impl::constRunBody(FunctionDecl* ctor, const Ty* t, const ConstValue& object, TypeContext& fctx, std::vector<ConstBinding>& env, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constRunBody(FunctionDecl* ctor, const Ty* t, const ConstValue& object, TypeContext& fctx, std::vector<ConstBinding>& env, int depth, const ConstPlace* target) -> std::optional<ConstValue>
 {
-  env.push_back(constBinding(constThisSymbol, object, t));
+  if (target)
+  {
+    // Made where it lives: the members written there, `this` that place (what the body points at
+    // the object points at it there, a List's sentinel at itself).
+    if (!constWrite(*target, object))
+      return std::nullopt;
+    ConstPlace at = constResolve(*target);
+    ConstBinding self{constThisSymbol, ConstValue::unset(t)};
+    self.type = t;
+    self.aliasEnv = at.env;
+    self.aliasIndex = at.index;
+    self.aliasPath = at.path;
+    env.push_back(std::move(self));
+  }
+  else
+    env.push_back(constBinding(constThisSymbol, object, t));
   size_t self = env.size() - 1;
   std::optional<ConstValue> result;
   ranBody(ctor);
@@ -4026,7 +4041,7 @@ auto GlobalScope::Impl::constRunBody(FunctionDecl* ctor, const Ty* t, const Cons
     return std::nullopt;
   if (self >= env.size() || env[self].symbol != constThisSymbol)
     return std::nullopt;
-  return env[self].value;
+  return target ? constRead(*target) : std::optional<ConstValue>(env[self].value);
 }
 
 auto GlobalScope::Impl::constThis(const TypeContext& ctx) -> ConstBinding*
@@ -4768,7 +4783,7 @@ auto GlobalScope::Impl::constDestroyRunsCode(const Ty* t) -> bool
   return !trivial || !*trivial;
 }
 
-auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth) -> bool
+auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth, const ConstPlace* at) -> bool
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
   if (!constDestroyRunsCode(t))
@@ -4780,11 +4795,26 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
   };
   if (!triviallyDestructible(t) || depth > 64 || !v.isObject() || !v.parts)
     return cannot("a destruction the evaluator cannot run: of");
+  // A part's place: the object's, one step in.
+  auto partAt = [&](size_t i, const Ty* type) {
+    std::optional<ConstPlace> part;
+    if (at)
+    {
+      part = *at;
+      part->path.push_back(i);
+      part->type = type;
+      part->bits = 0;
+    }
+    return part;
+  };
   if (t->kind == TyKind::Array)
   {
     for (size_t i = v.parts->size(); i-- > 0;)
-      if (!constDestroy(t->inner, (*v.parts)[i], depth + 1))
+    {
+      std::optional<ConstPlace> element = partAt(i, t->inner);
+      if (!constDestroy(t->inner, (*v.parts)[i], depth + 1, element ? &*element : nullptr))
         return false;
+    }
     return true;
   }
   ClassDecl* def = t->kind == TyKind::Class ? classDefinition(t) : nullptr;
@@ -4803,21 +4833,31 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
     if (dtor->flags & DF_Delete)
       return cannot("the destruction of an object whose destructor is deleted:");
     std::optional<ConstValue> self = v;
-    if (!constCallOn(dtor, layout->subst, {}, &self, depth + 1) || !self || !self->isObject())
+    if (!constCallOn(dtor, layout->subst, {}, &self, depth + 1, at) || !self || !self->isObject())
+      return false;
+    if (at)
+      self = constRead(*at); // (run where it is: the object as its body left it there)
+    if (!self || !self->isObject())
       return false;
     object = *self;
   }
   if (def->keyword == Kw::union_)
     return true; // its destructor's body chose what to destroy
   size_t nb = layout->bases.size(), nf = layout->fields.size();
-  if (object.parts->size() != nb + nf)
+  if (!object.parts || object.parts->size() != nb + nf)
     return cannot("a destruction the evaluator cannot run: of");
   for (size_t i = nf; i-- > 0;)
-    if (!constDestroy(layout->fieldTypes[i], (*object.parts)[nb + i], depth + 1))
+  {
+    std::optional<ConstPlace> member = partAt(nb + i, layout->fieldTypes[i]);
+    if (!constDestroy(layout->fieldTypes[i], (*object.parts)[nb + i], depth + 1, member ? &*member : nullptr))
       return false;
+  }
   for (size_t b = nb; b-- > 0;)
-    if (!constDestroy(layout->bases[b], (*object.parts)[b], depth + 1))
+  {
+    std::optional<ConstPlace> base = partAt(b, layout->bases[b]);
+    if (!constDestroy(layout->bases[b], (*object.parts)[b], depth + 1, base ? &*base : nullptr))
       return false;
+  }
   return true;
 }
 
@@ -4829,7 +4869,9 @@ auto GlobalScope::Impl::constEndLocals(std::vector<ConstBinding>& env, size_t ma
     {
       ConstValue v = env[i].value; // (the destructor may write through pointers into env)
       const Ty* t = env[i].type ? env[i].type : v.type;
-      ok = v.isUnset() || constDestroy(t, v, depth + 1);
+      ConstPlace at{&env, i, {}, t}; // (run where it is: what it made pointing at itself is its own)
+      env[i].writable = true;        // (a const one's destructor changes it too, as C++'s does)
+      ok = v.isUnset() || constDestroy(t, v, depth + 1, &at);
     }
   if (mark < env.size())
     env.resize(mark);
@@ -4981,7 +5023,8 @@ auto GlobalScope::Impl::constDelete(DeleteExpr* d, const TypeContext& ctx, int d
   if (!pointee || types.unqualified(a.array ? object->inner : object) != pointee)
     return fail("a delete through a pointer of another type than the object's is not supported in a constant evaluation yet");
   ConstValue value = constHeap()[index].value;
-  if (!value.isUnset() && !constDestroy(object, value, depth + 1))
+  ConstPlace held{&constHeap(), index, {}, object};
+  if (!value.isUnset() && !constDestroy(object, value, depth + 1, &held))
     return std::nullopt;
   ConstAllocation& freed = constAllocations()[index]; // (the destructor may have allocated)
   freed.isFreed = true;
@@ -6436,6 +6479,23 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
   }
   if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
     return ConstFlow::Failed;
+  if (!v->init && type && types.unqualified(type)->kind == TyKind::Class)
+  {
+    // `List<int> l;`: made where it lives (constEmpty's target), so that a constructor pointing the
+    // object at itself (List's sentinel) points at the local, which outlives the constructor.
+    env.push_back(constBinding(symbol, ConstValue::unset(types.unqualified(type)), type));
+    size_t at = env.size() - 1;
+    bool writable = env[at].writable;
+    env[at].writable = true; // (a const one's constructor makes it too)
+    env[at].owns = true;     // (the local's object: `this` addressable while the constructor runs)
+    ConstPlace target{&env, at, {}, types.unqualified(type)};
+    std::optional<ConstValue> made = constEmpty(type, false, depth + 1, &target);
+    if (!made)
+      return ConstFlow::Failed;
+    env[at].value = *made;
+    env[at].writable = writable;
+    return named();
+  }
   // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
   std::optional<ConstValue> value = v->init ? constInitialize(type, v->init, ctx, depth + 1) : type ? constEmpty(type, false, depth + 1) : std::nullopt;
   if (!value)

@@ -2370,7 +2370,13 @@ language/consteval_dangling_pointer_is_error). The run destroys only what it kno
 binding that copies an object it could not refer to (a reference given a value the run holds no
 place of, `this`) is never destroyed and gives no address, and an object an operator takes by
 value is not destroyed yet. An evaluation whose result points at one of its own objects is no
-constant.
+constant. A local default-initialized (`List<int> l;`) is made where it lives: its constructor runs
+with `this` the local, and a destructor runs on its object where it is (a local, a heap block, an
+explicit `p->~T()`), so that an object pointing at itself (a List's sentinel) works at compile time
+(language/consteval_local_made_in_place; one made from arguments, `T x(a)`, or copied or moved into
+place still runs its constructor on an object of its own, D). A structured binding's names refer
+into its hidden object (language/consteval_structured_bindings), and `c ? a : b` of two lvalues is
+one, a reference to it following it (language/consteval_reference_to_conditional_lvalue).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

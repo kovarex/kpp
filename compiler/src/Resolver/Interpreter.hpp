@@ -352,8 +352,9 @@
   // An object of type t, initialized empty: value-initialization (zero: scalars zero, `T{}`, an
   // aggregate's missing elements) or default-initialization (a scalar unset, `T x;`), a class's
   // members from their default member initializers either way, and its default constructor
-  // run when it has a user-provided one.
-  std::optional<ConstValue> constEmpty(const Ty* t, bool zero, int depth);
+  // run when it has a user-provided one. target: where the object lives (a local's binding), the
+  // constructor run there, its `this` that place (constRunConstructor).
+  std::optional<ConstValue> constEmpty(const Ty* t, bool zero, int depth, const ConstPlace* target = nullptr);
 
   // A field's value where no initializer of the object's names it: its default member
   // initializer, under the class's arguments, else empty.
@@ -559,11 +560,14 @@
   // own: a constructor template's arguments (with the class's), when ctor is one.
   // declared: the declaration in the class when ctor is its definition after the class (its
   // default arguments, its scope).
-  std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own = nullptr, FunctionDecl* declared = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr);
+  // target: the place the object is made in (a local's binding), written with the members before
+  // the body runs on it there, so that what the body points at the object (a List's sentinel at
+  // itself) points at the object where it lives, never at a binding of the constructor's own.
+  std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own = nullptr, FunctionDecl* declared = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr, const ConstPlace* target = nullptr);
 
   // A constructor's body run with `this` the object its initializers made: the object as the
-  // body leaves it.
-  std::optional<ConstValue> constRunBody(FunctionDecl* ctor, const Ty* t, const ConstValue& object, TypeContext& fctx, std::vector<ConstBinding>& env, int depth);
+  // body leaves it; with target, written there first and run on it there.
+  std::optional<ConstValue> constRunBody(FunctionDecl* ctor, const Ty* t, const ConstValue& object, TypeContext& fctx, std::vector<ConstBinding>& env, int depth, const ConstPlace* target = nullptr);
 
   // The `this` binding of the member function being run, or null.
   static ConstBinding* constThis(const TypeContext& ctx);
@@ -757,8 +761,10 @@
 
   // The object of type t whose value is v destroyed as the program destroys it: its destructor's
   // body run on it, then its members and its bases, the last first; an array's elements, the last
-  // first. false: that is no constant (a destructor the evaluator cannot run).
-  bool constDestroy(const Ty* t, const ConstValue& v, int depth);
+  // first. false: that is no constant (a destructor the evaluator cannot run). at: where the object
+  // is (a local's binding, a heap block): its destructor runs on it there, so that the object's
+  // pointers at itself (a List's sentinel, made in place) compare equal to its own addresses.
+  bool constDestroy(const Ty* t, const ConstValue& v, int depth, const ConstPlace* at = nullptr);
 
   // The bindings env holds past mark ended, the last first: each object the run owns there
   // destroyed (run: false for a run that failed, which destroys nothing). false: a destructor is no

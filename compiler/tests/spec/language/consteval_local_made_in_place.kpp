@@ -1,0 +1,51 @@
+// spec: at compile time a local default-initialized (`Ring r;`, a const one too) is made where it lives: its constructor runs with `this` the local, so what it points at the object (a ring's sentinel at itself) points at the local, and its destructor runs on it there, where those pointers compare equal to the object's own addresses; a List works so (`1 3 1` both)
+// found with the library's node containers at compile time (language/consteval_node_containers): the constructor ran on an object of its own, which the local was a copy of, so List's sentinel pointed at an object whose lifetime had ended
+struct Links
+{
+  Links* prev = nullptr;
+  Links* next = nullptr;
+};
+struct Ring
+{
+  Links sentinel;
+  int length = 0;
+  Ring() { this->reset(); }
+  ~Ring() { this->clear(); }
+  void reset()
+  {
+    this->sentinel.prev = &this->sentinel;
+    this->sentinel.next = &this->sentinel;
+    this->length = 0;
+  }
+  void clear()
+  {
+    Links* node = this->sentinel.next;
+    while (node != &this->sentinel)
+      node = node->next;
+    this->reset();
+  }
+  bool empty() const { return this->sentinel.next == &this->sentinel; }
+};
+constexpr int made()
+{
+  Ring r;
+  return r.empty() ? 1 : 0;
+}
+constexpr int constant()
+{
+  const Ring r;
+  return r.sentinel.prev == &r.sentinel ? 3 : 0;
+}
+constexpr int listed()
+{
+  List<int> l;
+  l.push_back(1);
+  return int(l.size());
+}
+constexpr int cm = made(), cc = constant(), cl = listed();
+int main()
+{
+  println(made(), " ", constant(), " ", listed());
+  println(cm, " ", cc, " ", cl);
+  return 0;
+}
