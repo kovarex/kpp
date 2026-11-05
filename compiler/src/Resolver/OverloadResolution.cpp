@@ -1408,6 +1408,10 @@ auto GlobalScope::Impl::undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own
 
 auto GlobalScope::Impl::requiresHolds(FunctionDecl* f, const Subst& deduced) -> bool
 {
+  // No requires clause holds (convertsByOperator asks for every conversion template, a
+  // `template<class T> operator T()` without one too).
+  if (!f->requiresClause)
+    return true;
   std::optional<bool> v = constraintValue(f->requiresClause, f, deduced);
   if (v)
     return *v;

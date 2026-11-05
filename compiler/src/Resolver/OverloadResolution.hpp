@@ -174,11 +174,11 @@
   // The first name in a requires clause that names nothing (`requires (noSuchTrait<T>)`), or "".
   std::string undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own, int depth = 0);
 
-  // Whether f's requires clause holds for the deduced arguments. One that names something not
-  // declared (`requires (noSuchTrait<T>)`) is a compile error, and does not hold. One that cannot
-  // be told otherwise holds for now: while an argument is still dependent, and (until static
-  // constexpr members of class template instances evaluate, which the library's Duration
-  // constraints need) for known arguments too.
+  // Whether f's requires clause holds for the deduced arguments (no clause holds). One that
+  // names something not declared (`requires (noSuchTrait<T>)`) is a compile error, and does not
+  // hold. One that cannot be told otherwise holds for now: while an argument is still dependent,
+  // and (until static constexpr members of class template instances evaluate, which the
+  // library's Duration constraints need) for known arguments too.
   bool requiresHolds(FunctionDecl* f, const Subst& deduced);
 
   // The parameter type of f that a call's argument i binds, for partial ordering: a trailing
