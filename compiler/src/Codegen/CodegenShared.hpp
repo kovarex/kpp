@@ -1,6 +1,42 @@
 // What codegen's emitters share (Shared) and the records they keep (StructInfo, Vtable, Request,
-// ...). Part of codegen.cpp, included in its namespace there (a file of its own since 2026-11-05,
+// ...). Included by Codegen/Emitter.hpp, in namespace codegen (a file of its own since 2026-11-05,
 // moved without a change).
+#pragma once
+#include "codegen.hpp"
+#include "ast_walk.hpp"
+#include "consteval.hpp"
+#include "source.hpp"
+#include <map>
+#include <set>
+#include <unordered_set>
+#include <algorithm>
+#include <atomic>
+#include <bit>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <filesystem>
+#include <functional>
+#include <mutex>
+#include <condition_variable>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>
+#endif
+#include <numeric>
+#include <optional>
+#include <queue>
+#include <thread>
+#include <unordered_map>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+namespace codegen
+{
+  // A stub's definition (--stub-missing): the function `name`, aborting with message when called
+  // (CodegenSession.inl).
+  std::string stubText(const std::string& name, const std::string& ret, const std::string& params, const std::string& message);
+
   // One slot of a vtable: the function it calls (the final overrider), the class that function is
   // a member of, and the base fields from the vtable's class down to that class's subobject, where
   // `this` has to point (a thunk moves it there from the subobject whose vtable pointer was used).
@@ -73,13 +109,13 @@
     bool failedShown = true;                  // false: it follows from a checker error (fail's shown), at every use
   };
   // The field index of a member, 0 when the layout has no such member.
-  uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
+  inline uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
   {
     auto it = info.fieldIndex.find(member);
     return it == info.fieldIndex.end() ? 0 : it->second;
   }
   // The place of bit-field member d in the layout info, or null when d is no bit field of it.
-  const BitfieldInfo* bitfieldIn(const StructInfo& info, Decl* d)
+  inline const BitfieldInfo* bitfieldIn(const StructInfo& info, Decl* d)
   {
     auto it = info.bitfields.find(d);
     return it == info.bitfields.end() ? nullptr : &it->second;
@@ -604,7 +640,7 @@
 
   // --debug-info: a definition's own metadata ids (Emitter::debugId: `!` and ten digits, after a
   // space or at a line's start) become base + its own id, in place. Returns how many it used.
-  static uint32_t renumberDebugIds(char* text, size_t size, uint32_t base)
+  inline uint32_t renumberDebugIds(char* text, size_t size, uint32_t base)
   {
     uint32_t used = 0;
     for (char* at = (char*)memchr(text, '!', size); at; at = (char*)memchr(at + 1, '!', text + size - at - 1))
@@ -631,7 +667,7 @@
   // --debug-info with variables: the key of a placeholder at text[at] (`!` and its letter, `T` a
   // type's, `G` a global's, and 16 hex digits, after a blank, before a delimiter:
   // Emitter::debugTypePlaceholder, debugGlobal), or nothing.
-  static std::optional<uint64_t> debugTypeKeyAt(std::string_view text, size_t at, char letter = 'T')
+  inline std::optional<uint64_t> debugTypeKeyAt(std::string_view text, size_t at, char letter = 'T')
   {
     if (at == 0 || text[at - 1] != ' ' || at + 18 > text.size() || text[at] != '!' || text[at + 1] != letter ||
         (at + 18 < text.size() && !strchr(",)} \n", text[at + 18])))
@@ -665,7 +701,7 @@
   {
     uint32_t retained = 0, globals = 0;
   };
-  static DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr)
+  inline DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr)
   {
     const std::unordered_map<uint64_t, Shared::DebugTypeText>& debugTypes = sh.debugTypes;
     DebugLists lists;
@@ -764,7 +800,7 @@
 
   // --debug-info: what every module's line tables refer to (the definitions' `unit: !0`, `type: !2`).
   // The functions' own ids start after these.
-  static const char* const debugModuleTail = "!llvm.dbg.cu = !{!0}\n"
+  inline const char* const debugModuleTail = "!llvm.dbg.cu = !{!0}\n"
                                              "!llvm.module.flags = !{!3, !4}\n"
                                              "!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: \"kppc\", "
                                              "isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n"
@@ -776,7 +812,7 @@
   // DWARF's DW_AT_producer) is kppc with kpp's release version, without the commit and "+dirty": the
   // objects of one version are the same (docs/build.md, "Versions"). An unoptimized build's has
   // variables and types (Shared::fullDebugInfo): FullDebug.
-  static std::string debugModuleTailFor(const Target& target, bool full, DebugLists lists = {})
+  inline std::string debugModuleTailFor(const Target& target, bool full, DebugLists lists = {})
   {
     std::string tail = debugModuleTail;
     if (full)
@@ -800,12 +836,12 @@
     }
     return tail;
   }
-  static const uint32_t debugFirstId = 16;
+  inline const uint32_t debugFirstId = 16;
 
   // Calls found(offset, length) for each `@name` a text names, as module assembly has always scanned
   // them: every '@', a quoted name to its closing quote, an unquoted one over [A-Za-z0-9-$._].
   template<typename F>
-  static void irNamesIn(std::string_view text, F&& found)
+  inline void irNamesIn(std::string_view text, F&& found)
   {
     for (size_t i = text.find('@'); i != std::string_view::npos; i = text.find('@', i + 1))
     {
@@ -822,7 +858,7 @@
     }
   }
 
-  Shared::Definition Shared::definitionOf(std::string text)
+  inline Shared::Definition Shared::definitionOf(std::string text)
   {
     Definition d;
     d.text = std::move(text);
@@ -848,4 +884,4 @@
     }
     return d;
   }
-
+}

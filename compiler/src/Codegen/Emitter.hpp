@@ -1,7 +1,12 @@
 // struct Emitter, one per codegen thread: its state, and its members in the files it includes, each
-// where it stood in codegen.cpp. Part of codegen.cpp, included in its namespace there (a file of
-// its own since 2026-11-05, moved without a change). What is the current function's is its base,
+// where it stood in codegen.cpp. Included by codegen.cpp and each Codegen/ translation unit; in
+// namespace codegen (a file of its own since 2026-11-05). What is the current function's is its base,
 // FunctionState.
+#pragma once
+#include "CodegenShared.hpp"
+
+namespace codegen
+{
 #include "FunctionState.hpp"
 
   struct Emitter : FunctionState
@@ -205,3 +210,4 @@
 #include "ControlFlow.inl"
 #include "FunctionDefinitions.inl"
   };
+}

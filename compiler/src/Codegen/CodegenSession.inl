@@ -66,7 +66,7 @@ static void onThreads(unsigned n, F& work)
 // --stub-missing: the definition of a function that was left out, which reports it and aborts when
 // called (ret and params as its declaration has them, or `void` and `()` for one known by name only:
 // a call names it with its own type). In every module that uses it: linkonce_odr.
-static std::string stubText(const std::string& name, const std::string& ret, const std::string& params, const std::string& message)
+std::string codegen::stubText(const std::string& name, const std::string& ret, const std::string& params, const std::string& message)
 {
   std::string inner = name.size() > 2 && name[1] == '"' ? name.substr(2, name.size() - 3) : name.substr(1);
   std::string bytes = message + '\0', escaped;
