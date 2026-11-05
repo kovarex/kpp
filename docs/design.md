@@ -2390,7 +2390,11 @@ explicit `p->~T()`), so that an object pointing at itself (a List's sentinel) wo
 (language/consteval_local_made_in_place), whatever initializes it: arguments, a brace list, a copy or
 a move (`T x(a)`, `T x = T(a)`, `T x{a, b}`, `T b = a;`: language/consteval_local_made_in_place_from_arguments). A structured binding's names refer
 into its hidden object (language/consteval_structured_bindings), and `c ? a : b` of two lvalues is
-one, a reference to it following it (language/consteval_reference_to_conditional_lvalue).
+one, a reference to it following it (language/consteval_reference_to_conditional_lvalue). A reference member
+holds the address of the object it is bound to and is read and written through it, never a copy of
+its value (language/consteval_reference_member_refers_to_object), and a lambda is a value, its closure,
+whose captures by copy are copies and by reference (and `this`) addresses, its body run where it is
+written whoever calls it (language/consteval_lambda_captures).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error
