@@ -4103,7 +4103,13 @@ auto GlobalScope::Impl::constAddressArith(P op, const ConstValue& l, const Const
     bool siblings = l.isAddress() && r.isAddress() && a.decl == b.decl && a.storage == b.storage && a.owner == b.owner && a.args == b.args && !a.path.empty() &&
                     a.path.size() == b.path.size() && std::equal(a.path.begin(), a.path.end() - 1, b.path.begin());
     if (!siblings)
-      return std::nullopt; // addresses of different objects: no order
+    {
+      // Addresses of different objects: no order, as C++ leaves it unspecified ([expr.rel] 4),
+      // which no constant evaluation computes ([expr.const] 5).
+      if (constWhy().empty())
+        constWhy() = "an order or a difference of pointers to different objects, which C++ leaves unspecified";
+      return std::nullopt;
+    }
     int64_t x = int64_t(a.path.back()), y = int64_t(b.path.back());
     switch (op)
     {
@@ -4129,6 +4135,11 @@ auto GlobalScope::Impl::constAddressArith(P op, const ConstValue& l, const Const
     return constAddressMove(l, op == P::Plus ? r.i : -r.i, depth);
   if (r.isAddress() && l.kind == ConstValue::Kind::Int && op == P::Plus)
     return constAddressMove(r, l.i, depth);
+  // `text >= chars` of a string literal's text and a String's block (String::insert): an order of
+  // pointers into objects the evaluation cannot relate.
+  bool order = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::Minus;
+  if (order && (l.isAddress() || l.isPointer()) && (r.isAddress() || r.isPointer()) && constWhy().empty())
+    constWhy() = "an order or a difference of pointers the evaluation cannot relate (into different objects, C++ leaves it unspecified)";
   return std::nullopt;
 }
 
@@ -6722,7 +6733,11 @@ auto GlobalScope::Impl::constPointerArith(P op, const ConstValue& l, const Const
   if (into(l) && into(r))
   {
     if (l.parts != r.parts)
-      return std::nullopt; // pointers into different arrays: no order, no difference
+    {
+      if (constWhy().empty() && op != P::EqEq && op != P::NotEq) // pointers into different arrays: no order, no difference
+        constWhy() = "an order or a difference of pointers to different objects, which C++ leaves unspecified";
+      return std::nullopt;
+    }
     switch (op)
     {
       case P::Minus: return ConstValue::integer(l.i - r.i, types.ptrdiffType());

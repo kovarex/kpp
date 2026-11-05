@@ -1,0 +1,30 @@
+// spec: at compile time an order or a difference of pointers to different objects is no constant, as C++ leaves it unspecified ([expr.rel] 4, [expr.const] 5), and the error says why: two locals, and a string literal's text against a local array (as String::insert's aliasing check `text >= chars` met it before it ran at compile time); pointers into one array are ordered (`a + 1 < a + 2`)
+// error: consteval_order_of_pointers_to_different_objects_is_error.kpp:23: error: the constexpr variable twoLocals is no constant: an order or a difference of pointers to different objects, which C++ leaves unspecified
+// error: consteval_order_of_pointers_to_different_objects_is_error.kpp:24: error: the constexpr variable literalAndArray is no constant: an order or a difference of pointers the evaluation cannot relate (into different objects, C++ leaves it unspecified)
+// found by thread D (2026-11-05), comparing library operations at compile time and run time: String::insert and replace were no constant without a reason
+constexpr bool before(const int* p, const int* q) { return p < q; }
+constexpr long long twoLocalsOrdered()
+{
+  int a = 1;
+  int b = 2;
+  return before(&a, &b) ? 1 : 0;
+}
+constexpr long long literalBeforeArray()
+{
+  char buffer[4] = {'a', 'b', 'c', 0};
+  const char* text = "XY";
+  return text < buffer ? 1 : 0;
+}
+constexpr long long oneArrayOrdered()
+{
+  int a[3] = {1, 2, 3};
+  return before(a + 1, a + 2) ? 1 : 0;
+}
+constexpr long long twoLocals = twoLocalsOrdered();
+constexpr long long literalAndArray = literalBeforeArray();
+constexpr long long oneArray = oneArrayOrdered();
+int main()
+{
+  println(oneArray);
+  return 0;
+}
