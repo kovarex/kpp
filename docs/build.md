@@ -344,7 +344,11 @@ void build(Project& project)
   the PDB of a `--debug-info` build for Windows beside the rules kppc writes for the standard library
   (kppc's `--natvis FILE`; link.exe's or lld-link's `/NATVIS`, lld's MinGW driver's `--Xlink`).
   Visual Studio finds it with the program (debugging.md, "Values in Visual Studio"). A missing file
-  fails the link. Tested by `tests/natvis.ps1` (natvis\project).
+  fails the link. Tested by `tests/natvis.ps1` (natvis\project). A change of the file alone links
+  again: kpp keeps the stamps (size and time) of the link's inputs besides kppc's objects, the
+  .natvis files and the libraries named by path (`linkFile`), in `<exe>.link.inputs`, and links when
+  one differs. Before, a build through the compile server, which replays an unchanged build, kept the
+  old rules in the PDB (project.ps1's linkinputs part).
 - **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
   tests") of the executables and libraries named, all when none is: each one's roots, a
   library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter

@@ -316,7 +316,29 @@ namespace projects
     // then), so the link makes them again.
     fs::path pdb = fs::path(exe).replace_extension(".pdb");
     bool linked = fs::exists(exe, ec) && !(p.debugInfo && exe.extension() == ".exe" && !fs::exists(pdb, ec));
-    bool linkPending = fs::exists(pending, ec) || (code == 0 && !linked);
+    // And when a file the link takes besides kppc's objects changed: the program's .natvis files and
+    // the libraries it names by path (linkFile, a prebuilt .lib). kppc's replay of an unchanged build
+    // does not look at them, so a .natvis edit alone left the PDB with the old rules (2026-11-05,
+    // F's Executable::natvis). Each by size and time, kept in <exe>.link.inputs after a link.
+    fs::path inputsFile = exe.string() + ".link.inputs";
+    std::string inputs;
+    {
+      std::vector<fs::path> files;
+      for (const std::string& n : p.natvis)
+        files.push_back(rooted(root, n));
+      for (const std::string& l : p.libraries)
+        if (!l.empty() && l[0] != '-')
+          files.push_back(rooted(root, l));
+      for (const fs::path& f : files)
+      {
+        std::error_code missing;
+        auto size = fs::file_size(f, missing);
+        auto time = fs::last_write_time(f, missing).time_since_epoch().count();
+        inputs += f.string() + "\t" + (missing ? std::string("missing") : std::to_string(size) + "\t" + std::to_string(time)) + "\n";
+      }
+    }
+    bool inputsChanged = readText(inputsFile) != inputs;
+    bool linkPending = fs::exists(pending, ec) || (code == 0 && (!linked || inputsChanged));
     // An incremental link's state (the .ilk beside the executable) without the executable or its .pdb
     // goes, and what is left of the two with it: the link starts from nothing. link.exe's incremental
     // link with its PDB deleted crashed now and then, "LNK1000: Internal error during
@@ -340,7 +362,11 @@ namespace projects
         code = 1;
       }
       else
+      {
         fs::remove(pending, ec);
+        if (!writeText(inputsFile, inputs, "the stamps of the link's inputs"))
+          code = 1;
+      }
     }
     // Built means written: never "built" for an executable that is not there.
     if (code == 0 && !fs::exists(exe, ec))

@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'measure', 'paths', 'readonly'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'measure', 'paths', 'readonly', 'linkinputs'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -726,6 +726,32 @@ if (Run 'readonly')
     Pop-Location
     icacls $readonly /reset /T /Q | Out-Null
   }
+}
+
+# A file the link takes besides kppc's objects, changed alone (2026-11-05, Executable::natvis): kpp
+# links again, the compile server having replayed the unchanged build. The .natvis edited between
+# two builds through the server: the PDB holds the new rule, never the old one only.
+if (Run 'linkinputs')
+{
+  $inputs = Join-Path $work 'linkinputs'
+  New-Item -ItemType Directory -Force "$inputs\src" | Out-Null
+  Push-Location $inputs
+  try
+  {
+    Set-Content 'src\main.kpp' "struct Point`n{`n  i32 x = 1;`n};`nint main()`n{`n  Point p;`n  println(p.x);`n  return 0;`n}"
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.natvis(`"point.natvis`");`n  app.argument(`"--debug-info`");`n}"
+    $natvis = '<?xml version="1.0" encoding="utf-8"?><AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010"><Type Name="Point"><DisplayString>RULE {x}</DisplayString></Type></AutoVisualizer>'
+    foreach ($rule in 'firstrule', 'secondrule')
+    {
+      Set-Content 'point.natvis' $natvis.Replace('RULE', $rule)
+      $output = (Kpp @('debug')) -join "`n"
+      $inPdb = (Test-Path 'build\debug\app.pdb') -and (Select-String -Path 'build\debug\app.pdb' -Pattern $rule -SimpleMatch -Quiet)
+      if ($code -ne 0 -or -not $inPdb) { Fail "a .natvis edited alone, through the compile server: the PDB has no $rule`: exit $code`n$output" }
+      Kpp @('debug') | Out-Null # (nothing changed: the server keeps the build, which the next one replays)
+    }
+    Kpp @('--stop-server') | Out-Null
+  }
+  finally { Pop-Location }
 }
 
 # kpp measure (docs/build.md, "kpp measure"): build.kpp's edit made, built, put back and built, the
