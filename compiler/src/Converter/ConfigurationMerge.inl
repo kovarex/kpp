@@ -22,6 +22,11 @@ bool setConvertPlatform(const std::string& platform)
   if (platform != "windows" && platform != "linux")
     return false;
   convertPlatform = platform;
+  if (platform == "linux")
+  {
+    knownMacros["errno"] = "(*__errno_location())"; // (glibc's errno.h)
+    knownMacros.erase("INVALID_SOCKET");             // (the game's own on Linux: SocketHppCompatibility.hpp's -1)
+  }
   return true;
 }
 

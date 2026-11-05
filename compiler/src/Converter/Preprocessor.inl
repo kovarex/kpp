@@ -246,8 +246,16 @@
     return out;
   }
 
-  // Known object-like and function-like macros of the corpus that have a direct kpp spelling.
-  const std::map<std::string, std::string> knownMacros = {
+  // Known object-like and function-like macros of the corpus that have a direct kpp spelling (a
+  // platform's own, setConvertPlatform).
+  std::map<std::string, std::string> knownMacros = {
+    // Lua's per-compiler attributes (llimits.h's l_noret, luaconf.h's LUAI_FUNC: MSVC's __declspec,
+    // GCC's and clang's __attribute__), one spelling on every platform: noreturn is kpp's attribute,
+    // a symbol's visibility none of kpp's business.
+    {"l_noret", "[[noreturn]] void"}, {"LUAI_FUNC", "extern"}, {"LUAI_DDEC", "extern"}, {"LUAI_DDEF", ""},
+    // Stack allocation, kppc's builtin on every target (malloc.h's `#define alloca _alloca`, glibc's
+    // `#define alloca(size) __builtin_alloca (size)`).
+    {"alloca", "_alloca"},
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
     {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
