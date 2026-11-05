@@ -5438,7 +5438,36 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
   if (!def || !layout)
     return cannot("a destruction the evaluator cannot run: of");
   if (def->isTypedUnion)
-    return cannot("the destruction of a typed union in a constant evaluation is not supported yet:");
+  {
+    // The alternative its tag names, destroyed where it is (design.md 8.5); the others hold nothing.
+    size_t tagAt = SIZE_MAX, storageAt = SIZE_MAX;
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+      if (layout->fields[i] && layout->fields[i] == def->tagField)
+        tagAt = i;
+      else if (!layout->fields[i])
+        storageAt = i;
+    size_t nb = layout->bases.size();
+    const ConstClassLayout* storage = storageAt != SIZE_MAX ? constLayoutOf(layout->fieldTypes[storageAt], depth + 1) : nullptr;
+    if (!storage || tagAt == SIZE_MAX || nb + storageAt >= v.parts->size())
+      return cannot("the destruction of a typed union the evaluator cannot run:");
+    const ConstValue& tag = (*v.parts)[nb + tagAt];
+    const ConstValue& held = (*v.parts)[nb + storageAt];
+    if (tag.kind != ConstValue::Kind::Int || tag.i < 0 || uint64_t(tag.i) >= def->alternatives.size() || !held.isObject() || !held.parts)
+      return cannot("the destruction of a typed union the evaluator cannot run:");
+    for (size_t i = 0; i < storage->fields.size(); ++i)
+      if (storage->fields[i] == def->alternatives[size_t(tag.i)] && storage->bases.size() + i < held.parts->size())
+      {
+        std::optional<ConstPlace> alternative = partAt(nb + storageAt, layout->fieldTypes[storageAt]);
+        if (alternative)
+        {
+          alternative->path.push_back(storage->bases.size() + i);
+          alternative->type = storage->fieldTypes[i];
+        }
+        const ConstValue& part = (*held.parts)[storage->bases.size() + i];
+        return part.isUnset() || constDestroy(storage->fieldTypes[i], part, depth + 1, alternative ? &*alternative : nullptr);
+      }
+    return cannot("the destruction of a typed union the evaluator cannot run:");
+  }
   FunctionDecl* dtor = nullptr;
   for (Decl* m : membersRead(def))
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))
@@ -6173,6 +6202,41 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     std::optional<ConstValue> array = base ? constRead(*base) : std::nullopt;
     const Ty* at = array && array->type ? types.unqualified(array->type) : nullptr;
     bool classObject = array && array->isObject() && at && at->kind == TyKind::Class && !at->isBraceList();
+    if (const ConstClassLayout* layout = classObject ? constLayoutOf(at, depth + 1) : nullptr; layout && layout->decl && layout->decl->isTypedUnion)
+    {
+      // `v[V::Number]` of a typed union (design.md 8.5): the alternative the enumerator names, which
+      // the union must hold (it was no constant at compile time).
+      ClassDecl* def = layout->decl;
+      size_t tagAt = SIZE_MAX, storageAt = SIZE_MAX;
+      for (size_t i = 0; i < layout->fields.size(); ++i)
+        if (layout->fields[i] && layout->fields[i] == def->tagField)
+          tagAt = i;
+        else if (!layout->fields[i])
+          storageAt = i;
+      const ConstClassLayout* storage = storageAt != SIZE_MAX ? constLayoutOf(layout->fieldTypes[storageAt], depth + 1) : nullptr;
+      std::optional<ConstValue> which = storage && tagAt != SIZE_MAX ? constValue(x->args[0], ctx, depth + 1) : std::nullopt;
+      size_t nb = layout->bases.size();
+      if (!which || which->kind != ConstValue::Kind::Int || which->i < 0 || uint64_t(which->i) >= def->alternatives.size() ||
+          nb + tagAt >= array->parts->size())
+        return std::nullopt;
+      const ConstValue& tag = (*array->parts)[nb + tagAt];
+      if (tag.kind != ConstValue::Kind::Int || tag.i != which->i)
+      {
+        if (constWhy().empty())
+          constWhy() = "the typed union holds another alternative";
+        return std::nullopt;
+      }
+      for (size_t i = 0; i < storage->fields.size(); ++i)
+        if (storage->fields[i] == def->alternatives[size_t(which->i)])
+        {
+          base->path.push_back(nb + storageAt);
+          base->path.push_back(storage->bases.size() + i);
+          base->type = storage->fieldTypes[i];
+          base->bits = 0;
+          return base;
+        }
+      return std::nullopt;
+    }
     if (!base || (classObject && !calls))
       return std::nullopt; // (no call here: its index is not evaluated either, a String key never made and lost)
     std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);

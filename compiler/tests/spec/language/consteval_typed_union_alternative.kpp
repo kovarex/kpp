@@ -1,0 +1,28 @@
+// spec: at compile time a typed union's alternative is read and written through `v[V::Number]` (the alternative the tag names, which the union must hold), as at run time: an int, a double, a String, one changed in place, and the String destroyed with its union
+// found by thread D (2026-11-05): `v[V::Number]` of a typed union local was no constant (the interpreter made typed unions, but read their alternatives only as constant data of a global)
+union enum V : uint8_t
+{
+  { {int, Number}, {double, Ratio}, {String, Name} }
+};
+constexpr int read()
+{
+  V n = 3;
+  V r = 2.5;
+  V s = String("abc");
+  return n[V::Number] * 100 + int(r[V::Ratio] * 2) * 10 + int(s[V::Name].size());
+}
+constexpr int write()
+{
+  V n = 3;
+  n[V::Number] += 4;
+  V s = String("ab");
+  s[V::Name].append("c");
+  return n[V::Number] * 10 + int(s[V::Name].size());
+}
+constexpr int r = read();
+constexpr int w = write();
+int main()
+{
+  println(r, " ", read(), " ", w, " ", write());
+  return 0;
+}

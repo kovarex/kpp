@@ -2432,7 +2432,9 @@ A lambda's captures by copy are its closure's parts where the closure is, which 
 body may change and which keep the change for the next call, as the program has them, and its
 reference parameters refer to their arguments (language/consteval_sort_and_lambda_state). In a lambda
 that is not `mutable` the copies are const, as C++ has them, and writing one is a compile error
-(language/lambda_copy_capture_is_const_unless_mutable).
+(language/lambda_copy_capture_is_const_unless_mutable). A typed union's alternative (`v[V::Number]`) is
+read and written where it is, the union holding it (else no constant), and a typed union is destroyed
+by destroying the alternative it holds (language/consteval_typed_union_alternative).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error
