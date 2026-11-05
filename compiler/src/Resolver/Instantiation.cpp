@@ -1594,12 +1594,22 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
     case NodeKind::DecltypeType:
     {
       auto* d = static_cast<DecltypeType*>(t);
-      const Ty* generic = d->expr && d->expr->ty ? d->expr->ty : types.unknown();
+      // decltype's own rule ([dcl.type.decltype] 1): a plain name or member access is its declared
+      // type, the type the walk gave it; any other lvalue a reference to its type (`decltype((x))`,
+      // `decltype(++x)` are int&), an xvalue or prvalue its type (references the walk keeps).
+      auto decltypeOfExpr = [&](const Ty* typed) -> const Ty* {
+        const Expr* e = d->expr;
+        if (d->isAuto || !e || !typed || !typed->isKnown() || typed->isReference() || typed->kind == TyKind::Pack ||
+            e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr || typed->kind == TyKind::Void)
+          return typed;
+        return isLvalueExpression(e) ? types.lref(typed) : typed;
+      };
+      const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty) : types.unknown();
       if (namesTupleBinding(d->expr))
         generic = types.stripRef(generic); // `decltype(a)` of a tuple-like binding: the type get gives it, not its reference
       if (d->expr && !d->expr->ty && !d->isAuto)
         if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown())
-          generic = typed; // `decltype(Definition::migrations)` in a member's type, before any walk typed it
+          generic = decltypeOfExpr(typed); // `decltype(Definition::migrations)` in a member's type, before any walk typed it
       // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
       // a dependent expression (F) stands in for no call's result, so the expression is typed
       // anew with them. So is one that names a parameter they bind, whatever its generic type:
@@ -1608,7 +1618,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       if ((ctx.function || ctx.tokens) && ctx.subst && !ctx.subst->empty() && d->expr &&
           (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *ctx.subst)))
         if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown() && !types.isDependent(typed))
-          return typed;
+          return decltypeOfExpr(typed);
       return generic;
     }
     case NodeKind::MemberPointerType:

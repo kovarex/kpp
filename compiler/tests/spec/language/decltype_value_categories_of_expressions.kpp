@@ -1,0 +1,23 @@
+// spec: decltype(e) of an expression that is no plain name or member access is an lvalue reference when e is an lvalue, as C++ has it ([dcl.type.decltype] 1): `decltype((x))`, `decltype((s.v))`, `decltype(++x)`, `decltype(x = 1)`, `decltype((c ? a : b))` and `decltype(*p)` are int&, so a variable of such a type refers to the object; `decltype(x)` and `decltype(s.v)` are the declared types, `decltype(x + 1)` and `decltype(x++)` int, `decltype(move(x))` int&&
+// found by thread D (2026-11-05), comparing value categories with clang: kpp's decltype gave the expression's type as the walk typed it, so `decltype((x))` was int and `decltype((x)) r = x; r = 5;` changed a copy
+struct S
+{
+  int v = 0;
+};
+int main()
+{
+  int x = 0;
+  int a = 1;
+  int b = 2;
+  bool c = true;
+  S s;
+  int* p = &x;
+  decltype((x)) r = x;
+  r = 5;
+  decltype((s.v)) m = s.v;
+  m = 6;
+  println(x, " ", s.v, " ", isSame<decltype((x)), int&>, isSame<decltype((s.v)), int&>, isSame<decltype(++x), int&>, isSame<decltype(x = 1), int&>,
+          isSame<decltype((c ? a : b)), int&>, isSame<decltype(*p), int&>, " ", isSame<decltype(x), int>, isSame<decltype(s.v), int>,
+          isSame<decltype(x + 1), int>, isSame<decltype(x++), int>, isSame<decltype(move(x)), int&&>);
+  return 0;
+}
