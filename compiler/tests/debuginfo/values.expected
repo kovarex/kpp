@@ -31,6 +31,7 @@ class game::Shape, 16 bytes
   vtable pointer
   member id int at 8, public
   static member made int, public
+  static member SIDES const unsigned, public
 class game::Square, 40 bytes
   base game::Shape at 0, public
   member side int at 16, public
@@ -57,6 +58,7 @@ enum game::Mode, unsigned char
 enum game::Mask, unsigned __int64
   None = 0
   All = 18446744073709551615
+constant game::Shape::SIDES const unsigned = 4
 global game::counter int
 global game::Shape::made int
 typedefs int16 int32 int64 int8 uint16 uint32 uint64 uint8

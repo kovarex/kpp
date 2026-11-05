@@ -241,6 +241,30 @@ auto codegen::Emitter::laidOutClass(const Ty* ct) -> const StructInfo*
   return info && info->complete && !info->failed ? info : nullptr;
 }
 
+auto codegen::Emitter::staticConstant(VariableDecl* v, const Ty* t, const TemplateArgs& args) -> std::string
+{
+  if (!(v->flags & DF_Constexpr) || !(t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Enum))
+    return {};
+  VariableDecl* def = variableDefinition(v);
+  Expr* init = def ? global.instanceInitializer(def, args) : nullptr;
+  if (!init)
+    return {};
+  // No layouts, and no function run: a value that needs neither is the same in every build of the
+  // class (an incremental build's too, which re-emits a class only when its own text changes).
+  bool ran = false;
+  ConstHooks hooks;
+  hooks.ran = [&](const FunctionDecl*) { ran = true; };
+  std::optional<ConstValue> value = global.evaluate(init, def->file, def, args, hooks);
+  GlobalScope::clearConstantReason();
+  uint64_t bits = sizeOf(t, nullptr) * 8;
+  if (ran || !value || value->kind != ConstValue::Kind::Int || bits == 0 || bits > 64)
+    return {};
+  int64_t n = value->i;
+  if (bits < 64)
+    n = int64_t(uint64_t(n) << (64 - bits)) >> (64 - bits); // as the width's signed value, which LLVM reads
+  return ", extraData: i" + std::to_string(bits) + " " + std::to_string(n);
+}
+
 auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth) -> void
 {
   auto* c = static_cast<ClassDecl*>(ct->decl);
@@ -358,7 +382,7 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
       continue;
     uint32_t id = next++;
     nodes += debugId(id) + " = !DIDerivedType(tag: DW_TAG_member, name: " + metadataString(sym(v->name.last().symbol)) + ", scope: " + debugId(self) +
-             ", baseType: " + debugType(st) + flagsOf({"DIFlagStaticMember", access(m->access)}) + ")\n";
+             ", baseType: " + debugType(st) + flagsOf({"DIFlagStaticMember", access(m->access)}) + staticConstant(v, st, args) + ")\n";
     element(id);
   }
   std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";

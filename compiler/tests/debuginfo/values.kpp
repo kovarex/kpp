@@ -25,6 +25,7 @@ namespace game
     virtual ~Shape() {}
     virtual int area() const { return 0; }
     static int made;
+    static constexpr unsigned SIDES = 1 << 2; // (no storage: its value, S_CONSTANT)
     int id = 1;
   };
   int Shape::made = 2;

@@ -80,6 +80,11 @@
     // LLVM's CodeView writer lists them as the enclosing class's, as MSVC's PDBs do). Named (its
     // spelling, which identifies it) or, for an anonymous member's class, not.
     void debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth = 0);
+    // A static constexpr data member's value as its member node's extraData (`, extraData: i8 16`;
+    // CodeView's S_CONSTANT Class::NAME, which a watch and a natvis rule read: `flags & FILTER_WHITELIST`),
+    // for an integer, character or enumeration whose initializer the evaluator folds without running
+    // a function; empty otherwise.
+    std::string staticConstant(VariableDecl* v, const Ty* t, const TemplateArgs& args);
 
     // --debug-info with variables, once the emission is done (prepareModuleTexts; a build of one
     // module before it assembles its text): every class a definition or a type named (each one
