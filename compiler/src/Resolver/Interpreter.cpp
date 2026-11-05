@@ -3416,23 +3416,37 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   // implicit conversion, those that convert: as the walk converts, all but those explicit, or
   // explicit(cond) with cond true for the class's arguments; isExplicit). An ambiguous choice by the
   // values' types is made again by the arguments' types as written.
-  std::vector<const Ty*> chosenTypes = argTypes; // the argument types the choice was made with
+  // The arguments as written, where the walk typed them, with their value categories (an lvalue's
+  // type a reference), as overload resolution sees them: by the values' types alone every argument
+  // was an rvalue, so `Pair<M, M> p(m, n)` chose Pair(A&&, B&&) and moved from m and n at compile
+  // time only (language/consteval_forwarding_constructor_copies_lvalue); else the values' types.
+  // (A class object's only, where an lvalue is copied and an rvalue moved: a string literal, an
+  // lvalue array, stays the value's pointer, as the values' types gave it.)
+  std::vector<const Ty*> typed = argTypes;
+  bool typedWritten = written && written->size() == args.size();
+  for (size_t i = 0; typedWritten && i < typed.size(); ++i)
+    if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty) && !constIsExpansion(a) &&
+                                 types.unqualified(types.stripRef(a->ty))->kind == TyKind::Class)
+      typed[i] = argumentType(a, a->ty, types);
+  std::vector<const Ty*> chosenTypes = typed; // the argument types the choice was made with
   bool ambiguous = false;
   const Ty* inheritedFrom = nullptr;
-  FunctionDecl* ctor = chooseConstructor(t, argTypes, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
-  // (None the values' types take, `W(int& x)` given a's value: by the arguments as written, an
-  // lvalue a reference parameter binds.)
-  if ((ambiguous || !ctor) && written && written->size() == args.size())
+  FunctionDecl* ctor = chooseConstructor(t, typed, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
+  // (None those take, `W(int& x)` given a's value: by every argument as written, an lvalue a
+  // reference parameter binds, a brace list as the list it is.)
+  if ((ambiguous || !ctor) && typedWritten)
   {
-    std::vector<const Ty*> typed = argTypes;
-    for (size_t i = 0; i < typed.size(); ++i)
+    std::vector<const Ty*> all = argTypes;
+    for (size_t i = 0; i < all.size(); ++i)
       if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty))
-        typed[i] = argumentType(a, a->ty, types);
+        all[i] = argumentType(a, a->ty, types);
       else if (a && a->kind == NodeKind::BraceInitExpr)
+      {
         if (const Ty* list = braceListType(a, initializerListDecl(), types))
-          typed[i] = list;
-    ctor = chooseConstructor(t, typed, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
-    chosenTypes = typed;
+          all[i] = list;
+      }
+    ctor = chooseConstructor(t, all, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
+    chosenTypes = all;
   }
   if (!ctor || ambiguous || (ctor->flags & DF_Delete))
     return std::nullopt; // (a deleted one: no constant; codegen's call of it is an error)
@@ -3441,7 +3455,8 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
     if (ctor->templateParams.empty())
       return constRunConstructor(ctor, t, args, depth + 1, nullptr, nullptr, places, target); // (a reference parameter refers to its argument's place)
     // `template<class T1, class T2> GamePair(T1&& key, T2&& value)`: its parameters as the
-    // arguments deduce them, with the class's.
+    // arguments deduce them, with the class's (an lvalue's a reference: `Box(U&& u) :
+    // held(forward<U>(u))` given an lvalue copies it).
     Subst own = layout->subst;
     deduceCall(ctor, declaredTypeOf(ctor, layout->subst.empty() ? nullptr : &layout->subst, 0), chosenTypes, own);
     if (!fillDefaultTemplateArgs(ctor, own))
@@ -4389,6 +4404,10 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     if (!v)
       return std::nullopt;
     env.push_back(constBinding(p->name, *v, type));
+    // `G(M&& m) : held(move(m))` given `M(8)`: the temporary it binds, which a move empties (it was
+    // read only, so the move was no constant).
+    if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
+      env.back().writable = true;
   }
   // The members' initial values: the bases' in their order, then the data members' in declaration
   // order, as C++ initializes them whatever order the initializers are written in ([class.base.init]
@@ -6746,6 +6765,8 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
     // copy, a prvalue, a default).
     env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
     env.back().referenceToTemporary = type && type->isReference(); // (a value: of no place the run holds)
+    if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
+      env.back().writable = true; // (the temporary an rvalue reference binds: `take(3)` of `take(int&& x)`, which may change it)
   }
   size_t selfAt = env.size();
   if (self && *self && selfPlace)

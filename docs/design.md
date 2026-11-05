@@ -2424,7 +2424,9 @@ most-derived object that its object is a base part of, wherever a pointer or a r
 leads (an array's element, a member), and in a base's destructor the base's own
 (language/consteval_virtual_call_through_base_pointer); a function named with its class (`A::f()`,
 `super::bump()`, `b.A::f()`) is that function, run on the object's part of its class
-(language/consteval_qualified_call_is_no_virtual_call).
+(language/consteval_qualified_call_is_no_virtual_call). A constructor is chosen, and a constructor
+template's parameters deduced, by the arguments as written, a class object's value category included:
+an lvalue is copied, never moved (language/consteval_forwarding_constructor_copies_lvalue).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

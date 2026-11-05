@@ -1,0 +1,53 @@
+// spec: at compile time a constructor is chosen, and a constructor template's parameters are deduced, from the arguments as written, with their value categories, as overload resolution has it: an lvalue given to `Box(U&& u) : held(forward<U>(u))` deduces U as M& and is copied, `Pair<M, M> p(m, n)` copies m and n, `H h(m)` takes H(const M&) and `H h(move(m))` H(M&&); a temporary that an rvalue reference binds (`G g(M(8))`, `take(3)`) may be changed, as a move does
+// found by thread D (2026-11-05): the interpreter chose by the values' types, as if every argument were an rvalue, so `Box<M> b(m)` and `Pair<M, M> p(m, n)` moved from m (and n) at compile time only (-95 and -105 where the program gives 505 and 565); and a move from a temporary bound to `M&&` was no constant
+struct M
+{
+  int v;
+  M(int x) : v(x) {}
+  M(const M& o) : v(o.v) {}
+  M(M&& o) : v(o.v) { o.v = -1; }
+};
+template<class A> struct Box
+{
+  A held;
+  template<class U> Box(U&& u) : held(forward<U>(u)) {}
+};
+struct H
+{
+  M held;
+  H(const M& m) : held(m) {}
+  H(M&& m) : held(move(m)) {}
+};
+struct G
+{
+  M held;
+  G(M&& m) : held(move(m)) {}
+};
+int take(int&& x)
+{
+  x += 1;
+  return x;
+}
+constexpr int lvalues()
+{
+  M m(5);
+  M n(6);
+  Box<M> b(m);
+  Pair<M, M> p(m, n);
+  H h(m);
+  return m.v * 1000 + n.v * 100 + b.held.v * 10 + h.held.v;
+}
+constexpr int rvalues()
+{
+  M m(5);
+  H h(move(m));
+  G g(M(8));
+  return m.v * 1000 + h.held.v * 100 + g.held.v * 10 + take(3);
+}
+constexpr int l = lvalues();
+constexpr int r = rvalues();
+int main()
+{
+  println(l, " ", lvalues(), " ", r, " ", rvalues());
+  return 0;
+}
