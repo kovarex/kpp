@@ -1,0 +1,62 @@
+// spec: a reference bound to what an operator designates refers to that object, at compile time as at run time: `*it` of a List iterator and `*optional` (the class's operator* run on the operand where it is, a prvalue iterator as a temporary), `s[i]` of a String (its `this->data()[index]`), `++a`, `(a = 3)` and `(x, a)`; and a const reference a call returns, given as an argument (`Ref m(max(a, b))`, `Ref n(box.get())`), is the object a reference member then refers to
+// found by thread D (2026-11-05): each kept a copy of the value, blind to the object's later changes (`const int& x = *l.begin(); l.front() = 7; return x;` was 1 at compile time, 7 at run time), and `const char& c = s[0];` was no constant
+struct Ref
+{
+  const int& to;
+  Ref(const int& r) : to(r) {}
+};
+struct Box
+{
+  int v = 1;
+  const int& get() const { return this->v; }
+};
+constexpr int iterators()
+{
+  List<int> l;
+  l.push_back(1);
+  const int& x = *l.begin();
+  Optional<int> o(2);
+  const int& y = *o;
+  l.front() = 7;
+  *o = 8;
+  return x * 10 + y;
+}
+constexpr int strings()
+{
+  String s("ab");
+  const char& c = s[0];
+  char& d = s[1];
+  s[0] = 'x';
+  d = 'y';
+  return (c - 'a') * 100 + (s[1] - 'a');
+}
+constexpr int operators()
+{
+  int a = 1;
+  const int& p = ++a;
+  const int& q = (a = 3);
+  int x = 0;
+  const int& r = (x, a);
+  a = 9;
+  return p * 100 + q * 10 + r;
+}
+constexpr int arguments()
+{
+  int a = 1;
+  int b = 2;
+  Ref m(max(a, b));
+  Box box;
+  Ref n(box.get());
+  b = 5;
+  box.v = 6;
+  return m.to * 10 + n.to;
+}
+constexpr int i = iterators();
+constexpr int s = strings();
+constexpr int o = operators();
+constexpr int a = arguments();
+int main()
+{
+  println(i, " ", iterators(), " ", s, " ", strings(), " ", o, " ", operators(), " ", a, " ", arguments());
+  return 0;
+}

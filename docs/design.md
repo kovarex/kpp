@@ -2401,7 +2401,10 @@ reference type, through move() or forward() or a call returning `T&&`, refers to
 (language/consteval_reference_through_cast), and a call whose reference result a reference is bound
 to runs once: a result that refers to a constant (a global's element) is its value, one that refers
 to no object the run holds a place of is no constant, never a second run for a copy
-(language/consteval_reference_call_runs_once).
+(language/consteval_reference_call_runs_once). So do `*it` and `*optional` (the class's operator* run on
+the operand where it is), `s[i]` through a pointer a call gives (String's `this->data()[index]`), `++a`,
+`(a = 3)` and `(x, a)`, and a const reference a call returns given as an argument
+(language/consteval_reference_to_operator_result).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

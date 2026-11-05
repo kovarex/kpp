@@ -933,12 +933,14 @@
 
   // `total += i`, `a = b`: the value stored in a local of the function being run, converted to its
   // type, which is the expression's value. A global, an object's member or what a reference
-  // parameter refers to is no local of the run: no constant.
-  std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth);
+  // parameter refers to is no local of the run: no constant. where: the left operand's place, which
+  // the expression designates (const int& r = (a = 3);), when it was assigned.
+  std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where = nullptr);
 
   // `++i`, `count--`: the local stepped by one in its type; the new value, or the old one for the
-  // postfix forms. An object of a class: its operator++ or operator-- run on it where it is.
-  std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth);
+  // postfix forms. An object of a class: its operator++ or operator-- run on it where it is. where:
+  // the operand's place, which a prefix one designates (const int& r = ++a;).
+  std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where = nullptr);
   // A unary operator on an enumeration operand that calls an operator function (`!flags`, `++d`):
   // that call's result (none when it is no constant), or nullopt for the built-in operator.
   std::optional<std::optional<ConstValue>> constEnumUnary(UnaryExpr* u, P op, const TypeContext& ctx, int depth);

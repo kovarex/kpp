@@ -28,6 +28,10 @@
     // The hidden object of `auto [a, b] = e;` (the declaration, whose name it has none of): what a
     // tuple-like binding's get<i>(object) names (Walker::tupleBindings).
     const Decl* hiddenOf = nullptr;
+    // A reference parameter that holds its argument's value (a prvalue's, `max(1, 2)`: a temporary
+    // of the caller's full expression): a reference result to it is that value, not one to a local
+    // of the call.
+    bool referenceToTemporary = false;
   };
   struct TypeContext
   {

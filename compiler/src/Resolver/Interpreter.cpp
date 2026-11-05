@@ -1032,22 +1032,23 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
       }
       continue;
     }
-    // `fill(v.emplace_back())`: a member function's non-const reference result run once for its
-    // place, which a reference parameter then refers to (the new element, not a copy of it).
+    // `fill(v.emplace_back())`, `Ref(max(a, b))`: a function's reference result run once for its
+    // place, which a reference parameter then refers to (the new element, the object a const
+    // reference result refers to: not a copy of it, which a reference member kept stale).
     std::optional<ConstPlace> called;
+    std::optional<ConstValue> calledValue;
     Expr* bare = a;
     while (bare && bare->kind == NodeKind::ParenExpr)
       bare = static_cast<ParenExpr*>(bare)->inner;
-    if (places && bare && bare->kind == NodeKind::CallExpr && bare->ty && bare->ty->kind == TyKind::LRef && bare->ty->inner &&
-        !bare->ty->inner->isConst && static_cast<CallExpr*>(bare)->callee &&
+    if (places && bare && bare->kind == NodeKind::CallExpr && bare->ty && bare->ty->isReference() && bare->ty->inner && static_cast<CallExpr*>(bare)->callee &&
         (static_cast<CallExpr*>(bare)->callee->kind == NodeKind::MemberExpr || static_cast<CallExpr*>(bare)->callee->kind == NodeKind::NameExpr))
     {
       constCallPlaceRan = false;
-      called = constPlaceOf(bare, ctx, depth + 1, true);
-      if (!called && constCallPlaceRan)
+      called = constPlaceOf(bare, ctx, depth + 1, true, &calledValue);
+      if (!called && !calledValue && constCallPlaceRan)
         return false; // it ran, and its result is no place the run holds: never run twice
     }
-    std::optional<ConstValue> v = called ? constPartOrUnset(*called) : constValue(a, ctx, depth + 1);
+    std::optional<ConstValue> v = called ? constPartOrUnset(*called) : calledValue ? calledValue : constValue(a, ctx, depth + 1);
     if (!v && places && constPure(a))
       if (std::optional<ConstPlace> at = constPlaceOf(a, ctx, depth + 1); at && !constRead(*at))
         v = ConstValue::unset(at->type); // `appendSlot(grown)` of `T* grown;`: a reference to it reads nothing
@@ -5717,10 +5718,42 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       (constPointsIntoStorage(static_cast<UnaryExpr*>(e)->operand) || (calls && !constFrames().empty())))
   {
     // (`*this->slotAt(i)` where a place is needed (a reference result): the call evaluated once.)
-    // `*p` with p pointing at an object of the evaluation.
-    std::optional<ConstValue> p = constValue(static_cast<UnaryExpr*>(e)->operand, ctx, depth + 1);
+    // `*p` with p pointing at an object of the evaluation; at a constant's, its value (ran). `*it`,
+    // `*optional`: what the class's operator* refers to, run on the operand where it is, a prvalue
+    // as a temporary of the full expression (`*list.begin()`: it was a copy of the element).
+    Expr* operand = static_cast<UnaryExpr*>(e)->operand;
+    bool pure = constPure(operand);
+    std::optional<ConstPlace> object = pure && calls ? constPlaceOf(operand, ctx, depth + 1, calls) : std::nullopt;
+    std::optional<ConstValue> p = object ? constRead(*object) : constValue(operand, ctx, depth + 1);
+    if (!pure)
+      constCallPlaceRan = true; // (evaluated here: never a second time)
     if (p && p->isAddress() && p->target->storage)
       return constStoragePlace(*p, "a use of", depth);
+    if (p && p->isAddress() && p->target->decl && p->target->decl->kind == NodeKind::VariableDecl)
+    {
+      if (ran)
+        *ran = constReadTarget(*p, depth + 1); // what a variable of static storage duration holds
+      return std::nullopt;
+    }
+    if (calls && p && p->isObject() && p->type && !p->type->isBraceList() && types.unqualified(types.stripRef(p->type))->kind == TyKind::Class)
+    {
+      if (!object)
+        object = constMaterialize(*p, p->type);
+      Subst subst;
+      FunctionDecl* f = object ? constClassOperator(p->type, P::Star, {}, subst, depth) : nullptr;
+      if (!f || !f->templateParams.empty() || !constDefinition(f))
+        return std::nullopt;
+      if (constReturnsLRef(f, subst))
+        return constCallPlace(f, subst, {}, *object, depth + 1, nullptr, nullptr, ran);
+      if (ran)
+      {
+        // (a proxy's operator* giving a value: a temporary, its value)
+        std::optional<ConstValue> self = p;
+        *ran = constCallOn(f, subst, {}, &self, depth + 1, &*object);
+        constCallPlaceRan = true;
+      }
+    }
+    return std::nullopt;
   }
   if (e->kind == NodeKind::MemberExpr)
   {
@@ -5761,18 +5794,32 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     auto* x = static_cast<IndexExpr*>(e);
     if (x->args.size() != 1)
       return std::nullopt;
-    if (constPointsIntoStorage(x->base))
+    const Ty* bt = x->base && x->base->ty ? types.unqualified(types.stripRef(x->base->ty)) : nullptr;
+    bool pointer = bt && bt->kind == TyKind::Pointer && !types.isDependent(bt);
+    if (constPointsIntoStorage(x->base) || (calls && pointer && !constFrames().empty()))
     {
-      // `p[i]`, p pointing into an array of the evaluation.
+      // `p[i]`, `this->data()[index]` (String's operator[]): p pointing into an array of the
+      // evaluation, evaluated once; into a constant's, the element's value (ran).
+      bool pure = constPure(x->base) && constPure(x->args[0]);
       std::optional<ConstValue> p = constValue(x->base, ctx, depth + 1);
-      if (p && p->isAddress() && p->target->storage)
+      if (!pure)
+        constCallPlaceRan = true; // (evaluated here: never a second time)
+      if (p && p->isAddress() && (p->target->storage || (p->target->decl && p->target->decl->kind == NodeKind::VariableDecl)))
       {
         std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);
         if (!index || index->kind != ConstValue::Kind::Int)
           return std::nullopt;
         std::optional<ConstValue> moved = constAddressMove(*p, index->i, depth);
+        if (moved && !moved->target->storage)
+        {
+          if (ran && constAddressDereferenceable(*moved, depth))
+            *ran = constReadTarget(*moved, depth + 1);
+          return std::nullopt;
+        }
         return moved ? constStoragePlace(*moved, "a use of", depth) : std::nullopt;
       }
+      if (!pure)
+        return std::nullopt;
     }
     std::optional<ConstPlace> base = constPlaceOf(x->base, ctx, depth + 1, calls);
     std::optional<ConstValue> index = base ? constValue(x->args[0], ctx, depth + 1) : std::nullopt;
@@ -5794,6 +5841,42 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     base->type = at->inner;
     base->bits = 0;
     return base;
+  }
+  if (calls && e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
+      (isAssignmentOperator(P(static_cast<BinaryExpr*>(e)->op)) || P(static_cast<BinaryExpr*>(e)->op) == P::Comma))
+  {
+    // `(a = 3)`, `a += 1`: the left operand's object, once assigned; `(x, a)`: the right operand's,
+    // x evaluated first. A reference bound to one was a copy of the value.
+    auto* b = static_cast<BinaryExpr*>(e);
+    Expr* source = nullptr;
+    if (P(b->op) == P::Comma && (b->call == OperatorCall::Function || constCategory(b->rhs, source) == 0))
+      return std::nullopt; // (a class's operator, or a prvalue: no place)
+    if (b->lhs && b->lhs->ty && types.unqualified(types.stripRef(b->lhs->ty))->kind == TyKind::Enum && P(b->op) != P::Assign && P(b->op) != P::Comma)
+      return std::nullopt; // (`flags |= other`: an operator the checker may have chosen, evaluated as a value)
+    if (P(b->op) == P::Comma)
+    {
+      std::optional<ConstPlace> at = constValue(b->lhs, ctx, depth + 1) ? constPlaceOf(b->rhs, ctx, depth + 1, calls, ran) : std::nullopt;
+      constCallPlaceRan = true; // (evaluated here: never a second time)
+      return at;
+    }
+    std::optional<ConstPlace> where;
+    std::optional<ConstValue> v = constAssign(b, ctx, depth + 1, &where);
+    if (v && !where && ran)
+      *ran = v;
+    constCallPlaceRan = true;
+    return v ? where : std::nullopt;
+  }
+  if (calls && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword && !static_cast<UnaryExpr*>(e)->postfix &&
+      (P(static_cast<UnaryExpr*>(e)->op) == P::PlusPlus || P(static_cast<UnaryExpr*>(e)->op) == P::MinusMinus))
+  {
+    // `++a`: its operand's object, once stepped (a copy of the value before).
+    auto* u = static_cast<UnaryExpr*>(e);
+    if (u->operand && u->operand->ty && types.unqualified(types.stripRef(u->operand->ty))->kind == TyKind::Enum)
+      return std::nullopt; // (an enumeration's operator++ the checker may have chosen, evaluated as a value)
+    std::optional<ConstPlace> where;
+    std::optional<ConstValue> v = constIncrement(u, P(u->op) == P::PlusPlus, ctx, depth + 1, &where);
+    constCallPlaceRan = true; // (evaluated here: never a second time)
+    return v ? where : std::nullopt;
   }
   if (e->kind == NodeKind::CastExpr ||
       (e->kind == NodeKind::NamedCastExpr && (static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::const_cast_)))
@@ -5884,7 +5967,11 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     std::vector<ConstValue> args;
     std::vector<std::optional<ConstPlace>> places;
     std::vector<uint8_t> categories;
-    if (!constArguments(c->args, ctx, depth, args, &places, &categories))
+    bool argued = constArguments(c->args, ctx, depth, args, &places, &categories);
+    for (Expr* a : c->args)
+      if (!constPure(a))
+        constCallPlaceRan = true; // (an argument with a side effect evaluated: never a second time)
+    if (!argued)
       return std::nullopt;
     LocalStack own;
     // (Written: `object.get<0>()`, a tuple-like structured binding's, referring into the object.)
@@ -6381,6 +6468,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
     // A by-value parameter is the function's to destroy, once the evaluator knows it made it (a
     // copy, a prvalue, a default).
     env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
+    env.back().referenceToTemporary = type && type->isReference(); // (a value: of no place the run holds)
   }
   size_t selfAt = env.size();
   if (self && *self && selfPlace)
@@ -6438,7 +6526,7 @@ auto GlobalScope::Impl::constBinding(uint32_t symbol, const ConstValue& v, const
   return b;
 }
 
-auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where) -> std::optional<ConstValue>
 {
   // The right operand first, as C++17 orders it; one a call gives (`x = v[i]`) where it is.
   std::optional<ConstPlace> rightPlace;
@@ -6480,6 +6568,8 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
       std::optional<ConstValue> result = constCallOn(f, subst, {*r}, &self, depth + 1, &*place, &places, &categories);
       if (!result || !self)
         return std::nullopt;
+      if (where)
+        *where = place;
       return constRead(*place);
     }
     if (op != P::Assign)
@@ -6499,6 +6589,8 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
         right = constMaterialize(*r, r->type);
       if (!constAssignObject(*place, target, *r, right, category, depth + 1))
         return std::nullopt;
+      if (where)
+        *where = place;
       return constRead(*place);
     }
   }
@@ -6532,6 +6624,8 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
   v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
   if (!v || !constWrite(*place, *v))
     return std::nullopt;
+  if (where)
+    *where = place;
   return v;
 }
 
@@ -6581,7 +6675,7 @@ auto GlobalScope::Impl::constEnumUnary(UnaryExpr* u, P op, const TypeContext& ct
   return constCallOn(f, Subst{}, args, nullptr, depth + 1, nullptr, &places, &categories);
 }
 
-auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where) -> std::optional<ConstValue>
 {
   std::optional<ConstPlace> place = constPlaceOf(u->operand, ctx, depth + 1, true);
   if (!place || !place->writable())
@@ -6614,6 +6708,8 @@ auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeC
     std::optional<ConstValue> r = constCallOn(f, subst, args, &self, depth + 1, &*place);
     if (!r)
       return std::nullopt;
+    if (where && !u->postfix)
+      *where = place;
     return u->postfix ? r : constRead(*place);
   }
   ConstValue one = ConstValue::integer(1, types.intType());
@@ -6623,6 +6719,8 @@ auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeC
   v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
   if (!v || !constWrite(*place, *v))
     return std::nullopt;
+  if (where && !u->postfix)
+    *where = place;
   return u->postfix ? *old : *v;
 }
 
@@ -7122,7 +7220,14 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         resolved.type = at->type;
         resolved.bits = at->bits;
         if (resolved.env == ctx.env)
-          return ConstFlow::Failed; // a reference to the call's own local
+        {
+          // A reference parameter holding its argument's value (`max(1, 2)`'s): that value, which
+          // the caller's full expression holds; a local of the call ends with it.
+          if (resolved.index >= ctx.env->size() || !(*ctx.env)[resolved.index].referenceToTemporary)
+            return ConstFlow::Failed;
+          result = constRead(resolved);
+          return result ? ConstFlow::Returned : ConstFlow::Failed;
+        }
         *ctx.returnPlace = resolved;
         return ConstFlow::Returned;
       }
