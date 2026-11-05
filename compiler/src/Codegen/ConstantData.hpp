@@ -47,6 +47,10 @@
     // An Address value: a function, or a global (a part of its value along the path).
     std::optional<std::string> addressConstant(const ConstTarget& target, Node* at);
 
+    // The integer a pointer global's initializer casts to the pointer (`reinterpret_cast<T*>(254)`,
+    // `(void*)(long long)-1`), as the cast converts it; nothing for any other initializer.
+    std::optional<int64_t> integerAddress(Expr* value);
+
     // A class (or an array of them) with a mutable member: no constant memory for a const global.
     bool hasMutableMember(const Ty* t, Node* at, int depth = 0);
 

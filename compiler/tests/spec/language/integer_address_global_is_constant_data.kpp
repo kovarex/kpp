@@ -1,0 +1,16 @@
+// spec: a pointer global initialized with an integer cast to the pointer (`reinterpret_cast<Targetable*>(254)`, `(void*)(long long)-1` as Windows' INVALID_HANDLE_VALUE is, `(Targetable*)8`) is constant data, as clang and g++ emit it, so that a global initialized before it in its file reads it (`261 261`); the integer converts as the cast converts it, an unsigned one zero-extended and an int sign-extended (`4294967295 -2`)
+// factorio: SavablePointer's and Targeter's TARGET_IS_BEING_LOADED (`reinterpret_cast<Targetable*>(254)`), the stdlib's platform::invalidHandle; built at startup, a global before them in their file read them as null (`0 261`), where the C++ build has them as data (thread B, 2026-11-05)
+struct Targetable { int x; };
+long long readEarly();
+long long early = readEarly();
+struct Holder { static inline Targetable* const LOADING = reinterpret_cast<Targetable*>(254); };
+void* const invalid = (void*)(long long)-1;
+Targetable* const sentinel = (Targetable*)8;
+void* const fromUnsigned = (void*)(uint64_t)(uint32_t)0xFFFFFFFFu;
+void* const fromInt = (void*)(int64_t)(int32_t)-2;
+long long readEarly() { return (long long)Holder::LOADING + (long long)invalid + (long long)sentinel; }
+int main()
+{
+  println(early, " ", readEarly(), " ", (long long)fromUnsigned, " ", (long long)fromInt);
+  return 0;
+}

@@ -530,6 +530,37 @@ auto codegen::Emitter::takePreEvaluated(PreEvaluated& pre) -> void
   errors.insert(errors.end(), pre.errors.begin(), pre.errors.end());
 }
 
+auto codegen::Emitter::integerAddress(Expr* value) -> std::optional<int64_t>
+{
+  // The casts to a pointer around an integer constant: the integer, converted as the cast converts it
+  // (an int32 sign-extended, an unsigned one zero-extended: the value folds as its own type's).
+  Expr* e = value;
+  bool cast = false;
+  for (int depth = 0; e && depth < 16; ++depth)
+  {
+    if (e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    else if (e->kind == NodeKind::CastExpr && e->ty && types.stripRef(e->ty)->kind == TyKind::Pointer)
+      e = static_cast<CastExpr*>(e)->operand, cast = true;
+    else if (e->kind == NodeKind::NamedCastExpr && e->ty && types.stripRef(e->ty)->kind == TyKind::Pointer &&
+             (static_cast<NamedCastExpr*>(e)->castKind == Kw::reinterpret_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_))
+      e = static_cast<NamedCastExpr*>(e)->operand, cast = true;
+    else
+      break;
+  }
+  if (!cast || !e || !e->ty)
+    return std::nullopt;
+  const Ty* from = types.unqualified(types.stripRef(e->ty));
+  if (from->kind != TyKind::Int && from->kind != TyKind::Char && from->kind != TyKind::Enum)
+    return std::nullopt;
+  std::optional<int64_t> v = evalConst(e);
+  if (!v)
+    return std::nullopt;
+  if (from->isUnsigned && from->bits < 64)
+    return int64_t(uint64_t(*v) & ((1ull << from->bits) - 1));
+  return v;
+}
+
 auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* classTy, PreEvaluated& pre) -> void
 {
   TemplateArgs classArgs;
@@ -848,6 +879,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     else if (value->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String &&
              st->kind == TyKind::Pointer)
       init = stringConstant(static_cast<LiteralExpr*>(value));
+    // An integer cast to the pointer (`reinterpret_cast<Targetable*>(254)`, `(void*)(long long)-1`,
+    // INVALID_HANDLE_VALUE): that address, as clang and g++ emit it. (Until 2026-11-05 built at
+    // startup, which a global initialized before it in its file read as null: `0 261` for `261 261`.)
+    else if (std::optional<int64_t> address = st->kind == TyKind::Pointer ? [&] { ConstContextScope context(*this, def); return integerAddress(value); }() : std::nullopt)
+      init = *address == 0 ? std::string("null") : "inttoptr (i64 " + std::to_string(*address) + " to ptr)";
     // (A scalar the fold gives no value of, `constexpr ID EMPTY{ID(-1)};`: as the initialization the
     // interpreter evaluates, which a fold of the braces as an expression is not.)
     else if (std::optional<std::string> data =
