@@ -79,7 +79,7 @@ else
 # 2. --stop-all-servers stops every server (two of the new kppc's, for two programs).
 Build 'one'
 Build 'two'
-$running = @((Servers).Values | Where-Object { Alive $_ })
+$running = @((Servers).Values | Where-Object { Alive $_ } | Sort-Object -Unique)
 if ($running.Count -ne 2) { Fail "$($running.Count) servers running after two builds, 2 expected" }
 $ErrorActionPreference = 'Continue'
 $said = & $copy --stop-all-servers 2>&1 | Out-String
@@ -162,7 +162,8 @@ foreach ($columns in @($false, $true))
     elseif (-not $msvc -and ($got -join "`n") -ne ($alone -join "`n")) { Fail "${what}: not what a build without a server writes:`n$($got -join "`n")`nwithout a server:`n$($alone -join "`n")" }
     elseif ($msvc -and ((@($got) | Sort-Object) -join "`n") -ne ((@($want) | Sort-Object) -join "`n")) { Fail "${what}: other errors than without a server:`n$($got -join "`n")`nwithout a server:`n$($want -join "`n")" }
   }
-  $running = @((Servers).Values | Where-Object { Alive $_ })
+  # (each process once: a stopped server's id may be the next one's, its old log naming it too, CI 2026-11-05)
+  $running = @((Servers).Values | Where-Object { Alive $_ } | Sort-Object -Unique)
   if ($running.Count -ne 1) { Fail "kppc --server $($c -join ' '), with and without --msvc-diagnostics: $($running.Count) servers running, 1 expected" }
   $ErrorActionPreference = 'Continue'
   & $copy --stop-all-servers 2>&1 | Out-Null
