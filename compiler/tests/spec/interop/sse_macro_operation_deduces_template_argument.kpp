@@ -1,17 +1,36 @@
-// spec: an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps, _mm_shuffle_epi32) as a function template's argument deduces the operation's vector type (__m128, __m128i), as a typed vector does
-// factorio: none known (a template given such an operation directly)
-// pending: the checker leaves the macro's name to the code generator, untyped, so nothing is deduced from it: "codegen does not support a call to lane0Of whose template arguments could not be deduced yet" (the class it is made into is right: interop/sse_macro_operation_made_into_class)
+// spec: an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps, _mm_shuffle_epi32, _mm_extract_epi16, _MM_SHUFFLE) has the type its macro's cast gives, as in C++ (__m128, __m128i, int): a function template's argument deduced from it, an overload chosen by it (between classes made of either vector, and between the vectors themselves), and `auto`
+// factorio: none known wrong (a template given such an operation directly); the walker left the macro's name untyped, so nothing was deduced from it ("codegen does not support a call to lane0Of whose template arguments could not be deduced yet"); an overload between classes made of the vectors was chosen by codegen, on the vector it built
 extern "C" import "intrin.h";
 
 float lane0(__m128 v) { return _mm_cvtss_f32(v); }
 int lane0(__m128i v) { return _mm_cvtsi128_si32(v); }
+int lane0(int v) { return v; }
 
 template<class T>
 auto lane0Of(T v) { return lane0(v); }
 
+struct Floats
+{
+  Floats(__m128 v) : value(v) {}
+  __m128 value;
+};
+struct Ints
+{
+  Ints(__m128i v) : value(v) {}
+  __m128i value;
+};
+StringView which(Floats) { return "floats"; }
+StringView which(Ints) { return "ints"; }
+
 int main()
 {
   __m128 a = _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f);
-  println(lane0Of(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))), " ", lane0Of(_mm_shuffle_epi32(_mm_setr_epi32(5, 6, 7, 8), _MM_SHUFFLE(0, 1, 2, 2))));
+  __m128i b = _mm_setr_epi32(5, 6, 7, 8);
+  println(lane0Of(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))), " ", lane0Of(_mm_shuffle_epi32(b, _MM_SHUFFLE(0, 1, 2, 2))), " ",
+          lane0Of(_mm_extract_epi16(b, 2)), " ", lane0Of(_MM_SHUFFLE(0, 0, 1, 1)));
+  println(which(_mm_shuffle_ps(a, a, 0)), " ", which(_mm_shuffle_epi32(b, 0)), " ", lane0(_mm_shuffle_ps(a, a, 1)), " ", lane0(_mm_srli_si128(b, 4)));
+  auto shuffled = _mm_shufflelo_epi16(b, _MM_SHUFFLE(0, 0, 0, 0));
+  auto extracted = _mm_extract_epi16(shuffled, 3);
+  println(extracted, " ", lane0Of(extracted));
   return 0;
 }

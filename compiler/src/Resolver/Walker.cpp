@@ -1,6 +1,7 @@
 // GlobalScope::Impl::Walker, phase 2: the Walker, which types and checks bodies (its class in Walker.hpp): a
 // translation unit of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
+#include "sse_macros.hpp"
 
 auto GlobalScope::Impl::Walker::probedCast(const Ty* t, const Ty* operand) -> const Ty*
 {
@@ -3191,6 +3192,12 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           reportUndeclared(n->name, n->token, nullptr, dependentCall);
         }
         record(n, unknown(Why::Name));
+        // An SSE operation clang's intrinsics headers have as a macro (_mm_shuffle_ps), which the code
+        // generator builds by name: its macro's result (`(__m128)__builtin_ia32_shufps(...)`), so an
+        // overload, a template argument and a converting constructor are chosen by it as C++ does.
+        if (n->name.parts.size() == 1 && n->name.parts[0].symbol != UINT32_MAX)
+          if (const Ty* t = sseMacroResult(symbols.name(n->name.parts[0].symbol), types))
+            return t;
         return types.unknown();
       case Found::Local: ++stats.namesLocal; break;
       case Found::Member: ++stats.namesMember; break;
