@@ -161,6 +161,16 @@ echo "spec freebsd: ALL PASSED ($pass pass, $known known)"
 '''
 
 
+def program_env(exe):
+    # A snippet's program runs with TEMP and TMP in its own build directory (deleted when it passes,
+    # kept when it fails): a fixed name in the shared %TEMP% (library/in_file_stream_ignore's
+    # kpp_in_file_stream_ignore.txt) collided when two threads' spec runs met there (C, 2026-11-05).
+    temp = os.path.join(os.path.dirname(os.path.abspath(exe)), "tmp")
+    os.makedirs(temp, exist_ok=True)
+    env = dict(os.environ)
+    env["TEMP"] = env["TMP"] = temp
+    return env
+
 def run_program(exe, arguments=()):
     if TARGET == "linux":
         drive, rest = os.path.splitdrive(os.path.abspath(exe))
@@ -318,7 +328,7 @@ def build_and_run(path, area, name, work):
         result["status"] = "built"
         return result
     try:
-        r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        r = subprocess.run(run_program(exe), env=program_env(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "program timed out"; return finish(result)
     if r.returncode != 0 and r.returncode > 1:
@@ -414,7 +424,7 @@ def run_steps(path, info, work, options, result):
             if c.returncode != 0 or reported or not os.path.exists(exe):
                 result["status"] = "FAIL"; result["note"] = f"{step}: " + (reported or first_complaint(output) or "the build failed"); return result
             try:
-                r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+                r = subprocess.run(run_program(exe), env=program_env(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
             except subprocess.TimeoutExpired:
                 result["status"] = "FAIL"; result["note"] = f"{step}: the program timed out"; return result
             got, want = normalise(r.stdout), normalise("\n".join(expect))
