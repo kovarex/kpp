@@ -452,6 +452,12 @@
     // candidate need not be the code generator's callee (a CRTP base's `triggered(x)`, which the derived class's
     // overload answers), and the code generator reports what it cannot convert, as before.
     void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token);
+    // A construction of class t from args (a call of the class, a functional cast, `new T(args)`, a
+    // variable's direct initialization) that no constructor takes, or takes ambiguously: an error, by
+    // the rule codegen and the interpreter follow (chooseConstructor; design.md 24). Only in code
+    // walked where it is written (not a template's instance), and not from a class with a conversion
+    // operator (which may make the T the copy constructor takes): codegen still reports those.
+    void checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token);
 
     // Each argument of a call of f (fnTy: its type), the single plain candidate whose parameters the arguments do not
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not

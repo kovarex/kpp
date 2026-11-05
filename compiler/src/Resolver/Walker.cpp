@@ -2362,6 +2362,71 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
                                          ": it has no implicit conversion operator to a scalar");
 }
 
+auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token) -> void
+{
+  if (probing || activeSubst || !file || !t || !t->isKnown() || types.isDependent(t))
+    return;
+  const Ty* c = types.unqualified(types.stripRef(t));
+  if (c->kind != TyKind::Class || c->isBraceList() || Impl::lambdaOf(c) || Impl::mentionsUnknown(c) || (c->decl && (c->decl->attributes & ATTR_Draft)))
+    return;
+  ClassDecl* def = impl.classDefinition(c);
+  if (!def || def->isTypedUnion || args.empty())
+    return; // (no arguments: the default constructor, or an aggregate's value-initialization)
+  std::vector<const Ty*> argTypes;
+  for (Expr* a : args)
+  {
+    if (!a || a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty) || Impl::mentionsUnknown(a->ty))
+      return; // (a brace list, a pack expansion's element, an argument not typed: left to codegen, as before)
+    if (a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis)
+      return;
+    argTypes.push_back(argumentType(a, a->ty, types));
+  }
+  bool constructors = false;
+  for (Decl* m : membersRead(def))
+    constructors = constructors || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+  std::vector<const Ty*> inherited;
+  impl.inheritedConstructorSources(def, c, inherited, 0);
+  if (!constructors && inherited.empty())
+    return; // an aggregate: its members take the arguments
+  if (argTypes.size() == 1)
+  {
+    // A copy or move from the class or a class derived from it: its implicit copy or move
+    // constructor takes it where it declares none.
+    const Ty* a = types.unqualified(types.stripRef(argTypes[0]));
+    if (a == c || (a->kind == TyKind::Class && impl.isBaseClass(c, a)))
+      return;
+    // From a class with a conversion operator, own or a base's (an explicit one too, in a direct
+    // initialization): it may make the T that the copy or move constructor takes (`SignalID(connector)`
+    // through SignalIDConnector's `operator const SignalID&()`). Not checked here yet: left to codegen.
+    std::function<bool(const Ty*, int)> converts = [&](const Ty* k, int level) -> bool
+    {
+      ClassDecl* kd = k && k->kind == TyKind::Class ? impl.classDefinition(k) : nullptr;
+      if (!kd || level > 8)
+        return false;
+      for (Decl* m : membersRead(kd))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion))
+          return true;
+      std::vector<const Ty*> bases;
+      if (impl.directBases(k, kd, bases))
+        for (const Ty* b : bases)
+          if (converts(b, level + 1))
+            return true;
+      return false;
+    };
+    if (converts(a, 0))
+      return;
+  }
+  bool ambiguous = false;
+  FunctionDecl* chosen = impl.chooseConstructor(c, argTypes, nullptr, nullptr, false, &ambiguous);
+  if (chosen && !ambiguous)
+    return;
+  std::string list;
+  for (const Ty* a : argTypes)
+    list += (list.empty() ? "" : ", ") + types.toString(a, &symbols);
+  impl.reportCheckerError(file, token, ambiguous ? "the construction of " + types.toString(c, &symbols) + " from (" + list + ") is ambiguous: more than one constructor takes it as well"
+                                                 : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")");
+}
+
 auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
 {
   if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy))
@@ -2963,6 +3028,7 @@ auto GlobalScope::Impl::Walker::typeOfCall(CallExpr* c) -> const Ty*
       if (known && impl.traitValue("isConstructible", traitArgs) == false)
         return unknown(Why::Overload);
     }
+    checkConstruction(t, c->args, c->token);
     packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`
   }
   else if (callee)
@@ -6064,7 +6130,10 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       if (impl.holdsText(t) && !inGenericTemplate())
         reportTextError(n->token, impl.isTextClosure(t) ? "a lambda capturing a Text cannot be stored (design.md 14)" : textStored("allocated"));
       if (!n->braced)
+      {
+        checkConstruction(t, n->args, n->token);
         packText(n->args, textConstructor(t, n->args), n->token); // `new Problem("bad ", point)`
+      }
       return record(e, t->isKnown() ? types.pointer(t) : t);
     }
     case NodeKind::DeleteExpr:
@@ -6214,7 +6283,10 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         bindOverloadSetsOfConstruction(t, args);
       }
       if (!c->braced)
+      {
+        checkConstruction(t, c->args, c->token);
         packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`, `Problem problem("bad ", point);`
+      }
       return record(e, t);
     }
     case NodeKind::TypeidExpr:

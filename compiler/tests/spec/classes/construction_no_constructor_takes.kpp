@@ -1,0 +1,13 @@
+// spec: a construction that no constructor of the class takes is the checker's error, at the construction: `Q q(2, 3);` of a Q with Q(int) alone
+// factorio: none in the game (the checker's count was 0 on the converted test build); kovarex, 2026-11-05: the checker reports constructor errors itself, so that --check and the editor show them (design.md 24: one rule, chooseConstructor)
+// error: construction_no_constructor_takes.kpp:11: error: no constructor of Q takes (int32, int32)
+struct Q
+{
+  Q(int x) : v(x) {}
+  int v;
+};
+int main()
+{
+  Q q(2, 3);
+  return q.v;
+}

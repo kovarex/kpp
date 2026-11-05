@@ -1,0 +1,14 @@
+// spec: a construction two constructors take equally well is the checker's error: `P p(2.0);` of a P with P(int) and P(float)
+// factorio: none in the game (the checker's count was 0 on the converted test build); design.md 24: one rule, chooseConstructor
+// error: construction_ambiguous.kpp:12: error: the construction of P from (double) is ambiguous
+struct P
+{
+  P(int x) : v(x) {}
+  P(float x) : v(int(x)) {}
+  int v;
+};
+int main()
+{
+  P p(2.0);
+  return p.v;
+}
