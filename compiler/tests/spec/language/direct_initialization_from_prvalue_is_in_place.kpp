@@ -1,6 +1,5 @@
-// spec: a direct-initialization from a prvalue of the class itself makes the object in place, with no move (C++17's guaranteed elision, [dcl.init] 17.6.1): `T a(T{})`, `T b(make())`, `T c(T(5))`, `new T(T())` and a member initializer `t(T())` run no move constructor, as `T d = T{};` runs none (`0 0 15 0 0 0`)
-// pending: the program moves the prvalue into the object where C++ makes it in place (`2 2 2 2 2 0`, silent where the move constructor does more than move); a compile-time evaluation makes it in place already (B)
-// found by thread D (2026-11-05) comparing the interpreter's copies and moves with the program's
+// spec: a direct-initialization from a prvalue of the class itself makes the object in place, with no copy or move (C++17's guaranteed elision, [dcl.init] 17.6.1): `T a(T{})`, `T b(make())`, `T c(T(5))`, `new T(T())`, a member initializer `t(T())` or `u{T(3)}`, `T e{T{}}`, `T f((T()))` and `T g(c ? T(1) : T(2))` run no move constructor, as `T d = T{};` runs none, and a class whose copy and move constructors are deleted is made so too; an xvalue (`static_cast<T&&>(T())`, `move(a)`) is moved and an lvalue copied
+// found by thread D (2026-11-05) comparing the interpreter's copies and moves with the program's: the program moved the prvalue into the object (`2 2 2 2 2 0`, silent where the move constructor does more than move) and a class without copy and move was an error ("constructing Pinned with a deleted constructor")
 struct T
 {
   int how = 0; // 1: copied, 2: moved, 0: made in place (10 + h by T(h))
@@ -10,11 +9,29 @@ struct T
   T(T&&) : how(2) {}
 };
 T make() { return T(); }
+T makeOne(int h) { return T(h); }
 struct M
 {
   T t;
-  M() : t(T()) {}
+  T u;
+  M() : t(T()), u{T(3)} {}
 };
+bool yes() { return true; }
+
+struct Pinned
+{
+  int v = 0;
+  Pinned(int x) : v(x) {}
+  Pinned(const Pinned&) = delete;
+  Pinned(Pinned&&) = delete;
+};
+Pinned makePinned(int x) { return Pinned(x); }
+struct HoldsPinned
+{
+  Pinned p;
+  HoldsPinned() : p(Pinned(5)) {}
+};
+
 int main()
 {
   T a(T{});
@@ -24,6 +41,21 @@ int main()
   M m;
   T d = T{};
   println(a.how, " ", b.how, " ", c.how, " ", p->how, " ", m.t.how, " ", d.how);
+  T e{T{}};
+  T f((T()));
+  T g(yes() ? T(1) : T(2));
+  T h(static_cast<T&&>(T()));
+  T i(move(a));
+  T j(b);
+  T k{makeOne(7)};
+  println(e.how, " ", f.how, " ", g.how, " ", h.how, " ", i.how, " ", j.how, " ", k.how, " ", m.u.how);
+  Pinned pa(Pinned(3));
+  Pinned pb(makePinned(4));
+  Pinned* pc = new Pinned(Pinned(6));
+  HoldsPinned holds;
+  Pinned pd{Pinned(7)};
+  println(pa.v, " ", pb.v, " ", pc->v, " ", holds.p.v, " ", pd.v);
   delete p;
+  delete pc;
   return 0;
 }

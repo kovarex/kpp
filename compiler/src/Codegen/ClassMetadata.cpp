@@ -1103,6 +1103,19 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   }
   Span<uint32_t> designators = pendingDesignators;
   pendingDesignators = {};
+  // `T a(T{})`, `T b(make())`, `new T(T(5))`, a member initializer `t(T())`, `T c{T{}}`: a prvalue of
+  // the class itself makes the object in place, with no copy or move (C++17 [dcl.init] 17.6.1), as
+  // `T d = T{};` does (initializeFrom builds a T(...) and a call's result in the object itself).
+  // Until 2026-11-05 the object was moved from a temporary, a silent wrong value where the move
+  // constructor does more than move (thread D's spec language/direct_initialization_from_prvalue_is_in_place).
+  if (args.size() == 1 && args[0] && args[0]->kind != NodeKind::BraceInitExpr && !isPackExpansion(args[0]) && args[0]->ty &&
+      !args[0]->ty->isReference() && !isLvalueExpression(args[0]))
+    if (const Ty* from = withCurrentArgs(types.unqualified(args[0]->ty));
+        from && isClass(from) && !types.isDependent(from) && canonicalClass(from, at) == canonicalClass(t, at))
+    {
+      initializeFrom(addr, t, args[0], at);
+      return;
+    }
   // `U(U::Text, x)`, `U u(U::Where, 1, 2)`, `return U(U::Comment, s)`: a tag first names the
   // alternative, the rest build it (its value, or its constructor's arguments), whichever others
   // share its type, and nothing else is built first (design.md 8.5, decided by kovarex 2026-10-31).
