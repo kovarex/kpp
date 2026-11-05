@@ -1,15 +1,24 @@
-// A value for a hole: text, escaped where it goes, or SafeHtml, inserted as it is (in an element's
-// text only).
+// A value for a hole: text, escaped where it goes; SafeHtml, inserted as it is (in an element's
+// text only); or a bool, for a boolean attribute's hole (`<option{{selected}}>`).
+enum class HtmlArgumentKind : u8
+{
+  text,
+  safe,
+  flag,
+};
+
 struct HtmlArgument
 {
   HtmlArgument(const char* name, StringView value) : name(name), value(value) {}
   HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
   HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
-  HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.str()), safe(true) {}
+  HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.str()), kind(HtmlArgumentKind::safe) {}
   HtmlArgument(const char* name, i32 value) : name(name), value(toString(value)) {}
   HtmlArgument(const char* name, i64 value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, bool value) : name(name), kind(HtmlArgumentKind::flag), on(value) {}
 
   const char* name;
   String value;
-  bool safe = false;
+  HtmlArgumentKind kind = HtmlArgumentKind::text;
+  bool on = false; // a flag's value
 };

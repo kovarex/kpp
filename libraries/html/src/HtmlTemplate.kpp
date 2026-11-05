@@ -74,9 +74,18 @@ public:
       }
       if (!argument)
         throw HtmlTemplateError(toString("render: no value for {{", String(name), "}}"));
-      if (argument->safe && part.kind != HtmlHole::text)
+      if ((argument->kind == HtmlArgumentKind::flag) != (part.kind == HtmlHole::flag))
+        throw HtmlTemplateError(part.kind == HtmlHole::flag ? toString("render: {{", String(name), "}} is a boolean attribute, whose value is a bool")
+                                                            : toString("render: {{", String(name), "}} is a bool, which goes only where an attribute goes"));
+      if (part.kind == HtmlHole::flag)
+      {
+        if (argument->on)
+          out << ' ' << name;
+        continue;
+      }
+      if (argument->kind == HtmlArgumentKind::safe && part.kind != HtmlHole::text)
         throw HtmlTemplateError(toString("render: {{", String(name), "}} is SafeHtml, which goes only in an element's text"));
-      if (part.kind == HtmlHole::text && argument->safe)
+      if (part.kind == HtmlHole::text && argument->kind == HtmlArgumentKind::safe)
         out.append(argument->value);
       else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
         htmlAppendEscaped(out, argument->value);
@@ -259,11 +268,17 @@ private:
     bool selfClosed = false;
     while (true)
     {
+      i32 spaceStart = k;
       while (HtmlTemplate::isSpace(this->text[k]))
         ++k;
       char c = this->text[k];
       if (!c)
         this->fail(i, "a tag without its '>'");
+      if (this->isHole(k))
+      {
+        k = this->flag(spaceStart, k);
+        continue;
+      }
       if (c == '>')
       {
         ++k;
@@ -300,11 +315,25 @@ private:
     return k;
   }
 
+  // A boolean attribute's hole at i, where an attribute goes in a tag, the spaces before it from
+  // spaceStart: the hole writes one space and its name, or nothing; returns where it ends.
+  i32 flag(i32 spaceStart, i32 i)
+  {
+    this->addLiteral(spaceStart);
+    this->literalStart = i;
+    i32 end = this->hole(i, HtmlHole::flag);
+    for (i32 k = i + 2; k < end - 2; ++k)
+      if (this->text[k] < 'a' || this->text[k] > 'z')
+        this->fail(k, "a boolean attribute's hole is named as the attribute: lowercase letters");
+    char next = this->text[end];
+    if (!HtmlTemplate::isSpace(next) && next != '>' && next != '/' && !this->isHole(end))
+      this->fail(end, "a boolean attribute's hole is followed by a space, '>', '/>' or another one");
+    return end;
+  }
+
   // The attribute at k, inside a tag; returns where it ends.
   i32 attribute(i32 k)
   {
-    if (this->isHole(k))
-      this->fail(k, "a hole in a tag outside a quoted attribute value");
     i32 nameStart = k;
     while (this->text[k] && !HtmlTemplate::isSpace(this->text[k]) && this->text[k] != '=' && this->text[k] != '>' && this->text[k] != '/' &&
            this->text[k] != '"' && this->text[k] != '\'')

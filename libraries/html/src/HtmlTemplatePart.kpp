@@ -9,6 +9,7 @@ enum class HtmlHole : u8
   urlStart,  // the start of a URL attribute's value (href, src...): a URL whose scheme is checked
   urlPath,   // later in a URL, before any '?' or '#': percent-encoded, '/' kept
   urlQuery,  // in a URL's query or fragment: percent-encoded
+  flag,      // where an attribute goes in a tag: a bool; true writes " name", false nothing
 };
 
 struct HtmlTemplatePart
