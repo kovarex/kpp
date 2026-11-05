@@ -38,14 +38,17 @@ function Build([string[]]$arguments, [string]$label)
   return [pscustomobject]@{ exit = $code; out = @(Normalize (Get-Content $out)); err = @(Normalize (Get-Content $err)) }
 }
 
-# This run's servers' log lines since a time. Other worktrees run this test at the same time, with
-# servers of their own logging to the same directory: ours are those whose builds name $src last.
-function ServerLog([datetime]$since)
+# This run's servers' log lines since a time. Other worktrees and threads run servers at the same
+# time, logging to the same directory (%TEMP%\kppc-server, shared for the C import cache): a log is a
+# server key's, and the key holds the working directory and the arguments, so ours are the logs whose
+# builds name $last (this worktree's own copy of the program) last; a line of another log is never
+# counted, even one of a process whose id is ours.
+function ServerLog([datetime]$since, [string]$last = $src)
 {
-  $lines = @(Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $since } |
-    ForEach-Object { Get-Content $_.FullName } | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $since })
-  $ids = @($lines | Where-Object { $_.Contains("the last $src") } | ForEach-Object { if ($_ -match '\[(\d+)\]') { $Matches[1] } } | Sort-Object -Unique)
-  return @($lines | Where-Object { $_ -match '\[(\d+)\]' -and $ids -contains $Matches[1] })
+  return @(Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
+    $lines = @(Get-Content $_.FullName | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $since })
+    if ($lines | Where-Object { $_.Contains("the last $last") }) { $lines }
+  })
 }
 
 function Edit([string]$file, [string]$old, [string]$new)
@@ -209,10 +212,7 @@ foreach ($step in $steps)
 # Each step's repeat was a replay, checked against a build from scratch (the server's log says so).
 # Only this run's servers' lines: other worktrees run this test at the same time, with servers of
 # their own (their build directories differ), logging to the same directory.
-$ours = Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $started } |
-  ForEach-Object { Get-Content $_.FullName } | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $started }
-$pids = @($ours | Where-Object { $_.Contains("the last $src") } | ForEach-Object { if ($_ -match '\[(\d+)\]') { $Matches[1] } } | Sort-Object -Unique)
-$ours = @($ours | Where-Object { $_ -match '\[(\d+)\]' -and $pids -contains $Matches[1] })
+$ours = ServerLog $started
 $log = $ours | Where-Object { $_ -match 'verify-incremental: the same as from scratch' }
 if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
@@ -289,9 +289,7 @@ Set-Content $nostdMain "struct TooLarge { int v = 0; };`nint plusOne(int v) { if
 $b2 = Build $nostdArgs 'nostd.2'
 & $nostdExe
 $ran = $LASTEXITCODE
-$nostdLines = @(Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $nostdStart } | ForEach-Object { Get-Content $_.FullName })
-$nostdIds = @($nostdLines | Where-Object { $_.Contains("the last $nostd") } | ForEach-Object { if ($_ -match '\[(\d+)\]') { $Matches[1] } } | Sort-Object -Unique)
-$declined = @($nostdLines | Where-Object { $_ -match '\[(\d+)\]' -and $nostdIds -contains $Matches[1] -and $_ -match "a first noexcept function's filter" })
+$declined = @(ServerLog $nostdStart $nostd | Where-Object { $_ -match "a first noexcept function's filter" })
 if ($b1.exit -ne 0 -or $b2.exit -ne 0 -or $ran -ne 7) { "FAIL incremental: noexcept added without the standard library: builds exit $($b1.exit) and $($b2.exit), the program $ran (7 expected): $($b2.err -join ' ')"; $failed++ }
 elseif (-not $declined) { "FAIL incremental: noexcept added without the standard library: the kept session's rebuild was not declined for the noexcept filter"; $failed++ }
 else { "ok   incremental noexcept added without the standard library (the rebuild declined for the noexcept filter; it links and runs)" }
