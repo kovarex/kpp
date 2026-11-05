@@ -1,0 +1,22 @@
+// spec: a range-for's const reference loop variable of another arithmetic type than the elements binds a temporary holding the converted element, as C++ does: `for (const double& d : ints)` sums `3` over a Vector<int> {1, 2} and `6.5` over an array {1, 2, 3} with a half added to each step, and a `const int64_t&` over uint8_t elements reads `200 255`
+// found by thread B (2026-11-05): kpp bound the element's own bytes, an int read as a double, and summed garbage (`4.2439915834e-314`)
+int main()
+{
+  Vector<int> v;
+  v.push_back(1);
+  v.push_back(2);
+  double sum = 0;
+  for (const double& d : v)
+    sum += d;
+  int arr[3] = {1, 2, 3};
+  double halves = 0;
+  for (const double& d : arr)
+    halves += d + 0.5 * (d == 3);
+  Vector<uint8_t> bytes;
+  bytes.push_back(200);
+  bytes.push_back(255);
+  for (const int64_t& b : bytes)
+    print(b, " ");
+  println(sum, " ", halves);
+  return 0;
+}

@@ -310,6 +310,19 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     if (init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(init)->text && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
         static_cast<BraceInitExpr*>(init)->designators.empty())
       init = static_cast<BraceInitExpr*>(init)->args[0];
+    // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4, as for a parameter:
+    // argumentText). Until 2026-11-05 `S&& r = a;` bound a itself, and a move from r moved a.
+    // (`auto&& value = this->state;` is a forwarding reference, which an lvalue makes an lvalue one:
+    // the checker deduces it as written, and binding the object is right for it.)
+    bool forwarding = v->type && v->type->kind == NodeKind::RRefType && static_cast<RRefType*>(v->type)->referenced &&
+                      static_cast<RRefType*>(v->type)->referenced->kind == NodeKind::AutoType;
+    if (t->kind == TyKind::RRef && !forwarding && isLvalueExpression(init) && init->ty && init->ty->isKnown() && !types.isDependent(init->ty))
+    {
+      const Ty* given = types.unqualified(types.stripRef(init->ty)), *bound = types.unqualified(types.stripRef(t));
+      if (given->kind != TyKind::Function && (given == bound || (isClass(given) && isClass(bound) && classKey(given) == classKey(bound))))
+        fail(v, "the " + types.toString(t, &symbols) +
+                    " variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
+    }
     std::string addr;
     if (isClass(types.stripRef(t)))
     {
@@ -523,7 +536,18 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           retText = v.text;
         }
         else
+        {
+          // A reference result of another scalar type than the value returned (`const double& f(const
+          // int& i) { return i; }`): an error, where another type's would be a temporary that dies
+          // with the return (and a non-const reference binds none). Until 2026-11-05 the int's own
+          // bytes were returned as the double.
+          const Ty* want = types.unqualified(types.stripRef(currentReturn));
+          const Ty* have = r->value->ty && r->value->ty->isKnown() && !types.isDependent(r->value->ty) ? types.unqualified(types.stripRef(r->value->ty)) : nullptr;
+          if (have && want->isKnown() && !types.isDependent(want) && !isAggregate(have) && have != want && llType(have, s) != llType(want, s))
+            fail(r->value, "a function returning " + types.toString(currentReturn, &symbols) + " returns a value of type " + types.toString(have, &symbols) +
+                               ": a reference result refers only to an object of its type (another type's would be a temporary, which dies with the return)");
           retText = lvalue(r->value);
+        }
       }
       else
       {

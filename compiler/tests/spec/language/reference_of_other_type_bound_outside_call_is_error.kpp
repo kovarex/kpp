@@ -1,0 +1,40 @@
+// spec: a reference bound to an object of another scalar type outside a call's arguments is an error, as in C++: a range-for's non-const loop variable (`for (double& d : ints)`), a reference member given another type (a const one too: its temporary would die with the constructor, [class.base.init] 8), a function's reference result returning another type (its temporary would die with the return), and a local rvalue reference given an lvalue of its type (language/rvalue_reference_given_lvalue_is_error for a parameter)
+// found by thread B (2026-11-05): kpp bound the other type's bytes (`double& r` over an int wrote 8 bytes into 4: the program crashed) and `S&& r = a;` bound a itself, so a move from r emptied a
+// error: reference_of_other_type_bound_outside_call_is_error.kpp:22: error: the loop variable of type double& over elements of type int32: a non-const lvalue reference binds only an element of its type
+// error: reference_of_other_type_bound_outside_call_is_error.kpp:11: error: the reference member of type const double& given a value of type int32: a reference member binds only an object of its type
+// error: reference_of_other_type_bound_outside_call_is_error.kpp:13: error: a function returning const double& returns a value of type int32: a reference result refers only to an object of its type
+// error: reference_of_other_type_bound_outside_call_is_error.kpp:30: error: the S&& variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+class A
+{
+public:
+  const double& r;
+  A(const int& i) : r(i) {}
+};
+const double& widen(const int& i) { return i; }
+class S
+{
+public:
+  String s;
+};
+double loop()
+{
+  int arr[2] = {1, 2};
+  for (double& d : arr)
+    d = 0.5;
+  return arr[0];
+}
+String bind()
+{
+  S a;
+  a.s = "hi";
+  S&& r = a;
+  S b = move(r);
+  return a.s;
+}
+int main()
+{
+  int i = 7;
+  A a(i);
+  println(loop(), " ", a.r, " ", widen(i), " [", bind(), "]");
+  return 0;
+}

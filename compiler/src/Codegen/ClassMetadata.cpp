@@ -633,7 +633,22 @@ auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const T
         target = convert(object, referenced, at).text; // to the base, or through a conversion operator
     }
     else
+    {
+      // A reference member of another scalar type than its initializer (`const double& r` given an
+      // int): an error, as in C++, where another type's would be a temporary that dies with the
+      // constructor ([class.base.init] 8); and an rvalue reference member given an lvalue of its
+      // type. Until 2026-11-05 it bound the int's own bytes.
+      const Ty* want = refTy ? types.unqualified(types.stripRef(refTy)) : nullptr;
+      const Ty* have = one->ty && one->ty->isKnown() && !types.isDependent(one->ty) ? types.unqualified(types.stripRef(one->ty)) : nullptr;
+      if (want && have && want->isKnown() && !types.isDependent(want) && !isAggregate(want) && !isAggregate(have) && have != want &&
+          llType(have, at) != llType(want, at))
+        fail(at, "the reference member of type " + types.toString(refTy, &symbols) + " given a value of type " + types.toString(have, &symbols) +
+                     ": a reference member binds only an object of its type (another type's would be a temporary, which dies with the constructor)");
+      if (refTy && refTy->kind == TyKind::RRef && have == want && isLvalueExpression(one))
+        fail(at, "the reference member of type " + types.toString(refTy, &symbols) +
+                     " given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
       target = lvalue(one);
+    }
     fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
   });
 }
@@ -1581,6 +1596,27 @@ auto codegen::Emitter::elementOfOtherClass(const Ty* elementTy, const Ty* vt, No
 
 auto codegen::Emitter::elementAs(const std::string& addr, const Ty* elementTy, const Ty* vt, Node* at) -> std::string
 {
+  // A reference loop variable of another scalar type than the elements (`for (const double& d :
+  // ints)`): a temporary holding the converted element, which a const reference (or an rvalue one)
+  // binds as in C++; a non-const lvalue reference binds none ([dcl.init.ref] 5). Until 2026-11-05 it
+  // bound the element's own bytes: an int read as a double.
+  const Ty* target = types.unqualified(types.stripRef(vt));
+  const Ty* et = elementTy ? types.unqualified(types.stripRef(elementTy)) : nullptr;
+  if (vt->isReference() && et && target->isKnown() && et->isKnown() && !types.isDependent(target) && !types.isDependent(et) &&
+      !isAggregate(target) && !isAggregate(et) && et != target)
+  {
+    if (vt->kind == TyKind::LRef && !types.stripRef(vt)->isConst)
+    {
+      if (llType(et, at) != llType(target, at))
+        fail(at, "the loop variable of type " + types.toString(vt, &symbols) + " over elements of type " + types.toString(et, &symbols) +
+                     ": a non-const lvalue reference binds only an element of its type");
+      return addr; // (`long&` over ints where both are 32 bits: one representation)
+    }
+    Value converted = convert(load(addr, et, at), target, at);
+    std::string slot = newObjectSlot(target, at);
+    fn += "  store " + llType(target, at) + " " + converted.text + ", ptr " + slot + "\n";
+    return slot;
+  }
   if (!elementOfOtherClass(elementTy, vt, at))
     return addr;
   return convert(Value{addr, types.unqualified(types.stripRef(elementTy)), false}, types.unqualified(types.stripRef(vt)), at).text;
