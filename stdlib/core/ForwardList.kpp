@@ -29,7 +29,7 @@ struct ForwardIterator
 
   T& operator*() const { return ((ForwardNode<T>*)this->node)->value; }
   T* operator->() const { return &((ForwardNode<T>*)this->node)->value; }
-  bool operator==(const ForwardIterator<T>& other) const { return this->node == other.node; }
+  bool operator==(const ForwardIterator<T>& other) const = default;
   bool operator!=(const ForwardIterator<T>& other) const { return this->node != other.node; }
   ForwardIterator<T>& operator++()
   {

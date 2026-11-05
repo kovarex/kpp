@@ -31,7 +31,7 @@ struct ErrorCategory
 {
   bool system = false;
 
-  bool operator==(const ErrorCategory& other) const { return this->system == other.system; }
+  bool operator==(const ErrorCategory& other) const = default;
   bool operator!=(const ErrorCategory& other) const { return this->system != other.system; }
   const char* name() const { return this->system ? "system" : "generic"; }
 };
@@ -123,7 +123,7 @@ struct ErrorCode
       return String(strerror(this->value_));
     return platform::systemErrorMessage(this->value_);
   }
-  bool operator==(const ErrorCode& other) const { return this->value_ == other.value_ && this->category_ == other.category_; }
+  bool operator==(const ErrorCode& other) const = default;
   bool operator==(Errc condition) const
   {
     if (this->value_ == 0)
@@ -172,7 +172,7 @@ struct ExceptionPtr
   ExceptionPtr() {}
   implicit ExceptionPtr(nullptr_t) {}
   explicit operator bool() const { return (bool)this->holder; }
-  bool operator==(const ExceptionPtr& other) const { return this->holder == other.holder; }
+  bool operator==(const ExceptionPtr& other) const = default;
   bool operator!=(const ExceptionPtr& other) const { return this->holder != other.holder; }
 };
 

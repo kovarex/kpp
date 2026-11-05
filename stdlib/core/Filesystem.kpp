@@ -638,7 +638,7 @@ namespace filesystem
     perms permissions() const { return this->permsValue; }
     void type(file_type type) { this->typeValue = type; }
     void permissions(perms permissions) { this->permsValue = permissions; }
-    bool operator==(const file_status& other) const { return this->typeValue == other.typeValue && this->permsValue == other.permsValue; }
+    bool operator==(const file_status& other) const = default;
   };
 
   bool status_known(file_status s) { return s.type() != file_type::none; }
@@ -946,7 +946,7 @@ namespace filesystem
     }
     const directory_entry& operator*() const { return this->listing->entry; }
     const directory_entry* operator->() const { return &this->listing->entry; }
-    bool operator==(const directory_iterator& other) const { return this->listing == other.listing; }
+    bool operator==(const directory_iterator& other) const = default;
     bool operator!=(const directory_iterator& other) const { return this->listing != other.listing; }
   };
   directory_iterator begin(directory_iterator it) { return it; }

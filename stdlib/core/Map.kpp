@@ -341,7 +341,7 @@ struct RbIterator
 
   E& operator*() const { return ((RbNode<RemoveConst<E>>*)this->node)->entry; }
   E* operator->() const { return &((RbNode<RemoveConst<E>>*)this->node)->entry; }
-  bool operator==(const RbIterator<E>& other) const { return this->node == other.node; }
+  bool operator==(const RbIterator<E>& other) const = default;
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
   bool operator==(const RbIterator<F>& other) const { return this->node == other.node; }
   bool operator!=(const RbIterator<E>& other) const { return this->node != other.node; }
