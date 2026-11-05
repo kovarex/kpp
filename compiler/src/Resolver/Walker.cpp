@@ -3975,6 +3975,14 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   operatorCall = OperatorCall::Undecided;
   if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
   {
+    // A member that takes the right operand by a user-defined conversion against the built-in
+    // operator through the left one's conversion operator: neither is better, as C++ ranks them
+    // (B's `float32x4 < __m128`, which clang rejects; kpp took the member).
+    if (isMember && arity == 2 && !probing && impl.memberOperatorAgainstBuiltin(f, subst.empty() ? nullptr : &subst, op, lhs, rhs) < 0)
+      reportHere(token, "the operator " + std::string(punctuatorSpelling(op)) + " on " + types.toString(types.unqualified(l), &symbols) + " and " +
+                          types.toString(types.unqualified(types.stripRef(rhs)), &symbols) + " is ambiguous: the member operator" +
+                          std::string(punctuatorSpelling(op)) + " at " + impl.locationOf(f->file, f->token) +
+                          " takes the right operand by a user-defined conversion, as the built-in operator takes the left one by its conversion operator");
     operatorChosen = f;
     operatorIsMember = isMember;
     operatorCall = OperatorCall::Function;

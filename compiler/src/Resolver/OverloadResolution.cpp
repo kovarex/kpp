@@ -826,31 +826,112 @@ auto GlobalScope::Impl::scalarConversionOf(const Ty* cls) -> const Ty*
   return ambiguous ? nullptr : found;
 }
 
+auto GlobalScope::Impl::builtinOperatorTakes(P op, const Ty* l, const Ty* r) -> bool
+{
+  auto unscopedEnum = [](const Ty* t) { return t->kind == TyKind::Enum && !(t->decl && static_cast<EnumDecl*>(t->decl)->isClass); };
+  auto arithmetic = [&](const Ty* t) { return t->isArithmetic() || unscopedEnum(t) || t->kind == TyKind::Vector; };
+  auto integral = [&](const Ty* t) {
+    return t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || unscopedEnum(t) ||
+           (t->kind == TyKind::Vector && t->inner && t->inner->kind == TyKind::Int); // (no `&` of two float vectors)
+  };
+  auto pointer = [](const Ty* t) { return t->kind == TyKind::Pointer || t->kind == TyKind::Array; };
+  auto truth = [&](const Ty* t) {
+    return (arithmetic(t) && t->kind != TyKind::Vector) || pointer(t) || t->kind == TyKind::MemberPointer || t->kind == TyKind::Nullptr;
+  };
+  l = l ? types.unqualified(types.stripRef(l)) : nullptr;
+  r = r ? types.unqualified(types.stripRef(r)) : nullptr;
+  if (!l)
+    return false;
+  if (!r)
+    switch (op)
+    {
+      case P::Plus: return arithmetic(l) || pointer(l);
+      case P::Minus: return arithmetic(l);
+      case P::Tilde: return integral(l);
+      case P::Bang: return truth(l);
+      case P::Star: return pointer(l);
+      default: return true; // (++, --: not told apart here)
+    }
+  switch (op)
+  {
+    case P::Plus: return (arithmetic(l) && arithmetic(r)) || (pointer(l) && integral(r)) || (integral(l) && pointer(r));
+    case P::Minus: return (arithmetic(l) && arithmetic(r)) || (pointer(l) && (integral(r) || pointer(r)));
+    case P::Star: case P::Slash: return arithmetic(l) && arithmetic(r);
+    case P::Percent: case P::Amp: case P::Pipe: case P::Caret: case P::Shl: case P::Shr: return integral(l) && integral(r);
+    case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq: case P::Spaceship:
+      return (arithmetic(l) && arithmetic(r)) || (l->kind == TyKind::Enum && l == r) || (pointer(l) && pointer(r));
+    case P::EqEq: case P::NotEq:
+    {
+      auto address = [&](const Ty* t) { return pointer(t) || t->kind == TyKind::Nullptr || t->kind == TyKind::MemberPointer; };
+      return (arithmetic(l) && arithmetic(r)) || (l->kind == TyKind::Enum && l == r) || (address(l) && address(r));
+    }
+    case P::AndAnd: case P::OrOr: return truth(l) && truth(r);
+    default: return true;
+  }
+}
+
 auto GlobalScope::Impl::freeOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const std::vector<const Ty*>& operands) -> int
 {
   const Ty* ft = declaredTypeOf(f, subst, 0);
-  if (!ft || ft->kind != TyKind::Function || ft->args.size() < operands.size())
+  if (!ft || ft->kind != TyKind::Function || ft->args.size() < operands.size() || operands.empty() || operands.size() > 2)
     return 1;
   bool contextualBool = op == P::Bang || op == P::AndAnd || op == P::OrOr; // (an explicit operator bool converts there)
   bool fBetter = false, builtinBetter = false, anyClass = false;
+  const Ty* reached[2] = {nullptr, nullptr}; // what the built-in operator takes each operand as
   for (size_t i = 0; i < operands.size(); ++i)
   {
     const Ty* t = types.unqualified(types.stripRef(operands[i]));
     bool isClass = t && t->kind == TyKind::Class;
+    reached[i] = t;
     if (isClass)
     {
       anyClass = true;
-      bool converts = contextualBool ? convertsByOperator(t, types.boolType(), 0, 0, true) : scalarConversionOf(t) != nullptr;
-      if (!converts)
+      reached[i] = contextualBool ? (convertsByOperator(t, types.boolType(), 0, 0, true) ? types.boolType() : nullptr) : scalarConversionOf(t);
+      if (!reached[i])
         return 1; // no built-in operator takes it
     }
     bool fUserDefined = conversionRank(operands[i], ft->args[i]) >= 4;
     fBetter = fBetter || (!fUserDefined && isClass);
     builtinBetter = builtinBetter || (fUserDefined && !isClass);
   }
-  if (!anyClass || (fBetter && !builtinBetter))
+  if (!anyClass || (fBetter && !builtinBetter) || !reached[0] || (operands.size() == 2 && !reached[1]) || !builtinOperatorTakes(op, reached[0], reached[1]))
     return 1;
   return builtinBetter && !fBetter ? 0 : -1;
+}
+
+auto GlobalScope::Impl::memberOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const Ty* lhs, const Ty* rhs) -> int
+{
+  switch (op)
+  {
+    case P::Plus: case P::Minus: case P::Star: case P::Slash: case P::Percent: case P::Less: case P::Greater: case P::LessEq:
+    case P::GreaterEq: case P::EqEq: case P::NotEq: case P::Amp: case P::Pipe: case P::Caret: case P::Shl: case P::Shr:
+    case P::AndAnd: case P::OrOr:
+      break;
+    default:
+      return 1;
+  }
+  const Ty* ft = f ? declaredTypeOf(f, subst, 0) : nullptr;
+  const Ty* l = lhs ? types.unqualified(types.stripRef(lhs)) : nullptr;
+  const Ty* r = rhs ? types.unqualified(types.stripRef(rhs)) : nullptr;
+  if (!ft || ft->kind != TyKind::Function || ft->args.empty() || !l || !r || l->kind != TyKind::Class || !l->isKnown() || !r->isKnown() ||
+      types.isDependent(l) || types.isDependent(r))
+    return 1;
+  bool contextualBool = op == P::AndAnd || op == P::OrOr; // (an explicit operator bool converts there)
+  auto reached = [&](const Ty* t) -> const Ty* {
+    if (t->kind != TyKind::Class)
+      return t;
+    if (contextualBool)
+      return convertsByOperator(t, types.boolType(), 0, 0, true) ? types.boolType() : nullptr;
+    return scalarConversionOf(t);
+  };
+  const Ty* lb = reached(l);
+  const Ty* rb = reached(r);
+  if (!lb || !rb || !builtinOperatorTakes(op, lb, rb))
+    return 1; // no built-in operator takes the operands
+  if (types.unqualified(types.stripRef(lb))->kind == TyKind::Vector || types.unqualified(types.stripRef(rb))->kind == TyKind::Vector)
+    return 1; // (not yet on a SIMD vector: the converted SSE wrappers, OverloadResolution.hpp)
+  bool userDefined = conversionRank(rhs, ft->args[0]) >= 4;
+  return userDefined && r->kind != TyKind::Class ? -1 : 1;
 }
 
 auto GlobalScope::Impl::collectScalarConversions(const Ty* cls, const Ty*& found, bool& ambiguous, int depth) -> void

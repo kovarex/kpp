@@ -1,0 +1,20 @@
+// spec: a free operator on a class that converts to a scoped enumeration is called where it takes an operand by a user-defined conversion (`s | Tag::B` with `operator|(const Status&, const Status&)`, `~s`), as no built-in `|` or `~` takes a scoped enumeration ([over.built]: integral and unscoped enumeration operands only), so no built-in candidate makes the call ambiguous
+// found by thread D (2026-11-05): kpp reported "the operator | on Status and Tag is ambiguous", taking the class's conversion to Tag for one the built-in operator takes
+enum class Tag : uint8_t { A, B };
+struct Status
+{
+  Tag tag;
+  implicit Status(Tag t) : tag(t) {}
+  implicit operator Tag() const { return this->tag; }
+};
+Status operator|(const Status& a, const Status& b) { return a.tag == Tag::B ? a : b; }
+Status operator~(const Status& a) { return a.tag == Tag::A ? Status(Tag::B) : Status(Tag::A); }
+int main()
+{
+  Status s(Tag::A);
+  Status j = s | Tag::B;
+  Status k = ~s;
+  Status l = Tag::A | s;
+  println(int(j.tag), " ", int(k.tag), " ", int(l.tag));
+  return 0;
+}

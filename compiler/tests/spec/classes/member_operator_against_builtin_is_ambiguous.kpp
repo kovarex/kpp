@@ -1,0 +1,42 @@
+// spec: a class's member operator that takes the right operand only by a user-defined conversion, beside a conversion operator that lets a built-in operator take the left one, is ambiguous, as C++ ranks the two ([over.match.oper]: each takes one operand as it is and the other by a user-defined conversion): `n < 2.0` with Num's `operator<(Num)`, `implicit Num(double)` and `implicit operator double()`, `s < Tag::B` with a conversion to a scoped enumeration (a built-in comparison takes two of one), `t + 1` with one to a pointer, all of which clang rejects; a right operand of the class itself is the member's, and so is `s | Tag::B`, as no built-in `|` takes a scoped enumeration (Factorio's `status | EntityStatus::Working`)
+// found by thread B (2026-11-05): kpp took the member operator where clang reports the ambiguity; the scoped enumeration's `|` by the game's conversion, which D's first take of this rule rejected
+// error: member_operator_against_builtin_is_ambiguous.kpp:38: error: the operator < on Num and double is ambiguous
+// error: member_operator_against_builtin_is_ambiguous.kpp:39: error: the operator < on Status and Tag is ambiguous
+// error: member_operator_against_builtin_is_ambiguous.kpp:40: error: the operator + on Chars and int32 is ambiguous
+enum class Tag : uint8_t { A, B };
+struct Num
+{
+  double value;
+  implicit Num(double v) : value(v) {}
+  implicit operator double() const { return this->value; }
+  bool operator<(Num o) const { return this->value < o.value; }
+};
+struct Status
+{
+  Tag tag;
+  implicit Status(Tag t) : tag(t) {}
+  implicit operator Tag() const { return this->tag; }
+  bool operator<(const Status& o) const { return this->tag < o.tag; }
+  Status operator|(const Status& o) const { return *this < o ? o : *this; }
+};
+struct Chars
+{
+  char* at;
+  implicit Chars(int) : at(nullptr) {}
+  implicit operator char*() const { return this->at; }
+  Chars operator+(Chars o) const { return o; }
+};
+int main()
+{
+  Num n(1.0);
+  Num m(3.0);
+  bool same = n < m;
+  Status s(Tag::A);
+  Status joined = s | Tag::B;
+  Chars t(0);
+  Chars u = t + Chars(1);
+  bool ambiguous = n < 2.0;
+  bool before = s < Tag::B;
+  Chars v = t + 1;
+  return same && ambiguous && before && joined.tag == Tag::B ? 0 : 1;
+}

@@ -61,6 +61,13 @@
   // with a Const<float>): the result of its one non-explicit conversion operator to a non-class
   // type, its own or inherited (under its arguments); null when it has none or several.
   const Ty* scalarConversionOf(const Ty* cls);
+  // Whether a built-in operator op ([over.built]) takes operands of these types (no class: a class
+  // operand is what it converts to; r null for a unary operator): arithmetic types and unscoped
+  // enumerations for the arithmetic operators, integral ones for %, the bitwise and the shift
+  // operators, a pointer and an integer for + and -, two of one enumeration (a scoped one too) or
+  // two pointers for a comparison, what converts to bool for ! && and ||. A scoped enumeration has
+  // no built-in `|` (Factorio's `status | EntityStatus::Working`, the member operator| alone).
+  bool builtinOperatorTakes(P op, const Ty* l, const Ty* r);
   // A free operator function f (subst: its class's arguments, for a friend of an instance) against
   // the built-in operator on the class operands' conversions to scalars, as C++ ranks the two
   // ([over.match.oper]; the class has no member operator): operand by operand, the one that takes
@@ -68,6 +75,18 @@
   // -1: neither is better (`-n` with Num's operator double beside `operator-(const Other&)` and
   // Other's constructor from a Num), an ambiguous call.
   int freeOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const std::vector<const Ty*>& operands);
+  // A class's member operator f (subst: the class's arguments) on lhs and rhs against the built-in
+  // operator on the operands' conversions, ranked as above: the member takes its object as it is,
+  // the built-in through the class's conversion operator, so the member is the better on the left;
+  // the built-in is on the right where the member takes it by a user-defined conversion and it is
+  // no class (`n < 2.0` with Num's operator<(Num), `implicit Num(double)` and `operator double()`,
+  // which clang rejects as ambiguous). 1: f is chosen, -1: an ambiguous call. Arithmetic,
+  // comparison, bitwise, shift and logical operators only (a built-in assignment converts no left
+  // operand, [over.match.oper] 4). Not yet on a SIMD vector (`float32x4 < __m128`, which clang
+  // rejects too): the Windows conversion of Factorio's SSE wrappers relies on MSVC's reading, the
+  // member, until it has their non-MSVC operators (pending spec
+  // classes/member_operator_against_builtin_vector_is_ambiguous).
+  int memberOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const Ty* lhs, const Ty* rhs);
 
   void collectScalarConversions(const Ty* cls, const Ty*& found, bool& ambiguous, int depth);
 
