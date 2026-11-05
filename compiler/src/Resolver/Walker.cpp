@@ -6162,8 +6162,12 @@ auto GlobalScope::Impl::Walker::declareLocal(Decl* d) -> void
         impl.pushLocalUsingEnum(u, scope, locals); // `using enum UndoActionDescription::Type;`: its enumerators
         break;
       }
-      if (Decl* target = u->name.empty() ? nullptr : impl.localUsingTarget(u, scope, &locals))
+      if (u->name.empty())
+        break;
+      if (Decl* target = impl.localUsingTarget(u, scope, &locals))
         locals.push(u->name.last().symbol, target);
+      else
+        locals.push(u->name.last().symbol, u); // functions: the overload set it names, through the using-declaration (lookupUnqualified)
       break;
     }
     case NodeKind::FunctionDecl:

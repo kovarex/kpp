@@ -46,6 +46,11 @@
   // Looks a symbol up in one scope: its own entries, template parameters, using-enums, bases.
   bool lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing = true);
 
+  // The name in namespace s's inline namespaces (Scope::inlineScopes, and theirs), added to out: what
+  // out found (found) and they find are one lookup, the functions of the name one overload set
+  // ([namespace.qual] 2). Whether anything was found.
+  bool withInlineNamespaces(Scope* s, uint32_t symbol, Lookup& out, bool found, int depth);
+
   // Whether a declaration can name a scope, as the part before `::` must: a namespace, a class,
   // an enumeration, an alias, a template parameter (C++ looks only at those there).
   static bool namesScope(const Decl* d);

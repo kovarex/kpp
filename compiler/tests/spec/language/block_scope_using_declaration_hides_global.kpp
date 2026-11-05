@@ -1,21 +1,29 @@
-// spec: a using-declaration at block scope (`using Geo::Detail::helper;`) brings the function into that block, hiding a global of the same name there, as C++'s [namespace.udecl] has it: the call in the block runs Geo::Detail::helper (`7`), the call after the block the global (`70`); clang prints the same
-// pending: the block's using-declaration is ignored, so the call in the block runs the global helper (`70 70`), a silent wrong answer
-// found by thread B (2026-11-05), comparing kpp with clang; the converted game has no block-scope using-declaration of a function (its one names a type)
+// spec: a using-declaration at block scope (`using Geo::Detail::helper;`) brings the function into that block, hiding a global of the same name there, as C++'s [namespace.udecl] has it: the call in the block runs Geo::Detail::helper (`7`), the call after the block the global (`70`); one of overloaded functions brings them all, the call choosing among them (`1 2`), and a global of the name is no candidate there (`pick('c')` takes pick(int), not the global pick(char): `1`, and `30` after the block); clang prints the same
+// found by thread B (2026-11-05), comparing kpp with clang: the block's using-declaration of a function was ignored, so the call in the block ran the global helper (`70 70`), a silent wrong answer; the converted game has no block-scope using-declaration of a function (its one names a type)
 namespace Geo
 {
   namespace Detail
   {
     int helper() { return 7; }
+    int pick(int) { return 1; }
+    int pick(float) { return 2; }
   }
 }
 int helper() { return 70; }
+int pick(char) { return 30; }
 int main()
 {
-  int inside = 0;
+  int inside = 0, first = 0, second = 0, third = 0;
   {
     using Geo::Detail::helper;
     inside = helper();
   }
-  println(inside, " ", helper());
+  {
+    using Geo::Detail::pick;
+    first = pick(1);
+    second = pick(1.5f);
+    third = pick('c');
+  }
+  println(inside, " ", helper(), " | ", first, " ", second, " ", third, " ", pick('c'));
   return 0;
 }

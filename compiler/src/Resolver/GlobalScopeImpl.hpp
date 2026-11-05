@@ -426,6 +426,9 @@ struct Scope
   std::thread::id baseResolver;
   std::vector<UsingDirectiveDecl*> usingDirectives;
   std::vector<Scope*> usingScopes;
+  // A namespace's named inline namespaces ([namespace.def] 7): their names are its names too, for
+  // qualified and unqualified lookup alike (lookupInScope; filled by the index under shards[0]'s mutex).
+  std::vector<Scope*> inlineScopes;
   std::atomic<int> usingState{0};
   std::vector<UsingNameDecl*> usingEnums; // `using enum E;` inside a class or namespace.
   std::vector<Scope*> usingEnumScopes;

@@ -121,7 +121,15 @@ auto GlobalScope::Impl::indexDecl(Decl* d, Scope* scope) -> void
             ++scopes;
         }
       }
-      // Anonymous and inline namespaces are flattened into the parent.
+      // An anonymous namespace is flattened into the parent; a named inline one is a namespace of
+      // its own whose names are the enclosing namespace's too (Scope::inlineScopes).
+      if (ns->isInline && ns->name != UINT32_MAX && target != scope && target->parent)
+      {
+        std::lock_guard lock(target->parent->shards[0].mutex);
+        std::vector<Scope*>& in = target->parent->inlineScopes;
+        if (std::find(in.begin(), in.end(), target) == in.end())
+          in.push_back(target);
+      }
       ns->ownScope = target;
       indexDecls(ns->decls, target);
       break;

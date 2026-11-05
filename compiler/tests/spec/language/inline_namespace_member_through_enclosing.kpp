@@ -1,15 +1,22 @@
-// spec: a member of an inline namespace is a member of the enclosing namespace for qualified lookup (C++'s [namespace.def] 7): `Geo::version()` finds Geo::V2::version, as `Geo::V2::version()` does (`2 2`); clang prints the same
-// pending: `Geo::version()` is "codegen does not support a call that did not resolve yet"
-// found by thread B (2026-11-05), comparing kpp with clang
+// spec: a member of an inline namespace is a member of the enclosing namespace for lookup (C++'s [namespace.def] 7, [namespace.qual] 2): `Geo::version()` finds Geo::V2::version, as `Geo::V2::version()` does (`2 2`), a class of it is named through Geo (`Geo::Point`: `3`), the enclosing namespace's functions of a name and the inline namespace's are one overload set (`Geo::scale(2)` the int one of Geo, `Geo::scale(2.5)` V2's double one: `20 25`), and inside Geo an unqualified call finds them too (`2`); clang prints the same
+// found by thread B (2026-11-05), comparing kpp with clang: `Geo::version()` was "codegen does not support a call that did not resolve yet" (a named inline namespace was a namespace of its own alone)
 namespace Geo
 {
   inline namespace V2
   {
     int version() { return 2; }
+    struct Point
+    {
+      int x = 3;
+    };
+    int scale(double v) { return int(v * 10); }
   }
+  int scale(int v) { return v * 10; }
+  int inside() { return version(); }
 }
 int main()
 {
-  println(Geo::V2::version(), " ", Geo::version());
+  Geo::Point p;
+  println(Geo::V2::version(), " ", Geo::version(), " ", p.x, " ", Geo::scale(2), " ", Geo::scale(2.5), " ", Geo::inside());
   return 0;
 }

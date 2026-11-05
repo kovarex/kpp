@@ -2002,7 +2002,7 @@ namespace
       }
       if (at(Kw::namespace_))
       {
-        parseNamespace();
+        parseNamespace((flags & DF_Inline) != 0);
         return;
       }
       if (at(Kw::static_assert_) || (at(Kw::extern_) && at(TokenKind::String, 1)))
@@ -2986,11 +2986,14 @@ namespace
 
     // --- namespaces, using, templates ---
 
-    void parseNamespace()
+    // inlineSpecifier: `inline namespace V2 {`, whose `inline` the declaration's specifiers read
+    // (until 2026-11-05 dropped: the namespace was no inline one, its names not the enclosing's).
+    void parseNamespace(bool inlineSpecifier = false)
     {
       uint32_t start = pos;
       advance();
       NamespaceDecl* ns = decl<NamespaceDecl>(start);
+      ns->isInline = inlineSpecifier;
       if (at(Kw::inline_))
       {
         advance();

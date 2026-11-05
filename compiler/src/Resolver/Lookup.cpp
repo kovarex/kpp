@@ -280,6 +280,8 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
     out.found = s->kind == ScopeKind::Namespace ? Found::Global : Found::Member;
     out.overloads = entries;
     out.foundIn = s;
+    if (!s->inlineScopes.empty())
+      withInlineNamespaces(s, symbol, out, true, depth);
     return true;
   }
   if (Decl* a = s->findAbsent(symbol))
@@ -363,6 +365,10 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
   }
   else if (s->kind == ScopeKind::Namespace)
   {
+    // `Geo::version()` of `namespace Geo { inline namespace V2 { int version(); } }` ([namespace.def] 7;
+    // until 2026-11-05 it did not resolve).
+    if (!s->inlineScopes.empty() && withInlineNamespaces(s, symbol, out, false, depth))
+      return true;
     // `namespace TileRenderLayer { enum class Enum {...}; using enum Enum; }`, then
     // `TileRenderLayer::GROUND_NATURAL`: the enumerators are the namespace's names.
     if (!s->usingEnums.empty())
@@ -382,6 +388,19 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
     }
   }
   return false;
+}
+
+auto GlobalScope::Impl::withInlineNamespaces(Scope* s, uint32_t symbol, Lookup& out, bool found, int depth) -> bool
+{
+  for (Scope* in : s->inlineScopes)
+  {
+    Lookup r;
+    if (depth > 16 || !lookupInScope(in, symbol, r, depth + 1, false))
+      continue;
+    out = found ? sameNameTogether(out, r, depth + 1) : r;
+    found = true;
+  }
+  return found;
 }
 
 auto GlobalScope::Impl::namesScope(const Decl* d) -> bool
@@ -418,6 +437,17 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
       if (item.symbol != symbol || (qualifierOnly && !namesScope(item.decl)))
         continue;
       Decl* d = item.decl;
+      if (d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum)
+      {
+        // A block's using-declaration of functions (Walker::declareLocal): the overload set it
+        // names, which hides the outer scopes' functions of the name in the block
+        // ([namespace.udecl]; until 2026-11-05 the global function of the name was called).
+        Lookup target = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+        if (!target.decl)
+          continue;
+        out = target;
+        return true;
+      }
       out = Lookup{}; // (nothing of a scope searched before)
       out.decl = d;
       out.found = d->kind == NodeKind::TemplateParamDecl ? Found::Dependent : Found::Local;
