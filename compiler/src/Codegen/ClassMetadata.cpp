@@ -2292,6 +2292,14 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
                        !static_cast<FunctionalCastExpr*>(init)->braced);
       return;
     }
+    if (init->kind == NodeKind::NamedCastExpr && sameClass && static_cast<NamedCastExpr*>(init)->castKind == Kw::static_cast_ && !init->ty->isReference())
+    {
+      // `static_cast<T>(e)`, a prvalue of T: the object itself direct-initialized from e, as `T(e)`
+      // is (C++17's guaranteed elision), never a temporary moved into it.
+      Expr* operand = static_cast<NamedCastExpr*>(init)->operand;
+      directInitialize(addr, t, Span<Expr*>{&operand, 1}, false, at, true);
+      return;
+    }
     if (init->kind == NodeKind::BraceInitExpr)
     {
       Expr* one = init; // constructInto sees the whole list: an InitializerList constructor, designators, or the fields

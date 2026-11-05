@@ -1,13 +1,40 @@
-// spec: `static_cast<Strict>(9)` direct-initializes a Strict by its explicit constructor ([expr.static.cast] 4), as `Strict(9)` does (`9`)
-// pending: the code generator stops at it: "codegen does not support a conversion from int32 to Strict yet" (B)
-// found by thread D (2026-11-05) writing language/copy_initialization_by_explicit_constructor_is_error
+// spec: `static_cast<Strict>(9)` direct-initializes a Strict by its explicit constructor ([expr.static.cast] 4), as `Strict(9)` does (`9`); a static_cast to a class is a temporary of it, direct-initialized: from an object of the class a copy (`105`, not the object itself), from a prvalue of it the object built in place, and as an initializer or an argument of the class the cast's result is that object itself, with no move (C++17's guaranteed elision: `105 0 105 105`); to a base a copy of the base's part, to a reference no copy (`7 8`); a converting constructor from another class (`25`)
+// found by thread D (2026-11-05) writing language/copy_initialization_by_explicit_constructor_is_error: the code generator stopped at it ("codegen does not support a conversion from int32 to Strict yet"); a static_cast to the class itself was the object, uncopied
 struct Strict
 {
   int v;
   explicit Strict(int x) : v(x) {}
 };
+struct Counter
+{
+  int n = 0;
+  Counter() {}
+  Counter(const Counter& o) : n(o.n + 100) {}
+  Counter(Counter&& o) : n(o.n + 1000) {}
+};
+struct Base { int b = 1; };
+struct Derived : Base { int d = 2; };
+struct Meters { double m; };
+struct Wrapper
+{
+  int w;
+  Wrapper(Meters x) : w(int(x.m * 10)) {}
+};
+Counter makeCounter() { return Counter(); }
+int takeCounter(Counter c) { return c.n; }
 int main()
 {
   println(static_cast<Strict>(9).v);
+  Counter c;
+  c.n = 5;
+  Counter copied = static_cast<Counter>(c);
+  Counter moved = static_cast<Counter>(makeCounter());
+  println(copied.n, " ", moved.n, " ", takeCounter(static_cast<Counter>(c)), " ", static_cast<Counter>(c).n);
+  Derived d;
+  d.b = 7;
+  Base sliced = static_cast<Base>(d);
+  Base& ref = static_cast<Base&>(d);
+  ref.b = 8;
+  println(sliced.b, " ", d.b, " ", static_cast<Wrapper>(Meters{2.5}).w);
   return 0;
 }

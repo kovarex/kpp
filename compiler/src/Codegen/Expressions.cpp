@@ -433,6 +433,18 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       if (c->castKind == Kw::dynamic_cast_)
         if (std::optional<Value> v = dynamicCast(c, e))
           return *v;
+      if (const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr; c->castKind == Kw::static_cast_ && t && !e->ty->isReference() && isClass(t))
+      {
+        // `static_cast<T>(x)` to a class: a temporary T direct-initialized from x, by an explicit
+        // constructor too ([expr.static.cast] 4), as `T(x)` is (a copy of an object of T itself, a
+        // base's part of a derived one). (Until 2026-11-05 an int for an explicit constructor was
+        // "a conversion from int32 to Strict", thread D's spec language/static_cast_by_explicit_constructor.)
+        std::string addr = newObjectSlot(t, e);
+        Expr* one = c->operand;
+        directInitialize(addr, t, Span<Expr*>{&one, 1}, false, e, true);
+        statementTemps.push_back({addr, t});
+        return {addr, t, true};
+      }
       return explicitConvert(rvalue(c->operand), e->ty, e);
     }
     case NodeKind::FunctionalCastExpr:
