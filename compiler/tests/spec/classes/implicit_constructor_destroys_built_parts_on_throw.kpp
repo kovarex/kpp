@@ -1,0 +1,57 @@
+// spec: a constructor the compiler makes (implicit or `= default`) destroys the bases and members it has made when a later one's initializer throws, in reverse order, as a written one does and C++ requires ([except.ctor] 3): `M3 ~M3` for `class Implicit { M a{3}; M b{fail(1)}; }`, a defaulted one, a base before a member, and `new Implicit()`, whose member is destroyed before its memory is freed; the same as g++ prints
+// found by thread B (2026-11-05): kpp built the implicit ones inline with no cleanup for what they had made, so `M3 | implicit` left a undestroyed (a written constructor's own body had them)
+class M
+{
+public:
+  int id;
+  M(int i) : id(i) { print("M", id, " "); }
+  ~M() { print("~M", id, " "); }
+};
+int fail(int x) { if (x > 0) throw RuntimeError("no"); return x; }
+class Implicit
+{
+public:
+  M a{3};
+  M b{fail(1)};
+};
+class UserEmpty
+{
+public:
+  M a{4};
+  M b{fail(1)};
+  UserEmpty() {}
+};
+class Defaulted
+{
+public:
+  M a{5};
+  M b{fail(1)};
+  Defaulted() = default;
+};
+class MemInit
+{
+public:
+  M a;
+  M b;
+  MemInit() : a(6), b(fail(1)) {}
+};
+class Base
+{
+public:
+  M base{7};
+};
+class FromBase : public Base
+{
+public:
+  M d{fail(1)};
+};
+int main()
+{
+  try { Implicit i; } catch (...) { println("| implicit"); }
+  try { UserEmpty u; } catch (...) { println("| user empty"); }
+  try { Defaulted d; } catch (...) { println("| defaulted"); }
+  try { MemInit m; } catch (...) { println("| mem-init"); }
+  try { FromBase f; } catch (...) { println("| from base"); }
+  try { Implicit* p = new Implicit(); } catch (...) { println("| new implicit"); }
+  return 0;
+}

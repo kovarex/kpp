@@ -1300,7 +1300,9 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     if (pt->kind == TyKind::RRef && isLvalueExpression(arg) && arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty))
     {
       const Ty* given = types.unqualified(types.stripRef(arg->ty)), *bound = types.unqualified(types.stripRef(pt));
-      if (given->kind != TyKind::Function && (given == bound || (isClass(given) && isClass(bound) && classKey(given) == classKey(bound)))) // (a function lvalue it binds: 5.3.1)
+      std::vector<std::pair<std::string, uint32_t>> path; // (a derived class's lvalue no more than the class's own)
+      if (given->kind != TyKind::Function && // (a function lvalue it binds: 5.3.1)
+          (given == bound || (isClass(given) && isClass(bound) && (classKey(given) == classKey(bound) || basePath(given, bound, path, at)))))
         fail(at, "a " + types.toString(pt, &symbols) + " parameter given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
     }
     auto refuseTemporary = [&](const char* made)

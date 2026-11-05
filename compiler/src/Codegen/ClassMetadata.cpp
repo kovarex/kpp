@@ -713,13 +713,40 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
     if (Decl* own = currentFunction && (currentFunction->flags & DF_Constructor) ? global.owningClass(currentFunction) : nullptr;
         !own || classDef(own, at) != classDef(t->decl, at))
       implicitConstructionOf = classDef(t->decl, at);
+  // Each base and member made is destroyed if a later one's initializer throws ([except.ctor] 3):
+  // an unwind-only cleanup. In a constructor's own body (built) its scope ends with the function.
+  // Done inline (an implicit or defaulted constructor's work, no function of its own) the cleanups go
+  // with the statement's temporaries, so that unwinding destroys them before a new-expression frees
+  // the memory, and are dropped once the object is whole, which its owner destroys then. Until
+  // 2026-11-05 the inline parts had none: `class Implicit { M a{3}; M b{fail(1)}; };` left a
+  // undestroyed when b's initializer threw.
+  std::vector<std::string> inlineParts;
+  struct DropInlineParts
+  {
+    Emitter& e;
+    std::vector<std::string>& parts;
+    ~DropInlineParts()
+    {
+      if (parts.empty())
+        return;
+      e.statementTemps.erase(std::remove_if(e.statementTemps.begin(), e.statementTemps.end(),
+                                            [&](const Object& o)
+                                            { return o.unwindOnly && std::find(parts.begin(), parts.end(), o.addr) != parts.end(); }),
+                             e.statementTemps.end());
+    }
+  } dropInlineParts{*this, inlineParts};
   auto builtPart = [&](const std::string& part, const Ty* pt)
   {
-    if (built && needsDestruction(pt, at))
-    {
-      Object o{part, pt};
-      o.unwindOnly = true;
+    if (!needsDestruction(pt, at))
+      return;
+    Object o{part, pt};
+    o.unwindOnly = true;
+    if (built)
       scopes.back().push_back(o);
+    else
+    {
+      statementTemps.push_back(o);
+      inlineParts.push_back(part);
     }
   };
   auto initFor = [&](uint32_t symbol) -> const FunctionDecl::CtorInit*

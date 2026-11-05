@@ -312,14 +312,13 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
       init = static_cast<BraceInitExpr*>(init)->args[0];
     // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4, as for a parameter:
     // argumentText). Until 2026-11-05 `S&& r = a;` bound a itself, and a move from r moved a.
-    // (`auto&& value = this->state;` is a forwarding reference, which an lvalue makes an lvalue one:
-    // the checker deduces it as written, and binding the object is right for it.)
-    bool forwarding = v->type && v->type->kind == NodeKind::RRefType && static_cast<RRefType*>(v->type)->referenced &&
-                      static_cast<RRefType*>(v->type)->referenced->kind == NodeKind::AutoType;
-    if (t->kind == TyKind::RRef && !forwarding && isLvalueExpression(init) && init->ty && init->ty->isKnown() && !types.isDependent(init->ty))
+    // (`auto&& value = this->state;` is an lvalue reference since D's cee07bff, as in C++.)
+    if (t->kind == TyKind::RRef && isLvalueExpression(init) && init->ty && init->ty->isKnown() && !types.isDependent(init->ty))
     {
       const Ty* given = types.unqualified(types.stripRef(init->ty)), *bound = types.unqualified(types.stripRef(t));
-      if (given->kind != TyKind::Function && (given == bound || (isClass(given) && isClass(bound) && classKey(given) == classKey(bound))))
+      std::vector<std::pair<std::string, uint32_t>> path;
+      if (given->kind != TyKind::Function &&
+          (given == bound || (isClass(given) && isClass(bound) && (classKey(given) == classKey(bound) || basePath(given, bound, path, v)))))
         fail(v, "the " + types.toString(t, &symbols) +
                     " variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
     }
