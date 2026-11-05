@@ -10,12 +10,14 @@ void CrashHandler::createMinidumpAndTerminate()
   TerminateProcess(GetCurrentProcess(), 1);
 }
 
-// The UCRT's set_terminate and _set_new_handler, which install() and setThreadExceptionHandlers()
-// call: eh.h and new.h are C++ headers, which the import does not take, and ucrtbase exports both
-// under C's names. They reach what runs on the C runtime: kpp's own uncaught exceptions print and
-// abort (design.md 9) and kpp's new does not call the new handler, so for kpp code neither handler
-// runs (docs/path-to-factorio.md, "Structured exception handling").
+// eh.h's set_terminate, which install() and setThreadExceptionHandlers() call: kpp's own terminate
+// handler (the stdlib's setTerminate), which an exception nobody catches calls, on Windows too since
+// thread I's 2b996495, so that the game's TerminateHandler writes its crash report for kpp's
+// exceptions. (Until then it was the UCRT's, which only what runs on the C runtime reaches.)
+// _set_new_handler is the UCRT's: new.h is a C++ header, which the import does not take, and
+// ucrtbase exports it under its C name; kpp's new does not call it (docs/path-to-factorio.md,
+// "Structured exception handling").
 typedef void (*terminate_handler)();
 typedef int (*_PNH)(size_t);
-extern "C" terminate_handler set_terminate(terminate_handler handler);
+terminate_handler set_terminate(terminate_handler handler) { return setTerminate(handler); }
 extern "C" _PNH _set_new_handler(_PNH handler);
