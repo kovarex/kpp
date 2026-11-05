@@ -1,0 +1,33 @@
+// spec: a literal 0 for a pointer or member pointer member of a brace list is an error at the 0 token too (design.md 4), where no walk sees it as a pointer: codegen reports it once, for a data member pointer and a member function pointer as for a pointer
+// kppc: --diagnostic-columns
+// error: zero_in_brace_list_as_pointer_is_error.kpp:16:15: error: the literal 0 is no pointer: write nullptr (design.md 4)
+// error: zero_in_brace_list_as_pointer_is_error.kpp:21:24: error: the literal 0 is no pointer: write nullptr (design.md 4)
+// error: zero_in_brace_list_as_pointer_is_error.kpp:26:33: error: the literal 0 is no pointer: write nullptr (design.md 4)
+struct Node { int v; };
+struct Links
+{
+  Node* next;
+  int Node::* field;
+  int (Node::* get)();
+};
+bool pointer()
+{
+  Links l = { nullptr, nullptr, nullptr };
+  Links m = { 0, nullptr, nullptr };
+  return l.next == m.next;
+}
+bool dataMember()
+{
+  Links l = { nullptr, 0, nullptr };
+  return l.field == nullptr;
+}
+bool functionMember()
+{
+  Links l = { nullptr, nullptr, 0 };
+  return l.get == nullptr;
+}
+int main()
+{
+  println(pointer(), dataMember(), functionMember());
+  return 0;
+}

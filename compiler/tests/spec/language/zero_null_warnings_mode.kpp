@@ -1,12 +1,22 @@
-// spec: --zero-null-warnings, convert.cmd's nullptr pass: the literal 0s that would be pointers (an error otherwise, design.md 4) are warnings at the 0 token, for fix-null.py to rewrite, and the program builds and runs as C++ reads it
+// spec: --zero-null-warnings, convert.cmd's nullptr pass: the literal 0s that would be pointers or member pointers (an error otherwise, design.md 4) are warnings at the 0 token, for fix-null.py to rewrite, a brace list's members too, and the program builds and runs as C++ reads it (a null data member pointer is no zero)
 // kppc: --zero-null-warnings --diagnostic-columns
-// warning: zero_null_warnings_mode.kpp:6:23: warning: the literal 0 is no pointer: write nullptr (design.md 4)
-// warning: zero_null_warnings_mode.kpp:9:13: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:15:23: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:18:13: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:19:15: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:19:18: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:19:21: warning: the literal 0 is no pointer: write nullptr (design.md 4)
 struct Node { int v; };
+struct Links
+{
+  Node* next;
+  int Node::* field;
+  int (Node::* get)();
+};
 Node* none() { return 0; }
 int main()
 {
   Node* p = 0;
-  println(p == none());
+  Links l = { 0, 0, 0 };
+  println(p == none(), " ", l.next == nullptr, " ", l.field == nullptr, " ", l.get == nullptr);
   return 0;
 }
