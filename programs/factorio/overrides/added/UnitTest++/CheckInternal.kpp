@@ -3,7 +3,15 @@
 // of checkInternal instead (convert.cpp's replacedMacroBodies), with the condition and the check's id
 // in lambdas called where the macro evaluates them: the condition inside the try, the id only when
 // the check fails. A check whose id is nullptr calls the overload without one.
-extern "C" import "windows.h";
+
+// The macro's BREAK_UNDER_DEBUGGER: MSVC's IsDebuggerPresent and DebugBreak on Windows (windows.h,
+// imported by CheckInternalWindows.kpp), nothing elsewhere, as CheckMacros.h has it.
+private bool breakUnderDebugger()
+{
+  if constexpr (config::platform == Platform::Windows)
+    return IsDebuggerPresent() && (DebugBreak(), true);
+  return false;
+}
 
 // The id's text, as the macro's `UNIT_TEST_ID_OUT_stream << (id)`.
 private void checkIdText(UnitTest::MemoryOutStream& stream, const UnitTest::CheckId* id)
@@ -21,7 +29,7 @@ private void checkWith(const UnitTest::CheckCondition& condition, char const* fi
     UnitTest::MemoryOutStream CHECK_INTERNAL_stream;
     if (!condition.evaluate(condition.condition, CHECK_INTERNAL_stream))
     {
-      (IsDebuggerPresent() && (DebugBreak(), true));
+      breakUnderDebugger();
       UnitTest::MemoryOutStream UNIT_TEST_ID_OUT_stream;
       checkIdText(UNIT_TEST_ID_OUT_stream, id);
       UnitTest::CurrentTest::onTestFailure(filename, line, UNIT_TEST_ID_OUT_stream.GetText(), CHECK_INTERNAL_stream.GetText());
@@ -33,7 +41,7 @@ private void checkWith(const UnitTest::CheckCondition& condition, char const* fi
   }
   catch (const Exception& e)
   {
-    (IsDebuggerPresent() && (DebugBreak(), true));
+    breakUnderDebugger();
     MemoryOutStream UNIT_TEST_MEMORY_OUT_stream;
     UNIT_TEST_MEMORY_OUT_stream << "Unhandled exception in check macro: " << e.what();
     MemoryOutStream UNIT_TEST_ID_OUT_stream;
@@ -42,7 +50,7 @@ private void checkWith(const UnitTest::CheckCondition& condition, char const* fi
   }
   catch (...)
   {
-    (IsDebuggerPresent() && (DebugBreak(), true));
+    breakUnderDebugger();
     MemoryOutStream UNIT_TEST_ID_OUT_stream;
     checkIdText(UNIT_TEST_ID_OUT_stream, id);
     UnitTest::CurrentTest::onTestFailure(filename, line, UNIT_TEST_ID_OUT_stream.GetText(), "Unhandled exception in check macro");

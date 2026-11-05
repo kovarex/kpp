@@ -1,7 +1,7 @@
-// Hand-written replacements for parts of StringUtil: the UTF-8/UTF-16 conversions use the
-// Windows API instead of codecvt, and the trim functions index the string instead of using
-// reverse iterators. Every definition here replaces the converted one of the same name.
-extern "C" import "windows.h";
+// Hand-written replacements for parts of StringUtil: the UTF-8 and wide conversions are the
+// stdlib's platform layer's (UTF-16 on Windows, UTF-32 elsewhere) instead of codecvt, and the trim
+// functions index the string instead of using reverse iterators. Every definition here replaces the
+// converted one of the same name.
 
 // Global aliases for UTF8 constants that were C macros (used without namespace prefix).
 const char* UTF8_BOM = "\xEF\xBB\xBF";
@@ -12,40 +12,14 @@ void wstringConvert() = delete; // codecvt is gone: widen and narrow below do th
 
 namespace StringUtil
 {
-  WString widen(const char* str, int length)
-  {
-    WString result;
-    if (length <= 0)
-      return result;
-    int count = MultiByteToWideChar(CP_UTF8, 0, str, length, nullptr, 0);
-    if (count <= 0)
-      return result;
-    wchar_t* buffer = (wchar_t*)malloc((size_t)count * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, str, length, buffer, count);
-    result.append(buffer, count);
-    free(buffer);
-    return result;
-  }
+  WString widen(const char* str, int length) { return platform::widenUtf8(str, length); }
 
   WString widen(const String& str) { return widen(str.c_str(), str.size()); }
   WString widen(StringView str) { return widen(str.data(), str.size()); }
   WString widen(const WString& str) { return str; }
   WString widen(const char* str) { return widen(str, (int)strlen(str)); }
 
-  String narrow(const wchar_t* str, int length)
-  {
-    String result;
-    if (length <= 0)
-      return result;
-    int count = WideCharToMultiByte(CP_UTF8, 0, str, length, nullptr, 0, nullptr, nullptr);
-    if (count <= 0)
-      return result;
-    char* buffer = (char*)malloc((size_t)count);
-    WideCharToMultiByte(CP_UTF8, 0, str, length, buffer, count, nullptr, nullptr);
-    result.append(buffer, count);
-    free(buffer);
-    return result;
-  }
+  String narrow(const wchar_t* str, int length) { return platform::narrowWide(str, length); }
 
   String narrow(const WString& str) { return narrow(str.c_str(), str.size()); }
   String narrow(wchar_t str) { return narrow(&str, 1); }

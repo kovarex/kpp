@@ -1,0 +1,3 @@
+requires config::platform == Platform::Windows;
+// windows.h for CheckInternal.kpp's breakUnderDebugger (IsDebuggerPresent, DebugBreak): Windows' alone.
+extern "C" import "windows.h";
