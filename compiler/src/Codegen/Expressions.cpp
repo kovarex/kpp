@@ -570,8 +570,72 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       eachOperand([&](Expr* x) { values.push_back(rvalue(x)); });
       if (values.empty())
         unsupported(e, "a fold over an empty pack without an initial value");
+      // A step whose operand is of a class, or of an enumeration with an operator of its own, is
+      // `a op b` as binary() emits it, the two values standing in as operands (an object as itself,
+      // a temporary as an xvalue, a scalar as its value): the operator the operands' types choose,
+      // per step (the fold's one node records no choice for each element).
+      std::deque<VariableDecl> standVars;
+      std::deque<NameExpr> standNames;
+      std::deque<NamedCastExpr> standCasts;
+      std::deque<BinaryExpr> steps;
+      struct Forget
+      {
+        std::unordered_map<Decl*, Local>& locals;
+        std::deque<VariableDecl>& vars;
+        ~Forget()
+        {
+          for (VariableDecl& v : vars)
+            locals.erase(&v);
+        }
+      } forget{locals, standVars};
+      auto standIn = [&](const Value& v) -> Expr*
+      {
+        const Ty* t = types.unqualified(types.stripRef(v.ty));
+        VariableDecl& var = standVars.emplace_back();
+        var.kind = NodeKind::VariableDecl;
+        var.token = e->token;
+        std::string at = v.text;
+        if (!isClass(t))
+        {
+          at = newObjectSlot(t, e);
+          store(v, at, t, e);
+        }
+        locals[&var] = {at, t, false};
+        NameExpr& name = standNames.emplace_back();
+        name.kind = NodeKind::NameExpr;
+        name.token = e->token;
+        name.resolved = &var;
+        name.ty = t;
+        if (isClass(t) && !v.isTemporary)
+          return &name;
+        NamedCastExpr& cast = standCasts.emplace_back();
+        cast.kind = NodeKind::NamedCastExpr;
+        cast.token = e->token;
+        cast.castKind = Kw::static_cast_;
+        cast.operand = &name;
+        cast.ty = isClass(t) ? types.rref(t) : t;
+        return &cast;
+      };
+      auto userOperator = [&](const Value& a, const Value& b)
+      {
+        const Ty* at = types.unqualified(types.stripRef(a.ty));
+        const Ty* bt = types.unqualified(types.stripRef(b.ty));
+        if (isClass(at) || isClass(bt))
+          return true;
+        return (at->kind == TyKind::Enum || bt->kind == TyKind::Enum) && global.enumOperator(uint32_t(op), at, bt, currentFunction);
+      };
       auto combine = [&](const Value& a, const Value& b)
       {
+        if (userOperator(a, b))
+        {
+          BinaryExpr& step = steps.emplace_back();
+          step.kind = NodeKind::BinaryExpr;
+          step.token = e->token;
+          step.op = f->op;
+          step.lhs = standIn(a);
+          step.rhs = standIn(b);
+          return binary(&step);
+        }
         if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq)
           return compare(op, a, b, e);
         return arithmetic(op, a, b, e);

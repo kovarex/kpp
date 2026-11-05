@@ -1,0 +1,40 @@
+// spec: a fold expression whose operator is a user-defined one calls, step by step, the operator its operands' types choose: a binary fold from an int over elements of two classes (each its own operator+), a unary fold over objects of one class, a binary fold of `<<` into a class returning itself by reference, and a fold over a scoped enumeration's own operator|
+// found by thread D (2026-11-05), beside the lambda pack fix: codegen folded with the built-in operator: `(0 + ... + ts)` over A and B was "a conversion from A to int32", and a fold over Flags ran the built-in | silently (5 for the last line, where Flag's operator| gives 6)
+struct A { int v; };
+struct B { int v; };
+inline int operator+(int acc, const A& a) { return acc + a.v; }
+inline int operator+(int acc, const B& b) { return acc + b.v * 100; }
+struct Vec { int x, y; };
+inline Vec operator+(const Vec& a, const Vec& b) { return Vec{a.x + b.x, a.y + b.y}; }
+enum class Flag { None = 0, A = 1, B = 2, C = 4 };
+inline Flag operator|(Flag a, Flag b) { return Flag(int(a) + int(b)); } // (adds: A | A is 2 here, and the fold 6, where a built-in | gives 5)
+struct Sink { int total = 0; };
+inline Sink& operator<<(Sink& s, int v) { s.total += v; return s; }
+inline Sink& operator<<(Sink& s, const A& a) { s.total += a.v * 10; return s; }
+
+template<typename... Ts>
+int sumLeft(Ts... ts) { return (0 + ... + ts); }
+
+template<typename... Ts>
+Vec sumVecs(Ts... ts) { return (ts + ...); }
+
+template<typename... Ts>
+Flag all(Ts... ts) { return (ts | ...); }
+
+template<typename... Ts>
+int sink(Ts... ts)
+{
+  Sink s;
+  (s << ... << ts);
+  return s.total;
+}
+
+int main()
+{
+  println(sumLeft(A{1}, B{2}, A{3}));
+  Vec v = sumVecs(Vec{1, 2}, Vec{3, 4}, Vec{5, 6});
+  println(v.x, " ", v.y);
+  println(sink(1, A{2}, 3));
+  println(int(all(Flag::A, Flag::C, Flag::A)));
+  return 0;
+}
