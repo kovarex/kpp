@@ -1,0 +1,21 @@
+// spec: a table of names and C functions the program defines, ending with a null entry as Lua's linit `loadedlibs` does (`{"base", luaopenBase}, ..., {nullptr, nullptr}`), is read up to its end (`base 2 math 3`), its nulls and its functions constant data
+// found by thread D (2026-11-05) lowering a null pointer the interpreter gives as 0 as constant data: Lua's loadedlibs became data, and the module holding it did not declare luaopen_base (B's 5857310f)
+extern "C" int luaopenBase(int x) { return x + 1; }
+extern "C" int luaopenMath(int x) { return x + 2; }
+struct Reg
+{
+  const char* name;
+  int (*open)(int);
+};
+static const Reg loadedlibs[] = {{"base", luaopenBase}, {"math", luaopenMath}, {nullptr, nullptr}};
+int main()
+{
+  for (const Reg* r = loadedlibs; r->open; ++r)
+  {
+    if (r != loadedlibs)
+      print(" ");
+    print(StringView(r->name), " ", r->open(1));
+  }
+  println();
+  return 0;
+}

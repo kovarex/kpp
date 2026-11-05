@@ -35,13 +35,12 @@ auto codegen::Emitter::constantText(const ConstValue& v, const Ty* t, Node* at, 
         return floatConstant(v.f, t->bits);
       return v.kind == ConstValue::Kind::Int ? std::optional<std::string>(floatConstant(double(v.i), t->bits)) : std::nullopt;
     case TyKind::Pointer:
-      // A null pointer only when no initializer set it: the interpreter's Int 0 of a pointer type
-      // (`FOLD = fold` with fold = nullptr, a table's `{NULL, NULL}`) is built at startup. (A
-      // function template argument is its function's Address since d61e6a56, so the Int 0 would be
-      // a null too; but lowered, Lua's `loadedlibs` table, whose other entries name C functions of
-      // other modules, left their modules undeclared: B's, 2026-11-05.) (`T* p = nullptr;` itself
-      // is a null constant before constant data is asked for.)
-      if (unset)
+      // The interpreter's Int 0 of a pointer type is a null pointer (`FOLD = fold` with fold =
+      // nullptr, a table's `{NULL, NULL}`): a function template argument is its function's Address
+      // since d61e6a56, never an Int 0, and a table's C functions are declared in its module since
+      // 5857310f (Lua's `loadedlibs`). (`T* p = nullptr;` itself is a null constant before constant
+      // data is asked for.)
+      if (unset || (v.kind == ConstValue::Kind::Int && v.i == 0))
         return std::string("null");
       if (v.kind == ConstValue::Kind::Pointer)
         return evaluatedArrayElement(v, t, at, depth);
