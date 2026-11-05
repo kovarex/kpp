@@ -5,36 +5,115 @@
 
 namespace projects
 {
+  // The platform a program's C libraries are built for: the last --target of build.kpp's arguments and
+  // the command line's (as targetPlatform), its triple, and the sysroot kppc links with (the last
+  // --sysroot, else the one beside kppc, sysroots\linux-x86_64 or freebsd-x86_64).
+  LibraryTarget libraryTarget(const Program& p, const Request& request)
+  {
+    LibraryTarget out;
+    Target target;
+    std::string sysroot;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+      {
+        if ((*list)[i] == "--target")
+        {
+          std::string why;
+          Target named;
+          if (targetNamed((*list)[i + 1], named, why))
+            target = named;
+        }
+        else if ((*list)[i] == "--sysroot")
+          sysroot = (*list)[i + 1];
+      }
+    out.platform = platformOf(target.os).name;
+    if (!target.windows())
+    {
+      out.triple = target.triple;
+      out.sysroot = !sysroot.empty() ? sysroot : defaultSysroot(compilerPath(), (out.platform + "-x86_64").c_str()).string();
+    }
+    return out;
+  }
+
+  // A C library's entries (sources, includes, defines...) for one platform: an entry build.kpp gave
+  // with a platform (`define("_GNU_SOURCE", Platform::Linux)`, kept as "linux _GNU_SOURCE", as
+  // systemLibrary's are) only for that platform, without it; every other entry for every platform.
+  std::vector<std::string> forPlatform(const std::vector<std::string>& entries, const std::string& platform)
+  {
+    std::vector<std::string> out;
+    for (const std::string& e : entries)
+    {
+      size_t blank = e.find(' ');
+      bool platformEntry = false;
+      if (blank != std::string::npos)
+        for (const PlatformName& p : platformNames)
+          if (e.compare(0, blank, p.name) == 0)
+            platformEntry = true;
+      if (!platformEntry)
+        out.push_back(e);
+      else if (e.compare(0, blank, platform) == 0)
+        out.push_back(e.substr(blank + 1));
+    }
+    return out;
+  }
+
   // Where a program's C libraries are built: build\clib, or for a configuration with C flags of its
   // own (build.kpp's cFlag: the final configuration's -flto) build\clib\flags-HASH, those flags' own,
   // which configurations with the same flags share (each library's flags.txt says them). Building
-  // one configuration then leaves another's objects as they are.
-  fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags)
+  // one configuration then leaves another's objects as they are. Another platform's are in
+  // build\clib-PLATFORM (build\clib-linux), so that building for one leaves the other's as they are.
+  fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags, const std::string& platform)
   {
+    fs::path base = root / "build" / (platform == "windows" ? std::string("clib") : "clib-" + platform);
     if (cFlags.empty())
-      return root / "build" / "clib";
+      return base;
     uint32_t hash = 2166136261u;
     for (const std::string& flag : cFlags)
       for (unsigned char ch : flag + '\n')
         hash = (hash ^ ch) * 16777619u;
     char name[24];
     snprintf(name, sizeof name, "flags-%08x", hash);
-    return root / "build" / "clib" / name;
+    return base / name;
   }
 
-  fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags) { return clibDirectory(root, cFlags) / c.name; }
+  fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform)
+  {
+    return clibDirectory(root, cFlags, platform) / c.name;
+  }
 
-  // What linking a C library takes: its prebuilt .lib files or the one kpp builds, and its .res files.
-  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags)
+  // What linking a C library takes: its prebuilt libraries or the one kpp builds (NAME.lib for
+  // Windows, the archive NAME.a for Linux and FreeBSD), and its .res files, the platform's.
+  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform)
   {
     std::vector<fs::path> files;
-    for (const std::string& lib : c.prebuilt)
+    std::vector<std::string> prebuilt = forPlatform(c.prebuilt, platform);
+    for (const std::string& lib : prebuilt)
       files.push_back(rooted(root, lib));
-    if (c.prebuilt.empty() && !c.sources.empty())
-      files.push_back(clibDirectory(root, cFlags) / (c.name + ".lib"));
-    for (const std::string& rc : c.resources)
-      files.push_back(libraryDirectory(root, c, cFlags) / (fs::path(rc).stem().string() + ".res"));
+    if (prebuilt.empty() && !forPlatform(c.sources, platform).empty())
+      files.push_back(clibDirectory(root, cFlags, platform) / (c.name + (platform == "windows" ? ".lib" : ".a")));
+    for (const std::string& rc : forPlatform(c.resources, platform))
+      files.push_back(libraryDirectory(root, c, cFlags, platform) / (fs::path(rc).stem().string() + ".res"));
     return files;
+  }
+
+  // The C++ library a program links for its C libraries' C++ files, off Windows: an ELF object names
+  // no default library, as a COFF one names MSVC's C++ runtime (/DEFAULTLIB), and kppc links with
+  // clang's C driver. Linux: libstdc++, statically (as Factorio's Linux build does: the program needs
+  // no particular libstdc++ of the system it runs on); FreeBSD: libc++ and libcxxrt, its C++ ABI
+  // library (a FreeBSD program links statically). Nothing for Windows or a library of C files only.
+  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform)
+  {
+    if (platform == "windows" || !forPlatform(c.prebuilt, platform).empty())
+      return {};
+    for (const std::string& s : forPlatform(c.sources, platform))
+      for (const fs::path& file : collectFiles(rooted(root, s), {".cc", ".cpp"}))
+      {
+        (void)file;
+        if (platform == "freebsd")
+          return {"-lc++", "-lcxxrt"};
+        return {"-l:libstdc++.a"};
+      }
+    return {};
   }
 
   fs::file_time_type modified(const fs::path& path)
@@ -116,22 +195,39 @@ namespace projects
     return check();
   }
 
-  // prefixMap: libraryPrefixMap's flags, after cFlags.
+  // prefixMap: libraryPrefixMap's flags, after cFlags. target: the platform the program is built for
+  // (libraryTarget), whose entries of the library are taken (forPlatform).
   bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& prefixMap, LibraryJob& job,
-                      std::unordered_map<std::string, fs::file_time_type>& times)
+                      std::unordered_map<std::string, fs::file_time_type>& times, const LibraryTarget& target)
   {
     fs::path tools = fs::path(clangPath()).parent_path();
+    const std::string& platform = target.platform;
     job.library = &c;
-    job.directory = libraryDirectory(root, c, cFlags);
+    job.directory = libraryDirectory(root, c, cFlags, platform);
     std::error_code ec;
     fs::create_directories(job.directory, ec);
-    if (c.prebuilt.empty() && !c.sources.empty())
+    std::vector<std::string> sourceEntries = forPlatform(c.sources, platform), resourceEntries = forPlatform(c.resources, platform);
+    // A resource script is Windows' (llvm-rc makes a .res that only link.exe and lld-link take): one
+    // in a build for another platform is an error, not left out unsaid.
+    if (target.posix() && !resourceEntries.empty())
     {
+      fprintf(stderr, "error: the C library %s has the resource script %s, which only a Windows program links: give it with Platform::Windows "
+                      "(resource(PATH, Platform::Windows))\n", c.name.c_str(), resourceEntries[0].c_str());
+      return false;
+    }
+    if (forPlatform(c.prebuilt, platform).empty() && !sourceEntries.empty())
+    {
+      if (target.posix() && target.sysroot.empty())
+      {
+        fprintf(stderr, "error: the C library %s: building it for %s needs the target's C headers and libraries: --sysroot DIR, or %s\n",
+                c.name.c_str(), platform.c_str(), (compilerPath().parent_path() / "sysroots" / (platform + "-x86_64")).string().c_str());
+        return false;
+      }
       std::vector<fs::path> sources;
       std::vector<fs::path> excluded;
-      for (const std::string& e : c.excluded)
+      for (const std::string& e : forPlatform(c.excluded, platform))
         excluded.push_back(rooted(root, e));
-      for (const std::string& s : c.sources)
+      for (const std::string& s : sourceEntries)
         for (const fs::path& file : collectFiles(rooted(root, s), {".c", ".cc", ".cpp"}))
           if (std::find(excluded.begin(), excluded.end(), fs::absolute(file).lexically_normal()) == excluded.end())
             sources.push_back(fs::absolute(file).lexically_normal());
@@ -144,9 +240,14 @@ namespace projects
       // both of Factorio's C++ builds' /GS-, no assertions), the library's includes and defines; no
       // warnings, since the code is the library's own; then the configuration's (cFlag). The bundled
       // toolchain (llvm-mingw) builds Windows' GNU dialect (design.md 17): clang's own flags, its
-      // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's.
-      bool gnu = job.gnu = bundledToolchain();
-      std::string flags = gnu ? "-c -O2 -DNDEBUG -w -fno-stack-protector" : "/nologo /c /O2 /MT /GS- /DNDEBUG /w";
+      // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's. For Linux and
+      // FreeBSD, clang for the target's triple with its sysroot's headers (glibc's and libstdc++'s,
+      // FreeBSD's and libc++), as kppc compiles and links the program: ELF objects, and an archive
+      // llvm-ar makes (NAME.a).
+      bool gnu = job.gnu = bundledToolchain() || target.posix();
+      std::string flags = !gnu             ? std::string("/nologo /c /O2 /MT /GS- /DNDEBUG /w")
+                          : target.posix() ? "--target=" + target.triple + " " + quoteArg("--sysroot=" + target.sysroot) + " -c -O2 -DNDEBUG -w -fno-stack-protector"
+                                           : std::string("-c -O2 -DNDEBUG -w -fno-stack-protector");
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
       // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
       fs::path installation = tools.parent_path().parent_path().parent_path().parent_path().parent_path();
@@ -155,9 +256,9 @@ namespace projects
         version.pop_back();
       if (!version.empty() && fs::is_directory(installation / "VC" / "Tools" / "MSVC" / version, ec))
         flags += " /vctoolsdir " + quoteArg((installation / "VC" / "Tools" / "MSVC" / version).string());
-      for (const std::string& i : c.includes)
+      for (const std::string& i : forPlatform(c.includes, platform))
         flags += (gnu ? " -I" : " /I") + quoteArg(rooted(root, i).string());
-      for (const std::string& d : c.defines)
+      for (const std::string& d : forPlatform(c.defines, platform))
         flags += (gnu ? " -D" : " /D") + quoteArg(d);
       for (const std::string& f : cFlags)
         flags += " " + quoteArg(f);
@@ -179,7 +280,7 @@ namespace projects
         for (char& ch : stem)
           if (ch == '\\' || ch == '/' || ch == ':' || ch == '.')
             ch = '_';
-        fs::path object = job.directory / (stem + ".obj"), dependencies = job.directory / (stem + ".d");
+        fs::path object = job.directory / (stem + (target.posix() ? ".o" : ".obj")), dependencies = job.directory / (stem + ".d");
         job.objects.push_back(object);
         if (!flagsChanged && upToDate(object, dependencies, times))
           continue;
@@ -195,13 +296,16 @@ namespace projects
                                  " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
       }
       job.compiles = job.commands.size();
-      job.lib = clibDirectory(root, cFlags) / (c.name + ".lib");
+      job.lib = clibDirectory(root, cFlags, platform) / (c.name + (target.posix() ? ".a" : ".lib"));
       job.archive = !job.commands.empty() || !fs::exists(job.lib, ec);
+      std::string dialect = target.posix() ? platform + ": clang for " + target.triple + " with the target's sysroot"
+                            : gnu          ? std::string("the bundled toolchain, Windows' GNU dialect")
+                                           : std::string("clang-cl, MSVC's dialect");
       if (job.archive)
         printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), clangPath().c_str(),
-               gnu ? "the bundled toolchain, Windows' GNU dialect" : "clang-cl, MSVC's dialect");
+               dialect.c_str());
     }
-    for (const std::string& rc : c.resources)
+    for (const std::string& rc : resourceEntries)
     {
       fs::path script = rooted(root, rc), res = job.directory / (script.stem().string() + ".res");
       // Rebuilt when any file it reads is newer (resourceInputs).

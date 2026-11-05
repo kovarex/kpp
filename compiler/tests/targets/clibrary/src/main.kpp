@@ -1,0 +1,7 @@
+extern "C" import "numbers.h";
+
+int main()
+{
+  println(scaled(14), " ", StringView(platform_name()), " ", cpp_sum(4));
+  return 0;
+}

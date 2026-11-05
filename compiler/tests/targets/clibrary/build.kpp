@@ -1,0 +1,16 @@
+// targets.ps1's project of a C library with a C and a C++ file and a define per platform
+// (CLibrary's define(..., Platform::X)), built for Windows, Linux and FreeBSD: `42 PLATFORM 10`.
+void build(Project& project)
+{
+  CLibrary& numbers = project.cLibrary("numbers");
+  numbers.source("c");
+  numbers.source("cpp");
+  numbers.include("c");
+  numbers.define("SCALE=3");
+  numbers.define("PLATFORM_ID=1", Platform::Windows);
+  numbers.define("PLATFORM_ID=2", Platform::Linux);
+  numbers.define("PLATFORM_ID=3", Platform::FreeBSD);
+  Executable& app = project.executable("app", {"src"});
+  app.link("numbers");
+  app.cInclude("c");
+}

@@ -1,7 +1,11 @@
 # A glibc x86-64 sysroot for kppc --target linux (docs/design.md, "Targets and hosts", Q6): the oldest
 # system a kpp program runs on is glibc 2.31 (kovarex, 2026-11-04), so the sysroot is Debian 11's
 # (bullseye, 11.11, its last point release): the C headers, the C runtime's start files and libraries,
-# Linux's headers, and gcc 10's runtime (crtbegin, libgcc, libgcc_s), from six pinned packages.
+# Linux's headers, gcc 10's runtime (crtbegin, libgcc, libgcc_s) and its C++ library (libstdc++'s
+# headers, its static and its shared library: a project's C++ C libraries, kpp's CLibraryBuild), from
+# eight pinned packages. -ExtraPackages FILE adds more, one `pool/... SIZE SHA256` line each (# starts a
+# comment), from the same index: a program's own, as programs\factorio\linux-packages.txt (the -dev
+# packages its C libraries' headers come from), into a sysroot of its own (-Out).
 # A program linked against it needs glibc 2.31 or newer; one linked against the copy of WSL's Ubuntu
 # (linux-from-wsl.sh) needs that Ubuntu's glibc (2.39).
 # Downloads the pinned .deb files once, checks their SHA-256, and unpacks them into -Out in Debian's
@@ -16,7 +20,8 @@
 # whose entries give each package's SHA-256 below (checked 2026-11-04).
 param(
   [string]$Out = "$PSScriptRoot\..\..\compiler\build\sysroots\linux-x86_64",
-  [string]$Download = "$PSScriptRoot\..\..\compiler\build\sysroots"
+  [string]$Download = "$PSScriptRoot\..\..\compiler\build\sysroots",
+  [string]$ExtraPackages = ''
 )
 $ErrorActionPreference = 'Stop'
 $mirrors = 'https://deb.debian.org/debian', 'https://archive.debian.org/debian'
@@ -27,8 +32,24 @@ $packages = @(
   @{ file = 'pool/main/g/gcc-10/libgcc-10-dev_10.2.1-6_amd64.deb'; size = 2327620; sha256 = '3B711374092B84E732C4E73CF33E02CFF02E34A5F105EB6467DE8D9038E4CD9D' },
   @{ file = 'pool/main/g/gcc-10/libgcc-s1_10.2.1-6_amd64.deb'; size = 41400; sha256 = 'E478F2709D8474165BB664DE42E16950C391F30EAA55BC9B3573281D83A29DAF' },
   # (for gcc's copyright file alone: libgcc-s1's and libgcc-10-dev's documentation links to it)
-  @{ file = 'pool/main/g/gcc-10/gcc-10-base_10.2.1-6_amd64.deb'; size = 201332; sha256 = 'BE65535E94F95FBF04B104E8AB36790476F063374430F7DFC6C516CBE2D2CD1E' }
+  @{ file = 'pool/main/g/gcc-10/gcc-10-base_10.2.1-6_amd64.deb'; size = 201332; sha256 = 'BE65535E94F95FBF04B104E8AB36790476F063374430F7DFC6C516CBE2D2CD1E' },
+  # libstdc++'s headers and its static library (usr/include/c++/10, usr/lib/gcc/x86_64-linux-gnu/10),
+  # and its shared one, which the -dev package's libstdc++.so names (2026-11-05)
+  @{ file = 'pool/main/g/gcc-10/libstdc++-10-dev_10.2.1-6_amd64.deb'; size = 1741436; sha256 = '20B1F56863DCC5F187D6CB53B2AA6149BD013BE4EC67E10C2C31A22FDA619A01' },
+  @{ file = 'pool/main/g/gcc-10/libstdc++6_10.2.1-6_amd64.deb'; size = 492540; sha256 = '5C155C58935870BF3B4BFE769116841C0D286A74F59ECCFD5645693AC23F06B1' }
 )
+# A program's own packages (-ExtraPackages FILE): `pool/... SIZE SHA256` lines, pinned from the same index.
+if ($ExtraPackages)
+{
+  foreach ($line in Get-Content $ExtraPackages)
+  {
+    $line = ($line -replace '#.*$', '').Trim()
+    if (-not $line) { continue }
+    $parts = $line -split '\s+'
+    if ($parts.Count -ne 3 -or $parts[1] -notmatch '^\d+$' -or $parts[2] -notmatch '^[0-9A-Fa-f]{64}$') { throw "$ExtraPackages`: not `pool/... SIZE SHA256`: $line" }
+    $packages += @{ file = $parts[0]; size = [long]$parts[1]; sha256 = $parts[2].ToUpper() }
+  }
+}
 $identity = 'Debian 11.11 ' + (($packages | ForEach-Object { $_.sha256 }) -join ' ')
 
 New-Item -ItemType Directory -Force $Out, $Download | Out-Null
@@ -141,6 +162,7 @@ foreach ($need in 'usr\lib\x86_64-linux-gnu\crt1.o', 'usr\lib\x86_64-linux-gnu\c
                  'lib\x86_64-linux-gnu\libm.so.6', 'lib\x86_64-linux-gnu\libgcc_s.so.1', 'lib64\ld-linux-x86-64.so.2',
                  'usr\lib\gcc\x86_64-linux-gnu\10\crtbegin.o', 'usr\lib\gcc\x86_64-linux-gnu\10\libgcc.a', 'usr\lib\gcc\x86_64-linux-gnu\10\libgcc_eh.a',
                  'usr\include\stdio.h', 'usr\include\x86_64-linux-gnu\bits\types.h', 'usr\include\linux\errno.h',
+                 'usr\include\c++\10\vector', 'usr\include\x86_64-linux-gnu\c++\10\bits\c++config.h', 'usr\lib\gcc\x86_64-linux-gnu\10\libstdc++.a',
                  'usr\share\doc\libc6\copyright', 'usr\share\doc\gcc-10-base\copyright', 'usr\share\doc\linux-libc-dev\copyright')
 {
   if (-not (Test-Path (Join-Path $Out $need)) -or (Get-Item (Join-Path $Out $need)).Length -eq 0) { throw "the sysroot has no $need" }

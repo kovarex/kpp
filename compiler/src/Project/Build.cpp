@@ -44,9 +44,9 @@ namespace projects
   // writes kpp's own paths in a release build, so that no binary holds a path of this machine. Clang's
   // -ffile-prefix-map, the longest directory first (clang's own order). In every configuration: they
   // share the C libraries' objects (build\clib), which have no debug information to open files by.
-  std::string libraryPrefixMap(const fs::path& root, const Program& p)
+  std::string libraryPrefixMap(const fs::path& root, const Program& p, bool gnuDriver)
   {
-    bool gnu = bundledToolchain();
+    bool gnu = gnuDriver;
     std::string flags;
     auto add = [&](const fs::path& from, const std::string& to)
     {
@@ -155,8 +155,18 @@ namespace projects
       args.push_back("--lib"), args.push_back("-l" + name);
     for (const std::string& name : p.links)
       if (const CLibrary* c = findLibrary(d, name))
-        for (const fs::path& file : libraryFiles(root, *c, p.cFlags))
+        for (const fs::path& file : libraryFiles(root, *c, p.cFlags, platform))
           args.push_back("--lib"), args.push_back(file.string());
+    // Their C++ files' library off Windows (cppRuntimeLibraries: libstdc++ for Linux, libc++ for
+    // FreeBSD), once, after them.
+    std::vector<std::string> cppRuntime;
+    for (const std::string& name : p.links)
+      if (const CLibrary* c = findLibrary(d, name))
+        for (const std::string& lib : cppRuntimeLibraries(root, *c, platform))
+          if (std::find(cppRuntime.begin(), cppRuntime.end(), lib) == cppRuntime.end())
+            cppRuntime.push_back(lib);
+    for (const std::string& lib : cppRuntime)
+      args.push_back("--lib"), args.push_back(lib);
     for (const std::string& e : p.excluded)
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
     // The kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
@@ -226,7 +236,9 @@ namespace projects
     auto start = Clock::now();
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
-    std::string prefixMap = libraryPrefixMap(root, p);
+    // (Linux and FreeBSD libraries are compiled by clang's GNU driver, as the bundled toolchain's are)
+    LibraryTarget libTarget = libraryTarget(p, request);
+    std::string prefixMap = libraryPrefixMap(root, p, bundledToolchain() || libTarget.posix());
     std::vector<const CLibrary*> cLibraries;
     for (const std::string& name : p.links)
     {
@@ -257,7 +269,7 @@ namespace projects
           checks.emplace_back([&, i]
           {
             std::unordered_map<std::string, fs::file_time_type> times;
-            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, prefixMap, jobs[i], times);
+            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, prefixMap, jobs[i], times, libTarget);
           });
         for (std::thread& t : checks)
           t.join();

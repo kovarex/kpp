@@ -525,6 +525,24 @@ void build(Project& project)
 - **Factorio's 18 libraries** become 18 `cLibrary` entries whose sources and defines come from
   fbuild.bff's Library() sections. Converting those by hand once is C's or E's work, depending on
   kovarex's answer.
+- **Linux and FreeBSD (thread B, 2026-11-05).** A program built for another platform (its
+  `--target`, build.kpp's or the command line's) has its C libraries built for that platform: clang
+  for the target's triple with the target's sysroot (the program's `--sysroot`, else the one beside
+  kppc), `-c -O2 -DNDEBUG -w -fno-stack-protector`, ELF objects and an archive llvm-ar makes,
+  `build\clib-linux\NAME.a` (`build\clib-freebsd\...`), so that building for one platform leaves
+  another's objects as they are. Every entry of a library may name its platform, as
+  `systemLibrary(NAME, PLATFORM)` does: `source`, `exclude`, `include`, `define`,
+  `prebuiltLibrary` and `resource` with a `Platform` second argument count only in a build for that
+  platform (`numbers.define("PLATFORM_ID=2", Platform::Linux);`, kept as "linux PLATFORM_ID=2",
+  compiler/src/Project/CLibraryBuild.cpp's forPlatform), and an entry without one counts on every
+  platform. A resource script in a build for Linux or FreeBSD is an error (only a Windows program
+  links a .res). A library with C++ files links its C++ library, which an ELF object does not name
+  as a COFF one names MSVC's: libstdc++ statically for Linux (`-l:libstdc++.a`, as Factorio's Linux
+  build links it: the program needs no particular libstdc++ of the system it runs on), libc++ and
+  libcxxrt for FreeBSD. The Linux sysroot carries libstdc++'s headers and libraries for it
+  (tools/sysroot/linux.ps1). Test: tests/targets.ps1's C library project (tests/targets/clibrary,
+  a C file, a C++ file and a define per platform), built and run for Windows, built and run under
+  WSL for Linux, and built and linked statically for FreeBSD: `42 windows 10`, `42 linux 10`.
 
 ### Adding a library
 

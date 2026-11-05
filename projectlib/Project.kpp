@@ -188,6 +188,14 @@ struct CLibrary
   void prebuiltLibrary(StringView path) { prebuilt.push_back(path); }
   void resource(StringView path) { resources.push_back(path); }
   void standard(StringView name) { cppStandard = name; }
+  // With a platform, only a build for it (`define("_GNU_SOURCE", Platform::Linux)`, its --target), as
+  // systemLibrary's: kept as "PLATFORM ENTRY" (compiler/src/Project/CLibraryBuild.cpp, forPlatform).
+  void source(StringView path, Platform platform) { sources.push_back(kppPlatformLibrary(path, platform)); }
+  void exclude(StringView path, Platform platform) { excluded.push_back(kppPlatformLibrary(path, platform)); }
+  void include(StringView path, Platform platform) { includes.push_back(kppPlatformLibrary(path, platform)); }
+  void define(StringView definition, Platform platform) { defines.push_back(kppPlatformLibrary(definition, platform)); }
+  void prebuiltLibrary(StringView path, Platform platform) { prebuilt.push_back(kppPlatformLibrary(path, platform)); }
+  void resource(StringView path, Platform platform) { resources.push_back(kppPlatformLibrary(path, platform)); }
 };
 
 // An option a kpp library declares (Library::option): what its code reads as config::LIB::NAME,

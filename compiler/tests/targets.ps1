@@ -56,6 +56,29 @@ function Build([string[]]$arguments)
   return $r.exit -eq 0
 }
 
+# tests\targets\clibrary, a project whose C library has a C file, a C++ file and a define per
+# platform (CLibrary's define(..., Platform::X), compiler/src/Project/CLibraryBuild.cpp), copied fresh
+# and built by kpp in debug for a target: its executable, or $null after a Fail.
+function BuildCLibraryProject([string]$name, [string[]]$options)
+{
+  $dir = Join-Path $work $name
+  if (Test-Path $dir) { cmd /c rd /s /q $dir }
+  Copy-Item -Recurse (Join-Path $src 'clibrary') $dir
+  $kpp = (Resolve-Path $Kppc).Path # (run_tests passes it relative to compiler\)
+  Push-Location $dir
+  try
+  {
+    $ErrorActionPreference = 'Continue'
+    try { $output = @(& $kpp debug --no-server @options 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+    catch { $output = @("$_"); $code = -1 }
+    $ErrorActionPreference = 'Stop'
+  }
+  finally { Pop-Location }
+  $exe = Join-Path $dir ('build\debug\app' + $(if ($options -contains '--target') { '' } else { '.exe' }))
+  if ($code -ne 0 -or -not (Test-Path $exe)) { Fail "the C library project ($name): exit $code`: $($output -join ' ')" | Write-Host; return $null }
+  return $exe
+}
+
 # Windows.
 $exe = Join-Path $work 'hello.exe'
 if (Build @('--exe', $exe, (Join-Path $src 'hello.kpp')))
@@ -76,6 +99,13 @@ if (Build @('--exe', $exe, (Join-Path $src 'uncaught.kpp')))
   if ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom' -or $r.exit -eq 0) { Fail "windows uncaught: '$($r.out)' '$($r.err)', exit $($r.exit)" }
   $r = Run $exe @('large')
   if ($r.out -ne 'before' -or $r.err -ne 'unhandled exception of type Boom: it went boom, with a message too long for the object' -or $r.exit -eq 0) { Fail "windows uncaught, a heap message: '$($r.out)' '$($r.err)', exit $($r.exit)" }
+}
+# The project's C library for Windows: clang-cl, MSVC's C++ library.
+$exe = BuildCLibraryProject 'clibrary-windows' @()
+if ($exe)
+{
+  $r = Run $exe @()
+  if ($r.out -ne '42 windows 10' -or $r.exit -ne 0) { Fail "windows C library project: '$($r.out)', exit $($r.exit) $($r.err)" }
 }
 
 # Nothing of Windows' runtime in another target's IR.
@@ -219,6 +249,10 @@ else
     }
   }
   finally { Pop-Location }
+  # The project's C library for FreeBSD: clang for FreeBSD with the sysroot's headers (libc++'s), linked
+  # statically with libc++ and libcxxrt.
+  $exe = BuildCLibraryProject 'clibrary-freebsd' @('--target', 'freebsd', '--sysroot', $freebsdSysroot)
+  if ($exe -and ($problems = ElfProblems $exe 1403)) { Fail "the C library project for freebsd: $problems" }
   # kppc --run --no-run likewise names a FreeBSD program without .exe.
   $ErrorActionPreference = 'Continue'
   $output = @(& $Kppc --no-server --target freebsd --sysroot $freebsdSysroot --no-run --run (Join-Path $src 'hello.kpp') 2>&1 | ForEach-Object { "$_" })
@@ -302,6 +336,14 @@ if ($sysrootMade)
   if ($r.exit -ne 0) { Fail "linux long is 64 bits: exit $($r.exit), '$($r.err)'" }
   $r = Run $Kppc @('--quiet', '--exe', (Join-Path $work 'long_size.exe'), $sized)
   if ($r.exit -eq 0 -or -not $r.err.Contains('static assertion failed')) { Fail "windows long is 32 bits: exit $($r.exit), '$($r.err)'" }
+  # The project's C library for Linux: clang for Linux with the sysroot's glibc and libstdc++ headers,
+  # libstdc++ linked statically; run under WSL.
+  $exe = BuildCLibraryProject 'clibrary-linux' @('--target', 'linux', '--sysroot', $sysroot)
+  if ($exe)
+  {
+    $r = Wsl 'C library project' @(WslPath $exe)
+    if ($r -and -not $r.timedOut -and ($r.out -ne '42 linux 10' -or $r.exit -ne 0)) { Fail "linux C library project: '$($r.out)', exit $($r.exit) $($r.err)" }
+  }
   $ll = Join-Path $work 'hello.linux.ll'
   if (Build @('--target', 'linux', '--emit-llvm', $ll, (Join-Path $src 'hello.kpp'))) { CheckIR $ll 'linux' 'x86_64-unknown-linux-gnu' }
   $elf = Join-Path $work 'uncaught.elf'
@@ -316,7 +358,7 @@ if ($sysrootMade)
 }
 
 if ($failed) { exit 1 }
-"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' }), linux linked against glibc 2.31$(if ($hasWsl) { ' and run under WSL' } else { ", not run: $wslSkip" }))"
+"ok   targets (windows, freebsd's IR and object$(if ($hasFreeBSD) { ', freebsd linked statically' }), linux linked against glibc 2.31$(if ($hasWsl) { ' and run under WSL' } else { ", not run: $wslSkip" }); a project's C library (C and C++) for each)"
 if ($NoLinux) { exit 5 }
 if ($wslSkip -eq 'no WSL') { exit 3 }
 if ($wslSkip) { exit 4 }

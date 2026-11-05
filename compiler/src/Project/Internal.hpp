@@ -152,6 +152,17 @@ namespace projects
     std::vector<ConfigError> errors;
   };
 
+  // The platform a program's C libraries are built for, its target's (build.kpp's and the command
+  // line's --target): windows (clang-cl, or the bundled toolchain's GNU dialect), or linux and freebsd
+  // (clang for the target's triple, with the target's sysroot: --sysroot, else kppc's own beside it).
+  struct LibraryTarget
+  {
+    std::string platform = "windows"; // windows, linux, freebsd: platformNames' short names
+    std::string triple;               // clang's --target, off Windows
+    std::string sysroot;              // off Windows; empty when there is none
+    bool posix() const { return platform != "windows"; }
+  };
+
   // A C library's part of a build (prepareLibrary): its objects' compile commands and its resources',
   // which run in one pool with every other library's of the program (runLibraries), alongside kppc's
   // own work, and then its archive (finishLibrary). Only the objects whose source, headers or flags
@@ -207,19 +218,23 @@ namespace projects
   // DescribeFile.cpp
   Description parse(const std::string& text);
   // CLibraryBuild.cpp
-  fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags);
-  fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags);
-  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags);
+  LibraryTarget libraryTarget(const Program& p, const Request& request);
+  std::vector<std::string> forPlatform(const std::vector<std::string>& entries, const std::string& platform);
+  fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags, const std::string& platform = "windows");
+  fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform = "windows");
+  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags,
+                                     const std::string& platform = "windows");
+  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform);
   fs::file_time_type modified(const fs::path& path);
   std::vector<fs::path> resourceInputs(const fs::path& script);
   bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times);
   bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& prefixMap, LibraryJob& job,
-                      std::unordered_map<std::string, fs::file_time_type>& times);
+                      std::unordered_map<std::string, fs::file_time_type>& times, const LibraryTarget& target = {});
   bool runLibraries(std::vector<LibraryJob>& jobs);
   // Build.cpp
   int invoke(std::vector<std::string> args, bool server, CompileFunction compile, bool stop = false);
   std::string withExe(std::string command, const fs::path& exe, const std::string& configuration);
-  std::string libraryPrefixMap(const fs::path& root, const Program& p);
+  std::string libraryPrefixMap(const fs::path& root, const Program& p, bool gnuDriver);
   std::string toolchainOf(const Program& p, const Request& request);
   std::string targetPlatform(const Program& p, const Request& request);
   fs::path exeOf(const fs::path& root, const Program& p, const Request& request);
