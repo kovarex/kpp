@@ -1,0 +1,47 @@
+// spec: C++20's reversed candidates of a free operator==: `a == b` and `a != b` with only `operator==(const B&, const A&)` declared call it with the operands the other way round (`[B==A 3 3] 1`, `[B==A 4 3] 1`), a function template among them (`w == 7` through `operator==(int, const Wrap<T>&)`: `1`), beside the reversed member candidate (`other == c` through C::operator==(const B&)) and the direct call (`b == a`); clang prints the same
+// found by thread D (2026-11-05): codegen said "A has no operator==" for `a == b`, where the walk had taken the reversed candidate
+struct A
+{
+  int v;
+};
+struct B
+{
+  int w;
+};
+bool operator==(const B& b, const A& a)
+{
+  print("[B==A ", b.w, " ", a.v, "] ");
+  return b.w == a.v;
+}
+struct C
+{
+  int v;
+  bool operator==(const B& b) const
+  {
+    print("[C==B] ");
+    return v == b.w;
+  }
+};
+template<typename T>
+struct Wrap
+{
+  T value;
+};
+template<typename T>
+bool operator==(int i, const Wrap<T>& w)
+{
+  return i == int(w.value);
+}
+int main()
+{
+  A a{3};
+  B b{3}, other{4};
+  println(a == b ? 1 : 0);
+  println(a != other ? 1 : 0);
+  println(b == a ? 1 : 0);
+  C c{4};
+  println(other == c ? 1 : 0, " ", b != c ? 1 : 0);
+  Wrap<char> w{7};
+  println(w == 7 ? 1 : 0, " ", w != 8 ? 1 : 0);
+  return 0;
+}

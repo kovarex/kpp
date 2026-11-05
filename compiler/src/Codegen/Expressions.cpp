@@ -2004,13 +2004,35 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
   auto reversed = [&]() -> std::optional<Value>
   {
     // `3 == id` through Id::operator==(int): the operands the other way round.
-    if (!rt || !isClass(rt))
-      return std::nullopt;
     Expr* lhsExpr = b->lhs;
     Span<Expr*> left{&lhsExpr, 1};
-    const Ty* foundIn = nullptr;
-    if (findMemberFunction(types.unqualified(rt), "operator==", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
-      return callRvalue(operatorCall(rvalue(b->rhs), "operator==", left, b, true), b);
+    if (rt && isClass(rt))
+    {
+      const Ty* foundIn = nullptr;
+      if (findMemberFunction(types.unqualified(rt), "operator==", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+        return callRvalue(operatorCall(rvalue(b->rhs), "operator==", left, b, true), b);
+    }
+    // `a == b` through a free operator==(const B&, const A&), function templates among them: the
+    // function given the operands the other way round (C++20's reversed candidate; until 2026-11-05
+    // "A has no operator==").
+    if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+    {
+      const Ty* la = argumentType(b->lhs, b->lhs->ty, types);
+      const Ty* ra = argumentType(b->rhs, b->rhs->ty, types);
+      if (FunctionDecl* f = global.findFreeOperator(uint32_t(P::EqEq), ra, la, currentFunction))
+      {
+        const Ty* classTy = friendClass(f, {ra, la}, b);
+        TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
+        if (!f->templateParams.empty())
+        {
+          global.deduceArgs(f, {ra, la}, fnArgs);
+          if (fnArgs.pairs.size() < f->templateParams.size())
+            unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
+        }
+        Expr* args[2] = {b->rhs, b->lhs};
+        return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
+      }
+    }
     return std::nullopt;
   };
   auto call = [&](P which) -> std::optional<Value>
