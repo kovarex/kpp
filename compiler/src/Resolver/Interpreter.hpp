@@ -257,8 +257,9 @@
   // Whether the operator of a class is `= default` (`operator<=>`, `operator==`).
   static bool constDefaulted(FunctionDecl* f) { return f && (f->flags & DF_Default) && !f->body; }
 
-  // An operator a class declares for op, or `= default` (a defaulted `<=>` implies `==`).
-  FunctionDecl* constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth);
+  // An operator a class declares for op, or `= default` (a defaulted `<=>` implies `==`). templates:
+  // operator templates too (Less<void>'s operator()), their own parameters the caller's to bind.
+  FunctionDecl* constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates = false);
 
   // `a == b` of two objects of one class compared member by member (a defaulted `==`, or the one a
   // defaulted `<=>` implies): bases, then members, each by its own `==`.
@@ -592,7 +593,8 @@
   std::optional<ConstValue> constClosure(LambdaExpr* l, const Ty* type, const TypeContext& ctx, int depth);
   // A closure called: the lambda's body run where it is written, its captures bound by name (a copy
   // read only, one by reference referring to its object), its parameters to the arguments.
-  std::optional<ConstValue> constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth);
+  // at: where the closure is (a local), whose captures by copy the body changes there.
+  std::optional<ConstValue> constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth, const ConstPlace* at = nullptr);
 
   // A function pointer's call (`f(v)` with f a parameter holding `&twice`, `ops[0](5)`): the
   // function it points at, run with the arguments.

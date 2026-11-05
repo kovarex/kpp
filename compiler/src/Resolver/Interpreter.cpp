@@ -1914,9 +1914,9 @@ auto GlobalScope::Impl::constByConversionOperator(const ConstValue& v, const Ty*
   return r ? constAsDeclared(r, t) : std::nullopt; // (then the standard conversion to t)
 }
 
-auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth) -> FunctionDecl*
+auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates) -> FunctionDecl*
 {
-  std::vector<FunctionDecl*> candidates = constMembersNamed(t, opSymbols[uint32_t(op)], subst, depth);
+  std::vector<FunctionDecl*> candidates = constMembersNamed(t, opSymbols[uint32_t(op)], subst, depth, templates);
   if (candidates.empty())
     return nullptr;
   bool ambiguous = false;
@@ -4129,20 +4129,17 @@ auto GlobalScope::Impl::constClosure(LambdaExpr* l, const Ty* type, const TypeCo
   return ConstValue::object(t, std::move(parts));
 }
 
-auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth, const ConstPlace* at) -> std::optional<ConstValue>
 {
   std::vector<ConstCapture> captures;
   if (!l->body || !l->templateParams.empty() || c->args.size() > l->params.size() || !closure.isObject() || !closure.parts ||
       !constClosureCaptures(l, captures) || captures.size() != closure.parts->size())
     return std::nullopt;
   std::vector<ConstValue> values;
-  for (Expr* a : c->args)
-  {
-    std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
-    if (!v)
-      return std::nullopt;
-    values.push_back(*v);
-  }
+  std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
+  std::vector<uint8_t> categories;
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+    return std::nullopt;
   struct Call
   {
     bool ok = ++constCalls() <= 512 && stackRoomLeft();
@@ -4158,11 +4155,26 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
   TypeContext fctx{l->closure ? lexicalScopeOf(l->closure) : ctx.scope, nullptr, nullptr, file ? file->tokens : ctx.tokens,
                    file ? file->text : ctx.text};
   fctx.env = &env;
-  // The captures: a copy as a binding of its own, read only (the call operator is const); one by
-  // reference, and `this`, referring to the object where it is.
+  // The captures: one by reference, and `this`, referring to the object where it is; a copy, the
+  // closure's part where the closure is (what the body changes stays for its next call, a `mutable`
+  // lambda's state, as the program keeps it: it was read only, so `[n]() mutable { return ++n; }`
+  // was no constant), else a binding of its own.
   for (size_t i = 0; i < captures.size(); ++i)
   {
     const ConstValue& part = (*closure.parts)[i];
+    if (!captures[i].isThis && !captures[i].byRef && at)
+    {
+      ConstPlace resolved = constResolve(*at);
+      resolved.path.push_back(i);
+      ConstBinding alias{captures[i].symbol, ConstValue::unset(part.type)};
+      alias.type = part.type;
+      alias.writable = !resolved.readOnly;
+      alias.aliasEnv = resolved.env;
+      alias.aliasIndex = resolved.index;
+      alias.aliasPath = resolved.path;
+      env.push_back(std::move(alias));
+      continue;
+    }
     if (captures[i].isThis || captures[i].byRef)
     {
       std::optional<ConstPlace> at = part.isAddress() ? constStoragePlace(part, "a use of", depth) : std::nullopt;
@@ -4178,10 +4190,7 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
       env.push_back(std::move(alias));
     }
     else
-    {
-      env.push_back(constBinding(captures[i].symbol, part, part.type));
-      env.back().writable = false;
-    }
+      env.push_back(constBinding(captures[i].symbol, part, part.type)); // (a temporary closure's: its changes end with it)
   }
   for (size_t i = 0; i < l->params.size(); ++i)
   {
@@ -4191,6 +4200,20 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     const Ty* type = p->type ? convertType(p->type, fctx, 1) : nullptr;
     if (type && containsAuto(type))
       return std::nullopt;
+    if (type && type->isReference() && i < places.size() && places[i] && places[i]->type && type->inner &&
+        types.unqualified(types.stripRef(places[i]->type)) == types.unqualified(type->inner))
+    {
+      // `[](int& x) { ++x; }` given a local: a reference to it (it was a copy, read only).
+      ConstPlace resolved = constResolve(*places[i]);
+      ConstBinding alias{p->name, ConstValue::unset(type)};
+      alias.type = places[i]->type;
+      alias.writable = !type->inner->isConst && !places[i]->readOnly;
+      alias.aliasEnv = resolved.env;
+      alias.aliasIndex = resolved.index;
+      alias.aliasPath = resolved.path;
+      env.push_back(std::move(alias));
+      continue;
+    }
     std::optional<ConstValue> v = i < values.size() ? constConvertTo(values[i], type, 1)
                                 : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, 1) : std::nullopt;
     if (!v)
@@ -5935,7 +5958,7 @@ auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::opti
   std::optional<ConstValue> self = object;
   if (self->isObject() && self->type)
     if (LambdaExpr* l = lambdaOf(types.unqualified(types.stripRef(self->type))))
-      return constCallClosure(l, *self, c, ctx, depth); // `twice(5)`: a closure's body, its captures bound
+      return constCallClosure(l, *self, c, ctx, depth, place ? &*place : nullptr); // `twice(5)`: a closure's body, its captures bound
   if (!self->isObject() || !self->type || self->type->isBraceList() || types.unqualified(types.stripRef(self->type))->kind != TyKind::Class)
     return std::nullopt;
   if (!place)
@@ -5952,9 +5975,17 @@ auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::opti
     argTypes.push_back(constOperandType(values[i], &o));
   }
   Subst subst;
-  FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth);
+  FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth, true);
   if (!call || !constDefinition(call))
     return std::nullopt;
+  if (!call->templateParams.empty())
+  {
+    // `less(a, b)` of a Less<>, sort's default comparator: an operator() template, its own
+    // parameters deduced from the arguments (it was run unbound, so sort was no constant).
+    LocalStack own;
+    if (!constBindTemplate(call, {}, c, values, ctx, depth, subst, own, &categories))
+      return std::nullopt;
+  }
   return constCallOn(call, subst, values, &self, depth + 1, place ? &*place : nullptr, &places, &categories);
 }
 

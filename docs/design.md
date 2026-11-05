@@ -2428,6 +2428,9 @@ leads (an array's element, a member), and in a base's destructor the base's own
 template's parameters deduced, by the arguments as written, a class object's value category included:
 an lvalue is copied, never moved (language/consteval_forwarding_constructor_copies_lvalue), through a pack
 too (`forward<Args>(args)...` by its elements' value categories: language/consteval_pack_forwarding_copies_lvalue).
+A lambda's captures by copy are its closure's parts where the closure is, which its body may change
+and which keep the change for the next call, as the program has them (a `mutable` lambda's state), and
+its reference parameters refer to their arguments (language/consteval_sort_and_lambda_state).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

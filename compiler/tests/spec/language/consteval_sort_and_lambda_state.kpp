@@ -1,0 +1,35 @@
+// spec: at compile time `sort(v.begin(), v.end())` sorts (its default comparator Less<>, whose operator() is a template, called through the reference sort keeps), a `mutable` lambda's captures by copy keep what its body changes from call to call in the closure where it is (a copy of the closure has its own), and a lambda's reference parameter refers to its argument, as at run time
+// found by thread D (2026-11-05): each was no constant: a function object's operator() template was not looked for, a capture by copy was read only, and a lambda's reference parameter was a read-only copy
+constexpr int sorted()
+{
+  Vector<int> v;
+  for (int i = 0; i < 40; ++i)
+    v.push_back((i * 37) % 41);
+  sort(v.begin(), v.end());
+  int ok = 1;
+  for (int i = 1; i < 40; ++i)
+    if (v[i - 1] > v[i])
+      ok = 0;
+  int a[3] = {3, 1, 2};
+  sort(a, a + 3);
+  return ok * 10000 + v[39] * 1000 + a[0] * 100 + a[1] * 10 + a[2];
+}
+constexpr int lambdas()
+{
+  int n = 0;
+  auto f = [n]() mutable { return ++n; };
+  f();
+  f();
+  auto g = f;
+  int a = 1;
+  auto inc = [](int& x) { ++x; };
+  inc(a);
+  return f() * 1000 + g() * 100 + n * 10 + a;
+}
+constexpr int s = sorted();
+constexpr int l = lambdas();
+int main()
+{
+  println(s, " ", sorted(), " ", l, " ", lambdas());
+  return 0;
+}
