@@ -12,17 +12,19 @@ rem -Full): the batch run on master (H's). Without it, the quick gate's (coordin
 setlocal EnableDelayedExpansion
 set PART=
 set FULL=
+rem (`shift /1`, never `shift`: a plain shift moves %0 too, and `cd /d "%~dp0.."` below then went to the
+rem first argument's directory: CI's `run_tests --part 1` ran its checks from the wrong one.)
 :arguments
 if "%~1"=="" goto :argumentsdone
 if "%~1"=="--full" (
   set FULL=1
-  shift
+  shift /1
   goto :arguments
 )
 if "%~1"=="--part" (
   set "PART=%~2"
-  shift
-  shift
+  shift /1
+  shift /1
   goto :arguments
 )
 echo run_tests.cmd takes --part 1 or --part 2, --full, or nothing
