@@ -58,7 +58,10 @@ if ($github) {
 $pushes = @($runs | Where-Object { $_.Release.tag_name -match '^v\d+\.\d+\.\d{1,7}$' })
 # keep.txt's tags (the releases known projects' CI pins: gorating's broke on 2026-11-05 when its pin,
 # v0.2.242, was deleted) are never deleted, and do not count in -Keep.
-$pinned = @(Get-Content (Join-Path $PSScriptRoot 'keep.txt') -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ })
+# (a keep.txt that is not there stops it before anything is deleted: it would pin nothing)
+$keepFile = Join-Path $PSScriptRoot 'keep.txt'
+if (-not (Test-Path $keepFile)) { throw "settle: no $keepFile, so nothing is deleted (its releases would go)" }
+$pinned = @(Get-Content $keepFile | ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ })
 foreach ($tag in $pinned) { if (-not ($pushes | Where-Object { $_.Release.tag_name -eq $tag })) { "settle: keep.txt names $tag, which is not a push release here" } }
 $pinnedHere = @($pushes | Where-Object { $pinned -contains $_.Release.tag_name }).Count
 $pushes = @($pushes | Where-Object { $pinned -notcontains $_.Release.tag_name })
