@@ -1,7 +1,10 @@
 // struct Emitter, one per codegen thread: its state, and its members in the files it includes, each
 // where it stood in codegen.cpp. Part of codegen.cpp, included in its namespace there (a file of
-// its own since 2026-11-05, moved without a change).
-  struct Emitter
+// its own since 2026-11-05, moved without a change). What is the current function's is its base,
+// FunctionState.
+#include "FunctionState.hpp"
+
+  struct Emitter : FunctionState
   {
     GlobalScope& global;
     TypeTable& types;
@@ -105,50 +108,8 @@
       ~NameHome() { e.currentModule = module; }
     };
     bool emittingShared = false; // string constants go to the shared decls
-    std::string fn;      // current function text (after the allocas)
-    std::string allocas; // entry-block allocas of the current function
-    // --debug-info: the declaration (a function or a lambda) whose definition is being emitted and its
-    // file, or null for a definition without line information (a global's startup function).
-    Node* debugAt = nullptr;
-    ParsedFile* debugFile = nullptr;
-    // --debug-info unoptimized (Shared::fullDebugInfo): the definition's variables (the address that
-    // holds one, its name, its type's placeholder, its line and block, its parameter number from 1),
-    // its lexical blocks (the enclosing block, 0 for the function's own scope, and the line) and the
-    // block the code being emitted is in; debugLines makes them metadata.
-    struct DebugVariable
-    {
-      std::string address, name, type;
-      size_t line = 0;
-      uint32_t block = 0, arg = 0;
-      bool artificial = false;
-      bool defined = false; // its address is an instruction's in the body (a lambda's capture: its field), declared after it
-    };
-    std::vector<DebugVariable> debugVariables;
-    struct DebugBlock
-    {
-      uint32_t parent = 0;
-      size_t line = 0;
-    };
-    std::vector<DebugBlock> debugBlocks;
-    uint32_t debugBlock = 0;
-    uint32_t temp = 0;
-    uint32_t label = 0;
-    bool blockTerminated = false;
-    std::string currentBlock = "entry";
-    FunctionDecl* currentFunction = nullptr;
-    // The body being emitted: the function's, or the lambda's whose call operator is (its static
-    // locals are declared in it, staticLocal).
-    Node* bodyNow = nullptr;
     // The function emitFunction emits, as the checker typed it (an instance's copy; fail).
     const FunctionDecl* checkerChecked = nullptr;
-    const Ty* currentReturn = nullptr;
-    std::string sretAddr; // Hidden return slot when returning a class.
-    // Named return elision (design.md 23): the local the function's every return returns, built in
-    // the caller's result (sretAddr) instead of a slot of its own; null when there is none.
-    VariableDecl* namedReturn = nullptr;
-    // While a return of namedReturn leaves its scopes: the result's address, whose object (that
-    // local) they do not destroy (destroyOnExit). Empty otherwise.
-    std::string keptOnReturn;
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
     struct ConstContextScope // restores constContext when an Unsupported leaves the fold
     {
@@ -163,7 +124,6 @@
     // Template arguments in effect: of the instantiation being emitted, or temporarily of a class
     // whose constructors/fields are being inspected.
     const TemplateArgs* currentArgs = nullptr;
-    const Ty* currentClassTy = nullptr; // Instantiated class of the method being emitted.
     struct ArgsScope
     {
       Emitter& e;
@@ -172,19 +132,12 @@
       ~ArgsScope() { e.currentArgs = saved; }
     };
 
-    struct Local
-    {
-      std::string addr; // Address of the variable (or of the pointer slot for references).
-      const Ty* ty;
-      bool isRef;
-    };
     struct Value
     {
       std::string text;         // IR operand; for class types the object's address
       const Ty* ty;             // Value type (never a reference)
       bool isTemporary = false; // Class temporary owned by the current full-expression
     };
-    std::unordered_map<Decl*, Local> locals;
     // The last scalar assignment emitted and the place it stored to: an assignment used as an
     // lvalue (`int& r = (a[i++] = v);`) is that place, its left operand not evaluated again.
     const BinaryExpr* assignedAt = nullptr;
@@ -200,7 +153,6 @@
     std::deque<VariableDecl> comparedVariables;
     std::deque<NameExpr> comparedNames;
     std::deque<BinaryExpr> comparisons;
-    std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
     std::unordered_map<Decl*, int64_t> enumeratorValues;
     std::unordered_map<Decl*, std::string> qualifiedNames; // qualifiedName() per declaration
@@ -224,48 +176,8 @@
     static LambdaExpr* lambdaOf(const Ty* t) { return isLambda(t) && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl)->lambda : nullptr; }
     static bool isGenericLambda(const Ty* t) { LambdaExpr* l = lambdaOf(t); return l && !l->templateParams.empty(); }
 
-    struct Object
-    {
-      std::string addr;
-      const Ty* ty;
-      bool exception = false; // addr holds a caught exception record: ending it destroys the object
-      // Destroyed only by an exception leaving its scope (cleanup pads), never on a normal exit: a
-      // constructor's bases and members as it builds them, which outlive it when it returns.
-      bool unwindOnly = false;
-      bool freeMemory = false; // `new`'s allocation while its constructor runs: freed, not destroyed
-    };
-    std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
-    std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
-    struct Loop
-    {
-      std::string breakLabel, continueLabel;
-      size_t scopeDepth;
-    };
-    std::vector<Loop> loops;
 
-    // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
-    // filter function per try statement matches the thrown type against the handlers, and the
-    // destructors of the objects between a call and its handler run in cleanup pads. Off Windows, the
-    // Itanium model's landing pads (itaniumUnwindDestination, itaniumTry): the frames are the same.
-    struct EHFrame
-    {
-      bool isHandler;            // false: an open try body; true: an open catch handler
-      std::string dispatchLabel; // try: the block of its catchswitch; handler: where an exception leaving
-                                 // it unwinds, its catchswitch's unwind destination ("": the caller)
-      std::string parentFunclet; // the funclet token the try or handler is in ("" at top level)
-      std::string funclet;       // handler: its catchpad token
-      std::string exceptionSlot; // handler: the alloca holding the caught exception record
-      size_t scopeDepth;         // scopes.size() when entered
-      bool used = false;         // try: some call in the body unwinds to the dispatch
-      std::vector<std::string> catchTypes; // off Windows, a try: its handlers' descriptors in order ("null": catch (...))
-    };
-    std::vector<EHFrame> ehFrames;
-    std::string ehBlocks;                                     // cleanup pads of the current function
-    std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block
     std::string funcletOverride;                              // the pad being emitted, for its calls
-    bool itaniumCleanup = false;                              // off Windows: a cleanup block is being emitted, for its calls
-    bool usesEH = false;                                      // the current function has invokes or pads
-    std::string returnLabel; // a destructor's: where a `return` goes, the members and bases destroyed after the body
 
     Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
 

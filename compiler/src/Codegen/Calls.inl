@@ -503,7 +503,6 @@
 
     std::unordered_map<FunctionDecl*, FunctionDecl*> trivialDefinitions; // a function's typed definition -> it, when trivial (or null)
     std::unordered_set<FunctionDecl*> inlining;                            // the definitions being emitted in a caller now
-    std::unordered_map<std::string, std::string> inlineSlots;              // (inlining depth, parameter, type) -> its slot in this function
 
     // Whether a value of type t is a scalar, a pointer or a reference: what a trivial function
     // takes and gives (a class by value needs a copy and a destruction; a class result a slot).

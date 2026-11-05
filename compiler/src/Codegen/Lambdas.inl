@@ -623,105 +623,15 @@
       return {slot, t, true};
     }
 
-    struct FunctionState
-    {
-      std::string fn, allocas, currentBlock, sretAddr;
-      std::unordered_map<Decl*, Local> locals;
-      std::unordered_map<uint32_t, std::string> labelBlocks; // a lambda emitted between a goto and its label keeps the label's block
-      std::vector<Loop> loops;
-      std::vector<std::vector<Object>> scopes;
-      std::vector<Object> statementTemps;
-      uint32_t temp, label;
-      bool blockTerminated;
-      FunctionDecl* currentFunction;
-      const Ty* currentReturn;
-      const Ty* currentClassTy;
-      std::vector<EHFrame> ehFrames;
-      std::string ehBlocks;
-      std::unordered_map<std::string, std::string> cleanupPads;
-      bool itaniumCleanup;
-      bool usesEH;
-      std::string returnLabel;
-      std::unordered_map<std::string, std::string> inlineSlots;
-      Node* debugAt;
-      ParsedFile* debugFile;
-      Node* bodyNow;
-      std::vector<DebugVariable> debugVariables;
-      std::vector<DebugBlock> debugBlocks;
-      uint32_t debugBlock;
-      VariableDecl* namedReturn;
-      std::string keptOnReturn;
-    };
-
-    FunctionState saveState()
-    {
-      return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, itaniumCleanup, usesEH, returnLabel, inlineSlots, debugAt, debugFile,
-              bodyNow, debugVariables, debugBlocks, debugBlock, namedReturn, keptOnReturn};
-    }
-
-    void restoreState(FunctionState& s)
-    {
-      fn = s.fn;
-      allocas = s.allocas;
-      currentBlock = s.currentBlock;
-      sretAddr = s.sretAddr;
-      locals = s.locals;
-      labelBlocks = s.labelBlocks;
-      loops = s.loops;
-      scopes = s.scopes;
-      statementTemps = s.statementTemps;
-      temp = s.temp;
-      label = s.label;
-      blockTerminated = s.blockTerminated;
-      currentFunction = s.currentFunction;
-      currentReturn = s.currentReturn;
-      currentClassTy = s.currentClassTy;
-      ehFrames = s.ehFrames;
-      ehBlocks = s.ehBlocks;
-      cleanupPads = s.cleanupPads;
-      itaniumCleanup = s.itaniumCleanup;
-      usesEH = s.usesEH;
-      returnLabel = s.returnLabel;
-      inlineSlots = s.inlineSlots;
-      debugAt = s.debugAt;
-      debugFile = s.debugFile;
-      bodyNow = s.bodyNow;
-      debugVariables = s.debugVariables;
-      debugBlocks = s.debugBlocks;
-      debugBlock = s.debugBlock;
-      namedReturn = s.namedReturn;
-      keptOnReturn = s.keptOnReturn;
-    }
-
+    // The current function's state, all of FunctionState, copied out before a lambda's call operator
+    // is emitted in the middle of it and back after.
+    FunctionState saveState() { return static_cast<const FunctionState&>(*this); }
+    void restoreState(FunctionState& s) { static_cast<FunctionState&>(*this) = s; }
+    // A new function's state: FunctionBody's members as they start (FunctionContext's, the function,
+    // its result and its class, are the caller's to set).
     void resetFunctionState()
     {
-      bodyNow = nullptr;
-      namedReturn = nullptr;
-      keptOnReturn.clear();
-      returnLabel.clear();
-      fn.clear();
-      allocas.clear();
-      locals.clear();
-      labelBlocks.clear();
-      loops.clear();
-      scopes.clear();
-      statementTemps.clear();
-      ehFrames.clear();
-      ehBlocks.clear();
-      cleanupPads.clear();
-      itaniumCleanup = false;
-      usesEH = false;
-      inlineSlots.clear();
-      debugAt = nullptr;
-      debugFile = nullptr;
-      debugVariables.clear();
-      debugBlocks.clear();
-      debugBlock = 0;
-      temp = 0;
-      label = 0;
-      blockTerminated = false;
-      currentBlock = "entry";
+      static_cast<FunctionBody&>(*this) = FunctionBody{};
       recursionDepth = 0;
     }
 
