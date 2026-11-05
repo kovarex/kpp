@@ -1591,6 +1591,18 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
         return l;
       }
       Value r = rvalue(b->rhs);
+      if (r.ty && r.ty->kind == TyKind::Vector)
+      {
+        // A vector the checker could not type (an SSE operation clang's intrin.h has as a macro,
+        // _mm_shuffle_ps) assigned to a class that wraps it: a temporary made of it by the class's
+        // constructor (constructFromVector), assigned from and destroyed at the statement's end.
+        std::string tmp = newObjectSlot(lt0, b);
+        constructFromVector(tmp, lt0, r, true, b);
+        if (needsDestruction(lt0, b))
+          statementTemps.push_back({tmp, lt0});
+        assignObject(l.text, tmp, l.ty, b, true);
+        return l;
+      }
       if (!isClass(r.ty))
         unsupported(b, "assigning a non-class to a class");
       std::string src = r.text;

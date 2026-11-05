@@ -960,21 +960,22 @@ auto codegen::Emitter::defaultedCall(FunctionDecl* f, const Ty* classTy, const s
     Value v = rvalue(args[0]);
     if (!isClass(v.ty))
     {
-      // A vector the checker could not type (an SSE operation intrin.h has as a macro,
-      // _mm_shuffle_ps) assigned or copied into a class that wraps it (float32x4 wrapping
-      // __m128): stored into the wrapper's first field. A typed one goes through the class's
-      // converting constructor above.
+      // A vector the checker could not type (an SSE operation clang's intrin.h has as a macro,
+      // _mm_shuffle_ps) given to a defaulted copy or move of a class that wraps it (float32x4
+      // wrapping __m128): the class made of it by its constructor, as a typed one is above
+      // (constructFromVector), the object itself or, for an assignment, a temporary assigned from.
       if (v.ty && v.ty->kind == TyKind::Vector && isClass(t))
       {
-        StructInfo& info = structFor(t, at);
-        if (info.fieldTypes.empty() || llType(info.fieldTypes[0], at) != llType(v.ty, at))
-          unsupported(at, "assigning a vector to " + types.toString(t, &symbols) + ", whose first member is not that vector");
-        std::string field0 = gep(info.name, thisArg, 0);
-        fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + field0 + "\n";
-        bool isAssign = (f->flags & DF_Constructor) == 0;
-        if (isAssign)
-          return {thisArg, classTy, false};
-        return {"", types.voidType(), false};
+        if (f->flags & DF_Constructor)
+        {
+          constructFromVector(thisArg, t, v, false, at);
+          return {"", types.voidType(), false};
+        }
+        std::string tmp = newObjectSlot(t, at);
+        constructFromVector(tmp, t, v, true, at);
+        if (needsDestruction(t, at))
+          statementTemps.push_back({tmp, t}); // destroyed with the statement's other temporaries
+        return defaultedOperation(f, t, thisArg, tmp, at);
       }
       // For defaulted comparisons (operator==, operator<=>), convert the scalar to
       // a temporary of the class type through its converting constructor, e.g. `fixedPoint == 0`.
@@ -1258,6 +1259,18 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
           return "ptr " + convertedTemporary(cls, arg, at); // `f(view)` with `f(const String&)`
       }
       Value o = rvalue(arg);
+      if (o.ty && o.ty->kind == TyKind::Vector && isClass(cls) && (cls->isConst || pt->kind == TyKind::RRef))
+      {
+        // A vector the checker could not type (an SSE operation clang's intrin.h has as a macro)
+        // for a `const T&` or `T&&` of a class that wraps it: a temporary made of it by the
+        // class's constructor (constructFromVector), destroyed with the statement's.
+        const Ty* made = types.unqualified(cls);
+        std::string tmp = newObjectSlot(made, at);
+        constructFromVector(tmp, made, o, true, at);
+        if (needsDestruction(made, at))
+          statementTemps.push_back({tmp, made});
+        return "ptr " + tmp;
+      }
       if (!isAggregate(o.ty))
         unsupported(at, "binding a non-class to a class reference");
       std::string addr = o.text;
@@ -1335,17 +1348,16 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     Value v = rvalue(arg);
     if (!isAggregate(v.ty))
     {
-      // A Vector value being passed to a class parameter that wraps it (e.g. float32x4
-      // wrapping __m128): construct the wrapper and store the vector into its first field.
+      // A vector the checker could not type (an SSE operation clang's intrin.h has as a macro,
+      // _mm_shuffle_ps) for a class parameter that wraps it (float32x4 taking __m128): made into
+      // the class by its constructor (constructFromVector), as a typed one is above; the callee
+      // destroys the parameter. (Until 2026-11-05 this loaded the vector from its value as if
+      // that were an address, invalid IR that clang rejected, and stored it into the class's
+      // first field.)
       if (v.ty && v.ty->kind == TyKind::Vector && isClass(pt))
       {
         std::string copy = newObjectSlot(pt, at);
-        storeZero(pt, copy, at);
-        StructInfo& info = structFor(pt, at);
-        std::string field0 = gep(info.name, copy, 0);
-        std::string tmp = newTemp();
-        fn += "  " + tmp + " = load " + llType(v.ty, at) + ", ptr " + v.text + "\n";
-        fn += "  store " + llType(v.ty, at) + " " + tmp + ", ptr " + field0 + "\n";
+        constructFromVector(copy, pt, v, true, at);
         return "ptr " + copy;
       }
       unsupported(at, "passing a non-class to a class parameter");

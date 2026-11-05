@@ -255,6 +255,15 @@
     // `const char*` as a String, and every name came out empty.
     void makeFromElement(const std::string& slot, const Ty* cls, const std::string& elementAddr, const Ty* elementTy, Node* at);
 
+    // A vector the checker could not type (an SSE operation clang's intrin.h has as a macro,
+    // _mm_shuffle_ps: the walker leaves its name to codegen, which builds it by name) made into an
+    // object of class cls at addr, by cls's constructor from that vector (float32x4's from __m128)
+    // as a typed vector is: the value stands in as a local of its own type. copyInit: `T x = v`, a
+    // parameter, a return value, an assignment's operand, where an explicit constructor is no way.
+    // Until 2026-11-05 the vector was stored into the class's first field, which skipped the
+    // constructor: a silent wrong value where it does more than store.
+    void constructFromVector(const std::string& addr, const Ty* cls, Value v, bool copyInit, Node* at);
+
     // The class of the local object (not a reference) e names, when it is not the function's
     // result class (whose own `return obj;` is a move: returnedLocalObject); null otherwise.
     const Ty* localObjectOfOtherClass(Expr* e);

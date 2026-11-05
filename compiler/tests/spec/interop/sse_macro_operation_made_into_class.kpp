@@ -1,0 +1,86 @@
+// spec: an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps, _mm_shuffle_epi32), whose name the checker leaves to the code generator, made into a class that wraps its vector (Util/SSE.kpp's float32x4 and int32x4) is built by the class's constructor in every initialisation: `T x = op`, a return value, a parameter by value and by const reference, an assignment (implicit or defaulted), a member operator's operand, and directly (parentheses, braces, a member initializer, new, a functional cast) by an explicit one; here the constructors do more than store the vector
+// factorio: none wrong (float32x4's and int32x4's constructors only store); `T x = op`, a return value and a defaulted copy, move or assignment (float32x4's) stored the vector into the class's first field, skipping the constructor (a silent wrong value: 1 for 11, 4 for 400), a by-value parameter was IR clang rejected (Util/VectorOrientation.kpp built for FreeBSD), and a reference parameter and an implicit assignment were errors
+extern "C" import "intrin.h";
+
+// Built from a vector implicitly, the lanes plus 10.
+struct Wide
+{
+  Wide() : value(_mm_setzero_ps()) {}
+  Wide(__m128 v) : value(_mm_add_ps(v, _mm_set1_ps(10.0f))) {}
+  float operator*(Wide right) { return _mm_cvtss_f32(_mm_mul_ps(value, right.value)); }
+  __m128 value;
+};
+
+// float32x4's shape: copies and moves defaulted; the lanes times 100.
+struct Lanes
+{
+  Lanes() : value(_mm_setzero_ps()) {}
+  Lanes(const Lanes& other) = default;
+  Lanes(Lanes&& other) = default;
+  Lanes& operator=(const Lanes&) = default;
+  Lanes& operator=(Lanes&&) = default;
+  Lanes(__m128 v) : value(_mm_mul_ps(v, _mm_set1_ps(100.0f))) {}
+  __m128 value;
+};
+
+// int32x4's: the lanes plus 100.
+struct Ints
+{
+  Ints(__m128i v) : value(_mm_add_epi32(v, _mm_set1_epi32(100))) {}
+  __m128i value;
+};
+
+// Built from a vector only explicitly, the lanes minus 1.
+struct Strict
+{
+  explicit Strict(__m128 v) : value(_mm_sub_ps(v, _mm_set1_ps(1.0f))) {}
+  __m128 value;
+};
+
+struct HoldsStrict
+{
+  Strict s;
+  HoldsStrict(__m128 a) : s(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))) {}
+};
+
+__m128 a = _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f);
+
+float lane0(Wide w) { return _mm_cvtss_f32(w.value); }
+float lane0OfRef(const Wide& w) { return _mm_cvtss_f32(w.value); }
+int intLane0(Ints i) { return _mm_cvtsi128_si32(i.value); }
+Wide made() { return _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 2)); }
+
+float initialised() { Wide w = _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 0)); return _mm_cvtss_f32(w.value); }
+float returned() { return _mm_cvtss_f32(made().value); }
+float byValue() { return lane0(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))); }
+float byReference() { return lane0OfRef(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 1))); }
+float assigned() { Wide w; w = _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 2)); return _mm_cvtss_f32(w.value); }
+float operand() { Wide w = _mm_set1_ps(-8.0f); return w * _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3)); }
+
+float assignedLanes() { Lanes g; g = _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3)); return _mm_cvtss_f32(g.value); }
+float initialisedLanes() { Lanes h = _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 2)); return _mm_cvtss_f32(h.value); }
+float directLanes() { Lanes k(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 1))); return _mm_cvtss_f32(k.value); }
+
+int initialisedInts() { Ints i = _mm_shuffle_epi32(_mm_setr_epi32(1, 2, 3, 4), _MM_SHUFFLE(0, 1, 2, 3)); return _mm_cvtsi128_si32(i.value); }
+int intsByValue() { return intLane0(_mm_shuffle_epi32(_mm_setr_epi32(1, 2, 3, 4), _MM_SHUFFLE(0, 1, 2, 2))); }
+
+float directStrict() { Strict s(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 2))); return _mm_cvtss_f32(s.value); }
+float bracedStrict() { Strict s{_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 1))}; return _mm_cvtss_f32(s.value); }
+float memberStrict() { HoldsStrict h(a); return _mm_cvtss_f32(h.s.value); }
+float newStrict()
+{
+  Strict* s = new Strict(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 0)));
+  float r = _mm_cvtss_f32(s->value);
+  delete s;
+  return r;
+}
+float castStrict() { return _mm_cvtss_f32(Strict(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))).value); }
+
+int main()
+{
+  println(initialised(), " ", returned(), " ", byValue(), " ", byReference(), " ", assigned(), " ", operand());
+  println(assignedLanes(), " ", initialisedLanes(), " ", directLanes());
+  println(initialisedInts(), " ", intsByValue());
+  println(directStrict(), " ", bracedStrict(), " ", memberStrict(), " ", newStrict(), " ", castStrict());
+  return 0;
+}

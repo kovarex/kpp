@@ -1593,6 +1593,31 @@ auto codegen::Emitter::makeFromElement(const std::string& slot, const Ty* cls, c
   initializeFrom(slot, cls, &name, at);
 }
 
+auto codegen::Emitter::constructFromVector(const std::string& addr, const Ty* cls, Value v, bool copyInit, Node* at) -> void
+{
+  cls = types.unqualified(types.stripRef(cls));
+  FunctionDecl* ctor = findConstructor(cls, {v.ty}, at);
+  if (!ctor || (ctor->flags & DF_Delete))
+    unsupported(at, "making " + types.toString(cls, &symbols) + " of a vector the checker could not type (" + types.toString(v.ty, &symbols) +
+                        "): no constructor of it takes one");
+  if (copyInit && global.isExplicit(ctor, global.classArgsOf(canonicalClass(cls, at))))
+    fail(at, "copy-initialising " + types.toString(cls, &symbols) + " from a vector (" + types.toString(v.ty, &symbols) + ") by its explicit constructor");
+  std::string slot = newObjectSlot(v.ty, at);
+  fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + slot + "\n";
+  VariableDecl vector{};
+  vector.kind = NodeKind::VariableDecl;
+  vector.token = at->token;
+  NameExpr name{};
+  name.kind = NodeKind::NameExpr;
+  name.token = at->token;
+  name.resolved = &vector;
+  name.ty = v.ty;
+  locals[&vector] = {slot, v.ty, false};
+  struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &vector};
+  Expr* one = &name;
+  constructInto(addr, cls, Span<Expr*>{&one, 1}, at);
+}
+
 auto codegen::Emitter::localObjectOfOtherClass(Expr* e) -> const Ty*
 {
   if (!e || e->kind != NodeKind::NameExpr)
@@ -2282,29 +2307,27 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at);
       return;
     }
-    // An SSE operation the checker could not type (one intrin.h has as a macro, _mm_shuffle_ps)
-    // initialising a wrapper class (float32x4): the vector stored into its first field.
+    // A call the checker could not type, evaluated once: an SSE operation clang's intrin.h has as a
+    // macro (_mm_shuffle_ps) initialising a class that wraps its vector (float32x4) is made into it
+    // by the class's constructor (constructFromVector); any other value is taken below.
+    std::optional<Value> evaluated;
     if (init->kind == NodeKind::CallExpr && (!init->ty || !init->ty->isKnown()))
     {
-      Value v = rvalue(init);
-      if (v.ty && v.ty->kind == TyKind::Vector)
+      evaluated = rvalue(init);
+      if (evaluated->ty && evaluated->ty->kind == TyKind::Vector)
       {
-        StructInfo& info = structFor(t, at);
-        if (info.fieldTypes.empty() || llType(info.fieldTypes[0], at) != llType(v.ty, at))
-          unsupported(at, "initialising " + types.toString(t, &symbols) + ", whose first member is not that vector, from a vector");
-        fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + gep(info.name, addr, 0) + "\n";
+        constructFromVector(addr, t, *evaluated, true, at);
         return;
       }
-      // Not a vector — fall through to the non-class converting constructor path.
     }
-    if (init->ty && init->ty->isKnown() && !isClass(types.stripRef(init->ty)) && isClass(t))
+    if (!evaluated && init->ty && init->ty->isKnown() && !isClass(types.stripRef(init->ty)) && isClass(t))
     {
       // A non-class value: through a converting constructor (`String s = "text"`).
       Expr* one = init;
       constructInto(addr, t, Span<Expr*>{&one, 1}, at);
       return;
     }
-    if (initIsClass && !dependent && !sameClass)
+    if (!evaluated && initIsClass && !dependent && !sameClass)
     {
       // Another class: through a converting constructor, a base, or its conversion operator
       // (`String text = vec;` with `operator String()`), never by copying it as a t.
@@ -2312,7 +2335,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       constructInto(addr, t, Span<Expr*>{&one, 1}, at);
       return;
     }
-    Value src = rvalue(init);
+    Value src = evaluated ? *evaluated : rvalue(init);
     if (!isClass(src.ty))
       unsupported(at, "initialising a class from a non-class value");
     if (canonicalClass(src.ty, at) != canonicalClass(t, at))
