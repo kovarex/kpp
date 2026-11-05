@@ -57,16 +57,20 @@ call "%~dp0c-libraries.cmd" || goto :failed
 set CLIBKPP=
 set CLIBWHOLE=
 set CLIBUSE=
-rem Each converted for Windows and for Linux (unless CONVERT_LINUX=0), the two made one by config::platform
-rem (--convert-merge-platform, design.md 12), the marks taken out by --convert-merge of that text with itself.
+rem Each converted for Windows, Linux and FreeBSD (unless CONVERT_LINUX=0), Linux's and FreeBSD's made one by
+rem config::platform, then that with Windows' (--convert-merge-platform, design.md 12), the marks taken out by
+rem --convert-merge of that text with itself.
 set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
-for %%d in (clib clib-w clib-l clib-b) do if exist kpp\%%d rd /s /q kpp\%%d
+set FREEBSDCONVERT=--convert-platform freebsd --convert-predefines freebsd-predefines.txt
+for %%d in (clib clib-w clib-l clib-f clib-p clib-b) do if exist kpp\%%d rd /s /q kpp\%%d
 for %%l in (%CLIBRARIES%) do (
   call :libraryUses %%l
   call %KPPC% --no-std --quiet --c-sources --convert-marks --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib-w\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
   if "%CONVERT_LINUX%"=="0" (xcopy /s /y /q /i kpp\clib-w\%%l kpp\clib-b\%%l >nul) else (
     call %KPPC% --no-std --quiet --c-sources --convert-marks %LINUXCONVERT% --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib-l\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
-    %KPPC% --convert-merge-platform kpp\clib-w\%%l kpp\clib-l\%%l kpp\clib-b\%%l > kpp\clib-b-%%l.log 2>&1 || goto :clibmergefailed
+    call %KPPC% --no-std --quiet --c-sources --convert-marks %FREEBSDCONVERT% --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib-f\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+    %KPPC% --convert-merge-platform kpp\clib-l\%%l kpp\clib-f\%%l kpp\clib-p\%%l Linux FreeBSD > kpp\clib-p-%%l.log 2>&1 || goto :clibmergefailed
+    %KPPC% --convert-merge-platform kpp\clib-w\%%l kpp\clib-p\%%l kpp\clib-b\%%l Windows Linux,FreeBSD > kpp\clib-b-%%l.log 2>&1 || goto :clibmergefailed
   )
   %KPPC% --convert-merge kpp\clib-b\%%l kpp\clib-b\%%l kpp\clib\%%l > kpp\clib-%%l.log 2>&1 || goto :clibmergefailed
   if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
@@ -109,12 +113,19 @@ if "%CONVERT_LINUX%"=="0" goto :wholemerge
 set STEP=the Linux conversion of the whole
 for %%c in (debug release final) do if exist kpp\whole-linux-%%c rd /s /q kpp\whole-linux-%%c
 for %%c in (debug release final) do if exist kpp\whole-both-%%c rd /s /q kpp\whole-both-%%c
+for %%c in (debug release final) do if exist kpp\whole-freebsd-%%c rd /s /q kpp\whole-freebsd-%%c
+for %%c in (debug release final) do if exist kpp\whole-posix-%%c rd /s /q kpp\whole-posix-%%c
 set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
+set FREEBSDCONVERT=--convert-platform freebsd --convert-predefines freebsd-predefines.txt
 %KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert kpp\whole-linux-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert kpp\whole-freebsd-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 %KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-release --convert kpp\whole-linux-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert-release --convert kpp\whole-freebsd-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 %KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-final --convert kpp\whole-linux-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert-final --convert kpp\whole-freebsd-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 set STEP=the platforms made one
-for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-%%c kpp\whole-linux-%%c kpp\whole-both-%%c > kpp\whole-both-%%c.log 2>&1 || (type kpp\whole-both-%%c.log& goto :failed)
+for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-linux-%%c kpp\whole-freebsd-%%c kpp\whole-posix-%%c Linux FreeBSD > kpp\whole-posix-%%c.log 2>&1 || (type kpp\whole-posix-%%c.log& goto :failed)
+for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-%%c kpp\whole-posix-%%c kpp\whole-both-%%c Windows Linux,FreeBSD > kpp\whole-both-%%c.log 2>&1 || (type kpp\whole-both-%%c.log& goto :failed)
 set WHOLEIN=kpp\whole-both
 :wholemerge
 %KPPC% --convert-merge %WHOLEIN%-debug %WHOLEIN%-release %WHOLE% overrides\configuration-choices.txt %WHOLEIN%-final || goto :failed

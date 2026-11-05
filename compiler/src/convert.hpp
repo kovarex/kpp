@@ -93,7 +93,8 @@ bool setConvertPredefines(const std::filesystem::path& file);
 // conversions made one, each #if group whose two texts differ chosen by config::platform, its marks
 // kept for convertMerge, which makes the configurations one after; a file of one platform alone
 // starts `requires config::platform == Platform::X;`. Returns 1 when they differ outside a group.
-int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir);
+int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir,
+                         const std::string& firstPlatforms = "Windows", const std::string& secondPlatforms = "Linux");
 // kppc --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).

@@ -3490,8 +3490,16 @@
             {"st_mtime", "st_mtim.tv_sec"},                {"st_ctime", "st_ctim.tv_sec"},
             {"ifa_broadaddr", "ifa_ifu.ifu_broadaddr"},    {"ifa_dstaddr", "ifa_ifu.ifu_dstaddr"}};
           // (a name either platform rewrites is marked on both, as it is or rewritten)
-          const auto& memberMacros = convertPlatform == "linux" ? linuxMemberMacros : windowsMemberMacros;
-          if (windowsMemberMacros.count(spelling(i)) || linuxMemberMacros.count(spelling(i)))
+          // (FreeBSD's: sys/signal.h's sa_handler, netinet6/in6.h's s6_addr, ifaddrs.h's ifa_broadaddr)
+          static const std::map<std::string_view, std::string> freebsdMemberMacros = {
+            {"s6_addr", "__u6_addr.__u6_addr8"},        {"sa_handler", "__sigaction_u.__sa_handler"},
+            {"sa_sigaction", "__sigaction_u.__sa_sigaction"}, {"st_atime", "st_atim.tv_sec"},
+            {"st_mtime", "st_mtim.tv_sec"},             {"st_ctime", "st_ctim.tv_sec"},
+            {"ifa_broadaddr", "ifa_dstaddr"}};
+          const auto& memberMacros = convertPlatform == "linux"     ? linuxMemberMacros
+                                     : convertPlatform == "freebsd" ? freebsdMemberMacros
+                                                                    : windowsMemberMacros;
+          if (windowsMemberMacros.count(spelling(i)) || linuxMemberMacros.count(spelling(i)) || freebsdMemberMacros.count(spelling(i)))
           {
             auto mm = memberMacros.find(spelling(i));
             std::string written = mm != memberMacros.end() ? mm->second : std::string(spelling(i));

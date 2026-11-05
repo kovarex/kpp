@@ -1,14 +1,26 @@
-requires config::platform == Platform::Linux;
-// glibc's function-like macros the game's Linux code calls, written as kpp functions (kovarex, 2026-11-05:
+requires config::platform == Platform::Linux || config::platform == Platform::FreeBSD;
+// glibc's and FreeBSD's function-like macros the game's Linux code calls (FreeBSD runs it too), written as
+// kpp functions, each as its C library defines it (kovarex, 2026-11-05:
 // option B; design.md 5: the C import takes no function-like macro): sys/wait.h's status macros
 // (ChildProcessAgent.cpp) and arpa/nameser.h's accessors of a parsed DNS message (SocketAddress.cpp's
 // SRV lookup), each what the macro expands to.
 
-// sys/wait.h (bits/waitstatus.h)
-i32 WEXITSTATUS(i32 status) { return (status & 0xff00) >> 8; }
+// sys/wait.h (glibc's bits/waitstatus.h; FreeBSD's sys/wait.h: no mask on the exit status, and a stopped
+// status, 0177, or 0x13 (a continued one) no signal)
+i32 WEXITSTATUS(i32 status)
+{
+  if constexpr (config::platform == Platform::FreeBSD)
+    return status >> 8;
+  return (status & 0xff00) >> 8;
+}
 i32 WTERMSIG(i32 status) { return status & 0x7f; }
 bool WIFEXITED(i32 status) { return WTERMSIG(status) == 0; }
-bool WIFSIGNALED(i32 status) { return i8(((status & 0x7f) + 1)) >> 1 > 0; }
+bool WIFSIGNALED(i32 status)
+{
+  if constexpr (config::platform == Platform::FreeBSD)
+    return (status & 0x7f) != 0x7f && (status & 0x7f) != 0 && status != 0x13;
+  return i8(((status & 0x7f) + 1)) >> 1 > 0;
+}
 
 // arpa/nameser.h
 const u_char* ns_msg_base(const ns_msg& handle) { return handle._msg; }

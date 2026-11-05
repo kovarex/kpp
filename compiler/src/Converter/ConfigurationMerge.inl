@@ -19,7 +19,7 @@ void setConvertMarks()
 
 bool setConvertPlatform(const std::string& platform)
 {
-  if (platform != "windows" && platform != "linux")
+  if (platform != "windows" && platform != "linux" && platform != "freebsd")
     return false;
   convertPlatform = platform;
   return true;
@@ -170,9 +170,37 @@ namespace
   };
   const MergeDimension debugDimension = {"config::debug", "!config::debug", "debug", "release"};
   const MergeDimension finalDimension = {"config::finalRelease", "!config::finalRelease", "final", "release"};
-  // The platform a group's two texts are chosen by (--convert-merge-platform): each platform named, so
-  // that a third one (FreeBSD, macOS) has neither text and its build says so, never one of theirs.
-  const MergeDimension platformDimension = {"config::platform == Platform::Windows", "config::platform == Platform::Linux", "windows", "linux"};
+  // The platforms a group's two texts are chosen by (--convert-merge-platform): each platform named, so
+  // that another one (macOS) has neither text and its build says so, never one of theirs. Windows'
+  // and Linux's, or Linux's and FreeBSD's, or Windows' and those two's together (setMergePlatforms).
+  std::string platformOn = "config::platform == Platform::Windows", platformOff = "config::platform == Platform::Linux";
+  std::string platformOnName = "windows", platformOffName = "linux";
+  MergeDimension platformDimension = {platformOn.c_str(), platformOff.c_str(), platformOnName.c_str(), platformOffName.c_str()};
+  // FIRST and SECOND as `Windows` or `Linux,FreeBSD`: the conditions `config::platform ==
+  // Platform::Linux || config::platform == Platform::FreeBSD` and the names `linux-freebsd`.
+  void setMergePlatforms(const std::string& first, const std::string& second)
+  {
+    auto condition = [](const std::string& list, std::string& name)
+    {
+      std::string out;
+      name.clear();
+      for (size_t at = 0; at <= list.size();)
+      {
+        size_t comma = std::min(list.find(',', at), list.size());
+        std::string platform = list.substr(at, comma - at);
+        out += (out.empty() ? "" : " || ") + std::string("config::platform == Platform::") + platform;
+        std::string lower = platform;
+        for (char& c : lower)
+          c = char(tolower((unsigned char)c));
+        name += (name.empty() ? "" : "-") + lower;
+        at = comma + 1;
+      }
+      return out;
+    };
+    platformOn = condition(first, platformOnName);
+    platformOff = condition(second, platformOffName);
+    platformDimension = {platformOn.c_str(), platformOff.c_str(), platformOnName.c_str(), platformOffName.c_str()};
+  }
 
   // A group's merged text with its marks again (--convert-merge-platform keeps them for convertMerge,
   // which makes the configurations one after): inline, so that they take no line of their own.
@@ -845,7 +873,9 @@ namespace
               break;
           }
           size_t at = item.size() - code.size();
-          out += item.substr(0, at) + "when (" + condition + " && " + std::string(code.substr(6, close - 6)) + ")" + std::string(code.substr(close + 1));
+          // (each side in parentheses where it is a `||`: `Platform::Linux || Platform::FreeBSD`)
+          auto operand = [](std::string_view c) { return c.find("||") != std::string_view::npos ? "(" + std::string(c) + ")" : std::string(c); };
+          out += item.substr(0, at) + "when (" + operand(condition) + " && " + operand(code.substr(6, close - 6)) + ")" + std::string(code.substr(close + 1));
           ++report.when;
         }
         else if (declaresName(item))
@@ -974,11 +1004,11 @@ namespace
     // (each platform's own a `when` one: the class is defined on the other platform)
     std::string head;
     for (const std::string& d : w.declarations)
-      head += (std::find(l.declarations.begin(), l.declarations.end(), d) == l.declarations.end() ? "when (config::platform == Platform::Windows) " : "") + d +
+      head += (std::find(l.declarations.begin(), l.declarations.end(), d) == l.declarations.end() ? "when (" + platformOn + ") " : "") + d +
               "\n";
     for (const std::string& d : l.declarations)
       if (std::find(w.declarations.begin(), w.declarations.end(), d) == w.declarations.end())
-        head += "when (config::platform == Platform::Linux) " + d + "\n";
+        head += "when (" + platformOff + ") " + d + "\n";
     if (!w.others.empty())
       head += "\n";
     for (const std::string& o : w.others)
@@ -1641,8 +1671,12 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
 
 // --- one configuration's two platforms made one (CONVERSION.md TODO 17) ---
 
-int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir)
+int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir,
+                         const std::string& firstPlatforms, const std::string& secondPlatforms)
 {
+  // (windowsDir and linuxDir: the first and the second platforms' conversions, Windows' and Linux's
+  // unless firstPlatforms and secondPlatforms name others)
+  setMergePlatforms(firstPlatforms, secondPlatforms);
   MergeReport report;
   std::error_code ec;
   size_t files = 0, onePlatform = 0;
@@ -1653,10 +1687,13 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     writeConvertedFile(target, text);
   };
   // (a file one platform alone has: its declarations are that platform's)
-  auto alone = [&](const std::string& text, const char* platform)
+  auto alone = [&](const std::string& text, const std::string& condition)
   {
     ++onePlatform;
-    return std::string("requires config::platform == Platform::") + platform + ";\n" + text;
+    // (a file that requires a platform already, one an earlier merge made: its own condition stays)
+    if (text.rfind("requires config::platform", 0) == 0)
+      return text;
+    return "requires " + condition + ";\n" + text;
   };
   // An imports file: the imports both have, then each platform's own in a file of its own, which
   // requires the platform (an import cannot be `when`).
@@ -1692,9 +1729,9 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     write(rel, common);
     std::string stem = rel.substr(0, rel.size() - 4);
     if (!windowsOnly.empty())
-      write(stem + "-windows.kpp", "requires config::platform == Platform::Windows;\n" + windowsOnly);
+      write(stem + "-" + platformOnName + ".kpp", "requires " + platformOn + ";\n" + windowsOnly);
     if (!linuxOnly.empty())
-      write(stem + "-linux.kpp", "requires config::platform == Platform::Linux;\n" + linuxOnly);
+      write(stem + "-" + platformOffName + ".kpp", "requires " + platformOff + ";\n" + linuxOnly);
   };
   for (const auto& entry : std::filesystem::recursive_directory_iterator(windowsDir, ec))
   {
@@ -1712,7 +1749,7 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     ++files;
     if (!both)
     {
-      write(rel, alone(windows, "Windows"));
+      write(rel, alone(windows, platformOn));
       continue;
     }
     if (entry.path().filename().string().rfind("c-imports", 0) == 0)
@@ -1724,12 +1761,12 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     // `#if defined(WIN32)`): a file of the one platform, its text as converted.
     if (lastCodeChar(linux) == 0 && lastCodeChar(windows) != 0)
     {
-      write(rel, alone(windows, "Windows"));
+      write(rel, alone(windows, platformOn));
       continue;
     }
     if (lastCodeChar(windows) == 0 && lastCodeChar(linux) != 0)
     {
-      write(rel, alone(linux, "Linux"));
+      write(rel, alone(linux, platformOff));
       continue;
     }
     // Texts whose code is the same, their comments not: Windows' text.
@@ -1772,7 +1809,7 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
       std::string linux;
       readFile(entry.path(), linux);
       ++files;
-      write(rel, alone(linux, "Linux"));
+      write(rel, alone(linux, platformOff));
     }
   printf("convert-merge-platform: %zu files, %zu groups whose platforms differ, %zu files of one platform, %zu problems\n", files, report.conditional,
          onePlatform, report.problems.size());

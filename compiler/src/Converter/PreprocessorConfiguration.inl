@@ -280,7 +280,7 @@
         d[name] = body;
       return d;
     }();
-    return convertPlatform == "linux" ? linux : fastDebugDefines;
+    return convertPlatform != "windows" ? linux : fastDebugDefines; // (FreeBSD: Linux's defines, the game's POSIX code, with clang's FreeBSD predefines)
   }
   const std::map<std::string, std::string>& buildDefines()
   {
@@ -310,7 +310,7 @@
   // library's own defines come from its c-libraries\NAME\defines.txt (zlib's verbose=-1).
   std::map<std::string, std::string> cLibraryDefines()
   {
-    if (convertPlatform == "linux")
+    if (convertPlatform != "windows")
     {
       // Linux (--convert-platform linux): the build's Linux defines and clang's x86_64-linux-gnu
       // predefines (platformDefines), as C, release; glibc's limits (LP64) and x87's long double, and
@@ -336,6 +336,10 @@
              {"fpclassify", ""}, {"signbit", ""}, {"isnan", ""}, {"isinf", ""}, {"isfinite", ""}, {"isnormal", ""},
              {"INFINITY", ""}, {"NAN", ""}, {"HUGE_VAL", ""}, {"HUGE_VALF", ""}, {"HUGE_VALL", ""}})
         d[name] = body;
+      if (convertPlatform == "freebsd") // (FreeBSD's sys/fcntl.h values)
+        for (const auto& [name, body] : std::map<std::string, std::string>{
+               {"O_EXCL", "0x0800"}, {"O_CREAT", "0x0200"}, {"O_TRUNC", "0x0400"}, {"O_APPEND", "0x0008"}})
+          d[name] = body;
       return d;
     }
     std::map<std::string, std::string> d = fastDebugDefines;
@@ -400,7 +404,7 @@
   const std::set<std::string> windowsOnlyFiles = {"minizip/iowin32.c", "minizip/iowin32.h"};
   bool fileForOtherPlatform(const std::string& rel)
   {
-    return convertPlatform == "linux" ? windowsOnlyFiles.count(rel) != 0 : linuxOnlyFiles.count(rel) != 0;
+    return convertPlatform != "windows" ? windowsOnlyFiles.count(rel) != 0 : linuxOnlyFiles.count(rel) != 0;
   }
   // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
   // standalone interpreter and compiler, by their directory and name.

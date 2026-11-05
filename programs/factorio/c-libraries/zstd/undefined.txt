@@ -47,3 +47,5 @@ __i386
 __sun__
 # Linux's: its #if chains reach these where Windows' stop at _WIN32 or _MSC_VER (undefined there too)
 __i386__
+# FreeBSD's: its clang predefines no __PIC__ (zstd's cpu.h tests it beside __i386__)
+__PIC__

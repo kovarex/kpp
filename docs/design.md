@@ -803,8 +803,16 @@ declared per platform:
   every platform (its Path widens UTF-8 as on Windows), the last write time comes from stat, no C++
   ABI names (demangle and the current exception's type), no inline assembly (zstd's cpuid), no long
   double functions (trio's powl, a test's nexttoward as nextafter).
-- A choice's second arm is Linux's: a third platform (FreeBSD) takes it until it is converted as
-  itself.
+- FreeBSD is converted too (`--convert-platform freebsd`): with the game's Linux code (its defines,
+  LINUX among them: FreeBSD runs the POSIX code the game has for Linux) and clang's
+  x86_64-unknown-freebsd14.3 predefines (freebsd-predefines.txt). Linux's and FreeBSD's conversions
+  are merged first (`--convert-merge-platform LINUX FREEBSD OUT Linux FreeBSD`: 3 groups differ in the
+  game), then that with Windows' (`... Windows Linux,FreeBSD`: the second platforms' condition
+  `config::platform == Platform::Linux || config::platform == Platform::FreeBSD`), the C libraries
+  alike. What FreeBSD does not have of Linux's is a source edit (no inotify: no directory watching; no
+  malloc_trim); its member macros are its own (sa_handler, s6_addr, ifa_broadaddr), and PosixMacros.kpp
+  has FreeBSD's sys/wait.h macros beside glibc's. A choice's second arm (`?:`) is Linux's and
+  FreeBSD's together; another platform (macOS) takes it until it is converted as itself.
 - convert.cmd: the whole game's platform merge has no problem (C:\Factorio 4c178a5b915, debug: 246
   groups whose platforms differ, 34 files of one platform), and the merged tree built for Windows
   passes as before (headline 0, tests errors 0, smoke tests 16/16).

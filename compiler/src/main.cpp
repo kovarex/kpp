@@ -127,8 +127,12 @@ int main(int argc, char** argv)
     return convertMerge(argv[2], argv[3], argv[4], argc >= 6 ? argv[5] : "", argc == 7 ? argv[6] : "");
   // One configuration's Windows and Linux conversions made one (convert.hpp): `kppc
   // --convert-merge-platform WINDOWS LINUX OUT`.
+  // `... FIRST SECOND OUT LINUX FREEBSD`: other platforms than Windows and Linux, each a comma list
+  // (`Windows` and `Linux,FreeBSD`: Linux's and FreeBSD's merge against Windows').
   if (argc == 5 && std::string(argv[1]) == "--convert-merge-platform")
     return convertMergePlatform(argv[2], argv[3], argv[4]);
+  if (argc == 7 && std::string(argv[1]) == "--convert-merge-platform")
+    return convertMergePlatform(argv[2], argv[3], argv[4], argv[5], argv[6]);
   // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")

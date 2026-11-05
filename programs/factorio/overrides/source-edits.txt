@@ -404,3 +404,21 @@
 @ tests/TestFloatingPoint.cpp: nextafter toward 0.0 (a double) where nexttoward took it as long double
 -     const double oneStepLessThanMax = std::nexttoward(double(std::numeric_limits<int64_t>::max()), 0.0);
 +     const double oneStepLessThanMax = std::nextafter(double(std::numeric_limits<int64_t>::max()), 0.0);
+
+# FreeBSD runs the game's Linux code (LINUX defined, design.md 12), but has no inotify: its directory
+# watcher watches nothing, as on the platforms the game's code gives none.
+@ src/Util/DirectoryChangeWatcher.cpp: no inotify on FreeBSD (no watching there)
+- #elif defined LINUX
++ #elif defined LINUX && !defined(__FreeBSD__)
+
+@ src/Util/DirectoryChangeWatcher.cpp: no inotify on FreeBSD (no watching there)
+- #if defined WIN32 || defined LINUX
++ #if defined WIN32 || (defined LINUX && !defined(__FreeBSD__))
+
+@ src/Util/SystemUtil.cpp: malloc_trim is glibc's (FreeBSD's malloc gives memory back itself)
+- #ifdef LINUX
+-   // glibc won't release free'd memory back to the OS without asking.
+-   malloc_trim(0);
++ #if defined(LINUX) && !defined(__FreeBSD__)
++   // glibc won't release free'd memory back to the OS without asking.
++   malloc_trim(0);
