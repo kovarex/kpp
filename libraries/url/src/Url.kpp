@@ -2,7 +2,7 @@
 // a reference against a base (section 5), percent-encoding, and query strings in the form
 // browsers send (application/x-www-form-urlencoded).
 
-void urlFail(i32 offset, const char* what) { throw UrlError(format("{}: {}", offset, StringView(what)), offset); }
+void urlFail(i32 offset, const char* what) { throw UrlError(toString(offset, ": ", StringView(what)), offset); }
 
 // A URI reference's components, as written (percent-encoded). The has* flags tell an empty
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
@@ -18,7 +18,7 @@ struct Url
     i64 value = 0;
     for (char c : this->port)
       if ((value = value * 10 + (c - '0')) > 65535)
-        throw UrlError(format("port {} is out of range", this->port), 0);
+        throw UrlError(toString("port ", this->port, " is out of range"), 0);
     return i32(value);
   }
 
@@ -118,7 +118,7 @@ void urlCheckComponent(StringView text, i32 from, i32 to, const char* allowed, c
       if (allowed[k] == c)
         ok = true;
     if (!ok)
-      urlFail(i, format("a character that may not stand in a URL's {} (percent-encode it)", StringView(component)).c_str());
+      urlFail(i, toString("a character that may not stand in a URL's ", StringView(component), " (percent-encode it)").c_str());
   }
 }
 
@@ -275,7 +275,7 @@ String urlRemoveDotSegments(StringView path)
 Url resolveUrl(const Url& base, const Url& reference)
 {
   if (base.isRelative())
-    throw UrlError(format("resolving against {}, which has no scheme", base.str()), 0);
+    throw UrlError(toString("resolving against ", base.str(), ", which has no scheme"), 0);
   Url target;
   if (!reference.scheme.empty())
   {

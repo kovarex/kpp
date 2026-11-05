@@ -59,10 +59,10 @@ void httpCheckHeader(StringView name, StringView value)
     throw HttpError("a header with no name", 500);
   for (ContainerSize i = 0; i < name.size(); ++i)
     if (!httpIsToken(name[i]))
-      throw HttpError(format("the header name \"{}\" has a character a header name cannot have", name), 500);
+      throw HttpError(toString("the header name \"", name, "\" has a character a header name cannot have"), 500);
   for (ContainerSize i = 0; i < value.size(); ++i)
     if (value[i] == '\r' || value[i] == '\n' || value[i] == 0)
-      throw HttpError(format("the value of the header {} has a line break or a zero byte", name), 500);
+      throw HttpError(toString("the value of the header ", name, " has a line break or a zero byte"), 500);
 }
 
 bool httpIsToken(char c)
@@ -82,12 +82,12 @@ void httpCheckCookie(StringView name, StringView value)
     throw HttpError("a cookie with no name", 500);
   for (ContainerSize i = 0; i < name.size(); ++i)
     if (!httpIsToken(name[i]))
-      throw HttpError(format("the cookie name \"{}\" is not a token", name), 500);
+      throw HttpError(toString("the cookie name \"", name, "\" is not a token"), 500);
   for (ContainerSize i = 0; i < value.size(); ++i)
   {
     u8 c = (u8)value[i];
     if (c <= 0x20 || c >= 0x7f || c == '"' || c == ',' || c == ';' || c == '\\')
-      throw HttpError(format("the value of the cookie {} has a character a cookie cannot have (encode it)", name), 500);
+      throw HttpError(toString("the value of the cookie ", name, " has a character a cookie cannot have (encode it)"), 500);
   }
 }
 
@@ -141,7 +141,7 @@ Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
 {
   if (boundary.empty() || boundary.size() > 70)
     throw HttpError("a multipart boundary is 1 to 70 characters");
-  String delimiter = String("--") + String(boundary);
+  String delimiter = toString("--", boundary);
   Vector<HttpPart> parts;
   ContainerSize at = body.find(delimiter);
   if (at == StringView::npos)
@@ -190,7 +190,7 @@ Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
     if (!named)
       throw HttpError("a multipart part without a Content-Disposition name");
     ContainerSize dataStart = headersEnd + 4;
-    String next = String("\r\n") + delimiter;
+    String next = toString("\r\n", delimiter);
     ContainerSize dataEnd = body.find(next, dataStart);
     if (dataEnd == StringView::npos)
       throw HttpError("a multipart part that does not end in a boundary");
@@ -253,6 +253,6 @@ void httpSetTarget(HttpRequest& request, StringView target)
   }
   catch (const url::UrlError& e)
   {
-    throw HttpError(format("a malformed request target: {}", StringView(e.what())));
+    throw HttpError(toString("a malformed request target: ", StringView(e.what())));
   }
 }

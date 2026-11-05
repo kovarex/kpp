@@ -50,7 +50,7 @@ struct TcpStream
       i64 want = n - (i64)out.size();
       i64 got = this->read(buffer, want < 4096 ? want : 4096);
       if (got == 0)
-        throw NetError(format("the connection closed after {} of {} bytes", (i64)out.size(), n));
+        throw NetError(toString("the connection closed after ", (i64)out.size(), " of ", n, " bytes"));
       out << StringView(buffer, (ContainerSize)got);
     }
     return out;

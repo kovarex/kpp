@@ -51,7 +51,7 @@ struct MariaDbReader
       return this->fixed(3);
     if (first == 0xfe)
       return this->fixed(8);
-    throw MariaDbError(format("a length-encoded integer cannot start with {}", (i32)first), 0, String());
+    throw MariaDbError(toString("a length-encoded integer cannot start with ", (i32)first), 0, String());
   }
   String bytes(ContainerSize n)
   {

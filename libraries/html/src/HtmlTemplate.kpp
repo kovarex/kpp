@@ -16,7 +16,7 @@ void htmlTemplateFail(const char* text, i32 offset, const char* what)
     else
       ++column;
   }
-  throw HtmlTemplateError(format("{}:{}: {}", line, column, StringView(what)));
+  throw HtmlTemplateError(toString(line, ":", column, ": ", StringView(what)));
 }
 
 class HtmlTemplate
@@ -73,10 +73,10 @@ public:
         ++index;
       }
       if (!argument)
-        throw HtmlTemplateError(toString("render: no value for {{", String(name), "}}"));
+        throw HtmlTemplateError(toString("render: no value for {{", name, "}}"));
       if ((argument->kind == HtmlArgumentKind::flag) != (part.kind == HtmlHole::flag))
-        throw HtmlTemplateError(part.kind == HtmlHole::flag ? toString("render: {{", String(name), "}} is a boolean attribute's, whose value is a bool")
-                                                            : toString("render: {{", String(name), "}} is a bool, which goes only in a boolean attribute (?name=\"{{hole}}\")"));
+        throw HtmlTemplateError(part.kind == HtmlHole::flag ? toString("render: {{", name, "}} is a boolean attribute's, whose value is a bool")
+                                                            : toString("render: {{", name, "}} is a bool, which goes only in a boolean attribute (?name=\"{{hole}}\")"));
       if (part.kind == HtmlHole::flag)
       {
         if (argument->on)
@@ -84,7 +84,7 @@ public:
         continue;
       }
       if (argument->kind == HtmlArgumentKind::safe && part.kind != HtmlHole::text)
-        throw HtmlTemplateError(toString("render: {{", String(name), "}} is SafeHtml, which goes only in an element's text"));
+        throw HtmlTemplateError(toString("render: {{", name, "}} is SafeHtml, which goes only in an element's text"));
       if (part.kind == HtmlHole::text && argument->kind == HtmlArgumentKind::safe)
         out << (argument->value);
       else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
@@ -92,7 +92,7 @@ public:
       else if (part.kind == HtmlHole::urlStart)
       {
         if (!htmlUrlIsSafe(argument->value))
-          throw HtmlTemplateError(toString("render: {{", String(name), "}} is a URL with a scheme other than http, https and mailto: ",
+          throw HtmlTemplateError(toString("render: {{", name, "}} is a URL with a scheme other than http, https and mailto: ",
                                            argument->value));
         htmlAppendEscaped(out, argument->value);
       }
@@ -103,7 +103,7 @@ public:
     for (const HtmlArgument& a : arguments)
     {
       if (!used[index])
-        throw HtmlTemplateError(format("render: a value for {}, which the template has no hole for", StringView(a.name)));
+        throw HtmlTemplateError(toString("render: a value for ", StringView(a.name), ", which the template has no hole for"));
       ++index;
     }
   }

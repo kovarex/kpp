@@ -47,7 +47,7 @@ struct HttpRequest
     }
     if (this->body.empty())
       return Vector<url::UrlQueryParameter>();
-    throw HttpError(format("a form cannot be read from a body of type \"{}\"", type), 415);
+    throw HttpError(toString("a form cannot be read from a body of type \"", type, "\""), 415);
   }
 
   // The parts of a multipart/form-data body; another type throws HttpError (415).

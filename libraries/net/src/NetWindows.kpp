@@ -15,7 +15,7 @@ void netStartup()
   WSADATA data;
   i32 result = WSAStartup(0x0202, &data);
   if (result != 0)
-    throw NetError(format("WSAStartup failed: {}", netSystemMessage(result)));
+    throw NetError(toString("WSAStartup failed: ", netSystemMessage(result)));
   started = true;
 }
 
@@ -27,16 +27,16 @@ String netSystemMessage(i32 code)
   while (length > 0 && (buffer[length - 1] == '\n' || buffer[length - 1] == '\r' || buffer[length - 1] == ' ' || buffer[length - 1] == '.'))
     --length;
   if (length == 0)
-    return format("error {}", code);
-  return format("{} (error {})", StringView(buffer, (ContainerSize)length), code);
+    return toString("error ", code);
+  return toString(StringView(buffer, (ContainerSize)length), " (error ", code, ")");
 }
 
 [[noreturn]] void netFail(StringView what)
 {
   i32 code = WSAGetLastError();
   if (code == WSAETIMEDOUT)
-    throw NetError(format("{}: timed out", what));
-  throw NetError(format("{}: {}", what, netSystemMessage(code)));
+    throw NetError(toString(what, ": timed out"));
+  throw NetError(toString(what, ": ", netSystemMessage(code)));
 }
 
 // The addresses of host at port, for a stream socket; passive for a listener.
@@ -51,11 +51,11 @@ addrinfo* netResolve(StringView host, i32 port, bool passive)
   if (passive)
     hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST;
   String name(host);
-  String service = format("{}", port);
+  String service = toString(port);
   addrinfo* found = nullptr;
   i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
-    throw NetError(format("cannot resolve {}: {}", host, netSystemMessage(result)));
+    throw NetError(toString("cannot resolve ", host, ": ", netSystemMessage(result)));
   return found;
 }
 
@@ -80,7 +80,7 @@ i64 netConnect(StringView host, i32 port)
     closesocket(s);
   }
   freeaddrinfo(found);
-  throw NetError(format("cannot connect to {} port {}: {}", host, port, netSystemMessage(code)));
+  throw NetError(toString("cannot connect to ", host, " port ", port, ": ", netSystemMessage(code)));
 }
 
 i64 netListen(StringView address, i32 port)
@@ -100,7 +100,7 @@ i64 netListen(StringView address, i32 port)
     i32 code = WSAGetLastError();
     freeaddrinfo(found);
     closesocket(s);
-    throw NetError(format("cannot listen on {} port {}: {}", address, port, netSystemMessage(code)));
+    throw NetError(toString("cannot listen on ", address, " port ", port, ": ", netSystemMessage(code)));
   }
   freeaddrinfo(found);
   return (i64)s;

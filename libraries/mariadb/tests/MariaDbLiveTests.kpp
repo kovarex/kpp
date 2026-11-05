@@ -22,12 +22,12 @@ test "a real server"
   options.password = mariaDbEnvironment("MARIADB_TEST_PASSWORD");
   options.database = mariaDbEnvironment("MARIADB_TEST_DATABASE");
   MariaDbConnection connection = MariaDbConnection::connect(options);
-  println(format("server {}", connection.serverVersion));
+  println(toString("server ", connection.serverVersion));
 
   connection.query("DROP TABLE IF EXISTS kpp_live");
   connection.query("CREATE TABLE kpp_live (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64) "
                    "COLLATE utf8mb4_unicode_ci NULL, rating DOUBLE NULL, data BLOB NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  String tricky = String("O'Brien \"x\" \\ \n Učebnicová ") + String("\0\x1a", 2);
+  String tricky = toString("O'Brien \"x\" \\ \n Učebnicová ", String("\0\x1a", 2));
   MariaDbResult inserted = connection.query("INSERT INTO kpp_live (name, rating, data) VALUES (", mariaDbQuote(tricky), ", 1234.5678, ",
                                             mariaDbQuote(String("\0\xff\x01", 3)), ")");
   check(inserted.affectedRows == 1 && inserted.insertId == 1);

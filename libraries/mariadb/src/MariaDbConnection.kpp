@@ -153,8 +153,8 @@ struct MariaDbConnection
     }
     String message = reader.rest();
     if (sql.empty())
-      throw MariaDbError(format("MariaDB error {} ({}): {}", code, state, message), code, state);
-    throw MariaDbError(format("MariaDB error {} ({}): {}; the statement: {}", code, state, message, sql), code, state);
+      throw MariaDbError(toString("MariaDB error ", code, " (", state, "): ", message), code, state);
+    throw MariaDbError(toString("MariaDB error ", code, " (", state, "): ", message, "; the statement: ", sql), code, state);
   }
 
   void handshake(const MariaDbOptions& options)
@@ -165,7 +165,7 @@ struct MariaDbConnection
     MariaDbReader reader(greeting, 0);
     i32 protocol = reader.uint8();
     if (protocol != 10)
-      throw MariaDbError(format("the server speaks protocol {}, not 10", protocol), 0, String());
+      throw MariaDbError(toString("the server speaks protocol ", protocol, ", not 10"), 0, String());
     this->serverVersion = reader.nulTerminated();
     reader.skip(4); // connection id
     String scramble = reader.bytes(8);
@@ -189,7 +189,7 @@ struct MariaDbConnection
     this->serverCapabilities = capabilities;
     const u32 required = 0x00000200u | 0x00008000u | 0x00080000u; // PROTOCOL_41, SECURE_CONNECTION, PLUGIN_AUTH
     if ((capabilities & required) != required)
-      throw MariaDbError(format("the server {} lacks the 4.1 protocol with authentication plugins", this->serverVersion), 0, String());
+      throw MariaDbError(toString("the server ", this->serverVersion, " lacks the 4.1 protocol with authentication plugins"), 0, String());
 
     u32 client = 0x00000001u    // LONG_PASSWORD
                       | 0x00000004u  // LONG_FLAG
@@ -240,7 +240,7 @@ struct MariaDbConnection
         this->writePacket(mariaDbAuthenticate(other, options.password, data));
         continue;
       }
-      throw MariaDbError(format("an authentication step this client does not know (packet {})", (i32)head), 0, String());
+      throw MariaDbError(toString("an authentication step this client does not know (packet ", (i32)head, ")"), 0, String());
     }
   }
 

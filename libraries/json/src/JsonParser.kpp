@@ -26,7 +26,7 @@ struct JsonParser
         lineStart = c + 1;
       }
     i32 column = i32(this->at - lineStart) + 1;
-    throw JsonParseError(format("{}:{}: {}", line, column, String(what)), line, column);
+    throw JsonParseError(toString(line, ":", column, ": ", what), line, column);
   }
 
   void skipWhitespace()
@@ -74,7 +74,7 @@ struct JsonParser
   void enter()
   {
     if (++this->depth > jsonMaxDepth)
-      this->fail(format("nesting deeper than {} levels", jsonMaxDepth));
+      this->fail(toString("nesting deeper than ", jsonMaxDepth, " levels"));
   }
 
   void parseArray(JsonValue& out)

@@ -589,7 +589,7 @@ struct MarkdownInlineParser
       {
         StringView address = this->subject.substr(this->position + 1, k - this->position - 1);
         MarkdownNode* link = this->nodes->make(MarkdownType::link);
-        link->destination = markdownNormalizeUri(String("mailto:") + address);
+        link->destination = markdownNormalizeUri(toString("mailto:", address));
         link->appendChild(this->nodes->text(address));
         block->appendChild(link);
         this->position = k + 1;

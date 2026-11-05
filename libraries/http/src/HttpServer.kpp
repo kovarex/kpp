@@ -26,7 +26,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
   ContainerSize space1 = requestLine.find(' ');
   ContainerSize space2 = space1 == StringView::npos ? StringView::npos : requestLine.find(' ', space1 + 1);
   if (space2 == StringView::npos || requestLine.substr(space2 + 1, 7) != "HTTP/1.")
-    throw HttpError(format("not an HTTP/1.x request line: \"{}\"", requestLine));
+    throw HttpError(toString("not an HTTP/1.x request line: \"", requestLine, "\""));
   HttpRequest request;
   request.method = String(requestLine.substr(0, space1));
   httpSetTarget(request, requestLine.substr(space1 + 1, space2 - space1 - 1));
@@ -39,7 +39,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
     StringView line = head.substr(at, end - at);
     ContainerSize colon = line.find(':');
     if (colon == StringView::npos || colon == 0)
-      throw HttpError(format("a header line without a name: \"{}\"", line));
+      throw HttpError(toString("a header line without a name: \"", line, "\""));
     HttpHeader h;
     h.name = httpLower(line.substr(0, colon));
     h.value = String(httpTrim(line.substr(colon + 1)));
@@ -54,7 +54,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
   if ((i64)request.body.size() > n)
     throw HttpError("more bytes than the Content-Length (pipelining is not read)");
   if (n > 64 * 1024 * 1024)
-    throw HttpError(format("a body of {} bytes", n), 413);
+    throw HttpError(toString("a body of ", n, " bytes"), 413);
   if ((i64)request.body.size() < n)
     request.body << stream.readExactly(n - (i64)request.body.size());
   return request;
@@ -64,7 +64,7 @@ void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
 {
   String out = response.head(false);
   if (response.header("Content-Length") == nullptr)
-    out << format("Content-Length: {}\r\n", (i64)response.body.size());
+    out << "Content-Length: " << (i64)response.body.size() << "\r\n";
   out << "Connection: close\r\n\r\n";
   out << response.body;
   stream.write(out);
@@ -76,7 +76,7 @@ void httpServe(const HttpServerOptions& options, const Function<void(const HttpR
 {
   net::TcpListener listener = net::TcpListener::listen(options.address, options.port);
   if (options.log)
-    println(format("serving http://{}:{}/", options.address, listener.port()));
+    println(toString("serving http://", options.address, ":", listener.port(), "/"));
   httpServeOn(listener, options, handler);
 }
 
@@ -103,7 +103,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const net::NetError& e)
     {
       if (options.log)
-        println(format("{}: {}", what, StringView(e.what())));
+        println(toString(what, ": ", StringView(e.what())));
       continue;
     }
     catch (const Exception& e)
@@ -112,7 +112,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
       response.body << String(StringView(e.what())) + "\n";
     }
     if (options.log)
-      println(format("{} {}", what, response.status));
+      println(toString(what, " ", response.status));
     try
     {
       httpWriteResponse(stream, response);
@@ -120,7 +120,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const net::NetError& e)
     {
       if (options.log)
-        println(format("{}: {}", what, StringView(e.what())));
+        println(toString(what, ": ", StringView(e.what())));
     }
   }
 }

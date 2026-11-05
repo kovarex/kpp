@@ -20,11 +20,11 @@ bool httpClientEqualIgnoringCase(StringView a, StringView b)
 HttpClientResponse fetch(const HttpClientRequest& request)
 {
   if (!(request.url.starts_with("http://") || request.url.starts_with("https://")))
-    throw HttpClientError(format("not an http or https address: {}", request.url));
+    throw HttpClientError(toString("not an http or https address: ", request.url));
   for (const HttpClientHeader& h : request.headers)
     for (char c : h.name + h.value)
       if (c == '\r' || c == '\n' || c == 0)
-        throw HttpClientError(format("the header {} has a line break or a zero byte", h.name));
+        throw HttpClientError(toString("the header ", h.name, " has a line break or a zero byte"));
   return httpClientFetch(request);
 }
 
@@ -84,9 +84,9 @@ HttpClientTarget httpClientTarget(StringView url)
   StringView authority = end == StringView::npos ? rest : rest.substr(0, end);
   target.path = end == StringView::npos ? String("/") : String(rest.substr(end));
   if (!target.path.starts_with("/"))
-    target.path = String("/") + target.path;
+    target.path = toString("/", target.path);
   if (authority.find('@') != StringView::npos)
-    throw HttpClientError(format("an address with a user name: {}", url));
+    throw HttpClientError(toString("an address with a user name: ", url));
   ContainerSize colon = authority.rfind(':');
   bool bracketed = authority.starts_with("[");
   if (colon != StringView::npos && (!bracketed || authority.find(']') < colon))
@@ -96,11 +96,11 @@ HttpClientTarget httpClientTarget(StringView url)
     for (char c : port)
     {
       if (c < '0' || c > '9' || value > 65535)
-        throw HttpClientError(format("the port of {} is not a number", url));
+        throw HttpClientError(toString("the port of ", url, " is not a number"));
       value = value * 10 + (c - '0');
     }
     if (port.empty() || value == 0 || value > 65535)
-      throw HttpClientError(format("the port of {} is not a port", url));
+      throw HttpClientError(toString("the port of ", url, " is not a port"));
     target.port = (u16)value;
     authority = authority.substr(0, colon);
   }
@@ -109,7 +109,7 @@ HttpClientTarget httpClientTarget(StringView url)
   if (bracketed)
     authority = authority.substr(1, authority.size() - 2);
   if (authority.empty())
-    throw HttpClientError(format("an address without a host: {}", url));
+    throw HttpClientError(toString("an address without a host: ", url));
   target.host = String(authority);
   return target;
 }

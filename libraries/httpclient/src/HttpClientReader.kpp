@@ -33,7 +33,7 @@ struct HttpClientReader
         return text;
       }
       if (!this->more())
-        throw HttpClientError(format("the response of {} ends in the middle of a line", this->connection->url));
+        throw HttpClientError(toString("the response of ", this->connection->url, " ends in the middle of a line"));
     }
   }
 
@@ -42,8 +42,7 @@ struct HttpClientReader
   {
     while (this->data.size() - this->at < n)
       if (!this->more())
-        throw HttpClientError(format("the response of {} ends {} bytes early", this->connection->url,
-                                     (i64)(n - (this->data.size() - this->at))));
+        throw HttpClientError(toString("the response of ", this->connection->url, " ends ", (i64)(n - (this->data.size() - this->at)), " bytes early"));
     String text = this->data.substr(this->at, n);
     this->at += n;
     return text;

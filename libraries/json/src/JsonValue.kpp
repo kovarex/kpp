@@ -66,14 +66,14 @@ struct JsonValue
   {
     this->expect(JsonType::array, "an array");
     if (index < 0 || index >= this->items.size())
-      throw JsonTypeError(format("JSON array index {} out of range (size {})", index, this->items.size()));
+      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this->items.size(), ")"));
     return this->items[index];
   }
   JsonValue& operator[](i32 index)
   {
     this->expect(JsonType::array, "an array");
     if (index < 0 || index >= this->items.size())
-      throw JsonTypeError(format("JSON array index {} out of range (size {})", index, this->items.size()));
+      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this->items.size(), ")"));
     return this->items[index];
   }
 
@@ -100,7 +100,7 @@ struct JsonValue
   {
     const JsonValue* member = this->find(key);
     if (!member)
-      throw JsonTypeError(format("JSON object has no member \"{}\"", String(key)));
+      throw JsonTypeError(toString("JSON object has no member \"", key, "\""));
     return *member;
   }
   const JsonValue& operator[](const char* key) const { return (*this)[StringView(key)]; }
@@ -181,7 +181,7 @@ struct JsonValue
   void expect(JsonType wanted, const char* what) const
   {
     if (this->type != wanted)
-      throw JsonTypeError(format("JSON value is {}, not {}", StringView(jsonTypeName(this->type)), StringView(what)));
+      throw JsonTypeError(toString("JSON value is ", StringView(jsonTypeName(this->type)), ", not ", StringView(what)));
   }
 
   JsonType type = JsonType::null;

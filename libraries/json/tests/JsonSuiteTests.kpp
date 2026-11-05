@@ -9,7 +9,7 @@ test "JSONTestSuite"
     JsonParseError error;
     bool parsed = tryParseJson(StringView(c.text, c.length), value, &error);
     if (parsed != c.accept)
-      println(StringView(c.name), ": ", parsed ? String("parsed, but should not") : format("did not parse: {}", error.message));
+      println(StringView(c.name), ": ", parsed ? String("parsed, but should not") : toString("did not parse: ", error.message));
     check(parsed == c.accept);
     if (parsed)
     {

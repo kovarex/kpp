@@ -22,21 +22,20 @@ struct HttpClientConnection
     i32 code = *platform::errnoLocation();
     // SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE, or SSL_ERROR_SYSCALL with EAGAIN: the timeout.
     if (error == 2 || error == 3 || (error == 5 && code == 35))
-      throw HttpClientError(format("{} {}: timed out", what, this->url));
+      throw HttpClientError(toString(what, " ", this->url, ": timed out"));
     i32 verify = SSL_get_verify_result(this->ssl);
     if (verify != 0)
-      throw HttpClientError(format("{} {}: the certificate is not valid: {}", what, this->url,
-                                   StringView(X509_verify_cert_error_string(verify))));
+      throw HttpClientError(toString(what, " ", this->url, ": the certificate is not valid: ", StringView(X509_verify_cert_error_string(verify))));
     u32 queued = ERR_get_error();
     if (queued != 0)
     {
       char text[256];
       ERR_error_string_n(queued, text, 256);
-      throw HttpClientError(format("{} {}: {}", what, this->url, StringView(text)));
+      throw HttpClientError(toString(what, " ", this->url, ": ", StringView(text)));
     }
     if (error == 6) // SSL_ERROR_ZERO_RETURN
-      throw HttpClientError(format("{} {}: the server closed the connection", what, this->url));
-    throw HttpClientError(format("{} {}: TLS error {} (errno {})", what, this->url, error, code));
+      throw HttpClientError(toString(what, " ", this->url, ": the server closed the connection"));
+    throw HttpClientError(toString(what, " ", this->url, ": TLS error ", error, " (errno ", code, ")"));
   }
 
   void open(const HttpClientTarget& target, i32 timeoutMilliseconds)
@@ -48,20 +47,20 @@ struct HttpClientConnection
     }
     catch (const net::NetError& e)
     {
-      throw HttpClientError(format("connecting for {}: {}", this->url, StringView(e.what())));
+      throw HttpClientError(toString("connecting for ", this->url, ": ", StringView(e.what())));
     }
     if (!target.secure)
       return;
     this->context = SSL_CTX_new(TLS_client_method());
     if (this->context == nullptr || SSL_CTX_set_default_verify_paths(this->context) != 1)
-      throw HttpClientError(format("TLS for {}: OpenSSL cannot start or has no certificates", this->url));
+      throw HttpClientError(toString("TLS for ", this->url, ": OpenSSL cannot start or has no certificates"));
     SSL_CTX_set_verify(this->context, 1, nullptr); // SSL_VERIFY_PEER
     this->ssl = SSL_new(this->context);
     if (this->ssl == nullptr || SSL_set_fd(this->ssl, (i32)this->stream.handle) != 1)
-      throw HttpClientError(format("TLS for {}: OpenSSL cannot make a connection", this->url));
+      throw HttpClientError(toString("TLS for ", this->url, ": OpenSSL cannot make a connection"));
     // SSL_set_tlsext_host_name: SSL_CTRL_SET_TLSEXT_HOSTNAME (55), TLSEXT_NAMETYPE_host_name (0).
     if (SSL_ctrl(this->ssl, 55, 0, (void*)target.host.c_str()) != 1 || SSL_set1_host(this->ssl, target.host.c_str()) != 1)
-      throw HttpClientError(format("TLS for {}: OpenSSL does not take the host name {}", this->url, target.host));
+      throw HttpClientError(toString("TLS for ", this->url, ": OpenSSL does not take the host name ", target.host));
     i32 result = SSL_connect(this->ssl);
     if (result != 1)
       this->fail("TLS handshake with", result);
@@ -77,7 +76,7 @@ struct HttpClientConnection
       }
       catch (const net::NetError& e)
       {
-        throw HttpClientError(format("sending to {}: {}", this->url, StringView(e.what())));
+        throw HttpClientError(toString("sending to ", this->url, ": ", StringView(e.what())));
       }
       return;
     }
@@ -104,7 +103,7 @@ struct HttpClientConnection
       }
       catch (const net::NetError& e)
       {
-        throw HttpClientError(format("reading from {}: {}", this->url, StringView(e.what())));
+        throw HttpClientError(toString("reading from ", this->url, ": ", StringView(e.what())));
       }
     }
     i32 got = SSL_read(this->ssl, buffer, capacity);

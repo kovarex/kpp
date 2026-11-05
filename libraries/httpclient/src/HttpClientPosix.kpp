@@ -29,14 +29,14 @@ extern "C" void ERR_error_string_n(u32 code, char* buffer, usize size);
 i64 httpClientNumber(StringView text, i32 base, StringView what, StringView url)
 {
   if (text.empty())
-    throw HttpClientError(format("the response of {} has no {}", url, what));
+    throw HttpClientError(toString("the response of ", url, " has no ", what));
   i64 value = 0;
   for (char c : text)
   {
     i32 digit = c >= '0' && c <= '9' ? c - '0' : base == 16 && c >= 'a' && c <= 'f' ? c - 'a' + 10
                 : base == 16 && c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
     if (digit < 0 || value > (i64)1 << 48)
-      throw HttpClientError(format("the response of {} has a {} that is not a number: {}", url, what, text));
+      throw HttpClientError(toString("the response of ", url, " has a ", what, " that is not a number: ", text));
     value = value * base + digit;
   }
   return value;
@@ -50,14 +50,14 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
   connection.url = String(url);
   connection.open(target, request.timeoutMilliseconds);
 
-  String host = target.host.find(':') != String::npos ? String("[") + target.host + "]" : target.host;
+  String host = target.host.find(':') != String::npos ? toString("[", target.host, "]"): target.host;
   if (target.port != (target.secure ? 443 : 80))
-    host = format("{}:{}", host, (i32)target.port);
-  String head = format("{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n", method, target.path, host);
+    host = toString(host, ":", (i32)target.port);
+  String head = toString(method, " ", target.path, " HTTP/1.1\r\nHost: ", host, "\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n");
   for (const HttpClientHeader& h : request.headers)
     head << h.name + ": " + h.value + "\r\n";
   if (!body.empty() || method == "POST" || method == "PUT")
-    head << format("Content-Length: {}\r\n", (i64)body.size());
+    head << "Content-Length: " << (i64)body.size() << "\r\n";
   head << "\r\n";
   connection.write(head + body);
 
@@ -69,7 +69,7 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
   {
     String status = reader.line();
     if (!status.starts_with("HTTP/1.") || status.size() < 12 || status[8] != ' ')
-      throw HttpClientError(format("the response of {} does not start with an HTTP status line: {}", url, status.substr(0, 80)));
+      throw HttpClientError(toString("the response of ", url, " does not start with an HTTP status line: ", status.substr(0, 80)));
     response.status = (i32)httpClientNumber(StringView(status).substr(9, 3), 10, "status", url);
     String headers;
     for (String line = reader.line(); !line.empty(); line = reader.line())
@@ -96,12 +96,12 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
         break;
       response.body << reader.take((ContainerSize)n);
       if (!reader.line().empty())
-        throw HttpClientError(format("a chunk of the response of {} is longer than its size", url));
+        throw HttpClientError(toString("a chunk of the response of ", url, " is longer than its size"));
     }
     // (the trailer's fields, if any, are not read: the connection closes)
   }
   else if (encoding != nullptr && !httpClientEqualIgnoringCase(*encoding, "identity"))
-    throw HttpClientError(format("the response of {} has the transfer encoding {}", url, *encoding));
+    throw HttpClientError(toString("the response of ", url, " has the transfer encoding ", *encoding));
   else if (length != nullptr)
     response.body = reader.take((ContainerSize)httpClientNumber(*length, 10, "Content-Length", url));
   else
@@ -153,7 +153,7 @@ HttpClientResponse httpClientFetch(const HttpClientRequest& request)
     if (url.starts_with("https://") && next.starts_with("http://"))
       return response;
     if (redirects == 10)
-      throw HttpClientError(format("{} redirects more than 10 times", request.url));
+      throw HttpClientError(toString(request.url, " redirects more than 10 times"));
     if (s == 303 || ((s == 301 || s == 302) && method == "POST"))
     {
       method = "GET";

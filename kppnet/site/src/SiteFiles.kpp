@@ -5,7 +5,7 @@ String siteReadFile(const String& path)
 {
   FILE* file = fopen(path.c_str(), "rb");
   if (!file)
-    throw SiteError(format("cannot read {}", path));
+    throw SiteError(toString("cannot read ", path));
   String text;
   char buffer[65536];
   while (true)
@@ -27,10 +27,10 @@ void siteWriteFile(const String& path, StringView content)
     filesystem::create_directories(filesystem::path(String(StringView(path).substr(0, slash))));
   FILE* file = fopen(path.c_str(), "wb");
   if (!file)
-    throw SiteError(format("cannot write {}", path));
+    throw SiteError(toString("cannot write ", path));
   bool written = fwrite(content.data(), 1, content.size(), file) == usize(content.size());
   if (fclose(file) != 0 || !written)
-    throw SiteError(format("cannot write {}", path));
+    throw SiteError(toString("cannot write ", path));
 }
 
 bool siteIsFile(const String& path) { return filesystem::is_regular_file(filesystem::path(path)); }

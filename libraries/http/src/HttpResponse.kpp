@@ -40,15 +40,15 @@ struct HttpResponse
     httpCheckCookie(name, value);
     String header = String(name) + "=" + String(value);
     if (options.maxAgeSeconds.has_value())
-      header << format("; Max-Age={}", *options.maxAgeSeconds);
+      header << toString("; Max-Age=", *options.maxAgeSeconds);
     if (!options.path.empty())
-      header << String("; Path=") + options.path;
+      header << "; Path=" << options.path;
     if (options.httpOnly)
       header << "; HttpOnly";
     if (options.secure)
       header << "; Secure";
     if (!options.sameSite.empty())
-      header << String("; SameSite=") + options.sameSite;
+      header << "; SameSite=" << options.sameSite;
     this->addHeader("Set-Cookie", header);
   }
 
@@ -73,8 +73,8 @@ struct HttpResponse
   // ("Status: 200 OK") or HTTP/1.1 ("HTTP/1.1 200 OK"); the blank line and the body follow.
   String head(bool cgi) const
   {
-    String out = cgi ? format("Status: {} {}\r\n", this->status, httpStatusText(this->status))
-                     : format("HTTP/1.1 {} {}\r\n", this->status, httpStatusText(this->status));
+    String out = cgi ? toString("Status: ", this->status, " ", httpStatusText(this->status), "\r\n")
+                     : toString("HTTP/1.1 ", this->status, " ", httpStatusText(this->status), "\r\n");
     for (const HttpHeader& h : this->headers)
       out << h.name + ": " + h.value + "\r\n";
     return out;

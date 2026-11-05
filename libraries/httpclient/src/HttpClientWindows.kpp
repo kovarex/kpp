@@ -21,7 +21,7 @@ void* httpClientFunction(HMODULE module, const char* name)
 {
   void* function = (void*)GetProcAddress(module, name);
   if (function == nullptr)
-    throw HttpClientError(format("winhttp.dll has no {}", StringView(name)));
+    throw HttpClientError(toString("winhttp.dll has no ", StringView(name)));
   return function;
 }
 
@@ -78,8 +78,8 @@ String httpClientNarrow(const wchar_t* text, i32 length)
   while (length > 0 && (buffer[length - 1] == '\n' || buffer[length - 1] == '\r' || buffer[length - 1] == ' ' || buffer[length - 1] == '.'))
     --length;
   if (code == 12002)
-    throw HttpClientError(format("{} {}: timed out", what, url));
-  throw HttpClientError(format("{} {}: {} (error {})", what, url, StringView(buffer, (ContainerSize)length), (i64)code));
+    throw HttpClientError(toString(what, " ", url, ": timed out"));
+  throw HttpClientError(toString(what, " ", url, ": ", StringView(buffer, (ContainerSize)length), " (error ", (i64)code, ")"));
 }
 
 HttpClientResponse httpClientFetch(const HttpClientRequest& request)

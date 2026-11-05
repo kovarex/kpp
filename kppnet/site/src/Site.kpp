@@ -103,7 +103,7 @@ struct Site
     ++this->written;
   }
 
-  void warn(StringView page, StringView what) { this->warnings.push_back(format("{}: {}", String(page), String(what))); }
+  void warn(StringView page, StringView what) { this->warnings.push_back(toString(String(page), ": ", String(what))); }
 
   bool isPage(StringView repositoryPath) const
   {
@@ -131,7 +131,7 @@ struct Site
     }
     catch (const url::UrlError& e)
     {
-      this->warn(page, format("a link that is not a URL, kept as it is: {} ({})", destination, e.message));
+      this->warn(page, toString("a link that is not a URL, kept as it is: ", destination, " (", e.message, ")"));
       return destination;
     }
     if (!reference.isRelative() || reference.hasAuthority || reference.path.empty())
@@ -150,7 +150,7 @@ struct Site
       return this->options.sourceUrl + "/blob/master/" + url::urlEncodePath(trimmed) + fragment;
     if (trimmed.empty() || siteIsDirectory(this->path(trimmed)))
       return this->options.sourceUrl + "/tree/master/" + url::urlEncodePath(trimmed) + fragment;
-    this->warn(page, format("a link to {}, which is not in the repository", file));
+    this->warn(page, toString("a link to ", file, ", which is not in the repository"));
     return destination;
   }
 
@@ -179,7 +179,7 @@ struct Site
     for (const String& root : this->options.pageRoots)
     {
       if (!siteIsDirectory(this->path(root)))
-        throw SiteError(format("{} is not a directory of the repository {}", root, this->options.repository));
+        throw SiteError(toString(root, " is not a directory of the repository ", this->options.repository));
       siteFindMarkdown(this->options.repository, root, this->pages);
     }
     html::SafeHtml documents;
@@ -214,7 +214,7 @@ struct Site
         continue;
       String id = " id=\"" + html::htmlEscape(link.anchor) + "\"";
       if (html->find(id) == String::npos)
-        this->warn(link.page, format("a link to #{} in {}, which has no such heading", link.anchor, link.target));
+        this->warn(link.page, toString("a link to #", link.anchor, " in ", link.target, ", which has no such heading"));
     }
   }
 
@@ -232,7 +232,7 @@ struct Site
     {
       String directory = this->options.registry + "/index";
       if (!siteIsDirectory(directory))
-        throw SiteError(format("{} is not a directory: --registry names a copy of the registry's store", directory));
+        throw SiteError(toString(directory, " is not a directory: --registry names a copy of the registry's store"));
       for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(directory)))
       {
         String file = entry.path().filename().string();
@@ -241,7 +241,7 @@ struct Site
         json::JsonValue library = json::parseJson(siteReadFile(directory + "/" + file));
         String name = library["name"].asString();
         if (StringView(file) != StringView(name + ".json"))
-          throw SiteError(format("{}/{} names the library {}", directory, file, name));
+          throw SiteError(toString(directory, "/", file, " names the library ", name));
         index.push_back(library);
         bool known = false;
         for (const String& n : names)

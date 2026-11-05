@@ -119,12 +119,10 @@ void httpTestHandler(const HttpRequest& request, HttpResponse& response)
     throw RuntimeError(String("the handler failed"));
   if (request.method == "POST")
   {
-    response.redirect(String("/done?name=") + url::urlEncode(request.form()[0].value));
+    response.redirect(toString("/done?name=", url::urlEncode(request.form()[0].value)));
     return;
   }
-  response.body = format("{} {} cookie={} id={}", request.method, request.path,
-                         request.cookie("session").has_value() ? *request.cookie("session") : String("none"),
-                         request.parameter("id") == nullptr ? String("none") : *request.parameter("id"));
+  response.body = toString(request.method, " ", request.path, " cookie=", request.cookie("session").has_value() ? *request.cookie("session") : String("none"), " id=", request.parameter("id") == nullptr ? String("none") : *request.parameter("id"));
 }
 
 struct HttpTestServer

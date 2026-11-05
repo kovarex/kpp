@@ -11,7 +11,7 @@ struct MariaDbResult
     for (ContainerSize i = 0; i < this->columns.size(); ++i)
       if (this->columns[i] == name)
         return i;
-    throw MariaDbError(format("the result has no column {}", name), 0, String());
+    throw MariaDbError(toString("the result has no column ", name), 0, String());
   }
 
   // Row row's value of column name (empty for NULL).
@@ -22,7 +22,7 @@ struct MariaDbResult
   {
     const Optional<String>& value = this->at(row, name);
     if (!value.has_value())
-      throw MariaDbError(format("the column {} is NULL", name), 0, String());
+      throw MariaDbError(toString("the column ", name, " is NULL"), 0, String());
     return *value;
   }
 

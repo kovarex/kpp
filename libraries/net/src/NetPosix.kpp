@@ -24,8 +24,8 @@ i32 netErrno()
 {
   i32 code = netErrno();
   if (code == EAGAIN || code == EWOULDBLOCK)
-    throw NetError(format("{}: timed out", what));
-  throw NetError(format("{}: {} (errno {})", what, StringView(strerror(code)), code));
+    throw NetError(toString(what, ": timed out"));
+  throw NetError(toString(what, ": ", StringView(strerror(code)), " (errno ", code, ")"));
 }
 
 addrinfo* netResolve(StringView host, i32 port, bool passive)
@@ -38,11 +38,11 @@ addrinfo* netResolve(StringView host, i32 port, bool passive)
   if (passive)
     hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST;
   String name(host);
-  String service = format("{}", port);
+  String service = toString(port);
   addrinfo* found = nullptr;
   i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
-    throw NetError(format("cannot resolve {}: {}", host, StringView(gai_strerror(result))));
+    throw NetError(toString("cannot resolve ", host, ": ", StringView(gai_strerror(result))));
   return found;
 }
 
@@ -67,7 +67,7 @@ i64 netConnect(StringView host, i32 port)
     close(s);
   }
   freeaddrinfo(found);
-  throw NetError(format("cannot connect to {} port {}: {} (errno {})", host, port, StringView(strerror(code)), code));
+  throw NetError(toString("cannot connect to ", host, " port ", port, ": ", StringView(strerror(code)), " (errno ", code, ")"));
 }
 
 i64 netListen(StringView address, i32 port)
@@ -87,7 +87,7 @@ i64 netListen(StringView address, i32 port)
     i32 code = netErrno();
     freeaddrinfo(found);
     close(s);
-    throw NetError(format("cannot listen on {} port {}: {} (errno {})", address, port, StringView(strerror(code)), code));
+    throw NetError(toString("cannot listen on ", address, " port ", port, ": ", StringView(strerror(code)), " (errno ", code, ")"));
   }
   freeaddrinfo(found);
   return s;

@@ -7,9 +7,9 @@
 String bcryptHash(StringView password, i32 cost, StringView salt)
 {
   if (cost < 4 || cost > 31)
-    throw BcryptError(format("bcrypt's cost is 4 to 31, not {}", cost));
+    throw BcryptError(toString("bcrypt's cost is 4 to 31, not ", cost));
   if (salt.size() != 16)
-    throw BcryptError(format("bcrypt's salt is 16 bytes, not {}", (i32)salt.size()));
+    throw BcryptError(toString("bcrypt's salt is 16 bytes, not ", (i32)salt.size()));
   bcryptCheckPassword(password);
   String out = "$2y$";
   out << char('0' + cost / 10);
@@ -30,7 +30,7 @@ bool bcryptVerify(StringView password, StringView hash)
     throw BcryptError("not a bcrypt hash: it is \"$2?$NN$\" and 53 characters");
   char variant = hash[2];
   if (variant != 'y' && variant != 'b' && variant != 'a')
-    throw BcryptError(format("the bcrypt variant $2{}$ is not supported", variant));
+    throw BcryptError(toString("the bcrypt variant $2", variant, "$ is not supported"));
   bcryptCheckPassword(password);
   if (variant == 'a')
     for (i32 i = 0; i < (i32)password.size(); ++i)
@@ -40,10 +40,10 @@ bool bcryptVerify(StringView password, StringView hash)
     throw BcryptError("bcrypt's cost is two digits");
   i32 cost = (hash[4] - '0') * 10 + (hash[5] - '0');
   if (cost < 4 || cost > 31)
-    throw BcryptError(format("bcrypt's cost is 4 to 31, not {}", cost));
+    throw BcryptError(toString("bcrypt's cost is 4 to 31, not ", cost));
   for (i32 i = 7; i < 60; ++i)
     if (bcryptDigit(hash[i]) < 0)
-      throw BcryptError(format("not a bcrypt hash: '{}' at {}", hash[i], i));
+      throw BcryptError(toString("not a bcrypt hash: '", hash[i], "' at ", i));
   // The salt's last character carries 2 bits; the other 4 are ignored, as PHP does.
   String salt = bcryptDecode(hash.substr(7, 22), 16);
   String expected(hash.substr(0, 7));

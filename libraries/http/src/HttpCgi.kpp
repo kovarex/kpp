@@ -69,7 +69,7 @@ HttpRequest httpReadCgiRequest()
     request.body.resize((ContainerSize)n);
     ContainerSize got = n == 0 ? 0 : fread(request.body.data(), 1, (usize)n, stdin);
     if ((i64)got != n)
-      throw HttpError(format("the body ended after {} of its {} bytes", (i64)got, n));
+      throw HttpError(toString("the body ended after ", (i64)got, " of its ", n, " bytes"));
   }
   return request;
 }
@@ -84,12 +84,12 @@ String httpCgiVariable(const char* name)
 i64 httpParseLength(StringView text)
 {
   if (text.empty() || text.size() > 15)
-    throw HttpError(format("a Content-Length of \"{}\"", text));
+    throw HttpError(toString("a Content-Length of \"", text, "\""));
   i64 n = 0;
   for (ContainerSize i = 0; i < text.size(); ++i)
   {
     if (text[i] < '0' || text[i] > '9')
-      throw HttpError(format("a Content-Length of \"{}\"", text));
+      throw HttpError(toString("a Content-Length of \"", text, "\""));
     n = n * 10 + (text[i] - '0');
   }
   return n;
@@ -101,7 +101,7 @@ void httpWriteCgiResponse(const HttpResponse& response)
     _setmode(1, 0x8000); // _O_BINARY
   String out = response.head(true);
   if (response.header("Content-Length") == nullptr)
-    out << format("Content-Length: {}\r\n", (i64)response.body.size());
+    out << "Content-Length: " << (i64)response.body.size() << "\r\n";
   out << "\r\n";
   out << response.body;
   fwrite(out.data(), 1, out.size(), stdout);
@@ -138,6 +138,6 @@ HttpResponse httpErrorResponse(i32 status)
   HttpResponse response;
   response.status = status;
   response.setHeader("Content-Type", "text/plain; charset=utf-8");
-  response.body = format("{} {}\n", status, httpStatusText(status));
+  response.body = toString(status, " ", httpStatusText(status), "\n");
   return response;
 }

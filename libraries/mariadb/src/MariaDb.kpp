@@ -7,7 +7,7 @@ String mariaDbAuthenticate(StringView plugin, StringView password, StringView sc
 {
   if (plugin == "mysql_native_password")
     return mariaDbNativePassword(password, scramble);
-  throw MariaDbError(format("the authentication plugin {} is not supported (only mysql_native_password)", plugin), 0, String());
+  throw MariaDbError(toString("the authentication plugin ", plugin, " is not supported (only mysql_native_password)"), 0, String());
 }
 
 // mysql_native_password: SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password))); nothing for no password.
