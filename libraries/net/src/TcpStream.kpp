@@ -6,6 +6,7 @@ struct TcpStream
   TcpStream(const TcpStream&) = delete;
   TcpStream& operator=(const TcpStream&) = delete;
   TcpStream(TcpStream&& other) : handle(other.handle) { other.handle = -1; }
+
   TcpStream& operator=(TcpStream&& other)
   {
     if (this != &other)
@@ -16,6 +17,7 @@ struct TcpStream
     }
     return *this;
   }
+
   ~TcpStream() { this->close(); }
 
   // Connects to host (a name or an address) at port, trying each address the name has.

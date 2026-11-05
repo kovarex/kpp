@@ -1,4 +1,5 @@
 requires config::platform == Platform::FreeBSD;
+
 // The bytes a response arrives in, read from its connection as they are needed.
 struct HttpClientReader
 {

@@ -1,4 +1,5 @@
 requires config::platform == Platform::FreeBSD;
+
 // One connection: TCP, with TLS over it for https.
 struct HttpClientConnection
 {
@@ -7,6 +8,7 @@ struct HttpClientConnection
   HttpClientConnection() {}
   HttpClientConnection(const HttpClientConnection&) = delete;
   HttpClientConnection& operator=(const HttpClientConnection&) = delete;
+
   ~HttpClientConnection()
   {
     if (this->ssl != nullptr)

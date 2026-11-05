@@ -17,6 +17,7 @@ struct JsonValue
     value.type = JsonType::array;
     return value;
   }
+
   static JsonValue object()
   {
     JsonValue value;
@@ -39,11 +40,13 @@ struct JsonValue
     this->expect(JsonType::boolean, "a boolean");
     return this->booleanValue;
   }
+
   i64 asInteger() const
   {
     this->expect(JsonType::integer, "an integer");
     return this->integerValue;
   }
+
   // An integer converted to double, or a number.
   double asNumber() const
   {
@@ -52,6 +55,7 @@ struct JsonValue
     this->expect(JsonType::number, "a number");
     return this->numberValue;
   }
+
   const String& asString() const
   {
     this->expect(JsonType::string, "a string");
@@ -69,6 +73,7 @@ struct JsonValue
       throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this->items.size(), ")"));
     return this->items[index];
   }
+
   JsonValue& operator[](i32 index)
   {
     this->expect(JsonType::array, "an array");
@@ -86,6 +91,7 @@ struct JsonValue
         return &this->items[i];
     return nullptr;
   }
+
   JsonValue* find(StringView key)
   {
     this->expect(JsonType::object, "an object");
@@ -94,7 +100,9 @@ struct JsonValue
         return &this->items[i];
     return nullptr;
   }
+
   bool contains(StringView key) const { return this->find(key) != nullptr; }
+
   // An object's member; a missing one throws.
   const JsonValue& operator[](StringView key) const
   {
@@ -103,6 +111,7 @@ struct JsonValue
       throw JsonTypeError(toString("JSON object has no member \"", key, "\""));
     return *member;
   }
+
   const JsonValue& operator[](const char* key) const { return (*this)[StringView(key)]; }
 
   // Appends to an array; a null value becomes an empty array first.
@@ -114,6 +123,7 @@ struct JsonValue
     this->items.push_back(value);
     return this->items.back();
   }
+
   // Sets an object's member, replacing the value of an existing key in its place; a null value
   // becomes an empty object first.
   JsonValue& set(StringView key, const JsonValue& value)
@@ -130,6 +140,7 @@ struct JsonValue
     this->items.push_back(value);
     return this->items.back();
   }
+
   // Removes an object's member; false when there was none.
   bool remove(StringView key)
   {
@@ -173,6 +184,7 @@ struct JsonValue
     }
     return false;
   }
+
   bool operator!=(const JsonValue& other) const { return !(*this == other); }
 
   // The value as compact JSON, for messages and the test runner's check values.

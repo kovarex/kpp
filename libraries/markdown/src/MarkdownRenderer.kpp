@@ -5,6 +5,7 @@ struct MarkdownRenderer
     this->out << text;
     this->lastWasNewline = text.size() == 1 && text[0] == '\n';
   }
+
   void escaped(StringView text)
   {
     String e;
@@ -23,6 +24,7 @@ struct MarkdownRenderer
     }
     this->literal(e);
   }
+
   void newline()
   {
     if (!this->lastWasNewline)

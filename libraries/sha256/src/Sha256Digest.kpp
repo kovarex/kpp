@@ -13,6 +13,7 @@ struct Sha256Digest
     }
     return out;
   }
+
   // The 32 bytes as a String.
   String data() const { return String((const char*)this->bytes, 32); }
   String str() const { return this->hex(); }

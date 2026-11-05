@@ -11,6 +11,7 @@ public:
     safe.html = String(html);
     return safe;
   }
+
   // The text, escaped.
   static SafeHtml escape(StringView text)
   {
@@ -25,6 +26,7 @@ public:
     this->html << more.html;
     return *this;
   }
+
   bool empty() const { return this->html.empty(); }
   const String& str() const { return this->html; }
   bool operator==(const SafeHtml& other) const = default;

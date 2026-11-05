@@ -6,6 +6,7 @@ struct TcpListener
   TcpListener(const TcpListener&) = delete;
   TcpListener& operator=(const TcpListener&) = delete;
   TcpListener(TcpListener&& other) : handle(other.handle) { other.handle = -1; }
+
   TcpListener& operator=(TcpListener&& other)
   {
     if (this != &other)
@@ -16,6 +17,7 @@ struct TcpListener
     }
     return *this;
   }
+
   ~TcpListener() { this->close(); }
 
   void close()

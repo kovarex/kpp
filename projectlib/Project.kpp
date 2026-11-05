@@ -45,6 +45,7 @@ struct LibrarySource
 {
   String path;
 };
+
 LibrarySource local(StringView path)
 {
   LibrarySource source;
@@ -110,6 +111,7 @@ struct Executable
   // An include directory of the C import for one platform's build only (`cInclude("libraries/libbacktrace",
   // Platform::Linux)`), as systemLibrary(NAME, PLATFORM).
   void cInclude(StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
+
   // A kpp library (Project::use), for this executable only.
   Dependency& use(StringView name, StringView minimum = "")
   {
@@ -117,12 +119,14 @@ struct Executable
     kppUse(d, name, minimum, "");
     return d;
   }
+
   Dependency& use(StringView name, LibrarySource source)
   {
     Dependency& d = uses.emplace_back();
     kppUse(d, name, "", source.path);
     return d;
   }
+
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
   // A system library by its name (`gdi32`): kppc's --lib -lgdi32; with a platform, only a build for it
@@ -144,6 +148,7 @@ struct Executable
   // executable, {configuration} the configuration.
   void beforeBuild(StringView command) { beforeBuildCommand = command; }
   void afterBuild(StringView command) { afterBuildCommand = command; }
+
   // What Run and the debugger start, when not the executable itself: the command, its arguments and
   // the directory it starts in; {exe} and {configuration} are expanded in each, as in the build steps.
   // A name per configuration that is not the configuration's own (Factorio's bin\Releasex64) is
@@ -261,6 +266,7 @@ struct Library
   // (`systemLibrary("ssl", Platform::FreeBSD)`).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
   void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
+
   // An option with its default: `option("debug", false, "Extra consistency checks")`; a string option
   // may list the values it can have: `option("mode", "fast", "Its speed", {"fast", "small"})`. Each
   // returns its LibraryOption. (Each emplaces itself: tests/spec/language/
@@ -271,18 +277,21 @@ struct Library
     kppOption(o, name, "bool", value ? "true" : "false", description, false);
     return o;
   }
+
   LibraryOption& option(StringView name, i32 value, StringView description)
   {
     LibraryOption& o = options.emplace_back();
     kppOption(o, name, "int", toString(value), description, false);
     return o;
   }
+
   LibraryOption& option(StringView name, const char* value, StringView description)
   {
     LibraryOption& o = options.emplace_back();
     kppOption(o, name, "string", value, description, false);
     return o;
   }
+
   LibraryOption& option(StringView name, const char* value, StringView description, InitializerList<StringView> values)
   {
     LibraryOption& o = options.emplace_back();
@@ -291,6 +300,7 @@ struct Library
       o.allowed.push_back(v);
     return o;
   }
+
   // An option without a default, of type bool, int or string, which every user must set.
   LibraryOption& requiredOption(StringView name, StringView type, StringView description)
   {
@@ -298,12 +308,14 @@ struct Library
     kppOption(o, name, type, "", description, true);
     return o;
   }
+
   Dependency& use(StringView name, StringView minimum = "")
   {
     Dependency& d = uses.emplace_back();
     kppUse(d, name, minimum, "");
     return d;
   }
+
   Dependency& use(StringView name, LibrarySource source)
   {
     Dependency& d = uses.emplace_back();
@@ -347,6 +359,7 @@ struct Measure
     e.from = from;
     e.to = to;
   }
+
   // The other build of a row, run in --compare's directory after `touch` is touched.
   void compare(StringView row, StringView command, StringView touch = "")
   {
@@ -380,12 +393,14 @@ struct Project
       e.roots.push_back(root);
     return e;
   }
+
   CLibrary& cLibrary(StringView name)
   {
     CLibrary& c = cLibraries.emplace_back();
     c.name = name;
     return c;
   }
+
   // This project is a kpp library (struct Library).
   Library& library(StringView name)
   {
@@ -393,6 +408,7 @@ struct Project
     l.name = name;
     return l;
   }
+
   // The configuration NAME (debug, release, or one of the project's), made when new.
   Configuration& configuration(StringView name)
   {
@@ -403,6 +419,7 @@ struct Project
     c.name = name;
     return c;
   }
+
   // The configuration NAME based on BASE: BASE's settings, then its own.
   Configuration& configuration(StringView name, StringView base)
   {
@@ -410,7 +427,9 @@ struct Project
     c.base = base;
     return c;
   }
+
   void argument(StringView option) { arguments.push_back(option); }
+
   // What `kpp measure` times, in the cell TARGET CONFIGURATION ("": the first executable; debug):
   // `project.measure("factorio").edit("Edit of one function", "src/A.kpp", "old", "new")`.
   Measure& measure(StringView target = "", StringView configuration = "debug")
@@ -419,10 +438,12 @@ struct Project
     measurement.configuration = configuration;
     return measurement;
   }
+
   // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
   void linkFile(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
   void cInclude(StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
+
   // A kpp library every executable uses (docs/build.md, "kpp libraries"): use("json") finds it in
   // libraries/json, use("json", "1.4") also states the lowest version that will do, and
   // use("json", local("../json")) gives its directory.
@@ -432,12 +453,14 @@ struct Project
     kppUse(d, name, minimum, "");
     return d;
   }
+
   Dependency& use(StringView name, LibrarySource source)
   {
     Dependency& d = uses.emplace_back();
     kppUse(d, name, "", source.path);
     return d;
   }
+
   // A config:: constant of every cell.
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
   void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }

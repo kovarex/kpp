@@ -1,4 +1,5 @@
 requires config::platform == Platform::Windows;
+
 struct WinHttp
 {
   HMODULE module = nullptr;

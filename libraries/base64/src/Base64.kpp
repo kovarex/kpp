@@ -29,6 +29,7 @@ bool tryBase64Decode(StringView text, String& out)
     return false;
   }
 }
+
 bool tryBase64UrlDecode(StringView text, String& out)
 {
   try

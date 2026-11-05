@@ -1,4 +1,5 @@
 requires config::platform == Platform::Windows;
+
 // The WinHTTP handles of one request, closed in reverse order.
 struct HttpClientHandles
 {

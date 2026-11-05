@@ -92,10 +92,12 @@ struct MarkdownNode
 // --- characters ---
 
 bool markdownIsSpaceOrTab(i32 c) { return c == ' ' || c == '\t'; }
+
 bool markdownIsAsciiPunctuation(i32 c)
 {
   return (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
 }
+
 bool markdownIsDigit(i32 c) { return c >= '0' && c <= '9'; }
 bool markdownIsLetter(i32 c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 bool markdownIsAlphanumeric(i32 c) { return markdownIsLetter(c) || markdownIsDigit(c); }

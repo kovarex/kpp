@@ -50,6 +50,7 @@ struct Sha256
       }
     }
   }
+
   void update(StringView data) { this->update(data.data(), data.size()); }
 
   // The digest of everything given; after it, only reset() is allowed.

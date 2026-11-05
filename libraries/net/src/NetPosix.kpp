@@ -12,6 +12,7 @@ extern "C" import "errno.h";
 // errno, a macro of a function the C library names its own way.
 extern "C" i32* __error();
 extern "C" i32* __errno_location();
+
 i32 netErrno()
 {
   if constexpr (config::platform == Platform::FreeBSD)
