@@ -1971,6 +1971,13 @@ auto codegen::Emitter::memberwiseOrder(const std::string& a, const std::string& 
     uint32_t index = fieldIndexOf(info, d);
     const Ty* ft = info.fieldTypes[index];
     std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
+    if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield)
+    {
+      // (each bit field in declaration order: the unit as one integer ordered by its highest bits)
+      for (auto [field, bits, fieldTy] : bitfieldsOfUnit(t, d, at))
+        part(orderOfScalars(loadBitfield(fa, *bits, fieldTy, at), loadBitfield(fb, *bits, fieldTy, at), at));
+      continue;
+    }
     part(orderOfParts(fa, fb, ft, at));
   }
   emitBranch(done);

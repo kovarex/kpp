@@ -1128,9 +1128,25 @@ auto codegen::Emitter::memberwiseEqual(const std::string& a, const std::string& 
     uint32_t index = fieldIndexOf(info, d);
     const Ty* ft = info.fieldTypes[index];
     std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
+    if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield)
+    {
+      for (auto [field, bits, fieldTy] : bitfieldsOfUnit(t, d, at)) // (never the unit's other bits)
+        combine(compare(P::EqEq, loadBitfield(fa, *bits, fieldTy, at), loadBitfield(fb, *bits, fieldTy, at), at).text);
+      continue;
+    }
     combine(partsEqual(fa, fb, ft, at).text);
   }
   return {result, types.boolType(), false};
+}
+
+auto codegen::Emitter::bitfieldsOfUnit(const Ty* t, Decl* first, Node* at) -> std::vector<UnitField>
+{
+  const StructInfo& info = structFor(t, at);
+  std::vector<UnitField> out;
+  for (Decl* m : unitMembers(info, classDef(t->decl, at), first))
+    if (const BitfieldInfo* bits = bitfieldIn(info, m); bits && !static_cast<VariableDecl*>(m)->name.empty())
+      out.push_back({m, bits, types.stripRef(fieldTypeIn(t, m, at))});
+  return out;
 }
 
 auto codegen::Emitter::partsEqual(const std::string& a, const std::string& b, const Ty* t, Node* at) -> Value

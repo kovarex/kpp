@@ -1,0 +1,21 @@
+// spec: a defaulted == and <=> compare bit-fields one by one in declaration order, as C++ compares members: bits of the storage unit no field holds (written through the object's bytes) never count, and <=> orders by the first field that differs (`F{2, 1}` is greater than `F{1, 2}`: a decides, before b); clang prints the same
+// found by thread B (2026-11-06, comparing kpp with clang): both compared the storage unit as one integer, so x == y was false for equal fields and <=> ordered by b's higher bits first (F{2, 1} less than F{1, 2})
+struct F
+{
+  int a : 4;
+  int b : 5;
+  bool operator==(const F&) const = default;
+  auto operator<=>(const F&) const = default;
+};
+
+int main()
+{
+  F x{1, 2};
+  F y{1, 2};
+  ((unsigned char*)&y)[3] = 0xFF;
+  F big{2, 1};
+  F small{1, 2};
+  println(x == y, " ", x != y, " ", (x <=> y) == 0);
+  println(big > small, " ", big < small, " ", (big <=> small) > 0);
+  return 0;
+}

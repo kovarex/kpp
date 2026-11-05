@@ -211,6 +211,17 @@
 
     // a == b for the objects at those addresses, base by base and member by member.
     Value memberwiseEqual(const std::string& a, const std::string& b, const Ty* t, Node* at);
+    // The named bit fields of the storage unit whose first field is `first` (it alone stands for
+    // the unit in StructInfo::fieldDecls; unitMembers), in declaration order, with their places and
+    // declared types: what a defaulted comparison compares there one by one, as C++ compares
+    // members (an unnamed field's bits and the unit's padding are none of them).
+    struct UnitField
+    {
+      Decl* field;
+      const BitfieldInfo* bits;
+      const Ty* type;
+    };
+    std::vector<UnitField> bitfieldsOfUnit(const Ty* t, Decl* first, Node* at);
 
     // a == b of two parts of objects (members, elements) at those addresses.
     Value partsEqual(const std::string& a, const std::string& b, const Ty* t, Node* at);
