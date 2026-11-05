@@ -552,11 +552,25 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
   if (def == v && (v->flags & DF_Extern) && !v->init && !classTy)
     return;
   Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
-  if (!value)
-    return;
   const Ty* st = types.stripRef(t);
   struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, currentFile};
   currentFile = def->file;
+  if (!value)
+  {
+    // No initializer: a class's default initialization, as globalForOnce asks constantData for it
+    // (a class that needs no construction is zero there, and asks for nothing).
+    if (!isClass(st) && st->kind != TyKind::Array)
+      return;
+    pre.value = nullptr;
+    pre.type = st;
+    bool layoutFailed = false;
+    ConstContextScope context(*this, def);
+    GlobalScope::clearConstantReason();
+    pre.data = global.evaluateInitializer(st, nullptr, def->file, def, classArgs, foldHooks(at, layoutFailed));
+    pre.why = pre.data ? std::string() : GlobalScope::constantReason();
+    pre.evaluated = true;
+    return;
+  }
   pre.value = value;
   pre.type = st;
   {
@@ -856,7 +870,17 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     }
   }
   else if (needsConstruction(st, at))
-    constructed = true;
+  {
+    // No initializer, a class with a constructor or default member initializers (`constexpr P p;`):
+    // its default initialization as the interpreter computes it (GlobalScope::evaluateInitializer
+    // with none), constant data as an initializer's value is, else built at startup. (Until
+    // 2026-11-05 always built at startup, which a global initialized before it in its file read as
+    // zero: thread D's spec language/constexpr_global_without_initializer_is_constant_data.)
+    if (std::optional<std::string> data = constantData(st, nullptr, def, classArgs, at))
+      init = *data;
+    else
+      constructed = true;
+  }
   currentFile = saved;
   // Defined in every module, merged by the linker (one instance per program). Two entries: the
   // shared text is sorted, and the definition (an `@` line) has to come after the struct types

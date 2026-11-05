@@ -1,15 +1,38 @@
-// spec: a constexpr global no initializer initializes (`constexpr P p;`, its member from its default) is constant data, as `constexpr P p2 = P();` is ([basic.start.static]: constant initialization comes before any dynamic one), so that a dynamic initializer that runs before it (`int early = readA();`, earlier in the file) reads 5
-// pending: B, codegen's half (2026-11-05): p is zeroinitializer and a startup constructor, which runs after early's initializer, so early is 0; the interpreter gives the default-initialized value (GlobalScope::evaluateInitializer without an initializer, D)
+// spec: a constexpr global no initializer initializes (`constexpr P p;`, its member from its default) is constant data, as `constexpr P p2 = P();` is ([basic.start.static]: constant initialization comes before any dynamic one), so that a dynamic initializer that runs before it (`int early = readA();`, earlier in the file) reads 5; so is one with a constexpr default constructor, an array of them in a class, and a global that is not constexpr whose default initialization is constant; a default constructor that is no constant (it counts) still runs at startup, once
+// found by thread D (2026-11-05): p was zeroinitializer and a startup constructor, which ran after early's initializer, so early was 0; the interpreter gives the default-initialized value (GlobalScope::evaluateInitializer without an initializer, D's 495d6951), codegen lowers it (B)
 struct P
 {
   int a = 5;
 };
+struct Q
+{
+  int b;
+  constexpr Q() : b(7) {}
+};
+struct Arr
+{
+  P items[3];
+};
+int constructed = 0;
+struct Counted
+{
+  int c;
+  Counted() : c(3) { ++constructed; }
+};
 int readA();
+int readAll();
 int early = readA();
+int earlyAll = readAll();
 constexpr P p;
+constexpr Q q;
+constexpr Arr arr;
+P mutableP;
+Counted counted;
 int readA() { return p.a; }
+int readAll() { return q.b * 100 + arr.items[2].a * 10 + mutableP.a; }
 int main()
 {
   println(early, " ", p.a);
+  println(earlyAll, " ", readAll(), " ", constructed, " ", counted.c);
   return 0;
 }
