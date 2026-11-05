@@ -1574,6 +1574,19 @@ FunctionDecl* GlobalScope::chooseConstructor(const Ty* classType, const std::vec
   return impl->chooseConstructor(classType, argTypes, nullConstants, inheritedFrom);
 }
 
+FunctionDecl* GlobalScope::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, TemplateArgs* opArgs)
+{
+  Subst args;
+  FunctionDecl* f = impl->chooseConversion(from, to, kind, explicitCast, foundIn, &args);
+  if (opArgs)
+  {
+    opArgs->pairs.clear();
+    for (const Subst::Pair& p : args.pairs)
+      opArgs->pairs.push_back({p.param, p.type});
+  }
+  return f;
+}
+
 TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
 {
   TemplateArgs out;

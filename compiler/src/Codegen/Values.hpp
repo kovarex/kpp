@@ -20,67 +20,10 @@
     // null: what a switch on the object switches on.
     FunctionDecl* integralConversionOperator(const Ty* from, Node* at, const Ty** foundIn = nullptr);
 
-    // The conversion operator of `from` or its bases (the class first, then each base level) that
-    // score rates best: 2 at once, else the first rated 1; 0 is not a candidate.
-    // to: the type converted to, when known, which a conversion operator template deduces its
-    // result from; opArgs: the arguments the one found is called with.
-    template<typename Score>
-    FunctionDecl* findConversion(const Ty* from, Node* at, const Ty** foundIn, Score&& score, const Ty* to = nullptr, TemplateArgs* opArgs = nullptr)
-    {
-      FunctionDecl* best = nullptr;
-      const Ty* bestIn = nullptr;
-      TemplateArgs bestArgs;
-      int bestScore = 0;
-      std::vector<const Ty*> classes{canonicalClass(from, at)};
-      for (size_t i = 0; i < classes.size() && i < 64 && bestScore < 2; ++i)
-      {
-        const Ty* cls = classes[i];
-        ClassDecl* c = classDef(cls->decl, at);
-        TemplateArgs args = global.classArgsOf(cls);
-        ArgsScope scope(*this, &args);
-        for (Decl* m : c->members)
-        {
-          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
-            continue;
-          auto* f = static_cast<FunctionDecl*>(m);
-          const Ty* ft = declType(m);
-          if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
-            continue;
-          TemplateArgs fargs = args;
-          const Ty* ret = types.unqualified(types.stripRef(ft->inner));
-          if (!f->templateParams.empty())
-          {
-            // `template<class T> operator T()` (or `operator const T&()`): T is the type converted
-            // to, and the operator a candidate only when its constraints hold for it.
-            if (!to || ret->kind != TyKind::Param || std::find(f->templateParams.begin(), f->templateParams.end(), ret->decl) == f->templateParams.end())
-              continue;
-            Decl* param = ret->decl;
-            ret = types.unqualified(types.stripRef(to));
-            fargs.pairs.push_back({param, ret});
-            if (!global.constraintsHold(f, fargs))
-              continue;
-          }
-          int s = score(f, fargs, ret);
-          if (s > bestScore)
-          {
-            best = f;
-            bestIn = cls;
-            bestArgs = fargs;
-            bestScore = s;
-            if (s >= 2)
-              break;
-          }
-        }
-        for (const ClassDecl::Base& b : c->bases)
-          if (const Ty* bt = global.typeOfAstIn(b.type, c, args); bt && isClass(bt) && !types.isDependent(bt))
-            classes.push_back(canonicalClass(bt, at));
-      }
-      if (foundIn)
-        *foundIn = bestIn;
-      if (opArgs)
-        *opArgs = bestArgs;
-      return best;
-    }
+    // The conversion operator the one rule chooses (GlobalScope::chooseConversion, design.md 24), the
+    // class declaring it canonical.
+    FunctionDecl* conversionOf(const Ty* from, const Ty* to, GlobalScope::ConversionKind kind, bool explicitCast, Node* at, const Ty** foundIn,
+                               TemplateArgs* opArgs);
 
     // Calls a conversion operator found in `owner` (the object's class or one of its bases) on
     // the object at addr.

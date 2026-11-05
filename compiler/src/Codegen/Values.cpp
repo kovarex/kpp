@@ -3,35 +3,29 @@
 // split, stage 2), moved without a change.
 #include "Emitter.hpp"
 
+// design.md 24: which conversion operator a conversion runs is the one rule's (GlobalScope::
+// chooseConversion), which the interpreter and the checker follow too; here as codegen's types have
+// it (the class declaring it canonical, for callConversion's base address).
+auto codegen::Emitter::conversionOf(const Ty* from, const Ty* to, GlobalScope::ConversionKind kind, bool explicitCast, Node* at, const Ty** foundIn,
+                                    TemplateArgs* opArgs) -> FunctionDecl*
+{
+  const Ty* in = nullptr;
+  FunctionDecl* op = isClass(from) ? global.chooseConversion(from, to, kind, explicitCast, &in, opArgs) : nullptr;
+  if (foundIn)
+    *foundIn = op ? canonicalClass(in, at) : nullptr;
+  return op;
+}
+
 auto codegen::Emitter::conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn, bool explicitCast, TemplateArgs* opArgs) -> FunctionDecl*
 {
-  return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
-  {
-    bool exact = ret == types.unqualified(to) || (isClass(ret) && isClass(to) && classKey(ret) == classKey(to));
-    // A class derived from `to` serves too: its `to` part (SignalIDConnector's `operator
-    // SignalID()` where an IDWithQuality, SignalID's base, is wanted), after the conversion to
-    // `to` itself if there is one (C++ compares the derived-to-base conversion after it: a
-    // RailBuilder made a RailSignalBase& takes `operator RailSignalBase&()`, not `operator
-    // RailChainSignal&()`).
-    std::vector<std::pair<std::string, uint32_t>> path;
-    bool derived = !exact && isClass(ret) && isClass(to) && !types.isDependent(ret) && basePath(ret, to, path, at);
-    if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || !(exact || derived)))
-      return 0;
-    // (A scalar is no way to a class: from it a converting constructor would be a second
-    // user-defined conversion. Direction's `operator Enum()` is not how a Direction becomes a
-    // RealOrientation; RealOrientation's constructor from a Direction is.)
-    return exact ? 2 : derived ? 1 : isClass(ret) || isClass(to) ? 0 : 1;
-  }, to, opArgs);
+  return conversionOf(from, to, GlobalScope::ConversionKind::ToType, explicitCast, at, foundIn, opArgs);
 }
 
 auto codegen::Emitter::toPointer(const Value& object, Node* at) -> std::optional<Value>
 {
   const Ty* owner = nullptr;
   TemplateArgs opArgs;
-  FunctionDecl* op = findConversion(object.ty, at, &owner, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
-  {
-    return !global.isExplicit(f, args) && ret->kind == TyKind::Pointer ? 2 : 0;
-  }, nullptr, &opArgs);
+  FunctionDecl* op = conversionOf(object.ty, nullptr, GlobalScope::ConversionKind::ToPointer, false, at, &owner, &opArgs);
   if (!op)
     return std::nullopt;
   return callConversion(op, object.ty, owner, object.text, at, &opArgs);
@@ -39,12 +33,7 @@ auto codegen::Emitter::toPointer(const Value& object, Node* at) -> std::optional
 
 auto codegen::Emitter::integralConversionOperator(const Ty* from, Node* at, const Ty** foundIn) -> FunctionDecl*
 {
-  return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
-  {
-    if (global.isExplicit(f, args))
-      return 0;
-    return ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool ? 2 : 0;
-  });
+  return conversionOf(from, nullptr, GlobalScope::ConversionKind::ToIntegral, false, at, foundIn, nullptr);
 }
 
 auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs) -> Value
