@@ -169,8 +169,11 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
      "      </ArrayItems>\n"
      "    </Expand>\n"
      "  </Type>\n"},
+    // SmartPointer: `->` and `*` in a watch expression reach the object, as for std::unique_ptr
+    // (`entity->controlBehavior->readCharge`, controlBehavior a T^).
     {{"UniquePtr"}, {"held"},
      "  <Type Name=\"UniquePtr&lt;*&gt;\">\n"
+     "    <SmartPointer Usage=\"Minimal\">held</SmartPointer>\n"
      "    <DisplayString Condition=\"held == 0\">empty</DisplayString>\n"
      "    <DisplayString>{*held}</DisplayString>\n"
      "    <Expand>\n"
@@ -181,6 +184,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     // while an owner lives (sharedReleaseWeak).
     {{"SharedPtr"}, {"pointer", "control"},
      "  <Type Name=\"SharedPtr&lt;*&gt;\">\n"
+     "    <SmartPointer Usage=\"Minimal\">pointer</SmartPointer>\n"
      "    <DisplayString Condition=\"pointer == 0\">empty</DisplayString>\n"
      "    <DisplayString Condition=\"control == 0\">{*pointer}</DisplayString>\n"
      "    <DisplayString>{*pointer} [{control-&gt;strong.value} strong]</DisplayString>\n"
@@ -399,6 +403,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   for (const DebugClass* c : instancesOf("UniquePtr", 2))
     if (!c->name.empty() && c->name.back() == '^')
       out += "  <Type Name=\"" + escape(c->name) + "\">\n"
+             "    <SmartPointer Usage=\"Minimal\">held</SmartPointer>\n"
              "    <DisplayString Condition=\"held == 0\">empty</DisplayString>\n"
              "    <DisplayString>{*held}</DisplayString>\n"
              "    <Expand>\n"

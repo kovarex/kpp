@@ -3,7 +3,9 @@
 # installed by test.ps1 before), stops at Main:Line and prints each expression as the debugger gives
 # it, the natvis applied, with Depth levels of members. A kpp project's generated solution, Debug.
 #   natvis-check.ps1 -Sln build\visual-studio\x.sln -Main src\main.kpp -Line 36 -Exprs 'numbers,small,ages'
-param([string]$Sln, [string]$Main, [int]$Line, [string]$Exprs, [int]$Depth = 1, [string]$Separator = ",")
+# -Startup NAME debugs that project of the solution instead, -Arguments its command line (written into
+# the project's .vcxproj.user).
+param([string]$Sln, [string]$Main, [int]$Line, [string]$Exprs, [int]$Depth = 1, [string]$Separator = ",", [string]$Startup, [string]$Arguments)
 $ErrorActionPreference = 'Stop'
 $test = [IO.File]::ReadAllText("$PSScriptRoot\test.ps1")
 $a = $test.IndexOf('Add-Type @"'); $b = $test.IndexOf('[KppVsMessageFilter]::Register()')
@@ -13,6 +15,12 @@ $ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
 $env:KPP_LSP_SERVER = (Resolve-Path "$PSScriptRoot\..\..\..\compiler\build\kppc.exe").Path
 $Sln = (Resolve-Path $Sln).Path
 $Main = (Resolve-Path $Main).Path
+if ($Arguments)
+{
+  $user = Join-Path (Split-Path $Sln) "$(if ($Startup) { $Startup } else { [IO.Path]::GetFileNameWithoutExtension($Sln) }).vcxproj.user"
+  $escaped = [Security.SecurityElement]::Escape($Arguments)
+  [IO.File]::WriteAllText($user, "<?xml version=`"1.0`" encoding=`"utf-8`"?>`r`n<Project ToolsVersion=`"Current`" xmlns=`"http://schemas.microsoft.com/developer/msbuild/2003`">`r`n  <PropertyGroup>`r`n    <LocalDebuggerCommandArguments>$escaped</LocalDebuggerCommandArguments>`r`n  </PropertyGroup>`r`n</Project>`r`n")
+}
 $devenv = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', "`"$Sln`"" -PassThru
 $dte = $null; $t = [Diagnostics.Stopwatch]::StartNew()
 while (-not $dte -and $t.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 250; $dte = [KppVsRot]::Dte($devenv.Id) }
@@ -28,6 +36,7 @@ function Show($x, $indent, $depth)
 try
 {
   $build = $dte.Solution.SolutionBuild
+  if ($Startup) { $build.StartupProjects = @($dte.Solution.Projects | Where-Object { $_.Name -eq $Startup })[0].UniqueName }
   $build.BuildProject($build.ActiveConfiguration.Name, @($build.StartupProjects)[0], $true)
   "build: failed projects {0}" -f $build.LastBuildInfo
   if ($build.LastBuildInfo) { return }
