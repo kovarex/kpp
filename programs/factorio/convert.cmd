@@ -38,6 +38,9 @@ rem a factorio-in-kpp push.
 set WHOLE=%FACTORIO_IN_KPP%
 if not "%~1"=="" set WHOLE=%~1
 if "%WHOLE%"=="" goto :nocheckout
+rem Factorio's src\Info\BuildVersion.hpp is generated (FASTBuild runs scripts\build\generate_build_version.bat
+rem and git ignores the file): a fresh clone has none, and its VERSION_STRING would be 42 unresolved names.
+if not exist "%FACTORIO%\src\Info\BuildVersion.hpp" goto :nobuildversion
 rem Lua (libraries\Lua): its .c files as the C++ the game compiles them as, with the game's C++
 rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-factorio.md, "Converting
 rem Lua"). No other input has .c files.
@@ -136,11 +139,20 @@ if exist kpp\Util rd /s /q kpp\Util
 if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
+rem The nullptr pass (kovarex, 2026-11-04): each literal 0 that converts to a pointer or member pointer,
+rem as kppc's --zero-null-warnings finds it with kpp's own types, written nullptr (fix-null.py), in kpp\
+rem and in the checkout. The headline and the tests' count below take the warning too: one left is a line.
+set STEP=the nullptr pass
+%KPPC% --std ..\..\stdlib %CINC% --zero-null-warnings --diagnostic-columns --check kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\zero-null.txt
+python -I fix-null.py kpp\zero-null.txt kpp || goto :failed
+set L=%WHOLE%\libraries
+%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --zero-null-warnings --diagnostic-columns --check %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
+python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
 rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
 rem libraries and src, not the kpp\Util copy.
 echo == full-src codegen errors: kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast%CLIBKPP% kpp\src (all errors in kpp\full-errors.txt)
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\full-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --zero-null-warnings --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\full-errors.txt
 set FULLRC=%errorlevel%
 rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk instead.
 %SystemRoot%\System32\find.exe /c /v "" kpp\full-errors.txt
@@ -152,7 +164,7 @@ rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
 echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --zero-null-warnings --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 for /f %%n in ('type kpp\tests-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set TESTSERRORS=%%n
@@ -288,6 +300,9 @@ rem c-libraries\%1\uses.txt, converted before it: minizip's zlib)
 set LIBUSE=
 if exist "c-libraries\%1\uses.txt" for /f "usebackq eol=# delims=" %%u in ("c-libraries\%1\uses.txt") do call set LIBUSE=%%LIBUSE%% --convert-library %%u kpp\clib\%%u\libraries\%%u
 goto :eof
+:nobuildversion
+echo convert: %FACTORIO%\src\Info\BuildVersion.hpp is missing: Factorio's build generates it. Run %FACTORIO%\scripts\build\generate_build_version.bat in %FACTORIO% ^(or build Factorio once^), then convert again.
+exit /b 2
 :nocheckout
 echo convert: name the factorio-in-kpp checkout to write: convert.cmd DIR, or set FACTORIO_IN_KPP=DIR. Each thread writes its own copy, made once by setup-checkout.cmd; C:\factorio-in-kpp only for a factorio-in-kpp push.
 exit /b 2
