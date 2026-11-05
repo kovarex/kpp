@@ -1,0 +1,35 @@
+// spec: at compile time a generic lambda's call runs its call operator's instance for the arguments the call deduces, as at run time and as code generation calls it: `[](auto a, auto b) { return a + b; }` adds ints and doubles, `[]<typename T>(T v)` names T in its body, an `auto&` parameter changes its argument, a `const auto&` one reads it, a capture by reference is read where it is, and the deduced result converts as declared
+// found by thread D (2026-11-05), comparing library operations at compile time and run time: a call of any generic lambda was no constant, without a reason
+constexpr long long twoTypes()
+{
+  auto add = [](auto a, auto b) { return a + b; };
+  auto twice = []<typename T>(T v) {
+    T w = v;
+    return w * 2;
+  };
+  return add(2, 3) * 1000 + (long long)add(1.5, 1.5) * 100 + twice(4);
+}
+constexpr long long references()
+{
+  int x = 4;
+  auto bump = [](auto& v) { v = v * 10; };
+  bump(x);
+  auto size = [](const auto& s) { return (long long)s.size(); };
+  String text = "abc";
+  return x * 10 + size(text);
+}
+constexpr long long captures()
+{
+  int base = 7;
+  auto plus = [&](auto v) { return v + base; };
+  base = 8;
+  return plus(1) * 100 + (long long)plus(0.5);
+}
+int main()
+{
+  constexpr long long a = twoTypes();
+  constexpr long long b = references();
+  constexpr long long c = captures();
+  println(a, " ", twoTypes(), " ", b, " ", references(), " ", c, " ", captures());
+  return 0;
+}

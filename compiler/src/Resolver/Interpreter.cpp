@@ -4273,9 +4273,42 @@ auto GlobalScope::Impl::constClosure(LambdaExpr* l, const Ty* type, const TypeCo
 auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth, const ConstPlace* at) -> std::optional<ConstValue>
 {
   std::vector<ConstCapture> captures;
-  if (!l->body || !l->templateParams.empty() || c->args.size() > l->params.size() || !closure.isObject() || !closure.parts ||
-      !constClosureCaptures(l, captures) || captures.size() != closure.parts->size())
+  if (!l->body || c->args.size() > l->params.size() || !closure.isObject() || !closure.parts || !constClosureCaptures(l, captures) ||
+      captures.size() != closure.parts->size())
     return std::nullopt;
+  // A generic lambda (`[](auto a, auto b) { return a + b; }`): the instance of its call operator
+  // for the template arguments the walk deduced for this call, as code generation calls it
+  // (checkLambdaInstance: its parameters and body copied and typed for them, its result deduced).
+  // (It was no constant, without a reason.)
+  LambdaExpr* run = l;
+  const Ty* instanceTy = nullptr;
+  Subst instance;
+  LocalStack instanceParams;
+  if (!l->templateParams.empty())
+  {
+    // (Its own parameters the closure type's lambda's, as codegen keys the instance: lambdaOf.)
+    const Ty* lambdaTy = closure.type ? types.unqualified(types.stripRef(closure.type)) : nullptr;
+    LambdaExpr* original = lambdaTy && lambdaTy->kind == TyKind::Lambda ? lambdaOf(lambdaTy) : nullptr;
+    if (!original || original->templateParams.size() != l->templateParams.size() || c->templateArgCount != original->templateParams.size())
+      return std::nullopt;
+    Subst own;
+    for (size_t i = 0; i < original->templateParams.size(); ++i)
+    {
+      const Ty* a = c->templateArgs[i];
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return std::nullopt;
+      own.pairs.push_back({original->templateParams[i], a});
+    }
+    LambdaExpr* body = nullptr;
+    instanceTy = checkLambdaInstance(lambdaTy, own, &instance, nullptr, &body);
+    if (!instanceTy || instanceTy->kind != TyKind::Function || !body || !body->body || body->params.size() != l->params.size() ||
+        instanceTy->args.size() != body->params.size())
+      return std::nullopt;
+    run = body;
+    for (const Subst::Pair& p : instance.pairs)
+      if (p.param && p.param->kind == NodeKind::TemplateParamDecl)
+        instanceParams.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+  }
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
   std::vector<uint8_t> categories;
@@ -4294,8 +4327,8 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
   // Where the lambda is written (its names, its file's tokens), whoever calls it; none of the
   // caller's locals.
   ParsedFile* file = l->closure && l->closure->file ? l->closure->file : nullptr;
-  TypeContext fctx{l->closure ? lexicalScopeOf(l->closure) : ctx.scope, nullptr, nullptr, file ? file->tokens : ctx.tokens,
-                   file ? file->text : ctx.text};
+  TypeContext fctx{l->closure ? lexicalScopeOf(l->closure) : ctx.scope, run != l && !instanceParams.items.empty() ? &instanceParams : nullptr,
+                   run != l && !instance.empty() ? &instance : nullptr, file ? file->tokens : ctx.tokens, file ? file->text : ctx.text};
   fctx.env = &env;
   // The captures: one by reference, and `this`, referring to the object where it is; a copy, the
   // closure's part where the closure is (what the body changes stays for its next call, a `mutable`
@@ -4334,12 +4367,13 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     else
       env.push_back(constBinding(captures[i].symbol, part, part.type)); // (a temporary closure's: its changes end with it)
   }
-  for (size_t i = 0; i < l->params.size(); ++i)
+  for (size_t i = 0; i < run->params.size(); ++i)
   {
-    auto* p = static_cast<ParamDecl*>(l->params[i]);
+    auto* p = static_cast<ParamDecl*>(run->params[i]);
     if (p->kind != NodeKind::ParamDecl || p->isPack)
       return std::nullopt;
-    const Ty* type = p->type ? convertType(p->type, fctx, 1) : nullptr;
+    // (A generic lambda's parameter: of the type its instance has, `auto a` given 2 an int.)
+    const Ty* type = run != l ? instanceTy->args[i] : p->type ? convertType(p->type, fctx, 1) : nullptr;
     if (type && containsAuto(type))
       return std::nullopt;
     if (type && type->isReference() && i < places.size() && places[i] && places[i]->type && type->inner &&
@@ -4364,13 +4398,14 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     if (type && type->isReference())
       env.back().writable = false; // a copy of what the argument names
   }
-  const Ty* returns = l->returnType ? convertType(l->returnType, fctx, 1) : nullptr;
+  // (A generic lambda's result: the one its instance deduced.)
+  const Ty* returns = run != l ? instanceTy->inner : l->returnType ? convertType(l->returnType, fctx, 1) : nullptr;
   if (returns && containsAuto(returns))
     returns = nullptr;
   fctx.returnType = returns;
-  fctx.namedReturn = constNamedReturn(l->body, returns, fctx, 1);
+  fctx.namedReturn = constNamedReturn(run->body, returns, fctx, 1);
   std::optional<ConstValue> result;
-  ConstFlow flow = constStatement(l->body, fctx, env, result, 1);
+  ConstFlow flow = constStatement(run->body, fctx, env, result, 1);
   if (returns && types.unqualified(returns)->kind == TyKind::Void && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
     return ConstValue::integer(0, types.voidType());
   if ((flow == ConstFlow::Next || flow == ConstFlow::Returned) && !returns && !result && c->ty && types.unqualified(c->ty)->kind == TyKind::Void)

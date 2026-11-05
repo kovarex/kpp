@@ -2439,7 +2439,9 @@ one, a reference to it following it (language/consteval_reference_to_conditional
 holds the address of the object it is bound to and is read and written through it, never a copy of
 its value (language/consteval_reference_member_refers_to_object), and a lambda is a value, its closure,
 whose captures by copy are copies and by reference (and `this`) addresses, its body run where it is
-written whoever calls it (language/consteval_lambda_captures). A reference bound through a cast to a
+written whoever calls it (language/consteval_lambda_captures); a generic lambda's call runs the
+instance of its call operator for the arguments the call deduced, as code generation calls it
+(language/consteval_generic_lambda_call). A reference bound through a cast to a
 reference type, through move() or forward() or a call returning `T&&`, refers to the object too
 (language/consteval_reference_through_cast), and a call whose reference result a reference is bound
 to runs once: a result that refers to a constant (a global's element) is its value, one that refers
