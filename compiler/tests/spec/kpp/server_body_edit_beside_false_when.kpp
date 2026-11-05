@@ -1,10 +1,11 @@
 // spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error
+// kppc: --config tracing=false
 //--- step: the program
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return 2; }
 int main()
@@ -15,11 +16,11 @@ int main()
 }
 // expect: 3
 //--- step: a body edited, the when declarations above it untouched
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return 20; }
 int main()
@@ -30,11 +31,11 @@ int main()
 }
 // expect: 21
 //--- step: a body using the absent global
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return releaseCounter; }
 int main()
@@ -45,11 +46,11 @@ int main()
 }
 // error: 'releaseCounter' exists only when
 //--- step: a body using the absent member
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return 4; }
 int main()
@@ -60,11 +61,11 @@ int main()
 }
 // error: 'releaseHits' exists only when
 //--- step: fixed again
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return 5; }
 int main()
@@ -75,11 +76,11 @@ int main()
 }
 // expect: 6
 //--- step: an error typed into a false condition
-when (!config::debgu) int releaseCounter = 0;
+when (config::tracng) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 int shown() { return 5; }
 int main()
@@ -88,18 +89,18 @@ int main()
   println(shown() + s.hits);
   return 0;
 }
-// error: config::debgu is not declared
+// error: config::tracng is not declared
 //--- step: a class template with a false member
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 template<class T> struct Box
 {
   T value = 1;
-  when (!config::debug) int extra = 0;
+  when (config::tracing) int extra = 0;
   int get() { return value + 1; }
 };
 int shown() { return 5; }
@@ -112,16 +113,16 @@ int main()
 }
 // expect: 8
 //--- step: the class template's member function's body edited
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 template<class T> struct Box
 {
   T value = 1;
-  when (!config::debug) int extra = 0;
+  when (config::tracing) int extra = 0;
   int get() { return value + 10; }
 };
 int shown() { return 5; }
@@ -134,16 +135,16 @@ int main()
 }
 // expect: 17
 //--- step: its absent member used through the instance
-when (!config::debug) int releaseCounter = 0;
+when (config::tracing) int releaseCounter = 0;
 struct Stats
 {
   int hits = 1;
-  when (!config::debug) int releaseHits = 0;
+  when (config::tracing) int releaseHits = 0;
 };
 template<class T> struct Box
 {
   T value = 1;
-  when (!config::debug) int extra = 0;
+  when (config::tracing) int extra = 0;
   int get() { return value + 10; }
 };
 int shown() { return 5; }
