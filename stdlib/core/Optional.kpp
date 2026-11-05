@@ -15,8 +15,9 @@ struct InPlaceTag {};
 const InPlaceTag inPlace;
 
 // What value() throws on an empty Optional.
-struct BadOptionalAccess : Exception
+class BadOptionalAccess : public Exception
 {
+public:
   BadOptionalAccess() : Exception(String("bad optional access")) {}
 };
 

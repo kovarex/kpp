@@ -1,5 +1,5 @@
 // spec: an exception leaving a noexcept function ends the program through the terminate handler (C++'s std::terminate, [except.terminate]), found in the search before anything unwinds: the throw site is still on the stack, so no destructor between the throw and the noexcept function runs and no handler outside it is reached (kovarex, 2026-11-03: "we need to be able to report crashes like that")
-struct Boom : Exception { Boom() : Exception("boom") {} };
+class Boom : public Exception { public: Boom() : Exception("boom") {} };
 struct Noisy { ~Noisy() { println("destroyed between the throw and the noexcept function"); } };
 void thrower() { Noisy n; throw Boom(); }
 void wall() noexcept { thrower(); }

@@ -4,8 +4,9 @@
 // report comes from the throw site, with nothing unwound (docs/design.md, "Targets and hosts", stage 3).
 // With an argument the message is too long for the object (a heap one), which the report printed as
 // the pointer's bytes once String grew to 32 bytes (its mark read where the 24-byte String had it).
-struct Boom : Exception
+class Boom : public Exception
 {
+public:
   Boom() : Exception("it went boom") {}
   explicit Boom(const String& message) : Exception(message) {}
 };

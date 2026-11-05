@@ -3,8 +3,9 @@
 // choices where the RFC leaves one.
 
 // Text that is not JSON. The message starts with "line:column: ".
-struct JsonParseError : RuntimeError
+class JsonParseError : public RuntimeError
 {
+public:
   int line = 0;   // 1-based
   int column = 0; // 1-based, in bytes
   JsonParseError() {}

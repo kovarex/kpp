@@ -298,8 +298,9 @@ struct WeakPtr
 };
 
 // What shared_from_this() throws for an object no SharedPtr owns.
-struct BadWeakPtr : Exception
+class BadWeakPtr : public Exception
 {
+public:
   BadWeakPtr() : Exception(String("bad_weak_ptr")) {}
 };
 

@@ -7,8 +7,9 @@ template<typename Signature>
 struct Function;
 
 // What calling an empty Function throws.
-struct BadFunctionCall : Exception
+class BadFunctionCall : public Exception
 {
+public:
   BadFunctionCall() : Exception(String("bad function call")) {}
 };
 

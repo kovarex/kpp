@@ -3,8 +3,9 @@
 // "Client/Server Protocol" (handshake, COM_QUERY, result sets, OK and ERR packets).
 
 // What the server refused (code and SQLSTATE are the server's), or a connection that failed.
-struct MariaDbError : RuntimeError
+class MariaDbError : public RuntimeError
 {
+public:
   int code = 0;          // the server's error number, 0 when the server did not send one
   String sqlState;       // "42S02"...; empty when the server did not send one
   MariaDbError() {}

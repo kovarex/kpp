@@ -657,8 +657,9 @@ namespace filesystem
 
   // An error of an operation on paths (std::filesystem::filesystem_error): what() is the message
   // given, then the error code's, then the paths in brackets.
-  struct filesystem_error : SystemError
+  class filesystem_error : public SystemError
   {
+  public:
     path path1Value;
     path path2Value;
 

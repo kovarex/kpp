@@ -16,8 +16,9 @@ struct Tracker
   }
 };
 
-struct Error : Exception
+class Error : public Exception
 {
+public:
   int code;
   Error(const String& message, int code) : Exception(message), code(code) {}
 };

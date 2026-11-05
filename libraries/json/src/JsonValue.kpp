@@ -222,8 +222,9 @@ bool jsonSameNumber(double a, double b)
 }
 
 // A value of the wrong JSON type asked for, a missing member, an index out of range.
-struct JsonTypeError : RuntimeError
+class JsonTypeError : public RuntimeError
 {
+public:
   JsonTypeError() {}
   explicit JsonTypeError(const String& message) : RuntimeError(message) {}
 };

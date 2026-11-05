@@ -4,8 +4,9 @@
 
 // Text that is not a URI reference, or a malformed percent-encoding. The message starts with the
 // byte offset of the problem.
-struct UrlError : RuntimeError
+class UrlError : public RuntimeError
 {
+public:
   int offset = 0;
   UrlError() {}
   UrlError(const String& message, int offset) : RuntimeError(message), offset(offset) {}

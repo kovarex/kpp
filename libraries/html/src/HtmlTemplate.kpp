@@ -4,8 +4,9 @@
 
 // A malformed template, or a render that does not fit its template. The message starts with
 // "line:column: " for a template's error.
-struct HtmlTemplateError : RuntimeError
+class HtmlTemplateError : public RuntimeError
 {
+public:
   HtmlTemplateError() {}
   explicit HtmlTemplateError(const String& message) : RuntimeError(message) {}
 };

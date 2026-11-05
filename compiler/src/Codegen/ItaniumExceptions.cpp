@@ -144,10 +144,17 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
     if (display == "Exception" && exceptionTypeinfo.empty())
     {
       exceptionTypeinfo = name;
-      // Its message, its first field, is a String: the last of its bytes is the length of a small
-      // one or the large mark (String.kpp's markIndex), wherever String's sizes put it.
-      if (!fieldTypes.empty() && bases.empty() && types.toString(fieldTypes[0], &symbols) == "String")
-        exceptionMessageMark = sizeOf(fieldTypes[0], at) - 1;
+      // Its message, its first data member, is a String: the last of its bytes is the length of a
+      // small one or the large mark (String.kpp's markIndex), wherever String's sizes put it; the
+      // member is where the layout puts it, after the vtable pointer (Exception is polymorphic, its
+      // what() virtual, as std::exception's).
+      if (!info.fieldDecls.empty() && bases.empty())
+        if (auto field = info.fieldIndex.find(info.fieldDecls[0]); field != info.fieldIndex.end() && field->second < fieldTypes.size() &&
+                                                                    types.toString(fieldTypes[field->second], &symbols) == "String")
+        {
+          exceptionMessageMark = sizeOf(fieldTypes[field->second], at) - 1;
+          exceptionMessageOffset = "ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(field->second) + ") to i64)";
+        }
     }
   }
   else
@@ -474,7 +481,8 @@ auto codegen::Emitter::exceptionMessage(const std::string& format) -> std::strin
     return "  br label %end\n";
   return "  %off = call i64 @kpp_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
          "  br i1 %isExc, label %msg, label %end\n"
-         "msg:\n  %ep = getelementptr inbounds i8, ptr %object, i64 %off\n"
+         "msg:\n  %ex = getelementptr inbounds i8, ptr %object, i64 %off\n"
+         "  %ep = getelementptr inbounds i8, ptr %ex, i64 " + exceptionMessageOffset + "\n"
          "  %markp = getelementptr inbounds i8, ptr %ep, i64 " + std::to_string(exceptionMessageMark) + "\n  %mark = load i8, ptr %markp\n"
          "  %large = icmp eq i8 %mark, -128\n  br i1 %large, label %heap, label %print\n"
          "heap:\n  %heapChars = load ptr, ptr %ep\n  %nodata = icmp eq ptr %heapChars, null\n  br i1 %nodata, label %end, label %print\n"

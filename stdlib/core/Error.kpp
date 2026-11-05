@@ -1,21 +1,24 @@
 // Error types beyond the base set in Utility.kpp (Exception, RuntimeError, LogicError,
 // OutOfRange, InvalidArgument are already there).
 
-struct BadAlloc : Exception
+class BadAlloc : public Exception
 {
+public:
   BadAlloc() : Exception(String("bad allocation")) {}
 };
 
-struct LengthError : LogicError
+class LengthError : public LogicError
 {
+public:
   LengthError() {}
   explicit LengthError(const String& message) : LogicError(message) {}
 };
 
 // An arithmetic result too large for its type (std::overflow_error): Bitset::to_ullong of bits
 // that do not fit.
-struct OverflowError : RuntimeError
+class OverflowError : public RuntimeError
 {
+public:
   OverflowError() {}
   explicit OverflowError(const String& message) : RuntimeError(message) {}
 };
@@ -135,8 +138,9 @@ struct ErrorCode
 ErrorCode make_error_code(Errc condition) { return ErrorCode(int(condition), genericCategory()); }
 
 // An exception for an ErrorCode (std::system_error): what() is the message given, then the code's.
-struct SystemError : RuntimeError
+class SystemError : public RuntimeError
 {
+public:
   ErrorCode code_;
 
   SystemError() {}

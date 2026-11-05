@@ -1,8 +1,9 @@
 // TCP connections and listeners over the platform's sockets (NetWindows.kpp, NetPosix.kpp).
 
 // A socket call that failed: the message names the call, the host or port, and the system's error.
-struct NetError : RuntimeError
+class NetError : public RuntimeError
 {
+public:
   NetError() {}
   NetError(const String& message) : RuntimeError(message) {}
 };

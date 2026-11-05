@@ -2,8 +2,9 @@
 // them: docs/stdlib/time.md.
 
 // A file or directory that should be there and is not, a file that cannot be written.
-struct SiteError : RuntimeError
+class SiteError : public RuntimeError
 {
+public:
   SiteError() {}
   explicit SiteError(const String& message) : RuntimeError(message) {}
 };

@@ -1,5 +1,5 @@
 // spec: an exception passes through functions that have nothing to destroy and no try (no landing pad of their own) to the handler in their caller's caller: off Windows each such frame needs its unwind table (design.md, "Targets and hosts", stage 3)
-struct Boom : Exception { int depth; Boom(int depth) : Exception("boom"), depth(depth) {} };
+class Boom : public Exception { public: int depth; Boom(int depth) : Exception("boom"), depth(depth) {} };
 int thrower(int n)
 {
   if (n > 0)

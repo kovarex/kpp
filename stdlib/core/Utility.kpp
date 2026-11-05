@@ -401,26 +401,33 @@ struct Limits
   }
 };
 
-// Errors carried by exceptions: a message and nothing else.
-struct Exception
+// Errors carried by exceptions: a message, and what() to read it, virtual as std::exception's is (a
+// class whose own what() says more overrides it: UnitTest++'s AssertException), so every error type
+// is a class (design.md "struct and class").
+class Exception
 {
+public:
   String message;
   Exception() {}
   explicit Exception(const String& message) : message(message) {}
-  const char* what() const { return this->message.c_str(); }
+  virtual ~Exception() {}
+  virtual const char* what() const noexcept { return this->message.c_str(); }
 };
-struct RuntimeError : Exception
+class RuntimeError : public Exception
 {
+public:
   RuntimeError() {}
   explicit RuntimeError(const String& message) : Exception(message) {}
 };
-struct LogicError : Exception
+class LogicError : public Exception
 {
+public:
   LogicError() {}
   explicit LogicError(const String& message) : Exception(message) {}
 };
-struct OutOfRange : LogicError
+class OutOfRange : public LogicError
 {
+public:
   OutOfRange() {}
   explicit OutOfRange(const String& message) : LogicError(message) {}
 };
@@ -428,8 +435,9 @@ struct OutOfRange : LogicError
 // line, so that the check costs the callers only a compare and a branch.
 [[noinline]] void throwOutOfRange(const char* what) { throw OutOfRange(String(what)); }
 
-struct InvalidArgument : LogicError
+class InvalidArgument : public LogicError
 {
+public:
   InvalidArgument() {}
   explicit InvalidArgument(const String& message) : LogicError(message) {}
 };

@@ -449,6 +449,7 @@ namespace codegen
     std::atomic<bool> usesNoexceptFilter{false};         // Windows: a noexcept function's catchpad names kpp.eh.filter.noexcept
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
+    std::string exceptionMessageOffset = "0"; // where the message is in an Exception, after its vtable pointer
     uint64_t exceptionMessageMark = 0;                   // the byte of Exception's message (a String) that says heap or small
     // A definition in a module (a function's, a helper's in its home module) with the names its text
     // uses, found once on the thread that emitted it: module assembly reads these instead of scanning

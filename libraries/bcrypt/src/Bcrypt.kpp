@@ -2,8 +2,9 @@
 // "$2y$" cost "$" 22 characters of salt and 31 of hash. README.md has the API and the variants.
 
 // A hash that is not bcrypt, a variant this library does not read, or an argument out of range.
-struct BcryptError : RuntimeError
+class BcryptError : public RuntimeError
 {
+public:
   BcryptError() {}
   BcryptError(const String& message) : RuntimeError(message) {}
 };

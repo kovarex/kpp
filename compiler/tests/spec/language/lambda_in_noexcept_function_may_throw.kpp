@@ -1,6 +1,6 @@
 // spec: a lambda written in a noexcept function is not noexcept itself (it has no `noexcept` of its own): its exception, thrown when it is called later, reaches the caller's handler; the noexcept function's own body is the only one an exception may not leave
 // found in B's review of stage 3 (docs/design.md, "Targets and hosts"): the lambda's body took its writer's empty exception specification and ended the program off Windows
-struct Boom : Exception { Boom() : Exception("boom") {} };
+class Boom : public Exception { public: Boom() : Exception("boom") {} };
 Function<void()> make() noexcept
 {
   return []() { throw Boom(); };

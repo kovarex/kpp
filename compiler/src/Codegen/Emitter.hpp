@@ -66,6 +66,7 @@ namespace codegen
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     uint64_t& exceptionMessageMark = sh.exceptionMessageMark;
+    std::string& exceptionMessageOffset = sh.exceptionMessageOffset;
     std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
     // The shared lock, and how many times this emitter holds it. An answer computed under it is
     // published for the other emitters (FinalAnswers) only while it holds the lock once: then it is

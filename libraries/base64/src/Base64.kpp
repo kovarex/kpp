@@ -2,8 +2,9 @@
 // rejects.
 
 // Text that is not base64. The message starts with the byte offset of the problem.
-struct Base64Error : RuntimeError
+class Base64Error : public RuntimeError
 {
+public:
   int offset = 0;
   Base64Error() {}
   Base64Error(const String& message, int offset) : RuntimeError(message), offset(offset) {}
