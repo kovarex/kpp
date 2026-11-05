@@ -1,8 +1,9 @@
 # kpp's tests on Windows runners (docs/build.md, "Continuous integration"): kppc built once by
 # compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd in 4 shards, as
 # parallel jobs (kovarex, 2026-11-02: the repository is public, so its runners cost nothing). Every
-# push to master and every pull request runs the debug spec; the nightly run (and one started by
-# hand) adds --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
+# push to master and every pull request runs every job: run_tests --full, the spec in debug, --release
+# and --debug-info, and the FreeBSD VM jobs (kovarex, 2026-11-05: "having all the tests in CI is fine,
+# as they don't block pushing more things"). programs\factorio\convert.cmd is left out: it
 # needs C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers
 # the game). Every green run on master (push, nightly or by hand) publishes the package (zip,
 # installer, VS Code extension) as a numbered full release, GitHub's "Latest" (releases/latest and the
@@ -171,8 +172,8 @@ jobs:
         shell: cmd
         run: compiler\tests\run_tests.cmd --full --part ${{ matrix.part }}
 
-  # The spec in 4 shards (run_spec.py --shard I/4), debug on every run, and --release and --debug-info
-  # on the nightly and hand-started ones: 4 or 12 jobs at once.
+  # The spec in 4 shards (run_spec.py --shard I/4), in debug, --release and --debug-info on every run:
+  # 12 jobs at once.
   spec:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
@@ -181,7 +182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["debug", "release", "debug-info"]' || '["debug"]') }}
+        config: [debug, release, debug-info]
         shard: [1, 2, 3, 4]
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
@@ -256,13 +257,12 @@ jobs:
 
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
-  # FreeBSD 14.3 VM (freebsd_run). Nightly and by hand only. The known failures (stages 3 and 4,
+  # FreeBSD 14.3 VM (freebsd_run). On every run. The known failures (stages 3 and 4,
   # design.md) are compiler\tests\spec\freebsd-known-failures.txt: either job fails on a new failure,
   # and on a known one that works (its line must go). Both write their counts in the run's summary;
   # publish does not wait for them.
   freebsd_build:
     needs: build
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
     permissions:
@@ -411,11 +411,10 @@ jobs:
   # project's tests built for FreeBSD 14.3 here (libraries\target-tests.ps1: kpp --target freebsd
   # --no-run --test; a project that does not build fails unless target-known-failures.txt lists it),
   # then run in a FreeBSD 14.3 VM from the checkout (libraries_freebsd_run), httpclient's HTTPS test
-  # included (EGD over TLS, an expired certificate refused). Nightly and by hand only, like the spec's
-  # FreeBSD jobs; publish does not wait for them.
+  # included (EGD over TLS, an expired certificate refused). On every run, like the spec's FreeBSD
+  # jobs; publish does not wait for them.
   libraries_freebsd_build:
     needs: build
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
     permissions:
@@ -638,7 +637,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $v = $env:KPP_VERSION
           $title = if ('${{ github.event_name }}' -eq 'schedule') { "kpp $v (nightly $($env:KPP_TAG.Substring(8)))" } else { "kpp $v" }
-          $tested = if ('${{ github.event_name }}' -in 'schedule', 'workflow_dispatch') { 'every test green, including the --release and --debug-info spec' } else { 'every test green (the debug spec; the nightly adds --release and --debug-info)' }
+          $tested = 'every test green, including the --release and --debug-info spec'
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $env:KPP_TAG -Commit "${{ github.sha }}" -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" -Title $title `
             -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp-vscode.vsix is the VS Code extension: the installer offers it, or run code --install-extension kpp-vscode.vsix (a double-click opens Visual Studio's installer, which does not take it). kpp-visualstudio.vsix is the Visual Studio 2022 extension (17.14 or later): the installer offers it, or open it." `

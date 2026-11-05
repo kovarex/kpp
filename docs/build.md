@@ -1111,7 +1111,8 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   side, ending `gate: ALL PASSED (...)` and exit 0: about 3 minutes on PC-PRACOVNA with other
   threads' work running, against about 14 for run_tests and then the spec one after another before
   (2026-11-05). What it leaves out runs here on every push.
-- **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4` in 4 jobs, after build. A shard is
+- **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4`, in debug, `--release` and `--debug-info`:
+  12 jobs, after build. A shard is
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
   when all of them are.
@@ -1120,7 +1121,7 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **publish:** on master only, and only when every job above is green (run_tests' halves, every
   spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
   no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
-- **libraries_freebsd_build, libraries_freebsd_run:** nightly and by hand only, after build; publish
+- **libraries_freebsd_build, libraries_freebsd_run:** on every run, after build; publish
   does not wait for them (kovarex, 2026-11-04: FreeBSD binaries' correctness belongs to kpp's own
   tests). `libraries\target-tests.ps1 -Target freebsd` builds every library's tests and kppsite's for
   FreeBSD 14.3 (`kpp --target freebsd --no-run --test` in each project; a project that does not
@@ -1155,10 +1156,11 @@ by hand for any tag (Actions > release check > Run workflow), on a clean windows
   run 41610046288).
 
 Triggers (kovarex, 2026-10-31, chosen from the costs below):
-- **Every push to master and every pull request:** build, run_tests and the debug spec.
-- **Nightly at 03:17 UTC, and when started by hand** (Actions > ci > Run workflow): the same, plus
-  the spec's `--release` and `--debug-info` configurations, 4 shards each (12 spec jobs). The time
-  is outside 06:00 to 09:00 Pacific.
+- **Every push to master and every pull request, nightly at 03:17 UTC, and when started by hand**
+  (Actions > ci > Run workflow): every job, run_tests --full, the spec's three configurations, 4
+  shards each (12 spec jobs), and the FreeBSD jobs (kovarex, 2026-11-05: "having all the tests in CI
+  is fine, as they don't block pushing more things"; until then a push ran the debug spec alone and
+  the rest was nightly). The nightly time is outside 06:00 to 09:00 Pacific.
 - **What it leaves out:** `programs\factorio\convert.cmd` and everything else of the game. They need
   C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
 - **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
