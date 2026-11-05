@@ -31,7 +31,7 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   duration (`Seconds(2) + Milliseconds(1500)` is `Milliseconds(3500)`), and `d1 / d2` is the
   number of times d2 fits in d1, a count of the common rep; `d * n`, `n * d`, `d / n` and `d % n`
   for an integer n keep the type, `d * x`, `x * d` and `d / x` for a floating-point x give
-  `Duration<double, Period>`. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count.
+  `Duration<double, Period>`. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count (`d++` and `d--` return the old duration).
 - `==`, `!=`, `<`, `<=`, `>`, `>=` compare durations of any two types in their common duration,
   by the time they stand for (`Minutes(1) == Seconds(60)`).
 

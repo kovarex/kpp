@@ -92,7 +92,8 @@ the n bytes at text, `compare(pos, count, other, pos2, n)` with up to n bytes of
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
 bytes), a proper prefix before the longer string; `<=>` orders the same way and gives `>`, `<=`
 and `>=` (common.md). Comparison with a `const char*` treats it as its zero-terminated text, on
-either side. A StringView compares the same way.
+either side. A StringView compares the same way, and has `compare(other)`, `find_last_of`,
+`find_last_not_of` and `find_first_not_of` (a set or a char, from a position) as String has.
 
 Hashing: `hashOf(string)` depends on every byte.
 

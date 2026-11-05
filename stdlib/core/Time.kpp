@@ -54,6 +54,8 @@ public:
     --this->ticks;
     return *this;
   }
+  Duration<Rep, Period> operator++(i32) { return Duration<Rep, Period>(this->ticks++); }
+  Duration<Rep, Period> operator--(i32) { return Duration<Rep, Period>(this->ticks--); }
   Duration<Rep, Period>& operator+=(const Duration<Rep, Period>& other)
   {
     this->ticks += other.ticks;

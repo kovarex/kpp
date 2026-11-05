@@ -1,0 +1,14 @@
+// spec: the rest of std::string_view's comparisons and searches, and std::chrono::duration's postfix ++ and --, as std's do (MSVC's STL printed the same for the C++ of this program): StringView's compare(other) (negative, zero or positive), find_last_of and find_last_not_of (a set or a char, from a position or the end), find_first_not_of from a position; `d++` and `d--` return the old duration
+extern "C" int printf(const char* format, ...);
+int sign(int x) { return x < 0 ? -1 : x > 0 ? 1 : 0; }
+int main()
+{
+  StringView v("hello world");
+  printf("%d %d %d %d\n", sign(v.compare("hello")), sign(v.compare("hello world")), sign(v.compare("help")), StringView("abc") == "abc");
+  printf("%d %d %d %d %d %d %d\n", (int)v.find_last_of("lo"), (int)v.find_last_of("lo", 5), (int)v.find_last_of('o'), (int)v.find_last_not_of("dl"), (int)v.find_last_not_of('d', 9), (int)v.find_first_not_of("hel", 1), (int)v.find_last_of("xyz"));
+  Duration<i64> d(5);
+  Duration<i64> before = d++;
+  Duration<i64> again = d--;
+  printf("%d %d %d\n", (int)before.count(), (int)again.count(), (int)d.count());
+  return 0;
+}

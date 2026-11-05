@@ -190,7 +190,42 @@ public:
     }
     return npos;
   }
+  ContainerSize find_first_not_of(StringView set, ContainerSize from) const
+  {
+    for (ContainerSize i = from; i < this->byteCount; ++i)
+      if (!StringView::inSet(this->chars[i], set))
+        return i;
+    return npos;
+  }
+  ContainerSize find_first_not_of(char c, ContainerSize from) const { return this->find_first_not_of(StringView(&c, 1), from); }
+  // The last byte at or before `from` (the whole view without it) that is (not) in set, or npos.
+  ContainerSize find_last_of(StringView set, ContainerSize from = npos) const
+  {
+    for (ContainerSize i = this->lastFrom(from); i-- > 0;)
+      if (StringView::inSet(this->chars[i], set))
+        return i;
+    return npos;
+  }
+  ContainerSize find_last_of(char c, ContainerSize from = npos) const { return this->rfind(c, from); }
+  ContainerSize find_last_not_of(StringView set, ContainerSize from = npos) const
+  {
+    for (ContainerSize i = this->lastFrom(from); i-- > 0;)
+      if (!StringView::inSet(this->chars[i], set))
+        return i;
+    return npos;
+  }
+  ContainerSize find_last_not_of(char c, ContainerSize from = npos) const { return this->find_last_not_of(StringView(&c, 1), from); }
   void removeSuffix(ContainerSize count) { this->byteCount -= count; }
+
+  // Negative, zero or positive as this view orders before, equal to or after other (byte-wise, as <).
+  i32 compare(StringView other) const
+  {
+    ContainerSize shorter = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
+    i32 c = shorter == 0 ? 0 : memcmp(this->chars, other.chars, shorter);
+    if (c != 0)
+      return c;
+    return this->byteCount < other.byteCount ? -1 : this->byteCount > other.byteCount ? 1 : 0;
+  }
 
   bool operator==(StringView other) const
   {
@@ -216,6 +251,16 @@ public:
   }
 
 private:
+  static bool inSet(char c, StringView set)
+  {
+    for (ContainerSize k = 0; k < set.byteCount; ++k)
+      if (set.chars[k] == c)
+        return true;
+    return false;
+  }
+  // Where a backward search from `from` starts: one past the last index it looks at.
+  ContainerSize lastFrom(ContainerSize from) const { return from < this->byteCount ? from + 1 : this->byteCount; }
+
   const char* chars = nullptr;
   ContainerSize byteCount = 0;
 };
