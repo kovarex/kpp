@@ -28,8 +28,12 @@
     bool hasMutableMember(const Ty* t, Node* at, int depth = 0);
 
     // A global's initializer as constant data: the value the interpreter computes for it as type t,
-    // lowered (constantText), or nothing (it is built at startup).
-    std::optional<std::string> constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at);
+    // lowered (constantText), or nothing (it is built at startup). evaluated: whether the
+    // interpreter computed the value (nothing then means no LLVM constant expresses it yet).
+    std::optional<std::string> constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at, bool* evaluated = nullptr);
+    // Why constantData's evaluation gave no value (the interpreter's reason, maybe none): said by
+    // the error for a constexpr variable that is no constant.
+    std::string notConstantWhy;
 
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     // A global's initializer evaluated before globalFor takes the shared lock (preEvaluateGlobal): the
@@ -44,6 +48,7 @@
       std::optional<ConstValue> scalar;
       bool evaluated = false; // the object's value (constantData)
       std::optional<ConstValue> data;
+      std::string why; // the interpreter's reason when data is none
       bool used = false;
       // The errors the evaluation recorded (a layout it asked for failed: the evaluator's hook
       // catches the throw, the error stays): reported when globalForOnce takes a value, as if it

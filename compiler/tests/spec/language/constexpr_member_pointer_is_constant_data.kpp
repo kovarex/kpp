@@ -1,0 +1,20 @@
+// spec: a constexpr pointer to a data member, alone or in an array (the game's RailGraphicsAccessors), is constant data, so that a global built at startup before it in its file reads it (`2 2`; built at startup itself, it was still the zero offset then, the first member: `1 1`)
+// found by thread D (2026-11-05) making a constexpr variable that is no constant an error: the code generator built these at startup, lowering no member pointer as constant data
+struct L
+{
+  int a;
+  int b;
+};
+L sample{1, 2};
+int read = sample.*second;
+int readFromArray = sample.*Accessors::all[1];
+constexpr int L::*second = &L::b;
+struct Accessors
+{
+  static constexpr Array all = {&L::a, &L::b};
+};
+int main()
+{
+  println(read, " ", readFromArray);
+  return 0;
+}

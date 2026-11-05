@@ -36,9 +36,11 @@ auto codegen::Emitter::constantText(const ConstValue& v, const Ty* t, Node* at, 
       return v.kind == ConstValue::Kind::Int ? std::optional<std::string>(floatConstant(double(v.i), t->bits)) : std::nullopt;
     case TyKind::Pointer:
       // A null pointer only when no initializer set it: the interpreter's Int 0 of a pointer type
-      // is also what a function pointer template argument (`FOLD = fold` with fold = &add) comes
-      // as, so such a part is built at startup. (`T* p = nullptr;` itself is a null constant
-      // before constant data is asked for.)
+      // (`FOLD = fold` with fold = nullptr, a table's `{NULL, NULL}`) is built at startup. (A
+      // function template argument is its function's Address since d61e6a56, so the Int 0 would be
+      // a null too; but lowered, Lua's `loadedlibs` table, whose other entries name C functions of
+      // other modules, left their modules undeclared: B's, 2026-11-05.) (`T* p = nullptr;` itself
+      // is a null constant before constant data is asked for.)
       if (unset)
         return std::string("null");
       if (v.kind == ConstValue::Kind::Pointer)
@@ -46,6 +48,22 @@ auto codegen::Emitter::constantText(const ConstValue& v, const Ty* t, Node* at, 
       if (v.kind == ConstValue::Kind::Address && v.target)
         return addressConstant(*v.target, at);
       return std::nullopt;
+    case TyKind::MemberPointer:
+    {
+      // A pointer to a data member: the member's offset within the class (that of the pointer's
+      // type, the member maybe a base's), -1 for null, as one is made at run time (Expressions.cpp,
+      // Values.cpp's convert). One to a member function is built at startup.
+      if (t->inner && t->inner->kind == TyKind::Function)
+        return std::nullopt;
+      if (unset)
+        return std::string("-1");
+      const Ty* cls = !t->args.empty() && isClass(t->args[0]) ? t->args[0] : v.target ? v.target->owner : nullptr;
+      if (v.kind != ConstValue::Kind::MemberPointer || !v.target || !v.target->decl || v.target->decl->kind != NodeKind::VariableDecl || !cls ||
+          !v.target->path.empty())
+        return std::nullopt;
+      std::optional<uint64_t> offset = memberOffset(cls, v.target->decl, at);
+      return offset ? std::optional<std::string>(std::to_string(*offset)) : std::nullopt;
+    }
     case TyKind::Array:
     {
       if (unset)
@@ -224,20 +242,26 @@ auto codegen::Emitter::hasMutableMember(const Ty* t, Node* at, int depth) -> boo
   return false;
 }
 
-auto codegen::Emitter::constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at) -> std::optional<std::string>
+auto codegen::Emitter::constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at, bool* evaluated)
+  -> std::optional<std::string>
 {
   bool layoutFailed = false;
   std::optional<ConstValue> v;
   if (PreEvaluated* pre = preEvaluated; pre && pre->evaluated && pre->value == value && pre->type == t)
   {
     v = pre->data; // evaluated before the lock was taken (globalFor)
+    notConstantWhy = pre->why;
     takePreEvaluated(*pre);
   }
   else
   {
     ConstContextScope context(*this, def);
+    GlobalScope::clearConstantReason();
     v = global.evaluateInitializer(t, value, def->file, def, args, foldHooks(at, layoutFailed));
+    notConstantWhy = v ? std::string() : GlobalScope::constantReason();
   }
+  if (evaluated)
+    *evaluated = v.has_value();
   if (!v)
     return std::nullopt;
   return constantText(*v, t, at);
@@ -293,11 +317,13 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
   bool literal = value->kind == NodeKind::LiteralExpr &&
                  ((st->kind == TyKind::Pointer && static_cast<LiteralExpr*>(value)->keyword == Kw::nullptr_) ||
                   (static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String && st->kind == TyKind::Pointer));
-  if (!scalarInit && !literal && (isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer))
+  if (!scalarInit && !literal && (isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer || st->kind == TyKind::MemberPointer || !c))
   {
     bool layoutFailed = false;
     ConstContextScope context(*this, def);
+    GlobalScope::clearConstantReason();
     pre.data = global.evaluateInitializer(st, value, def->file, def, classArgs, foldHooks(at, layoutFailed));
+    pre.why = pre.data ? std::string() : GlobalScope::constantReason();
     pre.evaluated = true;
   }
 }
@@ -541,6 +567,7 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
       if (c && !c->isScalar())
         c.reset(); // an object or a pointer: built at startup (constant data comes later)
     }
+    bool evaluated = c.has_value(); // (a scalar's value; constantData says for the others)
     if (c && (st->kind == TyKind::Int || st->kind == TyKind::Char || st->kind == TyKind::Enum) && !c->isFloat())
       init = std::to_string(c->i);
     else if (c && st->kind == TyKind::Float)
@@ -552,11 +579,26 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     else if (value->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String &&
              st->kind == TyKind::Pointer)
       init = stringConstant(static_cast<LiteralExpr*>(value));
+    // (A scalar the fold gives no value of, `constexpr ID EMPTY{ID(-1)};`: as the initialization the
+    // interpreter evaluates, which a fold of the braces as an expression is not.)
     else if (std::optional<std::string> data =
-               isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer ? constantData(st, value, def, classArgs, at) : std::nullopt)
+               isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer || st->kind == TyKind::MemberPointer || !c
+                 ? constantData(st, value, def, classArgs, at, &evaluated)
+                 : std::nullopt)
       init = *data; // constant data: the object as the interpreter computes it
     else
-      constructed = true; // built at startup, see emitGlobalConstructor
+    {
+      // Built at startup, see emitGlobalConstructor: no value, or one that no LLVM constant
+      // expresses yet (a typed union's), which design.md's step 4 builds at startup.
+      constructed = true;
+      // A constexpr variable needs its constant (design.md "A constexpr variable needs its
+      // constant"): one the checker left to the code generator (its value needs exact layouts)
+      // and that is no constant here either is an error, never a global built at startup, which
+      // a global initialized before it reads as zero.
+      if (!evaluated && ((v->flags | def->flags) & DF_Constexpr) && !global.checkerErrorWithin(def->file, def->token, def->token))
+        error(def, "the constexpr variable " + sym(def->name.last().symbol) + " is no constant the compiler could evaluate" +
+                     (notConstantWhy.empty() ? std::string() : ": " + notConstantWhy));
+    }
   }
   else if (needsConstruction(st, at))
     constructed = true;

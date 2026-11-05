@@ -1,0 +1,20 @@
+// spec: a constexpr variable whose initializer needs the code generator's exact layouts (sizeof of a class) and is no constant (it calls printf, which has no kpp body) is an error, as one the checker evaluates is (language/constexpr_variable_that_is_no_constant_is_error), never a global built at startup
+// error: constexpr_variable_needing_layouts_that_is_no_constant_is_error.kpp:16: error: the constexpr variable described is no constant the compiler could evaluate
+// found by thread D (2026-11-05): the checker leaves such a variable to the code generator, which built it at startup without a word (the program printed "ran at startup" before main)
+extern "C" int printf(const char* format, ...);
+struct Packed
+{
+  int a;
+  char b;
+};
+int describe(int v)
+{
+  if (sizeof(Packed) == 8)
+    printf("ran at startup\n");
+  return v;
+}
+constexpr int described = describe(1);
+int main()
+{
+  return described;
+}

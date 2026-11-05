@@ -2320,7 +2320,15 @@ global, static member or local, whose initializer the interpreter cannot evaluat
 initialized at run time (C++ [dcl.constexpr] 10; spec
 language/constexpr_variable_that_is_no_constant_is_error, found by thread E for build.kpp). It is
 checked where its type is known, as a static_assert is: a template's instances, not the template;
-one whose value needs the code generator's exact layouts is the code generator's. The game had 21
+one whose value needs the code generator's exact layouts is the code generator's, which reports it
+the same way ("the constexpr variable x is no constant the compiler could evaluate"; it built
+such a variable at startup without a word until 2026-11-05, D: spec
+language/constexpr_variable_needing_layouts_that_is_no_constant_is_error). A value the interpreter
+computes that no LLVM constant expresses yet (a typed union's) is still built at startup, as step 4
+of "Compile-time evaluation" has it. Pointers to data members, alone or in arrays, are constant data
+(language/constexpr_member_pointer_is_constant_data: built at startup, a global initialized before them
+in their file read the first member), and so is a scalar whose braced initializer (`{ID(-1)}`) the
+fold did not read. The game had 21
 constexpr variables the interpreter could not evaluate, all initialized at run time without a
 word; each was an interpreter gap, now closed (specs language/consteval_game_constexpr_tables,
 language/consteval_unions, language/consteval_memcpy_and_memset): a char array from a string
