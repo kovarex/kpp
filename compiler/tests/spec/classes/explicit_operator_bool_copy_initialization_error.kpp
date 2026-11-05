@@ -1,0 +1,14 @@
+// spec: a copy-initialization of a bool from a class with only an explicit operator bool is the checker's error, as in C++ ([class.conv.fct] 2): the explicit operator converts a condition and a direct initialization, `bool b = location;` not
+// error: explicit_operator_bool_copy_initialization_error.kpp:12: error: a class (Location) does not convert to bool: it has no implicit conversion operator to a scalar
+// factorio: none in the game (0 on the converted test build); D's review of aefd3445, point (c), design.md 24
+struct Location
+{
+  int slot = 9;
+  explicit operator bool() const { return slot != 0; }
+};
+int main()
+{
+  Location location;
+  bool b = location;
+  return b ? 0 : 1;
+}

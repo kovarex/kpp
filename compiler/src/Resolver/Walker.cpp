@@ -2358,8 +2358,8 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
     return;
   // The one rule codegen converts by (design.md 24, chooseConversion): an error exactly where it
   // finds no operator.
-  if (impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr))
-    return;
+  if (impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr, false))
+    return; // (an explicit operator bool converts a condition, never an argument or a copy-initialization)
   impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
                                          ": it has no implicit conversion operator to a scalar");
 }
