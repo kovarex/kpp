@@ -1,0 +1,57 @@
+// spec: at compile time a class object converted to a scalar runs the conversion operator the program runs (design.md 24, chooseConversion: one to the type itself first, else the one whose result converts best; a template `operator T()` with T deduced), in an initialization, an argument and an assignment; clang gives `2 1 3 6 9`, at run time and compile time alike
+// found by thread D (2026-11-05): the interpreter had no class-to-scalar conversion outside a condition, so such a constant was no constant
+enum class Mode { A = 1, B = 2 };
+struct Result
+{
+  Mode m = Mode::B;
+  bool ok = true;
+  implicit operator Mode() const { return this->m; }
+  implicit operator bool() const { return this->ok; }
+};
+struct Mixed
+{
+  implicit operator long long() const { return 7; }
+  implicit operator short() const { return 3; }
+};
+struct Value
+{
+  int stored = 3;
+  template<class T>
+  implicit operator T() const { return T(this->stored * 2); }
+};
+struct Nine
+{
+  implicit operator int() const { return 9; }
+};
+constexpr int byArgument(int x) { return x; }
+constexpr int mode()
+{
+  Mode m = Result();
+  return int(m);
+}
+constexpr int truth()
+{
+  int x = Result();
+  return x;
+}
+constexpr int argument() { return byArgument(Mixed()); }
+constexpr int deduced()
+{
+  Value v;
+  long long l = v;
+  return int(l);
+}
+constexpr int assigned()
+{
+  Nine n;
+  int x = 0;
+  x = n;
+  return x;
+}
+constexpr int cm = mode(), ct = truth(), ca = argument(), cd = deduced(), cs = assigned();
+int main()
+{
+  println(mode(), " ", truth(), " ", argument(), " ", deduced(), " ", assigned());
+  println(cm, " ", ct, " ", ca, " ", cd, " ", cs);
+  return 0;
+}

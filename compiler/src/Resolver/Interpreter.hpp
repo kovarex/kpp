@@ -241,6 +241,10 @@
   // Whether an object is true in a condition (`if (optional)`, `!*this`): its conversion to bool
   // (or to an arithmetic type), explicit or not, its own or a base's.
   std::optional<bool> constTruth(const ConstValue& v, int depth);
+  // A class object v converted to the scalar type t outside a condition (`int x = result;`, an
+  // argument, a return): the conversion operator chooseConversion takes run on it (no explicit
+  // one), its result converted to t.
+  std::optional<ConstValue> constByConversionOperator(const ConstValue& v, const Ty* t, int depth);
 
   // Whether the operator of a class is `= default` (`operator<=>`, `operator==`).
   static bool constDefaulted(FunctionDecl* f) { return f && (f->flags & DF_Default) && !f->body; }

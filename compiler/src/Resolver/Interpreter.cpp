@@ -1822,6 +1822,35 @@ auto GlobalScope::Impl::constTruth(const ConstValue& v, int depth) -> std::optio
   return r && r->isScalar() ? std::optional<bool>(r->truthy()) : std::nullopt;
 }
 
+auto GlobalScope::Impl::constByConversionOperator(const ConstValue& v, const Ty* t, int depth) -> std::optional<ConstValue>
+{
+  const Ty* from = types.unqualified(types.stripRef(v.type));
+  const Ty* to = types.unqualified(types.stripRef(t));
+  // The conversion operator the one rule chooses (design.md 24, chooseConversion), as codegen calls
+  // it: one to the type itself first, else by the best standard conversion; never an explicit one
+  // (a copy-initialization's, an argument's, a return's, not a condition's: constTruth).
+  const Ty* cls = nullptr;
+  Subst subst;
+  FunctionDecl* op = chooseConversion(from, to, GlobalScope::ConversionKind::ToType, false, &cls, &subst, false);
+  if (!op || !cls || !constDefinition(op))
+  {
+    if (constWhy().empty())
+      constWhy() = "a conversion of " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols) +
+                   " by no conversion operator the evaluator can run";
+    return std::nullopt;
+  }
+  std::optional<ConstValue> self = v;
+  if (types.unqualified(cls) != from)
+  {
+    std::optional<std::vector<size_t>> path = constBasePath(from, cls, depth);
+    self = path ? constPart(v, *path) : std::nullopt; // (a base's operator: run on that part)
+    if (!self)
+      return std::nullopt;
+  }
+  std::optional<ConstValue> r = constCallOn(op, subst, {}, &self, depth + 1);
+  return r ? constAsDeclared(r, t) : std::nullopt; // (then the standard conversion to t)
+}
+
 auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth) -> FunctionDecl*
 {
   std::vector<FunctionDecl*> candidates = constMembersNamed(t, opSymbols[uint32_t(op)], subst, depth);
@@ -2837,7 +2866,11 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
       return chars;
     return constConvertTo(constValue(init, ctx, depth + 1), u, depth);
   }
-  return constAsDeclared(constInitValue(init, ctx, depth), t);
+  std::optional<ConstValue> v = constInitValue(init, ctx, depth);
+  if (v && u && v->isObject() && v->type && !v->type->isBraceList() && types.unqualified(types.stripRef(v->type))->kind == TyKind::Class &&
+      (u->isArithmetic() || u->kind == TyKind::Enum || u->kind == TyKind::Pointer))
+    return constByConversionOperator(*v, t, depth); // `int x = result;`
+  return constAsDeclared(v, t);
 }
 
 auto GlobalScope::Impl::constCharArrayFromLiteral(const Ty* t, Expr* init, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
@@ -3005,7 +3038,12 @@ auto GlobalScope::Impl::constConvertTo(std::optional<ConstValue> v, const Ty* t,
     return constFromBraceList(*v, t, depth);
   const Ty* u = types.unqualified(types.stripRef(t));
   if (u->kind != TyKind::Class)
+  {
+    if (v->isObject() && v->type && !v->type->isBraceList() && types.unqualified(types.stripRef(v->type))->kind == TyKind::Class &&
+        (u->isArithmetic() || u->kind == TyKind::Enum || u->kind == TyKind::Pointer))
+      return constByConversionOperator(*v, t, depth); // `int x = result;`
     return constAsDeclared(v, t);
+  }
   if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u)
     return v;
   if (v->isObject() && v->type)
