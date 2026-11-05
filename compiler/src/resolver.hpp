@@ -513,8 +513,9 @@ public:
   std::optional<ConstValue> evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks);
   // The value init gives an object of type t when it initializes one (a global's or static
   // member's initializer: `Flags f = {A, B};`, `Array<int, 3> a = {1, 2, 3}`, `Box b = Box(1, 2);`):
-  // a brace list's elements, a constructor's arguments, a conversion; context and hooks as for
-  // evaluate. Null when it is no constant (the object is then initialized at run time).
+  // a brace list's elements, a constructor's arguments, a conversion; no init (`constexpr P p;`):
+  // t default-initialized. Context and hooks as for evaluate. Null when it is no constant (the
+  // object is then initialized at run time).
   // build.kpp at compile time (design.md 12): a Project default-constructed, its configuration
   // the enumerator of that name, build(project) run, then describe(project): that String's
   // characters. Nullopt with error ("Build.kpp:12: why") when that is no constant (a call it

@@ -1427,8 +1427,26 @@ std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl*
 std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                            const ConstHooks& hooks)
 {
+  struct Lent
+  {
+    const ConstHooks* saved = Impl::constHooks();
+    explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
+    ~Lent() { Impl::constHooks() = saved; }
+  };
   if (!e)
-    return std::nullopt;
+  {
+    // `constexpr P p;`, a global no initializer initializes: default-initialized, as a local is (a
+    // user-provided default constructor run, members from their defaults); one nothing sets is
+    // unset, which static storage holds as zero (constantText). Thread B's init-order bug: built
+    // at startup, p read zero in a dynamic initializer that ran first.
+    if (!t)
+      return std::nullopt;
+    if (!file)
+      file = context ? context->file : nullptr;
+    Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+    Lent lent(hooks);
+    return impl->constEmpty(t, false, 0);
+  }
   // The context as typeOfAstIn makes it for a type written there.
   Impl::DeclContext dc;
   impl->declContextFor(context, dc);
@@ -1464,12 +1482,7 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
     ctx.elementPacks = &args.elementPacks;
     ctx.elementIndex = args.elementIndex;
   }
-  struct Lent
-  {
-    const ConstHooks* saved = Impl::constHooks();
-    explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
-    ~Lent() { Impl::constHooks() = saved; }
-  } lent(hooks);
+  Lent lent(hooks);
   return t ? impl->constInitialize(t, e, ctx, 0) : impl->constValue(e, ctx, 0);
 }
 

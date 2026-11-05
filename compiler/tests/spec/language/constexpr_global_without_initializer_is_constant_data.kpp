@@ -1,0 +1,15 @@
+// spec: a constexpr global no initializer initializes (`constexpr P p;`, its member from its default) is constant data, as `constexpr P p2 = P();` is ([basic.start.static]: constant initialization comes before any dynamic one), so that a dynamic initializer that runs before it (`int early = readA();`, earlier in the file) reads 5
+// pending: B, codegen's half (2026-11-05): p is zeroinitializer and a startup constructor, which runs after early's initializer, so early is 0; the interpreter gives the default-initialized value (GlobalScope::evaluateInitializer without an initializer, D)
+struct P
+{
+  int a = 5;
+};
+int readA();
+int early = readA();
+constexpr P p;
+int readA() { return p.a; }
+int main()
+{
+  println(early, " ", p.a);
+  return 0;
+}
