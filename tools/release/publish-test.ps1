@@ -25,6 +25,7 @@ $server = {
     $request = $context.Request
     $path = $request.Url.PathAndQuery
     if ($path -eq '/stop') { $context.Response.Close(); break }
+    if ($path -eq '/ping') { $context.Response.StatusCode = 200; $context.Response.Close(); continue }
     $status = 599; $body = '{"message":"no rule"}'
     for ($i = 0; $i -lt $rules.Count; ++$i) {
       $rule = $rules[$i]
@@ -47,12 +48,34 @@ $server = {
 }
 
 function Publish([string]$name, [object[]]$rules, [string[]]$expected) {
-  $port = Get-Random -Minimum 49152 -Maximum 65000
-  $log = "$work\$name.log"; $ready = "$work\$name.ready"
-  $up = "http://localhost:$port/upload/1/assets{?name,label}"
-  $rules = @($rules | ForEach-Object { , @($_[0], $_[1], @($_[2] | ForEach-Object { , @($_[0], $_[1].Replace('UPLOAD', $up)) })) })
-  $job = Start-Job -ScriptBlock $server -ArgumentList $port, $rules, $log, $ready
-  for ($i = 0; $i -lt 100 -and -not (Test-Path $ready); ++$i) { Start-Sleep -Milliseconds 100 }
+  # The fake forge started and listening before publish.ps1 runs: a job's process can take more than
+  # the 10 s once waited for on a loaded machine (other threads' gates; publish.ps1 then met no server,
+  # "Unable to connect to the remote server", 2026-11-05), and a random port can be taken or in one of
+  # Windows' excluded ranges: up to 5 ports, each waited for until it answers a request (/ping: a
+  # listener that started is not always one that can be reached, 2 of 20 under 10 runs at once), its
+  # job ends, or 60 s pass.
+  $job = $null
+  for ($try = 1; $try -le 5 -and -not $job; ++$try) {
+    $port = Get-Random -Minimum 49152 -Maximum 65000
+    $log = "$work\$name.log"; $ready = "$work\$name.ready"
+    Remove-Item $log, $ready -ErrorAction SilentlyContinue
+    $up = "http://localhost:$port/upload/1/assets{?name,label}"
+    $portRules = @($rules | ForEach-Object { , @($_[0], $_[1], @($_[2] | ForEach-Object { , @($_[0], $_[1].Replace('UPLOAD', $up)) })) })
+    $started = Start-Job -ScriptBlock $server -ArgumentList $port, $portRules, $log, $ready
+    $deadline = (Get-Date).AddSeconds(60)
+    $answers = $false
+    while (-not $answers -and $started.State -in 'NotStarted', 'Running' -and (Get-Date) -lt $deadline) {
+      if (Test-Path $ready) {
+        try { Invoke-WebRequest "http://localhost:$port/ping" -UseBasicParsing -TimeoutSec 5 | Out-Null; $answers = $true } catch { Start-Sleep -Milliseconds 200 }
+      } else { Start-Sleep -Milliseconds 100 }
+    }
+    if ($answers) { $job = $started }
+    else {
+      Write-Output "publish-test ${name}: the fake forge on port $port did not answer (job $($started.State)): $(($started | Receive-Job -ErrorAction SilentlyContinue 2>&1) -join ' ')"
+      $started | Stop-Job -PassThru | Remove-Job -Force
+    }
+  }
+  if (-not $job) { Write-Output "FAIL publish-test ${name}: no fake forge answered on 5 ports"; $script:failed++; return }
   $env:KPP_FORGE_TOKEN = 'test'
   $ErrorActionPreference = 'Continue'
   # (-Command, as CI's step calls it: -File would not take two files as one -Files)
