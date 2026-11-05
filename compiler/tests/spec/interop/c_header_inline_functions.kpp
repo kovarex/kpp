@@ -1,5 +1,6 @@
 // spec: a function an imported C header defines inline (the UCRT's corecrt_math.h `__inline long double floorl(long double)`, `__inline float fabsf(float)`), which no library exports, is callable: the import compiles its body
 // factorio: trio (converted as C): trio.c's trio_floor and trio_ceil are floorl and ceill (TRIO_FEATURE_FLOAT with long double), in TrioWriteDouble
+// target: windows (the UCRT's inline functions; off Windows floorl and ceill are C functions of x87's long double, an error: interop/c_long_double_function_off_windows_is_error)
 extern "C" import "math.h";
 int main()
 {

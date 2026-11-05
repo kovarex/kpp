@@ -169,7 +169,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
             if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::FunctionDecl)
             {
               refuseCAddress(static_cast<FunctionDecl*>(bound->decl), e);
-              return {useFunction(static_cast<FunctionDecl*>(bound->decl), {}, nullptr), bound->inner};
+              return {useFunction(static_cast<FunctionDecl*>(bound->decl), {}, nullptr, e), bound->inner};
             }
         std::optional<int64_t> v = evalConst(e);
         const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
@@ -187,7 +187,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         if (f->templateParams.empty() && !global.isTemplateContext(f))
         {
           refuseCAddress(f, e);
-          return {useFunction(f, {}, nullptr), types.pointer(declType(d))};
+          return {useFunction(f, {}, nullptr, e), types.pointer(declType(d))};
         }
         // `&FunctionImpl<R, Args...>::call<F>`: a member of an instantiation, with explicit arguments.
         TemplateArgs fargs;

@@ -6,8 +6,5 @@
 # and so does a line naming no snippet. Pending snippets are known failures without a line here.
 # From CI run 41650507690 (2026-11-03, H's lists), less what has been fixed since.
 
-# Found by the FreeBSD run, each B's.
-run interop/c_header_inline_functions  long double is double in kpp, x87's 80 bits in FreeBSD's C (pending interop/c_long_double_function_off_windows_is_error)
-
 # FreeBSD's math.h: fpclassify, isnan and signbit are C11 _Generic macros the C import does not read (B).
 build interop/c_math_classification_macros  _Generic math macros

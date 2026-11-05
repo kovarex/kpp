@@ -184,7 +184,7 @@ auto codegen::Emitter::addressConstant(const ConstTarget& target, Node* at) -> s
     for (auto& p : target.args)
       args.pairs.push_back(p);
     refuseCAddress(f, f);
-    return useFunction(f, args, target.owner);
+    return useFunction(f, args, target.owner, at);
   }
   if (target.decl->kind != NodeKind::VariableDecl || (target.decl->parent && target.decl->parent->kind == NodeKind::FunctionDecl))
     return std::nullopt; // a static local is laid out where its function is emitted

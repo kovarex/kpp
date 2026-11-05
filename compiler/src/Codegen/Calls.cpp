@@ -99,10 +99,64 @@ auto codegen::Emitter::notAnInstance(FunctionDecl* f, const TemplateArgs& args, 
   return {};
 }
 
+// Whether a C declaration's type is C's long double or holds it (through a pointer, a reference, an
+// array, const, a typedef or a function pointer's signature): kpp's long double is double, so off
+// Windows, where C's is x87's 80 bits in 16 bytes, the two are different types.
+static bool namesCLongDouble(const Type* t, int depth = 0)
+{
+  if (!t || depth > 32)
+    return false;
+  switch (t->kind)
+  {
+    case NodeKind::BuiltinType:
+      return static_cast<const BuiltinType*>(t)->keyword == Kw::double_ && static_cast<const BuiltinType*>(t)->longCount > 0;
+    case NodeKind::PointerType:
+      return namesCLongDouble(static_cast<const PointerType*>(t)->pointee, depth + 1);
+    case NodeKind::LRefType:
+      return namesCLongDouble(static_cast<const LRefType*>(t)->referenced, depth + 1);
+    case NodeKind::RRefType:
+      return namesCLongDouble(static_cast<const RRefType*>(t)->referenced, depth + 1);
+    case NodeKind::ConstType:
+      return namesCLongDouble(static_cast<const ConstType*>(t)->inner, depth + 1);
+    case NodeKind::ArrayType:
+      return namesCLongDouble(static_cast<const ArrayType*>(t)->element, depth + 1);
+    case NodeKind::NamedType:
+    {
+      const Decl* d = static_cast<const NamedType*>(t)->resolved;
+      return d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && namesCLongDouble(static_cast<const VariableDecl*>(d)->type, depth + 1);
+    }
+    case NodeKind::FunctionType:
+    {
+      auto* ft = static_cast<const FunctionType*>(t);
+      if (namesCLongDouble(ft->result, depth + 1))
+        return true;
+      for (const Decl* p : ft->params)
+        if (p && p->kind == NodeKind::ParamDecl && namesCLongDouble(static_cast<const ParamDecl*>(p)->type, depth + 1))
+          return true;
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
 auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at) -> std::string
 {
   if (f->builtin == BUILTIN_EnumFromStr)
     return useFunctionOnce(f, args, classTy);
+  // An imported C function that takes or returns C's long double, or a pointer to one, off Windows:
+  // kpp's long double is double, C's there x87's 80 bits (design.md, "Targets and hosts", the type
+  // table), so a call would pass and take double's bits where the function has x87's: an error, as
+  // its address is (until 2026-11-05 the call was made as double(double), silently: FreeBSD's
+  // floorl(2.5) printed garbage).
+  if (!sh.target.windows() && f->file && f->file->isImported)
+  {
+    bool longDouble = namesCLongDouble(f->returnType);
+    for (Decl* p : f->params)
+      longDouble = longDouble || (p && p->kind == NodeKind::ParamDecl && namesCLongDouble(static_cast<ParamDecl*>(p)->type));
+    if (longDouble)
+      fail(at ? at : f, "a C function of long double (" + sym(f->name.last().symbol) + "): off Windows C's long double is x87's 80 bits, kpp's is double (design.md, \"Targets and hosts\")");
+  }
   std::string key = functionName(f, args, classTy);
   if (auto mine = usedFunctions.find(key); mine != usedFunctions.end())
   {

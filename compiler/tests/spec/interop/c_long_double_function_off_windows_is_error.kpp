@@ -1,11 +1,17 @@
-// spec: off Windows, calling an imported C function that takes or returns `long double` is an error: C's long double is x87's 80 bits on x86-64 SysV and kpp's stays double (docs/design.md, "Targets and hosts", the type table)
-// pending: the call is made as double(double), silently: FreeBSD's floorl(2.5) and ceill(2.5) in interop/c_header_inline_functions printed other values than 2 3 1.5 in CI's FreeBSD run (run 41638108414)
+// spec: off Windows, calling an imported C function that takes or returns `long double` (or a pointer to one, through a typedef too) is an error, and so is its address: C's long double is x87's 80 bits on x86-64 SysV and kpp's stays double (docs/design.md, "Targets and hosts", the type table)
+// found in CI's FreeBSD run (41638108414): the call was made as double(double), silently: FreeBSD's floorl(2.5) and ceill(2.5) in interop/c_header_inline_functions printed other values than 2 3 1.5; trio's floorl, ceill and fmodl (PREDEF_STANDARD_C99) are such calls in the game's Linux build
 // target: freebsd (Windows' long double is double: the same call is right there)
-// error: long double
+// error: c_long_double_function_off_windows_is_error.kpp:9: error: a C function of long double (specHalfOf)
+// error: c_long_double_function_off_windows_is_error.kpp:10: error: a C function of long double (specWholePart)
+// error: c_long_double_function_off_windows_is_error.kpp:11: error: a C function of long double (specThirdOf)
+// error: c_long_double_function_off_windows_is_error.kpp:12: error: a C function of long double (specHalfOf)
 extern "C" import "c_long_double_function_off_windows_is_error.h";
+double half() { return specHalfOf(5.0); }
+double whole() { double w = 0; return specWholePart(2.5, nullptr) + w; }
+double third() { return specThirdOf(9.0); }
+bool address() { auto f = specHalfOf; return f != nullptr; }
 int main()
 {
-  double half = specHalfOf(5.0);
-  println(half);
+  println(half(), " ", whole(), " ", third(), " ", address());
   return 0;
 }

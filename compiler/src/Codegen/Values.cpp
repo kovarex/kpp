@@ -649,7 +649,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         if (!f->templateParams.empty() || global.isTemplateContext(f))
           return rvalue(e).text;
         refuseCAddress(f, e);
-        return useFunction(f, {}, nullptr);
+        return useFunction(f, {}, nullptr, e);
       }
       unsupported(e, "taking the address of " + sym(n->name.last().symbol));
     }
