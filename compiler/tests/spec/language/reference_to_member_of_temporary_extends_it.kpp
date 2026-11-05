@@ -1,0 +1,35 @@
+// spec: a local reference bound to a member of a temporary keeps the whole temporary alive as long as the reference, as C++ extends it ([class.temporary] 6): `const M& m = wrap(5).inner;` and a scalar member `const int& id = wrap(6).inner.id;` read the live object, which is destroyed when the reference's scope ends, after the println, `M5 | 5 ~5`; a temporary the call's arguments made dies with the statement as before
+// found by thread B (2026-11-05): kpp destroyed the temporary at the end of the statement, leaving the reference dangling (`M5 ~5 | 5`), as g++ never does
+class M
+{
+public:
+  int id;
+  M(int i) : id(i) { print("M", id, " "); }
+  M(const M& o) : id(o.id + 100) { print("C", id, " "); }
+  ~M() { print("~", id, " "); }
+};
+struct Wrap
+{
+  M inner;
+};
+Wrap wrap(int i) { return Wrap{M(i)}; }
+Wrap rewrap(const Wrap& w) { return Wrap{M(w.inner.id + 1)}; }
+int main()
+{
+  {
+    const M& m = wrap(5).inner;
+    print("| ", m.id, " ");
+  }
+  println("| first");
+  {
+    const int& id = wrap(6).inner.id;
+    print("| ", id, " ");
+  }
+  println("| second");
+  {
+    const M& m = rewrap(wrap(7)).inner;
+    print("| ", m.id, " ");
+  }
+  println("| third");
+  return 0;
+}

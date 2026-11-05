@@ -322,6 +322,34 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
         fail(v, "the " + types.toString(t, &symbols) +
                     " variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
     }
+    // A member of a temporary (`const M& m = wrap(5).inner;`): the whole temporary lives as long as
+    // the reference ([class.temporary] 6), never only to the end of the statement, which left the
+    // reference dangling (until 2026-11-05). The temporary the member chain starts from is the last
+    // one the initializer made: a call's result is a temporary of the statement once the call is
+    // done, and a member access makes none.
+    const Ty* temporaryBase = nullptr;
+    size_t tempsBefore = statementTemps.size();
+    {
+      Expr* e = init;
+      bool member = false;
+      while (e && (e->kind == NodeKind::ParenExpr || (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow)))
+      {
+        member = member || e->kind == NodeKind::MemberExpr;
+        e = e->kind == NodeKind::ParenExpr ? static_cast<ParenExpr*>(e)->inner : static_cast<MemberExpr*>(e)->base;
+      }
+      if (member && e && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e))
+        temporaryBase = types.unqualified(e->ty);
+    }
+    auto extendTemporaryBase = [&]
+    {
+      if (!temporaryBase || statementTemps.size() <= tempsBefore)
+        return;
+      Object made = statementTemps.back();
+      if (made.unwindOnly || made.freeMemory || made.exception || !isClass(made.ty) || canonicalClass(made.ty, v) != canonicalClass(temporaryBase, v))
+        return;
+      statementTemps.pop_back();
+      scopes.back().push_back(made);
+    };
     std::string addr;
     if (isClass(types.stripRef(t)))
     {
@@ -364,6 +392,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     }
     else
       addr = scalarReferenceTarget(t, init, v);
+    extendTemporaryBase();
     fn += "  store ptr " + addr + ", ptr " + slot + "\n";
     return;
   }
