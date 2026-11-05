@@ -3760,6 +3760,8 @@ struct GlobalScope::Impl
     const Ty* returnType = nullptr;          // That function's declared result type (`return {a, b};`).
     // That function's reference result wanted as a place (`result[i] = x` through operator[]).
     std::optional<ConstPlace>* returnPlace = nullptr;
+    // That function's named return variable (NRVO, constNamedReturn): `return v;` of it is the result.
+    const VariableDecl* namedReturn = nullptr;
     FunctionDecl* function = nullptr; // Whose parameters a trailing return type names (`-> decltype(callable())`).
     // The variable template whose initializer is evaluated under subst (`hasBegin<Vector<int>>`):
     // a requires-expression in it holds or not for these arguments, whatever its last typing left.
@@ -6833,6 +6835,14 @@ struct GlobalScope::Impl
     static thread_local std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue> values;
     return values;
   }
+  // The named return variables' candidates of the bodies an evaluation ran (constNamedReturn), by
+  // body: cleared with the evaluation, as a compile server's next build may put another body at the
+  // same address.
+  static std::unordered_map<const Stmt*, VariableDecl*>& constNamedReturns()
+  {
+    static thread_local std::unordered_map<const Stmt*, VariableDecl*> candidates;
+    return candidates;
+  }
   template<class Evaluate>
   std::optional<ConstValue> constOutermost(Evaluate&& evaluate, int depth)
   {
@@ -6847,6 +6857,7 @@ struct GlobalScope::Impl
     constHeap().clear();
     constAllocations().clear();
     constGlobalValues().clear();
+    constNamedReturns().clear();
     constFailedAt() = ConstWhere{};
     std::optional<ConstValue> v;
     {
@@ -10262,6 +10273,12 @@ struct GlobalScope::Impl
   {
     auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
     bool equality = op == P::EqEq || op == P::NotEq;
+    // An address of an object whose lifetime ended (a local of a run that returned, a named return
+    // variable's among them, whose result the program's address would name) compares as no constant,
+    // as C++'s constant evaluation has it, never as another object's.
+    if ((l.isAddress() && l.target->storage && !constLiveStorage(*l.target, "a comparison of")) ||
+        (r.isAddress() && r.target->storage && !constLiveStorage(*r.target, "a comparison of")))
+      return std::nullopt;
     if ((l.isAddress() || l.isMemberPointer()) && (r.isAddress() || r.isMemberPointer()))
     {
       bool same = l.kind == r.kind && *l.target == *r.target;
@@ -10347,6 +10364,7 @@ struct GlobalScope::Impl
     if (returns && containsAuto(returns))
       returns = nullptr;
     fctx.returnType = returns;
+    fctx.namedReturn = constNamedReturn(l->body, returns, fctx, 1);
     std::optional<ConstValue> result;
     ConstFlow flow = constStatement(l->body, fctx, env, result, 1);
     if (returns && types.unqualified(returns)->kind == TyKind::Void && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
@@ -12585,6 +12603,7 @@ struct GlobalScope::Impl
     const Ty* returns = f->returnType ? convertType(f->returnType, fctx, depth + 1) : nullptr;
     fctx.returnType = returns;
     fctx.returnPlace = returnPlace; // (a reference result asked for as a place: constCallPlace)
+    fctx.namedReturn = returnPlace ? nullptr : constNamedReturn(def->body, returns, fctx, depth);
     bool isVoid = (returns && types.unqualified(returns)->kind == TyKind::Void) || (f->flags & DF_Destructor);
     std::optional<ConstValue> result;
     ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
@@ -13061,11 +13080,33 @@ struct GlobalScope::Impl
           *ctx.returnPlace = resolved;
           return ConstFlow::Returned;
         }
+        if (ctx.namedReturn && constOwnLocal(static_cast<ReturnStmt*>(s)->value, ctx))
+        {
+          // `return v;` of the named return variable (NRVO, guaranteed: kovarex, 2026-11-04): v is the
+          // result, made where it is, with no copy or move constructor run (a class without them
+          // returns so too), and not destroyed here: its destructor runs with the result's. An address
+          // of v the evaluation took (its elements' while it was filled) still names v's binding,
+          // which ends here: a use of it is no constant (constLiveStorage, constAddressArith), where
+          // the program's would be the result.
+          Expr* named = static_cast<ReturnStmt*>(s)->value;
+          while (named->kind == NodeKind::ParenExpr)
+            named = static_cast<ParenExpr*>(named)->inner;
+          auto* n = static_cast<NameExpr*>(named);
+          if (n->resolved == ctx.namedReturn)
+            for (size_t i = ctx.env->size(); i-- > 0;)
+              if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
+              {
+                ConstBinding& b = (*ctx.env)[i];
+                result = b.value;
+                b.owns = false;
+                return ConstFlow::Returned;
+              }
+        }
         if (ctx.returnType && !ctx.returnType->isReference() && constOwnLocal(static_cast<ReturnStmt*>(s)->value, ctx))
           if (std::optional<std::optional<ConstValue>> moved = constCopyInit(static_cast<ReturnStmt*>(s)->value, ctx.returnType, ctx, depth + 1, true))
           {
-            // `return c;` of a local or by-value parameter moves it ([class.copy.elision]/3; a constant
-            // evaluation elides no named object).
+            // `return c;` of a by-value parameter, or of a local that is no named return variable,
+            // moves it ([class.copy.elision]/3).
             result = *moved;
             return result ? ConstFlow::Returned : ConstFlow::Failed;
           }
@@ -17353,6 +17394,95 @@ struct GlobalScope::Impl
       }
     }
     return holding == 1 ? chosen : nullptr;
+  }
+
+  // The named return variable's candidate in a function's body (NRVO, kovarex 2026-11-04;
+  // GlobalScope::namedReturnVariable): the one automatic local every `return` of the body names
+  // (nested lambdas' and local classes' returns aside), declared by a declaration statement or a
+  // range-for, and not static, thread_local, extern, a structured binding or absent by its `when`;
+  // null with why otherwise. Whether its type is the result's class (and it is not volatile) is the
+  // caller's to compare, under the arguments it runs with: the declaration's own for codegen, an
+  // evaluation's for the interpreter (a template's body under its arguments).
+  static VariableDecl* namedReturnCandidate(const Stmt* body, std::string* why)
+  {
+    auto no = [&](std::string reason) -> VariableDecl*
+    {
+      if (why)
+        *why = std::move(reason);
+      return nullptr;
+    };
+    // What nested lambdas and local classes hold: their returns are their own.
+    std::unordered_set<const Node*> nested;
+    std::vector<const ReturnStmt*> returns;
+    std::unordered_set<const Decl*> buildable; // declared by a declaration statement or a range-for
+    forEachNode(const_cast<Stmt*>(body), [&](Node* n)
+    {
+      if ((n->kind == NodeKind::LambdaExpr || n->kind == NodeKind::ClassDecl) && !nested.count(n))
+        forEachNode(n, [&](Node* inner) { if (inner != n) nested.insert(inner); });
+      if (n->kind == NodeKind::ReturnStmt)
+        returns.push_back(static_cast<const ReturnStmt*>(n));
+      else if (n->kind == NodeKind::DeclStmt)
+        for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+          buildable.insert(d);
+      else if (n->kind == NodeKind::RangeForStmt)
+        buildable.insert(static_cast<RangeForStmt*>(n)->var);
+    });
+    VariableDecl* v = nullptr;
+    size_t own = 0;
+    for (const ReturnStmt* r : returns)
+    {
+      if (nested.count(r))
+        continue;
+      ++own;
+      const Expr* e = r->value;
+      if (!e || e->kind != NodeKind::NameExpr)
+        return no("a return of something other than a variable's name");
+      const Decl* d = static_cast<const NameExpr*>(e)->resolved;
+      if (d && d->kind == NodeKind::ParamDecl)
+        return no("a parameter is returned");
+      if (!d || d->kind != NodeKind::VariableDecl)
+        return no("a return of something other than a local variable");
+      if (v && d != v)
+        return no("two variables are returned");
+      v = const_cast<VariableDecl*>(static_cast<const VariableDecl*>(d));
+    }
+    if (!v || !own)
+      return no("no return names a variable");
+    if (v->flags & (DF_Static | DF_ThreadLocal | DF_Extern))
+      return no("the variable is static, thread_local or extern");
+    if (!v->structuredBindings.empty() || v->tupleBinding)
+      return no("the variable is a structured binding");
+    if (v->when && v->whenKnown == 0)
+      return no("the variable is absent by its when");
+    if (!buildable.count(v) || nested.count(v))
+      return no("the variable is no declaration statement's or range-for's (a catch's parameter, a compile-time loop's)");
+    return v;
+  }
+
+  // The named return variable of the function whose body runs under ctx (the interpreter's call),
+  // result its declared result: the candidate (namedReturnCandidate, kept per body during the
+  // outermost evaluation: constNamedReturns), when its type under ctx's arguments is that class and
+  // it is not volatile; else null.
+  const VariableDecl* constNamedReturn(const Stmt* body, const Ty* result, const TypeContext& ctx, int depth)
+  {
+    if (!body || !result || result->isReference() || types.unqualified(result)->kind != TyKind::Class)
+      return nullptr;
+    VariableDecl* candidate = nullptr;
+    if (constEvaluating() > 0)
+    {
+      auto [it, added] = constNamedReturns().try_emplace(body, nullptr);
+      if (added)
+        it->second = namedReturnCandidate(body, nullptr);
+      candidate = it->second;
+    }
+    else
+      candidate = namedReturnCandidate(body, nullptr);
+    if (!candidate)
+      return nullptr;
+    const Ty* vt = declaredTypeOf(candidate, ctx.subst, depth + 1);
+    if (!vt || vt->isVolatile || vt->kind != TyKind::Class || types.unqualified(vt) != types.unqualified(result))
+      return nullptr;
+    return candidate;
   }
 
   // The conversion function of class a (or of a base, whose arguments subst gets) to exactly the
@@ -26617,51 +26747,9 @@ VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* resul
     return no("no body");
   if (!result || result->kind != TyKind::Class)
     return no("the function returns no class by value"); // (a reference, a scalar, void, unknown)
-  // What nested lambdas and local classes hold: their returns are their own.
-  std::unordered_set<const Node*> nested;
-  std::vector<const ReturnStmt*> returns;
-  std::unordered_set<const Decl*> buildable; // declared by a declaration statement or a range-for
-  forEachNode(const_cast<Stmt*>(body), [&](Node* n)
-  {
-    if ((n->kind == NodeKind::LambdaExpr || n->kind == NodeKind::ClassDecl) && !nested.count(n))
-      forEachNode(n, [&](Node* inner) { if (inner != n) nested.insert(inner); });
-    if (n->kind == NodeKind::ReturnStmt)
-      returns.push_back(static_cast<const ReturnStmt*>(n));
-    else if (n->kind == NodeKind::DeclStmt)
-      for (Decl* d : static_cast<DeclStmt*>(n)->decls)
-        buildable.insert(d);
-    else if (n->kind == NodeKind::RangeForStmt)
-      buildable.insert(static_cast<RangeForStmt*>(n)->var);
-  });
-  VariableDecl* v = nullptr;
-  size_t own = 0;
-  for (const ReturnStmt* r : returns)
-  {
-    if (nested.count(r))
-      continue;
-    ++own;
-    const Expr* e = r->value;
-    if (!e || e->kind != NodeKind::NameExpr)
-      return no("a return of something other than a variable's name");
-    const Decl* d = static_cast<const NameExpr*>(e)->resolved;
-    if (d && d->kind == NodeKind::ParamDecl)
-      return no("a parameter is returned");
-    if (!d || d->kind != NodeKind::VariableDecl)
-      return no("a return of something other than a local variable");
-    if (v && d != v)
-      return no("two variables are returned");
-    v = const_cast<VariableDecl*>(static_cast<const VariableDecl*>(d));
-  }
-  if (!v || !own)
-    return no("no return names a variable");
-  if (v->flags & (DF_Static | DF_ThreadLocal | DF_Extern))
-    return no("the variable is static, thread_local or extern");
-  if (!v->structuredBindings.empty() || v->tupleBinding)
-    return no("the variable is a structured binding");
-  if (v->when && v->whenKnown == 0)
-    return no("the variable is absent by its when");
-  if (!buildable.count(v) || nested.count(v))
-    return no("the variable is no declaration statement's or range-for's (a catch's parameter, a compile-time loop's)");
+  VariableDecl* v = Impl::namedReturnCandidate(body, why);
+  if (!v)
+    return nullptr;
   const Ty* vt = typeOfDecl(v);
   if (vt && vt->isVolatile)
     return no("the variable is volatile");

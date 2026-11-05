@@ -1,0 +1,75 @@
+// spec: at compile time `return v;` of the named return variable (NRVO, guaranteed: kovarex 2026-11-04; the one automatic local of the result's class that every return of the function names, GlobalScope::namedReturnVariable) is the result: no copy or move constructor runs (`made().moves` is 0), a class with neither returns by name, a template's local under its arguments too, and v is destroyed once, as the result; where the returns name two variables, the one returned moves (`0 1 3 0 1`)
+// found: kovarex's decision; this is the interpreter's part, the program's is codegen's
+struct Counted
+{
+  int moves = 0;
+  constexpr Counted() {}
+  constexpr Counted(Counted&& o) : moves(o.moves + 1) {}
+};
+constexpr Counted made()
+{
+  Counted c;
+  return c;
+}
+constexpr Counted either(bool first)
+{
+  Counted x;
+  Counted y;
+  if (first)
+    return x;
+  return y;
+}
+struct Pinned
+{
+  int value = 0;
+  constexpr Pinned() {}
+  Pinned(const Pinned&) = delete;
+  Pinned(Pinned&&) = delete;
+};
+template<int V>
+constexpr Pinned pinned()
+{
+  Pinned p;
+  p.value = V;
+  return p;
+}
+struct Tracker
+{
+  int* destroyed = nullptr;
+  constexpr Tracker(int* d) : destroyed(d) {}
+  constexpr ~Tracker() { ++*destroyed; }
+};
+constexpr Tracker track(int* d)
+{
+  Tracker t(d);
+  return t;
+}
+constexpr int destructions()
+{
+  int d = 0;
+  {
+    Tracker t = track(&d);
+  }
+  return d;
+}
+template<typename T>
+constexpr T build()
+{
+  T result;
+  return result;
+}
+static_assert(made().moves == 0);
+static_assert(destructions() == 1);
+static_assert(pinned<3>().value == 3);
+static_assert(build<Counted>().moves == 0);
+static_assert(either(true).moves == 1);
+constexpr int moved = made().moves;
+constexpr int destroyed = destructions();
+constexpr int value = pinned<3>().value;
+constexpr int viaTemplate = build<Counted>().moves;
+constexpr int twoVariables = either(true).moves;
+int main()
+{
+  println(moved, " ", destroyed, " ", value, " ", viaTemplate, " ", twoVariables);
+  return 0;
+}
