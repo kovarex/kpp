@@ -2453,7 +2453,9 @@ read and written where it is, the union holding it (else no constant), and a typ
 by destroying the alternative it holds (language/consteval_typed_union_alternative). A local rvalue
 reference bound to a temporary (`String&& t = String("de");`, a `long&&` given an int) holds the
 temporary as an rvalue reference parameter does and may change it: `move(t)` empties it
-(language/consteval_rvalue_reference_to_temporary_changes_it).
+(language/consteval_rvalue_reference_to_temporary_changes_it). A constructor's initializer may name
+a base through an alias (`using Leaf = TupleLeaf<...>;`, `: Leaf(head)`), so a Tuple is a constant
+(language/consteval_base_initialized_through_alias).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

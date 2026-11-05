@@ -1,0 +1,30 @@
+// spec: at compile time a constructor initializes a base it names through an alias (`using Base = Holder<int>;` then `: Base(v)`, as Tuple does with `using Leaf = TupleLeaf<...>;` and `: Leaf(head)`), as at run time: a Tuple is a constant, and `get<0>(t)` reads its element
+// found by thread D (2026-11-05), comparing the library at compile time and run time: every Tuple was no constant, the evaluator matching a base's initializer by the base class's own name only
+template<class T> struct Holder
+{
+  T value;
+  Holder(T v) : value(v) {}
+};
+struct Twice : Holder<int>
+{
+  using Base = Holder<int>;
+  int more;
+  Twice(int v) : Base(v), more(v * 2) {}
+};
+constexpr long long tupled()
+{
+  Tuple<int, long long, char> t = {1, 2, 'c'};
+  return get<0>(t) * 100 + get<1>(t) * 10 + (get<2>(t) == 'c' ? 1 : 0);
+}
+constexpr long long aliased()
+{
+  Twice t(4);
+  return t.value * 10 + t.more;
+}
+int main()
+{
+  constexpr long long a = tupled();
+  constexpr long long b = aliased();
+  println(a, " ", tupled(), " ", b, " ", aliased());
+  return 0;
+}

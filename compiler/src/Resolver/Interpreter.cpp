@@ -4558,8 +4558,25 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
         written[b] = &init;
         found = true;
       }
+    // A base named through an alias (Tuple's `using Leaf = TupleLeaf<...>;` and `: Leaf(head)`): the
+    // type the name gives where the constructor is, under its arguments. (It was no constant: every
+    // Tuple at compile time.)
+    if (!found && nb)
+    {
+      NamedType named{};
+      named.kind = NodeKind::NamedType;
+      named.token = ctor->token;
+      named.name = init.member;
+      if (const Ty* bt = convertType(&named, fctx, depth + 1); bt && bt->isKnown() && !types.isDependent(bt))
+        for (size_t b = 0; b < nb && !found; ++b)
+          if (layout->bases[b] && types.unqualified(types.stripRef(bt)) == types.unqualified(layout->bases[b]))
+          {
+            written[b] = &init;
+            found = true;
+          }
+    }
     if (!found && !(!layout->decl->name.empty() && symbol == layout->decl->name.last().symbol && ctor->ctorInits.size() == 1))
-      return std::nullopt; // a base named through an alias, a member the layout does not hold
+      return std::nullopt; // a member the layout does not hold
   }
   // The values an initializer gives: one expression, a brace list, none (value-initialized).
   auto initialize = [&](const FunctionDecl::CtorInit& init, const Ty* target) -> std::optional<ConstValue> {
