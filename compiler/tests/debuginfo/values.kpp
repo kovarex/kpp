@@ -45,6 +45,7 @@ struct Flags
 {
   bool on : 1;
   unsigned level : 3;
+  unsigned mode : 2; // (in level's storage unit)
   union
   {
     int whole;

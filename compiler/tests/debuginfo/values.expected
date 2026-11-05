@@ -39,6 +39,7 @@ class game::Square, 40 bytes
 class Flags, 12 bytes
   member on bool bits 1 at 0 at 0, public
   member level unsigned bits 3 at 0 at 4, public
+  member mode unsigned bits 2 at 3 at 4, public
   member whole int at 8, public
   member part float at 8, public
 class Value, 16 bytes

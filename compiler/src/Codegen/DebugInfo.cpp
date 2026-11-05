@@ -323,12 +323,22 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
     }
     auto* v = static_cast<VariableDecl*>(m);
     std::string name = v->name.empty() ? std::string() : sym(v->name.last().symbol);
-    if (auto bits = info.bitfields.find(m); bits != info.bitfields.end())
+    if (info.bitfields.count(m))
     {
-      const Ty* declared = global.typeOfDeclIn(m, args);
-      if (declared && declared->isKnown() && !types.isDependent(declared))
-        member(name, debugType(declared), bits->second.width, offset * 8 + bits->second.shift, flagsOf({"DIFlagBitField", access(m->access)}),
-               ", extraData: i64 " + std::to_string(offset * 8));
+      // The first bit field of a storage unit stands for the unit in fieldDecls: each bit field of
+      // the unit, in declaration order (until 2026-11-06 only the first: PropertyTree's flags after
+      // its type were missing in the debugger).
+      for (Decl* d : c->members)
+      {
+        auto bits = info.bitfields.find(d);
+        if (bits == info.bitfields.end() || info.fieldIndex.at(d) != index)
+          continue;
+        auto* bv = static_cast<VariableDecl*>(d);
+        const Ty* declared = global.typeOfDeclIn(d, args);
+        if (declared && declared->isKnown() && !types.isDependent(declared))
+          member(bv->name.empty() ? std::string() : sym(bv->name.last().symbol), debugType(declared), bits->second.width,
+                 offset * 8 + bits->second.shift, flagsOf({"DIFlagBitField", access(d->access)}), ", extraData: i64 " + std::to_string(offset * 8));
+      }
       continue;
     }
     const Ty* mt = info.isUnion ? global.typeOfDeclIn(m, args) : info.fieldTypes[index];
