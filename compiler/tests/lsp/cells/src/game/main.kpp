@@ -1,6 +1,7 @@
 // The game's release cell does not compile.
 static_assert(config::debug, "the game is built in debug only");
 when (config::debug) int debugFrames = 0;
+int loud() { return sound::volume() + 1; }
 
 int main()
 {

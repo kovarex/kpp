@@ -4,6 +4,7 @@
 {"jsonrpc":"2.0","id":20,"result":{"contents":{"kind":"plaintext","value":"const int volume\nvariable config::sound::volume, here of type const int32\n\n7 in the cell game, debug, set by use(\"sound\") in build.kpp; default 5, int. An option of the library sound.\n\nThe loudness, 0 to 10"},"range":{"start":{"line":0,"character":37},"end":{"line":0,"character":43}}}}
 {"jsonrpc":"2.0","id":21,"result":{"contents":{"kind":"plaintext","value":"const bool debug\nvariable config::debug, here of type const bool\n\nAs in the cell game, debug."},"range":{"start":{"line":2,"character":14},"end":{"line":2,"character":19}}}}
 {"jsonrpc":"2.0","id":22,"result":[{"uri":"$ROOT/src/game/main.kpp","range":{"start":{"line":1,"character":22},"end":{"line":1,"character":27}}},{"uri":"$ROOT/src/game/main.kpp","range":{"start":{"line":2,"character":14},"end":{"line":2,"character":19}}}]}
+{"jsonrpc":"2.0","id":23,"result":{"isIncomplete":false,"items":[{"label":"volume","kind":3,"detail":"int volume()","sortText":"0volume"},{"label":"volume","kind":6,"detail":"const int volume","sortText":"0volume"}]}}
 {"jsonrpc":"2.0","id":3,"result":{"target":"game","configuration":"release"}}
 {"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"game","configuration":"release"}}
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":13}},"severity":1,"source":"kpp","message":"static assertion failed: \"the game is built in debug only\""}]}}

@@ -151,6 +151,17 @@ public static class SnapAll {
       return true; }, IntPtr.Zero);
     return result;
   }
+  // The visible windows of the process, untitled ones (popups) first: what UI Automation reads a popup through.
+  public static List<IntPtr> Popups(uint pid) {
+    var result = new List<IntPtr>();
+    EnumWindows((h, p) => {
+      uint owner; GetWindowThreadProcessId(h, out owner);
+      if (owner != pid || !IsWindowVisible(h)) return true;
+      var t = new StringBuilder(256); GetWindowText(h, t, 256);
+      if (t.Length == 0) result.Add(h);
+      return true; }, IntPtr.Zero);
+    return result;
+  }
 }
 '@
 $shots = 0
@@ -167,7 +178,9 @@ if (-not $dte) { throw "test.ps1: no DTE for devenv $($devenv.Id)" }
 
 function Open($relative, $line, $column)
 {
-  $dte.ItemOperations.OpenFile((Join-Path $copy $relative)) | Out-Null
+  # (A file outside the project, a library's beside kpp, by its full path.)
+  $path = if ([IO.Path]::IsPathRooted($relative)) { $relative } else { Join-Path $copy $relative }
+  $dte.ItemOperations.OpenFile($path) | Out-Null
   $dte.ActiveDocument.Selection.MoveToLineAndOffset($line, $column)
 }
 function Here
@@ -216,9 +229,13 @@ function PopupText([switch]$Items)
   $root = [Windows.Automation.AutomationElement]::RootElement
   $mine = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, $devenv.Id)
   $names = @()
-  foreach ($w in $root.FindAll([Windows.Automation.TreeScope]::Children, $mine))
+  # The popups by their window handles (Visual Studio 17.14's are not among UI Automation's top-level
+  # elements of class Popup any more), and those that still are.
+  $windows = @([SnapAll]::Popups([uint32]$devenv.Id) | ForEach-Object { try { [Windows.Automation.AutomationElement]::FromHandle($_) } catch { } })
+  $windows += @($root.FindAll([Windows.Automation.TreeScope]::Children, $mine) | Where-Object { $_.Current.ClassName -eq 'Popup' })
+  foreach ($w in $windows)
   {
-    if ($w.Current.ClassName -ne 'Popup') { continue }
+    if (-not $w) { continue }
     $scroll = $null
     if ($Items)
     {
@@ -240,6 +257,16 @@ function PopupText([switch]$Items)
         continue
       }
       if ($e.Current.Name) { $names += $e.Current.Name.Trim() }
+      else
+      {
+        # (Visual Studio 17.14's Quick Info text blocks have no name: their text through TextPattern.)
+        $pattern = $null
+        if ($e.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern) -and $pattern)
+        {
+          $text = $pattern.DocumentRange.GetText(-1)
+          if ($text) { $names += $text.Trim() }
+        }
+      }
     }
     }
   }

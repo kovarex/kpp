@@ -3,8 +3,9 @@
 # checks NAME.js logged. Opens a window; the screenshot NAME.png is of that window only.
 #   run.ps1 -Name cells -Project compiler\tests\lsp\cells -Target game
 #   run.ps1 -Name game -Project C:\factorio-in-kpp -Target factorio
+#   run.ps1 -Name libraries -Project C:\gorating (a project that uses kpp libraries)
 param(
-  [Parameter(Mandatory)][ValidateSet('cells', 'game', 'inactive')][string]$Name,
+  [Parameter(Mandatory)][ValidateSet('cells', 'game', 'inactive', 'libraries')][string]$Name,
   [Parameter(Mandatory)][string]$Project,
   [string]$Target = $null,
   [string]$Configuration = 'debug',

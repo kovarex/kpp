@@ -1901,8 +1901,9 @@ namespace
             add(childrenOf(d), container); // an unscoped enumerator is named without its enum
         }
       };
+      // A scoped library's top-level names are its name's (design.md 16: `json::parseJson`).
       for (ParsedFile* f : program.files)
-        add(f->decls, "");
+        add(f->decls, f->libraryScope != UINT32_MAX ? f->library : std::string());
       cache.symbolsKnown = true;
     }
 
@@ -2214,8 +2215,10 @@ namespace
         }
         knowSymbols(program);
         size_t added = 0;
+        // (In a scoped library's file, its own top-level names are written bare too.)
+        const std::string own = f->libraryScope != UINT32_MAX ? f->library : std::string();
         for (const Cache::Symbol& s : cache.symbols)
-          if (s.container.empty() && matches(s.name))
+          if ((s.container.empty() || (!own.empty() && s.container == own)) && matches(s.name))
           {
             if (++added > 300)
             {

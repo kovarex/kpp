@@ -138,6 +138,11 @@ The extension is in `tools/vscode`; its README covers the details.
   extension through VS Code's commands. `cells.js` runs on a copy of tests\lsp\cells, `game.js` on
   a copy of factorio-in-kpp. It opens a window and writes `NAME.log` and a screenshot of the window,
   `NAME.png`, into compiler\build\vscode; the game's copy there is 4.7 GB, to delete afterwards. Results on 2026-11-02 (factorio-in-kpp e4cfd9ba, a copy):
+  - libraries (`run.ps1 -Name libraries -Project <gorating>`, 2026-11-05): go to definition from the
+    program into a library's file (json::parseJson in libraries\json\src\JsonParse.kpp), hover and
+    semantic tokens (573) in that file, and completion after `json::` (19 items). Completion after a
+    scoped library's name offered nothing until then: the server listed a scoped library's top-level
+    names with no container (kpp 0.2.519 and before).
   - cells: 19 of 19 checks pass. A typed error appears and goes after undo. Completion offers
     `shared`. Go to definition works. Hover on `config::sound::volume` gives `7`, who set it and
     the default. The status-bar picker switches between the 6 cells, and the release cell's
@@ -156,6 +161,14 @@ The extension is in `tools/vscode`; its README covers the details.
     `when (config::debug)`, gone in release, and the hover there finds nothing to answer.
 
 ## Visual Studio 2022
+
+Checked with libraries on 2026-11-05 (gorating, its generated solution, where each library used is a
+folder Libraries\NAME beside Standard Library and src; `test.ps1 -Solution`, kpp 0.2.519 and this
+checkout's kppc): go to definition and declaration from the program into libraries\json, hover in the
+library's file, completion after `json::`, the library file's colors, a typed error; breakpoints in the
+program and in the library's code, and the natvis in a windows-gnu build (see debugging.md). Visual
+Studio 17.14's popups are no longer top-level UI Automation elements of class Popup: test.ps1 reads
+them through their window handles and TextPattern.
 
 **kpp-visualstudio.vsix** (`tools\vs\vsix`, its README has the details) is the extension: colouring, from the
 TextMate grammar it bundles, and IntelliSense from `kpp --lsp`, for Visual Studio 2022 17.14 or later.

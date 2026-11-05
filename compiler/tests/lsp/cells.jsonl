@@ -10,6 +10,8 @@
 // A name in a declaration's `when` condition (design.md 19): hover on config::debug in `when (config::debug)`, and its references from there: the static_assert's and the when's (a config constant has no definition in the sources: the configuration writes it).
 {"jsonrpc":"2.0","id":21,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":2,"character":15}}}
 {"jsonrpc":"2.0","id":22,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":2,"character":15},"context":{"includeDeclaration":false}}}
+// A scoped library's names after its name (design.md 16): completion after `sound::` offers volume.
+{"jsonrpc":"2.0","id":23,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":3,"character":27},"context":{"triggerKind":2,"triggerCharacter":":"}}}
 // Visual Studio's solution configuration names the cell: the game's release cell, with its error.
 {"jsonrpc":"2.0","id":3,"method":"kpp/selectCell","params":{"target":"game","configuration":"Release|x64"}}
 // The setting's way: the tool, still release. The game's error goes: the game's files are not the tool's.
