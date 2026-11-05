@@ -24,17 +24,11 @@ using StreamJsonRpc;
 internal static class SemanticTokens
 {
     /// <summary>
-    /// The server's legend (lsp.cpp, tokenTypes), by index, as the C++ classification each is drawn
-    /// as; a modifier picks another (static, globalScope). A local is left as the grammar draws it,
-    /// in the text's color (kovarex, 2026-11-04), and so are keywords, literals and comments.
+    /// The server's legend (kpp/semanticTokensLegend, lsp.cpp's tokenTypes and tokenModifiers): the
+    /// token types by index and each modifier's bit, by name. Asked for once per server.
     /// </summary>
-    private static readonly string[] TokenTypes =
-    {
-        "namespace", "type", "class", "enum", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "function", "method",
-    };
-
-    private const int Static = 4;
-    private const int GlobalScope = 8;
+    private static (string[] Types, Dictionary<string, int> Modifiers)? legend;
+    private static JsonRpc? legendOf;
 
     /// <summary>
     /// Each file's tokens as last answered: (line, character, length, classification name).
@@ -72,25 +66,22 @@ internal static class SemanticTokens
     }
 
     /// <summary>
-    /// The C++ classification a token is drawn as.
+    /// The C++ classification a token is drawn as, by its type's and modifiers' names. A local is
+    /// left as the grammar draws it, in the text's color (kovarex, 2026-11-04), and so are keywords,
+    /// literals and comments.
     /// </summary>
-    public static string? ClassificationOf(int type, int modifiers)
+    public static string? ClassificationOf(string type, bool isStatic, bool globalScope) => type switch
     {
-        if (type < 0 || type >= TokenTypes.Length)
-            return null;
-        return TokenTypes[type] switch
-        {
-            "namespace" => "cppNamespace",
-            "type" or "class" or "enum" or "struct" or "typeParameter" => "cppType",
-            "parameter" => "cppParameter",
-            "variable" => (modifiers & GlobalScope) != 0 ? "cppGlobalVariable" : null,
-            "property" => (modifiers & Static) != 0 ? "cppStaticMemberField" : "cppMemberField",
-            "enumMember" => "cppEnumerator",
-            "function" => "cppFunction",
-            "method" => (modifiers & Static) != 0 ? "cppStaticMemberFunction" : "cppMemberFunction",
-            _ => null,
-        };
-    }
+        "namespace" => "cppNamespace",
+        "type" or "class" or "enum" or "struct" or "typeParameter" => "cppType",
+        "parameter" => "cppParameter",
+        "variable" => globalScope ? "cppGlobalVariable" : null,
+        "property" => isStatic ? "cppStaticMemberField" : "cppMemberField",
+        "enumMember" => "cppEnumerator",
+        "function" => "cppFunction",
+        "method" => isStatic ? "cppStaticMemberFunction" : "cppMemberFunction",
+        _ => null,
+    };
 
     private static async Task AskAsync(string path)
     {
@@ -104,6 +95,20 @@ internal static class SemanticTokens
         JToken? answer;
         try
         {
+            if (legend is null || legendOf != rpc)
+            {
+                JToken? l = await rpc.InvokeWithParameterObjectAsync<JToken?>("kpp/semanticTokensLegend", new JObject());
+                var types = new List<string>();
+                foreach (JToken t in l?["tokenTypes"] as JArray ?? new JArray())
+                    types.Add((string?)t ?? string.Empty);
+                var modifiers = new Dictionary<string, int>();
+                int bit = 0;
+                foreach (JToken m in l?["tokenModifiers"] as JArray ?? new JArray())
+                    modifiers[(string?)m ?? string.Empty] = 1 << bit++;
+                legend = (types.ToArray(), modifiers);
+                legendOf = rpc;
+            }
+
             var request = new JObject { ["textDocument"] = new JObject { ["uri"] = new Uri(path).AbsoluteUri } };
             answer = await rpc.InvokeWithParameterObjectAsync<JToken?>("textDocument/semanticTokens/full", request);
         }
@@ -116,6 +121,9 @@ internal static class SemanticTokens
         // Each token is 5 numbers: its line after the previous token's, its character (after the
         // previous token's on the same line), its length, its type and its modifiers.
         var tokens = new List<(int, int, int, string)>();
+        var (typeNames, modifierBits) = legend!.Value;
+        int staticBit = modifierBits.TryGetValue("static", out int s) ? s : 0;
+        int globalBit = modifierBits.TryGetValue("globalScope", out int g) ? g : 0;
         if (answer?["data"] is JArray data)
         {
             int line = 0, character = 0;
@@ -124,7 +132,9 @@ internal static class SemanticTokens
                 int deltaLine = (int)data[i], deltaStart = (int)data[i + 1];
                 line += deltaLine;
                 character = deltaLine == 0 ? character + deltaStart : deltaStart;
-                if (ClassificationOf((int)data[i + 3], (int)data[i + 4]) is string name)
+                int type = (int)data[i + 3], modifiers = (int)data[i + 4];
+                if (type >= 0 && type < typeNames.Length &&
+                    ClassificationOf(typeNames[type], (modifiers & staticBit) != 0, (modifiers & globalBit) != 0) is string name)
                     tokens.Add((line, character, (int)data[i + 2], name));
             }
         }

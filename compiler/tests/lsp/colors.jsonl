@@ -5,5 +5,7 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"semanticColors":true}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+// The legend the extension maps the tokens by (kpp/semanticTokensLegend): the capability's.
+{"jsonrpc":"2.0","id":4,"method":"kpp/semanticTokensLegend","params":{}}
 {"jsonrpc":"2.0","id":3,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

@@ -2706,6 +2706,9 @@ namespace
     // static member; globalScope (8, clangd's), a variable of a namespace or the file. A client
     // tells a global from a local, and a static member from an instance's, by them (Visual Studio's
     // C++ colors: cppGlobalVariable, cppStaticMemberField, cppStaticMemberFunction).
+    static constexpr const char* tokenModifiers[] = {"declaration", "defaultLibrary", "static", "globalScope"};
+    enum : int { ModifierDeclaration = 1, ModifierDefaultLibrary = 2, ModifierStatic = 4, ModifierGlobalScope = 8 }; // (bits in tokenModifiers' order)
+
     int scopeModifiers(const KeptProgram& program, Decl* d)
     {
       if (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl)
@@ -2715,9 +2718,9 @@ namespace
         if (FunctionDecl* f = program.global->declarationOf(static_cast<FunctionDecl*>(d)))
           declared = f;
       if (program.global->owningClass(d)) // (a data member defined outside its class, `int Shape::count = 0;`, is a static one)
-        return declared->flags & DF_Static || (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() > 1) ? 4 : 0;
+        return declared->flags & DF_Static || (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() > 1) ? ModifierStatic : 0;
       if (d->kind == NodeKind::VariableDecl && (!d->parent || d->parent->kind == NodeKind::NamespaceDecl))
-        return 8;
+        return ModifierGlobalScope;
       return 0;
     }
 
@@ -2739,7 +2742,7 @@ namespace
           const Token& t = (*f->tokens)[o.token];
           size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t(t.offset)) - starts.begin()) - 1;
           size_t start = utf16Units(f->text, starts[line], t.offset);
-          int modifiers = (o.declaration ? 1 : 0) | (o.decl->file && o.decl->file->isLibrary ? 2 : 0) | scopeModifiers(program, o.decl);
+          int modifiers = (o.declaration ? ModifierDeclaration : 0) | (o.decl->file && o.decl->file->isLibrary ? ModifierDefaultLibrary : 0) | scopeModifiers(program, o.decl);
           data.push(line - previousLine).push(line == previousLine ? start - previousStart : start)
             .push(utf16Units(f->text, t.offset, size_t(t.offset) + t.length)).push(type).push(modifiers);
           previousLine = line;
@@ -2868,9 +2871,20 @@ namespace
       Json types = Json::array();
       for (const char* t : tokenTypes)
         types.push(t);
-      return Json::object()
-        .set("legend", Json::object().set("tokenTypes", std::move(types)).set("tokenModifiers", Json::array().push("declaration").push("defaultLibrary").push("static").push("globalScope")))
-        .set("full", true);
+      return Json::object().set("legend", semanticTokensLegend()).set("full", true);
+    }
+
+    // The legend: the token types (tokenTypes) and modifiers (tokenModifiers) by name, the one
+    // source of both. Visual Studio's extension asks for it (kpp/semanticTokensLegend), as its
+    // client is not offered the capability (semanticColors).
+    Json semanticTokensLegend()
+    {
+      Json types = Json::array(), modifiers = Json::array();
+      for (const char* t : tokenTypes)
+        types.push(t);
+      for (const char* m : tokenModifiers)
+        modifiers.push(m);
+      return Json::object().set("tokenTypes", std::move(types)).set("tokenModifiers", std::move(modifiers));
     }
 
     Json capabilities()
@@ -2995,6 +3009,8 @@ namespace
           showMessage(1, "kpp: " + error + "; still checking " + cellName(project) + ".");
         dirty = true;
       }
+      else if (method == "kpp/semanticTokensLegend")
+        respond(id, semanticTokensLegend());
       else if (method == "kpp/cells")
         respond(id, cellList());
       else if (method == "kpp/selectCell")
