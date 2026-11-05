@@ -57,6 +57,12 @@
   // 1 qualification, 2 promotion, 3 standard conversion, 4 user-defined, NotViable.
   int conversionRank(const Ty* arg, const Ty* param, int depth = 0);
 
+  // Whether an object of type t is const: t's own const, an array's its elements' ([basic.type.qualifier]
+  // 3: `const int (&)[3]` is a reference to const, a brace list or a temporary binds it).
+  static bool isConstObject(const Ty* t);
+  // t without its const and volatile, an array's elements' included (`const int[3]` is an int[3]).
+  const Ty* unqualifiedDeep(const Ty* t);
+
   // The type a class operand of a built-in operator converts to (`area < smallBlueprintAreaSize`
   // with a Const<float>): the result of its one non-explicit conversion operator to a non-class
   // type, its own or inherited (under its arguments); null when it has none or several.

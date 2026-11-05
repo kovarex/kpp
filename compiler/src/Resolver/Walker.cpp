@@ -2567,7 +2567,7 @@ auto GlobalScope::Impl::Walker::checkReferenceBindings(const std::string& callee
     const Ty* given = argTypes[i];
     bool expansion = args[i] && args[i]->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(args[i])->isKeyword &&
                      static_cast<UnaryExpr*>(args[i])->postfix && P(static_cast<UnaryExpr*>(args[i])->op) == P::Ellipsis;
-    if (!args[i] || expansion || !param || !param->isReference() || !param->inner || (param->kind == TyKind::LRef && param->inner->isConst) || !given ||
+    if (!args[i] || expansion || !param || !param->isReference() || !param->inner || (param->kind == TyKind::LRef && Impl::isConstObject(param->inner)) || !given ||
         !given->isKnown() || given->kind == TyKind::Pack || types.isDependent(given) || Impl::mentionsUnknown(given))
       continue;
     if (impl.conversionRank(given, param) < Impl::NotViable)

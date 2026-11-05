@@ -363,6 +363,21 @@ auto GlobalScope::Impl::listInitRank(const Ty* list, const Ty* p, int depth) -> 
   for (const Ty* e : elems)
     if (!e || !e->isKnown() || types.isDependent(e))
       return 2;
+  if (p->kind == TyKind::Array && p->inner)
+  {
+    // `take({1, 2, 3})` for a `const int (&)[3]`: an array the list initializes, each element
+    // converted to the array's element type, the worst of them ([over.ics.list] 6); more elements
+    // than its length, none.
+    if (p->count && elems.size() > p->count)
+      return NotViable;
+    int worst = 0;
+    for (const Ty* e : elems)
+      if (int r = conversionRank(e, p->inner, depth + 1); r >= NotViable)
+        return NotViable;
+      else
+        worst = std::max(worst, r);
+    return worst;
+  }
   if (p->kind != TyKind::Class)
   {
     if (elems.empty())
@@ -496,6 +511,20 @@ auto GlobalScope::Impl::constructorTakes(FunctionDecl* f, const std::vector<cons
   return true;
 }
 
+auto GlobalScope::Impl::isConstObject(const Ty* t) -> bool
+{
+  while (t && t->kind == TyKind::Array)
+    t = t->inner;
+  return t && t->isConst;
+}
+
+auto GlobalScope::Impl::unqualifiedDeep(const Ty* t) -> const Ty*
+{
+  if (t && t->kind == TyKind::Array && t->inner && !t->decl) // (`T[N]` with N a parameter: left as it is)
+    return types.array(unqualifiedDeep(t->inner), t->count);
+  return types.unqualified(t);
+}
+
 auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth) -> int
 {
   if (!arg || !param || !arg->isKnown() || !param->isKnown() || types.isDependent(arg) || types.isDependent(param))
@@ -512,7 +541,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // `{a, b}` for anything but an InitializerList: the object it list-initializes, whose
     // temporary binds a `T&&` better than a `const T&` (C++'s rvalue-reference rule) and a `T&`
     // not at all (`take({1, makeUnique<int>(5)})`).
-    if (param->kind == TyKind::LRef && !param->inner->isConst)
+    if (param->kind == TyKind::LRef && !isConstObject(param->inner))
       return NotViable;
     int r = listInitRank(a, types.unqualified(types.stripRef(param)), depth);
     if (r >= NotViable)
@@ -553,10 +582,10 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // whose conversion operator gives an lvalue of pt's type (of a class derived from pt's class)
     // binds a non-const `pt&` (a user-defined conversion), whatever the object's own value category;
     // a pointer's too (Agui's ValueComparePointer<Image> with `operator T*&()` for an `Image*&`).
-    if (param->kind == TyKind::LRef && !pt->isConst && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
+    if (param->kind == TyKind::LRef && !isConstObject(pt) && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
         !(pt->kind == TyKind::Class && isBaseClass(pt, a)) && convertsByOperator(a, param, depth + 1))
       return 4;
-    if (param->kind == TyKind::LRef && !pt->isConst && (!arg->isReference() || arg->kind == TyKind::RRef))
+    if (param->kind == TyKind::LRef && !isConstObject(pt) && (!arg->isReference() || arg->kind == TyKind::RRef))
       return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
     if (types.unqualified(a) == types.unqualified(pt))
     {
@@ -580,7 +609,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       if (x && y && x->kind != TyKind::Array && y->kind != TyKind::Array && types.unqualified(x) == types.unqualified(y) && (y->isConst || !x->isConst))
         return lvalueToRvalueRef ? NotViable : (a == pt ? 0 : 1);
     }
-    if (param->kind == TyKind::LRef && !pt->isConst)
+    if (param->kind == TyKind::LRef && !isConstObject(pt))
       return NotViable; // A non-const lvalue reference binds only to the same type.
     // The argument as it is (an lvalue stays one): a converting constructor taking `T&`
     // binds it (`implicit EntityAndIndex(T& entity)` given a Tower lvalue).
