@@ -17,6 +17,40 @@ void setConvertMarks()
   convertMarks = true;
 }
 
+bool setConvertPlatform(const std::string& platform)
+{
+  if (platform != "windows" && platform != "linux")
+    return false;
+  convertPlatform = platform;
+  return true;
+}
+
+bool setConvertPredefines(const std::filesystem::path& file)
+{
+  std::string text;
+  if (!readFile(file, text))
+    return false;
+  // (clang's `-dM -E`: `#define NAME BODY` lines)
+  for (size_t start = 0; start < text.size();)
+  {
+    size_t e = text.find('\n', start);
+    if (e == std::string::npos)
+      e = text.size();
+    std::string line = text.substr(start, e - start);
+    start = e + 1;
+    while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+      line.pop_back();
+    if (line.rfind("#define ", 0) != 0)
+      continue;
+    size_t nameEnd = line.find_first_of(" (", 8);
+    std::string name = line.substr(8, nameEnd == std::string::npos ? std::string::npos : nameEnd - 8);
+    if (nameEnd != std::string::npos && line[nameEnd] == '(')
+      continue; // (a function-like one: none the #if lines test)
+    convertPredefines[name] = nameEnd == std::string::npos ? "" : line.substr(nameEnd + 1);
+  }
+  return !convertPredefines.empty();
+}
+
 namespace
 {
   // A converted text cut at its #if groups' marks (convertMarks): text parts, and groups of parts.
@@ -129,6 +163,13 @@ namespace
   };
   const MergeDimension debugDimension = {"config::debug", "!config::debug", "debug", "release"};
   const MergeDimension finalDimension = {"config::finalRelease", "!config::finalRelease", "final", "release"};
+  // The platform a group's two texts are chosen by (--convert-merge-platform): each platform named, so
+  // that a third one (FreeBSD, macOS) has neither text and its build says so, never one of theirs.
+  const MergeDimension platformDimension = {"config::platform == Platform::Windows", "config::platform == Platform::Linux", "windows", "linux"};
+
+  // A group's merged text with its marks again (--convert-merge-platform keeps them for convertMerge,
+  // which makes the configurations one after): inline, so that they take no line of their own.
+  std::string marked(const std::string& group, const std::string& text) { return "/*kpp:if " + group + "*/" + text + "/*kpp:endif " + group + "*/"; }
 
   // The last character of code in a text, comments and white space left out (0 for none).
   char lastCodeChar(std::string_view text)
@@ -783,8 +824,10 @@ namespace
   // and final texts are the same is chosen by config::debug as above; one whose debug and release
   // texts are the same by config::finalRelease (final the first text); one whose three texts all
   // differ is a problem, reported.
+  // dimension: what the first two texts are chosen by (config::debug, or config::platform for
+  // --convert-merge-platform, which keeps the groups' marks: keepMarks).
   bool mergeParts(const std::vector<MarkedPart>& debug, const std::vector<MarkedPart>& release, const std::vector<MarkedPart>* final, std::string& out,
-                  const std::string& file, MergeReport& report)
+                  const std::string& file, MergeReport& report, const MergeDimension& firstDimension = debugDimension, bool keepMarks = false)
   {
     if (debug.size() != release.size() || (final && final->size() != debug.size()))
       return false;
@@ -809,9 +852,9 @@ namespace
         continue;
       }
       std::string inner;
-      if (mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report))
-        merged += inner;
-      else if (auto choice = report.choices.find(file + " " + d.group); choice != report.choices.end())
+      if (mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report, firstDimension, keepMarks))
+        merged += keepMarks ? marked(d.group, inner) : inner;
+      else if (auto choice = report.choices.find(file + " " + d.group); !keepMarks && choice != report.choices.end())
       {
         merged += flattened(choice->second == "release" ? r.parts : choice->second == "final" && f ? f->parts : d.parts);
         report.chosen.insert(choice->first);
@@ -820,7 +863,7 @@ namespace
       {
         std::string dt = flattened(d.parts), rt = flattened(r.parts);
         std::string ft = f ? flattened(f->parts) : rt;
-        const MergeDimension* dimension = &debugDimension;
+        const MergeDimension* dimension = &firstDimension;
         std::string on = dt, off = rt;
         if (ft != rt)
         {
@@ -841,7 +884,7 @@ namespace
           ++report.final;
         }
         // (an assert is the configuration's own, config::debug's; a release_assert is in every build)
-        else if (differsByAsserts(dt, rt))
+        else if (&firstDimension == &debugDimension && differsByAsserts(dt, rt))
         {
           merged += dt;
           ++report.byAsserts;
@@ -852,7 +895,7 @@ namespace
         if (blankText(on) != blankText(off))
           if (std::string joined = elseLinksWhen(blankText(on) ? off : on, blankText(on) ? dimension->off : dimension->on); !joined.empty())
           {
-            merged += joined;
+            merged += keepMarks ? marked(d.group, joined) : joined;
             ++report.conditional;
             continue;
           }
@@ -864,14 +907,18 @@ namespace
         if (inLine && semicolon != std::string::npos && next->text[semicolon] == ';' && statementAfter(out + merged))
         {
           auto statement = [](const std::string& text) { return blankText(text) ? std::string() : " " + text + ";"; };
-          merged += blankText(on) ? "if constexpr (" + std::string(dimension->off) + ") {" + statement(off) + " }"
-                                  : "if constexpr (" + std::string(dimension->on) + ") {" + statement(on) + " }" +
-                                      (blankText(off) ? "" : " else {" + statement(off) + " }");
+          std::string chosen = blankText(on) ? "if constexpr (" + std::string(dimension->off) + ") {" + statement(off) + " }"
+                                             : "if constexpr (" + std::string(dimension->on) + ") {" + statement(on) + " }" +
+                                                 (blankText(off) ? "" : " else {" + statement(off) + " }");
+          merged += keepMarks ? marked(d.group, chosen) : chosen;
           ++report.conditional;
           skipSemicolon = semicolon;
         }
         else
-          merged += conditionalGroup(on, off, out + merged, file + " (#if group " + d.group + ")", report, *dimension);
+        {
+          std::string chosen = conditionalGroup(on, off, out + merged, file + " (#if group " + d.group + ")", report, *dimension);
+          merged += keepMarks ? marked(d.group, chosen) : chosen;
+        }
       }
     }
     out += merged;
@@ -1040,5 +1087,125 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
          files, report.conditional, report.when, report.perConfiguration, report.final, report.byAsserts, report.problems.size());
   for (const std::string& p : report.problems)
     fprintf(stderr, "convert-merge: %s\n", p.c_str());
+  return report.problems.empty() ? 0 : 1;
+}
+
+// --- one configuration's two platforms made one (CONVERSION.md TODO 17) ---
+
+int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir)
+{
+  MergeReport report;
+  std::error_code ec;
+  size_t files = 0, onePlatform = 0;
+  auto write = [&](const std::string& rel, const std::string& text)
+  {
+    std::filesystem::path target = outDir / rel;
+    std::filesystem::create_directories(target.parent_path(), ec);
+    writeConvertedFile(target, text);
+  };
+  // (a file one platform alone has: its declarations are that platform's)
+  auto alone = [&](const std::string& text, const char* platform)
+  {
+    ++onePlatform;
+    return std::string("requires config::platform == Platform::") + platform + ";\n" + text;
+  };
+  // An imports file: the imports both have, then each platform's own in a file of its own, which
+  // requires the platform (an import cannot be `when`).
+  std::map<std::string, std::string> platformImports;
+  auto splitImports = [&](const std::string& rel, const std::string& windows, const std::string& linux)
+  {
+    auto lines = [](const std::string& text)
+    {
+      std::vector<std::string> out;
+      for (size_t start = 0; start < text.size();)
+      {
+        size_t e = text.find('\n', start);
+        if (e == std::string::npos)
+          e = text.size();
+        out.push_back(text.substr(start, e - start));
+        start = e + 1;
+      }
+      return out;
+    };
+    std::vector<std::string> w = lines(windows), l = lines(linux);
+    std::string common, windowsOnly, linuxOnly;
+    for (const std::string& line : w)
+      if (line.rfind("extern \"C\" import", 0) != 0 || std::find(l.begin(), l.end(), line) != l.end())
+        common += line + "\n";
+      else
+        windowsOnly += line + "\n";
+    for (const std::string& line : l)
+      if (line.rfind("extern \"C\" import", 0) == 0 && std::find(w.begin(), w.end(), line) == w.end())
+        linuxOnly += line + "\n";
+    write(rel, common);
+    std::string stem = rel.substr(0, rel.size() - 4);
+    if (!windowsOnly.empty())
+      write(stem + "-windows.kpp", "requires config::platform == Platform::Windows;\n" + windowsOnly);
+    if (!linuxOnly.empty())
+      write(stem + "-linux.kpp", "requires config::platform == Platform::Linux;\n" + linuxOnly);
+  };
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(windowsDir, ec))
+  {
+    if (!entry.is_regular_file(ec))
+      continue;
+    std::string rel = entry.path().lexically_relative(windowsDir).generic_string();
+    std::string windows, linux;
+    readFile(entry.path(), windows);
+    bool both = readFile(linuxDir / rel, linux);
+    if (entry.path().extension() != ".kpp")
+    {
+      write(rel, windows); // CONVERSION.md (Windows'), the configured headers
+      continue;
+    }
+    ++files;
+    if (!both)
+    {
+      write(rel, alone(windows, "Windows"));
+      continue;
+    }
+    if (entry.path().filename().string().rfind("c-imports", 0) == 0)
+    {
+      splitImports(rel, windows, linux);
+      continue;
+    }
+    std::vector<MarkedPart> w, l;
+    size_t a = 0, b = 0;
+    std::vector<std::string> openW, openL;
+    std::string out;
+    if (!parseMarked(windows, a, "", w, openW) || !parseMarked(linux, b, "", l, openL))
+      report.problems.push_back(rel + ": its #if marks do not nest");
+    else if (mergeParts(w, l, nullptr, out, rel, report, platformDimension, true))
+    {
+      write(rel, out);
+      continue;
+    }
+    else
+    {
+      std::string fw = flattened(w), fl = flattened(l);
+      size_t at = 0, line = 1;
+      while (at < fw.size() && at < fl.size() && fw[at] == fl[at])
+        line += fw[at++] == '\n';
+      size_t lineStart = fw.rfind('\n', at == 0 ? 0 : at - 1);
+      lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+      report.problems.push_back(rel + ":" + std::to_string(line) + ": the platforms differ outside an #if group (windows `" + firstLine(fw.substr(lineStart)) +
+                                "`, linux `" + firstLine(fl.substr(lineStart)) + "`)");
+    }
+    write(rel, windows);
+  }
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(linuxDir, ec))
+    if (entry.is_regular_file(ec) && entry.path().extension() == ".kpp")
+    {
+      std::string rel = entry.path().lexically_relative(linuxDir).generic_string();
+      if (std::filesystem::exists(windowsDir / rel, ec))
+        continue;
+      std::string linux;
+      readFile(entry.path(), linux);
+      ++files;
+      write(rel, alone(linux, "Linux"));
+    }
+  printf("convert-merge-platform: %zu files, %zu groups whose platforms differ, %zu files of one platform, %zu problems\n", files, report.conditional,
+         onePlatform, report.problems.size());
+  for (const std::string& problem : report.problems)
+    fprintf(stderr, "convert-merge-platform: %s\n", problem.c_str());
   return report.problems.empty() ? 0 : 1;
 }

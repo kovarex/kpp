@@ -247,11 +247,46 @@
   bool convertRelease = false;
   bool convertFinal = false;
   bool convertMarks = false;
+  // With kppc --convert-platform linux (CONVERSION.md TODO 17), the game as fbuild.bff builds it for
+  // Linux x86-64: its Linux `.defines` (LINUX, LUA_USE_POSIX, `NULL=0L`...) and `.architectureSpecificDefines`
+  // (ARCH_X86_64) for the Windows ones, the configuration's and the libraries' defines as for Windows,
+  // and clang's predefines for x86_64-linux-gnu with -std=c++20 -march=x86-64 -msse2 for MSVC's and the
+  // Windows SDK's (--convert-predefines FILE, clang's `-dM -E` output: programs/factorio/linux-predefines.txt).
+  // Each configuration is converted for each platform and the two made one by config::platform
+  // (kppc --convert-merge-platform), before the configurations are by config::debug.
+  std::string convertPlatform = "windows";
+  std::map<std::string, std::string> convertPredefines;
+  const std::map<std::string, std::string> linuxDefines = {
+    {"FT2_BUILD_LIBRARY", ""}, {"LINUX", ""}, {"LUA_COMPAT_ALL", ""}, {"LUA_USE_AFORMAT", ""}, {"LUA_USE_APICHECK", ""},
+    {"LUA_USE_LONGLONG", ""}, {"LUA_USE_POSIX", ""}, {"LUA_USE_STRTODHEX", ""}, {"NULL", "0L"}, {"USE_MATH_DEFINES", ""},
+    {"ARCH_X86_64", ""}};
+  const std::map<std::string, std::string>& platformDefines()
+  {
+    static const std::map<std::string, std::string> linux = []
+    {
+      std::map<std::string, std::string> d = fastDebugDefines;
+      // (Windows' .defines, its x64 and vs2022 ones, MSVC's predefines and the Windows SDK's names)
+      for (const char* name : {"WIN32_LEAN_AND_MEAN", "CRT_NONSTDC_NO_DEPRECATE", "_CRT_SECURE_NO_WARNINGS", "_SCL_SECURE_NO_WARNINGS",
+                               "_WINDOWS", "_USE_MATH_DEFINES", "USE_THREADS", "WIN32", "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS",
+                               "FACTORIO_USE_D3D", "WIN64", "_WIN32_WINNT", "_WIN32", "_WIN64", "_MSC_VER", "_M_X64", "_M_AMD64",
+                               "__cplusplus", "_WIN32_WINNT_NT4", "_WIN32_WINNT_WIN2K", "_WIN32_WINNT_WINXP", "_WIN32_WINNT_WS03",
+                               "_WIN32_WINNT_VISTA", "_WIN32_WINNT_LONGHORN", "_WIN32_WINNT_WIN7", "_WIN32_WINNT_WIN8",
+                               "_WIN32_WINNT_WINBLUE", "_WIN32_WINNT_WINTHRESHOLD", "_WIN32_WINNT_WIN10",
+                               "ENABLE_VIRTUAL_TERMINAL_PROCESSING", "DISABLE_NEWLINE_AUTO_RETURN", "GUID_DEFINED", "INVALID_FILE_ATTRIBUTES"})
+        d.erase(name);
+      for (const auto& [name, body] : linuxDefines)
+        d[name] = body;
+      for (const auto& [name, body] : convertPredefines)
+        d[name] = body;
+      return d;
+    }();
+    return convertPlatform == "linux" ? linux : fastDebugDefines;
+  }
   const std::map<std::string, std::string>& buildDefines()
   {
     static const std::map<std::string, std::string> release = []
     {
-      std::map<std::string, std::string> d = fastDebugDefines;
+      std::map<std::string, std::string> d = platformDefines();
       for (const char* name : {"_DEBUG", "DEBUG", "DISABLE_EXPRESSION_ID"})
         d.erase(name);
       d["NDEBUG"] = "";
@@ -265,7 +300,7 @@
       d["ALL_IN_ONE"] = "1";
       return d;
     }();
-    return convertFinal ? final : convertRelease ? release : fastDebugDefines;
+    return convertFinal ? final : convertRelease ? release : platformDefines();
   }
   // The build a C library converted as C (kppc --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's

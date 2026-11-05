@@ -64,7 +64,8 @@ namespace
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
-    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--no-run", 0}};
+    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1},
+    {"--no-run", 0}};
 }
 
 int compileOptionValues(const std::string& arg)
@@ -124,6 +125,10 @@ int main(int argc, char** argv)
   // RELEASE OUT`.
   if ((argc >= 5 && argc <= 7) && std::string(argv[1]) == "--convert-merge")
     return convertMerge(argv[2], argv[3], argv[4], argc >= 6 ? argv[5] : "", argc == 7 ? argv[6] : "");
+  // One configuration's Windows and Linux conversions made one (convert.hpp): `kppc
+  // --convert-merge-platform WINDOWS LINUX OUT`.
+  if (argc == 5 && std::string(argv[1]) == "--convert-merge-platform")
+    return convertMergePlatform(argv[2], argv[3], argv[4]);
   // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")

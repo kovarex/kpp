@@ -6,13 +6,22 @@
 // property (the game fills the root styles from its Lua prototypes); fillRootStyle plays that part.
 extern "C" int printf(const char* format, ...);
 
+// The Void backend's font leaves Font's getAscent pure, as Agui's C++ does (it is never made there):
+// the smoke test's font gives it, so that it is a font kpp can make (an abstract class is an error).
+class SmokeFont : public agui::VoidAguiBackendFont
+{
+public:
+  float getAscent() const override { return 0; }
+};
+
 class SmokeFontLoader : public agui::FontLoader
 {
 public:
   agui::Font* loadFont(const String& fileName, int height, int fontFlags, float borderWidth, const agui::Color& borderColor) override
   {
-    return new agui::VoidAguiBackendFont();
+    return new SmokeFont();
   }
+  agui::Font* loadEmptyFont() override { return new SmokeFont(); }
 };
 
 // Agui polls its input through this interface; the smoke test has no events.
@@ -65,7 +74,7 @@ int main()
 {
   SmokeFontLoader loader;
   agui::Font::setFontLoader(&loader);
-  agui::VoidAguiBackendFont font;
+  SmokeFont font;
   fillRootLabelStyle(agui::Label::defaultStyle, &font);
   fillRootStyle(agui::EmptyWidget::defaultStyle);
   fillRootStyle(const_cast<agui::Style&>(agui::Widget::defaultWidgetStyle)); // the top container's style

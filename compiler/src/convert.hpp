@@ -80,6 +80,16 @@ void setConvertRelease();
 // kppc --convert-final: FinalRelease's (Release's with FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE).
 void setConvertFinal();
 void setConvertMarks();
+// kppc --convert-platform windows|linux: the platform the game is preprocessed for (Windows' defines
+// and MSVC's predefines, or Linux's and those --convert-predefines FILE gives, clang's `-dM -E`
+// output). False for another name or an unreadable file.
+bool setConvertPlatform(const std::string& platform);
+bool setConvertPredefines(const std::filesystem::path& file);
+// kppc --convert-merge-platform WINDOWS LINUX OUT: one configuration's marked Windows and Linux
+// conversions made one, each #if group whose two texts differ chosen by config::platform, its marks
+// kept for convertMerge, which makes the configurations one after; a file of one platform alone
+// starts `requires config::platform == Platform::X;`. Returns 1 when they differ outside a group.
+int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir);
 // kppc --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).

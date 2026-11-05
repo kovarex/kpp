@@ -229,6 +229,16 @@ int compile(int argc, char** argv)
       setConvertFinal();
     else if (arg == "--convert-marks")
       setConvertMarks();
+    else if (arg == "--convert-platform" && i + 1 < argc)
+    {
+      if (!setConvertPlatform(argv[++i]))
+        return optionError(arg + std::string(" ") + argv[i]);
+    }
+    else if (arg == "--convert-predefines" && i + 1 < argc)
+    {
+      if (!setConvertPredefines(argv[++i]))
+        return optionError(arg + std::string(" ") + argv[i]);
+    }
     else if (arg[0] == '-')
       return optionError(arg);
     else
