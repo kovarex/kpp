@@ -1,0 +1,46 @@
+// spec: a brace initialization narrows no value, as C++'s list-initialization ([dcl.init.list] 3, 7): a floating value to an integer (`int x{1.5};`, `int a[2] = {1, 2.5};`, an aggregate's member), a double that is no constant to a float, an integer that is no constant to a narrower or unsigned integer (`int x{big};` with a long long big, `unsigned u{i};`) or to a floating type, and a constant integer that does not fit (`char c{300};`) are compile errors; a constant that fits (`char c{65};`, `unsigned char u{255};`, `float f{1.0};`) and a widening conversion (`long long w{i};`, `double d{f};`) are not, nor is `int x = 1.5;` (no braces: it converts)
+// found by thread D (2026-11-05), comparing narrowing with clang: kpp checked none, and truncated (`int x{1.5};` was 1)
+// error: brace_initialization_narrows_nothing.kpp:34: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing.kpp:35: error: a brace initialization narrows 300 (int32) to char, which cannot hold it
+// error: brace_initialization_narrows_nothing.kpp:36: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing.kpp:37: error: a brace initialization narrows int64, which is no constant, to int32
+// error: brace_initialization_narrows_nothing.kpp:38: error: a brace initialization narrows int32, which is no constant, to uint32
+// error: brace_initialization_narrows_nothing.kpp:39: error: a brace initialization narrows double, which is no constant, to float
+// error: brace_initialization_narrows_nothing.kpp:40: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing.kpp:41: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing.kpp:42: error: a brace initialization narrows 300 (int32) to char, which cannot hold it
+// error: brace_initialization_narrows_nothing.kpp:43: error: a brace initialization narrows double to int32
+// error: brace_initialization_narrows_nothing.kpp:44: error: a brace initialization narrows int64, which is no constant, to double
+struct Point
+{
+  int x;
+  int y;
+};
+int main()
+{
+  int i = 5;
+  long long big = 5;
+  double d = 2.5;
+  float f = 1.5f;
+  const int k = 300;
+  const int small = 100;
+  char ok1{65};
+  unsigned char ok2{255};
+  float ok3{1.0};
+  long long ok4{i};
+  double ok5{f};
+  char ok6{small};
+  int ok7 = 1.5;
+  int n1{1.5};
+  char n2{300};
+  int n3{d};
+  int n4{big};
+  unsigned n5{i};
+  float n6{d};
+  int n7[2] = {1, 2.5};
+  Point n8{1.5, 2};
+  char n9{k};
+  int n10 = {2.0};
+  double n11{big};
+  return ok1 + ok2 + int(ok3) + int(ok4) + int(ok5) + ok6 + ok7 + n1 + n2 + n3 + n4 + int(n5) + int(n6) + n7[0] + n8.x + n9 + n10 + int(n11);
+}

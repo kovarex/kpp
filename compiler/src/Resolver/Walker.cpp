@@ -2565,6 +2565,253 @@ auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty
   reportHere(b->token, "copy-list-initialising " + name + " by its explicit constructor, which only a direct-initialisation takes (" + name + "{...})");
 }
 
+auto GlobalScope::Impl::Walker::surelyNotConstant(const Expr* e, int depth) -> bool
+{
+  if (!e || depth > 16)
+    return false;
+  switch (e->kind)
+  {
+    case NodeKind::NameExpr:
+    {
+      Decl* d = static_cast<const NameExpr*>(e)->resolved;
+      if (!d)
+        return false;
+      if (d->kind == NodeKind::ParamDecl)
+        return true;
+      if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Constexpr | DF_Typedef)))
+      {
+        const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
+        return t && t->isKnown() && !t->isReference() && !Impl::isConstObject(t);
+      }
+      return false;
+    }
+    case NodeKind::MemberExpr:
+    {
+      Decl* d = static_cast<const MemberExpr*>(e)->resolved;
+      return d && d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Constexpr | DF_Typedef));
+    }
+    case NodeKind::CallExpr:
+    {
+      const Expr* callee = static_cast<const CallExpr*>(e)->callee;
+      Decl* d = callee && callee->kind == NodeKind::NameExpr ? static_cast<const NameExpr*>(callee)->resolved
+                : callee && callee->kind == NodeKind::MemberExpr ? static_cast<const MemberExpr*>(callee)->resolved
+                : nullptr;
+      return d && d->kind == NodeKind::FunctionDecl && !(d->flags & (DF_Constexpr | DF_Consteval));
+    }
+    case NodeKind::ParenExpr: return surelyNotConstant(static_cast<const ParenExpr*>(e)->inner, depth + 1);
+    case NodeKind::UnaryExpr: return surelyNotConstant(static_cast<const UnaryExpr*>(e)->operand, depth + 1);
+    case NodeKind::BinaryExpr:
+      return surelyNotConstant(static_cast<const BinaryExpr*>(e)->lhs, depth + 1) || surelyNotConstant(static_cast<const BinaryExpr*>(e)->rhs, depth + 1);
+    case NodeKind::CastExpr: return surelyNotConstant(static_cast<const CastExpr*>(e)->operand, depth + 1);
+    case NodeKind::NamedCastExpr: return surelyNotConstant(static_cast<const NamedCastExpr*>(e)->operand, depth + 1);
+    case NodeKind::IndexExpr: return surelyNotConstant(static_cast<const IndexExpr*>(e)->base, depth + 1);
+    default: return false;
+  }
+}
+
+auto GlobalScope::Impl::Walker::narrows(Expr* e, const Ty* from, const Ty* to, std::string& why) -> bool
+{
+  const Ty* f = from ? types.unqualified(types.stripRef(from)) : nullptr;
+  const Ty* t = to ? types.unqualified(types.stripRef(to)) : nullptr;
+  if (!e || !f || !t || !f->isKnown() || !t->isKnown() || types.isDependent(f) || types.isDependent(t) || Impl::mentionsUnknown(f) ||
+      Impl::mentionsUnknown(t))
+    return false;
+  if (f->kind == TyKind::Enum)
+  {
+    if (!f->decl || static_cast<EnumDecl*>(f->decl)->isClass)
+      return false; // (a scoped enumeration converts to no integer: another check's)
+    const Ty* u = impl.declaredUnderlying(f);
+    f = u && u->isKnown() && u->kind != TyKind::Enum ? types.unqualified(u) : types.intType(32);
+  }
+  auto integral = [](const Ty* x) { return x->kind == TyKind::Int || x->kind == TyKind::Char || x->kind == TyKind::Bool; };
+  std::string source = types.toString(f, &impl.symbols), target = types.toString(t, &impl.symbols);
+  if ((f->kind == TyKind::Pointer || f->kind == TyKind::MemberPointer) && t->kind == TyKind::Bool)
+  {
+    why = source + " to bool";
+    return true;
+  }
+  if (f->kind == TyKind::Float && integral(t))
+  {
+    why = source + " to " + target;
+    return true;
+  }
+  // Whether integer type t holds every value of integer type f.
+  auto holdsAll = [&](const Ty* x, const Ty* of) {
+    if (of->kind == TyKind::Bool)
+      return true;
+    if (x->kind == TyKind::Bool)
+      return false;
+    if (of->isUnsigned == x->isUnsigned)
+      return x->bits >= of->bits;
+    return of->isUnsigned && x->bits > of->bits;
+  };
+  bool floatNarrower = f->kind == TyKind::Float && t->kind == TyKind::Float && t->bits < f->bits;
+  bool intToFloat = integral(f) && t->kind == TyKind::Float;
+  bool intToInt = integral(f) && integral(t) && !holdsAll(t, f);
+  if (!floatNarrower && !intToFloat && !intToInt)
+    return false;
+  // The exception: a constant the target holds.
+  std::string savedWhy = Impl::constWhy();
+  std::optional<ConstValue> v = probesSharedNodes() ? std::nullopt : impl.constValue(e, ctx());
+  Impl::constWhy() = savedWhy;
+  if (!v || !v->isScalar())
+  {
+    if (!surelyNotConstant(e))
+      return false;
+    why = source + ", which is no constant, to " + target;
+    return true;
+  }
+  bool fits = true;
+  std::string shown;
+  if (v->isFloat())
+  {
+    double x = v->f;
+    shown = std::to_string(x);
+    if (t->kind == TyKind::Float && t->bits == 32)
+      fits = std::isnan(x) || std::isinf(x) || std::fabs(x) <= double(std::numeric_limits<float>::max());
+  }
+  else
+  {
+    // The integer as its type has it: a 64-bit unsigned one's bits are its value.
+    bool big = f->isUnsigned && f->bits == 64 && v->i < 0;
+    uint64_t u = uint64_t(v->i);
+    shown = big ? std::to_string(u) : std::to_string(v->i);
+    if (t->kind == TyKind::Float)
+    {
+      double asFloat = t->bits == 32 ? double(float(big ? double(u) : double(v->i))) : (big ? double(u) : double(v->i));
+      fits = big ? asFloat < 18446744073709551616.0 && uint64_t(asFloat) == u : asFloat >= -9223372036854775808.0 && asFloat < 9223372036854775808.0 && int64_t(asFloat) == v->i;
+    }
+    else if (t->kind == TyKind::Bool)
+      fits = !big && (v->i == 0 || v->i == 1);
+    else if (t->isUnsigned)
+      fits = big ? t->bits == 64 : v->i >= 0 && (t->bits >= 64 || uint64_t(v->i) < (uint64_t(1) << t->bits));
+    else
+      fits = !big && (t->bits >= 64 || (v->i >= -(int64_t(1) << (t->bits - 1)) && v->i < (int64_t(1) << (t->bits - 1))));
+  }
+  if (fits)
+    return false;
+  why = shown + " (" + source + ") to " + target + ", which cannot hold it";
+  return true;
+}
+
+auto GlobalScope::Impl::Walker::checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth) -> void
+{
+  if (probing || activeSubst || !file || depth > 8 || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
+    return;
+  const Ty* t = types.unqualified(types.stripRef(to));
+  // One element initializing what: a nested list the same way, an expression checked.
+  auto element = [&](Expr* e, const Ty* target) {
+    if (!e || !target)
+      return;
+    if (e->kind == NodeKind::BraceInitExpr)
+    {
+      if (static_cast<BraceInitExpr*>(e)->designators.empty() && !static_cast<BraceInitExpr*>(e)->text)
+        checkListNarrowing(static_cast<BraceInitExpr*>(e)->args, target, depth + 1);
+      return;
+    }
+    if (!e->ty || !e->ty->isKnown() || e->ty->kind == TyKind::Pack || types.isDependent(e->ty) || Impl::mentionsUnknown(e->ty))
+      return;
+    std::string why;
+    if (narrows(e, e->ty, target, why))
+      reportCheck(e->token, "a brace initialization narrows " + why + " ([dcl.init.list] 7): C++ refuses it, a cast says it is meant");
+  };
+  // Whether an element that is no list initializes a whole element of type target (else brace
+  // elision spreads it over target's parts: the targets are not told here).
+  auto whole = [&](Expr* e, const Ty* target) {
+    const Ty* u = types.unqualified(types.stripRef(target));
+    if (!e || e->kind == NodeKind::BraceInitExpr || (u->kind != TyKind::Class && u->kind != TyKind::Array))
+      return true;
+    const Ty* given = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+    return given && (given == u || (given->kind == TyKind::Class && u->kind == TyKind::Class && impl.isBaseClass(u, given)));
+  };
+  if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
+  {
+    if (elements.size() == 1)
+      element(elements[0], t);
+    return;
+  }
+  if (t->kind == TyKind::Array && t->inner)
+  {
+    for (Expr* e : elements)
+      if (!whole(e, t->inner))
+        return;
+    for (Expr* e : elements)
+      element(e, t->inner);
+    return;
+  }
+  if (t->kind != TyKind::Class || t->isBraceList() || Impl::lambdaOf(t))
+    return;
+  if (impl.isInitializerList(t))
+  {
+    if (!t->args.empty())
+      for (Expr* e : elements)
+        element(e, t->args[0]);
+    return;
+  }
+  ClassDecl* def = impl.classDefinition(t);
+  if (!def || def->isTypedUnion || (def->attributes & ATTR_Draft))
+    return;
+  Subst s = impl.substFor(t);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  bool constructors = false;
+  for (Decl* m : membersRead(def))
+    constructors = constructors || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+  if (!constructors)
+  {
+    // An aggregate: its members in order (one with bases: its bases first, not told here).
+    if (!def->bases.empty())
+      return;
+    std::vector<const Ty*> members;
+    for (Decl* m : membersRead(def))
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(m)->name.empty())
+        members.push_back(impl.declaredTypeOf(m, sp, 0));
+    if (elements.size() > members.size())
+      return;
+    for (size_t i = 0; i < elements.size(); ++i)
+      if (!members[i] || !whole(elements[i], members[i]))
+        return;
+    for (size_t i = 0; i < elements.size(); ++i)
+      element(elements[i], members[i]);
+    return;
+  }
+  // A class with constructors: its InitializerList constructor when the elements convert to its
+  // element type ([over.match.list] 1), else the constructor chosen for the elements as arguments.
+  std::vector<const Ty*> argTypes;
+  for (Expr* a : elements)
+  {
+    if (!a || a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty) || Impl::mentionsUnknown(a->ty) ||
+        a->ty->kind == TyKind::Pack)
+      return;
+    argTypes.push_back(argumentType(a, a->ty, types));
+  }
+  if (argTypes.size() == 1 && types.unqualified(types.stripRef(argTypes[0])) == t)
+    return; // a copy or a move
+  for (Decl* m : membersRead(def))
+  {
+    auto* f = m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) ? static_cast<FunctionDecl*>(m) : nullptr;
+    const Ty* first = f && !f->params.empty() ? impl.declaredTypeOf(f->params[0], sp, 0) : nullptr;
+    const Ty* list = first ? types.unqualified(types.stripRef(first)) : nullptr;
+    if (!list || !impl.isInitializerList(list) || list->args.empty() || !impl.takesArgumentCount(f, 1))
+      continue;
+    bool converts = true;
+    for (const Ty* a : argTypes)
+      converts = converts && impl.conversionRank(a, list->args[0], 0) < NotViable;
+    if (converts)
+    {
+      for (Expr* e : elements)
+        element(e, list->args[0]);
+      return;
+    }
+  }
+  bool ambiguous = false;
+  FunctionDecl* ctor = impl.chooseConstructor(t, argTypes, nullptr, nullptr, false, &ambiguous);
+  if (!ctor || ambiguous || !ctor->templateParams.empty())
+    return;
+  for (size_t i = 0; i < elements.size() && i < ctor->params.size(); ++i)
+    if (auto* p = static_cast<ParamDecl*>(ctor->params[i]); p && !p->isPack)
+      element(elements[i], impl.declaredTypeOf(p, sp, 0));
+}
+
 auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
 {
   if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy))
@@ -2576,7 +2823,11 @@ auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty
     if (args[i] && argTypes[i] && argTypes[i]->kind != TyKind::Pack)
     {
       if (args[i]->kind == NodeKind::BraceInitExpr)
+      {
         checkExplicitListCopy(static_cast<BraceInitExpr*>(args[i]), fnTy->args[i]);
+        if (static_cast<BraceInitExpr*>(args[i])->designators.empty() && !static_cast<BraceInitExpr*>(args[i])->text)
+          checkListNarrowing(static_cast<BraceInitExpr*>(args[i])->args, fnTy->args[i]); // `take({1.5})` for an int
+      }
       else
         checkExplicitCopy(argTypes[i], fnTy->args[i], args[i]->token);
     }
@@ -5556,6 +5807,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
+      // `int x{1.5};`, `char c = {300};`, `int a[2] = {1, 2.5};`: a brace list narrowing an element.
+      if (v->init && declared && !impl.containsAuto(declared) && v->init->kind == NodeKind::BraceInitExpr &&
+          static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
+        checkListNarrowing(static_cast<BraceInitExpr*>(v->init)->args, declared);
       // `int& r = c;` with `const int c`, `int& e{c};`: a non-const reference given a const object.
       if (v->init && declared && declared->kind == TyKind::LRef && !impl.containsAuto(declared) && !v->name.empty())
       {
@@ -6325,7 +6580,11 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           if (Expr* value = static_cast<ReturnStmt*>(s)->value; value && ft->inner && !impl.containsAuto(ft->inner) && !(bodyOf->flags & DF_Constructor))
           {
             if (value->kind == NodeKind::BraceInitExpr)
+            {
               checkExplicitListCopy(static_cast<BraceInitExpr*>(value), ft->inner);
+              if (static_cast<BraceInitExpr*>(value)->designators.empty() && !static_cast<BraceInitExpr*>(value)->text)
+                checkListNarrowing(static_cast<BraceInitExpr*>(value)->args, ft->inner); // `return {1.5};` from a function returning int
+            }
             else
             {
               checkExplicitCopy(t, ft->inner, value->token);
@@ -6628,6 +6887,13 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         checkConstruction(t, n->args, n->token);
         packText(n->args, textConstructor(t, n->args), n->token); // `new Problem("bad ", point)`
       }
+      else if (n->args.size() == 1 && n->args[0] && n->args[0]->kind == NodeKind::BraceInitExpr)
+      {
+        if (auto* list = static_cast<BraceInitExpr*>(n->args[0]); list->designators.empty() && !list->text)
+          checkListNarrowing(list->args, t); // `new int{1.5}`
+      }
+      else
+        checkListNarrowing(n->args, t);
       return record(e, t->isKnown() ? types.pointer(t) : t);
     }
     case NodeKind::DeleteExpr:
@@ -6856,6 +7122,13 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         checkConstruction(t, c->args, c->token);
         packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`, `Problem problem("bad ", point);`
       }
+      else if (c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr)
+      {
+        if (auto* list = static_cast<BraceInitExpr*>(c->args[0]); list->designators.empty() && !list->text)
+          checkListNarrowing(list->args, t); // `int{1.5}`, `Point{1.5, 2}`
+      }
+      else
+        checkListNarrowing(c->args, t);
       return record(e, t);
     }
     case NodeKind::TypeidExpr:

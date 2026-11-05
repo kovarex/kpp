@@ -504,6 +504,22 @@
     // `Strict s = {5};`, `return {5};`: copy-list-initialisation whose chosen constructor is explicit
     // ([over.match.list]).
     void checkExplicitListCopy(BraceInitExpr* b, const Ty* to);
+    // Whether converting e (of type from) to type to in a brace initialization narrows it
+    // ([dcl.init.list] 7): a floating value to an integer; a floating one to a floating type of
+    // fewer bits, or an integer to a floating type, unless e is a constant the target holds (and,
+    // for an integer, gives back); an integer to an integer type that cannot hold all its type's
+    // values unless e is a constant that fits; a pointer to bool. why: what the message says. A
+    // value the evaluator cannot tell is taken to fit unless e is surely no constant.
+    bool narrows(Expr* e, const Ty* from, const Ty* to, std::string& why);
+    // Whether e's value is surely no constant: it reads a parameter, a variable that is neither
+    // const nor constexpr, a data member, or calls a function that is not constexpr.
+    bool surelyNotConstant(const Expr* e, int depth = 0);
+    // The elements of a brace list initializing an object of type to, each checked for narrowing
+    // against what it initializes: a scalar's one element, an array's or an aggregate's elements in
+    // order (a nested list the same way), an InitializerList's elements, the chosen constructor's
+    // parameters; an error for each that narrows. Not where brace elision leaves the targets
+    // unclear, nor in a template's instance (as checkExplicitListCopy).
+    void checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth = 0);
     // Each argument of a call of f (fnTy: its type) for a class parameter, checked (checkExplicitCopy).
     void checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
 
