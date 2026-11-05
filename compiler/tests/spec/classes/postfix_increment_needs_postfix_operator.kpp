@@ -1,0 +1,34 @@
+// spec: `c++` and `c--` of a class call its postfix operator, `operator++(int)` (a member's, or a free `operator++(C&, int)`), never the prefix `operator++()`: a class declaring only the prefix one makes `c++` a compile error, as in C++ ([over.inc]); `++c` calls the prefix one
+// found by thread B (2026-11-05): `c++` called the prefix operator (an MSVC extension), which C++ rejects
+// error: postfix_increment_needs_postfix_operator.kpp:31: error: c++ of Counter, which declares no postfix operator++(int)
+// error: postfix_increment_needs_postfix_operator.kpp:32: error: c-- of Counter, which declares no postfix operator--(int)
+struct Counter
+{
+  int v = 0;
+  Counter& operator++()
+  {
+    ++this->v;
+    return *this;
+  }
+  Counter& operator--()
+  {
+    --this->v;
+    return *this;
+  }
+};
+struct Both
+{
+  int v = 0;
+  Both& operator++() { ++this->v; return *this; }
+  Both operator++(int) { Both old = *this; ++this->v; return old; }
+};
+int main()
+{
+  Counter c;
+  ++c;
+  Both b;
+  b++;
+  c++;
+  c--;
+  return c.v + b.v;
+}

@@ -1,7 +1,7 @@
 // spec: `c++` and `c--` on a class that has only the prefix operator are errors, as in C++ (clang: "cannot increment value of type 'C'"), where kpp called the prefix one, MSVC's extension: `C d = c++;` gave d the incremented value, `1 1` for C++'s `1 0` had it compiled
-// found by thread B (2026-11-05), reading codegen's postfix operators
-// error: postfix_increment_without_postfix_operator_is_error.kpp:15: error: C has no postfix operator++ (operator++(int)), which x++ calls: C++ never takes the prefix one for it
-// error: postfix_increment_without_postfix_operator_is_error.kpp:21: error: C has no postfix operator-- (operator--(int)), which x-- calls: C++ never takes the prefix one for it
+// found by thread B (2026-11-05), reading codegen's postfix operators; the checker reports it since (thread D), codegen's own error behind it
+// error: postfix_increment_without_postfix_operator_is_error.kpp:15: error: c++ of C, which declares no postfix operator++(int)
+// error: postfix_increment_without_postfix_operator_is_error.kpp:21: error: c-- of C, which declares no postfix operator--(int)
 class C
 {
 public:

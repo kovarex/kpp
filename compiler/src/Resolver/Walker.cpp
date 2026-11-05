@@ -4493,7 +4493,32 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
     }
     if (types.isDependent(s))
       return types.unknown();
-    if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
+    if (u->postfix && (op == P::PlusPlus || op == P::MinusMinus))
+    {
+      // `c++`: the class's postfix operator, `operator++(int)` (a member's, or a free one taking the
+      // object and an int), never the prefix `operator++()`, which `c++` called (MSVC's extension:
+      // C++ rejects it, [over.inc]).
+      if (const Ty* r = overloadedOperator(op, t, types.intType(), u->token, 2, false, argumentType(u->operand, t, types)))
+      {
+        call = operatorCall;
+        callee = operatorChosen;
+        member = operatorIsMember;
+        return r;
+      }
+      if (const Ty* prefix = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
+      {
+        Expr* operand = u->operand;
+        while (operand && operand->kind == NodeKind::ParenExpr)
+          operand = static_cast<ParenExpr*>(operand)->inner;
+        std::string written = operand && operand->kind == NodeKind::NameExpr ? std::string(symbols.name(static_cast<NameExpr*>(operand)->name.last().symbol)) : "an object";
+        reportHere(u->token, written + std::string(punctuatorSpelling(op)) + " of " + types.toString(types.unqualified(s), &symbols) +
+                                 ", which declares no postfix operator" + std::string(punctuatorSpelling(op)) +
+                                 "(int): C++ calls that one for a postfix " + std::string(punctuatorSpelling(op)) + ", never the prefix one ([over.inc])");
+        operatorCall = OperatorCall::Undecided;
+        return prefix;
+      }
+    }
+    else if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
     {
       call = operatorCall;
       callee = operatorChosen;
