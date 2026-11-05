@@ -2941,7 +2941,11 @@ auto GlobalScope::Impl::constCopyConstruct(const Ty* t, const ConstValue& v, con
     {
       std::optional<ConstPlace> part = at;
       if (part)
+      {
         part->path.push_back(i);
+        part->type = t->inner; // (the element's: a constructor's reference parameter binds it as one)
+        part->bits = 0;
+      }
       std::optional<ConstValue> e = constCopyConstruct(t->inner, (*v.parts)[i], part, moving, depth + 1);
       if (!e)
         return std::nullopt;
@@ -2971,7 +2975,11 @@ auto GlobalScope::Impl::constCopyConstruct(const Ty* t, const ConstValue& v, con
     const Ty* partType = i < layout->bases.size() ? layout->bases[i] : layout->fieldTypes[i - layout->bases.size()];
     std::optional<ConstPlace> part = at;
     if (part)
+    {
       part->path.push_back(i);
+      part->type = partType; // (the member's: a constructor's reference parameter binds it as one)
+      part->bits = i < layout->bases.size() ? 0 : layout->fieldBits[i - layout->bases.size()];
+    }
     std::optional<ConstValue> e = (*v.parts)[i].isObject() ? constCopyConstruct(partType, (*v.parts)[i], part, moving, depth + 1)
                                                           : std::optional<ConstValue>((*v.parts)[i]);
     if (!e)
@@ -3140,7 +3148,8 @@ auto GlobalScope::Impl::constConstructFrom(const Ty* t, Span<Expr*> args, const 
   const Ty* u = types.unqualified(types.stripRef(t));
   if (values.size() == 1 && places.size() == 1 && categories.size() == 1 && constIsObjectOf(values[0], u))
     return constFromObject(u, values[0], places[0], categories[0], depth, target);
-  return constConstruct(u, values, false, depth + 1, values.size() == args.size() ? &args : nullptr, target, values.size() == places.size() ? &places : nullptr);
+  return constConstruct(u, values, false, depth + 1, values.size() == args.size() ? &args : nullptr, target, values.size() == places.size() ? &places : nullptr,
+                        values.size() == categories.size() ? &categories : nullptr);
 }
 
 auto GlobalScope::Impl::constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth, const ConstPlace* target) -> std::optional<ConstValue>
@@ -3160,11 +3169,30 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
       auto* b = static_cast<BraceInitExpr*>(init);
       return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth) : constBraceInit(u, b, ctx, depth, target);
     }
+    // An object of another class converted by u's converting constructor, the one the value as
+    // written chooses, its argument bound by its category: `Optional<String> o = s;` takes s by
+    // `const T&`, where it is (by the value alone, an rvalue: `Optional(T&&)` moved from s, a String
+    // two objects then freed); `Optional<String> o = String("x");` binds `T&& v` to a temporary of
+    // the full expression, which the move leaves empty and that end destroys (it was a copy no one
+    // destroyed: "memory allocated at String.kpp:657 is never freed").
+    auto otherClass = [&](const std::optional<ConstValue>& value) {
+      return !t->isReference() && u->kind == TyKind::Class && value && value->isObject() && value->type && !value->type->isBraceList() &&
+             types.unqualified(types.stripRef(value->type)) != u;
+    };
+    auto converted = [&](const ConstValue& value) {
+      Expr* source = nullptr;
+      std::vector<std::optional<ConstPlace>> places{constPure(init) ? constPlaceOf(init, ctx, depth + 1) : std::nullopt};
+      std::vector<uint8_t> categories{constCategory(init, source)};
+      Span<Expr*> written{&init, 1};
+      return constConstruct(u, {value}, true, depth + 1, &written, target, &places, &categories);
+    };
     if (!t->isReference())
     {
       std::optional<ConstValue> evaluated;
       if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init, u, ctx, depth, false, &evaluated, target))
         return *copied;
+      if (otherClass(evaluated))
+        return converted(*evaluated);
       if (evaluated)
         return constConvertTo(evaluated, u, depth); // (evaluated once: `C c = *it++;`)
       // `T x(args)`, `T x = T(args)`: the constructor run where the object lives (target).
@@ -3189,7 +3217,10 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
     }
     if (std::optional<ConstValue> chars = constCharArrayFromLiteral(u, init, ctx, depth))
       return chars;
-    return constConvertTo(constValue(init, ctx, depth + 1), u, depth);
+    std::optional<ConstValue> value = constValue(init, ctx, depth + 1);
+    if (otherClass(value))
+      return converted(*value);
+    return constConvertTo(value, u, depth);
   }
   std::optional<ConstValue> v = constInitValue(init, ctx, depth);
   if (v && u && v->isObject() && v->type && !v->type->isBraceList() && types.unqualified(types.stripRef(v->type))->kind == TyKind::Class &&
@@ -3551,7 +3582,7 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   if (!inheritedFrom)
   {
     if (ctor->templateParams.empty())
-      return constRunConstructor(ctor, t, args, depth + 1, nullptr, nullptr, places, target); // (a reference parameter refers to its argument's place)
+      return constRunConstructor(ctor, t, args, depth + 1, nullptr, nullptr, places, target, categories); // (a reference parameter refers to its argument's place)
     // `template<class T1, class T2> GamePair(T1&& key, T2&& value)`: its parameters as the
     // arguments deduce them, with the class's (an lvalue's a reference: `Box(U&& u) :
     // held(forward<U>(u))` given an lvalue copies it).
@@ -3564,7 +3595,7 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
         return std::nullopt;
     if (implicitOnly && ctor->explicitCondition && isExplicit(ctor, &own))
       return std::nullopt; // `explicit(!isConvertible<U, T>)` true for these arguments: no implicit conversion
-    return constRunConstructor(ctor, t, args, depth + 1, &own, nullptr, places, target);
+    return constRunConstructor(ctor, t, args, depth + 1, &own, nullptr, places, target, categories);
   }
   // `using Vector2::Vector2;`: a base's constructor makes that base's part, the class's own
   // members coming from their defaults (an inherited constructor).
@@ -3654,7 +3685,8 @@ auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, 
     // constructor ([dcl.init.list] 3.7), which constConstruct would take as it is.
     if (elements.size() == 1 && places && categories && places->size() == 1 && categories->size() == 1 && constIsObjectOf(elements[0], u))
       return constFromObject(u, elements[0], (*places)[0], (*categories)[0], depth, target);
-    return constConstruct(u, elements, false, depth + 1, written, target, places && places->size() == elements.size() ? places : nullptr);
+    return constConstruct(u, elements, false, depth + 1, written, target, places && places->size() == elements.size() ? places : nullptr,
+                          categories && categories->size() == elements.size() ? categories : nullptr);
   }
   return elements.size() == 1 && !constIsBraceList(elements[0]) ? constAsDeclared(elements[0], t) : std::nullopt;
 }
@@ -4423,7 +4455,8 @@ auto GlobalScope::Impl::constRangeEnd(const ConstValue& range, uint32_t symbol, 
   return constCallOn(f, subst, {}, &self, depth + 1, at);
 }
 
-auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target,
+                                             const std::vector<uint8_t>* categories) -> std::optional<ConstValue>
 {
   struct Call
   {
@@ -4448,7 +4481,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     FunctionDecl* def = constDefinition(ctor);
     if (!def || def->params.size() != ctor->params.size())
       return std::nullopt;
-    return constRunConstructor(def, t, args, depth, own, ctor, places, target);
+    return constRunConstructor(def, t, args, depth, own, ctor, places, target, categories);
   }
   if (!ctor->body)
   {
@@ -4510,29 +4543,15 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
       env.push_back(std::move(b));
       break;
     }
+    // As a function's (constBindParameter): `Text(Text&& other)` given the source's place refers to
+    // it (a move empties it); `Optional(T&& v)` given `String("x")` to a temporary of the caller's
+    // full expression, which the move leaves empty and that end destroys (it was a copy no one
+    // destroyed: "memory allocated at String.kpp:657 is never freed"); `ByValue(String v)` given
+    // an lvalue gets a copy by String's copy constructor (it shared the lvalue's block: "memory
+    // freed twice"), which the constructor destroys when it returns (constRunBody).
     const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
-    if (type && type->isReference() && places && i < places->size() && (*places)[i])
-    {
-      // `Text(Text&& other)` given the source's place: a reference to it (a move empties it).
-      const ConstPlace& at = *(*places)[i];
-      ConstBinding alias{p->name, ConstValue::unset(type)};
-      alias.type = at.type;
-      alias.writable = !(type->inner && type->inner->isConst) && !at.readOnly;
-      alias.aliasEnv = at.env;
-      alias.aliasIndex = at.index;
-      alias.aliasPath = at.path;
-      env.push_back(std::move(alias));
-      continue;
-    }
-    std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
-                                : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
-    if (!v)
+    if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, places, categories, env))
       return std::nullopt;
-    env.push_back(constBinding(p->name, *v, type));
-    // `G(M&& m) : held(move(m))` given `M(8)`: the temporary it binds, which a move empties (it was
-    // read only, so the move was no constant).
-    if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
-      env.back().writable = true;
   }
   // The members' initial values: the bases' in their order, then the data members' in declaration
   // order, as C++ initializes them whatever order the initializers are written in ([class.base.init]
@@ -4751,7 +4770,12 @@ auto GlobalScope::Impl::constRunBody(FunctionDecl* ctor, const Ty* t, const Cons
     return std::nullopt;
   if (self >= env.size() || env[self].symbol != constThisSymbol)
     return std::nullopt;
-  return target ? constRead(*target) : std::optional<ConstValue>(env[self].value);
+  std::optional<ConstValue> made = target ? constRead(*target) : std::optional<ConstValue>(env[self].value);
+  // The parameters end with the constructor: a by-value one it made is destroyed (`ByValue(String
+  // v) : s(move(v))`: v's empty String), as a function's are (constRun).
+  if (!constEndLocals(env, 0, depth, true))
+    return std::nullopt;
+  return made;
 }
 
 auto GlobalScope::Impl::constThis(const TypeContext& ctx) -> ConstBinding*
@@ -6992,88 +7016,8 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       break;
     }
     const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
-    // A reference refers to the argument's object when that is of its type (or of a class derived
-    // from it: the base part); anything else converts, a class object it makes being a temporary.
-    std::optional<std::vector<size_t>> basePart;
-    if (type && type->isReference() && i < args.size() && type->inner)
-    {
-      const Ty* want = types.unqualified(type->inner);
-      const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
-                     : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
-                                                                                        : nullptr;
-      // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
-      if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
-        basePart = std::vector<size_t>{};
-      else if (have && have->kind == TyKind::Class && want->kind == TyKind::Class)
-        basePart = constBasePath(have, want, depth + 1);
-    }
-    bool prvalue = categories && i < categories->size() && (*categories)[i] == 0;
-    if (type && type->isReference() && i < args.size() && !args[i].isUnset() &&
-        ((!basePart && types.unqualified(type->inner)->kind == TyKind::Class) ||
-         (basePart && !(places && i < places->size() && (*places)[i]) && prvalue && args[i].isObject() && args[i].type && constDestroyRunsCode(args[i].type))))
-    {
-      // `const Text& t` given `Text("a")`, or a StringView where a `const String&` is wanted: a
-      // temporary of the caller's full expression, which the function refers to (and may move
-      // from), destroyed when that ends.
-      std::optional<ConstValue> v = constConvertTo(args[i], types.unqualified(type->inner), depth + 1);
-      std::optional<ConstPlace> at = v && v->isObject() && v->type && constDestroyRunsCode(v->type) ? constMaterialize(*v, type->inner) : std::nullopt;
-      if (at)
-      {
-        ConstBinding alias{p->name, ConstValue::unset(type)};
-        alias.type = at->type;
-        alias.writable = !(type->inner && type->inner->isConst);
-        alias.aliasEnv = at->env;
-        alias.aliasIndex = at->index;
-        env.push_back(std::move(alias));
-        continue;
-      }
-    }
-    if (type && type->isReference() && places && i < places->size() && (*places)[i] && basePart)
-    {
-      // `int& out`, `const Point& p` given a local: a reference to it (to its base part).
-      const ConstPlace& at = *(*places)[i];
-      ConstBinding alias{p->name, ConstValue::unset(type)};
-      alias.type = basePart->empty() ? (*places)[i]->type : types.unqualified(type->inner);
-      alias.writable = !isConstObject(type->inner) && !at.readOnly;
-      alias.aliasEnv = at.env;
-      alias.aliasIndex = at.index;
-      alias.aliasPath = at.path;
-      alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
-      env.push_back(std::move(alias));
-      continue;
-    }
-    std::optional<ConstValue> v;
-    if (i < args.size() && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] &&
-        args[i].isObject() && args[i].type && types.unqualified(types.stripRef(args[i].type)) == types.unqualified(type) &&
-        constCopyRunsCode(type))
-    {
-      // `Counted c` given an lvalue: copied by the class's copy constructor (an xvalue: moved).
-      std::optional<ConstPlace> at = places && i < places->size() ? (*places)[i] : std::nullopt;
-      v = constCopyConstruct(type, args[i], at, (*categories)[i] == 2, depth + 1);
-    }
-    else
-    {
-      // `path(path(a, b), c)` with a StringView parameter: the String the inner call made is
-      // converted, and is a temporary of the caller's full expression, destroyed when that ends.
-      bool held = places && i < places->size() && (*places)[i];
-      if (i < args.size() && type && categories && i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type &&
-          types.unqualified(types.stripRef(args[i].type)) != types.unqualified(types.stripRef(type)) && constDestroyRunsCode(args[i].type) && !held)
-        constMaterialize(args[i], args[i].type);
-      else if (held && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] == 0 &&
-               types.unqualified(types.stripRef(args[i].type)) == types.unqualified(types.stripRef(type)))
-        (*places)[i]->binding().owns = false; // the prvalue's temporary is the parameter now: destroyed by the call
-      v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
-                          : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
-    }
-    if (!v)
+    if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, places, categories, env))
       return std::nullopt;
-    env.push_back(constBinding(p->name, *v, type));
-    // A by-value parameter is the function's to destroy, once the evaluator knows it made it (a
-    // copy, a prvalue, a default).
-    env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
-    env.back().referenceToTemporary = type && type->isReference(); // (a value: of no place the run holds)
-    if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
-      env.back().writable = true; // (the temporary an rvalue reference binds: `take(3)` of `take(int&& x)`, which may change it)
   }
   size_t selfAt = env.size();
   if (self && *self && selfPlace)
@@ -7117,6 +7061,94 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
   if (flow != ConstFlow::Returned || !result)
     return std::nullopt;
   return returns ? constConvertTo(result, returns, depth + 1) : result;
+}
+
+auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
+                                            const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::vector<ConstBinding>& env) -> bool
+{
+  // A reference refers to the argument's object when that is of its type (or of a class derived
+  // from it: the base part); anything else converts, a class object it makes being a temporary.
+  std::optional<std::vector<size_t>> basePart;
+  if (type && type->isReference() && i < args.size() && type->inner)
+  {
+    const Ty* want = types.unqualified(type->inner);
+    const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
+                   : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
+                                                                                      : nullptr;
+    // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
+    if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
+      basePart = std::vector<size_t>{};
+    else if (have && have->kind == TyKind::Class && want->kind == TyKind::Class)
+      basePart = constBasePath(have, want, depth + 1);
+  }
+  bool prvalue = categories && i < categories->size() && (*categories)[i] == 0;
+  if (type && type->isReference() && i < args.size() && !args[i].isUnset() &&
+      ((!basePart && types.unqualified(type->inner)->kind == TyKind::Class) ||
+       (basePart && !(places && i < places->size() && (*places)[i]) && prvalue && args[i].isObject() && args[i].type && constDestroyRunsCode(args[i].type))))
+  {
+    // `const Text& t` given `Text("a")`, or a StringView where a `const String&` is wanted: a
+    // temporary of the caller's full expression, which the function refers to (and may move
+    // from), destroyed when that ends.
+    std::optional<ConstValue> v = constConvertTo(args[i], types.unqualified(type->inner), depth + 1);
+    std::optional<ConstPlace> at = v && v->isObject() && v->type && constDestroyRunsCode(v->type) ? constMaterialize(*v, type->inner) : std::nullopt;
+    if (at)
+    {
+      ConstBinding alias{p->name, ConstValue::unset(type)};
+      alias.type = at->type;
+      alias.writable = !(type->inner && type->inner->isConst);
+      alias.aliasEnv = at->env;
+      alias.aliasIndex = at->index;
+      env.push_back(std::move(alias));
+      return true;
+    }
+  }
+  if (type && type->isReference() && places && i < places->size() && (*places)[i] && basePart)
+  {
+    // `int& out`, `const Point& p` given a local: a reference to it (to its base part).
+    const ConstPlace& at = *(*places)[i];
+    ConstBinding alias{p->name, ConstValue::unset(type)};
+    alias.type = basePart->empty() ? (*places)[i]->type : types.unqualified(type->inner);
+    alias.writable = !isConstObject(type->inner) && !at.readOnly;
+    alias.aliasEnv = at.env;
+    alias.aliasIndex = at.index;
+    alias.aliasPath = at.path;
+    alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
+    env.push_back(std::move(alias));
+    return true;
+  }
+  std::optional<ConstValue> v;
+  if (i < args.size() && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] &&
+      args[i].isObject() && args[i].type && types.unqualified(types.stripRef(args[i].type)) == types.unqualified(type) &&
+      constCopyRunsCode(type))
+  {
+    // `Counted c` given an lvalue: copied by the class's copy constructor (an xvalue: moved).
+    std::optional<ConstPlace> at = places && i < places->size() ? (*places)[i] : std::nullopt;
+    v = constCopyConstruct(type, args[i], at, (*categories)[i] == 2, depth + 1);
+  }
+  else
+  {
+    // `path(path(a, b), c)` with a StringView parameter: the String the inner call made is
+    // converted, and is a temporary of the caller's full expression, destroyed when that ends.
+    bool held = places && i < places->size() && (*places)[i];
+    if (i < args.size() && type && categories && i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type &&
+        types.unqualified(types.stripRef(args[i].type)) != types.unqualified(types.stripRef(type)) && constDestroyRunsCode(args[i].type) && !held)
+      constMaterialize(args[i], args[i].type);
+    else if (held && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] == 0 &&
+             types.unqualified(types.stripRef(args[i].type)) == types.unqualified(types.stripRef(type)))
+      (*places)[i]->binding().owns = false; // the prvalue's temporary is the parameter now: destroyed by the call
+    v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
+                        : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
+  }
+  if (!v)
+    return false;
+  env.push_back(constBinding(p->name, *v, type));
+  // A by-value parameter is the callee's to destroy, once the evaluator knows it made it (a copy,
+  // a prvalue, a default).
+  env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
+  env.back().referenceToTemporary = type && type->isReference(); // (a value: of no place the run holds)
+  if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
+    env.back().writable = true; // (the temporary an rvalue reference binds: `take(3)` of `take(int&& x)`, which may change it)
+  return true;
 }
 
 auto GlobalScope::Impl::constBinding(uint32_t symbol, const ConstValue& v, const Ty* declared) -> ConstBinding

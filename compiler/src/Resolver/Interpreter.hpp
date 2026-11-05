@@ -623,7 +623,10 @@
   // target: the place the object is made in (a local's binding), written with the members before
   // the body runs on it there, so that what the body points at the object (a List's sentinel at
   // itself) points at the object where it lives, never at a binding of the constructor's own.
-  std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own = nullptr, FunctionDecl* declared = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr, const ConstPlace* target = nullptr);
+  // categories: the arguments' value categories (constArguments'), where the caller knows them: as a
+  // function's, a parameter binds by them (constBindParameter).
+  std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own = nullptr, FunctionDecl* declared = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr, const ConstPlace* target = nullptr,
+                                                const std::vector<uint8_t>* categories = nullptr);
 
   // A constructor's body run with `this` the object its initializers made: the object as the
   // body leaves it; with target, written there first and run on it there.
@@ -975,6 +978,17 @@
   // places: the arguments' places, for reference parameters (a reference parameter given none
   // gets a copy it may not write).
   std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth, std::optional<ConstValue>* self = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr, const ConstPlace* selfPlace = nullptr, std::optional<ConstPlace>* returnPlace = nullptr);
+
+  // Parameter p (not a pack) of a function or a constructor being run, of type `type`, bound in env
+  // to argument i (its default when the call gives none), as constRun and constRunConstructor bind
+  // them alike: a reference refers to the argument where it is (its base part), else to a temporary
+  // of the caller's full expression (a prvalue the callee may move from, an object a conversion
+  // makes), destroyed when that ends; a by-value one is copied by its class's copy constructor
+  // (moved from an xvalue), and is the callee's to destroy once the evaluator knows it made it.
+  // places, categories: the arguments' (constArguments'), either null where the caller has none.
+  // false: no constant.
+  bool constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
+                          const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::vector<ConstBinding>& env);
 
   // A parameter's or a local's binding: its declared type (the value's own for auto), and whether
   // it refers to the caller's object (a reference other than to const), which step 2 cannot

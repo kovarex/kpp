@@ -2469,6 +2469,14 @@ a base through an alias (`using Leaf = TupleLeaf<...>;`, `: Leaf(head)`), so a T
 (language/consteval_base_initialized_through_alias). A union's member no initializer names is not
 made (a String member's block was allocated and never freed), so a union holding a String, made in
 it by placement new and destroyed there, is a constant (language/consteval_union_member_not_constructed).
+A constructor's parameters bind their arguments as a function's do (one rule for both): a by-value
+one is copied by its class's copy constructor (moved from an xvalue) and destroyed when the
+constructor returns, a reference given a prvalue refers to a temporary of the full expression, which
+a move empties and that end destroys, and a `const String&` given a StringView refers to the String
+made from it; copy-initialization through a converting constructor binds the initializer by its
+value category (`Optional<String> o = s;` copies s, `Optional<String> o = String("x");` moves from
+the temporary), so an Optional<String> made from a String is a constant
+(language/consteval_constructor_parameters_bind_as_function_parameters).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error
