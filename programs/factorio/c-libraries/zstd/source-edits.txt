@@ -5,3 +5,7 @@
 @ libraries/zstd/common/xxhash.c: XXH_swap32 and XXH_swap64 are xxhash's own functions on every platform (a macro of MSVC's _byteswap_ulong on Windows, a function on Linux, where clang's GCC_VERSION is 402)
 - #if defined(_MSC_VER)     /* Visual Studio */
 + #if 0 /* kpp: the functions below on every platform */
+
+@ libraries/zstd/common/cpu.h: no cpuid off Windows (kpp has no inline assembly): the features zstd selects by are taken as none there, the portable paths, which give the same output
+- #elif defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
++ #elif 0 /* kpp: no inline assembly */

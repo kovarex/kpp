@@ -435,6 +435,8 @@ const std::map<std::string, std::set<std::string>>& paddingHeaderNames()
   static const std::map<std::string, std::set<std::string>> names = []
   {
     static const std::pair<const char*, const char*> lists[] = {
+    // (glibc's pthread.h, which libstdc++'s <thread> brings in: SystemUtil's Linux thread names)
+    {"pthread.h", "pthread_self pthread_setname_np pthread_getname_np pthread_t "},
     {"stdlib.h",
      "EXIT_FAILURE EXIT_SUCCESS MB_CUR_MAX RAND_MAX _CALL_REPORTFAULT _CVTBUFSIZE _LDBL12 _LDOUBLE _LONGDOUBLE _MAX_DIR "
      "_MAX_DRIVE _MAX_ENV _MAX_EXT _MAX_FNAME _MAX_I64TOSTR_BASE10_COUNT _MAX_I64TOSTR_BASE16_COUNT _MAX_I64TOSTR_BASE2_COUNT "

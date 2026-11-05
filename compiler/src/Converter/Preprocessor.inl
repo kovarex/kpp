@@ -260,6 +260,9 @@
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
     {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
+    // UnitTest++'s per-compiler macros, nothing in kpp: BREAK_UNDER_DEBUGGER (CheckInternal.kpp's
+    // breakUnderDebugger is it; `((void)0)` off Windows) and GCC's UNITTEST_EXTENSION, `__extension__`.
+    {"BREAK_UNDER_DEBUGGER", ""}, {"UNITTEST_EXTENSION", ""},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""},
     // errno: the stdlib's accessor, one spelling on every platform (_errno() on Windows, glibc's
@@ -269,7 +272,9 @@
     {"SDL_PRIs64", "\"I64d\""},
     // C headers' constants that are casts, which the C import does not take for constants (signal.h,
     // SDL_audio.h, SDL_touch.h).
-    {"SIG_DFL", "((_crt_signal_t)0)"},
+    // (SIG_DFL is a null handler on every platform: Windows' `((_crt_signal_t)0)`, glibc's
+    // `((__sighandler_t) 0)`)
+    {"SIG_DFL", "nullptr"},
     {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
     {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)(-1))"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)(-1))"},
     // SDL_hints.h's names, which the game joins to a literal (SoundInterfaceSDL's

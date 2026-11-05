@@ -784,6 +784,17 @@ declared per platform:
   other's files, as fbuild.bff's (Windows' PngLoad, StacktraceToStream and UnitTest++'s Posix
   SignalTranslator, Linux's minizip iowin32), so they are files of one platform; crc32fast is little endian without its own
   __LITTLE_ENDIAN and __BIG_ENDIAN (glibc's endian.h has them).
+- Member macros are each platform's (winsock2.h's s_addr and s6_addr on Windows; glibc's s6_addr,
+  sa_handler, st_mtime and ifa_broadaddr on Linux), marked so a statement using one is each
+  platform's; an if-else chain whose links differ by platform is each platform's whole if statement
+  (a link joined with `config::platform == ...` compiled the other's code: zlib's _wopen);
+  SIG_DFL is nullptr; intrin.h is imported on every platform (immintrin.h off Windows).
+- Windows-only replacements that were override definitions (CrashHandler's minidump without SEH,
+  InterruptibleStdioStream's read with fgets) are source edits of the Windows branches, so Linux keeps
+  its own code. The game's Linux code that assumed what kpp does not have: a path is wide text on
+  every platform (its Path widens UTF-8 as on Windows), the last write time comes from stat, no C++
+  ABI names (demangle and the current exception's type), no inline assembly (zstd's cpuid), no long
+  double functions (trio's powl, a test's nexttoward as nextafter).
 - A choice's second arm is Linux's: a third platform (FreeBSD) takes it until it is converted as
   itself.
 - convert.cmd: the whole game's platform merge has no problem (C:\Factorio 4c178a5b915, debug: 246

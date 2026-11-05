@@ -1,15 +1,3 @@
-// Hand-written part of Util/CrashHandler: createMinidumpAndTerminate threw to itself inside MSVC's
-// __try/__except, whose filter wrote the minidump with the exception pointers of that moment. kpp
-// has no SEH filters (docs/path-to-factorio.md, "Structured exception handling"), so the dump is
-// written without an exception record (MiniDumpWriteDump takes none); then the process ends as
-// before.
-void CrashHandler::createMinidumpAndTerminate()
-{
-  if (CrashHandler::createMinidumpOnCrash)
-    CrashHandler::createMinidump(nullptr);
-  TerminateProcess(GetCurrentProcess(), 1);
-}
-
 // eh.h's set_terminate, which install() and setThreadExceptionHandlers() call: kpp's own terminate
 // handler (the stdlib's setTerminate), which an exception nobody catches calls, on Windows too since
 // thread I's 2b996495, so that the game's TerminateHandler writes its crash report for kpp's

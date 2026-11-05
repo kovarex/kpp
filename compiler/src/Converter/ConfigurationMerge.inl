@@ -1089,6 +1089,9 @@ namespace
         return colon != std::string_view::npos && code[colon] == ':';
       };
       bool caseLabel = label(wt) || label(lt);
+      // (an if-else chain's links of one platform are no statements: the whole if statement is each
+      // platform's, as a link joined with `config::platform == ...` would compile the other's code)
+      bool elseLink = codeStart(blankText(wt) ? lt : wt).substr(0, 4) == "else";
       // (nor is a text whose brackets do not close in it: UDPSocket's `while (true) {` and its first
       // statements, select's on Windows and poll's on Linux, the loop's rest after the group)
       auto balanced = [](const std::string& text)
@@ -1116,11 +1119,10 @@ namespace
         }
         return depth == 0;
       };
-      if (statementAfter(prefix) && whole(wt) && whole(lt) && !handler(wt) && !handler(lt) && balanced(wt) && balanced(lt) && !caseLabel)
+      if (statementAfter(prefix) && whole(wt) && whole(lt) && !handler(wt) && !handler(lt) && balanced(wt) && balanced(lt) && !caseLabel &&
+          !elseLink)
         continue;
       if (inLine && onlyLiterals(wt) && onlyLiterals(lt))
-        continue;
-      if (blankText(wt) != blankText(lt) && !elseLinksWhen(blankText(wt) ? lt : wt, "c").empty())
         continue;
       if (inLine && statementAfter(prefix) && i + 1 < w.size() && w[i + 1].group.empty() &&
           w[i + 1].text.find_first_not_of(" \t") != std::string::npos && w[i + 1].text[w[i + 1].text.find_first_not_of(" \t")] == ';')
@@ -1264,8 +1266,14 @@ namespace
           boundary[stack.size()] = at + 1; // (an access specifier ends what was before it)
         else if (c == ';')
         {
-          boundary[stack.size()] = at + 1;
-          if (groupBlock != SIZE_MAX && at >= starts[i + 1] && stack.size() == groupBlock)
+          // (a statement an else follows is the if's: `if (a) x; else y;`)
+          size_t following = nextCode(at + 1), followingEnd = following;
+          while (followingEnd < all.size() && isIdentChar(all[followingEnd]))
+            ++followingEnd;
+          bool elseFollows = std::string_view(all).substr(following, followingEnd - following) == "else";
+          if (!elseFollows)
+            boundary[stack.size()] = at + 1;
+          if (groupBlock != SIZE_MAX && at >= starts[i + 1] && stack.size() == groupBlock && !elseFollows)
             end = at + 1;
         }
         ++at;
@@ -1422,7 +1430,7 @@ namespace
         }
         // Links of an if-else chain that one configuration alone has: each link's condition joined
         // with the configuration's (elseLinksWhen).
-        if (blankText(on) != blankText(off))
+        if (blankText(on) != blankText(off) && dimension != &platformDimension)
           if (std::string joined = elseLinksWhen(blankText(on) ? off : on, blankText(on) ? dimension->off : dimension->on); !joined.empty())
           {
             merged += keepMarks ? markedLike(d, joined) : joined;
@@ -1670,8 +1678,11 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     };
     std::vector<std::string> w = lines(windows), l = lines(linux);
     std::string common, windowsOnly, linuxOnly;
+    // (intrin.h is every platform's: off Windows the C import takes immintrin.h and x86intrin.h for
+    // it, where the game's SSE code finds _mm_ names its Linux branches include no header for)
     for (const std::string& line : w)
-      if (line.rfind("extern \"C\" import", 0) != 0 || std::find(l.begin(), l.end(), line) != l.end())
+      if (line.rfind("extern \"C\" import", 0) != 0 || std::find(l.begin(), l.end(), line) != l.end() ||
+          line.rfind("extern \"C\" import \"intrin.h\";", 0) == 0)
         common += line + "\n";
       else
         windowsOnly += line + "\n";

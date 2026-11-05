@@ -149,3 +149,258 @@
 @ src/Util/SSE.hpp: the operators on a vector type and __m128 are every platform's (kpp's vector types are clang's everywhere)
 - #ifndef _MSC_VER
 + #if 1 /* kpp: on every platform (its __m128 is clang's vector type everywhere) */
+
+# CrashHandler's minidump before terminating: MSVC's __try/__except wrote it with the exception pointers
+# of a throw to itself; kpp has no SEH filters (docs/path-to-factorio.md, "Structured exception
+# handling"), so it writes the dump without an exception record (MiniDumpWriteDump takes none). A source
+# edit (was an override definition, which the Linux side had too, where the class has no such member).
+@ src/Util/CrashHandler.cpp: the minidump without SEH (kpp has no SEH filters)
+-   if (CrashHandler::createMinidumpOnCrash)
+-   {
+-     auto createMinidump = [](DWORD /*exceptionCode*/, PEXCEPTION_POINTERS exceptionInfo)
+-     {
+-       CrashHandler::createMinidump(exceptionInfo);
+-       return EXCEPTION_EXECUTE_HANDLER;
+-     };
+-
+-     __try
+-     {
+-       throw 0;
+-     }
+-     __except (createMinidump(GetExceptionCode(), GetExceptionInformation()))
+-     {
+-     }
+-   }
++   if (CrashHandler::createMinidumpOnCrash)
++     CrashHandler::createMinidump(nullptr);
+
+# InterruptibleStdioStream::read on Windows: std::getline(std::cin, ...) through the console API (kpp has
+# no iostreams, docs/design.md 4): the line read with the C library's fgets on stdin, piece by piece up
+# to its line break, which is left out as getline leaves it; at the end of the input a partial line
+# still counts, an empty one does not. unblock() puts an Enter key press into the console's input, which
+# ends the line being read (docs/path-to-factorio.md, "Standard input"). (Was an override of the whole
+# function, which replaced Linux's poll and read too.)
+@ src/Util/Streams/InterruptibleStdioStream.cpp: Windows' read with fgets (kpp has no iostreams)
+- #else
+-   if (!GetStdHandle(STD_INPUT_HANDLE))
+-   {
+-     // Factorio server could run in background (without console), don't abort.
+-     LOG_NOTICE("GetStdHandle failed.");
+-     return false;
+-   }
+-
+-   // When stdin is a Pipe (from another process, such as debugadapter session, or a server manager process), we can PeekNamedPipe to find out how much is available
+-   // on it, and then just read it.
+-   // But when stdin is a Console, things are much more complicated:
+-   // First, if launched directly from `cmd`, cmd sees we are a Win32 (not Console) app, and assumes we are done with the console immediately, so when we AttachConsole
+-   // to it also, we're fighting over the input stream, with interleaved reads, rendering it essentially unusable.
+-   // Launching with `start /wait factorio.exe --whatever-args` gets cmd out of the way becuase it sees `start`, a console app, still running and backs off.
+-   // Additionally, the Input Handle receives more than just key events (window size and focus mostly, it seems), so we need to check what kinds of events we've gotten
+-   // to see if there's really keys before trying to ReadConsole (which will discard non-key events for us) for the typed text, one character at a time.
+-   // We also have to disable Line Editing (above), which causes Enter to come in as just `\r`, so we expand this back out to `\r\n` here.
+-
+-   const DWORD stdinType = GetFileType(GetStdHandle(STD_INPUT_HANDLE));
+-   while (true)
+-   {
+-     bool ready = false;
+-     switch (stdinType)
+-     {
+-       case FILE_TYPE_PIPE:
+-       {
+-         DWORD inputReady = 0;
+-         if (!PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0, NULL, &inputReady, NULL))
+-         {
+-           LOG_ERROR("PeekNamedPipe failed.");
+-           return false;
+-         }
+-         ready = inputReady > 0;
+-         break;
+-       }
+-       case FILE_TYPE_CHAR:
+-       {
+-         DWORD numEvents;
+-         if (!GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &numEvents))
+-         {
+-           LOG_ERROR("GetNumberOfConsoleInputEvents failed.");
+-           return false;
+-         }
+-         if (numEvents > 0)
+-         {
+-           // this ought to be enough events to get to a real keypress, we only really take one at a time...
+-           constexpr DWORD maxRecords = 64;
+-           INPUT_RECORD ir[maxRecords];
+-           DWORD numRead;
+-           if (!PeekConsoleInput(GetStdHandle(STD_INPUT_HANDLE), ir, maxRecords, &numRead))
+-           {
+-             LOG_ERROR("PeekConsoleInput failed.");
+-             return false;
+-           }
+-           for (DWORD i = 0; i < numRead; i++)
+-             if (ir[i].EventType == KEY_EVENT && ir[i].Event.KeyEvent.bKeyDown)
+-             {
+-               ready = true;
+-               break;
+-             }
+-         }
+-         break;
+-       }
+-       default:
+-         LOG_ERROR("Bad STDIN type.");
+-         return false;
+-     }
+-     if (this->unblockFlag)
+-       return false;
+-
+-     if (ready)
+-     {
+-       constexpr size_t bufferSize = 512;
+-       char buffer[bufferSize];
+-       DWORD numRead=0;
+-       switch (stdinType)
+-       {
+-         case FILE_TYPE_PIPE:
+-           if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), buffer, bufferSize, &numRead, NULL))
+-           {
+-             LOG_ERROR("ReadFile failed.");
+-             return false;
+-           }
+-           break;
+-         case FILE_TYPE_CHAR:
+-           if (!ReadConsole(GetStdHandle(STD_INPUT_HANDLE), buffer, 1, &numRead, NULL))
+-           {
+-             LOG_ERROR("ReadConsole failed.");
+-             return false;
+-           }
+-           if (numRead == 1)
+-           {
+-             // enter comes in raw as just \r, so add the \n too
+-             if (buffer[0] == '\r')
+-             {
+-               buffer[1] = '\n';
+-               numRead++;
+-             }
+-             WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), buffer, numRead, NULL, NULL);
+-           }
+-           break;
+-       }
+-       if (numRead > 0)
+-       {
+-         result.clear();
+-         result.assign(buffer, buffer + numRead);
+-         return true;
+-       }
+-       if (numRead == 0)
+-       {
+-         LOG_ERROR("Got EOF on stdin; closing");
+-         return false;
+-       }
+-     }
+-     Sleep(10);
+-   }
+-   return false;
+- #endif
++ #else
++   if (!GetStdHandle(STD_INPUT_HANDLE))
++   {
++     // Factorio server could run in background (without console), don't abort.
++     LOG_NOTICE("GetStdHandle failed.");
++     return false;
++   }
++   result.clear();
++   char buffer[512];
++   for (;;)
++   {
++     if (!fgets(buffer, sizeof(buffer), stdin))
++       return !result.empty() && !this->unblockFlag;
++     int length = (int)strlen(buffer);
++     if (length > 0 && buffer[length - 1] == '\n')
++     {
++       result.append(buffer, length - 1);
++       return !this->unblockFlag;
++     }
++     result.append(buffer, length);
++   }
++ #endif
+
+# TCPSocket::wait's select set on Windows is readSet, not fds: Linux's pollfd fds[2] stands in the
+# function's scope, which a `when (config::platform == Platform::Windows)` fds of the loop would hide on
+# Linux (design.md 19: a `when` declaration that does not exist still hides outer names).
+@ src/Net/TCPSocket.cpp: Windows' select set is named readSet (Linux's fds is the function's)
+-     fd_set fds;
+-     FD_ZERO(&fds);
+-
+- #pragma warning(push)
+- #pragma warning(disable: 4548)
+-     FD_SET(this->socket, &fds);
+-     FD_SET(this->unblockSocket, &fds);
+- #pragma warning(pop)
+-     timeval timeout { 0, timeoutMilliseconds * 1000 };
+-     int ready = select(static_cast<int>(Math::max(this->socket, this->unblockSocket)) + 1, &fds, nullptr, nullptr, &timeout);
+-
+-     if (ready == SOCKET_ERROR)
+-       throw RuntimeError("select failed: " + lastSocketErrorString());
+-
+-     if (FD_ISSET(this->unblockSocket, &fds))
++     fd_set readSet;
++     FD_ZERO(&readSet);
++
++ #pragma warning(push)
++ #pragma warning(disable: 4548)
++     FD_SET(this->socket, &readSet);
++     FD_SET(this->unblockSocket, &readSet);
++ #pragma warning(pop)
++     timeval timeout { 0, timeoutMilliseconds * 1000 };
++     int ready = select(static_cast<int>(Math::max(this->socket, this->unblockSocket)) + 1, &readSet, nullptr, nullptr, &timeout);
++
++     if (ready == SOCKET_ERROR)
++       throw RuntimeError("select failed: " + lastSocketErrorString());
++
++     if (FD_ISSET(this->unblockSocket, &readSet))
+
+# Off Windows the game's C++ ABI names (cxxabi.h) are no kpp's: its exceptions and type names are its own.
+@ libraries/CommonUtil/Demangle.cpp: a type's name as it is on every platform (kpp's names are not the C++ ABI's to demangle)
+- #ifndef WIN32
+-   std::string demangle(const std::string& name)
+-   {
+-     int status;
++ #if 0 /* kpp: no C++ ABI's names (abi::__cxa_demangle) on any platform */
++   std::string demangle(const std::string& name)
++   {
++     int status;
+
+@ src/Util/CrashHandler.cpp: no C++ ABI's current exception type (kpp's exceptions are its own)
+- #if defined(__GNUC__) || defined(__clang__)
+-   if (auto currentExceptionType = abi::__cxa_current_exception_type())
++ #if 0 /* kpp: no abi::__cxa_current_exception_type on any platform */
++   if (auto currentExceptionType = abi::__cxa_current_exception_type())
+
+# std::filesystem's last_write_time and file_clock are no kpp's yet: the file's time from POSIX's stat
+# on Linux (its seconds since the epoch, as the Windows branch computes them from FILETIME).
+@ src/Filesystem/Filesystem.cpp: the last write time from stat off Windows
+-     auto lastWriteTime = last_write_time(p);
+-     const auto lastWriteTimeSys = std::chrono::file_clock::to_sys(lastWriteTime);
+-     const auto lastWriteTimeSysCasted = std::chrono::time_point_cast<std::chrono::system_clock::time_point::duration>(lastWriteTimeSys);
+-     return std::chrono::system_clock::to_time_t(lastWriteTimeSysCasted);
++     struct stat status;
++     if (stat(p.string().c_str(), &status) != 0)
++       throw Filesystem::filesystem_error(std::string("Failed to get last_write_time"), p, std::error_code(errno, std::system_category()));
++     return status.st_mtime;
+
+# A path is wide text on every platform in kpp (docs/stdlib/filesystem.md): the game's Path takes text
+# as its Windows code does, widened from UTF-8.
+@ src/Filesystem/Filesystem.cpp: Path from UTF-8 text widens it on every platform (kpp's path is wide everywhere)
+- #ifdef WIN32
+-   static_assert(sizeof(Path::value_type) == 2, "wchar_t is expected");
++ #if 1 /* kpp: a path is wide text on every platform */
++   static_assert(sizeof(Path::value_type) == 2, "wchar_t is expected");
+
+@ src/Filesystem/Filesystem.hpp: Path from wide text on every platform (kpp's path is wide everywhere)
+- #ifdef WIN32
+-     Path(const wchar_t* str) : path(str) {}
++ #if 1 /* kpp: a path is wide text on every platform */
++     Path(const wchar_t* str) : path(str) {}
+
+# C's long double functions are no kpp's off Windows (its long double is double).
+@ tests/TestFloatingPoint.cpp: nextafter toward 0.0 (a double) where nexttoward took it as long double
+-     const double oneStepLessThanMax = std::nexttoward(double(std::numeric_limits<int64_t>::max()), 0.0);
++     const double oneStepLessThanMax = std::nextafter(double(std::numeric_limits<int64_t>::max()), 0.0);

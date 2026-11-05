@@ -3422,10 +3422,27 @@
           // The C headers' macros that name a member path (in_addr's `#define s_addr S_un.S_addr`,
           // in6_addr's s6_addr, whose `_S6_un._S6_u8` are macros too): the import has the structs' own
           // members, so a use gets the path.
-          static const std::map<std::string_view, std::string> memberMacros = {{"s_addr", "S_un.S_addr"}, {"s6_addr", "u.Byte"}};
-          if (auto mm = memberMacros.find(spelling(i)); mm != memberMacros.end())
+          // Each platform's own (winsock2.h's on Windows; glibc's s6_addr, sigaction's sa_handler,
+          // stat's st_mtime and ifaddrs' ifa_broadaddr on Linux), marked as a macro's use: a statement
+          // that uses one is each platform's (design.md 12).
+          static const std::map<std::string_view, std::string> windowsMemberMacros = {{"s_addr", "S_un.S_addr"}, {"s6_addr", "u.Byte"}};
+          static const std::map<std::string_view, std::string> linuxMemberMacros = {
+            {"s6_addr", "__in6_u.__u6_addr8"},           {"sa_handler", "__sigaction_handler.sa_handler"},
+            {"sa_sigaction", "__sigaction_handler.sa_sigaction"}, {"st_atime", "st_atim.tv_sec"},
+            {"st_mtime", "st_mtim.tv_sec"},                {"st_ctime", "st_ctim.tv_sec"},
+            {"ifa_broadaddr", "ifa_ifu.ifu_broadaddr"},    {"ifa_dstaddr", "ifa_ifu.ifu_dstaddr"}};
+          // (a name either platform rewrites is marked on both, as it is or rewritten)
+          const auto& memberMacros = convertPlatform == "linux" ? linuxMemberMacros : windowsMemberMacros;
+          if (windowsMemberMacros.count(spelling(i)) || linuxMemberMacros.count(spelling(i)))
           {
-            replace(t.offset, t.length, mm->second);
+            auto mm = memberMacros.find(spelling(i));
+            std::string written = mm != memberMacros.end() ? mm->second : std::string(spelling(i));
+            if (convertMarks)
+            {
+              std::string id = in.path.filename().string() + ":@" + std::to_string(t.offset);
+              written = "/*kpp:if " + id + "*/" + written + "/*kpp:endif " + id + "*/";
+            }
+            replace(t.offset, t.length, written);
             counts.add("C member macros expanded");
             continue;
           }
