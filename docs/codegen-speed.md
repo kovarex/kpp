@@ -827,7 +827,23 @@ D, 2026-11-04).**
   level 0 (−0.33 to −0.43 s), B's estimate −0.3 to −0.5 s. Step 1 alone is within the noise, as expected.
   Counting every build, the loaded ones too, the medians were 4.84 s (master), 6.21 s (step 1, four of its six
   builds under load) and 4.43 s (step 2).
+- **What is left, measured: no gain (the same day; not landed).** After step 2 a per-call-site probe of the
+  shared lock at level 0 (`cg\probe-sites.py`, master 946f42f7, two runs on a machine others loaded to 93-100%)
+  had it held 387 / 440 ms and waited 12.9 / 12.6 s of thread time: a global's definition
+  (ConstantData:425) 147 / 165 ms, destructorThunk 97 / 105, closureFor 56 / 66, needsDestruction 23 / 29
+  (24.5k holds), useVtable 22 / 24. Three levers took those out of the lock: destructor thunks claimed by name
+  and emitted without it, defined globals published (FinalAnswers) so another emitter's first use takes no lock,
+  and closures laid out without it, the first published winning. Their objects were identical to master's and
+  at 32, 32, 8 and 1 threads, and concurrency.ps1 passed. Interleaved clean builds on a quiet machine
+  (`cg\multi-codegen.ps1`, 8 rounds, load 0 to 5% before each, master b6d05bcb against the three on it):
 
+  | kppc | codegen | level 0 |
+  |---|---:|---:|
+  | master | 4.211 to 4.255 s, median 4.238 | 747 to 778 ms, median 758 |
+  | the three levers | 4.188 to 4.273 s, median 4.221 | 738 to 806 ms, median 764 |
+
+  On a quiet machine the shared lock no longer limits level 0; what the probe saw was the load. The patches
+  are in thread D's scratch: `cg\levers-nogain.patch`.
 ## 7. Today: kovarex's clean build through kpp, end to end (thread D, 2026-11-02)
 
 **The build.** kovarex measured it on his second machine (PC-PRACOVNA's hardware): 16.8 to 17.0 s for
