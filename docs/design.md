@@ -2451,13 +2451,15 @@ The smallest language that is still kpp, as the target of the first code generat
   templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...` with `using
   Ts::operator()...`, the overload-set idiom) is an error where such a class is laid out, until
   something needs it (2026-10-31, templates/pack_of_base_classes_is_not_supported_yet).
-- **The literal 0 is a null pointer constant** (C++'s rule; for kovarex's review, who may prefer
-  kpp to require `nullptr`): an integer literal 0 (`0`, `0u`, `0L`, ..., and only a literal, not a
-  constant that is 0) converts to any pointer and member pointer type, ranked as a standard
-  conversion: `CoInitializeEx(0, COINIT_MULTITHREADED)`, `Entity* e = 0`, `pick(0)` choosing
-  `pick(Entity*)` over `pick(const String&)`, while `take(0)` stays `take(int)`. Converted C and C++
-  pass 0 for pointers throughout; requiring nullptr would be a converter rewrite instead (2026-10-29,
-  spec language/literal_zero_null_pointer).
+- **nullptr is the null pointer; the literal 0 is no pointer** (kovarex, 2026-11-04: "b is cleaner long
+  term, and if we can convert it, I would prefer that, writing 0 instead of nullptr is not nice"; it
+  replaced C++'s rule, kept from 2026-10-29 until the converter wrote nullptr, C's 6f248ebe). An integer
+  0 of kpp's own sources that would become a pointer or member pointer without a cast is an error at
+  the 0 itself: "the literal 0 is no pointer: write nullptr (design.md 4)" (an initializer, an
+  assignment, a comparison either way round, an argument, a return, a template's return; a constant
+  that is 0 too, "an integer 0 is no pointer"). `take(0)` with `take(int)` and `take(Entity*)` is
+  take(int). Imported C keeps C's rule (its 0 and NULL are null pointers). Specs
+  language/literal_zero_null_pointer, language/zero_literal_as_pointer_is_error.
 - **A pointer converts without a cast only as in C++** (2026-10-31): to the same type with added
   qualifiers (at every level as [conv.qual] allows: `T* const*` to `const T* const*`), to `void*`
   from an object pointer, from a derived class to its base; a function or array to a pointer to it.

@@ -1,4 +1,4 @@
-// spec: the literal 0 converts to a null pointer to member, as nullptr does (a null pointer constant): a data member pointer's null (not the first member's offset, 0) and a member function pointer's null, as an argument, an initializer and an assignment
+// spec: nullptr is a null pointer to member (kpp requires it; the literal 0 was one too until design.md 4 of 2026-11-04): a data member pointer's null (not the first member's offset, 0) and a member function pointer's null, as an argument, an initializer and an assignment
 struct Base
 {
   int first = 1;
@@ -10,12 +10,12 @@ int callOr(const Base& b, int (Base::*method)() const, int fallback) { return me
 int main()
 {
   Base b;
-  int Base::*none = 0;
+  int Base::*none = nullptr;
   int Base::*first = &Base::first;
-  int (Base::*noMethod)() const = 0;
-  println(readOr(b, 0, 7), " ", readOr(b, first, 7), " ", none == nullptr);
-  first = 0;
-  println(first == nullptr, " ", callOr(b, 0, 9), " ", callOr(b, &Base::get, 9));
+  int (Base::*noMethod)() const = nullptr;
+  println(readOr(b, nullptr, 7), " ", readOr(b, first, 7), " ", none == nullptr);
+  first = nullptr;
+  println(first == nullptr, " ", callOr(b, nullptr, 9), " ", callOr(b, &Base::get, 9));
   println(noMethod == nullptr);
   return 0;
 }

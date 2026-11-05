@@ -4381,7 +4381,7 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
 
 auto GlobalScope::Impl::Walker::noteZeroNull(Expr* e, const Ty* target) -> void
 {
-  if (!zeroNullWarningsOn() || !file || file->isImported || probing) // (a template's own walk too: `T*` is a pointer whatever T is)
+  if (!file || file->isImported || probing) // (a template's own walk too: `T*` is a pointer whatever T is)
     return;
   target = target ? types.unqualified(types.stripRef(target)) : nullptr;
   if (!target || (target->kind != TyKind::Pointer && target->kind != TyKind::MemberPointer))
@@ -4399,7 +4399,7 @@ auto GlobalScope::Impl::Walker::noteZeroNull(Expr* e, const Ty* target) -> void
   static const char* zeros[] = {"0", "0u", "0U", "0l", "0L", "0ll", "0LL", "0ul", "0UL", "0ull", "0ULL"};
   if (std::none_of(std::begin(zeros), std::end(zeros), [&](const char* z) { return text == z; }))
     return;
-  noteZeroNullWarning(Impl::locationOf(in, l->token) + ": warning: the literal 0 is no pointer: write nullptr (design.md 4)");
+  impl.reportCheckerError(in, l->token, "the literal 0 is no pointer: write nullptr (design.md 4)");
 }
 
 auto GlobalScope::Impl::Walker::elementTypeOf(const Ty* range, Expr* rangeExpr) -> const Ty*

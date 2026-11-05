@@ -115,11 +115,3 @@ std::string toolchainSkipped();
 // prerelease one if no other has it), or why there is none: what kpp --version says.
 std::string visualStudioToolchain(std::string& missing);
 
-// --zero-null-warnings (design.md 4): every literal 0 of the program's own sources that a build
-// converted to a pointer or member pointer, as "PATH:LINE[:COL]: warning: the literal 0 is no
-// pointer: write nullptr (design.md 4)", each token once. set turns the notes on and clears them;
-// take gives them sorted and clears them.
-void setZeroNullWarnings(bool on);
-bool zeroNullWarningsOn();
-void noteZeroNullWarning(const std::string& warning);
-std::vector<std::string> takeZeroNullWarnings();

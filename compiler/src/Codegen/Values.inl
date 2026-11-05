@@ -139,24 +139,24 @@
 
     // explicitCast: the conversion an explicit cast asks for, which may use explicit conversion
     // operators.
-    // --zero-null-warnings: a literal 0 of the program's own sources made a null pointer or member
-    // pointer here without a cast (design.md 4: kpp is to require nullptr; C's fix-it rewrites the
-    // token each warning names, so the place is the literal's own, its column included under
-    // --diagnostic-columns). Imported C keeps C's rule. Each token once, however many instances
-    // convert it.
-    void noteZeroNull(Node* at)
+    // kpp requires nullptr (kovarex, 2026-11-04; design.md 4): an integer 0 of kpp's own sources, the
+    // literal or a constant, made a null pointer or member pointer here without a cast is an error,
+    // at the literal's own place where it is one (the walk reports the ones it sees, an initializer,
+    // an argument, a comparison; this, what only codegen converts: a template's return, a member
+    // pointer). Imported C keeps C's rule. True when it failed.
+    bool zeroIsNoPointer(Node* at)
     {
-      if (!zeroNullWarningsOn() || !currentFile || currentFile->isImported)
-        return;
+      if (!currentFile || currentFile->isImported)
+        return false;
       Node* e = at;
       while (e && e->kind == NodeKind::ParenExpr)
         e = static_cast<ParenExpr*>(e)->inner;
-      if (!e || e->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(e)->literalKind != TokenKind::Number)
-        return; // (a constant that is 0, not the literal: the fix-it has no token to rewrite; the error will name it)
-      ParsedFile* file = static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : currentFile;
-      if (!file || file->isImported)
-        return;
-      noteZeroNullWarning(locationOf(e, file, true) + ": warning: the literal 0 is no pointer: write nullptr (design.md 4)");
+      ParsedFile* file = e && e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : currentFile;
+      if (file && file->isImported)
+        return false;
+      fail(e && e->kind == NodeKind::LiteralExpr ? e : at, e && e->kind == NodeKind::LiteralExpr ? "the literal 0 is no pointer: write nullptr (design.md 4)"
+                                                                                           : "an integer 0 is no pointer: write nullptr (design.md 4)");
+      return true;
     }
 
     Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false)
@@ -207,7 +207,7 @@
       if (tk == TyKind::MemberPointer && (fk == TyKind::Nullptr || (fk == TyKind::Int && v.text == "0")))
       {
         if (fk == TyKind::Int && !explicitCast)
-          noteZeroNull(at);
+          zeroIsNoPointer(at);
         return {to->inner && to->inner->kind == TyKind::Function ? "null" : "-1", to};
       }
       if (fk == TyKind::MemberPointer && tk == TyKind::Bool)
@@ -319,7 +319,7 @@
         if (!explicitCast && v.text != "0" && !(currentFile && currentFile->isImported))
           fail(at, "an integer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
         if (!explicitCast && v.text == "0")
-          noteZeroNull(at);
+          zeroIsNoPointer(at);
         // A signed integer narrower than a pointer is widened as a signed value first, as through
         // intptr_t: `(HANDLE)-1` is all ones (INVALID_HANDLE_VALUE); inttoptr alone zero-extends.
         std::string value = v.text, valueT = fromT;

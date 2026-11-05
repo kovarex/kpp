@@ -674,8 +674,9 @@
     // in unsupported, an error, never a guess.
     bool canThrow(Expr* e, std::string& unsupported);
 
-    // --zero-null-warnings (design.md 4): e, the literal 0 of kpp's own sources (in parentheses or
-    // not), made a pointer or member pointer of type target without a cast.
+    // kpp requires nullptr (kovarex, 2026-11-04; design.md 4): e, the literal 0 of kpp's own sources (in
+    // parentheses or not), made a pointer or member pointer of type target without a cast, is an error
+    // at the literal's place.
     void noteZeroNull(Expr* e, const Ty* target);
 
     // rangeExpr: the range written, for a free begin(range).
