@@ -187,45 +187,32 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     *foundIn = nullptr;
   if (opArgs)
     opArgs->pairs.clear();
-  const Ty* start = from ? types.unqualified(types.stripRef(from)) : nullptr;
+  const Ty* object = from ? types.stripRef(from) : nullptr; // (its const: a const object calls const operators only)
+  const Ty* start = object ? types.unqualified(object) : nullptr;
   const Ty* target = to ? types.unqualified(types.stripRef(to)) : nullptr;
   if (!start || start->kind != TyKind::Class || types.isDependent(start) || (kind == ConversionKind::ToType && !target))
     return nullptr;
-  // 2: the one wanted, at once; 1: the first such, unless a 2 comes; 0: no candidate.
-  auto score = [&](FunctionDecl* f, const Subst& args, const Ty* ret) -> int
+  bool constObject = object->isConst;
+  // Every conversion operator of the class and its bases (C++ [class.conv.fct]: a base's is hidden by
+  // one of a derived class to the same type), with the class declaring it and its arguments.
+  struct Candidate
   {
-    bool isExplicitOne = isExplicit(f, args.empty() ? nullptr : &args);
-    switch (kind)
-    {
-      case ConversionKind::ToPointer:
-        return !isExplicitOne && ret->kind == TyKind::Pointer ? 2 : 0;
-      case ConversionKind::ToIntegral:
-        return !isExplicitOne && (ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool) ? 2 : 0;
-      case ConversionKind::ToType:
-        break;
-    }
-    bool exact = ret == target;
-    // A class derived from `to` serves too: its `to` part, after the conversion to `to` itself if
-    // there is one (C++ compares the derived-to-base conversion after it).
-    bool derived = !exact && ret->kind == TyKind::Class && target->kind == TyKind::Class && !types.isDependent(ret) && isBaseClass(target, ret);
-    if (isExplicitOne && target->kind != TyKind::Bool && (!explicitCast || !(exact || derived)))
-      return 0;
-    // (A scalar is no way to a class: from it a converting constructor would be a second
-    // user-defined conversion.)
-    return exact ? 2 : derived ? 1 : ret->kind == TyKind::Class || target->kind == TyKind::Class ? 0 : 1;
+    FunctionDecl* f;
+    const Ty* in;
+    Subst args;
+    const Ty* result; // as declared (a reference kept)
   };
-  FunctionDecl* best = nullptr;
-  const Ty* bestIn = nullptr;
-  Subst bestArgs;
-  int bestScore = 0;
+  std::vector<Candidate> candidates;
+  std::vector<const Ty*> declaredResults; // by the classes searched so far
   std::vector<const Ty*> classes{start};
-  for (size_t i = 0; i < classes.size() && i < 64 && bestScore < 2; ++i)
+  for (size_t i = 0; i < classes.size() && i < 64; ++i)
   {
     const Ty* cls = classes[i];
     ClassDecl* def = classDefinition(cls);
     if (!def)
       continue;
     Subst args = substFor(cls);
+    std::vector<const Ty*> ownResults;
     for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
@@ -235,41 +222,100 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
       if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
         continue;
       Subst fargs = args;
-      const Ty* ret = types.unqualified(types.stripRef(ft->inner));
+      const Ty* result = ft->inner;
       if (!f->templateParams.empty())
       {
-        // `template<class T> operator T()` (or `operator const T&()`): T is the type converted to,
-        // and the operator a candidate only when its constraints hold for it.
-        if (!target || ret->kind != TyKind::Param || std::find(f->templateParams.begin(), f->templateParams.end(), ret->decl) == f->templateParams.end())
+        // `template<class T> operator T()`, `operator const T&()`, `operator T*()`: T deduced from
+        // the type converted to, the operator a candidate only when its constraints hold for it.
+        if (!target)
           continue;
-        Decl* param = ret->decl;
-        ret = target;
-        fargs.pairs.push_back({param, ret});
-        if (f->requiresClause && !requiresHolds(f, fargs))
+        deduce(types.unqualified(types.stripRef(result)), target, fargs);
+        bool bound = true;
+        for (Decl* p : f->templateParams)
+          bound = bound && fargs.find(p) && fargs.find(p)->isKnown() && !types.isDependent(fargs.find(p));
+        if (!bound || (f->requiresClause && !requiresHolds(f, fargs)))
+          continue;
+        result = substitute(result, fargs);
+        if (!result || !result->isKnown())
           continue;
       }
-      int s = score(f, fargs, ret);
-      if (s > bestScore)
-      {
-        best = f;
-        bestIn = cls;
-        bestArgs = fargs;
-        bestScore = s;
-        if (s >= 2)
-          break;
-      }
+      const Ty* plain = types.unqualified(types.stripRef(result));
+      if (f->templateParams.empty() && std::find(declaredResults.begin(), declaredResults.end(), plain) != declaredResults.end())
+        continue; // hidden by a derived class's operator to the same type
+      ownResults.push_back(plain);
+      candidates.push_back({f, cls, fargs, result});
     }
+    declaredResults.insert(declaredResults.end(), ownResults.begin(), ownResults.end());
     std::vector<const Ty*> bases;
     if (directBases(cls, def, bases))
       for (const Ty* b : bases)
         if (b && b->kind == TyKind::Class && !types.isDependent(b))
           classes.push_back(types.unqualified(b));
   }
+  // Each candidate's rank, lower better, or NotViable: for a pointer or an integral type the first
+  // one of that kind (rank 0); to a type, the standard conversion from its result to the target (an
+  // exact match 0, a class derived from the target 1, then C++'s ranking of the scalar
+  // conversions), the better of two equal ones the one whose constness matches the object.
+  const Candidate* best = nullptr;
+  int bestRank = NotViable;
+  bool bestConstMatch = false;
+  bool ambiguous = false;
+  for (const Candidate& c : candidates)
+  {
+    bool constOp = (c.f->flags & DF_Const) != 0;
+    if (constObject && !constOp)
+      continue; // a const object calls a const operator only
+    bool isExplicitOne = isExplicit(c.f, c.args.empty() ? nullptr : &c.args);
+    const Ty* ret = types.unqualified(types.stripRef(c.result));
+    int rank = NotViable;
+    switch (kind)
+    {
+      case ConversionKind::ToPointer:
+        rank = !isExplicitOne && ret->kind == TyKind::Pointer ? 0 : NotViable;
+        break;
+      case ConversionKind::ToIntegral:
+        rank = !isExplicitOne && (ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool) ? 0 : NotViable;
+        break;
+      case ConversionKind::ToType:
+      {
+        bool exact = ret == target;
+        bool derived = !exact && ret->kind == TyKind::Class && target->kind == TyKind::Class && !types.isDependent(ret) && isBaseClass(target, ret);
+        if (isExplicitOne && target->kind != TyKind::Bool && (!explicitCast || !(exact || derived)))
+          break;
+        if (exact)
+          rank = 0;
+        else if (derived)
+          rank = 1;
+        else if (ret->kind != TyKind::Class && target->kind != TyKind::Class)
+        {
+          // (A scalar is no way to a class: from it a converting constructor would be a second
+          // user-defined conversion.)
+          int r = conversionRank(ret, target);
+          rank = r < 4 ? r : NotViable;
+        }
+        break;
+      }
+    }
+    if (rank >= NotViable)
+      continue;
+    bool constMatch = constOp == constObject;
+    if (rank < bestRank || (rank == bestRank && constMatch && !bestConstMatch))
+    {
+      best = &c;
+      bestRank = rank;
+      bestConstMatch = constMatch;
+      ambiguous = false;
+    }
+    else if (rank == bestRank && constMatch == bestConstMatch && c.f != best->f && kind == ConversionKind::ToType)
+      ambiguous = true;
+  }
+  if (!best || ambiguous)
+    return nullptr; // (none, or two equally good: C++'s ambiguity, which codegen reports as no conversion)
   if (foundIn)
-    *foundIn = bestIn;
+    *foundIn = best->in;
   if (opArgs)
-    *opArgs = bestArgs;
-  return best;
+    *opArgs = best->args;
+  return best->f;
 }
 
 auto GlobalScope::Impl::inheritedConstructorSources(ClassDecl* def, const Ty* p, std::vector<const Ty*>& out, int depth, int level) -> void

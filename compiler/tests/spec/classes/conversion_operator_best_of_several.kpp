@@ -1,0 +1,33 @@
+// spec: a class converts to a scalar by its conversion operator whose result converts best (C++ [over.match.conv]): to int an operator to short (a promotion) over one to long long (a conversion), to int or double an operator to bool over one to a scoped enumeration (none), and a derived class's operator hides its base's to the same type
+// factorio: D's review of aefd3445: the rule took the first operator declared to any scalar, as codegen had (`int i = m;` called operator long long()); design.md 24, chooseConversion
+enum class Mode : int { A = 2 };
+struct R
+{
+  operator Mode() const { return Mode::A; }
+  operator bool() const { return true; }
+};
+struct M
+{
+  operator long long() const { return 7; }
+  operator short() const { return 3; }
+};
+struct Base
+{
+  operator int() const { return 1; }
+};
+struct Derived : Base
+{
+  operator int() const { return 4; }
+};
+int main()
+{
+  R r;
+  int x = r;
+  double d = r;
+  M m;
+  int i = m;
+  Derived derived;
+  int h = derived;
+  println(x, " ", d, " ", i, " ", h);
+  return 0;
+}
