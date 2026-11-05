@@ -1837,13 +1837,15 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
     fn += "  " + b + " = icmp ne " + unitLl + " " + r + ", 0\n";
     return {b, valueTy};
   }
-  return convert(asUnit, valueTy, at);
+  // (as a cast: the unit's bits are the field's value, an enumeration's too; the program's own
+  // conversions are checked where it makes them, `s.level = 1;` an error)
+  return convert(asUnit, valueTy, at, true);
 }
 
 auto codegen::Emitter::storeBitfield(Value v, const std::string& addr, const BitfieldInfo& bits, Node* at) -> void
 {
   std::string unitLl = llType(bits.unit, at);
-  Value asUnit = convert(v, bits.unit, at);
+  Value asUnit = convert(v, bits.unit, at, true); // (the field's value, already of its type: an enum class one's too)
   uint64_t mask = bits.width >= 64 ? ~0ull : ((1ull << bits.width) - 1);
   std::string old = newTemp(), cleared = newTemp(), masked = newTemp(), shifted = newTemp(), merged = newTemp();
   fn += "  " + old + " = load " + unitLl + ", ptr " + addr + (bits.bytes ? ", align 1" : "") + "\n";

@@ -1,0 +1,36 @@
+// spec: a bit-field of an enumeration type is read and written as its enumeration: an unscoped one with a fixed underlying type (`Level level : 3`), an enum class (`Mode mode : 2`, with a default member initializer) and one without a fixed type (`Shade shade : 2`), from a brace list, assigned an enumerator, read into a variable of its type, compared with an enumerator, cast to int, at run time and at compile time; clang prints the same
+// found by thread B (2026-11-05): since 73150464 (nothing converts to an enumeration without a cast) reading such a field was a compile error, its storage unit's integer converted to the enumeration by an implicit conversion, and writing an enum class one too (the enumeration converted to the unit's integer)
+enum Level : uint32_t { Low = 1, High = 2, Top = 5 };
+enum class Mode : uint8_t { Off, On, Auto };
+enum Shade { Dark, Light };
+
+struct Flags
+{
+  Level level : 3;
+  Mode mode : 2 = Mode::Auto;
+  Shade shade : 2;
+  bool on : 1;
+};
+
+constexpr int packed()
+{
+  Flags f{Top, Mode::On, Light, true};
+  f.level = High;
+  return int(f.level) * 100 + int(f.mode) * 10 + int(f.shade);
+}
+static_assert(packed() == 211);
+
+int main()
+{
+  Flags f{Low, Mode::Off, Dark, false};
+  println(int(f.level), " ", int(f.mode), " ", int(f.shade));
+  f.level = Top;
+  f.mode = Mode::On;
+  f.shade = Light;
+  Level l = f.level;
+  Mode m = f.mode;
+  println(int(l), " ", int(m), " ", f.level == Top, " ", f.mode == Mode::On, " ", f.shade == Light);
+  Flags g{};
+  println(int(g.level), " ", int(g.mode), " ", packed());
+  return 0;
+}
