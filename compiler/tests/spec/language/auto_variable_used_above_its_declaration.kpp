@@ -1,0 +1,24 @@
+// spec: a namespace-scope variable declared `auto` is usable above its declaration, as every other declaration is (order-independent symbols): a member function's body written before `auto migrate = [](auto& value, auto from, auto to) { ... };` calls it, and the lambda's type is known there (`7 5`)
+// factorio: EnemyExpansionSettings.cpp's `auto migrateValue = [](auto& value, auto oldDefault, auto newDefault) {...};`, which migrateFromOldDefaults and migrateFrom_2_1_Defaults call; the converter keeps those two bodies outside their class, below the variable, until this passes
+// pending: "codegen does not support the type <unknown> of NameExpr yet" at the call above the declaration
+class Settings
+{
+public:
+  int distance = 7;
+  void migrate() { migrateValue(this->distance, 7, 5); }
+};
+
+auto migrateValue = [](auto& value, auto oldDefault, auto newDefault)
+{
+  if (value == oldDefault)
+    value = newDefault;
+};
+
+int main()
+{
+  Settings s;
+  print(s.distance, " ");
+  s.migrate();
+  println(s.distance);
+  return 0;
+}

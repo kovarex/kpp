@@ -20,7 +20,7 @@ rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rule
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
 rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
-rem errors 0, smoke tests 14/14, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
+rem errors 0, smoke tests 15/15, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
 rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -256,6 +256,13 @@ kpp\convert_asserts.exe > kpp\convert_asserts.out.txt
 findstr /c:"while (false)" kpp\convert_asserts\convert_asserts\asserts.kpp > nul && (echo asserts: A DO/WHILE IS LEFT& goto :failed)
 findstr /c:"release_assert(this->value == 3);" kpp\convert_asserts\convert_asserts\asserts.kpp > nul || (echo asserts: RELEASE_ASSERT NOT WRITTEN AS KPP'S& goto :failed)
 fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected > nul && (echo asserts: output as expected& set /a SMOKES+=1) || (echo asserts: OUTPUT DIFFERS & fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected & goto :failed)
+echo == member function bodies: tests\convert_inline, Widget.hpp and Widget.cpp converted into one Widget.kpp whose class holds each body at its declaration (no out-of-class Widget::area), and run, prints what its C++ build prints (tests\convert_inline.expected)
+if exist kpp\convert_inline rd /s /q kpp\convert_inline
+%KPPC% --no-std --quiet --convert kpp\convert_inline --ext .cpp,.hpp tests\convert_inline || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_inline.exe kpp\convert_inline || goto :failed
+findstr /s /c:"Widget::area(" kpp\convert_inline\*.kpp > nul && (echo member function bodies: Widget::area is still defined outside its class& goto :failed)
+kpp\convert_inline.exe > kpp\convert_inline.out.txt
+fc /w kpp\convert_inline.out.txt tests\convert_inline.expected > nul && (echo member function bodies: output as expected& set /a SMOKES+=1) || (echo member function bodies: OUTPUT DIFFERS & fc /w kpp\convert_inline.out.txt tests\convert_inline.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
@@ -287,7 +294,7 @@ rem declaration of a class the program defines (tests\converted-text.ps1).
 set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/14, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/15, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)

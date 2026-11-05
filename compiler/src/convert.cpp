@@ -9,6 +9,18 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <unordered_map>
+
+// The member functions whose bodies go inside their classes: collectInlineBodies.
+struct InlineBodies
+{
+  std::unordered_map<const Decl*, uint32_t> declarations, definitions;
+  std::map<std::string, size_t> kept; // why a definition stays outside, counted
+  // A file's namespace-scope `auto` variables (EnemyExpansionSettings.cpp's `auto migrateValue =
+  // [](...) {...};`), by symbol: a body using one stays below it, as kpp types an `auto` variable
+  // where it stands.
+  std::map<const ParsedFile*, std::set<uint32_t>> autoVariables;
+};
 
 namespace
 {
@@ -2481,6 +2493,7 @@ namespace
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
     const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
+    const InlineBodies* inlineBodies = nullptr; // collectInlineBodies
     // The files the conversion leaves out: a class defined only in one of them is defined nowhere
     // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
     const std::set<const ParsedFile*>* leftOutFiles = nullptr;
@@ -8167,6 +8180,7 @@ namespace
             auto* f = static_cast<FunctionDecl*>(d);
             if (objectOfMacroArguments(f))
               break;
+            markInlineBody(f);
             // (an interface header's function, defined in the library's files: listed in its file,
             // the interface's own record of it once the declaration goes)
             if (isScopeHeader() && namespaceScope && !f->body && f->name.parts.size() == 1 && f->name.last().symbol != UINT32_MAX)
@@ -8295,6 +8309,62 @@ namespace
     // - a pointer, a reference or a built-in type, one argument: `T* p = x;`, `i32 n = x;`;
     // - anything else (a class with an InitializerList constructor, whose list kpp's braces would
     //   choose, as Vector's, a library class, an alias, a template parameter): `T x = T(args);`.
+    // A member function whose body goes inside its class (collectInlineBodies): its declaration's
+    // `;` and its out-of-class definition marked for resolveInlineBodies, which moves the body (with
+    // a constructor's initializers) to the declaration once the whole output file is written.
+    void markInlineBody(FunctionDecl* f)
+    {
+      if (!inlineBodies || f->endToken == 0 || f->endToken > toks.size())
+        return;
+      if (auto it = inlineBodies->declarations.find(f); it != inlineBodies->declarations.end())
+      {
+        if (toks[f->endToken - 1].is(P::Semi))
+          insert(toks[f->endToken - 1].offset, "/*kpp:inline:" + std::to_string(it->second) + "*/");
+        return;
+      }
+      auto it = inlineBodies->definitions.find(f);
+      if (it == inlineBodies->definitions.end() || !f->body || f->body->token >= toks.size())
+        return;
+      // (the body's start: its `{`, or a constructor's `:` before its initializers; the text moved
+      // starts where the declarator ends, its line break included)
+      uint32_t start = f->body->token;
+      if (!f->ctorInits.empty())
+      {
+        int depth = 0;
+        uint32_t k = start;
+        while (k > f->token)
+        {
+          --k;
+          if (toks[k].is(P::RParen) || toks[k].is(P::RBrace) || toks[k].is(P::RBracket))
+            ++depth;
+          else if (toks[k].is(P::LParen) || toks[k].is(P::LBrace) || toks[k].is(P::LBracket))
+            --depth;
+          else if (depth == 0 && toks[k].is(P::Colon))
+            break;
+        }
+        if (!toks[k].is(P::Colon))
+          return; // (not found: the definition stays where it is)
+        start = k;
+      }
+      if (start == 0)
+        return;
+      // (a definition a macro's use makes, InputAction.cpp's CALL_ON_EVERY_INPUT_ACTION_TYPE: its
+      // tokens are the use's, several definitions' alike; it stays where the use is)
+      if (f->name.empty())
+        return;
+      const NamePart& last = f->name.last();
+      std::string spelled = last.special == 2 || last.special == 3 ? "::operator"
+                            : last.symbol == UINT32_MAX          ? std::string()
+                            : (last.special == 1 ? "::~" : "::") + std::string(symbols.name(last.symbol));
+      std::string_view written = text.substr(declStart(f), toks[start].offset - declStart(f));
+      if (spelled.empty() || written.find(spelled) == std::string_view::npos)
+        return;
+      std::string id = std::to_string(it->second);
+      insert(declStart(f), "/*kpp:def:" + id + "{*/");
+      insert(endOffset(start - 1), "/*kpp:body:" + id + "*/");
+      insert(endOffset(f->endToken - 1), "/*}kpp:def:" + id + "*/");
+    }
+
     void directInitialization(VariableDecl* v)
     {
       // (C has no `T x(args)` object: its parentheses after a name are a function's, `double
@@ -13308,6 +13378,339 @@ static void collectBraceableClasses(Span<Decl*> decls, GlobalScope& global, cons
     }
 }
 
+// The marks markInlineBody left in an output file's text, resolved: each marked definition's body
+// (from where its declarator ends) replaces its declaration's `;`, indented as the declaration is,
+// and the definition goes. A declaration whose definition this text has not (it is in a part a
+// configuration leaves out) keeps its `;`; a definition whose declaration is not here stays.
+static std::string resolveInlineBodies(std::string text, Counts& counts)
+{
+  if (text.find("/*kpp:") == std::string::npos)
+    return text;
+  auto lineIndent = [&](size_t at)
+  {
+    size_t lineStart = text.rfind('\n', at);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    size_t end = lineStart;
+    while (end < text.size() && (text[end] == ' ' || text[end] == '\t'))
+      ++end;
+    return text.substr(lineStart, end - lineStart);
+  };
+  // (marks that coincide, `*//*kpp:def:`, come from declarations or definitions one macro's use
+  // makes, which share its tokens: none of them moves)
+  std::set<std::string> shared;
+  for (const char* kind : {"/*kpp:def:", "/*kpp:inline:"})
+    for (size_t at = text.find(kind); at != std::string::npos; at = text.find(kind, at + 1))
+    {
+      size_t idStart = at + strlen(kind), idEnd = text.find_first_not_of("0123456789", idStart);
+      size_t previous = at >= 2 ? text.rfind("/*", at - 2) : std::string::npos;
+      bool before = previous != std::string::npos && text.compare(at - 2, 2, "*/") == 0 && text.compare(previous, 6, "/*kpp:") == 0 &&
+                    text.compare(previous, 9, "/*kpp:if ") != 0 && text.compare(previous, 12, "/*kpp:endif ") != 0;
+      size_t close = text.find("*/", idStart);
+      bool after = close != std::string::npos && text.compare(close + 2, 6, "/*kpp:") == 0 && text.compare(close + 2, 9, "/*kpp:if ") != 0 &&
+                   text.compare(close + 2, 12, "/*kpp:endif ") != 0;
+      if (before || after)
+        shared.insert(text.substr(idStart, idEnd - idStart));
+    }
+  // The bodies, by id, with the indentation of their definition's first line.
+  std::map<std::string, std::pair<std::string, std::string>> bodies;
+  std::map<std::string, std::pair<size_t, size_t>> definitionRanges;
+  // The `//` lines right above a definition (no blank line between): its comment, which goes with
+  // the body, above the declaration.
+  auto commentAbove = [&](size_t at, size_t& from)
+  {
+    size_t lineStart = text.rfind('\n', at);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    from = lineStart;
+    std::vector<std::string> lines;
+    while (from > 0)
+    {
+      size_t prevEnd = from - 1, prevStart = text.rfind('\n', prevEnd == 0 ? 0 : prevEnd - 1);
+      prevStart = prevStart == std::string::npos || prevEnd == 0 ? 0 : prevStart + 1;
+      std::string line = text.substr(prevStart, prevEnd - prevStart);
+      size_t first = line.find_first_not_of(" \t");
+      if (first == std::string::npos || line.compare(first, 2, "//") != 0)
+        break;
+      lines.insert(lines.begin(), line.substr(first));
+      from = prevStart;
+    }
+    return lines;
+  };
+  std::map<std::string, std::vector<std::string>> comments;
+  std::map<std::string, size_t> commentStarts;
+  // (a definition or declaration inside an #if group, `/*kpp:if FILE:N*/` to its `/*kpp:endif*/` in a
+  // conversion the configurations merge, stays: the other configuration may have neither, and the
+  // merge aligns the two texts outside the groups)
+  std::vector<std::pair<size_t, int>> groupMarks;
+  for (size_t at = text.find("/*kpp:"); at != std::string::npos; at = text.find("/*kpp:", at + 1))
+    if (text.compare(at, 9, "/*kpp:if ") == 0)
+      groupMarks.push_back({at, 1});
+    else if (text.compare(at, 12, "/*kpp:endif ") == 0)
+      groupMarks.push_back({at, -1});
+  auto inGroup = [&](size_t at)
+  {
+    int depth = 0;
+    for (const auto& [mark, step] : groupMarks)
+      if (mark < at)
+        depth += step;
+    return depth > 0;
+  };
+  for (size_t at = text.find("/*kpp:def:"); at != std::string::npos; at = text.find("/*kpp:def:", at + 1))
+  {
+    size_t idEnd = text.find("{*/", at);
+    if (idEnd == std::string::npos)
+      break;
+    std::string id = text.substr(at + 10, idEnd - at - 10);
+    std::string bodyMark = "/*kpp:body:" + id + "*/", endMark = "/*}kpp:def:" + id + "*/";
+    size_t body = text.find(bodyMark, idEnd), end = text.find(endMark, idEnd);
+    if (body == std::string::npos || end == std::string::npos || body > end || inGroup(at) || shared.count(id))
+      continue;
+    // (one definition between the marks: a declarator without `{` or `;`, and a body whose braces
+    // close only at its end; a macro's use making several definitions shares one range of text)
+    std::string_view declarator(text.data() + idEnd + 3, body - idEnd - 3);
+    if (declarator.find_first_of("{;") != std::string_view::npos)
+      continue;
+    int depth = 0;
+    bool closedEarly = false, opened = false;
+    for (size_t k = body + bodyMark.size(); k < end; ++k)
+      if (text[k] == '{')
+      {
+        ++depth;
+        opened = true;
+      }
+      else if (text[k] == '}' && --depth == 0 && text.find_first_not_of(" \t\r\n", k + 1) < end)
+        closedEarly = true;
+    if (!opened || depth != 0 || closedEarly)
+      continue;
+    bodies[id] = {text.substr(body + bodyMark.size(), end - body - bodyMark.size()), lineIndent(at)};
+    definitionRanges[id] = {at, end + endMark.size()};
+    size_t commentFrom = 0;
+    comments[id] = commentAbove(at, commentFrom);
+    commentStarts[id] = commentFrom;
+  }
+  // The declarations that take them.
+  std::set<std::string> moved;
+  std::string out;
+  out.reserve(text.size());
+  size_t from = 0;
+  for (size_t at = text.find("/*kpp:inline:"); at != std::string::npos; at = text.find("/*kpp:inline:", at + 1))
+  {
+    size_t idEnd = text.find("*/", at);
+    std::string id = text.substr(at + 13, idEnd - at - 13);
+    out.append(text, from, at - from);
+    from = idEnd + 2;
+    auto body = bodies.find(id);
+    if (body == bodies.end() || from >= text.size() || text[from] != ';' || inGroup(at))
+      continue; // (the `;` stays)
+    ++from; // (the `;` goes: the body follows the declarator)
+    std::string indent = lineIndent(at);
+    if (const std::vector<std::string>& comment = comments[id]; !comment.empty())
+    {
+      // (above the declaration's line, after the comment it may have of its own)
+      size_t lineStart = text.rfind('\n', at);
+      lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+      std::string lines;
+      for (const std::string& line : comment)
+        lines += indent + line + "\n";
+      out.insert(out.size() - (at - lineStart), lines);
+    }
+    const std::string& defIndent = body->second.second;
+    std::string moving;
+    const std::string& b = body->second.first;
+    for (size_t i = 0; i < b.size(); ++i)
+    {
+      moving += b[i];
+      if (b[i] == '\n')
+      {
+        size_t skip = 0;
+        while (skip < defIndent.size() && i + 1 + skip < b.size() && b[i + 1 + skip] == defIndent[skip])
+          ++skip;
+        i += skip;
+        if (i + 1 < b.size() && b[i + 1] != '\n' && b[i + 1] != '\r')
+          moving += indent;
+      }
+    }
+    out += moving;
+    moved.insert(id);
+  }
+  out.append(text, from, std::string::npos);
+  text = std::move(out);
+  // The moved definitions go (with the line they stood on and one blank line before them); the
+  // others keep their text, the marks gone.
+  for (const std::string& id : moved)
+  {
+    std::string start = "/*kpp:def:" + id + "{*/", endMark = "/*}kpp:def:" + id + "*/";
+    size_t at = text.find(start), end = text.find(endMark);
+    if (at == std::string::npos || end == std::string::npos)
+      continue;
+    end += endMark.size();
+    size_t lineStart = text.rfind('\n', at);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    if (text.find_first_not_of(" \t", lineStart) == at)
+    {
+      at = lineStart;
+      size_t commentFrom = at;
+      if (!commentAbove(at, commentFrom).empty())
+        at = commentFrom;
+    }
+    if (end < text.size() && text[end] == '\n')
+      ++end;
+    if (at >= 2 && text[at - 1] == '\n' && text[at - 2] == '\n' && (end >= text.size() || text[end] == '\n'))
+      --at;
+    text.erase(at, end - at);
+    counts.add("member function bodies moved into their classes");
+  }
+  for (const char* mark : {"/*kpp:def:", "/*kpp:body:", "/*}kpp:def:"})
+    for (size_t at = text.find(mark); at != std::string::npos; at = text.find(mark, at))
+      text.erase(at, text.find("*/", at) + 2 - at);
+  return text;
+}
+
+// The member functions whose bodies go inside their classes (kovarex, 2026-11-04: "convert the
+// hpp+cpp contents in a way, that functions are inlined always"): a member declared in a class and
+// defined outside it, in the same output file (X.hpp's class, X.cpp's `void X::f() { ... }`), whose
+// definition's body the conversion writes at the declaration instead. Both get one id: the
+// declaration's `;` is marked `/*kpp:inline:ID*/`, the definition `/*kpp:def:ID{*/`, its body's start
+// `/*kpp:body:ID*/` and its end `/*}kpp:def:ID*/` (resolveInlineBodies). Out-of-class definitions stay
+// where moving is not plain: a template (the class's or the member's), a specialization, a
+// definition in another file, parameters named otherwise than the declaration names them.
+// (InlineBodies: at the file's start)
+
+static bool sameOutputFile(const ParsedFile* a, const ParsedFile* b)
+{
+  if (a == b)
+    return true;
+  if (!a || !b)
+    return false;
+  std::filesystem::path pa(a->path), pb(b->path);
+  return pa.parent_path() == pb.parent_path() && pa.stem() == pb.stem();
+}
+
+// A parameter type as written, for comparing a declaration's with its definition's (the resolver's
+// match of the two is not taken alone: two overloads whose types are aliases it cannot tell apart,
+// LogisticSupply's sumCounts of ItemWithQualityCountsDouble& and of ItemWithQualityCountsBig&).
+static bool isTypeNode(const Node* n)
+{
+  switch (n->kind)
+  {
+    case NodeKind::NamedType: case NodeKind::BuiltinType: case NodeKind::PointerType: case NodeKind::LRefType:
+    case NodeKind::RRefType: case NodeKind::ConstType: case NodeKind::ArrayType: case NodeKind::FunctionType:
+    case NodeKind::DecltypeType: case NodeKind::AutoType: case NodeKind::MemberPointerType: case NodeKind::PackType:
+      return true;
+    default: return false;
+  }
+}
+
+static std::string writtenType(const Type* t, const SymbolTable& symbols)
+{
+  if (!t)
+    return "?";
+  switch (t->kind)
+  {
+    case NodeKind::NamedType:
+    {
+      auto* n = static_cast<const NamedType*>(t);
+      std::string out = n->name.global ? "::" : "";
+      for (const NamePart& part : n->name.parts)
+      {
+        out += (part.symbol == UINT32_MAX ? std::string("?") : std::string(symbols.name(part.symbol))) + "::";
+        if (part.hasTemplateArgs)
+        {
+          out += "<";
+          for (Node* a : part.templateArgs)
+            out += (a && isTypeNode(a) ? writtenType(static_cast<const Type*>(a), symbols) : std::string("expr")) + ",";
+          out += ">";
+        }
+      }
+      return out;
+    }
+    case NodeKind::BuiltinType:
+    {
+      auto* b = static_cast<const BuiltinType*>(t);
+      return "builtin" + std::to_string(uint32_t(b->keyword)) + "/" + std::to_string(b->longCount) + (b->isUnsigned ? "u" : "") + (b->isSigned ? "s" : "");
+    }
+    case NodeKind::PointerType: return writtenType(static_cast<const PointerType*>(t)->pointee, symbols) + "*";
+    case NodeKind::LRefType: return writtenType(static_cast<const LRefType*>(t)->referenced, symbols) + "&";
+    case NodeKind::RRefType: return writtenType(static_cast<const RRefType*>(t)->referenced, symbols) + "&&";
+    case NodeKind::ConstType: return "const " + writtenType(static_cast<const ConstType*>(t)->inner, symbols);
+    case NodeKind::ArrayType: return writtenType(static_cast<const ArrayType*>(t)->element, symbols) + "[]";
+    default: return "kind" + std::to_string(int(t->kind));
+  }
+}
+
+static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope& global, const SymbolTable& symbols, InlineBodies& out)
+{
+  for (Decl* d : decls)
+  {
+    if (d->kind == NodeKind::NamespaceDecl)
+      collectInlineBodies(static_cast<NamespaceDecl*>(d)->decls, inTemplate, global, symbols, out);
+    if (d->kind != NodeKind::ClassDecl)
+      continue;
+    auto* c = static_cast<ClassDecl*>(d);
+    if (!c->isDefinition)
+      continue;
+    bool classTemplate = inTemplate || !c->templateParams.empty();
+    collectInlineBodies(c->members, classTemplate, global, symbols, out);
+    for (Decl* m : c->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl)
+        continue;
+      auto* f = static_cast<FunctionDecl*>(m);
+      if (f->body || (f->flags & (DF_Friend | DF_Default | DF_Delete)))
+        continue;
+      Decl* defDecl = global.definitionOf(f);
+      if (!defDecl || defDecl == f || defDecl->kind != NodeKind::FunctionDecl || !static_cast<FunctionDecl*>(defDecl)->body)
+        continue;
+      auto* def = static_cast<FunctionDecl*>(defDecl);
+      const char* why = nullptr;
+      if (classTemplate || !f->templateParams.empty() || !def->templateParams.empty())
+        why = "a template's";
+      else if (def->flags & DF_Specialization)
+        why = "a specialization";
+      else if (!sameOutputFile(f->file, def->file))
+        why = "defined in another file";
+      else if (f->params.size() != def->params.size())
+        why = "parameters differ";
+      else
+        for (size_t i = 0; i < f->params.size() && !why; ++i)
+        {
+          auto* a = static_cast<ParamDecl*>(f->params[i]);
+          auto* b = static_cast<ParamDecl*>(def->params[i]);
+          const Type* at = a->type;
+          const Type* bt = b->type;
+          bool aConst = at && at->kind == NodeKind::ConstType, bConst = bt && bt->kind == NodeKind::ConstType;
+          if (aConst)
+            at = static_cast<const ConstType*>(at)->inner;
+          if (bConst)
+            bt = static_cast<const ConstType*>(bt)->inner;
+          if (writtenType(at, symbols) != writtenType(bt, symbols))
+            why = "parameter types written otherwise";
+          else if (aConst && !bConst)
+            why = "a parameter const in the declaration, not in the definition";
+          else if (b->name != UINT32_MAX && a->name != b->name)
+            why = a->name == UINT32_MAX ? "a parameter unnamed in the declaration" : "a parameter named otherwise in the declaration";
+        }
+      if (!why && def->body && def->body->kind != NodeKind::BlockStmt)
+        why = "a function-try-block";
+      if (!why && def->file && def->file->tokens)
+        for (uint32_t k = def->token; k < def->body->token && k < def->file->tokens->size(); ++k)
+          if ((*def->file->tokens)[k].is(Kw::try_))
+            why = "a function-try-block"; // (`X::X() try : a(b) { ... } catch (...) { ... }`)
+      if (auto autos = out.autoVariables.find(def->file); !why && autos != out.autoVariables.end() && def->file->tokens)
+        for (uint32_t k = def->body->token; k < def->endToken && k < def->file->tokens->size() && !why; ++k)
+          if ((*def->file->tokens)[k].getKind() == TokenKind::Identifier && autos->second.count((*def->file->tokens)[k].id))
+            why = "using a namespace-scope auto variable of its file";
+      if (why)
+      {
+        ++out.kept[why];
+        continue;
+      }
+      uint32_t id = uint32_t(out.declarations.size());
+      out.declarations.emplace(f, id);
+      out.definitions.emplace(def, id);
+    }
+  }
+}
+
 // The classes Factorio's ENUM(Name, ...) and BITFIELD(Name, ...) define at namespace scope, by
 // qualified name (`ns::Name`). The resolver sees the macro's use, not the class the converter writes
 // for it, so a forward declaration of one (Entity.hpp's `class DrawingFlags;`) finds no definition;
@@ -14320,6 +14723,27 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
   std::set<std::string> macroClasses = collectMacroClasses(inputs);
+  InlineBodies inlineBodies;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported && !in.c)
+    {
+      std::function<void(Span<Decl*>)> autos = [&](Span<Decl*> decls)
+      {
+        for (Decl* d : decls)
+          if (d->kind == NodeKind::NamespaceDecl)
+            autos(static_cast<NamespaceDecl*>(d)->decls);
+          else if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->type &&
+                   static_cast<VariableDecl*>(d)->type->kind == NodeKind::AutoType && !static_cast<VariableDecl*>(d)->name.empty())
+            inlineBodies.autoVariables[in.parsed].insert(static_cast<VariableDecl*>(d)->name.last().symbol);
+      };
+      autos(in.parsed->decls);
+    }
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported && !in.c)
+      collectInlineBodies(in.parsed->decls, false, global, symbols, inlineBodies);
+  total.add("member function bodies written in their classes", inlineBodies.definitions.size());
+  for (const auto& [why, n] : inlineBodies.kept)
+    total.add("member function bodies kept outside their classes: " + why, n);
   std::set<std::string> braceableClasses;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported && !in.c)
@@ -14514,6 +14938,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.opaqueKept = &opaqueKept;
     fc.macroClasses = &macroClasses;
     fc.braceableClasses = &braceableClasses;
+    fc.inlineBodies = &inlineBodies;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
     if (auto renames = fileAliasRenames.find(&in); renames != fileAliasRenames.end())
@@ -14708,6 +15133,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         text += '\n';
       text += '\n';
     }
+    text = resolveInlineBodies(std::move(text), total);
     if (ov)
     {
       // The hand-written part: appended, its definitions replaced the converted ones above.
