@@ -1,9 +1,12 @@
-// The driver: what one build made, kept by a compile server. Part of main.cpp, included in its
-// namespace there (a file of its own since 2026-11-05, moved without a change).
+// The driver: what one build made, kept by a compile server; the declarations, in namespace driver
+// (Driver.hpp includes this), the definitions in Build.cpp (main.cpp split, stage 2, 2026-11-05,
+// moved without a change).
   double seconds(std::chrono::steady_clock::duration d);
-  int codegenExit = 0;
-  std::string lastImportStamps; // the C import's header stamps (importCHeaders), for a server's next build
-  std::string lastImportsLine;  // the imports report of the build running (importCHeaders)
+  inline int codegenExit = 0;
+  inline std::string lastImportStamps;
+ // the C import's header stamps (importCHeaders), for a server's next build
+  inline std::string lastImportsLine;
+  // the imports report of the build running (importCHeaders)
 
   // A function's body in a file's tokens: its `{` and the matching `}`; eligible when what depends
   // on it outside it can be found: not when a return type is deduced from it (callers elsewhere are
@@ -16,12 +19,14 @@
     bool templated; // a template's or a class template's: its instances are checked again (step 4)
     bool constant;  // constexpr or consteval: what the evaluator computed by running it is found (step 4)
   };
+
   // A config:: constant declared in source (config.cpp): its declaration and its file.
   struct ConfigDeclared
   {
     ConfigDeclaration declaration;
     std::string path;
   };
+
 
   // Everything one build made, from the files read to the resolved program. A compile server keeps
   // it for the next request: a request that changes only function bodies is built from it, the
@@ -88,6 +93,7 @@
     // (incrementalBuild), not on the build's own time (about 1 s on the game).
     CodegenSessionPtr retiredCodegen;
   };
-  std::mutex keptMutex;              // held by a server's build until it has kept its result
-  std::unique_ptr<Build> keptBuild;  // a server's last build (under keptMutex)
-
+  inline std::mutex keptMutex;
+              // held by a server's build until it has kept its result
+  inline std::unique_ptr<Build> keptBuild;
+  // a server's last build (under keptMutex)

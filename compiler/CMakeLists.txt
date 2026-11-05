@@ -11,6 +11,15 @@ endif()
 
 add_executable(kppc
   src/main.cpp
+  src/Driver/BodyGraft.cpp
+  src/Driver/CImport.cpp
+  src/Driver/Compile.cpp
+  src/Driver/ConfigConstants.cpp
+  src/Driver/FrontEnd.cpp
+  src/Driver/Link.cpp
+  src/Driver/ModuleCompile.cpp
+  src/Driver/Options.cpp
+  src/Driver/Runtime.cpp
   src/convert.cpp
   src/lexer.cpp
   src/parser.cpp

@@ -1,5 +1,6 @@
-// The driver: the back end's threads in a build that streams (step 4's P2). Part of main.cpp,
-// included in its namespace there (a file of its own since 2026-11-05, moved without a change).
+// The driver: the back end's threads in a build that streams (step 4's P2); the declarations, in
+// namespace driver (Driver.hpp includes this), the definitions in BackEndPool.cpp (main.cpp split,
+// stage 2, 2026-11-05, moved without a change).
   // Step 4's P2 (docs/codegen-speed.md): the back end's threads in a build that streams. They compile the
   // program pieces codegen hands over at level 0's barrier while it emits the instances, below normal
   // priority so that codegen keeps the cores it uses; then (raise) the rest of the build's modules at
@@ -95,4 +96,3 @@
     bool closing = false;
     std::atomic<bool> below{true};
   };
-

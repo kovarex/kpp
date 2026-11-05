@@ -1,59 +1,9 @@
 // kppc: the kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
-#include "lexer.hpp"
-#include "codegen.hpp"
-#include "convert.hpp"
-#include "parser.hpp"
-#include "config.hpp"
-#include "resolver.hpp"
-#include "ast_walk.hpp"
-#include "generate.hpp"
-#include "project.hpp"
-#include "run.hpp"
-#include "tests.hpp"
-#include "server.hpp"
-#include "lsp.hpp"
-#include "natvis.hpp"
-#include "source.hpp"
-#include "backend.hpp"
-#include "packages.hpp"
-#include "sha256.hpp"
-#include <algorithm>
-#include <atomic>
-#include <condition_variable>
-#include <deque>
-#include <memory>
-#include <mutex>
-#include <unordered_set>
-#include <cctype>
-#include <cstring>
-#include <exception>
-#include <functional>
-#include <set>
-#include <cstdarg>
-#include <cstdlib>
-#include <chrono>
-#include <cstdio>
-#include <string>
-#include <thread>
-#include <sstream>
-#include <vector>
-#ifdef _WIN32
-#include <process.h> // _getpid
-#endif
+#include "Driver/Driver.hpp"
 
-namespace
-{
-#include "Driver/Options.inl"
-#include "Driver/BackEndPool.inl"
-#include "Driver/Build.inl"
-#include "Driver/Runtime.inl"
-#include "Driver/Link.inl"
-#include "Driver/Config.inl"
-#include "Driver/CImport.inl"
-#include "Driver/ModuleCompile.inl"
-#include "Driver/FrontEnd.inl"
-#include "Driver/BodyGraft.inl"
-}
+// The driver is namespace driver's (Driver/, translation units of their own since the main.cpp split's
+// stage 2): this file keeps the kept-state functions, compile's options table and main().
+using namespace driver;
 
 int compile(int argc, char** argv);
 
@@ -200,5 +150,3 @@ int main(int argc, char** argv)
     }
   return compile(argc, argv);
 }
-
-#include "Driver/Compile.inl"

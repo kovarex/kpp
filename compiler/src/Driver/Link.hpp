@@ -1,0 +1,31 @@
+// The driver: the link's command and flags; the declarations, in namespace driver (Driver.hpp
+// includes this), the definitions in Link.cpp (main.cpp split, stage 2, 2026-11-05, moved without a
+// change).
+  // --defer-link: the link, written for kpp to run once the program's C libraries, built alongside,
+  // are there (Project/Build.cpp's buildProgram): <exe>.link.command, and <exe>.link.pending, which says
+  // this build's objects are new (a replayed build leaves it as it was).
+  void deferLinkCommand(const Options& options, const std::string& command);
+
+
+  // A --debug-info build's .natvis (natvis.hpp): the executable's name with .natvis.
+  std::string natvisPath(const Options& options);
+
+
+  std::string linkFlags(const Options& options, bool wideEntry);
+
+
+  // An optimized build's LTO options for lld beyond what clang's driver passes it: --lto full's code
+  // generated in one partition per thread or --lto-partitions' (FinalRelease's /LTCG has /CGTHREADS;
+  // lld's MinGW driver, windows-gnu's, has no such option: one), and --opt-level 3 for the link's
+  // optimization (lld's own is 2).
+  std::string ltoLinkFlags(const Options& options);
+
+
+  // Whether the program's files define a global wmain and no main (the game's entry on Windows).
+  bool definesWideEntryOnly(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols);
+
+
+  // Splits a flag string on spaces, keeping quoted paths whole (without the quotes).
+  std::vector<std::string> splitFlags(const std::string& text);
+  void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
+                      SymbolTable& symbols, const Options& options);

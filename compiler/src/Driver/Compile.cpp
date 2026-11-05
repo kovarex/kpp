@@ -1,6 +1,9 @@
 // The driver: compile(), one build from the command line's arguments: the files read and lexed, the
-// build, a compile server's kept build. Part of main.cpp, included at its end (a file of its own
-// since 2026-11-05, moved without a change).
+// build, a compile server's kept build. A translation unit of its own since 2026-11-05 (main.cpp
+// split, stage 2), moved without a change.
+#include "Driver.hpp"
+using namespace driver;
+
 namespace
 {
   // Each file's tag for its lambdas' closures (ParsedFile::lambdaTag): the FNV-1a hash of its name
