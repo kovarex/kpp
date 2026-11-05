@@ -1175,7 +1175,10 @@
         const Ty* in = nullptr;
         const Ty* operand = argumentType(u->operand, u->operand->ty, types);
         operatorLooked = true;
-        if (FunctionDecl* member = findMemberFunction(ct, operatorName(op), {}, ct, u, &in))
+        // On the object's const as the checker typed it (`~blankPosition` of a const one captured by
+        // reference: `const BaseClass& operator~() const`).
+        const Ty* object = constObject(u->operand) ? types.qualified(ct, true, ct->isVolatile) : ct;
+        if (FunctionDecl* member = findMemberFunction(ct, operatorName(op), {}, object, u, &in))
           verifyOperatorCall(u, OperatorCall::Function, member, true);
         else
         {
@@ -1215,7 +1218,7 @@
         if (operatorLooked ? noOperator : !findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in))
           scalar = global.scalarConversionOf(v.ty);
         if (!scalar)
-          return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);
+          return callRvalue(operatorCall(withCheckedConst(v, u->operand), operatorName(op), {}, u, true), u);
         verifyOperatorCall(u, OperatorCall::Builtin);
         v = convert(v, scalar, u);
       }
@@ -1266,6 +1269,16 @@
         return true;
       return global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction) != nullptr;
     }
+    // ... or an enumeration's own (agui's `PropertyStatus operator||(PropertyStatus, PropertyStatus)`),
+    // which binary() calls as it calls `Flags operator|(Flags, Flags)`.
+    bool userEnumLogicalOperator(BinaryExpr* b, P op)
+    {
+      const Ty* lt = b->lhs->ty ? types.stripRef(b->lhs->ty) : nullptr;
+      const Ty* rt = b->rhs->ty ? types.stripRef(b->rhs->ty) : nullptr;
+      if (!lt || !rt || !lt->isKnown() || !rt->isKnown() || isClass(lt) || isClass(rt) || (lt->kind != TyKind::Enum && rt->kind != TyKind::Enum))
+        return false;
+      return global.enumOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction) != nullptr;
+    }
 
     Value binary(BinaryExpr* b)
     {
@@ -1280,7 +1293,7 @@
       // A class's own operator&& or operator|| is called like any overloaded operator (below), both
       // operands evaluated (C++ [over.match.oper]): NamedBool's `guiCheck || GuiCheck::fromBool(x)`.
       // The built-in, short-circuit one is for operands no such function takes.
-      if ((op == P::AndAnd || op == P::OrOr) && !userLogicalOperator(b, op))
+      if ((op == P::AndAnd || op == P::OrOr) && !userLogicalOperator(b, op) && !userEnumLogicalOperator(b, op))
       {
         verifyOperatorCall(b, OperatorCall::Builtin);
         return logical(op == P::AndAnd, b->lhs, b->rhs, b);

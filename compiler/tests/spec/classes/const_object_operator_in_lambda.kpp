@@ -1,0 +1,18 @@
+// spec: a unary operator on a const object captured by reference in a lambda calls the class's const overload
+// factorio: tests/TestOptional's `(~blankPosition).x` of a `const OptionalMapPosition` (GameOptional's `BaseClass& operator~()` and `const BaseClass& operator~() const`), found by codegen's cross-check against the checker's recorded operator choices (design.md 24)
+struct Box
+{
+  int& operator~() { ++mutableCalls; return value; }
+  const int& operator~() const { ++constCalls; return value; }
+  int value = 7;
+  mutable int mutableCalls = 0;
+  mutable int constCalls = 0;
+};
+int main()
+{
+  const Box box;
+  auto read = [&]() { return ~box; };
+  int v = read();
+  println(v, " ", box.mutableCalls, " ", box.constCalls);
+  return 0;
+}

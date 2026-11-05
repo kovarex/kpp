@@ -3551,6 +3551,23 @@ auto GlobalScope::Impl::Walker::arithmetic(const Ty* a, const Ty* b) -> const Ty
   return types.usualArithmetic(a, b);
 }
 
+// Whether f, an operator= member lookup found for class def, is one `a = b` of a def calls: def's
+// own, or a base's that a using-declaration in def brings in (BoolConfigItem's `using
+// StorageConfigItem<bool>::operator=;`). Any other base's is hidden by def's implicit assignment.
+static bool callableAssignment(ClassDecl* def, FunctionDecl* f)
+{
+  if (!def || f->parent == def)
+    return true;
+  for (Decl* m : def->members)
+    if (m->kind == NodeKind::UsingNameDecl)
+    {
+      const QualifiedName& name = static_cast<UsingNameDecl*>(m)->name;
+      if (!name.empty() && name.last().special == 2 && P(name.last().opToken) == P::Assign)
+        return true;
+    }
+  return false;
+}
+
 auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember) -> FunctionDecl*
 {
   FunctionDecl* constViolation = nullptr; // the class's own operator, non-const, on a const lhs
@@ -3570,9 +3587,9 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, lhs, ambiguous);
       // `a = b` of a class that declares no operator= of its own: its implicit copy or move
       // assignment, which hides every base's operator= (C++ [class.copy.assign]; a using-declaration
-      // brings one in, r.merged). Not the base's, which would leave the class's own members as they
+      // brings one in: BoolConfigItem's `using StorageConfigItem<bool>::operator=;`). Not the base's, which would leave the class's own members as they
       // were (classes/implicit_assignment_hides_base_operator).
-      if (f && op == P::Assign && !r.merged && f->parent && f->parent != impl.classDefinition(l))
+      if (f && op == P::Assign && f->parent && !callableAssignment(impl.classDefinition(l), f))
         f = nullptr;
       if (f)
       {
