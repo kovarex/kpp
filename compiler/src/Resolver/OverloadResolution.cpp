@@ -1961,3 +1961,42 @@ auto GlobalScope::Impl::takesEnumOperands(FunctionDecl* f, const Ty* lhs, const 
       return false;
   return true;
 }
+
+auto GlobalScope::Impl::memberOperatorRanks(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity) -> std::vector<int>
+{
+  if (!f || !f->templateParams.empty())
+    return {};
+  const Ty* ft = declaredTypeOf(f, subst.empty() ? nullptr : &subst, 0);
+  if (!ft || ft->kind != TyKind::Function || (arity == 2 && ft->args.empty()))
+    return {};
+  // The object binds the implicit object parameter as the free operator's first parameter binds
+  // it (a reference to its class, or to the base declaring the member): taken as no conversion,
+  // which the free one's first operand has to match to be better. Exact and qualification ranks
+  // are one here: their order is C++'s tie-breakers', not ranked against a member.
+  std::vector<int> ranks{0};
+  if (arity == 2)
+    ranks.push_back(std::max(1, conversionRank(rhs, ft->args[0])) - 1);
+  return ranks;
+}
+
+auto GlobalScope::Impl::memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity) -> bool
+{
+  std::vector<int> ranks = memberOperatorRanks(f, subst, rhs, arity);
+  return ranks.empty() || arity < 2 || ranks[1] == 0;
+}
+
+auto GlobalScope::Impl::freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst,
+                                                         const Ty* lhs, const Ty* rhs, size_t arity) -> bool
+{
+  if (arity != 2 || !free || !free->templateParams.empty())
+    return false;
+  std::vector<int> mine = memberOperatorRanks(member, memberSubst, rhs, arity);
+  if (mine.size() != 2)
+    return false;
+  const Ty* ft = declaredTypeOf(free, freeSubst.empty() ? nullptr : &freeSubst, 0);
+  if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2)
+    return false;
+  int first = std::max(1, conversionRank(lhs, ft->args[0])) - 1;
+  int second = std::max(1, conversionRank(rhs, ft->args[1])) - 1;
+  return first <= mine[0] && second <= mine[1] && (first < mine[0] || second < mine[1]);
+}

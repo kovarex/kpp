@@ -595,6 +595,12 @@ public:
   // Flags)`), which wins over the built-in one; null when the built-in applies. The resolver types
   // the expression by the same rule.
   FunctionDecl* enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
+  // Whether free operator f takes `lhs op rhs` strictly better than member operator member, which
+  // C++ ranks together with the free ones ([over.match.oper]) and the resolver too: no worse for
+  // either operand, better for one. freeArgs: f's class's arguments (a hidden friend's); memberArgs:
+  // those of the class member was found in.
+  bool freeOperatorBeatsMember(FunctionDecl* f, const TemplateArgs& freeArgs, FunctionDecl* member, const TemplateArgs& memberArgs, const Ty* lhs,
+                               const Ty* rhs);
   // Adds to args what f's own template parameters deduce to from the argument types (for a
   // constructor template chosen by code generation; args holds the class's arguments).
   void deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argTypes, TemplateArgs& args);

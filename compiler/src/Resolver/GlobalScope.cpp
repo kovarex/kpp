@@ -1352,6 +1352,12 @@ namespace
   }
 }
 
+bool GlobalScope::freeOperatorBeatsMember(FunctionDecl* f, const TemplateArgs& freeArgs, FunctionDecl* member, const TemplateArgs& memberArgs,
+                                          const Ty* lhs, const Ty* rhs)
+{
+  return impl->freeOperatorBeatsMember(f, toSubst(freeArgs), member, toSubst(memberArgs), lhs, rhs, 2);
+}
+
 const Ty* GlobalScope::typeInInstanceOf(Decl* d, const Decl* in)
 {
   const Subst* s = impl->instanceSubstOf(in); // (an entry is kept once recorded)

@@ -1493,6 +1493,19 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       member = nullptr;
       implicitAssignment = true;
     }
+    // A free operator taking the operands strictly better than the member is called: C++ ranks
+    // them together, as the checker does (classes/operator_member_and_free_ranked_together).
+    if (member && op != P::Assign && b->lhs->ty && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+    {
+      const Ty* la = argumentType(b->lhs, b->lhs->ty, types);
+      const Ty* ra = argumentType(b->rhs, b->rhs->ty, types);
+      if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), la, ra, currentFunction))
+      {
+        const Ty* friendOf = friendClass(f, {la, ra}, b);
+        if (global.freeOperatorBeatsMember(f, friendOf ? global.classArgsOf(friendOf) : TemplateArgs{}, member, global.classArgsOf(foundIn), la, ra))
+          member = nullptr;
+      }
+    }
     if (member)
     {
       verifyOperatorCall(b, OperatorCall::Function, member, true);

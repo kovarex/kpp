@@ -1,0 +1,22 @@
+// spec: a class's member operator and the free operators are ranked together, as C++ does ([over.match.oper]): `A{1} + 1.5` beside A::operator+(int) and a free operator+(const A&, double) calls the free one, which takes 1.5 as it is where the member converts it to int; at run time and at compile time alike (`101 101`), and a member that takes the operands as well as a free one stays the member's (`3 3`)
+// found by thread D (2026-11-05) with the interpreter's half of decisions recorded once: the checker took a member that takes the operands at all before any free one, so the program called A::operator+(int) and printed `2 2` where C++ prints `101 101`; the interpreter tried the member first too
+struct A
+{
+  int v;
+  constexpr A operator+(int k) const { return A{v + k}; }
+  constexpr A operator*(int k) const { return A{v * k}; }
+};
+constexpr A operator+(const A& a, double d) { return A{a.v + 100}; }
+constexpr A operator*(const A& a, long long k) { return A{a.v + 1000}; }
+
+constexpr A made = A{1} + 1.5;
+constexpr A tied = A{1} * 3;
+
+int main()
+{
+  A runtime = A{1} + 1.5;
+  A member = A{1} * 3;
+  println(made.v, " ", runtime.v);
+  println(tied.v, " ", member.v);
+  return 0;
+}

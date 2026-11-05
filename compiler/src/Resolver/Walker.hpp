@@ -574,9 +574,10 @@
 
     // Overloaded operator lookup: member of the left operand's class, then free functions in
     // the class's namespace and the current scope chain.
-    // The function `lhs op rhs` (or `op lhs`) calls: the class's member operator, else a free one
-    // from the namespaces of both operand classes or the current scope. For a member, subst is
-    // the substitution of its class and isMember is set.
+    // The function `lhs op rhs` (or `op lhs`) calls: the class's member operator, or a free one
+    // from the namespaces of both operand classes or the current scope, ranked together as C++
+    // does ([over.match.oper]): the member, unless a free one takes the operands strictly better.
+    // For a member, subst is the substitution of its class and isMember is set.
     FunctionDecl* operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember);
 
     // Whether `lhs <=> rhs` is a defaulted operator<=>, which gives the class `==` as well.

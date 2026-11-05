@@ -2020,8 +2020,9 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   // The operator function the checker recorded on the node (design.md 24), for the node's own
   // operator on its own operands: the one rule for which function `a op b` calls, which ranks a
   // class's member and the free ones together (C++'s [over.match.oper]; this interpreter's own
-  // lookup below tries the member first). Not a template's (the arguments it was deduced with are
-  // not recorded) nor a friend of a class template's instance (its class's arguments neither).
+  // lookup below, for a rewritten or unrecorded operator, ranks them alike). Not a template's (the
+  // arguments it was deduced with are not recorded) nor a friend of a class template's instance
+  // (its class's arguments neither).
   auto recorded = [&](P o, const ConstOperand* ao, const ConstOperand* bo) -> FunctionDecl* {
     if (!node || o != op || ao != lo || bo != ro || node->call != OperatorCall::Function || !node->callee || verifyInterpreterDecisions())
       return nullptr;
@@ -2040,14 +2041,25 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
                     const ConstOperand* bo = nullptr) -> std::optional<std::optional<ConstValue>> {
     FunctionDecl* chosen = recorded(o, ao, bo);
     bool chosenFree = chosen && !node->calleeMember;
+    FunctionDecl* ranked = nullptr; // a free operator taking the operands better than the class's member
     if (!chosenFree && a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
     {
       Subst subst;
       FunctionDecl* f = chosen;
       if (f)
         subst = memberSubst(types.unqualified(types.stripRef(a.type)), f->parent->ownScope, depth + 1);
-      else
-        f = constClassOperator(a.type, o, {constOperandType(b, bo)}, subst, depth);
+      else if ((f = constClassOperator(a.type, o, {constOperandType(b, bo)}, subst, depth)) && !memberOperatorExact(f, subst, constOperandType(b, bo), 2))
+      {
+        // The member and the free operators ranked together, as the checker ranks them
+        // (freeOperatorBeatsMember): a free one taking the operands strictly better is called.
+        const Ty* at = constOperandType(a, ao);
+        const Ty* bt = constOperandType(b, bo);
+        if (FunctionDecl* free = constFreeFunction(opSymbols[uint32_t(o)], {at, bt}, ctx.scope); free && freeOperatorBeatsMember(free, Subst{}, f, subst, at, bt, 2))
+        {
+          ranked = free;
+          f = nullptr;
+        }
+      }
       if (f)
       {
         if (ao == lo && bo == ro)
@@ -2073,7 +2085,7 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
         return constCallOn(f, subst, {b}, &self, depth + 1);
       }
     }
-    FunctionDecl* free = chosenFree ? chosen : constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope);
+    FunctionDecl* free = chosenFree ? chosen : ranked ? ranked : constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope);
     if (ao == lo && bo == ro)
       verify(o, free, false);
     if (FunctionDecl* f = free)

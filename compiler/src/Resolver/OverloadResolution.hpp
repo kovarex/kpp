@@ -243,6 +243,21 @@
 
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr, const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr);
 
+  // C++ ranks a class's member operator and the free ones together ([over.match.oper]); the checker
+  // (Walker::operatorFunction) and the interpreter's own lookup rank them so: the member, unless a
+  // free one takes the operands strictly better (classes/operator_member_and_free_ranked_together).
+  // The ranks of member operator f (of the class subst instantiates): the object's binding to its
+  // implicit object parameter as no conversion, then rhs to its parameter (arity 2), exact and
+  // qualification as one rank; empty for a template or a type not known (not ranked then).
+  std::vector<int> memberOperatorRanks(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity);
+  // Whether member operator f takes the operands with no conversion (no free one can be better).
+  bool memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity);
+  // Whether free operator free (freeSubst: its class's arguments, a friend's) takes lhs and rhs
+  // strictly better than member operator member: no worse for either operand, better for one. Not a
+  // template, nor a unary operator (a member is kept there).
+  bool freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst, const Ty* lhs,
+                               const Ty* rhs, size_t arity);
+
   // Whether the free operator f takes the enumeration operands of `lhs op rhs` as they are, so that
   // it is the user's operator for that enum (`Flags operator|(Flags, Flags)`) rather than one
   // reached through a conversion to some class; f is a non-template function.

@@ -3630,6 +3630,8 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
 {
   FunctionDecl* constViolation = nullptr; // the class's own operator, non-const, on a const lhs
   Subst violationSubst;
+  FunctionDecl* member = nullptr; // the class's own operator that takes the operands
+  Subst memberSubst;
   uint32_t symbol = impl.opSymbols[uint32_t(op)];
   const Ty* l = types.stripRef(lhs);
   isMember = false;
@@ -3653,73 +3655,100 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       {
         if (!nonConstOnConstObject(f, lhs))
         {
-          subst = r.subst;
-          isMember = true;
-          return f;
+          member = f;
+          memberSubst = r.subst;
         }
-        constViolation = f;
-        violationSubst = r.subst;
+        else
+        {
+          constViolation = f;
+          violationSubst = r.subst;
+        }
       }
     }
   }
   // Free function: look in the namespaces of both operand classes and enums and the current
   // scope; members are not candidates here (a class's own operator== hides no free one). The
   // operands' classes' friend operators are candidates beside them, with their classes'
-  // arguments in subst.
+  // arguments in out. quiet: a member operator takes the operands too, and the free one is only
+  // ranked against it: no built-in operator is a candidate then, and nothing is reported.
   std::vector<const Ty*> argTypes{lhs};
   if (arity == 2)
     argTypes.push_back(rhs);
-  Subst friendArgs;
-  std::string conflict;
-  Lookup friends = impl.hiddenFriendLookup(symbol, argTypes, friendArgs, &conflict);
-  if (!conflict.empty())
-    reportHere(token, conflict);
-  auto pick = [&](const Lookup& look) -> FunctionDecl*
+  auto findFree = [&](bool quiet, Subst& out) -> FunctionDecl*
   {
-    bool ambiguous;
-    FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, friendArgs.empty() ? nullptr : &friendArgs, nullptr, ambiguous);
-    if (!f)
-      return nullptr;
-    // Against the built-in operator on the operands' conversions (no member operator here).
-    switch (impl.freeOperatorAgainstBuiltin(f, (f->flags & DF_Friend) && !friendArgs.empty() ? &friendArgs : nullptr, op, argTypes))
+    Subst friendArgs;
+    std::string conflict;
+    Lookup friends = impl.hiddenFriendLookup(symbol, argTypes, friendArgs, &conflict);
+    if (!conflict.empty() && !quiet)
+      reportHere(token, conflict);
+    auto pick = [&](const Lookup& look) -> FunctionDecl*
     {
-      case 0:
+      bool ambiguous;
+      FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, friendArgs.empty() ? nullptr : &friendArgs, nullptr, ambiguous);
+      if (!f)
         return nullptr;
-      case -1:
-        reportHere(token, "the operator " + std::string(punctuatorSpelling(op)) + " on " + types.toString(types.unqualified(l), &symbols) +
-                              (arity == 2 ? " and " + types.toString(types.unqualified(types.stripRef(rhs)), &symbols) : std::string()) +
-                              " is ambiguous: the free operator" +
-                              std::string(punctuatorSpelling(op)) + " at " + impl.locationOf(f->file, f->token) +
-                              " takes an operand by a user-defined conversion, as the built-in operator does by a conversion operator");
-        break;
-    }
-    if ((f->flags & DF_Friend) && !friendArgs.empty())
-      subst = friendArgs;
-    return f;
-  };
-  std::vector<Scope*> places;
-  for (const Ty* t : {l, types.stripRef(rhs)})
-    if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
-      places.push_back(impl.lexicalScopeOf(t->decl));
-  places.push_back(scope);
-  for (Scope* place : places)
-  {
-    for (Scope* s = place; s; s = s->parent)
-    {
-      if (s->kind == ScopeKind::Class)
-        continue;
-      Lookup look;
-      if (!impl.lookupInScope(s, symbol, look, 0))
-        continue;
-      if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
-        if (FunctionDecl* f = pick(friends.decl ? impl.mergeOverloads(look, friends) : look))
-          return f;
-      break;
-    }
-  }
-  if (friends.decl)
-    if (FunctionDecl* f = pick(friends))
+      // Against the built-in operator on the operands' conversions (no member operator here).
+      if (!quiet)
+        switch (impl.freeOperatorAgainstBuiltin(f, (f->flags & DF_Friend) && !friendArgs.empty() ? &friendArgs : nullptr, op, argTypes))
+        {
+          case 0:
+            return nullptr;
+          case -1:
+            reportHere(token, "the operator " + std::string(punctuatorSpelling(op)) + " on " + types.toString(types.unqualified(l), &symbols) +
+                                  (arity == 2 ? " and " + types.toString(types.unqualified(types.stripRef(rhs)), &symbols) : std::string()) +
+                                  " is ambiguous: the free operator" +
+                                  std::string(punctuatorSpelling(op)) + " at " + impl.locationOf(f->file, f->token) +
+                                  " takes an operand by a user-defined conversion, as the built-in operator does by a conversion operator");
+            break;
+        }
+      if ((f->flags & DF_Friend) && !friendArgs.empty())
+        out = friendArgs;
       return f;
+    };
+    std::vector<Scope*> places;
+    for (const Ty* t : {l, types.stripRef(rhs)})
+      if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+        places.push_back(impl.lexicalScopeOf(t->decl));
+    places.push_back(scope);
+    for (Scope* place : places)
+    {
+      for (Scope* s = place; s; s = s->parent)
+      {
+        if (s->kind == ScopeKind::Class)
+          continue;
+        Lookup look;
+        if (!impl.lookupInScope(s, symbol, look, 0))
+          continue;
+        if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
+          if (FunctionDecl* f = pick(friends.decl ? impl.mergeOverloads(look, friends) : look))
+            return f;
+        break;
+      }
+    }
+    if (friends.decl)
+      if (FunctionDecl* f = pick(friends))
+        return f;
+    return nullptr;
+  };
+  if (member)
+  {
+    // C++ ranks the class's own operator and the free ones together ([over.match.oper]): a free one
+    // that takes the operands strictly better is called (`A{1} + 1.5` with A::operator+(int) beside
+    // operator+(const A&, double): the free one, where the member was, silently another function
+    // than C++'s; classes/operator_member_and_free_ranked_together).
+    Subst freeSubst;
+    if (FunctionDecl* free = impl.memberOperatorExact(member, memberSubst, rhs, arity) ? nullptr : findFree(true, freeSubst))
+      if (impl.freeOperatorBeatsMember(free, freeSubst, member, memberSubst, lhs, rhs, arity))
+      {
+        subst = freeSubst;
+        return free;
+      }
+    subst = memberSubst;
+    isMember = true;
+    return member;
+  }
+  if (FunctionDecl* free = findFree(false, subst))
+    return free;
   if (constViolation)
   {
     // (no other operator takes it: the error, and the operator for the walk to go on with)
