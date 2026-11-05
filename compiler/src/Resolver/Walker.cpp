@@ -4364,7 +4364,7 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
 
 auto GlobalScope::Impl::Walker::noteZeroNull(Expr* e, const Ty* target) -> void
 {
-  if (!zeroNullWarningsOn() || !file || file->isImported || probing || inGenericTemplate())
+  if (!zeroNullWarningsOn() || !file || file->isImported || probing) // (a template's own walk too: `T*` is a pointer whatever T is)
     return;
   target = target ? types.unqualified(types.stripRef(target)) : nullptr;
   if (!target || (target->kind != TyKind::Pointer && target->kind != TyKind::MemberPointer))
@@ -5581,6 +5581,9 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
     case NodeKind::ReturnStmt:
     {
       const Ty* t = walkExpr(static_cast<ReturnStmt*>(s)->value);
+      if (bodyOf && returnFrames.empty()) // (`return 0;` from a function returning T*: design.md 4)
+        if (const Ty* ft = impl.declaredTypeOf(bodyOf, activeSubst, 0); ft && ft->kind == TyKind::Function)
+          noteZeroNull(static_cast<ReturnStmt*>(s)->value, ft->inner);
       if (!decltypeReturns.empty() && decltypeReturns.back())
         t = decltypeOf(static_cast<ReturnStmt*>(s)->value, t);
       // Inside a for constexpr body of an instantiation, before the loop binds its variable,
