@@ -355,6 +355,11 @@
     // (`= default` and `= delete` ones included): what deletes C++'s implicit copy members.
     bool declaresMoveMember(ClassDecl* c, const Ty* t, bool assignment, Node* at);
 
+    // Why the implicit copy constructor of the class t is deleted ([class.copy.ctor] 10): a base or
+    // member whose class declares its copy constructor deleted, or has an implicit one deleted so;
+    // empty when it is not.
+    std::string implicitCopyDeletedBy(const Ty* t, Node* at, int depth = 0);
+
     // Constructs the object at dst from the one at src base by base and member by member
     // (bitwise when nothing needs destruction): copies, or moves with `move`.
     void memberwiseConstruct(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move);

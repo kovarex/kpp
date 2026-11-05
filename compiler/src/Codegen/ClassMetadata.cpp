@@ -2072,7 +2072,64 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
     unsupported(at, "copying " + qualifiedName(c) + ", which declares a move assignment but no copy constructor");
   if (!defaultedCopy && c->keyword == Kw::union_ && findDestructor(c))
     unsupported(at, "copying " + qualifiedName(c) + ", a union with a destructor but no copy constructor");
+  // A base's or member's copy constructor deleted deletes this class's implicit one (or a defaulted
+  // one) as C++ does: no copy of its bytes (until 2026-11-05 `U b = a;` copied a member T whose
+  // `T(const T&) = delete` refused a copy of T alone).
+  if (!move)
+    if (std::string why = implicitCopyDeletedBy(t, at); !why.empty())
+      fail(at, "copying " + types.toString(types.unqualified(t), &symbols) + ", whose implicit copy constructor is deleted: " + why);
   memberwiseConstruct(dst, src, t, at, move);
+}
+
+auto codegen::Emitter::implicitCopyDeletedBy(const Ty* t, Node* at, int depth) -> std::string
+{
+  t = types.unqualified(types.stripRef(t));
+  if (!isClass(t) || isLambda(t) || depth > 16)
+    return "";
+  const StructInfo& info = structFor(t, at);
+  auto ofPart = [&](const Ty* pt, const std::string& what) -> std::string
+  {
+    if (pt->isReference())
+      return ""; // (a reference member copies the reference, never the object it refers to)
+    pt = types.unqualified(pt);
+    while (pt->kind == TyKind::Array && pt->inner)
+      pt = types.unqualified(pt->inner);
+    if (!isClass(pt) || isLambda(pt))
+      return "";
+    ClassDecl* pc = classDef(pt->decl, at);
+    if (pc->isTypedUnion)
+      return "";
+    TemplateArgs args = global.classArgsOf(canonicalClass(pt, at));
+    ArgsScope scope(*this, &args);
+    bool written = false;
+    for (Decl* m : pc->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || !m->templateParams.empty() || static_cast<FunctionDecl*>(m)->params.size() != 1)
+        continue;
+      const Ty* param = declType(static_cast<FunctionDecl*>(m)->params[0]);
+      if (!param || param->kind != TyKind::LRef || !isClass(param->inner) || classKey(param->inner) != classKey(pt))
+        continue;
+      if (m->flags & DF_Delete)
+        return what + " of type " + types.toString(pt, &symbols) + ", whose copy constructor is deleted";
+      if (!(m->flags & DF_Default))
+        written = true;
+    }
+    if (written)
+      return "";
+    std::string inner = implicitCopyDeletedBy(pt, at, depth + 1);
+    return inner.empty() ? "" : what + " of type " + types.toString(pt, &symbols) + ", " + inner;
+  };
+  for (auto& [baseDef, index] : info.bases)
+    if (std::string why = ofPart(info.fieldTypes[index], "its base"); !why.empty())
+      return why;
+  if (info.isUnion)
+    return "";
+  for (Decl* d : info.fieldDecls)
+    if (d->kind == NodeKind::VariableDecl && !(global.typeOfDecl(d) && global.typeOfDecl(d)->isReference()))
+      if (std::string why = ofPart(info.fieldTypes[fieldIndexOf(info, d)], "its member " + (static_cast<VariableDecl*>(d)->name.empty() ? std::string("?") : sym(static_cast<VariableDecl*>(d)->name.last().symbol)));
+          !why.empty())
+        return why;
+  return "";
 }
 
 auto codegen::Emitter::declaresMoveMember(ClassDecl* c, const Ty* t, bool assignment, Node* at) -> bool
