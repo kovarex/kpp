@@ -26,25 +26,30 @@ add_executable(kppc
   src/Resolver/Instantiation.cpp
   src/Resolver/Interpreter.cpp
   src/types.cpp
-  src/codegen.cpp
-  src/Codegen/Values.cpp
-  src/Codegen/DebugInfo.cpp
-  src/Codegen/FunctionDefinitions.cpp
-  src/Codegen/ControlFlow.cpp
-  src/Codegen/TypedUnions.cpp
-  src/Codegen/Statements.cpp
-  src/Codegen/Exceptions.cpp
-  src/Codegen/Scopes.cpp
-  src/Codegen/Expressions.cpp
-  src/Codegen/SseBuiltins.cpp
-  src/Codegen/Operators.cpp
-  src/Codegen/Constants.cpp
+  src/Codegen/CCallingConvention.cpp
   src/Codegen/Calls.cpp
-  src/Codegen/Functions.cpp
-  src/Codegen/ParameterPacks.cpp
-  src/Codegen/Layout.cpp
-  src/Codegen/EmitterNames.cpp
+  src/Codegen/ClassMetadata.cpp
+  src/Codegen/CodegenSession.cpp
+  src/Codegen/ConstantData.cpp
+  src/Codegen/Constants.cpp
+  src/Codegen/ControlFlow.cpp
+  src/Codegen/DebugInfo.cpp
   src/Codegen/Diagnostics.cpp
+  src/Codegen/EmitterNames.cpp
+  src/Codegen/Exceptions.cpp
+  src/Codegen/Expressions.cpp
+  src/Codegen/FunctionDefinitions.cpp
+  src/Codegen/Functions.cpp
+  src/Codegen/ItaniumExceptions.cpp
+  src/Codegen/Lambdas.cpp
+  src/Codegen/Layout.cpp
+  src/Codegen/Operators.cpp
+  src/Codegen/ParameterPacks.cpp
+  src/Codegen/Scopes.cpp
+  src/Codegen/SseBuiltins.cpp
+  src/Codegen/Statements.cpp
+  src/Codegen/TypedUnions.cpp
+  src/Codegen/Values.cpp
   src/consteval.cpp
   src/instance.cpp
   src/source.cpp

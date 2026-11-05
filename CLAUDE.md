@@ -100,7 +100,7 @@ Decided by kovarex; every thread follows them.
 - C:\Factorio's sources are read-only; only its FASTBuild build may write there (its build outputs),
   one FASTBuild run at a time, coordinated through the coordinator. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
   an isolated write dir; never write to %APPDATA%\Factorio.
-- Line endings: resolver.cpp and Resolver/ LF, codegen.cpp and Codegen/ CRLF.
+- Line endings: resolver.cpp and Resolver/ LF, Codegen/ CRLF.
 - Decisions go into docs/design.md; open questions stay listed there until kovarex answers.
 - Reports to kovarex give exact counts and commits and link docs on GitHub
   (https://github.com/kovarex/kpp/blob/master/docs/...). kovarex never edits the repos; "solve X"

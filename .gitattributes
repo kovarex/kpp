@@ -1,7 +1,7 @@
 # Every file checked out as committed, whatever the machine's core.autocrlf says (Git for Windows'
 # system config sets it true: a fresh clone on another PC got CRLF in the build.kpp copies and
 # kpp-native's headers, and convert.cmd's line-end check failed, 2026-11-05). Each file keeps the
-# line ends it has in the repository (CLAUDE.md: resolver.cpp LF, codegen.cpp CRLF); the rules
+# line ends it has in the repository (CLAUDE.md: resolver.cpp LF, Codegen/ CRLF); the rules
 # below, which come later, win over this one.
 * -text
 
