@@ -139,6 +139,10 @@
     // that casts away const: to a reference or a pointer to a non-const object from a const one
     // (a pointer's or array's elements), which only const_cast may ([expr.static.cast] 1).
     void checkCastConst(NamedCastExpr* c, const Ty* from, const Ty* to);
+    // A built-in assignment's left operand, an increment's or a decrement's operand (of type
+    // type): an lvalue, else an error naming what (`f() = 5`, `x++ = 5`, `f()++`); a class's
+    // operator function is the class's to judge.
+    void checkAssignable(uint32_t token, const char* what, const Expr* operand, const Ty* type);
 
     // Whether f, a member function, is a non-const one called on a const object (objectTy): no
     // candidate in C++, whose implicit object parameter `C&` a const object does not bind

@@ -1,0 +1,54 @@
+// spec: a built-in assignment, compound assignment, increment or decrement needs a modifiable lvalue of a scalar type ([expr.ass] 1, [expr.pre.incr] 1, [expr.post.incr] 1): `f() = 5` with f returning int, `(x + 1) = 5`, `x++ = 5`, `-x = 5`, `(int)x = 5`, `x++ += 1`, `++(x + 1)`, `f()++`, `(p + 1) = p`, `&x = nullptr` and `(c ? x : 1) = 5` are compile errors; `++x = 5`, `(a = b) = 3`, `(x += 1) = 4`, `(a, b) = 7`, `(c ? a : b) = 9`, `static_cast<int&>(x) = 5`, `g() = 5` with g returning int&, a class prvalue's assignment (`make() = S()`) and an increment of a pointer that is a value (`*++numbers.begin()`, `--v.end()`: a container's iterators are pointers in kpp, classes in C++, whose ++ takes a temporary) are not
+// found by thread D (2026-11-05), comparing with clang ("expression is not assignable"): kpp compiled each, writing a temporary
+// error: assignment_needs_an_lvalue.kpp:42: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:43: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:44: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:45: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:46: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:47: error: the left operand of an assignment is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:48: error: the operand of ++ is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:49: error: the operand of ++ is no lvalue (a value of int32)
+// error: assignment_needs_an_lvalue.kpp:50: error: the left operand of an assignment is no lvalue (a value of int32*)
+// error: assignment_needs_an_lvalue.kpp:51: error: the left operand of an assignment is no lvalue (a value of int32*)
+// error: assignment_needs_an_lvalue.kpp:52: error: the left operand of an assignment is no lvalue (a value of int32)
+int f() { return 1; }
+int& g()
+{
+  static int s = 0;
+  return s;
+}
+struct S
+{
+  int v = 0;
+};
+S make() { return S(); }
+int main()
+{
+  int x = 0;
+  int a = 1;
+  int b = 2;
+  int* p = &x;
+  bool c = true;
+  ++x = 5;
+  (a = b) = 3;
+  (x += 1) = 4;
+  (a, b) = 7;
+  (c ? a : b) = 9;
+  static_cast<int&>(x) = 5;
+  g() = 5;
+  make() = S();
+  Vector<int> numbers = {1, 2, 3};
+  int second = *++numbers.begin() + *--numbers.end();
+  f() = 5;
+  (x + 1) = 5;
+  x++ = 5;
+  -x = 5;
+  (int)x = 5;
+  x++ += 1;
+  ++(x + 1);
+  f()++;
+  (p + 1) = p;
+  &x = nullptr;
+  (c ? x : 1) = 5;
+  return x + a + b + g() + second;
+}

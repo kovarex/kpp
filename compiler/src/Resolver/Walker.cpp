@@ -292,6 +292,18 @@ auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::str
                          "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
 }
 
+auto GlobalScope::Impl::Walker::checkAssignable(uint32_t token, const char* what, const Expr* operand, const Ty* type) -> void
+{
+  if (probing || !operand || !type || !type->isKnown() || types.isDependent(type) || Impl::mentionsUnknown(type) || type->kind == TyKind::LRef ||
+      isLvalueExpression(operand))
+    return;
+  const Ty* s = types.unqualified(types.stripRef(type));
+  if (!(s->isArithmetic() || s->kind == TyKind::Enum || s->kind == TyKind::Pointer || s->kind == TyKind::MemberPointer))
+    return; // (a class's operator, a function of its own, takes what it takes)
+  reportCheck(token, std::string(what) + " is no lvalue (a value of " + types.toString(s, &impl.symbols) +
+                         "): a built-in assignment, increment or decrement changes an object, never a value ([expr.ass] 1, [expr.pre.incr] 1)");
+}
+
 auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from, const Ty* to) -> void
 {
   const char* cast = c->castKind == Kw::static_cast_        ? "static_cast"
@@ -4854,6 +4866,7 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     case P::PercentAssign: case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign:
     case P::ShrAssign:
       checkConstModification(b->token, ls, "assignment to", b->lhs);
+      checkAssignable(b->token, "the left operand of an assignment", b->lhs, l); // `f() = 5`, `x++ = 5`
       return l;
     case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
     case P::AndAnd: case P::OrOr:
@@ -5047,6 +5060,10 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
     case P::Minus: case P::Plus: case P::Tilde: return promote(t);
     case P::PlusPlus: case P::MinusMinus:
       checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);
+      // `f()++`, `++(x + 1)`. Not of a pointer: `++v.begin()`, `--this->groups.end()` increment a
+      // temporary iterator, which C++'s are classes taking it (vector.md: kpp's are pointers).
+      if (s->kind != TyKind::Pointer)
+        checkAssignable(u->token, op == P::PlusPlus ? "the operand of ++" : "the operand of --", u->operand, t);
       return u->postfix ? types.unqualified(s) : t;
     default: return unknown(Why::Unsupported);
   }
