@@ -63,6 +63,91 @@ auto GlobalScope::Impl::classScopeOf(const Ty* t) -> Scope*
   return scopeOfEntry(e, 0);
 }
 
+// design.md 24: the one rule for which constructor a construction runs, for codegen, the interpreter
+// and the checker (GlobalScope::chooseConstructor says what it does). implicitOnly: an implicit
+// conversion, which no explicit constructor makes (an explicit(cond) template's cond is decided by
+// the caller, with its arguments deduced). ambiguous, when given: whether the choice was.
+auto GlobalScope::Impl::chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes, const std::vector<bool>* nullConstants,
+                                          const Ty** inheritedFrom, bool implicitOnly, bool* ambiguousOut) -> FunctionDecl*
+{
+  if (inheritedFrom)
+    *inheritedFrom = nullptr;
+  if (ambiguousOut)
+    *ambiguousOut = false;
+  const Ty* p = classType ? types.unqualified(types.stripRef(classType)) : nullptr;
+  ClassDecl* def = p && p->kind == TyKind::Class ? classDefinition(p) : nullptr;
+  if (!def || types.isDependent(p))
+    return nullptr;
+  // (for an implicit conversion: no explicit constructor; a template's explicit(cond) is left to the
+  // caller, which knows its arguments)
+  auto converts = [&](FunctionDecl* f, const Subst& s)
+  { return (f->explicitCondition && !f->templateParams.empty()) || !isExplicit(f, s.empty() ? nullptr : &s); };
+  auto parameterTypes = [&](FunctionDecl* f, const Subst& s)
+  {
+    std::vector<const Ty*> out;
+    for (Decl* param : f->params)
+      out.push_back(declaredTypeOf(param, s.empty() ? nullptr : &s, 0));
+    return out;
+  };
+  Subst all = substFor(p); // the class's arguments, then each base's whose constructors it inherits
+  std::vector<const Ty*> inherited;
+  inheritedConstructorSources(def, p, inherited, 0);
+  std::vector<FunctionDecl*> candidates;
+  // Every own non-template constructor's parameters, an explicit one's too, which hides an inherited
+  // one with the same parameters whether or not it converts (D's review); computed only when the
+  // class inherits constructors.
+  std::vector<std::vector<const Ty*>> ownParameters;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+    {
+      auto* f = static_cast<FunctionDecl*>(m);
+      if (!inherited.empty() && f->templateParams.empty())
+        ownParameters.push_back(parameterTypes(f, all));
+      if (implicitOnly && !converts(f, all))
+        continue;
+      candidates.push_back(f);
+    }
+  size_t own = candidates.size();
+  std::vector<const Ty*> chain{p};
+  chain.insert(chain.end(), inherited.begin(), inherited.end());
+  std::vector<const Ty*> declaringBase(candidates.size(), nullptr);
+  for (const Ty* bt : inherited)
+  {
+    ClassDecl* bd = classDefinition(bt);
+    if (!bd)
+      continue;
+    Subst bs = substFor(bt);
+    for (Decl* m : membersRead(bd))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+        continue;
+      auto* f = static_cast<FunctionDecl*>(m);
+      std::vector<const Ty*> params = f->templateParams.empty() ? parameterTypes(f, bs) : std::vector<const Ty*>{};
+      const Ty* first = !params.empty() && params[0] ? types.unqualified(types.stripRef(params[0])) : nullptr;
+      if (argTypes.size() == 1 && first && first->kind == TyKind::Class && !types.isDependent(first) &&
+          std::find(chain.begin(), chain.end(), first) != chain.end())
+        continue; // a copy or move constructor of the base, or one taking the class itself
+      if (!params.empty() && std::find(ownParameters.begin(), ownParameters.end(), params) != ownParameters.end())
+        continue; // hidden by the class's own constructor with these parameters
+      if (implicitOnly && !converts(f, bs))
+        continue;
+      candidates.push_back(f);
+      declaringBase.push_back(bt);
+    }
+    for (const Subst::Pair& pair : bs.pairs)
+      all.pairs.push_back(pair);
+  }
+  bool ambiguous = false;
+  FunctionDecl* chosen = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, all.empty() ? nullptr : &all, nullptr, ambiguous, nullptr, nullConstants);
+  if (ambiguousOut)
+    *ambiguousOut = ambiguous;
+  if (chosen && inheritedFrom)
+    for (size_t i = own; i < candidates.size(); ++i)
+      if (candidates[i] == chosen)
+        *inheritedFrom = declaringBase[i];
+  return chosen;
+}
+
 auto GlobalScope::Impl::inheritedConstructorSources(ClassDecl* def, const Ty* p, std::vector<const Ty*>& out, int depth, int level) -> void
 {
   if (!def || level > 8)

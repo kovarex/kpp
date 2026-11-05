@@ -2925,38 +2925,30 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   std::vector<const Ty*> argTypes;
   for (const ConstValue& a : args)
     argTypes.push_back(constTypeOfValue(a));
-  std::vector<const Ty*> chosenTypes; // the argument types the choice was made with
-  // The constructor the arguments choose (only one that converts, for an implicit conversion:
-  // as the walk converts, all but those explicit, or explicit(cond) with cond true for the
-  // class's arguments; isExplicit).
-  auto choose = [&](const ConstClassLayout& of, bool& ambiguous) -> FunctionDecl* {
-    std::vector<FunctionDecl*> candidates;
-    for (FunctionDecl* c : of.constructors)
-      if (!(c->flags & DF_Delete) && (!implicitOnly || (c->explicitCondition && !c->templateParams.empty()) ||
-                                      !isExplicit(c, of.subst.empty() ? nullptr : &of.subst)))
-        candidates.push_back(c); // (a template's explicit(cond) is decided with its arguments deduced, below)
-    ambiguous = false;
-    if (candidates.empty())
-      return nullptr;
-    FunctionDecl* chosen = chooseAmong(candidates, argTypes, of.subst.empty() ? nullptr : &of.subst, nullptr, ambiguous);
-    chosenTypes = argTypes;
-    if (ambiguous && written && written->size() == args.size())
-    {
-      std::vector<const Ty*> typed = argTypes;
-      for (size_t i = 0; i < typed.size(); ++i)
-        if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty))
-          typed[i] = argumentType(a, a->ty, types);
-        else if (a && a->kind == NodeKind::BraceInitExpr)
-          if (const Ty* list = braceListType(a, initializerListDecl(), types))
-            typed[i] = list;
-      ambiguous = false;
-      chosen = chooseAmong(candidates, typed, of.subst.empty() ? nullptr : &of.subst, nullptr, ambiguous);
-      chosenTypes = typed;
-    }
-    return chosen;
-  };
+  // The constructor the arguments choose: the one rule (design.md 24, chooseConstructor), as codegen
+  // runs it, among the class's own constructors and those it inherits by `using Base::Base;` (for an
+  // implicit conversion, those that convert: as the walk converts, all but those explicit, or
+  // explicit(cond) with cond true for the class's arguments; isExplicit). An ambiguous choice by the
+  // values' types is made again by the arguments' types as written.
+  std::vector<const Ty*> chosenTypes = argTypes; // the argument types the choice was made with
   bool ambiguous = false;
-  if (FunctionDecl* ctor = choose(*layout, ambiguous); ctor && !ambiguous)
+  const Ty* inheritedFrom = nullptr;
+  FunctionDecl* ctor = chooseConstructor(t, argTypes, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
+  if (ambiguous && written && written->size() == args.size())
+  {
+    std::vector<const Ty*> typed = argTypes;
+    for (size_t i = 0; i < typed.size(); ++i)
+      if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty))
+        typed[i] = argumentType(a, a->ty, types);
+      else if (a && a->kind == NodeKind::BraceInitExpr)
+        if (const Ty* list = braceListType(a, initializerListDecl(), types))
+          typed[i] = list;
+    ctor = chooseConstructor(t, typed, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
+    chosenTypes = typed;
+  }
+  if (!ctor || ambiguous || (ctor->flags & DF_Delete))
+    return std::nullopt; // (a deleted one: no constant; codegen's call of it is an error)
+  if (!inheritedFrom)
   {
     if (ctor->templateParams.empty())
       return constRunConstructor(ctor, t, args, depth + 1);
@@ -2973,51 +2965,36 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
       return std::nullopt; // `explicit(!isConvertible<U, T>)` true for these arguments: no implicit conversion
     return constRunConstructor(ctor, t, args, depth + 1, &own);
   }
-  if (ambiguous)
-    return std::nullopt;
   // `using Vector2::Vector2;`: a base's constructor makes that base's part, the class's own
   // members coming from their defaults (an inherited constructor).
-  for (Decl* m : membersRead(layout->decl))
+  if (!ctor->templateParams.empty())
+    return std::nullopt;
+  for (size_t b = 0; b < layout->bases.size(); ++b)
   {
-    if (m->kind != NodeKind::UsingNameDecl)
+    if (!layout->bases[b] || types.unqualified(layout->bases[b]) != inheritedFrom)
       continue;
-    const QualifiedName& name = static_cast<UsingNameDecl*>(m)->name;
-    if (name.parts.size() < 2 || name.last().symbol != name.parts[name.parts.size() - 2].symbol)
-      continue;
-    for (size_t b = 0; b < layout->bases.size(); ++b)
+    std::optional<ConstValue> part = constRunConstructor(ctor, layout->bases[b], args, depth + 1);
+    if (!part || !constMayMake(layout->bases.size() + layout->fields.size()))
+      return std::nullopt;
+    std::vector<ConstValue> parts;
+    for (size_t k = 0; k < layout->bases.size(); ++k)
     {
-      auto* base = layout->bases[b] && layout->bases[b]->decl ? static_cast<ClassDecl*>(layout->bases[b]->decl) : nullptr;
-      if (!base || base->name.empty() || base->name.last().symbol != name.last().symbol)
-        continue;
-      const ConstClassLayout* of = constLayoutOf(layout->bases[b], depth + 1);
-      FunctionDecl* inherited = of ? choose(*of, ambiguous) : nullptr;
-      if (inherited && !inherited->templateParams.empty())
+      std::optional<ConstValue> p = k == b ? part : constEmpty(layout->bases[k], false, depth + 1);
+      if (!p)
         return std::nullopt;
-      if (!inherited || ambiguous || (args.size() == 1 && inherited->params.size() == 1 && constTypeOfValue(args[0]) == layout->bases[b]))
-        return std::nullopt; // a copy constructor is not inherited
-      std::optional<ConstValue> part = constRunConstructor(inherited, layout->bases[b], args, depth + 1);
-      if (!part || !constMayMake(layout->bases.size() + layout->fields.size()))
-        return std::nullopt;
-      std::vector<ConstValue> parts;
-      for (size_t k = 0; k < layout->bases.size(); ++k)
-      {
-        std::optional<ConstValue> p = k == b ? part : constEmpty(layout->bases[k], false, depth + 1);
-        if (!p)
-          return std::nullopt;
-        parts.push_back(*p);
-      }
-      for (size_t i = 0; i < layout->fields.size(); ++i)
-      {
-        std::optional<ConstValue> p = constFieldDefault(*layout, i, false, depth);
-        if (!p)
-          return std::nullopt;
-        parts.push_back(*p);
-      }
-      constFitBitFields(*layout, parts);
-      return ConstValue::object(t, std::move(parts));
+      parts.push_back(*p);
     }
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+    {
+      std::optional<ConstValue> p = constFieldDefault(*layout, i, false, depth);
+      if (!p)
+        return std::nullopt;
+      parts.push_back(*p);
+    }
+    constFitBitFields(*layout, parts);
+    return ConstValue::object(t, std::move(parts));
   }
-  return std::nullopt;
+  return std::nullopt; // (inherited from an indirect base: not evaluated)
 }
 
 auto GlobalScope::Impl::constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth) -> std::optional<ConstValue>

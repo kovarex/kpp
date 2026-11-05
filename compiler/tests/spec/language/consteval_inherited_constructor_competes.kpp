@@ -1,0 +1,20 @@
+// spec: at compile time a construction chooses among the class's own constructors and those it inherits by `using Base::Base;` together, as the compiled program does: an inherited one that takes the arguments better wins over an own one that takes them by a conversion
+// factorio: the interpreter tried the class's own constructors first and the inherited ones only when none of those was viable, so a constant could be built by another constructor than the same expression at run time (design.md 24: one rule for which constructor a construction runs, GlobalScope::chooseConstructor)
+struct Base
+{
+  int v;
+  constexpr Base(int x) : v(x * 10) {}
+};
+struct Derived : Base
+{
+  using Base::Base;
+  constexpr Derived(double) : Base(1) {}
+};
+constexpr Derived built = Derived(5);
+static_assert(built.v == 50);
+int main()
+{
+  int five = 5;
+  println(built.v, " ", Derived(five).v);
+  return 0;
+}

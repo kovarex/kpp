@@ -31,6 +31,9 @@
   // The base classes (as instances, under p's arguments) whose constructors class def of type p
   // inherits with `using Vector2::Vector2;`, and those they inherit in turn.
   void inheritedConstructorSources(ClassDecl* def, const Ty* p, std::vector<const Ty*>& out, int depth, int level = 0);
+  // The one rule for which constructor a construction runs (design.md 24; GlobalScope::chooseConstructor).
+  FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes, const std::vector<bool>* nullConstants,
+                                  const Ty** inheritedFrom, bool implicitOnly = false, bool* ambiguous = nullptr);
 
   int listInitRank(const Ty* list, const Ty* p, int depth);
 
