@@ -7,3 +7,13 @@ __CYGWIN__
 __MINGW32__
 __MWERKS__
 __cplusplus
+# Linux's: its #if chains reach these where Windows' stop at _WIN32 or _MSC_VER (undefined there too)
+DJGPP
+R5900
+__BEOS__
+__EMX__
+__HAIKU__
+__MACH__
+__MACOS__
+__SYMBIAN32__
+__TMS320C6X__

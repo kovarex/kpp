@@ -10,21 +10,31 @@ namespace SuiteTCPSocket
   // The probe is closed before the tests bind the port (TCPSocket::bind makes a socket of its own),
   // so until then another process could take it: one binding that port by number, as the system
   // gives the next bind to port 0 the following free port, not the one just released.
+  // (Winsock on Windows, POSIX's sockets elsewhere: SocketHppCompatibility's SystemSocketType and
+  // INVALID_SOCKET on both)
   uint16_t freePort()
   {
-    WSADATA wsaData;
-    if (WSAStartup(0x0202, &wsaData) != 0)
-      throw SocketError("WSAStartup failed");
-    SOCKET probe = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (probe == (SOCKET)(~0)) // INVALID_SOCKET
+    if constexpr (config::platform == Platform::Windows)
+    {
+      WSADATA wsaData;
+      if (WSAStartup(0x0202, &wsaData) != 0)
+        throw SocketError("WSAStartup failed");
+    }
+    SystemSocketType probe = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (probe == INVALID_SOCKET)
       throw SocketError("Creating socket failed: " + lastSocketErrorString());
     sockaddr_in address = {};
     address.sin_family = AF_INET;
-    int length = sizeof address;
-    if (::bind(probe, (sockaddr*)&address, length) == SOCKET_ERROR || getsockname(probe, (sockaddr*)&address, &length) == SOCKET_ERROR)
+    socklen_t length = sizeof address;
+    if (::bind(probe, (sockaddr*)&address, length) != 0 || getsockname(probe, (sockaddr*)&address, &length) != 0)
       throw SocketError("Can't find a free port: " + lastSocketErrorString());
-    ::closesocket(probe);
-    WSACleanup();
+    if constexpr (config::platform == Platform::Windows)
+    {
+      ::closesocket(probe);
+      WSACleanup();
+    }
+    if constexpr (config::platform == Platform::Linux)
+      ::close(probe);
     return ntohs(address.sin_port);
   }
 
@@ -54,7 +64,7 @@ namespace SuiteTCPSocket
       UnitTest::MemoryOutStream stream;
       if (!UnitTest::CheckBoolean(text, !!condition(), stream))
       {
-        (IsDebuggerPresent() && (DebugBreak(), true));
+        breakUnderDebugger();
         failAt(line, stream.GetText());
       }
     }
@@ -64,14 +74,14 @@ namespace SuiteTCPSocket
     }
     catch (const Exception& e)
     {
-      (IsDebuggerPresent() && (DebugBreak(), true));
+      breakUnderDebugger();
       UnitTest::MemoryOutStream stream;
       stream << "Unhandled exception in check macro: " << e.what();
       failAt(line, stream.GetText());
     }
     catch (...)
     {
-      (IsDebuggerPresent() && (DebugBreak(), true));
+      breakUnderDebugger();
       failAt(line, "Unhandled exception in check macro");
     }
   }

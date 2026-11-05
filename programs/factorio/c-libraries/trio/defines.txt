@@ -1,2 +1,8 @@
 # trio's own defines in factorio-in-kpp's build.kpp (trio.define)
 TRIO_PUBLIC=
+# Off Windows trio.c is C99 (PREDEF_STANDARD_C99) and calls floorl, ceill and fmodl, C's long double,
+# which kpp takes for no C function off Windows (its long double is double): trio's double ones instead,
+# as on Windows, where long double is double.
+TRIO_NO_FLOORL
+TRIO_NO_CEILL
+TRIO_NO_FMODL

@@ -45,3 +45,5 @@ __clang_analyzer__
 __cplusplus
 __i386
 __sun__
+# Linux's: its #if chains reach these where Windows' stop at _WIN32 or _MSC_VER (undefined there too)
+__i386__

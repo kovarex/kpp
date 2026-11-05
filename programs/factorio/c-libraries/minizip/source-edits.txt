@@ -1,0 +1,8 @@
+# Hand edits of minizip's C before the converter reads it (Converter/SourceEdits.inl; programs/factorio/overrides/
+# source-edits.txt has the format): each makes the platforms' code one (docs/design.md 12, "One spelling on
+# every platform").
+
+@ libraries/minizip/ioapi.c: snprintf is the C library's on every platform (MSVC's _snprintf, which does not end a truncated text with a 0, on Windows; the UCRT's has C99's snprintf)
+- #if defined(_WIN32)
+- #  define snprintf _snprintf
+- #endif

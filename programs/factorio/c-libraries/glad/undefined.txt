@@ -17,3 +17,6 @@ __has_include
 # Defined in the C build, but every #if testing it is answered the same:
 # WINAPI_FAMILY_PARTITION: glad.c's `!WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && ...(APP)` (IS_UWP): 0 on the desktop, as undefined
 WINAPI_FAMILY_PARTITION
+# Linux's: its #if chains reach these where Windows' stop at _WIN32 or _MSC_VER (undefined there too)
+__ANDROID__
+__SYMBIAN32__

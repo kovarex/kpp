@@ -231,7 +231,9 @@ namespace
   bool statementAfter(std::string_view before)
   {
     std::string_view tail = before.substr(before.size() > 4096 ? before.size() - 4096 : 0);
-    char previous = lastCodeChar(tail);
+    // (the whole text's: a block comment longer than the tail, glad.c's list of extensions, would
+    // start before it)
+    char previous = lastCodeChar(before);
     if (previous == 0 || previous == ';' || previous == '{' || previous == '}' || previous == ':')
       return true;
     // (a `)` closes a statement's condition only after if, while, for or switch: a call's, a chain
@@ -499,7 +501,26 @@ namespace
   // constexpr...) or a class's keyword, and names something after the type: `int x = 3;`,
   // `std::vector<Cell*> neighbors;`, `Timer timer("x");`, `void dump() const {...}`; not `x = 3;`,
   // `f(x);`, `obj.f();`, `return x;`, `++x;`, `f<int>(x);`.
+  bool declaresNameWithoutComments(std::string_view item);
+  // (its block comments, a widened group's marks among them, `__int64/*kpp:endif F:@1*/ ret;`, as
+  // spaces)
   bool declaresName(std::string_view item)
+  {
+    if (item.find("/*") == std::string_view::npos)
+      return declaresNameWithoutComments(item);
+    std::string text;
+    for (size_t i = 0; i < item.size();)
+      if (item.compare(i, 2, "/*") == 0)
+      {
+        size_t e = item.find("*/", i + 2);
+        i = e == std::string_view::npos ? item.size() : e + 2;
+        text += ' ';
+      }
+      else
+        text += item[i++];
+    return declaresNameWithoutComments(text);
+  }
+  bool declaresNameWithoutComments(std::string_view item)
   {
     std::string_view code = codeStart(item);
     if (code.empty() || !(isalpha((unsigned char)code[0]) || code[0] == '_' || code[0] == ':'))
@@ -966,6 +987,40 @@ namespace
     linux = head + linux.substr(l.end);
   }
 
+  // A text's code alone: its comments (not the marks) and white space left out.
+  std::string withoutComments(const std::string& text)
+  {
+    std::string out;
+    for (size_t i = 0; i < text.size();)
+    {
+      if (text.compare(i, 2, "//") == 0)
+        i = std::min(text.find('\n', i), text.size());
+      else if (text.compare(i, 2, "/*") == 0 && text.compare(i, 6, "/*kpp:") != 0)
+      {
+        size_t e = text.find("*/", i + 2);
+        i = e == std::string::npos ? text.size() : e + 2;
+      }
+      else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
+      {
+        char quote = text[i];
+        out += text[i++];
+        while (i < text.size() && text[i] != quote && text[i] != '\n')
+        {
+          if (text[i] == '\\' && i + 1 < text.size())
+            out += text[i++];
+          out += text[i++];
+        }
+        if (i < text.size())
+          out += text[i++];
+      }
+      else if (isspace((unsigned char)text[i]))
+        ++i;
+      else
+        out += text[i++];
+    }
+    return out;
+  }
+
   // A group's parts as text with their own groups' marks kept (a widened group's, below, whose
   // configuration groups --convert-merge still merges).
   std::string flattenedMarked(const std::vector<MarkedPart>& parts)
@@ -991,8 +1046,11 @@ namespace
     if (w.size() != l.size())
       return;
     for (size_t i = 0; i < w.size(); ++i)
-      if (w[i].group != l[i].group || (w[i].group.empty() && w[i].text != l[i].text))
+      if (w[i].group != l[i].group || (w[i].group.empty() && withoutComments(w[i].text) != withoutComments(l[i].text)))
         return;
+    for (size_t i = 0; i < w.size(); ++i)
+      if (w[i].group.empty())
+        l[i].text = w[i].text; // (a comment of Windows' where they differ in comments alone: the cuts below are at Windows' offsets)
     for (size_t i = 0; i < w.size(); ++i)
     {
       if (w[i].group.empty())
@@ -1137,6 +1195,10 @@ namespace
         {
           // At the group: the block it stands in, and where its statement started.
           size_t b = stack.size();
+          // (a group that starts by closing a bracket, glad.c's `} else {`, stands in the
+          // statement around that bracket's: an if's else)
+          for (size_t k = nextCode(starts[i]); b > 0 && k < starts[i + 1] && all[k] && strchr(")]}", all[k]); k = nextCode(k + 1))
+            --b;
           while (b > 0 && !stack[b - 1].block)
             --b;
           if (caseLabel && b > 0)
@@ -1191,8 +1253,8 @@ namespace
               while (wordEnd < all.size() && isIdentChar(all[wordEnd]))
                 ++wordEnd;
               std::string_view word = std::string_view(all).substr(next, wordEnd - next);
-              if (next < all.size() && all[next] != ';' && all[next] != ',' && all[next] != ')' && all[next] != '(' && word != "else" &&
-                  word != "while" && word != "catch")
+              if (next >= all.size() || (all[next] != ';' && all[next] != ',' && all[next] != ')' && all[next] != '(' && word != "else" &&
+                  word != "while" && word != "catch"))
                 end = at + 1;
             }
           }
@@ -1300,7 +1362,10 @@ namespace
       const MarkedPart& d = debug[i];
       const MarkedPart& r = release[i];
       const MarkedPart* f = final ? &(*final)[i] : nullptr;
-      bool same = d.group == r.group && (!f || f->group == d.group) && (!d.group.empty() || (d.text == r.text && (!f || f->text == d.text)));
+      // (the platforms' text parts may differ in their comments alone: zlib.h's list of the library's
+      // names, gzopen_w Windows' alone; Windows' is written)
+      bool sameText = d.text == r.text || (&firstDimension == &platformDimension && withoutComments(d.text) == withoutComments(r.text));
+      bool same = d.group == r.group && (!f || f->group == d.group) && (!d.group.empty() || (sameText && (!f || f->text == d.text)));
       if (!same)
       {
         report = before;
@@ -1519,7 +1584,7 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
     }
     else if (debug == release && (finalDir.empty() || final == release) && debug.find("/*kpp:") == std::string::npos)
       write(rel, debug); // (a hand-written file, or one without an #if)
-    else if (entry.path().filename() == "c-imports.kpp")
+    else if (entry.path().filename().string().rfind("c-imports", 0) == 0) // (c-imports-windows.kpp, c-imports-linux.kpp too)
       merged[rel] = finalDir.empty() ? mergedImports(debug, release) : mergedImports(mergedImports(debug, release), final);
     else
       merged[rel] = mergedConfigurations(rel, debug, release, finalDir.empty() ? nullptr : &final, report);
@@ -1654,6 +1719,12 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     if (lastCodeChar(windows) == 0 && lastCodeChar(linux) != 0)
     {
       write(rel, alone(linux, "Linux"));
+      continue;
+    }
+    // Texts whose code is the same, their comments not: Windows' text.
+    if (windows != linux && withoutComments(windows) == withoutComments(linux))
+    {
+      write(rel, windows);
       continue;
     }
     unionForwardDeclarations(windows, linux);

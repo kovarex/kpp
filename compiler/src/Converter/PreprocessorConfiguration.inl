@@ -310,6 +310,34 @@
   // library's own defines come from its c-libraries\NAME\defines.txt (zlib's verbose=-1).
   std::map<std::string, std::string> cLibraryDefines()
   {
+    if (convertPlatform == "linux")
+    {
+      // Linux (--convert-platform linux): the build's Linux defines and clang's x86_64-linux-gnu
+      // predefines (platformDefines), as C, release; glibc's limits (LP64) and x87's long double, and
+      // the open flags as glibc names them (no O_BINARY).
+      std::map<std::string, std::string> d = platformDefines();
+      for (const char* name : {"_DEBUG", "DEBUG", "DISABLE_EXPRESSION_ID", "__cplusplus", "__cpp_lib_optional", "NOMINMAX", "BUILDING_WARNLESS_C",
+                               "CURL_STATICLIB", "SDL_MAIN_HANDLED", "SDL_SENSOR_DISABLED", "LUA_COMPAT_ALL", "LUA_CORE", "LUA_LIB", "lobject_c",
+                               "lvm_c", "ltable_c", "__has_include", "__GXX_ABI_VERSION", "__GXX_RTTI", "__GXX_WEAK__", "__EXCEPTIONS",
+                               "__DEPRECATED", "__GNUG__", "__STDCPP_DEFAULT_NEW_ALIGNMENT__", "_GNU_SOURCE"})
+        d.erase(name);
+      for (const auto& [name, body] : std::map<std::string, std::string>{
+             {"NDEBUG", ""}, {"__STDC__", "1"}, {"__STDC_VERSION__", "201710L"}, {"__STDC_HOSTED__", "1"},
+             {"CHAR_BIT", "8"}, {"SCHAR_MAX", "127"}, {"UCHAR_MAX", "255"}, {"SHRT_MAX", "32767"}, {"USHRT_MAX", "65535"},
+             {"INT_MAX", "2147483647"}, {"UINT_MAX", "4294967295U"}, {"LONG_MAX", "9223372036854775807L"},
+             {"ULONG_MAX", "18446744073709551615UL"}, {"LLONG_MAX", "9223372036854775807LL"}, {"ULLONG_MAX", "18446744073709551615ULL"},
+             {"SIZE_MAX", "18446744073709551615UL"},
+             {"O_EXCL", "0200"}, {"O_CREAT", "0100"}, {"O_TRUNC", "01000"}, {"O_APPEND", "02000"}, {"O_RDONLY", "00"}, {"O_WRONLY", "01"},
+             {"O_RDWR", "02"},
+             {"FLT_RADIX", "2"}, {"FLT_MANT_DIG", "24"}, {"DBL_MANT_DIG", "53"}, {"LDBL_MANT_DIG", "64"}, {"FLT_DIG", "6"},
+             {"DBL_DIG", "15"}, {"LDBL_DIG", "18"}, {"FLT_MAX_EXP", "128"}, {"DBL_MAX_EXP", "1024"}, {"LDBL_MAX_EXP", "16384"},
+             {"FLT_MIN_EXP", "(-125)"}, {"DBL_MIN_EXP", "(-1021)"}, {"LDBL_MIN_EXP", "(-16381)"}, {"FLT_MAX_10_EXP", "38"},
+             {"DBL_MAX_10_EXP", "308"}, {"LDBL_MAX_10_EXP", "4932"},
+             {"fpclassify", ""}, {"signbit", ""}, {"isnan", ""}, {"isinf", ""}, {"isfinite", ""}, {"isnormal", ""},
+             {"INFINITY", ""}, {"NAN", ""}, {"HUGE_VAL", ""}, {"HUGE_VALF", ""}, {"HUGE_VALL", ""}})
+        d[name] = body;
+      return d;
+    }
     std::map<std::string, std::string> d = fastDebugDefines;
     for (const char* name : {"_DEBUG", "DEBUG", "DISABLE_EXPRESSION_ID", "__cplusplus", "__cpp_lib_optional", "NOMINMAX", "BUILDING_WARNLESS_C",
                              "CURL_STATICLIB", "SDL_MAIN_HANDLED", "SDL_SENSOR_DISABLED", "LUA_COMPAT_ALL", "LUA_CORE", "LUA_LIB", "lobject_c",

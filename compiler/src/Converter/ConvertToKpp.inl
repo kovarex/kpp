@@ -230,7 +230,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   for (const auto& [key, k] : inputByPath)
   {
-    std::string_view t = inputs[k].text;
+    // (the includes of the branches the configuration keeps: the Windows controllers' headers
+    // RazerChromaWindowsController.hpp includes under WIN32 are no Linux file's)
+    const Preprocessed* decided = configuration ? configuration->impl->find(inputs[k].path) : nullptr;
+    std::string_view t = decided ? std::string_view(decided->configured) : inputs[k].text;
     // `#include`, or `#  include` (zlib's trees.c, indented under its #if)
     for (size_t at = t.find("include"); at != std::string_view::npos; at = t.find("include", at + 7))
     {

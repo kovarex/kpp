@@ -768,6 +768,20 @@ declared per platform:
   twice, `when (config::finalRelease && ...)` and `when (!config::finalRelease && ...)`).
 - The platform merge writes each group's marks back as they stood (alone on their lines or within
   one), so that the configurations' merge after it cuts each configuration's text alike.
+- The C libraries (ogg, zlib, glad, zstd, minizip, fontstash, trio, stb_image) are converted for both
+  platforms too (--c-sources with --convert-platform linux: the build's Linux defines and clang's
+  predefines as C, release, glibc's LP64 limits and x87's long double; the Windows names their #if
+  chains test are known undefined there) and merged by config::platform, each C macro's use marked
+  as the game's are. Their own differences are source edits (c-libraries\NAME\source-edits.txt):
+  xxhash's XXH_swap32 and XXH_swap64 are its functions on every platform, minizip's snprintf the C
+  library's; and trio's TRIO_NO_FLOORL, TRIO_NO_CEILL and TRIO_NO_FMODL keep it from C's long double
+  functions, which kpp calls on no platform but Windows (where long double is double).
+- Texts that differ in comments alone (zlib.h's list of the library's names) are Windows'.
+- The POSIX headers the game's Linux code includes (unistd.h, poll.h, termios.h, sys/socket.h,
+  arpa/inet.h, netdb.h, sys/wait.h, arpa/nameser.h, resolv.h...) are imports by their paths, Linux's
+  alone in c-imports-linux.kpp; a header only another platform's #if branch includes is no file of
+  this one (RazerChroma's SDK headers are Windows' alone); crc32fast is little endian without its own
+  __LITTLE_ENDIAN and __BIG_ENDIAN (glibc's endian.h has them).
 - A choice's second arm is Linux's: a third platform (FreeBSD) takes it until it is converted as
   itself.
 - convert.cmd: the whole game's platform merge has no problem (C:\Factorio 4c178a5b915, debug: 246

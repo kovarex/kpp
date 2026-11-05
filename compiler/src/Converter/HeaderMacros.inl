@@ -315,6 +315,11 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
           impl->cKnownUndefined.insert(line.substr(a, b - a + 1));
       }
     }
+  // Linux's (--convert-platform linux): the names Windows' build defines, MSVC's and the SDK's, are
+  // undefined there, as clang's -dM for x86_64-linux-gnu has them.
+  if (cSources && convertPlatform == "linux")
+    for (const char* name : {"_WIN32", "_WIN64", "WIN32", "WIN64", "_WINDOWS", "_MSC_VER", "_MSC_EXTENSIONS", "_M_X64", "_M_AMD64", "O_BINARY"})
+      impl->cKnownUndefined.insert(name);
   impl->paths = paths;
   impl->texts = texts;
   impl->roots = roots;

@@ -1,0 +1,7 @@
+# Hand edits of zstd's C before the converter reads it (Converter/SourceEdits.inl; programs/factorio/overrides/
+# source-edits.txt has the format): each makes the platforms' code one (docs/design.md 12, "One spelling on
+# every platform").
+
+@ libraries/zstd/common/xxhash.c: XXH_swap32 and XXH_swap64 are xxhash's own functions on every platform (a macro of MSVC's _byteswap_ulong on Windows, a function on Linux, where clang's GCC_VERSION is 402)
+- #if defined(_MSC_VER)     /* Visual Studio */
++ #if 0 /* kpp: the functions below on every platform */

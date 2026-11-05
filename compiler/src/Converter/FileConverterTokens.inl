@@ -2715,8 +2715,16 @@
             !cNamedConstant(std::string(spelling(i))))
           if (const std::string* own = cOwnObjectAt(std::string(spelling(i)), t.offset))
           {
-            // C: this file's own macro in force here (one of several definitions of the name)
-            replace(t.offset, t.length, rescanMacros(cExpandedObject(*own, t.offset), t.offset));
+            // C: this file's own macro in force here (one of several definitions of the name);
+            // marked, as a macro's use is (--convert-marks: zlib's z_off64_t, `__int64` on Windows
+            // and `long long` on Linux, is a group the platforms' merge chooses between)
+            std::string written = rescanMacros(cExpandedObject(*own, t.offset), t.offset);
+            if (convertMarks && !isStringLiterals(*own))
+            {
+              std::string id = in.path.filename().string() + ":@" + std::to_string(t.offset);
+              written = std::string(t.offset > 0 && text[t.offset - 1] == '/' ? " " : "") + "/*kpp:if " + id + "*/" + written + "/*kpp:endif " + id + "*/";
+            }
+            replace(t.offset, t.length, written);
             counts.add("C macro constants written out at their uses");
             continue;
           }
@@ -2733,8 +2741,8 @@
             // literals, `(config::platform == Platform::Windows ? "left-" "windows" : "left-" "super")`.
             // Another name (FileOperations' ftello64, `_ftelli64` on Windows and `ftello` on Linux)
             // is marked alone: a use whose names differ is merged as the statement around it.
-            if (convertMarks && !in.c && !isStringLiterals(macro->second) &&
-                (isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second)))
+            if (convertMarks && !isStringLiterals(macro->second) &&
+                (in.c || isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second)))
             {
               std::string id = in.path.filename().string() + ":@" + std::to_string(t.offset);
               written = std::string(t.offset > 0 && text[t.offset - 1] == '/' ? " " : "") + "/*kpp:if " + id + "*/" + written + "/*kpp:endif " + id + "*/";

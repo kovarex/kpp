@@ -70,3 +70,6 @@ mpeix
 sgi
 sun
 unix
+# Linux's: its #if chains reach these where Windows' stop at _WIN32 or _MSC_VER (undefined there too)
+_LONGLONG
+_LONG_LONG

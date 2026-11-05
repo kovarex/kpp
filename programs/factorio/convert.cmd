@@ -57,10 +57,18 @@ call "%~dp0c-libraries.cmd" || goto :failed
 set CLIBKPP=
 set CLIBWHOLE=
 set CLIBUSE=
-if exist kpp\clib rd /s /q kpp\clib
+rem Each converted for Windows and for Linux (unless CONVERT_LINUX=0), the two made one by config::platform
+rem (--convert-merge-platform, design.md 12), the marks taken out by --convert-merge of that text with itself.
+set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
+for %%d in (clib clib-w clib-l clib-b) do if exist kpp\%%d rd /s /q kpp\%%d
 for %%l in (%CLIBRARIES%) do (
   call :libraryUses %%l
-  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+  call %KPPC% --no-std --quiet --c-sources --convert-marks --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib-w\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+  if "%CONVERT_LINUX%"=="0" (xcopy /s /y /q /i kpp\clib-w\%%l kpp\clib-b\%%l >nul) else (
+    call %KPPC% --no-std --quiet --c-sources --convert-marks %LINUXCONVERT% --overrides c-libraries\%%l %%LIBUSE%% --convert kpp\clib-l\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
+    %KPPC% --convert-merge-platform kpp\clib-w\%%l kpp\clib-l\%%l kpp\clib-b\%%l > kpp\clib-b-%%l.log 2>&1 || goto :clibmergefailed
+  )
+  %KPPC% --convert-merge kpp\clib-b\%%l kpp\clib-b\%%l kpp\clib\%%l > kpp\clib-%%l.log 2>&1 || goto :clibmergefailed
   if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
   xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
   if exist kpp\%%l rd /s /q kpp\%%l
@@ -348,6 +356,10 @@ exit /b 2
 :nocheckout
 echo convert: name the factorio-in-kpp checkout to write: convert.cmd DIR, or set FACTORIO_IN_KPP=DIR. Each thread writes its own copy, made once by setup-checkout.cmd; C:\factorio-in-kpp only for a factorio-in-kpp push.
 exit /b 2
+:clibmergefailed
+for %%f in (kpp\clib-b-*.log kpp\clib-*.log) do type %%f
+set STEP=the C libraries made one by platform
+goto :failed
 :clibfailed
 echo convert: a C library's conversion failed
 :failed

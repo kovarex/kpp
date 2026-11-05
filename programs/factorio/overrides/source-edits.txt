@@ -119,3 +119,26 @@
 @ libraries/Lua/luaconf.h: LUA_VDIR is the literal lua.h's LUA_VERSION_MAJOR "." LUA_VERSION_MINOR "/" make
 - #define LUA_VDIR	LUA_VERSION_MAJOR "." LUA_VERSION_MINOR "/"
 + #define LUA_VDIR	"5" "." "2" "/"
+
+# crc32fast's byte order: little endian on every platform kpp builds the game for (x86-64), without
+# its own __LITTLE_ENDIAN and __BIG_ENDIAN, which glibc's endian.h (through sys/param.h) declares too.
+@ libraries/crc32fast/Crc32_fast.cpp: no __LITTLE_ENDIAN and __BIG_ENDIAN of its own (glibc's endian.h has them)
+- #ifndef __LITTLE_ENDIAN
+-   #define __LITTLE_ENDIAN 1234
+- #endif
+- #ifndef __BIG_ENDIAN
+-   #define __BIG_ENDIAN    4321
+- #endif
++ // (kpp: little endian on every platform, x86-64)
+
+@ libraries/crc32fast/Crc32_fast.cpp: the byte order is little endian (x86-64)
+-   #define __BYTE_ORDER __LITTLE_ENDIAN
++   // (kpp: little endian)
+
+@ libraries/crc32fast/Crc32_fast.cpp: the byte order is little endian (x86-64)
+- #if !defined(__BYTE_ORDER)
++ #if 0 /* kpp: little endian (x86-64) */
+
+@ libraries/crc32fast/Crc32_fast.cpp: the byte order is little endian (x86-64)
+- #if __BYTE_ORDER == __BIG_ENDIAN
++ #if 0 /* kpp: little endian (x86-64) */

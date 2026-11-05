@@ -5,8 +5,9 @@
 // the check fails. A check whose id is nullptr calls the overload without one.
 
 // The macro's BREAK_UNDER_DEBUGGER: MSVC's IsDebuggerPresent and DebugBreak on Windows (windows.h,
-// imported by CheckInternalWindows.kpp), nothing elsewhere, as CheckMacros.h has it.
-private bool breakUnderDebugger()
+// imported by CheckInternalWindows.kpp), nothing elsewhere, as CheckMacros.h has it (the tests'
+// TestTCPSocket override calls it too).
+bool breakUnderDebugger()
 {
   if constexpr (config::platform == Platform::Windows)
     return IsDebuggerPresent() && (DebugBreak(), true);
