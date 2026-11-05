@@ -1,0 +1,7 @@
+// A value of the wrong JSON type asked for, a missing member, an index out of range.
+class JsonTypeError : public RuntimeError
+{
+public:
+  JsonTypeError() {}
+  explicit JsonTypeError(const String& message) : RuntimeError(message) {}
+};

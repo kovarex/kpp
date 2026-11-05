@@ -1,0 +1,3 @@
+// A JSON value (libraries/json/README.md). An object keeps its members in the order they were
+// added; setting an existing key replaces its value in place.
+enum class JsonType { null, boolean, integer, number, string, array, object };

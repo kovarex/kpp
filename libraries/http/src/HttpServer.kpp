@@ -3,15 +3,6 @@
 // the one CGI calls (HttpCgi.kpp), so a program runs the same under both. Not for the internet: no
 // TLS, no keep-alive, no limits on slow clients.
 
-struct HttpServerOptions
-{
-  String address = "127.0.0.1";
-  i32 port = 8080;
-  i64 maxRequests = -1;       // stop after this many (tests); -1: serve until the process ends
-  i64 maxBodyBytes = 64 * 1024 * 1024;
-  bool log = true;                // a line per request on stdout: method, target, status
-};
-
 // Reads one request from stream; HttpError for one this server does not read (its status is the
 // answer: 400, 411, 413, 431, 501).
 HttpRequest httpReadRequest(net::TcpStream& stream)

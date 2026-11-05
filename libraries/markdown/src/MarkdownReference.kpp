@@ -1,0 +1,6 @@
+struct MarkdownReference
+{
+  String label; // normalized
+  String destination;
+  String title;
+};

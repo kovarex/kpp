@@ -1,16 +1,6 @@
-// A JSON value (libraries/json/README.md). An object keeps its members in the order they were
-// added; setting an existing key replaces its value in place.
-enum class JsonType { null, boolean, integer, number, string, array, object };
-
 struct JsonValue
 {
-  JsonType type = JsonType::null;
-  bool booleanValue = false;
-  i64 integerValue = 0; // JsonType::integer: a number written without fraction or exponent
-  double numberValue = 0;     // JsonType::number
-  String stringValue;
-  Vector<JsonValue> items; // an array's elements, or an object's values
-  Vector<String> keys;     // an object's keys, items[i]'s at keys[i]
+     // an object's keys, items[i]'s at keys[i]
 
   JsonValue() {}
   implicit JsonValue(bool value) : type(JsonType::boolean), booleanValue(value) {}
@@ -193,6 +183,14 @@ struct JsonValue
     if (this->type != wanted)
       throw JsonTypeError(format("JSON value is {}, not {}", StringView(jsonTypeName(this->type)), StringView(what)));
   }
+
+  JsonType type = JsonType::null;
+  bool booleanValue = false;
+  i64 integerValue = 0; // JsonType::integer: a number written without fraction or exponent
+  double numberValue = 0;     // JsonType::number
+  String stringValue;
+  Vector<JsonValue> items; // an array's elements, or an object's values
+  Vector<String> keys;
 };
 
 // The JSON type's name with its article, for messages: "a string", "null".
@@ -221,10 +219,3 @@ bool jsonSameNumber(double a, double b)
   return a != 0 || (1 / a) == (1 / b);
 }
 
-// A value of the wrong JSON type asked for, a missing member, an index out of range.
-class JsonTypeError : public RuntimeError
-{
-public:
-  JsonTypeError() {}
-  explicit JsonTypeError(const String& message) : RuntimeError(message) {}
-};

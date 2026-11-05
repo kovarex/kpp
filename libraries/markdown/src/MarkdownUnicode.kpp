@@ -349,12 +349,6 @@ const i32 markdownPunctuationRanges[][2] = {
   {0x1FB94, 0x1FBEF},
 };
 
-struct MarkdownCaseFold
-{
-  i32 code;
-  const char* folded;
-};
-
 // Every code point above ASCII whose case folding differs, with its folding.
 const MarkdownCaseFold markdownCaseFolds[] = {
   {0xB5, "\316\274"},

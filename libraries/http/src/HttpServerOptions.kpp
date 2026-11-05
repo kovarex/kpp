@@ -1,0 +1,8 @@
+struct HttpServerOptions
+{
+  String address = "127.0.0.1";
+  i32 port = 8080;
+  i64 maxRequests = -1;       // stop after this many (tests); -1: serve until the process ends
+  i64 maxBodyBytes = 64 * 1024 * 1024;
+  bool log = true;                // a line per request on stdout: method, target, status
+};

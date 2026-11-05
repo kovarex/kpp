@@ -1,12 +1,3 @@
-// A value for a hole: text, escaped where it goes; SafeHtml, inserted as it is (in an element's
-// text only); or a bool, for a boolean attribute's hole (`<option ?selected="{{chosen}}">`).
-enum class HtmlArgumentKind : u8
-{
-  text,
-  safe,
-  flag,
-};
-
 struct HtmlArgument
 {
   HtmlArgument(const char* name, StringView value) : name(name), value(value) {}

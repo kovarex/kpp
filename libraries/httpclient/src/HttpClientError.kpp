@@ -1,0 +1,8 @@
+// A request that did not get a response: no connection, a timeout, a certificate that is not valid,
+// an address that is not http or https. A response with any status is not an error.
+class HttpClientError : public RuntimeError
+{
+public:
+  HttpClientError() {}
+  HttpClientError(const String& message) : RuntimeError(message) {}
+};

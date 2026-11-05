@@ -1,0 +1,11 @@
+struct MarkdownDelimiter
+{
+  i32 character;
+  i32 count;
+  i32 originalCount;
+  MarkdownNode* node;
+  MarkdownDelimiter* previous;
+  MarkdownDelimiter* next;
+  bool canOpen;
+  bool canClose;
+};

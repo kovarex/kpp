@@ -1,0 +1,10 @@
+struct MarkdownBracket
+{
+  MarkdownNode* node;
+  MarkdownBracket* previous;
+  MarkdownDelimiter* previousDelimiter;
+  i32 index;
+  bool image;
+  bool active;
+  bool bracketAfter;
+};

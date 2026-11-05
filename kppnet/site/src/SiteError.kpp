@@ -1,0 +1,7 @@
+// A file or directory that should be there and is not, a file that cannot be written.
+class SiteError : public RuntimeError
+{
+public:
+  SiteError() {}
+  explicit SiteError(const String& message) : RuntimeError(message) {}
+};

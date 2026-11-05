@@ -1,42 +1,8 @@
 // SHA-256 (FIPS 180-4) and HMAC-SHA-256 (RFC 2104). README.md has the API and the test vectors.
 
-// A SHA-256 digest: 32 bytes.
-struct Sha256Digest
-{
-  u8 bytes[32];
-
-  // Lowercase hex, 64 characters.
-  String hex() const
-  {
-    const char* digits = "0123456789abcdef";
-    String out;
-    for (i32 i = 0; i < 32; ++i)
-    {
-      out << digits[this->bytes[i] >> 4];
-      out << digits[this->bytes[i] & 15];
-    }
-    return out;
-  }
-  // The 32 bytes as a String.
-  String data() const { return String((const char*)this->bytes, 32); }
-  String str() const { return this->hex(); }
-
-  // In constant time: how long it takes says nothing about where two digests differ.
-  bool operator==(const Sha256Digest& other) const { return Sha256::constantTimeEqual(this->view(), other.view()); }
-  bool operator!=(const Sha256Digest& other) const { return !(*this == other); }
-
-  StringView view() const { return StringView((const char*)this->bytes, 32); }
-};
-
 // SHA-256 of data given in parts: update() any number of times, then finish() once.
 struct Sha256
 {
-  u32 state[8];
-  u8 block[64];
-  i32 blockLength = 0;      // bytes in block
-  u64 totalLength = 0; // bytes given
-  bool finished = false;
-
   Sha256() { this->reset(); }
 
   // Starts again, as a new Sha256.
@@ -176,6 +142,12 @@ struct Sha256
     this->state[6] += g;
     this->state[7] += h;
   }
+
+  u32 state[8];
+  u8 block[64];
+  i32 blockLength = 0;      // bytes in block
+  u64 totalLength = 0; // bytes given
+  bool finished = false;
 };
 
 // SHA-256 of the bytes.

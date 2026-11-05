@@ -1,0 +1,5 @@
+struct HttpHeader
+{
+  String name;  // lower case in a request; as written in a response
+  String value;
+};

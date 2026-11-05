@@ -1,0 +1,8 @@
+// A part of a multipart/form-data body: a field, or a file when filename is given.
+struct HttpPart
+{
+  String name;
+  Optional<String> filename;
+  String contentType; // empty when the part says none
+  String data;
+};

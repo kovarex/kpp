@@ -1,0 +1,83 @@
+// Reads a packet's fields; reading past its end throws.
+struct MariaDbReader
+{
+  MariaDbReader(StringView data, ContainerSize position) : data(data), position(position) {}
+
+  void need(ContainerSize n)
+  {
+    if (this->position + n > this->data.size())
+      throw MariaDbError("a packet from the server is shorter than its fields", 0, String());
+  }
+  u8 peek()
+  {
+    this->need(1);
+    return (u8)this->data[this->position];
+  }
+  void skip(ContainerSize n)
+  {
+    this->need(n);
+    this->position += n;
+  }
+  u8 uint8()
+  {
+    u8 value = this->peek();
+    this->position += 1;
+    return value;
+  }
+  u16 uint16()
+  {
+    this->need(2);
+    u16 value = (u16)((u8)this->data[this->position] | ((u8)this->data[this->position + 1] << 8));
+    this->position += 2;
+    return value;
+  }
+  u64 fixed(i32 bytes)
+  {
+    this->need((ContainerSize)bytes);
+    u64 value = 0;
+    for (i32 i = 0; i < bytes; ++i)
+      value |= (u64)(u8)this->data[this->position + (ContainerSize)i] << (8 * i);
+    this->position += (ContainerSize)bytes;
+    return value;
+  }
+  u64 lengthEncoded()
+  {
+    u8 first = this->uint8();
+    if (first < 251)
+      return first;
+    if (first == 0xfc)
+      return this->fixed(2);
+    if (first == 0xfd)
+      return this->fixed(3);
+    if (first == 0xfe)
+      return this->fixed(8);
+    throw MariaDbError(format("a length-encoded integer cannot start with {}", (i32)first), 0, String());
+  }
+  String bytes(ContainerSize n)
+  {
+    this->need(n);
+    String out(this->data.substr(this->position, n));
+    this->position += n;
+    return out;
+  }
+  String lengthEncodedString() { return this->bytes((ContainerSize)this->lengthEncoded()); }
+  void skipLengthEncodedString() { this->skip((ContainerSize)this->lengthEncoded()); }
+  String nulTerminated()
+  {
+    ContainerSize end = this->data.find('\0', this->position);
+    if (end == StringView::npos)
+      throw MariaDbError("a packet from the server lacks a terminating zero", 0, String());
+    String out(this->data.substr(this->position, end - this->position));
+    this->position = end + 1;
+    return out;
+  }
+  String rest()
+  {
+    String out(this->data.substr(this->position));
+    this->position = this->data.size();
+    return out;
+  }
+
+  StringView data;
+  ContainerSize position = 0;
+};

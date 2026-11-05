@@ -1,14 +1,6 @@
 // Files and paths for kppsite. Paths inside the repository are relative, with '/', as git names
 // them: docs/stdlib/time.md.
 
-// A file or directory that should be there and is not, a file that cannot be written.
-class SiteError : public RuntimeError
-{
-public:
-  SiteError() {}
-  explicit SiteError(const String& message) : RuntimeError(message) {}
-};
-
 String siteReadFile(const String& path)
 {
   FILE* file = fopen(path.c_str(), "rb");

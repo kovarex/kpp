@@ -1,0 +1,10 @@
+struct MarkdownOptions
+{
+  // GitHub's tables (the GFM spec's "Tables (extension)").
+  bool tables = false;
+  // An id on every heading, as GitHub makes them (README.md): links to #a-heading work.
+  bool headingIds = false;
+  // Called with every link's and image's destination (percent-encoded, as written in the HTML);
+  // what it returns is written instead. A site uses it to turn links to .md files into .html.
+  Function<String(const String&)> rewriteLink;
+};

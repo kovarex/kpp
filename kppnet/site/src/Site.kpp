@@ -3,17 +3,6 @@
 // the repository's libraries/ and the registry's index; everything goes into one directory, which
 // is uploaded as it is.
 
-struct SiteOptions
-{
-  String repository = ".";                         // the kpp repository's root
-  String out;                                      // where the site is written
-  String registry;                                 // a copy of the registry's store (index/*.json); "": none
-  Vector<String> pageRoots;                        // the directories whose .md files become pages
-  String sourceUrl = "https://github.com/kovarex/kpp"; // where a link to a file that is not a page goes
-  String registryUrl = "https://kpp.net/registry/";    // where the archives are
-  String commit;                                   // the repository's commit, named in every page's footer
-};
-
 constexpr html::HtmlTemplate sitePage{R"(<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -101,25 +90,9 @@ const char* siteSearchScript = R"(document.getElementById("search").addEventList
 });
 )";
 
-// A link to an anchor in one of the site's pages, checked once every page is written.
-struct SiteAnchorLink
-{
-  String page;   // the Markdown file the link is in
-  String target; // the site path of the page it goes to
-  String anchor; // decoded
-};
-
 // One run's state: the pages to write, the problems found.
 struct Site
 {
-  SiteOptions options;
-  Vector<String> pages; // the .md files that become pages, repository paths
-  Vector<String> warnings;
-  Vector<SiteAnchorLink> anchorLinks;
-  Vector<String> htmlPaths; // the pages written, and their HTML, for the anchor check
-  Vector<String> htmlTexts;
-  i32 written = 0;
-
   explicit Site(const SiteOptions& options) : options(options) {}
 
   String path(StringView repositoryPath) const { return this->options.repository + "/" + repositoryPath; }
@@ -322,6 +295,14 @@ struct Site
     }
     return siteReleaseTable.render({{"rows", rows}});
   }
+
+  SiteOptions options;
+  Vector<String> pages; // the .md files that become pages, repository paths
+  Vector<String> warnings;
+  Vector<SiteAnchorLink> anchorLinks;
+  Vector<String> htmlPaths; // the pages written, and their HTML, for the anchor check
+  Vector<String> htmlTexts;
+  i32 written = 0;
 };
 
 // The newest release that is not yanked, or "".

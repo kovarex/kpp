@@ -1,0 +1,9 @@
+// What the server refused (code and SQLSTATE are the server's), or a connection that failed.
+class MariaDbError : public RuntimeError
+{
+public:       // "42S02"...; empty when the server did not send one
+  MariaDbError() {}
+  MariaDbError(const String& message, i32 code, const String& sqlState) : RuntimeError(message), code(code), sqlState(sqlState) {}
+  i32 code = 0;          // the server's error number, 0 when the server did not send one
+  String sqlState;
+};

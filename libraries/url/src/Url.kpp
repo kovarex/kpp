@@ -2,35 +2,12 @@
 // a reference against a base (section 5), percent-encoding, and query strings in the form
 // browsers send (application/x-www-form-urlencoded).
 
-// Text that is not a URI reference, or a malformed percent-encoding. The message starts with the
-// byte offset of the problem.
-class UrlError : public RuntimeError
-{
-public:
-  i32 offset = 0;
-  UrlError() {}
-  UrlError(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
-};
-
 void urlFail(i32 offset, const char* what) { throw UrlError(format("{}: {}", offset, StringView(what)), offset); }
 
 // A URI reference's components, as written (percent-encoded). The has* flags tell an empty
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
 struct Url
 {
-  String scheme; // without ':'; empty for a relative reference
-  bool hasAuthority = false;
-  String userInfo;
-  bool hasUserInfo = false;
-  String host; // an IP literal keeps its brackets: [::1]
-  String port; // digits, maybe empty ("http://a:/")
-  bool hasPort = false;
-  String path;
-  bool hasQuery = false;
-  String query;
-  bool hasFragment = false;
-  String fragment;
-
   bool isRelative() const { return this->scheme.empty(); }
 
   // The port as a number, or -1 when there is none or it is empty.
@@ -84,6 +61,19 @@ struct Url
   }
 
   bool operator==(const Url& other) const { return this->str() == other.str(); }
+
+  String scheme; // without ':'; empty for a relative reference
+  bool hasAuthority = false;
+  String userInfo;
+  bool hasUserInfo = false;
+  String host; // an IP literal keeps its brackets: [::1]
+  String port; // digits, maybe empty ("http://a:/")
+  bool hasPort = false;
+  String path;
+  bool hasQuery = false;
+  String query;
+  bool hasFragment = false;
+  String fragment;
 };
 
 bool urlIsUnreserved(char c)
@@ -404,12 +394,6 @@ String urlDecodeWith(StringView text, bool plusIsSpace)
 }
 
 // --- query strings (application/x-www-form-urlencoded, as browsers send forms) ---
-
-struct UrlQueryParameter
-{
-  String name;
-  String value;
-};
 
 // "a=1&b=x+y&c": the parameters in order, '+' as a space, %XX decoded; an empty piece ("a&&b")
 // is skipped, a piece without '=' has an empty value.

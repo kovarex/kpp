@@ -2,47 +2,6 @@
 // (HttpClientWindows.kpp: WinHTTP), and HTTP/1.1 with OpenSSL on FreeBSD (HttpClientPosix.kpp).
 // README.md has the API.
 
-// A request that did not get a response: no connection, a timeout, a certificate that is not valid,
-// an address that is not http or https. A response with any status is not an error.
-class HttpClientError : public RuntimeError
-{
-public:
-  HttpClientError() {}
-  HttpClientError(const String& message) : RuntimeError(message) {}
-};
-
-struct HttpClientHeader
-{
-  String name;
-  String value;
-};
-
-struct HttpClientRequest
-{
-  String method = "GET";
-  String url;                       // http://... or https://...
-  Vector<HttpClientHeader> headers; // besides the ones the client adds (Host, Content-Length...)
-  String body;
-  i32 timeoutMilliseconds = 30000;  // for connecting, sending and each read
-  bool followRedirects = true;      // to the same scheme or from http to https
-};
-
-struct HttpClientResponse
-{
-  i32 status = 0;
-  Vector<HttpClientHeader> headers; // names as the server sent them
-  String body;
-
-  // The first header of that name (any case), or nullptr.
-  const String* header(StringView name) const
-  {
-    for (const HttpClientHeader& h : this->headers)
-      if (httpClientEqualIgnoringCase(h.name, name))
-        return &h.value;
-    return nullptr;
-  }
-};
-
 bool httpClientEqualIgnoringCase(StringView a, StringView b)
 {
   if (a.size() != b.size())
@@ -113,15 +72,6 @@ Vector<HttpClientHeader> httpClientParseHeaders(StringView text)
   }
   return headers;
 }
-
-// An address's parts: secure (https), host, port, and the path with its query.
-struct HttpClientTarget
-{
-  bool secure = false;
-  String host;
-  u16 port = 0;
-  String path;
-};
 
 HttpClientTarget httpClientTarget(StringView url)
 {

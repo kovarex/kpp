@@ -1,0 +1,15 @@
+requires config::platform == Platform::Windows;
+struct WinHttp
+{
+  HMODULE module = nullptr;
+  WinHttpOpenFunction open = nullptr;
+  WinHttpConnectFunction connect = nullptr;
+  WinHttpOpenRequestFunction openRequest = nullptr;
+  WinHttpSetTimeoutsFunction setTimeouts = nullptr;
+  WinHttpSetOptionFunction setOption = nullptr;
+  WinHttpSendRequestFunction sendRequest = nullptr;
+  WinHttpReceiveResponseFunction receiveResponse = nullptr;
+  WinHttpQueryHeadersFunction queryHeaders = nullptr;
+  WinHttpReadDataFunction readData = nullptr;
+  WinHttpCloseHandleFunction closeHandle = nullptr;
+};

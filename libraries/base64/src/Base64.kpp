@@ -1,15 +1,6 @@
 // Base64 and base64url (RFC 4648 sections 4 and 5). Decoding is strict: README.md lists what it
 // rejects.
 
-// Text that is not base64. The message starts with the byte offset of the problem.
-class Base64Error : public RuntimeError
-{
-public:
-  i32 offset = 0;
-  Base64Error() {}
-  Base64Error(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
-};
-
 // Base64 with '+' and '/', padded with '='.
 String base64Encode(StringView data) { return base64EncodeWith(data, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", true); }
 

@@ -1,0 +1,7 @@
+// A socket call that failed: the message names the call, the host or port, and the system's error.
+class NetError : public RuntimeError
+{
+public:
+  NetError() {}
+  NetError(const String& message) : RuntimeError(message) {}
+};

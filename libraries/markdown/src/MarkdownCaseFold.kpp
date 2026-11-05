@@ -1,0 +1,5 @@
+struct MarkdownCaseFold
+{
+  i32 code;
+  const char* folded;
+};

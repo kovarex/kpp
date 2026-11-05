@@ -2,69 +2,9 @@
 // of one kind, linked as commonmark.js links them, so that emphasis can move a run of siblings into
 // a new node.
 
-enum class MarkdownType : u8
-{
-  document,
-  blockQuote,
-  list,
-  item,
-  paragraph,
-  heading,
-  thematicBreak,
-  codeBlock,
-  htmlBlock,
-  table,
-  tableRow,
-  tableCell,
-  text,
-  softBreak,
-  lineBreak,
-  code,
-  emphasis,
-  strong,
-  link,
-  image,
-  htmlInline,
-};
-
 struct MarkdownNode
 {
-  MarkdownType type = MarkdownType::document;
-  MarkdownNode* parent = nullptr;
-  MarkdownNode* firstChild = nullptr;
-  MarkdownNode* lastChild = nullptr;
-  MarkdownNode* previous = nullptr;
-  MarkdownNode* next = nullptr;
-
-  String literal; // text, code, an HTML block or inline, a code block's text
-  String content; // a paragraph's or heading's lines, before inlines are parsed
-  String destination;
-  String title;
-  String info; // a fenced code block's info string
-
-  bool open = true;
-  i32 startLine = 0;
-  i32 endLine = 0;
-  i32 level = 0; // a heading's
-
-  // A list's and an item's marker.
-  bool ordered = false;
-  bool tight = true;
-  char bulletChar = 0;
-  char delimiter = 0;
-  i32 start = 0;
-  i32 markerOffset = 0;
-  i32 padding = 0;
-
-  // A code block's fence.
-  bool fenced = false;
-  char fenceChar = 0;
-  i32 fenceLength = 0;
-  i32 fenceOffset = 0;
-
-  i32 htmlBlockType = 0;
-  i32 alignment = 0; // a table cell's: 0 none, 1 left, 2 center, 3 right
-  bool header = false; // a table row's
+ // a table row's
 
   void appendChild(MarkdownNode* child)
   {
@@ -110,25 +50,43 @@ struct MarkdownNode
     this->next = nullptr;
     this->previous = nullptr;
   }
-};
 
-// Owns the nodes of one document.
-struct MarkdownNodes
-{
-  Deque<MarkdownNode> nodes;
+  MarkdownType type = MarkdownType::document;
+  MarkdownNode* parent = nullptr;
+  MarkdownNode* firstChild = nullptr;
+  MarkdownNode* lastChild = nullptr;
+  MarkdownNode* previous = nullptr;
+  MarkdownNode* next = nullptr;
 
-  MarkdownNode* make(MarkdownType type)
-  {
-    MarkdownNode& node = this->nodes.emplace_back();
-    node.type = type;
-    return &node;
-  }
-  MarkdownNode* text(StringView literal)
-  {
-    MarkdownNode* node = this->make(MarkdownType::text);
-    node->literal = String(literal);
-    return node;
-  }
+  String literal; // text, code, an HTML block or inline, a code block's text
+  String content; // a paragraph's or heading's lines, before inlines are parsed
+  String destination;
+  String title;
+  String info; // a fenced code block's info string
+
+  bool open = true;
+  i32 startLine = 0;
+  i32 endLine = 0;
+  i32 level = 0; // a heading's
+
+  // A list's and an item's marker.
+  bool ordered = false;
+  bool tight = true;
+  char bulletChar = 0;
+  char delimiter = 0;
+  i32 start = 0;
+  i32 markerOffset = 0;
+  i32 padding = 0;
+
+  // A code block's fence.
+  bool fenced = false;
+  char fenceChar = 0;
+  i32 fenceLength = 0;
+  i32 fenceOffset = 0;
+
+  i32 htmlBlockType = 0;
+  i32 alignment = 0; // a table cell's: 0 none, 1 left, 2 center, 3 right
+  bool header = false;
 };
 
 // --- characters ---

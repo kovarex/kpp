@@ -1,0 +1,8 @@
+// An address's parts: secure (https), host, port, and the path with its query.
+struct HttpClientTarget
+{
+  bool secure = false;
+  String host;
+  u16 port = 0;
+  String path;
+};

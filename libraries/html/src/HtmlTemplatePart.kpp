@@ -1,17 +1,5 @@
 // The parts a template is read into (HtmlTemplate).
 
-// What a part of a template is: its own text, or a hole and how its value is written.
-enum class HtmlHole : u8
-{
-  literal,   // the template's text, as it is
-  text,      // in an element's text: escaped, or a SafeHtml as it is
-  attribute, // in a quoted attribute value: escaped
-  urlStart,  // the start of a URL attribute's value (href, src...): a URL whose scheme is checked
-  urlPath,   // later in a URL, before any '?' or '#': percent-encoded, '/' kept
-  urlQuery,  // in a URL's query or fragment: percent-encoded
-  flag,      // a boolean attribute, ?name="{{hole}}": a bool; true writes " name", false nothing
-};
-
 struct HtmlTemplatePart
 {
   i32 start;  // in the template's text; a hole's name for a hole

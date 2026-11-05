@@ -1,0 +1,7 @@
+// A link to an anchor in one of the site's pages, checked once every page is written.
+struct SiteAnchorLink
+{
+  String page;   // the Markdown file the link is in
+  String target; // the site path of the page it goes to
+  String anchor; // decoded
+};

@@ -1,0 +1,5 @@
+struct MarkdownEntityName
+{
+  const char* name;
+  const char* value;
+};

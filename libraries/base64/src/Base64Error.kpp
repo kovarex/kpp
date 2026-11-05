@@ -1,0 +1,8 @@
+// Text that is not base64. The message starts with the byte offset of the problem.
+class Base64Error : public RuntimeError
+{
+public:
+  Base64Error() {}
+  Base64Error(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
+  i32 offset = 0;
+};
