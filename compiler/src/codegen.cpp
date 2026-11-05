@@ -1,7 +1,6 @@
 #include "codegen.hpp"
 #include "ast_walk.hpp"
 #include "consteval.hpp"
-#include "natvis.hpp"
 #include "source.hpp"
 #include <map>
 #include <set>

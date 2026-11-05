@@ -1191,6 +1191,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.unassembled.assign(sh.moduleCount, true);
       session->usable = !checkRebuild;
     }
+    result.debugClasses = sh.debugClasses;
     return std::move(result);
   }
   if (e.moduleCount <= 1)
@@ -1234,6 +1235,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
       result.stubs = stubbed.size() + countUndefinedStubs(sh);
     }
+    result.debugClasses = sh.debugClasses;
     return std::move(result);
   }
   // The modules are independent once the texts are finished: assembled on all the emitters'
@@ -1395,6 +1397,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
             result.functions, first.empty() ? "" : "; first: ", first.c_str());
   }
   session->usable = keep && keepTexts && !checkRebuild && result.errors.empty();
+  result.debugClasses = sh.debugClasses;
   return std::move(result);
 }
 
@@ -2188,6 +2191,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::sort(out.failedFunctions.begin(), out.failedFunctions.end());
     out.functions = sh.functions;
     out.structs = session.result.structs;
+    out.debugClasses = sh.debugClasses;
     session.usable = true;
     rebuilt = true;
     return out;
@@ -2227,6 +2231,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     out.changedModules[i] = true;
   out.functions = sh.functions;
   out.structs = session.result.structs;
+  out.debugClasses = sh.debugClasses;
   session.usable = true;
   rebuilt = true;
   return out;

@@ -230,15 +230,18 @@ shows the library's values as values (compiler\src\natvis.cpp):
   alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps.
 
 The type names are kppc's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
-HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), which are the PDB's: agreed with
-thread B (2026-11-04), whose types carry each instance's full argument list. Both write closing
-angle brackets apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs do (debuggerTypeName in
-natvis.hpp): Visual Studio's expression evaluator reads `>>` as a shift, and with the PDB's
+HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), each instance's full argument
+list, made in one place: the debug information names its classes (Emitter::debuggerTypeName and
+debuggerClassName, compiler\src\Codegen\DebugInfo.inl) and hands the classes it defines with those
+names to the natvis (CodegenResult::debugClasses, the classes of every module, a compile server's
+build too), whose per-instance rules are of those classes by those names. Closing angle brackets
+are kept apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs do: Visual Studio's expression
+evaluator reads `>>` as a shift, and with the PDB's
 `RbNode<Pair<String, int32>>` neither a cast to it nor a rule for `RbTree<..., Less<String>>` was
 possible (`Map<String, int32>` showed raw).
 
 A UniquePtr with its default deleter is named as the program writes it, `Point^` (design.md 20;
-debuggerClassName in natvis.hpp): the Watch, Locals and Autos windows show `Point^` as its type,
+debuggerClassName): the Watch, Locals and Autos windows show `Point^` as its type,
 and the natvis has the UniquePtr rule once more by each such name, which `UniquePtr<*>` does not
 match. Visual Studio's expression evaluator reads `Point^` in an expression as a C++/CLI handle,
 so a cast to it (`(Point^*)p`) is "a handle to a non-managed class is not allowed"; `p.held->x`

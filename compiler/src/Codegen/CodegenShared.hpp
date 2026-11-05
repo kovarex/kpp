@@ -574,6 +574,7 @@
     std::unordered_map<uint64_t, std::string> debugGlobals;
     uint32_t debugGeneration = 0;
     std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
+    std::vector<DebugClass> debugClasses;          // those classes with their names (CodegenResult::debugClasses), made with debugHomes
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
     explicit Shared(CodegenResult& result) : result(result) {}

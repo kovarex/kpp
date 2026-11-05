@@ -100,6 +100,30 @@
       return placeholder;
     }
 
+    // A type's name in the debug information (and so in the .natvis, which takes the classes' from
+    // CodegenResult::debugClasses): kppc's (TypeTable::toString, qualified) with closing angle
+    // brackets kept apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs write them. Visual Studio's
+    // expression evaluator reads `>>` as a shift, so it could not name, cast to or match a natvis
+    // rule to a type whose name ends two template argument lists at once.
+    static std::string debuggerTypeName(std::string name)
+    {
+      for (size_t i = name.find(">>"); i != std::string::npos; i = name.find(">>", i))
+        name.insert(i + 1, " ");
+      return name;
+    }
+
+    // A class's name there: debuggerTypeName of its qualified name, or `Item^` for the library's
+    // UniquePtr<Item> with its default deleter (design.md 20), as the program writes it and errors
+    // print it (TypeTable::toString's unqualified form). Visual Studio's Watch and Locals show it as
+    // the type.
+    std::string debuggerClassName(const Ty* t) const
+    {
+      if (t && t->kind == TyKind::Class && !t->isConst && !t->isVolatile && !t->args.empty())
+        if (std::string shown = types.toString(t, &symbols); !shown.empty() && shown.back() == '^')
+          return debuggerTypeName(types.toString(t->args[0], &symbols, true)) + "^";
+      return debuggerTypeName(types.toString(t, &symbols, true));
+    }
+
     // Type t's metadata: node 0 the type, the nodes it needs after it, other types by placeholder.
     // Basic types as CodeView names them (its simple types have no names of their own: int32 is
     // `int`), each of kpp's integers a typedef of its name too (int32, uint8: an S_UDT, so that a
@@ -186,7 +210,7 @@
           // alone (homeDebugClasses), every other module's reference resolved by the identifier.
           auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
           const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
-          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerClassName(types, t, symbols)) + ", flags: DIFlagFwdDecl, identifier: " +
+          return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerClassName(t)) + ", flags: DIFlagFwdDecl, identifier: " +
                      metadataString(spelling) + ")");
         }
         case TyKind::Function:
@@ -377,7 +401,7 @@
       std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
       uint32_t list = next++;
       nodes += debugId(list) + " = !{ " + elements + "}\n";
-      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerClassName(types, ct, symbols)) : std::string()) +
+      nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerClassName(ct)) : std::string()) +
                ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
                (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
                (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";
@@ -430,9 +454,15 @@
         }
       }
       sh.debugHomes.assign(std::max(1u, sh.moduleCount), {});
+      sh.debugClasses.clear();
       for (uint64_t key : done)
         if (auto it = sh.debugTypes.find(key); it != sh.debugTypes.end() && !it->second.definition.empty())
+        {
           sh.debugHomes[key % sh.debugHomes.size()].push_back(key);
+          if (it->second.type)
+            sh.debugClasses.push_back({it->second.type, debuggerClassName(it->second.type)});
+        }
+      std::sort(sh.debugClasses.begin(), sh.debugClasses.end(), [](const DebugClass& a, const DebugClass& b) { return a.name < b.name; });
     }
 
     // The definition with line information: every instruction gets the line of the statement whose

@@ -9,6 +9,15 @@
 #include <string>
 #include <vector>
 
+// A class the debug information defines (--debug-info with variables), by the name its definition
+// gives it (debuggerClassName, Codegen/DebugInfo.inl): what the .natvis's per-instance rules name and
+// cast to (makeNatvis), so that the two agree by construction.
+struct DebugClass
+{
+  const struct Ty* type;
+  std::string name;
+};
+
 struct CodegenResult
 {
   std::string ir;                   // the whole program as one module (moduleCount == 1)
@@ -26,6 +35,7 @@ struct CodegenResult
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
   size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
+  std::vector<DebugClass> debugClasses; // --debug-info: the classes the program's modules define, sorted by name
   // Whether codegen failed, its failures shown or not: a function a hidden one left out is left out
   // too (declared or stubbed with --keep-going, emitted again by a compile server's next build).
   bool failed() const { return !errors.empty() || hiddenErrors != 0; }

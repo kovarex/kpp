@@ -2375,7 +2375,7 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       for (const std::unique_ptr<ParsedFile>& p : parsed)
         files.push_back(p.get());
       std::vector<std::string> problems;
-      std::string natvis = makeNatvis(files, global, symbols, problems);
+      std::string natvis = makeNatvis(files, global, symbols, cg.debugClasses, problems);
       for (const std::string& problem : problems)
         fprintf(stderr, "warning: natvis: %s\n", problem.c_str());
       if (!writeFile(natvisPath(options), natvis))

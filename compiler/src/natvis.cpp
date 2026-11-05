@@ -3,11 +3,13 @@
 // entry type by name. Type names are kppc's (TypeTable::toString, qualified), which the PDB's are
 // (docs/debugging.md, "Values in Visual Studio": agreed with the code generator).
 #include "natvis.hpp"
+#include "codegen.hpp"
 #include "resolver.hpp"
 #include "types.hpp"
 #include <functional>
 #include <map>
 #include <set>
+#include <unordered_map>
 
 namespace
 {
@@ -90,22 +92,8 @@ namespace
   }
 }
 
-std::string debuggerTypeName(std::string name)
-{
-  for (size_t i = name.find(">>"); i != std::string::npos; i = name.find(">>", i))
-    name.insert(i + 1, " ");
-  return name;
-}
-
-std::string debuggerClassName(const TypeTable& types, const Ty* t, const SymbolTable& symbols)
-{
-  if (t && t->kind == TyKind::Class && !t->isConst && !t->isVolatile && !t->args.empty())
-    if (std::string shown = types.toString(t, &symbols); !shown.empty() && shown.back() == '^')
-      return debuggerTypeName(types.toString(t->args[0], &symbols, true)) + "^";
-  return debuggerTypeName(types.toString(t, &symbols, true));
-}
-
-std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, std::vector<std::string>& problems)
+std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, const std::vector<DebugClass>& classes,
+                       std::vector<std::string>& problems)
 {
   // The library's class definitions at namespace scope, by name.
   // A specialization (`Vector<bool>`) is named with /spec<token> in the PDB (B's names): a wildcard
@@ -341,40 +329,56 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
       ruleOut.insert(r.classes.begin(), r.classes.end());
   }
 
-  // Rules per instance of a library class, whose casts name its element's type. By name: the
-  // instances are made in the threads' order. (natvis matches a type by its unqualified name.)
+  // Rules per instance of a library class, whose casts name its element's type: of the classes the
+  // debug information defines, by the names it gives them (CodegenResult::debugClasses, sorted by
+  // name), so that a rule and the PDB agree by construction. (natvis matches a type by its
+  // unqualified name.)
   TypeTable& types = global.types();
+  std::unordered_map<const Ty*, const std::string*> named;
+  for (const DebugClass& c : classes)
+    named.emplace(c.type, &c.name);
+  // A type's name in the PDB: a class's as the debug information gives it, a pointer's its pointee's
+  // with `*`, the rest kppc's.
+  std::function<std::string(const Ty*)> typeName = [&](const Ty* t)
+  {
+    if (auto n = named.find(t); n != named.end())
+      return *n->second;
+    if (t->kind == TyKind::Pointer && t->inner && !t->isConst && !t->isVolatile)
+      return typeName(t->inner) + "*";
+    return types.toString(t, &symbols, true);
+  };
   auto instancesOf = [&](const std::string& cls, size_t arity)
   {
-    std::map<std::string, const Ty*> found;
+    std::vector<const DebugClass*> found;
     auto lib = library.find(cls);
     if (lib == library.end() || ruleOut.count(cls))
       return found;
-    for (const Ty* t : types.classInstances())
-      if (t->decl == lib->second.first && t->args.size() == arity && !t->isConst && !t->isVolatile && !types.isDependent(t))
-        found.emplace(types.toString(t, &symbols, true), t);
+    for (const DebugClass& c : classes)
+      if (c.type->decl == lib->second.first && c.type->args.size() == arity)
+        found.push_back(&c);
     return found;
   };
   // The name of the library's node class `cls` of element `element` (ListNode<T>): empty when the
-  // program has none, so no node of it either.
+  // debug information has none, so no node of it either.
   auto nodeName = [&](const std::string& cls, const Ty* element)
   {
     auto lib = library.find(cls);
     if (lib != library.end())
-      for (const Ty* t : types.classInstances())
-        if (t->decl == lib->second.first && t->args.size() == 1 && t->args[0] == element && !t->isConst && !t->isVolatile)
-          return types.toString(t, &symbols, true);
+      for (const DebugClass& c : classes)
+        if (c.type->decl == lib->second.first && c.type->args.size() == 1 && c.type->args[0] == element)
+          return c.name;
     return std::string();
   };
 
   // A HashTable's entries: in its slots (E) or behind them (E*, stable), where its tag is 0x80 or
   // above (HashIterator::skipFree).
-  for (const auto& [name, t] : instancesOf("HashTable", 6))
+  for (const DebugClass* c : instancesOf("HashTable", 6))
   {
-    std::string entry = debuggerClassName(types, t->args[0], symbols); // (`Item^`, a UniquePtr's name)
+    const Ty* t = c->type;
+    std::string entry = typeName(t->args[0]);
     bool stable = t->args[5]->kind == TyKind::Value && t->args[5]->value != 0;
     std::string item = stable ? "*((" + entry + "**)slots)[i]" : "((" + entry + "*)slots)[i]";
-    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+    out += "  <Type Name=\"" + escape(c->name) + "\">\n"
            "    <DisplayString>{{ count={count} }}</DisplayString>\n"
            "    <Expand>\n"
            "      <Item Name=\"[capacity]\" ExcludeView=\"simple\">capacity</Item>\n"
@@ -390,11 +394,11 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
            "    </Expand>\n"
            "  </Type>\n";
   }
-  // A UniquePtr with its default deleter is named `Item^` (debuggerClassName), which the rule for
-  // UniquePtr<*> does not match: the same rule by each such name.
-  for (const auto& [name, t] : instancesOf("UniquePtr", 2))
-    if (std::string shown = debuggerClassName(types, t, symbols); !shown.empty() && shown.back() == '^')
-      out += "  <Type Name=\"" + escape(shown) + "\">\n"
+  // A UniquePtr with its default deleter is named `Item^` (Emitter::debuggerClassName), which the
+  // rule for UniquePtr<*> does not match: the same rule by each such name.
+  for (const DebugClass* c : instancesOf("UniquePtr", 2))
+    if (!c->name.empty() && c->name.back() == '^')
+      out += "  <Type Name=\"" + escape(c->name) + "\">\n"
              "    <DisplayString Condition=\"held == 0\">empty</DisplayString>\n"
              "    <DisplayString>{*held}</DisplayString>\n"
              "    <Expand>\n"
@@ -402,10 +406,10 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
              "    </Expand>\n"
              "  </Type>\n";
   // A List's nodes: a ring through its sentinel, `length` of them after it.
-  for (const auto& [name, t] : instancesOf("List", 1))
+  for (const DebugClass* c : instancesOf("List", 1))
   {
-    std::string node = escape(debuggerTypeName(nodeName("ListNode", t->args[0])));
-    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+    std::string node = escape(nodeName("ListNode", c->type->args[0]));
+    out += "  <Type Name=\"" + escape(c->name) + "\">\n"
            "    <DisplayString>{{ length={length} }}</DisplayString>\n";
     if (!node.empty())
       out += "    <Expand>\n"
@@ -419,10 +423,10 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     out += "  </Type>\n";
   }
   // A ForwardList's nodes: from beforeHead.next to a null next.
-  for (const auto& [name, t] : instancesOf("ForwardList", 1))
+  for (const DebugClass* c : instancesOf("ForwardList", 1))
   {
-    std::string node = escape(debuggerTypeName(nodeName("ForwardNode", t->args[0])));
-    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+    std::string node = escape(nodeName("ForwardNode", c->type->args[0]));
+    out += "  <Type Name=\"" + escape(c->name) + "\">\n"
            "    <DisplayString Condition=\"beforeHead.next == 0\">empty</DisplayString>\n";
     if (!node.empty())
       out += "    <DisplayString>{{ front={((" + node + "*)beforeHead.next)-&gt;value} }}</DisplayString>\n"
@@ -437,10 +441,10 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   }
   // An RbTree's (Map's, Set's, MultiMap's, MultiSet's) entries in order: its root is header.parent,
   // a missing child null.
-  for (const auto& [name, t] : instancesOf("RbTree", 4))
+  for (const DebugClass* c : instancesOf("RbTree", 4))
   {
-    std::string node = escape(debuggerTypeName(nodeName("RbNode", t->args[0])));
-    out += "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n"
+    std::string node = escape(nodeName("RbNode", c->type->args[0]));
+    out += "  <Type Name=\"" + escape(c->name) + "\">\n"
            "    <DisplayString>{{ count={count} }}</DisplayString>\n";
     if (!node.empty())
       out += "    <Expand>\n"
@@ -475,20 +479,11 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     };
     for (const ParsedFile* f : files)
       find(f->decls);
-    std::vector<const Ty*> instances;
-    for (const ClassDecl* c : unions)
-      if (c->templateParams.empty())
-        if (const Ty* t = global.typeOfDecl(const_cast<ClassDecl*>(c)); t && t->kind == TyKind::Class)
-          instances.push_back(t);
-    for (const Ty* t : types.classInstances())
-      if (t->decl && t->decl->kind == NodeKind::ClassDecl && unions.count(static_cast<const ClassDecl*>(t->decl)) && !t->isConst && !t->isVolatile &&
-          !types.isDependent(t))
-        instances.push_back(t);
-    std::map<std::string, std::string> byName;
-    for (const Ty* t : instances)
+    for (const DebugClass& d : classes)
     {
-      auto* c = static_cast<const ClassDecl*>(t->decl);
-      std::string name = types.toString(t, &symbols, true);
+      if (!d.type->decl || d.type->decl->kind != NodeKind::ClassDecl || !unions.count(static_cast<const ClassDecl*>(d.type->decl)))
+        continue;
+      auto* c = static_cast<const ClassDecl*>(d.type->decl);
       std::string tag = nameOf(static_cast<const VariableDecl*>(c->tagField)->name, symbols);
       std::string shown, items;
       for (size_t i = 0; i < c->alternatives.size(); ++i)
@@ -499,14 +494,12 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
         shown += "    <DisplayString Condition=\"" + when + "\">" + escape(alternative) + " {" + storage + "}</DisplayString>\n";
         items += "      <Item Name=\"" + escape(alternative) + "\" Condition=\"" + when + "\">" + storage + "</Item>\n";
       }
-      byName[name] = "  <Type Name=\"" + escape(debuggerTypeName(name)) + "\">\n" + shown +
-                     "    <Expand>\n"
-                     "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
-                     "    </Expand>\n"
-                     "  </Type>\n";
+      out += "  <Type Name=\"" + escape(d.name) + "\">\n" + shown +
+             "    <Expand>\n"
+             "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
+             "    </Expand>\n"
+             "  </Type>\n";
     }
-    for (const auto& [name, xml] : byName)
-      out += xml;
   }
   out += "</AutoVisualizer>\n";
   return out;
