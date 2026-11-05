@@ -1,0 +1,65 @@
+// spec: uncaught_exceptions() counts the exceptions thrown and not yet caught on this thread, as C++17's std::uncaught_exceptions: 0 before a throw, 1 in a destructor its unwinding runs, 0 in its handler; 2 in a destructor that a second exception's unwinding runs inside the first's, 1 in that second one's handler; 1 again after a rethrow (`throw;`): `0 1 0`, `2 1 0`, `1 0`, as g++ prints
+// found by thread B (2026-11-05): kpp read the UCRT's __uncaught_exceptions, which counts only MSVC's own exceptions (kpp raises its own), so a destructor saw 0 during unwinding (`0 0 0`, `0 0 0`, `0 0`), where the game decides by it (BasicTilesMapGenerationTask, EntityMapGenerationTask, MapGenerator, CharacterInventoryResizeHelper and others); Linux had no such function to link
+class Guard
+{
+public:
+  ~Guard() { print(uncaught_exceptions(), " "); }
+};
+class Nested
+{
+public:
+  ~Nested()
+  {
+    try
+    {
+      Guard inner;
+      throw RuntimeError("inner");
+    }
+    catch (...)
+    {
+      print(uncaught_exceptions(), " ");
+    }
+  }
+};
+int main()
+{
+  print(uncaught_exceptions(), " ");
+  try
+  {
+    Guard g;
+    throw RuntimeError("x");
+  }
+  catch (...)
+  {
+    print(uncaught_exceptions());
+  }
+  println();
+  try
+  {
+    Nested n;
+    throw RuntimeError("outer");
+  }
+  catch (...)
+  {
+    print(uncaught_exceptions());
+  }
+  println();
+  try
+  {
+    try
+    {
+      throw RuntimeError("first");
+    }
+    catch (...)
+    {
+      Guard r;
+      throw;
+    }
+  }
+  catch (...)
+  {
+    print(uncaught_exceptions());
+  }
+  println();
+  return 0;
+}

@@ -490,6 +490,13 @@ auto codegen::Emitter::exceptionMessage(const std::string& format) -> std::strin
          "  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %data)\n  br label %end\n";
 }
 
+auto codegen::Emitter::uncaughtChange(int delta) -> std::string
+{
+  if (!declaredNames.contains("@kpp_uncaught_change"))
+    return "";
+  return "  call void @kpp_uncaught_change(i32 " + std::to_string(delta) + ")\n";
+}
+
 auto codegen::Emitter::terminateHandlerCall() -> std::string
 {
   if (!declaredNames.contains("@kpp_terminate_handler"))
@@ -539,7 +546,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %private = getelementptr inbounds i8, ptr %h, i64 16\n  call void @llvm.memset.p0.i64(ptr %private, i8 0, i64 16, i1 false)\n"
               "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  store ptr %object, ptr %op\n"
               "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  store ptr %typeinfo, ptr %tp\n"
-              "  %dp = getelementptr inbounds i8, ptr %h, i64 48\n  store ptr %dtor, ptr %dp\n"
+              "  %dp = getelementptr inbounds i8, ptr %h, i64 48\n  store ptr %dtor, ptr %dp\n" + uncaughtChange(1) +
               "  %r = call i32 @_Unwind_RaiseException(ptr %h)\n  call void @kpp_eh_terminate(ptr %h, i32 1)\n  unreachable\n}\n";
     declareOnce("@llvm.memset.p0.i64", "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)");
     shared += sharedComdat("@kpp_eh_terminate") +
@@ -556,7 +563,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %fmt, ptr %name)\n" + message +
               "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n" + handler + "  call void @abort()\n  unreachable\n}\n";
     shared += sharedComdat("@kpp_eh_enter") +
-              std::string(kppEhEnterHeader) + "\nentry:\n"
+              std::string(kppEhEnterHeader) + "\nentry:\n" + uncaughtChange(-1) +
               "  %op = getelementptr inbounds i8, ptr %h, i64 32\n  %object = load ptr, ptr %op\n"
               "  %tp = getelementptr inbounds i8, ptr %h, i64 40\n  %ti = load ptr, ptr %tp\n"
               "  %dp = getelementptr inbounds i8, ptr %h, i64 48\n  %dtor = load ptr, ptr %dp\n"
@@ -602,7 +609,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     shared += sharedComdat("@kpp_throw") +
               std::string(kppThrowHeader) + "\nentry:\n"
               "  %args = alloca [3 x i64]\n  %a1 = getelementptr inbounds i64, ptr %args, i64 1\n  %a2 = getelementptr inbounds i64, ptr %args, i64 2\n"
-              "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n"
+              "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n" + uncaughtChange(1) +
               "  call void @RaiseException(i32 -536870911, i32 1, i32 3, ptr %args)\n  ret void\n}\n";
     shared += baseSearchFunction("@kpp_eh_offset");
     shared += sharedComdat("@kpp_eh_push") +
@@ -620,7 +627,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     // the handler around it kept in its sixth word): what `throw;` in a function it calls raises.
     decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
     shared += sharedComdat("@kpp_eh_begin") +
-              std::string(kppEhBeginHeader) + "\nentry:\n"
+              std::string(kppEhBeginHeader) + "\nentry:\n" + uncaughtChange(-1) +
               "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
               "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
               "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n"

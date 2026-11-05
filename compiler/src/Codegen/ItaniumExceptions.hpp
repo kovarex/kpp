@@ -95,6 +95,10 @@
     // program; the caller's abort follows. A program without the stdlib (--no-std) has none: the name
     // is claimed only by its definition.
     std::string terminateHandlerCall();
+    // The runtime's change of the uncaught exception count (the standard library's `extern "C"
+    // kpp_uncaught_change`, core/Error.kpp), if one is: +1 in kpp_throw (a rethrow's too), -1 where a
+    // handler starts (kpp_eh_begin, kpp_eh_enter), as C++'s std::uncaught_exceptions counts.
+    std::string uncaughtChange(int delta);
 
     // The exception runtime (linkonce_odr, in every module) and the real @main, which calls the
     // program's main and reports an exception nobody caught.

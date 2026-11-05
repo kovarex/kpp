@@ -194,9 +194,14 @@ ExceptionPtr makeExceptionPtr(const E& exception)
   pointer.holder->rethrow();
 }
 
-// The uncaught exception count (C++17).
-extern "C" int __uncaught_exceptions();
-int uncaught_exceptions() { return __uncaught_exceptions(); }
+// The uncaught exception count (C++17): the exceptions thrown on this thread and not yet caught,
+// which the exception runtime counts through kpp_uncaught_change, by a C name as it reads
+// kpp_terminate_handler (codegen: a throw and a rethrow add one, the start of a handler takes one
+// away). Not the UCRT's __uncaught_exceptions, which counts MSVC's own exceptions only: kpp raises
+// its own, and a destructor that unwinding ran read 0 (until 2026-11-05).
+private thread_local int uncaughtExceptionCount = 0;
+extern "C" void kpp_uncaught_change(int delta) { uncaughtExceptionCount += delta; }
+int uncaught_exceptions() { return uncaughtExceptionCount; }
 
 // std::throw_with_nested: throws value. C++ also attaches the exception being handled when it is
 // called (a std::nested_exception base); kpp has no current_exception yet, so nothing is attached
