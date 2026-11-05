@@ -118,7 +118,7 @@ set NATIVE=%WHOLE%\libraries\kpp-native
 if exist "%NATIVE%" rd /s /q "%NATIVE%"
 mkdir "%NATIVE%\include\LED\Logitech\Includes"
 for %%f in (native\*.c native\*.cpp) do copy /y %%f "%NATIVE%" >nul
-xcopy /y /q native\include "%NATIVE%\include" >nul
+xcopy /s /y /q /i native\include "%NATIVE%\include" >nul
 copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || goto :failed
 copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || goto :failed
 rem (and its icons beside it: a thread's copy has no data\, setup-checkout.cmd)

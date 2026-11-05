@@ -1,0 +1,35 @@
+# The Debian 11 (bullseye, 11.11) packages the game's C libraries need for Linux beyond kpp's sysroot
+# (tools/sysroot/linux.ps1): the -dev packages of SDL3's X11, ALSA, PulseAudio, D-Bus, udev, KMS/DRM, EGL and
+# OpenGL headers (all loaded at run time: headers only), and OpenSSL for curl (libssl-dev's static libraries).
+# Each line: its file in the archive, its size and its SHA-256, from bullseye's main/binary-amd64/Packages.xz
+# (SHA-256 1c3405444297ead864711c18e64bce4810db63b48340a2f9d81182d9f235ad71, as linux.ps1's own). Made by
+#   powershell -ExecutionPolicy Bypass -File tools\sysroot\linux.ps1 -Out compiler\build\sysroots\linux-x86_64-factorio -ExtraPackages programs\factorio\linux-packages.txt
+# and given to the game's Linux build as its --sysroot (checked 2026-11-05).
+pool/main/libx/libx11/libx11-dev_1.7.2-1+deb11u2_amd64.deb 844860 9FBCDA6AF06D8DB9CD8A48B581570AA8FEE862BFC43B6F569A66503AE7D83211 # libx11-dev 2:1.7.2-1+deb11u2
+pool/main/x/xorgproto/x11proto-dev_2020.1-1_all.deb 593876 D5568D587D9AD2664C34C14B0AC538CCB3C567E126EE5291085A8DE704A565F5 # x11proto-dev 2020.1-1
+pool/main/libx/libxext/libxext-dev_1.3.3-1.1_amd64.deb 106948 0AA17565287CA8A37914E043789EE33C6E1F987ACF346DAC7175165009C5DB7C # libxext-dev 2:1.3.3-1.1
+pool/main/libx/libxrandr/libxrandr-dev_1.5.1-1_amd64.deb 44966 67D40174015E8B4E3E2FE3B6FB2990943321A168E0FBB2D12082F637914A0A2E # libxrandr-dev 2:1.5.1-1
+pool/main/libx/libxrender/libxrender-dev_0.9.10-1_amd64.deb 40770 135ED7C8A589E17D21718A91B5A7DA48159F33C85E0B337AAE9B9F484D3A4954 # libxrender-dev 1:0.9.10-1
+pool/main/libx/libxcursor/libxcursor-dev_1.2.0-2_amd64.deb 44756 C84C43AD4D596BD673288F6035CED4755468B873149181936A0C1FC99CFF78AA # libxcursor-dev 1:1.2.0-2
+pool/main/libx/libxfixes/libxfixes-dev_5.0.3-2_amd64.deb 24144 BACFCD67CA931839A2E2AE87922ECB40E2870470AFA86D0C7245288825DA2340 # libxfixes-dev 1:5.0.3-2
+pool/main/libx/libxi/libxi-dev_1.7.10-1_amd64.deb 242132 736309FF476F0E1594F855CF44E2FB20BF1E594518CE2259EB9B2DD93917F2DB # libxi-dev 2:1.7.10-1
+pool/main/libx/libxkbcommon/libxkbcommon-dev_1.0.3-2_amd64.deb 49412 1202D8C64E670876B58F5B3D3F797B1848EC462F7CAEEF8B1E597ECEA18570B6 # libxkbcommon-dev 1.0.3-2
+pool/main/a/alsa-lib/libasound2-dev_1.2.4-1.1_amd64.deb 125928 73D8B3FA8D161C7A9F3DCB38718925EAF8DBD9D94C1D687087B23AA0719F53E5 # libasound2-dev 1.2.4-1.1
+pool/main/p/pulseaudio/libpulse-dev_14.2-2_amd64.deb 104072 371D2218A1F30B77F22D3781C2956B876A75D11E5EF7C3E2E7485FE5F52B9862 # libpulse-dev 14.2-2
+pool/main/d/dbus/libdbus-1-dev_1.12.28-0+deb11u1_amd64.deb 261044 75B25B927B11767E650552DB987676332A0F5CD23ADC8B5F6CD8D57E78C3F298 # libdbus-1-dev 1.12.28-0+deb11u1
+pool/main/s/systemd/libudev-dev_247.3-7+deb11u5_amd64.deb 123732 BB3BC12A1C973805FDEE8F19900646DF9CCA4DDA13F320879F5E4D81FFCFCF1D # libudev-dev 247.3-7+deb11u5
+pool/main/libd/libdrm/libdrm-dev_2.4.104-1_amd64.deb 140664 426033D284EB582ED7C87B7BF9083CCBB6B239A8983E1F930F33B097B96F7745 # libdrm-dev 2.4.104-1
+pool/main/m/mesa/libgbm-dev_20.3.5-1_amd64.deb 54736 47D53D5959EF7A6C326C8487DB7B33911718616E7D9832F2793691ED4458FB03 # libgbm-dev 20.3.5-1
+pool/main/w/wayland/libwayland-dev_1.18.0-2~exp1.1_amd64.deb 68980 3265BF05C0CEA760D0E8F5FB5FC68B0F154911DE23503E02232DFA59F6B6490C # libwayland-dev 1.18.0-2~exp1.1
+pool/main/p/pipewire/libpipewire-0.3-dev_0.3.19-4_amd64.deb 49104 D0A65574C4CCFD3946298BA9479FB77414D26A5CCB98DB823BE4223B91021DA2 # libpipewire-0.3-dev 0.3.19-4
+pool/main/p/pipewire/libspa-0.2-dev_0.3.19-4_amd64.deb 70132 E0703818015FF8F017596C2A13C6070A7BA9D59E02FA3CFA8A1139A04BAC3567 # libspa-0.2-dev 0.3.19-4
+pool/main/o/openssl/libssl-dev_1.1.1w-0+deb11u1_amd64.deb 1820404 56AAB36E214954FF19E55CB7EBC96921EBD6387C266C906649AD909933D455B7 # libssl-dev 1.1.1w-0+deb11u1
+pool/main/libx/libxau/libxau-dev_1.0.9-1_amd64.deb 22912 D1A7F5D484E0879B3B2E8D512894744505E53D078712CE65903FEF2ECFD824BB # libxau-dev 1:1.0.9-1
+pool/main/libx/libxdmcp/libxdmcp-dev_1.1.2-3_amd64.deb 42158 C6733E5F6463AFD261998E408BE6EB37F24CE0A64B63BED50A87DDB18EBC1699 # libxdmcp-dev 1:1.1.2-3
+pool/main/libx/libxcb/libxcb1-dev_1.14-3_amd64.deb 176412 B75544F334C8963B8B7B0E8A88F8A7CDE95A714DDDBCDA076D4BEB669A961B58 # libxcb1-dev 1.14-3
+pool/main/libx/libxss/libxss-dev_1.2.3-1_amd64.deb 23488 11968B1AC7A10DE3731BE164B343A3C960633A003EE5629770E06927222EF36B # libxss-dev 1:1.2.3-1
+pool/main/libx/libxinerama/libxinerama-dev_1.1.4-2_amd64.deb 20052 18047F52C3A1294D61BC2642D22D05BD879C15393C4E8B4AC2EE6A5061585B9B # libxinerama-dev 2:1.1.4-2
+pool/main/libg/libglvnd/libegl-dev_1.3.2-1_amd64.deb 19560 2847662B23487D5B1E467BCA8CC8753BAA880F794744A9B492C978BD5514B286 # libegl-dev 1.3.2-1
+pool/main/libg/libglvnd/libgl-dev_1.3.2-1_amd64.deb 100148 A6487873F2706BBABF9346CDB190F47F23A1464F31CECF92C363BAC37C342F2F # libgl-dev 1.3.2-1
+pool/main/libg/libglvnd/libgles-dev_1.3.2-1_amd64.deb 50296 969E9197D8B8A36780F9B5D86F7C3066CDFEF9DD7CDC3AEE59A1870415C53578 # libgles-dev 1.3.2-1
+pool/main/libg/libglvnd/libglx-dev_1.3.2-1_amd64.deb 16304 5A50549948BC4363EAB32B1083DAD2165402C3628F2EE85E9A32563228CC61C1 # libglx-dev 1.3.2-1
