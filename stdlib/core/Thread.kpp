@@ -587,7 +587,7 @@ struct Atomic
   }
   Word* word() const { return (Word*)&this->value; }
 
-  T load() const
+  T load() const noexcept
   {
     if constexpr (sizeof(T) == 8)
       return Atomic::valueOf((Word)kpp_atomic_load64((const long long*)this->word()));
@@ -598,7 +598,7 @@ struct Atomic
     else
       return Atomic::valueOf(kpp_atomic_load8((const uint8_t*)this->word()));
   }
-  void store(T v)
+  void store(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
@@ -610,7 +610,7 @@ struct Atomic
     else
       kpp_atomic_store8((uint8_t*)this->word(), w);
   }
-  T exchange(T v)
+  T exchange(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
@@ -624,7 +624,7 @@ struct Atomic
   }
   // True when the value had expected's bits and now has desired's; otherwise false, and expected
   // receives the current value.
-  bool compareExchange(T& expected, T desired)
+  bool compareExchange(T& expected, T desired) noexcept
   {
     Word want = Atomic::wordOf(expected);
     Word next = Atomic::wordOf(desired);
@@ -642,11 +642,11 @@ struct Atomic
     expected = Atomic::valueOf(seen);
     return false;
   }
-  bool compare_exchange_strong(T& expected, T desired) { return this->compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired) { return this->compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
 
   // The value before adding delta.
-  T fetchAdd(T delta)
+  T fetchAdd(T delta) noexcept
   {
     if constexpr (isFloatingPoint<T>)
     {
@@ -669,15 +669,15 @@ struct Atomic
         return Atomic::valueOf(kpp_atomic_add8((uint8_t*)this->word(), w));
     }
   }
-  T fetch_add(T delta) { return this->fetchAdd(delta); }
-  T fetchSub(T delta)
+  T fetch_add(T delta) noexcept { return this->fetchAdd(delta); }
+  T fetchSub(T delta) noexcept
   {
     if constexpr (isFloatingPoint<T>)
       return this->fetchAdd(-delta);
     else
       return this->fetchAdd((T)(0 - delta));
   }
-  T fetch_sub(T delta) { return this->fetchSub(delta); }
+  T fetch_sub(T delta) noexcept { return this->fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
   operator T() const { return this->load(); }

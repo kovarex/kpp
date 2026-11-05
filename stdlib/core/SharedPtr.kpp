@@ -9,14 +9,14 @@ struct SharedControl
 {
   Atomic<int> strong;
   Atomic<int> weak;
-  void (*destroy)(void*) = nullptr; // deletes the object as the type it was created with
+  void (*destroy)(void*) noexcept = nullptr; // deletes the object as the type it was created with
   void* object = nullptr;
 
   SharedControl() : strong(1), weak(1) {}
 };
 
 // A weak reference given back; the last one frees the block.
-void sharedReleaseWeak(SharedControl* control)
+void sharedReleaseWeak(SharedControl* control) noexcept
 {
   if (control->weak.fetchSub(1) == 1)
     delete control;
@@ -33,7 +33,7 @@ bool sharedTryLock(SharedControl* control)
 }
 
 template<typename T>
-void sharedDestroy(void* p) { delete (T*)p; }
+void sharedDestroy(void* p) noexcept { delete (T*)p; }
 
 // What EnableSharedFromThis<T> holds for any T, so that a SharedPtr of any type can set it: a
 // weak reference to the control block of the first SharedPtr that takes the object.
@@ -156,7 +156,7 @@ struct SharedPtr
   }
 
   // Gives up this owner: the last one deletes the object.
-  void release()
+  void release() noexcept
   {
     if (!this->control)
       return;
@@ -281,7 +281,7 @@ struct WeakPtr
     return *this;
   }
 
-  void release()
+  void release() noexcept
   {
     if (this->control)
       sharedReleaseWeak(this->control);

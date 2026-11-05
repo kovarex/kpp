@@ -17,7 +17,7 @@ struct FunctionImpl
 {
   void* target = nullptr;                        // the callable, on the heap
   R (*invoke)(void*, Args...) = nullptr;         // calls it
-  void (*destroy)(void*) = nullptr;              // deletes it
+  void (*destroy)(void*) noexcept = nullptr;              // deletes it
   void* (*clone)(void*) = nullptr;               // copies it
 
   FunctionImpl() {}
@@ -112,7 +112,7 @@ struct FunctionImpl
   template<typename F>
   static R call(void* target, Args... args) { return (*(F*)target)(forward<Args>(args)...); }
   template<typename F>
-  static void destroyAs(void* target) { delete (F*)target; }
+  static void destroyAs(void* target) noexcept { delete (F*)target; }
   template<typename F>
   static void* cloneAs(void* target) { return new F(*(F*)target); }
   // A callable that cannot be copied (a lambda with a move-only capture, which async hands over) is
