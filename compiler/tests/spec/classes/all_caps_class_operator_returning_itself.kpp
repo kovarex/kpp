@@ -1,0 +1,31 @@
+// spec: a class named in capitals declares an operator returning itself (`RGB operator+(RGB o) const`) as any class does, and a free operator returns one too (`ID operator-(ID a, ID b)`): the name before `operator` is its return type, never a macro the parser skips (`7 3`)
+// found by thread D (2026-11-05): an ALL_CAPS name before a keyword that starts no declaration was skipped as a macro, so `G4 operator+(G4 o)` in struct G4 failed with "expected declaration (at 'operator')" where `S operator+(S o)` in struct S parsed
+struct RGB
+{
+  int r = 0;
+  RGB operator+(RGB o) const
+  {
+    RGB s;
+    s.r = this->r + o.r;
+    return s;
+  }
+};
+struct ID
+{
+  int v = 1;
+};
+ID operator-(ID a, ID b)
+{
+  ID d;
+  d.v = a.v * 10 - b.v * 7;
+  return d;
+}
+int main()
+{
+  RGB a, b;
+  a.r = 3;
+  b.r = 4;
+  ID x, y;
+  println((a + b).r, " ", (x - y).v);
+  return 0;
+}

@@ -515,6 +515,11 @@ namespace
         return false; // preprocessed C: there are no macros left to guess at
       if (!atMacroName())
         return false;
+      // Never the class's own name, nor in kpp, which has no macros, a name before `operator`: the
+      // return type of `RGB operator+(RGB o) const` and of a free `ID operator-(ID a, ID b)`, which
+      // skipped as a macro left the operator without its type (classes/all_caps_class_operator_returning_itself).
+      if (tok().id == currentClassName || (isKpp() && at(Kw::operator_, 1)))
+        return false;
       // MACRO(...) followed by something that starts a declaration.
       if (at(P::LParen, 1))
       {
