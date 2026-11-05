@@ -19,7 +19,9 @@ function StopTestServers()
   $dir = Join-Path $env:TEMP 'kppc-server'
   foreach ($record in @(Get-ChildItem (Join-Path $dir '*.args') -ErrorAction SilentlyContinue))
   {
-    $cwd = ([IO.File]::ReadAllText($record.FullName) -split "`0")[0]
+    # (one another thread's client is writing as its server starts cannot be read: not this test's,
+    # whose own are written by then; it stopped the whole test once, the gate of 2026-11-05)
+    try { $cwd = ([IO.File]::ReadAllText($record.FullName) -split "`0")[0] } catch { continue }
     if (-not $cwd.StartsWith($work, [StringComparison]::OrdinalIgnoreCase)) { continue }
     $exe = Join-Path $dir ($record.BaseName + '.exe')
     Get-Process | Where-Object { $_.Path -and $_.Path -ieq $exe } | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit(10000) | Out-Null }
