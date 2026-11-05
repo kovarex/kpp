@@ -388,13 +388,13 @@
         // Written out at its uses (convertTokens, objectMacros): declarations, a type, storage words,
         // another name.
         counts.add("spliced macros");
-        std::string commented = "// macro written out at its uses: ";
+        // (its name alone: the text, the body, may be another on another platform, FileOperations'
+        // `#define ftello64 _ftelli64` or `ftello`, where the converted files are to be the same;
+        // the lines a continued definition took stay, blank)
+        std::string commented = "// macro written out at its uses: " + name;
         for (char c : line)
-        {
-          commented += c;
           if (c == '\n')
-            commented += "// ";
-        }
+            commented += '\n';
         return commented;
       }
       if (!functionLike && !body.empty())

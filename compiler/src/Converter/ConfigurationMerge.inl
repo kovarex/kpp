@@ -22,11 +22,6 @@ bool setConvertPlatform(const std::string& platform)
   if (platform != "windows" && platform != "linux")
     return false;
   convertPlatform = platform;
-  if (platform == "linux")
-  {
-    knownMacros["errno"] = "(*__errno_location())"; // (glibc's errno.h)
-    knownMacros.erase("INVALID_SOCKET");             // (the game's own on Linux: SocketHppCompatibility.hpp's -1)
-  }
   return true;
 }
 
@@ -64,6 +59,7 @@ namespace
     std::string text;              // a text part's text, without its marks' lines
     std::string group;             // a group's id (FILE:N); empty for a text part
     std::vector<MarkedPart> parts; // a group's contents
+    bool openLine = false, closeLine = false; // a group's mark alone on its line (written back so: markedLike)
   };
 
   void addText(std::vector<MarkedPart>& parts, std::string_view text)
@@ -81,7 +77,7 @@ namespace
   // inside a macro's use, which the expansion replaced) is lost in both configurations alike: an end
   // mark without its start is left out, and one that closes an outer group ends the inner ones.
   bool parseMarked(const std::string& text, size_t& at, const std::string& group, std::vector<MarkedPart>& parts,
-                   std::vector<std::string>& openGroups)
+                   std::vector<std::string>& openGroups, bool* closeLine = nullptr)
   {
     static const std::string open = "/*kpp:if ", close = "/*kpp:endif ";
     for (;;)
@@ -107,7 +103,8 @@ namespace
       size_t to = end;
       while (to < text.size() && (text[to] == ' ' || text[to] == '\t' || text[to] == '\r'))
         ++to;
-      if ((from == 0 || text[from - 1] == '\n') && (to == text.size() || text[to] == '\n'))
+      bool alone = (from == 0 || text[from - 1] == '\n') && (to == text.size() || text[to] == '\n');
+      if (alone)
         to = std::min(to + 1, text.size());
       else
         from = mark, to = end;
@@ -121,13 +118,18 @@ namespace
       if (!opening)
       {
         if (id == group)
+        {
+          if (closeLine)
+            *closeLine = alone;
           return true;
+        }
         continue; // (an end without its start)
       }
       MarkedPart g;
       g.group = id;
+      g.openLine = alone;
       openGroups.push_back(id);
-      bool nested = parseMarked(text, at, id, g.parts, openGroups);
+      bool nested = parseMarked(text, at, id, g.parts, openGroups, &g.closeLine);
       openGroups.pop_back();
       if (!nested)
         return false;
@@ -174,7 +176,12 @@ namespace
 
   // A group's merged text with its marks again (--convert-merge-platform keeps them for convertMerge,
   // which makes the configurations one after): inline, so that they take no line of their own.
-  std::string marked(const std::string& group, const std::string& text) { return "/*kpp:if " + group + "*/" + text + "/*kpp:endif " + group + "*/"; }
+  // The marks around a group's (new) text as they stood: each alone on its line where it was, so
+  // that --convert-merge-platform's output is cut as its input was (a configuration's text the same).
+  std::string markedLike(const MarkedPart& g, const std::string& text)
+  {
+    return "/*kpp:if " + g.group + "*/" + (g.openLine ? "\n" : "") + text + "/*kpp:endif " + g.group + "*/" + (g.closeLine ? "\n" : "");
+  }
 
   // The last character of code in a text, comments and white space left out (0 for none).
   char lastCodeChar(std::string_view text)
@@ -527,8 +534,11 @@ namespace
       return false;
     if (first == "typedef")
       return true;
+    bool builtinWords = false, classKey = false;
     while (leading.count(first))
     {
+      builtinWords = builtinWords || first == "unsigned" || first == "signed" || first == "long" || first == "short";
+      classKey = classKey || first == "struct" || first == "class" || first == "union" || first == "enum";
       size_t save = i;
       std::string_view next = word();
       if (next.empty())
@@ -538,6 +548,13 @@ namespace
       }
       first = next;
     }
+    // (`unsigned long index = ...`: the builtin type's words took the name; `struct StickInfo {...}`
+    // and `enum class E : u8 {`, a local class: a declaration of the name)
+    skipSpace();
+    if (builtinWords && i < code.size() && strchr("=;({[,", code[i]))
+      return true;
+    if (classKey && i < code.size() && (code[i] == '{' || (code[i] == ':' && code.compare(i, 2, "::") != 0)))
+      return true;
     // the type's name: NAME(::NAME)*(<...>)?, with `*`, `&` and const after it
     for (;;)
     {
@@ -586,6 +603,42 @@ namespace
     return i < code.size() && strchr("=;({[,:", code[i]);
   }
 
+  // A text that is string and number literals alone, at least one ("left-" "windows", 42).
+  bool onlyLiterals(const std::string& text)
+  {
+    size_t count = 0;
+    for (size_t i = 0; i < text.size();)
+    {
+      char c = text[i];
+      if (c == ' ' || c == '\t')
+        ++i;
+      else if (c == '"')
+      {
+        for (++i; i < text.size() && text[i] != '"'; ++i)
+          if (text[i] == '\\')
+            ++i;
+        if (i >= text.size())
+          return false;
+        ++i;
+        ++count;
+      }
+      else if (isdigit((unsigned char)c))
+      {
+        while (i < text.size() && (isIdentChar(text[i]) || text[i] == '.'))
+          ++i;
+        ++count;
+      }
+      else
+        return false;
+    }
+    return count > 0;
+  }
+  std::string withoutOuterSpace(const std::string& text)
+  {
+    size_t a = text.find_first_not_of(" \t"), b = text.find_last_not_of(" \t");
+    return a == std::string::npos ? std::string() : text.substr(a, b + 1 - a);
+  }
+
   // A declaration that differs per configuration only in its initializer (`constexpr i32 ROW_STEP = 4;`
   // in debug, `= 2;` in release): one declaration choosing by the configuration, design.md 19's
   // `constexpr i32 ROW_STEP = config::debug ? 4 : 2;`. "" when the two are not so.
@@ -621,6 +674,16 @@ namespace
         {
           while (i < value.size() && (isIdentChar(value[i]) || value[i] == '.'))
             ++i;
+        }
+        else if (value[i] == '"')
+        {
+          // (a string literal: ApplicationVersion's PLATFORM, "win64" or "linux64")
+          for (++i; i < value.size() && value[i] != '"'; ++i)
+            if (value[i] == '\\')
+              ++i;
+          if (i >= value.size())
+            return false;
+          ++i;
         }
         else if (strchr(" \t+-()", value[i]))
           ++i;
@@ -687,12 +750,30 @@ namespace
           code.push_back(item);
       return code;
     };
-    if (std::vector<std::string> d = onlyCode(debugItems), r = onlyCode(releaseItems); d.size() == 1 && r.size() == 1 && declaresName(d[0]))
-      if (std::string chosen = perConfigurationInitializer(d[0], r[0], dimension); !chosen.empty())
+    // (several declarations, each the same or differing only in its initializer: InputState's
+    // WIN_KEY_NAME, "windows" or "super", beside ALT_KEY_NAME, "alt" on both)
+    if (std::vector<std::string> d = onlyCode(debugItems), r = onlyCode(releaseItems); !d.empty() && d.size() == r.size())
+    {
+      std::string joined;
+      size_t chosenCount = 0;
+      for (size_t k = 0; k < d.size() && chosenCount != SIZE_MAX; ++k)
+        if (!declaresName(d[k]))
+          chosenCount = SIZE_MAX;
+        else if (d[k] == r[k])
+          joined += d[k];
+        else if (std::string chosen = perConfigurationInitializer(d[k], r[k], dimension); !chosen.empty())
+        {
+          joined += chosen;
+          ++chosenCount;
+        }
+        else
+          chosenCount = SIZE_MAX;
+      if (chosenCount != SIZE_MAX && chosenCount > 0)
       {
         ++report.perConfiguration;
-        return chosen;
+        return joined;
       }
+    }
     // One configuration's items: each declaration a `when` (an alias too: Gui.cpp's debug-only
     // `using MapType`, design.md 19), each run of statements one block.
     auto items = [&](const std::vector<std::string>& list, const char* condition)
@@ -707,7 +788,7 @@ namespace
         statements.clear();
       };
       for (const std::string& item : list)
-        if (std::string_view code = codeStart(item); code.substr(0, 14) == "static_assert(")
+        if (std::string_view code = codeStart(item); code.substr(0, 14) == "static_assert(" && &dimension != &platformDimension)
         {
           // A static_assert of one configuration (Map.cpp's FINAL_RELEASE one, at namespace scope,
           // where no `if constexpr` stands): one checked where its configuration's is,
@@ -724,7 +805,9 @@ namespace
               break;
           }
           size_t at = item.size() - code.size();
-          std::string negated = condition[0] == '!' ? std::string(condition + 1) : "!" + std::string(condition);
+          // (`!(config::platform == Platform::Windows)`: a condition that is a comparison in parentheses)
+          std::string negated = condition[0] == '!' ? std::string(condition + 1)
+                                : strchr(condition, ' ') ? "!(" + std::string(condition) + ")" : "!" + std::string(condition);
           out += item.substr(0, at) + "static_assert(" + negated + " || (" + std::string(code.substr(14, comma - 14)) + ")" + std::string(code.substr(comma));
         }
         else if (std::string_view code = codeStart(item); code.substr(0, 6) == "when (")
@@ -822,6 +905,371 @@ namespace
     return debugText == releaseText || (releaseText.empty() && debugText == "else");
   }
 
+  // The forward declarations a converted file keeps at its top (`class ChildProcessAgent;`, for a class
+  // that no file of the platform defines) are each platform's own: both texts get them all, Windows'
+  // first, one of a platform alone `when` that platform (the other defines the class), then the lines
+  // (blank lines and comments) the top had without them, where those are the same on both.
+  void unionForwardDeclarations(std::string& windows, std::string& linux)
+  {
+    struct Top
+    {
+      std::vector<std::string> declarations, others;
+      size_t end = 0;
+    };
+    auto top = [](const std::string& text)
+    {
+      Top t;
+      size_t at = 0;
+      while (at < text.size())
+      {
+        size_t e = text.find('\n', at);
+        size_t next = e == std::string::npos ? text.size() : e + 1;
+        std::string line = text.substr(at, next - at);
+        std::string code = line.substr(0, line.find_last_not_of(" \t\r\n") + 1);
+        bool declaration = false;
+        for (const char* keyword : {"class ", "struct "})
+          if (code.rfind(keyword, 0) == 0 && code.size() > strlen(keyword) + 1 && code.back() == ';')
+          {
+            std::string_view name = std::string_view(code).substr(strlen(keyword), code.size() - strlen(keyword) - 1);
+            declaration = std::all_of(name.begin(), name.end(), [](char c) { return isIdentChar(c) || c == ':'; });
+          }
+        if (declaration)
+          t.declarations.push_back(code);
+        else if (code.empty() || code.rfind("//", 0) == 0 || code.rfind("/*kpp:", 0) == 0)
+        {
+          if (!code.empty())
+            t.others.push_back(code);
+        }
+        else
+          break;
+        at = next;
+      }
+      t.end = at;
+      return t;
+    };
+    Top w = top(windows), l = top(linux);
+    if (w.declarations == l.declarations || w.others != l.others)
+      return;
+    // (each platform's own a `when` one: the class is defined on the other platform)
+    std::string head;
+    for (const std::string& d : w.declarations)
+      head += (std::find(l.declarations.begin(), l.declarations.end(), d) == l.declarations.end() ? "when (config::platform == Platform::Windows) " : "") + d +
+              "\n";
+    for (const std::string& d : l.declarations)
+      if (std::find(w.declarations.begin(), w.declarations.end(), d) == w.declarations.end())
+        head += "when (config::platform == Platform::Linux) " + d + "\n";
+    if (!w.others.empty())
+      head += "\n";
+    for (const std::string& o : w.others)
+      head += o + "\n";
+    windows = head + windows.substr(w.end);
+    linux = head + linux.substr(l.end);
+  }
+
+  // A group's parts as text with their own groups' marks kept (a widened group's, below, whose
+  // configuration groups --convert-merge still merges).
+  std::string flattenedMarked(const std::vector<MarkedPart>& parts)
+  {
+    std::string out;
+    for (const MarkedPart& p : parts)
+      out += p.group.empty() ? p.text : markedLike(p, flattenedMarked(p.parts));
+    return out;
+  }
+
+  // The id of a group widenToStatements made: the group's own, `+` after it.
+  bool widenedGroup(const std::string& id) { return !id.empty() && id.back() == '+'; }
+
+  // The platforms' top-level parts (w, l), where a group whose two texts differ stands where no
+  // statement or declaration does (a link of a cxxopts chain, an entry of a brace list, a constructor's
+  // initializer, `|| condition`, a function's signature): the group widened, in both alike, to the
+  // statement or declaration around it, which each platform then has whole (`if constexpr` blocks, or
+  // a `when` declaration each: design.md 12, "One spelling on every platform"). The statement's other
+  // groups go into it, their marks kept. Nothing is widened where the statement cannot be found (it
+  // starts before the file's text, or the groups do not match): the merge reports those as before.
+  void widenToStatements(std::vector<MarkedPart>& w, std::vector<MarkedPart>& l)
+  {
+    if (w.size() != l.size())
+      return;
+    for (size_t i = 0; i < w.size(); ++i)
+      if (w[i].group != l[i].group || (w[i].group.empty() && w[i].text != l[i].text))
+        return;
+    for (size_t i = 0; i < w.size(); ++i)
+    {
+      if (w[i].group.empty())
+        continue;
+      std::string wt = flattened(w[i].parts), lt = flattened(l[i].parts);
+      if (wt == lt)
+        continue;
+      // The text before the group, Windows' (the text parts are the same on both), and where each
+      // part starts in it.
+      std::string all;
+      std::vector<size_t> starts;
+      for (size_t k = 0; k < w.size(); ++k)
+      {
+        starts.push_back(all.size());
+        all += w[k].group.empty() ? w[k].text : flattened(w[k].parts);
+      }
+      starts.push_back(all.size());
+      std::string_view prefix = std::string_view(all).substr(0, starts[i]);
+      auto whole = [](const std::string& text)
+      {
+        char last = lastCodeChar(text);
+        return last == 0 || last == ';' || last == '}';
+      };
+      bool inLine = wt.find('\n') == std::string::npos && lt.find('\n') == std::string::npos;
+      // (a handler of one platform, `catch (const ShaderCompilationError&) {...}` after a try's
+      // block, is no statement of its own: the whole try statement is each platform's)
+      auto handler = [](const std::string& text) { return codeStart(text).substr(0, 5) == "catch"; };
+      // (nor are a switch's labels of one platform, `case Type::DX11:` and its statements: the whole
+      // switch is each platform's, as a label in an `if constexpr` block is no label of the switch)
+      auto label = [](const std::string& text)
+      {
+        std::string_view code = codeStart(text);
+        if (code.substr(0, 5) == "case ")
+          return true;
+        size_t colon = code.substr(0, 7) == "default" ? code.find_first_not_of(" \t", 7) : std::string_view::npos;
+        return colon != std::string_view::npos && code[colon] == ':';
+      };
+      bool caseLabel = label(wt) || label(lt);
+      // (nor is a text whose brackets do not close in it: UDPSocket's `while (true) {` and its first
+      // statements, select's on Windows and poll's on Linux, the loop's rest after the group)
+      auto balanced = [](const std::string& text)
+      {
+        int depth = 0;
+        for (size_t k = 0; k < text.size(); ++k)
+        {
+          char c = text[k];
+          if (text.compare(k, 2, "//") == 0)
+            k = std::min(text.find('\n', k), text.size());
+          else if (text.compare(k, 2, "/*") == 0)
+          {
+            size_t e = text.find("*/", k + 2);
+            k = e == std::string::npos ? text.size() : e + 1;
+          }
+          else if (c == '"' || (c == '\'' && !isDigitSeparator(text, k)))
+          {
+            for (++k; k < text.size() && text[k] != c && text[k] != '\n'; ++k)
+              k += text[k] == '\\';
+          }
+          else if (c == '(' || c == '[' || c == '{')
+            ++depth;
+          else if ((c == ')' || c == ']' || c == '}') && --depth < 0)
+            return false;
+        }
+        return depth == 0;
+      };
+      if (statementAfter(prefix) && whole(wt) && whole(lt) && !handler(wt) && !handler(lt) && balanced(wt) && balanced(lt) && !caseLabel)
+        continue;
+      if (inLine && onlyLiterals(wt) && onlyLiterals(lt))
+        continue;
+      if (blankText(wt) != blankText(lt) && !elseLinksWhen(blankText(wt) ? lt : wt, "c").empty())
+        continue;
+      if (inLine && statementAfter(prefix) && i + 1 < w.size() && w[i + 1].group.empty() &&
+          w[i + 1].text.find_first_not_of(" \t") != std::string::npos && w[i + 1].text[w[i + 1].text.find_first_not_of(" \t")] == ';')
+        continue;
+      // Scan the code (comments, strings and characters left out) with a stack of the open brackets,
+      // each `{` a block's (a function's, a class's, a statement's) or a list's (`= {`, `T{`, `({`).
+      struct Open
+      {
+        char c;
+        bool block;
+      };
+      std::vector<Open> stack;
+      std::vector<size_t> boundary{0}; // per stack size: where the last statement there ended
+      auto previousWord = [&](size_t at)
+      {
+        size_t e = at;
+        while (e > 0 && isspace((unsigned char)all[e - 1]))
+          --e;
+        size_t s = e;
+        while (s > 0 && isIdentChar(all[s - 1]))
+          --s;
+        return std::string_view(all).substr(s, e - s);
+      };
+      auto blockBrace = [&](size_t at)
+      {
+        char previous = lastCodeChar(std::string_view(all).substr(boundary.back(), at - boundary.back()));
+        if (previous == 0 || previous == ')' || previous == ';' || previous == '{' || previous == '}' || previous == ']' || previous == '"' ||
+            previous == ':')
+          return true;
+        std::string_view word = previousWord(at);
+        for (std::string_view keyword : {"else", "do", "try", "const", "noexcept", "override", "final", "mutable"})
+          if (word == keyword)
+            return true;
+        // (a class's, a namespace's or an enum's head: `class A : public B {`)
+        std::string_view statement = std::string_view(all).substr(boundary.back(), at - boundary.back());
+        if (statement.find('=') != std::string_view::npos || statement.find('(') != std::string_view::npos)
+          return false;
+        // (an enum's braces hold a list: its entries are not statements)
+        for (size_t p = statement.find("enum"); p != std::string_view::npos; p = statement.find("enum", p + 1))
+          if ((p == 0 || !isIdentChar(statement[p - 1])) && (p + 4 >= statement.size() || !isIdentChar(statement[p + 4])))
+            return false;
+        for (std::string_view keyword : {"class", "struct", "union", "namespace"})
+          for (size_t p = statement.find(keyword); p != std::string_view::npos; p = statement.find(keyword, p + 1))
+            if ((p == 0 || !isIdentChar(statement[p - 1])) && (p + keyword.size() >= statement.size() || !isIdentChar(statement[p + keyword.size()])))
+              return true;
+        return false;
+      };
+      // One step of the scan at `at`: returns the next offset. Brackets go on and off the stack.
+      size_t groupBlock = SIZE_MAX; // the stack size inside the block the group stands in
+      size_t start = SIZE_MAX, end = SIZE_MAX;
+      auto nextCode = [&](size_t at)
+      {
+        while (at < all.size())
+        {
+          if (all.compare(at, 2, "//") == 0)
+            at = std::min(all.find('\n', at), all.size());
+          else if (all.compare(at, 2, "/*") == 0)
+          {
+            size_t e = all.find("*/", at + 2);
+            at = e == std::string::npos ? all.size() : e + 2;
+          }
+          else if (isspace((unsigned char)all[at]))
+            ++at;
+          else
+            break;
+        }
+        return at;
+      };
+      for (size_t at = 0; at < all.size() && end == SIZE_MAX;)
+      {
+        if (at >= starts[i] && groupBlock == SIZE_MAX)
+        {
+          // At the group: the block it stands in, and where its statement started.
+          size_t b = stack.size();
+          while (b > 0 && !stack[b - 1].block)
+            --b;
+          if (caseLabel && b > 0)
+            for (--b; b > 0 && !stack[b - 1].block;)
+              --b; // (the block the switch stands in)
+          groupBlock = b;
+          start = boundary[b];
+        }
+        size_t code = nextCode(at);
+        if (code != at)
+        {
+          at = code;
+          continue;
+        }
+        char c = all[at];
+        if (c == '"' || (c == '\'' && !isDigitSeparator(all, at)))
+        {
+          for (++at; at < all.size() && all[at] != c && all[at] != '\n'; ++at)
+            at += all[at] == '\\';
+          ++at;
+          continue;
+        }
+        if (c == '(' || c == '[' || c == '{')
+        {
+          stack.push_back({c, c == '{' && blockBrace(at)});
+          boundary.resize(stack.size() + 1);
+          boundary[stack.size()] = at + 1;
+        }
+        else if (c == ')' || c == ']' || c == '}')
+        {
+          if (stack.empty())
+            return; // (unbalanced: nothing widened)
+          bool block = stack.back().block;
+          stack.pop_back();
+          boundary.resize(stack.size() + 1);
+          if (groupBlock != SIZE_MAX && at >= starts[i + 1] && stack.size() < groupBlock)
+            end = at; // the block the statement is in ends
+          else if (c == '}' && block)
+          {
+            // (a block a handler or an else follows is not a statement's end: the try's or the if's)
+            size_t following = nextCode(at + 1), followingEnd = following;
+            while (followingEnd < all.size() && isIdentChar(all[followingEnd]))
+              ++followingEnd;
+            std::string_view followingWord = std::string_view(all).substr(following, followingEnd - following);
+            if (followingWord != "catch" && followingWord != "else")
+              boundary[stack.size()] = at + 1;
+            if (groupBlock != SIZE_MAX && at >= starts[i + 1] && stack.size() == groupBlock)
+            {
+              // A block's end ends the statement, unless more of it follows (`};`, `} else`, `});`).
+              size_t next = nextCode(at + 1);
+              size_t wordEnd = next;
+              while (wordEnd < all.size() && isIdentChar(all[wordEnd]))
+                ++wordEnd;
+              std::string_view word = std::string_view(all).substr(next, wordEnd - next);
+              if (next < all.size() && all[next] != ';' && all[next] != ',' && all[next] != ')' && all[next] != '(' && word != "else" &&
+                  word != "while" && word != "catch")
+                end = at + 1;
+            }
+          }
+        }
+        else if (c == ':' && at + 1 < all.size() && all[at + 1] != ':' && (at == 0 || all[at - 1] != ':') &&
+                 (previousWord(at) == "public" || previousWord(at) == "private" || previousWord(at) == "protected"))
+          boundary[stack.size()] = at + 1; // (an access specifier ends what was before it)
+        else if (c == ';')
+        {
+          boundary[stack.size()] = at + 1;
+          if (groupBlock != SIZE_MAX && at >= starts[i + 1] && stack.size() == groupBlock)
+            end = at + 1;
+        }
+        ++at;
+      }
+      if (start == SIZE_MAX || end == SIZE_MAX || start > starts[i] || end <= starts[i + 1])
+        continue;
+      // (from the line the statement's code starts on: the white space after the last one stays)
+      if (size_t code = std::min(nextCode(start), starts[i]); code > start)
+        if (size_t line = all.rfind('\n', code - 1); line != std::string::npos && line >= start)
+          start = line + 1;
+      // The parts the statement covers: [first, last], cut where it starts and ends in a text part.
+      size_t first = 0, last = 0;
+      while (first + 1 < w.size() && starts[first + 1] <= start)
+        ++first;
+      while (last + 1 < w.size() && starts[last + 1] < end)
+        ++last;
+      first = std::min(first, i); // (an empty group at the statement's start is in it)
+      last = std::max(last, i);
+      if (!w[first].group.empty())
+        start = starts[first];
+      if (!w[last].group.empty())
+      {
+        // (a `;` right after the group goes in too: the statement ends there in a configuration
+        // where the group is empty, the tests' option chain without its release-only last link)
+        end = starts[last + 1];
+        if (size_t next = nextCode(end); next < all.size() && all[next] == ';')
+        {
+          end = next + 1;
+          while (last + 1 < w.size() && starts[last + 1] < end)
+            ++last;
+        }
+      }
+      auto widen = [&](std::vector<MarkedPart>& parts)
+      {
+        std::vector<MarkedPart> out(parts.begin(), parts.begin() + first);
+        MarkedPart g;
+        g.group = parts[i].group + "+";
+        for (size_t k = first; k <= last; ++k)
+        {
+          if (!parts[k].group.empty())
+          {
+            g.parts.push_back(parts[k]);
+            continue;
+          }
+          size_t from = k == first ? start - starts[k] : 0, to = k == last ? end - starts[k] : parts[k].text.size();
+          if (k == first)
+            addText(out, std::string_view(parts[k].text).substr(0, from));
+          addText(g.parts, std::string_view(parts[k].text).substr(from, to - from));
+          if (k == last)
+          {
+            out.push_back(std::move(g));
+            g = MarkedPart();
+            addText(out, std::string_view(parts[k].text).substr(to));
+          }
+        }
+        if (!g.group.empty())
+          out.push_back(std::move(g));
+        out.insert(out.end(), parts.begin() + last + 1, parts.end());
+        parts = std::move(out);
+      };
+      widen(w);
+      widen(l);
+      i = first; // (on from the widened group)
+    }
+  }
+
   // The two configurations' parts as one text: their text parts the same, each group the same (its
   // text once) or written by conditionalGroup. False where a text part differs or the parts do not
   // match (a mark the conversion lost in one of them).
@@ -832,10 +1280,18 @@ namespace
   // dimension: what the first two texts are chosen by (config::debug, or config::platform for
   // --convert-merge-platform, which keeps the groups' marks: keepMarks).
   bool mergeParts(const std::vector<MarkedPart>& debug, const std::vector<MarkedPart>& release, const std::vector<MarkedPart>* final, std::string& out,
-                  const std::string& file, MergeReport& report, const MergeDimension& firstDimension = debugDimension, bool keepMarks = false)
+                  const std::string& file, MergeReport& report, const MergeDimension& firstDimension = debugDimension, bool keepMarks = false,
+                  bool widened = false)
   {
     if (debug.size() != release.size() || (final && final->size() != debug.size()))
       return false;
+    // (the platforms' groups widened to their statements first, at each level: widenToStatements)
+    if (&firstDimension == &platformDimension && !final && !widened)
+    {
+      std::vector<MarkedPart> w = debug, l = release;
+      widenToStatements(w, l);
+      return mergeParts(w, l, nullptr, out, file, report, firstDimension, keepMarks, true);
+    }
     MergeReport before = report;
     std::string merged;
     size_t skipSemicolon = std::string::npos; // the next text part's `;`, which a statement's group took
@@ -857,8 +1313,11 @@ namespace
         continue;
       }
       std::string inner;
-      if (mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report, firstDimension, keepMarks))
-        merged += keepMarks ? marked(d.group, inner) : inner;
+      // (a widened group's texts are its platforms' whole statements: chosen as they are; the
+      // configurations' merge after it merges inside it, its groups' marks kept)
+      bool wholeStatements = &firstDimension == &platformDimension && widenedGroup(d.group);
+      if (!wholeStatements && mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report, firstDimension, keepMarks))
+        merged += keepMarks ? markedLike(d, inner) : inner;
       else if (auto choice = report.choices.find(file + " " + d.group); !keepMarks && choice != report.choices.end())
       {
         merged += flattened(choice->second == "release" ? r.parts : choice->second == "final" && f ? f->parts : d.parts);
@@ -866,7 +1325,8 @@ namespace
       }
       else
       {
-        std::string dt = flattened(d.parts), rt = flattened(r.parts);
+        std::string dt = wholeStatements ? flattenedMarked(d.parts) : flattened(d.parts);
+        std::string rt = wholeStatements ? flattenedMarked(r.parts) : flattened(r.parts);
         std::string ft = f ? flattened(f->parts) : rt;
         const MergeDimension* dimension = &firstDimension;
         std::string on = dt, off = rt;
@@ -900,13 +1360,24 @@ namespace
         if (blankText(on) != blankText(off))
           if (std::string joined = elseLinksWhen(blankText(on) ? off : on, blankText(on) ? dimension->off : dimension->on); !joined.empty())
           {
-            merged += keepMarks ? marked(d.group, joined) : joined;
+            merged += keepMarks ? markedLike(d, joined) : joined;
             ++report.conditional;
             continue;
           }
         // A macro's use within a line (its id `FILE:@OFFSET`): as a statement, the `;` after it
         // closes it, `if constexpr (config::debug) { debug; } else { release; }`.
         bool inLine = on.find('\n') == std::string::npos && off.find('\n') == std::string::npos;
+        // Literals that differ (a string macro's use with the literals it joins, InputState's
+        // `"left-" "windows"` on Windows, `"left-" "super"` on Linux): one expression choosing,
+        // `(config::platform == Platform::Windows ? "left-" "windows" : "left-" "super")`. Both arms
+        // compile everywhere, being literals.
+        if (inLine && onlyLiterals(on) && onlyLiterals(off))
+        {
+          std::string chosen = "(" + std::string(dimension->on) + " ? " + withoutOuterSpace(on) + " : " + withoutOuterSpace(off) + ")";
+          merged += keepMarks ? markedLike(d, chosen) : chosen;
+          ++report.conditional;
+          continue;
+        }
         const MarkedPart* next = i + 1 < debug.size() && debug[i + 1].group.empty() ? &debug[i + 1] : nullptr;
         size_t semicolon = next ? next->text.find_first_not_of(" \t") : std::string::npos;
         if (inLine && semicolon != std::string::npos && next->text[semicolon] == ';' && statementAfter(out + merged))
@@ -915,14 +1386,14 @@ namespace
           std::string chosen = blankText(on) ? "if constexpr (" + std::string(dimension->off) + ") {" + statement(off) + " }"
                                              : "if constexpr (" + std::string(dimension->on) + ") {" + statement(on) + " }" +
                                                  (blankText(off) ? "" : " else {" + statement(off) + " }");
-          merged += keepMarks ? marked(d.group, chosen) : chosen;
+          merged += keepMarks ? markedLike(d, chosen) : chosen;
           ++report.conditional;
           skipSemicolon = semicolon;
         }
         else
         {
           std::string chosen = conditionalGroup(on, off, out + merged, file + " (#if group " + d.group + ")", report, *dimension);
-          merged += keepMarks ? marked(d.group, chosen) : chosen;
+          merged += keepMarks ? markedLike(d, chosen) : chosen;
         }
       }
     }
@@ -1173,6 +1644,19 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
       splitImports(rel, windows, linux);
       continue;
     }
+    // A file whose code is all in #if groups the other platform leaves out (the DX11 files, inside
+    // `#if defined(WIN32)`): a file of the one platform, its text as converted.
+    if (lastCodeChar(linux) == 0 && lastCodeChar(windows) != 0)
+    {
+      write(rel, alone(windows, "Windows"));
+      continue;
+    }
+    if (lastCodeChar(windows) == 0 && lastCodeChar(linux) != 0)
+    {
+      write(rel, alone(linux, "Linux"));
+      continue;
+    }
+    unionForwardDeclarations(windows, linux);
     std::vector<MarkedPart> w, l;
     size_t a = 0, b = 0;
     std::vector<std::string> openW, openL;

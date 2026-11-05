@@ -2726,7 +2726,60 @@
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset) &&
               !cNamedConstant(macro->first))
           {
-            replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : scopedQualified(macro->second));
+            std::string written = in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : scopedQualified(macro->second);
+            // Marked (--convert-marks) as a macro's use is, with the literals it joins: a string
+            // macro may be defined otherwise on another platform or configuration (InputState's
+            // `"left-" WIN_KEY_NAME`, "windows" or "super"), and the merge chooses between the whole
+            // literals, `(config::platform == Platform::Windows ? "left-" "windows" : "left-" "super")`.
+            // Another name (FileOperations' ftello64, `_ftelli64` on Windows and `ftello` on Linux)
+            // is marked alone: a use whose names differ is merged as the statement around it.
+            if (convertMarks && !in.c && !isStringLiterals(macro->second) &&
+                (isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second)))
+            {
+              std::string id = in.path.filename().string() + ":@" + std::to_string(t.offset);
+              written = std::string(t.offset > 0 && text[t.offset - 1] == '/' ? " " : "") + "/*kpp:if " + id + "*/" + written + "/*kpp:endif " + id + "*/";
+            }
+            if (convertMarks && !in.c && isStringLiterals(macro->second))
+            {
+              auto stringMacro = [&](uint32_t k)
+              {
+                if (toks[k].getKind() != TokenKind::Identifier || (k > 0 && toks[k - 1].is(P::ColonColon)))
+                  return false;
+                auto m = objectMacros.find(std::string(spelling(k)));
+                return m != objectMacros.end() && macroHoldsAt(m->first, toks[k].offset) && !cNamedConstant(m->first) && isStringLiterals(m->second);
+              };
+              auto joined = [&](uint32_t k) { return toks[k].getKind() == TokenKind::String || stringMacro(k); };
+              uint32_t first = i, last = i;
+              while (first > 0 && joined(first - 1))
+                --first;
+              while (last + 1 < toks.size() && joined(last + 1))
+                ++last;
+              bool firstMacro = true, lastMacro = true;
+              for (uint32_t k = first; k < i; ++k)
+                firstMacro = firstMacro && !stringMacro(k);
+              for (uint32_t k = i + 1; k <= last; ++k)
+                lastMacro = lastMacro && !stringMacro(k);
+              std::string id = in.path.filename().string() + ":@" + std::to_string(toks[first].offset);
+              // (a mark right after `/` would make `//`, a line comment)
+              std::string open = "/*kpp:if " + id + "*/", close = "/*kpp:endif " + id + "*/";
+              if (firstMacro)
+              {
+                if (toks[first].offset > 0 && text[toks[first].offset - 1] == '/')
+                  open = " " + open;
+                if (first == i)
+                  written = open + written;
+                else
+                  insert(toks[first].offset, open);
+              }
+              if (lastMacro)
+              {
+                if (last == i)
+                  written += close;
+                else
+                  insert(endOffset(last), close);
+              }
+            }
+            replace(t.offset, t.length, written);
             counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
                        : isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second) ? "name macros written out"
                                                                                                       : "spliced macros written out");
@@ -2734,7 +2787,9 @@
           }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
-          if (auto alias = headerAliases->find(std::string(spelling(i))); alias != headerAliases->end())
+          // (a known macro's spelling stands for every platform's: SDL_stdinc.h's alloca is
+          // `__builtin_alloca` on Linux and `_alloca` on Windows, `__builtin_alloca` on both)
+          if (auto alias = headerAliases->find(std::string(spelling(i))); alias != headerAliases->end() && !knownMacros.count(alias->first))
           {
             replace(t.offset, t.length, scopedQualified(alias->second));
             counts.add("C header alias macros expanded");

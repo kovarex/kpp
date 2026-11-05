@@ -716,6 +716,64 @@ together, so one constant, `config::finalRelease`, chooses them:
   sets it true; every other build, kppc alone included, takes the default (until 2026-11-04 the
   scripts passed `--config finalRelease=false`).
 
+**The game's platforms as config::platform (thread C, 2026-11-05).** The game is converted as Windows
+and as Linux too (`--convert-platform linux`, clang's x86_64-linux-gnu predefines and fbuild.bff's
+Linux defines), each configuration's two texts made one by `--convert-merge-platform` as the
+configurations are (`config::platform == Platform::Windows`, `== Platform::Linux`, each named, never
+an `else`), then the configurations by `--convert-merge` (convert.cmd, since 2026-11-05;
+CONVERT_LINUX=0 converts Windows alone).
+
+**One spelling on every platform (kovarex, 2026-11-05).** Code that differs between the platforms
+outside an #if group cannot be merged, so a name the game spells per platform is one spelling,
+declared per platform:
+- Strings are UTF-8 on every platform; kpp has no wide or native string literal. The game's wide
+  strings (`L ## x` in AppManager's ARG_STRING_TYPE and the tests' ForkTask STR, wchar_t program
+  arguments, StringUtil::NativeString) are UTF-8 Strings on Windows as on Linux, converted to wide
+  only where the Windows API takes them: wmain's arguments (converted to UTF-8 before fmain, which
+  takes `char**` on every platform), ShellExecuteW's parameters (AppManager) and CreateProcessW's
+  command line (ForkTask). A path's text in them is its `string()`, UTF-8.
+- These are hand edits of the C++ before the converter reads it: programs/factorio/overrides/
+  source-edits.txt (`@ FILE: why`, the old lines after `- `, the new after `+ `; every occurrence is
+  replaced, on every platform and configuration, and an old text the file no longer has fails the
+  conversion, so an edit is never silently stale).
+- A C header's macro with a known kpp spelling is that spelling on every platform: errno is
+  `(*platform::errnoLocation())` (the stdlib's accessor: `_errno()`, glibc's `__errno_location()`,
+  FreeBSD's `__error()`), alloca is the builtin `__builtin_alloca`, which the C import declares on
+  every target (malloc.h made it `_alloca` on Windows, glibc and SDL_stdinc.h `__builtin_alloca`). INVALID_SOCKET is a name on both: the game's constant on Linux,
+  winsock2.h's, which the C import takes, on Windows.
+- A string macro written out at its uses is marked there with the literals it joins, and a use
+  whose literals differ is one expression choosing: InputState's `"left-" WIN_KEY_NAME` is
+  `(config::platform == Platform::Windows ? "left-" "windows" : "left-" "super")`. A declaration whose
+  initializers are literals that differ, strings included, chooses its value as a configuration's
+  does: `const auto PLATFORM = config::platform == Platform::Windows ? "win64" : "linux64";`, also
+  where a group holds several declarations of which some are the same.
+- A use of a macro that is another name (FileOperations' ftello64: `_ftelli64` or `ftello`) is
+  marked too, and differs as a group does.
+- A group whose platforms' texts differ where no statement or declaration stands (a link of
+  cxxopts' option chain, an entry of a brace list or an enum, a constructor's initializer, `||
+  condition` in an `if`, the `if (signal != SIGHUP)` before a statement) is widened, on both alike,
+  to the statement or declaration around it, which each platform then has whole: `if constexpr
+  (config::platform == Platform::Windows) { ... }` and `... Linux) { ... }` blocks, or a `when`
+  declaration for each (a constructor, an enum, a variable). The statement's other groups are inside
+  it with their marks, and the configurations' merge after it merges them there.
+- The forward declarations a converted file keeps at its top (a class no file of the platform
+  defines: ChildProcessAgent on Windows) are both platforms' together, one platform's own `when`
+  that platform (`when (config::platform == Platform::Windows) class ChildProcessAgent;`).
+- Lua's hexadecimal numbers are lobject.c's own lua_strx2number on every platform, as on Windows
+  (Linux's luaconf.h made it strtod: a source edit).
+- StackWalker is Windows' alone (not in Linux's build): its files `requires config::platform ==
+  Platform::Windows`. So is a file whose code is all in #if groups the other platform leaves out
+  (the DX11 files, inside `#if defined(WIN32)`): its platform's text as converted, so that the
+  configurations' merge merges its groups as before (as one platform group it was each definition
+  twice, `when (config::finalRelease && ...)` and `when (!config::finalRelease && ...)`).
+- The platform merge writes each group's marks back as they stood (alone on their lines or within
+  one), so that the configurations' merge after it cuts each configuration's text alike.
+- A choice's second arm is Linux's: a third platform (FreeBSD) takes it until it is converted as
+  itself.
+- convert.cmd: the whole game's platform merge has no problem (C:\Factorio 4c178a5b915, debug: 246
+  groups whose platforms differ, 34 files of one platform), and the merged tree built for Windows
+  passes as before (headline 0, tests errors 0, smoke tests 16/16).
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".

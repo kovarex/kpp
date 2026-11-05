@@ -73,6 +73,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
 // written qualified in the converted program, zstd::ZSTD_compress, and an include of its headers
 // (zstd/zstd.h) imports nothing.
 void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::path>> libraries);
+// overridesDir's source-edits.txt (Converter/SourceEdits.inl): hand edits of the C++ inputs' texts
+// (paths[i]'s text is *texts[i]), made before anything reads them. Returns the errors, empty if none.
+std::string applyConvertSourceEdits(const std::filesystem::path& overridesDir, const std::vector<std::filesystem::path>& paths,
+                                    const std::vector<std::string*>& texts);
 // The configuration a conversion preprocesses the game as (kppc --convert-release): Release's
 // defines (NDEBUG) instead of FastDebug's; and whether it marks each #if group (--convert-marks), for
 // convertMerge. Set before the configuration is built.

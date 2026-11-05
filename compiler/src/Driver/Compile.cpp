@@ -644,6 +644,22 @@ int compile(int argc, char** argv)
   std::unique_ptr<SourceConfiguration>& configuration = build->configuration;
   if (!options.convertDir.empty())
   {
+    {
+      // (the hand edits of the C++ the conversion reads: overrides\source-edits.txt)
+      std::vector<std::filesystem::path> editPaths;
+      std::vector<std::string*> editTexts;
+      for (size_t i = 0; i < paths.size(); ++i)
+        if (files[i].path.extension() != ".kpp")
+        {
+          editPaths.push_back(files[i].path);
+          editTexts.push_back(&files[i].text);
+        }
+      if (std::string errors = applyConvertSourceEdits(options.overridesDir, editPaths, editTexts); !errors.empty())
+      {
+        fprintf(stderr, "%s", errors.c_str());
+        return 1;
+      }
+    }
     std::vector<std::filesystem::path> cppPaths;
     std::vector<std::string_view> cppTexts;
     std::vector<size_t> cppFiles;

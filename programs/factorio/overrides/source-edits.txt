@@ -1,0 +1,121 @@
+# Hand edits of the game's C++ before the converter reads it (Converter/SourceEdits.inl): `@ FILE: why`,
+# then the old text's lines after `- ` and the new text's after `+ `; every occurrence is replaced, and an
+# old text the file no longer has is an error. Each makes Windows' code what Linux's is, where kpp decided
+# one form for every platform.
+#
+# Strings are UTF-8 on every platform (kovarex, 2026-11-05; design.md 12, "One spelling on every
+# platform"): no wide literal, converted to wide only at the Windows API's boundaries. The game's
+# program arguments, its tests' fork parameters and the debug adapter's launch arguments were wide on
+# Windows (wchar_t*, std::wstring, `L ## x`) and narrow elsewhere.
+
+@ libraries/CommonUtil/StringUtil.hpp: the native string is UTF-8 on every platform
+-   using NativeString = std::wstring;
+-   inline NativeString toNative(const std::string& str) { return widen(str); }
++   using NativeString = std::string;
++   inline NativeString toNative(const std::string& str) { return str; }
+
+@ src/GlobalContext.hpp: the program's arguments are UTF-8 on every platform (wmain converts them)
+-   using ProgramArgType = wchar_t*;
++   using ProgramArgType = char*;
+
+@ src/GlobalContext.cpp: the program's arguments are UTF-8
+-   #define ARG_EQUAL(arg, str) (wcscmp(arg, L ## str) == 0)
++   #define ARG_EQUAL(arg, str) (strcmp(arg, str) == 0)
+
+@ src/Main.cpp: fmain takes the arguments as UTF-8 on every platform; the file's own (static), as the tests' fmain (tests/Main.cpp) took (int, char**) already and the tests' build has both files
+- #ifdef WIN32
+- int fmain(int argc, wchar_t** argv)
+- #else
+- int fmain(int argc, char** argv)
+- #endif
++ static int fmain(int argc, char** argv)
+
+@ src/Main.cpp: the arguments are UTF-8
+-     if (argv[i] != nullptr && wcscmp(argv[i], L"--no-console-attach") == 0)
++     if (argv[i] != nullptr && strcmp(argv[i], "--no-console-attach") == 0)
+
+@ src/Main.cpp: the arguments are UTF-8
+-     crashHandlerEnabled &= (argv[i] == nullptr || wcscmp(argv[i], L"--no-crash-handler") != 0);
++     crashHandlerEnabled &= (argv[i] == nullptr || strcmp(argv[i], "--no-crash-handler") != 0);
+
+@ src/Main.cpp: the entry's body is runMain, which wmain and main call (below)
+- #ifdef WIN32
+- int wmain(int argc, wchar_t** argv)
+- #else
+- int main(int argc, char** argv)
+- #endif
+- {
+-   try
++ static int runMain(int argc, char** argv)
++ {
++   try
+
+@ src/Main.cpp: Windows' wmain converts its wide arguments to UTF-8 (the boundary), then runs as main does
+- #if defined NINTENDO_SWITCH
++ #ifdef WIN32
++ int wmain(int argc, wchar_t** wideArgv)
++ {
++   std::vector<std::string> arguments;
++   for (int i = 0; i < argc; ++i)
++     arguments.push_back(StringUtil::narrow(wideArgv[i]));
++   std::vector<char*> argv;
++   for (std::string& argument : arguments)
++     argv.push_back(argument.data());
++   argv.push_back(nullptr);
++   return runMain(argc, argv.data());
++ }
++ #else
++ int main(int argc, char** argv)
++ {
++   return runMain(argc, argv);
++ }
++ #endif
++ 
++ #if defined NINTENDO_SWITCH
+
+@ src/AppManager.cpp: the program's arguments are UTF-8
+- #define ARG_STRING_TYPE(STRING) L ## STRING
++ #define ARG_STRING_TYPE(STRING) STRING
+
+@ src/AppManager.cpp: the program's arguments are UTF-8
+-     std::wstring arg(input);
++     std::string arg(input);
+
+@ src/AppManager.cpp: the program's arguments are UTF-8, widened for ShellExecuteW's parameters
+-     result.append(escapedArgument(std::wstring(args[i])));
++     result.append(escapedArgument(StringUtil::widen(args[i])));
+
+@ src/AppManager.cpp: the program's arguments are UTF-8
+-       relaunchArgs.push_back(StringUtil::unicodeWStringToString(argument));
++       relaunchArgs.push_back(argument);
+
+@ src/DebugAdapter/Message.cpp: the launch arguments are UTF-8 (NativeString)
+-         this->opts.args.push_back(StringUtil::stringToUnicodeWString(arg));
++         this->opts.args.push_back(arg);
+
+@ tests/ForkTask.cpp: the fork's parameters are UTF-8 (ParamsType is NativeString)
+- #define STR(x) L##x
++ #define STR(x) x
+
+@ tests/ForkTask.cpp: the fork's parameters are UTF-8: a path's as UTF-8
+- .native()
++ .string()
+
+@ tests/ForkTask.cpp: the fork's parameters are UTF-8, widened for CreateProcessW's command line (the boundary)
+-   explicit ForkTaskInstance(std::wstring inputParams)
+-     : params(std::move(inputParams))
++   explicit ForkTaskInstance(const std::string& inputParams)
++     : params(StringUtil::widen(inputParams))
+
+# Lua's hexadecimal numbers by its own lua_strx2number on every platform: Linux's luaconf.h made it
+# strtod (LUA_USE_STRTODHEX), a macro there and a function on Windows, so lobject.c's call differed.
+@ libraries/Lua/luaconf.h: lua_strx2number is lobject.c's own on every platform, as on Windows
+- #if defined(LUA_USE_STRTODHEX)
+- #define lua_strx2number(s,p)	strtod((s), (p))
+- #endif
+
+# Lua's directories on Linux: LUA_VDIR joins lua.h's version macros, which luaconf.h (lua.h includes it
+# first) cannot see when converted; the literal they make. (Linux's alone: Windows' paths have none.)
+@ libraries/Lua/luaconf.h: LUA_VDIR is the literal lua.h's LUA_VERSION_MAJOR "." LUA_VERSION_MINOR "/" make
+- #define LUA_VDIR	LUA_VERSION_MAJOR "." LUA_VERSION_MINOR "/"
++ #define LUA_VDIR	"5" "." "2" "/"
