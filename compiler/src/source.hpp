@@ -31,8 +31,10 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
 // listed its 3,500 files every time, 37 to 68 ms (2026-11-05). note says what it did, for the log.
 // KPP_WATCH_LOST=1 takes every notification as lost (tests/incremental.ps1). Used with KPP_WATCH=1 alone
 // until thread A's review is answered (Driver/Compile.inl).
+// KPP_WATCH_CHECK=1 lists every time too and names each difference in missed (the listing is what it
+// gives then): the tests' check that the watch misses nothing.
 std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::path& root, const std::vector<std::string>& extensions,
-                                                       std::vector<FileStamp>& stamps, std::string& note);
+                                                       std::vector<FileStamp>& stamps, std::string& note, std::string& missed);
 
 bool readFile(const std::filesystem::path& path, std::string& out);
 // Whether readFile gives an overlay's text for path (setFileOverlay), not the file's.

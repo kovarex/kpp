@@ -306,10 +306,10 @@ int compile(int argc, char** argv)
   // thread A's review is answered (a write just before a build, a root swapped under its handle, a root
   // deleted while watched: 2026-11-05); --verify-incremental's build from scratch always lists.
   bool watched = servingBuild() && !replayDisabled() && getenv("KPP_WATCH");
-  std::string watchNote;
+  std::string watchNote, watchMissed;
   auto collect = [&](const std::filesystem::path& root, std::string prefix, int library)
   {
-    auto found = watched ? collectFilesWatched(root, options.extensions, stamps, watchNote) : collectFiles(root, options.extensions, &stamps);
+    auto found = watched ? collectFilesWatched(root, options.extensions, stamps, watchNote, watchMissed) : collectFiles(root, options.extensions, &stamps);
     std::error_code ec;
     bool alone = std::filesystem::is_regular_file(root, ec);
     {
@@ -358,6 +358,13 @@ int compile(int argc, char** argv)
     collect(options.roots[i], "", -1);
   if (!watchNote.empty())
     logBuildNote(watchNote.substr(0, watchNote.size() - 2));
+  // KPP_WATCH_CHECK's difference: an error, loudly (the build is from the listing, but fails).
+  if (!watchMissed.empty())
+  {
+    logBuildNote("watch missed " + watchMissed.substr(0, watchMissed.size() - 2));
+    fprintf(stderr, "error: the compile server's watched listing missed %s (KPP_WATCH_CHECK)\n", watchMissed.substr(0, watchMissed.size() - 2).c_str());
+    return 1;
+  }
   // --exclude: files under the roots that are not part of this program (another program's main).
   for (const std::string& excluded : options.excluded)
   {

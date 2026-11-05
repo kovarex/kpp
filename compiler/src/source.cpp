@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 #include <mutex>
+#include <condition_variable>
 #include <thread>
 #include <unordered_map>
 #include <cstdio>
@@ -59,15 +60,18 @@ namespace
     HANDLE directory = INVALID_HANDLE_VALUE;
     OVERLAPPED overlapped{};
     HANDLE armed = nullptr; // set once the first read is pending (or failed)
+    DWORD volume = 0, indexHigh = 0, indexLow = 0; // the directory watched (a root renamed away and replaced is another)
     std::vector<DWORD> buffer = std::vector<DWORD>(16384); // 64 KB (DWORD-aligned, as the notifications need)
     // (the thread's and collectFilesWatched's, under watchMutex)
     std::vector<std::filesystem::path> files;
     std::vector<FileStamp> stamps;
     std::set<std::wstring> written; // the names (under the directory) written since the listing was brought up to date
     bool relist = false;            // a file or directory added, removed or renamed, or notifications lost
-    bool broken = false;            // the thread ended: a read failed
+    bool broken = false;            // the thread ended: a read failed, or the watch was cancelled
+    uint64_t generation = 0;        // reads the thread has recorded
   };
   std::mutex watchMutex;
+  std::condition_variable watchRecorded; // a thread recorded a read, or ended
   std::map<std::string, Watch*> watches; // by directory and extensions (a broken one is closed and erased)
 
   bool arm(Watch& w)
@@ -77,69 +81,103 @@ namespace
   }
 
   // The watch's thread: a read pending at every moment, each one's notifications recorded (a written
-  // file's name kept, anything else a relist; none at all, an overflow, a relist too).
+  // file's name kept, anything else a relist; none at all, an overflow, a relist too). A read that
+  // fails (the directory deleted, the watch cancelled) closes the directory at once, so that a
+  // directory deleted while watched is gone, not delete-pending, and can be made again.
   void watchLoop(Watch* w)
   {
-    if (!arm(*w))
-    {
-      std::lock_guard lock(watchMutex);
-      w->broken = true;
-      SetEvent(w->armed);
-      return;
-    }
+    bool ok = arm(*w);
     SetEvent(w->armed);
     for (;;)
     {
       DWORD bytes = 0;
-      bool read = GetOverlappedResult(w->directory, &w->overlapped, &bytes, TRUE);
+      if (ok)
+        ok = GetOverlappedResult(w->directory, &w->overlapped, &bytes, TRUE);
       std::lock_guard lock(watchMutex);
-      if (!read)
+      if (ok)
       {
+        if (bytes == 0)
+          w->relist = true;
+        else
+          for (const char* at = reinterpret_cast<const char*>(w->buffer.data());;)
+          {
+            const auto* n = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(at);
+            if (n->Action == FILE_ACTION_MODIFIED)
+              w->written.insert(std::wstring(n->FileName, n->FileNameLength / sizeof(wchar_t)));
+            else
+              w->relist = true;
+            if (!n->NextEntryOffset)
+              break;
+            at += n->NextEntryOffset;
+          }
+        // The next read pending before the lock goes: a build that finds the read completed waits
+        // for this record, and one that finds it pending has what came before it.
+        ResetEvent(w->overlapped.hEvent);
+        ok = arm(*w);
+      }
+      if (!ok)
+      {
+        CloseHandle(w->directory);
+        w->directory = INVALID_HANDLE_VALUE;
         w->broken = true;
+        watchRecorded.notify_all();
         return;
       }
-      if (bytes == 0)
-        w->relist = true;
-      else
-        for (const char* at = reinterpret_cast<const char*>(w->buffer.data());;)
-        {
-          const auto* n = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(at);
-          if (n->Action == FILE_ACTION_MODIFIED)
-            w->written.insert(std::wstring(n->FileName, n->FileNameLength / sizeof(wchar_t)));
-          else
-            w->relist = true;
-          if (!n->NextEntryOffset)
-            break;
-          at += n->NextEntryOffset;
-        }
-      ResetEvent(w->overlapped.hEvent);
-      if (!arm(*w))
-      {
-        w->broken = true;
-        return;
-      }
+      ++w->generation;
+      watchRecorded.notify_all();
     }
   }
 
-  void closeWatch(Watch* w)
+  // Under watchMutex: the watch's thread stopped (its read cancelled) and the watch freed.
+  void dropWatch(std::unique_lock<std::mutex>& lock, Watch* w)
   {
     if (w->directory != INVALID_HANDLE_VALUE)
-      CloseHandle(w->directory);
+      CancelIoEx(w->directory, &w->overlapped);
+    watchRecorded.wait(lock, [&] { return w->broken; });
     if (w->overlapped.hEvent)
       CloseHandle(w->overlapped.hEvent);
     if (w->armed)
       CloseHandle(w->armed);
     delete w;
   }
+
+  // The directory a path names now: its volume and file index (false when it cannot be opened).
+  bool identity(const std::filesystem::path& path, DWORD& volume, DWORD& high, DWORD& low)
+  {
+    HANDLE h = CreateFileW(path.wstring().c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+      return false;
+    BY_HANDLE_FILE_INFORMATION info{};
+    bool ok = GetFileInformationByHandle(h, &info);
+    CloseHandle(h);
+    volume = info.dwVolumeSerialNumber, high = info.nFileIndexHigh, low = info.nFileIndexLow;
+    return ok;
+  }
+
+  // A file's stamp from its directory's entry, as the listing has it (collectFiles: the listing's own),
+  // so that a file stamped again and the same file listed agree.
+  bool listedStamp(const std::filesystem::path& path, FileStamp& stamp)
+  {
+    WIN32_FIND_DATAW data;
+    HANDLE h = FindFirstFileW(path.wstring().c_str(), &data);
+    if (h == INVALID_HANDLE_VALUE)
+      return false;
+    FindClose(h);
+    stamp.time = int64_t((uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime);
+    stamp.size = (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+    return true;
+  }
 }
 
 std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::path& root, const std::vector<std::string>& extensions,
-                                                       std::vector<FileStamp>& stamps, std::string& note)
+                                                       std::vector<FileStamp>& stamps, std::string& note, std::string& missed)
 {
   std::error_code ec;
   if (!std::filesystem::is_directory(root, ec))
     return collectFiles(root, extensions, &stamps);
-  std::string key = std::filesystem::absolute(root, ec).lexically_normal().string();
+  std::filesystem::path absolute = std::filesystem::absolute(root, ec).lexically_normal();
+  std::string key = absolute.string();
   std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return char(tolower(c)); });
   for (const std::string& e : extensions)
     key += "|" + e;
@@ -150,23 +188,63 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
     w.written.clear();
     w.relist = false;
   };
+  // KPP_WATCH_CHECK=1: what the watch gives compared with a listing, each difference a miss.
   auto give = [&](const Watch& w)
   {
+    if (getenv("KPP_WATCH_CHECK"))
+    {
+      std::vector<FileStamp> fresh;
+      std::vector<std::filesystem::path> files = collectFiles(root, extensions, &fresh);
+      for (size_t i = 0, j = 0; i < files.size() || j < w.files.size();)
+      {
+        if (j == w.files.size() || (i < files.size() && files[i] < w.files[j]))
+          missed += files[i++].string() + " (not in the watched listing); ";
+        else if (i == files.size() || w.files[j] < files[i])
+          missed += w.files[j++].string() + " (gone, still in the watched listing); ";
+        else
+        {
+          if (!(fresh[i] == w.stamps[j]))
+            missed += files[i].string() + " (written, its stamp not the listing's); ";
+          ++i, ++j;
+        }
+      }
+      if (!missed.empty())
+      {
+        stamps.insert(stamps.end(), fresh.begin(), fresh.end());
+        return files;
+      }
+    }
     stamps.insert(stamps.end(), w.stamps.begin(), w.stamps.end());
     return w.files;
   };
   std::unique_lock lock(watchMutex);
   auto found = watches.find(key);
+  // The directory its watch has, still under that name: one renamed away and replaced sends no
+  // notification. Else (or a watch that broke) the watch goes and a new one is made.
+  if (found != watches.end())
+  {
+    Watch* old = found->second;
+    DWORD volume = 0, high = 0, low = 0;
+    bool same = !old->broken && identity(absolute, volume, high, low) && volume == old->volume && high == old->indexHigh && low == old->indexLow;
+    if (!same)
+    {
+      note += "watch: " + root.string() + (old->broken ? "'s watch ended" : " is another directory now") + ", watched anew; ";
+      watches.erase(found);
+      dropWatch(lock, old);
+      found = watches.end();
+    }
+  }
   if (found == watches.end())
   {
     // Watched before it is listed: what changes while it is listed is seen at the next build.
     Watch* w = new Watch;
-    w->directory = CreateFileW(std::filesystem::absolute(root, ec).wstring().c_str(), FILE_LIST_DIRECTORY,
-                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-                               FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+    w->directory = CreateFileW(absolute.wstring().c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                               OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
     w->overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     w->armed = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    bool started = w->directory != INVALID_HANDLE_VALUE && w->overlapped.hEvent && w->armed;
+    BY_HANDLE_FILE_INFORMATION info{};
+    bool started = w->directory != INVALID_HANDLE_VALUE && w->overlapped.hEvent && w->armed && GetFileInformationByHandle(w->directory, &info);
+    w->volume = info.dwVolumeSerialNumber, w->indexHigh = info.nFileIndexHigh, w->indexLow = info.nFileIndexLow;
     if (started)
     {
       std::thread(watchLoop, w).detach();
@@ -175,9 +253,15 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
       lock.lock();
       started = !w->broken;
     }
+    else
+    {
+      if (w->directory != INVALID_HANDLE_VALUE)
+        CloseHandle(w->directory), w->directory = INVALID_HANDLE_VALUE;
+      w->broken = true; // (no thread)
+    }
     if (!started)
     {
-      closeWatch(w); // (its thread, if any, has ended)
+      dropWatch(lock, w);
       note += "watch: " + root.string() + " cannot be watched, listed; ";
       return collectFiles(root, extensions, &stamps);
     }
@@ -187,19 +271,26 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
     return give(*w);
   }
   Watch& w = *found->second;
+  // A read that completed (a write just before this build) is recorded before the listing is
+  // brought up to date: its thread is waited for (thread A's review, 2026-11-05).
+  while (!w.broken && HasOverlappedIoCompleted(&w.overlapped))
+  {
+    uint64_t seen = w.generation;
+    watchRecorded.wait(lock, [&] { return w.generation != seen || w.broken; });
+  }
   if (w.broken)
   {
-    closeWatch(found->second);
     watches.erase(found);
-    note += "watch: " + root.string() + "'s watch broke, listed; ";
+    dropWatch(lock, &w);
+    note += "watch: " + root.string() + "'s watch ended, listed; ";
     return collectFiles(root, extensions, &stamps);
   }
   if (getenv("KPP_WATCH_LOST"))
     w.relist = true;
   if (!w.relist)
   {
-    // Each file written stamped again, the listing's way (collectFiles' for a file given alone);
-    // one of the extensions that is not in the listing (it was not there when listed) lists again.
+    // Each file written stamped again, from its directory's entry as the listing does; one of the
+    // extensions that is not in the listing (it was not there when listed) lists again.
     size_t restamped = 0;
     for (const std::wstring& name : w.written)
     {
@@ -208,14 +299,11 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
       if (std::find(extensions.begin(), extensions.end(), extension) == extensions.end())
         continue; // (a directory, or a file of no interest)
       auto at = std::lower_bound(w.files.begin(), w.files.end(), path);
-      if (at == w.files.end() || *at != path)
+      if (at == w.files.end() || *at != path || !listedStamp(path, w.stamps[size_t(at - w.files.begin())]))
       {
         w.relist = true;
         break;
       }
-      FileStamp& stamp = w.stamps[size_t(at - w.files.begin())];
-      stamp.time = std::filesystem::last_write_time(path, ec).time_since_epoch().count();
-      stamp.size = std::filesystem::file_size(path, ec);
       ++restamped;
     }
     if (!w.relist)

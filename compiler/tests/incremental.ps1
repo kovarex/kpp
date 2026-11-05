@@ -19,6 +19,7 @@ $libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's
 $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
 $env:KPP_WATCH = '1' # (the servers' watched listings, opt-in until thread A's review is answered)
+$env:KPP_WATCH_CHECK = '1' # (and each build's listing compared with the watched one: a difference fails the build)
 $started = Get-Date
 
 function Normalize([string[]]$lines)
@@ -150,6 +151,10 @@ $steps = @(
   @{ name = 'that edit back, the watch''s notifications lost'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { $env:KPP_WATCH_LOST = '1'; Edit 'locals.kpp' '+ depth(1) + 0; }' '+ depth(1); }' } },
   @{ name = 'a file in a new directory (listed again)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { Remove-Item env:KPP_WATCH_LOST; New-Item -ItemType Directory -Force (Join-Path $src 'deeper') | Out-Null; Set-Content (Join-Path $src 'deeper\deep.kpp') 'int deepHelper() { return 5; }' } },
   @{ name = 'that directory removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .* listed again'; edit = { cmd /c rd /s /q (Join-Path $src 'deeper') } },
+  # The source directory renamed away and a copy made under its name (no notification: the watch sees
+  # another directory), and deleted (rd /s /q) and made again at once (thread A's review).
+  @{ name = 'the source directory renamed away and replaced by a copy'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .*(is another directory now|watch ended)'; edit = { Rename-Item $src 'src-moved'; Copy-Item -Recurse (Join-Path $work 'src-moved') $src; cmd /c rd /s /q (Join-Path $work 'src-moved') } },
+  @{ name = 'the source directory deleted and made again'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; log = 'watch: .*(watch ended|is another directory now)'; edit = { Copy-Item -Recurse $src (Join-Path $work 'src-copy'); cmd /c rd /s /q $src; Copy-Item -Recurse (Join-Path $work 'src-copy') $src; cmd /c rd /s /q (Join-Path $work 'src-copy') } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 89 344 15 12 7'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } },
   # A name private to its file (design.md 15): the file's own overload, which no other file sees,
