@@ -148,14 +148,17 @@
     {
       if (!currentFile || currentFile->isImported)
         return false;
-      Node* e = at;
+      Node* e = at && at->kind == NodeKind::ReturnStmt ? static_cast<ReturnStmt*>(at)->value : at;
       while (e && e->kind == NodeKind::ParenExpr)
         e = static_cast<ParenExpr*>(e)->inner;
-      ParsedFile* file = e && e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : currentFile;
-      if (file && file->isImported)
+      // A literal 0 is the walk's to report (Walker::noteZeroNull: an initializer, an assignment, a
+      // comparison, an argument, a return, `T*` in a template's own walk), as an error or, under
+      // --zero-null-warnings, a warning. Here: a constant that is 0, which no walk sees as a literal.
+      if (e && e->kind == NodeKind::LiteralExpr)
         return false;
-      fail(e && e->kind == NodeKind::LiteralExpr ? e : at, e && e->kind == NodeKind::LiteralExpr ? "the literal 0 is no pointer: write nullptr (design.md 4)"
-                                                                                           : "an integer 0 is no pointer: write nullptr (design.md 4)");
+      if (zeroNullWarningsOn())
+        return false; // (convert.cmd's nullptr pass rewrites literals; a constant is the converter's to write)
+      fail(at, "an integer 0 is no pointer: write nullptr (design.md 4)");
       return true;
     }
 

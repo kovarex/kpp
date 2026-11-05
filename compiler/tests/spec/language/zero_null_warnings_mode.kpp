@@ -1,0 +1,12 @@
+// spec: --zero-null-warnings, convert.cmd's nullptr pass: the literal 0s that would be pointers (an error otherwise, design.md 4) are warnings at the 0 token, for fix-null.py to rewrite, and the program builds and runs as C++ reads it
+// kppc: --zero-null-warnings --diagnostic-columns
+// warning: zero_null_warnings_mode.kpp:6:23: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+// warning: zero_null_warnings_mode.kpp:9:13: warning: the literal 0 is no pointer: write nullptr (design.md 4)
+struct Node { int v; };
+Node* none() { return 0; }
+int main()
+{
+  Node* p = 0;
+  println(p == none());
+  return 0;
+}

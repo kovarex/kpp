@@ -41,6 +41,15 @@ std::string overlayKey(const std::filesystem::path& path);
 extern bool msvcDiagnostics, diagnosticColumns;
 std::string sourceLocation(const std::string& path, size_t line, size_t column = 0);
 
+// --zero-null-warnings: the literal 0s that would be pointers (design.md 4, an error) are warnings
+// instead, "PATH:LINE[:COL]: warning: the literal 0 is no pointer: write nullptr (design.md 4)", each token
+// once, printed after codegen (takeZeroNullWarnings): convert.cmd's nullptr pass (fix-null.py) rewrites
+// what they name in the C++ it converted. set turns the mode on and clears the notes.
+void setZeroNullWarnings(bool on);
+bool zeroNullWarningsOn();
+void noteZeroNullWarning(const std::string& warning);
+std::vector<std::string> takeZeroNullWarnings();
+
 // In a compile server, a diagnostic's place is written marked and the client that prints it gives
 // it its form (renderDiagnostics): Visual Studio's builds (--msvc-diagnostics) and a terminal's share
 // one server, whose kept errors and replayed output were written for one of them (server.hpp,
