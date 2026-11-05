@@ -4210,6 +4210,93 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   return countFailure ? unknown(Why::Operator) : nullptr;
 }
 
+auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix) -> std::string
+{
+  cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+  ClassDecl* def = cls && cls->kind == TyKind::Class && cls->isKnown() && !types.isDependent(cls) && !Impl::mentionsUnknown(cls) && !Impl::lambdaOf(cls)
+                     ? impl.classDefinition(cls)
+                     : nullptr;
+  if (!def || level > 8 || def->isTypedUnion || def->keyword == Kw::union_ || (def->attributes & ATTR_Draft))
+    return {};
+  Subst s = impl.substFor(cls);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  // Its own special members: an operator= or a constructor taking the class alone (the rest defaulted).
+  FunctionDecl* copyAssign = nullptr;
+  FunctionDecl* moveAssign = nullptr;
+  bool copyConstructor = false, moveConstructor = false, destructor = false;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::FunctionDecl || m->builtin)
+      continue;
+    auto* f = static_cast<FunctionDecl*>(m);
+    if (f->flags & DF_Destructor)
+    {
+      destructor = true;
+      continue;
+    }
+    if (!f->templateParams.empty() || f->params.empty() || f->name.empty())
+      continue;
+    bool rest = true;
+    for (size_t i = 1; i < f->params.size(); ++i)
+      rest = rest && static_cast<ParamDecl*>(f->params[i])->defaultValue;
+    const Ty* p = impl.declaredTypeOf(f->params[0], sp, 0);
+    if (!rest || !p || !p->isKnown() || types.unqualified(types.stripRef(p)) != cls)
+      continue;
+    bool assign = f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign && f->params.size() == 1;
+    if (f->flags & DF_Constructor)
+      (p->kind == TyKind::RRef ? moveConstructor : copyConstructor) = p->isReference();
+    else if (assign)
+      (p->kind == TyKind::RRef ? moveAssign : copyAssign) = f;
+  }
+  if (level == 0 && (copyAssign || (moveAssign && move)))
+    return {}; // (an operator= of its own, the walk's choice or none: not the implicit one)
+  if (level == 0 && (moveConstructor || moveAssign))
+    return std::string("it declares a move ") + (moveConstructor ? "constructor" : "assignment") + ", so its copy assignment is deleted";
+  if (level > 0)
+  {
+    std::string member = "its " + prefix;
+    // A move takes its move assignment, where it has one (declared, or implicit: none of its
+    // copy constructor, copy assignment, move constructor or destructor declared); else its copy.
+    if (move && !moveAssign && (copyConstructor || copyAssign || moveConstructor || destructor))
+      move = false;
+    FunctionDecl* own = move ? moveAssign : copyAssign;
+    if (own && (own->flags & DF_Delete))
+      return member + " has a deleted " + (move ? "move" : "copy") + " assignment";
+    if (own && !(own->flags & DF_Default))
+      return {}; // (its own, which assigns as it is written)
+    if (!own && !move && (moveConstructor || moveAssign))
+      return member + " declares a move " + (moveConstructor ? "constructor" : "assignment") + ", so its copy assignment is deleted";
+  }
+  // The implicit (or defaulted) one assigns the bases and members: each must be assignable.
+  std::vector<const Ty*> bases;
+  if (impl.directBases(cls, def, bases))
+    for (const Ty* b : bases)
+    {
+      std::string name = types.toString(types.unqualified(types.stripRef(b)), &impl.symbols);
+      if (std::string why = deletedAssignment(b, move, level + 1, "base " + name); !why.empty())
+        return why;
+    }
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
+      continue;
+    const Ty* t = impl.declaredTypeOf(m, sp, 0);
+    if (!t || !t->isKnown() || types.isDependent(t))
+      continue;
+    std::string name = (level > 0 ? prefix + "'s member " : "member ") + std::string(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
+    if (t->isReference())
+      return "its " + name + " is a reference";
+    if (Impl::isConstObject(t))
+      return "its " + name + " is const";
+    while (t->kind == TyKind::Array && t->inner)
+      t = t->inner;
+    if (t->kind == TyKind::Class)
+      if (std::string why = deletedAssignment(t, move, level + 1, name); !why.empty())
+        return why;
+  }
+  return {};
+}
+
 auto GlobalScope::Impl::Walker::isAssignmentOp(P op) -> bool
 {
   switch (op)
@@ -4380,6 +4467,26 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
       checkClosureTo(b->rhs, l, b->token); // `later = [=] { ... text ... }`
     if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
     {
+      // `a = b` by the class's implicit assignment (no operator= of its own took b): one C++ deletes
+      // is an error. A copy from an lvalue of the class (or of one derived from it), a move from
+      // anything else. Not a typed union's alternative (`target[a] = a.type(input)`), which the
+      // assignment builds in place (design.md 8.5).
+      if (op == P::Assign && operatorCall == OperatorCall::Builtin && ls->kind == TyKind::Class && !probing)
+      {
+        Expr* target = b->lhs;
+        while (target && target->kind == NodeKind::ParenExpr)
+          target = static_cast<ParenExpr*>(target)->inner;
+        bool alternative = target && target->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(target)->base &&
+                           typedUnionOf(types.stripRef(static_cast<IndexExpr*>(target)->base->ty));
+        const Ty* given = argumentType(b->rhs, r, types);
+        const Ty* object = given ? types.unqualified(types.stripRef(given)) : nullptr;
+        bool copy = given && given->kind == TyKind::LRef && object &&
+                    (object == types.unqualified(ls) || (object->kind == TyKind::Class && impl.isBaseClass(types.unqualified(ls), object)));
+        if (!alternative && given && given->isKnown())
+          if (std::string why = deletedAssignment(ls, !copy, 0, {}); !why.empty())
+            reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
+                                      " is assigned by its implicit assignment, which C++ defines as deleted: " + why + " ([class.copy.assign] 2, 7)");
+      }
       call = operatorCall;
       callee = operatorChosen;
       member = operatorIsMember;

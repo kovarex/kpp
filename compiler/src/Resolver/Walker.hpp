@@ -648,6 +648,14 @@
     const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true, const Ty* lhsOperand = nullptr);
 
     static bool isAssignmentOp(P op);
+    // Why C++ defines the implicit assignment of cls as deleted ([class.copy.assign] 2, 4, 7), or
+    // nothing: a const or reference non-static data member (an array of const elements too), a base
+    // or member whose class's assignment is deleted, or one that declares a move constructor or a
+    // move assignment and so has a deleted copy assignment (cls itself too: the walk found no
+    // operator= of its own to take the operand). move: an assignment from an rvalue, which a class
+    // whose move assignment is declared or implicit moves by. level 0 is the assigned class; above
+    // it, prefix names the base or member in the reason (`its member f's member c is const`).
+    std::string deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix);
 
     // C++'s built-in candidates for an operator no function defines: a class operand takes part
     // through its conversion operator to a non-class type (`area < smallBlueprintAreaSize` with a

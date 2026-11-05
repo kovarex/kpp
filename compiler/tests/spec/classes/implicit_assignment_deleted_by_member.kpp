@@ -1,0 +1,94 @@
+// spec: C++ defines a class's implicit copy and move assignment as deleted when it has a const or reference non-static data member (an array of const elements too), or a base or member whose class has one or whose own assignment is deleted, and the copy assignment also when the class declares a move constructor or a move assignment, which then leaves it no implicit move assignment ([class.copy.assign] 2, 4, 7): assigning such a class is a compile error, never a copy that writes the const member or rebinds the reference; a class whose member deletes only its copy assignment still moves (classes/implicit_move_assignment_through_base)
+// found by thread D (2026-11-05), comparing deleted special members with clang: kpp assigned each, writing the const member (`a = b` made a.c 2 where it was 1) and rebinding the reference member (after `p = q`, p.r referred to q's variable)
+// error: implicit_assignment_deleted_by_member.kpp:84: error: Fixed is assigned by its implicit assignment, which C++ defines as deleted: its member c is const
+// error: implicit_assignment_deleted_by_member.kpp:85: error: Bound is assigned by its implicit assignment, which C++ defines as deleted: its member r is a reference
+// error: implicit_assignment_deleted_by_member.kpp:86: error: HoldsFixed is assigned by its implicit assignment, which C++ defines as deleted: its member f's member c is const
+// error: implicit_assignment_deleted_by_member.kpp:87: error: FromFixed is assigned by its implicit assignment, which C++ defines as deleted: its base Fixed's member c is const
+// error: implicit_assignment_deleted_by_member.kpp:88: error: Grid is assigned by its implicit assignment, which C++ defines as deleted: its member cells is const
+// error: implicit_assignment_deleted_by_member.kpp:89: error: MoveOnly is assigned by its implicit assignment, which C++ defines as deleted: it declares a move constructor, so its copy assignment is deleted
+// error: implicit_assignment_deleted_by_member.kpp:90: error: MoveOnly is assigned by its implicit assignment, which C++ defines as deleted: it declares a move constructor, so its copy assignment is deleted
+// error: implicit_assignment_deleted_by_member.kpp:91: error: HoldsNoCopy is assigned by its implicit assignment, which C++ defines as deleted: its member n has a deleted copy assignment
+// error: implicit_assignment_deleted_by_member.kpp:92: error: Fixed is assigned by its implicit assignment, which C++ defines as deleted: its member c is const
+struct Fixed
+{
+  const int c = 1;
+  int v = 0;
+};
+struct Bound
+{
+  int& r;
+};
+struct HoldsFixed
+{
+  Fixed f;
+};
+struct FromFixed : Fixed
+{
+  int w = 0;
+};
+struct Grid
+{
+  const int cells[2] = {1, 2};
+};
+struct MoveOnly
+{
+  int v = 0;
+  MoveOnly() {}
+  MoveOnly(MoveOnly&& other) : v(other.v) {}
+};
+struct NoCopy
+{
+  int v = 0;
+  NoCopy& operator=(const NoCopy&) = delete;
+};
+struct HoldsNoCopy
+{
+  NoCopy n;
+};
+struct Movable
+{
+  int v = 0;
+  Movable() = default;
+  Movable& operator=(const Movable&) = delete;
+  Movable& operator=(Movable&& other)
+  {
+    this->v = other.v;
+    return *this;
+  }
+};
+struct HoldsMovable
+{
+  Movable m;
+};
+int main()
+{
+  int x = 1;
+  int y = 2;
+  Fixed a;
+  Fixed b;
+  Bound p{x};
+  Bound q{y};
+  HoldsFixed h;
+  HoldsFixed i;
+  FromFixed d;
+  FromFixed e;
+  Grid g;
+  Grid k;
+  MoveOnly m;
+  MoveOnly n;
+  HoldsNoCopy s;
+  HoldsNoCopy t;
+  HoldsMovable u;
+  HoldsMovable w;
+  u = move(w);
+  a = b;
+  p = q;
+  h = i;
+  d = e;
+  g = k;
+  m = n;
+  m = MoveOnly();
+  s = t;
+  a = static_cast<Fixed&&>(b);
+  return a.v + u.m.v;
+}
