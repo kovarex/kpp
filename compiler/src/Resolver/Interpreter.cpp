@@ -1072,7 +1072,8 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
   return true;
 }
 
-auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params) -> bool
+auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params,
+                                          const std::vector<uint8_t>* categories) -> bool
 {
   bool variadic = !f->params.empty() && static_cast<ParamDecl*>(f->params[f->params.size() - 1])->isPack;
   Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
@@ -1098,6 +1099,12 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
       // makes another closure type, which the closure made from it is not of).
       if (values[i].isObject() && values[i].type && types.unqualified(values[i].type)->kind == TyKind::Lambda)
         argTy = values[i].type;
+      // An expansion's element (`forward<Args>(args)...`) by its value category: a class object
+      // that is an lvalue deduces a reference, so that forward copies it (Map's emplace moved the
+      // caller's key out of it, at compile time only).
+      if (!a && argTy && argTy->isKnown() && !argTy->isReference() && categories && i < categories->size() && (*categories)[i] == 1 &&
+          types.unqualified(argTy)->kind == TyKind::Class)
+        argTy = types.lref(argTy);
       argTypes.push_back(argTy && argTy->isKnown() ? (a ? argumentType(a, argTy, types) : argTy) : nullptr);
     }
     std::vector<const Ty*> patterns;
@@ -1194,8 +1201,11 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   }
   if (c->callee->kind != NodeKind::NameExpr)
   {
-    // `ops[0](5)`, `(*f)(5)`: through the function pointer the callee evaluates to.
+    // `ops[0](5)`, `(*f)(5)`: through the function pointer the callee evaluates to; `D()(held)`
+    // (UniquePtr's deleter, which made a UniquePtr no constant): the object's operator().
     std::optional<ConstValue> fn = constValue(c->callee, ctx, depth + 1);
+    if (fn && fn->isObject())
+      return constCallObjectValue(*fn, std::nullopt, c, ctx, depth);
     return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
   }
   auto* callee = static_cast<NameExpr*>(c->callee);
@@ -1426,7 +1436,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
   for (const Subst::Pair& p : bound.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
-  if (!constBindTemplate(f, given, c, values, ctx, depth, bound, params))
+  if (!constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories))
     return std::nullopt;
   if (ctx.subst) // called from inside an instance: its class's arguments stay
     for (const Subst::Pair& p : ctx.subst->pairs)
@@ -1559,7 +1569,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
       else
         given.push_back(t);
     }
-  if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params))
+  if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories))
     return std::nullopt; // a member function template (`emplace_back(Args&&...)`, `value_or(U&&)`): its own parameters deduced
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
@@ -3367,7 +3377,7 @@ auto GlobalScope::Impl::constTypedUnion(const Ty* t, const ConstClassLayout& lay
 }
 
 auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written, const ConstPlace* target,
-                                        const std::vector<std::optional<ConstPlace>>* places) -> std::optional<ConstValue>
+                                        const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories) -> std::optional<ConstValue>
 {
   t = types.unqualified(types.stripRef(t));
   const ConstClassLayout* layout = constLayoutOf(t, depth);
@@ -3428,6 +3438,15 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
     if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty) && !constIsExpansion(a) &&
                                  types.unqualified(types.stripRef(a->ty))->kind == TyKind::Class)
       typed[i] = argumentType(a, a->ty, types);
+  // (Else by the categories constArguments gave: `new (node) E(forward<Args>(args)...)`, Map's node.)
+  if (!typedWritten && categories && categories->size() == args.size())
+    for (size_t i = 0; i < typed.size(); ++i)
+      if (const Ty* at = typed[i] ? types.unqualified(types.stripRef(typed[i])) : nullptr; at && at->kind == TyKind::Class && (*categories)[i] != 0)
+      {
+        bool readOnly = places && i < places->size() && (*places)[i] && !(*places)[i]->writable();
+        const Ty* object = readOnly ? types.qualified(at, true, false) : at;
+        typed[i] = (*categories)[i] == 1 ? types.lref(object) : types.rref(object);
+      }
   std::vector<const Ty*> chosenTypes = typed; // the argument types the choice was made with
   bool ambiguous = false;
   const Ty* inheritedFrom = nullptr;
@@ -4466,7 +4485,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
       if (tu->kind == TyKind::Class)
         return values.size() == 1 && values[0].isObject() && values[0].type && types.unqualified(types.stripRef(values[0].type)) == tu
                  ? constCopyConstruct(tu, values[0], places[0], categories[0] != 1, depth + 1) // copied, or moved from where it is
-                 : constConstruct(tu, values, false, depth + 1);
+                 : constConstruct(tu, values, false, depth + 1, nullptr, nullptr, &places, &categories);
       return values.size() == 1 ? constConvertTo(values[0], target, depth + 1) : std::nullopt;
     }
     if (init.args.size() == 1)
@@ -5483,7 +5502,7 @@ auto GlobalScope::Impl::constNewObject(NewExpr* n, const Ty* t, const TypeContex
     if (u->kind == TyKind::Class)
       return values.size() == 1 && values[0].isObject() && values[0].type && types.unqualified(types.stripRef(values[0].type)) == u
                ? constCopyConstruct(u, values[0], places[0], categories[0] != 1, depth + 1) // copied, or moved from where it is
-               : constConstruct(u, values, false, depth + 1);
+               : constConstruct(u, values, false, depth + 1, nullptr, nullptr, &places, &categories);
     return values.size() == 1 ? constConvertTo(values[0], u, depth + 1) : std::nullopt;
   }
   if (n->braced && n->args.size() == 1)
@@ -5505,9 +5524,11 @@ auto GlobalScope::Impl::constNewObject(NewExpr* n, const Ty* t, const TypeContex
     return constConstruct(u, {*v}, false, depth + 1);
   }
   std::vector<ConstValue> values;
-  if (!constArguments(n->args, ctx, depth, values))
+  std::vector<std::optional<ConstPlace>> places;
+  std::vector<uint8_t> categories;
+  if (!constArguments(n->args, ctx, depth, values, &places, &categories))
     return std::nullopt;
-  return constConstruct(u, values, false, depth + 1);
+  return constConstruct(u, values, false, depth + 1, values.size() == n->args.size() ? &n->args : nullptr, nullptr, &places, &categories);
 }
 
 auto GlobalScope::Impl::constNew(NewExpr* n, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
@@ -5905,10 +5926,17 @@ auto GlobalScope::Impl::constCallObject(Expr* object, CallExpr* c, const TypeCon
   if (!place && constPure(object))
     place = constPlaceOf(object, ctx, depth + 1);
   std::optional<ConstValue> self = place ? constRead(*place) : constValue(object, ctx, depth + 1);
-  if (self && self->isObject() && self->type)
+  return self ? constCallObjectValue(*self, place, c, ctx, depth) : std::nullopt;
+}
+
+auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::optional<ConstPlace> place, CallExpr* c, const TypeContext& ctx, int depth)
+  -> std::optional<ConstValue>
+{
+  std::optional<ConstValue> self = object;
+  if (self->isObject() && self->type)
     if (LambdaExpr* l = lambdaOf(types.unqualified(types.stripRef(self->type))))
       return constCallClosure(l, *self, c, ctx, depth); // `twice(5)`: a closure's body, its captures bound
-  if (!self || !self->isObject() || !self->type || self->type->isBraceList() || types.unqualified(types.stripRef(self->type))->kind != TyKind::Class)
+  if (!self->isObject() || !self->type || self->type->isBraceList() || types.unqualified(types.stripRef(self->type))->kind != TyKind::Class)
     return std::nullopt;
   if (!place)
     place = constMaterialize(*self, self->type);
@@ -6091,20 +6119,31 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
         return std::nullopt;
     }
     std::optional<ConstPlace> base = constPlaceOf(x->base, ctx, depth + 1, calls);
-    std::optional<ConstValue> index = base ? constValue(x->args[0], ctx, depth + 1) : std::nullopt;
-    if (!base || !index || index->kind != ConstValue::Kind::Int)
-      return std::nullopt;
-    std::optional<ConstValue> array = constRead(*base);
+    std::optional<ConstValue> array = base ? constRead(*base) : std::nullopt;
     const Ty* at = array && array->type ? types.unqualified(array->type) : nullptr;
-    if (calls && array && array->isObject() && at && at->kind == TyKind::Class && !at->isBraceList())
+    bool classObject = array && array->isObject() && at && at->kind == TyKind::Class && !at->isBraceList();
+    if (!base || (classObject && !calls))
+      return std::nullopt; // (no call here: its index is not evaluated either, a String key never made and lost)
+    std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);
+    if (!index)
+      return std::nullopt;
+    if (classObject)
     {
-      // `result[i]` of an Array: the element its operator[] refers to.
+      // `result[i]` of an Array, `names[String("b")]` of a Map (a key of any type: it was an
+      // integer's only, so a Map keyed by String was no constant): the element its operator[]
+      // refers to.
       Subst subst;
       std::vector<const Ty*> indexType{x->args[0]->ty ? argumentType(x->args[0], x->args[0]->ty, types) : nullptr};
       FunctionDecl* f = constPlaceMember(at, opSymbols[uint32_t(P::LBracket)], 1, base->writable(), subst, depth + 1, nullptr, &indexType);
-      return f && f->templateParams.empty() ? constCallPlace(f, subst, {*index}, *base, depth + 1, nullptr, nullptr, ran) : std::nullopt;
+      // (The key where it is, a prvalue's as a temporary of the full expression, destroyed at its end:
+      // `String("b")`'s heap block was never freed.)
+      Expr* source = nullptr;
+      std::vector<uint8_t> categories{constCategory(x->args[0], source)};
+      std::vector<std::optional<ConstPlace>> places{categories[0] != 0 && constPure(x->args[0]) ? constPlaceOf(x->args[0], ctx, depth + 1) : std::nullopt};
+      return f && f->templateParams.empty() ? constCallPlace(f, subst, {*index}, *base, depth + 1, &places, &categories, ran) : std::nullopt;
     }
-    if (!array || !array->isObject() || !at || at->kind != TyKind::Array || index->i < 0 || uint64_t(index->i) >= array->parts->size())
+    if (index->kind != ConstValue::Kind::Int || !array || !array->isObject() || !at || at->kind != TyKind::Array || index->i < 0 ||
+        uint64_t(index->i) >= array->parts->size())
       return std::nullopt;
     base->path.push_back(size_t(index->i));
     base->type = at->inner;
@@ -6254,7 +6293,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
         else
           given.push_back(t);
       }
-    if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own))
+    if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own, &categories))
       return std::nullopt; // `all.emplace_back().roots`: a member function template's own parameters
     return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran);
   }
@@ -6532,15 +6571,20 @@ auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t nam
   Lookup l;
   if (!s || !lookupInScope(s, name, l, depth + 1))
     return std::nullopt;
+  // The arguments where they are, a prvalue's as a temporary of the full expression, destroyed at
+  // its end (`names[String("b")]`'s heap block was never freed), a class object's lvalue typed as one.
   std::vector<ConstValue> values;
+  std::vector<std::optional<ConstPlace>> places;
+  std::vector<uint8_t> categories;
+  if (!constArguments(args, ctx, depth, values, &places, &categories))
+    return std::nullopt;
   std::vector<const Ty*> argTypes;
-  for (Expr* a : args)
+  for (size_t i = 0; i < values.size(); ++i)
   {
-    std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
-    if (!v)
-      return std::nullopt;
-    values.push_back(*v);
-    argTypes.push_back(constTypeOfValue(*v));
+    const Ty* t = constTypeOfValue(values[i]);
+    if (t && i < categories.size() && categories[i] == 1 && !t->isReference() && types.unqualified(t)->kind == TyKind::Class)
+      t = types.lref(i < places.size() && places[i] && !places[i]->writable() ? types.qualified(types.unqualified(t), true, false) : t);
+    argTypes.push_back(t);
   }
   std::vector<FunctionDecl*> candidates;
   if (l.overloads)
@@ -6569,7 +6613,7 @@ auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t nam
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   std::optional<ConstValue> self = object;
-  return constRun(f, values, fctx, depth, &self);
+  return constRun(f, values, fctx, depth, &self, &places, &categories);
 }
 
 auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth, std::optional<ConstValue>* self, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, const ConstPlace* selfPlace, std::optional<ConstPlace>* returnPlace) -> std::optional<ConstValue>

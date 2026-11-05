@@ -173,7 +173,10 @@
   // A function template's own parameters bound for a call (constCall's, constMemberCall's): the
   // written arguments (given), then what the arguments' types deduce, a pack the arguments from its
   // position on, a default for one neither written nor deduced. False when one stays unbound.
-  bool constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params);
+  // categories: the arguments' value categories (constArguments'), which deduce a class object an
+  // expansion gives as an lvalue where it is one (`forward<Args>(args)...` of an lvalue: Args a reference).
+  bool constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params,
+                         const std::vector<uint8_t>* categories = nullptr);
 
   // A call at compile time: a type's name converting a value (`size_t(5)`, `Tag(0)`), a trait
   // object as bool (`isOptional<T>()`), or a function run with its arguments bound (constRun).
@@ -481,8 +484,10 @@
   // storage (the others not). Nullopt for anything else.
   std::optional<ConstValue> constTypedUnion(const Ty* t, const ConstClassLayout& layout, const std::vector<ConstValue>& args, int depth);
 
+  // categories: the arguments' value categories (constArguments'), where no written argument says them:
+  // a class object's decides the constructor as written types do (an lvalue copied, never moved).
   std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written = nullptr, const ConstPlace* target = nullptr,
-                                           const std::vector<std::optional<ConstPlace>>* places = nullptr);
+                                           const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr);
 
   // ---- step 4: brace lists, InitializerList, range-for (design.md, "Compile-time evaluation") ----
 
@@ -873,6 +878,9 @@
   // field: the data member a member call names (`this->hasher(key)`, whose name the walk may have
   // bound to the operator() it calls), found in the object it is a member of.
   std::optional<ConstValue> constCallObject(Expr* object, CallExpr* c, const TypeContext& ctx, int depth, Decl* field = nullptr);
+  // The same for an object already evaluated (`D()(held)`, UniquePtr's deleter): run where it is,
+  // else as a temporary of the full expression.
+  std::optional<ConstValue> constCallObjectValue(const ConstValue& object, std::optional<ConstPlace> place, CallExpr* c, const TypeContext& ctx, int depth);
 
   // ran: where e is a call it runs (calls) whose reference result is no place the run holds (a
   // reference into a global constant), that call's value, so that the caller takes it rather than
@@ -953,12 +961,12 @@
   // `total += i`, `a = b`: the value stored in a local of the function being run, converted to its
   // type, which is the expression's value. A global, an object's member or what a reference
   // parameter refers to is no local of the run: no constant. where: the left operand's place, which
-  // the expression designates (const int& r = (a = 3);), when it was assigned.
+  // the expression designates (`const int& r = (a = 3);`), when it was assigned.
   std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where = nullptr);
 
   // `++i`, `count--`: the local stepped by one in its type; the new value, or the old one for the
   // postfix forms. An object of a class: its operator++ or operator-- run on it where it is. where:
-  // the operand's place, which a prefix one designates (const int& r = ++a;).
+  // the operand's place, which a prefix one designates (`const int& r = ++a;`).
   std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth, std::optional<ConstPlace>* where = nullptr);
   // A unary operator on an enumeration operand that calls an operator function (`!flags`, `++d`):
   // that call's result (none when it is no constant), or nullopt for the built-in operator.

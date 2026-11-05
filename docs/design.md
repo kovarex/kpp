@@ -2426,7 +2426,8 @@ leads (an array's element, a member), and in a base's destructor the base's own
 `super::bump()`, `b.A::f()`) is that function, run on the object's part of its class
 (language/consteval_qualified_call_is_no_virtual_call). A constructor is chosen, and a constructor
 template's parameters deduced, by the arguments as written, a class object's value category included:
-an lvalue is copied, never moved (language/consteval_forwarding_constructor_copies_lvalue).
+an lvalue is copied, never moved (language/consteval_forwarding_constructor_copies_lvalue), through a pack
+too (`forward<Args>(args)...` by its elements' value categories: language/consteval_pack_forwarding_copies_lvalue).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

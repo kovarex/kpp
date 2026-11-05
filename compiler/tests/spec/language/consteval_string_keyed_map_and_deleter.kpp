@@ -1,0 +1,28 @@
+// spec: at compile time a Map keyed by String takes `m[String("b")] = 2` (operator[] given a key of any type, as a place), a UniquePtr runs its deleter `D()(held)` (a temporary object's operator()), moved or not, and `Twice()(21)` calls one
+// found by thread D (2026-11-05): each was no constant: the place of `x[i]` took an integer index only, and a call through an object the callee evaluates to took function pointers only
+struct Twice
+{
+  int operator()(int v) const { return v * 2; }
+};
+constexpr int maps()
+{
+  Map<String, int> m;
+  m[String("b")] = 2;
+  m[String("a")] = 1;
+  return m[String("b")] * 10 + m[String("a")];
+}
+constexpr int pointers()
+{
+  UniquePtr<int> p(new int(4));
+  UniquePtr<int> q = move(p);
+  return (p ? 1 : 0) * 10 + *q;
+}
+constexpr int functors() { return Twice()(21); }
+constexpr int m = maps();
+constexpr int p = pointers();
+constexpr int f = functors();
+int main()
+{
+  println(m, " ", maps(), " ", p, " ", pointers(), " ", f, " ", functors());
+  return 0;
+}
