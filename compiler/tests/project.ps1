@@ -487,6 +487,12 @@ if (Run 'syslibs')
     if ($code -ne 0 -or $output[-1] -ne '6 true') { Fail "a library's config declarations, its default and use().config's value: exit $code`n$($output -join "`n")" }
     $output = Kpp @('--no-server', '--config', 'deflate::level=9', '--run')
     if ($code -ne 0 -or $output[-1] -ne '9 true') { Fail "a library's config declaration, kpp --config deflate::level=9: exit $code`n$($output -join "`n")" }
+    # Its default edited (one byte, the file's size the same): kpp reads it again, not its cache of the
+    # declarations (build\kpp\config-deflate.txt, kept by each file's time and size).
+    Set-Content 'libraries\deflate\src\deflate.kpp' "// How hard it tries.`nconfig i32 level = 7;`nconfig bool checked;`nint levelOf() { return config::deflate::level; }"
+    $output = Kpp @('--no-server', '--run')
+    if ($code -ne 0 -or $output[-1] -ne '7 true') { Fail "a library's config default edited, kpp --run: exit $code`n$($output -join "`n")" }
+    Set-Content 'libraries\deflate\src\deflate.kpp' "// How hard it tries.`nconfig i32 level = 6;`nconfig bool checked;`nint levelOf() { return config::deflate::level; }"
     $output = (Kpp @('options')) -join "`n"
     if ($code -ne 0 -or $output -notmatch 'deflate::level = 6  i32, default 6; set by the default' -or $output -notmatch 'How hard it tries\. \(.*deflate\.kpp:2\)') { Fail "kpp options, a library's config declaration: exit $code`n$output" }
     Set-Content 'libraries\deflate\build.kpp' "void build(Project& project)`n{`n  Library& deflate = project.library(`"deflate`");`n  deflate.version = `"1.0.0`";`n  deflate.option(`"level`", 3, `"Its level`");`n}"

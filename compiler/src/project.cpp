@@ -22,6 +22,10 @@
 
 namespace
 {
+  // When kpp started (runProject), for KPP_STEP_TIMES' line (buildProgram).
+  std::chrono::steady_clock::time_point kppStarted = std::chrono::steady_clock::now();
+  double describedAt = 0, usesResolvedAt = 0; // (seconds after kppStarted: build.kpp described, its libraries too)
+
   namespace fs = std::filesystem;
 
   // A kpp library used (Project.kpp's Dependency): its lowest version ("" for any) and its directory
@@ -193,6 +197,93 @@ namespace
     std::string text;
     readFile(path, text);
     return text;
+  }
+
+  // The config declarations of files (findConfigDeclarations), each kept in cache (a file of
+  // describe's directory) with the file's stamp, its time and size as the listing gives them: a file
+  // whose stamp is the cache's is not read again. Reading a library's every file on every build took
+  // 25 ms of each edit build of the game, which uses six scoped libraries (2026-11-05). A declaration
+  // with a tab or a line end in a field is not kept (its file is read each time).
+  struct FileDeclarations
+  {
+    std::vector<ConfigDeclaration> declared;
+    std::vector<ConfigError> errors;
+  };
+  std::vector<FileDeclarations> configDeclarationsOf(const std::vector<fs::path>& files, const std::vector<FileStamp>& stamps,
+                                                     const fs::path& cache)
+  {
+    auto split = [](const std::string& line)
+    {
+      std::vector<std::string> fields;
+      for (size_t from = 0;;)
+      {
+        size_t tab = line.find('\t', from);
+        fields.push_back(line.substr(from, tab == std::string::npos ? std::string::npos : tab - from));
+        if (tab == std::string::npos)
+          return fields;
+        from = tab + 1;
+      }
+    };
+    // The cache: `file PATH TIME SIZE`, then its `declaration NAME TYPE KIND VALUE REQUIRED LINE COLUMN
+    // DESCRIPTION` and `error LINE COLUMN MESSAGE` lines, tab-separated.
+    std::map<std::string, std::pair<FileStamp, FileDeclarations>> kept;
+    {
+      std::string text = readText(cache), line;
+      std::pair<FileStamp, FileDeclarations>* current = nullptr;
+      for (size_t from = 0; from < text.size();)
+      {
+        size_t end = text.find('\n', from);
+        line = text.substr(from, end == std::string::npos ? std::string::npos : end - from);
+        from = end == std::string::npos ? text.size() : end + 1;
+        std::vector<std::string> f = split(line);
+        if (f[0] == "file" && f.size() == 4)
+          current = &kept[f[1]], current->first = {strtoll(f[2].c_str(), nullptr, 10), strtoull(f[3].c_str(), nullptr, 10)};
+        else if (current && f[0] == "declaration" && f.size() == 9)
+          current->second.declared.push_back({f[1], f[2], f[3], f[4], f[5] == "1", f[8], uint32_t(atoi(f[6].c_str())), uint32_t(atoi(f[7].c_str()))});
+        else if (current && f[0] == "error" && f.size() == 4)
+          current->second.errors.push_back({uint32_t(atoi(f[1].c_str())), uint32_t(atoi(f[2].c_str())), f[3]});
+      }
+    }
+    std::vector<FileDeclarations> out(files.size());
+    bool changed = kept.size() != files.size();
+    std::string written;
+    for (size_t i = 0; i < files.size(); ++i)
+    {
+      auto k = kept.find(files[i].string());
+      if (k != kept.end() && i < stamps.size() && k->second.first == stamps[i])
+        out[i] = k->second.second;
+      else
+      {
+        findConfigDeclarations(readText(files[i]), out[i].declared, out[i].errors);
+        changed = true;
+      }
+      bool keepable = i < stamps.size();
+      std::string entry = "file\t" + files[i].string() + "\t" + (keepable ? std::to_string(stamps[i].time) + "\t" + std::to_string(stamps[i].size) : "") + "\n";
+      for (const ConfigDeclaration& d : out[i].declared)
+      {
+        for (const std::string* field : {&d.name, &d.type, &d.kind, &d.value, &d.description})
+          keepable = keepable && field->find_first_of("\t\r\n") == std::string::npos;
+        entry += "declaration\t" + d.name + "\t" + d.type + "\t" + d.kind + "\t" + d.value + "\t" + (d.required ? "1" : "0") + "\t" +
+                 std::to_string(d.line) + "\t" + std::to_string(d.column) + "\t" + d.description + "\n";
+      }
+      for (const ConfigError& e : out[i].errors)
+      {
+        keepable = keepable && e.message.find_first_of("\t\r\n") == std::string::npos;
+        entry += "error\t" + std::to_string(e.line) + "\t" + std::to_string(e.column) + "\t" + e.message + "\n";
+      }
+      if (keepable)
+        written += entry;
+      else
+        changed = true;
+    }
+    if (changed)
+    {
+      std::error_code ec;
+      fs::create_directories(cache.parent_path(), ec);
+      if (FILE* file = _wfopen(cache.c_str(), L"wb"))
+        fwrite(written.data(), 1, written.size(), file), fclose(file);
+    }
+    return out;
   }
 
   // The file compiled with build.kpp and projectlib: the command line's settings and the project's
@@ -460,14 +551,23 @@ namespace
     // design.md, "config:: defaults in source") are its options as option()'s are: set by its users,
     // checked, listed by `kpp options` with the default. One name declared both ways is an error.
     for (KppLibrary& l : out.libraries)
+    {
+      std::vector<fs::path> files;
+      std::vector<FileStamp> stamps;
       for (const std::string& r : l.roots)
-        for (const fs::path& path : collectFiles((fs::path(r).is_absolute() ? fs::path(r) : root / r).lexically_normal(), {".kpp"}))
+      {
+        std::vector<FileStamp> rootStamps;
+        std::vector<fs::path> rootFiles = collectFiles((fs::path(r).is_absolute() ? fs::path(r) : root / r).lexically_normal(), {".kpp"}, &rootStamps);
+        for (size_t i = 0; i < rootFiles.size(); ++i)
+          if (rootFiles[i].lexically_normal() != (root / "build.kpp").lexically_normal())
+            files.push_back(rootFiles[i]), stamps.push_back(i < rootStamps.size() ? rootStamps[i] : FileStamp{});
+      }
+      std::vector<FileDeclarations> found = configDeclarationsOf(files, stamps, directory / ("config-" + l.name + ".txt"));
+      for (size_t f = 0; f < files.size(); ++f)
         {
-          if (path.lexically_normal() == (root / "build.kpp").lexically_normal())
-            continue;
-          std::vector<ConfigDeclaration> declared;
-          std::vector<ConfigError> errors;
-          findConfigDeclarations(readText(path), declared, errors);
+          const fs::path& path = files[f];
+          const std::vector<ConfigDeclaration>& declared = found[f].declared;
+          const std::vector<ConfigError>& errors = found[f].errors;
           for (const ConfigError& e : errors)
           {
             fprintf(stderr, "%s: error: %s\n", sourceLocation(path.string(), e.line, e.column).c_str(), e.message.c_str());
@@ -505,6 +605,7 @@ namespace
             l.options.push_back(o);
           }
         }
+    }
     return out.errors.empty() && !out.configurations.empty();
   }
 
@@ -1286,28 +1387,53 @@ namespace
     using Clock = std::chrono::steady_clock;
     auto since = [](Clock::time_point t) { return std::chrono::duration<double>(Clock::now() - t).count(); };
     auto start = Clock::now();
+    double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
-    std::unordered_map<std::string, fs::file_time_type> times; // (each header's time, once: upToDate)
-    for (size_t i = 0; i < p.links.size(); ++i)
+    std::vector<const CLibrary*> cLibraries;
+    for (const std::string& name : p.links)
     {
-      const CLibrary* c = findLibrary(d, p.links[i]);
+      const CLibrary* c = findLibrary(d, name);
       if (!c)
       {
-        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), p.links[i].c_str());
+        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), name.c_str());
         return 1;
       }
-      if (!prepareLibrary(root, *c, p.cFlags, jobs[i], times))
-        return 1;
+      cLibraries.push_back(c);
     }
-    // The C libraries' files compile in one pool while kppc builds the program (its front end, code
+    // The C libraries are checked (each object against its source and the headers its .d names) and
+    // their changed files compiled in one pool, all while kppc builds the program (its front end, code
     // generation and modules need no library); kppc leaves the link (--defer-link), which runs here
-    // once both are done (docs/build.md, "The whole build").
-    bool libraryWork = std::any_of(jobs.begin(), jobs.end(), [](const LibraryJob& j) { return j.archive || !j.commands.empty(); });
-    bool librariesBuilt = true;
-    double librarySeconds = 0;
+    // once both are done (docs/build.md, "The whole build"). The check alone took 0.13 to 0.19 s of
+    // every build of the game before kppc started (2026-11-05).
+    bool libraryWork = false, librariesBuilt = true;
+    double prepareSeconds = 0, librarySeconds = 0;
     std::thread libraries;
-    if (libraryWork)
-      libraries = std::thread([&] { librariesBuilt = runLibraries(jobs); librarySeconds = since(start); });
+    if (!cLibraries.empty())
+      libraries = std::thread([&]
+      {
+        // Each library checked on a thread of its own (the game's 18 took 0.10 to 0.12 s one after
+        // another on a quiet machine), each with its own header times (upToDate's, once per header).
+        std::vector<char> prepared(cLibraries.size(), 0);
+        std::vector<std::thread> checks;
+        for (size_t i = 0; i < cLibraries.size(); ++i)
+          checks.emplace_back([&, i]
+          {
+            std::unordered_map<std::string, fs::file_time_type> times;
+            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, jobs[i], times);
+          });
+        for (std::thread& t : checks)
+          t.join();
+        if (std::find(prepared.begin(), prepared.end(), 0) != prepared.end())
+        {
+          librariesBuilt = false;
+          return;
+        }
+        prepareSeconds = since(start);
+        libraryWork = std::any_of(jobs.begin(), jobs.end(), [](const LibraryJob& j) { return j.archive || !j.commands.empty(); });
+        if (libraryWork)
+          librariesBuilt = runLibraries(jobs);
+        librarySeconds = since(start);
+      });
     std::vector<std::string> args = buildCommand(root, d, p, request);
     auto kppStart = Clock::now();
     int code = invoke(args, request.server, compile);
@@ -1376,12 +1502,19 @@ namespace
       printf("kpp: built %s (%s, %s, total %.1f s: %s)\n", exe.string().c_str(), p.configuration.c_str(), used.c_str(), seconds, split);
     else
       fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
+    auto afterStart = Clock::now();
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
         system(withExe(p.afterBuild, exe, p.configuration).c_str()) != 0)
     {
       fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
       return 1;
     }
+    // KPP_STEP_TIMES=1: where an edit build's time goes besides kppc's and the link's (an environment
+    // variable, not an option: an option of its own would give the build a compile server of its own).
+    if (getenv("KPP_STEP_TIMES"))
+      printf("kpp steps: %.3f s before the build (build.kpp described at %.3f s, its libraries at %.3f s), "
+             "kppc %.3f s (the C libraries' check alongside, %.3f s), link %.3f s, %.3f s else, after-build %.3f s\n",
+             beforeSeconds, describedAt, usesResolvedAt, kppSeconds, prepareSeconds, linkSeconds, seconds - kppSeconds - linkSeconds, since(afterStart));
     return code;
   }
 
@@ -1667,8 +1800,12 @@ namespace
       return described ? 0 : 1;
     }
     Description d;
-    if (!describe(root, request, d) || !resolveUses(root, request, d))
+    if (!describe(root, request, d))
       return 1;
+    describedAt = std::chrono::duration<double>(std::chrono::steady_clock::now() - kppStarted).count();
+    if (!resolveUses(root, request, d))
+      return 1;
+    usesResolvedAt = std::chrono::duration<double>(std::chrono::steady_clock::now() - kppStarted).count();
     if (request.visualStudio || request.vsCode)
       return generate(root, d, request);
     // The names: each a configuration's or a target's (a library's, for --test).
@@ -2186,6 +2323,7 @@ namespace
 
 int runProject(int argc, char** argv, CompileFunction compile)
 {
+  kppStarted = std::chrono::steady_clock::now();
   if (argc >= 2 && strcmp(argv[1], "new") == 0)
     return newProject(argc >= 3 ? fs::absolute(argv[2]) : fs::current_path());
   bool options = argc >= 2 && strcmp(argv[1], "options") == 0; // kpp options [targets] [configurations]

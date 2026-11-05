@@ -725,6 +725,23 @@ A program's build is its C libraries and kppc's work at once, then the link:
   22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
   all the time either way: the libraries take as long beside kppc as alone, and so does kppc.
 
+### kpp's own steps in an edit build (2026-11-05)
+
+An edit build is kpp's steps around kppc's and the link: build.kpp's description (cached in
+`build\kpp\describe.txt`), each used library's, the C libraries' check, the after-build step.
+`KPP_STEP_TIMES=1` (an environment variable, so that the build keeps its compile server) prints
+where they went: `kpp steps: 0.039 s before the build (build.kpp described at 0.001 s, its libraries at
+0.039 s), kppc 0.056 s (the C libraries' check alongside, 0.085 s), link 0.000 s, ...`. Measured on
+factorio-in-kpp's `kpp factorio debug --msvc-diagnostics` (Visual Studio's build) with nothing changed:
+- the C libraries' check (18 libraries: each object against its source and the headers its `.d`
+  names) ran before kppc, one library after another, 0.10 to 0.19 s of every build; it now runs on
+  a thread per library alongside kppc, and only the link waits for it;
+- the libraries' config declarations (design.md, "config:: defaults in source") were read from every
+  file of the six used libraries, 25 ms; they are kept in `build\kpp\config-LIBRARY.txt` with each
+  file's time and size, 8 to 10 ms;
+- the whole build with nothing changed: median 0.46 s before, 0.20 s after (paired binaries in
+  alternating blocks, a loaded machine).
+
 ### kpp measure (2026-11-03)
 
 `kpp measure [--rounds N] [--compare DIR]` in a project times its builds on this machine, as a user
