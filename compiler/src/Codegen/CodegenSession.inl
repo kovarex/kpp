@@ -1705,7 +1705,6 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     sh.finalLayouts.clear();
     sh.finalSizes.clear();
     sh.finalDestruction.clear();
-    sh.finalBitfields.clear();
   }
   // Per module, the texts dropped (sorted) and how many definitions and owned entries stayed: the
   // ones emitted now follow those, and a module whose new texts are the dropped ones again (an
@@ -1843,7 +1842,6 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       sh.finalLayouts.clear();
       sh.finalSizes.clear();
       sh.finalDestruction.clear();
-      sh.finalBitfields.clear();
     }
   }
   for (const std::string& name : droppedNames)
@@ -2046,7 +2044,6 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       sh.finalLayouts.clear();
       sh.finalSizes.clear();
       sh.finalDestruction.clear();
-      sh.finalBitfields.clear();
     }
   }
   // A type line the shared declarations hold as it is (a closure laid out again by its function,

@@ -638,8 +638,7 @@
             info.fieldDecls.push_back(m); // the first field of the unit stands for the unit in memberwise work
           }
           info.fieldIndex[m] = uint32_t(bitUnitIndex);
-          info.bitfields[m] = {bitUsed, width};
-          bitfieldOf[m] = {bitUsed, width, unit};
+          info.bitfields[m] = {bitUsed, width, unit};
           bitUsed += width;
           continue;
         }
@@ -1049,13 +1048,18 @@
       return nullptr;
     }
 
-    bool fieldAddress(const Ty* classTy, Decl* member, const std::string& objectAddr, std::string& out, Node* at)
+    // The address of member in the object at objectAddr (of class classTy): its field's, found in the
+    // class's layout, an anonymous member's or a base's. bits, when given, gets the member's bit-field
+    // place in the layout that holds it (null for a member that is no bit field).
+    bool fieldAddress(const Ty* classTy, Decl* member, const std::string& objectAddr, std::string& out, Node* at, const BitfieldInfo** bits = nullptr)
     {
       StructInfo& info = structFor(classTy, at);
       auto it = info.fieldIndex.find(member);
       if (it != info.fieldIndex.end())
       {
         out = info.isUnion ? objectAddr : gep(info.name, objectAddr, it->second);
+        if (bits)
+          *bits = bitfieldIn(info, member);
         return true;
       }
       // Fallback: the resolver may have a different Decl* for the same field (e.g. an out-of-line
@@ -1074,6 +1078,8 @@
               if (!fd->name.empty() && fd->name.last().symbol == nameSymbol)
               {
                 out = info.isUnion ? objectAddr : gep(info.name, objectAddr, idx);
+                if (bits)
+                  *bits = bitfieldIn(info, d);
                 return true;
               }
             }
@@ -1089,13 +1095,13 @@
       for (auto& [anon, index] : anonymous)
       {
         std::string addr = isUnion ? objectAddr : gep(name, objectAddr, index);
-        if (fieldAddress(types.classType(anon, classArgs), member, addr, out, at))
+        if (fieldAddress(types.classType(anon, classArgs), member, addr, out, at, bits))
           return true;
       }
       for (auto& [baseDef, index] : bases)
       {
         std::string baseAddr = gep(name, objectAddr, index);
-        if (fieldAddress(fieldTypes[index], member, baseAddr, out, at))
+        if (fieldAddress(fieldTypes[index], member, baseAddr, out, at, bits))
           return true;
       }
       return false;

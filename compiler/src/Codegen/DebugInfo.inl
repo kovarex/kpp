@@ -350,7 +350,7 @@
         {
           const Ty* declared = global.typeOfDeclIn(m, args);
           if (declared && declared->isKnown() && !types.isDependent(declared))
-            member(name, debugType(declared), bits->second.second, offset * 8 + bits->second.first, flagsOf({"DIFlagBitField", access(m->access)}),
+            member(name, debugType(declared), bits->second.width, offset * 8 + bits->second.shift, flagsOf({"DIFlagBitField", access(m->access)}),
                    ", extraData: i64 " + std::to_string(offset * 8));
           continue;
         }

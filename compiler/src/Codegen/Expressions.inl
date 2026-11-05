@@ -785,46 +785,25 @@
       }
     }
 
-    // The bit-field layout of member d (a bit field of some laid-out class), or null.
-    // (Only asked after the member's class was laid out, so the answer, none included, is final:
-    // remembered by this emitter.)
-    std::unordered_map<Decl*, const BitfieldInfo*> bitfieldCache;
-    const BitfieldInfo* bitfieldFor(Decl* d)
-    {
-      if (d->kind != NodeKind::VariableDecl || !static_cast<VariableDecl*>(d)->bitfield)
-        return nullptr; // (buildStruct lays out only a member declared with a width as a bit-field)
-      if (auto mine = bitfieldCache.find(d); mine != bitfieldCache.end())
-        return mine->second;
-      if (const BitfieldInfo* known; sh.finalBitfields.find(d, known))
-        return bitfieldCache.emplace(d, known).first->second;
-      auto lock = sharedLock();
-      auto it = bitfieldOf.find(d);
-      if (it == bitfieldOf.end())
-        return nullptr; // its class not laid out yet: no answer to remember (the callers that read one make it an error)
-      const BitfieldInfo* bits = &it->second; // map nodes stay put: the pointer outlives the lock
-      bitfieldCache.emplace(d, bits);
-      if (mayPublish())
-        sh.finalBitfields.publish(d, bits);
-      return bits;
-    }
-
     // The bit-field an lvalue names, or null: `x.f`, `this->data.f`, `f` in a member function, in
     // parentheses or not (what an assignment, a compound assignment or an increment writes, its own
-    // bits of the storage unit alone). Asked once the lvalue's address is computed: its class is
-    // laid out then.
+    // bits of the storage unit alone). Asked right after lvalue(e), which records the place of the
+    // member it found in the layout holding it (lvalueBitfield): that instance's own. A member alone
+    // does not tell it: an instance's members are its template's declarations, and Bits<3> and
+    // Bits<5> place `uint32_t a : N` differently (kppc read one instance's bits with the other's).
+    std::pair<const Expr*, const BitfieldInfo*> lvalueBitfield{nullptr, nullptr}; // the member lvalue computed last, its bit field
     const BitfieldInfo* bitfieldNamed(Expr* e)
     {
       while (e && e->kind == NodeKind::ParenExpr)
         e = static_cast<ParenExpr*>(e)->inner;
+      if (e && lvalueBitfield.first == e && lvalueBitfield.second)
+        return lvalueBitfield.second;
       Decl* d = !e ? nullptr : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
                              : e->kind == NodeKind::NameExpr    ? static_cast<NameExpr*>(e)->resolved
                                                                 : nullptr;
-      if (!d || d->kind != NodeKind::VariableDecl || !static_cast<VariableDecl*>(d)->bitfield)
-        return nullptr;
-      const BitfieldInfo* bits = bitfieldFor(d);
-      if (!bits)
+      if (d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield)
         unsupported(e, "a bit-field whose place in its class is not known"); // never its whole storage unit
-      return bits;
+      return nullptr;
     }
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)

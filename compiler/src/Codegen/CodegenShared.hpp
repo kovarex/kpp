@@ -20,6 +20,13 @@
     std::string vptrValue;            // what the pointer holds: the address of the first function's slot
   };
 
+  // A bit field's place in its class's layout: its bits of a storage unit.
+  struct BitfieldInfo
+  {
+    uint32_t shift, width;
+    const Ty* unit; // the storage unit's (integer) type
+  };
+
   struct StructInfo
   {
     std::string name;                        // %struct.N
@@ -50,7 +57,10 @@
     const Ty* primaryBase = nullptr;          // the polymorphic base at offset 0
     bool isUnion = false;                     // all members at offset 0, storage sized for the largest
     std::vector<std::pair<Decl*, uint32_t>> anonymous; // anonymous struct/union members -> field index
-    std::unordered_map<Decl*, std::pair<uint32_t, uint32_t>> bitfields; // member -> (shift, width) inside its storage field
+    // Bit-field member -> its place inside its storage field: this layout's own, never looked up by
+    // the member alone (an instance's members are its template's declarations, and Bits<3> and
+    // Bits<5> place `uint32_t a : N` differently).
+    std::unordered_map<Decl*, BitfieldInfo> bitfields;
     bool complete = false;                    // every field is laid out (structFor returned it once)
     uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
     // The alignment LLVM gives the struct type (its fields' largest); alignas raises the class's own
@@ -69,12 +79,12 @@
     auto it = info.fieldIndex.find(member);
     return it == info.fieldIndex.end() ? 0 : it->second;
   }
-  struct BitfieldInfo
+  // The place of bit-field member d in the layout info, or null when d is no bit field of it.
+  const BitfieldInfo* bitfieldIn(const StructInfo& info, Decl* d)
   {
-    uint32_t shift, width;
-    const Ty* unit; // the storage unit's (integer) type
-  };
-
+    auto it = info.bitfields.find(d);
+    return it == info.bitfields.end() ? nullptr : &it->second;
+  }
   // A lambda's closure: one struct per lambda, fields for the captures, one function. It does not
   // change once laid out: other emitters copy it without the lock (Shared::finalClosures, closureFor's
   // callers). What is known only later, the function the lambda is written in, is a ClosureWriter.
@@ -379,7 +389,6 @@
     std::condition_variable claimsChanged;
     std::set<std::pair<Decl*, const Ty*>> evaluating;
     std::atomic<size_t> failuresRemembered{0}; // failed layouts, closures and globals, whose uses fail with them (no session kept)
-    std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
     bool dyncastEmitted = false;                        // the @kpp.dyncast helper is in `decls`
     std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
     NameSet declaredNames;                               // IR names with a declare/define line
@@ -392,7 +401,6 @@
     FinalAnswers<const Ty*, StructInfo*> finalLayouts;   // complete (or failed) layouts, by any spelling of the class type
     FinalAnswers<const Ty*, std::pair<uint64_t, uint64_t>> finalSizes; // classSizeAndAlign
     FinalAnswers<const Ty*, bool> finalDestruction;      // needsDestruction of a class
-    FinalAnswers<Decl*, const BitfieldInfo*> finalBitfields; // bitfieldFor
     FinalAnswers<const Ty*, ClosureInfo*> finalClosures; // laid-out closures (closureFor)
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed

@@ -1,0 +1,54 @@
+// spec: each instance of a class template lays out its own bit fields: with `template<int N> struct Bits { uint32_t a : N; uint32_t b : 32 - N; };` Bits<3> and Bits<5> each have their own shifts and widths, read and written through a member, a member function's own names, an increment, a compound assignment, an aggregate's values, a derived class and a global's constant, at compile time too
+template<int N>
+struct Bits
+{
+  uint32_t a : N;
+  uint32_t b : 32 - N;
+  uint32_t sum() const { return a + b; }
+  void bump()
+  {
+    ++a;
+    b += 2;
+  }
+};
+
+template<int N>
+struct Wrapped : Bits<N>
+{
+  int tag = N;
+};
+
+Bits<3> global3{6, 7};
+
+constexpr uint32_t packed(int which)
+{
+  Bits<3> three{};
+  three.a = 5;
+  three.b = 1;
+  Bits<5> five{};
+  five.a = 17;
+  five.b = 2;
+  return which == 3 ? three.a * 100 + three.b : five.a * 100 + five.b;
+}
+static_assert(packed(3) == 501);
+static_assert(packed(5) == 1702);
+
+int main()
+{
+  Bits<3> x;
+  x.a = 5;
+  x.b = 1;
+  Bits<5> y;
+  y.a = 17;
+  y.b = 2;
+  println(int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b), " | ", *reinterpret_cast<uint32_t*>(&x), " ", *reinterpret_cast<uint32_t*>(&y));
+  x.bump();
+  y.bump();
+  println(int(x.sum()), " ", int(y.sum()), " | ", int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b));
+  Bits<5> z{30, 4};
+  Wrapped<3> w;
+  w.a = 7;
+  w.b = 9;
+  println(int(z.a), " ", int(z.b), " | ", int(w.a), " ", int(w.b), " ", w.tag, " | ", int(global3.a), " ", int(global3.b), " | ", packed(3), " ", packed(5));
+  return 0;
+}

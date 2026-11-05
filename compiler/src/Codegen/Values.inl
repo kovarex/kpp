@@ -722,7 +722,10 @@
             {
               if (!currentClassTy)
                 unsupported(e, "a member used outside a method");
-              return memberObject(currentClassTy, d, thisPointer(e), e); // `r = v` with r a reference member
+              const BitfieldInfo* bits = nullptr;
+              std::string addr = memberObject(currentClassTy, d, thisPointer(e), e, &bits); // `r = v` with r a reference member
+              lvalueBitfield = {e, bits};
+              return addr;
             }
             if (!d->templateParams.empty())
               return variableTemplateObject(n, static_cast<VariableDecl*>(d), e);
@@ -803,7 +806,10 @@
               baseTy = instance;
             }
           }
-          return memberObject(baseTy, d, object, e);
+          const BitfieldInfo* bits = nullptr;
+          std::string addr = memberObject(baseTy, d, object, e, &bits);
+          lvalueBitfield = {e, bits};
+          return addr;
         }
         case NodeKind::UnaryExpr:
         {

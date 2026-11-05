@@ -801,7 +801,7 @@
       throwingDestructionCache.clear();
       bitwiseRelocation.clear();
       bitwiseAssignment.clear();
-      bitfieldCache.clear();
+      lvalueBitfield = {nullptr, nullptr}; // (a place in a layout that may go)
     }
 
     // A class type whose layout (or an answer computed from it) the function being emitted uses

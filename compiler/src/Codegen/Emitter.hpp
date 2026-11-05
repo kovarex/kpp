@@ -31,7 +31,6 @@
     std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
     std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;
     std::unordered_map<Decl*, std::string>& globals = sh.globals;
-    std::unordered_map<Decl*, BitfieldInfo>& bitfieldOf = sh.bitfieldOf;
     bool& dyncastEmitted = sh.dyncastEmitted;
     std::unordered_map<std::string, std::string>& instanceGlobals = sh.instanceGlobals;
     NameSet& declaredNames = sh.declaredNames;

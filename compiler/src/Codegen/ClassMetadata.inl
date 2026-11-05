@@ -952,7 +952,7 @@
               }
         if (!named)
           for (Decl* d : info.fieldDecls)
-            if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->init && !bitfieldFor(d))
+            if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->init && !bitfieldIn(info, d))
             {
               auto* v = static_cast<VariableDecl*>(d);
               const Ty* ft = unionMemberType(t, d, at);
@@ -981,7 +981,7 @@
         const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
         const FunctionDecl::CtorInit* init = v->name.empty() ? nullptr : initFor(v->name.last().symbol);
-        if (bitfieldFor(d))
+        if (bitfieldIn(info, d))
         {
           // The unit's first bit field stands for the unit: each bit field in it is initialised.
           for (Decl* m : unitMembers(info, classDef(t->decl, at), d))
@@ -990,7 +990,7 @@
             const FunctionDecl::CtorInit* bitInit = bv->name.empty() ? nullptr : initFor(bv->name.last().symbol);
             if (bitInit && bitInit->args.size() > 1)
               unsupported(at, "this member initializer");
-            initializeBitfield(addr, t, info, bv, *bitfieldFor(m), bitInit != nullptr, bitInit && bitInit->args.size() == 1 ? bitInit->args[0] : nullptr,
+            initializeBitfield(addr, t, info, bv, *bitfieldIn(info, m), bitInit != nullptr, bitInit && bitInit->args.size() == 1 ? bitInit->args[0] : nullptr,
                                zeroedUnits, at);
           }
           continue;
@@ -1105,7 +1105,7 @@
         return;
       }
       auto* v = static_cast<VariableDecl*>(chosen);
-      if (bitfieldFor(v))
+      if (v->bitfield) // (a union's layout has no bit-field places: it would be its whole member)
         unsupported(at, "a bit field of an anonymous union initialised by a constructor");
       const FunctionDecl::CtorInit* init = nullptr;
       for (const FunctionDecl::CtorInit& i : inits)
@@ -1569,7 +1569,7 @@
         // own (the unit's first bit field stands for the unit among the fields).
         std::vector<Decl*> members;
         for (Decl* d : info.fieldDecls)
-          if (d->kind == NodeKind::VariableDecl && bitfieldFor(d))
+          if (d->kind == NodeKind::VariableDecl && bitfieldIn(info, d))
             for (Decl* m : unitMembers(info, c, d))
               members.push_back(m);
           else
@@ -1603,7 +1603,7 @@
           // Brace elision: an array member takes its elements' values from the list itself when the
           // value there is no list and no array (`GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, ... }`
           // fills Data4[8] from the last eight).
-          if (members[next]->kind == NodeKind::VariableDecl && !bitfieldFor(members[next]))
+          if (members[next]->kind == NodeKind::VariableDecl && !bitfieldIn(info, members[next]))
             if (const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, members[next])]); ft->kind == TyKind::Array && ft->count > 0)
               if (Expr* a = args[k]; a->kind != NodeKind::BraceInitExpr && a->ty && a->ty->isKnown() &&
                                      !(a->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(a)->literalKind == TokenKind::String) &&
@@ -1658,7 +1658,7 @@
           }
           Expr* value = valueOf[i++];
           if (d->kind == NodeKind::VariableDecl)
-            if (const BitfieldInfo* bits = bitfieldFor(d))
+            if (const BitfieldInfo* bits = bitfieldIn(info, d))
             {
               initializeBitfield(addr, t, info, static_cast<VariableDecl*>(d), *bits, value != nullptr, value, zeroedUnits, at);
               continue;
@@ -2012,11 +2012,12 @@
 
     // The object a data member of the object at `object` (of class classTy) is: its field, or for a
     // reference member the object the field refers to (its address is what the field holds), also
-    // when a template argument makes the member a reference (Holder<int&>'s `A value`).
-    std::string memberObject(const Ty* classTy, Decl* d, const std::string& object, Node* e)
+    // when a template argument makes the member a reference (Holder<int&>'s `A value`). bits, when
+    // given, gets the member's bit-field place in the layout that holds it (fieldAddress).
+    std::string memberObject(const Ty* classTy, Decl* d, const std::string& object, Node* e, const BitfieldInfo** bits = nullptr)
     {
       std::string addr;
-      if (!fieldAddress(classTy, d, object, addr, e))
+      if (!fieldAddress(classTy, d, object, addr, e, bits))
       {
         // A `when` member on a class template's parameters that this instance does not have (design.md
         // 19): a use of it is an error in the instance being built.

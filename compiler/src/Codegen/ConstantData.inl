@@ -115,7 +115,7 @@
         {
           if (part.kind != ConstValue::Kind::Int && part.kind != ConstValue::Kind::Unset)
             return std::nullopt;
-          auto [shift, width] = bits->second;
+          uint32_t shift = bits->second.shift, width = bits->second.width;
           uint64_t mask = width >= 64 ? ~0ull : (1ull << width) - 1;
           units[index] |= ((part.kind == ConstValue::Kind::Int ? uint64_t(part.i) : 0) & mask) << shift;
           unit[index] = true;
