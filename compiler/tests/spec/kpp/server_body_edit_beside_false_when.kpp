@@ -74,3 +74,84 @@ int main()
   return 0;
 }
 // expect: 6
+//--- step: an error typed into a false condition
+when (!config::debgu) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return 5; }
+int main()
+{
+  Stats s;
+  println(shown() + s.hits);
+  return 0;
+}
+// error: config::debgu is not declared
+//--- step: a class template with a false member
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+template<class T> struct Box
+{
+  T value = 1;
+  when (!config::debug) int extra = 0;
+  int get() { return value + 1; }
+};
+int shown() { return 5; }
+int main()
+{
+  Stats s;
+  Box<int> b;
+  println(shown() + s.hits + b.get());
+  return 0;
+}
+// expect: 8
+//--- step: the class template's member function's body edited
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+template<class T> struct Box
+{
+  T value = 1;
+  when (!config::debug) int extra = 0;
+  int get() { return value + 10; }
+};
+int shown() { return 5; }
+int main()
+{
+  Stats s;
+  Box<int> b;
+  println(shown() + s.hits + b.get());
+  return 0;
+}
+// expect: 17
+//--- step: its absent member used through the instance
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+template<class T> struct Box
+{
+  T value = 1;
+  when (!config::debug) int extra = 0;
+  int get() { return value + 10; }
+};
+int shown() { return 5; }
+int main()
+{
+  Stats s;
+  Box<int> b;
+  println(shown() + s.hits + b.extra);
+  return 0;
+}
+// error: 'extra' exists only when
