@@ -989,7 +989,7 @@ auto GlobalScope::Impl::Walker::hiddenObjectType(VariableDecl* v) -> const Ty*
     if (const Ty* deduced = locals.deducedTypeOf(v))
       t = deduced; // the object as this walk deduced it (also a range-for variable's)
     else if (v->init && v->init->ty)
-      t = impl.deduceAuto(t, v->init->ty, v->init);
+      t = impl.deduceVariable(v, t, v->init->ty, v->init);
     else if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl.containsAuto(cached))
       t = cached;
     else
@@ -1068,7 +1068,7 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
         // (Only a known initializer type: an unknown one is there or not by whether the
         // variable's own walk came first, and the use was then counted as auto's or not.)
         if (v->init && v->init->ty && v->init->ty->isKnown() && v->init->kind != NodeKind::BraceInitExpr)
-          return impl.deduceAuto(t, v->init->ty, v->init);
+          return impl.deduceVariable(v, t, v->init->ty, v->init);
         return unknown(Why::Auto);
       }
       return t;
@@ -1642,7 +1642,7 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
   if (impl.containsAuto(declared))
   {
     auto* v = r.decl->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(r.decl) : nullptr;
-    declared = v && v->init && v->init->ty ? impl.deduceAuto(declared, v->init->ty, v->init) : types.unknown();
+    declared = v && v->init && v->init->ty ? impl.deduceVariable(v, declared, v->init->ty, v->init) : types.unknown();
     if (!declared->isKnown())
       r.why = Why::Auto;
   }
@@ -5986,7 +5986,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         if (!v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && declared != types.decltypeAutoType())
           if (const Ty* list = impl.initializerListOfElements(static_cast<BraceInitExpr*>(v->init)))
             initTy = list; // `const auto entityNames = {"pipe", "storage-tank"};` is an InitializerList<const char*>
-        const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy, initExpr) : types.unknown();
+        const Ty* deduced = v->init && initTy ? impl.deduceVariable(v, declared, initTy, initExpr) : types.unknown();
         if (deduced->isKnown() && (v->flags & DF_Constexpr) && !deduced->isReference())
           deduced = types.qualified(deduced, true, false); // `constexpr auto limit = 5;` is a const int
         if (deduced->isKnown())
@@ -6582,7 +6582,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       if (impl.containsAuto(declared))
       {
         const Ty* element = elementTypeOf(range, f->range);
-        const Ty* deduced = element->isKnown() ? impl.deduceAuto(declared, element) : types.unknown();
+        const Ty* deduced = element->isKnown() ? impl.deduceVariable(v, declared, element) : types.unknown();
         if (deduced->isKnown())
         {
           v->cachedType.store(deduced, std::memory_order_release);

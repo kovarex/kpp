@@ -2580,6 +2580,19 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
           std::to_string(std::min<uint64_t>(units + 1, t->count) * unitBytes) + ", i1 false)\n";
     return;
   }
+  if (t->kind == TyKind::Array && init->kind != NodeKind::BraceInitExpr)
+  {
+    // `auto [a, b, c] = arr;`: a structured binding's hidden object, an array copied from the one
+    // it is given, element by element by their copy constructors (moved from an xvalue, `auto [a,
+    // b] = move(arr)`), as [dcl.struct.bind] 1 has it (D, 2026-11-05: the hidden object was a
+    // decayed pointer until then). Of anything else an array is no copy: an error, never the
+    // value stored over it as a scalar's.
+    const Ty* from = init->ty ? types.unqualified(types.stripRef(withCurrentArgs(init->ty))) : nullptr;
+    if (!from || from->kind != TyKind::Array || from->count != t->count || types.unqualified(from->inner) != types.unqualified(t->inner))
+      unsupported(at, "an array of " + types.toString(t, &symbols) + " initialised from " + (from ? types.toString(from, &symbols) : std::string("an expression of unknown type")));
+    transferArray(addr, lvalue(init), t, at, movable(init), false);
+    return;
+  }
   if (init->kind == NodeKind::BraceInitExpr)
   {
     auto* bi = static_cast<BraceInitExpr*>(init);

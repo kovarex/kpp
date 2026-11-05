@@ -1,0 +1,44 @@
+// spec: `auto [a, b, c] = arr;` copies the array, as C++ has it ([dcl.struct.bind] 1: the hidden object has the array's type, each element copied from arr's), so the names refer to the copy's elements and writing one leaves arr as it was; `auto& [x, y, z] = arr;` refers to arr's own; `const auto [p, q, r] = arr;` copies too; String elements are copied by String's copy constructor; a range-for's `auto [u, w]` over an array of arrays copies each element, `auto& [u, w]` refers to it; alike at compile time and at run time
+// found by thread B (2026-11-05): `auto [a, b, c] = array;` stopped codegen at "a structured binding of something that is neither a class nor an array": the hidden object's type was deduced as an `auto` variable's is, the array decaying to a pointer (and at compile time the names had no object to refer into)
+constexpr int copied()
+{
+  int arr[2] = {4, 5};
+  auto [a, b] = arr;
+  a = 100; // the copy's element
+  return arr[0] * 10 + b;
+}
+constexpr int loops()
+{
+  int pairs[2][2] = {{1, 2}, {3, 4}};
+  int total = 0;
+  for (auto [u, w] : pairs)
+  {
+    u = 0; // the copy's
+    total += u + w;
+  }
+  for (auto& [u, w] : pairs)
+    u = u * 100;
+  return total * 1000 + pairs[0][0] + pairs[1][0];
+}
+constexpr int strings()
+{
+  String names[2] = {"ab", "cde"};
+  auto [n0, n1] = names; // copied by String's copy constructor
+  n0 = "z";
+  return (int)(names[0].size() * 100 + n0.size() * 10 + n1.size());
+}
+int main()
+{
+  int arr[3] = {1, 2, 3};
+  auto [a, b, c] = arr;
+  a = 10;
+  auto& [x, y, z] = arr;
+  y = 20; // arr[1]
+  const auto [p, q, r] = arr;
+  constexpr int k1 = copied();
+  constexpr int k2 = loops();
+  constexpr int k3 = strings();
+  println(arr[0], " ", arr[1], " ", arr[2], " ", a, " ", b, " ", c, " ", x, " ", z, " ", p + q + r);
+  println(k1, " ", copied(), " ", k2, " ", loops(), " ", k3, " ", strings());
+  return 0;
+}

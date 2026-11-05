@@ -249,6 +249,13 @@
   // this->state;` an AIState&, as C++ deduces it), an rvalue reference for an rvalue.
   const Ty* deduceAuto(const Ty* pattern, const Ty* init, const Expr* initExpr = nullptr);
 
+  // Variable v's type deduced from its initializer's type init (initExpr), as deduceAuto does, but
+  // for a structured binding's hidden object ([dcl.struct.bind] 1): an array initializer with no
+  // ref-qualifier makes it an array of the same type, its elements copied (`auto [a, b, c] = arr;`;
+  // cv from the declaration, `const auto [a, b] = arr;`), where an `auto` variable's decays to a
+  // pointer.
+  const Ty* deduceVariable(const VariableDecl* v, const Ty* pattern, const Ty* init, const Expr* initExpr = nullptr);
+
   // The type a function returning `auto`, `auto&`, `const auto*`... deduces from a return
   // statement's expression type (an lvalue's an lvalue reference, the walk's): the written shape
   // around the deduced type.

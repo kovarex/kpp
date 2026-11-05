@@ -130,7 +130,12 @@ builds win less unless machine code is cached per function.
   by reference). A get that returns a value gives the binding that value, which lives as long as
   the binding. A count other than `value`, or a `value` that is no constant, is an error.
   (2026-10-29: specs language/structured_binding_tuple_protocol, _tuple_forms and
-  _tuple_size_mismatch.)
+  _tuple_size_mismatch.) The hidden object of `auto [a, b, c] = arr;` (no ref-qualifier) given an
+  array is an array of its type, cv from the declaration, each element copied from arr's (by its
+  copy constructor; moved from an xvalue), as C++ has it ([dcl.struct.bind] 1), where an `auto`
+  variable's type decays to a pointer; a range-for's `auto [u, w]` over arrays copies each element
+  alike (2026-11-05, from B: it was a decayed pointer, which codegen refused; spec
+  language/structured_binding_copies_array).
 - Each library type that a std type converts to keeps the guarantees the C++ standard gives that
   type (iterator, pointer and reference invalidation, complexity, the meaning of return values),
   since converted code relies on them. A faster type that breaks one is a separate, explicitly

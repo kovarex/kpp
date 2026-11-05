@@ -419,6 +419,15 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
       makeFromElement(slot, vt, element, elementTy, v);
     else if (isClass(vt))
       copyConstruct(slot, elementAs(element, elementTy, vt, v), vt, v);
+    else if (const Ty* array = types.unqualified(vt); array->kind == TyKind::Array)
+    {
+      // `for (auto [u, w] : pairs)` over arrays: the hidden object a copy of each element array
+      // ([dcl.struct.bind] 1), element by element (its value as a scalar's stored nothing).
+      const Ty* from = types.unqualified(types.stripRef(elementTy));
+      if (from->kind != TyKind::Array || from->count != array->count || types.unqualified(from->inner) != types.unqualified(array->inner))
+        unsupported(v, "a loop variable of " + types.toString(vt, &symbols) + " over elements of " + types.toString(elementTy, &symbols));
+      transferArray(slot, element, array, v, false, false);
+    }
     else
       store(load(element, elementTy, v), slot, vt, v);
     locals[v] = {slot, vt, false};

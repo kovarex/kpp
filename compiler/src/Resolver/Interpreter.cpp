@@ -7649,6 +7649,24 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     return !structured || constBindNames(v, env, at, ctx, depth) ? ConstFlow::Next : ConstFlow::Failed;
   };
   const Ty* type = v->type ? constDeducedType(v, convertType(v->type, ctx, depth + 1)) : nullptr;
+  if (structured && type && !type->isReference() && v->init && v->init->ty && types.unqualified(types.stripRef(v->init->ty))->kind == TyKind::Array)
+  {
+    // `auto [a, b] = arr;`: the hidden object a copy of the array ([dcl.struct.bind] 1), its
+    // elements copied by their copy constructors (moved from an xvalue), cv from the declaration;
+    // as a value the array decayed to its first element's address, no object to bind names into.
+    Expr* source = nullptr;
+    uint8_t category = constCategory(v->init, source);
+    std::optional<ConstPlace> at = constPlaceOf(category == 2 && source ? source : v->init, ctx, depth + 1);
+    std::optional<ConstValue> whole = at ? constRead(*at) : std::nullopt;
+    const Ty* array = whole && whole->isObject() && whole->type && types.unqualified(whole->type)->kind == TyKind::Array
+                    ? types.qualified(types.unqualified(whole->type), type->isConst, type->isVolatile) : nullptr;
+    std::optional<ConstValue> copy = array ? constCopyConstruct(array, *whole, at, category == 2, depth + 1) : std::nullopt;
+    if (!copy)
+      return ConstFlow::Failed;
+    env.push_back(constBinding(symbol, *copy, array));
+    env.back().owns = true;
+    return named(env.size() - 1);
+  }
   if (type && type->isReference())
   {
     // `T& r = x;`: a reference to x's place; `const T& r = f();` and `T&& r = f();` keep the

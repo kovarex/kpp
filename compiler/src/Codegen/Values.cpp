@@ -549,9 +549,13 @@ auto codegen::Emitter::store(Value v, const std::string& addr, const Ty* ty, Nod
   if (ty->kind == TyKind::Array)
   {
     // A scalar stored into an array: zero-init the array, then store the scalar
-    // converted to the element type in element 0 (C's `T a[N] = {value}` semantics).
-    storeZero(ty, addr, at);
+    // converted to the element type in element 0 (C's `T a[N] = {value}` semantics). Of
+    // anything else (an array's decayed address: a copy of an array nothing here makes) an
+    // error, never an array left zero.
     auto isNumeric = [](TyKind k) { return k == TyKind::Int || k == TyKind::Bool || k == TyKind::Char || k == TyKind::Float; };
+    if (!v.ty || !isNumeric(v.ty->kind))
+      unsupported(at, "storing " + (v.ty ? types.toString(v.ty, &symbols) : std::string("a value of unknown type")) + " into an array of " + types.toString(ty, &symbols));
+    storeZero(ty, addr, at);
     if (v.ty && ty->inner && isNumeric(v.ty->kind) && isNumeric(ty->inner->kind))
     {
       Value elem = convert(v, ty->inner, at);

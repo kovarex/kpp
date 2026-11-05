@@ -1932,7 +1932,7 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
         // `static constexpr auto FOLD = fold;` in a class template: the initializer's type under
         // this instance's arguments (the walker deduces it only for the template itself).
         if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
-          if (const Ty* deduced = deduceAuto(t, init, v->init); deduced && deduced->isKnown() && !containsAuto(deduced))
+          if (const Ty* deduced = deduceVariable(v, t, init, v->init); deduced && deduced->isKnown() && !containsAuto(deduced))
             return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
       }
       // (Also when its own file's walk typed the initializer as unknown: that walk came before
@@ -1945,7 +1945,7 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
         // among them, whose copy would be another closure type than the walk's).
         // Also inside a template instance: a namespace-scope variable's type depends on no arguments.
         if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
-          if (const Ty* deduced = deduceAuto(t, init, v->init); deduced && deduced->isKnown() && !containsAuto(deduced))
+          if (const Ty* deduced = deduceVariable(v, t, init, v->init); deduced && deduced->isKnown() && !containsAuto(deduced))
             return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
       }
       // `auto migrate = [](auto& value, auto from, auto to) { ... };` at namespace scope, named above
@@ -1957,7 +1957,7 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
       if (containsAuto(t) && v->init && hasLambda(v->init) && (!subst || subst->empty()) && (!v->parent || v->parent->kind == NodeKind::NamespaceDecl) &&
           v->templateParams.empty() && (!v->init->ty || !v->init->ty->isKnown()))
         if (Expr* walked = constInitializerOf(v, nullptr); walked && walked != v->init && walked->ty && walked->ty->isKnown() && !types.isDependent(walked->ty))
-          if (const Ty* deduced = deduceAuto(t, walked->ty, walked); deduced && deduced->isKnown() && !containsAuto(deduced))
+          if (const Ty* deduced = deduceVariable(v, t, walked->ty, walked); deduced && deduced->isKnown() && !containsAuto(deduced))
             return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
       if (types.isDependent(t) && containsAuto(t))
         return t; // Deduced from the initializer by the walker when it reaches the declaration.
@@ -2114,6 +2114,14 @@ auto GlobalScope::Impl::deduceAuto(const Ty* pattern, const Ty* init, const Expr
     default:
       return types.unknown();
   }
+}
+
+auto GlobalScope::Impl::deduceVariable(const VariableDecl* v, const Ty* pattern, const Ty* init, const Expr* initExpr) -> const Ty*
+{
+  if (v && !v->structuredBindings.empty() && pattern && pattern->kind == TyKind::Auto && pattern != types.decltypeAutoType() && init && init->isKnown())
+    if (const Ty* object = types.stripRef(init); object->kind == TyKind::Array)
+      return types.qualified(object, pattern->isConst, pattern->isVolatile);
+  return deduceAuto(pattern, init, initExpr);
 }
 
 auto GlobalScope::Impl::deducedShape(const Ty* pattern, const Ty* deduced) -> const Ty*
