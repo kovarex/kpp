@@ -1327,6 +1327,14 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
       // A = int finds the member in the specialisation those arguments pick.
       Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      // `using ThrowOnError = NamedBool<class ThrowOnError>;` (SpriteBank): an elaborated `class X`
+      // names a class, never a type alias of the name (C++ looks it up before the alias is declared,
+      // and an alias it found would be ill-formed). Found, the alias was its own argument: an endless
+      // NamedBool<NamedBool<...>>, cut at some depth, so that a call taking it resolved or not by the
+      // order of the threads (the game's tests, 2026-11-05). The class the namespace gets instead.
+      if (n->elaborated && n->name.parts.size() == 1 && !n->name.parts[0].hasTemplateArgs && l.found != Found::No && l.decl &&
+          (l.decl->kind == NodeKind::UsingAliasDecl || (l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef))))
+        l = Lookup{};
       if (l.found == Found::Local && l.decl && l.decl->when && n->resolved && n->resolved != l.decl && n->resolved->when)
       {
         l.decl = n->resolved; // (of several `when` locals of the name, the one the walk found existing: design.md 19)

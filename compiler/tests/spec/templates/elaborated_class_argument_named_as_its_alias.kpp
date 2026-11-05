@@ -1,0 +1,20 @@
+// spec: `using ThrowOnError = NamedBool<class ThrowOnError>;` in a class (Factorio's SpriteBank): the elaborated `class ThrowOnError` declares a class of the namespace, as C++ has it (looked up before the alias is declared), never the alias itself, which made the alias its own argument (an endless NamedBool<NamedBool<...>> cut at some depth: two such aliases one type, and a call taking one resolved or not by the order of the threads, until 2026-11-05)
+template<class T> struct NamedBool
+{
+  bool value;
+  explicit operator bool() const { return value; }
+};
+struct Bank
+{
+  using ThrowOnError = NamedBool<class ThrowOnError>;
+  using AllowFiles = NamedBool<class AllowFiles>;
+  static int pick(ThrowOnError t) { return t ? 1 : 2; }
+  static int pick(AllowFiles a) { return a ? 3 : 4; }
+};
+static_assert(isSame<Bank::ThrowOnError, NamedBool<class ThrowOnError>>);
+static_assert(!isSame<Bank::ThrowOnError, Bank::AllowFiles>);
+int main()
+{
+  println(Bank::pick(Bank::ThrowOnError{true}), " ", Bank::pick(Bank::AllowFiles{false}), " ", sizeof(Bank::ThrowOnError));
+  return 0;
+}
