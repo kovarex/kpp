@@ -496,8 +496,45 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   }
   out += "}\n";
   const std::string& file = debugFileOf(debugFile);
-  out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName + "\", scope: " + file + ", file: " + file + ", line: " +
-         std::to_string(declLine) + ", type: !2, scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0)\n";
+  // A member function (one with `this`, its artificial first parameter) is its class's, as clang
+  // declares one for CodeView: its scope the class's composite, its name without the class's, its type
+  // a DISubroutineType whose first parameter is the object pointer (DIFlagArtificial |
+  // DIFlagObjectPointer). The PDB then has it as a member function (LF_MFUNC_ID, LF_MFUNCTION), and
+  // Visual Studio evaluates `this` and `this->member` in it; as a free function it said "'this' may
+  // only be used inside a nonstatic member function" (F's find, 2026-11-05). DWARF keeps the file.
+  std::string spName0 = spName, spScope = file, spType = "!2", typeNodes;
+  const DebugVariable* self = nullptr;
+  for (const DebugVariable& v : debugVariables)
+    if (v.artificial && v.arg == 1 && v.name == "this")
+      self = &v;
+  if (self && sh.target.windows() && currentClassTy && currentClassTy->isKnown() && !types.isDependent(currentClassTy))
+  {
+    const Ty* cls = types.unqualified(currentClassTy);
+    std::string prefix = debuggerClassName(cls) + "::";
+    if (spName.size() > prefix.size() && spName.compare(0, prefix.size(), prefix) == 0)
+    {
+      uint32_t extra = firstLocation + uint32_t(locations.size());
+      std::string classType = debugType(cls);
+      std::string list = currentReturn && currentReturn->isKnown() && currentReturn->kind != TyKind::Void ? debugType(currentReturn) : std::string("null");
+      list += ", " + debugId(extra + 2);
+      std::vector<const DebugVariable*> params;
+      for (const DebugVariable& v : debugVariables)
+        if (v.arg > 1)
+          params.push_back(&v);
+      std::stable_sort(params.begin(), params.end(), [](const DebugVariable* a, const DebugVariable* b) { return a->arg < b->arg; });
+      for (const DebugVariable* p : params)
+        list += ", " + p->type;
+      typeNodes = debugId(extra) + " = !DISubroutineType(types: " + debugId(extra + 1) + ")\n" + debugId(extra + 1) + " = !{ " + list + "}\n" +
+                  debugId(extra + 2) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + classType +
+                  ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
+      spName0 = spName.substr(prefix.size());
+      spScope = classType;
+      spType = debugId(extra);
+    }
+  }
+  out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName0 + "\", scope: " + spScope + ", file: " + file + ", line: " +
+         std::to_string(declLine) + ", type: " + spType + ", scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0)\n";
+  out += typeNodes;
   if (variables)
   {
     out += debugId(fileId) + " = " + file + "\n";

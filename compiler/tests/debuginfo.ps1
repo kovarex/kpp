@@ -105,11 +105,14 @@ function Summary([string]$pdb)
     $line = $symbols[$i]
     if ($depth -eq 0)
     {
-      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\)))`')
+      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::area\(\) const)`')
       {
         $lines = New-Object System.Collections.Generic.List[string]
         $functions[$Matches[1]] = $lines
         $lines.Add("function $($Matches[1])")
+        # A member function is its class's (LF_MFUNCTION, whose type llvm-pdbutil names `R Class::(...)`):
+        # the debugger evaluates `this` in it.
+        if ($symbols[$i + 2] -match 'type = `0x[0-9A-F]+ \((.*) ([\w:<>, ]+)::\(.*\)\)`') { $lines.Add("  member of $($Matches[2])") }
         $depth = 1
       }
       continue

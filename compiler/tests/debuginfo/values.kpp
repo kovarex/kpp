@@ -1,7 +1,8 @@
 // --debug-info's variables and types (docs/debugging.md, "Variables and types"): debuginfo.ps1 builds
 // this at one module and at 64, runs it, and checks what the PDB says of inspect's parameters (a class passed by
 // pointer, StringView, the debugger's through the pointer it keeps: `StringView&`, as clang has one), locals
-// and block, of its lambda's captures, of these classes (their members' access, a static member), this
+// and block, of its lambda's captures, of Square::area (a member function of its class, `this` its object
+// pointer: Visual Studio evaluates `this` in it), of these classes (their members' access, a static member), this
 // enum and this typed union (its tag and its alternatives' storage), of the library's Vector<int32>,
 // and of the globals (a static member's storage is one) against values.expected.
 namespace game

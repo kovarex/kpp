@@ -1,3 +1,6 @@
+function game::Square::area() const
+  member of game::Square
+  parameter this game::Square*
 function inspect(const game::Point&, int32, game::Mode, StringView)
   parameter point const game::Point&
   parameter scale int

@@ -54,6 +54,12 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   lambda's captures are its operator's variables by their names: one by value is its field of the
   closure, one by reference that field's reference (`int&`), a captured `this` the enclosing class's
   pointer.
+- **Member functions** (CodeView): a function with `this` is its class's, as clang declares one: its
+  scope the class, its name without the class's, its type one whose first parameter is the object
+  pointer (DIFlagArtificial | DIFlagObjectPointer). The PDB has it as a member function (LF_MFUNC_ID,
+  LF_MFUNCTION), so Visual Studio evaluates `this` and `this->member` in it; as a free function it said
+  "'this' may only be used inside a nonstatic member function" (thread F, 2026-11-05). A static member
+  function and DWARF's functions stay free functions; the class's field list does not list its methods.
 - **Globals**: each global of the program by the name kppc's IR gives it (`game::counter`,
   `PrototypeList<EntityPrototype>::sorted`; a static data member's storage is `Class::member`), where
   the debugger reads it: the module whose text defines it (its home, in a debug build) describes it
