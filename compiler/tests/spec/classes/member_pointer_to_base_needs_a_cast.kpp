@@ -1,0 +1,17 @@
+// spec: a pointer to a member of a base converts to one of a class derived from it (C++'s [conv.mem]/2), never the other way without a cast: `int Base::* n = derivedMember` is an error, where until 2026-11-05 it kept the bits and named the wrong member
+// error: member_pointer_to_base_needs_a_cast.kpp:13: error: a pointer to a member of Derived does not convert to one of Base without a cast: only a base's member pointer converts to a derived class's
+struct Base { int b; };
+struct Derived : Base { int d; };
+int viaBase()
+{
+  int Base::* pb = &Base::b;
+  int Derived::* pd = pb;
+  Derived x;
+  x.b = 7;
+  return x.*pd;
+}
+int Base::* wrongWay() { int Derived::* m = &Derived::d; int Base::* n = m; return n; }
+int main()
+{
+  return viaBase();
+}

@@ -190,6 +190,25 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
       fn += "  " + result() + " = select i1 " + isNull + ", i64 -1, i64 " + sum + "\n";
       return {r, to};
     }
+    // The other way (a derived class's member as one of its base, or an unrelated class's) is no
+    // implicit conversion (C++'s [conv.mem] 2); until 2026-11-05 it kept the bits. A cast to a base
+    // at an offset would move the other way, which is not done yet.
+    // (A class template's own pattern, `LuaStruct<T>` named by a member pointer its instance takes,
+    // is that instance: no base in either direction, the bits are its own.)
+    if (!(currentFile && currentFile->isImported) && !types.isDependent(base) && !types.isDependent(derived))
+    {
+      if (!explicitCast)
+        fail(at, "a pointer to a member of " + types.toString(base, &symbols) + " does not convert to one of " + types.toString(derived, &symbols) +
+                     " without a cast: only a base's member pointer converts to a derived class's");
+      std::vector<std::pair<std::string, uint32_t>> back;
+      bool related = basePath(base, derived, back, at);
+      bool moved = false;
+      for (auto& [structName, index] : back)
+        moved = moved || index != 0;
+      if (!related || moved)
+        unsupported(at, "a cast of a pointer to a member of " + types.toString(base, &symbols) + " to one of " + types.toString(derived, &symbols) +
+                            (related ? ", a base at an offset" : ", an unrelated class"));
+    }
   }
   std::string fromT = llType(from, at), toT = llType(to, at);
   if (fromT == toT && !(fk == TyKind::Pointer && tk == TyKind::Pointer))
