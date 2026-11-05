@@ -780,7 +780,12 @@ auto GlobalScope::Impl::constFold(FoldExpr* f, const TypeContext& ctx, int depth
 auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::optional<ConstValue>
 {
   if (n->name.empty())
+  {
+    // A tuple-like binding's `get<i>(object)`: the hidden object of its declaration (no name).
+    if (std::optional<ConstPlace> hidden = constLocal(n, ctx))
+      return constRead(*hidden);
     return std::nullopt; // `int` read as a name (`v < int > ...`): no part to look up
+  }
   if (ctx.env && n->name.parts.size() == 1 && !n->name.global)
     for (size_t i = ctx.env->size(); i-- > 0;)
       if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
@@ -1436,7 +1441,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
 auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   auto* m = static_cast<MemberExpr*>(c->callee);
-  if (!m->base || m->dynamicMember || m->member.parts.size() != 1 || m->member.parts[0].hasTemplateArgs)
+  if (!m->base || m->dynamicMember || m->member.parts.size() != 1)
     return std::nullopt;
   if (m->member.parts[0].special == 1 && c->args.empty())
   {
@@ -1508,7 +1513,20 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
     if (!bound.find(p))
       return std::nullopt;
-  if (!f->templateParams.empty() && !constBindTemplate(f, {}, c, values, ctx, depth, bound, params))
+  // A member function template's arguments written (`object.get<0>()`, a tuple-like structured
+  // binding's), as a free one's are.
+  std::vector<const Ty*> given;
+  if (const NamePart& part = m->member.parts[0]; part.hasTemplateArgs && !f->templateParams.empty())
+    for (Node* w : part.templateArgs)
+    {
+      size_t n = f->templateParams.size();
+      const Ty* t = templateArgument(w, f->templateParams[std::min(given.size(), n - 1)], ctx, depth + 1);
+      if (w && w->kind == NodeKind::PackType && t && t->kind == TyKind::Pack)
+        given.insert(given.end(), t->args.begin(), t->args.end());
+      else
+        given.push_back(t);
+    }
+  if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params))
     return std::nullopt; // a member function template (`emplace_back(Args&&...)`, `value_or(U&&)`): its own parameters deduced
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
@@ -4095,7 +4113,10 @@ auto GlobalScope::Impl::constStorageTarget(const ConstPlace& place) -> ConstTarg
 
 auto GlobalScope::Impl::constStorageName(const ConstStorage& s) -> std::string
 {
-  return s.symbol && s.symbol != constThisSymbol ? std::string(symbols.name(s.symbol)) : !s.symbol ? std::string("a temporary") : std::string("an object of the evaluation");
+  // (The evaluation's own bindings, `this`, a range-for's range, a structured binding's object, are
+  // named by no symbol.)
+  bool own = s.symbol == constThisSymbol || s.symbol == constRangeSymbol || s.symbol == constHiddenSymbol;
+  return s.symbol && !own ? std::string(symbols.name(s.symbol)) : !s.symbol ? std::string("a temporary") : std::string("an object of the evaluation");
 }
 
 auto GlobalScope::Impl::constLiveStorage(const ConstTarget& t, const char* use) -> const ConstStorage*
@@ -5061,6 +5082,19 @@ auto GlobalScope::Impl::constLocal(Expr* e, const TypeContext& ctx) -> std::opti
   if (!e || e->kind != NodeKind::NameExpr || !ctx.env)
     return std::nullopt;
   auto* n = static_cast<NameExpr*>(e);
+  if (n->name.empty() && n->resolved && n->resolved->kind == NodeKind::VariableDecl &&
+      !static_cast<VariableDecl*>(n->resolved)->structuredBindings.empty())
+  {
+    // The hidden object of `auto [a, b] = e;`, which a tuple-like binding's get<i>(object) names.
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == constHiddenSymbol && (*ctx.env)[i].hiddenOf == n->resolved)
+      {
+        ConstPlace r = constResolve(ConstPlace{ctx.env, i, {}, (*ctx.env)[i].type});
+        r.type = (*ctx.env)[i].type;
+        return r;
+      }
+    return std::nullopt;
+  }
   if (n->name.parts.size() != 1 || n->name.global || n->name.parts[0].hasTemplateArgs)
     return std::nullopt;
   for (size_t i = ctx.env->size(); i-- > 0;)
@@ -5384,7 +5418,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     // result refers to.
     auto* c = static_cast<CallExpr*>(e);
     auto* m = c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee) : nullptr;
-    if (!m || !m->base || m->dynamicMember || m->member.parts.size() != 1 || m->member.parts[0].hasTemplateArgs)
+    if (!m || !m->base || m->dynamicMember || m->member.parts.size() != 1)
       return std::nullopt;
     std::optional<ConstPlace> base = m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow ? constThisPlace(ctx)
                                    : m->op == P::Dot                                         ? constPlaceOf(m->base, ctx, depth + 1, true)
@@ -5413,7 +5447,18 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     if (!constArguments(c->args, ctx, depth, args, &places, &categories))
       return std::nullopt;
     LocalStack own;
-    if (!f->templateParams.empty() && !constBindTemplate(f, {}, c, args, ctx, depth, subst, own))
+    // (Written: `object.get<0>()`, a tuple-like structured binding's, referring into the object.)
+    std::vector<const Ty*> given;
+    if (const NamePart& part = m->member.parts[0]; part.hasTemplateArgs && !f->templateParams.empty())
+      for (Node* w : part.templateArgs)
+      {
+        const Ty* t = templateArgument(w, f->templateParams[std::min(given.size(), f->templateParams.size() - 1)], ctx, depth + 1);
+        if (w && w->kind == NodeKind::PackType && t && t->kind == TyKind::Pack)
+          given.insert(given.end(), t->args.begin(), t->args.end());
+        else
+          given.push_back(t);
+      }
+    if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own))
       return std::nullopt; // `all.emplace_back().roots`: a member function template's own parameters
     return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran);
   }
@@ -6176,6 +6221,8 @@ auto GlobalScope::Impl::constRangeForIterators(RangeForStmt* r, const TypeContex
       if (declared && declared->isReference())
         env.back().writable = false;
     }
+    if (name == constHiddenSymbol && !constBindNames(static_cast<VariableDecl*>(r->var), env, env.size() - 1, ctx, depth))
+      return ConstFlow::Failed; // `for (const auto& [key, value] : map)`: the names in the element
     ConstFlow flow = constStatement(r->body, ctx, env, result, depth + 1);
     if (!constEndLocals(env, bodyMark, depth, flow != ConstFlow::Failed))
       return ConstFlow::Failed;
@@ -6195,9 +6242,10 @@ auto GlobalScope::Impl::constRangeFor(RangeForStmt* r, const TypeContext& ctx, s
   if (!r->var || r->var->kind != NodeKind::VariableDecl || !r->range || !r->body)
     return ConstFlow::Failed;
   auto* v = static_cast<VariableDecl*>(r->var);
-  if (v->name.parts.size() != 1 || !v->structuredBindings.empty())
+  bool structured = !v->structuredBindings.empty(); // `for (const auto& [key, value] : map)`: names in each element
+  if (!structured && v->name.parts.size() != 1)
     return ConstFlow::Failed;
-  uint32_t name = v->name.parts[0].symbol;
+  uint32_t name = structured ? constHiddenSymbol : v->name.parts[0].symbol;
   std::optional<ConstPlace> range = constPlaceOf(r->range, ctx, depth + 1, true);
   if (!range)
   {
@@ -6304,6 +6352,8 @@ auto GlobalScope::Impl::constRangeFor(RangeForStmt* r, const TypeContext& ctx, s
       if (declared && declared->isReference())
         env.back().writable = false; // what begin() points at: a copy, which may only be read
     }
+    if (structured && !constBindNames(v, env, env.size() - 1, ctx, depth))
+      return ConstFlow::Failed;
     ConstFlow flow = constStatement(r->body, ctx, env, result, depth + 1);
     if (!constEndLocals(env, bodyMark, depth, flow != ConstFlow::Failed))
       return ConstFlow::Failed;
@@ -6319,6 +6369,120 @@ auto GlobalScope::Impl::constRangeFor(RangeForStmt* r, const TypeContext& ctx, s
       break;
   }
   return ConstFlow::Next;
+}
+
+auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, std::vector<ConstBinding>& env, int depth) -> ConstFlow
+{
+  bool structured = !v->structuredBindings.empty();
+  if ((!structured && v->name.parts.size() != 1) || (v->flags & (DF_Static | DF_Typedef)))
+    return ConstFlow::Failed;
+  // `auto [a, b] = e;`: the hidden object bound as a variable is, then its names (constBindNames).
+  uint32_t symbol = structured ? constHiddenSymbol : v->name.parts[0].symbol;
+  auto named = [&]() {
+    return !structured || constBindNames(v, env, env.size() - 1, ctx, depth) ? ConstFlow::Next : ConstFlow::Failed;
+  };
+  const Ty* type = v->type ? constDeducedType(v, convertType(v->type, ctx, depth + 1)) : nullptr;
+  if (type && type->isReference())
+  {
+    // `T& r = x;`: a reference to x's place; `const T& r = f();` and `T&& r = f();` keep the
+    // temporary.
+    std::optional<ConstPlace> at = v->init ? constPlaceOf(v->init, ctx, depth + 1, true) : std::nullopt;
+    if (at)
+    {
+      ConstBinding alias{symbol, ConstValue::unset(type)};
+      alias.type = at->type;
+      alias.writable = !(type->inner && type->inner->isConst) && !at->readOnly;
+      alias.aliasEnv = at->env;
+      alias.aliasIndex = at->index;
+      alias.aliasPath = at->path;
+      env.push_back(std::move(alias));
+      return named();
+    }
+    if (!((type->inner && type->inner->isConst) || type->kind == TyKind::RRef) || !v->init)
+      return ConstFlow::Failed; // a reference to no place the run holds
+    std::optional<ConstValue> value = constInitialize(type, v->init, ctx, depth + 1);
+    if (!value)
+      return ConstFlow::Failed;
+    env.push_back(constBinding(symbol, *value, type));
+    Expr* source = nullptr;
+    env.back().owns = constCategory(v->init, source) == 0; // `const T& r = make();`: the temporary lives as r
+    return named();
+  }
+  if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
+    return ConstFlow::Failed;
+  // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
+  std::optional<ConstValue> value = v->init ? constInitialize(type, v->init, ctx, depth + 1) : type ? constEmpty(type, false, depth + 1) : std::nullopt;
+  if (!value)
+    return ConstFlow::Failed;
+  env.push_back(constBinding(symbol, *value, type));
+  env.back().owns = true;
+  return named();
+}
+
+auto GlobalScope::Impl::constBindNames(VariableDecl* v, std::vector<ConstBinding>& env, size_t hidden, const TypeContext& ctx, int depth) -> bool
+{
+  if (hidden >= env.size())
+    return false;
+  env[hidden].symbol = constHiddenSymbol;
+  env[hidden].hiddenOf = v;
+  ConstPlace object = constResolve(ConstPlace{&env, hidden, {}, env[hidden].type});
+  bool readOnly = object.readOnly || !env[hidden].writable;
+  std::optional<ConstValue> held = constRead(object);
+  if (!held || !held->isObject() || !held->type || held->type->isBraceList())
+    return false;
+  const Ty* whole = types.unqualified(types.stripRef(held->type));
+  // A class's names are its data members in declaration order, those of the class declaring them
+  // (the object's, or the one base that does: Walker::bindingType's rule).
+  std::vector<Decl*> members;
+  if (whole->kind == TyKind::Class)
+    if (const Ty* holder = bindingMembersClass(whole))
+      if (ClassDecl* def = classDefinition(holder))
+        for (Decl* m : membersRead(def))
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+            members.push_back(m);
+  for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+  {
+    auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
+    if (b->name.parts.size() != 1)
+      return false;
+    if (Decl* own = b->resolved; own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
+    {
+      // A tuple-like class's: `auto&& name = get<i>(object)`.
+      if (constDeclare(static_cast<VariableDecl*>(own), ctx, env, depth) != ConstFlow::Next)
+        return false;
+      continue;
+    }
+    std::vector<size_t> path;
+    const Ty* part = nullptr;
+    if (whole->kind == TyKind::Array)
+    {
+      if (i >= whole->count)
+        return false;
+      path = {i};
+      part = whole->inner;
+    }
+    else
+    {
+      std::optional<std::vector<size_t>> at = i < members.size() ? constFieldPath(whole, members[i], depth + 1) : std::nullopt;
+      if (!at)
+        return false;
+      path = *at;
+      part = constPartType(whole, path, path.size(), depth + 1);
+    }
+    if (!part)
+      return false;
+    // (A reference member's part holds what it refers to.)
+    part = types.stripRef(part);
+    ConstBinding alias{b->name.parts[0].symbol, ConstValue::unset(part)};
+    alias.type = part;
+    alias.writable = !readOnly && !part->isConst;
+    alias.aliasEnv = object.env;
+    alias.aliasIndex = object.index;
+    alias.aliasPath = object.path;
+    alias.aliasPath.insert(alias.aliasPath.end(), path.begin(), path.end());
+    env.push_back(std::move(alias));
+  }
+  return true;
 }
 
 auto GlobalScope::Impl::constStatement(Stmt* s, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth) -> ConstFlow
@@ -6598,45 +6762,8 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl ||
             d->kind == NodeKind::UsingDirectiveDecl || d->kind == NodeKind::UsingNameDecl) // (names the walk bound where written)
           continue;
-        if (d->kind != NodeKind::VariableDecl)
+        if (d->kind != NodeKind::VariableDecl || constDeclare(static_cast<VariableDecl*>(d), ctx, env, depth) != ConstFlow::Next)
           return ConstFlow::Failed;
-        auto* v = static_cast<VariableDecl*>(d);
-        if (v->name.parts.size() != 1 || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty())
-          return ConstFlow::Failed;
-        const Ty* type = v->type ? constDeducedType(v, convertType(v->type, ctx, depth + 1)) : nullptr;
-        if (type && type->isReference())
-        {
-          // `T& r = x;`: a reference to x's place; `const T& r = f();` keeps the temporary.
-          std::optional<ConstPlace> at = v->init ? constPlaceOf(v->init, ctx, depth + 1, true) : std::nullopt;
-          if (at)
-          {
-            ConstBinding alias{v->name.parts[0].symbol, ConstValue::unset(type)};
-            alias.type = at->type;
-            alias.writable = !(type->inner && type->inner->isConst) && !at->readOnly;
-            alias.aliasEnv = at->env;
-            alias.aliasIndex = at->index;
-            alias.aliasPath = at->path;
-            env.push_back(std::move(alias));
-            continue;
-          }
-          if (!(type->inner && type->inner->isConst) || !v->init)
-            return ConstFlow::Failed; // a reference to no place the run holds
-          std::optional<ConstValue> value = constInitialize(type, v->init, ctx, depth + 1);
-          if (!value)
-            return ConstFlow::Failed;
-          env.push_back(constBinding(v->name.parts[0].symbol, *value, type));
-          Expr* source = nullptr;
-          env.back().owns = constCategory(v->init, source) == 0; // `const T& r = make();`: the temporary lives as r
-          continue;
-        }
-        if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
-          return ConstFlow::Failed;
-        // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
-        std::optional<ConstValue> value = v->init ? constInitialize(type, v->init, ctx, depth + 1) : type ? constEmpty(type, false, depth + 1) : std::nullopt;
-        if (!value)
-          return ConstFlow::Failed;
-        env.push_back(constBinding(v->name.parts[0].symbol, *value, type));
-        env.back().owns = true;
       }
       return ConstFlow::Next;
     case NodeKind::AssertStmt:

@@ -25,6 +25,9 @@
     // by-value parameter, a temporary, a reference's that extends its life. Not a reference's that
     // copies an lvalue it cannot alias, nor `this`.
     bool owns = false;
+    // The hidden object of `auto [a, b] = e;` (the declaration, whose name it has none of): what a
+    // tuple-like binding's get<i>(object) names (Walker::tupleBindings).
+    const Decl* hiddenOf = nullptr;
   };
   struct TypeContext
   {

@@ -1,5 +1,5 @@
 // spec: the library's node-based containers (List, ForwardList, Set, FastMap, Map: nodes from allocateBytes, linked by pointers, walked by iterator objects) work at compile time as at run time, through a range-for, `auto&` and `const auto& [k, v]` too; each constant equals what the program computes (`6 5 259 45 3`)
-// pending: the interpreter makes no object in a raw block allocateBytes gave: `new (&node->value) T(...)` in List::emplace (List.kpp:198) is no constant, so these constexpr arrays were built at startup without a word until the code generator's check of 2026-11-05 (D)
+// pending: List: its constructor points the sentinel at the object the constructor ran on, which the local is a copy of, so the first use of the list stops at "a use of an object of the evaluation, whose lifetime ended" (constructing in place, D); ForwardList, Set, FastMap and Map work since 2026-11-05 (free through a first base, a class's ++, structured bindings)
 // factorio: build.kpp (design.md 12): projectlib's describe() walks Project's containers; a Map in a build description
 extern "C" import "stdio.h";
 constexpr int list() { List<int> l; l.push_back(1); l.push_back(2); l.push_back(3); int t = 0; for (int v : l) t += v; return t; }

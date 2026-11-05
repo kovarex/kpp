@@ -284,6 +284,9 @@
 
   // The binding a member function or constructor runs with as `this`: the object it works on.
   static constexpr uint32_t constThisSymbol = 0xFFFFFFFEu;
+  // The binding of a structured binding declaration's hidden object (`auto [a, b] = e;`), which
+  // its names refer into (constBindNames); ConstBinding::hiddenOf says whose.
+  static constexpr uint32_t constHiddenSymbol = 0xFFFFFFFCu;
 
   // Values made by one evaluation (objects' parts, arrays' elements): bounded like its steps.
   static uint64_t& constValuesMade();
@@ -916,6 +919,15 @@
   ConstFlow constRangeForIterators(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth, const ConstValue& begin, const ConstValue& end, const Ty* declared, uint32_t name);
 
   ConstFlow constRangeFor(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth);
+
+  // A local's declaration run: its binding pushed on env (a reference's to the place it refers to),
+  // a structured binding's hidden object and names (constBindNames).
+  ConstFlow constDeclare(VariableDecl* v, const TypeContext& ctx, std::vector<ConstBinding>& env, int depth);
+  // The names of `auto [a, b] = e;` once its hidden object is bound at env[hidden]: each refers to
+  // its part (an element, a data member of the class holding them), a tuple-like one is
+  // `auto&& a = get<i>(e)` declared (Walker::tupleBindings). The binding at hidden becomes the
+  // hidden object (constHiddenSymbol, hiddenOf v). False when that is no constant.
+  bool constBindNames(VariableDecl* v, std::vector<ConstBinding>& env, size_t hidden, const TypeContext& ctx, int depth);
 
   // One statement of a body run at compile time (design.md, "Compile-time evaluation", steps 1 to
   // 4): blocks, returns, if and if constexpr, locals, assignments and ++/-- of them as expression
