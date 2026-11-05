@@ -78,7 +78,8 @@ Producing new strings:
   has the same.
 
 `compare(other)`: negative, zero or positive as this string orders before, equal to or after
-other by `<`. `swap(other)`: exchanges the contents.
+other by `<`. `compare(pos, count, other)`: the substring [pos, pos + count), count
+clamped to what there is, compared so; OutOfRange when pos > size(). `swap(other)`: exchanges the contents.
 
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
 bytes), a proper prefix before the longer string; `<=>` orders the same way and gives `>`, `<=`

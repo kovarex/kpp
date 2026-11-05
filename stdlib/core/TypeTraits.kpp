@@ -43,10 +43,12 @@ template<> struct MakeUnsignedHelper<int8_t> { using Type = uint8_t; };
 template<> struct MakeUnsignedHelper<int16_t> { using Type = uint16_t; };
 template<> struct MakeUnsignedHelper<int> { using Type = unsigned int; };
 template<> struct MakeUnsignedHelper<long long> { using Type = unsigned long long; };
+template<> struct MakeUnsignedHelper<long> { using Type = unsigned long; }; // (C's long, a type of its own)
 template<> struct MakeUnsignedHelper<uint8_t> { using Type = uint8_t; };
 template<> struct MakeUnsignedHelper<uint16_t> { using Type = uint16_t; };
 template<> struct MakeUnsignedHelper<unsigned int> { using Type = unsigned int; };
 template<> struct MakeUnsignedHelper<unsigned long long> { using Type = unsigned long long; };
+template<> struct MakeUnsignedHelper<unsigned long> { using Type = unsigned long; };
 
 template<typename T>
 using MakeUnsigned = typename MakeUnsignedHelper<T>::Type;

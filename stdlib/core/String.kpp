@@ -384,6 +384,16 @@ struct String
     return length < otherLength ? -1 : length > otherLength ? 1 : 0;
   }
   int compare(const char* other) const { return this->compare(String(other)); }
+  // The substring [pos, pos + count) (count clamped to what there is) compared with other, as
+  // C++'s compare(pos, count, str); OutOfRange when pos > size().
+  int compare(ContainerSize pos, ContainerSize count, const String& other) const
+  {
+    if (pos > this->size())
+      throwOutOfRange("String::compare: position out of range");
+    ContainerSize available = this->size() - pos;
+    return String(this->data() + pos, count < available ? count : available).compare(other);
+  }
+  int compare(ContainerSize pos, ContainerSize count, const char* other) const { return this->compare(pos, count, String(other)); }
   void swap(String& other)
   {
     String held(move(other));

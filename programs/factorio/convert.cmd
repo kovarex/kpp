@@ -174,6 +174,12 @@ python -I fix-null.py kpp\zero-null.txt kpp || goto :failed
 set L=%WHOLE%\libraries
 %KPPC% --std ..\..\stdlib %CINC% --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-whole.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
 python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
+rem And the Linux branches: Linux's build of the merged checkout (until it compiles, its other errors
+rem are B's list; the warnings of the code it reaches are written all the same).
+if not "%CONVERT_LINUX%"=="0" (
+  %KPPC% --std ..\..\stdlib %CINC% --target linux --sysroot ..\..\compiler\build\sysroots\linux-x86_64 --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
+  python -I fix-null.py kpp\zero-null-linux.txt "%WHOLE%" || goto :failed
+)
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
 rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
 rem libraries and src, not the kpp\Util copy.

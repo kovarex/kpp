@@ -392,7 +392,7 @@
 - #ifdef WIN32
 -   static_assert(sizeof(Path::value_type) == 2, "wchar_t is expected");
 + #if 1 /* kpp: a path is wide text on every platform */
-+   static_assert(sizeof(Path::value_type) == 2, "wchar_t is expected");
++   static_assert(sizeof(Path::value_type) == sizeof(wchar_t), "wchar_t is expected");
 
 @ src/Filesystem/Filesystem.hpp: Path from wide text on every platform (kpp's path is wide everywhere)
 - #ifdef WIN32

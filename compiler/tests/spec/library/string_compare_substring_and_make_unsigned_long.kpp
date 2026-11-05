@@ -1,0 +1,22 @@
+// String::compare(pos, count, other) compares the substring [pos, pos + count) (count clamped to
+// what there is) with other, as C++'s basic_string::compare does, and throws OutOfRange when pos is
+// past the end (the game's SystemUtil, Linux). MakeUnsigned<long> is unsigned long, C's long being
+// a type of its own (CommonUtil's Checks).
+i32 main()
+{
+  String s = "VmPeak: 1234 kB";
+  print(s.compare(0, 7, "VmPeak:") == 0, " ", s.compare(0, 6, "VmPeak:") < 0, " ", s.compare(8, 100, "1234 kB") == 0, "\n");
+  bool thrown = false;
+  try
+  {
+    s.compare(100, 1, "x");
+  }
+  catch (const OutOfRange&)
+  {
+    thrown = true;
+  }
+  print(thrown, "\n");
+  MakeUnsigned<long> u = 3;
+  print(isSame<MakeUnsigned<long>, unsigned long>, " ", isSame<MakeUnsigned<unsigned long>, unsigned long>, " ", u, "\n");
+  return 0;
+}
