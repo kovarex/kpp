@@ -185,22 +185,27 @@ if ($alone.Count -eq 3 -and "$alone" -eq "$after" -and "$alone" -eq "$moved") { 
 else { "FAIL determinism private names: alone '$alone', after another file '$after', elsewhere '$moved'"; $failed++ }
 
 $tree = Join-Path $PSScriptRoot '..\..\programs\factorio\kpp'
+$factorio = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\programs\factorio'))
+# The game's builds' inputs as convert.cmd's: the C include directories and the converted C
+# libraries, a scoped one as its library (--library-root), from link-settings.cmd, which link.cmd and
+# run.cmd share; their paths are programs\factorio's.
+$settings = $null
+function Setting([string]$name)
+{
+  if (-not $script:settings)
+  {
+    $ErrorActionPreference = 'Continue'
+    $script:settings = @(cmd /d /c "cd /d `"$factorio`" && call .\link-settings.cmd > nul && set CINC && set CLIBKPP && set CLIBRARIES" 2>&1 | ForEach-Object { "$_" })
+    $ErrorActionPreference = 'Stop'
+  }
+  $line = $script:settings | Where-Object { $_.StartsWith("$name=") } | Select-Object -First 1
+  if (-not $line) { throw "link-settings.cmd set no $name" }
+  return @($line.Substring($name.Length + 1).Split(' ', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
+    if ($_ -match '^(kpp|native)\\') { Join-Path $factorio $_ } else { $_ } })
+}
 if (Test-Path (Join-Path $tree 'src'))
 {
-  $factorio = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\programs\factorio'))
-  # The headline build's inputs as convert.cmd's (its "full-src codegen errors" line): the C include
-  # directories and the converted C libraries, a scoped one as its library (--library-root), from
-  # link-settings.cmd, which link.cmd and run.cmd share; their paths are programs\factorio's.
-  $ErrorActionPreference = 'Continue'
-  $settings = @(cmd /d /c "cd /d `"$factorio`" && call .\link-settings.cmd > nul && set CINC && set CLIBKPP" 2>&1 | ForEach-Object { "$_" })
-  $ErrorActionPreference = 'Stop'
-  function Setting([string]$name)
-  {
-    $line = $settings | Where-Object { $_.StartsWith("$name=") } | Select-Object -First 1
-    if (-not $line) { throw "link-settings.cmd set no $name" }
-    return @($line.Substring($name.Length + 1).Split(' ', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
-      if ($_ -match '^(kpp|native)\\') { Join-Path $factorio $_ } else { $_ } })
-  }
+  # The headline build (convert.cmd's "full-src codegen errors" line).
   $common = @('--std', "$PSScriptRoot\..\..\stdlib") + (Setting 'CINC') + @(
     '--config', 'finalRelease=false', # (the game's FINAL_RELEASE code)
     '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\crc32fast") +
@@ -223,5 +228,37 @@ if (Test-Path (Join-Path $tree 'src'))
   $irs | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
 }
 else { "skip determinism headline front end: programs\factorio\kpp missing (run convert.cmd)" }
+
+# The game with its unit tests, built as convert.cmd's tests count builds it ("tests errors"), from a
+# factorio-in-kpp checkout (FACTORIO_IN_KPP, as convert.cmd and tests.cmd take it): with -Full alone
+# (the whole game and its tests, about a GB of IR a build). Its report, its errors and its IR at -j 1,
+# 8, 32 and 32 again: SpriteBank.kpp's "a call that did not resolve yet" came in one convert and not
+# in the next of the same tree (A, 2026-11-05), which no check covered.
+$checkout = $env:FACTORIO_IN_KPP
+if ($Full -and $checkout -and (Test-Path (Join-Path $checkout 'tests')))
+{
+  $L = Join-Path $checkout 'libraries'
+  # ($clib, not $l: PowerShell's names ignore case, and $l is $L)
+  $clibs = @(foreach ($clib in (Setting 'CLIBRARIES'))
+  {
+    if (Test-Path (Join-Path $factorio "c-libraries\$clib\interface.txt")) { '--library-root', $clib, "$L\$clib", '--exclude', "$L\$clib\build.kpp" } else { "$L\$clib" }
+  })
+  $common = @('--std', "$PSScriptRoot\..\..\stdlib") + (Setting 'CINC') + @('--ext', '.kpp', '--errors', '0', '--unresolved', '0',
+    "$L\CommonUtil", "$L\Agui", "$L\cxxopts", "$L\StackWalker", "$L\Lua", "$L\crc32fast") + $clibs + @("$L\UnitTest++", "$checkout\src", "$checkout\tests")
+  $started = @()
+  $irs = @()
+  $n = 0
+  foreach ($j in @('1', '8', '32', '32'))
+  {
+    $n++
+    $ir = Join-Path $work "gametests.run$n.ll"
+    $started += Start-Run (@('-j', $j, '--emit-llvm', $ir) + $common) "game tests -j $j (run $n)"
+    $irs += $ir
+  }
+  $runs = @($started | ForEach-Object { Wait-Run $_ })
+  if (Compare-Runs $runs "game tests" $irs) { "ok   determinism game tests (front end, errors and IR at -j 1, 8, 32 and 32: $checkout)" } else { $failed++ }
+  $irs | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
+}
+elseif ($Full) { "skip determinism game tests: no factorio-in-kpp checkout (FACTORIO_IN_KPP)" }
 
 if ($failed -gt 0) { exit 1 }
