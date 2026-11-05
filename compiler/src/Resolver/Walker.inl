@@ -4042,6 +4042,9 @@
     // the left operand as an argument (an lvalue a reference), for a template's deduction.
     FunctionDecl* operatorChosen = nullptr; // overloadedOperator's operator function, null for none
     bool operatorIsMember = false;
+    // overloadedOperator's decision (design.md 24): Function (operatorChosen), Rewritten, Builtin, or
+    // Undecided when it found nothing.
+    OperatorCall operatorCall = OperatorCall::Undecided;
     const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true,
                                  const Ty* lhsOperand = nullptr)
     {
@@ -4052,10 +4055,12 @@
       // The left operand as an argument (an lvalue a reference): a free `Stream& operator<<(Stream&,
       // const char*)` binds the stream lvalue.
       operatorChosen = nullptr;
+      operatorCall = OperatorCall::Undecided;
       if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
       {
         operatorChosen = f;
         operatorIsMember = isMember;
+        operatorCall = OperatorCall::Function;
         // The operands a template deduces from: a member's object is not one of them.
         std::vector<const Ty*> operands;
         if (!isMember)
@@ -4075,18 +4080,27 @@
             if (operatorFunction(P::EqEq, lhs, rhs, token, 2, subst, isMember) || threeWayDefaulted(lhs, rhs, token) ||
                 operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember) || implicitEquality(lhs, rhs, token) ||
                 implicitEquality(rhs, lhs, token))
-              return types.boolType(); // `3 != id` through Id::operator==(int): the operands reversed
+            {
+              operatorCall = OperatorCall::Rewritten; // `3 != id` through Id::operator==(int): the operands reversed
+              return types.boolType();
+            }
             break;
           case P::EqEq:
             if (threeWayDefaulted(lhs, rhs, token) || operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember) ||
                 implicitEquality(lhs, rhs, token) || implicitEquality(rhs, lhs, token))
+            {
+              operatorCall = OperatorCall::Rewritten;
               return types.boolType();
+            }
             break;
           case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
             // `minimum < scale` through scale's operator<=>(const double&) too: C++20's reversed
             // candidate, `0 < (scale <=> minimum)`.
             if (operatorFunction(P::Spaceship, lhs, rhs, token, 2, subst, isMember) || operatorFunction(P::Spaceship, rhs, lhs, token, 2, subst, isMember))
+            {
+              operatorCall = OperatorCall::Rewritten;
               return types.boolType();
+            }
             break;
           case P::Spaceship:
           {
@@ -4098,6 +4112,7 @@
               if (!isMember)
                 operands.push_back(rhs);
               operands.push_back(lhs);
+              operatorCall = OperatorCall::Rewritten;
               return returnTypeOfCall(f, isMember || !reversed.empty() ? &reversed : nullptr, none, nullptr, nullptr, &operands);
             }
             break;
@@ -4112,11 +4127,17 @@
         case P::Assign:                                   // implicit copy/move assignment
           if (l && l->kind == TyKind::Class)
             checkConstModification(token, l, "assignment to");
+          operatorCall = OperatorCall::Builtin;
           return lhs;
-        case P::AndAnd: case P::OrOr: case P::Bang: return types.boolType();
+        case P::AndAnd: case P::OrOr: case P::Bang:
+          operatorCall = OperatorCall::Builtin;
+          return types.boolType();
         case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
           if (l && l->kind == TyKind::Enum)
+          {
+            operatorCall = OperatorCall::Builtin;
             return types.boolType();
+          }
           break;
         default:
           break;
@@ -4151,13 +4172,15 @@
     // A user-defined operator on an enumeration operand (`Flags operator|(Flags, Flags)`) beats the
     // built-in one, which a scoped enum does not even have. Only a free non-template function whose
     // parameters take the enum operands as they are (not through a conversion to some class).
-    const Ty* enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token)
+    const Ty* enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, FunctionDecl** chosen = nullptr)
     {
       Subst subst;
       bool isMember;
       FunctionDecl* f = operatorFunction(op, lhs, rhs, token, 2, subst, isMember);
       if (!f || isMember || !impl.takesEnumOperands(f, lhs, rhs))
         return nullptr;
+      if (chosen)
+        *chosen = f;
       Span<Expr*> none;
       return returnTypeOfCall(f, subst.empty() ? nullptr : &subst, none, nullptr);
     }
@@ -4220,7 +4243,37 @@
       }
     }
 
+    // The type of `lhs op rhs`, and what the operator calls recorded on b (design.md 24).
     const Ty* typeOfBinary(BinaryExpr* b)
+    {
+      OperatorCall call = OperatorCall::Undecided;
+      FunctionDecl* callee = nullptr;
+      bool member = false;
+      const Ty* t = typeOfBinaryOperator(b, call, callee, member);
+      recordOperatorCall(b, t, b->lhs, b->rhs, call, callee, member);
+      return t;
+    }
+
+    // Records on an operator's node what it calls: call as the class branch decided it, else the
+    // built-in operator when both operands are known and not dependent (a template's own walk leaves
+    // its dependent operators undecided). A probe of shared nodes records nothing.
+    template<class E>
+    void recordOperatorCall(E* e, const Ty* t, Expr* lhs, Expr* rhs, OperatorCall call, FunctionDecl* callee, bool member)
+    {
+      if (probesSharedNodes())
+        return;
+      if (call == OperatorCall::Undecided && t && t->isKnown() && !types.isDependent(t))
+      {
+        auto plain = [&](Expr* x) { return !x || (x->ty && x->ty->isKnown() && !types.isDependent(x->ty)); };
+        if (plain(lhs) && plain(rhs))
+          call = OperatorCall::Builtin;
+      }
+      e->call = call;
+      e->callee = call == OperatorCall::Function ? callee : nullptr;
+      e->calleeMember = call == OperatorCall::Function && member;
+    }
+
+    const Ty* typeOfBinaryOperator(BinaryExpr* b, OperatorCall& call, FunctionDecl*& callee, bool& member)
     {
       const Ty* l = walkExpr(b->lhs);
       const Ty* r = walkExpr(b->rhs);
@@ -4270,6 +4323,9 @@
           checkClosureTo(b->rhs, l, b->token); // `later = [=] { ... text ... }`
         if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
         {
+          call = operatorCall;
+          callee = operatorChosen;
+          member = operatorIsMember;
           if (FunctionDecl* f = operatorChosen)
           {
             // `out << point` through `operator<<(String&, Text)`: the right operand packed (packText).
@@ -4323,8 +4379,12 @@
       if (ls->kind == TyKind::Param || rs->kind == TyKind::Param)
         return ls->kind == TyKind::Param ? ls : rs;
       if ((ls->kind == TyKind::Enum || rs->kind == TyKind::Enum) && op != P::Assign)
-        if (const Ty* user = enumOperator(op, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types), b->token))
+        if (const Ty* user = enumOperator(op, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types), b->token, &callee))
+        {
+          call = OperatorCall::Function;
+          member = false;
           return user;
+        }
       switch (op)
       {
         case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
@@ -4415,7 +4475,18 @@
       return types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
     }
 
+    // The type of `op operand`, and what the operator calls recorded on u (design.md 24).
     const Ty* typeOfUnary(UnaryExpr* u)
+    {
+      OperatorCall call = OperatorCall::Undecided;
+      FunctionDecl* callee = nullptr;
+      bool member = false;
+      const Ty* t = typeOfUnaryOperator(u, call, callee, member);
+      recordOperatorCall(u, t, u->operand, nullptr, call, callee, member);
+      return t;
+    }
+
+    const Ty* typeOfUnaryOperator(UnaryExpr* u, OperatorCall& call, FunctionDecl*& callee, bool& member)
     {
       if (!u->isKeyword && P(u->op) == P::Ellipsis && u->postfix)
         if (const Ty* pack = typeOfExpansion(u))
@@ -4450,13 +4521,23 @@
         {
           if (!types.isDependent(s))
             if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
+            {
+              call = operatorCall;
+              callee = operatorChosen;
+              member = operatorIsMember;
               return r;
+            }
           return types.pointer(s);
         }
         if (types.isDependent(s))
           return types.unknown();
         if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
+        {
+          call = operatorCall;
+          callee = operatorChosen;
+          member = operatorIsMember;
           return r;
+        }
         // No operator function: the built-in one on the operand's scalar conversion (`-speed`
         // with a Const<double>); ++ and -- change the object itself.
         const Ty* c = op == P::PlusPlus || op == P::MinusMinus ? nullptr : builtinOperand(t);

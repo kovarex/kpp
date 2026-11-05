@@ -469,6 +469,8 @@ Expr* InstanceCopier::expr(const Expr* e)
     {
       auto* c = raw(static_cast<const UnaryExpr*>(e));
       c->operand = expr(c->operand);
+      c->call = OperatorCall::Undecided; // decided by the copy's own walk
+      c->callee = nullptr;
       out = c;
       break;
     }
@@ -477,6 +479,8 @@ Expr* InstanceCopier::expr(const Expr* e)
       auto* c = raw(static_cast<const BinaryExpr*>(e));
       c->lhs = expr(c->lhs);
       c->rhs = expr(c->rhs);
+      c->call = OperatorCall::Undecided; // decided by the copy's own walk
+      c->callee = nullptr;
       out = c;
       break;
     }

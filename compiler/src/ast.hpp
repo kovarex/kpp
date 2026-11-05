@@ -385,8 +385,15 @@ struct CallExpr : Expr
 struct IndexExpr : Expr { Expr* base; Span<Expr*> args; };
 // dynamicMember: `object.[m]`, the member a reflection descriptor names (design.md 8.3); member is then empty.
 struct MemberExpr : Expr { Expr* base; QualifiedName member; P op; Decl* resolved = nullptr; Expr* dynamicMember = nullptr; };
-struct UnaryExpr : Expr { Expr* operand; uint32_t op; bool isKeyword; bool postfix; };
-struct BinaryExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; bool isKeyword; };
+// What the checker decided an operator calls (design.md 24: decisions are made once), written by the
+// walk that types the node, so per instance on an instance's own copy. Undecided: no walk decided it
+// (a template's dependent operand, a node codegen made). Builtin: no operator function, the built-in
+// operator (on the operands' scalar conversions for a class). Function: callee, a member of the left
+// operand's class when calleeMember. Rewritten: a comparison C++ rewrites (`a != b` as `!(a == b)`,
+// reversed operands, `<=>`), its function not recorded yet.
+enum class OperatorCall : uint8_t { Undecided, Builtin, Function, Rewritten };
+struct UnaryExpr : Expr { Expr* operand; uint32_t op; bool isKeyword; bool postfix; OperatorCall call = OperatorCall::Undecided; bool calleeMember = false; FunctionDecl* callee = nullptr; };
+struct BinaryExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; bool isKeyword; OperatorCall call = OperatorCall::Undecided; bool calleeMember = false; FunctionDecl* callee = nullptr; };
 struct ConditionalExpr : Expr { Expr* cond; Expr* then; Expr* else_; }; // then == null for Elvis.
 struct CastExpr : Expr { Type* type; Expr* operand; };
 struct NamedCastExpr : Expr { Kw castKind; Type* type; Expr* operand; };
