@@ -80,7 +80,7 @@
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
-    bool deferLink = false;        // --defer-link: the link command written for kpp to run (project.cpp), not run
+    bool deferLink = false;        // --defer-link: the link command written for kpp to run (Project/Build.cpp), not run
     std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)

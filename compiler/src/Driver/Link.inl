@@ -1,7 +1,7 @@
 // The driver: the link's command and flags. Part of main.cpp, included in its namespace there (a
 // file of its own since 2026-11-05, moved without a change).
   // --defer-link: the link, written for kpp to run once the program's C libraries, built alongside,
-  // are there (project.cpp's buildProgram): <exe>.link.command, and <exe>.link.pending, which says
+  // are there (Project/Build.cpp's buildProgram): <exe>.link.command, and <exe>.link.pending, which says
   // this build's objects are new (a replayed build leaves it as it was).
   void deferLinkCommand(const Options& options, const std::string& command)
   {

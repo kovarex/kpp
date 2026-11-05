@@ -99,7 +99,7 @@ void putKeptState(std::shared_ptr<KeptState> state)
 }
 
 // compile's options and how many values each takes, which a project's command line passes on to it
-// (project.cpp); compile's own loop below reads them. An option compile reads and this table lacks is
+// (Project/Project.cpp); compile's own loop below reads them. An option compile reads and this table lacks is
 // an error in a project's build.
 namespace
 {

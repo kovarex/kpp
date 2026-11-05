@@ -566,7 +566,7 @@ int compile(int argc, char** argv)
       if (!o.empty())
         outputs.push_back(std::filesystem::absolute(o).string());
     // What the build leaves: its outputs, but under --defer-link the link command in place of the
-    // executable, which kpp links (and links again when it is missing, project.cpp), and the modules'
+    // executable, which kpp links (and links again when it is missing, Project/Build.cpp), and the modules'
     // objects and hashes beside it.
     std::function<std::vector<std::string>()> left = [emitLLVM = options.emitLLVM, exe = options.exe, deferLink = options.deferLink]
     {
