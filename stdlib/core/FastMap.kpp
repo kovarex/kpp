@@ -39,16 +39,14 @@ BTreeNode<E>** bTreeChildren(BTreeNode<E>* node) { return ((BTreeInterior<E>*)no
 // BTreeIterator<const E> is the const_iterator: the same position, its entry const. An iterator
 // converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename E>
-struct BTreeIterator
+class BTreeIterator
 {
+public:
   using value_type = RemoveConst<E>;
   using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = BidirectionalIteratorTag;
-
-  BTreeNode<RemoveConst<E>>* node = nullptr;
-  i32 index = 0;
 
   BTreeIterator() {}
   BTreeIterator(BTreeNode<RemoveConst<E>>* node, i32 index) : node(node), index(index) {}
@@ -126,6 +124,15 @@ struct BTreeIterator
     --*this;
     return before;
   }
+
+private:
+  template<typename F> friend class BTreeIterator;
+  template<typename E2, typename K, typename KeyOf> friend class BTree;
+  template<typename K, typename V> friend class FastMap;
+  template<typename T> friend class FastSet;
+
+  BTreeNode<RemoveConst<E>>* node = nullptr;
+  i32 index = 0;
 };
 
 // The tree behind FastMap and FastSet: entries E, ordered by their keys KeyOf::of(entry), of type K.

@@ -14,15 +14,14 @@ struct ForwardNode : ForwardLinks
 };
 
 template<typename T>
-struct ForwardIterator
+class ForwardIterator
 {
+public:
   using value_type = T;
   using difference_type = i64;
   using pointer = T*;
   using reference = T&;
   using iterator_category = ForwardIteratorTag;
-
-  ForwardLinks* node = nullptr;
 
   ForwardIterator() {}
   explicit ForwardIterator(ForwardLinks* node) : node(node) {}
@@ -42,6 +41,12 @@ struct ForwardIterator
     this->node = this->node->next;
     return before;
   }
+
+private:
+  template<typename F> friend class ForwardIterator;
+  template<typename U> friend class ForwardList;
+
+  ForwardLinks* node = nullptr;
 };
 
 template<typename T>

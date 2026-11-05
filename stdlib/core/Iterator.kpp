@@ -31,15 +31,14 @@ struct IteratorTraits<T*>
 // element out instead of copying it. It is of It's category and has the operations of it: the
 // steps back and the random access ones exist for an It that has them.
 template<typename It>
-struct MoveIterator
+class MoveIterator
 {
+public:
   using value_type = typename IteratorTraits<It>::value_type;
   using difference_type = i64;
   using pointer = typename IteratorTraits<It>::pointer;
   using reference = typename IteratorTraits<It>::value_type&&;
   using iterator_category = typename IteratorTraits<It>::iterator_category;
-
-  It current;
 
   MoveIterator() : current() {}
   explicit MoveIterator(It it) : current(it) {}
@@ -88,6 +87,11 @@ struct MoveIterator
   bool operator<=(const MoveIterator<It>& other) const { return this->current <= other.current; }
   bool operator>(const MoveIterator<It>& other) const { return this->current > other.current; }
   bool operator>=(const MoveIterator<It>& other) const { return this->current >= other.current; }
+
+protected: // as std::move_iterator's current
+  template<typename U> friend class MoveIterator;
+
+  It current;
 };
 
 template<typename It>

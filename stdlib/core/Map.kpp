@@ -322,15 +322,14 @@ void rbEraseAndRebalance(RbNodeBase* node, RbNodeBase& header)
 // const_iterator: the same position, its entry const. An iterator converts to it implicitly, and
 // back only explicitly (erase(const_iterator) reaches the node so).
 template<typename E>
-struct RbIterator
+class RbIterator
 {
+public:
   using value_type = RemoveConst<E>;
   using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = BidirectionalIteratorTag;
-
-  RbNodeBase* node = nullptr;
 
   RbIterator() {}
   explicit RbIterator(RbNodeBase* node) : node(node) {}
@@ -369,6 +368,16 @@ struct RbIterator
     this->node = rbPrevious(this->node);
     return before;
   }
+
+private:
+  template<typename F> friend class RbIterator;
+  template<typename E2, typename K, typename KeyOf, typename Compare> friend class RbTree;
+  template<typename K, typename V, typename Compare> friend class Map;
+  template<typename T, typename Compare> friend class Set;
+  template<typename K, typename V, typename Compare> friend class MultiMap;
+  template<typename T, typename Compare> friend class MultiSet;
+
+  RbNodeBase* node = nullptr;
 };
 
 // The tree behind the four containers: entries E ordered by their keys KeyOf::of(entry), of type

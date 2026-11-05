@@ -387,16 +387,14 @@ protected: // a derived class may see the blocks (tests/run/deque.kpp)
 // DequeIterator<const T> is the const_iterator: the same position, its element const. An iterator
 // converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename T>
-struct DequeIterator
+class DequeIterator
 {
+public:
   using value_type = RemoveConst<T>;
   using difference_type = i64;
   using pointer = T*;
   using reference = T&;
   using iterator_category = RandomAccessIteratorTag;
-
-  Deque<RemoveConst<T>>* deque = nullptr;
-  ContainerSize index = 0;
 
   DequeIterator() {}
   DequeIterator(Deque<RemoveConst<T>>* deque, ContainerSize index) : deque(deque), index(index) {}
@@ -463,6 +461,13 @@ struct DequeIterator
     this->index -= offset;
     return *this;
   }
+
+private:
+  template<typename F> friend class DequeIterator;
+  template<typename U> friend class Deque;
+
+  Deque<RemoveConst<T>>* deque = nullptr;
+  ContainerSize index = 0;
 };
 
 // First in, first out: push at the back, pop at the front.

@@ -30,19 +30,14 @@ u8 hashTagOf(usize hash) { return (u8)(0x80 | (hash >> 57)); }
 // HashIterator<const E, stable> is the const_iterator: the same position, its entry const. An
 // iterator converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename E, bool stable>
-struct HashIterator
+class HashIterator
 {
+public:
   using value_type = RemoveConst<E>;
   using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = ForwardIteratorTag;
-
-  u8* tags = nullptr;
-  char* slots = nullptr;
-  ContainerSize index = 0;
-  ContainerSize capacity = 0;
-  E* node = nullptr; // stable: the entry at index, or null at end()
 
   HashIterator() {}
   template<typename F> requires (isSame<F, RemoveConst<E>> && !isSame<F, E>)
@@ -93,6 +88,18 @@ struct HashIterator
     if constexpr (stable)
       this->node = this->index < this->capacity ? ((E**)this->slots)[this->index] : nullptr;
   }
+
+private:
+  template<typename F, bool s> friend class HashIterator;
+  template<typename E2, typename K, typename KeyOf, typename Hasher, typename KeyEqual, bool s> friend class HashTable;
+  template<typename K, typename V, typename Hasher, typename KeyEqual, bool s> friend class HashMap;
+  template<typename T, typename Hasher, typename KeyEqual, bool s> friend class HashSet;
+
+  u8* tags = nullptr;
+  char* slots = nullptr;
+  ContainerSize index = 0;
+  ContainerSize capacity = 0;
+  E* node = nullptr; // stable: the entry at index, or null at end()
 };
 
 // The table behind the four containers: entries E with keys KeyOf::of(entry) of type K, in nodes

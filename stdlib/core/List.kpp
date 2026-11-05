@@ -34,15 +34,14 @@ void listUnlink(ListLinks* node)
 // ListIterator<const T> is the const_iterator: the same position, its element const. An iterator
 // converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename T>
-struct ListIterator
+class ListIterator
 {
+public:
   using value_type = RemoveConst<T>;
   using difference_type = i64;
   using pointer = T*;
   using reference = T&;
   using iterator_category = BidirectionalIteratorTag;
-
-  ListLinks* node = nullptr;
 
   ListIterator() {}
   explicit ListIterator(ListLinks* node) : node(node) {}
@@ -81,6 +80,12 @@ struct ListIterator
     this->node = this->node->prev;
     return before;
   }
+
+private:
+  template<typename U> friend class List;
+  template<typename F> friend class ListIterator;
+
+  ListLinks* node = nullptr;
 };
 
 template<typename T>

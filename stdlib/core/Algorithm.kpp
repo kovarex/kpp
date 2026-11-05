@@ -679,16 +679,15 @@ void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
 // (a pointer, a Vector's or a Deque's iterator) it has the random-access operations as well,
 // reversed: `it + n` is n elements nearer the front, `a < b` when a is nearer the back.
 template<typename It>
-struct ReverseIterator
+class ReverseIterator
 {
+public:
   using iterator_type = It;
   using value_type = typename IteratorTraits<It>::value_type;
   using difference_type = typename IteratorTraits<It>::difference_type;
   using pointer = typename IteratorTraits<It>::pointer;
   using reference = typename IteratorTraits<It>::reference;
   using iterator_category = typename IteratorTraits<It>::iterator_category;
-
-  It current; // one past the element *this refers to
 
   ReverseIterator() : current() {}
   explicit ReverseIterator(It it) : current(it) {}
@@ -769,6 +768,11 @@ struct ReverseIterator
   bool operator<=(const ReverseIterator<U>& other) const { return !(this->current < other.current); }
   template<typename U>
   bool operator>=(const ReverseIterator<U>& other) const { return !(other.current < this->current); }
+
+protected: // as std::reverse_iterator's current
+  template<typename U> friend class ReverseIterator;
+
+  It current; // one past the element *this refers to
 };
 
 // n + it, as it + n.
