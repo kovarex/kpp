@@ -1,0 +1,34 @@
+// HTML that a template inserts as it is, unescaped: a rendered template, the markdown library's
+// output. Made only on purpose, by SafeHtml::trusted or SafeHtml::escape (and HtmlTemplate::render,
+// through trusted), so text never reaches a page unescaped by accident.
+class SafeHtml
+{
+public:
+  // HTML its writer vouches for: a constant, a template's rendering.
+  static SafeHtml trusted(StringView html)
+  {
+    SafeHtml safe;
+    safe.html = String(html);
+    return safe;
+  }
+  // The text, escaped.
+  static SafeHtml escape(StringView text)
+  {
+    SafeHtml safe;
+    htmlAppendEscaped(safe.html, text);
+    return safe;
+  }
+
+  // Appends more HTML, as `<<` appends to a String.
+  SafeHtml& operator<<(const SafeHtml& more)
+  {
+    this->html << more.html;
+    return *this;
+  }
+  bool empty() const { return this->html.empty(); }
+  const String& str() const { return this->html; }
+  bool operator==(const SafeHtml& other) const = default;
+
+private:
+  String html;
+};

@@ -22,7 +22,7 @@ void handle(const http::HttpRequest& request, http::HttpResponse& response)
     response.redirect("/");
     return;
   }
-  response.body = page(request).html;
+  response.body = page(request).str();
 }
 
 int main()

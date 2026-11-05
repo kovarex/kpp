@@ -2,52 +2,6 @@
 // constructor reads the template's HTML and is constexpr, so a template made as a constexpr
 // variable is checked when the program is compiled: a malformed one is a compile error.
 
-// A malformed template, or a render that does not fit its template. The message starts with
-// "line:column: " for a template's error.
-class HtmlTemplateError : public RuntimeError
-{
-public:
-  HtmlTemplateError() {}
-  explicit HtmlTemplateError(const String& message) : RuntimeError(message) {}
-};
-
-// What a part of a template is: its own text, or a hole and how its value is written.
-enum class HtmlHole : uint8_t
-{
-  literal,   // the template's text, as it is
-  text,      // in an element's text: escaped, or a SafeHtml as it is
-  attribute, // in a quoted attribute value: escaped
-  urlStart,  // the start of a URL attribute's value (href, src...): a URL whose scheme is checked
-  urlPath,   // later in a URL, before any '?' or '#': percent-encoded, '/' kept
-  urlQuery,  // in a URL's query or fragment: percent-encoded
-};
-
-struct HtmlTemplatePart
-{
-  int start;  // in the template's text; a hole's name for a hole
-  int length;
-  HtmlHole kind;
-};
-
-constexpr int htmlTemplateMaxParts = 256;
-constexpr int htmlTemplateMaxDepth = 64;
-
-// A value for a hole: text, escaped where it goes, or SafeHtml, inserted as it is (in an element's
-// text only).
-struct HtmlArgument
-{
-  const char* name;
-  String value;
-  bool safe = false;
-
-  HtmlArgument(const char* name, StringView value) : name(name), value(value) {}
-  HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
-  HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
-  HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.html), safe(true) {}
-  HtmlArgument(const char* name, int value) : name(name), value(toString(value)) {}
-  HtmlArgument(const char* name, long long value) : name(name), value(toString(value)) {}
-};
-
 void htmlTemplateFail(const char* text, int offset, const char* what)
 {
   int line = 1;
@@ -65,17 +19,9 @@ void htmlTemplateFail(const char* text, int offset, const char* what)
   throw HtmlTemplateError(format("{}:{}: {}", line, column, StringView(what)));
 }
 
-struct HtmlTemplate
+class HtmlTemplate
 {
-  const char* text;
-  int partCount = 0;
-  HtmlTemplatePart parts[256];
-  // While reading: the literal text not yet added, and the open elements' names.
-  int literalStart = 0;
-  int depth = 0;
-  int openStart[64];
-  int openLength[64];
-
+public:
   constexpr HtmlTemplate(const char* text) : text(text)
   {
     int i = 0;
@@ -97,9 +43,9 @@ struct HtmlTemplate
   // takes, throws HtmlTemplateError.
   SafeHtml render(InitializerList<HtmlArgument> arguments) const
   {
-    SafeHtml out;
-    this->renderTo(out.html, arguments);
-    return out;
+    String out;
+    this->renderTo(out, arguments);
+    return SafeHtml::trusted(out);
   }
 
   void renderTo(String& out, InitializerList<HtmlArgument> arguments) const
@@ -153,6 +99,9 @@ struct HtmlTemplate
     }
   }
 
+  // How many parts the template was read into: its literal texts and holes.
+  constexpr int countParts() const { return this->partCount; }
+
   // The holes' names, in order, with repeats.
   Vector<String> holes() const
   {
@@ -163,6 +112,7 @@ struct HtmlTemplate
     return names;
   }
 
+private:
   // --- reading the template ---
 
   void fail(int offset, const char* what) const { htmlTemplateFail(this->text, offset, what); }
@@ -210,7 +160,6 @@ struct HtmlTemplate
 
   static bool isSpace(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
   static bool isNameChar(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'; }
-  static char lower(char c) { return c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c; }
 
   // Whether the text at start, length characters, is the word (lowercase), ignoring case.
   bool is(int start, int length, const char* word) const
@@ -221,7 +170,7 @@ struct HtmlTemplate
     if (n != length)
       return false;
     for (int k = 0; k < n; ++k)
-      if (HtmlTemplate::lower(this->text[start + k]) != word[k])
+      if (htmlLower(this->text[start + k]) != word[k])
         return false;
     return true;
   }
@@ -229,7 +178,7 @@ struct HtmlTemplate
   bool startsWith(int i, const char* word) const
   {
     for (int k = 0; word[k]; ++k)
-      if (HtmlTemplate::lower(this->text[i + k]) != word[k])
+      if (htmlLower(this->text[i + k]) != word[k])
         return false;
     return true;
   }
@@ -293,7 +242,7 @@ struct HtmlTemplate
       int top = this->depth - 1;
       bool same = this->openLength[top] == nameLength;
       for (int c = 0; same && c < nameLength; ++c)
-        same = HtmlTemplate::lower(this->text[this->openStart[top] + c]) == HtmlTemplate::lower(this->text[nameStart + c]);
+        same = htmlLower(this->text[this->openStart[top] + c]) == htmlLower(this->text[nameStart + c]);
       if (!same)
         this->fail(i, "an end tag that does not close the element open here (every element but the void ones is closed explicitly)");
       --this->depth;
@@ -393,7 +342,7 @@ struct HtmlTemplate
       if (this->is(nameStart, nameLength, u))
         url = true;
     bool forbidden = this->is(nameStart, nameLength, "style") || this->is(nameStart, nameLength, "srcset") || this->is(nameStart, nameLength, "srcdoc") ||
-                     (nameLength > 2 && HtmlTemplate::lower(this->text[nameStart]) == 'o' && HtmlTemplate::lower(this->text[nameStart + 1]) == 'n');
+                     (nameLength > 2 && htmlLower(this->text[nameStart]) == 'o' && htmlLower(this->text[nameStart + 1]) == 'n');
     bool query = false;
     while (this->text[k] != quote)
     {
@@ -413,6 +362,15 @@ struct HtmlTemplate
     }
     return k + 1;
   }
+
+  const char* text;
+  int partCount = 0;
+  HtmlTemplatePart parts[256];
+  // While reading: the literal text not yet added, and the open elements' names.
+  int literalStart = 0;
+  int depth = 0;
+  int openStart[64];
+  int openLength[64];
 };
 
 // Whether a URL's scheme, if it has one, is http, https or mailto: the scheme is what comes before
@@ -428,7 +386,7 @@ bool htmlUrlIsSafe(StringView url)
     {
       String scheme;
       for (int k = 0; k < i; ++k)
-        scheme.append(HtmlTemplate::lower(url[k]));
+        scheme.append(htmlLower(url[k]));
       return scheme == "http" || scheme == "https" || scheme == "mailto";
     }
   }

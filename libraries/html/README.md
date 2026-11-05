@@ -10,7 +10,7 @@ constexpr HtmlTemplate page(R"(<!DOCTYPE html>
 
 SafeHtml items;
 for (const Library& library : libraries)
-  items.append(libraryCard.render({{"url", "/library/" + library.name}, {"name", library.name}, {"summary", library.summary}}));
+  items << libraryCard.render({{"url", "/library/" + library.name}, {"name", library.name}, {"summary", library.summary}});
 String html = page.render({{"title", "Libraries"}, {"items", items}}).html;
 ```
 
@@ -57,7 +57,7 @@ in a name), a URL with another scheme, and `SafeHtml` outside an element's text.
 | | |
 |---|---|
 | `String htmlEscape(StringView)`, `htmlAppendEscaped(String&, StringView)` | `& < > " '` as `&amp; &lt; &gt; &quot; &#39;` |
-| `SafeHtml` | HTML inserted as it is: `SafeHtml::trusted(html)`, `SafeHtml::escape(text)`, `append`, `.html` |
+| `SafeHtml` | HTML inserted as it is: `SafeHtml::trusted(html)`, `SafeHtml::escape(text)`, `<<` to append, `.str()` |
 | `constexpr HtmlTemplate(const char* text)` | reads the template; throws `HtmlTemplateError` when it runs at run time. The text must outlive the template (a literal does) |
 | `SafeHtml render({{"name", value}, ...}) const`, `renderTo(String&, ...)` | the template with its holes filled |
 | `Vector<String> holes() const` | the holes' names in order |

@@ -27,7 +27,7 @@ test "a library's releases"
   check(siteLatestVersion(library) == "1.0.0");
   SiteOptions options;
   Site site(options);
-  String table = site.releaseTable(library).html;
+  String table = site.releaseTable(library).str();
   check(table.find("<td>1.1.0</td><td>2026-11-02T00:00:00Z</td><td>0.1.0</td><td><a href=\"https://kpp.net/registry/archives/bb/bb.zip\">archive</a></td>"
                    "<td><code>sha256-tree:bb</code></td><td>broken</td>") != String::npos);
   // The newest release first.

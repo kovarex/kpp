@@ -11,14 +11,14 @@ test "escaping"
   check(htmlEscape("a < b && c > \"d\" 'e'") == "a &lt; b &amp;&amp; c &gt; &quot;d&quot; &#39;e&#39;");
   check(htmlEscape("") == "");
   check(htmlEscape("plain \xC3\xA9") == "plain \xC3\xA9");
-  check(SafeHtml::escape("<b>").html == "&lt;b&gt;");
+  check(SafeHtml::escape("<b>").str() == "&lt;b&gt;");
 }
 
 test "a template made at compile time"
 {
-  static_assert(htmlTestCard.partCount == 9);
+  static_assert(htmlTestCard.countParts() == 9);
   SafeHtml card = htmlTestCard.render({{"kind", "featured"}, {"url", "https://kpp.net/json"}, {"name", "json <1.0>"}, {"summary", "\"fast\" & strict"}});
-  check(card.html == "<div class=\"card featured\"><a href=\"https://kpp.net/json\">json &lt;1.0&gt;</a><p>&quot;fast&quot; &amp; strict</p></div>");
+  check(card.str() == "<div class=\"card featured\"><a href=\"https://kpp.net/json\">json &lt;1.0&gt;</a><p>&quot;fast&quot; &amp; strict</p></div>");
   Vector<String> holes = htmlTestCard.holes();
   check(holes.size() == 4);
   check(holes[0] == "kind");
@@ -28,19 +28,19 @@ test "a template made at compile time"
 test "holes in a URL"
 {
   SafeHtml link = htmlTestSearch.render({{"name", "a b/c"}, {"query", "x&y=1/2"}, {"part", "h\xC3\xA9"}});
-  check(link.html == "<a href=\"/library/a%20b/c?q=x%26y%3D1%2F2#h%C3%A9\">x</a>");
+  check(link.str() == "<a href=\"/library/a%20b/c?q=x%26y%3D1%2F2#h%C3%A9\">x</a>");
 }
 
 test "SafeHtml goes in as it is, and a page nests templates"
 {
   SafeHtml body = SafeHtml::trusted("<p>made by <b>markdown</b></p>");
   SafeHtml page = htmlTestPage.render({{"title", "kpp & you"}, {"content", body}});
-  check(page.html == "<!DOCTYPE html>\n<html><head><title>kpp &amp; you</title><style>p { color: red; }</style></head><body><!-- a comment --><p>made by "
+  check(page.str() == "<!DOCTYPE html>\n<html><head><title>kpp &amp; you</title><style>p { color: red; }</style></head><body><!-- a comment --><p>made by "
                      "<b>markdown</b></p><br><img src=\"logo.png\" alt=\"kpp &amp; you\"/></body></html>");
   SafeHtml list;
   for (const char* name : {"json", "sha256"})
-    list.append(htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}}));
-  check(list.html.find("<a href=\"/sha256\">sha256</a>") != String::npos);
+    list << htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}});
+  check(list.str().find("<a href=\"/sha256\">sha256</a>") != String::npos);
 }
 
 // The error's message for a template made at run time, "" when it is fine.

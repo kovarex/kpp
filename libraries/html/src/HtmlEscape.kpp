@@ -1,4 +1,4 @@
-// Escaping text for HTML, and HTML that is already safe.
+// Escaping text for HTML.
 
 // The text with & < > " ' as character references: safe in an element's text and in a quoted
 // attribute value.
@@ -8,6 +8,9 @@ String htmlEscape(StringView text)
   htmlAppendEscaped(out, text);
   return out;
 }
+
+// An ASCII letter in lower case; any other character as it is.
+constexpr char htmlLower(char c) { return c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c; }
 
 void htmlAppendEscaped(String& out, StringView text)
 {
@@ -28,30 +31,3 @@ void htmlAppendEscaped(String& out, StringView text)
       out.append(c);
   }
 }
-
-// HTML that a template inserts as it is, unescaped: a rendered template, the markdown library's
-// output. Made only on purpose, by SafeHtml::trusted or by HtmlTemplate::render.
-struct SafeHtml
-{
-  String html;
-
-  SafeHtml() {}
-  static SafeHtml trusted(StringView html)
-  {
-    SafeHtml safe;
-    safe.html = String(html);
-    return safe;
-  }
-  // The text, escaped.
-  static SafeHtml escape(StringView text)
-  {
-    SafeHtml safe;
-    htmlAppendEscaped(safe.html, text);
-    return safe;
-  }
-
-  void append(const SafeHtml& more) { this->html.append(more.html); }
-  bool empty() const { return this->html.empty(); }
-  const String& str() const { return this->html; }
-  bool operator==(const SafeHtml& other) const { return this->html == other.html; }
-};

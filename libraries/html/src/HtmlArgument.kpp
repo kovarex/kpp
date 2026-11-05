@@ -1,0 +1,15 @@
+// A value for a hole: text, escaped where it goes, or SafeHtml, inserted as it is (in an element's
+// text only).
+struct HtmlArgument
+{
+  HtmlArgument(const char* name, StringView value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.str()), safe(true) {}
+  HtmlArgument(const char* name, int value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, long long value) : name(name), value(toString(value)) {}
+
+  const char* name;
+  String value;
+  bool safe = false;
+};

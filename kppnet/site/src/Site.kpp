@@ -189,7 +189,7 @@ struct Site
                {"source", this->options.sourceUrl},
                {"content", content},
                {"commit", this->options.commit.empty() ? String("the working tree") : this->options.commit}})
-      .html;
+      .str();
   }
 
   html::SafeHtml renderMarkdown(StringView page, StringView text)
@@ -220,7 +220,7 @@ struct Site
       this->htmlPaths.push_back(html);
       this->htmlTexts.push_back(pageHtml);
       if (page.startsWith("docs/"))
-        documents.append(siteDocumentItem.render({{"link", url::urlEncodePath(html)}, {"title", title}, {"path", page}}));
+        documents << siteDocumentItem.render({{"link", url::urlEncodePath(html)}, {"title", title}, {"path", page}});
     }
     this->write("index.html", this->pageHtml("index.html", "kpp", siteHome.render({{"documents", documents}})));
     this->write("style.css", siteStyle);
@@ -290,7 +290,7 @@ struct Site
       String readme = this->path("libraries/" + name + "/README.md");
       String summary = siteIsFile(readme) ? siteSummary(siteReadFile(readme)) : String();
       String page = "libraries/" + name + ".html";
-      rows.append(siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}}));
+      rows << siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}});
       json::JsonValue item;
       item.set("name", name);
       item.set("version", latest);
@@ -313,12 +313,12 @@ struct Site
     {
       const json::JsonValue& r = releases[i];
       const json::JsonValue* yanked = r.find("yanked");
-      rows.append(siteReleaseRow.render({{"version", r["version"].asString()},
-                                          {"published", r["published"].asString()},
-                                          {"kpp", r["kpp"].asString()},
-                                          {"archive", this->options.registryUrl + r["archive"].asString()},
-                                          {"tree", r["tree"].asString()},
-                                          {"yanked", yanked && !yanked->isNull() ? yanked->asString() : String()}}));
+      rows << siteReleaseRow.render({{"version", r["version"].asString()},
+                                     {"published", r["published"].asString()},
+                                     {"kpp", r["kpp"].asString()},
+                                     {"archive", this->options.registryUrl + r["archive"].asString()},
+                                     {"tree", r["tree"].asString()},
+                                     {"yanked", yanked && !yanked->isNull() ? yanked->asString() : String()}});
     }
     return siteReleaseTable.render({{"rows", rows}});
   }
