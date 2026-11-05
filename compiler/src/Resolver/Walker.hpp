@@ -161,6 +161,12 @@
     // two overloads both non-const), where the call was left unresolved, codegen's error.
     void checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
                                    const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token);
+    // A member call none of whose overloads took the arguments, left unresolved (codegen could only
+    // say it does not support it): "no overload of String::find takes (const char[7], int32, int32)",
+    // when the object's and the arguments' types are all known and none is dependent, and every
+    // candidate is a plain function (a template's deduction pickOverload does not make, codegen may).
+    void reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
+                                const std::vector<const Ty*>& argTypes, uint32_t token);
 
     // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
     // `f(long)` beside `f(int)`, one function in kpp, design.md "Types") is an error at the later

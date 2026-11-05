@@ -214,6 +214,27 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
       impl.reportCheckerError(file, token, message);
     return;
   }
+  if (name.parts.size() > 1 && !name.typeQualifier)
+  {
+    // `filesystem::recursive_directory_iterator`: a name its namespace does not declare (G's stdlib
+    // comparison, 2026-11-05: codegen's "a range of unknown type" was all that was said). Only a
+    // qualifier that is a namespace: a class's members are for the member lookup (bases that depend
+    // on a template, an instance's specialization) to judge.
+    QualifiedName qualifier = name;
+    qualifier.parts.count -= 1;
+    Lookup q = impl.lookupQualified(qualifier, scope, &locals, 0, activeSubst);
+    if (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith)
+      return;
+    std::string spelledName;
+    for (size_t i = 0; i < name.parts.size(); ++i)
+      spelledName += (i ? "::" : name.global ? "::" : "") + std::string(name.parts[i].symbol == UINT32_MAX ? "?" : symbols.name(name.parts[i].symbol));
+    std::string message = "'" + spelledName + "' is not declared";
+    if (activeSubst)
+      reportInInstance(token, message);
+    else if (!(inGenericTemplate() && (dependentCall || inClassWithParameterBase())))
+      impl.reportCheckerError(file, token, message);
+    return;
+  }
   if (name.parts.size() != 1)
     return; // (the C import's inline bodies name the C compiler's builtins: codegen's to judge, if emitted)
   // What the code generator implements by name, macros of the C headers: va_start and its kin,
@@ -384,6 +405,32 @@ auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const s
   bool ambiguous = false;
   if (FunctionDecl* g = pickOverload(primary, overloads, argTypes, classSubst, types.unqualified(o), ambiguous, namePart, callArgs, nullptr); g && !ambiguous)
     checkConstObjectCall(g, objectTy, token);
+}
+
+auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
+                                                     const std::vector<const Ty*>& argTypes, uint32_t token) -> void
+{
+  // (only where every type is known: an unknown one is reported where it comes from, and a dependent
+  // one is the instances' to judge; and only among plain functions: a function template's deduction
+  // that pickOverload does not make, a pack's or an abbreviated template's, codegen may still make)
+  auto plain = [](const Decl* d) { return d && d->kind == NodeKind::FunctionDecl && d->templateParams.empty() && !d->isTemplate; };
+  if (!plain(primary))
+    return;
+  if (overloads)
+    for (const Entry& e : *overloads)
+      if (e.decl->kind == NodeKind::FunctionDecl && !plain(e.decl))
+        return;
+  const Ty* o = objectTy ? types.unqualified(types.stripRef(objectTy)) : nullptr;
+  if (!o || o->kind != TyKind::Class || !o->isKnown() || types.isDependent(o) || Impl::mentionsUnknown(o))
+    return;
+  std::string list;
+  for (const Ty* a : argTypes)
+  {
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
+      return;
+    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
+  }
+  reportCheck(token, "no overload of " + types.toString(o, &impl.symbols) + "::" + std::string(impl.symbols.name(symbol)) + " takes (" + list + ")");
 }
 
 auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
@@ -4179,7 +4226,10 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         ++stats.membersBound;
         c->templateArgCount = 0; // as for a name
         if (!onlyPlainCandidate(r.decl, r.overloads))
+        {
           m->resolved = nullptr;
+          reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
+        }
         else // `counter.add(item)` with a UniquePtr<Item>, as for a name
         {
           checkScalarArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);

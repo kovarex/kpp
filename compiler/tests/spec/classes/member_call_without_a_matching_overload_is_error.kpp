@@ -1,0 +1,20 @@
+// spec: a call of a member function none of whose overloads takes the arguments is the checker's error, naming the class, the function and the argument types, as C++'s "no matching member function" ([over.match.viable]): the library's String::find with three arguments (std::string's find(s, pos, n), which kpp's String does not have), a class of the program's with the wrong argument count and with an argument of no matching type
+// found by thread G's stdlib comparison (2026-11-05): codegen said "does not support a member access that did not resolve to a field yet"
+// error: member_call_without_a_matching_overload_is_error.kpp:16: error: no overload of String::find takes (const char[7], int32, int32)
+// error: member_call_without_a_matching_overload_is_error.kpp:17: error: no overload of Box::get takes (int32, int32)
+// error: member_call_without_a_matching_overload_is_error.kpp:18: error: no overload of Box::get takes (const char[2])
+struct Box
+{
+  int get(int a) const { return a; }
+  int get(double a) const { return 2; }
+};
+int main()
+{
+  String s("hello world");
+  Box b;
+  int n = 0;
+  n += int(s.find("worldX", 0, 5));
+  n += b.get(1, 2);
+  n += b.get("x");
+  return n;
+}
