@@ -269,6 +269,12 @@
     // compile error, as in C++ (the extra argument was dropped silently).
     void checkTemplateArgumentCount(NamedType* t, const Lookup& l);
 
+    // `InfiniteRectangle<double>` with `template<ConvertibleToBool T> class InfiniteRectangle`: a
+    // class template's constrained parameter checked for the arguments written, as C++ checks it
+    // where the specialization is named ([temp.names] 8); one its argument does not satisfy is a
+    // compile error (it was instantiated as if unconstrained).
+    void checkClassConstraints(NamedType* t, const Lookup& l);
+
     // Converts a type written in the current context.
     const Ty* typeOf(Type* t) { return impl.convertType(t, ctx(), 0); }
 

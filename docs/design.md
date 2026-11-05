@@ -87,6 +87,20 @@ builds win less unless machine code is cached per function.
   T without str()) is false, as C++'s substitution failure is. A clause naming something not
   declared is a compile error, and so is a clause that cannot be evaluated once every argument is
   known: never a silent pass. While an argument is still dependent the clause waits.
+  A constrained template parameter (`template<SmallInt T>`, `template<SameSize<int> T>`, a pack
+  `template<Small... Ts>`) is its concept checked as a requires clause would be, `C<T, X...>`, each
+  element of a pack (2026-11-05: it was parsed and never checked, so `template<SmallInt T> g(T)`
+  took g(2.5)). Of two functions alike but for their constraints (the same parameters, template
+  parameters taken by position) the more constrained is chosen, by C++'s subsumption
+  ([temp.constr.order]): the constraints normalized through the concepts they name, an atom being an
+  expression with the arguments it is evaluated for, so that the atoms a concept defines are the
+  same wherever it is named while `requires integral<T>` written in two templates are two atoms;
+  constraints neither of which subsumes the other leave the call ambiguous, an error (specs
+  templates/more_constrained_overload_is_chosen, templates/constraints_that_neither_subsume_are_ambiguous;
+  the first declared was taken until then). A class template's constrained parameter is checked
+  where the specialization is named, one its argument does not satisfy a compile error
+  (templates/class_template_constraint_is_checked; the game's InfiniteRectangle<ConvertibleToBool T>
+  is given pointers, which satisfy it).
 - Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
   the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
   constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,

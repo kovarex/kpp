@@ -184,6 +184,23 @@
   // dependent, a pack).
   std::optional<bool> conceptValue(VariableDecl* concept_, const NamePart& part, const TypeContext& ctx, int depth);
 
+  // The concept's definition evaluated for the arguments given (a trailing pack parameter takes
+  // the rest); nullopt when that cannot be told.
+  std::optional<bool> conceptHolds(VariableDecl* concept_, const std::vector<const Ty*>& given, int depth);
+
+  // The concept a constrained template parameter of owner names (`template<SmallInt T>`,
+  // `template<SameAs<U> T>`), or null (an unconstrained one, or the type of a constant parameter:
+  // `template<Mode::Type M>`).
+  VariableDecl* typeConstraintOf(const TemplateParamDecl* p, Decl* owner);
+
+  // Whether p's type-constraint holds for its argument under s ([temp.param] 4: `C<T, X...>` for
+  // `template<C<X...> T>`; for a constrained pack, each element's): true for an unconstrained p,
+  // nullopt when it cannot be told (an argument not known yet).
+  std::optional<bool> typeConstraintHolds(TemplateParamDecl* p, Decl* owner, const Subst& s, int depth);
+
+  // Whether f has associated constraints: a requires clause or a constrained template parameter.
+  bool constrained(const FunctionDecl* f);
+
   // Whether every requirement of `requires (params) { ... }` in owner (a concept, a variable
   // template, a constrained function) is well-typed under s, probed on a scratch walker; nullopt
   // while one still depends on a parameter.
@@ -203,6 +220,63 @@
   // and (until static constexpr members of class template instances evaluate, which the
   // library's Duration constraints need) for known arguments too.
   bool requiresHolds(FunctionDecl* f, const Subst& deduced);
+
+  // Whether f's associated constraints hold for the deduced arguments: its template parameters'
+  // type-constraints (typeConstraintHolds), then its requires clause (requiresHolds). Until
+  // 2026-11-05 a type-constraint was parsed and never checked: `template<SmallInt T> int g(T)`
+  // took g(2.5).
+  bool constraintsHold(FunctionDecl* f, const Subst& deduced);
+
+  // A constraint in normal form ([temp.constr.normal]): atomic constraints under && and ||. An
+  // atom is an expression with its parameter mapping, the arguments its owner's template
+  // parameters stand for there; a concept-id is replaced by its concept's definition under the
+  // arguments it names, so that the atoms a concept defines are one and the same wherever it is
+  // named, and two atoms are identical only when they are the same expression with the same
+  // mapping ([temp.constr.atomic] 2): `requires integral<T>` written in two templates are two atoms.
+  struct ConstraintAtom
+  {
+    const Node* e = nullptr;
+    std::vector<const Ty*> mapping;
+  };
+  struct ConstraintTerm
+  {
+    uint8_t kind = 0; // 0 an atom, 1 a conjunction, 2 a disjunction
+    int left = -1, right = -1, atom = -1;
+  };
+  struct NormalConstraint
+  {
+    std::vector<ConstraintAtom> atoms;
+    std::vector<ConstraintTerm> terms;
+  };
+
+  // e normalized into n under s (its owner's template parameters bound to what they stand for):
+  // the index of its term, or -1 when it cannot be (too deep, a concept-id whose arguments do not
+  // form).
+  int normalizeConstraint(NormalConstraint& n, const Node* e, Decl* owner, const Subst& s, int depth);
+
+  // f's associated constraints normalized under s ([temp.constr.decl] 3: its template parameters'
+  // type-constraints, then its requires clause, conjoined): the root term, -1 for none (true), -2
+  // when they cannot be normalized.
+  int associatedConstraints(NormalConstraint& n, FunctionDecl* f, const Subst& s);
+
+  // The clauses of term t (-1: none, true): its disjunctive normal form (disjunction), or its
+  // conjunctive one: each clause a list of atom indices; false when they grow past a bound.
+  static bool constraintClauses(const NormalConstraint& n, int t, bool disjunction, std::vector<std::vector<int>>& out);
+
+  // Whether constraint p (root pt in pn) subsumes q (root qt in qn) ([temp.constr.order] 1): each
+  // disjunctive clause of p's has an atom identical to one of each conjunctive clause of q's. No
+  // constraint (-1) is subsumed by every one and subsumes only another none.
+  bool subsumes(const NormalConstraint& pn, int pt, const NormalConstraint& qn, int qt);
+
+  // Whether a is more constrained than b ([temp.func.order] 6.2.2, [over.match.best] 2.6): their
+  // template parameters taken position by position, a's associated constraints subsume b's and not
+  // the other way. false when either's cannot be normalized, or their template parameter counts
+  // differ.
+  bool moreConstrained(FunctionDecl* a, FunctionDecl* b, const Subst* classSubst);
+
+  // Whether a and b take the same parameter types, b's template parameters taken as a's position by
+  // position (the condition under which constraints order two functions).
+  bool equivalentParameters(FunctionDecl* a, FunctionDecl* b, const Subst* classSubst);
 
   // The parameter type of f that a call's argument i binds, for partial ordering: a trailing
   // pack's pattern for each argument it takes (fromPack set); null when there is none, or f has

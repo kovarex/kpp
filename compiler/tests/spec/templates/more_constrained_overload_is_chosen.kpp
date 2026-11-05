@@ -1,0 +1,42 @@
+// spec: of two function templates alike but for their constraints, the more constrained one is chosen, whatever their order ([temp.func.order] 6.2.2, [temp.constr.order]): a requires clause over none; `template<SmallInt T>` over `template<Small T>` with SmallInt = Small<T> && integral<T> (the atoms a concept defines are the same wherever it is named); `requires Small<T> && integral<T>` over `requires Small<T>`; `requires Small<T>` over `requires Small<T> || Same4<T>`; `template<SameSize<int> T>` (a concept with arguments) over an unconstrained one; a constrained pack over an unconstrained one; of a class template's member functions alike but for a trailing requires clause, the more constrained ([over.match.best] 2.6); and an argument a constraint rejects takes the other overload (clang gives the same numbers)
+// found by thread D (2026-11-05), comparing kpp with clang: the first declared of two such templates was taken, and a type-constraint was never checked
+template<class T> constexpr bool integral = false;
+template<> constexpr bool integral<int> = true;
+template<class T> concept Small = sizeof(T) <= 4;
+template<class T> concept SmallInt = Small<T> && integral<T>;
+template<class T> concept Same4 = sizeof(T) == 4;
+template<class T, class U> concept SameSize = sizeof(T) == sizeof(U);
+template<class T> int a(T) { return 1; }
+template<class T> requires integral<T> int a(T) { return 2; }
+template<SmallInt T> int b(T) { return 2; }
+template<Small T> int b(T) { return 1; }
+template<class T> requires Small<T> && integral<T> int c(T) { return 2; }
+template<class T> requires Small<T> int c(T) { return 1; }
+template<class T> requires Small<T> || Same4<T> int d(T) { return 1; }
+template<class T> requires Small<T> int d(T) { return 2; }
+template<SameSize<int> T> int e(T) { return 2; }
+template<class T> int e(T) { return 1; }
+template<Small... Ts> int f(Ts...) { return 2; }
+template<class... Ts> int f(Ts...) { return 1; }
+template<class T>
+struct W
+{
+  int f() requires Small<T> { return 1; }
+  int f() requires SmallInt<T> { return 2; }
+  int g() { return 1; }
+  int g() requires integral<T> { return 2; }
+};
+int main()
+{
+  W<int> wi;
+  W<float> wf;
+  W<double> wd;
+  print(wi.f(), " ", wf.f(), " ", wi.g(), " ", wd.g(), " ");
+  print(a(1), " ", a(1.0), " ");
+  print(b(1), " ", b('c'), " ", b((short)1), " ");
+  print(c(1), " ", c('c'), " ");
+  print(d(1), " ");
+  print(e(1.0f), " ", e(1.0), " ");
+  println(f(1, 'c'), " ", f(1, 2.0));
+  return 0;
+}

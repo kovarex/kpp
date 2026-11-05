@@ -1,0 +1,15 @@
+// spec: two function templates alike but for constraints neither of which subsumes the other are ambiguous for an argument both accept, as C++ has it ([temp.func.order] 6.2.2, [temp.constr.order]): `requires Small<T>` beside `requires integral<T>`, and `requires integral<T>` beside `requires integral<T> && Small<T>`, where integral is a variable template, no concept, so its two uses are two different atoms (clang: "call to 'g' is ambiguous", the same for h)
+// error: constraints_that_neither_subsume_are_ambiguous.kpp:14: error: the call of g with (int32) is ambiguous between int32(T)
+// error: constraints_that_neither_subsume_are_ambiguous.kpp:14: error: the call of h with (int32) is ambiguous between int32(T)
+// found by thread D (2026-11-05), comparing kpp with clang: the first declared was taken
+template<class T> constexpr bool integral = false;
+template<> constexpr bool integral<int> = true;
+template<class T> concept Small = sizeof(T) <= 4;
+template<class T> requires Small<T> int g(T) { return 1; }
+template<class T> requires integral<T> int g(T) { return 2; }
+template<class T> requires integral<T> int h(T) { return 1; }
+template<class T> requires integral<T> && Small<T> int h(T) { return 2; }
+int main()
+{
+  return g(1) + h(1);
+}

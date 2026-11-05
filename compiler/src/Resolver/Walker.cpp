@@ -946,9 +946,51 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
   else
     ++stats.typesResolved;
   checkTemplateArgumentCount(t, l);
+  checkClassConstraints(t, l);
   for (const NamePart& part : t->name.parts)
     for (Node* arg : part.templateArgs)
       walkNode(arg);
+}
+
+auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup& l) -> void
+{
+  const NamePart& last = t->name.last();
+  if (!last.hasTemplateArgs || !l.decl || !file || inGenericTemplate())
+    return;
+  Decl* def = l.decl->kind == NodeKind::ClassDecl && l.scope && l.scope->owner && l.scope->kind == ScopeKind::Class ? l.scope->owner : l.decl;
+  if (def->kind == NodeKind::ClassDecl && l.overloads)
+    if (Decl* primary = impl.primaryOf(*l.overloads))
+      def = primary;
+  if (def->kind != NodeKind::ClassDecl)
+    return;
+  bool constrained = false;
+  for (Decl* p : def->templateParams)
+    constrained = constrained || impl.typeConstraintOf(static_cast<TemplateParamDecl*>(p), def);
+  if (!constrained)
+    return;
+  const Ty* ty = typeOf(t);
+  if (!ty || ty->kind != TyKind::Class || types.isDependent(ty) || Impl::mentionsUnknown(ty))
+    return;
+  Subst s = impl.substFor(ty);
+  for (Decl* p : def->templateParams)
+  {
+    auto* tp = static_cast<TemplateParamDecl*>(p);
+    VariableDecl* concept_ = impl.typeConstraintOf(tp, def);
+    if (!concept_)
+      continue;
+    std::optional<bool> holds = impl.typeConstraintHolds(tp, def, s, 0);
+    const Ty* arg = s.find(tp);
+    if (holds && *holds)
+      continue;
+    if (!holds && (!arg || !arg->isKnown() || types.isDependent(arg) || Impl::mentionsUnknown(arg)))
+      continue;
+    std::string param(symbols.name(tp->name));
+    std::string named = types.toString(ty, &symbols);
+    std::string concept_name = concept_->name.empty() ? std::string("its concept") : impl.debugName(concept_->name.last().symbol);
+    impl.reportCheckerError(file, t->token, holds ? named + ": " + param + " = " + types.toString(arg, &symbols) + " does not satisfy " + concept_name
+                                                  : named + ": the constraint " + concept_name + " on " + param + " cannot be evaluated for " +
+                                                      types.toString(arg, &symbols));
+  }
 }
 
 auto GlobalScope::Impl::Walker::checkTemplateArgumentCount(NamedType* t, const Lookup& l) -> void

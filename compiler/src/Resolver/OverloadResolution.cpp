@@ -235,7 +235,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
         bool bound = true;
         for (Decl* p : f->templateParams)
           bound = bound && fargs.find(p) && fargs.find(p)->isKnown() && !types.isDependent(fargs.find(p));
-        if (!bound || (f->requiresClause && !requiresHolds(f, fargs)))
+        if (!bound || !constraintsHold(f, fargs))
           continue;
         result = substitute(result, fargs);
         if (!result || !result->isKnown())
@@ -494,7 +494,7 @@ auto GlobalScope::Impl::constructorTakes(FunctionDecl* f, const std::vector<cons
     }
     // Its constraint too: Vector's `template<InputIt> Vector(InputIt, InputIt) requires
     // (!isIntegral<InputIt>)` takes no `{1, 2}`.
-    if (f->requiresClause && !requiresHolds(f, d))
+    if (!constraintsHold(f, d))
       return false;
     ft = substitute(ft, d);
   }
@@ -786,7 +786,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
           }
           if (explicitWhenDeduced && isExplicit(f, &d))
             continue;
-          if (f->requiresClause && !requiresHolds(f, d))
+          if (!constraintsHold(f, d))
             continue; // `template<typename F> Wrapper(F f) requires(!isPointer<F>)` given a pointer: no conversion
           const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
           if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(ownerTy))
@@ -1395,6 +1395,14 @@ auto GlobalScope::Impl::conceptValue(VariableDecl* concept_, const NamePart& par
     else
       given.push_back(a);
   }
+  return conceptHolds(concept_, given, depth);
+}
+
+auto GlobalScope::Impl::conceptHolds(VariableDecl* concept_, const std::vector<const Ty*>& given, int depth) -> std::optional<bool>
+{
+  if (!concept_ || !concept_->init || depth > 16 || concept_->templateParams.empty())
+    return std::nullopt;
+  size_t n = concept_->templateParams.size();
   Subst cs;
   for (size_t i = 0; i < n; ++i)
   {
@@ -1540,6 +1548,328 @@ auto GlobalScope::Impl::undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own
     default:
       return {};
   }
+}
+
+auto GlobalScope::Impl::typeConstraintOf(const TemplateParamDecl* p, Decl* owner) -> VariableDecl*
+{
+  if (!p || !p->isType || !p->valueType || p->valueType->kind != NodeKind::NamedType || !owner)
+    return nullptr;
+  auto* named = static_cast<NamedType*>(p->valueType);
+  Decl* d = named->resolved;
+  if (!d)
+  {
+    LocalStack own;
+    pushEnclosingTemplateParams(owner, own);
+    d = lookupQualified(named->name, lexicalScopeOf(owner), &own, 0).decl;
+  }
+  return conceptOf(d);
+}
+
+auto GlobalScope::Impl::typeConstraintHolds(TemplateParamDecl* p, Decl* owner, const Subst& s, int depth) -> std::optional<bool>
+{
+  VariableDecl* concept_ = typeConstraintOf(p, owner);
+  if (!concept_)
+    return true;
+  const Ty* t = s.find(p);
+  if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+    return std::nullopt;
+  // The arguments written after the concept's name (`SameAs<U> T`: U), under s; the parameter's
+  // own argument comes first.
+  LocalStack own;
+  pushEnclosingTemplateParams(owner, own);
+  TypeContext ctx{lexicalScopeOf(owner), &own, &s, owner->file ? owner->file->tokens : nullptr, owner->file ? owner->file->text : std::string_view()};
+  std::vector<const Ty*> rest;
+  const NamePart& part = static_cast<NamedType*>(p->valueType)->name.last();
+  size_t n = concept_->templateParams.size();
+  for (Node* written : part.templateArgs)
+  {
+    Decl* param = concept_->templateParams[std::min(rest.size() + 1, n - 1)];
+    const Ty* a = templateArgument(written, param, ctx, depth + 1);
+    if (!a || !a->isKnown() || types.isDependent(a) || mentionsUnknown(a))
+      return std::nullopt;
+    if (written && written->kind == NodeKind::PackType && a->kind == TyKind::Pack)
+      rest.insert(rest.end(), a->args.begin(), a->args.end());
+    else
+      rest.push_back(a);
+  }
+  // A constrained pack (`template<Small... Ts>`): each element.
+  std::vector<const Ty*> elements;
+  if (p->isPack && t->kind == TyKind::Pack)
+    elements.assign(t->args.begin(), t->args.end());
+  else
+    elements.push_back(t);
+  for (const Ty* e : elements)
+  {
+    std::vector<const Ty*> given{e};
+    given.insert(given.end(), rest.begin(), rest.end());
+    std::optional<bool> v = conceptHolds(concept_, given, depth + 1);
+    if (!v || !*v)
+      return v;
+  }
+  return true;
+}
+
+auto GlobalScope::Impl::constrained(const FunctionDecl* f) -> bool
+{
+  if (f->requiresClause)
+    return true;
+  for (Decl* tp : f->templateParams)
+    if (typeConstraintOf(static_cast<TemplateParamDecl*>(tp), const_cast<FunctionDecl*>(f)))
+      return true;
+  return false;
+}
+
+auto GlobalScope::Impl::constraintsHold(FunctionDecl* f, const Subst& deduced) -> bool
+{
+  // The template parameters' type-constraints first, then the requires clause, as C++ conjoins
+  // them ([temp.constr.decl] 3). One that cannot be told while an argument is not known holds for
+  // now; for known arguments it is an error, as an unevaluable requires clause is.
+  for (Decl* tp : f->templateParams)
+  {
+    auto* p = static_cast<TemplateParamDecl*>(tp);
+    std::optional<bool> v = typeConstraintHolds(p, f, deduced, 0);
+    if (v && !*v)
+      return false;
+    if (v)
+      continue;
+    const Ty* t = deduced.find(p);
+    if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+      continue;
+    std::string name = f->name.empty() ? std::string("?") : debugName(f->name.last().symbol);
+    std::string param(symbols.name(p->name));
+    reportCheckerError(f->file, p->token, "the constraint on " + param + " of " + name + " cannot be evaluated for " + param + " = " + types.toString(t, &symbols));
+    return false;
+  }
+  return !f->requiresClause || requiresHolds(f, deduced);
+}
+
+auto GlobalScope::Impl::normalizeConstraint(NormalConstraint& n, const Node* e, Decl* owner, const Subst& s, int depth) -> int
+{
+  if (!e || !owner || depth > 32 || n.terms.size() > 256)
+    return -1;
+  auto join = [&](uint8_t kind, int l, int r) {
+    if (l < 0 || r < 0)
+      return -1;
+    n.terms.push_back(ConstraintTerm{kind, l, r, -1});
+    return int(n.terms.size() - 1);
+  };
+  switch (e->kind)
+  {
+    case NodeKind::ParenExpr: return normalizeConstraint(n, static_cast<const ParenExpr*>(e)->inner, owner, s, depth + 1);
+    case NodeKind::BinaryExpr:
+    {
+      auto* b = static_cast<const BinaryExpr*>(e);
+      bool andOp = b->isKeyword ? Kw(b->op) == Kw::and_ : P(b->op) == P::AndAnd;
+      bool orOp = b->isKeyword ? Kw(b->op) == Kw::or_ : P(b->op) == P::OrOr;
+      if (andOp || orOp)
+        return join(andOp ? 1 : 2, normalizeConstraint(n, b->lhs, owner, s, depth + 1), normalizeConstraint(n, b->rhs, owner, s, depth + 1));
+      break;
+    }
+    case NodeKind::NameExpr:
+    {
+      // A concept-id: the concept's definition, its parameters bound to the arguments named here.
+      auto* name = static_cast<const NameExpr*>(e);
+      if (!name->name.last().hasTemplateArgs)
+        break;
+      LocalStack own;
+      pushEnclosingTemplateParams(owner, own);
+      VariableDecl* concept_ = conceptOf(lookupQualified(name->name, lexicalScopeOf(owner), &own, depth + 1).decl);
+      if (!concept_)
+        break;
+      TypeContext ctx{lexicalScopeOf(owner), &own, &s, owner->file ? owner->file->tokens : nullptr, owner->file ? owner->file->text : std::string_view()};
+      std::vector<const Ty*> args;
+      size_t count = concept_->templateParams.size();
+      for (Node* written : name->name.last().templateArgs)
+      {
+        const Ty* a = templateArgument(written, concept_->templateParams[std::min(args.size(), count - 1)], ctx, depth + 1);
+        if (!a || !a->isKnown())
+          return -1;
+        if (written && written->kind == NodeKind::PackType && a->kind == TyKind::Pack)
+          args.insert(args.end(), a->args.begin(), a->args.end());
+        else
+          args.push_back(a);
+      }
+      Subst cs;
+      for (size_t i = 0; i < count; ++i)
+      {
+        auto* param = static_cast<TemplateParamDecl*>(concept_->templateParams[i]);
+        if (param->isPack && i + 1 == count)
+        {
+          std::vector<const Ty*> rest(args.begin() + std::min(i, args.size()), args.end());
+          cs.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+          break;
+        }
+        if (i >= args.size())
+          return -1;
+        cs.pairs.push_back({param, args[i]});
+      }
+      return normalizeConstraint(n, concept_->init, concept_, cs, depth + 1);
+    }
+    default: break;
+  }
+  ConstraintAtom atom;
+  atom.e = e;
+  for (Decl* tp : owner->templateParams)
+    atom.mapping.push_back(s.find(tp));
+  n.atoms.push_back(std::move(atom));
+  n.terms.push_back(ConstraintTerm{0, -1, -1, int(n.atoms.size() - 1)});
+  return int(n.terms.size() - 1);
+}
+
+auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, FunctionDecl* f, const Subst& s) -> int
+{
+  int root = -1;
+  auto conjoin = [&](int t) {
+    if (root == -2 || t < 0)
+      return void(root = -2);
+    if (root == -1)
+      return void(root = t);
+    n.terms.push_back(ConstraintTerm{1, root, t, -1});
+    root = int(n.terms.size() - 1);
+  };
+  for (Decl* tp : f->templateParams)
+  {
+    auto* p = static_cast<TemplateParamDecl*>(tp);
+    VariableDecl* concept_ = typeConstraintOf(p, f);
+    if (!concept_)
+      continue;
+    if (p->isPack)
+    {
+      // `template<C... Ts>`: (C<Ts> && ...), an atom of its own (its own written constraint).
+      ConstraintAtom atom;
+      atom.e = p->valueType;
+      for (Decl* q : f->templateParams)
+        atom.mapping.push_back(s.find(q));
+      n.atoms.push_back(std::move(atom));
+      n.terms.push_back(ConstraintTerm{0, -1, -1, int(n.atoms.size() - 1)});
+      conjoin(int(n.terms.size() - 1));
+      continue;
+    }
+    // `template<C<X> T>` is `C<T, X>`: the concept's definition with T and the written arguments.
+    LocalStack own;
+    pushEnclosingTemplateParams(f, own);
+    TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    const Ty* self = s.find(p);
+    std::vector<const Ty*> args{self ? self : types.param(p)};
+    size_t count = concept_->templateParams.size();
+    bool formed = true;
+    for (Node* written : static_cast<NamedType*>(p->valueType)->name.last().templateArgs)
+    {
+      const Ty* a = templateArgument(written, concept_->templateParams[std::min(args.size(), count - 1)], ctx, 1);
+      formed = formed && a && a->isKnown();
+      if (formed)
+        args.push_back(a);
+    }
+    Subst cs;
+    for (size_t i = 0; formed && i < count; ++i)
+    {
+      auto* param = static_cast<TemplateParamDecl*>(concept_->templateParams[i]);
+      if (param->isPack && i + 1 == count)
+      {
+        std::vector<const Ty*> rest(args.begin() + std::min(i, args.size()), args.end());
+        cs.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+        break;
+      }
+      formed = i < args.size();
+      if (formed)
+        cs.pairs.push_back({param, args[i]});
+    }
+    conjoin(formed ? normalizeConstraint(n, concept_->init, concept_, cs, 1) : -1);
+  }
+  if (f->requiresClause)
+    conjoin(normalizeConstraint(n, f->requiresClause, f, s, 1));
+  return root;
+}
+
+auto GlobalScope::Impl::constraintClauses(const NormalConstraint& n, int t, bool disjunction, std::vector<std::vector<int>>& out) -> bool
+{
+  out.clear();
+  if (t < 0)
+  {
+    if (disjunction)
+      out.push_back({}); // true: one empty conjunction
+    return true;          // (as a conjunction of disjunctions: none)
+  }
+  const auto& term = n.terms[size_t(t)];
+  if (term.kind == 0)
+  {
+    out.push_back({term.atom});
+    return true;
+  }
+  std::vector<std::vector<int>> l, r;
+  if (!constraintClauses(n, term.left, disjunction, l) || !constraintClauses(n, term.right, disjunction, r))
+    return false;
+  // The operator that keeps the clauses apart (|| for a disjunctive form, && for a conjunctive
+  // one) unites the lists; the other distributes, each clause of one with each of the other.
+  bool unites = (term.kind == 2) == disjunction;
+  if (unites)
+  {
+    out = std::move(l);
+    out.insert(out.end(), r.begin(), r.end());
+  }
+  else
+    for (const auto& x : l)
+      for (const auto& y : r)
+      {
+        std::vector<int> c = x;
+        c.insert(c.end(), y.begin(), y.end());
+        out.push_back(std::move(c));
+      }
+  return out.size() <= 256;
+}
+
+auto GlobalScope::Impl::subsumes(const NormalConstraint& pn, int pt, const NormalConstraint& qn, int qt) -> bool
+{
+  std::vector<std::vector<int>> disjuncts, conjuncts;
+  if (!constraintClauses(pn, pt, true, disjuncts) || !constraintClauses(qn, qt, false, conjuncts))
+    return false;
+  auto identical = [&](int i, int j) { return pn.atoms[size_t(i)].e == qn.atoms[size_t(j)].e && pn.atoms[size_t(i)].mapping == qn.atoms[size_t(j)].mapping; };
+  for (const auto& p : disjuncts)
+    for (const auto& q : conjuncts)
+    {
+      bool shared = false;
+      for (int i : p)
+        for (int j : q)
+          shared = shared || identical(i, j);
+      if (!shared)
+        return false;
+    }
+  return true;
+}
+
+auto GlobalScope::Impl::moreConstrained(FunctionDecl* a, FunctionDecl* b, const Subst* classSubst) -> bool
+{
+  if (a == b || a->templateParams.size() != b->templateParams.size() || (!constrained(a) && !constrained(b)))
+    return false;
+  // a's parameters stand for themselves, b's for a's at the same position.
+  Subst sa = classSubst ? *classSubst : Subst{}, sb = sa;
+  for (size_t i = 0; i < a->templateParams.size(); ++i)
+  {
+    sa.pairs.push_back({a->templateParams[i], types.param(a->templateParams[i])});
+    sb.pairs.push_back({b->templateParams[i], types.param(a->templateParams[i])});
+  }
+  NormalConstraint an, bn;
+  int at = associatedConstraints(an, a, sa), bt = associatedConstraints(bn, b, sb);
+  if (at == -2 || bt == -2)
+    return false;
+  return subsumes(an, at, bn, bt) && !subsumes(bn, bt, an, at);
+}
+
+auto GlobalScope::Impl::equivalentParameters(FunctionDecl* a, FunctionDecl* b, const Subst* classSubst) -> bool
+{
+  if (a->templateParams.size() != b->templateParams.size() || a->params.size() != b->params.size())
+    return false;
+  const Ty* ta = declaredTypeOf(a, classSubst, 0);
+  const Ty* tb = declaredTypeOf(b, classSubst, 0);
+  if (!ta || !tb || ta->kind != TyKind::Function || tb->kind != TyKind::Function || ta->variadic != tb->variadic || ta->args.size() != tb->args.size())
+    return false;
+  Subst s;
+  for (size_t i = 0; i < a->templateParams.size(); ++i)
+    s.pairs.push_back({b->templateParams[i], types.param(a->templateParams[i])});
+  for (size_t i = 0; i < ta->args.size(); ++i)
+    if (!ta->args[i] || !tb->args[i] || (s.empty() ? tb->args[i] : substitute(tb->args[i], s)) != ta->args[i])
+      return false;
+  return (a->flags & (DF_Const | DF_RefQual)) == (b->flags & (DF_Const | DF_RefQual));
 }
 
 auto GlobalScope::Impl::requiresHolds(FunctionDecl* f, const Subst& deduced) -> bool
@@ -1779,6 +2109,11 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // lua_getnresults is in lua.kpp and ldebug.kpp.
   if (!(isCFunction(a) && isCFunction(b)) && homeScope(a) != homeScope(b))
     return false;
+  // Two definitions of one signature that constraints tell apart are two overloads (`requires A<T>`
+  // and `requires B<T>`, `template<Small T>` and `template<SmallInt T>`), never one function
+  // declared twice, whose first declaration a tie took.
+  if (a->body && b->body && (constrained(a) || constrained(b)))
+    return false;
   return typeAs(b, a) == matchedType(a);
 }
 
@@ -1922,7 +2257,7 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
       c.refs.push_back(pt->isReference());
       c.params.push_back(pt);
     }
-    if (ok && f->requiresClause && !requiresHolds(f, deduced))
+    if (ok && !constraintsHold(f, deduced))
       ok = false; // `requires isIntegral<T>`: the constraint fails for these arguments
     c.emptyText = textAt != SIZE_MAX && argTypes.size() <= textAt;
     if (ok)
@@ -2123,6 +2458,14 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     if (!someBetter && !a.f->templateParams.empty() && !b.f->templateParams.empty() &&
         moreSpecialized(a.f, b.f, argTypes.size(), classSubst))
       return true; // `f(Vector<T>)` over `f(T&)`: C++'s partial ordering of function templates
+    // Alike but for their constraints (the same parameters, b's template parameters taken as a's):
+    // the more constrained ([temp.func.order] 6.2.2; of two non-templates, [over.match.best] 2.6):
+    // `template<SmallInt T>` over `template<Small T>` with SmallInt = Small<T> && integral<T>,
+    // `requires integral<T>` over no requires clause. Two whose constraints neither subsumes stay
+    // tied: ambiguous (sameFunction keeps them apart). Until 2026-11-05 the first declared won.
+    if (!someBetter && a.f->templateParams.empty() == b.f->templateParams.empty() && (constrained(a.f) || constrained(b.f)) &&
+        equivalentParameters(a.f, b.f, classSubst) && moreConstrained(a.f, b.f, classSubst))
+      return true;
     return someBetter;
   };
   // beats[i * n + j]: whether viable[i] is better than viable[j], each pair compared once (a

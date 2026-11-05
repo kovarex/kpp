@@ -1,0 +1,26 @@
+// spec: a class template's constrained parameter is checked where the specialization is named, as C++ has it ([temp.names] 8): `Holder<NoBool>` with `template<ConvertibleToBool T> struct Holder` and `Two<int, double>` with `template<Small T, Small U> struct Two` are compile errors, `Holder<int*>` and `Two<int, char>` are not
+// error: class_template_constraint_is_checked.kpp:22: error: Holder<NoBool>: T = NoBool does not satisfy ConvertibleToBool
+// error: class_template_constraint_is_checked.kpp:24: error: Two<int32, double>: U = double does not satisfy Small
+// found by thread D (2026-11-05), comparing kpp with clang: the constraint was parsed and never checked (the game's InfiniteRectangle<ConvertibleToBool T>, given pointers, satisfies it)
+template<class T> concept ConvertibleToBool = requires(T t) { bool(t); };
+template<class T> concept Small = sizeof(T) <= 4;
+template<ConvertibleToBool T>
+struct Holder
+{
+  T value;
+};
+template<Small T, Small U>
+struct Two
+{
+  T a;
+  U b;
+};
+struct NoBool {};
+int main()
+{
+  Holder<int*> fine;
+  Holder<NoBool> bad;
+  Two<int, char> ok;
+  Two<int, double> wrong;
+  return 0;
+}
