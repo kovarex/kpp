@@ -299,6 +299,25 @@ public:
   T* insert(const T* position, InputIt first, InputIt last)
   {
     ContainerSize index = ContainerSize(position - this->items);
+    // Elements of this vector (`v.insert(v.begin(), v.begin() + 1, v.end())`) are copied out
+    // first: opening the room moves them, and growing frees them. Constant evaluation cannot order
+    // pointers into different objects, so there the range is always copied.
+    if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T>)
+    {
+      bool inside = true;
+      if consteval
+      {
+      }
+      else
+      {
+        inside = first >= this->items && first < this->items + this->length;
+      }
+      if (inside && first != last)
+      {
+        Vector<T> copy(first, last);
+        return this->insert(this->items + index, copy.begin(), copy.end());
+      }
+    }
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
       ContainerSize count = checkedSize(distance(first, last), "vector too long");

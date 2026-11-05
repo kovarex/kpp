@@ -66,7 +66,9 @@ Adding and removing:
   `end()`); returns a pointer to the new element. The elements from position on are relocated one
   place up. O(size() - position + 1). `value` may be an element of this vector.
 - `insert(position, first, last)`: inserts the elements of [first, last), input iterators of any
-  kind that do not point into this vector: copies, or moves through a MoveIterator. Returns a
+  kind: copies, or moves through a MoveIterator. A range of this vector's own elements is copied
+  out first and inserted as it was (*difference from C++*, where it is a precondition that the
+  range is another's; MSVC's and libstdc++'s vectors take it too). Returns a
   pointer to the first inserted one. For forward iterators the room is opened once
   (O(size() - position + n)); a single-pass range goes in one element at a time.
   `insert(position, {a, b})`: the list's elements. `insert(position, count, value)`: count copies
