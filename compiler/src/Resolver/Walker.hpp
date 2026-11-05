@@ -135,6 +135,10 @@
     // derived from it (given: the initializer as an argument presents it, an lvalue's a T&): an
     // error naming what is bound (`r`, `the result of get`), as C++'s [dcl.init.ref] 5 has it.
     void checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given);
+    // A static_cast, reinterpret_cast or dynamic_cast (c, its operand of type from, to type to)
+    // that casts away const: to a reference or a pointer to a non-const object from a const one
+    // (a pointer's or array's elements), which only const_cast may ([expr.static.cast] 1).
+    void checkCastConst(NamedCastExpr* c, const Ty* from, const Ty* to);
 
     // Whether f, a member function, is a non-const one called on a const object (objectTy): no
     // candidate in C++, whose implicit object parameter `C&` a const object does not bind

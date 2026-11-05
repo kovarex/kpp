@@ -280,8 +280,8 @@ auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty*
 
 auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
 {
-  if (probing || !declared || declared->kind != TyKind::LRef || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
-      given->kind != TyKind::LRef || !given->inner || !given->isKnown() || types.isDependent(given) || types.isDependent(declared) ||
+  if (probing || !declared || !declared->isReference() || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
+      !given->isReference() || !given->inner || !given->isKnown() || types.isDependent(given) || types.isDependent(declared) ||
       Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared) || !Impl::isConstObject(given->inner))
     return;
   const Ty* object = impl.unqualifiedDeep(given->inner);
@@ -290,6 +290,35 @@ auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::str
     return; // (an object of another type: a conversion's, never the object itself)
   reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a const object (" + types.toString(given->inner, &impl.symbols) +
                          "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
+}
+
+auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from, const Ty* to) -> void
+{
+  const char* cast = c->castKind == Kw::static_cast_        ? "static_cast"
+                     : c->castKind == Kw::reinterpret_cast_ ? "reinterpret_cast"
+                     : c->castKind == Kw::dynamic_cast_     ? "dynamic_cast"
+                                                            : nullptr;
+  if (probing || !cast || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
+      Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
+    return;
+  // What the operand's const is on: the object a reference cast refers to, what a pointer (or an
+  // array, decayed) points at.
+  const Ty* source = nullptr;
+  const Ty* target = nullptr;
+  if (to->isReference())
+  {
+    source = types.stripRef(from);
+    target = to->inner;
+  }
+  else if (const Ty* f = types.unqualified(types.stripRef(from)); to->kind == TyKind::Pointer && (f->kind == TyKind::Pointer || f->kind == TyKind::Array))
+  {
+    source = f->inner;
+    target = to->inner;
+  }
+  if (!source || !target || !Impl::isConstObject(source) || Impl::isConstObject(target))
+    return;
+  reportCheck(c->token, std::string(cast) + "<" + types.toString(to, &impl.symbols) + "> casts away the const of " + types.toString(source, &impl.symbols) +
+                            ": only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)");
 }
 
 auto GlobalScope::Impl::Walker::reportCheck(uint32_t token, const std::string& message) -> void
@@ -2875,14 +2904,21 @@ auto GlobalScope::Impl::Walker::checkReferenceBindings(const std::string& callee
       continue;
     const Ty* a = types.unqualified(types.stripRef(given));
     const Ty* pt = types.unqualified(param->inner);
-    // (A T&& given an lvalue of another type converts it to a temporary, which it binds: what is
-    // not viable there is another conversion's, the code generator's error.)
-    if (param->kind == TyKind::RRef &&
-        (given->kind != TyKind::LRef || a->kind == TyKind::Function || !(a == pt || (a->kind == TyKind::Class && pt->kind == TyKind::Class && impl.isBaseClass(pt, a)))))
-      continue;
+    bool related = a == pt || (a->kind == TyKind::Class && pt->kind == TyKind::Class && impl.isBaseClass(pt, a));
     auto* p = i < params.size() ? static_cast<ParamDecl*>(params[i]) : nullptr;
     std::string name = p && p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : "#" + std::to_string(i + 1);
     std::string argument = "the argument for " + name + " (" + types.toString(param, &symbols) + ") of " + callee;
+    // `take(move(s))` with a const s: an rvalue of a const object, which a T&& does not bind.
+    if (param->kind == TyKind::RRef && given->kind == TyKind::RRef && related && Impl::isConstObject(types.stripRef(given)) && !Impl::isConstObject(param->inner))
+    {
+      reportHere(args[i]->token, argument + " is a const object (" + types.toString(types.stripRef(given), &symbols) +
+                                     "): an rvalue reference to a non-const object binds no const one ([dcl.init.ref] 5)");
+      continue;
+    }
+    // (A T&& given an lvalue of another type converts it to a temporary, which it binds: what is
+    // not viable there is another conversion's, the code generator's error.)
+    if (param->kind == TyKind::RRef && (given->kind != TyKind::LRef || a->kind == TyKind::Function || !related))
+      continue;
     if (param->kind == TyKind::RRef)
       reportHere(args[i]->token, argument + " is an lvalue of " + types.toString(types.stripRef(given), &symbols) +
                                      ": an rvalue reference binds a temporary or what move() gives, never an lvalue of its type or of a class "
@@ -5812,7 +5848,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
         checkListNarrowing(static_cast<BraceInitExpr*>(v->init)->args, declared);
       // `int& r = c;` with `const int c`, `int& e{c};`: a non-const reference given a const object.
-      if (v->init && declared && declared->kind == TyKind::LRef && !impl.containsAuto(declared) && !v->name.empty())
+      if (v->init && declared && declared->isReference() && !impl.containsAuto(declared) && !v->name.empty())
       {
         Expr* bound = v->init;
         const Ty* boundTy = initTy;
@@ -6471,7 +6507,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         }
       }
       // `for (int& x : numbers)` over const elements: a non-const reference given a const object.
-      if (declared && declared->kind == TyKind::LRef && !impl.containsAuto(declared) && !v->name.empty())
+      if (declared && declared->isReference() && !impl.containsAuto(declared) && !v->name.empty())
         checkConstDropped(v->token, std::string(symbols.name(v->name.last().symbol)), declared, elementTypeOf(range, f->range));
       if (impl.containsAuto(declared))
       {
@@ -6589,7 +6625,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
             {
               checkExplicitCopy(t, ft->inner, value->token);
               // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
-              if (ft->inner->kind == TyKind::LRef && t)
+              if (ft->inner->isReference() && t)
                 if (uint32_t symbol = impl.functionSymbol(bodyOf->name); symbol != UINT32_MAX)
                   checkConstDropped(value->token, "the result of " + std::string(symbols.name(symbol)), ft->inner, argumentType(value, t, types));
             }
@@ -6843,6 +6879,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       walkType(c->type);
       const Ty* operand = walkExpr(c->operand);
       const Ty* t = typeOf(c->type);
+      checkCastConst(c, operand, t); // `static_cast<S&&>(s)` of a const s
       return record(e, c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t);
     }
     case NodeKind::SizeofExpr:

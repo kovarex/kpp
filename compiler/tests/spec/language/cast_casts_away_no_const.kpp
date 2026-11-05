@@ -1,0 +1,41 @@
+// spec: static_cast, reinterpret_cast and dynamic_cast cast away no const ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2): `static_cast<S&&>(s)` and `static_cast<int&>(c)` of a const object, `static_cast<S*>(p)` and `reinterpret_cast<int*>(p)` of a `const S*`, `static_cast<D&>(b)` of a `const S&` and `static_cast<int*>(v)` of a `const void*` are compile errors, where const_cast and a C-style cast may, and a cast that keeps the const (`static_cast<const D&>(b)`) or makes a copy (`static_cast<S>(s)`) casts none away; an rvalue reference binds no const object either, `S&& r = move(s);` and `take(move(s))` with `take(S&&)` ([dcl.init.ref] 5)
+// found by thread D (2026-11-05), comparing const errors with clang: kpp accepted each, and the reference or pointer it gave changed the const object
+// error: cast_casts_away_no_const.kpp:32: error: static_cast<S&&> casts away the const of const S
+// error: cast_casts_away_no_const.kpp:33: error: static_cast<int32&> casts away the const of const int32
+// error: cast_casts_away_no_const.kpp:34: error: static_cast<S*> casts away the const of const S
+// error: cast_casts_away_no_const.kpp:35: error: reinterpret_cast<int32*> casts away the const of const S
+// error: cast_casts_away_no_const.kpp:36: error: static_cast<D&> casts away the const of const S
+// error: cast_casts_away_no_const.kpp:37: error: static_cast<int32*> casts away the const of const void
+// error: cast_casts_away_no_const.kpp:38: error: r4 (S&&) is bound to a const object (const S)
+// error: cast_casts_away_no_const.kpp:39: error: the argument for x (S&&) of take is a const object (const S)
+struct S
+{
+  int v = 0;
+};
+struct D : S
+{
+  int w = 0;
+};
+void take(S&& x) { x.v = 1; }
+int main()
+{
+  const S s;
+  const int c = 1;
+  D d;
+  const S& b = d;
+  const S* p = &s;
+  const void* v = &c;
+  S copy = static_cast<S>(s);
+  const D& kept = static_cast<const D&>(b);
+  S* away = const_cast<S*>(p);
+  S* old = (S*)p;
+  S&& r1 = static_cast<S&&>(s);
+  int& r2 = static_cast<int&>(c);
+  S* p1 = static_cast<S*>(p);
+  int* p2 = reinterpret_cast<int*>(p);
+  D& r3 = static_cast<D&>(b);
+  int* p3 = static_cast<int*>(v);
+  S&& r4 = move(s);
+  take(move(s));
+  return copy.v + kept.w + away->v + old->v + r1.v + r2 + p1->v + *p2 + r3.w + *p3 + r4.v;
+}
