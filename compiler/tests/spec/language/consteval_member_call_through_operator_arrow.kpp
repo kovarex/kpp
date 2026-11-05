@@ -1,0 +1,55 @@
+// spec: at compile time `o->f()` on an object of a class with operator-> calls f on what operator-> points at, as at run time ([over.ref] 1: `(o.operator->())->f()`): an Optional's value, a handle's object (a non-const member function changing it there), a class operator-> returns running its own operator-> in turn; a member read and written through it and a map iterator's `it->second` alike
+// found by thread D (2026-11-05), writing language/consteval_constructor_parameters_bind_as_function_parameters: `o->size()` of an Optional<String> was no constant, without a reason (the call looked for its object's type as a pointer's only), where `(*o).size()` was one
+struct Point
+{
+  int x;
+  int y;
+  int sum() const { return x + y; }
+  void grow() { x = x * 10; }
+};
+struct Handle
+{
+  Point* p;
+  Point* operator->() const { return p; }
+};
+struct Outer
+{
+  Handle h;
+  Handle operator->() const { return h; } // a class: its own operator-> runs in turn
+};
+constexpr long long optional()
+{
+  Optional<String> o = String("abc");
+  return (long long)o->size() * 10 + (long long)o->find('c');
+}
+constexpr long long handle()
+{
+  Point pt{1, 2};
+  Handle h{&pt};
+  h->grow(); // pt.x = 10
+  h->y = 5;
+  return h->sum() * 100 + h->x;
+}
+constexpr long long chain()
+{
+  Point pt{3, 4};
+  Outer out{Handle{&pt}};
+  out->grow();
+  return out->sum();
+}
+constexpr long long iterator()
+{
+  Map<int, String> m;
+  m[1] = "de";
+  auto it = m.find(1);
+  return (long long)it->second.size() * 10 + it->first;
+}
+int main()
+{
+  constexpr long long a = optional();
+  constexpr long long b = handle();
+  constexpr long long c = chain();
+  constexpr long long d = iterator();
+  println(a, " ", optional(), " ", b, " ", handle(), " ", c, " ", chain(), " ", d, " ", iterator());
+  return 0;
+}

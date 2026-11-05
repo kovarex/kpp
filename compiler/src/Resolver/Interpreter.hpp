@@ -897,7 +897,14 @@
 
   // `it->member` of an iterator object (value v of expression e): its class's operator-> run on it
   // where it is (an lvalue's place, else a temporary), the pointer it gives; nullopt for no object.
+  // e null: v is a value no expression names (what an operator-> gave), run on as a temporary.
   std::optional<ConstValue> constArrowOf(Expr* e, const ConstValue& v, const TypeContext& ctx, int depth);
+
+  // `o->f()`, `o->x` of an object of class type (expression e, its value v): operator-> run on it,
+  // then on each class object one gives, down to the pointer whose object the member is of
+  // ([over.ref] 1: `(o.operator->())->f()`); v when it is a pointer already; nullopt when no
+  // pointer comes.
+  std::optional<ConstValue> constArrowPointer(Expr* e, std::optional<ConstValue> v, const TypeContext& ctx, int depth);
 
   // `hasher(key)`, `this->compare(a, b)`: an object of a class called, its operator() run on it where
   // it is (an lvalue's place, else a temporary), with the arguments where they are.

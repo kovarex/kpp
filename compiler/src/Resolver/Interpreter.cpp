@@ -1573,13 +1573,23 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
       return std::nullopt;
     return ConstValue::integer(0, types.voidType());
   }
-  const Ty* object = constObjectType(m->base, ctx, m->op == P::Arrow);
+  // `o->size()` of an Optional, an iterator, a handle (a class with operator->): the call on what
+  // its operator-> points at, run before the arguments are evaluated, as the call's postfix
+  // expression is ([expr.call] 8); its object the class that pointer's type names. (It was no
+  // constant: the object's type was looked for as a pointer's only.)
+  bool classArrow = m->op == P::Arrow && m->base->kind != NodeKind::ThisExpr && constObjectType(m->base, ctx, false);
+  std::optional<ConstValue> through = classArrow ? constArrowPointer(m->base, constValue(m->base, ctx, depth + 1), ctx, depth) : std::nullopt;
+  if (classArrow && (!through || !(through->isAddress() || through->isPointer())))
+    return std::nullopt; // (a class object whose operator-> gave no pointer)
+  const Ty* pointee = through ? types.unqualified(types.unqualified(through->type)->inner) : nullptr;
+  const Ty* object = !through ? constObjectType(m->base, ctx, m->op == P::Arrow)
+                   : pointee && pointee->kind == TyKind::Class && !types.isDependent(pointee) && !mentionsUnknown(pointee) ? pointee : nullptr;
   Scope* s = object ? classScopeOf(object) : nullptr;
   Lookup l;
   if (!s || (!qualified && !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1)))
     return std::nullopt;
   if (!qualified && l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)))
-    return constCallObject(m, c, ctx, depth, l.decl); // `this->hasher(key)`: a member object's operator()
+    return through ? std::nullopt : constCallObject(m, c, ctx, depth, l.decl); // `this->hasher(key)`: a member object's operator()
   // Of the functions of the name, the one the call's arguments fill.
   FunctionDecl* f = nullptr;
   auto fills = [&](Decl* d) {
@@ -1655,7 +1665,15 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   else if (m->op == P::Dot)
     place = constPlaceOf(m->base, ctx, depth + 1, true);
   std::optional<ConstValue> pointer;
-  if (!place && m->op == P::Arrow && constPointsIntoStorage(m->base))
+  if (through)
+  {
+    // `o->size()`: on the object operator-> points at, there when the run holds it.
+    pointer = through;
+    if (pointer->isAddress() && pointer->target && pointer->target->storage)
+      if (!(place = constStoragePlace(*pointer, "a use of", depth)))
+        return std::nullopt;
+  }
+  else if (!place && m->op == P::Arrow && constPointsIntoStorage(m->base))
   {
     // `log->add(3)`, log pointing at an object of the evaluation: run on it there.
     pointer = constValue(m->base, ctx, depth + 1);
@@ -6139,11 +6157,20 @@ auto GlobalScope::Impl::constArrowOf(Expr* e, const ConstValue& v, const TypeCon
   FunctionDecl* arrow = constClassOperator(v.type, P::Arrow, {}, subst, depth);
   if (!arrow || !constDefinition(arrow))
     return std::nullopt;
-  std::optional<ConstPlace> place = constPure(e) ? constPlaceOf(e, ctx, depth + 1) : std::nullopt;
+  std::optional<ConstPlace> place = e && constPure(e) ? constPlaceOf(e, ctx, depth + 1) : std::nullopt;
   if (!place)
     place = constMaterialize(v, v.type);
   std::optional<ConstValue> self = place ? constRead(*place) : std::optional<ConstValue>(v);
   return constCallOn(arrow, subst, {}, &self, depth + 1, place ? &*place : nullptr);
+}
+
+auto GlobalScope::Impl::constArrowPointer(Expr* e, std::optional<ConstValue> v, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  for (int hops = 0; v && v->isObject() && hops < 16; ++hops)
+    v = constArrowOf(hops ? nullptr : e, *v, ctx, depth); // (a class an operator-> gives: its own operator-> run on it in turn)
+  if (!v || !(v->isAddress() || v->isPointer()) || !v->type || types.unqualified(v->type)->kind != TyKind::Pointer)
+    return std::nullopt;
+  return v;
 }
 
 auto GlobalScope::Impl::constCallObject(Expr* object, CallExpr* c, const TypeContext& ctx, int depth, Decl* field) -> std::optional<ConstValue>
@@ -6318,8 +6345,8 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       {
         if (p->isAddress() && p->target->storage)
           base = constStoragePlace(*p, "a use of", depth); // `p->m`, p pointing at an object of the evaluation
-        else if (std::optional<ConstValue> q = constArrowOf(m->base, *p, ctx, depth); q && q->isAddress() && q->target->storage)
-          base = constStoragePlace(*q, "a use of", depth); // `at->second`: through the iterator's operator->
+        else if (std::optional<ConstValue> q = constArrowPointer(m->base, p, ctx, depth); q && q->isAddress() && q->target->storage)
+          base = constStoragePlace(*q, "a use of", depth); // `at->second`: through the iterator's operator-> (a class one gives: its own in turn)
       }
     if (!base)
       return std::nullopt;

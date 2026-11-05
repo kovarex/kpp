@@ -2476,7 +2476,10 @@ a move empties and that end destroys, and a `const String&` given a StringView r
 made from it; copy-initialization through a converting constructor binds the initializer by its
 value category (`Optional<String> o = s;` copies s, `Optional<String> o = String("x");` moves from
 the temporary), so an Optional<String> made from a String is a constant
-(language/consteval_constructor_parameters_bind_as_function_parameters).
+(language/consteval_constructor_parameters_bind_as_function_parameters). `o->f()` and `o->x` of an
+object of a class with operator-> (an Optional, an iterator, a handle) run its operator-> where the
+object is, and a class object one returns runs its own in turn, down to a pointer: the member
+function runs on the object that pointer points at (language/consteval_member_call_through_operator_arrow).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error
