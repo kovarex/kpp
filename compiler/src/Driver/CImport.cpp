@@ -230,7 +230,125 @@ std::set<std::string> typedefNames(const std::string& text)
   return names;
 }
 
-std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions, const std::set<std::string>& typedefs)
+std::set<std::string> valueNames(const std::string& text)
+{
+  // The names the preprocessed headers declare as functions (an identifier followed by `(` outside
+  // any brace, parenthesis or typedef, after a type: `extern int __res_ninit (res_state) ...;`) or
+  // as enumerators (each item of an enum's braces: `_SC_PAGESIZE,`), which an object-like macro may
+  // stand for (macroConstants).
+  static const std::set<std::string> keywords = {"__attribute__", "__attribute", "__asm__", "__asm", "asm", "__declspec", "sizeof",
+                                                 "typeof", "__typeof__", "__typeof", "_Alignas", "alignas", "_Alignof", "alignof",
+                                                 "__alignof__", "__extension__", "_Static_assert", "static_assert", "__builtin_offsetof",
+                                                 "_Generic", "__inline", "__inline__", "inline", "return", "if", "while", "for", "switch"};
+  std::set<std::string> names;
+  auto identChar = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+  int depth = 0, parens = 0;
+  bool inTypedef = false;
+  bool afterEnum = false, enumTag = false; // `enum` read (and its tag): its braces next, or no enum body
+  std::vector<int> enumDepths; // the brace depths that are an enum's body
+  bool itemStart = false;      // in an enum's body: the next identifier begins an item
+  char before = 0;             // the last character before the current one, spaces skipped
+  for (size_t i = 0; i < text.size();)
+  {
+    char c = text[i];
+    if (c == '#' && (i == 0 || text[i - 1] == '\n'))
+    {
+      i = text.find('\n', i); // a #pragma line the preprocessor kept
+      if (i == std::string::npos)
+        break;
+      continue;
+    }
+    if (c == '"' || c == '\'')
+    {
+      for (++i; i < text.size() && text[i] != c; ++i)
+        if (text[i] == '\\')
+          ++i;
+      ++i;
+      before = c;
+      continue;
+    }
+    if (isdigit((unsigned char)c))
+    {
+      while (i < text.size() && (identChar(text[i]) || text[i] == '.'))
+        ++i;
+      before = '0';
+      continue;
+    }
+    if (identChar(c))
+    {
+      size_t j = i;
+      while (j < text.size() && identChar(text[j]))
+        ++j;
+      std::string word(text.data() + i, j - i);
+      size_t next = j;
+      while (next < text.size() && (text[next] == ' ' || text[next] == '\t' || text[next] == '\r' || text[next] == '\n'))
+        ++next;
+      char after = next < text.size() ? text[next] : 0;
+      bool inEnum = !enumDepths.empty() && enumDepths.back() == depth && parens == 0;
+      if (afterEnum && word != "enum")
+      {
+        afterEnum = !enumTag; // its tag; another name after it is no enum body (`enum E f(void) {`)
+        enumTag = true;
+      }
+      if (word == "typedef" && depth == 0 && parens == 0)
+        inTypedef = true;
+      else if (word == "enum")
+      {
+        afterEnum = true;
+        enumTag = false;
+      }
+      else if (inEnum && itemStart)
+      {
+        names.insert(word);
+        itemStart = false;
+      }
+      else if (after == '(' && depth == 0 && parens == 0 && !inTypedef && !keywords.count(word) && (identChar(before) || before == '*'))
+        names.insert(word);
+      before = word.back();
+      i = j;
+      continue;
+    }
+    if (c == '{')
+    {
+      ++depth;
+      if (afterEnum)
+      {
+        enumDepths.push_back(depth);
+        itemStart = true;
+      }
+      afterEnum = false;
+    }
+    else if (c == '}')
+    {
+      if (!enumDepths.empty() && enumDepths.back() == depth)
+        enumDepths.pop_back();
+      depth = std::max(0, depth - 1);
+      itemStart = false;
+    }
+    else if (c == '(')
+      ++parens;
+    else if (c == ')')
+      parens = std::max(0, parens - 1);
+    else if (c == ',' && !enumDepths.empty() && enumDepths.back() == depth && parens == 0)
+      itemStart = true;
+    else if (c == ';')
+    {
+      if (depth == 0)
+        inTypedef = false;
+    }
+    if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+    {
+      if (c != '{')
+        afterEnum = false; // `enum E;`, `enum E* p`, `enum E f(`: no enum body
+      before = c;
+    }
+    ++i;
+  }
+  return names;
+}
+
+std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions, const std::set<std::string>& typedefs,
+                           const std::set<std::string>& values)
 {
   std::string out = "\n// Object-like macros, as constants.\n";
   // Names of object-like macros with a body: a body may refer to them (INFINITY uses _HUGE_ENUF).
@@ -263,6 +381,16 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
   std::map<std::string, std::string> integerTypes; // constants with a plain integer body, by name
   std::map<std::string, std::string> floatTypes;   // constants with a plain floating literal body (__FLT_MAX__), by name
   std::vector<std::pair<std::string, std::string>> laterAliases; // (name, the macro it names) not typed when read
+  std::set<std::string> valueAliases; // constants that alias a declared function or enumerator (values)
+  auto identifier = [](const std::string& s)
+  {
+    if (s.empty() || !(isalpha((unsigned char)s[0]) || s[0] == '_'))
+      return false;
+    for (char ch : s)
+      if (!(isalnum((unsigned char)ch) || ch == '_'))
+        return false;
+    return true;
+  };
   // `3.40282347e+38F`, `2.2204460492503131e-16`: a decimal floating literal.
   auto floatLiteral = [](const std::string& body)
   {
@@ -386,6 +514,15 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
     }
     bool aliasOfInteger = integerTypes.count(body) != 0; // DBL_MANT_DIG = __DBL_MANT_DIG__
     bool aliasOfFloat = floatTypes.count(body) != 0;     // FLT_MAX = __FLT_MAX__
+    // An alias of a declared function or enumerator (glibc's resolv.h `#define res_ninit
+    // __res_ninit`, bits/confname.h's `#define _SC_PAGE_SIZE _SC_PAGESIZE`): a constant of its value.
+    // Not a name the headers declare themselves (a self-named macro: `#define _SC_PAGESIZE _SC_PAGESIZE`).
+    if (identifier(body) && body != name && values.count(body) && !values.count(name))
+    {
+      out += "const auto " + name + " = " + body + ";\n";
+      valueAliases.insert(name);
+      continue;
+    }
     if (!ok || call || (quotes != 0 && quotes != 2) || !namesKnown)
       continue;
     if (!hasNumber && quotes == 0 && body.find('(') == std::string::npos && !aliasOfInteger && !aliasOfFloat)
@@ -477,6 +614,15 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
       auto floating = floatTypes.find(it->second);
       if (integer == integerTypes.end() && floating == floatTypes.end())
       {
+        // (an alias of a function's or an enumerator's alias, as that one)
+        if (valueAliases.count(it->second) && it->first != it->second && !values.count(it->first))
+        {
+          out += "const auto " + it->first + " = " + it->second + ";\n";
+          valueAliases.insert(it->first);
+          it = laterAliases.erase(it);
+          typed = true;
+          continue;
+        }
         ++it;
         continue;
       }
@@ -752,7 +898,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   }
   uint64_t hash = 1469598103934665603ull;
   // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
-  for (unsigned char c : "kpp import 9\n" + wrapper + includeArgs + "\n" + toolchain)
+  for (unsigned char c : "kpp import 10\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);
@@ -794,7 +940,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     std::string definesText = readWholeFile(defines);
     std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (own + ".x.c"), clang, includeArgs);
     text = readWholeFile(preprocessed);
-    text += macroConstants(definesText, expansions, typedefNames(text));
+    text += macroConstants(definesText, expansions, typedefNames(text), valueNames(text));
     if (!options.target.windows())
       text = vaListForSysV(text);
     // The import, then its stamps (a reader that finds the import with older stamps checks those:

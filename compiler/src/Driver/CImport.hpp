@@ -41,7 +41,11 @@
   // body looks like a constant: numbers, string literals, operators, parentheses and names (other
   // macros', type words, and the typedefs of the headers: `(u_long)0x00000000`). A body that calls
   // function-like macros is taken as clang expanded it (expansions).
-  std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions, const std::set<std::string>& typedefs);
+  // The names the preprocessed headers declare as functions or enumerators, which an object-like
+  // macro may alias (`#define res_ninit __res_ninit`).
+  std::set<std::string> valueNames(const std::string& text);
+  std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions, const std::set<std::string>& typedefs,
+                             const std::set<std::string>& values);
 
 
   // Lexes one large text on several threads: the C import, 10 MB of preprocessed headers (the

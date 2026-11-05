@@ -1,0 +1,22 @@
+// spec: an imported header's object-like macro whose body is one name the headers declare as a function or an enumerator is a constant of it: glibc's resolv.h `#define dn_expand __dn_expand` (res_ninit, res_nquery, res_nclose alike) is called as dn_expand, and bits/confname.h's `#define _SC_PAGE_SIZE _SC_PAGESIZE`, an enumerator that is also a macro of its own name, is the constant sysconf takes; a self-named macro stays the enumerator
+// factorio: on Linux, the multiplayer's SRV lookup (res_ninit, res_nquery, dn_expand, res_nclose) and SystemUtil's sysconf(_SC_PAGE_SIZE): the import dropped them (only aliases of integer and floating macros were typed)
+// target: linux (glibc's resolv.h and unistd.h)
+// kppc: --lib -lresolv
+extern "C" import "resolv.h";
+extern "C" import "unistd.h";
+
+int main()
+{
+  // www.example.com as a DNS message writes it: each label after its length, then 0
+  unsigned char packet[17] = {3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'c', 'o', 'm', 0};
+  char name[64];
+  int used = dn_expand(packet, packet + 17, packet, name, 64);
+  println(used, " ", StringView(name));
+  println(sysconf(_SC_PAGE_SIZE) > 0, " ", sysconf(_SC_PAGE_SIZE) == sysconf(_SC_PAGESIZE));
+  __res_state state;
+  bool initialized = res_ninit(&state) == 0;
+  if (initialized)
+    res_nclose(&state);
+  println(initialized);
+  return 0;
+}
