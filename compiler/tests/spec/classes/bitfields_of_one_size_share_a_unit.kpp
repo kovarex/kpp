@@ -1,4 +1,4 @@
-// spec: consecutive bit fields share a storage unit while their types have one size, whatever the types (MSVC's layout): `uint8_t x : 5; bool on : 1; uint8_t pad : 2;` share a byte, `int a : 3; unsigned b : 4;` four bytes; a type of another size starts a new unit
+// spec: consecutive bit fields share a storage unit while their types have one size, whatever the types (MSVC's layout, Windows'): `uint8_t x : 5; bool on : 1; uint8_t pad : 2;` share a byte, `int a : 3; unsigned b : 4;` four bytes; a type of another size starts a new unit (`Sizes` 6 bytes); off Windows, by SysV's rules, bit fields of any types share bytes (`Sizes` 2 bytes, .linux.expected), the values alike
 // factorio: Decorative's `struct { uint8_t tileY : 5; uint8_t amount : 3; uint8_t tileX : 5; bool isDecal : 1; uint8_t padding : 2; } data;` next to a uint16_t id, static_assert(sizeof(Decorative) == 4): the bool started a byte of its own
 struct Data
 {
@@ -22,7 +22,7 @@ struct Sizes
 };
 static_assert(sizeof(Data) == 2);
 static_assert(sizeof(Mixed) == 4);
-static_assert(sizeof(Sizes) == 6);
+static_assert(sizeof(Sizes) == (config::platform == Platform::Windows ? 6 : 2));
 int main()
 {
   Data d;

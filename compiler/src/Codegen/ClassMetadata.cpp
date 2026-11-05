@@ -1425,9 +1425,10 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     }
     if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
     {
-      // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element.
+      // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element
+      // (not a run of bit fields whose storage unit is a byte array: SysV's, off Windows).
       const Ty* ft = info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])];
-      if (ft->kind == TyKind::Array)
+      if (ft->kind == TyKind::Array && !bitfieldIn(info, info.fieldDecls[0]))
       {
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, info.fieldDecls[0]));
         if (args.size() > ft->count)
@@ -1809,7 +1810,7 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
   std::string unitLl = llType(bits.unit, at);
   uint32_t unitBits = uint32_t(sizeOf(bits.unit, at) * 8);
   std::string unit = newTemp(), r;
-  fn += "  " + unit + " = load " + unitLl + ", ptr " + addr + "\n";
+  fn += "  " + unit + " = load " + unitLl + ", ptr " + addr + (bits.bytes ? ", align 1" : "") + "\n";
   const Ty* valueTy = types.unqualified(memberTy);
   bool isSigned = (valueTy->kind == TyKind::Int || valueTy->kind == TyKind::Char) && !valueTy->isUnsigned;
   if (isSigned)
@@ -1827,7 +1828,9 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
     uint64_t mask = bits.width >= 64 ? ~0ull : ((1ull << bits.width) - 1);
     fn += "  " + r + " = and " + unitLl + " " + shifted + ", " + std::to_string(mask) + "\n";
   }
-  Value asUnit{r, bits.unit};
+  // (a byte array's unit is no integer type of the member's: the value converts with the
+  // member's own signedness, sign-extended by the shifts above)
+  Value asUnit{r, bits.bytes ? types.intType(uint8_t(unitBits), !isSigned) : bits.unit};
   if (valueTy->kind == TyKind::Bool)
   {
     std::string b = newTemp();
@@ -1843,12 +1846,12 @@ auto codegen::Emitter::storeBitfield(Value v, const std::string& addr, const Bit
   Value asUnit = convert(v, bits.unit, at);
   uint64_t mask = bits.width >= 64 ? ~0ull : ((1ull << bits.width) - 1);
   std::string old = newTemp(), cleared = newTemp(), masked = newTemp(), shifted = newTemp(), merged = newTemp();
-  fn += "  " + old + " = load " + unitLl + ", ptr " + addr + "\n";
+  fn += "  " + old + " = load " + unitLl + ", ptr " + addr + (bits.bytes ? ", align 1" : "") + "\n";
   fn += "  " + cleared + " = and " + unitLl + " " + old + ", " + std::to_string(~(mask << bits.shift)) + "\n";
   fn += "  " + masked + " = and " + unitLl + " " + asUnit.text + ", " + std::to_string(mask) + "\n";
   fn += "  " + shifted + " = shl " + unitLl + " " + masked + ", " + std::to_string(bits.shift) + "\n";
   fn += "  " + merged + " = or " + unitLl + " " + cleared + ", " + shifted + "\n";
-  fn += "  store " + unitLl + " " + merged + ", ptr " + addr + "\n";
+  fn += "  store " + unitLl + " " + merged + ", ptr " + addr + (bits.bytes ? ", align 1" : "") + "\n";
 }
 
 auto codegen::Emitter::unitMembers(const StructInfo& info, ClassDecl* c, Decl* first) -> std::vector<Decl*>
@@ -1869,7 +1872,7 @@ auto codegen::Emitter::initializeBitfield(const std::string& addr, const Ty* t, 
   size_t index = fieldIndexOf(info, v);
   std::string fieldAddr = gep(info.name, addr, index);
   if (zeroed.insert(index).second)
-    fn += "  store " + llType(info.fieldTypes[index], at) + " 0, ptr " + fieldAddr + "\n";
+    fn += "  store " + llType(info.fieldTypes[index], at) + (info.fieldTypes[index]->kind == TyKind::Array ? " zeroinitializer" : " 0") + ", ptr " + fieldAddr + "\n";
   const Ty* memberTy = types.unqualified(types.stripRef(declType(v)));
   auto storeInto = [&](Expr* e, Node* where)
   {

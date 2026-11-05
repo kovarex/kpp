@@ -399,6 +399,14 @@ auto codegen::Emitter::classConstant(const ConstValue& v, const Ty* t, Node* at,
   for (size_t i = 0; i < fieldTypes.size(); ++i)
   {
     std::string value = unit[i] ? std::to_string(int64_t(units[i])) : fields[i].empty() ? "zeroinitializer" : fields[i]; // padding and empty bases: zero
+    if (unit[i] && fieldTypes[i]->kind == TyKind::Array)
+    {
+      // A byte array's unit (SysV's, off Windows): its bytes, little-endian.
+      value = "[";
+      for (uint32_t b = 0; b < fieldTypes[i]->count; ++b)
+        value += (b ? ", i8 " : "i8 ") + std::to_string(int((units[i] >> (8 * b)) & 0xff));
+      value += "]";
+    }
     allZero = allZero && zeroText(value);
     out += (i ? ", " : "") + (zeroSize[i] ? std::string("[0 x i8]") : llType(fieldTypes[i], at)) + " " + value;
   }

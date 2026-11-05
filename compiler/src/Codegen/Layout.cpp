@@ -181,7 +181,7 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
     }
   for (size_t i = 0; i < info.fieldTypes.size() && !needed; ++i)
     needed = !info.zeroSize[i] && overAlignedType(info.fieldTypes[i], at);
-  uint64_t declaredClass = std::max<uint64_t>(c->alignment ? declaredAlignment(key, at) : 1, info.zeroWidthAlign);
+  uint64_t declaredClass = std::max<uint64_t>(c->alignment ? declaredAlignment(key, at) : 1, info.bitFieldAlign);
   if (!needed && declaredClass <= natural)
     return 0;
   std::vector<const Ty*> fields;
@@ -545,6 +545,69 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   int bitUnitIndex = -1;    // the storage field the current run of bit fields shares
   uint32_t bitUnitBits = 0; // its size in bits
   uint32_t bitUsed = 0;
+  // Off Windows bit fields are laid out by SysV's rules (the target's C: design.md's targets
+  // table; 2026-11-05, MSVC's until then): sysvBits. Its state: the next free bit while a run of
+  // bit fields goes on (sysvRun), the storage unit open (sysvUnit: its field, its first and end
+  // byte) and its bit fields with their first bits.
+  bool sysvBits = !sh.target.windows() && !(c->attributes & ATTR_Packed);
+  bool sysvRun = false;
+  uint64_t sysvNextBit = 0;
+  int sysvUnit = -1;
+  uint64_t sysvUnitStart = 0, sysvUnitEnd = 0;
+  std::vector<std::pair<Decl*, uint64_t>> sysvUnitFields;
+  // Where the layout's fields end, as LLVM places them (an empty base takes no byte unless the
+  // first data member is of its class).
+  auto layoutEnd = [&]() -> uint64_t
+  {
+    const Ty* firstMember = info.fieldDecls.empty() ? nullptr : classKey(info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])]);
+    uint64_t end = 0;
+    for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+    {
+      const Ty* f = info.fieldTypes[i];
+      bool base = false;
+      for (auto& [baseDef, index] : info.bases)
+        base = base || index == i;
+      if (base && structFor(f, at).empty && classKey(f) != firstMember)
+        continue; // (zero size, as below)
+      uint64_t a = llvmAlignOf(f, at);
+      end = (end + a - 1) / a * a + sizeOf(f, at);
+    }
+    return end;
+  };
+  auto padTo = [&](uint64_t byte)
+  {
+    uint64_t end = layoutEnd();
+    if (byte > end)
+      info.fieldTypes.push_back(types.array(types.intType(8, true), uint32_t(byte - end)));
+  };
+  // The open storage unit closed: its byte array, and each of its bit fields read as an integer of
+  // the unit's bytes from its first byte.
+  auto closeUnit = [&]()
+  {
+    if (sysvUnit < 0)
+      return;
+    uint32_t bytes = uint32_t(sysvUnitEnd - sysvUnitStart);
+    info.fieldTypes[sysvUnit] = types.array(types.intType(8, true), bytes);
+    for (auto& [f, bit] : sysvUnitFields)
+    {
+      BitfieldInfo& b = info.bitfields[f];
+      b.shift = uint32_t(bit - sysvUnitStart * 8);
+      b.unit = types.intType(uint8_t(bytes * 8), true);
+      b.bytes = true;
+    }
+    sysvUnit = -1;
+    sysvUnitFields.clear();
+  };
+  // A field that is no bit field after a run of them: it starts at the byte after their last bit
+  // (or the boundary a zero-width one padded to).
+  auto endRun = [&]()
+  {
+    if (!sysvRun)
+      return;
+    closeUnit();
+    padTo((sysvNextBit + 7) / 8);
+    sysvRun = false;
+  };
   for (Decl* m : c->members)
   {
     if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
@@ -554,6 +617,7 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
       // holding a LongStr<N>).
       const Ty* ft = types.classType(m, key->args);
       structFor(ft, at);
+      endRun();
       info.anonymous.push_back({m, uint32_t(info.fieldTypes.size())});
       info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
       info.fieldDecls.push_back(m);
@@ -629,6 +693,47 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         unit = enumUnderlying(unit->decl);
       if (unit->kind == TyKind::Bool)
         unit = types.intType(8, true);
+      if (sysvBits)
+      {
+        // SysV: the next free bit, unless the field would straddle a boundary of its type's size
+        // (or is of width 0: it pads to its type's alignment, and holds nothing); bit fields
+        // sharing a byte share a storage unit; a named one gives the class its type's alignment.
+        uint64_t typeBits = sizeOf(unit, m) * 8, alignBits = alignOf(unit, m) * 8;
+        uint64_t bit = sysvRun ? sysvNextBit : layoutEnd() * 8;
+        uint64_t width = uint64_t(*w);
+        if (width > typeBits)
+          fail(m, "the layout of " + types.toString(key, &symbols) + ": the bit field " + memberName(m) + " is wider (" + std::to_string(width) +
+                      " bits) than its type");
+        if (width == 0 || (bit % alignBits) + width > typeBits)
+          bit = (bit + alignBits - 1) / alignBits * alignBits;
+        sysvRun = true;
+        if (width == 0)
+        {
+          closeUnit();
+          sysvNextBit = bit;
+          continue;
+        }
+        uint64_t first = bit / 8, end = (bit + width + 7) / 8;
+        if (sysvUnit >= 0 && first < sysvUnitEnd)
+          sysvUnitEnd = std::max(sysvUnitEnd, end);
+        else
+        {
+          closeUnit();
+          padTo(first);
+          sysvUnit = int(info.fieldTypes.size());
+          sysvUnitStart = first;
+          sysvUnitEnd = end;
+          info.fieldTypes.push_back(types.array(types.intType(8, true), uint32_t(end - first)));
+          info.fieldDecls.push_back(m); // the first field of the unit stands for the unit in memberwise work
+        }
+        info.fieldIndex[m] = uint32_t(sysvUnit);
+        info.bitfields[m] = {0, uint32_t(width), unit, true};
+        sysvUnitFields.push_back({m, bit});
+        sysvNextBit = bit + width;
+        if (!static_cast<VariableDecl*>(m)->name.empty())
+          info.bitFieldAlign = std::max(info.bitFieldAlign, alignOf(unit, m));
+        continue;
+      }
       if (*w == 0)
       {
         // `unsigned : 0;` (unnamed: C++ has no other bit field of width 0), as MSVC lays it out:
@@ -640,7 +745,7 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         {
           uint64_t boundary = alignOf(unit, m);
           info.zeroWidthAligned.push_back({uint32_t(info.fieldTypes.size()), boundary});
-          info.zeroWidthAlign = std::max(info.zeroWidthAlign, boundary);
+          info.bitFieldAlign = std::max(info.bitFieldAlign, boundary);
         }
         bitUnitIndex = -1;
         continue;
@@ -660,10 +765,12 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
       continue;
     }
     bitUnitIndex = -1;
+    endRun();
     info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
     info.fieldDecls.push_back(m);
     info.fieldTypes.push_back(ft);
   }
+  endRun(); // (a zero-width bit field last pads the class to its boundary)
   // Empty bases take no storage, unless the first member is of the same class (two objects of
   // one type at one address: C++ gives the base a byte then).
   info.zeroSize.assign(info.fieldTypes.size(), false);

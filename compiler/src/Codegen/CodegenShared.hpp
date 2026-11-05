@@ -61,7 +61,8 @@ namespace codegen
   struct BitfieldInfo
   {
     uint32_t shift, width;
-    const Ty* unit; // the storage unit's (integer) type
+    const Ty* unit;     // the storage unit's (integer) type, as it is read and written
+    bool bytes = false; // the unit is a byte array (SysV's layout off Windows): read and written align 1
   };
 
   struct StructInfo
@@ -106,10 +107,11 @@ namespace codegen
     bool overAligned = false;                 // align > llvmAlign
     uint64_t tailPadding = 0;                 // the `[n x i8]` the struct's text ends with (after its byte of its own, when empty)
     // MSVC's zero-width bit fields (`unsigned : 0;` right after a bit field): the alignment the
-    // next field starts at, by that field's index (none past the last), and the alignment the
-    // class takes from them; alignPadding pads for both.
+    // next field starts at, by that field's index (none past the last); and the alignment the class
+    // takes from its bit fields (those zero-width ones on Windows, its named bit fields' types off
+    // it, SysV's rule, whose storage units are byte arrays); alignPadding pads for both.
     std::vector<std::pair<uint32_t, uint64_t>> zeroWidthAligned;
-    uint64_t zeroWidthAlign = 0;
+    uint64_t bitFieldAlign = 0;
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
     bool failedShown = true;                  // false: it follows from a checker error (fail's shown), at every use

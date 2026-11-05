@@ -1,0 +1,64 @@
+// spec: a struct with bit fields of mixed types is laid out as the target's C lays it out (c_struct_bit_fields_match_c.c), MSVC's rules on Windows and SysV's elsewhere (design.md's targets table): its size, alignment and the places of the members after the bit fields are C's (`1 1 1 1 1 1`), the fields C writes read in kpp (`-3 11 -123456789012 -200 250 -50 1 104`), and the fields kpp writes read in C (`2 -7 487654321098 255 7 33 0 107`), a zero-width bit field and a member sharing a unit's bytes included (`-920`)
+// found by thread B (2026-11-05), comparing kpp with g++ on Linux: kpp laid bit fields out by MSVC's rules on every target, so `struct { char a : 3; int b : 5; }` was 8 bytes where Linux's C has 4, and C's fields were read at other places
+struct Mixed
+{
+  char a : 3;
+  int b : 5;
+  long long c : 40;
+  short d : 9;
+  unsigned char e;
+  int f : 7;
+  unsigned g : 1;
+  int : 0;
+  char h;
+};
+struct Narrow
+{
+  char a : 3;
+  short : 0;
+  char b : 2;
+  char c : 2;
+  short tail;
+};
+extern "C" int cSizeMixed();
+extern "C" int cAlignMixed();
+extern "C" int cOffsetE();
+extern "C" int cOffsetH();
+extern "C" int cSizeNarrow();
+extern "C" int cOffsetTail();
+extern "C" void cFill(Mixed* m);
+extern "C" long long cField(const Mixed* m, int which);
+extern "C" long long cNarrow(const Narrow* n);
+int main()
+{
+  Mixed m{};
+  Narrow n{};
+  int offsetE = int((const char*)&m.e - (const char*)&m), offsetH = int((const char*)&m.h - (const char*)&m);
+  int offsetTail = int((const char*)&n.tail - (const char*)&n);
+  println(sizeof(Mixed) == cSizeMixed() ? 1 : 0, " ", alignof(Mixed) == cAlignMixed() ? 1 : 0, " ", offsetE == cOffsetE() ? 1 : 0, " ",
+          offsetH == cOffsetH() ? 1 : 0, " ", sizeof(Narrow) == cSizeNarrow() ? 1 : 0, " ", offsetTail == cOffsetTail() ? 1 : 0);
+  cFill(&m);
+  println(int(m.a), " ", int(m.b), " ", m.c, " ", m.d, " ", int(m.e), " ", m.f, " ", m.g, " ", int(m.h));
+  Mixed k{};
+  k.a = 2;
+  k.b = -7;
+  k.c = 487654321098;
+  k.d = 255;
+  k.e = 7;
+  k.f = 33;
+  k.g = 0;
+  k.h = 'k';
+  for (int which = 0; which < 8; ++which)
+  {
+    if (which > 0)
+      print(" ");
+    print(cField(&k, which));
+  }
+  println();
+  n.a = -1;
+  n.b = 1;
+  n.c = -2;
+  n.tail = 0;
+  println(cNarrow(&n));
+  return 0;
+}

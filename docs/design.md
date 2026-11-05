@@ -498,7 +498,16 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   that type (2026-10-29, spec classes/bitfields_of_one_size_share_a_unit). An unnamed bit field of
   width 0 (`int : 0;`) right after a bit field ends that unit: the next field starts at a boundary
   of its type's alignment, which the class takes too; anywhere else it is nothing, as MSVC has it
-  (2026-11-05, spec classes/zero_width_bit_field_ends_its_unit).
+  (2026-11-05, spec classes/zero_width_bit_field_ends_its_unit). That is Windows' layout (the MSVC and
+  the GNU dialect alike). Off Windows bit fields are laid out by SysV's rules, the target's C (2026-11-05,
+  the targets table below): a bit field starts at the next free bit unless it would straddle a boundary
+  of its type's size, then at its type's alignment; a zero-width one pads to its type's alignment;
+  bit fields share bytes with each other whatever their types, and a member that is no bit field
+  starts at the byte after them; a named one gives the class its type's alignment (an unnamed one
+  does not). Bit fields that share bytes are one storage unit, a byte array at its exact offset, read
+  and written as an integer of its bytes, align 1. A [[packed]] class keeps MSVC's rules. Spec
+  interop/c_struct_bit_fields_match_c: a struct shared with C, its size, alignment, offsets and
+  fields as C's on each target.
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`
@@ -3061,7 +3070,7 @@ byte for byte unless a difference is shown to be a fix.
 | `wchar_t` | 16 bits, UTF-16 | 32 bits | Q2 below. |
 | plain `char` | signed | unsigned on Linux AArch64, signed on Apple arm64 and x86-64 | kpp's `char` stays signed on every target (kpp's meaning does not change with the target). An imported C `char` is the same type; a C function that relies on unsigned `char` sees the same bits. |
 | `long double` | = double | x87 80-bit on x86-64 SysV, 128-bit on Linux AArch64, = double on Apple arm64 | kpp's stays double. An imported C function whose signature has `long double` (by value, through a pointer or a typedef) is an error where the C type differs, at each call and each use of its address (codegen's useFunction, 2026-11-05; the call was made as double(double) until then, silently). |
-| Bit fields | MSVC's rules | SysV's (Itanium): a unit straddles less, and types of different sizes may share one | The target's C rules for every class (a struct shared with C must match). Windows is unchanged. Specs on each target. |
+| Bit fields | MSVC's rules | SysV's (Itanium): a unit straddles less, and types of different sizes may share one | The target's C rules for every class (a struct shared with C must match). Windows is unchanged. Specs on each target. Done 2026-11-05 (section 9's bit field paragraph); a polymorphic base's tail padding stays unused (Itanium reuses it for C++, which kpp does not share classes with). |
 | Memory ordering | x86's: stores are seen in order | AArch64 is weakly ordered | The library's atomics are LLVM atomics with explicit orderings, so they hold. Lock-free code that relies on x86's ordering through plain loads and stores is a bug on AArch64. The library is audited for it in the AArch64 stage. |
 | Symbol names | quoted IR names (`@"twice(int32)"`), C names unmangled | the same names are valid in ELF and Mach-O; Mach-O prefixes `_`, which LLVM adds through the data layout's `m:o` | Unchanged in the IR. No `dllimport` off Windows. |
 | COMDAT | `linkonce_odr` with `comdat any` | ELF has COMDATs. Mach-O has none (LLVM rejects them) and coalesces weak definitions instead. | Emitted on Windows and ELF, left out on Mach-O. The shared definitions stay `linkonce_odr` or `weak_odr`. |
