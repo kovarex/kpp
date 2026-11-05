@@ -94,6 +94,11 @@ $steps = @(
   @{ name = 'that line taken out as well'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' "  int pad4 = 0;`r`n" '' } },
   @{ name = 'a body edit above a kept function with a lambda (which moves)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { int r = 2; r = r + 0; return r; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; r = r + 0; return r; }' 'int firstHelper() { int r = 2; return r; }' } },
+  # noexcept added to a function that calls one that may throw (B's review of 7807b4ff): on Windows its
+  # catchpad names kpp.eh.filter.noexcept, which the exception runtime defines; a kept session that had
+  # no such filter declines the rebuild (the runtime is written again), and the program links.
+  @{ name = 'noexcept added to a function calling one that may throw'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a first noexcept function|first use'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' "int zeroOf(int v) { return v - v; }`r`nint firstHelper() noexcept { int r = 2; return r + zeroOf(r); }" } },
+  @{ name = 'that noexcept function back as it was'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' "int zeroOf(int v) { return v - v; }`r`nint firstHelper() noexcept { int r = 2; return r + zeroOf(r); }" 'int firstHelper() { int r = 2; return r; }' } },
   # A config declaration (design.md, "config:: defaults in source") is read before parsing and its tokens
   # dropped, the kept build's and an edit's alike: adding or removing one changes <config> (every file's
   # parse reads it: not incremental), a body edit in its file stays one.
@@ -265,4 +270,30 @@ if (@($fast).Count -lt 18) { "FAIL incremental: $(@($fast).Count) body edits bui
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
 & $Kppc --stop-server --verify-incremental --exe $exe $src | Out-Null
+
+# A program without the standard library (whose noexcept move assignments need the noexcept filter
+# from the first build) and without a noexcept function, then noexcept added to a function that calls
+# one that may throw (B's review of 7807b4ff): on Windows its catchpad names kpp.eh.filter.noexcept,
+# which only a build from scratch defines (finishExceptionRuntime), so the kept session declines the
+# rebuild and the program still links and runs.
+$nostd = Join-Path $work 'nostd'
+New-Item -ItemType Directory -Force $nostd | Out-Null
+$nostdMain = Join-Path $nostd 'main.kpp'
+Set-Content $nostdMain "struct TooLarge { int v = 0; };`nint plusOne(int v) { if (v > 100) throw TooLarge(); return v + 1; }`nint guarded() { return plusOne(1); }`nint main() { return guarded() + 5; }"
+$nostdExe = Join-Path $work 'nostd.exe'
+$nostdArgs = @('--no-std', '--server', '--exe', $nostdExe, $nostd)
+$nostdStart = Get-Date
+$b1 = Build $nostdArgs 'nostd.1'
+Start-Sleep -Milliseconds 1100 # (the file's time of writing must move on: a server reads a file whose stamp changed)
+Set-Content $nostdMain "struct TooLarge { int v = 0; };`nint plusOne(int v) { if (v > 100) throw TooLarge(); return v + 1; }`nint guarded() noexcept { return plusOne(1); }`nint main() { return guarded() + 5; }"
+$b2 = Build $nostdArgs 'nostd.2'
+& $nostdExe
+$ran = $LASTEXITCODE
+$nostdLines = @(Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $nostdStart } | ForEach-Object { Get-Content $_.FullName })
+$nostdIds = @($nostdLines | Where-Object { $_.Contains("the last $nostd") } | ForEach-Object { if ($_ -match '\[(\d+)\]') { $Matches[1] } } | Sort-Object -Unique)
+$declined = @($nostdLines | Where-Object { $_ -match '\[(\d+)\]' -and $nostdIds -contains $Matches[1] -and $_ -match "a first noexcept function's filter" })
+if ($b1.exit -ne 0 -or $b2.exit -ne 0 -or $ran -ne 7) { "FAIL incremental: noexcept added without the standard library: builds exit $($b1.exit) and $($b2.exit), the program $ran (7 expected): $($b2.err -join ' ')"; $failed++ }
+elseif (-not $declined) { "FAIL incremental: noexcept added without the standard library: the kept session's rebuild was not declined for the noexcept filter"; $failed++ }
+else { "ok   incremental noexcept added without the standard library (the rebuild declined for the noexcept filter; it links and runs)" }
+& $Kppc --stop-server --no-std --exe $nostdExe $nostd | Out-Null
 if ($failed -gt 0) { exit 1 }

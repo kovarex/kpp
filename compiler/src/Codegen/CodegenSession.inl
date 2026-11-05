@@ -1872,6 +1872,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   }
   sh.functions -= std::min<size_t>(sh.functions, droppedFunctions);
   size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size();
+  // (the exception runtime is written once, after a build from scratch emitted every function
+  // (finishExceptionRuntime): a first throw, or on Windows a first noexcept function whose catchpad
+  // names kpp.eh.filter.noexcept, needs it written again, which a rebuild does not do)
+  bool exceptionsBefore = sh.usesExceptions, noexceptFilterBefore = sh.usesNoexceptFilter;
   for (auto& em : emitters)
   {
     em->errors.clear();
@@ -2106,6 +2110,12 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     sh.typeLines.clear();
     sh.typeIndex.clear();
     e.prepareModuleTexts();
+  }
+  if ((!exceptionsBefore && sh.usesExceptions) || (!noexceptFilterBefore && sh.usesNoexceptFilter))
+  {
+    out.declined = !exceptionsBefore && sh.usesExceptions ? "a first throw: the exception runtime is written again"
+                                                         : "a first noexcept function's filter (kpp.eh.filter.noexcept): the exception runtime is written again";
+    return out;
   }
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
   {

@@ -109,6 +109,7 @@
     // the throw and it is destroyed first. The handler is never entered.
     std::string noexceptDispatch()
     {
+      // (a key of its own in cleanupPads, the function's EH blocks by key: no destruction state)
       auto found = cleanupPads.find("seh.noexcept");
       if (found != cleanupPads.end())
         return found->second;
