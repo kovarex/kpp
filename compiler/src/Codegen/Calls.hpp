@@ -243,6 +243,10 @@
     // Whether e names a bit-field (`data.progress` with `uint8_t progress : 4`), to which a reference
     // binds a temporary holding its value.
     static bool namesBitField(Expr* e);
+    // The member expression (or member's name) whose bit-field an operand e designates, through
+    // parentheses, an assignment, a prefix ++ or -- and a comma's right operand (built-in ones), as
+    // GlobalScope's designatedBitField finds it; null for any other operand.
+    static Expr* bitFieldDesignator(Expr* e);
 
 
     std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at);

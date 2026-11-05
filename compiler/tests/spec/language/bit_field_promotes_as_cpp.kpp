@@ -1,0 +1,65 @@
+// spec: a bit-field's value is promoted as C++'s [conv.prom] 5 has it, never by its declared type alone: to int when int holds every value of its width (an `unsigned u3 : 3`, a `uint64_t w3 : 3`, an `int64_t i20 : 20`), to unsigned int when only that does (a 32-bit unsigned one, a `uint64_t w32 : 32`), and as its declared type when it is wider than 32 bits; an enum bit-field promotes as its enum ([conv.prom] 5's last sentence: `Level : uint32_t`, unsigned) and a bool one as bool. So `u3 - 2` is the int -1, `-u3`, `~u3` and `u3 << 31` are ints, `(w3 - 3) / 2` is 0, `no ? u3 : -1` is -1, the comparisons are of ints, sizeof(i20 + 0) is 4, a compound assignment computes in int (`u3 /= -2` from 6: -3, its low 3 bits 5), in a member function and at compile time alike; clang prints the same (g++ the same but for the conditional, 4294967295: it keeps a bit-field operand of ?: unpromoted)
+// kovarex 2026-11-05 ("follow the standard here"): MSVC, and kpp before, kept the declared type (`u3 - 2` the unsigned 4294967295)
+enum Level : uint32_t { Low = 1, High = 2 };
+
+struct S
+{
+  unsigned u3 : 3;
+  unsigned u32 : 32;
+  int s5 : 5;
+  uint64_t w3 : 3;
+  uint64_t w32 : 32;
+  uint64_t w40 : 40;
+  int64_t i20 : 20;
+  Level level : 3;
+  bool on : 1;
+  int64_t fromMember() const { return u3 - 2; }
+};
+
+constexpr int64_t viaConstant()
+{
+  S t{};
+  t.u3 = 1;
+  t.w3 = 2;
+  return (t.u3 - 2) * 10 + (t.w3 - 3 < 0 ? 1 : 0);
+}
+static_assert(viaConstant() == -9);
+static_assert(sizeof(S{}.i20 + 0) == 4 && sizeof(S{}.w3 + 0) == 4 && sizeof(S{}.w40 + 0) == 8);
+static_assert(isSame<decltype(S{}.u3 + 0), int> && isSame<decltype(S{}.w32 + 0), unsigned> && isSame<decltype(S{}.w40 + 0), uint64_t>);
+
+int main()
+{
+  S s{};
+  s.u3 = 1;
+  s.u32 = 1;
+  s.s5 = -3;
+  s.w3 = 2;
+  s.w32 = 5;
+  s.w40 = 7;
+  s.i20 = 4;
+  s.level = Low;
+  s.on = true;
+  bool no = s.u32 == 0;
+  // promoted to int: an unsigned narrower than 32 bits, a 64-bit one narrower than 32 bits
+  int64_t a = s.u3 - 2;
+  int64_t b = -s.u3;
+  int64_t c = ~s.u3;
+  int64_t d = s.u3 << 31;
+  int64_t e = (s.w3 - 3) / 2;
+  int64_t f = no ? s.u3 : -1;
+  println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
+  println(s.u3 - 2 < 0, " ", s.w3 - 3 < 0, " ", s.s5 < s.u3, " ", (s.u3 = 1) - 2 < 0, " ", s.fromMember());
+  // a 32-bit unsigned one an unsigned int, a 64-bit one of 32 bits too; a wider one keeps its type
+  int64_t g = s.u32 - 2;
+  int64_t h = s.w32 - 6;
+  println(g, " ", h, " ", s.w40 - 8 < 0);
+  // an enum bit-field promotes as its enum (a fixed underlying uint32_t: unsigned), a bool one as bool
+  int64_t i = s.level - 2;
+  int64_t j = s.on - 2;
+  println(i, " ", j);
+  // a compound assignment computes in the promoted type: 6 / -2 is -3, its low 3 bits 5
+  s.u3 = 6;
+  s.u3 /= -2;
+  println(s.u3, " ", viaConstant());
+  return 0;
+}

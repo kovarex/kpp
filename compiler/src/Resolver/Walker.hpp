@@ -664,6 +664,9 @@
     // --- operators ---
 
     const Ty* promote(const Ty* t);
+    // An arithmetic operand e's type t, a bit-field's promoted by its width (Impl::bitFieldPromotion:
+    // `u3 - 2` with an `unsigned u3 : 3` is an int); promote and arithmetic then do the rest.
+    const Ty* operandType(Expr* e, const Ty* t);
 
     const Ty* arithmetic(const Ty* a, const Ty* b);
 

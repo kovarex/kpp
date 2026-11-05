@@ -4381,6 +4381,14 @@ auto GlobalScope::Impl::Walker::promote(const Ty* t) -> const Ty*
   }
 }
 
+auto GlobalScope::Impl::Walker::operandType(Expr* e, const Ty* t) -> const Ty*
+{
+  if (!designatedBitField(e))
+    return t; // (any other operand at once: no context made)
+  const Ty* promoted = impl.bitFieldPromotion(e, t, ctx().subst);
+  return promoted ? promoted : t;
+}
+
 auto GlobalScope::Impl::Walker::arithmetic(const Ty* a, const Ty* b) -> const Ty*
 {
   a = promote(a);
@@ -4919,7 +4927,7 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     switch (Kw(b->op))
     {
       case Kw::and_: case Kw::or_: case Kw::not_eq_: return types.boolType();
-      default: return arithmetic(l, r);
+      default: return arithmetic(operandType(b->lhs, l), operandType(b->rhs, r));
     }
   }
   P op = P(b->op);
@@ -5041,7 +5049,7 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     case P::Spaceship:
       return impl.orderingType();
     case P::Shl: case P::Shr:
-      return promote(l);
+      return promote(operandType(b->lhs, l));
     case P::Plus: case P::Minus:
     {
       bool lp = ls->kind == TyKind::Pointer || ls->kind == TyKind::Array;
@@ -5052,10 +5060,10 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
         return types.decay(ls);
       if (rp)
         return types.decay(rs);
-      return arithmetic(l, r);
+      return arithmetic(operandType(b->lhs, l), operandType(b->rhs, r));
     }
     case P::Star: case P::Slash: case P::Percent: case P::Amp: case P::Pipe: case P::Caret:
-      return arithmetic(l, r);
+      return arithmetic(operandType(b->lhs, l), operandType(b->rhs, r));
     case P::DotStar: case P::ArrowStar:
       return rs->kind == TyKind::MemberPointer ? types.lref(rs->inner) : types.unknown();
     default:
@@ -5132,7 +5140,7 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
   const Ty* t = walkExpr(u->operand);
   const Ty* s = types.stripRef(t);
   if (u->isKeyword)
-    return Kw(u->op) == Kw::not_ ? types.boolType() : promote(t);
+    return Kw(u->op) == Kw::not_ ? types.boolType() : promote(operandType(u->operand, t));
   P op = P(u->op);
   if (op == P::Amp && !u->postfix && t && impl.isText(t) && !inGenericTemplate())
     reportTextError(u->token, textStored("pointed to"));
@@ -5224,7 +5232,7 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
       return unknown(Why::Operator);
     case P::Amp: return types.pointer(s);
     case P::Bang: return types.boolType();
-    case P::Minus: case P::Plus: case P::Tilde: return promote(t);
+    case P::Minus: case P::Plus: case P::Tilde: return promote(operandType(u->operand, t));
     case P::PlusPlus: case P::MinusMinus:
       checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);
       // `f()++`, `++(x + 1)`. Not of a pointer: `++v.begin()`, `--this->groups.end()` increment a
@@ -7028,7 +7036,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       // conversions ([expr.cond]/7.2): `c ? U200 : 0.1f` is a float, `c ? small : -7` an int.
       auto arithmeticOrEnum = [](const Ty* t) { return t->isArithmetic() || (t->kind == TyKind::Enum && !static_cast<EnumDecl*>(t->decl)->isClass); };
       if (arithmeticOrEnum(a) && arithmeticOrEnum(b) && types.unqualified(a) != types.unqualified(b))
-        return record(e, arithmetic(a, b));
+        return record(e, arithmetic(operandType(c->then, a), operandType(c->else_, b))); // (`no ? u3 : -1`: an int, u3 a bit-field)
       // `on ? "true" : "false"`, `c ? buffer : fallback`, `c ? derived : base`: arrays decay to
       // pointers, and two pointers meet at their composite pointer type.
       if (a != b && (a->kind == TyKind::Array || a->kind == TyKind::Pointer) && (b->kind == TyKind::Array || b->kind == TyKind::Pointer))

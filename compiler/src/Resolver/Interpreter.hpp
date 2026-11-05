@@ -47,6 +47,24 @@
   // inside a static member's initializer inside a requires clause).
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0);
 
+  // C++'s [conv.prom] 5 (kovarex 2026-11-05: as the standard, where MSVC keeps the declared type):
+  // the type an operand e of type t promotes to when it designates a bit-field of an integer type of
+  // 32 bits or more: int when int holds every value of the field's width, unsigned int when only
+  // that does (32 bits of an unsigned type); null for any other operand, a field wider than 32 bits
+  // and a narrower type's, an enumeration's or a bool's field (those promote as their types do).
+  // The width is evaluated where the field is declared, a class template's with its instance's
+  // arguments (subst: those of the code asking, when e names no object). Walker::operandType and the
+  // interpreter's operators ask it; codegen's Emitter::bitfieldOperand applies the same rule to its
+  // layouts' widths.
+  const Ty* bitFieldPromotion(Expr* e, const Ty* t, const Subst* subst = nullptr, int depth = 0);
+  // The bit-field e designates, or null: a member or a member's name, through parentheses, an
+  // assignment to it, a prefix ++ or -- of it, or a built-in comma's right operand (clang's
+  // Expr::getSourceBitField).
+  static VariableDecl* designatedBitField(Expr* e);
+  // An operand's value as a built-in operator takes it: a bit-field's converted to the type it
+  // promotes to (bitFieldPromotion), as the walk typed the operator and codegen computes it.
+  std::optional<ConstValue> constOperandValue(Expr* e, std::optional<ConstValue> v, const TypeContext& ctx, int depth);
+
   // A condition (static_assert, if constexpr, a requires clause): any scalar constant, a floating
   // one included.
   std::optional<bool> constCondition(Expr* e, const TypeContext& ctx, int depth = 0);

@@ -26,6 +26,13 @@
     // Bits<5> place `uint32_t a : N` differently (kppc read one instance's bits with the other's).
     std::pair<const Expr*, const BitfieldInfo*> lvalueBitfield{nullptr, nullptr}; // the member lvalue computed last, its bit field
     const BitfieldInfo* bitfieldNamed(Expr* e);
+    // An arithmetic operand's value v (just computed from e) as C++'s [conv.prom] 5 promotes it
+    // (kovarex 2026-11-05: as the standard, where MSVC keeps the declared type): a bit-field of an
+    // integer type of 32 bits or more converted to int when int holds every value of its width, to
+    // unsigned int when only that does (32 bits of an unsigned type), by its layout's width
+    // (lvalueBitfield); any other v as it is. `u3 - 2` with an `unsigned u3 : 3` is the int -1. The
+    // checker types the operators by the same rule (GlobalScope's bitFieldPromotion).
+    Value bitfieldOperand(Expr* e, Value v);
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
     void ensureMalloc();

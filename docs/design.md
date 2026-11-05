@@ -535,6 +535,20 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   and written as an integer of its bytes, align 1. A [[packed]] class keeps MSVC's rules. Spec
   interop/c_struct_bit_fields_match_c: a struct shared with C, its size, alignment, offsets and
   fields as C's on each target.
+- A bit field's value promotes by its width, as C++'s [conv.prom] 5 has it, on every target
+  (kovarex 2026-11-05: "follow the standard here"; MSVC keeps the declared type): an operand of
+  arithmetic, a comparison or `?:` that designates a bit field of an integer type is an int when
+  int holds every value of its width, an unsigned int when only that does (32 bits of an unsigned
+  type), and as its type when it is wider; one of an enumeration or bool promotes as its type. So
+  with `unsigned u3 : 3` and `uint64_t w3 : 3`, `u3 - 2` is the int -1 and `(w3 - 3) / 2` is 0,
+  where MSVC computes 4294967295 and 9223372036854775807. An operand designates the field through
+  parentheses, an assignment, a prefix ++ or -- and a comma's right operand, as clang's. The
+  checker types the operators so (GlobalScope's bitFieldPromotion, a class template's width by
+  its instance's arguments), codegen and the compile-time interpreter compute them so. Specs
+  language/bit_field_promotes_as_cpp, language/bit_field_promotes_by_its_instance_width. Overload
+  resolution still ranks a bit field's argument by its declared type: `f(s.u3)` with f(int) and
+  f(long), or f(int) and f(double), is ambiguous in kpp where C++ calls f(int), the promotion (a
+  compile error, never a different call).
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`
@@ -548,8 +562,12 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   ends the program before anything unwinds, the throw site on the stack (2026-11-04). Rules that follow
   from this: destructors do not throw; `extern "C"` functions do not throw (calls to them stay
   plain calls); an exception cannot pass through a C callback frame that was not compiled for
-  unwinding; `catch` by pointer matches the pointee type's spelling only (no base conversion);
-  `new T(args)` leaks the memory when the constructor throws (to fix with the allocator work).
+  unwinding; a handler of a pointer by value or by const reference takes a thrown pointer that
+  converts to it, as C++'s [except.handle] 3.3 and 3.4 have it (2026-11-05, 0b2ed657: a derived
+  class's, a less qualified one, any object pointer for `void*`, nullptr), and `catch (Base*&)`, a
+  reference to a non-const pointer, its own type alone (3.1), as the standard says (kovarex
+  2026-11-05: "as C++"), where g++'s, clang's and MSVC's programs give it a converted pointer too
+  (spec classes/catch_of_base_pointer_takes_derived_pointer); `new T(args)` leaks the memory when the constructor throws (to fix with the allocator work).
 - `new T[n]` (2026-10-29) allocates n elements with malloc and builds each in order (a class by its
   default constructor; a scalar is left as it is, or zeroed by `new T[n]()`; `new T[n]{a, b}` builds
   the first ones from the list and value-initializes the rest). When T needs destroying, the block

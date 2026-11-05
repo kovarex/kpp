@@ -892,6 +892,22 @@ auto codegen::Emitter::bitfieldNamed(Expr* e) -> const BitfieldInfo*
   return nullptr;
 }
 
+auto codegen::Emitter::bitfieldOperand(Expr* e, Value v) -> Value
+{
+  const Ty* t = v.ty ? types.unqualified(types.stripRef(v.ty)) : nullptr;
+  if (!t || (t->kind != TyKind::Int && t->kind != TyKind::Char) || t->bits < 32)
+    return v; // (a narrower type's field promotes as its type does, an enumeration's and a bool's too)
+  Expr* field = bitFieldDesignator(e);
+  if (!field)
+    return v;
+  if (lvalueBitfield.first != field || !lvalueBitfield.second)
+    unsupported(e, "a bit-field operand whose width is not known here"); // (its value just read through its place)
+  uint32_t width = lvalueBitfield.second->width;
+  if (width > 32)
+    return v;
+  return convert(v, width < 32 || !t->isUnsigned ? types.intType(32) : types.intType(32, true), e, true);
+}
+
 auto codegen::Emitter::ensureMalloc() -> void
 {
   if (mallocKnown)
@@ -1795,6 +1811,8 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     // The right operand first, then the left one's place (C++17 [expr.ass] 1).
     Value rhs = op == P::Assign && b->rhs->kind == NodeKind::BraceInitExpr ? braceScalar(static_cast<BraceInitExpr*>(b->rhs), t, b) // `mod->id.crc = {};`
                                                                             : rvalue(b->rhs);
+    if (op != P::Assign)
+      rhs = bitfieldOperand(b->rhs, rhs); // (`i /= u3`: an int division, u3 a bit-field)
     if (scalarAssignment)
       verifyOperatorCall(b, OperatorCall::Builtin);
     if (scalarAssignment)
@@ -1805,7 +1823,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     assignedPlace = addr;
     if (op != P::Assign)
     {
-      Value old = bits ? loadBitfield(addr, *bits, t, b) : load(addr, t, b);
+      Value old = bits ? bitfieldOperand(b->lhs, loadBitfield(addr, *bits, t, b)) : load(addr, t, b); // (`u3 /= -2` divides ints)
       rhs = arithmetic(baseOp(op), old, rhs, b);
     }
     if (bits)
@@ -1816,7 +1834,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     store(rhs, addr, t, b);
     return convert(rhs, t, b);
   }
-  Value l = rvalue(b->lhs);
+  Value l = bitfieldOperand(b->lhs, rvalue(b->lhs));
   if (isClass(l.ty))
   {
     // Late resolution: the AST type was Unknown but codegen resolved a class.
@@ -1830,7 +1848,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       return *rewritten;
     unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
   }
-  Value r = rvalue(b->rhs);
+  Value r = bitfieldOperand(b->rhs, rvalue(b->rhs));
   switch (op)
   {
     case P::EqEq: case P::NotEq: case P::Less: case P::LessEq: case P::Greater: case P::GreaterEq:

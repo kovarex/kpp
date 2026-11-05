@@ -193,6 +193,98 @@ auto GlobalScope::Impl::constEval(Expr* e, const TypeContext& ctx, int depth) ->
   return v->i;
 }
 
+auto GlobalScope::Impl::designatedBitField(Expr* e) -> VariableDecl*
+{
+  for (;;)
+  {
+    if (!e)
+      return nullptr;
+    if (e->kind == NodeKind::ParenExpr)
+    {
+      e = static_cast<ParenExpr*>(e)->inner;
+      continue;
+    }
+    if (e->kind == NodeKind::UnaryExpr)
+    {
+      auto* u = static_cast<UnaryExpr*>(e);
+      if (u->isKeyword || u->postfix || u->call == OperatorCall::Function || (P(u->op) != P::PlusPlus && P(u->op) != P::MinusMinus))
+        return nullptr;
+      e = u->operand;
+      continue;
+    }
+    if (e->kind == NodeKind::BinaryExpr)
+    {
+      auto* b = static_cast<BinaryExpr*>(e);
+      if (b->isKeyword || b->call == OperatorCall::Function || (P(b->op) != P::Comma && !isAssignmentOperator(P(b->op))))
+        return nullptr;
+      e = P(b->op) == P::Comma ? b->rhs : b->lhs;
+      continue;
+    }
+    break;
+  }
+  Decl* d = e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved : e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
+  return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield ? static_cast<VariableDecl*>(d) : nullptr;
+}
+
+auto GlobalScope::Impl::bitFieldPromotion(Expr* e, const Ty* t, const Subst* subst, int depth) -> const Ty*
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || (t->kind != TyKind::Int && t->kind != TyKind::Char) || t->bits < 32)
+    return nullptr;
+  VariableDecl* field = designatedBitField(e);
+  if (!field)
+    return nullptr;
+  // A class template's field has its instance's width (`uint32_t a : N` of Bits<3>): the arguments of
+  // the object's class, or of its base, that declares it (an anonymous member's, its enclosing
+  // class's), else those of the code asking (a member function's own names in an instance).
+  Subst own;
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner;
+  if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->base && static_cast<MemberExpr*>(e)->base->ty)
+  {
+    auto* m = static_cast<MemberExpr*>(e);
+    const Ty* object = types.unqualified(types.stripRef(m->base->ty));
+    if (m->op == P::Arrow && object->kind == TyKind::Pointer && object->inner)
+      object = types.unqualified(types.stripRef(object->inner));
+    Decl* owner = field->parent;
+    while (owner && owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(owner)->name.empty() && owner->parent)
+      owner = owner->parent;
+    std::function<const Ty*(const Ty*, int)> declaring = [&](const Ty* c, int level) -> const Ty*
+    {
+      if (!c || c->kind != TyKind::Class || level > 16)
+        return nullptr;
+      if (c->decl == owner)
+        return c;
+      if (const ConstClassLayout* layout = constLayoutOf(c, depth + 1))
+        for (const Ty* b : layout->bases)
+          if (const Ty* found = declaring(b, level + 1))
+            return found;
+      return nullptr;
+    };
+    if (const Ty* c = owner ? declaring(object, 0) : nullptr; c && !c->args.empty())
+    {
+      own = substFor(c);
+      subst = &own;
+    }
+  }
+  DeclContext dc;
+  declContextFor(field, dc);
+  TypeContext fieldCtx{dc.scope, &dc.params, subst && !subst->empty() ? subst : nullptr, field->file ? field->file->tokens : nullptr,
+                       field->file ? field->file->text : std::string_view()};
+  std::optional<int64_t> width = constEval(field->bitfield, fieldCtx, depth + 1);
+  if (!width || *width < 0 || *width > 32)
+    return nullptr; // (wider: as its type; a width that is no constant here, a template's own: its instance's walk)
+  return *width < 32 || !t->isUnsigned ? types.intType(32) : types.intType(32, true);
+}
+
+auto GlobalScope::Impl::constOperandValue(Expr* e, std::optional<ConstValue> v, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  if (v && v->kind == ConstValue::Kind::Int)
+    if (const Ty* promoted = bitFieldPromotion(e, v->type, ctx.subst, depth))
+      return constArith().convert(*v, promoted);
+  return v;
+}
+
 auto GlobalScope::Impl::constCondition(Expr* e, const TypeContext& ctx, int depth) -> std::optional<bool>
 {
   std::optional<ConstValue> v = constValue(e, ctx, depth);
@@ -631,6 +723,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         std::optional<ConstValue> self = v;
         return f && constDefinition(f) ? constCallOn(f, subst, {}, &self, depth + 1) : std::nullopt;
       }
+      v = constOperandValue(u->operand, v, ctx, depth); // (`-u3` with an `unsigned u3 : 3`: an int)
       return v ? constArith().unary(*op, *v) : std::nullopt;
     }
     case NodeKind::BinaryExpr:
@@ -2179,9 +2272,9 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
     chain.pop_back();
   }
   else if (std::optional<std::optional<ConstValue>> placed = constPlacedOperand(first, ctx, depth, firstPlace))
-    value = *placed;
+    value = constOperandValue(first, *placed, ctx, depth);
   else
-    value = constValue(first, ctx, depth + 1);
+    value = constOperandValue(first, constValue(first, ctx, depth + 1), ctx, depth); // (`u3 - 2`: an int, u3 a bit-field)
   bool failed = !value;
   for (size_t i = chain.size(); i-- > 0;)
   {
@@ -2200,7 +2293,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
     // (`sizeof(grid) == 18 && sizeof(TileID) == 2`, layoutNeeded).
     std::optional<ConstPlace> rightPlace;
     std::optional<std::optional<ConstValue>> placed = constPlacedOperand(chain[i]->rhs, ctx, depth, rightPlace);
-    std::optional<ConstValue> r = placed ? *placed : constValue(chain[i]->rhs, ctx, depth + 1);
+    std::optional<ConstValue> r = constOperandValue(chain[i]->rhs, placed ? *placed : constValue(chain[i]->rhs, ctx, depth + 1), ctx, depth);
     if (failed || !r)
     {
       failed = true;
@@ -7404,9 +7497,13 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
         base = plain;
     if (!base)
       return std::nullopt;
+    // (a bit-field operand promoted by its width: `u3 /= -2` divides ints)
+    std::optional<ConstValue> lo = constOperandValue(b->lhs, old, ctx, depth), ro = constOperandValue(b->rhs, r, ctx, depth);
+    if (!lo || !ro)
+      return std::nullopt;
     v = old->isPointer()   ? constPointerArith(*base, *old, *r)
       : old->isAddress() ? constAddressArith(*base, *old, *r, depth)
-                         : constArith().binary(*base, *old, *r);
+                         : constArith().binary(*base, *lo, *ro);
   }
   v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
   if (!v || !constWrite(*place, *v))
