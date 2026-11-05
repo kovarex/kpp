@@ -107,6 +107,12 @@ int main()
 #endif
     ("z");
   printf("%d\n", Scaled().a + Scaled().b);
+  // `x < width >> 1` is `x < (width >> 1)` (kpp would read `x<width>` as a template-id)
+  struct Image { int width; } image = {12};
+  int rows = 0;
+  for (int x = 0; x < image.width >> 1; ++x)
+    ++rows;
+  printf("%d\n", rows);
   int* scratch = (int*)alloca(sizeof(int) * 4);
   scratch[0] = 7;
   errno = 0;

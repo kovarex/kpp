@@ -2462,8 +2462,66 @@
       }
     }
 
+    // `a < b >> c`, C++'s `a < (b >> c)`: kpp reads `name<... >` after an identifier as a template-id
+    // (design.md 22), so `x < source->width >> (mip + 1)` was `x<source->width>` compared with
+    // `(mip + 1)`, a silent wrong answer (Atlas's mipmaps, stb_image's vertical flip; C++'s own parse
+    // here made the same template-id). Where a `<` after a name, `)` or `]`, with space before it,
+    // has a `>>` at its level before what ends a relational operator's right side (`;`, `,`, `)`, `?`,
+    // `&&`, a `<` or `>` ...), that right side is written in parentheses: a template-id's inner `<` or `,` ends the
+    // scan first (`Vector<Vector<i32>>`), and one whose argument shifts stays C++ in them.
+    void parenthesizeShiftsAfterLess()
+    {
+      for (uint32_t op = 1; op + 1 < toks.size(); ++op)
+      {
+        // (a `<` with space before it, as an operator is written: a template-id's is not, `V<V<i32>>`)
+        if (!toks[op].is(P::Less) || toks[op].offset == toks[op - 1].offset + toks[op - 1].length ||
+            !(toks[op - 1].getKind() == TokenKind::Identifier || toks[op - 1].is(P::RParen) || toks[op - 1].is(P::RBracket)))
+          continue;
+        bool shift = false;
+        uint32_t end = op + 1;
+        for (int depth = 0; end < toks.size(); ++end)
+        {
+          const Token& k = toks[end];
+          if (k.getKind() == TokenKind::End || k.getKind() == TokenKind::Directive)
+            break;
+          // (a `>>` the parse split into two `>`, closing the template-id it read)
+          if (depth == 0 && k.is(P::Greater) && end + 1 < toks.size() && toks[end + 1].is(P::Greater) && toks[end + 1].offset == k.offset + 1)
+          {
+            shift = true;
+            ++end;
+            continue;
+          }
+          if (k.is(P::LParen) || k.is(P::LBracket) || k.is(P::LBrace))
+            ++depth;
+          else if (k.is(P::RParen) || k.is(P::RBracket) || k.is(P::RBrace))
+          {
+            if (depth-- == 0)
+              break;
+          }
+          else if (depth == 0 && (k.is(P::Semi) || k.is(P::Comma) || k.is(P::Question) || k.is(P::Colon) || k.is(P::AndAnd) ||
+                                  k.is(P::OrOr) || k.is(P::EqEq) || k.is(P::NotEq) || k.is(P::Less) || k.is(P::LessEq) ||
+                                  k.is(P::Greater) || k.is(P::GreaterEq) || k.is(P::Amp) || k.is(P::Pipe) || k.is(P::Caret) ||
+                                  k.is(P::Assign) || k.is(P::ShrAssign) || k.is(P::ColonColon) || k.is(P::LBrace)))
+            break;
+          else if (depth == 0 && k.is(P::Shr))
+            shift = true;
+        }
+        if (!shift || end >= toks.size() || end <= op + 1)
+          continue;
+        // (at the `<`'s end and the right side's last token's end: no other edit starts there)
+        uint32_t after = toks[op].offset + toks[op].length;
+        if (after < text.size() && text[after] == ' ')
+          replace(after, 1, " ("); // (`x < (w >> 1)`)
+        else
+          insert(after, " (");
+        insert(toks[end - 1].offset + toks[end - 1].length, ")");
+        counts.add("right sides of < with a >> written in parentheses");
+      }
+    }
+
     void convertTokens()
     {
+      parenthesizeShiftsAfterLess();
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
