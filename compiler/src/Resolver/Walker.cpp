@@ -1131,6 +1131,18 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
       l = target;
   }
   e->resolved = l.decl;
+  // A template-id naming a variable: `println(ll < u, " ", sc >> 1)` reads `ll<u, " ", sc>` and then
+  // `> 1` (design.md 22: the token after the `>` decides), which is an error, never the variable with
+  // its arguments dropped (until 2026-11-05 println printed `false` for `true -28`).
+  if (!e->name.parts.empty() && e->name.last().hasTemplateArgs && l.decl &&
+      (l.decl->kind == NodeKind::ParamDecl || (l.decl->kind == NodeKind::VariableDecl && l.decl->templateParams.empty() && !(l.decl->flags & DF_Typedef))) &&
+      file && !file->isImported && !probing)
+  {
+    impl.reportCheckerError(file, e->token, "'" + std::string(symbols.name(e->name.last().symbol)) +
+                                                "' is a variable, not a template: `a < b, c > d` and `a < b, c >> d` read as a template-id when the token after the `>` "
+                                                "would follow one (design.md 22): write the comparison in parentheses, `(a < b)`");
+    return unknown(Why::Name);
+  }
   if (!whenLookup(l, e))
     return types.unknown(); // (design.md 19: reported, or the instances' to tell)
   for (const NamePart& part : e->name.parts)

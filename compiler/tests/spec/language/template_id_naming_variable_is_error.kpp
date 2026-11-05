@@ -1,0 +1,13 @@
+// spec: a name followed by `<...>` that the token after its `>` makes a template-id (design.md 22) is an error when the name is a variable or a parameter: `println(ll < u, " ", sc >> 1)` reads `ll<u, " ", sc>` and then `> 1`, "'ll' is a variable, not a template"; in parentheses, `(ll < u)` is the comparison, and a variable template's arguments are its own (language/consteval_float_variable_templates)
+// found by thread B (2026-11-05): kpp read the template-id as the variable itself, its arguments dropped, so the println printed `false` (-1 > 1) where clang++ prints `true -28`
+// error: template_id_naming_variable_is_error.kpp:11: error: 'll' is a variable, not a template
+int main()
+{
+  long long ll = -1;
+  unsigned u = 1;
+  int8_t sc = -56;
+  println((ll < u), " ", sc >> 1);
+  int64_t total = 0;
+  println(ll < u, " ", sc >> 1, " ", total);
+  return 0;
+}
