@@ -1,0 +1,16 @@
+// spec: namespace-scope `auto` variables initialized by lambdas are usable above their declarations, by free and member functions alike: a lambda with a deduced return type (`twice`) and a generic one (`add`) called before the declarations are reached (`10 3 5`)
+int useTwice() { return twice(4) + twice(1); }
+struct Counter
+{
+  int n = 0;
+  void bump() { n = add(n, 3); }
+};
+auto twice = [](int x) { return x * 2; };
+auto add = [](auto a, auto b) { return a + b; };
+int main()
+{
+  Counter c;
+  c.bump();
+  println(useTwice(), " ", c.n, " ", add(2, 3));
+  return 0;
+}

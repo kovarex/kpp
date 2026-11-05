@@ -1020,6 +1020,11 @@
     }
     RecordInto into(&record->deps); // what typing the copy reads is its own
     InstanceCopier copier(instanceArena());
+    // With no arguments, the copy is the plain walk's expression: its lambdas are the types that
+    // walk gives them (as a function's no-argument instance's are, runFunctionInstance), so that a
+    // namespace-scope `auto` variable initialized by a lambda has its own closure type wherever it
+    // is asked for (computeDeclaredType).
+    copier.keepClosures = s.empty();
     Expr* copy = copier.expression(e);
     record->init = copy;
     ResolveStats scratch;

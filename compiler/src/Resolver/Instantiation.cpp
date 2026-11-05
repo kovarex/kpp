@@ -1857,6 +1857,17 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
           if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
             return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
       }
+      // `auto migrate = [](auto& value, auto from, auto to) { ... };` at namespace scope, named above
+      // it (a member function's body before it, order-independent symbols): its closure type from
+      // a walk of its own of the initializer (constInitializerOf: a copy that keeps the walk's
+      // closures, typed once and shared), the lambda's environment registered there, so that the
+      // use above can call it. (Without it the use saw an unknown type until its file's walk
+      // reached the declaration, by the walks' order.)
+      if (containsAuto(t) && v->init && hasLambda(v->init) && (!subst || subst->empty()) && (!v->parent || v->parent->kind == NodeKind::NamespaceDecl) &&
+          v->templateParams.empty() && (!v->init->ty || !v->init->ty->isKnown()))
+        if (Expr* walked = constInitializerOf(v, nullptr); walked && walked != v->init && walked->ty && walked->ty->isKnown() && !types.isDependent(walked->ty))
+          if (const Ty* deduced = deduceAuto(t, walked->ty); deduced && deduced->isKnown() && !containsAuto(deduced))
+            return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
       if (types.isDependent(t) && containsAuto(t))
         return t; // Deduced from the initializer by the walker when it reaches the declaration.
       return t;
