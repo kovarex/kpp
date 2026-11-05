@@ -304,6 +304,17 @@
   // out, short of an object a destructor runs on (a base's destructor's calls are its own class's,
   // [class.cdtor] 4). constDyingPlaces: the places of the destructors running now.
   ConstPlace constDynamicPlace(const ConstPlace& place, int depth);
+
+  // `dynamic_cast<T*>(p)` ([expr.dynamic.cast]): the complete object p points at (its
+  // most-derived one, constDynamicPlace) when it is a T, else its part of class T when T is a base
+  // of it, else the null pointer; `dynamic_cast<void*>(p)` the complete object. A reference's is
+  // its place (constPlaceOf), and no constant where the pointer's would be null (C++ throws
+  // bad_cast). A pointer to no object of the run is cast as a static_cast is (constCastValue).
+  std::optional<ConstValue> constDynamicCast(NamedCastExpr* c, const TypeContext& ctx, int depth);
+
+  // The part of the complete object at whole (a dynamic_cast's target) of class want: whole itself,
+  // or its base part; nullopt when the object has none.
+  std::optional<ConstPlace> constDynamicPart(ConstPlace whole, const Ty* want, int depth);
   static std::vector<ConstPlace>& constDyingPlaces();
   // The base of t that cls declares (t itself, path empty), the path to it in t's parts appended.
   const Ty* constBaseDeclaring(const Ty* t, const Decl* cls, std::vector<size_t>& path, int depth);

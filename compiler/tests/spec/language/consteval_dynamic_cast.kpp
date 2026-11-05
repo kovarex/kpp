@@ -1,0 +1,48 @@
+// spec: dynamic_cast at compile time as at run time ([expr.dynamic.cast]): a pointer to a base part becomes one to the complete object when it is of the class asked for, to the complete object's part of that class when it has one (a derived class's object, a cross-cast to a second base), else the null pointer; a reference the same where it is (`Dog& r = dynamic_cast<Dog&>(animal)`); `dynamic_cast<void*>` gives the complete object, and a null pointer stays null
+// found by thread D (2026-11-05), comparing kpp at compile time and run time: a cast of an Animal that is a Bird to Dog* was no constant where it is null, and a reference result was no place, so `Dog& r = dynamic_cast<Dog&>(a)` was no constant
+class Animal
+{
+public:
+  virtual ~Animal() {}
+  virtual int legs() const { return 0; }
+};
+class Named
+{
+public:
+  virtual ~Named() {}
+  int letter = 5;
+};
+class Dog : public Animal, public Named
+{
+public:
+  int legs() const override { return 4; }
+  int bark() const { return 7; }
+};
+class Bird : public Animal
+{
+public:
+  int legs() const override { return 2; }
+};
+class Puppy : public Dog
+{
+};
+constexpr long long found() { Dog d; Animal* a = &d; Dog* p = dynamic_cast<Dog*>(a); return p ? p->bark() : -1; }
+constexpr long long notFound() { Bird b; Animal* a = &b; return dynamic_cast<Dog*>(a) ? 1 : 0; }
+constexpr long long derivedObject() { Puppy p; Animal* a = &p; Dog* d = dynamic_cast<Dog*>(a); return d ? d->legs() * 10 + d->bark() : -1; }
+constexpr long long crossCast() { Dog d; Animal* a = &d; Named* n = dynamic_cast<Named*>(a); return n ? n->letter : -1; }
+constexpr long long reference() { Dog d; Animal& a = d; Dog& r = dynamic_cast<Dog&>(a); return r.bark(); }
+constexpr long long complete() { Dog d; Animal* a = &d; return dynamic_cast<void*>(a) == (void*)&d ? 1 : 0; }
+constexpr long long null() { Animal* a = nullptr; return dynamic_cast<Dog*>(a) == nullptr ? 1 : 0; }
+int main()
+{
+  constexpr long long a = found();
+  constexpr long long b = notFound();
+  constexpr long long c = derivedObject();
+  constexpr long long d = crossCast();
+  constexpr long long e = reference();
+  constexpr long long f = complete();
+  constexpr long long g = null();
+  println(a, " ", b, " ", c, " ", d, " ", e, " ", f, " ", g);
+  println(found(), " ", notFound(), " ", derivedObject(), " ", crossCast(), " ", reference(), " ", complete(), " ", null());
+  return 0;
+}

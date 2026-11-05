@@ -2523,6 +2523,10 @@ the temporary), so an Optional<String> made from a String is a constant
 object of a class with operator-> (an Optional, an iterator, a handle) run its operator-> where the
 object is, and a class object one returns runs its own in turn, down to a pointer: the member
 function runs on the object that pointer points at (language/consteval_member_call_through_operator_arrow).
+`dynamic_cast` reads the complete object a base part belongs to: a pointer becomes one to it, or
+to its part of the class asked for (a derived class's object, a cross-cast to a second base), else
+the null pointer; a reference the same where it is, and no constant where it has no such part
+(C++ throws bad_cast) (language/consteval_dynamic_cast).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

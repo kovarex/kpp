@@ -213,6 +213,54 @@ auto GlobalScope::Impl::constConverted(std::optional<ConstValue> v, const Ty* t)
   return std::nullopt;
 }
 
+auto GlobalScope::Impl::constDynamicPart(ConstPlace whole, const Ty* want, int depth) -> std::optional<ConstPlace>
+{
+  std::optional<ConstValue> object = constRead(whole);
+  if (!object || !object->isObject() || !object->type || object->type->isBraceList() || !want)
+    return std::nullopt;
+  const Ty* complete = types.unqualified(types.stripRef(object->type));
+  if (complete != want)
+  {
+    std::optional<std::vector<size_t>> base = complete->kind == TyKind::Class && want->kind == TyKind::Class ? constBasePath(complete, want, depth + 1) : std::nullopt;
+    if (!base)
+      return std::nullopt;
+    whole.path.insert(whole.path.end(), base->begin(), base->end());
+    whole.bits = 0;
+  }
+  whole.type = want;
+  return whole;
+}
+
+auto GlobalScope::Impl::constDynamicCast(NamedCastExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  const Ty* t = c->type ? convertType(c->type, ctx, depth + 1) : nullptr;
+  if (!t)
+    return std::nullopt;
+  if (t->isReference())
+  {
+    std::optional<ConstPlace> at = constPlaceOf(c, ctx, depth + 1);
+    return at ? constRead(*at) : std::nullopt;
+  }
+  std::optional<ConstValue> v = constValue(c->operand, ctx, depth + 1);
+  const Ty* u = types.unqualified(t);
+  if (!v || u->kind != TyKind::Pointer || !u->inner)
+    return std::nullopt;
+  if (v->kind == ConstValue::Kind::Int && v->i == 0)
+    return v; // a null pointer stays null
+  if (!v->isAddress() || !v->target || !v->target->storage)
+    return constCastValue(c->type, c->operand, ctx, depth); // (no object of the run: as a static_cast)
+  std::optional<ConstPlace> place = constStoragePlace(*v, "a dynamic_cast of", depth);
+  if (!place)
+    return std::nullopt;
+  ConstPlace whole = constDynamicPlace(*place, depth);
+  const Ty* want = types.unqualified(u->inner);
+  if (want->kind == TyKind::Void)
+    return ConstValue::address(t, constStorageTarget(whole)); // the complete object's address
+  if (std::optional<ConstPlace> part = constDynamicPart(whole, want, depth))
+    return ConstValue::address(t, constStorageTarget(*part));
+  return ConstValue::integer(0, t); // no such object: the null pointer
+}
+
 auto GlobalScope::Impl::constPointerTo(const ConstValue& v, const Ty* t) -> std::optional<ConstValue>
 {
   if (v.kind == ConstValue::Kind::Int && v.i == 0)
@@ -481,7 +529,10 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     }
     case NodeKind::ParenExpr: return constValue(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
     case NodeKind::CastExpr: return constCastValue(static_cast<CastExpr*>(e)->type, static_cast<CastExpr*>(e)->operand, ctx, depth);
-    case NodeKind::NamedCastExpr: return constCastValue(static_cast<NamedCastExpr*>(e)->type, static_cast<NamedCastExpr*>(e)->operand, ctx, depth);
+    case NodeKind::NamedCastExpr:
+      if (static_cast<NamedCastExpr*>(e)->castKind == Kw::dynamic_cast_)
+        return constDynamicCast(static_cast<NamedCastExpr*>(e), ctx, depth);
+      return constCastValue(static_cast<NamedCastExpr*>(e)->type, static_cast<NamedCastExpr*>(e)->operand, ctx, depth);
     case NodeKind::FunctionalCastExpr:
     {
       auto* f = static_cast<FunctionalCastExpr*>(e);
@@ -6543,6 +6594,28 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     std::optional<ConstValue> v = constIncrement(u, P(u->op) == P::PlusPlus, ctx, depth + 1, &where);
     constCallPlaceRan = true; // (evaluated here: never a second time)
     return v ? where : std::nullopt;
+  }
+  if (e->kind == NodeKind::NamedCastExpr && static_cast<NamedCastExpr*>(e)->castKind == Kw::dynamic_cast_)
+  {
+    // `dynamic_cast<Dog&>(animal)`: the complete object's part of class Dog, where it is (it was
+    // no place: a reference bound to it was no constant).
+    auto* c = static_cast<NamedCastExpr*>(e);
+    const Ty* t = c->type ? convertType(c->type, ctx, depth + 1) : nullptr;
+    if (!t || !t->isReference() || !t->inner || !t->inner->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    std::optional<ConstPlace> at = constPlaceOf(c->operand, ctx, depth + 1, calls, ran);
+    if (!at || !at->type)
+      return std::nullopt;
+    std::optional<ConstPlace> part = constDynamicPart(constDynamicPlace(*at, depth), types.unqualified(t->inner), depth);
+    if (!part)
+    {
+      if (constWhy().empty())
+        constWhy() = "a dynamic_cast to a reference to " + types.toString(types.unqualified(t->inner), &symbols) +
+                     " of an object that is none (C++ throws bad_cast)";
+      return std::nullopt;
+    }
+    part->readOnly = at->readOnly || t->inner->isConst;
+    return part;
   }
   if (e->kind == NodeKind::CastExpr ||
       (e->kind == NodeKind::NamedCastExpr && (static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::const_cast_)))
