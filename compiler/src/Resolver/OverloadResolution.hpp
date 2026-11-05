@@ -227,6 +227,13 @@
   // took g(2.5).
   bool constraintsHold(FunctionDecl* f, const Subst& deduced);
 
+  // Whether each argument deduces what the call deduced ([temp.deduct.type] 2: a template
+  // parameter deduced from two arguments gets the same type from each, else deduction fails):
+  // deduceCall keeps a parameter's first deduction, so `f(1, 2.5)` of `template<class T> T f(T, T)`
+  // took T = int and converted 2.5 to 2 where C++ has no such call. given: deduced's leading pairs
+  // that are no deduction (the class's arguments, explicit ones), which an argument converts to.
+  bool deductionsAgree(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, const Subst& deduced, size_t given);
+
   // A constraint in normal form ([temp.constr.normal]): atomic constraints under && and ||. An
   // atom is an expression with its parameter mapping, the arguments its owner's template
   // parameters stand for there; a concept-id is replaced by its concept's definition under the

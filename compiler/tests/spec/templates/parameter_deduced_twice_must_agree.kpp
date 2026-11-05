@@ -1,0 +1,23 @@
+// spec: a template parameter deduced from two arguments must get the same type from each ([temp.deduct.type] 2), else the template is no candidate and another overload is taken: `pick(1, 2.5)` of `template<class T> pick(T, T)` beside `pick(double, double)` takes the second, as does `ref(i, 3LL)` (T = int and long long), `ptr(ip, 4.5)` and `two(1, 2.5, 3.5)`; arguments that agree (`ref(ci, 3)`: const int's T is int) and explicit arguments (`larger<double>(1, 2.5)`) deduce as before (clang gives the same numbers)
+// found by thread D (2026-11-05), comparing kpp with clang: a parameter kept its first deduction and the other arguments converted to it, so `larger(1, 2.5)` of `template<class T> T larger(T, T)` compiled and gave 2, where C++ has no such call
+template<class T> int pick(T, T) { return 1; }
+int pick(double, double) { return 2; }
+template<class T> int ref(const T&, T) { return 1; }
+int ref(long long, long long) { return 2; }
+template<class T> int ptr(T*, T) { return 1; }
+int ptr(const void*, double) { return 2; }
+template<class T, class U> int two(T, U, T) { return 1; }
+int two(double, double, double) { return 2; }
+template<class T> T larger(T a, T b) { return a > b ? a : b; }
+int main()
+{
+  int i = 1;
+  const int ci = 2;
+  int* ip = &i;
+  print(pick(1, 2), " ", pick(1, 2.5), " ", pick(2.5, 1), " ");
+  print(ref(i, 3), " ", ref(ci, 3), " ", ref(i, 3LL), " ");
+  print(ptr(ip, 4), " ", ptr(ip, 4.5), " ");
+  print(two(1, 2.5, 3), " ", two(1, 2.5, 3.5), " ");
+  println(larger(3, 4), " ", (int)larger<double>(1, 2.5));
+  return 0;
+}

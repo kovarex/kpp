@@ -101,6 +101,11 @@ builds win less unless machine code is cached per function.
   where the specialization is named, one its argument does not satisfy a compile error
   (templates/class_template_constraint_is_checked; the game's InfiniteRectangle<ConvertibleToBool T>
   is given pointers, which satisfy it).
+- Deduction from several arguments (2026-11-05): a template parameter that two arguments deduce
+  gets the same type from each, else the template is no candidate ([temp.deduct.type] 2): `f(1,
+  2.5)` of `template<class T> f(T, T)` takes another overload or has none. The first deduction stood
+  until then and the other arguments converted to it (`larger(1, 2.5)` gave 2; spec
+  templates/parameter_deduced_twice_must_agree).
 - Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
   the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
   constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,

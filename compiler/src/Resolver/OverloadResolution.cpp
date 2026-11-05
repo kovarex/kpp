@@ -482,6 +482,8 @@ auto GlobalScope::Impl::constructorTakes(FunctionDecl* f, const std::vector<cons
   {
     Subst d = s;
     deduceCall(f, ft, argTypes, d);
+    if (!deductionsAgree(f, ft, argTypes, d, s.pairs.size()))
+      return false; // `template<U> Box(U, U)` given an int and a double: no deduction
     // Deduction fails when the arguments leave one of f's own parameters undeduced (one
     // without a default; a pack that is not the last): a brace list deduces nothing, so
     // `template<U1, U2> Pair(U1&&, U2&&)` takes no two lists (`{{1, false}, {2, true}}` is no
@@ -1872,6 +1874,31 @@ auto GlobalScope::Impl::equivalentParameters(FunctionDecl* a, FunctionDecl* b, c
   return (a->flags & (DF_Const | DF_RefQual)) == (b->flags & (DF_Const | DF_RefQual));
 }
 
+auto GlobalScope::Impl::deductionsAgree(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, const Subst& deduced, size_t given) -> bool
+{
+  if (!ft || ft->kind != TyKind::Function)
+    return true;
+  // Each argument's deduction on its own, from the given pairs (as deduceParams walks them; a
+  // pack's elements deduce one by one there), against the call's.
+  for (size_t i = 0; i < f->params.size() && i < ft->args.size() && i < argTypes.size(); ++i)
+  {
+    if (static_cast<ParamDecl*>(f->params[i])->isPack)
+      break;
+    const Ty* at = argTypes[i];
+    if (!at || !at->isKnown() || types.isDependent(at) || mentionsUnknown(at) || at->isBraceList())
+      continue;
+    Subst one;
+    for (size_t k = 0; k < given && k < deduced.pairs.size(); ++k)
+      one.pairs.push_back(deduced.pairs[k]);
+    size_t from = one.pairs.size();
+    deduce(ft->args[i], at, one);
+    for (size_t k = from; k < one.pairs.size(); ++k)
+      if (const Ty* all = deduced.find(one.pairs[k].param); all && one.pairs[k].type && all != one.pairs[k].type)
+        return false;
+  }
+  return true;
+}
+
 auto GlobalScope::Impl::requiresHolds(FunctionDecl* f, const Subst& deduced) -> bool
 {
   // No requires clause holds (convertsByOperator asks for every conversion template, a
@@ -2165,6 +2192,8 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     if (!f->templateParams.empty() && ft && ft->kind == TyKind::Function)
     {
       deduceCall(f, ft, argTypes, deduced);
+      if (!deductionsAgree(f, ft, argTypes, deduced, givenCount))
+        continue; // `f(1, 2.5)` of `f(T, T)`: T deduced as int and as double, no candidate
       if (!fillDefaultTemplateArgs(f, deduced))
         continue; // a default template argument that is no type: not a candidate
       if (argsConcrete)
