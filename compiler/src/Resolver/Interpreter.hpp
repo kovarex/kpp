@@ -887,8 +887,11 @@
   std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth);
 
   // `++i`, `count--`: the local stepped by one in its type; the new value, or the old one for the
-  // postfix forms.
+  // postfix forms. An object of a class: its operator++ or operator-- run on it where it is.
   std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth);
+  // A unary operator on an enumeration operand that calls an operator function (`!flags`, `++d`):
+  // that call's result (none when it is no constant), or nullopt for the built-in operator.
+  std::optional<std::optional<ConstValue>> constEnumUnary(UnaryExpr* u, P op, const TypeContext& ctx, int depth);
 
   static bool isAssignmentOperator(P op);
 

@@ -4085,6 +4085,27 @@ auto GlobalScope::Impl::Walker::builtinOperand(const Ty* t) -> const Ty*
   return impl.scalarConversionOf(s);
 }
 
+auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen) -> const Ty*
+{
+  // Postfix `d++` is `operator++(d, 0)` ([over.oper.incr]): the candidates taking (E&, int).
+  bool step = op == P::PlusPlus || op == P::MinusMinus;
+  bool twoOperands = step && postfix;
+  Subst subst;
+  bool isMember;
+  FunctionDecl* f = operatorFunction(op, operand, twoOperands ? types.intType() : nullptr, token, twoOperands ? 2 : 1, subst, isMember);
+  if (!f || isMember || !f->templateParams.empty())
+    return nullptr;
+  // Only one that takes the enumeration as it is (not through a conversion to some class).
+  const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
+  if (!ft || ft->kind != TyKind::Function || ft->args.size() != (twoOperands ? 2u : 1u) ||
+      types.unqualified(types.stripRef(ft->args[0])) != types.unqualified(types.stripRef(operand)))
+    return nullptr;
+  if (chosen)
+    *chosen = f;
+  Span<Expr*> none;
+  return returnTypeOfCall(f, nullptr, none, nullptr);
+}
+
 auto GlobalScope::Impl::Walker::enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, FunctionDecl** chosen) -> const Ty*
 {
   Subst subst;
@@ -4399,6 +4420,13 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
   }
   if (s->kind == TyKind::Param)
     return op == P::Bang ? types.boolType() : op == P::Amp ? types.pointer(s) : s;
+  if (s->kind == TyKind::Enum && op != P::Amp && op != P::Star)
+    if (const Ty* r = enumUnaryOperator(op, u->postfix, argumentType(u->operand, t, types), u->token, &callee))
+    {
+      call = OperatorCall::Function;
+      member = false;
+      return r;
+    }
   if (s->kind == TyKind::Class)
   {
     // `&x` of a class with its own unary operator& is that operator's result (CComPtr<T>'s

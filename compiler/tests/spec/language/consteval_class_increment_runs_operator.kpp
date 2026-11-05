@@ -1,0 +1,36 @@
+// spec: at compile time `++c`, `c++` and `--c` of a class object run its operator++ (postfix its operator++(int)) and operator-- on the object where it is, as at run time: the prefix one's value is the object after it, the postfix one's what it returns (`601 601`)
+// found with the library's node containers at compile time (language/consteval_node_containers): FastMap's and Map's iterators stopped at "an operator on an object or a pointer"
+struct Counter
+{
+  int i = 0;
+  Counter& operator++()
+  {
+    this->i += 1;
+    return *this;
+  }
+  Counter operator++(int)
+  {
+    Counter old = *this;
+    this->i += 10;
+    return old;
+  }
+  Counter& operator--()
+  {
+    this->i -= 5;
+    return *this;
+  }
+};
+constexpr int steps()
+{
+  Counter c;
+  int first = (++c).i;
+  Counter old = c++;
+  --c;
+  return c.i * 100 + old.i * first;
+}
+constexpr int stepped = steps();
+int main()
+{
+  println(steps(), " ", stepped);
+  return 0;
+}

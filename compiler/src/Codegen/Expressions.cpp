@@ -1156,6 +1156,50 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       }
       return callRvalue(operatorCall(o, opName, {}, u, true), u);
     }
+    // `++direction`, `direction++` with an operator function declared for the enumeration: the one
+    // the checker chose (Walker::enumUnaryOperator), never the built-in increment, which C++ does
+    // not even have for an enumeration (language/enum_operand_calls_user_defined_operator).
+    if (ot && ot->kind == TyKind::Enum)
+    {
+      FunctionDecl* chosen = verifyDecisions() ? nullptr : recordedOperator(u);
+      if (verifyDecisions())
+      {
+        chosen = global.findFreeOperator(uint32_t(op), argumentType(u->operand, u->operand->ty, types), u->postfix ? types.intType(32) : nullptr, currentFunction);
+        verifyOperatorCall(u, chosen ? OperatorCall::Function : OperatorCall::Builtin, chosen, false);
+      }
+      if (chosen && !u->calleeMember)
+      {
+        Expr* operand = u->operand;
+        if (!u->postfix)
+          return callChosenOperator(u, chosen, false, Span<Expr*>{&operand, 1});
+        // `operator++(Direction&, int)`: the operand's address, and 0.
+        const Ty* ft = declType(chosen);
+        if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2 || ft->args[0]->kind != TyKind::LRef || !chosen->templateParams.empty())
+          unsupported(u, "a postfix " + std::string(punctuatorSpelling(op)) + " whose operator function " + qualifiedName(chosen) +
+                           " takes no reference to the operand and an int");
+        TemplateArgs none;
+        std::string fname = useFunction(chosen, none, nullptr, u);
+        Signature s = signatureOf(chosen);
+        const Ty* ret = ft->inner;
+        std::string argText, resultAddr;
+        if (s.hasSret)
+        {
+          resultAddr = newObjectSlot(ret, u);
+          argText = "ptr " + resultAddr + ", ";
+        }
+        argText += "ptr " + lvalue(u->operand) + ", " + llType(ft->args[1], u) + " 0";
+        if (s.returnType == "void")
+        {
+          emitCall("", s.returnType + " " + fname + "(" + argText + ")");
+          if (s.hasSret)
+            statementTemps.push_back({resultAddr, ret}); // (after the call: one that throws built no result)
+          return s.hasSret ? callRvalue({resultAddr, ret, true}, u) : Value{"", types.voidType(), false};
+        }
+        std::string r = newTemp();
+        emitCall(r + " = ", s.returnType + " " + fname + "(" + argText + ")");
+        return callRvalue({r, ret, false}, u);
+      }
+    }
     std::string addr = lvalue(u->operand);
     // A bit-field: its own bits of the storage unit, read and written back as an assignment
     // does them, a prefix one's value read back (wrapped to the field's width).
@@ -1207,6 +1251,19 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
         Expr* arg = u->operand;
         return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{&arg, 1}, u), u);
       }
+    }
+  }
+  if (const Ty* et = u->operand->ty && u->operand->ty->isKnown() ? types.unqualified(types.stripRef(u->operand->ty)) : nullptr;
+      et && et->kind == TyKind::Enum && verifyDecisions())
+  {
+    // KPP_VERIFY_DECISIONS: codegen's own choice for an enumeration operand (`!flags`), compared
+    // with the checker's (Walker::enumUnaryOperator).
+    FunctionDecl* f = global.findFreeOperator(uint32_t(op), argumentType(u->operand, u->operand->ty, types), nullptr, currentFunction);
+    verifyOperatorCall(u, f ? OperatorCall::Function : OperatorCall::Builtin, f, false);
+    if (f)
+    {
+      Expr* operand = u->operand;
+      return callChosenOperator(u, f, false, Span<Expr*>{&operand, 1});
     }
   }
   Value v = rvalue(u->operand);

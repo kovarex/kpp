@@ -485,6 +485,9 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     {
       auto* u = static_cast<UnaryExpr*>(e);
       std::optional<P> op = constOperator(u->op, u->isKeyword);
+      if (op && u->operand && u->operand->ty && types.unqualified(types.stripRef(u->operand->ty))->kind == TyKind::Enum)
+        if (std::optional<std::optional<ConstValue>> called = constEnumUnary(u, *op, ctx, depth))
+          return *called;
       if (op && (*op == P::PlusPlus || *op == P::MinusMinus))
         return constIncrement(u, *op == P::PlusPlus, ctx, depth);
       if (op && *op == P::Star && !u->postfix)
@@ -2002,6 +2005,11 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     return constAddressArith(op, l, r, depth);
   if (!objects && (l.isPointer() || r.isPointer()))
     return constPointerArith(op, l, r);
+  // An enumeration operand of the node's operator (`P1 + P2` with an operator+(Plain, Plain)): the
+  // operator function the checker chose for it (Walker::enumOperator) as codegen calls it, the
+  // built-in operator only where it chose that (language/enum_operand_calls_user_defined_operator).
+  auto enumeration = [this](const ConstValue& v) { return v.type && types.unqualified(types.stripRef(v.type))->kind == TyKind::Enum; };
+  bool enums = node && !l.isObject() && !r.isObject() && (enumeration(l) || enumeration(r)) && op != P::AndAnd && op != P::OrOr;
   // `this->items + N`: an array an operator meets is a pointer to its first element.
   auto decayed = [this](const ConstValue& v) -> std::optional<ConstValue> {
     const Ty* t = v.isObject() && v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
@@ -2010,7 +2018,7 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   if (!objects && (op == P::Plus || op == P::Minus || op == P::EqEq || op == P::NotEq))
     if (std::optional<ConstValue> a = decayed(l), b = decayed(r); a || b)
       return constPointerArith(op, a ? *a : l, b ? *b : r);
-  if (!l.isObject() && !r.isObject())
+  if (!l.isObject() && !r.isObject() && (!enums || (node->call != OperatorCall::Function && !verifyInterpreterDecisions())))
     return constArith().binary(op, l, r);
   auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
   bool comparison = op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq;
@@ -2120,6 +2128,8 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   };
   if (std::optional<std::optional<ConstValue>> found = direct(op, l, r, lo, ro))
     return *found;
+  if (enums)
+    return constArith().binary(op, l, r); // (KPP_VERIFY_DECISIONS: no operator function takes them)
   if (op == P::EqEq || op == P::NotEq)
   {
     // `b == a` for `a == b`, `!(a == b)` for `a != b`, memberwise where `<=>` is defaulted.
@@ -5925,6 +5935,16 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
       return constRead(*place);
     }
   }
+  if (target && target->kind == TyKind::Enum && op != P::Assign && b->call == OperatorCall::Function && b->callee && !b->calleeMember &&
+      b->callee->templateParams.empty())
+  {
+    // `flags |= other` with an operator|=(Flags&, Flags) declared: that function, as the checker
+    // chose it (Walker::enumOperator) and codegen calls it, given the left operand where it is
+    // (language/enum_operand_calls_user_defined_operator).
+    std::vector<std::optional<ConstPlace>> places{place, std::nullopt};
+    std::vector<uint8_t> categories{1, 0};
+    return constCallOn(b->callee, Subst{}, {*old, *r}, nullptr, depth + 1, nullptr, &places, &categories);
+  }
   std::optional<ConstValue> v = r;
   if (op != P::Assign)
   {
@@ -5948,6 +5968,52 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
   return v;
 }
 
+auto GlobalScope::Impl::constEnumUnary(UnaryExpr* u, P op, const TypeContext& ctx, int depth) -> std::optional<std::optional<ConstValue>>
+{
+  bool step = op == P::PlusPlus || op == P::MinusMinus;
+  bool postfix = step && u->postfix;
+  if (u->postfix && !step)
+    return std::nullopt;
+  const Ty* operand = argumentType(u->operand, u->operand->ty, types);
+  FunctionDecl* f = u->call == OperatorCall::Function && !u->calleeMember ? u->callee : nullptr;
+  if (verifyInterpreterDecisions())
+  {
+    // KPP_VERIFY_DECISIONS: this lookup's own, against the checker's.
+    std::vector<const Ty*> argTypes{operand};
+    if (postfix)
+      argTypes.push_back(types.intType());
+    FunctionDecl* own = constFreeFunction(opSymbols[uint32_t(op)], argTypes, ctx.scope);
+    const Ty* ft = own ? declaredTypeOf(own, nullptr, 0) : nullptr;
+    if (ft && (ft->kind != TyKind::Function || ft->args.size() != argTypes.size() ||
+               types.unqualified(types.stripRef(ft->args[0])) != types.unqualified(types.stripRef(operand))))
+      own = nullptr;
+    if (own != f && (!own || !f || constDefinition(own) != constDefinition(f)))
+      fprintf(stderr, "%s: error: decision check (interpreter): it calls %s, the checker chose %s\n",
+              ctx.function && ctx.function->file ? locationOf(ctx.function->file, u->token).c_str() : "<interpreter>",
+              own ? debugName(own->name.last().symbol).c_str() : "the built-in operator", f ? debugName(f->name.last().symbol).c_str() : "the built-in operator");
+    f = own;
+  }
+  if (!f || !f->templateParams.empty())
+    return std::nullopt; // the built-in operator
+  // `!flags`, `~flags`, `++d`, `d++`: the operator function declared for the enumeration that the
+  // checker chose (Walker::enumUnaryOperator, design.md 24), as codegen calls it, its operand where it
+  // is for a reference parameter; postfix given 0 too (language/enum_operand_calls_user_defined_operator).
+  std::optional<ConstPlace> at = constPure(u->operand) ? constPlaceOf(u->operand, ctx, depth + 1, true) : std::nullopt;
+  std::optional<ConstValue> v = at ? constRead(*at) : constValue(u->operand, ctx, depth + 1);
+  if (!v)
+    return std::optional<ConstValue>();
+  std::vector<ConstValue> args{*v};
+  std::vector<std::optional<ConstPlace>> places{at};
+  std::vector<uint8_t> categories{uint8_t(at ? 1 : 0)};
+  if (postfix)
+  {
+    args.push_back(ConstValue::integer(0, types.intType()));
+    places.push_back(std::nullopt);
+    categories.push_back(0);
+  }
+  return constCallOn(f, Subst{}, args, nullptr, depth + 1, nullptr, &places, &categories);
+}
+
 auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   std::optional<ConstPlace> place = constPlaceOf(u->operand, ctx, depth + 1, true);
@@ -5956,6 +6022,33 @@ auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeC
   std::optional<ConstValue> old = constRead(*place);
   if (!old)
     return std::nullopt;
+  if (old->isObject() && old->type && !old->type->isBraceList() && types.unqualified(types.stripRef(old->type))->kind == TyKind::Class)
+  {
+    // `++it` of an object: its class's operator++ (postfix: operator++(int), given 0) run on it where
+    // it is, as codegen calls it; the prefix one's value is the object after it.
+    P op = increment ? P::PlusPlus : P::MinusMinus;
+    Subst subst;
+    std::vector<const Ty*> argTypes;
+    std::vector<ConstValue> args;
+    if (u->postfix)
+    {
+      argTypes.push_back(types.intType());
+      args.push_back(ConstValue::integer(0, types.intType()));
+    }
+    FunctionDecl* f = constClassOperator(old->type, op, argTypes, subst, depth);
+    if (!f || !constDefinition(f))
+    {
+      if (constWhy().empty())
+        constWhy() = std::string(u->postfix ? "a postfix " : "a prefix ") + std::string(punctuatorSpelling(op)) + " on " +
+                     types.toString(types.unqualified(types.stripRef(old->type)), &symbols) + " without an operator function the evaluator can run";
+      return std::nullopt;
+    }
+    std::optional<ConstValue> self = old;
+    std::optional<ConstValue> r = constCallOn(f, subst, args, &self, depth + 1, &*place);
+    if (!r)
+      return std::nullopt;
+    return u->postfix ? r : constRead(*place);
+  }
   ConstValue one = ConstValue::integer(1, types.intType());
   std::optional<ConstValue> v = old->isPointer()   ? constPointerArith(increment ? P::Plus : P::Minus, *old, one)
                                 : old->isAddress() ? constAddressMove(*old, increment ? 1 : -1, depth)

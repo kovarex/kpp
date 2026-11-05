@@ -629,6 +629,10 @@
     // built-in one, which a scoped enum does not even have. Only a free non-template function whose
     // parameters take the enum operands as they are (not through a conversion to some class).
     const Ty* enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, FunctionDecl** chosen = nullptr);
+    // The same for a unary operator on an enumeration operand (`!flags`, `~flags`, `-p`, `++d`;
+    // postfix `d++` the `operator++(E&, int)`), which C++ calls where it is declared and kpp took
+    // as the built-in operator (language/enum_operand_calls_user_defined_operator).
+    const Ty* enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen = nullptr);
 
     // Two rules of design.md 14 on text. A string literal plus or minus an integer is C++'s pointer
     // arithmetic, never text: an error (`&"abc"[1]` writes the pointer). A `<<` chain into a String
