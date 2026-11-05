@@ -780,6 +780,7 @@
     // other as an undecided branch. True when there is no condition.
     bool whenHolds(Decl* d);
 
+    void walkWhenCondition(Decl* d);
     void walkLocalDecl(Decl* d);
 
     void walkStmt(Stmt* s);

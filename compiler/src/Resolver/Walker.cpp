@@ -4451,6 +4451,8 @@ auto GlobalScope::Impl::Walker::noteZeroNull(Expr* e, const Ty* target) -> void
   static const char* zeros[] = {"0", "0u", "0U", "0l", "0L", "0ll", "0LL", "0ul", "0UL", "0ull", "0ULL"};
   if (std::none_of(std::begin(zeros), std::end(zeros), [&](const char* z) { return text == z; }))
     return;
+  if (!firstZeroNull(in, l->token))
+    return;
   if (zeroNullWarningsOn()) // (convert.cmd's nullptr pass: warnings, for fix-null.py)
     noteZeroNullWarning(Impl::locationOf(in, l->token) + ": warning: the literal 0 is no pointer: write nullptr (design.md 4)");
   else
@@ -4673,10 +4675,21 @@ auto GlobalScope::Impl::Walker::walkDecls(Span<Decl*> decls) -> void
     walkDecl(d);
 }
 
+auto GlobalScope::Impl::Walker::walkWhenCondition(Decl* d) -> void
+{
+  // A decided `when`'s condition (design.md 19: the parser's at namespace and class scope, the walk's
+  // for a local) is walked for its names alone, so that they resolve as any other expression's do
+  // (the language server's hover, definition, references on `config::debug` there; item 13 of the
+  // refactoring list): what it decided stays.
+  if (d && d->when && d->whenKnown >= 0 && !probing && !d->when->ty)
+    walkExpr(d->when);
+}
+
 auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
 {
   if (!d)
     return;
+  walkWhenCondition(d);
   // While the files are resolved, a template function's own walk (the generic one, outside any
   // other unit) is a task for whichever worker is free: one file of heavy templates
   // (ValueToWidget.kpp: 18 template functions of 50 to 100 ms each, 1.26 s of the game's 1.31 s
@@ -5407,6 +5420,7 @@ auto GlobalScope::Impl::Walker::walkLocalDecl(Decl* d) -> void
   {
     // Declared all the same, absent (whenKnown 0): a use of its name finds it, never a name of an
     // outer scope or of the library, and is an error unless it is discarded code (whenUse).
+    walkWhenCondition(d);
     declareLocal(d);
     return;
   }
@@ -5833,6 +5847,9 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         return record(e, b && b->isKnown() ? other : types.unknown());
       if (!b->isKnown())
         return record(e, then);
+      // `target ? &target[i] : 0`: a literal 0 beside a pointer would be that pointer (design.md 4).
+      noteZeroNull(c->else_, a->kind == TyKind::Array ? types.decay(a) : a);
+      noteZeroNull(c->then, b->kind == TyKind::Array ? types.decay(b) : b);
       // `info ? info->buffer : nullptr`: the other branch's type, an array decayed to a pointer.
       if (a->kind == TyKind::Nullptr)
         return record(e, b->kind == TyKind::Array ? types.decay(b) : other);

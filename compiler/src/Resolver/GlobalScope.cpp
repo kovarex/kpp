@@ -567,6 +567,8 @@ void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens
     for (const Diagnostic& d : file.structRule)
       impl->reportCheckerError(&file, d.token, d.message);
   walker.walkDecls(file.decls);
+  for (Decl* a : file.absentDecls) // (a false `when`'s dropped declarations: their condition's names resolve too)
+    walker.walkWhenCondition(a);
 }
 
 TypeTable& GlobalScope::types() { return impl->types; }

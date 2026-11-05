@@ -154,8 +154,22 @@
       // A literal 0 is the walk's to report (Walker::noteZeroNull: an initializer, an assignment, a
       // comparison, an argument, a return, `T*` in a template's own walk), as an error or, under
       // --zero-null-warnings, a warning. Here: a constant that is 0, which no walk sees as a literal.
+      if (e && e->kind == NodeKind::ConditionalExpr)
+        return false; // (`p ? q : 0`: its literal is the walk's)
       if (e && e->kind == NodeKind::LiteralExpr)
-        return false;
+      {
+        // What the walk did not see (a brace list's member: `Heap hh = { 0, 0, 0 };`), once.
+        ParsedFile* in = static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : currentFile;
+        if (!in || in->isImported || !firstZeroNull(in, e->token))
+          return false;
+        if (zeroNullWarningsOn())
+        {
+          noteZeroNullWarning(locationOf(e, in, true) + ": warning: the literal 0 is no pointer: write nullptr (design.md 4)");
+          return false;
+        }
+        fail(e, "the literal 0 is no pointer: write nullptr (design.md 4)");
+        return true;
+      }
       if (zeroNullWarningsOn())
         return false; // (convert.cmd's nullptr pass rewrites literals; a constant is the converter's to write)
       fail(at, "an integer 0 is no pointer: write nullptr (design.md 4)");

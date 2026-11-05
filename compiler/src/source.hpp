@@ -49,6 +49,9 @@ void setZeroNullWarnings(bool on);
 bool zeroNullWarningsOn();
 void noteZeroNullWarning(const std::string& warning);
 std::vector<std::string> takeZeroNullWarnings();
+// Whether the literal 0 at token of file is reported for the first time in this build (the walk
+// reports what it sees, codegen the rest, a brace list's members: each once, an instance's copy too).
+bool firstZeroNull(const void* file, uint32_t token);
 
 // In a compile server, a diagnostic's place is written marked and the client that prints it gives
 // it its form (renderDiagnostics): Visual Studio's builds (--msvc-diagnostics) and a terminal's share

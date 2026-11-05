@@ -2464,6 +2464,15 @@
         if (auto* list = static_cast<BraceInitExpr*>(init); list->args.size() == 1 && list->designators.empty() &&
                                                             list->args[0]->kind != NodeKind::BraceInitExpr)
           init = list->args[0];
+      // A literal 0 for a pointer (an error in kpp, design.md 4; a warning under --zero-null-warnings),
+      // here where the walk does not see it: a brace list's member (`Heap hh = { 0, 0, 0 };`). Reported
+      // at the 0 itself, the null stored as C++ would.
+      if (init && t->kind == TyKind::Pointer && nullPointerConstant(init))
+      {
+        zeroIsNoPointer(init);
+        storeZero(t, addr, at);
+        return;
+      }
       if (isLambda(t))
       {
         initializeClosure(addr, t, init, at);

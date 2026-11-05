@@ -551,10 +551,19 @@ namespace
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
 }
 
+std::set<std::pair<const void*, uint32_t>> zeroNullSeen;
+
+bool firstZeroNull(const void* file, uint32_t token)
+{
+  std::lock_guard lock(zeroNullMutex);
+  return zeroNullSeen.insert({file, token}).second;
+}
+
 void setZeroNullWarnings(bool on)
 {
   std::lock_guard lock(zeroNullMutex);
   zeroNullNotes.clear();
+  zeroNullSeen.clear();
   zeroNullWarningsEnabled = on;
 }
 
