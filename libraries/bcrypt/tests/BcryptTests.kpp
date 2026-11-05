@@ -8,7 +8,7 @@ String bcryptFromHex(const char* hex)
   for (i32 i = 0; hex[i] != 0; i += 2)
   {
     auto digit = [](char c) -> i32 { return c <= '9' ? c - '0' : c - 'a' + 10; };
-    out.append(char(digit(hex[i]) * 16 + digit(hex[i + 1])));
+    out << char(digit(hex[i]) * 16 + digit(hex[i + 1]));
   }
   return out;
 }
@@ -53,7 +53,7 @@ test "PHP's hashes"
     check(bcryptHash(password, bcryptCost(hash), salt) == hash);
     // A changed password fails.
     String other = password;
-    other.append('x');
+    other << 'x';
     if (password.size() < 72)
       check(!bcryptVerify(other, hash));
   }
@@ -64,7 +64,7 @@ test "the 72-byte limit"
   String salt = "0123456789abcdef";
   String a(72, 'a');
   String b = a;
-  b.append("anything");
+  b << "anything";
   check(bcryptHash(a, 4, salt) == bcryptHash(b, 4, salt));
   String c(71, 'a');
   check(bcryptHash(a, 4, salt) != bcryptHash(c, 4, salt));

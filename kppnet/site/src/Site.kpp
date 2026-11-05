@@ -352,7 +352,7 @@ String siteTitle(StringView text, StringView path)
       String title;
       for (char c : line.substr(2))
         if (c != '`' && c != '*')
-          title.append(c);
+          title << c;
       return title;
     }
     at = end + 1;
@@ -383,7 +383,7 @@ String siteSummary(StringView text)
     }
     started = true;
     if (!summary.empty())
-      summary.append(' ');
+      summary << ' ';
     for (i32 i = 0; i < line.size(); ++i)
     {
       char c = line[i];
@@ -395,7 +395,7 @@ String siteSummary(StringView text)
           ++i;
         continue;
       }
-      summary.append(c);
+      summary << c;
     }
   }
   return summary;

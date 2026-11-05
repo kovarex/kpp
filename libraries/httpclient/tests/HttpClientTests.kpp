@@ -24,7 +24,7 @@ struct HttpClientTestServer
           i64 got = stream.read(buffer, 4096);
           if (got == 0)
             break;
-          received.append(StringView(buffer, (ContainerSize)got));
+          received << StringView(buffer, (ContainerSize)got);
           headEnd = received.find("\r\n\r\n");
         }
         ContainerSize length = 0;
@@ -36,7 +36,7 @@ struct HttpClientTestServer
           i64 got = stream.read(buffer, 4096);
           if (got == 0)
             break;
-          received.append(StringView(buffer, (ContainerSize)got));
+          received << StringView(buffer, (ContainerSize)got);
         }
         this->requests.push_back(received);
         stream.write(answer);

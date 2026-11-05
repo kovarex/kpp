@@ -7,11 +7,11 @@ String mariaDbSha1(StringView data)
   u32 h[5] = {0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
   String message(data);
   u64 bits = (u64)data.size() * 8;
-  message.append(char(0x80));
+  message << char(0x80);
   while (message.size() % 64 != 56)
-    message.append(char(0));
+    message << char(0);
   for (i32 i = 7; i >= 0; --i)
-    message.append(char((bits >> (8 * i)) & 255));
+    message << char((bits >> (8 * i)) & 255);
   u32 w[80];
   for (ContainerSize block = 0; block < message.size(); block += 64)
   {
@@ -68,6 +68,6 @@ String mariaDbSha1(StringView data)
   String out;
   for (i32 i = 0; i < 5; ++i)
     for (i32 j = 3; j >= 0; --j)
-      out.append(char((h[i] >> (8 * j)) & 255));
+      out << char((h[i] >> (8 * j)) & 255);
   return out;
 }

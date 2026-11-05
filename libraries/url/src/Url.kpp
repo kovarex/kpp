@@ -51,34 +51,34 @@ struct Url
     String out;
     if (!this->scheme.empty())
     {
-      out.append(this->scheme);
-      out.append(':');
+      out << (this->scheme);
+      out << ':';
     }
     if (this->hasAuthority)
     {
-      out.append("//");
+      out << "//";
       if (this->hasUserInfo)
       {
-        out.append(this->userInfo);
-        out.append('@');
+        out << (this->userInfo);
+        out << '@';
       }
-      out.append(this->host);
+      out << (this->host);
       if (this->hasPort)
       {
-        out.append(':');
-        out.append(this->port);
+        out << ':';
+        out << (this->port);
       }
     }
-    out.append(this->path);
+    out << (this->path);
     if (this->hasQuery)
     {
-      out.append('?');
-      out.append(this->query);
+      out << '?';
+      out << (this->query);
     }
     if (this->hasFragment)
     {
-      out.append('#');
-      out.append(this->fragment);
+      out << '#';
+      out << (this->fragment);
     }
     return out;
   }
@@ -273,7 +273,7 @@ String urlRemoveDotSegments(StringView path)
       i32 next = in.find('/', in[0] == '/' ? 1 : 0);
       if (next == StringView::npos)
         next = in.size();
-      output.append(in.substr(0, next));
+      output << in.substr(0, next);
       input = String(in.substr(next));
     }
   }
@@ -364,12 +364,12 @@ String urlEncodeKeeping(StringView text, const char* keep)
     for (i32 k = 0; !kept && keep[k]; ++k)
       kept = keep[k] == char(c);
     if (kept)
-      out.append(char(c));
+      out << char(c);
     else
     {
-      out.append('%');
-      out.append(hex[c >> 4]);
-      out.append(hex[c & 15]);
+      out << '%';
+      out << hex[c >> 4];
+      out << hex[c & 15];
     }
   }
   return out;
@@ -392,13 +392,13 @@ String urlDecodeWith(StringView text, bool plusIsSpace)
       i32 low = urlHexValue(text[i + 2]);
       if (high < 0 || low < 0)
         urlFail(i, "a '%' without two hex digits after it");
-      out.append(char(high * 16 + low));
+      out << char(high * 16 + low);
       i += 2;
     }
     else if (c == '+' && plusIsSpace)
-      out.append(' ');
+      out << ' ';
     else
-      out.append(c);
+      out << c;
   }
   return out;
 }
@@ -443,9 +443,9 @@ String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
   for (i32 i = 0; i < parameters.size(); ++i)
   {
     if (i > 0)
-      out.append('&');
+      out << '&';
     urlAppendForm(out, parameters[i].name);
-    out.append('=');
+    out << '=';
     urlAppendForm(out, parameters[i].value);
   }
   return out;
@@ -456,9 +456,9 @@ void urlAppendForm(String& out, StringView text)
   for (i32 i = 0; i < text.size(); ++i)
   {
     if (text[i] == ' ')
-      out.append('+');
+      out << '+';
     else
-      out.append(urlEncode(text.substr(i, 1)));
+      out << urlEncode(text.substr(i, 1));
   }
 }
 

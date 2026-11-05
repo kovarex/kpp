@@ -26,7 +26,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
     i64 got = stream.read(buffer, 8192);
     if (got == 0)
       throw HttpError("the connection closed before the request's headers ended");
-    data.append(StringView(buffer, (ContainerSize)got));
+    data << StringView(buffer, (ContainerSize)got);
     headEnd = data.find("\r\n\r\n");
   }
   StringView head = StringView(data).substr(0, headEnd);
@@ -65,7 +65,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
   if (n > 64 * 1024 * 1024)
     throw HttpError(format("a body of {} bytes", n), 413);
   if ((i64)request.body.size() < n)
-    request.body.append(stream.readExactly(n - (i64)request.body.size()));
+    request.body << stream.readExactly(n - (i64)request.body.size());
   return request;
 }
 
@@ -73,9 +73,9 @@ void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
 {
   String out = response.head(false);
   if (response.header("Content-Length") == nullptr)
-    out.append(format("Content-Length: {}\r\n", (i64)response.body.size()));
-  out.append("Connection: close\r\n\r\n");
-  out.append(response.body);
+    out << format("Content-Length: {}\r\n", (i64)response.body.size());
+  out << "Connection: close\r\n\r\n";
+  out << response.body;
   stream.write(out);
 }
 
@@ -107,7 +107,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const HttpError& e)
     {
       response = httpErrorResponse(e.status);
-      response.body.append(String(StringView(e.what())) + "\n");
+      response.body << String(StringView(e.what())) + "\n";
     }
     catch (const net::NetError& e)
     {
@@ -118,7 +118,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const Exception& e)
     {
       response = httpErrorResponse(500);
-      response.body.append(String(StringView(e.what())) + "\n");
+      response.body << String(StringView(e.what())) + "\n";
     }
     if (options.log)
       println(format("{} {}", what, response.status));

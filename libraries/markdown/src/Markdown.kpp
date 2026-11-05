@@ -45,9 +45,9 @@ void markdownPlainText(String& out, MarkdownNode* node)
   for (MarkdownNode* child = node->firstChild; child; child = child->next)
   {
     if (child->type == MarkdownType::text || child->type == MarkdownType::code || child->type == MarkdownType::htmlInline)
-      out.append(child->literal);
+      out << (child->literal);
     else if (child->type == MarkdownType::softBreak || child->type == MarkdownType::lineBreak)
-      out.append('\n');
+      out << '\n';
     else
       markdownPlainText(out, child);
   }
@@ -62,7 +62,7 @@ struct MarkdownRenderer
 
   void literal(StringView text)
   {
-    this->out.append(text);
+    this->out << text;
     this->lastWasNewline = text.size() == 1 && text[0] == '\n';
   }
   void escaped(StringView text)
@@ -71,15 +71,15 @@ struct MarkdownRenderer
     for (char c : text)
     {
       if (c == '&')
-        e.append("&amp;");
+        e << "&amp;";
       else if (c == '<')
-        e.append("&lt;");
+        e << "&lt;";
       else if (c == '>')
-        e.append("&gt;");
+        e << "&gt;";
       else if (c == '"')
-        e.append("&quot;");
+        e << "&quot;";
       else
-        e.append(c);
+        e << c;
     }
     this->literal(e);
   }
@@ -112,9 +112,9 @@ struct MarkdownRenderer
       i32 length = 1;
       i32 c = markdownDecode(text, i, &length);
       if (c == ' ')
-        id.append('-');
+        id << '-';
       else if (markdownIsAlphanumeric(c) || c == '-' || c == '_')
-        id.append(char(markdownLower(c)));
+        id << char(markdownLower(c));
       else if (c >= 0x80 && !markdownIsUnicodePunctuation(c) && !markdownIsUnicodeWhitespace(c))
         markdownAppendFolded(id, c);
       i += length;

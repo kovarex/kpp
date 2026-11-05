@@ -18,16 +18,16 @@ void htmlAppendEscaped(String& out, StringView text)
   {
     char c = text[i];
     if (c == '&')
-      out.append("&amp;");
+      out << "&amp;";
     else if (c == '<')
-      out.append("&lt;");
+      out << "&lt;";
     else if (c == '>')
-      out.append("&gt;");
+      out << "&gt;";
     else if (c == '"')
-      out.append("&quot;");
+      out << "&quot;";
     else if (c == '\'')
-      out.append("&#39;");
+      out << "&#39;";
     else
-      out.append(c);
+      out << c;
   }
 }

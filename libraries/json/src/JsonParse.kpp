@@ -247,17 +247,17 @@ struct JsonParser
         char e = *this->at;
         ++this->at;
         if (e == '"' || e == '\\' || e == '/')
-          out.append(e);
+          out << e;
         else if (e == 'b')
-          out.append('\b');
+          out << '\b';
         else if (e == 'f')
-          out.append('\f');
+          out << '\f';
         else if (e == 'n')
-          out.append('\n');
+          out << '\n';
         else if (e == 'r')
-          out.append('\r');
+          out << '\r';
         else if (e == 't')
-          out.append('\t');
+          out << '\t';
         else if (e == 'u')
         {
           i32 code = this->parseHex4();
@@ -293,14 +293,14 @@ struct JsonParser
       }
       if (c < 0x80)
       {
-        out.append(char(c));
+        out << char(c);
         ++this->at;
         continue;
       }
       i32 length = jsonUtf8SequenceLength(this->at, this->end);
       if (length == 0)
         this->fail("bytes that are not UTF-8 in a string");
-      out.append(this->at, length);
+      out << StringView(this->at, length);
       this->at += length;
     }
   }
@@ -447,23 +447,23 @@ bool jsonIsUtf8(StringView text)
 void jsonAppendUtf8(String& out, i32 code)
 {
   if (code < 0x80)
-    out.append(char(code));
+    out << char(code);
   else if (code < 0x800)
   {
-    out.append(char(0xC0 | (code >> 6)));
-    out.append(char(0x80 | (code & 0x3F)));
+    out << char(0xC0 | (code >> 6));
+    out << char(0x80 | (code & 0x3F));
   }
   else if (code < 0x10000)
   {
-    out.append(char(0xE0 | (code >> 12)));
-    out.append(char(0x80 | ((code >> 6) & 0x3F)));
-    out.append(char(0x80 | (code & 0x3F)));
+    out << char(0xE0 | (code >> 12));
+    out << char(0x80 | ((code >> 6) & 0x3F));
+    out << char(0x80 | (code & 0x3F));
   }
   else
   {
-    out.append(char(0xF0 | (code >> 18)));
-    out.append(char(0x80 | ((code >> 12) & 0x3F)));
-    out.append(char(0x80 | ((code >> 6) & 0x3F)));
-    out.append(char(0x80 | (code & 0x3F)));
+    out << char(0xF0 | (code >> 18));
+    out << char(0x80 | ((code >> 12) & 0x3F));
+    out << char(0x80 | ((code >> 6) & 0x3F));
+    out << char(0x80 | (code & 0x3F));
   }
 }

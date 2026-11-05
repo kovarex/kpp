@@ -13,7 +13,7 @@ test "a connection both ways"
   check(server.readExactly(13) == "hello, server");
   String big;
   for (i32 i = 0; i < 100000; ++i)
-    big.append(char('a' + i % 26));
+    big << char('a' + i % 26);
   server.write(big);
   server.shutdownWrite();
   check(client.readAll() == big);

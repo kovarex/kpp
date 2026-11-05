@@ -6,7 +6,7 @@ String sha256Pattern(i32 n)
 {
   String out;
   for (i32 i = 0; i < n; ++i)
-    out.append(char((i * 31 + 7) & 255));
+    out << char((i * 31 + 7) & 255);
   return out;
 }
 
@@ -14,7 +14,7 @@ String sha256Repeat(char c, i32 n)
 {
   String out;
   for (i32 i = 0; i < n; ++i)
-    out.append(c);
+    out << c;
   return out;
 }
 
@@ -73,7 +73,7 @@ test "RFC 4231 HMAC-SHA-256"
         "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe");
   String key4;
   for (i32 i = 1; i <= 25; ++i)
-    key4.append(char(i));
+    key4 << char(i);
   check(hmacSha256(key4, sha256Repeat('\xcd', 50)).hex() == "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b");
   // Test case 5 is truncated to 128 bits.
   check(hmacSha256(sha256Repeat('\x0c', 20), "Test With Truncation").hex().substr(0, 32) == "a3b6167473100ee06e0c796c2955552b");

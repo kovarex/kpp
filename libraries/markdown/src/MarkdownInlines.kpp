@@ -160,7 +160,7 @@ struct MarkdownInlineParser
       {
         String contents;
         for (i32 i = afterOpen; i < runStart; ++i)
-          contents.append(this->subject[i] == '\n' ? ' ' : this->subject[i]);
+          contents << (this->subject[i] == '\n' ? ' ' : this->subject[i]);
         bool allSpace = true;
         for (char c : contents)
           if (c != ' ')
@@ -775,7 +775,7 @@ String markdownNormalizeLabel(StringView label)
       continue;
     }
     if (space)
-      out.append(' ');
+      out << ' ';
     space = false;
     markdownAppendFolded(out, c);
     i += length;
@@ -791,7 +791,7 @@ String markdownUnescape(StringView text)
   {
     if (text[i] == '\\' && i + 1 < text.size() && markdownIsAsciiPunctuation((u8)text[i + 1]))
     {
-      out.append(text[i + 1]);
+      out << text[i + 1];
       i += 2;
       continue;
     }
@@ -804,7 +804,7 @@ String markdownUnescape(StringView text)
         continue;
       }
     }
-    out.append(text[i]);
+    out << text[i];
     ++i;
   }
   return out;
@@ -821,17 +821,17 @@ String markdownNormalizeUri(StringView uri)
     u8 c = (u8)uri[i];
     if (c == '%' && i + 2 < uri.size() && markdownIsHex((u8)uri[i + 1]) && markdownIsHex((u8)uri[i + 2]))
     {
-      out.append(uri.substr(i, 3));
+      out << uri.substr(i, 3);
       i += 2;
       continue;
     }
     if (markdownIsAlphanumeric(c) || markdownContains(";/?:@&=+$,-_.!~*'()#", char(c)))
-      out.append(char(c));
+      out << char(c);
     else
     {
-      out.append('%');
-      out.append(hex[c >> 4]);
-      out.append(hex[c & 15]);
+      out << '%';
+      out << hex[c >> 4];
+      out << hex[c & 15];
     }
   }
   return out;
@@ -875,6 +875,6 @@ i32 markdownEntity(StringView text, i32 at, String& out)
   const char* value = markdownNamedEntity(text.substr(start, k - start));
   if (!value)
     return 0;
-  out.append(value);
+  out << StringView(value);
   return k + 1 - at;
 }

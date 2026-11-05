@@ -21,7 +21,7 @@ String siteReadFile(const String& path)
     usize n = fread(buffer, 1, 65536, file);
     if (n == 0)
       break;
-    text.append(buffer, i32(n));
+    text << StringView(buffer, n);
   }
   fclose(file);
   return text;
@@ -83,8 +83,8 @@ String siteRelativeLink(StringView from, StringView to)
   String link;
   for (i32 i = common; i < fromDirectory.size(); ++i)
     if (fromDirectory[i] == '/')
-      link.append("../");
-  link.append(to.substr(common));
+      link << "../";
+  link << to.substr(common);
   return link;
 }
 
@@ -94,7 +94,7 @@ String siteRootOf(StringView page)
   String up;
   for (char c : page)
     if (c == '/')
-      up.append("../");
+      up << "../";
   return up;
 }
 

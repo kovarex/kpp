@@ -12,8 +12,8 @@ struct Sha256Digest
     String out;
     for (i32 i = 0; i < 32; ++i)
     {
-      out.append(digits[this->bytes[i] >> 4]);
-      out.append(digits[this->bytes[i] & 15]);
+      out << digits[this->bytes[i] >> 4];
+      out << digits[this->bytes[i] & 15];
     }
     return out;
   }

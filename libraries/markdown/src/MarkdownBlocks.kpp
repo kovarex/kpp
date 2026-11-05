@@ -49,9 +49,9 @@ struct MarkdownBlockParser
     for (i32 i = 0; i < text.size(); ++i)
     {
       if (text[i] == 0)
-        clean.append("\xEF\xBF\xBD");
+        clean << "\xEF\xBF\xBD";
       else
-        clean.append(text[i]);
+        clean << text[i];
     }
     i32 at = 0;
     while (at < clean.size())
@@ -136,10 +136,10 @@ struct MarkdownBlockParser
       this->offset += 1;
       i32 charsToTab = 4 - this->column % 4;
       for (i32 i = 0; i < charsToTab; ++i)
-        this->tip->content.append(' ');
+        this->tip->content << ' ';
     }
-    this->tip->content.append(this->line.substr(this->offset));
-    this->tip->content.append('\n');
+    this->tip->content << (this->line.substr(this->offset));
+    this->tip->content << '\n';
   }
 
   static bool canContain(MarkdownType parent, MarkdownType child)
@@ -618,7 +618,7 @@ struct MarkdownBlockParser
         {
           // Its trailing blank lines become one line end.
           block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
-          block->literal.append('\n');
+          block->literal << '\n';
         }
         block->content = String();
         break;
@@ -681,7 +681,7 @@ struct MarkdownBlockParser
       char c = text[i];
       if (c == '\\' && i + 1 < text.size() && text[i + 1] == '|')
       {
-        cell.append('|');
+        cell << '|';
         ++i;
         any = true;
         continue;
@@ -693,7 +693,7 @@ struct MarkdownBlockParser
         any = false;
         continue;
       }
-      cell.append(c);
+      cell << c;
       any = true;
     }
     if (any || cells.empty())
@@ -768,7 +768,7 @@ struct MarkdownBlockParser
       paragraph->unlink();
     }
     for (i32 a : alignments)
-      table->info.append(char('0' + a));
+      table->info << char('0' + a);
     this->tip = table;
     MarkdownNode* row = this->nodes->make(MarkdownType::tableRow);
     row->header = true;
@@ -910,7 +910,7 @@ bool markdownHtmlBlockStarts(i32 type, StringView text)
       return false;
     String name;
     for (i32 i = at; i < end; ++i)
-      name.append(char(markdownLower((u8)text[i])));
+      name << char(markdownLower((u8)text[i]));
     const char* names[] = {"address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center", "col", "colgroup",
                            "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "frame",
                            "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr", "html", "iframe", "legend", "li", "link",

@@ -86,13 +86,13 @@ test "nesting is limited"
 {
   String deep;
   for (i32 i = 0; i < 1001; ++i)
-    deep.append('[');
+    deep << '[';
   check(jsonErrorOf(deep) == "1:1001: nesting deeper than 1000 levels");
   String ok;
   for (i32 i = 0; i < 1000; ++i)
-    ok.append('[');
+    ok << '[';
   for (i32 i = 0; i < 1000; ++i)
-    ok.append(']');
+    ok << ']';
   check(jsonErrorOf(ok) == "");
 }
 

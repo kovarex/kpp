@@ -90,8 +90,8 @@ struct MariaDbConnection
       throw MariaDbError("the connection is closed", 0, String());
     this->sequence = 0;
     String packet;
-    packet.append(char(0x03)); // COM_QUERY
-    packet.append(sql);
+    packet << char(0x03); // COM_QUERY
+    packet << sql;
     this->writePacket(packet);
     MariaDbResult result;
     for (;;)
@@ -123,7 +123,7 @@ struct MariaDbConnection
     {
       this->sequence = 0;
       String quit;
-      quit.append(char(0x01)); // COM_QUIT
+      quit << char(0x01); // COM_QUIT
       this->writePacket(quit);
     }
     catch (const net::NetError& e)
@@ -244,7 +244,7 @@ struct MariaDbConnection
       i32 rest = scrambleLength - 8 > 13 ? scrambleLength - 8 : 13;
       String second = reader.bytes(rest);
       // It ends with a zero byte that is not part of the scramble.
-      scramble.append(StringView(second.data(), (ContainerSize)(rest - 1)));
+      scramble << StringView(second.data(), (ContainerSize)(rest - 1));
     }
     if (capabilities & 0x00080000u) // CLIENT_PLUGIN_AUTH
       plugin = reader.nulTerminated();
@@ -267,21 +267,21 @@ struct MariaDbConnection
     String response;
     mariaDbAppendUint32(response, client);
     mariaDbAppendUint32(response, 16 * 1024 * 1024); // the largest packet
-    response.append(char(224)); // utf8mb4_unicode_ci
+    response << char(224); // utf8mb4_unicode_ci
     for (i32 i = 0; i < 23; ++i)
-      response.append(char(0));
-    response.append(options.user);
-    response.append(char(0));
+      response << char(0);
+    response << options.user;
+    response << char(0);
     String auth = mariaDbAuthenticate(plugin, options.password, scramble);
     mariaDbAppendLengthEncoded(response, auth.size());
-    response.append(auth);
+    response << auth;
     if (!options.database.empty())
     {
-      response.append(options.database);
-      response.append(char(0));
+      response << options.database;
+      response << char(0);
     }
-    response.append(plugin);
-    response.append(char(0));
+    response << plugin;
+    response << char(0);
     this->writePacket(response);
 
     for (;;)
@@ -316,11 +316,11 @@ struct MariaDbConnection
       if (part > 0xffffff)
         part = 0xffffff;
       String packet;
-      packet.append(char(part & 255));
-      packet.append(char((part >> 8) & 255));
-      packet.append(char((part >> 16) & 255));
-      packet.append(char(this->sequence++));
-      packet.append(payload.substr(offset, part));
+      packet << char(part & 255);
+      packet << char((part >> 8) & 255);
+      packet << char((part >> 16) & 255);
+      packet << char(this->sequence++);
+      packet << payload.substr(offset, part);
       this->stream.write(packet);
       offset += part;
       if (part < 0xffffff)
@@ -337,7 +337,7 @@ struct MariaDbConnection
       ContainerSize length = ContainerSize((u8)header[0]) | (ContainerSize((u8)header[1]) << 8) |
                              (ContainerSize((u8)header[2]) << 16);
       this->sequence = (u8)((u8)header[3] + 1);
-      payload.append(this->take(length));
+      payload << (this->take(length));
       if (length < 0xffffff)
         break;
     }
@@ -360,7 +360,7 @@ struct MariaDbConnection
       i64 got = this->stream.read(chunk, 65536);
       if (got == 0)
         throw MariaDbError("the server closed the connection", 0, String());
-      this->buffer.append(StringView(chunk, (ContainerSize)got));
+      this->buffer << StringView(chunk, (ContainerSize)got);
     }
     String out(StringView(this->buffer).substr(this->bufferStart, n));
     this->bufferStart += n;
@@ -384,11 +384,11 @@ String mariaDbNativePassword(StringView password, StringView scramble)
   String stage1 = mariaDbSha1(password);
   String stage2 = mariaDbSha1(stage1);
   String salted(scramble);
-  salted.append(stage2);
+  salted << stage2;
   String mix = mariaDbSha1(salted);
   String out;
   for (i32 i = 0; i < 20; ++i)
-    out.append(char(stage1[i] ^ mix[i]));
+    out << char(stage1[i] ^ mix[i]);
   return out;
 }
 
@@ -402,17 +402,17 @@ String mariaDbQuote(StringView text)
     char c = text[i];
     switch (c)
     {
-    case 0: out.append("\\0"); break;
-    case '\n': out.append("\\n"); break;
-    case '\r': out.append("\\r"); break;
-    case '\\': out.append("\\\\"); break;
-    case '\'': out.append("\\'"); break;
-    case '"': out.append("\\\""); break;
-    case 26: out.append("\\Z"); break;
-    default: out.append(c);
+    case 0: out << "\\0"; break;
+    case '\n': out << "\\n"; break;
+    case '\r': out << "\\r"; break;
+    case '\\': out << "\\\\"; break;
+    case '\'': out << "\\'"; break;
+    case '"': out << "\\\""; break;
+    case 26: out << "\\Z"; break;
+    default: out << c;
     }
   }
-  out.append('\'');
+  out << '\'';
   return out;
 }
 
@@ -427,30 +427,30 @@ String mariaDbQuoteOrNull(const Optional<String>& value)
 void mariaDbAppendUint32(String& out, u32 value)
 {
   for (i32 i = 0; i < 4; ++i)
-    out.append(char((value >> (8 * i)) & 255));
+    out << char((value >> (8 * i)) & 255);
 }
 
 void mariaDbAppendLengthEncoded(String& out, u64 value)
 {
   if (value < 251)
-    out.append(char(value));
+    out << char(value);
   else if (value < 65536)
   {
-    out.append(char(0xfc));
-    out.append(char(value & 255));
-    out.append(char(value >> 8));
+    out << char(0xfc);
+    out << char(value & 255);
+    out << char(value >> 8);
   }
   else if (value < 16777216)
   {
-    out.append(char(0xfd));
+    out << char(0xfd);
     for (i32 i = 0; i < 3; ++i)
-      out.append(char((value >> (8 * i)) & 255));
+      out << char((value >> (8 * i)) & 255);
   }
   else
   {
-    out.append(char(0xfe));
+    out << char(0xfe);
     for (i32 i = 0; i < 8; ++i)
-      out.append(char((value >> (8 * i)) & 255));
+      out << char((value >> (8 * i)) & 255);
   }
 }
 

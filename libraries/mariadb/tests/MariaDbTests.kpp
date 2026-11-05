@@ -9,8 +9,8 @@ String mariaDbHex(StringView data)
   String out;
   for (ContainerSize i = 0; i < data.size(); ++i)
   {
-    out.append(digits[(u8)data[i] >> 4]);
-    out.append(digits[(u8)data[i] & 15]);
+    out << digits[(u8)data[i] >> 4];
+    out << digits[(u8)data[i] & 15];
   }
   return out;
 }
@@ -28,7 +28,7 @@ String mariaDbTestScramble()
 {
   String scramble;
   for (i32 i = 1; i <= 20; ++i)
-    scramble.append(char(i));
+    scramble << char(i);
   return scramble;
 }
 
@@ -62,7 +62,7 @@ test "length-encoded integers"
     check(reader.position == encoded.size());
   }
   String bad;
-  bad.append(char(0xff));
+  bad << char(0xff);
   MariaDbReader reader(bad, 0);
   bool threw = false;
   try { reader.lengthEncoded(); } catch (const MariaDbError& e) { threw = true; }
@@ -73,11 +73,11 @@ test "length-encoded integers"
 void mariaDbTestWrite(net::TcpStream& stream, i32 sequence, StringView payload)
 {
   String packet;
-  packet.append(char(payload.size() & 255));
-  packet.append(char((payload.size() >> 8) & 255));
-  packet.append(char((payload.size() >> 16) & 255));
-  packet.append(char(sequence));
-  packet.append(payload);
+  packet << char(payload.size() & 255);
+  packet << char((payload.size() >> 8) & 255);
+  packet << char((payload.size() >> 16) & 255);
+  packet << char(sequence);
+  packet << payload;
   stream.write(packet);
 }
 
@@ -95,10 +95,10 @@ String mariaDbTestColumn(StringView name)
   for (StringView part : {StringView("def"), StringView("gorating"), StringView("t"), StringView("t"), name, name})
   {
     mariaDbAppendLengthEncoded(out, part.size());
-    out.append(part);
+    out << part;
   }
-  out.append(char(0x0c));
-  out.append(String("\x2d\x00\x00\x01\x00\x00\xfd\x00\x00\x00\x00\x00", 12));
+  out << char(0x0c);
+  out << String("\x2d\x00\x00\x01\x00\x00\xfd\x00\x00\x00\x00\x00", 12);
   return out;
 }
 
@@ -119,22 +119,22 @@ struct MariaDbFakeServer
     {
       net::TcpStream stream = this->listener.accept();
       String greeting;
-      greeting.append(char(10));
-      greeting.append("5.5.5-11.7.2-MariaDB");
-      greeting.append(char(0));
-      greeting.append(String("\x07\x00\x00\x00", 4)); // connection id
-      greeting.append(StringView(mariaDbTestScramble()).substr(0, 8));
-      greeting.append(char(0));
-      greeting.append(String("\xfe\xf7", 2)); // capabilities, low word
-      greeting.append(char(45));
-      greeting.append(String("\x02\x00", 2)); // status
-      greeting.append(String("\xff\x81", 2)); // capabilities, high word: PLUGIN_AUTH, MULTI_RESULTS...
-      greeting.append(char(21));
-      greeting.append(String(10, '\0'));
-      greeting.append(StringView(mariaDbTestScramble()).substr(8, 12));
-      greeting.append(char(0));
-      greeting.append("mysql_native_password");
-      greeting.append(char(0));
+      greeting << char(10);
+      greeting << "5.5.5-11.7.2-MariaDB";
+      greeting << char(0);
+      greeting << String("\x07\x00\x00\x00", 4); // connection id
+      greeting << StringView(mariaDbTestScramble()).substr(0, 8);
+      greeting << char(0);
+      greeting << String("\xfe\xf7", 2); // capabilities, low word
+      greeting << char(45);
+      greeting << String("\x02\x00", 2); // status
+      greeting << String("\xff\x81", 2); // capabilities, high word: PLUGIN_AUTH, MULTI_RESULTS...
+      greeting << char(21);
+      greeting << String(10, '\0');
+      greeting << StringView(mariaDbTestScramble()).substr(8, 12);
+      greeting << char(0);
+      greeting << "mysql_native_password";
+      greeting << char(0);
       mariaDbTestWrite(stream, 0, greeting);
 
       String response = mariaDbTestRead(stream);
@@ -148,7 +148,7 @@ struct MariaDbFakeServer
       String query = mariaDbTestRead(stream);
       this->queries.push_back(String(StringView(query).substr(1)));
       String count;
-      count.append(char(2));
+      count << char(2);
       mariaDbTestWrite(stream, 1, count);
       mariaDbTestWrite(stream, 2, mariaDbTestColumn("id"));
       mariaDbTestWrite(stream, 3, mariaDbTestColumn("name"));
@@ -156,14 +156,14 @@ struct MariaDbFakeServer
       mariaDbTestWrite(stream, 4, eof);
       String row1;
       mariaDbAppendLengthEncoded(row1, 1);
-      row1.append("1");
+      row1 << "1";
       mariaDbAppendLengthEncoded(row1, 3);
-      row1.append("x'y");
+      row1 << "x'y";
       mariaDbTestWrite(stream, 5, row1);
       String row2;
       mariaDbAppendLengthEncoded(row2, 1);
-      row2.append("2");
-      row2.append(char(0xfb));
+      row2 << "2";
+      row2 << char(0xfb);
       mariaDbTestWrite(stream, 6, row2);
       mariaDbTestWrite(stream, 7, eof);
 
@@ -176,7 +176,7 @@ struct MariaDbFakeServer
       query = mariaDbTestRead(stream);
       this->queries.push_back(String(StringView(query).substr(1)));
       String error("\xff\x7a\x04#42S02", 9);
-      error.append("Table 'gorating.nope' doesn't exist");
+      error << "Table 'gorating.nope' doesn't exist";
       mariaDbTestWrite(stream, 1, error);
 
       String last = mariaDbTestRead(stream);

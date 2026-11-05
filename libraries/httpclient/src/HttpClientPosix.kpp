@@ -170,7 +170,7 @@ struct HttpClientReader
       this->closed = true;
       return false;
     }
-    this->data.append(StringView(buffer, (ContainerSize)got));
+    this->data << StringView(buffer, (ContainerSize)got);
     return true;
   }
 
@@ -245,10 +245,10 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
     host = format("{}:{}", host, (i32)target.port);
   String head = format("{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n", method, target.path, host);
   for (const HttpClientHeader& h : request.headers)
-    head.append(h.name + ": " + h.value + "\r\n");
+    head << h.name + ": " + h.value + "\r\n";
   if (!body.empty() || method == "POST" || method == "PUT")
-    head.append(format("Content-Length: {}\r\n", (i64)body.size()));
-  head.append("\r\n");
+    head << format("Content-Length: {}\r\n", (i64)body.size());
+  head << "\r\n";
   connection.write(head + body);
 
   HttpClientReader reader;
@@ -263,7 +263,7 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
     response.status = (i32)httpClientNumber(StringView(status).substr(9, 3), 10, "status", url);
     String headers;
     for (String line = reader.line(); !line.empty(); line = reader.line())
-      headers.append(line + "\n");
+      headers << line + "\n";
     response.headers = httpClientParseHeaders(headers);
   } while (response.status >= 100 && response.status < 200);
 
@@ -284,7 +284,7 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
       i64 n = httpClientNumber(size, 16, "chunk size", url);
       if (n == 0)
         break;
-      response.body.append(reader.take((ContainerSize)n));
+      response.body << reader.take((ContainerSize)n);
       if (!reader.line().empty())
         throw HttpClientError(format("a chunk of the response of {} is longer than its size", url));
     }

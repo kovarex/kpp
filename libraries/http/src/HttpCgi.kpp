@@ -101,9 +101,9 @@ void httpWriteCgiResponse(const HttpResponse& response)
     _setmode(1, 0x8000); // _O_BINARY
   String out = response.head(true);
   if (response.header("Content-Length") == nullptr)
-    out.append(format("Content-Length: {}\r\n", (i64)response.body.size()));
-  out.append("\r\n");
-  out.append(response.body);
+    out << format("Content-Length: {}\r\n", (i64)response.body.size());
+  out << "\r\n";
+  out << response.body;
   fwrite(out.data(), 1, out.size(), stdout);
   fflush(stdout);
 }

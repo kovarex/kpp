@@ -20,9 +20,9 @@ String bcryptHash(StringView password, i32 cost, StringView salt)
     throw BcryptError(format("bcrypt's salt is 16 bytes, not {}", (i32)salt.size()));
   bcryptCheckPassword(password);
   String out = "$2y$";
-  out.append(char('0' + cost / 10));
-  out.append(char('0' + cost % 10));
-  out.append('$');
+  out << char('0' + cost / 10);
+  out << char('0' + cost % 10);
+  out << '$';
   bcryptEncode(out, salt);
   bcryptAppendHash(out, password, cost, salt);
   return out;
@@ -106,12 +106,12 @@ void bcryptEncode(String& out, StringView data)
     u32 b0 = (u8)data[i];
     u32 b1 = i + 1 < n ? (u8)data[i + 1] : 0;
     u32 b2 = i + 2 < n ? (u8)data[i + 2] : 0;
-    out.append(bcryptAlphabet[b0 >> 2]);
-    out.append(bcryptAlphabet[((b0 & 3) << 4) | (b1 >> 4)]);
+    out << bcryptAlphabet[b0 >> 2];
+    out << bcryptAlphabet[((b0 & 3) << 4) | (b1 >> 4)];
     if (i + 1 < n)
-      out.append(bcryptAlphabet[((b1 & 15) << 2) | (b2 >> 6)]);
+      out << bcryptAlphabet[((b1 & 15) << 2) | (b2 >> 6)];
     if (i + 2 < n)
-      out.append(bcryptAlphabet[b2 & 63]);
+      out << bcryptAlphabet[b2 & 63];
   }
 }
 
@@ -128,7 +128,7 @@ String bcryptDecode(StringView text, i32 bytes)
     if (count >= 8)
     {
       count -= 8;
-      out.append(char((bits >> count) & 255));
+      out << char((bits >> count) & 255);
     }
   }
   return out;
@@ -168,10 +168,10 @@ void bcryptAppendHash(String& out, StringView password, i32 cost, StringView sal
   String bytes;
   for (i32 i = 0; i < 6; ++i)
   {
-    bytes.append(char(text[i] >> 24));
-    bytes.append(char((text[i] >> 16) & 255));
-    bytes.append(char((text[i] >> 8) & 255));
-    bytes.append(char(text[i] & 255));
+    bytes << char(text[i] >> 24);
+    bytes << char((text[i] >> 16) & 255);
+    bytes << char((text[i] >> 8) & 255);
+    bytes << char(text[i] & 255);
   }
   // 23 of the 24 bytes, as every bcrypt does.
   bcryptEncode(out, bytes.substr(0, 23));

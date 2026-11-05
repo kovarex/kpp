@@ -58,10 +58,10 @@ String base64EncodeWith(StringView data, const char* alphabet, bool pad)
   for (; i + 3 <= data.size(); i += 3)
   {
     u32 bits = (u32(u8(data[i])) << 16) | (u32(u8(data[i + 1])) << 8) | u32(u8(data[i + 2]));
-    out.append(alphabet[(bits >> 18) & 63]);
-    out.append(alphabet[(bits >> 12) & 63]);
-    out.append(alphabet[(bits >> 6) & 63]);
-    out.append(alphabet[bits & 63]);
+    out << alphabet[(bits >> 18) & 63];
+    out << alphabet[(bits >> 12) & 63];
+    out << alphabet[(bits >> 6) & 63];
+    out << alphabet[bits & 63];
   }
   i32 rest = data.size() - i;
   if (rest > 0)
@@ -69,12 +69,12 @@ String base64EncodeWith(StringView data, const char* alphabet, bool pad)
     u32 bits = u32(u8(data[i])) << 16;
     if (rest == 2)
       bits |= u32(u8(data[i + 1])) << 8;
-    out.append(alphabet[(bits >> 18) & 63]);
-    out.append(alphabet[(bits >> 12) & 63]);
+    out << alphabet[(bits >> 18) & 63];
+    out << alphabet[(bits >> 12) & 63];
     if (rest == 2)
-      out.append(alphabet[(bits >> 6) & 63]);
+      out << alphabet[(bits >> 6) & 63];
     if (pad)
-      out.append(rest == 1 ? "==" : "=");
+      out << (rest == 1 ? StringView("==") : StringView("="));
   }
   return out;
 }
@@ -126,9 +126,9 @@ String base64DecodeWith(StringView text, bool url)
     bits = (bits << 6) | u32(base64Value(text[i], url));
     if (++count == 4)
     {
-      out.append(char(bits >> 16));
-      out.append(char(bits >> 8));
-      out.append(char(bits));
+      out << char(bits >> 16);
+      out << char(bits >> 8);
+      out << char(bits);
       bits = 0;
       count = 0;
     }
@@ -139,14 +139,14 @@ String base64DecodeWith(StringView text, bool url)
   {
     if ((bits & 15) != 0)
       base64Fail(length - 1, "the last character has bits set that no byte uses");
-    out.append(char(bits >> 4));
+    out << char(bits >> 4);
   }
   else if (count == 3)
   {
     if ((bits & 3) != 0)
       base64Fail(length - 1, "the last character has bits set that no byte uses");
-    out.append(char(bits >> 10));
-    out.append(char(bits >> 2));
+    out << char(bits >> 10);
+    out << char(bits >> 2);
   }
   return out;
 }

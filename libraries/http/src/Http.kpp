@@ -168,15 +168,15 @@ struct HttpResponse
     httpCheckCookie(name, value);
     String header = String(name) + "=" + String(value);
     if (options.maxAgeSeconds.has_value())
-      header.append(format("; Max-Age={}", *options.maxAgeSeconds));
+      header << format("; Max-Age={}", *options.maxAgeSeconds);
     if (!options.path.empty())
-      header.append(String("; Path=") + options.path);
+      header << String("; Path=") + options.path;
     if (options.httpOnly)
-      header.append("; HttpOnly");
+      header << "; HttpOnly";
     if (options.secure)
-      header.append("; Secure");
+      header << "; Secure";
     if (!options.sameSite.empty())
-      header.append(String("; SameSite=") + options.sameSite);
+      header << String("; SameSite=") + options.sameSite;
     this->addHeader("Set-Cookie", header);
   }
 
@@ -204,7 +204,7 @@ struct HttpResponse
     String out = cgi ? format("Status: {} {}\r\n", this->status, httpStatusText(this->status))
                      : format("HTTP/1.1 {} {}\r\n", this->status, httpStatusText(this->status));
     for (const HttpHeader& h : this->headers)
-      out.append(h.name + ": " + h.value + "\r\n");
+      out << h.name + ": " + h.value + "\r\n";
     return out;
   }
 };
@@ -435,7 +435,7 @@ Optional<String> httpDispositionParameter(StringView value, StringView parameter
         {
           if (raw[i] == '\\' && i + 2 < raw.size())
             ++i;
-          out.append(raw[i]);
+          out << raw[i];
         }
         return Optional<String>(out);
       }

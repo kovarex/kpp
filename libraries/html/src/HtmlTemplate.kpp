@@ -58,7 +58,7 @@ public:
       StringView name(this->text + part.start, part.length);
       if (part.kind == HtmlHole::literal)
       {
-        out.append(name);
+        out << name;
         continue;
       }
       const HtmlArgument* argument = nullptr;
@@ -86,7 +86,7 @@ public:
       if (argument->kind == HtmlArgumentKind::safe && part.kind != HtmlHole::text)
         throw HtmlTemplateError(toString("render: {{", String(name), "}} is SafeHtml, which goes only in an element's text"));
       if (part.kind == HtmlHole::text && argument->kind == HtmlArgumentKind::safe)
-        out.append(argument->value);
+        out << (argument->value);
       else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
         htmlAppendEscaped(out, argument->value);
       else if (part.kind == HtmlHole::urlStart)
@@ -415,7 +415,7 @@ bool htmlUrlIsSafe(StringView url)
     {
       String scheme;
       for (i32 k = 0; k < i; ++k)
-        scheme.append(htmlLower(url[k]));
+        scheme << htmlLower(url[k]);
       return scheme == "http" || scheme == "https" || scheme == "mailto";
     }
   }
@@ -432,12 +432,12 @@ void htmlAppendPercentEncoded(String& out, StringView text, bool keepSlash)
     u8 c = (u8)text[i];
     bool unreserved = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
     if (unreserved || (keepSlash && c == '/'))
-      out.append(char(c));
+      out << char(c);
     else
     {
-      out.append('%');
-      out.append(hex[c >> 4]);
-      out.append(hex[c & 15]);
+      out << '%';
+      out << hex[c >> 4];
+      out << hex[c & 15];
     }
   }
 }

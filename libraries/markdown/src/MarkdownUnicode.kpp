@@ -1895,7 +1895,7 @@ void markdownAppendFolded(String& out, i32 c)
 {
   if (c < 0x80)
   {
-    out.append(char(c >= 'A' && c <= 'Z' ? c + 32 : c));
+    out << char(c >= 'A' && c <= 'Z' ? c + 32 : c);
     return;
   }
   i32 low = 0;
@@ -1909,7 +1909,7 @@ void markdownAppendFolded(String& out, i32 c)
       low = middle + 1;
     else
     {
-      out.append(markdownCaseFolds[middle].folded);
+      out << StringView(markdownCaseFolds[middle].folded);
       return;
     }
   }
