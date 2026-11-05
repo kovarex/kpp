@@ -1,0 +1,18 @@
+// spec: a local pointer to an array and a local reference to an array, `int (*rowPtr)[3] = grid + 1;`, `int (&rowRef)[3] = grid[0];`, a qualified or template class type's too (`::Cell (*cells)[2]`, `const Cell (&first)[2]`), declare, as globals, members and parameters did; after a plain name the parser cannot tell a type from a function, and `row(*p)[0] = v;`, a call indexed and assigned, stays an expression (until 2026-11-05 a local read as an expression: the name undeclared)
+struct Cell { int v; };
+Cell cellGrid[2][2] = { { {1}, {2} }, { {3}, {4} } };
+int* slot(int* p) { return p; }
+int main()
+{
+  int grid[2][3] = { { 1, 2, 3 }, { 4, 5, 6 } };
+  int (*rowPtr)[3] = grid + 1;
+  int (&rowRef)[3] = grid[0];
+  ::Cell (*cells)[2] = cellGrid;
+  const Cell (&first)[2] = cellGrid[1];
+  int value = 7;
+  int* p = &value;
+  slot(&*p)[0] = 8;
+  slot(*&p)[0] = 9;
+  println((*rowPtr)[2], " ", rowRef[1], " ", cells[1][0].v, " ", first[1].v, " ", value);
+  return 0;
+}

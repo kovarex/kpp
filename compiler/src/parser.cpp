@@ -4328,12 +4328,16 @@ namespace
     // or to arrays). A call's first argument can start the same way (`f(*p);`, `f(&x);`,
     // `memcpy(&image[i * 4], &color, 3);`, `exchange(*items[0], *items[1]);`); no array of
     // references exists, so `(&name[` is always one.
-    bool parenthesisedDeclaratorAhead(int ahead) const
+    // unambiguous: the type before is one no expression starts with (a keyword's, a qualified or
+    // template name's), so that `(*name)[N]` and `(&name)[N]`, a pointer to or reference to an array,
+    // declare (`int (*rowPtr)[3] = grid + 1;`); not after a plain name, which may be a function's:
+    // `row(*p)[0] = v;` is a call (a parser without the names' kinds cannot tell `Cell (*p)[2]`).
+    bool parenthesisedDeclaratorAhead(int ahead, bool unambiguous = false) const
     {
       if (!at(P::LParen, ahead) || !(at(P::Star, ahead + 1) || at(P::Amp, ahead + 1)) || !atIdent(ahead + 2))
         return false;
       if (at(P::RParen, ahead + 3))
-        return at(P::LParen, ahead + 4);
+        return at(P::LParen, ahead + 4) || (unambiguous && at(P::LBracket, ahead + 4));
       if (!at(P::Star, ahead + 1) || !at(P::LBracket, ahead + 3))
         return false;
       int i = ahead + 3;
@@ -4365,7 +4369,7 @@ namespace
           default:
             if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && atIdent(2) && at(P::ColonColon, 3) && at(P::Star, 4))
               return true; // `int (Calc::*op)(int)`: a pointer to a member
-            if (isBuiltinTypeKeyword(Kw(tok().id)) && parenthesisedDeclaratorAhead(1))
+            if (isBuiltinTypeKeyword(Kw(tok().id)) && parenthesisedDeclaratorAhead(1, true))
               return true; // `void (*callback)();`, `int (*op)(int) = twice;`: a function pointer declarator
             return isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1);
         }
@@ -4406,8 +4410,9 @@ namespace
             result = atIdent() && (at(P::Semi, 1) || at(P::Assign, 1) || at(P::LParen, 1) || at(P::LBrace, 1) ||
                                    at(P::Comma, 1) || at(P::LBracket, 1) || at(P::RParen, 1));
           }
-          else if (parenthesisedDeclaratorAhead(0))
-            result = true; // function pointer declarator `R (*f)(...)`; `f(*p);` and `f(&x);` are calls
+          else if (parenthesisedDeclaratorAhead(0, !(t->kind == NodeKind::NamedType && static_cast<NamedType*>(t)->name.parts.size() == 1 &&
+                                                     !static_cast<NamedType*>(t)->name.parts[0].hasTemplateArgs && !static_cast<NamedType*>(t)->name.global)))
+            result = true; // function pointer declarator `R (*f)(...)`, pointer to an array `R (*p)[N]`; `f(*p);` and `f(&x);` are calls
           else if (at(P::LParen) && atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))
             result = true; // pointer to member declarator `R (C::*name)(...)`
           else if (at(P::LBracket) && autoUnderRefs(t))
