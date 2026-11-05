@@ -34,7 +34,7 @@ add_executable(kppc
   src/Resolver/OverloadResolution.cpp
   src/Resolver/Instantiation.cpp
   src/Resolver/Interpreter.cpp
-  src/types.cpp
+  src/TypeTable.cpp
   src/Codegen/CCallingConvention.cpp
   src/Codegen/Calls.cpp
   src/Codegen/ClassMetadata.cpp

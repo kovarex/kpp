@@ -3,7 +3,7 @@
 // "Compile-time evaluation: one interpreter"). The type checker's evaluator and the code
 // generator's compute with these, so that the two cannot disagree on a constant.
 #include "lexer.hpp"
-#include "types.hpp"
+#include "TypeTable.hpp"
 #include <cstdint>
 #include <functional>
 #include <memory>

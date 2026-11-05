@@ -1589,7 +1589,7 @@ UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
   is a declaration, as `a * b;` is. There is no functional cast through `^` (`UniquePtr<A>(p)` keeps
   the long name, as C++ has no `T*(x)`). Imported C headers keep `^` as exclusive or.
 - **Printing.** Errors and the language server's hover print `UniquePtr<T, DefaultDelete<T>>` as
-  `T^` (types.cpp, toString), and so does an error's `(in ...)`, which names the function as the
+  `T^` (TypeTable.cpp, toString), and so does an error's `(in ...)`, which names the function as the
   program writes it (`(in owned(Item^&))`, `(in sum<int32>(const Vector<int32>&), requested by
   main())`, `(in a lambda in main(), line 29)`; codegen's displayFunctionName, B, 2026-11-04), no
   longer by its IR name (`@"owned(UniquePtr<Item, DefaultDelete<Item>>&)"`). Qualified names (the

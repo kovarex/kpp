@@ -9,7 +9,7 @@
 // one the code generator does not build is its error.
 #include <string_view>
 
-#include "types.hpp"
+#include "TypeTable.hpp"
 
 // The result type of a call to the SSE macro named name, or null when it is none of them.
 inline const Ty* sseMacroResult(std::string_view name, TypeTable& types)

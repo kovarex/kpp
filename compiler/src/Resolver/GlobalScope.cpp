@@ -439,8 +439,7 @@ void GlobalScope::setDebug(bool debug) { impl->debug = debug; }
 void GlobalScope::setLP64(bool lp64)
 {
   impl->cLong64 = lp64;
-  impl->types.longBits = lp64 ? 64 : 32;
-  impl->types.wcharBits = lp64 ? 32 : 16;
+  impl->types.setDataModel(lp64);
   for (auto& [symbol, t] : impl->builtinNames)
     if (impl->symbols.name(symbol) == "wchar_t")
       t = impl->types.wcharType();

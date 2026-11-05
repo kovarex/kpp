@@ -5,7 +5,7 @@
 // (in parallel; the tree is read-only, canonical types are interned in a shared table).
 #include "ast.hpp"
 #include "consteval.hpp"
-#include "types.hpp"
+#include "TypeTable.hpp"
 #include <cstdint>
 #include <functional>
 #include <optional>

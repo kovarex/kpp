@@ -1072,7 +1072,7 @@ namespace
         else if (at(P::Caret) && !isC() && caretDeclarator())
         {
           // `T^`: the library's UniquePtr<T> written short, `::UniquePtr<T>` and nothing else (sugar,
-          // design.md "T^"; printed back as `T^`, types.cpp).
+          // design.md "T^"; printed back as `T^`, TypeTable.cpp).
           NamedType* owner = node<NamedType>(pos);
           advance();
           NamePart part;

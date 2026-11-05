@@ -2,7 +2,7 @@
 #include "ast.hpp"
 #include "ast_walk.hpp"
 #include "resolver.hpp"
-#include "types.hpp"
+#include "TypeTable.hpp"
 #include "project.hpp"
 #include "source.hpp"
 #include <chrono>

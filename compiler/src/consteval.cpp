@@ -379,7 +379,7 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
   };
   // ([lex.icon] 3: int, long, long long in order, each unsigned too for a literal that is not
   // decimal; l starts at long, ll at long long, u takes the unsigned ones.)
-  IntType i{32, false}, ui{32, true}, l{types.longBits, false, true}, ul{types.longBits, true, true}, ll{64, false}, ull{64, true};
+  IntType i{32, false}, ui{32, true}, l{types.longBits(), false, true}, ul{types.longBits(), true, true}, ll{64, false}, ull{64, true};
   std::vector<IntType> candidates;
   if (z)
     candidates = {IntType{64, u}}; // C++23: size_t, or its signed counterpart

@@ -1,64 +1,10 @@
 #pragma once
-// Canonical types. Every distinct type exists exactly once in the TypeTable, so type equality is
-// pointer equality and two threads that build the same type (e.g. the same template
-// instantiation) get the same object. Qualifiers are part of the type: `const int` and `int`
-// are different Ty objects that share nothing but their kind.
-#include "ast.hpp"
+// The table of canonical types (Ty.hpp): every type made once and shared, so that type equality is
+// pointer equality, from any number of threads.
+#include "Ty.hpp"
 #include <cstdint>
 #include <string>
-
-enum class TyKind : uint8_t
-{
-  Void,
-  Bool,
-  Char,    // bits = 8/16/32, isUnsigned
-  Int,     // bits = 8/16/32/64, isUnsigned; count = 1 marks C's `long` (TypeTable::longType): a type of its
-           // own beside int and long long, as wide as the target's C long
-  Float,   // bits = 32/64
-  Nullptr,
-  Pointer, // inner
-  LRef,    // inner
-  RRef,    // inner
-  Array,   // inner, count (0 = unknown bound)
-  Function,// inner = result, args = parameters, variadic
-  Class,   // decl = ClassDecl (definition if known), args = template arguments (empty for non-templates);
-           // count = 1 marks a brace list argument (TypeTable::braceList)
-  Enum,    // decl = EnumDecl
-  Param,   // decl = TemplateParamDecl: dependent on a template parameter
-  DependentMember, // inner = a dependent type, value = a member's symbol: `T::Unit`, resolved when T is substituted
-  Lambda,  // inner = return type (null if unknown), args = parameters; decl = the LambdaExpr owner (unused)
-  MemberPointer, // inner = member type, decl = owning class decl (may be null)
-  Auto,    // Placeholder inside a declared type, replaced by deduction.
-  Pack,    // args = the types a parameter pack was deduced to.
-  Value,   // A non-type template argument: inner = its type, value = the constant.
-  Member,  // A data member as a compile-time value (reflection, design.md 8.3): decl = its VariableDecl,
-           // inner = its type in the class's instantiation, args[0] = the class type.
-  Vector,  // SIMD vector: inner = element type (Float or Int), count = lane count (e.g. 4 for <4 x float>)
-  Unknown, // Could not be determined; reason is tracked in the statistics, not in the type.
-};
-
-struct Ty
-{
-  bool isReference() const { return kind == TyKind::LRef || kind == TyKind::RRef; }
-  bool isArithmetic() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Float; }
-  bool isIntegral() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Enum; }
-  bool isKnown() const { return kind != TyKind::Unknown; }
-  bool isBraceList() const { return kind == TyKind::Class && count == 1; }
-  bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
-  bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
-
-  TyKind kind;
-  uint8_t bits = 0;
-  bool isUnsigned = false;
-  bool isConst = false;
-  bool isVolatile = false;
-  bool variadic = false;
-  uint32_t count = 0;
-  int64_t value = 0; // Value kinds only.
-  const Ty* inner = nullptr;
-  Span<const Ty*> args;
-  Decl* decl = nullptr;
-};
+#include <vector>
 
 class TypeTable
 {
@@ -80,7 +26,16 @@ public:
   // C's `long` and `unsigned long` (design.md, "Types"): distinct from int and long long as in
   // C++, and as wide as the target's C long (32 bits on Windows, 64 on LP64 targets).
   const Ty* longType(bool isUnsigned = false);
-  const Ty* wcharType() { return charType(wcharBits, wcharBits == 16); }
+  // The target's C data model: long and wchar_t 64 and 32 bits wide (lp64: Linux, FreeBSD, macOS),
+  // else 32 and 16 (Windows).
+  void setDataModel(bool lp64)
+  {
+    this->cLongBits = lp64 ? 64 : 32;
+    this->cWcharBits = lp64 ? 32 : 16;
+  }
+  uint8_t longBits() const { return this->cLongBits; }
+  uint8_t wcharBits() const { return this->cWcharBits; }
+  const Ty* wcharType() { return charType(this->cWcharBits, this->cWcharBits == 16); }
   // The integer conversion rank ([conv.rank]): long long above long above int above short above
   // the 8-bit types; 0 for a type that is no integer.
   static int integerRank(const Ty* t);
@@ -150,14 +105,12 @@ public:
 private:
   const Ty* intern(const Ty& t);
   struct Impl;
-public:
-  uint8_t longBits = 32;
+  Impl* impl;
+  uint8_t cLongBits = 32;
   // wchar_t, and the units of L"..." and L'x': the target's C wchar_t (unsigned 16 bits, UTF-16, on
   // Windows; a signed 32-bit int, UTF-32, as glibc, FreeBSD and macOS have it: docs/design.md,
   // "Targets and hosts").
-  uint8_t wcharBits = 16;
-private:
-  Impl* impl;
+  uint8_t cWcharBits = 16;
   const Ty* void_;
   const Ty* bool_;
   const Ty* nullptr_;

@@ -1,4 +1,4 @@
-#include "types.hpp"
+#include "TypeTable.hpp"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -162,7 +162,7 @@ const Ty* TypeTable::intType(uint8_t bits, bool isUnsigned)
 const Ty* TypeTable::longType(bool isUnsigned)
 {
   Ty t{TyKind::Int};
-  t.bits = longBits;
+  t.bits = this->cLongBits;
   t.isUnsigned = isUnsigned;
   t.count = 1;
   return intern(t);

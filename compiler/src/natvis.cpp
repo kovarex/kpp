@@ -5,7 +5,7 @@
 #include "natvis.hpp"
 #include "codegen.hpp"
 #include "resolver.hpp"
-#include "types.hpp"
+#include "TypeTable.hpp"
 #include <functional>
 #include <map>
 #include <set>
