@@ -70,6 +70,10 @@
       // A static local's guard (staticLocal) while its initializer runs: an exception leaving gives
       // the claim back (the guard to 0, the next pass tries again), never a destructor.
       std::string guardReset;
+      // A temporary of one operand of ?:, && or || (keepOperandTemps): it lives to the end of the
+      // full-expression and is destroyed there only when its operand ran, as the i1 at builtFlag
+      // says (false from the function's entry, true once the operand ran, false again once destroyed).
+      std::string builtFlag;
     };
     struct LabelPlace
     {

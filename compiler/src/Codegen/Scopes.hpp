@@ -7,9 +7,15 @@
     // objects built before it alone.)
     void destroyTemps();
 
-    // Destroys the temporaries made since mark: those of one branch of `?:` or of the right
-    // operand of `&&`/`||`, which exist only when that branch ran, so they die inside it.
+    // Destroys the temporaries made since mark: a part's own (a member initializer's, a base's).
     void destroyTempsFrom(size_t mark);
+
+    // The temporaries made since mark by one operand that may not run (a branch of `?:`, the right
+    // operand of `&&`/`||`): they live to the end of the full-expression, as C++'s do ([class.temporary]
+    // 4), each with a flag that says whether its operand ran, so that only those built are destroyed
+    // there, or in unwinding (Object::builtFlag). They died with their operand until 2026-11-05: a
+    // pointer to one read a destroyed object later in the expression.
+    void keepOperandTemps(size_t mark);
 
     void destroyObject(const Object& o);
 

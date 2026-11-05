@@ -553,11 +553,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       };
       if (op == P::Comma)
       {
-        eachOperand([&](Expr* x)
-        {
-          rvalue(x);
-          destroyTemps();
-        });
+        eachOperand([&](Expr* x) { rvalue(x); }); // (its temporaries live to the end of the full-expression)
         return {"", types.voidType()};
       }
       if (op == P::AndAnd || op == P::OrOr)
@@ -571,7 +567,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         {
           size_t temps = statementTemps.size();
           Value v = convert(rvalue(x), types.boolType(), e);
-          destroyTempsFrom(temps); // an operand runs only when the ones before did not decide
+          keepOperandTemps(temps); // an operand runs only when the ones before did not decide
           std::string next = newLabel("fold.next");
           fn += "  br i1 " + v.text + ", label %" + (isAnd ? next : endL) + ", label %" + (isAnd ? endL : next) + "\n";
           phi += std::string(phi.empty() ? "" : ", ") + "[ " + (isAnd ? "false" : "true") + ", %" + currentBlock + " ]";
@@ -690,12 +686,12 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         size_t temps = statementTemps.size();
         startBlock(tL);
         std::string a = conditionalAddress(c->then, thenObject, t, e);
-        destroyTempsFrom(temps);
+        keepOperandTemps(temps);
         std::string aEnd = currentBlock;
         emitBranch(jL);
         startBlock(eL);
         std::string b = conditionalAddress(c->else_, elseObject, t, e);
-        destroyTempsFrom(temps);
+        keepOperandTemps(temps);
         std::string bEnd = currentBlock;
         emitBranch(jL);
         startBlock(jL);
@@ -710,11 +706,11 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         size_t temps = statementTemps.size();
         startBlock(tL);
         initializeFrom(slot, t, c->then, e);
-        destroyTempsFrom(temps);
+        keepOperandTemps(temps);
         emitBranch(jL);
         startBlock(eL);
         initializeFrom(slot, t, c->else_, e);
-        destroyTempsFrom(temps);
+        keepOperandTemps(temps);
         emitBranch(jL);
         startBlock(jL);
         if (needsDestruction(t, e))
@@ -724,12 +720,12 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       size_t temps = statementTemps.size();
       startBlock(tL);
       Value a = t->kind == TyKind::Void ? rvalue(c->then) : convert(rvalue(c->then), t, e);
-      destroyTempsFrom(temps); // `number(isNumber ? strtodouble(String(data, length)) : 0)`: the String exists only here
+      keepOperandTemps(temps); // `number(isNumber ? strtodouble(String(data, length)) : 0)`: the String exists only when this branch ran
       std::string aEnd = currentBlock;
       emitBranch(jL);
       startBlock(eL);
       Value b = t->kind == TyKind::Void ? rvalue(c->else_) : convert(rvalue(c->else_), t, e);
-      destroyTempsFrom(temps);
+      keepOperandTemps(temps);
       std::string bEnd = currentBlock;
       emitBranch(jL);
       startBlock(jL);
@@ -2203,7 +2199,7 @@ auto codegen::Emitter::logical(bool isAnd, Expr* lhs, Expr* rhs, Node* at) -> Va
   startBlock(rL);
   size_t temps = statementTemps.size();
   Value r = convert(rvalue(rhs), types.boolType(), at);
-  destroyTempsFrom(temps); // `flag && Noisy(2).value() > 5`: the Noisy exists only here
+  keepOperandTemps(temps); // `flag && Noisy(2).value() > 5`: the Noisy exists only when this operand ran
   std::string rEnd = currentBlock;
   emitBranch(eL);
   startBlock(eL);

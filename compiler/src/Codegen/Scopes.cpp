@@ -25,8 +25,38 @@ auto codegen::Emitter::destroyTempsFrom(size_t mark) -> void
   statementTemps.resize(mark);
 }
 
+auto codegen::Emitter::keepOperandTemps(size_t mark) -> void
+{
+  for (size_t i = mark; i < statementTemps.size(); ++i)
+  {
+    Object& o = statementTemps[i];
+    if (!o.builtFlag.empty() || o.unwindOnly || o.exception)
+      continue; // a nested operand's (its own flag says), or no temporary of this one
+    o.builtFlag = "%v" + std::to_string(temp++);
+    allocas += "  " + o.builtFlag + " = alloca i1\n  store i1 false, ptr " + o.builtFlag + "\n";
+    fn += "  store i1 true, ptr " + o.builtFlag + "\n";
+  }
+}
+
 auto codegen::Emitter::destroyObject(const Object& o) -> void
 {
+  if (!o.builtFlag.empty())
+  {
+    // A temporary of an operand that may not have run (keepOperandTemps): destroyed only when it
+    // did, its flag false again (a loop's next pass runs the expression anew).
+    Object built = o;
+    built.builtFlag.clear();
+    std::string ran = newTemp(), builtL = newLabel("temp.built"), endL = newLabel("temp.end");
+    fn += "  " + ran + " = load i1, ptr " + o.builtFlag + "\n";
+    fn += "  br i1 " + ran + ", label %" + builtL + ", label %" + endL + "\n";
+    blockTerminated = true;
+    startBlock(builtL);
+    fn += "  store i1 false, ptr " + o.builtFlag + "\n";
+    destroyObject(built);
+    emitBranch(endL);
+    startBlock(endL);
+    return;
+  }
   if (o.exception)
     fn += "  call void @kpp_eh_end(ptr " + o.addr + ")" + bundle() + "\n";
   else if (o.freeMemory)

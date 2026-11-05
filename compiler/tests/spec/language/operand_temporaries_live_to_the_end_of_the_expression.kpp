@@ -1,0 +1,72 @@
+// spec: a temporary built in one operand of ?:, && or || lives to the end of the full-expression, as C++'s [class.temporary] 4 has it, and is destroyed then only when its operand ran: a pointer to it is good later in the expression (`read1`, `both3`, `read5`, `+2 -2 | 1`), the temporaries die in reverse order of their construction (`+4 +8 +9 -9 -8 -4`, `+15 +16 -16 -15`), a loop runs the expression anew each pass (`+10 -10 +12 -12`), and an exception later in the expression destroys the operand's temporary only when it was built (`+20 -20 caught`, `caught`); clang prints the same
+// found by thread B (2026-11-05), comparing with clang: an operand's temporaries were destroyed when the operand ended, so `read(flag ? Noisy(1).self() : nullptr)` read a destroyed object
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { print("+", id, " "); }
+  Noisy(const Noisy& o) : id(o.id + 100) { print("c", id, " "); }
+  ~Noisy()
+  {
+    print("-", id, " ");
+    id = -999;
+  }
+  const Noisy* self() const { return this; }
+  bool odd() const { return id % 2 == 1; }
+};
+int read(const Noisy* p)
+{
+  print("read", p ? p->id : 0, " ");
+  return p ? p->id : 0;
+}
+int both(const Noisy* a, bool b)
+{
+  print("both", a ? a->id : 0, " ");
+  return b ? 1 : 0;
+}
+int take(const Noisy& n) { return n.id; }
+bool thrower()
+{
+  throw 1;
+}
+int main()
+{
+  bool flag = true;
+  int r1 = read(flag ? Noisy(1).self() : nullptr);
+  println("| ", r1);
+  const Noisy* kept = nullptr;
+  bool r2 = flag && (kept = Noisy(2).self()) != nullptr && kept->id == 2;
+  println("| ", r2 ? 1 : 0);
+  int r3 = both(flag ? Noisy(3).self() : nullptr, true);
+  println("| ", r3);
+  const Noisy* p = nullptr;
+  int r4 = (!flag || (p = Noisy(5).self()) == nullptr) ? 0 : read(p);
+  println("| ", r4);
+  bool neither = Noisy(4).odd() || Noisy(8).odd() || Noisy(9).odd();
+  println("| ", neither ? 1 : 0);
+  int nested = (flag && Noisy(15).odd()) ? take(Noisy(16)) : (Noisy(17).odd() ? 1 : 0);
+  println("| ", nested);
+  int sum = 0;
+  for (int i = 0; i < 3; ++i)
+    sum += i % 2 == 0 ? take(Noisy(10 + i)) : 0;
+  println("| loop ", sum);
+  try
+  {
+    bool r = (flag ? Noisy(20).self() : nullptr) != nullptr && thrower();
+    println("not reached ", r ? 1 : 0);
+  }
+  catch (int)
+  {
+    println("caught");
+  }
+  try
+  {
+    bool r = (!flag ? Noisy(21).self() : nullptr) == nullptr && thrower();
+    println("not reached ", r ? 1 : 0);
+  }
+  catch (int)
+  {
+    println("caught");
+  }
+  return 0;
+}

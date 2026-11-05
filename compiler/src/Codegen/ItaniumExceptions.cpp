@@ -49,7 +49,8 @@ auto codegen::Emitter::itaniumChain(const std::vector<Object>& objects, size_t f
     return next.empty() ? itaniumResume() : next;
   std::string key = "itanium.chain|" + next;
   for (size_t i = from; i < objects.size(); ++i)
-    key += "|" + objects[i].addr + (objects[i].freeMemory ? "~" : "") + (objects[i].exception ? "!" : "");
+    key += "|" + objects[i].addr + (objects[i].freeMemory ? "~" : "") + (objects[i].exception ? "!" : "") +
+           (objects[i].builtFlag.empty() ? "" : "?" + objects[i].builtFlag); // (one built for sure is another pad)
   auto found = cleanupPads.find(key);
   if (found != cleanupPads.end())
     return found->second;

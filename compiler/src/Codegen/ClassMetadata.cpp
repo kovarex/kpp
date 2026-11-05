@@ -2447,7 +2447,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       startBlock(branch == 0 ? tL : eL);
       size_t temps = statementTemps.size();
       initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at);
-      destroyTempsFrom(temps); // (a branch's own temporaries end with it)
+      keepOperandTemps(temps); // (a branch's own temporaries, built only when it ran)
       emitBranch(jL);
     }
     startBlock(jL);
