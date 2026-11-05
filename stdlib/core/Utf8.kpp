@@ -177,15 +177,12 @@ void appendUtf8(String& out, u32 codePoint)
 // The code points of a text in order (utf8CodePoints), U+FFFD for bytes that are not UTF-8. A
 // forward iterator; it also tells the byte position of the current code point and whether it was
 // valid. Invalidated when the text's bytes change.
-struct Utf8CodePointIterator
+class Utf8CodePointIterator
 {
+public:
   using value_type = u32;
   using difference_type = i64;
   using iterator_category = ForwardIteratorTag;
-
-  StringView text;
-  ContainerSize at = 0;
-  Utf8Decoded decoded; // the code point at `at` (none at the end)
 
   Utf8CodePointIterator() {}
   Utf8CodePointIterator(StringView text, ContainerSize at) : text(text), at(at)
@@ -211,6 +208,11 @@ struct Utf8CodePointIterator
   }
   bool operator==(const Utf8CodePointIterator& other) const { return this->at == other.at; }
   bool operator!=(const Utf8CodePointIterator& other) const { return this->at != other.at; }
+
+private:
+  StringView text;
+  ContainerSize at = 0;
+  Utf8Decoded decoded; // the code point at `at` (none at the end)
 };
 
 // A range-for over a text's code points: `for (u32 c : utf8CodePoints(text))`.

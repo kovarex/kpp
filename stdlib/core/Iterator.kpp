@@ -99,15 +99,14 @@ MoveIterator<It> makeMoveIterator(It it) { return MoveIterator<It>(it); }
 
 // BackInserter: an output iterator that push_back's into a container.
 template<typename Container>
-struct BackInsertIterator
+class BackInsertIterator
 {
+public:
   using value_type = void;
   using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = OutputIteratorTag;
-
-  Container* container;
 
   explicit BackInsertIterator(Container& c) : container(&c) {}
 
@@ -123,6 +122,9 @@ struct BackInsertIterator
   }
   BackInsertIterator<Container>& operator*() { return *this; }
   BackInsertIterator<Container>& operator++() { return *this; }
+
+protected: // as the standard's container
+  Container* container;
 };
 
 template<typename Container>
@@ -130,16 +132,14 @@ BackInsertIterator<Container> backInserter(Container& c) { return BackInsertIter
 
 // Inserter: an output iterator that insert's at a position.
 template<typename Container>
-struct InsertIterator
+class InsertIterator
 {
+public:
   using value_type = void;
   using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = OutputIteratorTag;
-
-  Container* container;
-  typename Container::iterator position;
 
   InsertIterator(Container& c, typename Container::iterator pos) : container(&c), position(pos) {}
 
@@ -151,6 +151,10 @@ struct InsertIterator
   }
   InsertIterator<Container>& operator*() { return *this; }
   InsertIterator<Container>& operator++() { return *this; }
+
+protected: // as the standard's container
+  Container* container;
+  typename Container::iterator position;
 };
 
 template<typename Container>

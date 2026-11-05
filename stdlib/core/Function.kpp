@@ -134,11 +134,10 @@ struct FunctionImpl
 // assigned (assigning rebinds it), and it converts to the T& it refers to. Specified in
 // docs/stdlib/function.md.
 template<typename T>
-struct ReferenceWrapper
+class ReferenceWrapper
 {
+public:
   using type = T;
-
-  T* pointer;
 
   // std also deletes the constructor from T&&, so that a ReferenceWrapper<const T> never refers to
   // a temporary; with that declared, codegen copies the wrapper through it
@@ -153,6 +152,9 @@ struct ReferenceWrapper
   {
     return (*this->pointer)(forward<CallArgs>(args)...);
   }
+
+private:
+  T* pointer;
 };
 
 // A ReferenceWrapper to value (std::ref, std::cref).

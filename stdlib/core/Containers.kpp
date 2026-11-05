@@ -164,9 +164,9 @@ public:
   template<ContainerSize N> requires (Extent == dynamicExtent || N == Extent)
   implicit Span(T (&a)[N]) : items(a), length(N) {}
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
-  implicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
+  implicit Span(const Subrange<U*>& range) : items(range.begin()), length(checkedSize(range.end() - range.begin(), "span too long")) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
-  explicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
+  explicit Span(const Subrange<U*>& range) : items(range.begin()), length(checkedSize(range.end() - range.begin(), "span too long")) {}
   // From a span of other elements (T const) or another extent: implicit when the length is sure
   // to fit, explicit from a span of any length to a fixed extent.
   template<typename U, ContainerSize N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))

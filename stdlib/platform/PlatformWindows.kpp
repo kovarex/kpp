@@ -83,10 +83,9 @@ namespace platform
   // locks): an SRWLOCK, one pointer, zero when unlocked, with nothing to release. Lock and SharedLock
   // are one type here; on POSIX a Lock is a mutex, which a Condition waits with, and a SharedLock a
   // read-write lock.
-  struct Lock
+  class Lock
   {
-    void* srw = nullptr;
-
+  public:
     Lock() {}
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
@@ -97,15 +96,19 @@ namespace platform
     void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this->srw)); }
     void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this->srw)); }
     bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this->srw)) != 0; }
+
+  private:
+    friend class Condition; // waits on srw
+
+    void* srw = nullptr;
   };
   using SharedLock = Lock;
 
   // A condition variable that waits with a Lock: a CONDITION_VARIABLE, one pointer, zero when
   // initialised.
-  struct Condition
+  class Condition
   {
-    void* condition = nullptr;
-
+  public:
     Condition() {}
     Condition(const Condition&) = delete;
     Condition& operator=(const Condition&) = delete;
@@ -120,6 +123,9 @@ namespace platform
     {
       return win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), waitMilliseconds(d), 0) != 0;
     }
+
+  private:
+    void* condition = nullptr;
   };
 
   // What a thread runs: a function of one pointer, and what it returns (CreateThread's).

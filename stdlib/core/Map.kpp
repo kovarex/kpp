@@ -714,10 +714,9 @@ void rbFreeNode(RbNode<E>* node)
 }
 
 template<typename K, typename V>
-struct MapNodeHandle
+class MapNodeHandle
 {
-  RbNode<Pair<K, V>>* node = nullptr;
-
+public:
   MapNodeHandle() {}
   explicit MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
   MapNodeHandle(MapNodeHandle<K, V>&& other) noexcept : node(other.node) { other.node = nullptr; }
@@ -744,14 +743,19 @@ struct MapNodeHandle
       rbFreeNode(this->node);
     this->node = nullptr;
   }
+
+private:
+  template<typename K2, typename V2, typename Compare> friend class Map;
+  template<typename K2, typename V2, typename Compare> friend class MultiMap;
+
+  RbNode<Pair<K, V>>* node = nullptr;
 };
 
 // The same for Set and MultiSet.
 template<typename T>
-struct SetNodeHandle
+class SetNodeHandle
 {
-  RbNode<T>* node = nullptr;
-
+public:
   SetNodeHandle() {}
   explicit SetNodeHandle(RbNode<T>* node) : node(node) {}
   SetNodeHandle(SetNodeHandle<T>&& other) noexcept : node(other.node) { other.node = nullptr; }
@@ -777,6 +781,12 @@ struct SetNodeHandle
       rbFreeNode(this->node);
     this->node = nullptr;
   }
+
+private:
+  template<typename T2, typename Compare> friend class Set;
+  template<typename T2, typename Compare> friend class MultiSet;
+
+  RbNode<T>* node = nullptr;
 };
 
 // What inserting a node handle into a unique-key container returns: where the key's entry is,

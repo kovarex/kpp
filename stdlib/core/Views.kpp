@@ -33,11 +33,9 @@ struct ViewedRange<Range, true>
 
 // [first, last) as a range (std::ranges::subrange).
 template<typename It>
-struct Subrange : ViewBase
+class Subrange : public ViewBase
 {
-  It first;
-  It last;
-
+public:
   Subrange() {}
   Subrange(It first, It last) : first(first), last(last) {}
 
@@ -45,20 +43,23 @@ struct Subrange : ViewBase
   It end() const { return this->last; }
   bool empty() const { return this->first == this->last; }
   i64 size() const { return distance(this->first, this->last); }
+
+private:
+  It first;
+  It last;
 };
 
 // --- iotaView ---
 
 template<typename T>
-struct IotaIterator
+class IotaIterator
 {
+public:
   using value_type = T;
   using difference_type = i64;
   using pointer = const T*;
   using reference = T;
   using iterator_category = RandomAccessIteratorTag;
-
-  T value;
 
   IotaIterator() : value() {}
   explicit IotaIterator(T value) : value(value) {}
@@ -106,15 +107,16 @@ struct IotaIterator
   bool operator>(const IotaIterator<T>& other) const { return other.value < this->value; }
   bool operator<=(const IotaIterator<T>& other) const { return !(other.value < this->value); }
   bool operator>=(const IotaIterator<T>& other) const { return !(this->value < other.value); }
+
+private:
+  T value;
 };
 
 // The numbers first, first + 1, ... up to last, last excluded (std::views::iota(first, last)).
 template<typename T>
-struct IotaView : ViewBase
+class IotaView : public ViewBase
 {
-  T first;
-  T last;
-
+public:
   IotaView() : first(), last() {}
   IotaView(T first, T last) : first(first), last(last) {}
 
@@ -122,6 +124,10 @@ struct IotaView : ViewBase
   IotaIterator<T> end() const { return IotaIterator<T>(this->last); }
   bool empty() const { return !(this->first < this->last); }
   i64 size() const { return this->first < this->last ? (i64)this->last - (i64)this->first : 0; }
+
+private:
+  T first;
+  T last;
 };
 
 template<typename T, typename U>
@@ -130,16 +136,14 @@ IotaView<T> iotaView(T first, U last) { return IotaView<T>(first, (T)last); }
 // --- transformView ---
 
 template<typename It, typename F>
-struct TransformIterator
+class TransformIterator
 {
+public:
   using value_type = typename IteratorTraits<It>::value_type;
   using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = typename IteratorTraits<It>::iterator_category;
-
-  It position;
-  const F* f = nullptr;
 
   TransformIterator() {}
   TransformIterator(It position, const F* f) : position(position), f(f) {}
@@ -164,15 +168,17 @@ struct TransformIterator
   i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
   bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
   bool operator!=(const TransformIterator<It, F>& other) const { return this->position != other.position; }
+
+private:
+  It position;
+  const F* f = nullptr;
 };
 
 // f(x) for every element x of a range, computed when read (std::views::transform(range, f)).
 template<typename Range, typename F>
-struct TransformView : ViewBase
+class TransformView : public ViewBase
 {
-  ViewedRange<Range> base;
-  F f;
-
+public:
   TransformView(const Range& range, F f) : base(range), f(f) {}
 
   auto begin() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().begin(), &this->f); }
@@ -189,6 +195,10 @@ struct TransformView : ViewBase
     --last;
     return *last;
   }
+
+private:
+  ViewedRange<Range> base;
+  F f;
 };
 
 template<typename Range, typename F>
@@ -208,15 +218,14 @@ TransformView<Range, F> operator|(const Range& range, const TransformAdaptor<F>&
 // --- reverseView ---
 
 template<typename It>
-struct ReverseViewIterator
+class ReverseViewIterator
 {
+public:
   using value_type = typename IteratorTraits<It>::value_type;
   using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = BidirectionalIteratorTag;
-
-  It position; // one past the element *this yields
 
   ReverseViewIterator() {}
   explicit ReverseViewIterator(It position) : position(position) {}
@@ -239,20 +248,25 @@ struct ReverseViewIterator
   }
   bool operator==(const ReverseViewIterator<It>& other) const { return this->position == other.position; }
   bool operator!=(const ReverseViewIterator<It>& other) const { return this->position != other.position; }
+
+private:
+  It position; // one past the element *this yields
 };
 
 // The elements of a bidirectional range from the last to the first (std::views::reverse(range)).
 template<typename Range>
-struct ReverseView : ViewBase
+class ReverseView : public ViewBase
 {
-  ViewedRange<Range> base;
-
+public:
   explicit ReverseView(const Range& range) : base(range) {}
 
   auto begin() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().end()); }
   auto end() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().begin()); }
   bool empty() const { return this->base.get().begin() == this->base.get().end(); }
   i64 size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+
+private:
+  ViewedRange<Range> base;
 };
 
 template<typename Range>

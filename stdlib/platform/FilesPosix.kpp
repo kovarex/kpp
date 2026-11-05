@@ -144,11 +144,9 @@ namespace platform
 
   // A directory's entries in the order the file system gives them, `.` and `..` left out: opendir
   // and readdir, and lstat of each entry for what it is.
-  struct DirectoryReader
+  class DirectoryReader
   {
-    posix::DIR* directory = nullptr;
-    filesystem::path path;
-
+  public:
     DirectoryReader() {}
     DirectoryReader(const DirectoryReader&) = delete;
     ~DirectoryReader()
@@ -193,6 +191,10 @@ namespace platform
         return true;
       }
     }
+
+  private:
+    posix::DIR* directory = nullptr;
+    filesystem::path path;
   };
 
   filesystem::path currentPath(ErrorCode& ec)

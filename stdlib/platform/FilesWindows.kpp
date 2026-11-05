@@ -189,12 +189,9 @@ namespace platform
 
   // A directory's entries in the order the file system gives them, `.` and `..` left out:
   // FindFirstFile and FindNextFile.
-  struct DirectoryReader
+  class DirectoryReader
   {
-    void* find = invalidHandle;
-    Win32FindData data;
-    bool pending = false; // data holds an entry next() has not given yet
-
+  public:
     DirectoryReader() {}
     DirectoryReader(const DirectoryReader&) = delete;
     ~DirectoryReader()
@@ -250,6 +247,11 @@ namespace platform
         return true;
       }
     }
+
+  private:
+    void* find = invalidHandle;
+    Win32FindData data;
+    bool pending = false; // data holds an entry next() has not given yet
   };
 
   // A path a Win32 function writes (its size, its buffer -> the length, or the size it needs).

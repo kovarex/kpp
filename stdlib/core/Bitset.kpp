@@ -5,11 +5,9 @@ class Bitset
 public:
   // A bit of a Bitset that reads as a bool and assigns (std::bitset<N>::reference), what the
   // non-const operator[] gives.
-  struct reference
+  class reference
   {
-    Bitset<N>* bits;
-    ContainerSize position;
-
+  public:
     reference(Bitset<N>* bits, ContainerSize position) : bits(bits), position(position) {}
     reference& operator=(bool value)
     {
@@ -28,6 +26,10 @@ public:
       this->bits->flip(this->position);
       return *this;
     }
+
+  private:
+    Bitset<N>* bits;
+    ContainerSize position;
   };
 
   bool test(ContainerSize pos) const { return (this->words[pos / 64] >> (pos % 64)) & 1; }

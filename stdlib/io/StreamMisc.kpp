@@ -8,17 +8,15 @@ using StreamSize = i64;
 // equals once its stream has no more characters (`copy(IstreambufIterator<char>(in), {}, out)`).
 // Char is char: the library's streams are of chars.
 template<typename Char = char>
-struct IstreambufIterator
+class IstreambufIterator
 {
+public:
   static_assert(isSame<Char, char>, "IstreambufIterator reads the chars of an InFileStream");
   using value_type = Char;
   using difference_type = i64;
   using pointer = const Char*;
   using reference = Char;
   using iterator_category = InputIteratorTag;
-
-  InFileStream* stream = nullptr;
-  i32 current = -1;
 
   IstreambufIterator() {}
   explicit IstreambufIterator(InFileStream& s) : stream(&s)
@@ -39,4 +37,8 @@ struct IstreambufIterator
     bool otherEnd = other.current == -1;
     return thisEnd == otherEnd;
   }
+
+private:
+  InFileStream* stream = nullptr;
+  i32 current = -1;
 };

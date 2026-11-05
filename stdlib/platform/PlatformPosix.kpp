@@ -105,10 +105,9 @@ namespace platform
   // A lock for one thread at a time (Mutex, the library's own locks): a pthread_mutex_t of the C
   // library's size, zeroed, which both C libraries take for PTHREAD_MUTEX_INITIALIZER (FreeBSD's
   // allocates its mutex on first use, which pthread_mutex_destroy releases).
-  struct Lock
+  class Lock
   {
-    u64 storage[mutexWords];
-
+  public:
     Lock() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this->storage; }
     Lock(const Lock&) = delete;
@@ -118,14 +117,16 @@ namespace platform
     void lock() { posix::pthread_mutex_lock(this->mutex()); }
     void unlock() { posix::pthread_mutex_unlock(this->mutex()); }
     bool tryLock() { return posix::pthread_mutex_trylock(this->mutex()) == 0; }
+
+  private:
+    u64 storage[mutexWords];
   };
 
   // A lock for one writer or many readers (SharedMutex, Atomic<SharedPtr>): a pthread_rwlock_t,
   // zeroed as PTHREAD_RWLOCK_INITIALIZER.
-  struct SharedLock
+  class SharedLock
   {
-    u64 storage[rwlockWords];
-
+  public:
     SharedLock() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this->storage; }
     SharedLock(const SharedLock&) = delete;
@@ -138,14 +139,16 @@ namespace platform
     void lockShared() { posix::pthread_rwlock_rdlock(this->rwlock()); }
     void unlockShared() { posix::pthread_rwlock_unlock(this->rwlock()); }
     bool tryLockShared() { return posix::pthread_rwlock_tryrdlock(this->rwlock()) == 0; }
+
+  private:
+    u64 storage[rwlockWords];
   };
 
   // A condition variable that waits with a Lock: a pthread_cond_t, zeroed as PTHREAD_COND_INITIALIZER
   // (its clock the realtime one).
-  struct Condition
+  class Condition
   {
-    u64 storage[conditionWords];
-
+  public:
     Condition() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this->storage; }
     Condition(const Condition&) = delete;
@@ -175,6 +178,9 @@ namespace platform
       }
       return posix::pthread_cond_timedwait(this->cond(), lock.mutex(), (const timespec*)&deadline) == 0;
     }
+
+  private:
+    u64 storage[conditionWords];
   };
 
   // What a thread runs: a function of one pointer, and what it returns (pthread_create's).
