@@ -405,6 +405,7 @@
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
+    std::atomic<bool> usesNoexceptFilter{false};         // Windows: a noexcept function's catchpad names kpp.eh.filter.noexcept
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
     uint64_t exceptionMessageMark = 0;                   // the byte of Exception's message (a String) that says heap or small

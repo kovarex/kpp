@@ -698,15 +698,35 @@
                   // (no handler took it: the search ends the program here, the throw site on the stack)
                   "yes:\n  %op = getelementptr inbounds i8, ptr %rec, i64 32\n  %obj = load ptr, ptr %op\n"
                   "  %tp = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tp\n"
-                  "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti)\n  unreachable\nno:\n  ret i32 0\n}\n";
+                  "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti, i32 1)\n  unreachable\nno:\n  ret i32 0\n}\n";
         std::string message = exceptionMessage(fmt2), handler = terminateHandlerCall();
+        emittingShared = true;
+        std::string throughNoexcept = cStringConstant("exception of type %s thrown through a noexcept function");
+        emittingShared = false;
         shared += sharedComdat("@kpp_eh_unhandled") +
                   std::string(kppEhUnhandledHeader) + "\nentry:\n"
                   "  %flushed = call i32 @fflush(ptr null)\n" // (the program's output first: abort writes no buffer out)
                   "  %err = call ptr @__acrt_iob_func(i32 2)\n  %name = load ptr, ptr %typeinfo\n"
-                  "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
+                  "  %isNoexcept = icmp eq i32 %why, 2\n  %fmt = select i1 %isNoexcept, ptr " + throughNoexcept + ", ptr " + fmt1 + "\n"
+                  "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %fmt, ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n" + handler + "  call void @abort()\n  unreachable\n}\n";
         declareOnce("@llvm.memcpy.p0.p0.i64", "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)");
+      }
+      // On Windows a noexcept function's outermost catchpad (noexceptDispatch): the search, reaching
+      // its frame with a kpp exception no handler inside took, reports it and ends the program there,
+      // the throw site on the stack (C++'s std::terminate), as off Windows the personality does at the
+      // empty filter. Another exception (an access violation) goes on searching. A program that throws
+      // nothing has no kpp exception to stop.
+      if (usesNoexceptFilter && sh.target.windows())
+      {
+        // (one append: the shared text is taken definition by definition)
+        shared += sharedComdat("@kpp.eh.filter.noexcept") + std::string(kppEhFilterNoexceptHeader) + "\nentry:\n" +
+                  (usesExceptions ? "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"
+                                    "  br i1 %is, label %yes, label %no\n"
+                                    "yes:\n  %op = getelementptr inbounds i8, ptr %rec, i64 32\n  %obj = load ptr, ptr %op\n"
+                                    "  %tp = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tp\n"
+                                    "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti, i32 2)\n  unreachable\nno:\n  ret i32 0\n}\n"
+                                  : "  ret i32 0\n}\n");
       }
       // @main, or @wmain for a program whose entry takes wide arguments (the game's, on Windows: the
       // C runtime calls whichever the program defines).

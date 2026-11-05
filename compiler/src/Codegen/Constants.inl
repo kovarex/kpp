@@ -850,7 +850,9 @@
     static constexpr const char* kppEhBeginHeader = "define linkonce_odr void @kpp_eh_begin(ptr %out) comdat {";
     static constexpr const char* kppEhEndHeader = "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {";
     static constexpr const char* kppEhFilterAnyHeader = "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {";
-    static constexpr const char* kppEhUnhandledHeader = "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {";
+    static constexpr const char* kppEhFilterNoexceptHeader = "define linkonce_odr i32 @kpp.eh.filter.noexcept(ptr %pointers, ptr %frame) comdat {";
+    // (why: 1 nobody caught it, 2 it left a noexcept function; as off Windows' kpp_eh_terminate)
+    static constexpr const char* kppEhUnhandledHeader = "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo, i32 %why) noinline comdat {";
     // (off Windows: main.cpp's personality calls kpp_eh_terminate too)
     static constexpr const char* kppEhEnterHeader = "define linkonce_odr void @kpp_eh_enter(ptr %out, ptr %h, i32 %handler, ptr %target) comdat {";
     static constexpr const char* kppEhTerminateHeader = "define linkonce_odr void @kpp_eh_terminate(ptr %h, i32 %why) noinline comdat {";
@@ -864,7 +866,7 @@
     static std::vector<std::string> runtimeHeaders()
     {
       return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
-              kppEhFilterAnyHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
+              kppEhFilterAnyHeader, kppEhFilterNoexceptHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
               kppEhEnterHeader,   kppEhTerminateHeader};
     }
 

@@ -1,0 +1,22 @@
+// spec: an exception that leaves a thread's function ends the program through the terminate handler, as C++'s std::thread does (std::terminate), from the search with the throw site on the stack: nothing between the throw and the thread's function is destroyed, and the program never ends without a word
+struct Boom : Exception { Boom() : Exception("boom") {} };
+struct Noisy { ~Noisy() { println("destroyed before the terminate handler"); } };
+void work()
+{
+  Noisy n;
+  throw Boom();
+}
+void onTerminate()
+{
+  println("terminate");
+  fflush(nullptr);
+  exit(0);
+}
+int main()
+{
+  setTerminate(onTerminate);
+  Thread thread(work);
+  thread.join();
+  println("joined");
+  return 0;
+}

@@ -3436,22 +3436,30 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     freebsd-known-failures.txt are gone. CI's VM confirmed it (run 41835608420, at 44e4f1f9):
     `spec freebsd: ALL PASSED (956 pass, 3 known)`.
   - A snippet's `// pending on windows: why` is a gap of the targets it names alone (run_spec.py,
-    2026-11-04): language/noexcept_violation_terminates_at_the_throw passes on Linux and FreeBSD
-    and is pending on Windows.
+    2026-11-04).
   - On Windows, an exception nobody catches ends the program from the search too (2026-11-04, B's
     review): `@main`'s filter (`kpp.eh.filter.any`), which the search reaches only when no handler
     of the program takes a kpp exception, calls `kpp_eh_unhandled`: the report, the terminate
     handler, abort. Nothing unwinds first, as off Windows, so a handler that logs the stack sees the
     throw site. Before, `@main`'s handler reported after the frames had unwound
     (language/uncaught_exception_calls_the_terminate_handler).
+  - noexcept on Windows (2026-11-05): a noexcept function's body unwinds, through its cleanups and
+    its trys' handlers, to an outermost catchpad of its own whose filter (`kpp.eh.filter.noexcept`)
+    ends the program in the search with the throw site on the stack ("exception of type T thrown
+    through a noexcept function", the terminate handler, abort), as the empty filter does off
+    Windows. Every call of such a body that may throw is an invoke now. Another exception (an access
+    violation) passes the filter. language/noexcept_violation_terminates_at_the_throw passes on
+    every target.
+  - A thread's function (Thread's start, ThreadCall::start) is noexcept, as C++'s std::thread
+    calls std::terminate for an exception that leaves it: on Windows that exception met no kpp
+    filter and the system ended the process with 0xE0000001, no report and no terminate handler
+    (language/exception_leaving_a_thread_terminates, every target).
 - **The libraries' tests on Linux**: base64 (3), bcrypt (5), html (6), json (13), markdown (10),
   net (3), sha256 (6) and url (6) all pass. Each stopped at its first throw before.
 - **Not yet:**
-  - noexcept on Windows (the pending spec): its SEH filter would report and end the program in the
-    search.
-  - On Windows, an exception that leaves a thread's function (Thread, CreateThread's start) meets
-    no kpp filter: the system's unhandled-exception path ends the process with 0xE0000001 and no
-    report or terminate handler. Off Windows kpp_throw reports it from any thread.
+  - A thread a program starts itself through CreateThread with a function of its own (the
+    converted game's threads that do not go through Thread) has no noexcept frame: an exception
+    leaving it on Windows still ends the process with no report, unless the function is noexcept.
   - `uncaught_exceptions()` off Windows: it calls the UCRT's `__uncaught_exceptions`, which is not
     there. kpp's runtime would count from `kpp_throw` to `kpp_eh_enter`.
 

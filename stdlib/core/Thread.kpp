@@ -58,7 +58,9 @@ struct ThreadCall
   F function;
   ThreadArguments<Args...> arguments;
   ThreadCall(F function, Args... arguments) : function(move(function)), arguments(move(arguments)...) {}
-  static platform::ThreadResult start(void* parameter)
+  // (noexcept: an exception leaving the thread's function ends the program through the terminate
+  // handler, from the search, as C++'s std::thread does)
+  static platform::ThreadResult start(void* parameter) noexcept
   {
     ThreadCall<F, Args...>* call = (ThreadCall<F, Args...>*)parameter;
     call->arguments.invokeWith(call->function);

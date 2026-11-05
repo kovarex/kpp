@@ -23,8 +23,7 @@ then calls the handler setTerminate installed, where C++'s terminate calls the h
 default one is what reports). The handler is kpp's own on every target, one for the program as the
 standard's is, called by the exception runtime through `kpp_terminate_handler`. A C++ library built
 with MSVC that a program links still uses the UCRT's handler (set_terminate, per thread), which
-kpp's setTerminate does not install. On Windows an exception passes through a noexcept function
-(language/noexcept_violation_terminates_at_the_throw, pending on Windows).
+kpp's setTerminate does not install.
 
 **A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
 `filesystem::path::value_type` is char and its native string the path's bytes; kpp's stays wchar_t

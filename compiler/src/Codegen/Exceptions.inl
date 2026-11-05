@@ -86,12 +86,39 @@
       else if (!ehFrames.empty())
         next = ehFrames.back().dispatchLabel; // out of a handler: on where its catchswitch unwinds (a call
                                               // without objects there unwinds so implicitly)
+      // (out of a noexcept function's own body: its outermost catchpad, whose filter ends the program
+      // in the search; noexceptDispatch)
+      else if (emittingNoexcept() && funcletOverride.empty() && currentFunclet().empty())
+      {
+        next = noexceptDispatch();
+        if (objects.empty())
+          return next;
+      }
       if (objects.empty())
         return "";
       markEH();
-      if (!next.empty())
+      if (!next.empty() && !ehFrames.empty()) // (not the noexcept function's own catchswitch: no frame)
         ehFrames.back().used = true;
       return cleanupChain(objects, 0, next, currentFunclet());
+    }
+
+    // Windows: a noexcept function's outermost catchswitch, made on first use. Its one catchpad's
+    // filter, kpp.eh.filter.noexcept, ends the program in the search when a kpp exception reaches it
+    // (finishExceptionRuntime): every call of the body that may throw unwinds here, through the
+    // cleanups and the handlers of its trys, so no exception leaves the function and nothing between
+    // the throw and it is destroyed first. The handler is never entered.
+    std::string noexceptDispatch()
+    {
+      auto found = cleanupPads.find("seh.noexcept");
+      if (found != cleanupPads.end())
+        return found->second;
+      markEH();
+      usesNoexceptFilter = true;
+      std::string block = newLabel("noexcept.dispatch"), handlerL = newLabel("noexcept.handler"), cs = newTemp(), pad = newTemp();
+      cleanupPads["seh.noexcept"] = block;
+      ehBlocks += block + ":\n  " + cs + " = catchswitch within none [label %" + handlerL + "] unwind to caller\n" + handlerL + ":\n  " + pad +
+                  " = catchpad within " + cs + " [ptr @kpp.eh.filter.noexcept]\n  unreachable\n";
+      return block;
     }
 
     // The pad destroying objects[from..] (the newest first) and then unwinding to next ("": out of

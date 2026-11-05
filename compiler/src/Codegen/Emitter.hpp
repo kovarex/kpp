@@ -57,6 +57,7 @@
     size_t hiddenErrors = 0;
     bool& mallocDeclared = sh.mallocDeclared;
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
+    std::atomic<bool>& usesNoexceptFilter = sh.usesNoexceptFilter;
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     uint64_t& exceptionMessageMark = sh.exceptionMessageMark;
