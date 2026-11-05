@@ -462,7 +462,8 @@
   // storage (the others not). Nullopt for anything else.
   std::optional<ConstValue> constTypedUnion(const Ty* t, const ConstClassLayout& layout, const std::vector<ConstValue>& args, int depth);
 
-  std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written = nullptr, const ConstPlace* target = nullptr);
+  std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written = nullptr, const ConstPlace* target = nullptr,
+                                           const std::vector<std::optional<ConstPlace>>* places = nullptr);
 
   // ---- step 4: brace lists, InitializerList, range-for (design.md, "Compile-time evaluation") ----
 
@@ -899,6 +900,15 @@
   // `point.x`, `this->count`, `items[i].size`: the data member of an object the evaluation holds
   // (a local, `this`, a constant's value, a temporary).
   std::optional<ConstValue> constMemberRead(MemberExpr* m, const TypeContext& ctx, int depth);
+  // A reference member's part is the address of what it refers to (`View(const int& r) : ref(r)`:
+  // r's place, a global's address), so that reading or writing it later reaches that object as it
+  // is then, where a copy of its value was kept (a silent wrong answer). constReferenceTo makes it
+  // from what the initializer names (nullopt for a prvalue, kept as a copy as before; a call that ran
+  // gives its value), constRefersTo tells it from such a copy, and constThroughReference takes a
+  // member's place to the referred object's (nullopt for a global's, read by constMemberRead).
+  std::optional<std::optional<ConstValue>> constReferenceTo(Expr* x, const Ty* reference, const TypeContext& ctx, int depth);
+  bool constRefersTo(const ConstValue& part, const Ty* declared);
+  std::optional<ConstPlace> constThroughReference(const ConstPlace& member, int depth);
 
   // `items[i]` of an array the evaluation holds, `text[i]` through a pointer into one, `names[i]`
   // of a class by its operator[]: the element, its index checked.

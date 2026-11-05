@@ -2857,7 +2857,7 @@ auto GlobalScope::Impl::constConstructFrom(const Ty* t, Span<Expr*> args, const 
   const Ty* u = types.unqualified(types.stripRef(t));
   if (values.size() == 1 && places.size() == 1 && categories.size() == 1 && constIsObjectOf(values[0], u))
     return constFromObject(u, values[0], places[0], categories[0], depth, target);
-  return constConstruct(u, values, false, depth + 1, values.size() == args.size() ? &args : nullptr, target);
+  return constConstruct(u, values, false, depth + 1, values.size() == args.size() ? &args : nullptr, target, values.size() == places.size() ? &places : nullptr);
 }
 
 auto GlobalScope::Impl::constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth, const ConstPlace* target) -> std::optional<ConstValue>
@@ -2950,6 +2950,13 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
   if (depth > 64)
     return std::nullopt;
   auto element = [&](const Ty* et) -> std::optional<ConstValue> {
+    // An aggregate's reference member (`View v{a}`): the address of what the value names.
+    if (et && et->isReference() && next < values.size() && values[next] && values[next]->kind != NodeKind::BraceInitExpr)
+      if (std::optional<std::optional<ConstValue>> referred = constReferenceTo(values[next], et, ctx, depth + 1))
+      {
+        ++next;
+        return *referred;
+      }
     const Ty* eu = types.unqualified(types.stripRef(et));
     if (next >= values.size())
       return constEmpty(eu, true, depth + 1);
@@ -3165,7 +3172,8 @@ auto GlobalScope::Impl::constTypedUnion(const Ty* t, const ConstClassLayout& lay
   return ConstValue::object(t, std::move(parts));
 }
 
-auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written, const ConstPlace* target) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written, const ConstPlace* target,
+                                        const std::vector<std::optional<ConstPlace>>* places) -> std::optional<ConstValue>
 {
   t = types.unqualified(types.stripRef(t));
   const ConstClassLayout* layout = constLayoutOf(t, depth);
@@ -3218,7 +3226,9 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   bool ambiguous = false;
   const Ty* inheritedFrom = nullptr;
   FunctionDecl* ctor = chooseConstructor(t, argTypes, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
-  if (ambiguous && written && written->size() == args.size())
+  // (None the values' types take, `W(int& x)` given a's value: by the arguments as written, an
+  // lvalue a reference parameter binds.)
+  if ((ambiguous || !ctor) && written && written->size() == args.size())
   {
     std::vector<const Ty*> typed = argTypes;
     for (size_t i = 0; i < typed.size(); ++i)
@@ -3235,7 +3245,7 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   if (!inheritedFrom)
   {
     if (ctor->templateParams.empty())
-      return constRunConstructor(ctor, t, args, depth + 1, nullptr, nullptr, nullptr, target);
+      return constRunConstructor(ctor, t, args, depth + 1, nullptr, nullptr, places, target); // (a reference parameter refers to its argument's place)
     // `template<class T1, class T2> GamePair(T1&& key, T2&& value)`: its parameters as the
     // arguments deduce them, with the class's.
     Subst own = layout->subst;
@@ -3247,7 +3257,7 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
         return std::nullopt;
     if (implicitOnly && ctor->explicitCondition && isExplicit(ctor, &own))
       return std::nullopt; // `explicit(!isConvertible<U, T>)` true for these arguments: no implicit conversion
-    return constRunConstructor(ctor, t, args, depth + 1, &own, nullptr, nullptr, target);
+    return constRunConstructor(ctor, t, args, depth + 1, &own, nullptr, places, target);
   }
   // `using Vector2::Vector2;`: a base's constructor makes that base's part, the class's own
   // members coming from their defaults (an inherited constructor).
@@ -3337,7 +3347,7 @@ auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, 
     // constructor ([dcl.init.list] 3.7), which constConstruct would take as it is.
     if (elements.size() == 1 && places && categories && places->size() == 1 && categories->size() == 1 && constIsObjectOf(elements[0], u))
       return constFromObject(u, elements[0], (*places)[0], (*categories)[0], depth, target);
-    return constConstruct(u, elements, false, depth + 1, written, target);
+    return constConstruct(u, elements, false, depth + 1, written, target, places && places->size() == elements.size() ? places : nullptr);
   }
   return elements.size() == 1 && !constIsBraceList(elements[0]) ? constAsDeclared(elements[0], t) : std::nullopt;
 }
@@ -4200,6 +4210,11 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     auto initialize = [&](const Ty* target) -> std::optional<ConstValue> {
       if (init.args.empty())
         return constEmpty(target, true, depth + 1);
+      // `ref(r)`, a reference member: the address of what r names (constReferenceTo).
+      if (target->isReference() && init.args.size() == 1 && init.args[0] && init.args[0]->kind != NodeKind::BraceInitExpr &&
+          !constIsExpansion(init.args[0]))
+        if (std::optional<std::optional<ConstValue>> referred = constReferenceTo(init.args[0], target, fctx, depth + 1))
+          return *referred;
       bool expands = false;
       for (Expr* a : init.args)
         expands = expands || constIsExpansion(a);
@@ -4214,6 +4229,8 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
         const Ty* tu = types.unqualified(types.stripRef(target));
         if (values.empty())
           return constEmpty(target, true, depth + 1);
+        if (target->isReference() && values.size() == 1 && places.size() == 1 && places[0] && categories[0] != 0 && constAddressable(*places[0]))
+          return ConstValue::address(types.pointer(types.stripRef(target)), constStorageTarget(*places[0])); // a reference member: where it refers
         if (tu->kind == TyKind::Class)
           return values.size() == 1 && values[0].isObject() && values[0].type && types.unqualified(types.stripRef(values[0].type)) == tu
                    ? constCopyConstruct(tu, values[0], places[0], categories[0] != 1, depth + 1) // copied, or moved from where it is
@@ -5659,7 +5676,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
         self->path.insert(self->path.end(), path->begin(), path->end());
         self->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
         self->bits = constBitsOf(object->type, d);
-        return self;
+        return constThroughReference(*self, depth);
       }
     }
     return std::nullopt;
@@ -5726,7 +5743,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     const ConstClassLayout* layout = constLayoutOf(object->type, 0);
     base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
     base->bits = constBitsOf(object->type, d);
-    return base;
+    return constThroughReference(*base, depth);
   }
   if (e->kind == NodeKind::IndexExpr)
   {
@@ -6005,6 +6022,51 @@ auto GlobalScope::Impl::constStrlen(const ConstValue& p) -> std::optional<ConstV
   return std::nullopt; // no terminating zero: reading past the array
 }
 
+auto GlobalScope::Impl::constRefersTo(const ConstValue& part, const Ty* declared) -> bool
+{
+  if (!declared || !declared->isReference() || !part.isAddress() || !part.target || !part.type)
+    return false;
+  // (Told from a copy of what it refers to by its type: a pointer to the referred type, where a
+  // copy of a pointer, `T*&`'s, is a pointer to what that points at.)
+  const Ty* pt = types.unqualified(types.stripRef(part.type));
+  return pt->kind == TyKind::Pointer && pt->inner && types.unqualified(pt->inner) == types.unqualified(types.stripRef(declared));
+}
+
+auto GlobalScope::Impl::constReferenceTo(Expr* x, const Ty* reference, const TypeContext& ctx, int depth) -> std::optional<std::optional<ConstValue>>
+{
+  const Ty* referent = types.stripRef(reference);
+  Expr* source = nullptr;
+  if (!x || !referent || constCategory(x, source) == 0)
+    return std::nullopt; // a prvalue: a temporary, which the member keeps a copy of (as before)
+  std::optional<ConstValue> ran;
+  std::optional<ConstPlace> at = constPlaceOf(x, ctx, depth + 1, true, &ran);
+  if (at && constAddressable(*at))
+    return std::optional<ConstValue>(ConstValue::address(types.pointer(referent), constStorageTarget(*at)));
+  if (ran)
+    return std::optional<ConstValue>(constConvertTo(ran, referent, depth + 1)); // (a call that ran: its value, never run again)
+  if (!at && constPure(x))
+    if (std::optional<ConstValue> a = constAddressOf(x, ctx, depth + 1);
+        a && a->isAddress() && a->target && a->target->decl && a->target->decl->kind == NodeKind::VariableDecl)
+    {
+      ConstValue r = *a; // a global's, or a part of one: read through as the constant it is
+      r.type = types.pointer(referent);
+      return std::optional<ConstValue>(r);
+    }
+  return std::nullopt;
+}
+
+auto GlobalScope::Impl::constThroughReference(const ConstPlace& member, int depth) -> std::optional<ConstPlace>
+{
+  if (!member.type || !member.type->isReference())
+    return member;
+  std::optional<ConstValue> part = constRead(member);
+  if (!part || !constRefersTo(*part, member.type))
+    return member; // (a copy of what it refers to: made where no place of it was known)
+  if (!part->target->storage)
+    return std::nullopt; // a global's: a constant, read through constMemberRead, no place to write
+  return constStoragePlace(*part, "a use of", depth);
+}
+
 auto GlobalScope::Impl::constMemberRead(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   if (std::optional<ConstPlace> place = constPlaceOf(m, ctx, depth + 1))
@@ -6018,7 +6080,12 @@ auto GlobalScope::Impl::constMemberRead(MemberExpr* m, const TypeContext& ctx, i
     return std::nullopt;
   Decl* d = constFieldNamed(m->resolved, m->member, object->type);
   std::optional<std::vector<size_t>> path = d ? constFieldPath(object->type, d, 0) : std::nullopt;
-  return path ? constPart(*object, *path) : std::nullopt;
+  std::optional<ConstValue> part = path ? constPart(*object, *path) : std::nullopt;
+  const ConstClassLayout* layout = part ? constLayoutOf(object->type, 0) : nullptr;
+  const Ty* declared = layout ? declaredTypeOf(d, !layout->subst.empty() ? &layout->subst : nullptr, 0) : nullptr;
+  if (part && constRefersTo(*part, declared))
+    return constReadTarget(*part, depth + 1); // a reference member: what it refers to, as it is now
+  return part;
 }
 
 auto GlobalScope::Impl::constIndex(IndexExpr* x, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
@@ -6871,15 +6938,31 @@ auto GlobalScope::Impl::constBindNames(VariableDecl* v, std::vector<ConstBinding
     }
     if (!part)
       return false;
-    // (A reference member's part holds what it refers to.)
+    ConstPlace member = object;
+    member.path.insert(member.path.end(), path.begin(), path.end());
+    member.type = part;
+    member.bits = 0;
+    bool referenceMember = part->isReference();
+    std::optional<ConstPlace> named = constThroughReference(member, depth); // (a reference member: the object it refers to)
     part = types.stripRef(part);
+    if (!named)
+    {
+      // A reference member referring to a global: its value, read only.
+      std::optional<ConstValue> held = constRead(member);
+      std::optional<ConstValue> value = held && held->isAddress() ? constReadTarget(*held, depth + 1) : std::nullopt;
+      if (!value)
+        return false;
+      env.push_back(constBinding(b->name.parts[0].symbol, *value, part));
+      env.back().writable = false;
+      continue;
+    }
+    ConstPlace at = constResolve(*named);
     ConstBinding alias{b->name.parts[0].symbol, ConstValue::unset(part)};
     alias.type = part;
-    alias.writable = !readOnly && !part->isConst;
-    alias.aliasEnv = object.env;
-    alias.aliasIndex = object.index;
-    alias.aliasPath = object.path;
-    alias.aliasPath.insert(alias.aliasPath.end(), path.begin(), path.end());
+    alias.writable = !(readOnly && !referenceMember) && !at.readOnly && !part->isConst;
+    alias.aliasEnv = at.env;
+    alias.aliasIndex = at.index;
+    alias.aliasPath = at.path;
     env.push_back(std::move(alias));
   }
   return true;

@@ -1,0 +1,110 @@
+// spec: at compile time a reference member refers to the object it is bound to, as at run time: reading it later sees that object as it is then (through the member, named alone in a member function, from a copy of the holder, an aggregate's, a structured binding's), writing through it changes it, one bound to a pointer follows the pointer, one bound to a global reads its constant; a constructor's reference parameter refers to the argument (`W(int& x) { x = 9; }` changes it); the constants equal what the program computes (`5 4 3 6 42 8 2 9 6` both)
+// found by thread D (2026-11-05): the member held a copy of the value, so `View v(a); a = 5; return v.get();` was 1 as a constant where the program gives 5 (a silent wrong answer), and a constructor taking `int&` was no constant
+constexpr int G = 42;
+struct View
+{
+  const int& ref;
+  View(const int& r) : ref(r) {}
+  int get() const { return this->ref; }
+  int alone() const { return ref; }
+};
+struct Aggregate
+{
+  const int& r;
+};
+struct Global
+{
+  const int& r;
+  Global() : r(G) {}
+};
+struct Writer
+{
+  int& r;
+  Writer(int& x) : r(x) {}
+  void set() { this->r = 8; }
+};
+struct PointerRef
+{
+  int*& p;
+  PointerRef(int*& q) : p(q) {}
+};
+struct Sets
+{
+  Sets(int& x) { x = 9; }
+};
+struct Named
+{
+  int& ref;
+  int k = 2;
+  Named(int& r) : ref(r) {}
+};
+constexpr int read()
+{
+  int a = 1;
+  View v(a);
+  a = 5;
+  return v.get();
+}
+constexpr int alone()
+{
+  int a = 1;
+  View v(a);
+  a = 4;
+  return v.alone();
+}
+constexpr int copied()
+{
+  int a = 1;
+  View v(a);
+  View w = v;
+  a = 3;
+  return w.ref;
+}
+constexpr int aggregate()
+{
+  int a = 1;
+  Aggregate v{a};
+  a = 6;
+  return v.r;
+}
+constexpr int global()
+{
+  Global g;
+  return g.r;
+}
+constexpr int written()
+{
+  int a = 1;
+  Writer w(a);
+  w.set();
+  return a;
+}
+constexpr int pointer()
+{
+  int x = 1, y = 2;
+  int* q = &x;
+  PointerRef pr(q);
+  q = &y;
+  return *pr.p;
+}
+constexpr int parameter()
+{
+  int a = 1;
+  Sets s(a);
+  return a;
+}
+constexpr int bound()
+{
+  int a = 1;
+  Named v(a);
+  auto& [r, k] = v;
+  r = 6;
+  return a;
+}
+constexpr int results[] = {read(), alone(), copied(), aggregate(), global(), written(), pointer(), parameter(), bound()};
+int main()
+{
+  println(read(), " ", alone(), " ", copied(), " ", aggregate(), " ", global(), " ", written(), " ", pointer(), " ", parameter(), " ", bound());
+  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8]);
+  return 0;
+}
