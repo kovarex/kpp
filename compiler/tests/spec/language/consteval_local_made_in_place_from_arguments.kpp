@@ -1,0 +1,75 @@
+// spec: at compile time a local is made where it lives whatever initializes it: `Ring r(3)`, `Ring q = Ring(4)`, `Ring w{5}`, a List from a brace list (its InitializerList constructor), copied (`List<int> b = a;`, `b(a)`) and moved, so that what the constructor points at the object (a ring's sentinel, List's) points at the local and its destructor finds it so (`12 6 2 23 10 9` both)
+// found by thread D (2026-11-05): such locals ran their constructors on an object of their own, so their first use stopped at "an object of the evaluation, whose lifetime ended"
+struct Links
+{
+  Links* prev = nullptr;
+  Links* next = nullptr;
+};
+struct Ring
+{
+  Links s;
+  int n;
+  Ring(int n) : n(n)
+  {
+    this->s.prev = &this->s;
+    this->s.next = &this->s;
+  }
+  ~Ring()
+  {
+    Links* p = this->s.next;
+    while (p != &this->s)
+      p = p->next;
+  }
+};
+constexpr int rings()
+{
+  Ring r(3);
+  Ring q = Ring(4);
+  Ring w{5};
+  return r.n + q.n + w.n;
+}
+constexpr int listed()
+{
+  List<int> l{1, 2, 3};
+  int t = 0;
+  for (int v : l)
+    t += v;
+  return t;
+}
+constexpr int copied()
+{
+  List<int> a;
+  a.push_back(2);
+  List<int> b = a;
+  int t = 0;
+  for (int v : b)
+    t += v;
+  return t;
+}
+constexpr int copiedDirectly()
+{
+  List<int> a;
+  a.push_back(2);
+  a.push_back(3);
+  List<int> b(a);
+  return int(b.size()) * 10 + b.back();
+}
+constexpr int moved()
+{
+  List<int> a;
+  a.push_back(2);
+  List<int> b = move(a);
+  return int(b.size()) * 10 + int(a.size());
+}
+constexpr int assigned()
+{
+  List<int> l = {4, 5};
+  return l.front() + l.back();
+}
+constexpr int results[] = {rings(), listed(), copied(), copiedDirectly(), moved(), assigned()};
+int main()
+{
+  println(rings(), " ", listed(), " ", copied(), " ", copiedDirectly(), " ", moved(), " ", assigned());
+  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5]);
+  return 0;
+}

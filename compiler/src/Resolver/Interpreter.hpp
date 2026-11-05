@@ -379,7 +379,7 @@
   // An object of class t copied (moving: moved) from value v, whose place (if any) is at: t's own copy
   // or move constructor run, the source's place given to it (a move empties its source); an implicit
   // or defaulted one member by member, each part copied as its own type copies.
-  std::optional<ConstValue> constCopyConstruct(const Ty* t, const ConstValue& v, const std::optional<ConstPlace>& at, bool moving, int depth);
+  std::optional<ConstValue> constCopyConstruct(const Ty* t, const ConstValue& v, const std::optional<ConstPlace>& at, bool moving, int depth, const ConstPlace* target = nullptr);
 
   // Whether assigning an object of type t (an array: its elements) runs code: an operator= of its
   // own or of a part's. Else the assignment writes the value.
@@ -399,7 +399,7 @@
   // again (`C c = *it++;` advanced it twice). An xvalue whose place is not known is no constant:
   // its move would leave the object it names as it was.
   std::optional<std::optional<ConstValue>> constCopyInit(Expr* init, const Ty* t, const TypeContext& ctx, int depth, bool moving = false,
-                                                         std::optional<ConstValue>* evaluated = nullptr);
+                                                         std::optional<ConstValue>* evaluated = nullptr, const ConstPlace* target = nullptr);
 
   // Whether v is an object of class u itself (cv-qualification and references aside).
   bool constIsObjectOf(const ConstValue& v, const Ty* u);
@@ -408,17 +408,22 @@
   // that gave it chooses (0 a prvalue, 1 an lvalue, 2 an xvalue; at: where it is, when known): a
   // prvalue is the object itself, an lvalue is copied and an xvalue moved by u's own constructor
   // (design.md "Objects of the run"); an xvalue whose place is not known is no constant.
-  std::optional<ConstValue> constFromObject(const Ty* u, const ConstValue& v, const std::optional<ConstPlace>& at, uint8_t category, int depth);
+  std::optional<ConstValue> constFromObject(const Ty* u, const ConstValue& v, const std::optional<ConstPlace>& at, uint8_t category, int depth, const ConstPlace* target = nullptr);
 
   // `T(args)`, a functional cast or a call of the class's name (`T b(a)` too, which the parser
   // writes as `T b = T(a)`): the object the constructor the arguments choose makes, one argument
   // that is an object of the class itself copied or moved by the class's constructor
   // (constFromObject), which constConstruct, given values without their categories, takes as it is.
-  std::optional<ConstValue> constConstructFrom(const Ty* t, Span<Expr*> args, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constConstructFrom(const Ty* t, Span<Expr*> args, const TypeContext& ctx, int depth, const ConstPlace* target = nullptr);
+  // `T(args)`, `T{args}`, `T()` of a class type t (a FunctionalCastExpr, also `T x(args)`'s): the
+  // object made (none when it is no constant), or nullopt when t is no class. target: where it
+  // lives, its constructor run there (constRunConstructor).
+  std::optional<std::optional<ConstValue>> constClassCast(FunctionalCastExpr* f, const Ty* t, const TypeContext& ctx, int depth,
+                                                          const ConstPlace* target = nullptr);
 
-  std::optional<ConstValue> constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth, const ConstPlace* target = nullptr);
 
-  std::optional<ConstValue> constInitializeIn(const Ty* t, Expr* init, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constInitializeIn(const Ty* t, Expr* init, const TypeContext& ctx, int depth, const ConstPlace* target = nullptr);
 
   // `char name[8] = "pipe";`, `char text[] = "1.57";`: the literal's characters and its terminating
   // zero, the rest of the array zero ([dcl.init.string]); a literal longer than the array is no
@@ -439,7 +444,7 @@
 
   // `T{...}` and `T x = {...}` for a class: an aggregate's members in order (designators
   // naming them), or the arguments of the constructor they choose.
-  std::optional<ConstValue> constBraceInit(const Ty* t, BraceInitExpr* b, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constBraceInit(const Ty* t, BraceInitExpr* b, const TypeContext& ctx, int depth, const ConstPlace* target = nullptr);
 
   // A value given type t where an initialization converts implicitly: an object of t as it is; to
   // a class, by a constructor marked implicit taking the value; else the scalar conversions.
@@ -457,7 +462,7 @@
   // storage (the others not). Nullopt for anything else.
   std::optional<ConstValue> constTypedUnion(const Ty* t, const ConstClassLayout& layout, const std::vector<ConstValue>& args, int depth);
 
-  std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written = nullptr);
+  std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth, const Span<Expr*>* written = nullptr, const ConstPlace* target = nullptr);
 
   // ---- step 4: brace lists, InitializerList, range-for (design.md, "Compile-time evaluation") ----
 
@@ -478,7 +483,7 @@
   // that is an object of the class itself is copied or moved (constFromObject).
   std::optional<ConstValue> constFromBraceList(const ConstValue& list, const Ty* t, int depth, const Span<Expr*>* written = nullptr,
                                                const std::vector<std::optional<ConstPlace>>* places = nullptr,
-                                               const std::vector<uint8_t>* categories = nullptr);
+                                               const std::vector<uint8_t>* categories = nullptr, const ConstPlace* target = nullptr);
 
   // An InitializerList<E> of these elements: a constant array of them converted to E (what the
   // brace list makes) and the list's two fields, a pointer to its first element and the count
@@ -488,7 +493,7 @@
   // `Flags f = {A, B};`: the object a class's constructor taking an InitializerList (its other
   // parameters defaulted) makes of the elements; nullopt when the class has none, or the elements
   // do not convert to its element type (the other constructors are tried then).
-  std::optional<ConstValue> constByInitializerList(const Ty* u, const std::vector<ConstValue>& elements, int depth);
+  std::optional<ConstValue> constByInitializerList(const Ty* u, const std::vector<ConstValue>& elements, int depth, const ConstPlace* target = nullptr);
 
   // ---- step 4: addresses of declarations and member pointers ----
 
