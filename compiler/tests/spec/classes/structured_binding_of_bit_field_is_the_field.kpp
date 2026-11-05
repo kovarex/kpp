@@ -1,0 +1,46 @@
+// spec: a structured binding of a bit-field is that field, its own bits of the storage unit: `auto [a, b] = s;` names the fields of a copy, `auto& [c, d] = s;` s's own (a write through c changes u3 alone, and a compound assignment wraps to its width), and a const reference given a binding binds a temporary holding its value, as one given the field does; bindings are numbered by the named data members, an unnamed bit-field no member (`unsigned : 0;` before `double y;`: q is y); at run time and at compile time; clang prints the same
+// found by thread B (2026-11-06, testing bit-field promotion): a binding read the field's whole storage unit (with u3 1 and rest 2, a read 17), a write through one wrote the unit, codegen numbered bindings by the layout's storage units (b of `auto [a, b]` was missing, and a binding after shared bit-fields named the next member), and the checker counted the unnamed bit-field (q typed unsigned: y's double read as 0)
+struct S
+{
+  unsigned u3 : 3;
+  unsigned rest : 29;
+};
+
+struct T
+{
+  int x;
+  unsigned : 0;
+  double y;
+};
+
+int twice(const unsigned& v) { return int(v) * 2; }
+
+constexpr int atCompileTime()
+{
+  S s{1, 2};
+  auto& [c, d] = s;
+  c = 6;
+  c += 3;
+  auto [a, b] = s;
+  return int(a) * 100 + int(b);
+}
+static_assert(atCompileTime() == 102);
+
+int main()
+{
+  S s{1, 2};
+  auto [a, b] = s;
+  println(a, " ", b);
+  auto& [c, d] = s;
+  c = 6;
+  d = 9;
+  println(s.u3, " ", s.rest, " ", c, " ", d);
+  c += 3;
+  println(s.u3, " ", s.rest, " ", twice(c), " ", twice(b));
+  const unsigned& r = c;
+  println(r);
+  T t{10, 2.5};
+  auto [p, q] = t;
+  println(p, " ", q, " ", atCompileTime());
+  return 0;
+}

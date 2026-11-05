@@ -1674,19 +1674,73 @@ auto codegen::Emitter::bindingAddress(VariableDecl* v, Node* e, std::string& out
     base = part;
     owner = withMembers;
   }
-  const StructInfo& info = structFor(owner, e);
-  if (index >= info.fieldDecls.size() || !fieldAddress(owner, info.fieldDecls[index], base, out, e))
+  Decl* member = bindingMember(owner, index, e);
+  const BitfieldInfo* bits = nullptr;
+  if (!member || !fieldAddress(owner, member, base, out, e, &bits))
     unsupported(e, "a structured binding of a class without that many data members");
+  // A binding of a bit-field is that field, its own bits of the storage unit (lvalueBitfield, as a
+  // member's lvalue records it): `auto [a, b] = s;` with `unsigned u3 : 3; unsigned rest : 29;`
+  // read a as the whole unit, 17 for u3 1 and rest 2.
+  lvalueBitfield = {static_cast<const Expr*>(e), bits};
   // A reference member's binding names the object the member refers to, as `pair.second` does
   // (TestBuildabilityChecks' `[testedLocation, surface]` over Pair<Locations, Surface&> read the
   // member's own storage as the Surface).
-  if (const Ty* ft = fieldTypeIn(owner, info.fieldDecls[index], e); ft && ft->isReference())
+  if (const Ty* ft = fieldTypeIn(owner, member, e); ft && ft->isReference())
   {
     std::string referenced = newTemp();
     fn += "  " + referenced + " = load ptr, ptr " + out + "\n";
     out = referenced;
   }
   return true;
+}
+
+auto codegen::Emitter::bindingBitfield(Expr* e) -> const BitfieldInfo*
+{
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner;
+  Decl* d = e && e->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(e)->name.empty() ? static_cast<NameExpr*>(e)->resolved : nullptr;
+  auto* v = d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
+  if (!v || v->structuredBindings.empty())
+    return nullptr;
+  uint32_t symbol = static_cast<NameExpr*>(e)->name.last().symbol;
+  size_t index = v->structuredBindings.size();
+  for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+    if (static_cast<NameExpr*>(v->structuredBindings[i])->name.last().symbol == symbol)
+      index = i;
+  auto it = locals.find(v);
+  if (index == v->structuredBindings.size() || it == locals.end())
+    return nullptr;
+  const Ty* owner = types.unqualified(types.stripRef(it->second.ty));
+  if (!isClass(owner))
+    return nullptr;
+  // (the class bindingAddress takes the member from: the object's, or the one base with members)
+  for (int depth = 0; depth < 16 && structFor(owner, e).fieldDecls.empty(); ++depth)
+  {
+    const Ty* withMembers = nullptr;
+    for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, e).bases))
+      if (const Ty* bt = structFor(owner, e).fieldTypes[baseIndex]; !structFor(bt, e).fieldDecls.empty() || !structFor(bt, e).bases.empty())
+        withMembers = bt;
+    if (!withMembers)
+      break;
+    owner = withMembers;
+  }
+  Decl* member = bindingMember(owner, index, e);
+  return member ? bitfieldIn(structFor(owner, e), member) : nullptr;
+}
+
+auto codegen::Emitter::bindingMember(const Ty* owner, size_t index, Node* at) -> Decl*
+{
+  const StructInfo& info = structFor(owner, at);
+  const Ty* key = canonicalClass(owner, at);
+  auto* c = key && key->decl && key->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(key->decl) : nullptr;
+  if (!c)
+    return nullptr;
+  size_t seen = 0;
+  for (Decl* m : c->members)
+    if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)) && !static_cast<VariableDecl*>(m)->name.empty() &&
+        info.fieldIndex.count(m) && seen++ == index)
+      return m;
+  return nullptr;
 }
 
 auto codegen::Emitter::elementOfOtherClass(const Ty* elementTy, const Ty* vt, Node* at) -> bool

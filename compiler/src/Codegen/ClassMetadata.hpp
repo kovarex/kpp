@@ -256,6 +256,17 @@
     // matching data member (or array element). False when e is not one of v's bindings (the
     // nameless name of v itself, which a tuple-like binding's get<i>(v) passes, included).
     bool bindingAddress(VariableDecl* v, Node* e, std::string& out);
+    // The bit-field a structured binding e names (`a` of `auto [a, b] = s;` over a bit-field), or
+    // null: the member bindingAddress finds, without emitting anything. A reference given one binds
+    // a temporary, as one given the field does (bindsBitField).
+    const BitfieldInfo* bindingBitfield(Expr* e);
+    // Whether e is a bit-field lvalue: namesBitField's, or a structured binding of a bit-field.
+    bool bindsBitField(Expr* e) { return namesBitField(e) || bindingBitfield(e); }
+    // The data member of owner's class that binding number index names: C++'s numbering
+    // ([dcl.struct.bind] 5), the named non-static data members in declaration order (an unnamed bit
+    // field is no member), as this layout has them; null when there are fewer. Bit fields sharing a
+    // storage unit are one field of the layout (StructInfo::fieldDecls), each its own binding here.
+    Decl* bindingMember(const Ty* owner, size_t index, Node* at);
 
     // `return result;` naming a local object or a by-value parameter of the returned class: it is
     // moved into the result, not copied (C++'s implicit move on return).

@@ -1149,7 +1149,9 @@ auto GlobalScope::Impl::Walker::bindingType(VariableDecl* v, uint32_t symbol) ->
   size_t seen = 0;
   for (Decl* m : membersRead(static_cast<ClassDecl*>(cs->owner)))
   {
-    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
+    // (an unnamed bit field is no member: `unsigned : 0;` before `double y;` gave y's binding the
+    // type unsigned, and codegen read y's double through it)
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
       continue;
     if (seen++ == index)
     {

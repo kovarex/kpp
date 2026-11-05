@@ -548,7 +548,11 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   language/bit_field_promotes_as_cpp, language/bit_field_promotes_by_its_instance_width. Overload
   resolution still ranks a bit field's argument by its declared type: `f(s.u3)` with f(int) and
   f(long), or f(int) and f(double), is ambiguous in kpp where C++ calls f(int), the promotion (a
-  compile error, never a different call).
+  compile error, never a different call). And a structured binding of a bit field of 32 or 64 bits
+  (`auto [a, b] = s;` over `uint64_t w3 : 3`) promotes as its declared type, where C++ promotes it as
+  the field: a binding is read and written as its field's bits (spec
+  classes/structured_binding_of_bit_field_is_the_field), but the checker types its operators as a
+  variable's.
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`

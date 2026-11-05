@@ -14,6 +14,7 @@
     std::vector<ConstBinding>* aliasEnv = nullptr;
     size_t aliasIndex = 0;
     std::vector<size_t> aliasPath;
+    uint8_t aliasBits = 0; // a structured binding of a bit field: its width, which a write through it fits to
     // A function parameter pack (`Args&&... args`): value's parts are its elements, read only one
     // at a time, by a pack expansion (constExpand). packPlaces: where each element's argument is
     // (env null: nowhere the run holds), which a reference element refers to.

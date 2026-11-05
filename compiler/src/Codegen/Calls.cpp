@@ -1417,7 +1417,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     // address of its own, and its storage unit's address read the neighbouring fields with it.
     const Ty* argTy = arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty) ? types.unqualified(types.stripRef(arg->ty)) : nullptr;
     if (argTy && argTy->isKnown() && (referenced->isConst || pt->kind == TyKind::RRef) && types.unqualified(referenced)->isKnown() &&
-        !types.isDependent(referenced) && (argTy != types.unqualified(referenced) || namesBitField(arg)) && arg->kind != NodeKind::BraceInitExpr)
+        !types.isDependent(referenced) && (argTy != types.unqualified(referenced) || bindsBitField(arg)) && arg->kind != NodeKind::BraceInitExpr)
     {
       const Ty* to = types.unqualified(referenced);
       Value v = convert(rvalue(arg), to, at);
@@ -1450,8 +1450,8 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     // A `T&` given another type's object (an int for a `double&`), or a bit-field: no object of T to
     // bind (C++ rejects it). Until 2026-11-05 its address was passed: a double written into an int.
     if (!takesTemporary && argTy && argTy->isKnown() && types.unqualified(referenced)->isKnown() && !types.isDependent(referenced) &&
-        arg->kind != NodeKind::BraceInitExpr && (argTy != types.unqualified(referenced) || namesBitField(arg)))
-      fail(at, "a " + types.toString(pt, &symbols) + " parameter given " + (namesBitField(arg) ? std::string("a bit-field") : "an argument of type " + types.toString(argTy, &symbols)) +
+        arg->kind != NodeKind::BraceInitExpr && (argTy != types.unqualified(referenced) || bindsBitField(arg)))
+      fail(at, "a " + types.toString(pt, &symbols) + " parameter given " + (bindsBitField(arg) ? std::string("a bit-field") : "an argument of type " + types.toString(argTy, &symbols)) +
                    ": a non-const lvalue reference binds only an object of its type");
     return "ptr " + lvalue(arg);
   }
@@ -1644,7 +1644,7 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   const Ty* referenced = types.stripRef(refTy);
   const Ty* want = types.unqualified(referenced);
   const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
-  if (namesBitField(value) && want->isKnown() && !types.isDependent(want) && scalar(want))
+  if (bindsBitField(value) && want->isKnown() && !types.isDependent(want) && scalar(want))
   {
     // `const uint8_t& bound = data.progress;`: a temporary holding the bit-field's value, as C++
     // binds it (the field has no address; its storage unit's holds its neighbours too).

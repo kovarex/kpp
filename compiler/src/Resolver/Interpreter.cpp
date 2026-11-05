@@ -5024,6 +5024,8 @@ auto GlobalScope::Impl::constResolve(ConstPlace p) -> ConstPlace
   for (int n = 0; n < 64 && p.binding().aliasEnv; ++n)
   {
     const ConstBinding& b = p.binding();
+    if (b.aliasBits && p.path.empty())
+      p.bits = b.aliasBits; // (`c += 3` through a binding of a 3-bit field wraps)
     std::vector<size_t> path = b.aliasPath;
     path.insert(path.end(), p.path.begin(), p.path.end());
     p.readOnly = p.readOnly || !b.writable;
@@ -7982,8 +7984,8 @@ auto GlobalScope::Impl::constBindNames(VariableDecl* v, std::vector<ConstBinding
     if (const Ty* holder = bindingMembersClass(whole))
       if (ClassDecl* def = classDefinition(holder))
         for (Decl* m : membersRead(def))
-          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
-            members.push_back(m);
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(m)->name.empty())
+            members.push_back(m); // (the named ones, as C++ numbers bindings: an unnamed bit field is no member)
   for (size_t i = 0; i < v->structuredBindings.size(); ++i)
   {
     auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
@@ -8018,7 +8020,7 @@ auto GlobalScope::Impl::constBindNames(VariableDecl* v, std::vector<ConstBinding
     ConstPlace member = object;
     member.path.insert(member.path.end(), path.begin(), path.end());
     member.type = part;
-    member.bits = 0;
+    member.bits = whole->kind == TyKind::Array ? 0 : constBitsOf(whole, members[i], depth + 1); // (a bit field's: a write wraps to its width)
     bool referenceMember = part->isReference();
     std::optional<ConstPlace> named = constThroughReference(member, depth); // (a reference member: the object it refers to)
     part = types.stripRef(part);
@@ -8040,6 +8042,7 @@ auto GlobalScope::Impl::constBindNames(VariableDecl* v, std::vector<ConstBinding
     alias.aliasEnv = at.env;
     alias.aliasIndex = at.index;
     alias.aliasPath = at.path;
+    alias.aliasBits = member.bits;
     env.push_back(std::move(alias));
   }
   return true;
