@@ -1,0 +1,21 @@
+// spec: a using-declaration at block scope (`using Geo::Detail::helper;`) brings the function into that block, hiding a global of the same name there, as C++'s [namespace.udecl] has it: the call in the block runs Geo::Detail::helper (`7`), the call after the block the global (`70`); clang prints the same
+// pending: the block's using-declaration is ignored, so the call in the block runs the global helper (`70 70`), a silent wrong answer
+// found by thread B (2026-11-05), comparing kpp with clang; the converted game has no block-scope using-declaration of a function (its one names a type)
+namespace Geo
+{
+  namespace Detail
+  {
+    int helper() { return 7; }
+  }
+}
+int helper() { return 70; }
+int main()
+{
+  int inside = 0;
+  {
+    using Geo::Detail::helper;
+    inside = helper();
+  }
+  println(inside, " ", helper());
+  return 0;
+}

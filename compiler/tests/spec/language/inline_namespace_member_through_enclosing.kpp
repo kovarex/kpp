@@ -1,0 +1,15 @@
+// spec: a member of an inline namespace is a member of the enclosing namespace for qualified lookup (C++'s [namespace.def] 7): `Geo::version()` finds Geo::V2::version, as `Geo::V2::version()` does (`2 2`); clang prints the same
+// pending: `Geo::version()` is "codegen does not support a call that did not resolve yet"
+// found by thread B (2026-11-05), comparing kpp with clang
+namespace Geo
+{
+  inline namespace V2
+  {
+    int version() { return 2; }
+  }
+}
+int main()
+{
+  println(Geo::V2::version(), " ", Geo::version());
+  return 0;
+}
