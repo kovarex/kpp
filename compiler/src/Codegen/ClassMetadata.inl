@@ -2422,6 +2422,11 @@
       // From an lvalue: operator=(const T&). From a temporary or `move(x)`: operator=(T&&) if there is one.
       std::vector<const Ty*> argTypes{move ? types.rref(types.unqualified(t)) : types.lref(types.qualified(t, true, false))};
       FunctionDecl* op = declaresAssignment(t, at) ? findMemberFunction(t, "operator=", argTypes, t, at, &foundIn) : nullptr;
+      // A base's operator=, the class's own taking no T (`Mixed& operator=(int)`): the class's implicit
+      // assignment, which hides the base's (C++ [class.copy.assign]) and assigns the class's own
+      // members too, unless a using-declaration brought the base's in.
+      if (op && foundIn && foundIn != canonicalClass(t, at) && !declaresAssignment(t, at, true))
+        op = nullptr;
       bool defaulted = op && (op->flags & DF_Default);
       if (defaulted)
         op = nullptr; // `operator=(const T&) = default`: the memberwise assignment below
@@ -2466,13 +2471,17 @@
 
     // Whether class t declares an operator= of its own (`using Base::operator=;` included): one that
     // does not has implicit ones (memberwise), which hide its bases'.
-    bool declaresAssignment(const Ty* t, Node* at)
+    // Whether class t declares an operator= of its own, or brings a base's in by a using-declaration;
+    // usingOnly: only the latter.
+    bool declaresAssignment(const Ty* t, Node* at, bool usingOnly = false)
     {
       ClassDecl* c = classDef(t->decl, at);
       for (Decl* m : c->members)
       {
         if (m->kind == NodeKind::FunctionDecl)
         {
+          if (usingOnly)
+            continue;
           auto* f = static_cast<FunctionDecl*>(m);
           if (!f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign)
             return true;

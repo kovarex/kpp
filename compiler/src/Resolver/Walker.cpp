@@ -3567,7 +3567,14 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       std::vector<const Ty*> argTypes;
       if (arity == 2)
         argTypes.push_back(rhs);
-      if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, lhs, ambiguous))
+      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, lhs, ambiguous);
+      // `a = b` of a class that declares no operator= of its own: its implicit copy or move
+      // assignment, which hides every base's operator= (C++ [class.copy.assign]; a using-declaration
+      // brings one in, r.merged). Not the base's, which would leave the class's own members as they
+      // were (classes/implicit_assignment_hides_base_operator).
+      if (f && op == P::Assign && !r.merged && f->parent && f->parent != impl.classDefinition(l))
+        f = nullptr;
+      if (f)
       {
         if (!nonConstOnConstObject(f, lhs))
         {

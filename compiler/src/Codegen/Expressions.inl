@@ -1175,11 +1175,14 @@
         const Ty* in = nullptr;
         const Ty* operand = argumentType(u->operand, u->operand->ty, types);
         operatorLooked = true;
-        if (!findMemberFunction(ct, operatorName(op), {}, ct, u, &in))
+        if (FunctionDecl* member = findMemberFunction(ct, operatorName(op), {}, ct, u, &in))
+          verifyOperatorCall(u, OperatorCall::Function, member, true);
+        else
         {
           noOperator = true;
           if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), operand, nullptr, currentFunction))
           {
+            verifyOperatorCall(u, OperatorCall::Function, f, false);
             const Ty* classTy = friendClass(f, {operand}, u);
             TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
             if (!f->templateParams.empty())
@@ -1200,6 +1203,7 @@
         if (op == P::Bang && (operatorLooked ? noOperator : !findMemberFunction(v.ty, "operator!", {}, v.ty, u, &in)))
         {
           // No operator!: the class's conversion to bool, negated.
+          verifyOperatorCall(u, OperatorCall::Builtin);
           Value b = convert(v, types.boolType(), u);
           std::string r = newTemp();
           fn += "  " + r + " = xor i1 " + b.text + ", true\n";
@@ -1212,6 +1216,7 @@
           scalar = global.scalarConversionOf(v.ty);
         if (!scalar)
           return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);
+        verifyOperatorCall(u, OperatorCall::Builtin);
         v = convert(v, scalar, u);
       }
       switch (op)
@@ -1276,7 +1281,10 @@
       // operands evaluated (C++ [over.match.oper]): NamedBool's `guiCheck || GuiCheck::fromBool(x)`.
       // The built-in, short-circuit one is for operands no such function takes.
       if ((op == P::AndAnd || op == P::OrOr) && !userLogicalOperator(b, op))
+      {
+        verifyOperatorCall(b, OperatorCall::Builtin);
         return logical(op == P::AndAnd, b->lhs, b->rhs, b);
+      }
       if (op == P::Comma)
       {
         rvalue(b->lhs);
@@ -1369,6 +1377,7 @@
         if (FunctionDecl* f = global.enumOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types),
                                                   currentFunction))
         {
+          verifyOperatorCall(b, OperatorCall::Function, f, false);
           Expr* args[2] = {b->lhs, b->rhs};
           return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
         }
@@ -1422,13 +1431,27 @@
         // `a = move(b)` of a class declaring no operator=: its implicit one (memberwise, below), not
         // a base's, which it hides.
         bool implicitAssignment = op == P::Assign && isClass(lt) && !declaresAssignment(types.unqualified(lt), b);
-        if (isClass(lt) && !implicitAssignment && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
+        FunctionDecl* member = isClass(lt) && !implicitAssignment ? findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true) : nullptr;
+        // An operator= found in a base, with the class's own operator= taking none of these operands
+        // (Optional's `operator=(const T&)` beside its implicit copy assignment): the class's implicit
+        // one, which hides the base's (C++ [class.copy.assign]), unless a using-declaration brought it.
+        if (member && op == P::Assign && foundIn && canonicalClass(foundIn, b) != canonicalClass(types.unqualified(lt), b) &&
+            !declaresAssignment(types.unqualified(lt), b, true))
+        {
+          member = nullptr;
+          implicitAssignment = true;
+        }
+        if (member)
+        {
+          verifyOperatorCall(b, OperatorCall::Function, member, true);
           return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
+        }
         // A free `operator+(const char*, const String&)` and the like, templates among them
         // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
           if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction))
           {
+            verifyOperatorCall(b, OperatorCall::Function, f, false);
             const Ty* classTy = friendClass(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, b);
             TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
             if (!f->templateParams.empty())
@@ -1450,6 +1473,7 @@
           const Ty* rc = isClass(rt) ? global.scalarConversionOf(rt) : rt;
           if (lc && rc && lc->isKnown() && rc->isKnown())
           {
+            verifyOperatorCall(b, OperatorCall::Builtin);
             Value l = convert(rvalue(b->lhs), lc, b);
             Value r = convert(rvalue(b->rhs), rc, b);
             switch (op)
@@ -1468,6 +1492,7 @@
         Value l = rvalue(b->lhs);
         if (op == P::Assign)
         {
+          verifyOperatorCall(b, OperatorCall::Builtin); // the implicit assignment
           const Ty* lt0 = types.unqualified(types.stripRef(l.ty));
           const Ty* rt0 = b->rhs->ty && b->rhs->ty->isKnown() ? types.stripRef(b->rhs->ty) : nullptr;
           if (rt0 && !isClass(rt0) && findConstructor(lt0, {argumentType(b->rhs, b->rhs->ty, types)}, b))
@@ -1545,6 +1570,8 @@
         // The right operand first, then the left one's place (C++17 [expr.ass] 1).
         Value rhs = op == P::Assign && b->rhs->kind == NodeKind::BraceInitExpr ? braceScalar(static_cast<BraceInitExpr*>(b->rhs), t, b) // `mod->id.crc = {};`
                                                                                 : rvalue(b->rhs);
+        if (scalarAssignment)
+          verifyOperatorCall(b, OperatorCall::Builtin);
         if (scalarAssignment)
           rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b);
         std::string addr = lvalue(b->lhs);

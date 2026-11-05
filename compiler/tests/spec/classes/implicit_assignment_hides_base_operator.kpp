@@ -1,0 +1,36 @@
+// spec: a class that declares no copy assignment has an implicit one, which hides its base's operator=: `a = b` is of the class's own type and assigns its members too
+// factorio: found by codegen's cross-check against the checker's recorded operator choices (design.md 24): the checker took the base's operator= for `assigned = w` (classes/implicit_copy_calls_base_copy_constructor), codegen the class's implicit one
+struct Base
+{
+  Base& operator=(const Base& other)
+  {
+    copies = other.copies + 1;
+    return *this;
+  }
+  int copies = 0;
+};
+struct Derived : Base
+{
+  int value = 3;
+};
+struct Mixed : Base
+{
+  Mixed& operator=(int v)
+  {
+    value = v;
+    return *this;
+  }
+  int value = 3;
+};
+int main()
+{
+  Derived a, b;
+  b.value = 7;
+  int v = (a = b).value;
+  Mixed m, n;
+  n.value = 9;
+  int w = (m = n).value;
+  m = 4;
+  println(v, " ", a.value, " ", a.copies, " ", w, " ", m.value, " ", m.copies);
+  return 0;
+}

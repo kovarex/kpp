@@ -135,6 +135,45 @@
       return fixedPlace(m->base);
     }
 
+    // design.md 24 (decisions are made once): with KPP_VERIFY_DECISIONS=1 in the environment, what
+    // codegen chooses for an operator is compared with what the checker recorded on its node (call,
+    // callee, calleeMember), and a difference is an error naming both. A node the checker left
+    // Undecided or Rewritten is not compared. This is the cross-check before codegen reads the
+    // recorded choice instead of choosing again.
+    static bool verifyDecisions()
+    {
+      static const bool on = [] { const char* v = std::getenv("KPP_VERIFY_DECISIONS"); return v && *v && *v != '0'; }();
+      return on;
+    }
+    static const char* operatorCallName(OperatorCall c)
+    {
+      switch (c)
+      {
+        case OperatorCall::Undecided: return "undecided";
+        case OperatorCall::Builtin: return "the built-in operator";
+        case OperatorCall::Function: return "a function";
+        case OperatorCall::Rewritten: return "a rewritten comparison";
+      }
+      return "?";
+    }
+    template<class E>
+    void verifyOperatorCall(const E* e, OperatorCall call, FunctionDecl* f = nullptr, bool member = false)
+    {
+      if (!verifyDecisions() || e->call == OperatorCall::Undecided || e->call == OperatorCall::Rewritten)
+        return;
+      if (e->call == call && (call != OperatorCall::Function || (e->callee == f && e->calleeMember == member)))
+        return;
+      auto describe = [&](OperatorCall c, FunctionDecl* g, bool m)
+      {
+        if (c != OperatorCall::Function || !g)
+          return std::string(operatorCallName(c));
+        return (m ? "the member " : "the free ") + qualifiedName(g) + " (" + locationOf(g, g->file) + ")";
+      };
+      std::string where = currentFunctionName.empty() ? std::string() : " (in " + currentFunctionName + ")";
+      error(const_cast<E*>(e), "decision check: codegen calls " + describe(call, f, member) + ", the checker chose " +
+                                   describe(e->call, e->callee, e->calleeMember) + where);
+    }
+
     // Finds the best member with the given name (searching bases, nearest class wins) for the
     // argument types and the object's constness. Returns the class type it was found in.
     FunctionDecl* findMemberFunction(const Ty* classTy, const std::string& name, const std::vector<const Ty*>& argTypes,
