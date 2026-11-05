@@ -698,8 +698,13 @@ namespace
           break;
         }
       }
+      size_t splitsBefore = splits.size();
+      bool insideArguments = noGreater; // (where the `<` is: inside another list's argument, whose `>` the rest of a `>>` may be)
       if (ok && !acceptTemplateClose())
         ok = false;
+      // The list's `>` the first half of a `>>` (or `>>=`): `x < y >> 2`.
+      bool closedBySplit = ok && splits.size() > splitsBefore;
+      bool ambiguousShift = false;
       if (ok && !typeContext)
       {
         // In expression context, `a < b > c` style ambiguities are resolved towards comparison
@@ -724,6 +729,17 @@ namespace
           ok = true;
         else if (!plausible || sawLogical)
           ok = false;
+        // `x < y >> 2` reads two ways, C++'s comparison with a shift and the template-id `x<y> > 2`:
+        // an error naming both, as a chained comparison is, never a guess (design.md 22, kovarex
+        // 2026-11-05: "Yes, rule 3"). Not when the arguments can only be types (`v<const T*>> 1`),
+        // nor where the rest of the `>>` closes an enclosing list (`Vector<Vector<int>>` in a type,
+        // `EnableIf<!isSame<A, B> && !isSame<C, D>>>`: the `<` inside another list's argument).
+        // kpp's own sources only: the converter's C++ input keeps its reading (it parenthesizes).
+        if (ok && closedBySplit && !typeOnly && !inRequires && !insideArguments && isKpp())
+        {
+          ok = false;
+          ambiguousShift = true;
+        }
       }
       if (!ok)
       {
@@ -731,6 +747,8 @@ namespace
         scratch.resize(mark);
         inRecovery = savedRecovery;
         out.diagnostics.resize(savedDiagnostics);
+        if (ambiguousShift)
+          out.diagnostics.push_back({save, "`a < b >> c` reads two ways: write `a < (b >> c)` to compare with a shift, or `a<b> > c` for a template-id (design.md 22)"});
         return;
       }
       part.hasTemplateArgs = true;

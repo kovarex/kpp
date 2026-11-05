@@ -1668,6 +1668,17 @@ name lookup" (kovarex, 2026-11-04).
   `(a < b) > c`, a template-id to a reader), `a < b < c`, `a == b != c`. Parenthesised, or a
   relational inside an equality (`a < b == c < d`), it is as C++. kpp's own sources only: the
   converter's C++ input keeps C++'s reading.
+- **`a < b >> c` needs parentheses** (kovarex, 2026-11-05: "Yes, rule 3"). A `<` whose list a `>>`
+  closes reads two ways, C++'s comparison with a shift (`x < (y >> 2)`, with x a variable) and the
+  template-id below (`x<y> > 2`, `>>` split into two `>`). Like a chained comparison it is an
+  error naming both, never a guess: write `x < (y >> 2)` or `x<y> > 2`. Not when the arguments can
+  only be types (`v<const T*>> 1`), and `>>` still closes nested template arguments
+  (`Vector<Vector<int>>`, in a type or in an expression's template arguments, and a list opened
+  inside another list's argument: `EnableIf<!isSame<T, A> && !isSame<T, B>>>`, the game's
+  IDWithQualityFilter). Found as Atlas.kpp's
+  `x < source->width >> (mip + 1)`, read as a template-id so that a mipmap loop never ran; the
+  converter writes such C++ as `x < (source->width >> (mip + 1))` (C's 675a5395). Spec
+  language/less_than_then_shift_needs_parentheses.
 - **Template arguments by the token after `>`** (C#'s rule). In an expression, `name<...>` is a
   template-id when the token after its matching `>` is `(`, `::`, `{`, `)`, `,`, `>`, `;`, `]`, `.`,
   `->`, `...`, `>>`, `}`, `:` or the end, or a binary operator that cannot start an operand (`==`,

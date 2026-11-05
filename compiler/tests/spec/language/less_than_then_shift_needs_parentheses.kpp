@@ -1,0 +1,26 @@
+// spec: `x < y >> 2` in an expression reads two ways, C++'s comparison with a shift `x < (y >> 2)` and the template-id `x<y> > 2`, and is an error naming both, as a chained comparison is (design.md 22; kovarex 2026-11-05, open question 5: "Yes, rule 3"); written `x < (y >> 2)` it is the comparison, and `>>` still closes nested template arguments (`Box<Box<int>>` as a type, in a qualified name and in an expression's template arguments, and `EnableIf<!isSame<P, A> && !isSame<P, B>>>`, whose `isSame<P, B` a `>>` closes inside another list's argument, as in Factorio's IDWithQualityFilter)
+// error: less_than_then_shift_needs_parentheses.kpp:18: error: `a < b >> c` reads two ways: write `a < (b >> c)` to compare with a shift, or `a<b> > c` for a template-id (design.md 22)
+template<class T> struct Box { static constexpr int v = 1; };
+struct A {};
+struct B {};
+
+template<class P>
+struct W
+{
+  template<typename = EnableIf<!isSame<P, A> && !isSame<P, B>>>
+  int f() { return 1; }
+};
+
+int main()
+{
+  int x = 1;
+  int y = 64;
+  bool a = x < y >> 2;
+  bool b = x < (y >> 2);
+  Box<Box<int>> box;
+  int c = Box<Box<int>>::v;
+  bool d = isSame<Box<Box<int>>, Box<Box<int>>>;
+  W<int> w;
+  println(a, " ", b, " ", c, " ", d, " ", w.f());
+  return 0;
+}
