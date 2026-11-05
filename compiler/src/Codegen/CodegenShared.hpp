@@ -62,13 +62,12 @@
     // Bits<5> place `uint32_t a : N` differently).
     std::unordered_map<Decl*, BitfieldInfo> bitfields;
     bool complete = false;                    // every field is laid out (structFor returned it once)
-    uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
+    uint64_t size = 0, align = 0;             // set when the layout completes (align 0: not yet), or by alignPadding
     // The alignment LLVM gives the struct type (its fields' largest); alignas raises the class's own
     // (align) above it: then its padding is written out as fields, and its objects get `align`.
     uint64_t llvmAlign = 1;
     bool overAligned = false;                 // align > llvmAlign
     uint64_t tailPadding = 0;                 // the `[n x i8]` the struct's text ends with (after its byte of its own, when empty)
-    bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
     bool failedShown = true;                  // false: it follows from a checker error (fail's shown), at every use
@@ -369,6 +368,7 @@
     std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
     std::unordered_map<std::string, std::string> declareLines; // function name -> its declare line
     std::unordered_map<std::string, const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
+    SpinMutex irTypeNamesMutex;                              // (irTypeNames' own: taken without the shared lock)
     // String literals (constantName): each name's contents, one name per contents for the whole
     // program; the names the shared declarations define, and those each module defines itself.
     std::unordered_map<std::string, std::string> literalContents;

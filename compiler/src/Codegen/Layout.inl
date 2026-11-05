@@ -36,8 +36,10 @@
       }
     }
 
-    // A class's size and alignment from its fields, remembered once its layout is complete.
-    std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> sizeCache; // this emitter's view of the remembered sizes
+    // A class's size and alignment, which its layout has once complete (buildStruct's last step).
+    // Read without the shared lock: structFor lays the class out first, and a complete layout's size
+    // does not change; a layout this emitter is building is its own.
+    std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> sizeCache; // this emitter's view of the published sizes
     std::pair<uint64_t, uint64_t> classSizeAndAlign(const Ty* t, Node* at)
     {
       noteLayout(t);
@@ -45,23 +47,32 @@
         return mine->second;
       if (std::pair<uint64_t, uint64_t> known; sh.finalSizes.find(t, known))
         return sizeCache.emplace(t, known).first->second;
-      auto lock = sharedLock(); // the size is remembered in the shared layout
       StructInfo& info = structFor(t, at);
-      if (info.align)
+      if (info.complete)
       {
         sizeCache.emplace(t, std::pair{info.size, info.align});
-        if (mayPublish())
-          sh.finalSizes.publish(t, {info.size, info.align});
+        sh.finalSizes.publish(t, {info.size, info.align});
         return {info.size, info.align};
       }
-      if (info.sizing)
+      if (info.align)
+        return {info.size, info.align}; // (alignPadding's, final before the layout is)
+      return fieldsSize(info, t, at); // a class being laid out: from the fields it has so far
+    }
+
+    // A class's size and alignment from its fields and its alignas: its layout's last step, and the
+    // size of a class still being laid out. A class that comes back here while this emitter computes
+    // its size contains itself.
+    std::unordered_set<const StructInfo*> sizingNow; // the layouts whose size this emitter is computing
+    std::pair<uint64_t, uint64_t> fieldsSize(const StructInfo& info, const Ty* t, Node* at)
+    {
+      if (!sizingNow.insert(&info).second)
         unsupported(at, "the class " + types.toString(t, &symbols) + ", which contains itself (a member or base of its own type)");
       struct Sizing
       {
-        bool& flag;
-        Sizing(bool& flag) : flag(flag) { flag = true; }
-        ~Sizing() { flag = false; }
-      } sizing(info.sizing);
+        std::unordered_set<const StructInfo*>& now;
+        const StructInfo* info;
+        ~Sizing() { now.erase(info); }
+      } sizing{sizingNow, &info};
       uint64_t size = 0, align = 1;
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
       {
@@ -74,8 +85,6 @@
       }
       align = std::max(align, declaredAlignment(t, at)); // `struct alignas(16) X`
       size = std::max<uint64_t>((size + align - 1) / align * align, 1);
-      if (info.complete)
-        info.size = size, info.align = align;
       return {size, align};
     }
 
@@ -493,6 +502,8 @@
         }
         decls += info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
         ++result.structs;
+        if (!info.align) // (an over-aligned union's are set above)
+          std::tie(info.size, info.align) = fieldsSize(info, key, at);
         info.complete = true;
         return structs[key];
       }
@@ -681,6 +692,10 @@
       line += info.packed ? " }>\n" : " }\n";
       decls += line;
       ++result.structs;
+      // Its size and alignment, final with the layout (classSizeAndAlign reads them; alignPadding
+      // sets them where alignas asks for padding).
+      if (!info.align)
+        std::tie(info.size, info.align) = fieldsSize(info, key, at);
       info.complete = true;
       if (structs[key].polymorphic)
       {

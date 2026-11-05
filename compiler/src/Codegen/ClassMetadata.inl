@@ -384,8 +384,8 @@
         return mine->second;
       if (bool known; sh.finalDestruction.find(t, known))
         return destructionCache.emplace(t, known).first->second;
+      StructInfo& info = structFor(t, at); // (laid out first: structFor takes the lock it needs)
       auto lock = sharedLock(); // remembered in the shared layout, computed under the lock
-      StructInfo& info = structFor(t, at);
       if (info.needsDestruction)
       {
         // Final unless this emitter is in the middle of computing it (the recursion guard below):

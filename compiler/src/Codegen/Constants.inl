@@ -498,7 +498,6 @@
     // written in every access), a suffix telling apart two types that print alike.
     std::string irTypeName(const char* prefix, const Ty* t)
     {
-      auto lock = sharedLock();
       std::string printed = irString(t);
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : printed)
@@ -506,6 +505,7 @@
       char hex[17];
       snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
       std::string base = std::string(prefix) + hex, name = base;
+      std::lock_guard lock(sh.irTypeNamesMutex); // (the names alone: no layout is read here)
       for (int n = 2;; ++n)
       {
         auto [it, inserted] = irTypeNames.emplace(name, t);
