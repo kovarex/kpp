@@ -1,0 +1,24 @@
+// spec: a constant table holding the address of a C-callable function the program defines (`extern "C"`), beside a kpp function's, is constant data every module of the build can name: a module that has the table's global declares the C function where another module defines it, as it does a kpp function
+// factorio: Lua's linit.c `loadedlibs` ({"_G", luaopen_base}, ..., {NULL, NULL}) once its null entries are constant data as well (thread D, 2026-11-05: `use of undefined value '@luaopen_base'`); a program with such a table failed to build with more than one module ("clang rejected module 120"), the C function's name only in the shared global's initializer
+struct Reg
+{
+  const char* name;
+  int (*fn)(int);
+};
+
+extern "C" int specAddOne(int x) { return x + 1; }
+extern "C" int specTwice(int x) { return x * 2; }
+int kppThrice(int x) { return x * 3; }
+
+const Reg regs[] = {{"one", specAddOne}, {"two", specTwice}, {"three", kppThrice}};
+const Reg single = {"single", specTwice};
+int (*const pointer)(int) = specAddOne;
+
+int main()
+{
+  int sum = 0;
+  for (const Reg& r : regs)
+    sum = sum * 100 + r.fn(10);
+  println(sum, " ", single.fn(21), " ", pointer(41));
+  return 0;
+}

@@ -944,17 +944,20 @@ auto codegen::Emitter::localLine(std::string_view line) -> bool
 auto codegen::Emitter::prepareModuleTexts() -> void
 {
   declaredIn(decls.text, sharedDeclared);
+  // The program functions the shared declarations name (a function's address in a shared global's
+  // constant data), which every module but the defining one declares (moduleText): a kpp function's
+  // quoted name and a C function's bare one alike. Until 2026-11-05 only the quoted names were
+  // looked for, so `@"regs" = weak_odr global [...] [... ptr @specAddOne ...]` named an extern "C"
+  // function no other module declared ("use of undefined value '@specAddOne'", thread D's find).
   const std::string& shared = decls.text;
-  for (size_t i = shared.find("@\""); i != std::string::npos; i = shared.find("@\"", i + 1))
+  irNamesIn(shared, [&](size_t at, size_t length)
   {
-    size_t end = shared.find('"', i + 2);
-    if (end == std::string::npos)
-      break;
-    std::string name = shared.substr(i, end + 1 - i);
+    if (length < 2 || shared[at + 1] == '.')
+      return; // (`@.str`, `@.data.`: the constants, never a function)
+    std::string name = shared.substr(at, length);
     if (definedIn.count(name) && !sharedDeclared.count(name))
       sh.sharedReferences.insert(name);
-    i = end;
-  }
+  });
   std::string_view text = decls.text;
   for (size_t pos = 0; pos < text.size();)
   {
