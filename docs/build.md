@@ -1251,7 +1251,13 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     old ones removed), so a failed step leaves the old release whole. GitHub refuses the job's
     token a tag on a commit whose `.github/workflows` differ from master's at that moment (403
     "Resource not accessible by integration"): a run whose commit predates a workflow change pushed
-    while it ran cannot publish, and says so; the next run publishes.
+    while it ran cannot publish, and says so; the next run publishes. A call that fails on
+    GitHub's side is tried again, up to 4 times, 10, 30 and 60 s apart: a call that got no answer
+    or a 5xx, and an upload after any failure but 401, 403 and 404, the release's half-made file of
+    that name deleted first; a retried release creation first takes the release of its tag, which
+    the lost answer may have made (2026-11-05: two runs in a row lost their release to one 500 and
+    one failed upload). run_tests' publish check runs it against a fake GitHub that fails a call
+    of each kind once (`tools/release/publish-test.ps1`).
 
   `tools/release/settle.ps1` then makes the release of the highest version GitHub's "Latest",
   which https://github.com/kovarex/kpp/releases/latest and the repository's sidebar show, and

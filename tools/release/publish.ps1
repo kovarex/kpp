@@ -33,7 +33,12 @@ param(
   [ValidateSet('', 'github', 'forgejo')][string]$Forge = '',
   [string]$KppNet = '',
   [string]$Registry = '/home/public/registry',
-  [switch]$Mirror
+  [switch]$Mirror,
+  # The forge's calls are tried again after a failure GitHub's side may clear (no response, a 5xx; an
+  # upload after any but 401/403/404), up to 4 times, waiting RetryWait, 3x and 6x that many seconds
+  # between: 2026-11-05 two runs in a row lost their release to one 500 and one upload error
+  # ("Error updating policy"). tools/release/publish-test.ps1 passes 0.
+  [int]$RetryWait = 10
 )
 $ErrorActionPreference = 'Stop'
 foreach ($f in $Files) { if (-not (Test-Path $f)) { throw "no file $f" } }
@@ -47,12 +52,38 @@ function PublishForge {
   } else {
     @{ Authorization = "token $token"; Accept = 'application/json' }
   }
-  function Api([string]$method, [string]$path, $body = $null) {
+  function Status($exception) { if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 } }
+  # call, tried again after a failure (-Transient: only after no response or a 5xx; else after any but
+  # 401, 403 and 404), before running first (a partial upload deleted). The attempts are said with
+  # Write-Host: what a function writes to its output is its value.
+  function Again([string]$what, [scriptblock]$call, [scriptblock]$before = $null, [switch]$Transient) {
+    for ($attempt = 1; ; $attempt++) {
+      try { return & $call }
+      catch {
+        $status = Status $_.Exception
+        $again = if ($Transient) { $status -eq 0 -or $status -ge 500 } else { $status -notin 401, 403, 404 }
+        if ($attempt -ge 4 -or -not $again) { throw }
+        $wait = $RetryWait * @(1, 3, 6)[$attempt - 1]
+        Write-Host "forge: $what failed ($(if ($status) { "HTTP $status" } else { 'no response' }): $($_.Exception.Message)); attempt $($attempt + 1) of 4 in $wait s"
+        Start-Sleep -Seconds $wait
+        if ($before) { try { & $before } catch { Write-Host "forge: before attempt $($attempt + 1) of $what`: $($_.Exception.Message)" } }
+      }
+    }
+  }
+  function ApiOnce([string]$method, [string]$path, $body) {
     $arguments = @{ Method = $method; Uri = "$apiUrl/repos/$Repository$path"; Headers = $headers }
     if ($null -ne $body) { $arguments.Body = ($body | ConvertTo-Json); $arguments.ContentType = 'application/json' }
     Invoke-RestMethod @arguments
   }
-  function Status($exception) { if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 } }
+  # A DELETE whose first attempt failed may have been done: its 404 on a later attempt is success.
+  function Api([string]$method, [string]$path, $body = $null) {
+    $tries = @{ n = 0 }
+    Again "$method $path" -Transient {
+      $tries.n++
+      try { ApiOnce $method $path $body }
+      catch { if ($tries.n -gt 1 -and $method -eq 'DELETE' -and (Status $_.Exception) -eq 404) { return }; throw }
+    }
+  }
   # GitHub refuses the job's token a tag on a commit whose .github/workflows differ from the default
   # branch's now (403 "Resource not accessible by integration"): a run whose commit is older than a
   # workflow change pushed meanwhile cannot publish. The release stays as it was; the next run publishes.
@@ -61,7 +92,16 @@ function PublishForge {
     throw $exception
   }
 
+  # An upload tried again (Again) after the release's asset of that name, which a failed upload may
+  # leave behind half made, is deleted.
   function Upload($release, [string]$file, [string]$name) {
+    Again "uploading $name" { UploadOnce $release $file $name } {
+      foreach ($a in (Api GET "/releases/$($release.id)/assets")) {
+        if ($a.name -eq $name) { Api DELETE "/releases/assets/$($a.id)" | Out-Null; Write-Host "forge: deleted the failed upload's $name" }
+      }
+    }
+  }
+  function UploadOnce($release, [string]$file, [string]$name) {
     if ($forge -eq 'github') {
       $upload = ($release.upload_url -replace '\{.*\}$', '') + "?name=$([uri]::EscapeDataString($name))"
       return Invoke-RestMethod -Method POST -Uri $upload -Headers $headers -ContentType 'application/octet-stream' -InFile $file
@@ -110,7 +150,18 @@ function PublishForge {
 
   $create = @{ tag_name = $Tag; target_commitish = $Commit; name = $Title; body = $Notes; prerelease = [bool]$Prerelease; draft = $false }
   if ($MakeLatest -and $forge -eq 'github') { $create.make_latest = $MakeLatest }
-  try { $release = Api POST '/releases' $create }
+  # Not Api: a POST whose response was lost may have made the release, so an attempt after the first
+  # takes the release of the tag when there is one.
+  $tries = @{ n = 0 }
+  try {
+    $release = Again "creating release $Tag" -Transient {
+      $tries.n++
+      if ($tries.n -gt 1) {
+        try { return ApiOnce GET "/releases/tags/$Tag" $null } catch { if ((Status $_.Exception) -ne 404) { throw } }
+      }
+      ApiOnce POST '/releases' $create
+    }
+  }
   catch { Refused $_.Exception "creating release $Tag" }
   Write-Output "forge: created release $($release.id) ($Tag at $Commit)"
   foreach ($f in $Files) {
