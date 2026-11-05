@@ -1411,7 +1411,7 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
     // value of its own: the type the walk deduced from its element.
     bool braced = v->init && v->init->kind == NodeKind::BraceInitExpr;
     if (v->init && v->init->ty && !braced)
-      return impl->deduceAuto(t, v->init->ty);
+      return impl->deduceAuto(t, v->init->ty, v->init);
     if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl->containsAuto(cached))
       return cached; // a range-for variable: the element type the loop deduced
   }

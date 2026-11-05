@@ -1,0 +1,51 @@
+// spec: `auto&& v = e;` is a forwarding reference, deduced as a `T&&` parameter is ([dcl.type.auto.deduct] 4): an lvalue e (a variable, a member, an array, a call returning T&) makes v an lvalue reference (`auto&& value = this->state;` a String&, in a const member function a const String&), an rvalue (a temporary, move(s)) an rvalue reference, so `forward<decltype(v)>(v)` copies an lvalue's object and moves an rvalue's, at run time and at compile time; a function returning `auto&&` deduces the same (`return this->state;`: String&, its caller copies it)
+// found by thread B (2026-11-05): kpp made `auto&& value = this->state;` (the game's SegmentedUnitAI and ZoomSpecification, the converter's visit of a typed union) a String&&, so decltype(value) was not C++'s and forward<decltype(value)>(value) moved the member away where C++ copies it (`[] [patrolling]`)
+struct Unit
+{
+  String state = "patrolling";
+  String taken()
+  {
+    auto&& value = this->state;
+    return forward<decltype(value)>(value);
+  }
+  String takenConst() const
+  {
+    auto&& value = this->state;
+    return forward<decltype(value)>(value);
+  }
+  auto&& member() { return this->state; }
+};
+String global = "global";
+constexpr int lengths()
+{
+  String state = "abc";
+  auto&& value = state;
+  String copy = forward<decltype(value)>(value);
+  auto&& temporary = String("de");
+  String moved = forward<decltype(temporary)>(temporary);
+  return int(state.size()) * 1000 + int(copy.size()) * 100 + int(temporary.size()) * 10 + int(moved.size());
+}
+int main()
+{
+  Unit u;
+  String a = u.taken();
+  String b = u.takenConst();
+  String c = u.member();
+  auto&& g = global;
+  String d = forward<decltype(g)>(g);
+  auto&& t = String("temporary");
+  String e = forward<decltype(t)>(t);
+  String s = "moved";
+  auto&& m = move(s);
+  String f = forward<decltype(m)>(m);
+  int x = 3;
+  auto&& r = x;
+  r = 4;
+  int numbers[3] = {1, 2, 3};
+  auto&& w = numbers;
+  w[0] = 7;
+  println("[", u.state, "] [", a, "] [", b, "] [", c, "] [", global, "] [", d, "] [", t, "] [", e, "] [", s, "] [", f, "]");
+  constexpr int atCompileTime = lengths();
+  println(x, " ", numbers[0], " ", sizeof(w), " ", isSame<decltype(r), int&>, " ", isSame<decltype(t), String&&>, " ", atCompileTime, " ", lengths());
+  return 0;
+}

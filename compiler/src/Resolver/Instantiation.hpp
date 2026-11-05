@@ -244,10 +244,14 @@
   // differ, or one is not known, or a list is nested).
   const Ty* initializerListOfElements(const BraceInitExpr* list);
 
-  const Ty* deduceAuto(const Ty* pattern, const Ty* init);
+  // initExpr: the initializer whose type init is, when there is one, for its value category: an
+  // `auto&&` is a forwarding reference, an lvalue reference for an lvalue (`auto&& value =
+  // this->state;` an AIState&, as C++ deduces it), an rvalue reference for an rvalue.
+  const Ty* deduceAuto(const Ty* pattern, const Ty* init, const Expr* initExpr = nullptr);
 
   // The type a function returning `auto`, `auto&`, `const auto*`... deduces from a return
-  // statement's expression type: the written shape around the deduced type.
+  // statement's expression type (an lvalue's an lvalue reference, the walk's): the written shape
+  // around the deduced type.
   const Ty* deducedShape(const Ty* pattern, const Ty* deduced);
 
   // Whether a written type is `auto`, or `auto` under qualifiers, references or pointers.

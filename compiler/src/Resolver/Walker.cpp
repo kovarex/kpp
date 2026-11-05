@@ -906,7 +906,7 @@ auto GlobalScope::Impl::Walker::hiddenObjectType(VariableDecl* v) -> const Ty*
     if (const Ty* deduced = locals.deducedTypeOf(v))
       t = deduced; // the object as this walk deduced it (also a range-for variable's)
     else if (v->init && v->init->ty)
-      t = impl.deduceAuto(t, v->init->ty);
+      t = impl.deduceAuto(t, v->init->ty, v->init);
     else if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl.containsAuto(cached))
       t = cached;
     else
@@ -985,7 +985,7 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
         // (Only a known initializer type: an unknown one is there or not by whether the
         // variable's own walk came first, and the use was then counted as auto's or not.)
         if (v->init && v->init->ty && v->init->ty->isKnown() && v->init->kind != NodeKind::BraceInitExpr)
-          return impl.deduceAuto(t, v->init->ty);
+          return impl.deduceAuto(t, v->init->ty, v->init);
         return unknown(Why::Auto);
       }
       return t;
@@ -1535,7 +1535,7 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
   if (impl.containsAuto(declared))
   {
     auto* v = r.decl->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(r.decl) : nullptr;
-    declared = v && v->init && v->init->ty ? impl.deduceAuto(declared, v->init->ty) : types.unknown();
+    declared = v && v->init && v->init->ty ? impl.deduceAuto(declared, v->init->ty, v->init) : types.unknown();
     if (!declared->isKnown())
       r.why = Why::Auto;
   }
@@ -5444,15 +5444,19 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if (impl.containsAuto(declared))
       {
         // From the type this walk gave the initializer, not the one on its (shared) node.
+        Expr* initExpr = v->init; // (whose value category an `auto&&` takes)
         if (declared == types.decltypeAutoType())
           initTy = decltypeOf(v->init, initTy); // `decltype(auto) r = (x);` is a reference
         if (v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(v->init)->args.size() == 1)
           if (Expr* only = static_cast<BraceInitExpr*>(v->init)->args[0]; only && only->ty)
+          {
             initTy = only->ty; // `auto x{e}`, the init-capture `[callback{::move(callback)}]`: e's type
+            initExpr = only;
+          }
         if (!v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && declared != types.decltypeAutoType())
           if (const Ty* list = impl.initializerListOfElements(static_cast<BraceInitExpr*>(v->init)))
             initTy = list; // `const auto entityNames = {"pipe", "storage-tank"};` is an InitializerList<const char*>
-        const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
+        const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy, initExpr) : types.unknown();
         if (deduced->isKnown() && (v->flags & DF_Constexpr) && !deduced->isReference())
           deduced = types.qualified(deduced, true, false); // `constexpr auto limit = 5;` is a const int
         if (deduced->isKnown())
@@ -6153,6 +6157,8 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         }
       if (!decltypeReturns.empty() && decltypeReturns.back())
         t = decltypeOf(static_cast<ReturnStmt*>(s)->value, t);
+      else if (t && t->isKnown() && t->kind != TyKind::Pack && !t->isReference() && isLvalueExpression(static_cast<ReturnStmt*>(s)->value))
+        t = types.lref(t); // an lvalue as `auto&&` deduces it (`return this->member;`: T&); `auto` decays it (deducedShape)
       // Inside a for constexpr body of an instantiation, before the loop binds its variable,
       // a return that depends on it gives no type (the per-element walk does).
       bool open = forConstexprDepth > 0 && activeSubst && t && (types.isDependent(t) || impl.containsAuto(t));
