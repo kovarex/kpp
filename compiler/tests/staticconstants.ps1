@@ -35,8 +35,8 @@ foreach ($case in @(
   if ($ir -notmatch ('(?m)^@"' + $case[0] + '\.\d+" ' + $case[1] + '$')) { $failed += "$($case[0] -replace '\\', ''): not a constant `"$($case[1] -replace '\\', '')`"" }
   if ($ir -match ('(?m)^@"' + $case[0] + '\.\d+\.guard"')) { $failed += "$($case[0] -replace '\\', ''): still has a guard" }
 }
-if ($ir -notmatch '(?m)^@"once\(\)::first\.\d+\.guard" = internal global i1 false$') { $failed += 'once()::first: its initializer calls a function, and it has no guard' }
-if ($ir -notmatch '(?m)^@"firstArgument\(int32\)::remembered\.\d+\.guard" = internal global i1 false$') { $failed += 'firstArgument(int32)::remembered: its initializer reads a parameter, and it has no guard' }
+if ($ir -notmatch '(?m)^@"once\(\)::first\.\d+\.guard" = internal global i8 0$') { $failed += 'once()::first: its initializer calls a function, and it has no guard' }
+if ($ir -notmatch '(?m)^@"firstArgument\(int32\)::remembered\.\d+\.guard" = internal global i8 0$') { $failed += 'firstArgument(int32)::remembered: its initializer reads a parameter, and it has no guard' }
 
 if ($failed.Count) { $failed | ForEach-Object { "FAIL static constants: $_" }; exit 1 }
 "ok   static constants: a const or constexpr static local that folds is a constant (no guard); a call's or a parameter's keeps its guard"

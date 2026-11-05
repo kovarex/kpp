@@ -1,0 +1,51 @@
+// spec: a static local is initialized on the first pass whose initializer returns, once across threads, as C++'s [stmt.dcl] 4 has it: a constructor that throws leaves it to be tried again on the next pass (`x x 3 3`), and threads that come while one thread builds it wait for it, so eight threads all read the built value and the constructor runs once (`1 8`); g++ prints the same
+// found by thread B (2026-11-05), comparing with g++: kpp set the guard before the initializer ran, so a constructor that threw left a half-built object for every later pass (`x 1 1 1`) and a thread that came while another built it read it unbuilt
+int attempts = 0;
+class Flaky
+{
+public:
+  int value;
+  Flaky() : value(++attempts) { if (attempts < 3) throw RuntimeError("not yet"); }
+};
+int flaky()
+{
+  static Flaky f;
+  return f.value;
+}
+Atomic<int> built;
+class Slow
+{
+public:
+  int value = 0;
+  Slow()
+  {
+    built.fetchAdd(1);
+    thisThread::sleepFor(Milliseconds(50));
+    value = 42;
+  }
+};
+int slow()
+{
+  static Slow s;
+  return s.value;
+}
+int results[8];
+void read(int i) { results[i] = slow(); }
+int main()
+{
+  for (int i = 0; i < 4; ++i)
+  {
+    try { print(flaky(), " "); } catch (...) { print("x "); }
+  }
+  println();
+  Vector<Thread> threads;
+  for (int i = 0; i < 8; ++i)
+    threads.emplace_back(read, i);
+  for (Thread& t : threads)
+    t.join();
+  int right = 0;
+  for (int r : results)
+    right += r == 42;
+  println(built.load(), " ", right);
+  return 0;
+}

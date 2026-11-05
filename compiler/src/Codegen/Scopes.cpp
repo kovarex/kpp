@@ -34,6 +34,8 @@ auto codegen::Emitter::destroyObject(const Object& o) -> void
     ensureMalloc();
     fn += "  call void @free(ptr " + o.addr + ")" + bundle() + "\n";
   }
+  else if (!o.guardReset.empty())
+    fn += "  store atomic i8 0, ptr " + o.guardReset + " release, align 1\n";
   else if (!o.countSlot.empty())
   {
     // The elements an array built in a loop has so far (InlineParts::builtCounted), the last first.

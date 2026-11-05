@@ -210,18 +210,52 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     addOwnedEntry(name + storage + "ptr null\n");
   else
     addOwnedEntry(name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
-  addOwnedEntry(guard + storage + "i1 false\n");
+  addOwnedEntry(guard + storage + "i8 0\n");
   {
     auto lock = sharedLock();
     globals[v] = name;
   }
   locals[v] = {name, t, isRef};
+  // Built on the first pass whose initializer returns, once per program across threads ([stmt.dcl]
+  // 4). The guard is 0 not built, 1 being built, 2 built: a pass that finds 2 goes on; one that claims
+  // 0 for 1 (cmpxchg) builds it and releases 2, or, the initializer throwing, gives 0 back (an
+  // unwind-only cleanup) for the next pass to try again; one that finds another thread building waits
+  // for it. A thread_local one is its thread's alone: 0 or 1, set once the initializer returns. Until
+  // 2026-11-05 the guard was set before the initializer ran: a constructor that threw left a
+  // half-built object every later call used, and a second thread read the object before it was built.
+  bool perThread = (v->flags & DF_ThreadLocal) != 0;
   std::string done = newLabel("static.done"), init = newLabel("static.init");
-  std::string flag = newTemp();
-  fn += "  " + flag + " = load i1, ptr " + guard + "\n";
-  fn += "  br i1 " + flag + ", label %" + done + ", label %" + init + "\n";
+  std::string state = newTemp(), built = newTemp();
+  fn += "  " + state + " = load atomic i8, ptr " + guard + " acquire, align 1\n";
+  fn += "  " + built + " = icmp eq i8 " + state + ", " + (perThread ? "1" : "2") + "\n";
+  if (perThread)
+    fn += "  br i1 " + built + ", label %" + done + ", label %" + init + "\n";
+  else
+  {
+    std::string claim = newLabel("static.claim"), wait = newLabel("static.wait"), spin = newLabel("static.spin");
+    fn += "  br i1 " + built + ", label %" + done + ", label %" + claim + "\n";
+    startBlock(claim);
+    std::string pair = newTemp(), won = newTemp();
+    fn += "  " + pair + " = cmpxchg ptr " + guard + ", i8 0, i8 1 acq_rel acquire, align 1\n";
+    fn += "  " + won + " = extractvalue { i8, i1 } " + pair + ", 1\n";
+    fn += "  br i1 " + won + ", label %" + init + ", label %" + wait + "\n";
+    startBlock(wait);
+    std::string seen = newTemp(), finished = newTemp();
+    fn += "  " + seen + " = load atomic i8, ptr " + guard + " acquire, align 1\n";
+    fn += "  " + finished + " = icmp eq i8 " + seen + ", 2\n";
+    fn += "  br i1 " + finished + ", label %" + done + ", label %" + spin + "\n";
+    startBlock(spin);
+    fn += "  call void asm sideeffect \"pause\", \"~{memory}\"()\n"; // (another thread builds it, or gave it back: claim again)
+    fn += "  br label %" + claim + "\n";
+  }
   startBlock(init);
-  fn += "  store i1 true, ptr " + guard + "\n";
+  if (!perThread)
+  {
+    Object giveBack{guard, types.intType(8)}; // (a byte: no class, nothing that destroys it)
+    giveBack.unwindOnly = true;
+    giveBack.guardReset = guard;
+    statementTemps.push_back(giveBack);
+  }
   if (isRef)
     fn += "  store ptr " + lvalue(v->init) + ", ptr " + name + "\n";
   else if (v->init && isClass(t))
@@ -232,7 +266,8 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     defaultConstruct(name, t, v);
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
     constructArray(name, t, v);
-  destroyTemps();
+  destroyTemps(); // (the claim's cleanup with them: the initializer returned)
+  fn += "  store atomic i8 " + std::string(perThread ? "1" : "2") + ", ptr " + guard + " release, align 1\n";
   emitBranch(done);
   startBlock(done);
 }

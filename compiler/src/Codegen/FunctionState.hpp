@@ -100,6 +100,9 @@
       // An array built in a loop (InlineParts::builtCounted): only its first elements are built,
       // as many as the i64 at countSlot says, and only those are destroyed, the last first.
       std::string countSlot;
+      // A static local's guard (staticLocal) while its initializer runs: an exception leaving gives
+      // the claim back (the guard to 0, the next pass tries again), never a destructor.
+      std::string guardReset;
     };
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     // Each open scope's id (pushScope), and the goto labels' places: the scopes' ids and their
