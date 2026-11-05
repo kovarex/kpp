@@ -88,6 +88,10 @@ os.environ.setdefault("KPP_CHECK_BARRIER", "1")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPILER = os.path.dirname(os.path.dirname(HERE))
+# The snippets share the objects of the modules they have alike (most of the standard library's):
+# kppc's shared object cache (main.cpp, objectcache), one directory for every run of this kppc's
+# worktree, its debug, release and target runs at once included.
+os.environ.setdefault("KPP_OBJECT_CACHE", os.path.join(COMPILER, "build", "object-cache"))
 ROOT = os.path.dirname(COMPILER)
 KPPC = os.path.join(COMPILER, "build", "kppc.exe")
 # The game's SDL3 headers, for the interop snippets that import them (skipped when the Factorio

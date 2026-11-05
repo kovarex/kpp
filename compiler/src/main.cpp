@@ -16,6 +16,7 @@
 #include "source.hpp"
 #include "backend.hpp"
 #include "packages.hpp"
+#include "sha256.hpp"
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -34,6 +35,7 @@
 #include <cstdio>
 #include <string>
 #include <thread>
+#include <sstream>
 #include <vector>
 #ifdef _WIN32
 #include <process.h> // _getpid
@@ -1977,6 +1979,107 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     report("%s\n", summary.c_str());
   }
 
+  // KPP_OBJECT_CACHE=DIR: module objects shared by every output directory, keyed by the SHA-256 of all
+  // an object is made from: the module's text and number, the optimisation level, the compile flags and
+  // the compiler (clang's path, size and time, or this kppc's for LLVM's back end in process). The spec
+  // suite's snippets share their standard library's modules (run_spec.py sets it): of 38 snippets'
+  // module texts (--modules 4), modules 0 to 2 were the same in all and the instance pieces in about
+  // half, 74% of the text; its debug run took 97 s with a cache it began empty, 143-149 s without. A
+  // writer renames a file of its own into place, so a reader never sees half an object, and several
+  // builds may share one directory at once. A hit is written as a new file, with a new time: link.exe's
+  // incremental link tells a changed object by its time. Every few uses the directory is trimmed to the
+  // most recently used 768 MB once it is past 1 GB (a hit counts as a use): the spec suite's debug run
+  // leaves 122 MB.
+  namespace objectcache
+  {
+    std::string stamp(const std::filesystem::path& file)
+    {
+      std::error_code ec;
+      auto size = std::filesystem::file_size(file, ec);
+      auto time = std::filesystem::last_write_time(file, ec);
+      return file.string() + " " + std::to_string(ec ? 0 : size) + " " + std::to_string(ec ? 0 : time.time_since_epoch().count());
+    }
+
+    std::string key(const std::string& text, const std::string& options, const std::string& compiler)
+    {
+      Sha256 h;
+      h.add("kpp object 1\n");
+      h.add(compiler);
+      h.add("\n");
+      h.add(options);
+      h.add("\n");
+      h.add(text);
+      return h.hex();
+    }
+
+    // The cached object of key written to dest, a new file; false when there is none (or it went).
+    bool fetch(const std::filesystem::path& dir, const std::string& key, const std::string& dest)
+    {
+      std::filesystem::path cached = dir / (key + ".o");
+      std::string bytes;
+      if (!readFile(cached, bytes) || bytes.empty())
+        return false;
+      FILE* out = fopen(dest.c_str(), "wb");
+      if (!out)
+        return false;
+      bool written = fwrite(bytes.data(), 1, bytes.size(), out) == bytes.size();
+      written = fclose(out) == 0 && written;
+      std::error_code ec;
+      if (written)
+        std::filesystem::last_write_time(cached, std::filesystem::file_time_type::clock::now(), ec); // (used: trim keeps it)
+      return written;
+    }
+
+    void store(const std::filesystem::path& dir, const std::string& key, const std::string& object)
+    {
+      std::error_code ec;
+      std::filesystem::create_directories(dir, ec);
+      std::ostringstream own;
+      own << key << "." << _getpid() << "." << std::this_thread::get_id() << ".part";
+      std::filesystem::path part = dir / own.str();
+      std::filesystem::copy_file(object, part, std::filesystem::copy_options::overwrite_existing, ec);
+      if (!ec)
+        std::filesystem::rename(part, dir / (key + ".o"), ec); // (one there already: the same object)
+      if (ec)
+        std::filesystem::remove(part, ec);
+    }
+
+    // The most recently used objects up to `keep` bytes stay; files of builds that died half way
+    // (`.part`) go once they are a day old.
+    void trim(const std::filesystem::path& dir, uintmax_t limit, uintmax_t keep)
+    {
+      std::error_code ec;
+      struct Entry { std::filesystem::path path; std::filesystem::file_time_type time; uintmax_t size; };
+      std::vector<Entry> entries;
+      uintmax_t total = 0;
+      auto old = std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+      for (const auto& e : std::filesystem::directory_iterator(dir, ec))
+      {
+        std::error_code fe;
+        auto time = e.last_write_time(fe);
+        if (e.path().extension() == ".part")
+        {
+          if (!fe && time < old)
+            std::filesystem::remove(e.path(), fe);
+          continue;
+        }
+        uintmax_t size = e.file_size(fe);
+        total += size;
+        entries.push_back({e.path(), time, size});
+      }
+      if (total <= limit)
+        return;
+      std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.time < b.time; });
+      for (const Entry& e : entries)
+      {
+        if (total <= keep)
+          break;
+        std::filesystem::remove(e.path, ec);
+        total -= e.size;
+      }
+    }
+  }
+
   void runCodegen(Build& build)
   {
     std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
@@ -2083,6 +2186,19 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     // its text (a KPP_TEST_BROKEN_* function added first), the optimisation level, --clang-flags and
     // whether its functions have sections of their own.
     // Otherwise hashText is what the hash file gets once the module is compiled.
+    // The shared object cache (objectcache, KPP_OBJECT_CACHE): its directory, and what keys an object
+    // besides its text: the compiler and the flags (compileFlags', below, follow functionSections).
+    std::filesystem::path objectCacheDir;
+    if (const char* dir = getenv("KPP_OBJECT_CACHE"); dir && *dir)
+      objectCacheDir = dir;
+    std::string objectCacheCompiler, objectCacheFlags;
+    if (!objectCacheDir.empty())
+    {
+      objectCacheCompiler = inProcess ? "kppc " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
+      objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections");
+    }
+    std::vector<std::string> objectCacheKeys(outputModules);
+    std::atomic<int> sharedHits{0};
     auto unchangedObject = [&](size_t k, std::string& text, const char* level, std::string& hashText)
     {
       if (brokenModule && std::to_string(k) == brokenModule)
@@ -2105,6 +2221,21 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       {
         ++cached;
         return true;
+      }
+      // Another output's object of the same text, flags and compiler (the shared cache), and of the
+      // same module number: an object holds its IR file's name (its .file symbol; a release build's
+      // bitcode its source file name, which ThinLTO's names of internal functions are made from), so
+      // that two modules of one link never share an object, nor one name (their texts alike: modules
+      // with nothing in them).
+      if (!objectCacheDir.empty())
+      {
+        objectCacheKeys[k] = objectcache::key(text, std::string(level) + " " + objectCacheFlags + " module " + std::to_string(k), objectCacheCompiler);
+        if (objectcache::fetch(objectCacheDir, objectCacheKeys[k], objects[k]) && writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText))
+        {
+          ++cached;
+          ++sharedHits;
+          return true;
+        }
       }
       return false;
     };
@@ -2131,7 +2262,11 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         moduleFailures.push_back({unsigned(k), 0, llPath, error});
       }
       else
+      {
         writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
+        if (!objectCacheKeys[k].empty())
+          objectcache::store(objectCacheDir, objectCacheKeys[k], objects[k]);
+      }
     };
     // Step 4's P2 (docs/codegen-speed.md): a debug build of several modules whose objects LLVM's back end
     // in this process makes has its program pieces compiled while codegen emits the instances, on
@@ -2306,6 +2441,8 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
         writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
         std::error_code removed;
         std::filesystem::remove(errPath, removed); // (-w: nothing in it)
+        if (!objectCacheKeys[k].empty())
+          objectcache::store(objectCacheDir, objectCacheKeys[k], objects[k]);
       }
     };
     if (backEnd)
@@ -2429,6 +2566,11 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     std::string link = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
     if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
       link = "\"\"" + clang + "\" @\"" + responsePath + "\" > \"" + options.exe + ".link.txt\" 2>&1\"";
+    if (int shared = sharedHits.load())
+      during = ", " + std::to_string(shared) + " of them from KPP_OBJECT_CACHE" + during;
+    // One build in 16 trims the shared cache to the most recently used 768 MB once it is past 1 GB.
+    if (!objectCacheDir.empty() && (uint64_t(_getpid()) * 2654435761u + uint64_t(Clock::now().time_since_epoch().count())) % 16 == 0)
+      objectcache::trim(objectCacheDir, uintmax_t(1) << 30, uintmax_t(3) << 28);
     if (options.deferLink)
     {
       deferLinkCommand(options, link);

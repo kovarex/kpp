@@ -26,6 +26,9 @@ New-Item -ItemType Directory -Force $logs | Out-Null
 # Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every build
 # here until program pieces rely on it.
 $env:KPP_CHECK_BARRIER = '1'
+# No shared object cache from the caller's environment (KPP_OBJECT_CACHE): checks count the modules a
+# build compiles (tests\incremental.ps1); tests\objectcache.ps1 sets its own.
+Remove-Item Env:KPP_OBJECT_CACHE -ErrorAction SilentlyContinue
 if ($Jobs -le 0) { $Jobs = [Math]::Max(4, [Math]::Min(12, [int]([Environment]::ProcessorCount / 3))) }
 
 # The checks. Kind: e2e (an end-to-end program: counted apart), check (counted in "checks"). Skip: an
@@ -72,6 +75,9 @@ Add 'import cache' (PsCheck 'tests\importcache.ps1') -seconds 4
 Add 'servers' (PsCheck 'tests\servers.ps1') -seconds 13
 Add 'edit cost' (PsCheck 'tests\editcost.ps1') -seconds 12
 Add 'check errors' (PsCheck 'tests\checkerrors.ps1') -seconds 12
+# KPP_OBJECT_CACHE: a second output directory takes the modules' objects from it, an edit compiles
+# what changed, builds at once share it (tests\objectcache.ps1).
+Add 'object cache' (PsCheck 'tests\objectcache.ps1') -seconds 6
 Add 'checkout' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\programs\factorio\tests\checkout.ps1') -seconds 8
 # Part 2.
 Add 'determinism' ((PsCheck 'tests\determinism.ps1') + @(if ($Full) { '-Full' })) -part 2 -seconds 144 -note 'FAIL determinism: the output depends on the thread count'
