@@ -170,6 +170,20 @@ if (Run 'basic')
     if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: stopped the compile server of .*\(started with --verbose\)') { Fail "kpp --stop-server after kpp --verbose --run: exit $code`n$($output -join "`n")" }
     $output = Kpp @('--stop-server')
     if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: no compile server of .* runs') { Fail "kpp --stop-server again: exit $code`n$($output -join "`n")" }
+    # A project inside this one's directory (as the other sections' projects are under this one's,
+    # running at once: one of their servers was stopped here, 2026-11-05) keeps its server: its files
+    # are under this directory but not under this project's build\.
+    New-Item -ItemType Directory -Force 'inner' | Out-Null
+    Push-Location 'inner'
+    Kpp @('new') | Out-Null
+    Kpp @('--run') | Out-Null
+    Pop-Location
+    $output = Kpp @('--stop-server')
+    if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: no compile server of .* runs') { Fail "kpp --stop-server with a project inside this one, whose server runs: exit $code`n$($output -join "`n")" }
+    Push-Location 'inner'
+    $output = Kpp @('--stop-server')
+    Pop-Location
+    if ($code -ne 0 -or ($output -join "`n") -notmatch 'kpp: stopped the compile server of .*inner\.exe') { Fail "the inner project's kpp --stop-server: exit $code`n$($output -join "`n")" }
   }
   finally { Pop-Location }
 }

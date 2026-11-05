@@ -1790,14 +1790,22 @@ namespace
           stop(args, exeOf(root, p, request).string());
           commands[exeOf(root, p, request).string()].assign(args.begin() + 1, args.end());
         }
-      std::string prefix = root.string() + "\\";
-      std::transform(prefix.begin(), prefix.end(), prefix.begin(), [](unsigned char c) { return char(tolower(c)); });
+      // The project's other servers: those whose arguments name its build.kpp or a file of its build\
+      // (a cell's --exe, the description's settings), not merely one under its directory, which a
+      // project inside it has too (tests/project.ps1's sections, each a project under one directory: a
+      // stop in the outer one stopped an inner one's server, 2026-11-05).
+      auto lower = [](std::string s)
+      {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(tolower(c)); });
+        return s;
+      };
+      std::string buildFile = lower((root / "build.kpp").string()), buildDirectory = lower((root / "build").string() + "\\");
       for (const std::vector<std::string>& args : stopServers([&](const std::vector<std::string>& args)
            {
-             for (std::string a : args)
+             for (const std::string& argument : args)
              {
-               std::transform(a.begin(), a.end(), a.begin(), [](unsigned char c) { return char(tolower(c)); });
-               if (a.compare(0, prefix.size(), prefix) == 0)
+               std::string a = lower(argument);
+               if (a == buildFile || a.compare(0, buildDirectory.size(), buildDirectory) == 0)
                  return true;
              }
              return false;
