@@ -18,7 +18,7 @@ $failed = 0
 function Fail([string]$what) { "FAIL servers: $what"; $script:failed++ }
 $env:TMP = "$work\tmp"
 $env:TEMP = "$work\tmp"
-$env:KPP_WATCH = '1'; $env:KPP_WATCH_CHECK = '1' # (the watched listings, each build's compared with a listing: thread A's review)
+$env:KPP_WATCH_CHECK = '1' # (each build's watched listing compared with a listing: thread A's review)
 $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
 $copy = "$work\bin\kppc.exe"
 Copy-Item $Kppc $copy

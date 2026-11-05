@@ -60,7 +60,7 @@ namespace
     HANDLE directory = INVALID_HANDLE_VALUE;
     OVERLAPPED overlapped{};
     HANDLE armed = nullptr; // set once the first read is pending (or failed)
-    DWORD volume = 0, indexHigh = 0, indexLow = 0; // the directory watched (a root renamed away and replaced is another)
+    std::string identity;  // the directory watched (a root renamed away and replaced is another): directoryIdentity's
     std::vector<DWORD> buffer = std::vector<DWORD>(16384); // 64 KB (DWORD-aligned, as the notifications need)
     // (the thread's and collectFilesWatched's, under watchMutex)
     std::vector<std::filesystem::path> files;
@@ -141,18 +141,30 @@ namespace
     delete w;
   }
 
-  // The directory a path names now: its volume and file index (false when it cannot be opened).
-  bool identity(const std::filesystem::path& path, DWORD& volume, DWORD& high, DWORD& low)
+  // An open directory's identity: its volume and its 128-bit file id (FileIdInfo; on ReFS the 64-bit
+  // file index of GetFileInformationByHandle is not unique, thread A), else the volume and file index;
+  // empty when neither can be read.
+  std::string directoryIdentity(HANDLE h)
+  {
+    FILE_ID_INFO id{};
+    if (GetFileInformationByHandleEx(h, FileIdInfo, &id, sizeof id))
+      return std::to_string(id.VolumeSerialNumber) + ":" + std::string(reinterpret_cast<const char*>(id.FileId.Identifier), sizeof id.FileId.Identifier);
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (GetFileInformationByHandle(h, &info))
+      return std::to_string(info.dwVolumeSerialNumber) + ":" + std::to_string(info.nFileIndexHigh) + ":" + std::to_string(info.nFileIndexLow);
+    return std::string();
+  }
+
+  // The identity of the directory a path names now (empty when it cannot be opened).
+  std::string identityOf(const std::filesystem::path& path)
   {
     HANDLE h = CreateFileW(path.wstring().c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (h == INVALID_HANDLE_VALUE)
-      return false;
-    BY_HANDLE_FILE_INFORMATION info{};
-    bool ok = GetFileInformationByHandle(h, &info);
+      return std::string();
+    std::string identity = directoryIdentity(h);
     CloseHandle(h);
-    volume = info.dwVolumeSerialNumber, high = info.nFileIndexHigh, low = info.nFileIndexLow;
-    return ok;
+    return identity;
   }
 
   // A file's stamp from its directory's entry, as the listing has it (collectFiles: the listing's own),
@@ -224,8 +236,7 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
   if (found != watches.end())
   {
     Watch* old = found->second;
-    DWORD volume = 0, high = 0, low = 0;
-    bool same = !old->broken && identity(absolute, volume, high, low) && volume == old->volume && high == old->indexHigh && low == old->indexLow;
+    bool same = !old->broken && identityOf(absolute) == old->identity;
     if (!same)
     {
       note += "watch: " + root.string() + (old->broken ? "'s watch ended" : " is another directory now") + ", watched anew; ";
@@ -242,9 +253,9 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
                                OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
     w->overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     w->armed = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    BY_HANDLE_FILE_INFORMATION info{};
-    bool started = w->directory != INVALID_HANDLE_VALUE && w->overlapped.hEvent && w->armed && GetFileInformationByHandle(w->directory, &info);
-    w->volume = info.dwVolumeSerialNumber, w->indexHigh = info.nFileIndexHigh, w->indexLow = info.nFileIndexLow;
+    if (w->directory != INVALID_HANDLE_VALUE)
+      w->identity = directoryIdentity(w->directory);
+    bool started = w->directory != INVALID_HANDLE_VALUE && w->overlapped.hEvent && w->armed && !w->identity.empty();
     if (started)
     {
       std::thread(watchLoop, w).detach();

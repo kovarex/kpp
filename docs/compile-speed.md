@@ -956,7 +956,7 @@ before relying on the recorded uses.
 
 ### Step 3 in three pieces, and what 3c needs from codegen
 
-- **The watched listing** (E, 2026-11-05; opt-in with `KPP_WATCH=1` until thread A's re-review): a
+- **The watched listing** (E, 2026-11-05, reviewed by thread A; `KPP_NO_WATCH=1` lists every build): a
   server keeps each source directory's listing and brings it up to date by its change notifications
   (source.cpp, collectFilesWatched; ReadDirectoryChangesW on a thread per directory, watched before it
   is listed). A file written is stamped again alone (from its directory's entry, as the listing); a
@@ -967,7 +967,8 @@ before relying on the recorded uses.
   deleted closes its handle at once, so it can be made again. `KPP_WATCH_CHECK=1` lists every build
   too and fails it on any difference (incremental.ps1, servers.ps1, watchstress.ps1 set it). The
   game's edit build listed its 3,500 files in 37 to 68 ms, about 1 ms watched; watchstress.ps1: 500
-  rounds of a write and a server build at once, every processor busy, none stale and none missed.
+  rounds of a write and a server build at once, every processor busy (idle-priority spinners), and 150
+  with a normal-priority spinner per processor: none stale and none missed.
 - **3a** (resolver thread, landed): a request whose inputs are all as the previous build's is
   answered with that build's stdout, stderr and exit code, nothing built. The inputs: every
   source file's path and text (the stdlib's and the configuration's included), the environment
