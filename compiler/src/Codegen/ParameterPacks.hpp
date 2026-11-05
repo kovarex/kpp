@@ -38,6 +38,17 @@
     // How many values arguments stand for once their pack expansions are expanded.
     size_t expandedCount(Span<Expr*> args, Node* at);
 
+    // Retypes the body being emitted for args (a pack bound to one element, or the instance's own
+    // arguments again): the function's copy (currentFunction), or a generic lambda's private copy
+    // (retypedLambda) when its call operator is emitted.
+    void retypeForElement(const TemplateArgs& args, bool packElement = false)
+    {
+      if (retypedLambda)
+        global.retypeLambdaFor(retypedLambdaTy, retypedLambda, args, packElement);
+      else
+        global.retypeFor(currentFunction, args, currentClassTy, packElement);
+    }
+
     // Runs body on each value arguments stand for: an expression as it is, a pack expansion's
     // pattern once per element, the element bound.
     template<typename F>
@@ -84,12 +95,12 @@
         TemplateArgs elementArgs = original;
         elementArgs.elementPacks = packs;
         elementArgs.elementIndex = uint32_t(i);
-        global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
+        retypeForElement(elementArgs, true);
         locals[param] = elements[i];
         body(i);
       }
       locals.erase(param);
-      global.retypeFor(currentFunction, original, currentClassTy);
+      retypeForElement(original);
     }
 
     // A template type pack that a pattern names in a type (`(func(Args()), ...)`,
@@ -114,11 +125,11 @@
         TemplateArgs elementArgs = original;
         elementArgs.elementPacks = {pack};
         elementArgs.elementIndex = uint32_t(i);
-        global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
+        retypeForElement(elementArgs, true);
         ArgsScope scope(*this, &elementArgs);
         body(i);
       }
-      global.retypeFor(currentFunction, original, currentClassTy);
+      retypeForElement(original);
     }
 
     bool isPackExpansion(Expr* e);

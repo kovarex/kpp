@@ -80,6 +80,8 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   }
   resetFunctionState();
   currentFunction = f;
+  retypedLambda = nullptr;
+  retypedLambdaTy = nullptr;
   choicesRecorded = f == checked;
   bodyNow = f->body;
   nestedNamesByBody.clear();

@@ -33,6 +33,11 @@
     };
     std::vector<CaptureSlot> captureList(LambdaExpr* l, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr);
 
+    // Whether a generic lambda's call operator is retyped per element while it is emitted (from a
+    // private copy, emitLambda): it, the function it is written in or a class around has a template
+    // parameter pack, or its body has a `for constexpr`.
+    bool genericLambdaRetypedPerElement(LambdaExpr* l);
+
     // Whether d is the hidden object of a structured binding declaration that names symbol.
     static bool bindsName(Decl* d, uint32_t symbol);
 

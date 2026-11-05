@@ -159,13 +159,13 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
         t = elements[index], bound = true;
     if (!bound)
       elementArgs.pairs.push_back({var, elements[index]});
-    global.retypeFor(currentFunction, elementArgs, currentClassTy);
+    retypeForElement(elementArgs);
     currentArgs = &elementArgs;
     body(index);
     currentArgs = savedArgs;
   }
   if (!elements.empty())
-    global.retypeFor(currentFunction, original, currentClassTy);
+    retypeForElement(original);
 }
 
 auto codegen::Emitter::rangeTemporaryBase(Expr* e) -> const Ty*

@@ -1,13 +1,46 @@
-// spec: a generic lambda written in a variadic function template folds over the function's parameter pack beside its own `auto` parameter
-// pending: a generic lambda's body is typed for each call's arguments as a whole (GlobalScope::lambdaInstance), never per element of a pack it expands, so codegen refuses its capture of the pack ("a generic lambda that uses a parameter pack of the function it is written in")
+// spec: a generic lambda written in a variadic function template uses the function's parameter pack beside its own `auto` parameter: a fold over the pack, each element typed as its own (show picks its overload per element, for each call's argument), an expansion into a call's arguments with sizeof..., and a for constexpr over the pack's types
+// found by thread D (2026-11-05) with the lambda pack fix (6a87c1e8): a generic lambda's body was typed for each call as a whole, never per element of the pack, and its capture of the pack was refused ("a generic lambda that uses a parameter pack of the function it is written in"); its call operator is emitted from a private copy of its instance's body, retyped per element
+struct A { int v; };
+struct B { int v; };
+inline void show(int x) { println(x); }
+inline void show(const A& a) { println("A", a.v); }
+inline void show(const B& b) { println("B", b.v); }
+inline int digits(int a, int b, int c) { return a * 100 + b * 10 + c; }
+
 template<typename... Ts>
 int viaGeneric(Ts... ts)
 {
   auto g = [&](auto base) { return (base + ... + ts); };
   return g(10);
 }
+
+template<typename... Ts>
+void eachGeneric(Ts... ts)
+{
+  auto g = [&](auto prefix) { show(prefix); (show(ts), ...); };
+  g(1);
+  g(A{2});
+}
+
+template<typename... Ts>
+int spreadGeneric(Ts... ts)
+{
+  auto g = [&](auto scale) { return digits(ts...) * scale + int(sizeof...(ts)); };
+  return g(2);
+}
+
+template<typename... Ts>
+void typesGeneric()
+{
+  auto g = [&](auto x) { for constexpr (typename E : types<Ts...>) show(E{x}); };
+  g(9);
+}
+
 int main()
 {
   println(viaGeneric(1, 2, 3));
+  eachGeneric(7, A{8}, B{9});
+  println(spreadGeneric(1, 2, 3));
+  typesGeneric<B, int, A>();
   return 0;
 }

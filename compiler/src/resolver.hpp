@@ -548,6 +548,13 @@ public:
   // or null; fullArgs gets the enclosing instantiation's arguments plus the lambda's own, for
   // declarations in the body. Thread-safe.
   const Ty* lambdaInstance(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs, LambdaExpr** body);
+  // A copy of such an instance's body (body: lambdaInstance's) no one else has, typed for args (its
+  // fullArgs): for an emitter that retypes it in place, once per element of a pack expansion or
+  // `for constexpr` in it (retypeLambdaFor), while other threads read the instance's own copy. Not
+  // kept. Null when the lambda's environment is not known.
+  LambdaExpr* privateLambdaInstance(const Ty* lambdaTy, LambdaExpr* body, const TemplateArgs& args);
+  // Retypes such a copy for args, as retypeFor retypes a function's (packElement alike).
+  void retypeLambdaFor(const Ty* lambdaTy, LambdaExpr* body, const TemplateArgs& args, bool packElement = false);
   TemplateArgs classArgsOf(const Ty* classType); // Parameters of the class template -> arguments of the type.
   // Overload resolution by conversion ranking among candidates (members: objectType is the
   // object they are called on, classArgs its instantiation). Null if none is viable. nullConstants:

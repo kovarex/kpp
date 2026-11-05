@@ -857,6 +857,8 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   funcletOverride.clear();
   resetFunctionState();
   currentFunction = nullptr;
+  retypedLambda = nullptr;
+  retypedLambdaTy = nullptr;
   // The initializer's nodes were typed for this global alone, and their walk recorded its choices
   // (design.md 24): a global's own by its file's walk, a class template's static member's or a
   // variable template's by its instance's copy (GlobalScope::instanceInitializer, globalForOnce).

@@ -911,6 +911,56 @@
     return callTy;
   }
 
+  // Types l, a copy of a generic lambda's parameters and body (GlobalScope::privateLambdaInstance),
+  // for full in the environment the lambda was written in, as runLambdaInstance types an instance's
+  // own copy; element: again, for one element of a pack bound (its elementPacks and index, the
+  // `if constexpr` branches the whole instance took kept when keepBranches), as typeFunctionFor
+  // retypes a function's copy (GlobalScope::retypeLambdaFor).
+  void typeLambdaCopy(LambdaExpr* l, const LambdaEnv& env, const Subst& full, const TemplateArgs* element, bool keepBranches)
+  {
+    ResolveStats scratch;
+    Walker sub(*this, scratch, *env.tokens, env.text);
+    sub.file = env.file;
+    FileOfLookups walkedFile(env.file);
+    sub.scope = env.scope;
+    sub.thisType = env.thisType;
+    sub.activeSubst = &full;
+    sub.instantiationDepth = env.depth + 1;
+    sub.locals.items = env.locals;
+    if (element)
+    {
+      sub.retypingElements = true;
+      sub.keepConstexprBranches = keepBranches;
+      if (!element->elementPacks.empty())
+      {
+        sub.elementPacks = &element->elementPacks;
+        sub.elementIndex = element->elementIndex;
+      }
+    }
+    for (const LambdaCapture& cap : l->captures)
+      if (cap.decl)
+        sub.walkLocalDecl(cap.decl);
+    sub.pushTemplateParams(l->templateParams);
+    for (Decl* p : l->params)
+      sub.walkParam(static_cast<ParamDecl*>(p));
+    sub.walkType(l->returnType);
+    sub.returnFrames.push_back(nullptr);
+    sub.walkStmt(l->body);
+    sub.returnFrames.pop_back();
+  }
+
+  // The environment a generic lambda of type lambdaTy was written in (its enclosing walk's), or
+  // false when none is known.
+  bool lambdaEnvOf(const Ty* lambdaTy, LambdaEnv& out)
+  {
+    std::lock_guard lock(lambdaEnvMutex);
+    auto it = lambdaEnvs.find(lambdaTy);
+    if (it == lambdaEnvs.end() || !it->second.tokens)
+      return false;
+    out = it->second;
+    return true;
+  }
+
   // The deduced return type of an auto-returning function template for one instantiation,
   // checking its body now if no call has yet.
   const Ty* deducedReturnOf(FunctionDecl* f, const Subst& subst)

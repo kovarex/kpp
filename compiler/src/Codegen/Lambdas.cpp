@@ -209,9 +209,8 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
   // closure had them (typeInInstanceOf: whichever function lays the closure out first, a caller
   // that holds a closure an instance returned too), or as the function's emission has them
   // (currentArgs, in its body or in a lambda's in it); the parameter's own type is the template's
-  // (`Ts`), and the body's names of it are typed as the pack or as one element.
-  // (A generic lambda's body is typed for each call as a whole, never per element of a pack it
-  // expands: GlobalScope::lambdaInstance.)
+  // (`Ts`), and the body's names of it are typed as the pack or as one element. (A generic lambda's
+  // call operator that expands it is emitted from a private copy retyped per element: emitLambda.)
   std::vector<CaptureSlot> expanded;
   for (const CaptureSlot& s : out)
   {
@@ -221,8 +220,6 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
       expanded.push_back(s);
       continue;
     }
-    if (!l->templateParams.empty())
-      unsupported(l, "a generic lambda that uses a parameter pack of the function it is written in");
     const Ty* pack = l->closure ? global.typeInInstanceOf(pd, l->closure) : nullptr;
     if (!pack || pack->kind != TyKind::Pack)
     {
@@ -238,6 +235,24 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
       expanded.push_back({s.decl, s.byRef, nullptr, int(k), types.stripRef(pack->args[k])});
   }
   return expanded;
+}
+
+auto codegen::Emitter::genericLambdaRetypedPerElement(LambdaExpr* l) -> bool
+{
+  auto hasPack = [](Decl* d)
+  {
+    for (Decl* tp : d->templateParams)
+      if (tp->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(tp)->isPack)
+        return true;
+    return false;
+  };
+  for (Decl* tp : l->templateParams)
+    if (tp->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(tp)->isPack)
+      return true;
+  for (Decl* d = l->closure ? l->closure->parent : nullptr; d; d = d->parent)
+    if (hasPack(d))
+      return true;
+  return containsForConstexpr(l->body);
 }
 
 auto codegen::Emitter::bindsName(Decl* d, uint32_t symbol) -> bool
@@ -684,6 +699,24 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
     initializerOf = nullptr;
   }
   resetFunctionState();
+  if (args)
+  {
+    // A generic lambda's call operator that expands a pack, or has a `for constexpr`, is emitted
+    // from a private copy of its instance's body, retyped per element (retypeForElement) where no
+    // other thread reads it (a caller reads the instance's own copy: its default arguments). One
+    // emitted on its own (a generic lambda's, one on demand) retypes nothing of its caller's.
+    retypedLambda = nullptr;
+    retypedLambdaTy = nullptr;
+    if (!l->templateParams.empty() && genericLambdaRetypedPerElement(l))
+    {
+      LambdaExpr* own = global.privateLambdaInstance(t, l, *args);
+      if (!own)
+        unsupported(l, "a generic lambda whose environment is not known");
+      l = own;
+      retypedLambda = own;
+      retypedLambdaTy = t;
+    }
+  }
   bodyNow = l->body;
   // The function it is written in is the current function while its body is emitted (not the
   // one that happened to emit it first, a generic lambda's first caller): its operators and free

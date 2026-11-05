@@ -1787,6 +1787,23 @@ const Ty* GlobalScope::lambdaInstance(const Ty* lambdaTy, const TemplateArgs& ow
   return callTy;
 }
 
+LambdaExpr* GlobalScope::privateLambdaInstance(const Ty* lambdaTy, LambdaExpr* body, const TemplateArgs& args)
+{
+  Impl::LambdaEnv env;
+  if (!body || !impl->lambdaEnvOf(lambdaTy, env))
+    return nullptr;
+  LambdaExpr* copy = InstanceCopier(impl->instanceArena()).lambdaInstance(body);
+  impl->typeLambdaCopy(copy, env, toSubst(args), nullptr, false);
+  return copy;
+}
+
+void GlobalScope::retypeLambdaFor(const Ty* lambdaTy, LambdaExpr* body, const TemplateArgs& args, bool packElement)
+{
+  Impl::LambdaEnv env;
+  if (body && impl->lambdaEnvOf(lambdaTy, env))
+    impl->typeLambdaCopy(body, env, toSubst(args), &args, packElement);
+}
+
 size_t GlobalScope::scopeCount() const { return impl->scopes.load(); }
 size_t GlobalScope::entryCount() const { return impl->entries.load(); }
 size_t GlobalScope::typeCount() const { return impl->types.size(); }

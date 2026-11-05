@@ -21,6 +21,11 @@
     // private instance) and a generic lambda's body emitted from its LambdaExpr under arguments:
     // codegen chooses there itself.
     bool choicesRecorded = false;
+    // A generic lambda's call operator emitted from a private copy of its instance's body (one with
+    // pack expansions or a `for constexpr` over a pack, retyped per element): that copy and the
+    // lambda's type, which retypeForElement retypes instead of currentFunction. Null otherwise.
+    LambdaExpr* retypedLambda = nullptr;
+    const Ty* retypedLambdaTy = nullptr;
   };
 
   // What emitting a function's body builds up, from nothing for each function.
