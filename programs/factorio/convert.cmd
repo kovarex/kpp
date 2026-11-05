@@ -92,7 +92,23 @@ for %%c in (debug release final) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%
 rem And the official builds' FinalRelease (docs/final-release.md): Release's defines with FINAL_RELEASE,
 rem PACKAGED_BUILD and ALL_IN_ONE, a group whose text it alone has written with config::finalRelease.
 %KPPC% --no-std --quiet --convert-marks --convert-final --convert kpp\whole-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --convert-merge kpp\whole-debug kpp\whole-release %WHOLE% overrides\configuration-choices.txt kpp\whole-final || goto :failed
+rem With CONVERT_LINUX=1 (CONVERSION.md TODO 17, until the Linux side is clean): the same three for Linux
+rem (--convert-platform linux, clang's predefines in linux-predefines.txt), each configuration's two made
+rem one by config::platform (--convert-merge-platform), and those three made one by the configurations.
+set WHOLEIN=kpp\whole
+if not defined CONVERT_LINUX goto :wholemerge
+set STEP=the Linux conversion of the whole
+for %%c in (debug release final) do if exist kpp\whole-linux-%%c rd /s /q kpp\whole-linux-%%c
+for %%c in (debug release final) do if exist kpp\whole-both-%%c rd /s /q kpp\whole-both-%%c
+set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
+%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert kpp\whole-linux-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-release --convert kpp\whole-linux-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-final --convert kpp\whole-linux-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+set STEP=the platforms made one
+for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-%%c kpp\whole-linux-%%c kpp\whole-both-%%c > kpp\whole-both-%%c.log 2>&1 || (type kpp\whole-both-%%c.log& goto :failed)
+set WHOLEIN=kpp\whole-both
+:wholemerge
+%KPPC% --convert-merge %WHOLEIN%-debug %WHOLEIN%-release %WHOLE% overrides\configuration-choices.txt %WHOLEIN%-final || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
