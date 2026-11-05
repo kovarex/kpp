@@ -40,7 +40,10 @@
   FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes, const std::vector<bool>* nullConstants,
                                   const Ty** inheritedFrom, bool implicitOnly = false, bool* ambiguous = nullptr);
   // The one rule for which conversion operator a conversion runs (design.md 24; GlobalScope::chooseConversion).
-  FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs);
+  // contextualBool: a conversion to bool may use an explicit operator bool (a condition); false for a
+  // copy-initialization, an argument (C++ [class.conv.fct] 2).
+  FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs,
+                                 bool contextualBool = true);
 
   int listInitRank(const Ty* list, const Ty* p, int depth);
 

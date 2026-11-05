@@ -180,8 +180,8 @@ auto GlobalScope::Impl::chooseConstructor(const Ty* classType, const std::vector
 
 // design.md 24: the one rule for which conversion operator a conversion runs (GlobalScope::
 // chooseConversion says what it does), for codegen, the interpreter and the checker.
-auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs)
-    -> FunctionDecl*
+auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs,
+                                         bool contextualBool) -> FunctionDecl*
 {
   if (foundIn)
     *foundIn = nullptr;
@@ -280,7 +280,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
       {
         bool exact = ret == target;
         bool derived = !exact && ret->kind == TyKind::Class && target->kind == TyKind::Class && !types.isDependent(ret) && isBaseClass(target, ret);
-        if (isExplicitOne && target->kind != TyKind::Bool && (!explicitCast || !(exact || derived)))
+        if (isExplicitOne && !(target->kind == TyKind::Bool && (contextualBool || explicitCast)) && (!explicitCast || !(exact || derived)))
           break;
         if (exact)
           rank = 0;
@@ -880,50 +880,48 @@ auto GlobalScope::Impl::collectScalarConversions(const Ty* cls, const Ty*& found
 
 auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth, bool allowExplicit, bool rvalues) -> bool
 {
-  if (baseDepth > 8)
+  (void)depth;
+  (void)baseDepth;
+  if (!a || a->kind != TyKind::Class)
     return false;
-  Scope* s = classScopeOf(a);
-  if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
-    return false;
-  Subst subst = substFor(a);
-  for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+  if (!param || !param->isKnown() || types.isDependent(param))
   {
-    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
-      continue;
-    const Ty* ft = declaredTypeOf(m, &subst, 0);
-    if (!ft || ft->kind != TyKind::Function)
-      continue;
-    const Ty* result = ft->inner;
-    if (auto* f = static_cast<FunctionDecl*>(m); !f->templateParams.empty())
+    // A parameter not known decides no overload (conversionRank): any conversion operator takes it.
+    std::function<bool(const Ty*, int)> any = [&](const Ty* k, int level) -> bool
     {
-      // `template<class T> requires isPointer<T> operator T()`: its arguments deduced from the type
-      // wanted, and its constraint holding for them (no way to a nullptr_t, a class).
-      const Ty* wanted = param ? types.unqualified(types.stripRef(param)) : nullptr;
-      if (!wanted || !wanted->isKnown() || types.isDependent(wanted))
-        continue;
-      Subst own = subst;
-      deduce(types.unqualified(types.stripRef(result)), wanted, own);
-      bool bound = true;
-      for (Decl* p : f->templateParams)
-        bound = bound && own.find(p) && own.find(p)->isKnown();
-      if (!bound || !requiresHolds(f, own))
-        continue;
-      result = substitute(result, own);
-    }
-    if (rvalues && result->kind == TyKind::LRef && result->inner->kind != TyKind::Function)
-      continue;
-    if (conversionRank(result, param, depth + 1) < 4)
-      return true;
+      ClassDecl* kd = k && k->kind == TyKind::Class ? classDefinition(k) : nullptr;
+      if (!kd || level > 8)
+        return false;
+      for (Decl* m : membersRead(kd))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion))
+          return true;
+      std::vector<const Ty*> bases;
+      if (directBases(k, kd, bases))
+        for (const Ty* b : bases)
+          if (any(b, level + 1))
+            return true;
+      return false;
+    };
+    return any(a, 0);
   }
-  ClassDecl* def = classDefinition(a);
-  std::vector<const Ty*> bases;
-  if (def && directBases(a, def, bases))
-    for (const Ty* b : bases)
-      if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1, allowExplicit, rvalues))
-        return true;
-  return false;
+  // The one rule codegen converts by (design.md 24, chooseConversion), so that an overload is viable
+  // through an operator exactly when the call can run it. rvalues: a parameter binding an rvalue,
+  // which an operator returning an lvalue reference does not give.
+  Subst args;
+  FunctionDecl* f = chooseConversion(a, param, GlobalScope::ConversionKind::ToType, allowExplicit, nullptr, &args, allowExplicit);
+  if (!f)
+    return false;
+  if (rvalues)
+  {
+    const Ty* ft = declaredTypeOf(f, args.empty() ? nullptr : &args, 0);
+    const Ty* result = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
+    if (result && !f->templateParams.empty())
+      result = substitute(result, args);
+    if (result && result->kind == TyKind::LRef && result->inner && result->inner->kind != TyKind::Function)
+      return false;
+  }
+  return true;
 }
-
 auto GlobalScope::Impl::whenMemberHolds(Decl* m, const Subst& subst, int depth) -> std::optional<bool>
 {
   Decl* c = m ? m->parent : nullptr;

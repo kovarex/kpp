@@ -1,0 +1,25 @@
+// spec: overload resolution never converts an argument by an explicit operator bool (C++ [class.conv.fct] 2: an explicit conversion function is only for a direct initialization or a condition), so `make(Kind::A, location)` takes the overload for the class, not one taking a bool
+// factorio: EditorAction's constructors (`EditorAction(Type, const bool&)` beside `EditorAction(Type, RelativeItemStackLocation)`, whose class has `explicit operator bool()`), when overload ranking went to the one conversion rule (design.md 24, chooseConversion): 37 game tests failed until the rule told a condition from an argument
+enum class Kind { A };
+struct Location
+{
+  int slot = 9;
+  constexpr explicit operator bool() const { return slot != 0; }
+};
+struct Action
+{
+  Action(Kind, const bool& v) : flag(v), slot(-1) {}
+  Action(Kind, Location l) : flag(false), slot(l.slot) {}
+  bool flag;
+  int slot;
+};
+int main()
+{
+  Location location;
+  Action a(Kind::A, location);
+  bool truth = false;
+  if (location)
+    truth = true;
+  println(a.slot, " ", truth);
+  return 0;
+}
