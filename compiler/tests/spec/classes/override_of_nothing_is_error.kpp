@@ -1,14 +1,16 @@
-// spec: a member function marked override that overrides no virtual function of a base (here: its parameter is int where the base's is unsigned) is an error, as in C++; and so is an object of a class whose pure virtual function nothing overrides (it is abstract)
+// spec: a member function marked override that overrides no virtual function of a base (here: its parameter is int where the base's is unsigned) is an error, as in C++
 // factorio: found when the library's sizes became unsigned (OutStream::writeBytes(const char*, ContainerSize)): a stream deriving from OutStream with the old `writeBytes(const char*, int) override` compiled, and writing to it called the pure virtual function (an access violation)
-// pending: override is not checked, and an abstract class can be instantiated; the program crashes in the pure virtual call (D)
-// error: override_of_nothing_is_error.kpp:12: error: write is marked override but overrides no virtual function
-struct Base
+// error: override_of_nothing_is_error.kpp:14: error: write is marked override but overrides no virtual function
+class Base
 {
+public:
   virtual void write(unsigned count) = 0;
   virtual ~Base() {}
 };
-struct Derived : Base
+class Derived : public Base
 {
+public:
+  void tell(unsigned count) { write(count); }
   void write(int count) override { println(count); }
 };
 int main()

@@ -495,6 +495,9 @@
     static std::string textStored(const std::string& as);
     // The Text parameters of f: the last one, without a default, not from C; f's result holds none.
     void checkTextSignature(FunctionDecl* f);
+    // A member function marked override must override a virtual function of a base (C++
+    // [class.virtual]): an error where it overrides none, in a class or a class template's instance.
+    void checkOverride(FunctionDecl* f);
     // A variable holding a Text: a parameter's local copy only, never a data member or a global.
     void checkTextVariable(VariableDecl* v, const Ty* declared);
 

@@ -2523,6 +2523,30 @@ auto GlobalScope::Impl::Walker::textStored(const std::string& as) -> std::string
   return "a Text is valid only during the call that gives it, so it cannot be " + as + " (design.md 14)";
 }
 
+auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
+{
+  // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
+  // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
+  if (!(f->flags & DF_Override) || probing || retypingElements || !file || file->isImported)
+    return;
+  Decl* cls = impl.owningClassOf(f);
+  if (!cls || cls->kind != NodeKind::ClassDecl)
+    return;
+  const Ty* self = impl.selfType(cls);
+  if (activeSubst)
+    self = impl.substitute(self, *activeSubst);
+  else if (inGenericTemplate())
+    return; // (a template's own walk: its instances say what the parameters are)
+  if (!self || !self->isKnown() || types.isDependent(self))
+    return;
+  std::optional<bool> overrides = impl.overridesVirtual(self, impl.overrideKey(f, self), 0);
+  if (!overrides || *overrides)
+    return;
+  const NamePart& n = f->name.last();
+  std::string name = (f->flags & DF_Destructor) ? std::string("the destructor") : n.special ? std::string("this operator") : impl.debugName(n.symbol);
+  impl.reportCheckerError(file, f->token, name + " is marked override but overrides no virtual function");
+}
+
 auto GlobalScope::Impl::Walker::checkTextSignature(FunctionDecl* f) -> void
 {
   if (probing || !impl.textDecl() || activeSubst)
@@ -4836,6 +4860,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkExpr(f->condition);
       checkDefinedOnce(f);
       checkTextSignature(f);
+      checkOverride(f);
       Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);
       for (FunctionDecl::CtorInit& init : f->ctorInits)
       {

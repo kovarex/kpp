@@ -2,6 +2,36 @@
 // of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
 
+auto GlobalScope::Impl::overridesVirtual(const Ty* t, const std::string& key, int depth) -> std::optional<bool>
+{
+  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > 16)
+    return std::nullopt;
+  ClassDecl* def = classDefinition(t);
+  std::vector<const Ty*> bases;
+  if (!def || !directBases(t, def, bases))
+    return std::nullopt;
+  bool unknown = false;
+  for (const Ty* b : bases)
+  {
+    ClassDecl* bd = b && b->kind == TyKind::Class ? classDefinition(b) : nullptr;
+    if (!bd)
+    {
+      unknown = true;
+      continue;
+    }
+    // A virtual function of the base itself, or (not marked: an override of its own) of a base of it.
+    for (Decl* m : membersRead(bd))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Pure)) && !(m->flags & (DF_Static | DF_Constructor)) &&
+          m->templateParams.empty() && overrideKey(static_cast<FunctionDecl*>(m), b) == key)
+        return true;
+    std::optional<bool> deeper = overridesVirtual(b, key, depth + 1);
+    if (deeper && *deeper)
+      return true;
+    unknown = unknown || !deeper;
+  }
+  return unknown ? std::nullopt : std::optional<bool>(false);
+}
+
 auto GlobalScope::Impl::isBaseClass(const Ty* base, const Ty* derived) -> bool
 {
   if (isBaseScope(classScopeOf(base), classScopeOf(derived)))

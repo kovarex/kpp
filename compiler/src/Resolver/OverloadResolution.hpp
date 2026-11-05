@@ -8,6 +8,11 @@
   // linked to the class template's scope.
   bool isBaseClass(const Ty* base, const Ty* derived);
 
+  // Whether a base of class t (directly or deeper) declares a virtual function whose override key
+  // (overrideKey) is key: what a member function marked `override` must override (C++
+  // [class.virtual]). Null when a base is not known.
+  std::optional<bool> overridesVirtual(const Ty* t, const std::string& key, int depth = 0);
+
   // Whether a class's bases, as its scope and its bases' scopes link them (once, without
   // arguments), leave one out: a base its arguments decide, or one outside the program.
   bool hasUnlinkedBase(Scope* cls, int depth = 0);
