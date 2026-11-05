@@ -1121,6 +1121,36 @@ namespace
           m->pointee = nullptr;
           type = m;
         }
+        else if (at(P::LParen) && (at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) && at(P::RParen, 2) && at(P::LBracket, 3))
+        {
+          // Abstract reference or pointer to an array: `T (&)[N]`, `T (&&)[N]`, `T (*)[N]` (a
+          // parameter without a name). The bound belongs to the element type, which the reference
+          // or pointer then wraps, as in a named declarator's `T (&name)[N]`.
+          uint32_t start = pos;
+          advance(); // (
+          P which = at(P::Star) ? P::Star : at(P::Amp) ? P::Amp : P::AndAnd;
+          advance();
+          advance(); // )
+          Type* arrayed = parseArraySuffixes(type);
+          if (which == P::Star)
+          {
+            PointerType* p = node<PointerType>(start);
+            p->pointee = arrayed;
+            type = p;
+          }
+          else if (which == P::Amp)
+          {
+            LRefType* r = node<LRefType>(start);
+            r->referenced = arrayed;
+            type = r;
+          }
+          else
+          {
+            RRefType* r = node<RRefType>(start);
+            r->referenced = arrayed;
+            type = r;
+          }
+        }
         else if (at(P::LParen) && at(P::Star, 1) && at(P::RParen, 2) && at(P::LParen, 3))
         {
           // Abstract pointer to function: R (*)(Args)
