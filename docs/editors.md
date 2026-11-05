@@ -71,9 +71,9 @@ Status (2026-11-03):
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the
     editor has not opened;
   - hover, go to definition, references, document symbols, workspace symbols; also on the names
-    in a declaration's `when (...)` condition. One the parser decided (of config constants and
-    literals, at namespace or class scope) has no names resolved, so its config constants are
-    found by name in the configuration's `namespace config`;
+    in a declaration's `when (...)` condition, which the resolver resolves where the parser
+    decided it too (A's 5ed6e1f0). A config constant has no definition in the sources (the
+    configuration writes it): hover says who set it;
   - completion, triggered by `.`, `>` and `:`;
   - rename, with prepareRename.
 - **Positions** are UTF-16 columns, the protocol's default.
