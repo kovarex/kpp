@@ -40,10 +40,12 @@ public:
   char front() const { return this->chars[0]; }
   char back() const { return this->chars[this->byteCount - 1]; }
 
+  // count bytes from start, fewer when the view ends first; OutOfRange when start > size() (as
+  // String's substr).
   StringView substr(ContainerSize start, ContainerSize count) const
   {
     if (start > this->byteCount)
-      start = this->byteCount;
+      throwOutOfRange("StringView::substr: position out of range");
     if (count > this->byteCount - start)
       count = this->byteCount - start;
     return StringView(this->chars + start, count);
@@ -132,6 +134,8 @@ public:
   ContainerSize find_first_of(char c, ContainerSize from) const { return this->find(c, from); }
   ContainerSize find_first_of(StringView set, ContainerSize from) const
   {
+    if (from > this->byteCount)
+      return npos;
     ContainerSize i = this->substr(from).find_first_of(set);
     return i == npos ? npos : i + from;
   }
@@ -152,6 +156,8 @@ public:
   }
   ContainerSize find(StringView needle, ContainerSize from) const
   {
+    if (from > this->byteCount)
+      return npos;
     StringView rest = this->substr(from);
     ContainerSize i = rest.find(needle);
     return i == npos ? npos : i + from;
