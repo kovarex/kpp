@@ -121,6 +121,19 @@
     };
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
+    // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`):
+    // the elements of its brace lists, nested ones included. A temporary one of them makes that a
+    // reference member binds lives as long as the variable ([class.temporary] 6), never only to the
+    // end of the declaration (bindReferenceMember records it in extendedTemporaries).
+    const std::vector<const Expr*>* extendingElements = nullptr;
+    std::vector<std::string> extendedTemporaries;
+    // A variable of static storage so initialised (a global, a static local): such a temporary is an
+    // object of static storage of its own (staticTemporary: this name's ".temp<n>", thread_local for
+    // one per thread), since the function initialising the variable returns; never destroyed, as
+    // the variable is not.
+    std::string extendingStatic;
+    bool extendingThreadLocal = false;
+    uint32_t extendingCount = 0;
     struct Loop
     {
       std::string breakLabel, continueLabel;

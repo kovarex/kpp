@@ -920,10 +920,42 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
     pushScope();
     if (t->isReference() && init)
     {
-      // The address of what the reference is bound to.
-      std::string target = isClass(types.stripRef(init->ty)) ? rvalue(init).text : lvalue(init);
+      // The address of what the reference is bound to: a temporary lives as long as the reference
+      // ([class.temporary] 6), an object of static storage of its own, never destroyed (until
+      // 2026-11-05 it was the initialising function's, destroyed at its end: `const T& g = T(1);`,
+      // `const int& n = f();` dangled).
+      std::string target;
+      {
+        // A member of a temporary (`const int& n = make().id;`) would keep the whole temporary.
+        Expr* e = init;
+        bool member = false;
+        while (e && (e->kind == NodeKind::ParenExpr || (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow)))
+        {
+          member = member || e->kind == NodeKind::MemberExpr;
+          e = e->kind == NodeKind::ParenExpr ? static_cast<ParenExpr*>(e)->inner : static_cast<MemberExpr*>(e)->base;
+        }
+        if (member && e && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e))
+          unsupported(at, "a reference of static storage bound to a member of a temporary");
+      }
+      if (!isLvalueExpression(init) && !(init->ty && init->ty->isReference()))
+      {
+        const Ty* referenced = types.unqualified(types.stripRef(t));
+        const Ty* made = isClass(referenced) && init->ty && isClass(types.stripRef(init->ty)) ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : referenced;
+        extendingStatic = name;
+        extendingThreadLocal = perThread;
+        extendingCount = 0;
+        target = staticTemporary(made, at);
+        extendingStatic.clear();
+        initializeFrom(target, made, init, at);
+        if (isClass(made) && isClass(referenced) && canonicalClass(made, at) != canonicalClass(referenced, at))
+          target = convert(Value{target, made}, referenced, at).text; // to the base it binds
+      }
+      else
+        target = isClass(types.stripRef(init->ty)) ? rvalue(init).text : lvalue(init);
       fn += "  store ptr " + target + ", ptr " + name + "\n";
     }
+    else if (init && isClass(t))
+      initializeExtending(name, t, v, init, name, perThread);
     else if (init)
       initializeFrom(name, t, init, at);
     else if (isClass(t))

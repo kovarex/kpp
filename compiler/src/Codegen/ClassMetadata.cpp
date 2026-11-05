@@ -656,10 +656,25 @@ auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const T
   withSingleElement(source, at, [&](Expr* one)
   {
     std::string target;
+    // An element of a variable's brace list that makes a temporary: it lives as long as the
+    // variable (initializeExtending), one of static storage's in static storage of its own.
+    bool extended = extendingElements && std::find(extendingElements->begin(), extendingElements->end(), one) != extendingElements->end() &&
+                    !isLvalueExpression(one) && !(one->ty && one->ty->isReference());
     if (isClass(types.stripRef(one->ty)))
     {
-      Value object = rvalue(one);
+      Value object;
+      if (extended && !extendingStatic.empty())
+      {
+        const Ty* made = withCurrentArgs(types.unqualified(types.stripRef(one->ty)));
+        std::string kept = staticTemporary(made, at);
+        initializeFrom(kept, made, one, at);
+        object = {kept, made};
+      }
+      else
+        object = rvalue(one);
       target = object.text;
+      if (extended && object.isTemporary)
+        extendedTemporaries.push_back(object.text);
       const Ty* referenced = refTy ? types.unqualified(types.stripRef(refTy)) : nullptr;
       if (referenced && isClass(referenced) && !types.isDependent(referenced) && isClass(object.ty) &&
           canonicalClass(object.ty, at) != canonicalClass(referenced, at))
@@ -680,7 +695,14 @@ auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const T
       if (refTy && refTy->kind == TyKind::RRef && have == want && isLvalueExpression(one))
         fail(at, "the reference member of type " + types.toString(refTy, &symbols) +
                      " given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
-      target = lvalue(one);
+      if (extended && !extendingStatic.empty() && want && !isAggregate(want))
+      {
+        // (a local's scalar temporary is the function's: it outlives the variable)
+        target = staticTemporary(want, at);
+        initializeFrom(target, want, one, at);
+      }
+      else
+        target = lvalue(one);
     }
     fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
   });

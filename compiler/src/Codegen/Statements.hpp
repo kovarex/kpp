@@ -69,6 +69,16 @@
     // module or piece), which names it too (staticLocalElsewhere); the guard stays the function's.
     void staticLocal(VariableDecl* v, const Ty* t);
 
+    // Variable v of class type t initialised from init at slot, a temporary that a reference member
+    // binds in its brace lists kept as long as v ([class.temporary] 6: `Holder h{T(1)}`, `= {...}`,
+    // nested; not through `Holder{...}`, as clang has it): a local's destroyed when v's scope ends,
+    // after v; one of a variable of static storage (staticName: v's global) an object of static
+    // storage of its own (staticTemporary).
+    void initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal);
+    // An object of static storage for a temporary that a reference of static storage keeps
+    // (extendingStatic's name and a number), zero-initialised, never destroyed.
+    std::string staticTemporary(const Ty* type, Node* at);
+
     // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
     // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).
     void declareTupleBindings(VariableDecl* v);

@@ -1,0 +1,8 @@
+ctor 1
+ctor 2
+ctor 3
+main 256
+1 8 22 3 4
+ctor 5
+255 5 6
+256 5 6

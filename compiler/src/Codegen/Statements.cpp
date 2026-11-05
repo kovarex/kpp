@@ -224,6 +224,8 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   fn += "  store i1 true, ptr " + guard + "\n";
   if (isRef)
     fn += "  store ptr " + lvalue(v->init) + ", ptr " + name + "\n";
+  else if (v->init && isClass(t))
+    initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
   else if (v->init)
     initializeFrom(name, t, v->init, v);
   else if (isClass(t))
@@ -233,6 +235,65 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   destroyTemps();
   emitBranch(done);
   startBlock(done);
+}
+
+auto codegen::Emitter::initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal) -> void
+{
+  // The elements of its brace lists (`Outer o{{T(3)}, 4}`), not those of a list inside an element
+  // (a call's argument `f(Holder{T(2)})`, whose temporary dies with the statement).
+  std::vector<const Expr*> elements;
+  auto collect = [&](auto& self, Expr* e) -> void
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e)
+      return;
+    if (e->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(e)->text)
+      for (Expr* a : static_cast<BraceInitExpr*>(e)->args)
+        self(self, a);
+    else
+      elements.push_back(e);
+  };
+  if (init->kind == NodeKind::BraceInitExpr)
+    collect(collect, init);
+  if (elements.empty())
+  {
+    initializeFrom(slot, t, init, v);
+    return;
+  }
+  const std::vector<const Expr*>* outerElements = extendingElements;
+  std::vector<std::string> outerExtended = std::move(extendedTemporaries);
+  std::string outerStatic = std::move(extendingStatic);
+  bool outerThreadLocal = extendingThreadLocal;
+  uint32_t outerCount = extendingCount;
+  extendedTemporaries.clear();
+  extendingElements = &elements;
+  extendingStatic = staticName;
+  extendingThreadLocal = threadLocal;
+  extendingCount = 0;
+  initializeFrom(slot, t, init, v);
+  extendingElements = outerElements;
+  extendingStatic = std::move(outerStatic);
+  extendingThreadLocal = outerThreadLocal;
+  extendingCount = outerCount;
+  // A local's: destroyed when its scope ends, after v (pushed after them).
+  for (const std::string& addr : extendedTemporaries)
+    for (size_t i = statementTemps.size(); i-- > 0;)
+      if (statementTemps[i].addr == addr && !statementTemps[i].unwindOnly && !statementTemps[i].freeMemory && !statementTemps[i].exception)
+      {
+        scopes.back().push_back(statementTemps[i]);
+        statementTemps.erase(statementTemps.begin() + i);
+        break;
+      }
+  extendedTemporaries = std::move(outerExtended);
+}
+
+auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
+{
+  std::string name = extendingStatic.substr(0, extendingStatic.size() - 1) + ".temp" + std::to_string(extendingCount++) + "\"";
+  addOwnedEntry(name + (extendingThreadLocal ? " = internal thread_local global " : " = internal global ") + llType(type, at) + " zeroinitializer" +
+                alignSuffix(type, 0, at) + "\n");
+  return name;
 }
 
 auto codegen::Emitter::declareTupleBindings(VariableDecl* v) -> void
@@ -396,7 +457,9 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     fn += "  store ptr " + addr + ", ptr " + slot + "\n";
     return;
   }
-  if (v->init)
+  if (v->init && isClass(t))
+    initializeExtending(slot, t, v, v->init, "", false);
+  else if (v->init)
     initializeFrom(slot, t, v->init, v);
   else if (isClass(t))
     defaultConstruct(slot, t, v);

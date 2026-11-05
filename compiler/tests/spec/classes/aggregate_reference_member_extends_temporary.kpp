@@ -1,0 +1,25 @@
+// spec: a temporary bound to a reference member of an aggregate initialised with braces lives as long as the aggregate ([class.temporary]/6, as clang and MSVC have it), `Holder h{T(1)}`, `= {...}`, nested in another aggregate, an rvalue reference member too: it is destroyed after the aggregate, at the end of its scope, never at the end of the declaration, which left the reference dangling (until 2026-11-05); not one of a list inside an element (a call's argument), nor through `Holder{...}` (clang destroys that one with the declaration too)
+struct T
+{
+  int id;
+  T(int i) : id(i) { println("ctor ", id); }
+  T(const T& o) : id(o.id + 100) { println("copy ", id); }
+  ~T() { println("dtor ", id); }
+  int get() const { return id; }
+};
+struct Holder { const T& ref; };
+struct Outer { Holder h; int n; };
+struct Two { const T& a; T&& b; };
+struct Wrapped { int v; };
+int read(Holder h) { return h.ref.get(); }
+int main()
+{
+  { Holder h{T(1)}; println("use ", h.ref.get()); }
+  { Holder h = {T(2)}; println("use ", h.ref.get()); }
+  { Outer o{{T(3)}, 4}; println("use ", o.h.ref.get(), " ", o.n); }
+  { Two t{T(4), T(5)}; println("use ", t.a.get(), " ", t.b.get()); }
+  { Wrapped w{read(Holder{T(6)})}; println("use ", w.v); }
+  { auto h = Holder{T(7)}; println("made"); }
+  println("end");
+  return 0;
+}

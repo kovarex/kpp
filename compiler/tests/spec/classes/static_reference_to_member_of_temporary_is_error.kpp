@@ -1,0 +1,9 @@
+// spec: a reference of static storage bound to a member of a temporary would keep the whole temporary for the program; it is an error until codegen keeps it (never the member of a temporary destroyed with the initialiser, which dangled until 2026-11-05)
+// error: static_reference_to_member_of_temporary_is_error.kpp:5: error: a use of the global member, whose definition failed (codegen does not support a reference of static storage bound to a member of a temporary yet)
+struct T { int id; };
+T make(int i) { return T{i}; }
+const int& member = make(5).id;
+int main()
+{
+  return member;
+}
