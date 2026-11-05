@@ -1778,6 +1778,104 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
     return out;
   }
 
+  // Whether two types are written alike: the same builtin type, the same name (no template
+  // arguments), or const, volatile and pointers to such (sameWrittenType's whole rule: any other form
+  // is another type here).
+  bool sameWrittenType(const Type* a, const Type* b)
+  {
+    if (!a || !b || a->kind != b->kind)
+      return false;
+    switch (a->kind)
+    {
+      case NodeKind::BuiltinType:
+      {
+        auto* x = static_cast<const BuiltinType*>(a);
+        auto* y = static_cast<const BuiltinType*>(b);
+        return x->keyword == y->keyword && x->longCount == y->longCount && x->isUnsigned == y->isUnsigned && x->isSigned == y->isSigned;
+      }
+      case NodeKind::ConstType:
+      {
+        auto* x = static_cast<const ConstType*>(a);
+        auto* y = static_cast<const ConstType*>(b);
+        return x->isConst == y->isConst && x->isVolatile == y->isVolatile && sameWrittenType(x->inner, y->inner);
+      }
+      case NodeKind::PointerType:
+        return sameWrittenType(static_cast<const PointerType*>(a)->pointee, static_cast<const PointerType*>(b)->pointee);
+      case NodeKind::NamedType:
+      {
+        const QualifiedName& x = static_cast<const NamedType*>(a)->name;
+        const QualifiedName& y = static_cast<const NamedType*>(b)->name;
+        if (x.global != y.global || x.typeQualifier || y.typeQualifier || x.parts.size() != y.parts.size())
+          return false;
+        for (size_t i = 0; i < x.parts.size(); ++i)
+          if (x.parts[i].symbol != y.parts[i].symbol || x.parts[i].special || y.parts[i].special || x.parts[i].hasTemplateArgs ||
+              y.parts[i].hasTemplateArgs)
+            return false;
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  // The imported C functions that the standard library defines at global scope as functions of its
+  // own, with the same name and parameter types, are left out of the import (C's decision,
+  // 2026-11-05): the library's is the function a call finds. glibc's math.h declares the BSD functions
+  // `int isinf(double)` and `int isnan(double)` that C99's macros replaced, beside the library's
+  // `bool isinf(double)`, and every call of one was ambiguous, the library's own isfinite's included.
+  // No rename and no fallback: a C function whose parameters differ, or are written another way (a
+  // typedef the library does not write), stays, and an ambiguity left is the program's error. The
+  // library's own `extern "C"` declarations of C functions (`extern "C" double sqrt(double)`) are the
+  // same functions, no clash, and leave nothing out; nor does a library function that may not exist (a
+  // `when`, or private to its file). The names left out, sorted, in names.
+  size_t leaveOutLibraryFunctions(std::vector<std::unique_ptr<ParsedFile>>& parsed, ParsedFile& imported, const SymbolTable& symbols,
+                                  std::vector<std::string>& names)
+  {
+    std::unordered_map<uint32_t, std::vector<const FunctionDecl*>> library;
+    for (const std::unique_ptr<ParsedFile>& p : parsed)
+      if (p->isLibrary && !p->isImported)
+        for (Decl* d : p->decls)
+          if (d->kind == NodeKind::FunctionDecl && d->templateParams.empty() && !d->when && !d->filePrivate && !(d->flags & DF_ExternC))
+          {
+            auto* f = static_cast<const FunctionDecl*>(d);
+            if (f->name.parts.size() == 1 && !f->name.global && !f->name.last().special && !f->name.last().hasTemplateArgs)
+              library[f->name.last().symbol].push_back(f);
+          }
+    auto declaredByLibrary = [&](const FunctionDecl* c)
+    {
+      if (c->name.parts.size() != 1 || c->name.last().special)
+        return false;
+      auto it = library.find(c->name.last().symbol);
+      if (it == library.end())
+        return false;
+      for (const FunctionDecl* f : it->second)
+      {
+        if (f->params.size() != c->params.size() || (f->flags & DF_Variadic) != (c->flags & DF_Variadic))
+          continue;
+        bool same = true;
+        for (size_t i = 0; i < f->params.size() && same; ++i)
+          same = f->params[i]->kind == NodeKind::ParamDecl && c->params[i]->kind == NodeKind::ParamDecl &&
+                 sameWrittenType(static_cast<const ParamDecl*>(f->params[i])->type, static_cast<const ParamDecl*>(c->params[i])->type);
+        if (same)
+          return true;
+      }
+      return false;
+    };
+    size_t kept = 0, leftOut = 0;
+    std::set<std::string> leftOutNames;
+    for (Decl* d : imported.decls)
+      if (d->kind == NodeKind::FunctionDecl && declaredByLibrary(static_cast<const FunctionDecl*>(d)))
+      {
+        ++leftOut;
+        leftOutNames.insert(std::string(symbols.name(static_cast<const FunctionDecl*>(d)->name.last().symbol)));
+      }
+      else
+        imported.decls.data[kept++] = d;
+    imported.decls.count = uint32_t(kept);
+    names.assign(leftOutNames.begin(), leftOutNames.end());
+    return leftOut;
+  }
+
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                       SymbolTable& symbols, const Options& options)
   {
@@ -1920,10 +2018,20 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
       parsed[i]->tokens = &lexed[i].tokens;
       parsed[i]->text = files[i].text;
     }
-    char line[512];
-    snprintf(line, sizeof line, "imports: %zu header(s) -> %zu declarations, %zu parse errors (ignored), %.3f s%s\n", headers.size(),
-             size_t(parsed.back()->declCount), parsed.back()->diagnostics.size(), seconds(std::chrono::steady_clock::now() - importStart),
-             cacheHit ? " (cached)" : "");
+    std::vector<std::string> libraryNames;
+    size_t leftOut = leaveOutLibraryFunctions(parsed, *parsed.back(), symbols, libraryNames);
+    std::string leftOutText;
+    if (leftOut)
+    {
+      leftOutText = ", " + std::to_string(leftOut) + " left out as the standard library's (";
+      for (size_t i = 0; i < libraryNames.size(); ++i)
+        leftOutText += (i ? ", " : "") + libraryNames[i];
+      leftOutText += ")";
+    }
+    char line[1024];
+    snprintf(line, sizeof line, "imports: %zu header(s) -> %zu declarations, %zu parse errors (ignored)%s, %.3f s%s\n", headers.size(),
+             size_t(parsed.back()->declCount), parsed.back()->diagnostics.size(), leftOutText.c_str(),
+             seconds(std::chrono::steady_clock::now() - importStart), cacheHit ? " (cached)" : "");
     lastImportsLine = line; // a compile server's incremental build prints it again (Build::importsLine)
     report("%s", line);
   }

@@ -1,6 +1,5 @@
 // spec: a program importing the C library's math.h calls the stdlib's isinf, isnan and isfinite (bool, the C++ standard's), not a C library's own functions of those names: glibc's math.h also declares the obsolete BSD `int isinf(double)` and `int isnan(double)`, which an import must not set against the stdlib's (`true false true true 2.5`)
 // factorio: the game's Lua and libraries import math.h on Linux and FreeBSD targets (thread B, 2026-11-05: every Linux program importing math.h failed)
-// pending on linux: "the call of isinf with (double&) is ambiguous between bool(double) (stdlib core/Math.kpp) and int32(double) (<imported C headers>)"
 extern "C" import "math.h";
 
 int main()

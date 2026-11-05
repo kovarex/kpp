@@ -1,0 +1,15 @@
+// spec: an imported C function that the standard library defines at global scope as a function of its own, with the same name and parameter types, is left out of the import, so that a call finds the library's and is never ambiguous between the two (glibc's math.h declares the BSD functions `int isinf(double)` and `int isnan(double)` beside the library's `bool isinf(double)`; the UCRT's stdlib.h `int abs(int)` beside the library's); a C function the library only redeclares (`extern "C" double sqrt(double)`) is the same function and stays
+// factorio: the game's math.h and stdlib.h imports: isinf and isnan on Linux, abs everywhere
+extern "C" import "math.h";
+extern "C" import "stdlib.h";
+int main()
+{
+  double big = 1e308;
+  double inf = big * 10.0;
+  double nan = inf - inf;
+  bool infinite = isinf(inf);
+  bool notANumber = isnan(nan);
+  println(infinite, " ", notANumber, " ", isinf(big), " ", isnan(big), " ", isfinite(big));
+  println(abs(-3), " ", sqrt(16.0));
+  return 0;
+}
