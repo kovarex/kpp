@@ -1,0 +1,29 @@
+// spec: at compile time a local declared alignas is no named return variable (design.md 23: the caller's result has its class's alignment alone): `return v;` moves it, C++'s implicit move, so its move constructor runs once (`1`), where the same function without alignas builds the result in place (`0`); at run time alike
+// found: B's switch to the resolver's rule (cb9b5033), whose exclusion of alignas variables holds for the interpreter too
+struct Counted
+{
+  int moves = 0;
+  constexpr Counted() {}
+  constexpr Counted(Counted&& o) : moves(o.moves + 1) {}
+};
+constexpr Counted plain()
+{
+  Counted c;
+  return c;
+}
+constexpr Counted aligned()
+{
+  alignas(64) Counted c;
+  return c;
+}
+static_assert(plain().moves == 0);
+static_assert(aligned().moves == 1);
+constexpr int plainMoves = plain().moves;
+constexpr int alignedMoves = aligned().moves;
+int main()
+{
+  Counted p = plain();
+  Counted a = aligned();
+  println(plainMoves, " ", alignedMoves, " | ", p.moves, " ", a.moves);
+  return 0;
+}
