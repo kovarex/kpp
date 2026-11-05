@@ -32,6 +32,25 @@
     {
       scopes.emplace_back();
       scopeIds.push_back(nextScopeId++);
+      scopeInits.push_back(0);
+    }
+
+    // Whether a jump from a point in the scopes fromIds (with fromInits) to one in toIds (with
+    // toInits) enters the scope of a variable past its initialization, which C++ makes ill-formed
+    // ([stmt.dcl] 3): one declared before the label in a scope the jump enters, or between the two
+    // points in the innermost scope they share.
+    static bool jumpBypassesInitialization(const std::vector<uint32_t>& fromIds, const std::vector<uint32_t>& fromInits,
+                                           const std::vector<uint32_t>& toIds, const std::vector<uint32_t>& toInits)
+    {
+      size_t common = 0;
+      while (common < fromIds.size() && common < toIds.size() && fromIds[common] == toIds[common])
+        ++common;
+      if (common > 0 && common - 1 < toInits.size() && common - 1 < fromInits.size() && toInits[common - 1] > fromInits[common - 1])
+        return true;
+      for (size_t d = common; d < toInits.size(); ++d)
+        if (toInits[d] > 0)
+          return true;
+      return false;
     }
 
     void popScope();

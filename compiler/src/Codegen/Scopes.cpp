@@ -125,6 +125,8 @@ auto codegen::Emitter::popScope() -> void
   scopes.pop_back();
   if (!scopeIds.empty())
     scopeIds.pop_back();
+  if (!scopeInits.empty())
+    scopeInits.pop_back();
 }
 
 auto codegen::Emitter::unwindRange(size_t low, size_t high) -> void

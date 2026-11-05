@@ -1,0 +1,71 @@
+// spec: the jumps C++ allows past declarations ([stmt.dcl] 3) still run: a case label after a variable declared without an initializer (`int k;`, vacuous) or after a block whose variables have left scope, a goto forward past a block, a goto backward out of an object's scope (destroying it each time), and a goto forward past a static local; clang prints the same
+// found by thread B (2026-11-05), beside jump_past_initialization_is_error: the jumps the error must not take
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { print("+", id, " "); }
+  ~Noisy() { print("-", id, " "); }
+};
+int cases(int x)
+{
+  int r = 0;
+  switch (x)
+  {
+    case 0:
+      int k;
+      k = 10;
+      r = k;
+      break;
+    case 1:
+    {
+      Noisy n(1);
+      r = n.id;
+      break;
+    }
+    case 2:
+      r = 20;
+      break;
+    default:
+      r = -1;
+  }
+  return r;
+}
+int loops()
+{
+  int passes = 0;
+again:
+  {
+    Noisy n(10 + passes);
+    ++passes;
+    if (passes < 3)
+      goto again;
+  }
+  return passes;
+}
+int skipBlock(int x)
+{
+  if (x)
+    goto after;
+  {
+    Noisy n(30);
+  }
+after:
+  return x;
+}
+int skipStatic(int x)
+{
+  if (x)
+    goto after;
+  static int counter = 5;
+  ++counter;
+after:
+  return counter;
+}
+int main()
+{
+  println(cases(0), " ", cases(1), " ", cases(2), " ", cases(3));
+  println(loops());
+  println(skipBlock(1), " ", skipStatic(1));
+  return 0;
+}

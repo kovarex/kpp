@@ -603,10 +603,18 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   }
   loops.push_back({endL, "", scopes.size()});
   pushScope();
+  size_t bodyScope = scopeInits.size() - 1;
   auto emitLabelled = [&](Stmt* st, size_t element)
   {
     if (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt)
     {
+      // The switch jumps to it from before its body: past nothing initialized in the body's
+      // scopes ([stmt.dcl] 3; until 2026-11-05 `case 0: Noisy n(1); break; case 1:` ran case 1 and
+      // destroyed the n it never built).
+      for (size_t d = bodyScope; d < scopeInits.size(); ++d)
+        if (scopeInits[d] > 0)
+          fail(st, std::string(st->kind == NodeKind::CaseStmt ? "the case label" : "the default label") +
+                       " is reached past the initialization of a variable declared before it in the switch's body, which C++ makes ill-formed ([stmt.dcl] 3): put that case's declarations in a block");
       const std::string& l = caseLabels[{st, element}];
       emitBranch(l);
       startBlock(l);

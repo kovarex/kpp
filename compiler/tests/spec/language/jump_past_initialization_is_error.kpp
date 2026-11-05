@@ -1,0 +1,65 @@
+// spec: a jump into the scope of a variable past its initialization is an error, as C++'s [stmt.dcl] 3 makes it ill-formed (clang: "cannot jump from this goto statement to its label", "jump bypasses variable initialization"): a goto forward into a block past an object's construction, a goto backward into a block already left, and a case label after a declaration with an initializer in the switch's body, of a class or a scalar
+// found by thread B (2026-11-05), comparing kpp with clang: kpp ran the jumps and destroyed, at the scope's end, an object it never built (`inside -1` with no `+1`)
+// error: jump_past_initialization_is_error.kpp:17: error: the goto to inside skips the initialization of a variable in scope at the label
+// error: jump_past_initialization_is_error.kpp:33: error: the goto to back enters the scope of a variable past its initialization
+// error: jump_past_initialization_is_error.kpp:43: error: the case label is reached past the initialization of a variable declared before it in the switch's body
+// error: jump_past_initialization_is_error.kpp:57: error: the default label is reached past the initialization of a variable declared before it in the switch's body
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { println("+", id); }
+  ~Noisy() { println("-", id); }
+};
+int forward(int x)
+{
+  if (x)
+    goto inside;
+  {
+    Noisy n(1);
+  inside:
+    println("inside");
+  }
+  return 0;
+}
+int backward(int x)
+{
+  {
+    int k = 5;
+  back:
+    x += k;
+  }
+  if (x < 20)
+    goto back;
+  return x;
+}
+int pastCase(int x)
+{
+  switch (x)
+  {
+    case 0:
+      Noisy n(2);
+      break;
+    case 1:
+      println("case 1");
+      break;
+  }
+  return 0;
+}
+int pastScalar(int x)
+{
+  switch (x)
+  {
+    case 0:
+      int k = 5;
+      println(k);
+      break;
+    default:
+      break;
+  }
+  return 0;
+}
+int main()
+{
+  return forward(1) + backward(1) + pastCase(1) + pastScalar(1);
+}

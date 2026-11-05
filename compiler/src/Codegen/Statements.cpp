@@ -177,16 +177,19 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   bool shared = nestedNamesOf(bodyNow).named.count(v) != 0;
   FunctionDecl* plain = shared ? plainWriter(v) : nullptr;
   std::string name = staticLocalName(plain ? functionName(plain, {}, nullptr) : currentFunctionName, v);
-  // Constant initialization (C++'s [basic.start.static]): a const or constexpr one whose initializer
-  // folds, as a global's does (globalForOnce), is a constant of the program, with no guard and nothing
-  // done on the pass. FluidBuffer::getFlowRate's `static constexpr double MAX_FLOW_MULTIPLIER = 0.8`
-  // checked a guard and loaded the double from memory on every call. (Not one a lambda or a local
-  // class names: its copies elsewhere are zero-initialized and set by the guarded pass,
-  // staticLocalElsewhere.)
-  if (!shared && !isRef && v->init && !(v->flags & DF_ThreadLocal) && isConstValue(v))
+  // Constant initialization (C++'s [basic.start.static]): one whose initializer folds, as a global's
+  // does (globalForOnce), const or not, has its value from the program's start, with no guard and
+  // nothing done on the pass; a const one is a constant, any other a global the program writes.
+  // FluidBuffer::getFlowRate's `static constexpr double MAX_FLOW_MULTIPLIER = 0.8` checked a guard
+  // and loaded the double from memory on every call; until 2026-11-05 a non-const one
+  // (`static int counter = 5;`) was zero until its declaration ran, so a goto or a case label past
+  // it read 0 where C++ reads 5. (Not one a lambda or a local class names: its copies elsewhere are
+  // zero-initialized and set by the guarded pass, staticLocalElsewhere.)
+  if (!shared && !isRef && v->init && !(v->flags & DF_ThreadLocal))
     if (std::optional<std::string> init = staticConstant(v, t))
     {
-      addOwnedEntry(name + " = internal " + (hasMutableMember(t, v) ? "global " : "constant ") + llType(t, v) + " " + *init +
+      bool writable = !isConstValue(v) || hasMutableMember(t, v);
+      addOwnedEntry(name + " = internal " + (writable ? "global " : "constant ") + llType(t, v) + " " + *init +
                     alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
       {
         auto lock = sharedLock();
@@ -568,6 +571,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         labelBlocks[symbol] = newLabel("goto");
       if (auto place = labelPlaces.find(symbol); place != labelPlaces.end())
       {
+        if (jumpBypassesInitialization(scopeIds, scopeInits, place->second.ids, place->second.inits))
+          fail(s, "the goto to " + sym(symbol) + " enters the scope of a variable past its initialization, which C++ makes ill-formed ([stmt.dcl] 3)");
         size_t common = 0;
         while (common < place->second.ids.size() && common < scopeIds.size() && place->second.ids[common] == scopeIds[common])
           ++common;
@@ -583,7 +588,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       else
       {
         std::string trampoline = newLabel("goto.leave");
-        pendingGotos[symbol].push_back({trampoline, scopeIds, scopes});
+        pendingGotos[symbol].push_back({trampoline, scopeIds, scopes, scopeInits, s});
         fn += "  br label %" + trampoline + "\n";
       }
       blockTerminated = true;
@@ -600,6 +605,9 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       if (auto pending = pendingGotos.find(symbol); pending != pendingGotos.end())
       {
         for (const PendingGoto& g : pending->second)
+          if (jumpBypassesInitialization(g.ids, g.inits, scopeIds, scopeInits))
+            fail(g.at, "the goto to " + sym(symbol) + " skips the initialization of a variable in scope at the label, which C++ makes ill-formed ([stmt.dcl] 3)");
+        for (const PendingGoto& g : pending->second)
         {
           startBlock(g.trampoline);
           size_t common = 0;
@@ -615,6 +623,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       startBlock(labelBlocks[symbol]);
       LabelPlace place;
       place.ids = scopeIds;
+      place.inits = scopeInits;
       for (const std::vector<Object>& scope : scopes)
         place.counts.push_back(scope.size());
       labelPlaces[symbol] = place;
@@ -629,6 +638,16 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           continue; // `when (false)` (design.md 19): no storage, no constructor, no destructor
         if (d->kind == NodeKind::VariableDecl)
         {
+          // A variable whose initialization a jump into its scope would skip (jumpBypassesInitialization):
+          // an automatic one with an initializer, a reference, bindings, or of a class (or an array of
+          // one) whose default construction does something; not one that is default-initialized
+          // vacuously (`int k;`).
+          if (auto* v = static_cast<VariableDecl*>(d); !(v->flags & (DF_Static | DF_ThreadLocal | DF_Extern)) && !scopeInits.empty())
+          {
+            const Ty* vt = declType(v);
+            if (v->init || !v->structuredBindings.empty() || (vt && (vt->isReference() || needsConstruction(types.unqualified(vt), v))))
+              ++scopeInits.back();
+          }
           layOutClosuresIn(static_cast<VariableDecl*>(d)->init); // the variable's slot may hold one
           declareLocal(static_cast<VariableDecl*>(d));
           destroyTemps();

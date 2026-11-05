@@ -79,12 +79,15 @@
     {
       std::vector<uint32_t> ids;
       std::vector<size_t> counts;
+      std::vector<uint32_t> inits; // scopeInits at the label
     };
     struct PendingGoto
     {
       std::string trampoline;
       std::vector<uint32_t> ids;
       std::vector<std::vector<Object>> objects;
+      std::vector<uint32_t> inits; // scopeInits at the goto
+      Node* at = nullptr;
     };
     struct Loop
     {
@@ -147,6 +150,9 @@
     // objects' counts at the label. A goto destroys what it leaves ([stmt.jump] 2): a backward one by
     // its label's place, a forward one through a trampoline emitted at the label (GotoStmt, LabelStmt).
     std::vector<uint32_t> scopeIds;
+    // Per scope (beside scopeIds), its automatic variables declared so far whose initialization a
+    // jump into their scope would skip (jumpBypassesInitialization).
+    std::vector<uint32_t> scopeInits;
     uint32_t nextScopeId = 0;
     std::unordered_map<uint32_t, LabelPlace> labelPlaces;
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
