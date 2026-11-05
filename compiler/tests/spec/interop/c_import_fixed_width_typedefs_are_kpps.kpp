@@ -1,0 +1,24 @@
+// spec: an imported header's typedef of a name kpp builds in (int64_t, uint64_t, size_t, ptrdiff_t, intptr_t, uintptr_t) is kpp's own type where the two agree in width and signedness, on every target: glibc's `typedef long int64_t;` and `typedef unsigned long size_t;` on LP64 targets made them C's long, a type of its own in kpp, so a C function taking int64_t* or size_t* refused kpp's i64* and usize* ("a pointer (int64*) does not convert to long*"), and kpp's own int64_t meant long wherever stdint.h was imported. One that differs in width stays the header's (glibc's 64-bit int_fast32_t), and C's long stays long (`3 5 7 9 11 13 15 17`, `3 7 8 8 true`)
+// factorio: on Linux, SDL_StepUTF8(&text, &len) with `usize len` (size_t*), and glGetQueryObjecti64v(..., &value) with `i64 value` (GLint64*, khrplatform's int64_t)
+extern "C" import "c_import_fixed_width_typedefs_are_kpps.h";
+
+int main()
+{
+  i64 a = 1;
+  u64 b = 2;
+  usize c = 3;
+  i64 d = 4;
+  i64 e = 5;
+  u64 f = 6;
+  i64 g = 7;
+  long h = 8;
+  println(add_int64(&a, 2), " ", add_uint64(&b, 3), " ", add_size(&c, 4), " ", add_ptrdiff(&d, 5), " ", add_intptr(&e, 6), " ",
+          add_uintptr(&f, 7), " ", add_count(&g, 8), " ", add_long(&h, 9));
+  // kpp's int64_t and size_t keep their meaning where stdint.h is imported: i64 and usize.
+  int64_t viaName = a;
+  i64* same = &viaName;
+  size_t size = c;
+  usize* sameSize = &size;
+  println(*same, " ", *sameSize, " ", sizeof(int64_t), " ", sizeof(spec_count), " ", fast_bytes() == sizeof(int_fast32_t));
+  return 0;
+}

@@ -1247,7 +1247,22 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
     }
     case NodeKind::VariableDecl:
       if (d->flags & DF_Typedef)
-        return declaredTypeOf(d, ctx.subst, depth + 1);
+      {
+        const Ty* t = declaredTypeOf(d, ctx.subst, depth + 1);
+        // An imported C header's typedef of a name kpp builds in (int64_t, uint64_t, size_t,
+        // ptrdiff_t, intptr_t, uintptr_t) is kpp's own type where the two agree in width and
+        // signedness (thread B, 2026-11-05: design.md, "Targets and hosts"): glibc's `typedef long
+        // int64_t;` and `typedef unsigned long size_t;` on LP64 targets made them C's long, a type of
+        // its own (TypeTable::longType), so a C function taking int64_t* or size_t* refused kpp's i64*
+        // and usize*, and kpp's int64_t meant long wherever stdint.h was imported. On the target they
+        // are one C type (the same size and convention). One that differs in width stays the
+        // header's (glibc's 64-bit int_fast32_t), as does one that names C's long itself.
+        auto* v = static_cast<VariableDecl*>(d);
+        if (t && t->kind == TyKind::Int && !t->isConst && !t->isVolatile && d->file && d->file->isImported && v->name.parts.size() == 1)
+          if (const Ty* b = builtinByName(v->name.parts[0].symbol); b && b->kind == TyKind::Int && b->bits == t->bits && b->isUnsigned == t->isUnsigned)
+            return b;
+        return t;
+      }
       return types.unknown();
     case NodeKind::UsingNameDecl:
     {

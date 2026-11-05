@@ -3311,6 +3311,18 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   stage 4's (17 Win32 links).
 - **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: kpp
   types a string literal as a pointer.
+- **An imported typedef of a name kpp builds in is kpp's type (thread B, 2026-11-05):** glibc and
+  FreeBSD declare `int64_t`, `ptrdiff_t`, `intptr_t` and `ssize_t` as `long` and `uint64_t`,
+  `size_t` and `uintptr_t` as `unsigned long` on LP64 targets (MSVC as `long long`). With `long` a
+  type of its own, a C function taking `int64_t*` or `size_t*` refused kpp's `i64*` and `usize*`
+  ("a pointer (int64*) does not convert to long*"), and kpp's own `int64_t` meant `long` wherever
+  `stdint.h` was imported. Found building the game for Linux: SDL_StepUTF8's `size_t*`,
+  glGetQueryObjecti64v's `GLint64*` (khrplatform's `int64_t`), 13 of Lua's calls. Now an imported
+  header's typedef whose name kpp builds in (resolver's builtin names) is kpp's type when the two
+  agree in width and signedness: the same C type on the target, so no call changes. One that
+  differs in width stays the header's (glibc's 64-bit `int_fast32_t`), and C's `long` itself stays
+  `long`. Windows' typedefs were kpp's types already. Spec
+  interop/c_import_fixed_width_typedefs_are_kpps (the same output on every target).
 
 ### Stage 6, FreeBSD: the sysroot, the static link and the C import (2026-11-03)
 
