@@ -393,8 +393,15 @@
   // .factorioFilesForOtherPlatforms): PngLoad.cpp is Linux's image loader (`#error Only for
   // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms, and UnitTest++'s
   // Posix directory, which the unit-test library's Windows build excludes. Not converted.
-  const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp",
-                                                        "UnitTest++/Posix/SignalTranslator.cpp", "UnitTest++/Posix/SignalTranslator.h"};
+  // (Windows' build leaves out the Linux ones, fbuild.bff's .factorioFilesForOtherPlatforms and
+  // UnitTest++\Posix; Linux's the Windows ones, minizip's iowin32.c)
+  const std::set<std::string> linuxOnlyFiles = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp",
+                                                "UnitTest++/Posix/SignalTranslator.cpp", "UnitTest++/Posix/SignalTranslator.h"};
+  const std::set<std::string> windowsOnlyFiles = {"minizip/iowin32.c", "minizip/iowin32.h"};
+  bool fileForOtherPlatform(const std::string& rel)
+  {
+    return convertPlatform == "linux" ? windowsOnlyFiles.count(rel) != 0 : linuxOnlyFiles.count(rel) != 0;
+  }
   // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
   // standalone interpreter and compiler, by their directory and name.
   const std::set<std::string> filesNotBuilt = {"Lua/lua.c", "Lua/luac.c"};

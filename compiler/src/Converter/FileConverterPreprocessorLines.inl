@@ -731,7 +731,7 @@
                                                            "sys/poll.h", "termios.h", "arpa/inet.h", "arpa/nameser.h", "resolv.h",
                                                            "netinet/in.h", "netdb.h", "ifaddrs.h", "sys/socket.h", "sys/wait.h", "sys/file.h",
                                                            "sys/inotify.h", "sys/param.h", "sys/resource.h", "dlfcn.h", "execinfo.h", "pwd.h",
-                                                           "setjmp.h", "cpuid.h", "pthread.h", "utime.h", "sys/mman.h", "sys/time.h",
+                                                           "setjmp.h", "cpuid.h", "pthread.h", "backtrace.h", "utime.h", "sys/mman.h", "sys/time.h",
                                                            "sys/utsname.h", "sys/sysinfo.h", "dirent.h", "glob.h", "langinfo.h"};
           bool sysHeader = sysHeaders.count(header) != 0; // (zlib's gzguts.h: _S_IREAD for _wopen)
           if (cHeaders.count(lowered) || cLibrary || cInterface || sysHeader) // Windows' headers by any case (<Psapi.h>, <TlHelp32.h>)

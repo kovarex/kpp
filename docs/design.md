@@ -780,7 +780,9 @@ declared per platform:
 - The POSIX headers the game's Linux code includes (unistd.h, poll.h, termios.h, sys/socket.h,
   arpa/inet.h, netdb.h, sys/wait.h, arpa/nameser.h, resolv.h...) are imports by their paths, Linux's
   alone in c-imports-linux.kpp; a header only another platform's #if branch includes is no file of
-  this one (RazerChroma's SDK headers are Windows' alone); crc32fast is little endian without its own
+  this one (RazerChroma's SDK headers are Windows' alone); each platform's build leaves out the
+  other's files, as fbuild.bff's (Windows' PngLoad, StacktraceToStream and UnitTest++'s Posix
+  SignalTranslator, Linux's minizip iowin32), so they are files of one platform; crc32fast is little endian without its own
   __LITTLE_ENDIAN and __BIG_ENDIAN (glibc's endian.h has them).
 - A choice's second arm is Linux's: a third platform (FreeBSD) takes it until it is converted as
   itself.

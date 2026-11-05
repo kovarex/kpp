@@ -358,7 +358,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       const std::filesystem::path& path = inputs[k].path;
       std::string ext = path.extension().string();
       std::string rel = relativeTo(path, roots);
-      bool built = !filesForOtherPlatforms.count(rel) && !filesNotBuilt.count((path.parent_path().filename() / path.filename()).generic_string());
+      bool built = !fileForOtherPlatform(rel) && !filesNotBuilt.count((path.parent_path().filename() / path.filename()).generic_string());
       if (((ext == ".cpp" || ext == ".cc" || ext == ".c") && built) || forceIncludedHeaders.count(rel))
         reach(k);
     }
@@ -897,7 +897,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   for (const ConvertInput& in : inputs)
   {
     std::string rel = relativeTo(in.path, roots);
-    if (in.parsed && (filesForOtherPlatforms.count(rel) || (inputByPath.count(pathKey(in.path)) && !reached[&in - inputs.data()]) ||
+    if (in.parsed && (fileForOtherPlatform(rel) || (inputByPath.count(pathKey(in.path)) && !reached[&in - inputs.data()]) ||
                       filesNotBuilt.count((in.path.parent_path().filename() / in.path.filename()).generic_string())))
       leftOutFiles.insert(in.parsed);
   }
@@ -919,7 +919,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc" && ext != ".inl" && ext != ".c")
       continue;
     std::string rel = relativeTo(in.path, roots);
-    if (filesForOtherPlatforms.count(rel))
+    if (fileForOtherPlatform(rel))
     {
       total.add("files of other platforms left out");
       continue;
