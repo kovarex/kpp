@@ -1,0 +1,60 @@
+// spec: a constructor's initializer reads the bases and members initialized before it, at compile time as at run time: `b(a + 1)`, a default member initializer `int b = a * 2;` (of a class with no constructor too), a base's member (`w(v * 2)`), a member function it calls on `this` (`x(twice())`), and the address of an earlier member (`p(&a)`), which the object keeps
+// found by thread D (2026-11-05): the interpreter made the members' values before it made the object, so that no initializer could read one: each was no constant
+struct Sum
+{
+  int a;
+  int b;
+  Sum() : a(1), b(a + 1) {}
+};
+struct Defaults
+{
+  int a = 3;
+  int b = a * 2;
+};
+struct Base
+{
+  int v = 4;
+};
+struct Derived : Base
+{
+  int w;
+  int x;
+  int twice() const { return this->w * 2; }
+  Derived() : w(v * 2), x(twice()) {}
+};
+struct Self
+{
+  int a;
+  int* p;
+  Self() : a(5), p(&a) {}
+};
+constexpr int sum()
+{
+  Sum s;
+  return s.b;
+}
+constexpr int defaults()
+{
+  Defaults d;
+  return d.b;
+}
+constexpr int derived()
+{
+  Derived d;
+  return d.w * 100 + d.x;
+}
+constexpr int self()
+{
+  Self s;
+  *s.p = 9;
+  return s.a;
+}
+constexpr int s = sum();
+constexpr int d = defaults();
+constexpr int e = derived();
+constexpr int p = self();
+int main()
+{
+  println(s, " ", sum(), " ", d, " ", defaults(), " ", e, " ", derived(), " ", p, " ", self());
+  return 0;
+}

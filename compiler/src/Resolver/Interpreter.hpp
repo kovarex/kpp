@@ -363,6 +363,12 @@
   // A field's value where no initializer of the object's names it: its default member
   // initializer, under the class's arguments, else empty.
   std::optional<ConstValue> constFieldDefault(const ConstClassLayout& layout, size_t i, bool zero, int depth);
+  // The same with `this` the object being made at self, whose parts made before it a default
+  // member initializer reads (`int b = a + 1;`); one not made yet is unset, no constant.
+  std::optional<ConstValue> constFieldDefaultOn(const ConstClassLayout& layout, size_t i, bool zero, const ConstPlace& self, int depth);
+  // A class object without a constructor to run made where it is, part by part, `this` while it is:
+  // what constEmpty does when a default member initializer reads a member before it.
+  std::optional<ConstValue> constEmptyInPlace(const Ty* t, const ConstClassLayout& layout, bool zero, int depth, const ConstPlace* target);
 
   // The value an initializer gives an object of type t: a brace list (an aggregate's elements, a
   // constructor's arguments), an expression converted to t (a converting constructor for a

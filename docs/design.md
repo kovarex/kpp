@@ -2404,7 +2404,11 @@ to no object the run holds a place of is no constant, never a second run for a c
 (language/consteval_reference_call_runs_once). So do `*it` and `*optional` (the class's operator* run on
 the operand where it is), `s[i]` through a pointer a call gives (String's `this->data()[index]`), `++a`,
 `(a = 3)` and `(x, a)`, and a const reference a call returns given as an argument
-(language/consteval_reference_to_operator_result).
+(language/consteval_reference_to_operator_result). A constructor makes its bases, then its members, in
+declaration order whatever order its initializers are written in (language/consteval_initialization_order),
+in the object where it is made, so that an initializer, a default member initializer included, reads
+the parts made before it, `this` and their addresses; one not made yet is unset, no constant
+(language/consteval_initializer_reads_earlier_member).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

@@ -2577,14 +2577,60 @@ auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth, const Cons
       return std::nullopt;
     parts.push_back(*part);
   }
+  bool defaults = false;
   for (size_t i = 0; i < layout->fields.size(); ++i)
   {
     std::optional<ConstValue> part = constFieldDefault(*layout, i, zero, depth);
+    defaults = defaults || (layout->fields[i] && layout->fields[i]->init);
     if (!part)
-      return std::nullopt;
+      return defaults ? constEmptyInPlace(t, *layout, zero, depth, target) : std::nullopt; // (one may read a member before it)
     parts.push_back(*part);
   }
   constFitBitFields(*layout, parts);
+  return ConstValue::object(t, std::move(parts));
+}
+
+auto GlobalScope::Impl::constEmptyInPlace(const Ty* t, const ConstClassLayout& layout, bool zero, int depth, const ConstPlace* target) -> std::optional<ConstValue>
+{
+  // (The parts made again: what the first try made is no object anything refers to.)
+  size_t nb = layout.bases.size(), nf = layout.fields.size();
+  std::vector<ConstValue> unset;
+  for (size_t b = 0; b < nb; ++b)
+    unset.push_back(ConstValue::unset(layout.bases[b]));
+  for (size_t i = 0; i < nf; ++i)
+    unset.push_back(ConstValue::unset(layout.fieldTypes[i]));
+  std::vector<ConstBinding> own;
+  ConstFrame frame(&own);
+  ConstPlace home;
+  if (target)
+  {
+    if (!constWrite(*target, ConstValue::object(t, std::move(unset))))
+      return std::nullopt;
+    home = constResolve(*target);
+  }
+  else
+  {
+    own.push_back(constBinding(constThisSymbol, ConstValue::object(t, std::move(unset)), t));
+    own.back().writable = true;
+    home = ConstPlace{&own, 0, {}, t};
+  }
+  bool union_ = layout.decl && layout.decl->keyword == Kw::union_;
+  for (size_t k = 0; k < nb + nf; ++k)
+  {
+    bool base = k < nb;
+    std::optional<ConstValue> part = base ? constEmpty(layout.bases[k], zero, depth + 1) : constFieldDefaultOn(layout, k - nb, zero, home, depth);
+    ConstPlace at = home;
+    at.path.push_back(k);
+    at.type = base ? layout.bases[k] : layout.fieldTypes[k - nb];
+    at.bits = base ? 0 : layout.fieldBits[k - nb];
+    if (!part || (!(union_ && !(layout.fields[k - nb] && layout.fields[k - nb]->init)) && !constWrite(at, *part)))
+      return std::nullopt; // (a union's member without an initializer is none it holds)
+  }
+  std::optional<ConstValue> built = constRead(home);
+  if (!built || !built->isObject() || !built->parts || built->parts->size() != nb + nf)
+    return std::nullopt;
+  std::vector<ConstValue> parts(built->parts->begin(), built->parts->end());
+  constFitBitFields(layout, parts);
   return ConstValue::object(t, std::move(parts));
 }
 
@@ -2598,6 +2644,28 @@ auto GlobalScope::Impl::constFieldDefault(const ConstClassLayout& layout, size_t
     params.push(static_cast<TemplateParamDecl*>(p)->name, p);
   TypeContext fctx{layout.decl->ownScope ? layout.decl->ownScope : lexicalScopeOf(f), &params, layout.subst.empty() ? nullptr : &layout.subst,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+  return constInitialize(layout.fieldTypes[i], constInitializerOf(f, layout.subst.empty() ? nullptr : &layout.subst), fctx, depth + 1);
+}
+
+auto GlobalScope::Impl::constFieldDefaultOn(const ConstClassLayout& layout, size_t i, bool zero, const ConstPlace& self, int depth) -> std::optional<ConstValue>
+{
+  VariableDecl* f = layout.fields[i];
+  if (!f || !f->init)
+    return constEmpty(layout.fieldTypes[i], zero, depth + 1);
+  LocalStack params;
+  for (Decl* p : effectiveParams(layout.decl))
+    params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+  std::vector<ConstBinding> env;
+  ConstBinding alias{constThisSymbol, ConstValue::unset(self.type)};
+  alias.type = self.type;
+  alias.aliasEnv = self.env;
+  alias.aliasIndex = self.index;
+  alias.aliasPath = self.path;
+  env.push_back(std::move(alias));
+  ConstFrame frame(&env);
+  TypeContext fctx{layout.decl->ownScope ? layout.decl->ownScope : lexicalScopeOf(f), &params, layout.subst.empty() ? nullptr : &layout.subst,
+                   f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+  fctx.env = &env;
   return constInitialize(layout.fieldTypes[i], constInitializerOf(f, layout.subst.empty() ? nullptr : &layout.subst), fctx, depth + 1);
 }
 
@@ -4323,23 +4391,59 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
         return std::nullopt;
       return constRunBody(ctor, t, *whole, fctx, env, depth, target);
     }
-  std::vector<ConstValue> object;
   if (!constMayMake(nb + nf))
     return std::nullopt;
+  // The object where it is made, `this` while its parts are (the target, else a binding of this
+  // run's own): an initializer reads the parts made before it (`b(a + 1)`, `int b = a + 1;`, a
+  // member function they call), one not made yet is unset, no constant ([class.base.init] 13; they
+  // were no constant: language/consteval_initializer_reads_earlier_member).
+  std::vector<ConstValue> unset;
   for (size_t b = 0; b < nb; ++b)
-  {
-    std::optional<ConstValue> part = written[b] ? initialize(*written[b], layout->bases[b]) : constEmpty(layout->bases[b], false, depth + 1);
-    if (!part)
-      return std::nullopt;
-    object.push_back(*part);
-  }
+    unset.push_back(ConstValue::unset(layout->bases[b]));
   for (size_t i = 0; i < nf; ++i)
+    unset.push_back(ConstValue::unset(layout->fieldTypes[i]));
+  ConstPlace home;
+  if (target)
   {
-    std::optional<ConstValue> part = written[nb + i] ? initialize(*written[nb + i], layout->fieldTypes[i]) : constFieldDefault(*layout, i, false, depth);
-    if (!part)
+    if (!constWrite(*target, ConstValue::object(t, std::move(unset))))
       return std::nullopt;
-    object.push_back(*part);
+    home = constResolve(*target);
+    ConstBinding self{constThisSymbol, ConstValue::unset(t)};
+    self.type = t;
+    self.aliasEnv = home.env;
+    self.aliasIndex = home.index;
+    self.aliasPath = home.path;
+    env.push_back(std::move(self));
   }
+  else
+  {
+    env.push_back(constBinding(constThisSymbol, ConstValue::object(t, std::move(unset)), t));
+    env.back().writable = true; // (a const object's constructor makes it too)
+    home = ConstPlace{&env, env.size() - 1, {}, t};
+  }
+  size_t made = env.size() - 1;
+  bool union_ = layout->decl && layout->decl->keyword == Kw::union_;
+  for (size_t k = 0; k < nb + nf; ++k)
+  {
+    bool base = k < nb;
+    const Ty* partType = base ? layout->bases[k] : layout->fieldTypes[k - nb];
+    std::optional<ConstValue> part = written[k] ? initialize(*written[k], partType)
+                                   : base     ? constEmpty(partType, false, depth + 1)
+                                              : constFieldDefaultOn(*layout, k - nb, false, home, depth);
+    if (!part || made >= env.size() || env[made].symbol != constThisSymbol)
+      return std::nullopt;
+    ConstPlace at = home;
+    at.path.push_back(k);
+    at.type = partType;
+    at.bits = base ? 0 : layout->fieldBits[k - nb];
+    bool held = !union_ || written[k] || (!base && layout->fields[k - nb] && layout->fields[k - nb]->init); // (a union's member without an initializer is none it holds)
+    if (held && !constWrite(at, *part))
+      return std::nullopt;
+  }
+  std::optional<ConstValue> built = constRead(home);
+  if (!built || !built->isObject() || !built->parts || built->parts->size() != nb + nf)
+    return std::nullopt;
+  std::vector<ConstValue> object(built->parts->begin(), built->parts->end());
   constFitBitFields(*layout, object);
   return constRunBody(ctor, t, ConstValue::object(t, std::move(object)), fctx, env, depth, target);
 }
