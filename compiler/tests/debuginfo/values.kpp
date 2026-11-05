@@ -1,5 +1,6 @@
 // --debug-info's variables and types (docs/debugging.md, "Variables and types"): debuginfo.ps1 builds
-// this at one module and at 64, runs it, and checks what the PDB says of inspect's parameters, locals
+// this at one module and at 64, runs it, and checks what the PDB says of inspect's parameters (a class passed by
+// pointer, StringView, the debugger's through the pointer it keeps: `StringView&`, as clang has one), locals
 // and block, of its lambda's captures, of these classes (their members' access, a static member), this
 // enum and this typed union (its tag and its alternatives' storage), of the library's Vector<int32>,
 // and of the globals (a static member's storage is one) against values.expected.
@@ -55,9 +56,9 @@ union enum Value : uint8_t
   { {int, Integer}, {double, Real} }
 };
 
-int inspect(const game::Point& point, int scale, game::Mode mode)
+int inspect(const game::Point& point, int scale, game::Mode mode, StringView label)
 {
-  int sum = point.x * scale;
+  int sum = point.x * scale + int(label.size()) * 0;
   game::Mask mask = game::Mask::All;
   auto scaled = [sum, &mask](int k) { return sum * k + (mask == game::Mask::All ? 0 : 1); };
   sum = scaled(1) + game::counter - game::Shape::made;
@@ -78,6 +79,6 @@ int inspect(const game::Point& point, int scale, game::Mode mode)
 int main()
 {
   game::Point point{3, 4};
-  println(inspect(point, 2, game::Mode::On));
+  println(inspect(point, 2, game::Mode::On, "label"));
   return 0;
 }

@@ -195,11 +195,12 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
   return one(basic("unsigned long long", 64, "DW_ATE_unsigned"));
 }
 
-auto codegen::Emitter::debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg, bool artificial, bool defined) -> void
+auto codegen::Emitter::debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg, bool artificial, bool defined,
+                                     bool indirect) -> void
 {
   if (!sh.fullDebugInfo || !debugFile || debugFile != currentFile || !inlining.empty() || !t || !t->isKnown() || types.isDependent(t))
     return;
-  debugVariables.push_back({address, std::move(name), debugType(t), at ? lineOf(at, currentFile) : 0, arg ? 0 : debugBlock, arg, artificial, defined});
+  debugVariables.push_back({address, std::move(name), debugType(t), at ? lineOf(at, currentFile) : 0, arg ? 0 : debugBlock, arg, artificial, defined, indirect});
 }
 
 auto codegen::Emitter::debugGlobal(const std::string& name, VariableDecl* def, const Ty* t) -> std::string
@@ -440,7 +441,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   auto declare = [&](size_t i)
   {
     const DebugVariable& v = debugVariables[i];
-    return "    #dbg_declare(ptr " + v.address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(), " +
+    return "    #dbg_declare(ptr " + v.address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(" + (v.indirect ? "DW_OP_deref" : "") + "), " +
            debugId(idFor({v.line ? v.line : declLine, v.block})) + ")\n";
   };
   std::vector<size_t> defined, pending;

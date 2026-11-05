@@ -53,7 +53,8 @@
     // 1) held at address (its alloca, or the pointer a parameter passed by address is), whose value is
     // of type t (a reference's own: its slot holds the pointer), in the current block. Not one of a
     // body inlined into its caller (its instructions are the call's).
-    void debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg = 0, bool artificial = false, bool defined = false);
+    void debugVariable(std::string name, Node* at, const std::string& address, const Ty* t, uint32_t arg = 0, bool artificial = false, bool defined = false,
+                       bool indirect = false);
 
     // --debug-info with variables: the attachment of global `name`'s definition line (`, !dbg ` and a
     // placeholder, `!G` and the hash of its IR name), its metadata made here into Shared::debugGlobals:

@@ -326,8 +326,22 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         }
         // (a pack's elements are the debugger's as one each: name#k)
         if (pd->name != UINT32_MAX)
-          debugVariable(sym(pd->name) + (pd->isPack ? "#" + std::to_string(k) : std::string()), pd, local.addr, pt,
-                        uint32_t(slot + 1 - (s.hasSret ? 1 : 0)));
+        {
+          // A class passed by pointer: the debugger's at a slot that keeps the pointer, read through it
+          // (DW_OP_deref), as clang declares one; at the incoming pointer itself, which no slot kept
+          // at -O0, Visual Studio showed "Variable is optimized away" (until 2026-11-05).
+          std::string address = local.addr;
+          bool indirect = false;
+          if (isAggregate(pt) && sh.fullDebugInfo && debugFile && debugFile == currentFile && inlining.empty())
+          {
+            address = "%v" + std::to_string(temp++);
+            allocas += "  " + address + " = alloca ptr\n";
+            fn += "  store ptr " + paramNames[slot] + ", ptr " + address + "\n";
+            indirect = true;
+          }
+          debugVariable(sym(pd->name) + (pd->isPack ? "#" + std::to_string(k) : std::string()), pd, address, pt,
+                        uint32_t(slot + 1 - (s.hasSret ? 1 : 0)), false, false, indirect);
+        }
         if (pd->isPack)
           packLocals[pd].push_back(local);
         else

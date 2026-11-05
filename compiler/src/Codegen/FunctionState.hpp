@@ -42,6 +42,7 @@
       uint32_t block = 0, arg = 0;
       bool artificial = false;
       bool defined = false; // its address is an instruction's in the body (a lambda's capture: its field), declared after it
+      bool indirect = false; // its address holds the variable's address (a class parameter passed by pointer): DW_OP_deref
     };
     struct DebugBlock
     {

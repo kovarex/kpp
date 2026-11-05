@@ -1,7 +1,8 @@
-function inspect(const game::Point&, int32, game::Mode)
+function inspect(const game::Point&, int32, game::Mode, StringView)
   parameter point const game::Point&
   parameter scale int
   parameter mode game::Mode
+  parameter label StringView&
   local sum int
   local mask game::Mask
   local scaled inspect::__lambda_f9e4fd6c_0
