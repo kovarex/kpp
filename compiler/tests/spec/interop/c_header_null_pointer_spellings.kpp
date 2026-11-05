@@ -1,0 +1,9 @@
+// spec: an integer literal of value zero is a null pointer constant wherever C code gives one to a pointer, in every spelling C has, its suffix u and l or ll in either order and any case (`0UL`, `0lu`, `0ull`), hex's `0x0` and octal's `00`: one rule (lexer.hpp's isZeroLiteral) for codegen, overload resolution's null arguments and the check that refuses the literal 0 for a pointer in kpp code (`0 0 0 0 0 1`)
+// factorio: none; codegen's list and overload resolution's lacked `0ul` and `0UL`, which the zero-null check had ("codegen does not support passing unsigned long where a pointer is expected yet" for a C header's `f(0UL)`)
+extern "C" import "c_header_null_pointer_spellings.h";
+
+int main()
+{
+  println(zero_ul(), " ", zero_lu(), " ", zero_ull(), " ", zero_hex(), " ", zero_octal(), " ", some());
+  return 0;
+}

@@ -1223,7 +1223,7 @@ auto codegen::Emitter::nullPointerConstant(Expr* e) -> bool
     return false;
   const Token& tok = (*l->file->tokens)[l->token];
   std::string_view text = l->file->text.substr(tok.offset, tok.length);
-  return text == "0" || text == "0u" || text == "0U" || text == "0l" || text == "0L" || text == "0ll" || text == "0LL" || text == "0ull" || text == "0ULL";
+  return isZeroLiteral(text);
 }
 
 auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::string

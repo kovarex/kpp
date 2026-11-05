@@ -114,6 +114,35 @@ const char* tokenKindName(TokenKind kind);
 // anywhere else in a token is an error); its spelling is then made in buffer.
 std::string_view tokenSpelling(std::string_view text, const Token& t, std::string& buffer);
 
+// Whether a number literal's spelling is an integer literal of value zero, which C++ takes as a null
+// pointer constant: `0` (and octal's `00`), `0x0`, `0b0`, with an integer suffix or none (`0u`, `0L`,
+// `0ul`, `0LLU`...). The one rule of codegen's nullPointerConstant, overload resolution's null
+// arguments (the walker's nullConstants) and the check that refuses the literal 0 for a pointer
+// (design.md 4); each spelled its own list until 2026-11-05, and two lacked `0ul` and `0UL`.
+inline bool isZeroLiteral(std::string_view text)
+{
+  size_t end = text.size();
+  auto suffix = [&](char a, char b) { return end > 0 && (text[end - 1] == a || text[end - 1] == b); };
+  // the suffix: u and l or ll in either order, l and ll in one case (`lL` is none)
+  bool unsignedSeen = false;
+  if (suffix('u', 'U'))
+    --end, unsignedSeen = true;
+  if (end >= 2 && ((text[end - 1] == 'l' && text[end - 2] == 'l') || (text[end - 1] == 'L' && text[end - 2] == 'L')))
+    end -= 2;
+  else if (suffix('l', 'L'))
+    --end;
+  if (!unsignedSeen && suffix('u', 'U'))
+    --end;
+  std::string_view digits = text.substr(0, end);
+  size_t start = digits.size() > 2 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X' || digits[1] == 'b' || digits[1] == 'B') ? 2 : 0;
+  if (start == digits.size())
+    return false; // (`` or `0x`)
+  for (size_t i = start; i < digits.size(); ++i)
+    if (digits[i] != '0')
+      return false;
+  return true;
+}
+
 // A raw string literal's body (between `delimiter(` and `)delimiter`) as C++ reads it, appended to
 // out: a CRLF line end of the source is one newline, as translation phase 1 maps it before the
 // literal is read (a CRLF file's R"(a<CRLF>b)" is the bytes 97 10 98, never 97 13 10 98). Nothing

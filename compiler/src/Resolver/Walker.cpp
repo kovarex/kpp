@@ -1704,8 +1704,7 @@ auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<En
     if (x && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::Number)
     {
       std::string_view text = spelling(static_cast<LiteralExpr*>(x));
-      zero = text == "0" || text == "0u" || text == "0U" || text == "0l" || text == "0L" || text == "0ll" || text == "0LL" || text == "0ull" ||
-             text == "0ULL";
+      zero = isZeroLiteral(text);
     }
     nullConstants.push_back(zero);
     anyNull = anyNull || zero;
@@ -4512,8 +4511,7 @@ auto GlobalScope::Impl::Walker::noteZeroNull(Expr* e, const Ty* target) -> void
     return;
   const Token& t = (*in->tokens)[l->token];
   std::string_view text = in->text.substr(t.offset, t.length);
-  static const char* zeros[] = {"0", "0u", "0U", "0l", "0L", "0ll", "0LL", "0ul", "0UL", "0ull", "0ULL"};
-  if (std::none_of(std::begin(zeros), std::end(zeros), [&](const char* z) { return text == z; }))
+  if (!isZeroLiteral(text))
     return;
   if (!firstZeroNull(in, l->token))
     return;
