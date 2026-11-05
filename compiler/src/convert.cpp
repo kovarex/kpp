@@ -16,10 +16,6 @@ struct InlineBodies
 {
   std::unordered_map<const Decl*, uint32_t> declarations, definitions;
   std::map<std::string, size_t> kept; // why a definition stays outside, counted
-  // A file's namespace-scope `auto` variables (EnemyExpansionSettings.cpp's `auto migrateValue =
-  // [](...) {...};`), by symbol: a body using one stays below it, as kpp types an `auto` variable
-  // where it stands.
-  std::map<const ParsedFile*, std::set<uint32_t>> autoVariables;
 };
 
 namespace

@@ -799,20 +799,6 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   InlineBodies inlineBodies;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported && !in.c)
-    {
-      std::function<void(Span<Decl*>)> autos = [&](Span<Decl*> decls)
-      {
-        for (Decl* d : decls)
-          if (d->kind == NodeKind::NamespaceDecl)
-            autos(static_cast<NamespaceDecl*>(d)->decls);
-          else if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->type &&
-                   static_cast<VariableDecl*>(d)->type->kind == NodeKind::AutoType && !static_cast<VariableDecl*>(d)->name.empty())
-            inlineBodies.autoVariables[in.parsed].insert(static_cast<VariableDecl*>(d)->name.last().symbol);
-      };
-      autos(in.parsed->decls);
-    }
-  for (const ConvertInput& in : inputs)
-    if (in.parsed && !in.parsed->isImported && !in.c)
       collectInlineBodies(in.parsed->decls, false, global, symbols, inlineBodies);
   total.add("member function bodies written in their classes", inlineBodies.definitions.size());
   for (const auto& [why, n] : inlineBodies.kept)

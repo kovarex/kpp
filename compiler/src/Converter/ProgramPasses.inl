@@ -381,10 +381,6 @@ static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope&
         for (uint32_t k = def->token; k < def->body->token && k < def->file->tokens->size(); ++k)
           if ((*def->file->tokens)[k].is(Kw::try_))
             why = "a function-try-block"; // (`X::X() try : a(b) { ... } catch (...) { ... }`)
-      if (auto autos = out.autoVariables.find(def->file); !why && autos != out.autoVariables.end() && def->file->tokens)
-        for (uint32_t k = def->body->token; k < def->endToken && k < def->file->tokens->size() && !why; ++k)
-          if ((*def->file->tokens)[k].getKind() == TokenKind::Identifier && autos->second.count((*def->file->tokens)[k].id))
-            why = "using a namespace-scope auto variable of its file";
       if (why)
       {
         ++out.kept[why];

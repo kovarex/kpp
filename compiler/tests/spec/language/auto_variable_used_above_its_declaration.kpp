@@ -1,5 +1,5 @@
 // spec: a namespace-scope variable declared `auto` is usable above its declaration, as every other declaration is (order-independent symbols): a member function's body written before `auto migrate = [](auto& value, auto from, auto to) { ... };` calls it, and the lambda's type is known there (`7 5`)
-// factorio: EnemyExpansionSettings.cpp's `auto migrateValue = [](auto& value, auto oldDefault, auto newDefault) {...};`, which migrateFromOldDefaults and migrateFrom_2_1_Defaults call; the converter keeps those two bodies outside their class, below the variable, until this passes
+// factorio: EnemyExpansionSettings.cpp's `auto migrateValue = [](auto& value, auto oldDefault, auto newDefault) {...};`, which migrateFromOldDefaults and migrateFrom_2_1_Defaults call, their bodies written in their class (the converter kept them outside it until this passed)
 class Settings
 {
 public:
