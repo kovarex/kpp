@@ -1,0 +1,11 @@
+// spec: String::replace with text that is part of the string itself replaces with the text as it was before the call, as std::string::replace does: the string's own suffix through a pointer, and the whole string (`defcdef 7 / abcdefcdef 10`)
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  String s("abcdef");
+  s.replace(0, 2, s.c_str() + 3);
+  String t("abcdef");
+  t.replace(0, 2, t);
+  printf("%s %d / %s %d\n", s.c_str(), int(s.size()), t.c_str(), int(t.size()));
+  return 0;
+}

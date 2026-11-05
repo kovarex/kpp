@@ -203,23 +203,22 @@ public:
   {
     if (count == 0)
       return *this;
-    ContainerSize length = this->size();
-    ContainerSize newLength = sizeSum(length, count, "string too long"); // before a byte is copied
-    if (index > length)
-      index = length;
-    const char* chars = this->data();
-    if (text >= chars && text < chars + length)
+    sizeSum(this->size(), count, "string too long"); // before a byte is copied, the text's copy too
+    // Inserting part of this string into itself: copy it out before the characters move. Constant
+    // evaluation cannot order pointers into different objects (as clang), so there the text is
+    // always copied out.
+    if consteval
     {
-      // Inserting part of this string into itself: copy it out before the characters move.
       String copy(text, count);
-      return this->insert(index, copy.data(), count);
+      return this->insertUnaliased(index, copy.data(), count);
     }
-    this->ensureRoom(newLength);
-    char* target = this->data();
-    memmove(target + index + count, target + index, length - index);
-    memcpy(target + index, text, count);
-    this->setLength(length + count);
-    return *this;
+    const char* chars = this->data();
+    if (text >= chars && text < chars + this->size())
+    {
+      String copy(text, count);
+      return this->insertUnaliased(index, copy.data(), count);
+    }
+    return this->insertUnaliased(index, text, count);
   }
   String& insert(ContainerSize index, const char* text) { return this->insert(index, text, checkedSize(strlen(text), "string too long")); }
   // Inserts [first, last) before the character position points at.
@@ -246,18 +245,32 @@ public:
     return *this;
   }
   // Replaces count bytes at index with text; returns the string.
+  // The text may be part of this string (std::string::replace): it is the text as it was before the call.
   String& replace(ContainerSize index, ContainerSize count, const char* text)
   {
-    ContainerSize textLength = checkedSize(strlen(text), "string too long");
-    this->checkReplacement(index, count, textLength);
-    this->erase(index, count);
-    return this->insert(index, text, textLength);
+    return this->replace(index, count, text, checkedSize(strlen(text), "string too long"));
   }
-  String& replace(ContainerSize index, ContainerSize count, const String& text)
+  String& replace(ContainerSize index, ContainerSize count, const String& text) { return this->replace(index, count, text.data(), text.size()); }
+  String& replace(ContainerSize index, ContainerSize count, const char* text, ContainerSize textLength)
   {
-    this->checkReplacement(index, count, text.size());
+    this->checkReplacement(index, count, textLength);
+    // The erase moves the characters after it, so text in this string is copied out first (always
+    // at compile time, which cannot order pointers into different objects, as in insert).
+    if consteval
+    {
+      String copy(text, textLength);
+      this->erase(index, count);
+      return this->insertUnaliased(index, copy.data(), textLength);
+    }
+    const char* chars = this->data();
+    if (text >= chars && text < chars + this->size())
+    {
+      String copy(text, textLength);
+      this->erase(index, count);
+      return this->insertUnaliased(index, copy.data(), textLength);
+    }
     this->erase(index, count);
-    return this->insert(index, text);
+    return this->insertUnaliased(index, text, textLength);
   }
 
   // Searching. Every find returns the index of the first match at or after `from`, or npos.
@@ -637,6 +650,20 @@ public:
   void clear() { this->setLength(0); }
 
 private:
+  // insert's work, text not part of this string.
+  String& insertUnaliased(ContainerSize index, const char* text, ContainerSize count)
+  {
+    ContainerSize length = this->size();
+    ContainerSize newLength = sizeSum(length, count, "string too long"); // before a byte is copied
+    if (index > length)
+      index = length;
+    this->ensureRoom(newLength);
+    char* target = this->data();
+    memmove(target + index + count, target + index, length - index);
+    memcpy(target + index, text, count);
+    this->setLength(length + count);
+    return *this;
+  }
   void becomeEmpty()
   {
     if consteval

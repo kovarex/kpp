@@ -53,7 +53,8 @@ forms that take a position return a position:
 - `erase(index, count)`: removes count bytes from index (to the end when count is negative or
   reaches past it). Throws OutOfRange when index > size(). `erase(position)`,
   `erase(first, last)` with pointers, which return where the byte after the removed ones is now.
-- `replace(index, count, text)`: erase then insert.
+- `replace(index, count, text)`, `replace(index, count, text, n)`: erase then insert; the text may be part of
+  the string (it is the text as it was before the call).
 - `resize(n)`, `resize(n, c)`: cut to n bytes, or append zero bytes / copies of c.
 - `reserve(n)`: afterwards `capacity() >= n`; `clear()`: empty, capacity stays; `pop_back()`.
 - `assign(text, count)`, `assign(first, last)` (the bytes of a pointer range), `assign(text)`,
