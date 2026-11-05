@@ -2819,6 +2819,8 @@ auto GlobalScope::Impl::constEmptyInPlace(const Ty* t, const ConstClassLayout& l
   for (size_t k = 0; k < nb + nf; ++k)
   {
     bool base = k < nb;
+    if (union_ && !base && !(layout.fields[k - nb] && layout.fields[k - nb]->init))
+      continue; // (a union's member without an initializer is none it holds: nothing made, not a String that was never destroyed)
     std::optional<ConstValue> part = base ? constEmpty(layout.bases[k], zero, depth + 1) : constFieldDefaultOn(layout, k - nb, zero, home, depth);
     ConstPlace at = home;
     at.path.push_back(k);
@@ -4700,6 +4702,8 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
   {
     bool base = k < nb;
     const Ty* partType = base ? layout->bases[k] : layout->fieldTypes[k - nb];
+    if (union_ && !base && !written[k] && !(layout->fields[k - nb] && layout->fields[k - nb]->init))
+      continue; // (a union's member no initializer names: none it holds, nothing made)
     std::optional<ConstValue> part = written[k] ? initialize(*written[k], partType)
                                    : base     ? constEmpty(partType, false, depth + 1)
                                               : constFieldDefaultOn(*layout, k - nb, false, home, depth);

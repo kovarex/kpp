@@ -1,0 +1,35 @@
+// spec: at compile time a union's member that no initializer names is not constructed, as C++ has it ([class.base.init] 9, [class.union] 1): `U u;` with `union U { String s; U() {} ~U() {} }` makes no String, and a String placement new makes in it and `u.s.~String()` destroys lives and ends there, at compile time as at run time
+// found by thread D (2026-11-05), comparing Optional<String> at compile time and run time: the evaluator made every member of a union, of which it kept none, so a String member's block was allocated and never freed ("memory allocated at String.kpp:657 is never freed"), and a union holding a String was no constant
+union U
+{
+  String s;
+  U() {}
+  ~U() {}
+};
+union V
+{
+  String s;
+  int i;
+  V() : i(3) {}
+  ~V() {}
+};
+constexpr long long made()
+{
+  U u;
+  new (&u.s) String("abc");
+  long long r = (long long)u.s.size();
+  u.s.~String();
+  return r;
+}
+constexpr long long other()
+{
+  V v;
+  return v.i;
+}
+int main()
+{
+  constexpr long long a = made();
+  constexpr long long b = other();
+  println(a, " ", made(), " ", b, " ", other());
+  return 0;
+}
