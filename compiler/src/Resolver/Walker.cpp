@@ -2558,7 +2558,26 @@ auto GlobalScope::Impl::Walker::checkAbstractObject(VariableDecl* v, const Ty* d
     t = types.unqualified(t->inner);
   if (t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t) || impl.containsAuto(t) || Impl::mentionsUnknown(t))
     return;
-  if (std::optional<bool> abstract = impl.abstractClass(t, {}); abstract && *abstract)
+  std::optional<bool> abstract;
+  if (bodyOf)
+    abstract = impl.abstractClass(t, {}); // a local: what the function's walk reads
+  else
+  {
+    // A declaration outside a function body (a global, a static or data member, a class
+    // instance's member) records nothing of what the check reads: a compile server emits the
+    // initializer of a global whose walk read an edited name again, and a data member or a
+    // constant has none to emit (incremental 44: Frame's `Shape inner;` read Shape's members, and
+    // a layout edit of Shape built the program in full). A member list read outside any unit
+    // (RecordInto(nullptr)) would build an edit of its class from scratch, so the reads go to a
+    // list of their own, dropped; an error stays the declaration's. An edit that makes the class
+    // abstract is reported when the declaration is walked again, by a new process at the latest.
+    Dependencies dropped;
+    RecordInto into(&dropped);
+    if (recordingDependencies)
+      reportingUnit = into.savedReporting;
+    abstract = impl.abstractClass(t, {});
+  }
+  if (abstract && *abstract)
     impl.reportCheckerError(file, v->token, "an object of the abstract class " + types.toString(t, &impl.symbols) +
                                                 " (a pure virtual function of it or of a base that nothing overrides)");
 }

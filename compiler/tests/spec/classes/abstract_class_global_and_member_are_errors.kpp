@@ -1,0 +1,21 @@
+// spec: a global or a data member whose class is abstract (a pure virtual function of it or of a base that nothing overrides) is an error, as an abstract local is (classes/abstract_class_object_is_error): the check of a declaration outside a function body records nothing of what it reads, so that a compile server's edit of the class does not emit the declaration again (incremental 44: a layout edit of Shape built the program in full for `Frame`'s `Shape inner;`)
+// error: abstract_class_global_and_member_are_errors.kpp:15: error: an object of the abstract class Derived
+// error: abstract_class_global_and_member_are_errors.kpp:16: error: an object of the abstract class Derived
+class Base
+{
+public:
+  virtual void write(unsigned count) = 0;
+  virtual ~Base() {}
+};
+class Derived : public Base
+{
+public:
+  void write(int count) { println(count); }
+};
+Derived global;
+struct Frame { Derived inner; int tag = 1; };
+int main()
+{
+  println(1);
+  return 0;
+}
