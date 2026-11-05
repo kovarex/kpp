@@ -16,13 +16,12 @@ struct DefaultDelete
 };
 
 template<typename T, typename D = DefaultDelete<T>>
-struct UniquePtr
+class UniquePtr
 {
+public:
   using element_type = T;
   using deleter_type = D;
   using pointer = T*; // TechnologyGraphGui's `typename GraphT::value_type::pointer`
-
-  T* held = nullptr;
 
   UniquePtr() {}
   implicit UniquePtr(nullptr_t) {}
@@ -101,6 +100,11 @@ struct UniquePtr
     this->held = other.held;
     other.held = tmp;
   }
+
+private:
+  template<typename U, typename E> friend class UniquePtr;
+
+  T* held = nullptr;
 };
 
 template<typename T, typename... Args>

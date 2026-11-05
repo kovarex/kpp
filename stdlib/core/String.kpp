@@ -11,24 +11,14 @@
 // member (the mark in smallChars while the heap fields are alive) is undefined behaviour in a
 // constant evaluation. The `if consteval` branches below are that path; the program holds none of
 // them, so its String is the same code and size as without them (design.md "isConstantEvaluated").
-struct String
+class String
 {
+public:
   // The object's bytes: the heap fields (a pointer and two sizes) and, after them, the mark byte.
   static const i32 objectBytes = 32;
   static const ContainerSize smallCapacity = objectBytes - 2;
   static const i32 markIndex = objectBytes - 1;
   static const i32 largeMark = 0x80;
-
-  union
-  {
-    struct
-    {
-      char* heapChars;
-      ContainerSize heapLength;
-      ContainerSize heapCapacity; // characters that fit, not counting the terminating zero
-    };
-    char smallChars[String::objectBytes]; // [markIndex] is the length of a small string, or largeMark
-  };
 
   using iterator = char*;
   using const_iterator = const char*;
@@ -646,7 +636,7 @@ struct String
   // Empties the string; the capacity stays.
   void clear() { this->setLength(0); }
 
-  // Internals.
+private:
   void becomeEmpty()
   {
     if consteval
@@ -760,6 +750,17 @@ struct String
     block[newLength] = 0;
     this->adopt(block, newLength, newCapacity);
   }
+
+  union
+  {
+    struct
+    {
+      char* heapChars;
+      ContainerSize heapLength;
+      ContainerSize heapCapacity; // characters that fit, not counting the terminating zero
+    };
+    char smallChars[String::objectBytes]; // [markIndex] is the length of a small string, or largeMark
+  };
 };
 
 // A const char* on the left of an ordering comparison with a String (`"b" < name`), byte-wise as

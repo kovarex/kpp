@@ -65,12 +65,10 @@ struct EnableSharedFromThisBase
 };
 
 template<typename T>
-struct SharedPtr
+class SharedPtr
 {
+public:
   using element_type = T;
-
-  T* pointer = nullptr;
-  SharedControl* control = nullptr;
 
   SharedPtr() {}
   implicit SharedPtr(nullptr_t) {}
@@ -210,18 +208,24 @@ struct SharedPtr
     if constexpr (isBaseOf<EnableSharedFromThisBase, U>)
       object->adoptSharedSelf(this->control);
   }
+
+private:
+  template<typename U> friend class SharedPtr;
+  template<typename U> friend class WeakPtr;
+  template<typename U> friend struct Atomic; // Atomic<SharedPtr<T>>
+
+  T* pointer = nullptr;
+  SharedControl* control = nullptr;
 };
 
 template<typename T, typename... Args>
 SharedPtr<T> makeShared(Args&&... args) { return SharedPtr<T>(new T(forward<Args>(args)...)); }
 
 template<typename T>
-struct WeakPtr
+class WeakPtr
 {
+public:
   using element_type = T;
-
-  T* pointer = nullptr;
-  SharedControl* control = nullptr;
 
   WeakPtr() {}
   implicit WeakPtr(const SharedPtr<T>& shared) : pointer(shared.pointer), control(shared.control)
@@ -295,6 +299,13 @@ struct WeakPtr
   i32 useCount() const { return this->use_count(); }
   // A SharedPtr to the object while it lives, empty otherwise.
   SharedPtr<T> lock() const { return SharedPtr<T>::locked(this->pointer, this->control); }
+
+private:
+  template<typename U> friend class SharedPtr;
+  template<typename U> friend class WeakPtr;
+
+  T* pointer = nullptr;
+  SharedControl* control = nullptr;
 };
 
 // What shared_from_this() throws for an object no SharedPtr owns.
