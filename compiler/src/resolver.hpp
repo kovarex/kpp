@@ -501,6 +501,10 @@ public:
   bool isTemplateContext(Decl* d);               // Inside a template (any enclosing declaration has parameters).
   // Instantiation queries, single-threaded (code generation):
   const Ty* typeOfDeclIn(Decl* d, const TemplateArgs& args);
+  // d's type under the arguments of the instantiation's copy whose body declares the class `in` (a
+  // closure), as that copy's walk typed it, or null when `in` is in no copy: what a closure
+  // capturing a parameter pack lays out, whichever function needs the closure first.
+  const Ty* typeInInstanceOf(Decl* d, const Decl* in);
   const Ty* typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args);
   // The value of the constant expression e (read from file, written in context: a function, the
   // variable whose initializer it is, a class) under args: the checker's compile-time evaluator,

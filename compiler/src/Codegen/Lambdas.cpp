@@ -205,10 +205,11 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
   if (thisCaptured)
     out.push_back({nullptr, true, nullptr});
   // A parameter pack of the function around: a slot per element, in order. Its elements are the
-  // parameter's type under the instantiation's arguments, which only that function's emission has
-  // (currentArgs, in its body or in a lambda's in it): the parameter's own type is the template's
-  // (`Ts`), and the body's names of it are typed as the pack or as one element. Laid out by another
-  // function first (a caller that holds a closure an instance returned), it is an error.
+  // parameter's type under the instantiation's arguments, as the walk of the copy that declares the
+  // closure had them (typeInInstanceOf: whichever function lays the closure out first, a caller
+  // that holds a closure an instance returned too), or as the function's emission has them
+  // (currentArgs, in its body or in a lambda's in it); the parameter's own type is the template's
+  // (`Ts`), and the body's names of it are typed as the pack or as one element.
   // (A generic lambda's body is typed for each call as a whole, never per element of a pack it
   // expands: GlobalScope::lambdaInstance.)
   std::vector<CaptureSlot> expanded;
@@ -222,13 +223,17 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
     }
     if (!l->templateParams.empty())
       unsupported(l, "a generic lambda that uses a parameter pack of the function it is written in");
-    Decl* writer = l->closure ? l->closure->parent : nullptr;
-    while (writer && writer->kind != NodeKind::FunctionDecl)
-      writer = writer->parent;
-    bool inWriter = writer && (writer == static_cast<const Decl*>(checkerChecked) || writer == currentFunction);
-    const Ty* pack = inWriter && currentArgs ? declType(pd) : nullptr;
+    const Ty* pack = l->closure ? global.typeInInstanceOf(pd, l->closure) : nullptr;
     if (!pack || pack->kind != TyKind::Pack)
-      unsupported(l, "laying out a closure that captures a parameter pack outside the function the lambda is written in");
+    {
+      Decl* writer = l->closure ? l->closure->parent : nullptr;
+      while (writer && writer->kind != NodeKind::FunctionDecl)
+        writer = writer->parent;
+      bool inWriter = writer && (writer == static_cast<const Decl*>(checkerChecked) || writer == currentFunction);
+      pack = inWriter && currentArgs ? declType(pd) : nullptr;
+    }
+    if (!pack || pack->kind != TyKind::Pack)
+      unsupported(l, "a capture of a parameter pack whose elements are not known");
     for (size_t k = 0; k < pack->args.size(); ++k)
       expanded.push_back({s.decl, s.byRef, nullptr, int(k), types.stripRef(pack->args[k])});
   }

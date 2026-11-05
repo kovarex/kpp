@@ -1352,6 +1352,12 @@ namespace
   }
 }
 
+const Ty* GlobalScope::typeInInstanceOf(Decl* d, const Decl* in)
+{
+  const Subst* s = impl->instanceSubstOf(in); // (an entry is kept once recorded)
+  return s ? impl->declaredTypeOf(d, s, 0) : nullptr;
+}
+
 const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
 {
   if (args.empty())

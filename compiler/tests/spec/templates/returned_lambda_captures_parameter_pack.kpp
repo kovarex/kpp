@@ -1,5 +1,13 @@
 // spec: a lambda that captures a parameter pack of the function template it is written in, returned to the caller and called there: its closure holds each element
-// pending: the caller holds the closure before the instance that writes it is emitted, and only that instance's emission has the arguments its pack's elements are typed with ("laying out a closure that captures a parameter pack outside the function the lambda is written in")
+// found by thread D (2026-11-05) with the lambda pack fix (6a87c1e8): the caller holds the closure before the instance that writes it is emitted, and its elements' types were the writer's emission's alone ("laying out a closure that captures a parameter pack outside the function the lambda is written in"); they are the instance's arguments as the walk of its copy recorded them
+inline int digits(int a, int b, int c) { return a * 100 + b * 10 + c; }
+
+template<typename... Ts>
+auto makeDigits(Ts... ts)
+{
+  return [=]() { return digits(ts...); };
+}
+
 template<typename... Ts>
 auto make(Ts... ts)
 {
@@ -9,5 +17,7 @@ int main()
 {
   auto f = make(1, 2, 3);
   println(f());
+  auto g = makeDigits(4, 5, 6);
+  println(g(), " ", g());
   return 0;
 }
