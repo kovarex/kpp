@@ -10,23 +10,9 @@
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$Section = '')
 $ErrorActionPreference = 'Stop'
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\project'))
-# The compile servers of this test's projects: those whose KEY.args (in %TEMP%\kppc-server, server.cpp)
-# starts with a working directory under $work, each stopped through its process, KEY.exe. A failed check
-# left them running (thread B, 2026-11-04), holding $work, which the next run could not delete; never
-# kpp --stop-all-servers, which would stop other threads' servers too.
-function StopTestServers()
-{
-  $dir = Join-Path $env:TEMP 'kppc-server'
-  foreach ($record in @(Get-ChildItem (Join-Path $dir '*.args') -ErrorAction SilentlyContinue))
-  {
-    # (one another thread's client is writing as its server starts cannot be read: not this test's,
-    # whose own are written by then; it stopped the whole test once, the gate of 2026-11-05)
-    try { $cwd = ([IO.File]::ReadAllText($record.FullName) -split "`0")[0] } catch { continue }
-    if (-not $cwd.StartsWith($work, [StringComparison]::OrdinalIgnoreCase)) { continue }
-    $exe = Join-Path $dir ($record.BaseName + '.exe')
-    Get-Process | Where-Object { $_.Path -and $_.Path -ieq $exe } | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit(10000) | Out-Null }
-  }
-}
+# The compile servers of this test's projects, stopped at its start and its end (testservers.ps1).
+. "$PSScriptRoot\testservers.ps1"
+function StopTestServers() { Stop-TestServers $work }
 if (-not $Section)
 {
   StopTestServers

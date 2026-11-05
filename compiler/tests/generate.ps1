@@ -4,7 +4,12 @@
 # so that the Error List opens it; .vscode's files are JSON after their first line. run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
-$work = Join-Path $PSScriptRoot '..\build\tests\generate'
+$work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\generate'))
+# Its compile servers, stopped at its start (what a run that failed partway left holds $work, which
+# Remove-Item then could not delete, failing every later gate: D, 2026-11-05) and at its end
+# (testservers.ps1).
+. "$PSScriptRoot\testservers.ps1"
+Stop-TestServers $work
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work | Out-Null
 Copy-Item "$PSScriptRoot\run\hello.kpp" $work
@@ -130,4 +135,5 @@ try
 }
 finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   generate' }
+Stop-TestServers $work
 exit $failed
