@@ -94,8 +94,6 @@
     // global is defined (or failed).
     struct GlobalClaim
     {
-      Shared& sh;
-      std::pair<Decl*, const Ty*> key;
       GlobalClaim(Shared& sh, std::pair<Decl*, const Ty*> key) : sh(sh), key(key) {}
       ~GlobalClaim()
       {
@@ -105,6 +103,9 @@
         }
         sh.claimsChanged.notify_all();
       }
+
+      Shared& sh;
+      std::pair<Decl*, const Ty*> key;
     };
 
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr);

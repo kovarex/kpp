@@ -63,9 +63,10 @@ auto codegen::Emitter::fieldsSize(const StructInfo& info, const Ty* t, Node* at)
     unsupported(at, "the class " + types.toString(t, &symbols) + ", which contains itself (a member or base of its own type)");
   struct Sizing
   {
+    ~Sizing() { now.erase(info); }
+
     std::unordered_set<const StructInfo*>& now;
     const StructInfo* info;
-    ~Sizing() { now.erase(info); }
   } sizing{sizingNow, &info};
   uint64_t size = 0, align = 1;
   for (size_t i = 0; i < info.fieldTypes.size(); ++i)

@@ -1206,14 +1206,15 @@ auto codegen::Emitter::comparedAt(P op, const std::string& a, const std::string&
   locals[&vb] = Local{b, t, false};
   struct Forget
   {
-    std::unordered_map<Decl*, Local>& locals;
-    Decl* x;
-    Decl* y;
     ~Forget()
     {
       locals.erase(x);
       locals.erase(y);
     }
+
+    std::unordered_map<Decl*, Local>& locals;
+    Decl* x;
+    Decl* y;
   } forget{locals, &va, &vb};
   return rvalue(&cmp);
 }

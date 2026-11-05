@@ -792,10 +792,6 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // A session kept for the next build takes them instead.
   struct FreeLater
   {
-    std::unique_ptr<Shared>& shared;
-    std::vector<std::unique_ptr<Emitter>>& emitters;
-    CodegenSessionPtr& session;
-    CodegenSessionPtr* keep;
     ~FreeLater()
     {
       if (keep && session->usable)
@@ -812,6 +808,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         session.reset();
       }).detach();
     }
+
+    std::unique_ptr<Shared>& shared;
+    std::vector<std::unique_ptr<Emitter>>& emitters;
+    CodegenSessionPtr& session;
+    CodegenSessionPtr* keep;
   } freeLater{shared, emitters, session, keep};
   Emitter& e = *emitters[0];
   std::vector<FunctionDecl*> functions;

@@ -683,15 +683,16 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
   }
   struct ContextRestore
   {
-    Decl*& lambda;
-    Decl*& initializer;
-    Decl* savedLambda;
-    Decl* savedInitializer;
     ~ContextRestore()
     {
       lambda = savedLambda;
       initializer = savedInitializer;
     }
+
+    Decl*& lambda;
+    Decl*& initializer;
+    Decl* savedLambda;
+    Decl* savedInitializer;
   } contextRestore{lambdaContext, initializerOf, lambdaContext, initializerOf};
   // One written in a function body (whose declarations the closure's context reaches); one in
   // a constructor's initializer list or a member's initializer is typed as before, from the
@@ -910,11 +911,6 @@ auto codegen::Emitter::emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, c
   auto* writerFunction = static_cast<FunctionDecl*>(writer);
   struct Restore
   {
-    Emitter& e;
-    unsigned module;
-    std::string owner;
-    std::vector<const FunctionDecl*> inlined;
-    OnDemand onDemand;
     ~Restore()
     {
       e.currentModule = module;
@@ -922,6 +918,12 @@ auto codegen::Emitter::emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, c
       e.inlinedNow = std::move(inlined);
       e.onDemandNow = std::move(onDemand);
     }
+
+    Emitter& e;
+    unsigned module;
+    std::string owner;
+    std::vector<const FunctionDecl*> inlined;
+    OnDemand onDemand;
   } restore{*this, currentModule, owner, std::move(inlinedNow), onDemandNow};
   inlinedNow.clear();
   if (moduleCount > 1)

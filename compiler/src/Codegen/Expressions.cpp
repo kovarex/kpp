@@ -119,7 +119,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
     recursionDepth = 0;
     fail(e, "expression nested too deeply");
   }
-  struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
+  struct DepthGuard { ~DepthGuard() { --d; } int& d; } dg{recursionDepth};
   switch (e->kind)
   {
     case NodeKind::LiteralExpr:
@@ -598,13 +598,14 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       std::deque<BinaryExpr> steps;
       struct Forget
       {
-        std::unordered_map<Decl*, Local>& locals;
-        std::deque<VariableDecl>& vars;
         ~Forget()
         {
           for (VariableDecl& v : vars)
             locals.erase(&v);
         }
+
+        std::unordered_map<Decl*, Local>& locals;
+        std::deque<VariableDecl>& vars;
       } forget{locals, standVars};
       auto standIn = [&](const Value& v) -> Expr*
       {
@@ -1451,7 +1452,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     place.resolved = &evaluated;
     place.ty = rty;
     locals[&evaluated] = {at, rty, false};
-    struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &evaluated};
+    struct Forget { ~Forget() { locals.erase(d); } std::unordered_map<Decl*, Local>& locals; Decl* d; } forget{locals, &evaluated};
     NamedCastExpr rvalueCast{};
     rvalueCast.kind = NodeKind::NamedCastExpr;
     rvalueCast.token = rhs->token;

@@ -11,6 +11,104 @@ namespace codegen
 
   struct Emitter : FunctionState
   {
+    struct SharedLock
+    {
+      SharedLock(SpinRecursiveMutex& m, int& depth) : lock(m), depth(depth) { ++depth; }
+      ~SharedLock() { --depth; }
+
+      std::unique_lock<SpinRecursiveMutex> lock;
+      int& depth;
+    };
+    SharedLock sharedLock() { return SharedLock(sh.mutex, sharedDepth); }
+    bool mayPublish() const { return sharedDepth == 1; }
+    // A function's definition (addDefinition), counted in result.functions; an incremental build
+    // takes the count of the ones it drops off again.
+    void addFunction(const std::string& name, const std::string& text, bool ownItself = false)
+    {
+      addDefinition(name, text, ownItself, true);
+      ++sh.functions;
+    }
+    // What a first use emits, whichever user is first (a generic lambda's call operator for its
+    // arguments, a lambda's function-pointer thunk; a lambda's call operator its closure's first writer
+    // emits goes to lambdaHome's), goes to the module its name hashes to, as an
+    // instantiation does (queueInstantiation): users in two modules emitted at once (callers of one
+    // level) would otherwise move it between runs. Its owner stays the user's.
+    struct NameHome
+    {
+      NameHome(Emitter& e, const std::string& name) : e(e), module(e.currentModule)
+      {
+        if (e.moduleCount > 1)
+          e.currentModule = e.sh.emissionModule(std::hash<std::string>()(name));
+      }
+      NameHome(Emitter& e, unsigned home) : e(e), module(e.currentModule)
+      {
+        if (e.moduleCount > 1)
+          e.currentModule = home;
+      }
+      ~NameHome() { e.currentModule = module; }
+
+      Emitter& e;
+      unsigned module;
+    };
+    struct ConstContextScope // restores constContext when an Unsupported leaves the fold
+    {
+      ConstContextScope(Emitter& e, Decl* d) : e(e), saved(e.constContext) { e.constContext = d; }
+      ~ConstContextScope() { e.constContext = saved; }
+
+      Emitter& e;
+      Decl* saved;
+    };
+    struct ArgsScope
+    {
+      ArgsScope(Emitter& e, const TemplateArgs* args) : e(e), saved(e.currentArgs) { e.currentArgs = args; }
+      ~ArgsScope() { e.currentArgs = saved; }
+
+      Emitter& e;
+      const TemplateArgs* saved;
+    };
+
+    struct Value
+    {
+      std::string text;         // IR operand; for class types the object's address
+      const Ty* ty;             // Value type (never a reference)
+      bool isTemporary = false; // Class temporary owned by the current full-expression
+    };
+
+    static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
+    static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
+    // A result that comes back through the caller's hidden result slot: a class, and a closure (a
+    // lambda returned by value lives in memory like every closure; returned as an LLVM value, its
+    // address and its bytes were confused: `ret %closure %o3`).
+    static bool returnsInMemory(const Ty* t) { return isAggregate(t); }
+    static LambdaExpr* lambdaOf(const Ty* t) { return isLambda(t) && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl)->lambda : nullptr; }
+    static bool isGenericLambda(const Ty* t) { LambdaExpr* l = lambdaOf(t); return l && !l->templateParams.empty(); }
+
+    Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
+
+#include "Diagnostics.hpp"
+#include "EmitterNames.hpp"
+#include "Layout.hpp"
+#include "ClassMetadata.hpp"
+#include "ParameterPacks.hpp"
+#include "Lambdas.hpp"
+#include "DebugInfo.hpp"
+#include "Functions.hpp"
+#include "CCallingConvention.hpp"
+#include "Calls.hpp"
+#include "Constants.hpp"
+#include "Values.hpp"
+#include "ConstantData.hpp"
+#include "Operators.hpp"
+#include "SseBuiltins.hpp"
+#include "Expressions.hpp"
+#include "Scopes.hpp"
+#include "Exceptions.hpp"
+#include "ItaniumExceptions.hpp"
+#include "Statements.hpp"
+#include "TypedUnions.hpp"
+#include "ControlFlow.hpp"
+#include "FunctionDefinitions.hpp"
+
     GlobalScope& global;
     TypeTable& types;
     const SymbolTable& symbols;
@@ -74,76 +172,18 @@ namespace codegen
     // them without this lock and publishes each whole, its vtables included; a layout published
     // before its vtables were made had another emitter call a virtual function directly.)
     int sharedDepth = 0;
-    struct SharedLock
-    {
-      std::unique_lock<SpinRecursiveMutex> lock;
-      int& depth;
-      SharedLock(SpinRecursiveMutex& m, int& depth) : lock(m), depth(depth) { ++depth; }
-      ~SharedLock() { --depth; }
-    };
-    SharedLock sharedLock() { return SharedLock(sh.mutex, sharedDepth); }
-    bool mayPublish() const { return sharedDepth == 1; }
-    // A function's definition (addDefinition), counted in result.functions; an incremental build
-    // takes the count of the ones it drops off again.
-    void addFunction(const std::string& name, const std::string& text, bool ownItself = false)
-    {
-      addDefinition(name, text, ownItself, true);
-      ++sh.functions;
-    }
 
     unsigned currentModule = 0;  // where the function being emitted goes
-    // What a first use emits, whichever user is first (a generic lambda's call operator for its
-    // arguments, a lambda's function-pointer thunk; a lambda's call operator its closure's first writer
-    // emits goes to lambdaHome's), goes to the module its name hashes to, as an
-    // instantiation does (queueInstantiation): users in two modules emitted at once (callers of one
-    // level) would otherwise move it between runs. Its owner stays the user's.
-    struct NameHome
-    {
-      Emitter& e;
-      unsigned module;
-      NameHome(Emitter& e, const std::string& name) : e(e), module(e.currentModule)
-      {
-        if (e.moduleCount > 1)
-          e.currentModule = e.sh.emissionModule(std::hash<std::string>()(name));
-      }
-      NameHome(Emitter& e, unsigned home) : e(e), module(e.currentModule)
-      {
-        if (e.moduleCount > 1)
-          e.currentModule = home;
-      }
-      ~NameHome() { e.currentModule = module; }
-    };
     bool emittingShared = false; // string constants go to the shared decls
     // The function emitFunction emits, as the checker typed it (an instance's copy; fail).
     const FunctionDecl* checkerChecked = nullptr;
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
-    struct ConstContextScope // restores constContext when an Unsupported leaves the fold
-    {
-      Emitter& e;
-      Decl* saved;
-      ConstContextScope(Emitter& e, Decl* d) : e(e), saved(e.constContext) { e.constContext = d; }
-      ~ConstContextScope() { e.constContext = saved; }
-    };
     ParsedFile* currentFile = nullptr;
     int recursionDepth = 0; // guards rvalue/lvalue/statement against stack overflow
 
     // Template arguments in effect: of the instantiation being emitted, or temporarily of a class
     // whose constructors/fields are being inspected.
     const TemplateArgs* currentArgs = nullptr;
-    struct ArgsScope
-    {
-      Emitter& e;
-      const TemplateArgs* saved;
-      ArgsScope(Emitter& e, const TemplateArgs* args) : e(e), saved(e.currentArgs) { e.currentArgs = args; }
-      ~ArgsScope() { e.currentArgs = saved; }
-    };
-
-    struct Value
-    {
-      std::string text;         // IR operand; for class types the object's address
-      const Ty* ty;             // Value type (never a reference)
-      bool isTemporary = false; // Class temporary owned by the current full-expression
-    };
     // The last scalar assignment emitted and the place it stored to: an assignment used as an
     // lvalue (`int& r = (a[i++] = v);`) is that place, its left operand not evaluated again.
     const BinaryExpr* assignedAt = nullptr;
@@ -172,42 +212,7 @@ namespace codegen
     std::string currentContext;
     std::string currentRequestedByContext;
 
-    static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
-    static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
-    // A result that comes back through the caller's hidden result slot: a class, and a closure (a
-    // lambda returned by value lives in memory like every closure; returned as an LLVM value, its
-    // address and its bytes were confused: `ret %closure %o3`).
-    static bool returnsInMemory(const Ty* t) { return isAggregate(t); }
-    static LambdaExpr* lambdaOf(const Ty* t) { return isLambda(t) && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl)->lambda : nullptr; }
-    static bool isGenericLambda(const Ty* t) { LambdaExpr* l = lambdaOf(t); return l && !l->templateParams.empty(); }
-
 
     std::string funcletOverride;                              // the pad being emitted, for its calls
-
-    Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
-
-#include "Diagnostics.hpp"
-#include "EmitterNames.hpp"
-#include "Layout.hpp"
-#include "ClassMetadata.hpp"
-#include "ParameterPacks.hpp"
-#include "Lambdas.hpp"
-#include "DebugInfo.hpp"
-#include "Functions.hpp"
-#include "CCallingConvention.hpp"
-#include "Calls.hpp"
-#include "Constants.hpp"
-#include "Values.hpp"
-#include "ConstantData.hpp"
-#include "Operators.hpp"
-#include "SseBuiltins.hpp"
-#include "Expressions.hpp"
-#include "Scopes.hpp"
-#include "Exceptions.hpp"
-#include "ItaniumExceptions.hpp"
-#include "Statements.hpp"
-#include "TypedUnions.hpp"
-#include "ControlFlow.hpp"
-#include "FunctionDefinitions.hpp"
   };
 }

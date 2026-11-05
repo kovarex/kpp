@@ -170,13 +170,14 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   currentContext = displayFunctionName(original, args, classTy);
   struct OwnerScope
   {
-    std::string& owner;
-    bool outermost;
     ~OwnerScope()
     {
       if (outermost)
         owner.clear();
     }
+
+    std::string& owner;
+    bool outermost;
   } ownerScope{owner, owner.empty()};
   if (ownerScope.outermost)
   {
@@ -586,7 +587,7 @@ auto codegen::Emitter::collectInstanceStartupGlobals(const Ty* cls, std::vector<
 
 auto codegen::Emitter::emitStartupGlobal(VariableDecl* v, const Ty* classTy, std::optional<Shared::Startup> at) -> void
 {
-  struct AtRestore { std::optional<Shared::Startup>& a; ~AtRestore() { a.reset(); } } atRestore{startupAt};
+  struct AtRestore { ~AtRestore() { a.reset(); } std::optional<Shared::Startup>& a; } atRestore{startupAt};
   startupAt = at;
   auto it = fileModule.find(v->file);
   currentModule = it == fileModule.end() ? 0 : it->second;

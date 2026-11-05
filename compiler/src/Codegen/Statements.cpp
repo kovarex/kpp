@@ -533,7 +533,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
     recursionDepth = 0;
     fail(s, "statement nested too deeply");
   }
-  struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
+  struct DepthGuard { ~DepthGuard() { --d; } int& d; } dg{recursionDepth};
   if (blockTerminated)
     startBlock(newLabel("dead"));
   debugLine(s);

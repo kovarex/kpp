@@ -164,9 +164,6 @@ namespace codegen
   // its own (only appended to while functions are emitted, read once they all are).
   struct SharedText
   {
-    std::unique_ptr<std::mutex> mutex = std::make_unique<std::mutex>();
-    std::vector<std::string> entries;
-    std::string text; // the entries, once finish() put them in order
     SharedText& operator+=(const std::string& s)
     {
       std::lock_guard lock(*mutex);
@@ -197,6 +194,10 @@ namespace codegen
           return e.substr(at);
       return {};
     }
+
+    std::unique_ptr<std::mutex> mutex = std::make_unique<std::mutex>();
+    std::vector<std::string> entries;
+    std::string text; // the entries, once finish() put them in order
   };
 
   // A mutex for the short holds that many emitters take (the shared lock, the definitions', the shards
@@ -239,10 +240,6 @@ namespace codegen
   // std::recursive_mutex's semantics on a SpinMutex: the thread holding it may take it again.
   class SpinRecursiveMutex
   {
-    SpinMutex mutex;
-    std::atomic<std::thread::id> owner{};
-    unsigned count = 0;
-
   public:
     void lock()
     {
@@ -274,6 +271,10 @@ namespace codegen
         mutex.unlock();
       }
     }
+  private:
+    SpinMutex mutex;
+    std::atomic<std::thread::id> owner{};
+    unsigned count = 0;
   };
 
   // A set of IR names several emitters mark, in shards with a lock each (marking is frequent).
@@ -284,7 +285,6 @@ namespace codegen
       SpinMutex mutex;
       std::unordered_set<std::string> names;
     };
-    Shard shards[64];
     // By the hash's top bits: a shard's set buckets by its low bits (a power-of-two bucket count),
     // and picked by those too, its names all fell into one bucket in 64 (11.7% of codegen's time
     // at -j 1 was spent walking those chains).
@@ -309,6 +309,8 @@ namespace codegen
       std::lock_guard lock(s.mutex);
       s.names.erase(name);
     }
+
+    Shard shards[64];
   };
 
   // Answers that do not change once given (a complete layout, a class's size, whether it needs
@@ -324,7 +326,6 @@ namespace codegen
       SpinMutex mutex;
       std::unordered_map<K, V> answers;
     };
-    Shard shards[64];
     Shard& shardOf(const K& k) { return shards[(std::hash<K>()(k) >> 58) % std::size(shards)]; } // (by the top bits, as NameSet's)
     bool find(const K& k, V& v)
     {
@@ -350,6 +351,8 @@ namespace codegen
         s.answers.clear();
       }
     }
+
+    Shard shards[64];
   };
 
   // A request for an instantiation: by which function (its IR name), and the instantiation depth
@@ -367,22 +370,11 @@ namespace codegen
   // caches of what only depends on the program).
   struct Shared
   {
-    SpinRecursiveMutex mutex;
-    CodegenResult& result;
-    unsigned moduleCount = 1;
-    bool debug = true; // config::debug: asserts are compiled in
-    SharedText decls;  // struct types, globals, string constants, declares
-    SharedText body;   // function definitions (single module), or unused when split
-    SharedText shared; // definitions every module carries (linkonce_odr): enum str(), the assert handler
-    std::vector<SharedText> bodies;                         // per module
-    std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
     // The startup functions of the globals built at startup, each with where its global is
     // defined (ctorsText runs them in that order).
     // (An explicit instantiation's static data member is at the `template class` line, then in
     // its definitions' order: member is the definition's token there, 0 for any other global.)
     struct Startup { uint32_t file; uint32_t token; uint32_t member; std::string function; };
-    std::vector<Startup> startups;
-    std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
     // How each global's constructor (`kpp.init.<name>`) was emitted (Emitter::emitGlobalConstructor's
     // arguments), by its name, and the names by the global: a server's build emits one again when
     // its initializer read an edited function (rebuildLLVM's changedGlobals).
@@ -397,6 +389,125 @@ namespace codegen
       VariableDecl* definition;
       std::optional<Startup> startupAt;
     };
+    // A definition in a module (a function's, a helper's in its home module) with the names its text
+    // uses, found once on the thread that emitted it: module assembly reads these instead of scanning
+    // the module's text again (and they are what an incremental build will keep per function).
+    struct Definition
+    {
+      std::string name;  // the IR name it defines (empty for a helper placed in its home module)
+      std::string owner; // the function whose emission added it: itself, or the function a lambda is written in
+      std::string text;
+      std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
+      std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
+      bool counted = false; // one of the build's functions (result.functions): not a catch filter, nor a global's constructor
+      // The definitions (as written: an instance's template's) of the trivial callees whose bodies
+      // this function's emission holds, its lambdas' included (Emitter::noteInlined): an edit of one
+      // of those bodies changes this text, and rebuildLLVM emits it again as `emitted` says.
+      std::vector<const FunctionDecl*> inlined;
+      // How it was emitted: set with inlined, and for every instance's own definition (an edit of its
+      // template's body, as written, emits it again).
+      std::unique_ptr<Instantiation> emitted;
+      // The class types whose layouts (or answers computed from them: size, destruction, bitwise
+      // copy) its emission and its lambdas' used (Emitter::noteLayout), sorted: a changed layout
+      // emits it again (rebuildLLVM's changedLayouts).
+      std::vector<const Ty*> layouts;
+      // A lambda's call operator its first caller emitted (Emitter::emitCallOperatorOnDemand): its
+      // closure and call types, to emit it again on its own once its writer's edit dropped it.
+      const Ty* closure = nullptr;
+      const Ty* callType = nullptr;
+    };
+    static Definition definitionOf(std::string text);
+    bool programOwned(const std::string& owner) const { return programFunctions.count(owner) != 0; }
+    unsigned outputModules() const { return splitPieces ? 2 * moduleCount : moduleCount; }
+    // Step 4's P2: per module, its program piece as handed to the stream at the barrier (PieceStream),
+    // by its size and hash, for the end's check that it is the end's text.
+    struct StreamedPiece
+    {
+      bool handed = false;
+      uint64_t hash = 0;
+      size_t size = 0;
+    };
+    // A debug build's linkonce_odr globals of the shared declarations (constants, string literals,
+    // static data), each defined in one module, its home (a hash of its name), and declared
+    // `external` in the other modules that name it (prepareModuleTexts, moduleText). Every module
+    // defined every one before: 1.57 million definitions of the game's 64,779, a quarter of its IR,
+    // compiled 128 times and thrown away by the linker 127 times.
+    struct HomedGlobal
+    {
+      unsigned home;
+      std::string declaration; // `@name = external [thread_local] global|constant TYPE[, align N]`
+    };
+    // The module emission puts item x in (x: a file's index, a name's hash): one of the modules after
+    // the importable ones.
+    unsigned emissionModule(size_t x) const { return importableModules + unsigned(x % (moduleCount - importableModules)); }
+    // The module that defines a function: where it was placed, else where it was emitted; null if none.
+    const unsigned* moduleDefining(const std::string& name) const
+    {
+      if (auto it = placedIn.find(name); it != placedIn.end())
+        return &it->second;
+      auto it = definedIn.find(name);
+      return it == definedIn.end() ? nullptr : &it->second;
+    }
+    // A module declaration a function's emission adds every time it runs (a static local and its
+    // guard, a static InitializerList's array), not once at a first use: it belongs to that function
+    // (owner), and an incremental build replaces it with the function. Joins the module's
+    // declarations when they are finished.
+    struct OwnedEntry
+    {
+      std::string owner;
+      std::string text;
+    };
+    struct TypeLine
+    {
+      std::string_view line;      // `%struct.<hash> = type {...}`, in the finished `decls`
+      std::vector<uint32_t> uses; // the type lines it names
+    };
+    // --debug-info's types, each made once per build by its key (Emitter::debugType: its IR spelling's
+    // hash): its metadata text, numbered from 0 as a function's, naming other types by placeholders
+    // (`!T` and a key's 16 hex digits) that module assembly resolves (appendDebugTypes). A compile
+    // server's build (rebuildLLVM, a generation of its own) makes a type's text again when it first
+    // names the type, an edited enum's enumerators then the new ones; the definitions it kept name the
+    // types their own build made.
+    // A class's text is its declaration (DIFlagFwdDecl, by its identifier); its definition, made once
+    // the emission is done (Emitter::homeDebugClasses), is in its home's text alone (debugHomes).
+    struct DebugTypeText
+    {
+      std::string text;
+      uint32_t generation = 0;
+      const Ty* type = nullptr;       // a class's, as its build named it
+      std::string definition;         // a class's members, bases and vtable pointer
+      uint32_t definitionGeneration = UINT32_MAX;
+    };
+
+    explicit Shared(CodegenResult& result) : result(result) {}
+    // The per-module parts, for n modules.
+    void setModules(unsigned n)
+    {
+      moduleCount = std::max(1u, n);
+      bodies.resize(moduleCount);
+      moduleDecls.resize(moduleCount);
+      vtablesIn.resize(moduleCount);
+      moduleLiterals.resize(moduleCount);
+      definitions.resize(moduleCount);
+      ownedEntries.resize(moduleCount);
+      keptModuleEntries.resize(moduleCount);
+      placedHere.resize(moduleCount);
+      placedDecls.resize(moduleCount);
+      movedOut.resize(moduleCount);
+      latePieces.resize(moduleCount);
+    }
+
+    SpinRecursiveMutex mutex;
+    CodegenResult& result;
+    unsigned moduleCount = 1;
+    bool debug = true; // config::debug: asserts are compiled in
+    SharedText decls;  // struct types, globals, string constants, declares
+    SharedText body;   // function definitions (single module), or unused when split
+    SharedText shared; // definitions every module carries (linkonce_odr): enum str(), the assert handler
+    std::vector<SharedText> bodies;                         // per module
+    std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
+    std::vector<Startup> startups;
+    std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
     std::unordered_map<std::string, GlobalInit> globalInits;
     std::unordered_map<const Decl*, std::vector<std::string>> globalInitsOf;
     std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
@@ -452,34 +563,6 @@ namespace codegen
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
     std::string exceptionMessageOffset = "0"; // where the message is in an Exception, after its vtable pointer
     uint64_t exceptionMessageMark = 0;                   // the byte of Exception's message (a String) that says heap or small
-    // A definition in a module (a function's, a helper's in its home module) with the names its text
-    // uses, found once on the thread that emitted it: module assembly reads these instead of scanning
-    // the module's text again (and they are what an incremental build will keep per function).
-    struct Definition
-    {
-      std::string name;  // the IR name it defines (empty for a helper placed in its home module)
-      std::string owner; // the function whose emission added it: itself, or the function a lambda is written in
-      std::string text;
-      std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
-      std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
-      bool counted = false; // one of the build's functions (result.functions): not a catch filter, nor a global's constructor
-      // The definitions (as written: an instance's template's) of the trivial callees whose bodies
-      // this function's emission holds, its lambdas' included (Emitter::noteInlined): an edit of one
-      // of those bodies changes this text, and rebuildLLVM emits it again as `emitted` says.
-      std::vector<const FunctionDecl*> inlined;
-      // How it was emitted: set with inlined, and for every instance's own definition (an edit of its
-      // template's body, as written, emits it again).
-      std::unique_ptr<Instantiation> emitted;
-      // The class types whose layouts (or answers computed from them: size, destruction, bitwise
-      // copy) its emission and its lambdas' used (Emitter::noteLayout), sorted: a changed layout
-      // emits it again (rebuildLLVM's changedLayouts).
-      std::vector<const Ty*> layouts;
-      // A lambda's call operator its first caller emitted (Emitter::emitCallOperatorOnDemand): its
-      // closure and call types, to emit it again on its own once its writer's edit dropped it.
-      const Ty* closure = nullptr;
-      const Ty* callType = nullptr;
-    };
-    static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
     // Streaming's barrier (docs/codegen-speed.md, step 4): a debug build's module is cut into a
     // program piece, which can be assembled once level 0 is emitted, and an instance piece with the
@@ -507,8 +590,6 @@ namespace codegen
     // (moduleText's instancePiece) and declares what the program piece defines.
     bool splitPieces = false;
     std::unordered_set<std::string> programFunctions; // (rebuildLLVM: less the removed, with the added)
-    bool programOwned(const std::string& owner) const { return programFunctions.count(owner) != 0; }
-    unsigned outputModules() const { return splitPieces ? 2 * moduleCount : moduleCount; }
     std::vector<size_t> barrierOwned; // per module: its owned entries at level 0's barrier
     // KPP_CHECK_BARRIER: each module's program piece as level 0's barrier assembles it, compared with
     // the one the end assembles; and whether the barrier's is not the whole piece (late): a definition
@@ -518,28 +599,10 @@ namespace codegen
     // addToDescription's, in 3 of the game's 128 modules).
     std::vector<std::string> barrierPieces;
     std::vector<char> latePieces;
-    // Step 4's P2: per module, its program piece as handed to the stream at the barrier (PieceStream),
-    // by its size and hash, for the end's check that it is the end's text.
-    struct StreamedPiece
-    {
-      bool handed = false;
-      uint64_t hash = 0;
-      size_t size = 0;
-    };
     std::vector<StreamedPiece> streamedPieces;
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
-    // A debug build's linkonce_odr globals of the shared declarations (constants, string literals,
-    // static data), each defined in one module, its home (a hash of its name), and declared
-    // `external` in the other modules that name it (prepareModuleTexts, moduleText). Every module
-    // defined every one before: 1.57 million definitions of the game's 64,779, a quarter of its IR,
-    // compiled 128 times and thrown away by the linker 127 times.
-    struct HomedGlobal
-    {
-      unsigned home;
-      std::string declaration; // `@name = external [thread_local] global|constant TYPE[, align N]`
-    };
     bool homeGlobals = false;
     std::unordered_map<std::string_view, HomedGlobal> homedGlobals; // by `@name`, a view into decls
     std::unordered_map<std::string_view, unsigned> homedComdats;     // `$name` -> its global's home
@@ -550,38 +613,13 @@ namespace codegen
     std::unordered_map<std::string, unsigned> placedIn;      // a placed definition's name -> its module
     std::unordered_set<const Definition*> placedAway;        // the definitions placed in another module than their own
     std::vector<std::vector<std::string_view>> movedOut;     // per module: its declarations' lines placed in another (static locals)
-    // The module emission puts item x in (x: a file's index, a name's hash): one of the modules after
-    // the importable ones.
-    unsigned emissionModule(size_t x) const { return importableModules + unsigned(x % (moduleCount - importableModules)); }
-    // The module that defines a function: where it was placed, else where it was emitted; null if none.
-    const unsigned* moduleDefining(const std::string& name) const
-    {
-      if (auto it = placedIn.find(name); it != placedIn.end())
-        return &it->second;
-      auto it = definedIn.find(name);
-      return it == definedIn.end() ? nullptr : &it->second;
-    }
     // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
     // are emitted, read once they all are), and to name a constant (constantName).
     SpinMutex definitionsMutex, constantsMutex;
-    // A module declaration a function's emission adds every time it runs (a static local and its
-    // guard, a static InitializerList's array), not once at a first use: it belongs to that function
-    // (owner), and an incremental build replaces it with the function. Joins the module's
-    // declarations when they are finished.
-    struct OwnedEntry
-    {
-      std::string owner;
-      std::string text;
-    };
     std::vector<std::vector<OwnedEntry>> ownedEntries;   // per module
     std::vector<std::vector<std::string>> keptModuleEntries; // KPP_CHECK_REBUILD: the module declarations, before they were finished
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
     std::set<std::string> sharedReferences;              // program functions `decls` names (sorted: the same declares in every run)
-    struct TypeLine
-    {
-      std::string_view line;      // `%struct.<hash> = type {...}`, in the finished `decls`
-      std::vector<uint32_t> uses; // the type lines it names
-    };
     std::vector<TypeLine> typeLines;                     // the type definitions, in `decls` order (prepareModuleTexts)
     std::unordered_map<std::string_view, uint32_t> typeIndex; // a type's name -> its line
     std::map<std::string, FunctionDecl*> undefinedUses;  // kpp functions used whose definition was not found (only declared)
@@ -596,22 +634,6 @@ namespace codegen
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
-    // --debug-info's types, each made once per build by its key (Emitter::debugType: its IR spelling's
-    // hash): its metadata text, numbered from 0 as a function's, naming other types by placeholders
-    // (`!T` and a key's 16 hex digits) that module assembly resolves (appendDebugTypes). A compile
-    // server's build (rebuildLLVM, a generation of its own) makes a type's text again when it first
-    // names the type, an edited enum's enumerators then the new ones; the definitions it kept name the
-    // types their own build made.
-    // A class's text is its declaration (DIFlagFwdDecl, by its identifier); its definition, made once
-    // the emission is done (Emitter::homeDebugClasses), is in its home's text alone (debugHomes).
-    struct DebugTypeText
-    {
-      std::string text;
-      uint32_t generation = 0;
-      const Ty* type = nullptr;       // a class's, as its build named it
-      std::string definition;         // a class's members, bases and vtable pointer
-      uint32_t definitionGeneration = UINT32_MAX;
-    };
     std::unordered_map<uint64_t, DebugTypeText> debugTypes;
     // --debug-info's globals (Emitter::debugGlobal), by their IR names' hash: the metadata of each,
     // which the module whose text defines it gets (appendDebugTypes).
@@ -620,24 +642,6 @@ namespace codegen
     std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
     std::vector<DebugClass> debugClasses;          // those classes with their names (CodegenResult::debugClasses), made with debugHomes
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
-
-    explicit Shared(CodegenResult& result) : result(result) {}
-    // The per-module parts, for n modules.
-    void setModules(unsigned n)
-    {
-      moduleCount = std::max(1u, n);
-      bodies.resize(moduleCount);
-      moduleDecls.resize(moduleCount);
-      vtablesIn.resize(moduleCount);
-      moduleLiterals.resize(moduleCount);
-      definitions.resize(moduleCount);
-      ownedEntries.resize(moduleCount);
-      keptModuleEntries.resize(moduleCount);
-      placedHere.resize(moduleCount);
-      placedDecls.resize(moduleCount);
-      movedOut.resize(moduleCount);
-      latePieces.resize(moduleCount);
-    }
   };
 
   // --debug-info: a definition's own metadata ids (Emitter::debugId: `!` and ten digits, after a

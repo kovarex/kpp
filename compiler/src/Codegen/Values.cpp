@@ -602,7 +602,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
     recursionDepth = 0;
     fail(e, "expression nested too deeply");
   }
-  struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
+  struct DepthGuard { ~DepthGuard() { --d; } int& d; } dg{recursionDepth};
   switch (e->kind)
   {
     case NodeKind::NameExpr:
@@ -902,22 +902,24 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   // is the server's full codegen).
   struct InlinedRestore
   {
+    ~InlinedRestore() { now = std::move(saved); }
+
     std::vector<const FunctionDecl*>& now;
     std::vector<const FunctionDecl*> saved;
-    ~InlinedRestore() { now = std::move(saved); }
   } inlinedRestore{inlinedNow, std::move(inlinedNow)};
   inlinedNow.clear();
   struct NameRestore
   {
+    ~NameRestore() { name = savedName, requestedBy = savedRequestedBy; }
+
     std::string& name;
     std::string& requestedBy;
     std::string savedName, savedRequestedBy;
-    ~NameRestore() { name = savedName, requestedBy = savedRequestedBy; }
   } nameRestore{currentFunctionName, currentRequestedBy, currentFunctionName, currentRequestedBy};
   currentFunctionName = fnName;
   currentRequestedBy.clear();
   // (as an error names it: the global, not its initializer's LLVM name)
-  struct ContextNameRestore { std::string& name; std::string saved; ~ContextNameRestore() { name = std::move(saved); } }
+  struct ContextNameRestore { ~ContextNameRestore() { name = std::move(saved); } std::string& name; std::string saved; }
     contextRestore{currentContext, currentContext}, requesterContextRestore{currentRequestedByContext, currentRequestedByContext};
   currentContext = "the initializer of " + (name.size() > 3 && name.compare(0, 2, "@\"") == 0 ? name.substr(2, name.size() - 3) : name);
   currentRequestedByContext.clear();

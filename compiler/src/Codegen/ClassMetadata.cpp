@@ -350,7 +350,7 @@ auto codegen::Emitter::needsDestruction(const Ty* t, Node* at) -> bool
     return *info.needsDestruction;
   }
   info.needsDestruction = false; // Guard against recursion.
-  struct Depth { int& d; Depth(int& d) : d(d) { ++d; } ~Depth() { --d; } } depth(destructionDepth);
+  struct Depth { Depth(int& d) : d(d) { ++d; } ~Depth() { --d; } int& d; } depth(destructionDepth);
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
@@ -760,9 +760,10 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
   const StructInfo& info = structFor(t, at);
   struct ImplicitScope
   {
+    ~ImplicitScope() { e.implicitConstructionOf = saved; }
+
     Emitter& e;
     Decl* saved;
-    ~ImplicitScope() { e.implicitConstructionOf = saved; }
   } implicitScope{*this, implicitConstructionOf};
   if (isClass(t) && t->decl)
     if (Decl* own = currentFunction && (currentFunction->flags & DF_Constructor) ? global.owningClass(currentFunction) : nullptr;
@@ -1716,7 +1717,7 @@ auto codegen::Emitter::makeFromElement(const std::string& slot, const Ty* cls, c
   name.resolved = &element;
   name.ty = types.stripRef(elementTy);
   locals[&element] = {elementAddr, types.stripRef(elementTy), false};
-  struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &element};
+  struct Forget { ~Forget() { locals.erase(d); } std::unordered_map<Decl*, Local>& locals; Decl* d; } forget{locals, &element};
   initializeFrom(slot, cls, &name, at);
 }
 
@@ -1740,7 +1741,7 @@ auto codegen::Emitter::constructFromVector(const std::string& addr, const Ty* cl
   name.resolved = &vector;
   name.ty = v.ty;
   locals[&vector] = {slot, v.ty, false};
-  struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &vector};
+  struct Forget { ~Forget() { locals.erase(d); } std::unordered_map<Decl*, Local>& locals; Decl* d; } forget{locals, &vector};
   Expr* one = &name;
   constructInto(addr, cls, Span<Expr*>{&one, 1}, at);
 }

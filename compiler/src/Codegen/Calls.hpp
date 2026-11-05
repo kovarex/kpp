@@ -136,13 +136,6 @@
         texts.push_back(argumentText(s.paramTys[first + i], callArgs[i], at));
       struct Restore
       {
-        Emitter& e;
-        FunctionDecl* def;
-        const Ty* classTy;
-        Decl* initializerOf;
-        Decl* lambdaContext;
-        ParsedFile* file;
-        std::vector<std::pair<Decl*, std::optional<Local>>> saved;
         ~Restore()
         {
           e.inlining.erase(def);
@@ -156,6 +149,14 @@
           e.lambdaContext = lambdaContext;
           e.currentFile = file;
         }
+
+        Emitter& e;
+        FunctionDecl* def;
+        const Ty* classTy;
+        Decl* initializerOf;
+        Decl* lambdaContext;
+        ParsedFile* file;
+        std::vector<std::pair<Decl*, std::optional<Local>>> saved;
       } restore{*this, def, currentClassTy, initializerOf, lambdaContext, currentFile, {}};
       auto bind = [&](Decl* d, Local local) {
         auto it = locals.find(d);

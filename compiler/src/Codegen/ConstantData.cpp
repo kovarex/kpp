@@ -571,10 +571,11 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
   currentClassTy = classTy;
   struct SharedScope
   {
-    bool& flag;
-    bool saved;
     SharedScope(bool& f) : flag(f), saved(f) { flag = true; }
     ~SharedScope() { flag = saved; }
+
+    bool& flag;
+    bool saved;
   } sharedScope(emittingShared);
   const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
   if (!t || !t->isKnown() || t->isReference() || v->builtin)
@@ -778,10 +779,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   currentClassTy = classTy;
   struct SharedScope
   {
-    bool& flag;
-    bool saved;
     SharedScope(bool& f) : flag(f), saved(f) { flag = true; }
     ~SharedScope() { flag = saved; }
+
+    bool& flag;
+    bool saved;
   } sharedScope(emittingShared); // a global's initializer belongs to every module
   const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
   if (!t || !t->isKnown())

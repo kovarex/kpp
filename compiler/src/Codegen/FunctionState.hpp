@@ -31,12 +31,6 @@
   // What emitting a function's body builds up, from nothing for each function.
   struct FunctionBody
   {
-    std::string fn;      // current function text (after the allocas)
-    std::string allocas; // entry-block allocas of the current function
-    // --debug-info: the declaration (a function or a lambda) whose definition is being emitted and its
-    // file, or null for a definition without line information (a global's startup function).
-    Node* debugAt = nullptr;
-    ParsedFile* debugFile = nullptr;
     // --debug-info unoptimized (Shared::fullDebugInfo): the definition's variables (the address that
     // holds one, its name, its type's placeholder, its line and block, its parameter number from 1),
     // its lexical blocks (the enclosing block, 0 for the function's own scope, and the line) and the
@@ -49,12 +43,73 @@
       bool artificial = false;
       bool defined = false; // its address is an instruction's in the body (a lambda's capture: its field), declared after it
     };
-    std::vector<DebugVariable> debugVariables;
     struct DebugBlock
     {
       uint32_t parent = 0;
       size_t line = 0;
     };
+    struct Local
+    {
+      std::string addr; // Address of the variable (or of the pointer slot for references).
+      const Ty* ty;
+      bool isRef;
+    };
+    struct Object
+    {
+      std::string addr;
+      const Ty* ty;
+      bool exception = false; // addr holds a caught exception record: ending it destroys the object
+      // Destroyed only by an exception leaving its scope (cleanup pads), never on a normal exit: a
+      // constructor's bases and members as it builds them, which outlive it when it returns.
+      bool unwindOnly = false;
+      bool freeMemory = false; // `new`'s allocation while its constructor runs: freed, not destroyed
+      // An array built in a loop (InlineParts::builtCounted): only its first elements are built,
+      // as many as the i64 at countSlot says, and only those are destroyed, the last first.
+      std::string countSlot;
+      // A static local's guard (staticLocal) while its initializer runs: an exception leaving gives
+      // the claim back (the guard to 0, the next pass tries again), never a destructor.
+      std::string guardReset;
+    };
+    struct LabelPlace
+    {
+      std::vector<uint32_t> ids;
+      std::vector<size_t> counts;
+    };
+    struct PendingGoto
+    {
+      std::string trampoline;
+      std::vector<uint32_t> ids;
+      std::vector<std::vector<Object>> objects;
+    };
+    struct Loop
+    {
+      std::string breakLabel, continueLabel;
+      size_t scopeDepth;
+    };
+    // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
+    // filter function per try statement matches the thrown type against the handlers, and the
+    // destructors of the objects between a call and its handler run in cleanup pads. Off Windows, the
+    // Itanium model's landing pads (itaniumUnwindDestination, itaniumTry): the frames are the same.
+    struct EHFrame
+    {
+      bool isHandler;            // false: an open try body; true: an open catch handler
+      std::string dispatchLabel; // try: the block of its catchswitch; handler: where an exception leaving
+                                 // it unwinds, its catchswitch's unwind destination ("": the caller)
+      std::string parentFunclet; // the funclet token the try or handler is in ("" at top level)
+      std::string funclet;       // handler: its catchpad token
+      std::string exceptionSlot; // handler: the alloca holding the caught exception record
+      size_t scopeDepth;         // scopes.size() when entered
+      bool used = false;         // try: some call in the body unwinds to the dispatch
+      std::vector<std::string> catchTypes; // off Windows, a try: its handlers' descriptors in order ("null": catch (...))
+    };
+
+    std::string fn;      // current function text (after the allocas)
+    std::string allocas; // entry-block allocas of the current function
+    // --debug-info: the declaration (a function or a lambda) whose definition is being emitted and its
+    // file, or null for a definition without line information (a global's startup function).
+    Node* debugAt = nullptr;
+    ParsedFile* debugFile = nullptr;
+    std::vector<DebugVariable> debugVariables;
     std::vector<DebugBlock> debugBlocks;
     uint32_t debugBlock = 0;
     uint32_t temp = 0;
@@ -75,12 +130,6 @@
     // parts from it and returns them (emitReturnVoid). Empty otherwise.
     std::vector<std::string> cReturnParts;
     std::vector<uint64_t> cReturnOffsets;
-    struct Local
-    {
-      std::string addr; // Address of the variable (or of the pointer slot for references).
-      const Ty* ty;
-      bool isRef;
-    };
     std::unordered_map<Decl*, Local> locals;
     // One local per element of a parameter pack: the function's own parameters', or in a lambda's
     // call operator the closure's fields that hold the elements of a pack of the function it is
@@ -88,40 +137,13 @@
     // own parameters, templates/lambda_uses_parameter_pack_of_its_function).
     std::unordered_map<Decl*, std::vector<Local>> packLocals;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
-    struct Object
-    {
-      std::string addr;
-      const Ty* ty;
-      bool exception = false; // addr holds a caught exception record: ending it destroys the object
-      // Destroyed only by an exception leaving its scope (cleanup pads), never on a normal exit: a
-      // constructor's bases and members as it builds them, which outlive it when it returns.
-      bool unwindOnly = false;
-      bool freeMemory = false; // `new`'s allocation while its constructor runs: freed, not destroyed
-      // An array built in a loop (InlineParts::builtCounted): only its first elements are built,
-      // as many as the i64 at countSlot says, and only those are destroyed, the last first.
-      std::string countSlot;
-      // A static local's guard (staticLocal) while its initializer runs: an exception leaving gives
-      // the claim back (the guard to 0, the next pass tries again), never a destructor.
-      std::string guardReset;
-    };
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     // Each open scope's id (pushScope), and the goto labels' places: the scopes' ids and their
     // objects' counts at the label. A goto destroys what it leaves ([stmt.jump] 2): a backward one by
     // its label's place, a forward one through a trampoline emitted at the label (GotoStmt, LabelStmt).
     std::vector<uint32_t> scopeIds;
     uint32_t nextScopeId = 0;
-    struct LabelPlace
-    {
-      std::vector<uint32_t> ids;
-      std::vector<size_t> counts;
-    };
     std::unordered_map<uint32_t, LabelPlace> labelPlaces;
-    struct PendingGoto
-    {
-      std::string trampoline;
-      std::vector<uint32_t> ids;
-      std::vector<std::vector<Object>> objects;
-    };
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
     // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`):
@@ -140,28 +162,7 @@
     bool operandConversion = false;
     bool extendingThreadLocal = false;
     uint32_t extendingCount = 0;
-    struct Loop
-    {
-      std::string breakLabel, continueLabel;
-      size_t scopeDepth;
-    };
     std::vector<Loop> loops;
-    // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
-    // filter function per try statement matches the thrown type against the handlers, and the
-    // destructors of the objects between a call and its handler run in cleanup pads. Off Windows, the
-    // Itanium model's landing pads (itaniumUnwindDestination, itaniumTry): the frames are the same.
-    struct EHFrame
-    {
-      bool isHandler;            // false: an open try body; true: an open catch handler
-      std::string dispatchLabel; // try: the block of its catchswitch; handler: where an exception leaving
-                                 // it unwinds, its catchswitch's unwind destination ("": the caller)
-      std::string parentFunclet; // the funclet token the try or handler is in ("" at top level)
-      std::string funclet;       // handler: its catchpad token
-      std::string exceptionSlot; // handler: the alloca holding the caught exception record
-      size_t scopeDepth;         // scopes.size() when entered
-      bool used = false;         // try: some call in the body unwinds to the dispatch
-      std::vector<std::string> catchTypes; // off Windows, a try: its handlers' descriptors in order ("null": catch (...))
-    };
     std::vector<EHFrame> ehFrames;
     std::string ehBlocks;                                     // cleanup pads of the current function
     std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block

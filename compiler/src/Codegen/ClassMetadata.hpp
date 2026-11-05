@@ -56,15 +56,16 @@
     // body had them: `class Implicit { M a{3}; M b{fail(1)}; }` left a undestroyed.
     struct InlineParts
     {
-      Emitter& e;
-      Node* at;
-      std::vector<std::string> parts;
       InlineParts(Emitter& emitter, Node* where) : e(emitter), at(where) {}
       InlineParts(const InlineParts&) = delete;
       void built(const std::string& addr, const Ty* t);
       // An array's elements built in a loop: the first *countSlot of them (an i64 the loop keeps).
       void builtCounted(const std::string& addr, const Ty* arrayTy, const std::string& countSlot);
       ~InlineParts();
+
+      Emitter& e;
+      Node* at;
+      std::vector<std::string> parts;
     };
 
     // Default-constructs every element of an array of objects at addr: one after the other for a
@@ -153,12 +154,6 @@
       fn += "  store ptr " + addr + ", ptr " + slot + "\n";
       struct Restore
       {
-        Emitter& e;
-        std::optional<Local> self;
-        const Ty* classTy;
-        const TemplateArgs* args;
-        ParsedFile* file;
-        Decl* initializer;
         ~Restore()
         {
           if (self)
@@ -170,6 +165,13 @@
           e.currentFile = file;
           e.initializerOf = initializer;
         }
+
+        Emitter& e;
+        std::optional<Local> self;
+        const Ty* classTy;
+        const TemplateArgs* args;
+        ParsedFile* file;
+        Decl* initializer;
       } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile, initializerOf};
       locals[nullptr] = {slot, nullptr, false};
       currentClassTy = cls;
@@ -234,9 +236,10 @@
     std::vector<std::pair<const Ty*, Expr*>> constructing;
     struct ConstructingScope
     {
-      std::vector<std::pair<const Ty*, Expr*>>& list;
       ConstructingScope(std::vector<std::pair<const Ty*, Expr*>>& list, const Ty* t, Expr* arg) : list(list) { list.push_back({t, arg}); }
       ~ConstructingScope() { list.pop_back(); }
+
+      std::vector<std::pair<const Ty*, Expr*>>& list;
     };
 
     // `T(x)` of class type t into addr: the constructors take the arguments; and, as
