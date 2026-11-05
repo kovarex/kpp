@@ -142,3 +142,10 @@
 @ libraries/crc32fast/Crc32_fast.cpp: the byte order is little endian (x86-64)
 - #if __BYTE_ORDER == __BIG_ENDIAN
 + #if 0 /* kpp: little endian (x86-64) */
+
+# kpp's __m128, __m128d and __m128i are clang's vector types on every platform: SSE.hpp's exact operators
+# for them (`operator<(float32x4, __m128)`), which clang's builds need against its built-in vector
+# operators, are every platform's (thread D's ambiguity rule for vectors).
+@ src/Util/SSE.hpp: the operators on a vector type and __m128 are every platform's (kpp's vector types are clang's everywhere)
+- #ifndef _MSC_VER
++ #if 1 /* kpp: on every platform (its __m128 is clang's vector type everywhere) */

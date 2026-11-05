@@ -1,0 +1,9 @@
+# Hand edits of stb_image's C before the converter reads it (Converter/SourceEdits.inl; programs/factorio/overrides/
+# source-edits.txt has the format): each makes the platforms' code one (docs/design.md 12, "One spelling on
+# every platform").
+
+@ libraries/stb_image/stb_image.hpp: STBI_SIMD_ALIGN is MSVC's spelling on every platform, which kpp takes (GCC's `__attribute__((aligned(16)))` after the name it does not)
+- #else // assume GCC-style if not VC++
+- #define STBI_SIMD_ALIGN(type, name) type name __attribute__((aligned(16)))
++ #else // assume GCC-style if not VC++
++ #define STBI_SIMD_ALIGN(type, name) __declspec(align(16)) type name
