@@ -224,7 +224,7 @@ void build(Project& project)
 
 ### Version 0, working now
 
-`compiler/src/project.cpp` and `projectlib/Project.kpp` (2026-10-31); `tests/project.ps1` in
+`compiler/src/Project/` (project.cpp until 2026-11-05) and `projectlib/Project.kpp` (2026-10-31); `tests/project.ps1` in
 run_tests.cmd.
 - **The commands.** In a directory with build.kpp, or below one, `kpp` takes executables' names,
   never sources:

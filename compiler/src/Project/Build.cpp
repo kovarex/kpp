@@ -1,0 +1,603 @@
+// A cell's build: kppc's arguments, the build (kppc, the C libraries alongside, the link, the steps
+// around), running it and its tests, and kpp's commands on a project (act).
+// (Moved out of project.cpp on 2026-11-05 without a change.)
+#include "Project/Internal.hpp"
+
+namespace projects
+{
+  // One kppc compile: through the compile server (runClient), or a kppc process of its own. Never
+  // compile() in this process: a build that is no server's ends its process when it is done.
+  int invoke(std::vector<std::string> args, bool server, CompileFunction compile, bool stop)
+  {
+    if (stop)
+    {
+      std::vector<char*> argv;
+      for (std::string& a : args)
+        argv.push_back(a.data());
+      argv.push_back(nullptr);
+      return stopServer(int(args.size()), argv.data());
+    }
+    if (!server)
+    {
+      std::string command;
+      for (const std::string& a : args)
+        command += (command.empty() ? "" : " ") + quoteArg(a);
+      return system(("\"" + command + "\"").c_str());
+    }
+    std::vector<char*> argv;
+    for (std::string& a : args)
+      argv.push_back(a.data());
+    argv.push_back(nullptr);
+    return runClient(int(args.size()), argv.data(), compile);
+  }
+
+  std::string withExe(std::string command, const fs::path& exe, const std::string& configuration)
+  {
+    for (auto [key, value] : {std::pair<std::string, std::string>{"{exe}", exe.string()}, {"{configuration}", configuration}})
+      for (size_t at; (at = command.find(key)) != std::string::npos;)
+        command.replace(at, key.size(), value);
+    return command;
+  }
+
+  // What a C library's __FILE__ (an SDL_assert's, a LOG(FATAL)'s) says of the paths under the project:
+  // relative to it, and under a kpp library's root the library's name, as kppc's --file-prefix-map
+  // writes kpp's own paths in a release build, so that no binary holds a path of this machine. Clang's
+  // -ffile-prefix-map, the longest directory first (clang's own order). In every configuration: they
+  // share the C libraries' objects (build\clib), which have no debug information to open files by.
+  std::string libraryPrefixMap(const fs::path& root, const Program& p)
+  {
+    bool gnu = bundledToolchain();
+    std::string flags;
+    auto add = [&](const fs::path& from, const std::string& to)
+    {
+      std::error_code ec;
+      std::string dir = fs::absolute(from, ec).lexically_normal().string();
+      if (dir.empty())
+        return;
+      if (dir.back() != '\\' && dir.back() != '/')
+        dir += '\\';
+      std::string flag = "-ffile-prefix-map=" + dir + "=" + to; // (TO ends in no backslash: quoteArg's quote would be escaped)
+      flags += " " + quoteArg(gnu ? flag : "/clang:" + flag);
+    };
+    add(root, "");
+    for (const ProjectLibrary& l : p.kppLibraries)
+      for (const std::string& r : l.roots)
+        add(rooted(root, r), l.name + "/");
+    return flags;
+  }
+
+  // A program's --toolchain (source.hpp's selectToolchain): the last of build.kpp's arguments and the
+  // command line's, which come after them; empty for the default.
+  std::string toolchainOf(const Program& p, const Request& request)
+  {
+    std::string toolchain;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+        if ((*list)[i] == "--toolchain")
+          toolchain = (*list)[i + 1];
+    return toolchain;
+  }
+
+  // The platform a program is built for, as Library::systemLibrary names it (windows, linux, freebsd):
+  // the last --target of build.kpp's arguments and the command line's, windows without one. One kppc
+  // does not know is windows here, and kppc reports it.
+  std::string targetPlatform(const Program& p, const Request& request)
+  {
+    Target target;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+        if ((*list)[i] == "--target")
+        {
+          std::string why;
+          Target named;
+          if (targetNamed((*list)[i + 1], named, why))
+            target = named;
+        }
+    return platformOf(target.os).name;
+  }
+
+  // The executable a cell builds: build\CONFIGURATION\NAME.exe, NAME alone for Linux and FreeBSD.
+  fs::path exeOf(const fs::path& root, const Program& p, const Request& request)
+  {
+    return root / "build" / p.configuration / (p.name + (targetPlatform(p, request) == "windows" ? ".exe" : ""));
+  }
+
+  // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
+  // in the order the project, the configuration, the target and configure() set them, so that the
+  // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
+  std::vector<std::string> buildArguments(const fs::path& root, const Description& d, const Program& p, const Request& request)
+  {
+    std::vector<std::string> args = {compilerPath().string()};
+    if (request.msvc)
+      args.push_back("--msvc-diagnostics");
+    if (!request.verbose)
+      args.push_back("--quiet");
+    if (p.debugInfo)
+      args.push_back("--debug-info");
+    args.push_back(p.optimize ? "--optimize" : "--no-optimize");
+    // An unoptimized build for Windows links incrementally with Visual Studio's link.exe; the bundled
+    // toolchain's lld links whole, and so does ld.lld for Linux and FreeBSD. (A list, `msvc,bundled`,
+    // is the one of it this machine has.)
+    std::string toolchain = toolchainOf(p, request);
+    if (!p.optimize && targetPlatform(p, request) == "windows" && toolchain != "bundled" &&
+        (toolchain == "msvc" || (selectToolchain(compilerPath(), toolchain).empty() && !bundledToolchain())))
+      args.push_back("--incremental-link");
+    for (const std::string& c : p.configs)
+      args.push_back("--config"), args.push_back(c);
+    std::string clangFlags;
+    for (const std::string& f : p.clangFlags)
+      clangFlags += (clangFlags.empty() ? "" : " ") + f;
+    if (!clangFlags.empty())
+      args.push_back("--clang-flags"), args.push_back(clangFlags);
+    for (const std::string& a : p.arguments)
+      args.push_back(a);
+    for (const std::string& c : p.cIncludes)
+      args.push_back("--cinclude"), args.push_back(rooted(root, c).string());
+    for (const std::string& l : p.libraries)
+      args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
+    // The system libraries of the kpp libraries it uses (Library::systemLibrary), a library's own for
+    // its tests, each once, those of another platform left out.
+    std::string platform = targetPlatform(p, request);
+    std::vector<std::string> systemLibraries;
+    std::vector<const std::vector<std::string>*> lists = {&p.systemLibraries};
+    for (const ProjectLibrary& l : p.kppLibraries)
+      lists.push_back(&l.systemLibraries);
+    for (const std::vector<std::string>* list : lists)
+      for (const std::string& s : *list)
+      {
+        size_t blank = s.find(' ');
+        std::string name = blank == std::string::npos ? s : s.substr(blank + 1);
+        if ((blank == std::string::npos || s.substr(0, blank) == platform) &&
+            std::find(systemLibraries.begin(), systemLibraries.end(), name) == systemLibraries.end())
+          systemLibraries.push_back(name);
+      }
+    for (const std::string& name : systemLibraries)
+      args.push_back("--lib"), args.push_back("-l" + name);
+    for (const std::string& name : p.links)
+      if (const CLibrary* c = findLibrary(d, name))
+        for (const fs::path& file : libraryFiles(root, *c, p.cFlags))
+          args.push_back("--lib"), args.push_back(file.string());
+    for (const std::string& e : p.excluded)
+      args.push_back("--exclude"), args.push_back(rooted(root, e).string());
+    // The kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
+    // kpp --test takes what follows it as the sources.
+    for (const ProjectLibrary& l : p.kppLibraries)
+    {
+      for (const std::string& r : l.roots)
+        args.push_back(l.unscoped ? "--unscoped-library-root" : "--library-root"), args.push_back(l.name), args.push_back(r);
+      for (const std::string& e : l.excluded)
+        args.push_back("--exclude"), args.push_back(e);
+    }
+    // A release or final build (optimized, no debug info) holds no path of this machine: the paths its
+    // text gives (an assertion's message, a CallerLocation's file) are the standard library's as
+    // stdlib/..., a kpp library's under its name, the project's relative to its directory
+    // (--file-prefix-map). A debug build keeps them whole, as its debugger and IDE open them.
+    if (p.optimize && !p.debugInfo)
+    {
+      args.push_back("--file-prefix-map"), args.push_back(defaultStdlib(compilerPath()).string() + "=stdlib");
+      for (const ProjectLibrary& l : p.kppLibraries)
+        for (const std::string& r : l.roots)
+          args.push_back("--file-prefix-map"), args.push_back(rooted(root, r).string() + "=" + l.name);
+      args.push_back("--file-prefix-map"), args.push_back(root.string() + "=");
+    }
+    args.insert(args.end(), request.passed.begin(), request.passed.end());
+    args.push_back("--exe");
+    args.push_back(exeOf(root, p, request).string());
+    for (const std::string& r : p.roots)
+      args.push_back(rooted(root, r).string());
+    return args;
+  }
+
+  // kppc's arguments for a cell's build: buildArguments' with the link left to kpp (buildProgram). The
+  // compile server of a build is the one of these arguments: --stop-server stops it by them too.
+  std::vector<std::string> buildCommand(const fs::path& root, const Description& d, const Program& p, const Request& request)
+  {
+    std::vector<std::string> args = buildArguments(root, d, p, request);
+    args.insert(args.begin() + 1, "--defer-link");
+    return args;
+  }
+
+  int buildProgram(const fs::path& root, const Description& d, const Program& p, const Request& request, CompileFunction compile)
+  {
+    fs::path exe = exeOf(root, p, request);
+    std::error_code ec;
+    // The program's toolchain, its C libraries' too (a game that links Visual Studio's C++ libraries
+    // asks for --toolchain msvc): one that is not there is said here, before anything compiles.
+    std::string toolchain = toolchainOf(p, request);
+    if (std::string error = selectToolchain(compilerPath(), toolchain); !error.empty())
+    {
+      fprintf(stderr, "error: %s (%s): %s\n", p.name.c_str(), p.configuration.c_str(), error.c_str());
+      return 1;
+    }
+    // A list's later toolchain (msvc,bundled where Visual Studio's clang is missing): why the first
+    // one is not taken, a warning Visual Studio's Error List shows (a build of the other dialect, whose
+    // C imports and libraries differ, is never a silent one).
+    if (std::string skipped = toolchainSkipped(); !skipped.empty())
+      fprintf(stderr, "warning: %s (%s): --toolchain %s takes %s: %s\n", p.name.c_str(), p.configuration.c_str(), toolchain.c_str(),
+              toolchainName().c_str(), skipped.c_str());
+    fs::create_directories(exe.parent_path(), ec);
+    if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, p.configuration).c_str()) != 0)
+    {
+      fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
+      return 1;
+    }
+    using Clock = std::chrono::steady_clock;
+    auto since = [](Clock::time_point t) { return std::chrono::duration<double>(Clock::now() - t).count(); };
+    auto start = Clock::now();
+    double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
+    std::vector<LibraryJob> jobs(p.links.size());
+    std::string prefixMap = libraryPrefixMap(root, p);
+    std::vector<const CLibrary*> cLibraries;
+    for (const std::string& name : p.links)
+    {
+      const CLibrary* c = findLibrary(d, name);
+      if (!c)
+      {
+        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), name.c_str());
+        return 1;
+      }
+      cLibraries.push_back(c);
+    }
+    // The C libraries are checked (each object against its source and the headers its .d names) and
+    // their changed files compiled in one pool, all while kppc builds the program (its front end, code
+    // generation and modules need no library); kppc leaves the link (--defer-link), which runs here
+    // once both are done (docs/build.md, "The whole build"). The check alone took 0.13 to 0.19 s of
+    // every build of the game before kppc started (2026-11-05).
+    bool libraryWork = false, librariesBuilt = true;
+    double prepareSeconds = 0, librarySeconds = 0;
+    std::thread libraries;
+    if (!cLibraries.empty())
+      libraries = std::thread([&]
+      {
+        // Each library checked on a thread of its own (the game's 18 took 0.10 to 0.12 s one after
+        // another on a quiet machine), each with its own header times (upToDate's, once per header).
+        std::vector<char> prepared(cLibraries.size(), 0);
+        std::vector<std::thread> checks;
+        for (size_t i = 0; i < cLibraries.size(); ++i)
+          checks.emplace_back([&, i]
+          {
+            std::unordered_map<std::string, fs::file_time_type> times;
+            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, prefixMap, jobs[i], times);
+          });
+        for (std::thread& t : checks)
+          t.join();
+        if (std::find(prepared.begin(), prepared.end(), 0) != prepared.end())
+        {
+          librariesBuilt = false;
+          return;
+        }
+        prepareSeconds = since(start);
+        libraryWork = std::any_of(jobs.begin(), jobs.end(), [](const LibraryJob& j) { return j.archive || !j.commands.empty(); });
+        if (libraryWork)
+          librariesBuilt = runLibraries(jobs);
+        librarySeconds = since(start);
+      });
+    std::vector<std::string> args = buildCommand(root, d, p, request);
+    auto kppStart = Clock::now();
+    int code = invoke(args, request.server, compile);
+    double kppSeconds = since(kppStart);
+    if (libraries.joinable())
+      libraries.join();
+    if (!librariesBuilt)
+      code = 1;
+    // The link: kppc's command (it marks it pending when it built new objects), also when only a
+    // C library changed (kppc replays an unchanged build, which does not link).
+    double linkSeconds = 0;
+    fs::path pending = exe.string() + ".link.pending", command = exe.string() + ".link.command";
+    // Also when what the link writes is gone (the executable, a debug build's .pdb beside it, deleted
+    // while the compile server kept the build): kppc's objects are all there (it replays a build only
+    // then), so the link makes them again.
+    fs::path pdb = fs::path(exe).replace_extension(".pdb");
+    bool linked = fs::exists(exe, ec) && !(p.debugInfo && exe.extension() == ".exe" && !fs::exists(pdb, ec));
+    bool linkPending = fs::exists(pending, ec) || (code == 0 && !linked);
+    // An incremental link's state (the .ilk beside the executable) without the executable or its .pdb
+    // goes, and what is left of the two with it: the link starts from nothing. link.exe's incremental
+    // link with its PDB deleted crashed now and then, "LNK1000: Internal error during
+    // IMAGE::BuildImage.FinalPhase" (CI runs 41825684415 and 41927566409, project.ps1's ".pdb deleted
+    // under the compile server").
+    fs::path ilk = fs::path(exe).replace_extension(".ilk");
+    if (!linked && fs::exists(ilk, ec))
+    {
+      fs::remove(ilk, ec);
+      fs::remove(exe, ec);
+      fs::remove(pdb, ec);
+    }
+    if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
+    {
+      auto linkStart = Clock::now();
+      int rc = system(readText(command).c_str());
+      linkSeconds = since(linkStart);
+      if (rc != 0)
+      {
+        fprintf(stderr, "error: %s (%s): the link failed (exit %d)\n", p.name.c_str(), p.configuration.c_str(), rc);
+        code = 1;
+      }
+      else
+        fs::remove(pending, ec);
+    }
+    // Built means written: never "built" for an executable that is not there.
+    if (code == 0 && !fs::exists(exe, ec))
+    {
+      fprintf(stderr, "error: %s (%s): %s was not written (kppc reported success; no link command to make it)\n", p.name.c_str(),
+              p.configuration.c_str(), exe.string().c_str());
+      code = 1;
+    }
+    double seconds = since(start);
+    bool keepGoing = std::find(p.arguments.begin(), p.arguments.end(), "--keep-going") != p.arguments.end();
+    char split[256];
+    if (libraryWork)
+      snprintf(split, sizeof split, "C libraries %.1f s alongside kpp %.1f s, link %.1f s", librarySeconds, kppSeconds, linkSeconds);
+    else
+      snprintf(split, sizeof split, "kpp %.1f s, link %.1f s", kppSeconds, linkSeconds);
+    // The toolchain it took (build.kpp's `msvc,bundled` is the one of them this machine has): for Linux
+    // and FreeBSD that toolchain's clang, which links with ld.lld and the target's sysroot, neither
+    // Visual Studio's link.exe and libraries nor MinGW-w64's.
+    std::string platform = targetPlatform(p, request), name = toolchainName();
+    std::string used = platform == "windows" ? name + " toolchain"
+                                             : platform + ": " + (name == "msvc" ? std::string("Visual Studio's") : name == "bundled" ? std::string("the bundled") : name + "'s") +
+                                                 " clang and ld.lld";
+    if (code == 0)
+      printf("kpp: built %s (%s, %s, total %.1f s: %s)\n", exe.string().c_str(), p.configuration.c_str(), used.c_str(), seconds, split);
+    else
+      fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
+    auto afterStart = Clock::now();
+    if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
+        system(withExe(p.afterBuild, exe, p.configuration).c_str()) != 0)
+    {
+      fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
+      return 1;
+    }
+    // KPP_STEP_TIMES=1: where an edit build's time goes besides kppc's and the link's (an environment
+    // variable, not an option: an option of its own would give the build a compile server of its own).
+    if (getenv("KPP_STEP_TIMES"))
+      printf("kpp steps: %.3f s before the build (build.kpp described at %.3f s, its libraries at %.3f s), "
+             "kppc %.3f s (the C libraries' check alongside, %.3f s), link %.3f s, %.3f s else, after-build %.3f s\n",
+             beforeSeconds, describedAt, usesResolvedAt, kppSeconds, prepareSeconds, linkSeconds, seconds - kppSeconds - linkSeconds, since(afterStart));
+    return code;
+  }
+
+  Launch launchOf(const fs::path& root, const Program& p, const Request& request)
+  {
+    fs::path exe = exeOf(root, p, request);
+    Launch l;
+    l.program = p.debugCommand.empty() ? exe : rooted(root, withExe(p.debugCommand, exe, p.configuration));
+    l.directory = p.debugDirectory.empty() ? root : rooted(root, withExe(p.debugDirectory, exe, p.configuration));
+    l.arguments = withExe(p.debugArguments, exe, p.configuration);
+    return l;
+  }
+
+  int runProgram(const fs::path& root, const Program& p, const Request& request, const std::vector<std::string>& extra)
+  {
+    Launch l = launchOf(root, p, request);
+    std::string command = "cd /d " + quoteArg(l.directory.string()) + " && " + quoteArg(l.program.string());
+    if (!l.arguments.empty())
+      command += " " + l.arguments;
+    for (const std::string& a : extra)
+      command += " " + quoteArg(a);
+    return system(("\"" + command + "\"").c_str());
+  }
+
+  // kpp --test: the tests of the executables and libraries asked for (all when none is named) in
+  // one configuration, each built and run by kppc --test (run.hpp) with its cell's options and roots,
+  // a library's test roots too, and the runner's arguments (after `--`). Every one runs; 1 when one
+  // failed.
+  int runTests(const fs::path& root, const Description& d, const Configuration& configuration, const std::vector<std::string>& targets,
+               const Request& request)
+  {
+    std::vector<Program> chosen;
+    auto asked = [&](const std::string& name)
+    { return targets.empty() || std::find(targets.begin(), targets.end(), name) != targets.end(); };
+    for (const Program& p : d.programs)
+      if (p.configuration == configuration.name && asked(p.name))
+        chosen.push_back(p);
+    for (const KppLibrary& l : d.libraries)
+      if (asked(l.name) && !libraryProgram(root, configuration, l, request, chosen.emplace_back()))
+        return 1;
+    int result = 0;
+    for (const Program& p : chosen)
+    {
+      std::vector<std::string> args = buildArguments(root, d, p, request);
+      size_t exe = std::find(args.begin(), args.end(), "--exe") - args.begin();
+      std::vector<std::string> roots(args.begin() + std::min(exe + 2, args.size()), args.end());
+      args.resize(exe);
+      args.erase(std::remove(args.begin(), args.end(), "--incremental-link"), args.end());
+      if (!request.server)
+        args.push_back("--no-server");
+      size_t runIndex = args.size();
+      args.push_back("--test");
+      args.insert(args.end(), roots.begin(), roots.end());
+      args.push_back("--");
+      args.insert(args.end(), request.runArguments.begin(), request.runArguments.end());
+      std::vector<char*> argv;
+      for (std::string& a : args)
+        argv.push_back(a.data());
+      argv.push_back(nullptr);
+      printf("kpp: testing %s (%s)\n", p.name.c_str(), p.configuration.c_str());
+      fflush(stdout);
+      if (::runProgram(int(args.size()), argv.data(), int(runIndex)) != 0)
+        result = 1;
+    }
+    return result;
+  }
+
+  int act(const fs::path& root, const Request& request, CompileFunction compile)
+  {
+    auto commandStart = std::chrono::steady_clock::now(); // (the whole command's time: build.kpp's description too)
+    // --stop-server: the compile servers of build.kpp's description and of every cell's builds. The
+    // description's first, and the description then computed without a server, so that a build.kpp
+    // that no longer describes stops its server too. Then every other server whose arguments name a
+    // file of the project: a build with options of its own (--verbose, --toolchain) has a server of
+    // its own, and an earlier build.kpp's cells had theirs.
+    if (request.stop)
+    {
+      std::vector<std::string> stopped;
+      auto stop = [&](std::vector<std::string> args, const std::string& what)
+      {
+        std::vector<char*> argv;
+        for (std::string& a : args)
+          argv.push_back(a.data());
+        argv.push_back(nullptr);
+        if (stopServerQuietly(int(args.size()), argv.data()))
+          stopped.push_back(what);
+      };
+      stop(describeArguments(root, request), "build.kpp's description");
+      Request serverless = request;
+      serverless.server = false;
+      Description d;
+      bool described = describe(root, serverless, d);
+      std::map<std::string, std::vector<std::string>> commands; // each cell's own arguments, by its executable
+      if (described)
+        for (const Program& p : d.programs)
+        {
+          std::vector<std::string> args = buildCommand(root, d, p, request);
+          stop(args, exeOf(root, p, request).string());
+          commands[exeOf(root, p, request).string()].assign(args.begin() + 1, args.end());
+        }
+      // The project's other servers: those whose arguments name its build.kpp or a file of its build\
+      // (a cell's --exe, the description's settings), not merely one under its directory, which a
+      // project inside it has too (tests/project.ps1's sections, each a project under one directory: a
+      // stop in the outer one stopped an inner one's server, 2026-11-05).
+      auto lower = [](std::string s)
+      {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(tolower(c)); });
+        return s;
+      };
+      std::string buildFile = lower((root / "build.kpp").string()), buildDirectory = lower((root / "build").string() + "\\");
+      for (const std::vector<std::string>& args : stopServers([&](const std::vector<std::string>& args)
+           {
+             for (const std::string& argument : args)
+             {
+               std::string a = lower(argument);
+               if (a == buildFile || a.compare(0, buildDirectory.size(), buildDirectory) == 0)
+                 return true;
+             }
+             return false;
+           }))
+      {
+        // Which one it was: its --exe (or build.kpp's description), and the options by which its
+        // arguments differ from the cell's own today (kpp's --verbose is kppc without --quiet).
+        std::string what = "build.kpp's description", options;
+        for (size_t i = 0; i + 1 < args.size(); ++i)
+          if (args[i] == "--exe")
+            what = args[i + 1];
+        auto own = commands.find(what);
+        if (own != commands.end())
+        {
+          for (const std::string& a : args)
+            if (a.size() > 1 && a[0] == '-' && std::find(own->second.begin(), own->second.end(), a) == own->second.end())
+              options += " " + a;
+          for (const std::string& a : own->second)
+            if (a.size() > 1 && a[0] == '-' && std::find(args.begin(), args.end(), a) == args.end())
+              options += a == "--quiet" ? " --verbose" : " without " + a;
+        }
+        stopped.push_back(what + (own == commands.end()                ? " (a cell build.kpp no longer describes, or other arguments)"
+                                  : options.empty()                    ? " (other arguments)"
+                                                                       : " (started with" + options + ")"));
+      }
+      for (const std::string& what : stopped)
+        printf("kpp: stopped the compile server of %s\n", what.c_str());
+      if (stopped.empty())
+        printf("kpp: no compile server of %s runs\n", root.string().c_str());
+      return described ? 0 : 1;
+    }
+    Description d;
+    if (!describe(root, request, d))
+      return 1;
+    describedAt = std::chrono::duration<double>(std::chrono::steady_clock::now() - kppStarted).count();
+    if (!resolveUses(root, request, d))
+      return 1;
+    usesResolvedAt = std::chrono::duration<double>(std::chrono::steady_clock::now() - kppStarted).count();
+    if (request.visualStudio || request.vsCode)
+      return generate(root, d, request);
+    // The names: each a configuration's or a target's (a library's, for --test).
+    std::vector<std::string> configurations = request.configurations, targets;
+    for (const std::string& name : request.names)
+      if (findConfiguration(d, name))
+        configurations.push_back(name);
+      else if (std::any_of(d.programs.begin(), d.programs.end(), [&](const Program& p) { return p.name == name; }) ||
+               (request.test && std::any_of(d.libraries.begin(), d.libraries.end(), [&](const KppLibrary& l) { return l.name == name; })))
+        targets.push_back(name);
+      else
+      {
+        std::string known;
+        for (const Configuration& c : d.configurations)
+          known += " " + c.name;
+        fprintf(stderr, "error: build.kpp describes no target or configuration %s (its configurations:%s)\n", name.c_str(), known.c_str());
+        return 2;
+      }
+    if (configurations.empty())
+      configurations.push_back("debug");
+    if (request.test)
+    {
+      int result = 0;
+      for (const std::string& name : configurations)
+        result = std::max(result, runTests(root, d, *findConfiguration(d, name), targets, request));
+      return result;
+    }
+    std::vector<const Program*> chosen;
+    for (const std::string& configuration : configurations)
+      for (const Program& p : d.programs)
+        if (p.configuration == configuration && (targets.empty() || std::find(targets.begin(), targets.end(), p.name) != targets.end()))
+          chosen.push_back(&p);
+    // kpp options: each chosen cell's libraries, scoped or unscoped, and their options, with their
+    // values and who set them (a library project: its own and its libraries', in each configuration).
+    if (request.options)
+    {
+      std::vector<Program> listed;
+      for (const Program* p : chosen)
+        listed.push_back(*p);
+      if (d.programs.empty())
+        for (const std::string& configuration : configurations)
+          for (const KppLibrary& l : d.libraries)
+            if (!libraryProgram(root, *findConfiguration(d, configuration), l, request, listed.emplace_back()))
+              return 1;
+      for (const Program& p : listed)
+      {
+        // The library this project is (its own tests' program), then the libraries the cell uses.
+        std::vector<ProjectLibrary> libraries = p.kppLibraries;
+        for (const KppLibrary& l : d.libraries)
+          if (d.programs.empty() && l.name == p.name)
+            libraries.insert(libraries.begin(), ProjectLibrary{l.name, {}, l.unscoped});
+        printf("%s %s:%s\n", p.name.c_str(), p.configuration.c_str(), libraries.empty() ? " no libraries" : "");
+        for (const ProjectLibrary& l : libraries)
+          printf(l.unscoped ? "  library %s, unscoped: its names are bare\n" : "  library %s, scoped: %s::NAME\n", l.name.c_str(),
+                 l.name.c_str());
+        for (const ProjectOption& o : p.options)
+        {
+          std::string values;
+          for (const std::string& a : o.allowed)
+            values += (values.empty() ? " (" : ", ") + a;
+          printf("  %s::%s = %s  %s%s, %s; set by %s\n    %s\n", o.library.c_str(), o.name.c_str(), o.value.c_str(), o.type.c_str(),
+                 values.empty() ? "" : (values + ")").c_str(), o.required ? "required" : ("default " + o.defaultValue).c_str(),
+                 o.setBy.c_str(), o.description.c_str());
+        }
+      }
+      return 0;
+    }
+    if (request.run && chosen.size() != 1)
+    {
+      fprintf(stderr, "error: --run needs one target in one configuration; this names %zu cells\n", chosen.size());
+      return 2;
+    }
+    // A program for another platform does not run here: an error before the build, as kppc --run's
+    // (run.cpp), never a build that then fails to start an ELF.
+    if (request.run && targetPlatform(*chosen[0], request) != "windows")
+    {
+      fprintf(stderr, "error: %s %s is built for %s, which does not run on this machine: build it without --run (%s)\n",
+              chosen[0]->name.c_str(), chosen[0]->configuration.c_str(), targetPlatform(*chosen[0], request).c_str(),
+              exeOf(root, *chosen[0], request).string().c_str());
+      return 2;
+    }
+    if (chosen.empty())
+      printf("kpp: build.kpp describes no executable; kpp --test builds and runs its library's tests\n");
+    for (const Program* p : chosen)
+      if (int code = buildProgram(root, d, *p, request, compile))
+        return code;
+    // The whole command (build.kpp's description, every cell, its C libraries and links), to compare
+    // with another build system's.
+    if (chosen.size() > 1)
+      printf("kpp: built %zu programs, total %.1f s\n", chosen.size(),
+             std::chrono::duration<double>(std::chrono::steady_clock::now() - commandStart).count());
+    return request.run ? runProgram(root, *chosen[0], request, request.runArguments) : 0;
+  }
+}

@@ -37,7 +37,14 @@ add_executable(kppc
   src/run.cpp
   src/generate.cpp
   src/packages.cpp
-  src/project.cpp
+  src/Project/Project.cpp
+  src/Project/Describe.cpp
+  src/Project/DescribeFile.cpp
+  src/Project/Build.cpp
+  src/Project/CLibraryBuild.cpp
+  src/Project/IdeProjects.cpp
+  src/Project/Measure.cpp
+  src/Project/Menu.cpp
   src/tests.cpp
   src/ast_walk.cpp
   src/version.cpp

@@ -1,4 +1,4 @@
-# A project with a build.kpp (docs/build.md, "build.kpp"; src/project.cpp, projectlib/Project.kpp).
+# A project with a build.kpp (docs/build.md, "build.kpp"; src/Project/, projectlib/Project.kpp).
 # `kpp new` makes one and `kpp --run` prints its greeting. Then a build.kpp with two executables from
 # one src\ (the second leaves out the first's main and has its own in tests\), a --set setting
 # reaching a program through a C include directory, and the release build. A build.kpp that does not
@@ -101,7 +101,7 @@ if (Run 'basic')
       $missing = @($program, "$program.0.o", $pdb) | Where-Object { -not (Test-Path -LiteralPath $_) }
       if ($code -ne 0 -or ($output -join "`n") -notmatch 'Hello from kpp' -or $missing)
       { Fail "$($removed[0]) deleted under the compile server, then kpp --run: exit $code, missing [$($missing -join ', ')]`n$($output -join "`n")"; break }
-      # Without its .pdb the link starts from nothing (project.cpp: the .ilk and the executable go too).
+      # Without its .pdb the link starts from nothing (Project/Build.cpp: the .ilk and the executable go too).
       # Given the rest of its incremental state, link.exe said "program database ... missing; performing
       # full link" and linked over it, and that link crashed now and then (LNK1000 in
       # IMAGE::BuildImage.FinalPhase, CI runs 41825684415 and 41927566409).

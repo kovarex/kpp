@@ -3,7 +3,7 @@
 // line's settings and the project directory's name), and the compile-time interpreter runs it
 // (kppc --run-build, GlobalScope::runBuild): a Project default-constructed, build(project) once,
 // then describe(project), which runs configure(cell) for every cell and whose text kpp reads
-// (project.cpp). So build.kpp can compute but cannot read files, start processes or call C.
+// (compiler/src/Project/). So build.kpp can compute but cannot read files, start processes or call C.
 
 // config:: constants (docs/build.md, "Targets and configurations"), NAME=VALUE in the order set: kppc's
 // --config, where a later one overrides an earlier one.
@@ -123,7 +123,7 @@ struct Executable
   void link(StringView name) { links.push_back(name); }
   // A system library by its name (`gdi32`): kppc's --lib -lgdi32; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`, its --target), as Library::systemLibrary. Each name is
-  // linked once with its libraries' (project.cpp).
+  // linked once with its libraries' (compiler/src/Project/Build.cpp).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
   void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
   // A config:: constant in every configuration of this target, over the project's and the
@@ -577,7 +577,7 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   out << "end\n";
 }
 
-// One line per fact, which kpp reads (project.cpp): per configuration (debug, release, then the
+// One line per fact, which kpp reads (compiler/src/Project/DescribeFile.cpp): per configuration (debug, release, then the
 // project's) `configuration NAME`, its resolved lines, `end`; per cell, target by target,
 // `cell TARGET CONFIGURATION`, its lines, `end`; per C library `clibrary NAME`, its lines, `end`;
 // per kpp library `kpp-library NAME`, its lines, `end`; `error TEXT` for what build.kpp got wrong.

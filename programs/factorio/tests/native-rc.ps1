@@ -1,7 +1,7 @@
 # libraries\kpp-native\factorio.rc compiles from its own directory alone (convert.cmd's check): its
 # files (the manifest and the icons) copied into an empty directory with nothing around it, as a
 # thread's copy has no data\ (setup-checkout.cmd), then llvm-rc there, as kpp builds a resource
-# (project.cpp: cd to the script's directory, llvm-rc /fo). A file named outside the directory is
+# (compiler/src/Project/CLibraryBuild.cpp: cd to the script's directory, llvm-rc /fo). A file named outside the directory is
 # "file not found".
 param([Parameter(Mandatory = $true)][string]$Native,
       [string]$LlvmRc = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\llvm-rc.exe')

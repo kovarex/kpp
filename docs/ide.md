@@ -372,7 +372,7 @@ interface this follows): `kpp --lsp` with no other arguments checks the project 
 workspace folder: build.kpp, found from the folder up (or `buildFile`), gives the sources and options
 of one cell, a configuration (`configuration`, debug by default) of one target (`target`), or of all
 targets together (their sources and exclusions with the first one's options), with build.kpp's
-`settings` (`projectCheckArguments`, project.cpp; those are the keys of initializationOptions and of
+`settings` (`projectCheckArguments`, compiler/src/Project/Project.cpp; those are the keys of initializationOptions and of
 `workspace/didChangeConfiguration`'s `kpp`; saving build.kpp describes the project again). Without
 a build.kpp the folder itself is the program. `kppc --lsp OPTIONS SOURCES` checks exactly those. A
 check always adds
@@ -380,7 +380,7 @@ check always adds
 `--server` given are left out (logged). `--lsp-log FILE` writes the log to a file too.
 
 **Cells** (kovarex, 2026-11-01: the configuration selected in the IDE "is the context of editing
-the code"). A cell is a target and a configuration of build.kpp's (`projectCells`, project.cpp);
+the code"). A cell is a target and a configuration of build.kpp's (`projectCells`, compiler/src/Project/Project.cpp);
 the server checks one at a time, the one the client selected: initializationOptions,
 `workspace/didChangeConfiguration` or the request
 `kpp/selectCell`, which answers with the cell or an error; `kpp/cells` lists them for a picker, and
