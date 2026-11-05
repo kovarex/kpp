@@ -898,11 +898,17 @@ auto codegen::Emitter::bitfieldOperand(Expr* e, Value v) -> Value
   if (!t || (t->kind != TyKind::Int && t->kind != TyKind::Char) || t->bits < 32)
     return v; // (a narrower type's field promotes as its type does, an enumeration's and a bool's too)
   Expr* field = bitFieldDesignator(e);
-  if (!field)
+  uint32_t width = 0;
+  if (field)
+  {
+    if (lvalueBitfield.first != field || !lvalueBitfield.second)
+      unsupported(e, "a bit-field operand whose width is not known here"); // (its value just read through its place)
+    width = lvalueBitfield.second->width;
+  }
+  else if (const BitfieldInfo* bits = bindingBitfield(bindingDesignator(e)))
+    width = bits->width; // (a structured binding of a bit field is that field: `auto [a] = s;`, a of `uint64_t w3 : 3`)
+  else
     return v;
-  if (lvalueBitfield.first != field || !lvalueBitfield.second)
-    unsupported(e, "a bit-field operand whose width is not known here"); // (its value just read through its place)
-  uint32_t width = lvalueBitfield.second->width;
   if (width > 32)
     return v;
   return convert(v, width < 32 || !t->isUnsigned ? types.intType(32) : types.intType(32, true), e, true);

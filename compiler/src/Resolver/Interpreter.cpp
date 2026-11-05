@@ -195,6 +195,15 @@ auto GlobalScope::Impl::constEval(Expr* e, const TypeContext& ctx, int depth) ->
 
 auto GlobalScope::Impl::designatedBitField(Expr* e) -> VariableDecl*
 {
+  e = designatedName(e);
+  if (!e)
+    return nullptr;
+  Decl* d = e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved : e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
+  return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield ? static_cast<VariableDecl*>(d) : nullptr;
+}
+
+auto GlobalScope::Impl::designatedName(Expr* e) -> Expr*
+{
   for (;;)
   {
     if (!e)
@@ -222,8 +231,7 @@ auto GlobalScope::Impl::designatedBitField(Expr* e) -> VariableDecl*
     }
     break;
   }
-  Decl* d = e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved : e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
-  return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield ? static_cast<VariableDecl*>(d) : nullptr;
+  return e;
 }
 
 auto GlobalScope::Impl::bitFieldPromotion(Expr* e, const Ty* t, const Subst* subst, int depth) -> const Ty*
@@ -232,15 +240,54 @@ auto GlobalScope::Impl::bitFieldPromotion(Expr* e, const Ty* t, const Subst* sub
   if (!t || (t->kind != TyKind::Int && t->kind != TyKind::Char) || t->bits < 32)
     return nullptr;
   VariableDecl* field = designatedBitField(e);
+  const Ty* bindingHolder = nullptr; // (a structured binding's class, when e names one of a bit field)
   if (!field)
-    return nullptr;
+  {
+    // A structured binding that names a bit field is that field ([dcl.struct.bind] 5): `auto [a, b] = s;`
+    // over `uint64_t w3 : 3` promotes a by the field's width. The binding's name resolves to the
+    // hidden object; its number picks the class's named data member (Walker::bindingType's rule).
+    Expr* x = designatedName(e);
+    auto* name = x && x->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(x) : nullptr;
+    auto* v = name && name->resolved && name->resolved->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(name->resolved) : nullptr;
+    if (!v || v->structuredBindings.empty() || name->name.empty())
+      return nullptr;
+    size_t index = v->structuredBindings.size();
+    for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+      if (static_cast<NameExpr*>(v->structuredBindings[i])->name.last().symbol == name->name.last().symbol)
+        index = i;
+    const Ty* hidden = v->cachedType.load(std::memory_order_acquire);
+    if (!hidden || containsAuto(hidden))
+      hidden = v->init ? v->init->ty : nullptr;
+    const Ty* whole = hidden ? types.unqualified(types.stripRef(hidden)) : nullptr;
+    if (index == v->structuredBindings.size() || !whole || whole->kind != TyKind::Class)
+      return nullptr;
+    bindingHolder = bindingMembersClass(whole);
+    ClassDecl* def = bindingHolder ? classDefinition(bindingHolder) : nullptr;
+    if (!def)
+      return nullptr;
+    size_t seen = 0;
+    for (Decl* m : membersRead(def))
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(m)->name.empty() &&
+          seen++ == index)
+      {
+        field = static_cast<VariableDecl*>(m)->bitfield ? static_cast<VariableDecl*>(m) : nullptr;
+        break;
+      }
+    if (!field)
+      return nullptr;
+  }
   // A class template's field has its instance's width (`uint32_t a : N` of Bits<3>): the arguments of
   // the object's class, or of its base, that declares it (an anonymous member's, its enclosing
   // class's), else those of the code asking (a member function's own names in an instance).
   Subst own;
   while (e && e->kind == NodeKind::ParenExpr)
     e = static_cast<ParenExpr*>(e)->inner;
-  if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->base && static_cast<MemberExpr*>(e)->base->ty)
+  if (bindingHolder && !bindingHolder->args.empty())
+  {
+    own = substFor(bindingHolder); // (a binding's field: its class's instance's width)
+    subst = &own;
+  }
+  else if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->base && static_cast<MemberExpr*>(e)->base->ty)
   {
     auto* m = static_cast<MemberExpr*>(e);
     const Ty* object = types.unqualified(types.stripRef(m->base->ty));

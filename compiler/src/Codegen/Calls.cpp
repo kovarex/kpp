@@ -1616,6 +1616,22 @@ auto codegen::Emitter::bitFieldDesignator(Expr* e) -> Expr*
   return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield ? e : nullptr;
 }
 
+auto codegen::Emitter::bindingDesignator(Expr* e) -> Expr*
+{
+  for (;;) // as bitFieldDesignator walks
+    if (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    else if (auto* u = e && e->kind == NodeKind::UnaryExpr ? static_cast<UnaryExpr*>(e) : nullptr;
+             u && !u->isKeyword && !u->postfix && u->call != OperatorCall::Function && (P(u->op) == P::PlusPlus || P(u->op) == P::MinusMinus))
+      e = u->operand;
+    else if (auto* b = e && e->kind == NodeKind::BinaryExpr ? static_cast<BinaryExpr*>(e) : nullptr;
+             b && !b->isKeyword && b->call != OperatorCall::Function && (isAssignment(P(b->op)) || P(b->op) == P::Comma))
+      e = P(b->op) == P::Comma ? b->rhs : b->lhs;
+    else
+      break;
+  return e && e->kind == NodeKind::NameExpr ? e : nullptr;
+}
+
 auto codegen::Emitter::namesBitField(Expr* e) -> bool
 {
   for (;;) // `(x.f)`; `++x.f` and `x.f = v`, lvalues naming the field too

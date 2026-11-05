@@ -61,6 +61,9 @@
   // assignment to it, a prefix ++ or -- of it, or a built-in comma's right operand (clang's
   // Expr::getSourceBitField).
   static VariableDecl* designatedBitField(Expr* e);
+  // The expression e designates through those (parentheses, an assignment, a prefix ++ or --, a
+  // comma's right operand), or null where another operator stands; a structured binding's name too.
+  static Expr* designatedName(Expr* e);
   // An operand's value as a built-in operator takes it: a bit-field's converted to the type it
   // promotes to (bitFieldPromotion), as the walk typed the operator and codegen computes it.
   std::optional<ConstValue> constOperandValue(Expr* e, std::optional<ConstValue> v, const TypeContext& ctx, int depth);

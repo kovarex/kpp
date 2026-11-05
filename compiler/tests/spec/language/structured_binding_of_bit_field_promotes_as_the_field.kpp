@@ -1,0 +1,44 @@
+// spec: a structured binding of a bit-field is that field ([dcl.struct.bind] 5), so its value promotes by the field's width as the field's does ([conv.prom] 5): of an `unsigned u3 : 3` and a `uint64_t w3 : 3` to int (`a - 2` is -1, `(b - 3) / 2` is 0), of a 32-bit unsigned field to unsigned, of a `uint64_t w40 : 40` as uint64_t, of an `int64_t i20 : 20` to int (sizeof 4); a class template's field by its instance's width; in the checker's types, at compile time and at run time alike. clang prints the same (C++20)
+// found by thread B (1326bb3c): a binding was read and written as its field's bits, but one of a 32- or 64-bit bit-field promoted as its declared type
+struct S
+{
+  unsigned u3 : 3;
+  uint64_t w3 : 3;
+  unsigned u32 : 32;
+  uint64_t w40 : 40;
+  int64_t i20 : 20;
+};
+struct Three { static constexpr int width = 3; };
+template<typename T>
+struct Box
+{
+  uint32_t a : T::width;
+};
+constexpr i64 viaConstant()
+{
+  S t{};
+  t.w3 = 2;
+  auto [a, b, c, d, e] = t;
+  return (b - 3) / 2 * 10 + (a - 2 < 0 ? 1 : 0);
+}
+static_assert(viaConstant() == 1);
+
+int main()
+{
+  S s{};
+  s.u3 = 1;
+  s.w3 = 2;
+  s.u32 = 5;
+  s.w40 = 7;
+  s.i20 = 4;
+  auto [a, b, c, d, e] = s;
+  static_assert(isSame<decltype(a + 0), int> && isSame<decltype(b + 0), int> && isSame<decltype(c + 0), unsigned>);
+  static_assert(isSame<decltype(d + 0), uint64_t> && isSame<decltype(e + 0), int>);
+  println(i64(a - 2), " ", i64((b - 3) / 2), " ", i64(c - 6), " ", i64(d - 8));
+  println(int(sizeof(e + 0)), " ", int(sizeof(d + 0)), " ", int(b - 3 < 0));
+  Box<Three> x{};
+  x.a = 2;
+  auto [p] = x;
+  println(i64(p - 3));
+  return 0;
+}

@@ -4397,7 +4397,13 @@ auto GlobalScope::Impl::Walker::promote(const Ty* t) -> const Ty*
 auto GlobalScope::Impl::Walker::operandType(Expr* e, const Ty* t) -> const Ty*
 {
   if (!designatedBitField(e))
-    return t; // (any other operand at once: no context made)
+  {
+    // (or a structured binding, which may name a bit field: bitFieldPromotion finds which)
+    Expr* x = designatedName(e);
+    Decl* d = x && x->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(x)->resolved : nullptr;
+    if (!d || d->kind != NodeKind::VariableDecl || static_cast<VariableDecl*>(d)->structuredBindings.empty())
+      return t; // (any other operand at once: no context made)
+  }
   const Ty* promoted = impl.bitFieldPromotion(e, t, ctx().subst);
   return promoted ? promoted : t;
 }

@@ -247,6 +247,9 @@
     // parentheses, an assignment, a prefix ++ or -- and a comma's right operand (built-in ones), as
     // GlobalScope's designatedBitField finds it; null for any other operand.
     static Expr* bitFieldDesignator(Expr* e);
+    // The name those operators designate when it is no member's (a structured binding's, which
+    // bindingBitfield maps to its field), or null.
+    static Expr* bindingDesignator(Expr* e);
 
 
     std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at);

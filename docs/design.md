@@ -550,11 +550,10 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   (2026-11-06, [over.ics.scs]): `f(s.u3)` with f(int) and f(i64), or f(int) and f(double), calls
   f(int), as clang does, where kpp found it ambiguous; its declared type stays an exact match
   (h(unsigned) over h(int)), and a 32-bit unsigned field, which promotes to unsigned, takes
-  n(unsigned) over n(i64) (spec language/bit_field_argument_ranks_by_its_promotion). And a structured binding of a bit field of 32 or 64 bits
-  (`auto [a, b] = s;` over `uint64_t w3 : 3`) promotes as its declared type, where C++ promotes it as
-  the field: a binding is read and written as its field's bits (spec
-  classes/structured_binding_of_bit_field_is_the_field), but the checker types its operators as a
-  variable's.
+  n(unsigned) over n(i64) (spec language/bit_field_argument_ranks_by_its_promotion). A structured binding of a bit field promotes as the field does (2026-11-06,
+  [dcl.struct.bind] 5): `auto [a, b] = s;` over `uint64_t w3 : 3` makes `b - 3` the int -1, in the
+  checker's types (bitFieldPromotion finds the binding's field), at compile time and in codegen
+  (bitfieldOperand through bindingBitfield); spec language/structured_binding_of_bit_field_promotes_as_the_field.
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`
