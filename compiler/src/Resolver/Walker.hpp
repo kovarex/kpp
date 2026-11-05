@@ -1,5 +1,5 @@
-// GlobalScope::Impl, phase 2, walking: the Walker, which types and checks bodies: part of resolver.cpp, included in the class's body there (a file of its
-// own since 2026-11-05, moved without a change; docs/design.md, "Compilation model").
+// GlobalScope::Impl, phase 2, walking: the Walker, which types and checks bodies: part of the class's body, included in it in GlobalScopeImpl.hpp,
+// its definitions in Walker.cpp (resolver.cpp split, 2026-11-05, moved without a change).
   // ---------------- phase 2: walking ----------------
 
   struct Walker

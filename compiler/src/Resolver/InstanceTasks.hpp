@@ -1,5 +1,5 @@
-// GlobalScope::Impl, class instances' member bodies checked as tasks: part of resolver.cpp, included in the class's body there (a file of its
-// own since 2026-11-05, moved without a change; docs/design.md, "Compilation model").
+// GlobalScope::Impl, class instances' member bodies checked as tasks: part of the class's body, included in it in GlobalScopeImpl.hpp,
+// its definitions in InstanceTasks.cpp (resolver.cpp split, 2026-11-05, moved without a change).
   // ---- member bodies of class instances, checked as tasks (docs/compile-speed.md, step 3) ----
   // While the files are resolved, instantiating a class queues the check of each member body
   // instead of checking it on the asking thread; every worker takes them after the files

@@ -1,5 +1,5 @@
-// GlobalScope::Impl, phase 2, types: part of resolver.cpp, included in the class's body there (a file of its
-// own since 2026-11-05, moved without a change; docs/design.md, "Compilation model").
+// GlobalScope::Impl, phase 2, types: part of the class's body, included in it in GlobalScopeImpl.hpp,
+// its definitions in TypeOfAst.cpp (resolver.cpp split, 2026-11-05, moved without a change).
   // ---------------- phase 2: types ----------------
 
   struct ConstPlace;

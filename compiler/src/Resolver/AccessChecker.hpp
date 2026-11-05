@@ -1,5 +1,5 @@
-// GlobalScope::Impl, access checking (design.md, "struct and class"): part of resolver.cpp, included in the class's body there (a file of its
-// own since 2026-11-05, moved without a change; docs/design.md, "Compilation model").
+// GlobalScope::Impl, access checking (design.md, "struct and class"): part of the class's body, included in it in GlobalScopeImpl.hpp,
+// its definitions in AccessChecker.cpp (resolver.cpp split, 2026-11-05, moved without a change).
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
