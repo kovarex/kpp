@@ -1256,7 +1256,7 @@ namespace
           if (targetNamed((*list)[i + 1], named, why))
             target = named;
         }
-    return target.os == Target::Os::Linux ? "linux" : target.os == Target::Os::FreeBSD ? "freebsd" : "windows";
+    return platformOf(target.os).name;
   }
 
   // The executable a cell builds: build\CONFIGURATION\NAME.exe, NAME alone for Linux and FreeBSD.

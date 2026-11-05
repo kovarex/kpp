@@ -69,13 +69,9 @@ struct Dependency
 };
 
 // A system library for one platform as kpp reads it (systemLibrary(NAME, PLATFORM)): "PLATFORM NAME",
-// the platform windows, linux, freebsd or mac.
-String kppPlatformLibrary(StringView name, Platform platform)
-{
-  StringView on = platform == Platform::Windows ? "windows" : platform == Platform::Linux ? "linux"
-                  : platform == Platform::FreeBSD ? "freebsd" : "mac";
-  return String(on) + " " + name;
-}
+// the platform's short name (freebsd) as kppc's one table of them gives it (target.hpp, platformNames,
+// which <config> writes as config::platformName).
+String kppPlatformLibrary(StringView name, Platform platform) { return String(config::platformName(platform)) + " " + name; }
 
 void kppUse(Dependency& d, StringView name, StringView minimum, StringView path)
 {

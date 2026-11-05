@@ -29,6 +29,22 @@ struct Target
   static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
 };
 
+// The platforms' names, one table (thread J's refactoring list, 2026-11-05): config::platform's
+// enumerator (Platform::FreeBSD, the enumeration <config> declares in this order) and the short name
+// --target, the sysroots (sysroots\freebsd-x86_64), build.kpp's systemLibrary(NAME, PLATFORM) and the
+// reports use (freebsd). Project.kpp reads the short name through config::platformName, which <config>
+// writes from this table too (main.cpp, configSource). Mac is no --target yet.
+struct PlatformName
+{
+  const char* enumerator;
+  const char* name;
+};
+inline constexpr PlatformName platformNames[] = {{"Windows", "windows"}, {"Linux", "linux"}, {"Mac", "mac"}, {"FreeBSD", "freebsd"}};
+inline const PlatformName& platformOf(Target::Os os)
+{
+  return platformNames[os == Target::Os::Linux ? 1 : os == Target::Os::FreeBSD ? 3 : 0];
+}
+
 // --target's value: a short name or a triple. False, with why, for one kppc does not build for (yet).
 inline bool targetNamed(std::string_view name, Target& out, std::string& why)
 {
