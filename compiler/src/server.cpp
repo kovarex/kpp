@@ -337,6 +337,8 @@ namespace
   // redirected into pipes whose contents two threads forward as frames.
   struct Session
   {
+    ~Session() { CloseHandle(answeredEvent); }
+
     HANDLE client = INVALID_HANDLE_VALUE;
     std::mutex writeLock;
     HANDLE outRead = nullptr, errRead = nullptr;
@@ -345,7 +347,6 @@ namespace
     bool clientLost = false; // a write to the client failed: it went away (the build goes on, unseen)
     HANDLE answeredEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr); // set by answer()
     int exitCode = 0;
-    ~Session() { CloseHandle(answeredEvent); }
     std::string captured[2];     // what the build printed (stdout, stderr), kept for a replay (step 3a)
     bool muted = false;          // --verify-incremental's own build: captured, not sent
     bool verifying = false;      // that build is running: its end does not answer the client

@@ -41,12 +41,6 @@ namespace
   struct Json
   {
     enum Kind : uint8_t { Null, Bool, Number, String, Array, Object };
-    Kind kind = Null;
-    bool boolean = false;
-    double number = 0;
-    std::string text;
-    std::vector<Json> items;
-    std::vector<std::pair<std::string, Json>> members;
 
     Json() = default;
     Json(std::nullptr_t) {}
@@ -89,14 +83,17 @@ namespace
       return *this;
     }
     int64_t integer() const { return int64_t(number); }
+
+    Kind kind = Null;
+    bool boolean = false;
+    double number = 0;
+    std::string text;
+    std::vector<Json> items;
+    std::vector<std::pair<std::string, Json>> members;
   };
 
   struct JsonParser
   {
-    std::string_view s;
-    size_t i = 0;
-    bool ok = true;
-
     void space()
     {
       while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r'))
@@ -243,6 +240,10 @@ namespace
         return ok = false, Json();
       return Json(strtod(std::string(s.substr(start, i - start)).c_str(), nullptr));
     }
+
+    std::string_view s;
+    size_t i = 0;
+    bool ok = true;
   };
 
   // Text as JSON wants it: valid UTF-8 (a byte that is not is written as U+FFFD: a diagnostic may
@@ -370,8 +371,6 @@ namespace
 
   struct Reader
   {
-    char buffer[1 << 16];
-    DWORD size = 0, at = 0;
     bool get(char& c)
     {
       if (at == size)
@@ -412,16 +411,14 @@ namespace
           return false;
       return true;
     }
+
+    char buffer[1 << 16];
+    DWORD size = 0, at = 0;
   };
 
   // The messages read, in order; the end of the input is a message with ended set.
   struct Inbox
   {
-    std::mutex mutex;
-    std::condition_variable ready;
-    std::deque<Json> messages;
-    bool ended = false;
-
     void put(Json m)
     {
       std::lock_guard lock(mutex);
@@ -449,6 +446,11 @@ namespace
       std::lock_guard lock(mutex);
       return messages.empty();
     }
+
+    std::mutex mutex;
+    std::condition_variable ready;
+    std::deque<Json> messages;
+    bool ended = false;
   };
   Inbox inbox;
 
@@ -867,12 +869,6 @@ namespace
 
   struct Server
   {
-    CompileFunction compile = nullptr;
-    std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
-    fs::path workspace;                         // the editor's root folder
-    fs::path projectFolder;                     // build.kpp's folder: the workspace or one above it
-    ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)
-    std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
     // The cells checked before (a target and a configuration of build.kpp's), each with the build it
     // kept, so that switching back to one is incremental; the active cell's build is the process's
     // (main.cpp). At most keptCells in all, the least recently used ones dropped.
@@ -882,48 +878,27 @@ namespace
       std::vector<std::string> arguments; // what it was built with: kept for those only
       size_t used = 0;
     };
-    std::map<std::string, Cell> parkedCells;    // by cellKey
-    std::string activeCell;                     // cellKey of the cell checked now ("": no build.kpp's)
-    std::vector<ProjectOption> activeOptions;   // its libraries' options (every target's, for all of them)
-    std::vector<std::string> activeArguments;   // what the process's kept build was made with
-    std::string announcedCell = "\n";          // the cell kpp/activeCell last named
-    std::string shownFailure;                   // the diagnostic-less failure last shown (check)
-    bool markdownHover = false;                 // the client renders hover's markdown (else plain text)
-    bool inactiveRegions = false;               // the client takes textDocument/inactiveRegions (clangd's)
-    bool semanticTokensRefresh = false;         // the client takes workspace/semanticTokens/refresh
-    bool semanticColors = false;                // the client's extension asks for the tokens itself (kpp/semanticTokensChanged)
-    size_t refreshes = 0;                       // the refresh requests sent (their ids)
-    std::map<std::string, std::string> inactiveSent; // the regions last sent per open document (overlayKey -> JSON)
-    size_t keptCells = 4, cellClock = 0;
-    bool checkEachChange = false;
-    bool initialized = false, shutdownRequested = false;
-    bool dirty = false;                         // a document changed since the last check
-    size_t checks = 0;
-    std::map<std::string, Document> documents;  // the open documents, by overlayKey
-    std::map<std::string, std::string> published; // what was last published per file (overlayKey -> the message's JSON)
-    std::map<std::string, std::string> uris;      // the URI each published file goes by
 
     // What the queries keep about the kept program, made when first asked and forgotten at every
     // check (the program changes in place).
     struct Cache
     {
-      bool filesKnown = false;
-      std::map<std::string, ParsedFile*> files;                          // by overlayKey
-      std::unordered_map<const ParsedFile*, std::vector<Occurrence>> occurrences;
-      std::unordered_map<const ParsedFile*, std::vector<size_t>> starts;
-      bool referencesKnown = false;
-      std::unordered_map<const Decl*, std::vector<std::pair<const ParsedFile*, uint32_t>>> references; // by canonical declaration
       struct Symbol
       {
         std::string name, lower, container;
         int kind;
         Decl* decl;
       };
+
+      bool filesKnown = false;
+      std::map<std::string, ParsedFile*> files;                          // by overlayKey
+      std::unordered_map<const ParsedFile*, std::vector<Occurrence>> occurrences;
+      std::unordered_map<const ParsedFile*, std::vector<size_t>> starts;
+      bool referencesKnown = false;
+      std::unordered_map<const Decl*, std::vector<std::pair<const ParsedFile*, uint32_t>>> references; // by canonical declaration
       std::vector<Symbol> symbols;
       bool symbolsKnown = false;
     };
-    Cache cache;
-    GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
 
 
     std::string uriOf(const std::string& key, const fs::path& path)
@@ -2993,6 +2968,35 @@ namespace
         respondError(id, -32601, "kppc --lsp does not support " + method);
       return true;
     }
+
+    CompileFunction compile = nullptr;
+    std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
+    fs::path workspace;                         // the editor's root folder
+    fs::path projectFolder;                     // build.kpp's folder: the workspace or one above it
+    ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)
+    std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
+    std::map<std::string, Cell> parkedCells;    // by cellKey
+    std::string activeCell;                     // cellKey of the cell checked now ("": no build.kpp's)
+    std::vector<ProjectOption> activeOptions;   // its libraries' options (every target's, for all of them)
+    std::vector<std::string> activeArguments;   // what the process's kept build was made with
+    std::string announcedCell = "\n";          // the cell kpp/activeCell last named
+    std::string shownFailure;                   // the diagnostic-less failure last shown (check)
+    bool markdownHover = false;                 // the client renders hover's markdown (else plain text)
+    bool inactiveRegions = false;               // the client takes textDocument/inactiveRegions (clangd's)
+    bool semanticTokensRefresh = false;         // the client takes workspace/semanticTokens/refresh
+    bool semanticColors = false;                // the client's extension asks for the tokens itself (kpp/semanticTokensChanged)
+    size_t refreshes = 0;                       // the refresh requests sent (their ids)
+    std::map<std::string, std::string> inactiveSent; // the regions last sent per open document (overlayKey -> JSON)
+    size_t keptCells = 4, cellClock = 0;
+    bool checkEachChange = false;
+    bool initialized = false, shutdownRequested = false;
+    bool dirty = false;                         // a document changed since the last check
+    size_t checks = 0;
+    std::map<std::string, Document> documents;  // the open documents, by overlayKey
+    std::map<std::string, std::string> published; // what was last published per file (overlayKey -> the message's JSON)
+    std::map<std::string, std::string> uris;      // the URI each published file goes by
+    Cache cache;
+    GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
   };
 }
 
