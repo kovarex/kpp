@@ -146,6 +146,3 @@ std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCa
 }
 
 // --- Scope tree ---------------------------------------------------------------------------
-
-
-#include "Resolver/GlobalScope.inl"

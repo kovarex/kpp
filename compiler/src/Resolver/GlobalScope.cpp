@@ -1,5 +1,6 @@
-// GlobalScope's own methods (resolver.hpp), after GlobalScope::Impl: part of resolver.cpp, included
-// at its end (a file of its own since 2026-11-05, moved without a change).
+// GlobalScope's own methods (resolver.hpp), over GlobalScope::Impl (GlobalScopeImpl.hpp): a translation unit of its
+// own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
+#include "GlobalScopeImpl.hpp"
 
 GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols))
 {

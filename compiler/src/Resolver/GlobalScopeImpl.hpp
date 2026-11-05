@@ -642,13 +642,13 @@ using namespace resolver_detail;
 struct GlobalScope::Impl
 {
 #include "GlobalScopeImpl.inl"
-#include "Indexer.inl"
-#include "Lookup.inl"
-#include "TypeOfAst.inl"
-#include "AccessChecker.inl"
+#include "Indexer.hpp"
+#include "Lookup.hpp"
+#include "TypeOfAst.hpp"
+#include "AccessChecker.hpp"
 #include "Interpreter.inl"
 #include "Instantiation.inl"
 #include "OverloadResolution.inl"
 #include "Walker.hpp"
-#include "InstanceTasks.inl"
+#include "InstanceTasks.hpp"
 };

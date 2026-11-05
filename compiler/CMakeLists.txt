@@ -16,6 +16,12 @@ add_executable(kppc
   src/parser.cpp
   src/resolver.cpp
   src/Resolver/Walker.cpp
+  src/Resolver/Lookup.cpp
+  src/Resolver/InstanceTasks.cpp
+  src/Resolver/AccessChecker.cpp
+  src/Resolver/TypeOfAst.cpp
+  src/Resolver/Indexer.cpp
+  src/Resolver/GlobalScope.cpp
   src/types.cpp
   src/codegen.cpp
   src/consteval.cpp
