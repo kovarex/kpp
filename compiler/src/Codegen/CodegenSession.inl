@@ -1191,7 +1191,6 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.unassembled.assign(sh.moduleCount, true);
       session->usable = !checkRebuild;
     }
-    result.debugClasses = sh.debugClasses;
     return std::move(result);
   }
   if (e.moduleCount <= 1)
@@ -1235,7 +1234,6 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
       result.stubs = stubbed.size() + countUndefinedStubs(sh);
     }
-    result.debugClasses = sh.debugClasses;
     return std::move(result);
   }
   // The modules are independent once the texts are finished: assembled on all the emitters'
@@ -1397,14 +1395,32 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
             result.functions, first.empty() ? "" : "; first: ", first.c_str());
   }
   session->usable = keep && keepTexts && !checkRebuild && result.errors.empty();
-  result.debugClasses = sh.debugClasses;
   return std::move(result);
 }
+
+static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
+                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
+                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
                           const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+{
+  CodegenResult out = rebuildModules(session, changedBodies, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
+  // The classes every module defines (the session's, made again by homeDebugClasses when this
+  // build named a class), whatever path the rebuild took: one place, so that no return of it
+  // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
+  if (rebuilt && session.shared)
+    out.debugClasses = session.shared->debugClasses;
+  return out;
+}
+
+static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
+                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
+                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -2191,7 +2207,6 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::sort(out.failedFunctions.begin(), out.failedFunctions.end());
     out.functions = sh.functions;
     out.structs = session.result.structs;
-    out.debugClasses = sh.debugClasses;
     session.usable = true;
     rebuilt = true;
     return out;
@@ -2231,7 +2246,6 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     out.changedModules[i] = true;
   out.functions = sh.functions;
   out.structs = session.result.structs;
-  out.debugClasses = sh.debugClasses;
   session.usable = true;
   rebuilt = true;
   return out;

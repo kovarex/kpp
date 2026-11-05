@@ -463,6 +463,7 @@
             sh.debugClasses.push_back({it->second.type, debuggerClassName(it->second.type)});
         }
       std::sort(sh.debugClasses.begin(), sh.debugClasses.end(), [](const DebugClass& a, const DebugClass& b) { return a.name < b.name; });
+      sh.result.debugClasses = sh.debugClasses; // (a build from scratch's result; a compile server's rebuild takes them in rebuildLLVM)
     }
 
     // The definition with line information: every instruction gets the line of the statement whose
