@@ -1,0 +1,29 @@
+// spec: at compile time a local rvalue reference bound to a temporary (`String&& t = String("de");`) may change it, as at run time: move(t) and forward<String>(t) empty it, and a `long&&` bound to an int lvalue binds a temporary long of its own, which the int never sees
+// found by thread D (2026-11-05): the evaluator kept such a temporary as a read-only copy, so `String moved = move(t);` (the String's move constructor empties t) was no constant
+constexpr int moved()
+{
+  String&& t = String("de");
+  String m = move(t);
+  return int(t.size()) * 10 + int(m.size());
+}
+constexpr int forwarded()
+{
+  String&& t = String("abc");
+  String m = forward<String>(t);
+  return int(t.size()) * 10 + int(m.size());
+}
+constexpr int converted()
+{
+  int i = 1;
+  long&& r = i;
+  r = 5;
+  return i * 10 + int(r);
+}
+int main()
+{
+  constexpr int a = moved();
+  constexpr int b = forwarded();
+  constexpr int c = converted();
+  println(a, " ", moved(), " ", b, " ", forwarded(), " ", c, " ", converted());
+  return 0;
+}

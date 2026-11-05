@@ -2434,7 +2434,10 @@ reference parameters refer to their arguments (language/consteval_sort_and_lambd
 that is not `mutable` the copies are const, as C++ has them, and writing one is a compile error
 (language/lambda_copy_capture_is_const_unless_mutable). A typed union's alternative (`v[V::Number]`) is
 read and written where it is, the union holding it (else no constant), and a typed union is destroyed
-by destroying the alternative it holds (language/consteval_typed_union_alternative).
+by destroying the alternative it holds (language/consteval_typed_union_alternative). A local rvalue
+reference bound to a temporary (`String&& t = String("de");`, a `long&&` given an int) holds the
+temporary as an rvalue reference parameter does and may change it: `move(t)` empties it
+(language/consteval_rvalue_reference_to_temporary_changes_it).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

@@ -7484,6 +7484,8 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     env.push_back(constBinding(symbol, *value, type));
     Expr* source = nullptr;
     env.back().owns = constCategory(v->init, source) == 0; // `const T& r = make();`: the temporary lives as r
+    if (env.back().owns && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
+      env.back().writable = true; // `String&& t = String("de");`: the temporary is t's to change (`move(t)` empties it), as a parameter's is
     return named(env.size() - 1);
   }
   if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
