@@ -1,0 +1,65 @@
+// spec: at compile time malloc's bytes cast to a class pointer hold an object as C++20 creates one there implicitly, run by no constructor: its members written, addressed and made by placement new (a List node's `new (&node->value) T(...)`), a base's members too, and calloc's bytes hold zero members (`5 5 5 5 0` as constants and at run time)
+// found by thread D (2026-11-05) with the code generator's check of constexpr variables: the bytes were one unset value, so `n->value = 5` was no constant and the library's List, Set and Map never ran at compile time (language/consteval_node_containers)
+extern "C" import "stdlib.h";
+struct Links
+{
+  Links* prev;
+  Links* next;
+};
+struct Plain
+{
+  Links* prev;
+  int value;
+};
+struct Derived : Links
+{
+  int value;
+};
+constexpr int placed()
+{
+  Plain* n = (Plain*)malloc(sizeof(Plain));
+  new (&n->value) int(5);
+  int v = n->value;
+  free(n);
+  return v;
+}
+constexpr int assigned()
+{
+  Derived* n = (Derived*)malloc(sizeof(Derived));
+  n->value = 5;
+  n->prev = n;
+  int v = n->prev == n ? n->value : 0;
+  free(n);
+  return v;
+}
+constexpr int placedInDerived()
+{
+  Derived* n = (Derived*)malloc(sizeof(Derived));
+  new (&n->value) int(5);
+  int v = n->value;
+  free(n);
+  return v;
+}
+constexpr int throughPointer()
+{
+  Plain* n = (Plain*)malloc(sizeof(Plain));
+  int* p = &n->value;
+  *p = 5;
+  int v = n->value;
+  free(n);
+  return v;
+}
+constexpr int zeroed()
+{
+  Plain* n = (Plain*)calloc(1, sizeof(Plain));
+  int v = n->value + (n->prev == nullptr ? 0 : 1);
+  free(n);
+  return v;
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println(placed(), " ", assigned(), " ", placedInDerived(), " ", throughPointer(), " ", zeroed());
+  println(Show<placed()>::value, " ", Show<assigned()>::value, " ", Show<placedInDerived()>::value, " ", Show<throughPointer()>::value, " ", Show<zeroed()>::value);
+  return 0;
+}

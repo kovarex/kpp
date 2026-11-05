@@ -4281,7 +4281,7 @@ auto GlobalScope::Impl::constTypeAllocation(const ConstValue& p, const Ty* t, in
   std::vector<ConstValue> elements;
   for (int64_t i = 0; i < count; ++i)
   {
-    std::optional<ConstValue> e = a.zero ? constEmpty(t, true, depth + 1) : std::optional<ConstValue>(ConstValue::unset(t));
+    std::optional<ConstValue> e = constRawObject(t, a.zero, depth + 1);
     if (!e)
       return std::nullopt;
     elements.push_back(*e);
@@ -4293,6 +4293,61 @@ auto GlobalScope::Impl::constTypeAllocation(const ConstValue& p, const Ty* t, in
   ConstTarget first = *p.target;
   first.path = {0};
   return ConstValue::address(types.pointer(t), std::move(first));
+}
+
+auto GlobalScope::Impl::constRawObject(const Ty* t, bool zero, int depth) -> std::optional<ConstValue>
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || depth > 64)
+    return std::nullopt;
+  if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
+    return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
+  if (t->kind == TyKind::Array)
+  {
+    if (t->count == 0)
+      return ConstValue::object(t, {});
+    if (!constMayMake(t->count))
+      return std::nullopt;
+    std::optional<ConstValue> element = constRawObject(t->inner, zero, depth + 1);
+    if (!element)
+      return std::nullopt;
+    return ConstValue::object(t, std::vector<ConstValue>(t->count, *element));
+  }
+  const ConstClassLayout* layout = t->kind == TyKind::Class ? constLayoutOf(t, depth) : nullptr;
+  // (A class whose objects malloc makes none of: a union, whose member alive is not known, a
+  // typed union, one with a virtual function or one of a base, an anonymous member's.)
+  std::function<bool(const ConstClassLayout*, int)> implicitLifetime = [&](const ConstClassLayout* l, int d) {
+    if (!l || !l->decl || l->anonymous || l->decl->isTypedUnion || l->decl->keyword == Kw::union_ || d > 32)
+      return false;
+    for (Decl* m : membersRead(l->decl))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Virtual))
+        return false;
+    for (const Ty* b : l->bases)
+      if (!implicitLifetime(constLayoutOf(b, depth + 1), d + 1))
+        return false;
+    return true;
+  };
+  if (!implicitLifetime(layout, 0))
+    return zero ? constEmpty(t, true, depth + 1) : std::optional<ConstValue>(ConstValue::unset(t)); // (as before)
+  if (!constMayMake(layout->bases.size() + layout->fields.size()))
+    return std::nullopt;
+  std::vector<ConstValue> parts;
+  for (const Ty* b : layout->bases)
+  {
+    std::optional<ConstValue> part = constRawObject(b, zero, depth + 1);
+    if (!part)
+      return std::nullopt;
+    parts.push_back(*part);
+  }
+  for (const Ty* f : layout->fieldTypes)
+  {
+    std::optional<ConstValue> part = f && f->isReference() ? std::optional<ConstValue>(ConstValue::unset(f)) : constRawObject(f, zero, depth + 1);
+    if (!part)
+      return std::nullopt;
+    parts.push_back(*part);
+  }
+  constFitBitFields(*layout, parts);
+  return ConstValue::object(t, std::move(parts));
 }
 
 auto GlobalScope::Impl::constPointedType(const ConstValue& p, int depth) -> const Ty*

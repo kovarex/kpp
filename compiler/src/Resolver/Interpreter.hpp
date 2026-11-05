@@ -683,6 +683,13 @@
   // retype: also bytes already typed (as chars), at their start, when no element was written yet.
   std::optional<ConstValue> constTypeAllocation(const ConstValue& p, const Ty* t, int depth, bool retype = false);
 
+  // An object of t in malloc's bytes, as C++20 creates one there implicitly (an object of an
+  // implicit-lifetime type: a scalar, an array, a class that is no union and has no virtual
+  // function), run by no constructor: each scalar part unset, or zero for calloc's, so that a
+  // member is written, addressed or made by placement new (`new (&node->value) T(...)` in a List
+  // node); a class of another kind is one unset value, none of its members a constant.
+  std::optional<ConstValue> constRawObject(const Ty* t, bool zero, int depth);
+
   // The type of the object an Address points at (its target's part, whatever the pointer's own
   // type says: `void*`), or null.
   const Ty* constPointedType(const ConstValue& p, int depth);
