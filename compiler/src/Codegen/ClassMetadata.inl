@@ -1849,112 +1849,29 @@
       return d;
     }
 
-    // Named return elision, guaranteed (design.md 23, kovarex 2026-11-04): the local that every return
-    // of body returns, which is built in the caller's result (sretAddr) instead of a slot of its own,
-    // so that no return copies or moves it, and its class needs neither constructor; null when there
-    // is none. Eligible: one VariableDecl (two blocks' `T a; return a;` are two), an automatic local
-    // (not static, thread_local or extern), not volatile, not a reference, a structured binding or a
-    // catch parameter, of the result's class, cv ignored; every return of the body names it (those of
-    // a lambda or a local class in it are their own functions'), at least one. (A stand-in for the
-    // resolver's GlobalScope::namedReturnVariable, A's, which keeps the same rule.)
-    VariableDecl* namedReturnVariable(Stmt* body)
+    // Named return elision, guaranteed (design.md 23, kovarex 2026-11-04): the variable every return of
+    // the function returns, by the resolver's rule (GlobalScope::namedReturnVariable, given the body,
+    // the result type and the template arguments codegen emits it under: an instance's typed copy, a
+    // lambda's operator), is built in the caller's result (sretAddr) instead of a slot of its own, so
+    // that no return copies or moves it and its class needs neither constructor. Not when the result
+    // comes back in registers (no sretAddr: a class copied as bits, with no constructor to skip). A
+    // variable of another type than the result's would be the rule's error: never built there, a
+    // compile error.
+    VariableDecl* builtInResult(VariableDecl* v, Node* at)
     {
-      if (!body || sretAddr.empty() || !currentReturn || !isClass(types.unqualified(currentReturn)))
+      if (!v || sretAddr.empty())
         return nullptr;
-      VariableDecl* named = nullptr;
-      bool eligible = true;
-      size_t returns = 0;
-      std::unordered_set<Decl*> catchParams;
-      // The variables the body's statements declare in the ways codegen can build at the result's
-      // address (declareLocal: a declaration statement, a for's, if's or switch's init, a condition;
-      // rangeFor: a range-for's variable). Direction::fromString's `for (Direction direction : ...)
-      // ... return direction;` was elided before rangeFor knew: the variable got a slot of its own and
-      // the caller's result was never written (the game's fusion reactor's connection graphics all
-      // went to one direction).
-      std::unordered_set<Decl*> declared;
-      auto declares = [&](Node* n)
-      {
-        if (n && n->kind == NodeKind::DeclStmt)
-          for (Decl* d : static_cast<DeclStmt*>(n)->decls)
-            declared.insert(d);
-      };
-      std::function<void(Stmt*)> walk = [&](Stmt* s)
-      {
-        if (!s || !eligible)
-          return;
-        switch (s->kind)
-        {
-          case NodeKind::BlockStmt:
-            for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
-              walk(inner);
-            break;
-          case NodeKind::DeclStmt: declares(s); break;
-          case NodeKind::IfStmt:
-            walk(static_cast<IfStmt*>(s)->init);
-            declares(static_cast<IfStmt*>(s)->cond);
-            walk(static_cast<IfStmt*>(s)->then);
-            walk(static_cast<IfStmt*>(s)->else_);
-            break;
-          case NodeKind::ForStmt:
-            walk(static_cast<ForStmt*>(s)->init);
-            declares(static_cast<ForStmt*>(s)->cond);
-            walk(static_cast<ForStmt*>(s)->body);
-            break;
-          case NodeKind::RangeForStmt:
-            declared.insert(static_cast<RangeForStmt*>(s)->var);
-            walk(static_cast<RangeForStmt*>(s)->body);
-            break;
-          case NodeKind::ForConstexprStmt: walk(static_cast<ForConstexprStmt*>(s)->body); break;
-          case NodeKind::WhileStmt:
-            declares(static_cast<WhileStmt*>(s)->cond);
-            walk(static_cast<WhileStmt*>(s)->body);
-            break;
-          case NodeKind::DoStmt: walk(static_cast<DoStmt*>(s)->body); break;
-          case NodeKind::SwitchStmt:
-            walk(static_cast<SwitchStmt*>(s)->init);
-            declares(static_cast<SwitchStmt*>(s)->cond);
-            walk(static_cast<SwitchStmt*>(s)->body);
-            break;
-          case NodeKind::TryStmt:
-          {
-            auto* t = static_cast<TryStmt*>(s);
-            walk(t->body);
-            for (const TryStmt::Handler& h : t->handlers)
-            {
-              if (h.param)
-                catchParams.insert(h.param);
-              walk(h.body);
-            }
-            break;
-          }
-          case NodeKind::ReturnStmt:
-          {
-            ++returns;
-            Expr* value = static_cast<ReturnStmt*>(s)->value;
-            while (value && value->kind == NodeKind::ParenExpr)
-              value = static_cast<ParenExpr*>(value)->inner;
-            Decl* d = value && value->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(value)->resolved : nullptr;
-            if (!d || d->kind != NodeKind::VariableDecl || (named && d != named))
-              eligible = false;
-            else
-              named = static_cast<VariableDecl*>(d);
-            break;
-          }
-          default:
-            break; // (a declaration's lambdas and local classes are functions of their own)
-        }
-      };
-      walk(body);
-      // (and not alignas: the caller's object has its class's alignment alone)
-      if (!eligible || !named || !returns || !declared.count(named) || catchParams.count(named) ||
-          (named->flags & (DF_Static | DF_ThreadLocal | DF_Extern | DF_Volatile)) || !named->structuredBindings.empty() || named->tupleBinding ||
-          named->alignment)
-        return nullptr;
-      const Ty* t = localType(named);
-      if (!t || !t->isKnown() || types.isDependent(t) || t->isReference() || t->isVolatile || !isClass(types.unqualified(t)) ||
+      const Ty* t = localType(v);
+      if (!t || !t->isKnown() || types.isDependent(t) || t->isReference() || !isClass(types.unqualified(t)) || !currentReturn ||
           classKey(types.unqualified(t)) != classKey(types.unqualified(currentReturn)))
+      {
+        fail(at, "the named return " + (v->name.empty() ? std::string("?") : sym(v->name.last().symbol)) + " is a " +
+                     (t ? types.toString(t, &symbols) : std::string("?")) + ", not the returned " +
+                     (currentReturn ? types.toString(currentReturn, &symbols) : std::string("?")) +
+                     " (namedReturnVariable and codegen disagree)");
         return nullptr;
-      return named;
+      }
+      return v;
     }
 
     // Whether e (a return's value) names the function's namedReturn.

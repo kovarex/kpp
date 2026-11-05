@@ -1261,7 +1261,7 @@ VariableDecl* GlobalScope::namedReturnVariable(const FunctionDecl* f, std::strin
   return namedReturnVariable(f->body, ft && ft->kind == TyKind::Function ? ft->inner : nullptr, why);
 }
 
-VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* result, std::string* why)
+VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* result, std::string* why, const TemplateArgs* args)
 {
   auto no = [&](std::string reason) -> VariableDecl*
   {
@@ -1276,7 +1276,7 @@ VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* resul
   VariableDecl* v = Impl::namedReturnCandidate(body, why);
   if (!v)
     return nullptr;
-  const Ty* vt = typeOfDecl(v);
+  const Ty* vt = args ? typeOfDeclIn(v, *args) : typeOfDecl(v);
   if (vt && vt->isVolatile)
     return no("the variable is volatile");
   if (!vt || vt->kind != TyKind::Class || impl->types.unqualified(vt) != impl->types.unqualified(result))

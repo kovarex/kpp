@@ -1529,13 +1529,15 @@ caller's result (NRVO) and lets it copy or move instead; kpp always elides, so t
 costs, and whether it runs a constructor, does not depend on the optimizer or the build.
 - **The rule.** When every `return` of a function returns the same local variable, that variable is
   built in the caller's result: no copy and no move, in debug and release alike, and its class need
-  not be copyable or movable. "The same" is one declaration, not one name (two blocks' `T a;
-  return a;` are two); the variable is automatic (not static, thread_local or extern), not volatile,
-  not a reference, a structured binding, a catch parameter or a `when` declaration absent in the
-  configuration, and of the function's result class, cv ignored (`const T t; return t;` is elided;
-  with `auto` the deduced type is compared). The returns of a lambda or a local class in the body are
-  their own functions'. A function with no return of it, or one that can fall off its end, has none.
-  Every return naming the variable lies in its scope, so that scope covers them all.
+  not be copyable or movable. "The same" is one declaration, not one name (two blocks' `T a; return
+  a;` are two); the variable is automatic (not static, thread_local or extern), not volatile, not a
+  reference, a structured binding, a catch parameter, a `when` declaration absent in the
+  configuration or declared `alignas` (the caller's object has its class's alignment), and of the
+  function's result class, cv ignored (`const T t; return t;` is elided; with `auto` the deduced
+  type is compared, in each instance of a template or a generic lambda its own). The returns of a
+  lambda or a local class in the body are their own functions'. A function with no return of it, or
+  one that can fall off its end, has none. Every return naming the variable lies in its scope, so
+  that scope covers them all.
 - **Otherwise** `return name;` of a local or by-value parameter is C++'s implicit move
   ([class.copy.elision]/3): the name is an rvalue first, so the object is moved, never copied when it
   can be moved. A const local returned as another class binds the copy constructor through
@@ -1544,14 +1546,17 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
 - **Lifetime.** The variable's object is the caller's: leaving its scope without returning (a loop's
   iteration) destroys it there, a throw after it is built destroys it in the result, and a return of
   it destroys every other local and leaves it built.
-- **As built.** The rule is the resolver's (`GlobalScope::namedReturnVariable`, A, cached per function
-  and template instance); codegen builds the variable at the result's address (`sretAddr`; its debug
-  variable there) and skips its destructor on the return path alone (B); the interpreter elides too
-  (D), so that a class that cannot be moved returns by name in a constant expression as well; kppc's
-  inliner inlines no function whose result is returned in memory, so it never meets the variable
-  (inlineCall refuses one, D). Specs language/named_return_elided,
-  named_return_of_non_movable_type, named_return_fallback_moves,
-  named_return_destroyed_in_slot_on_throw, named_return_loop_variable.
+- **As built.** The rule is the resolver's (`GlobalScope::namedReturnVariable`, A: a function's, or
+  a body's given its result type and the template arguments it is typed under, which codegen asks
+  for each instance's typed copy and each lambda's operator); codegen builds the variable at the
+  result's address (`sretAddr`; its debug variable there; a result that comes back in registers is a
+  class copied as bits, with no constructor to skip) and skips its destructor on the return path
+  alone (B); the interpreter elides too (D), so that a class that cannot be moved returns by name in
+  a constant expression as well; kppc's inliner inlines no function whose result is returned in
+  memory, so it never meets the variable (inlineCall refuses one, D). Specs
+  language/named_return_elided, named_return_of_non_movable_type, named_return_fallback_moves,
+  named_return_destroyed_in_slot_on_throw, named_return_loop_variable,
+  named_return_typed_per_instance.
 - **At compile time** (D) the interpreter's `return v;` of the variable is the result, as at run time:
   no copy or move constructor runs, v is destroyed once, with the result, and a template's variable
   is decided under the evaluation's arguments (language/consteval_named_return_variable_is_the_result).

@@ -270,7 +270,7 @@
           // member in the hub's list, and destroying the hub faulted).
           returnLabel = newLabel("dtor.members");
         }
-        namedReturn = namedReturnVariable(f->body);
+        namedReturn = builtInResult(global.namedReturnVariable(f->body, currentReturn, nullptr, currentArgs), f);
         statement(f->body);
         if (destructor)
         {

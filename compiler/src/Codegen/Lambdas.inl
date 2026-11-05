@@ -880,7 +880,7 @@
           if (pd && pd->name != UINT32_MAX)
             debugVariable(sym(pd->name), pd, ps, pt, uint32_t(i + 1));
         }
-        namedReturn = namedReturnVariable(l->body);
+        namedReturn = builtInResult(global.namedReturnVariable(l->body, currentReturn, nullptr, currentArgs), l);
         statement(l->body);
         if (!blockTerminated)
         {

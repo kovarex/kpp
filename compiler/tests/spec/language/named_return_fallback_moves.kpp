@@ -1,4 +1,4 @@
-// spec: when not every return returns the same local object (two locals of one name in two blocks, two locals, a temporary on another path, a parameter), `return name;` moves the object into the result, never copies it (C++'s implicit move: design.md 23)
+// spec: when not every return returns the same local object (two locals of one name in two blocks, two locals, a temporary on another path, a parameter), or the local is declared alignas (the caller's object has its class's alignment alone), `return name;` moves the object into the result, never copies it (C++'s implicit move: design.md 23)
 int copies = 0;
 int moves = 0;
 struct Tracked
@@ -43,6 +43,12 @@ Tracked parameter(Tracked p)
   p.value = 6;
   return p;
 }
+Tracked aligned()
+{
+  alignas(64) Tracked t;
+  t.value = 7;
+  return t;
+}
 int main()
 {
   Tracked a = either(true);
@@ -51,7 +57,8 @@ int main()
   Tracked d = blocks(false);
   Tracked e = localOrTemporary(true);
   Tracked f = parameter(Tracked());
-  println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value);
+  Tracked g = aligned();
+  println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value, " ", g.value);
   println(copies, " copies, ", moves, " moves");
   return 0;
 }

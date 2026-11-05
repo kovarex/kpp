@@ -304,7 +304,7 @@
       bool isRef = t->isReference();
       std::string slot;
       if (v == namedReturn && !isRef)
-        slot = sretAddr; // built in the caller's result: every return returns it (namedReturnVariable)
+        slot = sretAddr; // built in the caller's result: every return returns it (builtInResult)
       else
       {
         slot = "%v" + std::to_string(temp++);
@@ -872,7 +872,7 @@
       else
       {
         if (v == namedReturn)
-          slot = sretAddr; // built in the caller's result, each iteration (namedReturnVariable)
+          slot = sretAddr; // built in the caller's result, each iteration (builtInResult)
         else
           allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
         if (elementMadeInto(element.ty, vt))

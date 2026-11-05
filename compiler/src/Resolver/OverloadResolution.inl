@@ -797,10 +797,12 @@
   // The named return variable's candidate in a function's body (NRVO, kovarex 2026-11-04;
   // GlobalScope::namedReturnVariable): the one automatic local every `return` of the body names
   // (nested lambdas' and local classes' returns aside), declared by a declaration statement or a
-  // range-for, and not static, thread_local, extern, a structured binding or absent by its `when`;
-  // null with why otherwise. Whether its type is the result's class (and it is not volatile) is the
-  // caller's to compare, under the arguments it runs with: the declaration's own for codegen, an
-  // evaluation's for the interpreter (a template's body under its arguments).
+  // range-for, and not static, thread_local, extern, a structured binding, absent by its `when` or
+  // declared alignas (the caller's result has its class's alignment alone); null with why
+  // otherwise. Whether its type is the result's class (and it is not volatile) is the caller's to
+  // compare, under the arguments it runs with: an instance's template arguments for codegen
+  // (GlobalScope::namedReturnVariable's args), an evaluation's for the interpreter (a template's
+  // body under its arguments).
   static VariableDecl* namedReturnCandidate(const Stmt* body, std::string* why)
   {
     auto no = [&](std::string reason) -> VariableDecl*
@@ -852,6 +854,8 @@
       return no("the variable is a structured binding");
     if (v->when && v->whenKnown == 0)
       return no("the variable is absent by its when");
+    if (v->alignment)
+      return no("the variable is declared alignas (the result's object has its class's alignment)");
     if (!buildable.count(v) || nested.count(v))
       return no("the variable is no declaration statement's or range-for's (a catch's parameter, a compile-time loop's)");
     return v;

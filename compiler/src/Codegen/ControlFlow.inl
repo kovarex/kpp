@@ -395,7 +395,7 @@
       else
       {
         if (v == namedReturn)
-          slot = sretAddr; // built in the caller's result, each iteration (namedReturnVariable)
+          slot = sretAddr; // built in the caller's result, each iteration (builtInResult)
         else
           allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
         if (elementMadeInto(elementTy, vt))
