@@ -4208,9 +4208,11 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
       return std::nullopt;
     env.push_back(constBinding(p->name, *v, type));
   }
-  // The members' initial values: unset, filled below in declaration order.
+  // The members' initial values: the bases' in their order, then the data members' in declaration
+  // order, as C++ initializes them whatever order the initializers are written in ([class.base.init]
+  // 13: `X(int* l) : m(l, 2), L(l, 1)` runs L's constructor first; written order ran m's first).
   size_t nb = layout->bases.size(), nf = layout->fields.size();
-  std::vector<std::optional<ConstValue>> parts(nb + nf);
+  std::vector<const FunctionDecl::CtorInit*> written(nb + nf, nullptr);
   for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
   {
     if (absentMemberInit(layout->decl, init))
@@ -4218,125 +4220,122 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     if (init.member.empty() || init.isPack)
       return std::nullopt;
     uint32_t symbol = init.member.last().symbol;
-    // The values the initializer gives: one expression, a brace list, none (value-initialized).
-    auto initialize = [&](const Ty* target) -> std::optional<ConstValue> {
-      if (init.args.empty())
-        return constEmpty(target, true, depth + 1);
-      // `ref(r)`, a reference member: the address of what r names (constReferenceTo).
-      if (target->isReference() && init.args.size() == 1 && init.args[0] && init.args[0]->kind != NodeKind::BraceInitExpr &&
-          !constIsExpansion(init.args[0]))
-        if (std::optional<std::optional<ConstValue>> referred = constReferenceTo(init.args[0], target, fctx, depth + 1))
-          return *referred;
-      bool expands = false;
-      for (Expr* a : init.args)
-        expands = expands || constIsExpansion(a);
-      if (expands)
-      {
-        // `value(forward<Args>(args)...)`: the values the expansions give; none value-initializes.
-        std::vector<ConstValue> values;
-        std::vector<std::optional<ConstPlace>> places;
-        std::vector<uint8_t> categories;
-        if (!constArguments(init.args, fctx, depth, values, &places, &categories))
-          return std::nullopt;
-        const Ty* tu = types.unqualified(types.stripRef(target));
-        if (values.empty())
-          return constEmpty(target, true, depth + 1);
-        if (target->isReference() && values.size() == 1 && places.size() == 1 && places[0] && categories[0] != 0 && constAddressable(*places[0]))
-          return ConstValue::address(types.pointer(types.stripRef(target)), constStorageTarget(*places[0])); // a reference member: where it refers
-        if (tu->kind == TyKind::Class)
-          return values.size() == 1 && values[0].isObject() && values[0].type && types.unqualified(types.stripRef(values[0].type)) == tu
-                   ? constCopyConstruct(tu, values[0], places[0], categories[0] != 1, depth + 1) // copied, or moved from where it is
-                   : constConstruct(tu, values, false, depth + 1);
-        return values.size() == 1 ? constConvertTo(values[0], target, depth + 1) : std::nullopt;
-      }
-      if (init.args.size() == 1)
-      {
-        const Ty* tu = types.unqualified(types.stripRef(target));
-        if (init.braced && tu->kind == TyKind::Class && init.args[0]->kind != NodeKind::BraceInitExpr)
-        {
-          BraceInitExpr list{};
-          list.kind = NodeKind::BraceInitExpr;
-          list.token = init.args[0]->token;
-          list.args = init.args;
-          return constBraceInit(tu, &list, fctx, depth + 1);
-        }
-        if (!init.braced && tu->kind == TyKind::Class && !target->isReference() && init.args[0]->kind != NodeKind::BraceInitExpr)
-        {
-          // `bits(toBits(values))`: a direct-initialization, which an explicit constructor takes
-          // too (SmallBitset(uint64_t)); an object of the class, or of one derived from it
-          // (sliced), is copied.
-          // `a(x)`: copied (or moved, `a(move(x))`) by the class's copy constructor, an implicit
-          // one member by member.
-          std::optional<ConstValue> evaluated;
-          if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init.args[0], tu, fctx, depth + 1, false, &evaluated))
-            return *copied;
-          std::optional<ConstValue> v = evaluated ? evaluated : constValue(init.args[0], fctx, depth + 1); // (evaluated once: `c(*it++)`)
-          if (!v)
-            return std::nullopt;
-          if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == tu)
-            return v; // a prvalue: the object
-          if (v->isObject() && v->type && constBasePath(v->type, tu, 0))
-          {
-            // Sliced: the base part copied as the base copies (where it is not known: a move,
-            // which would empty it there, is no constant).
-            std::optional<ConstValue> sliced = constConvertTo(v, tu, depth + 1);
-            Expr* source = nullptr;
-            uint8_t category = constCategory(init.args[0], source);
-            if (!sliced || !constCopyRunsCode(tu))
-              return sliced;
-            return category == 2 ? std::nullopt : constCopyConstruct(tu, *sliced, std::nullopt, false, depth + 1);
-          }
-          return constConstruct(tu, {*v}, false, depth + 1);
-        }
-        return constInitialize(target, init.args[0], fctx, depth + 1);
-      }
-      std::vector<ConstValue> values;
-      if (!constArguments(init.args, fctx, depth, values))
-        return std::nullopt;
-      return constConstruct(target, values, false, depth + 1);
-    };
     bool found = false;
     for (size_t i = 0; i < nf && !found; ++i)
       if (layout->fields[i] && !layout->fields[i]->name.empty() && layout->fields[i]->name.last().symbol == symbol)
       {
-        parts[nb + i] = initialize(layout->fieldTypes[i]);
-        if (!parts[nb + i])
-          return std::nullopt;
+        written[nb + i] = &init;
         found = true;
       }
     for (size_t b = 0; b < nb && !found; ++b)
       if (layout->bases[b]->decl && !static_cast<ClassDecl*>(layout->bases[b]->decl)->name.empty() &&
           static_cast<ClassDecl*>(layout->bases[b]->decl)->name.last().symbol == symbol)
       {
-        parts[b] = initialize(layout->bases[b]);
-        if (!parts[b])
-          return std::nullopt;
+        written[b] = &init;
         found = true;
       }
-    if (!found && !layout->decl->name.empty() && symbol == layout->decl->name.last().symbol && ctor->ctorInits.size() == 1)
+    if (!found && !(!layout->decl->name.empty() && symbol == layout->decl->name.last().symbol && ctor->ctorInits.size() == 1))
+      return std::nullopt; // a base named through an alias, a member the layout does not hold
+  }
+  // The values an initializer gives: one expression, a brace list, none (value-initialized).
+  auto initialize = [&](const FunctionDecl::CtorInit& init, const Ty* target) -> std::optional<ConstValue> {
+    if (init.args.empty())
+      return constEmpty(target, true, depth + 1);
+    // `ref(r)`, a reference member: the address of what r names (constReferenceTo).
+    if (target->isReference() && init.args.size() == 1 && init.args[0] && init.args[0]->kind != NodeKind::BraceInitExpr &&
+        !constIsExpansion(init.args[0]))
+      if (std::optional<std::optional<ConstValue>> referred = constReferenceTo(init.args[0], target, fctx, depth + 1))
+        return *referred;
+    bool expands = false;
+    for (Expr* a : init.args)
+      expands = expands || constIsExpansion(a);
+    if (expands)
+    {
+      // `value(forward<Args>(args)...)`: the values the expansions give; none value-initializes.
+      std::vector<ConstValue> values;
+      std::vector<std::optional<ConstPlace>> places;
+      std::vector<uint8_t> categories;
+      if (!constArguments(init.args, fctx, depth, values, &places, &categories))
+        return std::nullopt;
+      const Ty* tu = types.unqualified(types.stripRef(target));
+      if (values.empty())
+        return constEmpty(target, true, depth + 1);
+      if (target->isReference() && values.size() == 1 && places.size() == 1 && places[0] && categories[0] != 0 && constAddressable(*places[0]))
+        return ConstValue::address(types.pointer(types.stripRef(target)), constStorageTarget(*places[0])); // a reference member: where it refers
+      if (tu->kind == TyKind::Class)
+        return values.size() == 1 && values[0].isObject() && values[0].type && types.unqualified(types.stripRef(values[0].type)) == tu
+                 ? constCopyConstruct(tu, values[0], places[0], categories[0] != 1, depth + 1) // copied, or moved from where it is
+                 : constConstruct(tu, values, false, depth + 1);
+      return values.size() == 1 ? constConvertTo(values[0], target, depth + 1) : std::nullopt;
+    }
+    if (init.args.size() == 1)
+    {
+      const Ty* tu = types.unqualified(types.stripRef(target));
+      if (init.braced && tu->kind == TyKind::Class && init.args[0]->kind != NodeKind::BraceInitExpr)
+      {
+        BraceInitExpr list{};
+        list.kind = NodeKind::BraceInitExpr;
+        list.token = init.args[0]->token;
+        list.args = init.args;
+        return constBraceInit(tu, &list, fctx, depth + 1);
+      }
+      if (!init.braced && tu->kind == TyKind::Class && !target->isReference() && init.args[0]->kind != NodeKind::BraceInitExpr)
+      {
+        // `bits(toBits(values))`: a direct-initialization, which an explicit constructor takes
+        // too (SmallBitset(uint64_t)); an object of the class, or of one derived from it
+        // (sliced), is copied.
+        // `a(x)`: copied (or moved, `a(move(x))`) by the class's copy constructor, an implicit
+        // one member by member.
+        std::optional<ConstValue> evaluated;
+        if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init.args[0], tu, fctx, depth + 1, false, &evaluated))
+          return *copied;
+        std::optional<ConstValue> v = evaluated ? evaluated : constValue(init.args[0], fctx, depth + 1); // (evaluated once: `c(*it++)`)
+        if (!v)
+          return std::nullopt;
+        if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == tu)
+          return v; // a prvalue: the object
+        if (v->isObject() && v->type && constBasePath(v->type, tu, 0))
+        {
+          // Sliced: the base part copied as the base copies (where it is not known: a move,
+          // which would empty it there, is no constant).
+          std::optional<ConstValue> sliced = constConvertTo(v, tu, depth + 1);
+          Expr* source = nullptr;
+          uint8_t category = constCategory(init.args[0], source);
+          if (!sliced || !constCopyRunsCode(tu))
+            return sliced;
+          return category == 2 ? std::nullopt : constCopyConstruct(tu, *sliced, std::nullopt, false, depth + 1);
+        }
+        return constConstruct(tu, {*v}, false, depth + 1);
+      }
+      return constInitialize(target, init.args[0], fctx, depth + 1);
+    }
+    std::vector<ConstValue> values;
+    if (!constArguments(init.args, fctx, depth, values))
+      return std::nullopt;
+    return constConstruct(target, values, false, depth + 1);
+  };
+  for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
+    if (!absentMemberInit(layout->decl, init) && std::find(written.begin(), written.end(), &init) == written.end())
     {
       // `Frame(int x) : Frame(x, 0) {}`: the delegated-to constructor makes the object.
-      std::optional<ConstValue> whole = initialize(t);
+      std::optional<ConstValue> whole = initialize(init, t);
       if (!whole)
         return std::nullopt;
       return constRunBody(ctor, t, *whole, fctx, env, depth, target);
     }
-    if (!found)
-      return std::nullopt; // a base named through an alias, a member the layout does not hold
-  }
   std::vector<ConstValue> object;
   if (!constMayMake(nb + nf))
     return std::nullopt;
   for (size_t b = 0; b < nb; ++b)
   {
-    std::optional<ConstValue> part = parts[b] ? parts[b] : constEmpty(layout->bases[b], false, depth + 1);
+    std::optional<ConstValue> part = written[b] ? initialize(*written[b], layout->bases[b]) : constEmpty(layout->bases[b], false, depth + 1);
     if (!part)
       return std::nullopt;
     object.push_back(*part);
   }
   for (size_t i = 0; i < nf; ++i)
   {
-    std::optional<ConstValue> part = parts[nb + i] ? parts[nb + i] : constFieldDefault(*layout, i, false, depth);
+    std::optional<ConstValue> part = written[nb + i] ? initialize(*written[nb + i], layout->fieldTypes[i]) : constFieldDefault(*layout, i, false, depth);
     if (!part)
       return std::nullopt;
     object.push_back(*part);

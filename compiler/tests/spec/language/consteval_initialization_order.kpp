@@ -1,0 +1,41 @@
+// spec: a constructor initializes its bases in their declaration order, then its data members in theirs, whatever order its initializers are written in ([class.base.init] 13), at compile time as at run time: `Y(int* l) : m2(l, 3), m1(l, 2), L(l, 1)` logs 123, and `Z(int* l) : M(l, 2), L(l, 1)` of `struct Z : L, M` logs 12; a member's default initializer runs in its place among them
+// found by thread D (2026-11-05): the interpreter ran the written initializers in written order, then the defaults: 321 and 21 at compile time
+struct L
+{
+  int* log;
+  L(int* l, int v) : log(l) { *log = *log * 10 + v; }
+};
+struct M
+{
+  int* log;
+  M(int* l, int v) : log(l) { *log = *log * 10 + v; }
+};
+struct Y : L
+{
+  L m1;
+  L m2;
+  Y(int* l) : m2(l, 3), m1(l, 2), L(l, 1) {}
+};
+struct Z : L, M
+{
+  Z(int* l) : M(l, 2), L(l, 1) {}
+};
+constexpr int members()
+{
+  int log = 0;
+  Y y(&log);
+  return log;
+}
+constexpr int bases()
+{
+  int log = 0;
+  Z z(&log);
+  return log;
+}
+constexpr int m = members();
+constexpr int b = bases();
+int main()
+{
+  println(m, " ", members(), " ", b, " ", bases());
+  return 0;
+}
