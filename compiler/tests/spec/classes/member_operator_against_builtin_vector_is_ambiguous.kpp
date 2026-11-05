@@ -1,7 +1,6 @@
-// spec: a class's member operator that takes the right operand only by a user-defined conversion, beside a conversion operator to a SIMD vector that lets the built-in vector operator take the left one, is ambiguous, as on a scalar (classes/member_operator_against_builtin_is_ambiguous) and as clang has it: `f < b` with Vec4's `operator<(Vec4)`, `implicit Vec4(__m128)` and `implicit operator __m128()`; no built-in `&` takes two float vectors, so `f & b` is the member's, and so is a right operand of the class itself
-// found by thread B (2026-11-05): Factorio's SSE.hpp declares exact free operators (`operator<(float32x4, __m128)`) for compilers other than MSVC, where __m128 is no vector type, against this ambiguity
-// pending: kpp takes the member, MSVC's reading, which the Windows conversion of the SSE wrappers relies on until it has those free operators too (D, after the converter writes them for every platform)
-// error: member_operator_against_builtin_vector_is_ambiguous.kpp:20: error: the operator < on Vec4 and __m128 is ambiguous
+// spec: a class's member operator that takes the right operand only by a user-defined conversion, beside a conversion operator to a SIMD vector that lets the built-in vector operator take the left one, is ambiguous, as on a scalar (classes/member_operator_against_builtin_is_ambiguous) and as clang has it: `f < b` with Vec4's `operator<(Vec4)`, `implicit Vec4(__m128)` and `implicit operator __m128()`; no built-in `&` takes two float vectors, so `f & b` is the member's, and so is a right operand of the class itself; an exact free operator (`operator<(Lane, __m128)`, as Factorio's SSE.hpp declares one) is chosen over both
+// found by thread B (2026-11-05): kpp took the member, MSVC's reading (where __m128 is no vector type), which the Windows conversion of SSE.hpp relied on until it had SSE.hpp's free operators for every platform (thread C, add1b9a8)
+// error: member_operator_against_builtin_vector_is_ambiguous.kpp:29: error: the operator < on Vec4 and __m128 is ambiguous
 extern "C" import "xmmintrin.h";
 struct Vec4
 {
@@ -11,12 +10,22 @@ struct Vec4
   Vec4 operator<(Vec4 o) const { return Vec4(_mm_cmplt_ps(this->v, o.v)); }
   Vec4 operator&(Vec4 o) const { return Vec4(_mm_and_ps(this->v, o.v)); }
 };
+struct Lane
+{
+  __m128 v;
+  implicit Lane(__m128 x) : v(x) {}
+  implicit operator __m128() const { return this->v; }
+  Lane operator<(Lane o) const { return Lane(_mm_cmplt_ps(this->v, o.v)); }
+};
+Lane operator<(Lane left, __m128 right) { return left < Lane(right); }
 int main()
 {
   Vec4 f(_mm_set1_ps(1.0f));
   __m128 b = _mm_set1_ps(2.0f);
   Vec4 g = f < Vec4(b);
   Vec4 h = f & b;
+  Lane l(_mm_set1_ps(1.0f));
+  Lane m = l < b;
   Vec4 r = f < b;
   return 0;
 }

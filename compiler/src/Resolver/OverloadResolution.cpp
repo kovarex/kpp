@@ -928,8 +928,6 @@ auto GlobalScope::Impl::memberOperatorAgainstBuiltin(FunctionDecl* f, const Subs
   const Ty* rb = reached(r);
   if (!lb || !rb || !builtinOperatorTakes(op, lb, rb))
     return 1; // no built-in operator takes the operands
-  if (types.unqualified(types.stripRef(lb))->kind == TyKind::Vector || types.unqualified(types.stripRef(rb))->kind == TyKind::Vector)
-    return 1; // (not yet on a SIMD vector: the converted SSE wrappers, OverloadResolution.hpp)
   bool userDefined = conversionRank(rhs, ft->args[0]) >= 4;
   return userDefined && r->kind != TyKind::Class ? -1 : 1;
 }

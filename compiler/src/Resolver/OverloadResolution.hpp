@@ -82,10 +82,9 @@
   // no class (`n < 2.0` with Num's operator<(Num), `implicit Num(double)` and `operator double()`,
   // which clang rejects as ambiguous). 1: f is chosen, -1: an ambiguous call. Arithmetic,
   // comparison, bitwise, shift and logical operators only (a built-in assignment converts no left
-  // operand, [over.match.oper] 4). Not yet on a SIMD vector (`float32x4 < __m128`, which clang
-  // rejects too): the Windows conversion of Factorio's SSE wrappers relies on MSVC's reading, the
-  // member, until it has their non-MSVC operators (pending spec
-  // classes/member_operator_against_builtin_vector_is_ambiguous).
+  // operand, [over.match.oper] 4). On a SIMD vector too (`float32x4 < __m128`, which clang rejects:
+  // classes/member_operator_against_builtin_vector_is_ambiguous), which Factorio's SSE.hpp answers
+  // with exact free operators, converted for every platform.
   int memberOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const Ty* lhs, const Ty* rhs);
 
   void collectScalarConversions(const Ty* cls, const Ty*& found, bool& ambiguous, int depth);
