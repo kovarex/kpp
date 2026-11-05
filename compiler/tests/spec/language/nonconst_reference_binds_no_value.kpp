@@ -1,0 +1,33 @@
+// spec: a non-const lvalue reference binds no value, a prvalue or an xvalue, as in C++ ([dcl.init.ref] 5; clang: "non-const lvalue reference to type 'int' cannot bind to a temporary of type 'int'"): `int& r = value();` with value() returning int, `int& m = move(x);` and `return 5;` from a function returning int& are compile errors; a `const int&` binds the value (its temporary lives as long as the reference), an `int&` binds the lvalue a call returns (`int& g = global();`), and a `Gen&` the conditional of two lvalues, one of them a call returning `Gen&` (`c ? w.a : w.getB()`)
+// found by thread A (2026-11-05), comparing implicit conversions with clang: kpp compiled `int& r = value();`, binding a temporary the statement ends (left to thread D)
+// error: nonconst_reference_binds_no_value.kpp:21: error: the result of five (int32&) is bound to a value (int32), no lvalue
+// error: nonconst_reference_binds_no_value.kpp:30: error: r (int32&) is bound to a value (int32), no lvalue
+// error: nonconst_reference_binds_no_value.kpp:31: error: m (int32&) is bound to a value (int32), no lvalue
+struct Gen
+{
+  int state = 0;
+};
+struct World
+{
+  Gen a;
+  Gen b;
+  Gen& getB() { return this->b; }
+};
+int value() { return 3; }
+int store = 4;
+int& global() { return store; }
+int& five()
+{
+  return 5;
+}
+int main()
+{
+  int x = 1;
+  const int& c = value();
+  int& g = global();
+  World w;
+  Gen& picked = x > 0 ? w.a : w.getB();
+  int& r = value();
+  int& m = move(x);
+  return c + g + r + m + five() + picked.state;
+}

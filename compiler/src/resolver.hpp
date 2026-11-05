@@ -98,9 +98,11 @@ inline bool isLvalueExpression(const Expr* e)
       return isLvalueExpression(static_cast<const ParenExpr*>(e)->inner);
     case NodeKind::ConditionalExpr:
     {
-      // `c ? shift.second : shift.first`: two lvalues of one type make an lvalue (C++).
+      // `c ? shift.second : shift.first`: two lvalues of one type make an lvalue (C++), a call
+      // returning a reference one of them (`c ? map.unsafeRandom : map.getTriggersRandomGenerator()`).
       auto* c = static_cast<const ConditionalExpr*>(e);
-      if (!c->then || !c->else_ || !c->then->ty || !c->else_->ty || !isLvalueExpression(c->then) || !isLvalueExpression(c->else_))
+      auto lvalue = [](const Expr* x) { return isLvalueExpression(x) || x->ty->kind == TyKind::LRef; };
+      if (!c->then || !c->else_ || !c->then->ty || !c->else_->ty || !lvalue(c->then) || !lvalue(c->else_))
         return false;
       const Ty* a = c->then->ty->isReference() ? c->then->ty->inner : c->then->ty;
       const Ty* b = c->else_->ty->isReference() ? c->else_->ty->inner : c->else_->ty;

@@ -143,6 +143,11 @@
     // type): an lvalue, else an error naming what (`f() = 5`, `x++ = 5`, `f()++`); a class's
     // operator function is the class's to judge.
     void checkAssignable(uint32_t token, const char* what, const Expr* operand, const Ty* type);
+    // A non-const lvalue reference (declared) bound to a value (given: no T&, a prvalue or an
+    // xvalue) it cannot take: `int& r = value();`, `return 5;` from a function returning int&;
+    // an error naming what is bound, as C++'s [dcl.init.ref] 5 (a class whose conversion operator
+    // gives an lvalue of the type is taken: conversionRank's).
+    void checkTemporaryBound(uint32_t token, const std::string& what, const Ty* declared, const Ty* given);
 
     // Whether f, a member function, is a non-const one called on a const object (objectTy): no
     // candidate in C++, whose implicit object parameter `C&` a const object does not bind

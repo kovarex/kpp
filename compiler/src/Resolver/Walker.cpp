@@ -292,6 +292,23 @@ auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::str
                          "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
 }
 
+auto GlobalScope::Impl::Walker::checkTemporaryBound(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
+{
+  if (probing || !declared || declared->kind != TyKind::LRef || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
+      !given->isKnown() || given->kind == TyKind::LRef || given->kind == TyKind::Pack || given->isBraceList() || types.isDependent(given) ||
+      types.isDependent(declared) || Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared))
+    return;
+  if (given->kind == TyKind::RRef && Impl::isConstObject(given->inner))
+    return; // (a const object's: checkConstDropped's error)
+  if (types.stripRef(given)->kind == TyKind::Void)
+    return; // (`return c.bump();` of a void call: no value at all, codegen's error)
+  if (impl.conversionRank(given, declared) < Impl::NotViable)
+    return; // (a class whose conversion operator gives an lvalue of the type, a function)
+  reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a value (" +
+                         types.toString(types.unqualified(types.stripRef(given)), &impl.symbols) +
+                         "), no lvalue: a non-const reference binds an object, never a temporary ([dcl.init.ref] 5)");
+}
+
 auto GlobalScope::Impl::Walker::checkAssignable(uint32_t token, const char* what, const Expr* operand, const Ty* type) -> void
 {
   if (probing || !operand || !type || !type->isKnown() || types.isDependent(type) || Impl::mentionsUnknown(type) || type->kind == TyKind::LRef ||
@@ -2557,6 +2574,26 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
   bool ambiguous = false;
   FunctionDecl* ctor = impl.chooseConstructor(t, {from}, nullptr, nullptr, false, &ambiguous);
   Subst s = impl.substFor(t);
+  // `Outer2 o = 5;` with `Outer2(Inner)` and `Inner(int)`: the constructor takes the value only
+  // through a conversion of its own, a second user-defined conversion, which no implicit
+  // conversion has ([over.best.ics] 4; codegen made both).
+  // (Not of a class with a constructor template, which may take the value itself, one conversion:
+  // Optional's `Optional(U&& v)` given a typed union's alternative for an Optional<Union>.)
+  bool constructorTemplate = false;
+  if (ClassDecl* def = impl.classDefinition(t))
+    for (Decl* m : membersRead(def))
+      constructorTemplate = constructorTemplate || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !m->templateParams.empty());
+  if (ctor && !ambiguous && !constructorTemplate && ctor->templateParams.empty() && !ctor->params.empty() && !impl.isExplicit(ctor, s.empty() ? nullptr : &s))
+  {
+    const Ty* pt = impl.declaredTypeOf(ctor->params[0], s.empty() ? nullptr : &s, 0);
+    if (int rank = pt ? impl.conversionRank(from, pt, 0) : NotViable; rank >= 4 && rank < NotViable)
+    {
+      std::string name = types.toString(t, &symbols), via = types.toString(types.unqualified(types.stripRef(pt)), &symbols);
+      reportHere(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) + " takes two user-defined conversions, to " + via +
+                          " and then to " + name + ", where an implicit conversion has one at most ([over.best.ics] 4): " + name + "(...) says which");
+      return;
+    }
+  }
   // (A constructor template's `explicit(cond)` is decided with its own arguments deduced: not here.)
   if (!ctor || ambiguous || (ctor->explicitCondition && !ctor->templateParams.empty()) || !impl.isExplicit(ctor, s.empty() ? nullptr : &s))
     return;
@@ -5885,7 +5922,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           boundTy = bound ? bound->ty : nullptr;
         }
         if (bound && bound->kind != NodeKind::BraceInitExpr && boundTy)
+        {
           checkConstDropped(bound->token, std::string(symbols.name(v->name.last().symbol)), declared, argumentType(bound, boundTy, types));
+          checkTemporaryBound(bound->token, std::string(symbols.name(v->name.last().symbol)), declared, argumentType(bound, boundTy, types)); // `int& r = value();`
+        }
       }
       bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
       if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
@@ -6535,7 +6575,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       }
       // `for (int& x : numbers)` over const elements: a non-const reference given a const object.
       if (declared && declared->isReference() && !impl.containsAuto(declared) && !v->name.empty())
+      {
         checkConstDropped(v->token, std::string(symbols.name(v->name.last().symbol)), declared, elementTypeOf(range, f->range));
+        checkTemporaryBound(v->token, std::string(symbols.name(v->name.last().symbol)), declared, elementTypeOf(range, f->range));
+      }
       if (impl.containsAuto(declared))
       {
         const Ty* element = elementTypeOf(range, f->range);
@@ -6654,7 +6697,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
               // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
               if (ft->inner->isReference() && t)
                 if (uint32_t symbol = impl.functionSymbol(bodyOf->name); symbol != UINT32_MAX)
+                {
                   checkConstDropped(value->token, "the result of " + std::string(symbols.name(symbol)), ft->inner, argumentType(value, t, types));
+                  checkTemporaryBound(value->token, "the result of " + std::string(symbols.name(symbol)), ft->inner, argumentType(value, t, types)); // `return 5;` for an int&
+                }
             }
           }
         }

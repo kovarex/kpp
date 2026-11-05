@@ -1,0 +1,29 @@
+// spec: an implicit conversion has one user-defined conversion at most ([over.best.ics] 4, [class.conv] 4): `Outer d = 5;` with `Outer(Inner)` and `Inner(int)`, `take(5)` with `take(Outer)`, and `return 5;` from a function returning Outer are compile errors (clang: "no viable conversion from 'int' to 'Outer'"); a direct initialization, `Outer a(5)` or `Outer b{5}`, and `Outer c = Inner(5);` take one each and are not
+// found by thread A (2026-11-05), comparing implicit conversions with clang: kpp compiled each, making both conversions (left to thread D)
+// error: two_user_conversions_are_no_implicit_conversion.kpp:19: error: copy-initialising Outer from int32 takes two user-defined conversions, to Inner and then to Outer
+// error: two_user_conversions_are_no_implicit_conversion.kpp:26: error: copy-initialising Outer from int32 takes two user-defined conversions, to Inner and then to Outer
+// error: two_user_conversions_are_no_implicit_conversion.kpp:27: error: copy-initialising Outer from int32 takes two user-defined conversions, to Inner and then to Outer
+struct Inner
+{
+  int v;
+  Inner(int x) : v(x) {}
+};
+struct Outer
+{
+  Inner in;
+  Outer(Inner i) : in(i) {}
+};
+void take(Outer o) {}
+Outer make()
+{
+  return 5;
+}
+int main()
+{
+  Outer a(5);
+  Outer b{5};
+  Outer c = Inner(5);
+  Outer d = 5;
+  take(5);
+  return a.in.v + b.in.v + c.in.v + d.in.v + make().in.v;
+}
