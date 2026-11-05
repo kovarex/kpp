@@ -62,9 +62,6 @@ struct BTreeIterator
   bool operator==(const BTreeIterator<E>& other) const { return this->node == other.node && this->index == other.index; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
   bool operator==(const BTreeIterator<F>& other) const { return this->node == other.node && this->index == other.index; }
-  bool operator!=(const BTreeIterator<E>& other) const { return !(*this == other); }
-  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
-  bool operator!=(const BTreeIterator<F>& other) const { return !(*this == other); }
 
   BTreeIterator<E>& operator++()
   {

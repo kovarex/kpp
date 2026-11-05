@@ -166,7 +166,6 @@ struct Pair
   }
 
   bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }
-  bool operator!=(const Pair<A, B>& other) const { return !(*this == other); }
   bool operator<(const Pair<A, B>& other) const
   {
     if (this->first < other.first)

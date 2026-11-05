@@ -124,14 +124,12 @@ struct ErrorCode
     return platform::systemErrorMessage(this->value_);
   }
   bool operator==(const ErrorCode& other) const { return this->value_ == other.value_ && this->category_ == other.category_; }
-  bool operator!=(const ErrorCode& other) const { return !(*this == other); }
   bool operator==(Errc condition) const
   {
     if (this->value_ == 0)
       return false;
     return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == i32(condition);
   }
-  bool operator!=(Errc condition) const { return !(*this == condition); }
 };
 
 // An Errc as an error code of the generic category (std::make_error_code).

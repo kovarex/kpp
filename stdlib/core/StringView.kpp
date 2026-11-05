@@ -190,7 +190,6 @@ public:
   {
     return this->byteCount == other.byteCount && (this->byteCount == 0 || memcmp(this->chars, other.chars, this->byteCount) == 0);
   }
-  bool operator!=(StringView other) const { return !(*this == other); }
   bool operator<(StringView other) const
   {
     ContainerSize common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;

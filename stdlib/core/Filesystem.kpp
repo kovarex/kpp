@@ -414,7 +414,6 @@ namespace filesystem
       return before;
     }
     bool operator==(const pathIterator& other) const { return this->owner == other.owner && this->position == other.position; }
-    bool operator!=(const pathIterator& other) const { return !(*this == other); }
   };
 
   pathIterator path::begin() const { return pathIterator::first(this); }

@@ -233,7 +233,6 @@ struct Optional : OptionalValue<T>
       return false;
     return !this->present || *this->slot() == *other.slot();
   }
-  bool operator!=(const Optional<T>& other) const { return !(*this == other); }
   bool operator==(NullOpt) const { return !this->present; }
   bool operator!=(NullOpt) const { return this->present; }
   // An absent optional orders before every present one.

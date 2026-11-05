@@ -39,5 +39,4 @@ struct IstreambufIterator
     bool otherEnd = other.current == -1;
     return thisEnd == otherEnd;
   }
-  bool operator!=(const IstreambufIterator& other) const { return !(*this == other); }
 };

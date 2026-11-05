@@ -14,6 +14,5 @@ struct TypeInfo
     usize n = strlen(this->typeName);
     return n == strlen(other.typeName) && memcmp(this->typeName, other.typeName, n) == 0;
   }
-  bool operator!=(const TypeInfo& other) const { return !(*this == other); }
   usize hashCode() const { return hashOf(StringView(this->typeName)); }
 };

@@ -346,9 +346,7 @@ struct WString
     return this->unitCount == other.unitCount &&
            (this->unitCount == 0 || memcmp(this->chars, other.chars, (usize)this->unitCount * sizeof(wchar_t)) == 0);
   }
-  bool operator!=(const WString& other) const { return !(*this == other); }
   bool operator==(const wchar_t* text) const { return *this == WString(text); }
-  bool operator!=(const wchar_t* text) const { return !(*this == text); }
   bool operator<(const WString& other) const { return this->compare(other) < 0; }
   bool operator>(const WString& other) const { return this->compare(other) > 0; }
   bool operator<=(const WString& other) const { return this->compare(other) <= 0; }

@@ -489,13 +489,11 @@ struct String
     ContainerSize length = this->size();
     return length == other.size() && memcmp(this->data(), other.data(), length) == 0;
   }
-  bool operator!=(const String& other) const { return !(*this == other); }
   bool operator==(const char* other) const
   {
     ContainerSize length = this->size();
     return strlen(other) == (usize)length && memcmp(this->data(), other, length) == 0;
   }
-  bool operator!=(const char* other) const { return !(*this == other); }
   bool operator<(const String& other) const
   {
     ContainerSize length = this->size(), otherLength = other.size();

@@ -109,7 +109,6 @@ public:
         return false;
     return true;
   }
-  bool operator!=(const Vector& other) const { return !(*this == other); }
   // Ordered lexicographically by the elements (common.md): gives <, >, <= and >=.
   strong_ordering operator<=>(const Vector& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   T& back() { return this->items[this->length - 1]; }

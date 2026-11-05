@@ -190,7 +190,6 @@ public:
         return false;
     return true;
   }
-  bool operator!=(const Bitset<N>& other) const { return !(*this == other); }
 
 private:
   u64 words[(N + 63) / 64] = {};
