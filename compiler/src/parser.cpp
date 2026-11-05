@@ -5734,6 +5734,9 @@ namespace
         }
         else if (at(P::Star) && at(Kw::this_, 1))
         {
+          // `[*this]` (C++17): a copy of the object, which kpp does not make yet; an error, never the
+          // `[this]` it was read as until 2026-11-05 (a later change to the object showed through).
+          error("a capture of *this by copy is not supported yet: capture this, or the members the lambda needs by name");
           advance();
           advance();
           cap.isThis = true;

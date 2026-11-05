@@ -218,6 +218,11 @@ fallthrough, exhaustive enum switches (abort on invalid value), typed union, `?-
 `both_const` / `class_const`, named parameters, test tools in the compiler, `accumulate`
 methods (the Factorio survey suggests generating save/load from the class may beat it).
 
+`[*this]`, a lambda's capture of the object by copy (C++17), is an error until a program needs
+it (2026-11-05, A and B): the parser read it as `[this]`, so a later change to the object showed
+through the lambda (`7` where g++ prints `3`). No code of the game, the standard library or the
+libraries uses it. Spec language/lambda_capture_of_this_by_copy_is_error.
+
 ### 7. No preprocessor; what replaces macros (decided 2026-10-23)
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
 into eleven cases and none of them needs textual substitution, so kpp has no preprocessor. The

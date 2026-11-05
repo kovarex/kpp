@@ -1,0 +1,17 @@
+// spec: a lambda capturing `*this` by copy (`[*this]`, C++17) is an error until kpp makes the copy, never the `[this]` capture it was read as: a change to the object after the lambda was made showed through it (`7` where g++ prints `3`)
+// found by thread B (2026-11-05), comparing lambda captures with g++; no code of the game, the standard library or the libraries captures *this by copy
+// error: lambda_capture_of_this_by_copy_is_error.kpp:8: error: a capture of *this by copy is not supported yet
+class Owner
+{
+public:
+  int value = 3;
+  Function<int()> byCopy() { return [*this]() { return value; }; }
+};
+int main()
+{
+  Owner o;
+  Function<int()> copied = o.byCopy();
+  o.value = 7;
+  println(copied());
+  return 0;
+}
