@@ -68,10 +68,13 @@ test "malformed templates"
   check(htmlTemplateErrorOf("x</p>") == "1:2: an end tag without its start tag");
   check(htmlTemplateErrorOf("a < b") == "1:3: a '<' that starts no tag (write &lt;)");
   check(htmlTemplateErrorOf("<a href={{url}}>x</a>") == "1:9: a hole in an unquoted attribute value (quote it)");
-  check(htmlTemplateErrorOf("<a {{Attrs}}>x</a>") == "1:6: a boolean attribute's hole is named as the attribute: lowercase letters");
-  check(htmlTemplateErrorOf("<a {{x}}y>x</a>") == "1:9: a boolean attribute's hole is followed by a space, '>', '/>' or another one");
-  check(htmlTemplateErrorOf("<a{{x}}>x</a>") == "");
+  check(htmlTemplateErrorOf("<a {{attrs}}>x</a>") == "1:4: a hole in a tag outside a quoted attribute value (a boolean attribute is ?name=\"{{hole}}\")");
   check(htmlTemplateErrorOf("<a d{{x}}>x</a>") == "1:5: a hole in an attribute's name");
+  check(htmlTemplateErrorOf("<a ?hidden>x</a>") == "1:4: a boolean attribute is ?name=\"{{hole}}\"");
+  check(htmlTemplateErrorOf("<a ?hidden=\"yes\">x</a>") == "1:4: a boolean attribute is ?name=\"{{hole}}\"");
+  check(htmlTemplateErrorOf("<a ?=\"{{x}}\">x</a>") == "1:4: a boolean attribute is ?name=\"{{hole}}\"");
+  check(htmlTemplateErrorOf("<a ?hidden=\"{{x}} y\">x</a>") == "1:18: a boolean attribute's value is its hole alone");
+  check(htmlTemplateErrorOf("<a?hidden=\"{{x}}\">x</a>") == "");
   check(htmlTemplateErrorOf("<a onclick=\"go({{x}})\">x</a>") == "1:16: a hole in a style, srcset, srcdoc or event handler attribute");
   check(htmlTemplateErrorOf("<p style=\"color: {{c}}\">x</p>") == "1:18: a hole in a style, srcset, srcdoc or event handler attribute");
   check(htmlTemplateErrorOf("<iframe srcdoc=\"{{x}}\"></iframe>") == "1:17: a hole in a style, srcset, srcdoc or event handler attribute");
@@ -108,18 +111,20 @@ test "renders that do not fit"
   check(htmlRenderErrorOf(link, {{"url", "mailto:a@b.c"}, {"name", "a"}}) == "");
   check(htmlRenderErrorOf(link, {{"url", "relative/path:x"}, {"name", "a"}}) == "");
   check(htmlRenderErrorOf(link, {{"url", "#top"}, {"name", 3}}) == "");
-  check(htmlRenderErrorOf(link, {{"url", "#top"}, {"name", true}}) == "render: {{name}} is a bool, which goes only where an attribute goes");
-  HtmlTemplate option("<option value=\"{{value}}\" {{selected}}>x</option>");
-  check(htmlRenderErrorOf(option, {{"value", "1"}, {"selected", "yes"}}) == "render: {{selected}} is a boolean attribute, whose value is a bool");
+  check(htmlRenderErrorOf(link, {{"url", "#top"}, {"name", true}}) == "render: {{name}} is a bool, which goes only in a boolean attribute (?name=\"{{hole}}\")");
+  HtmlTemplate option("<option value=\"{{value}}\" ?selected=\"{{chosen}}\">x</option>");
+  check(htmlRenderErrorOf(option, {{"value", "1"}, {"chosen", "yes"}}) == "render: {{chosen}} is a boolean attribute's, whose value is a bool");
 }
 
-constexpr HtmlTemplate optionTemplate{R"(<option value="{{value}}" {{selected}}>{{value}}</option>)"};
-constexpr HtmlTemplate checkboxTemplate{R"(<input type="checkbox"{{checked}}{{disabled}} />)"};
+constexpr HtmlTemplate optionTemplate{R"(<option value="{{value}}" ?selected="{{chosen}}">{{value}}</option>)"};
+constexpr HtmlTemplate checkboxTemplate{R"(<input type="checkbox" ?checked="{{on}}" ?disabled="{{off}}"/>)"};
+constexpr HtmlTemplate sidesTemplate{R"(<select><option ?selected="{{black}}">B</option><option ?selected="{{white}}">W</option></select>)"};
 
 test "boolean attributes"
 {
-  check(optionTemplate.render({{"value", 2}, {"selected", true}}).str() == "<option value=\"2\" selected>2</option>");
-  check(optionTemplate.render({{"value", 3}, {"selected", false}}).str() == "<option value=\"3\">3</option>");
-  check(checkboxTemplate.render({{"checked", true}, {"disabled", true}}).str() == "<input type=\"checkbox\" checked disabled />");
-  check(checkboxTemplate.render({{"checked", false}, {"disabled", false}}).str() == "<input type=\"checkbox\" />");
+  check(optionTemplate.render({{"value", 2}, {"chosen", true}}).str() == "<option value=\"2\" selected>2</option>");
+  check(optionTemplate.render({{"value", 3}, {"chosen", false}}).str() == "<option value=\"3\">3</option>");
+  check(checkboxTemplate.render({{"on", true}, {"off", true}}).str() == "<input type=\"checkbox\" checked disabled/>");
+  check(checkboxTemplate.render({{"on", false}, {"off", false}}).str() == "<input type=\"checkbox\"/>");
+  check(sidesTemplate.render({{"black", false}, {"white", true}}).str() == "<select><option>B</option><option selected>W</option></select>");
 }

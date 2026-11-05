@@ -31,13 +31,14 @@ What a template must be:
   `input`, `meta`, `link`, `hr`...); `<x/>` closes itself. HTML's optional end tags (`</p>`,
   `</li>`) are not optional here.
 - **`<` starts a tag, a comment or `<!DOCTYPE>`**: a lone `<` in text is an error (write `&lt;`).
-- **Holes go in three places**: an element's text, quoted attribute values, and where an
-  attribute goes in a tag, for a boolean attribute: `<option value="{{value}}" {{selected}}>`
-  takes a bool named as the attribute (lowercase letters), true writes ` selected` and false
-  nothing (the spaces before the hole are its own). A hole is an error in a tag name, an
-  attribute name, an unquoted attribute value, a comment, `<!DOCTYPE>`, `<script>` and `<style>`,
-  and in the `style`, `srcset`, `srcdoc` and `on*` attributes: escaping for JavaScript, CSS and a
-  document in an attribute is not HTML text's, so the template passes data another way.
+- **Holes go in three places**: an element's text, quoted attribute values, and boolean
+  attributes, written as lit-html writes them: `<option value="b" ?selected="{{black}}">` takes a
+  bool, true writes ` selected` and false nothing (the spaces before `?selected` are its own), so
+  one template has an attribute that appears or not, as often as it needs. A hole is an error in
+  a tag name, an attribute name, an unquoted attribute value, a comment, `<!DOCTYPE>`, `<script>`
+  and `<style>`, and in the `style`, `srcset`, `srcdoc` and `on*` attributes: escaping for
+  JavaScript, CSS and a document in an attribute is not HTML text's, so the template passes data
+  another way.
 
 ## How a hole's value is written
 
@@ -45,7 +46,7 @@ What a template must be:
 |---|---|---|
 | an element's text | escaped: `& < > " '` | inserted as it is |
 | a quoted attribute value | escaped | error |
-| where an attribute goes in a tag | error (a bool: ` name` or nothing) | error |
+| a boolean attribute, `?name="{{hole}}"` | error (a bool: ` name` or nothing) | error |
 | the start of `href`, `src`, `action`, `formaction`, `cite` or `poster` | a URL: its scheme, if it has one, must be `http`, `https` or `mailto` (else an error, so `javascript:` never gets in); then escaped | error |
 | later in such a URL, before `?` or `#` | percent-encoded, `/` kept: `/library/{{name}}` | error |
 | in its query or fragment | percent-encoded, `/` too: `?q={{query}}` | error |

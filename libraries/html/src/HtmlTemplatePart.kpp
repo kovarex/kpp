@@ -9,7 +9,7 @@ enum class HtmlHole : u8
   urlStart,  // the start of a URL attribute's value (href, src...): a URL whose scheme is checked
   urlPath,   // later in a URL, before any '?' or '#': percent-encoded, '/' kept
   urlQuery,  // in a URL's query or fragment: percent-encoded
-  flag,      // where an attribute goes in a tag: a bool; true writes " name", false nothing
+  flag,      // a boolean attribute, ?name="{{hole}}": a bool; true writes " name", false nothing
 };
 
 struct HtmlTemplatePart
@@ -17,6 +17,8 @@ struct HtmlTemplatePart
   i32 start;  // in the template's text; a hole's name for a hole
   i32 length;
   HtmlHole kind;
+  i32 attributeStart = 0; // a flag's attribute name, without its '?'
+  i32 attributeLength = 0;
 };
 
 constexpr i32 htmlTemplateMaxParts = 256;
