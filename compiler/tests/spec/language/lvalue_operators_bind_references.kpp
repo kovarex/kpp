@@ -1,0 +1,27 @@
+// spec: a prefix increment or decrement of a scalar, a built-in assignment (`a = b`, `x += 1`) and a comma expression whose right operand is an lvalue are lvalues, as in C++ ([expr.pre.incr] 1, [expr.ass] 1, [expr.comma] 1): a non-const reference binds the object they name (`bump(++x)` with `bump(int&)`, the overload taking `int&` chosen over one taking `long&`), `int& r = ++x;` refers to x, and `auto&&` deduces an lvalue reference for them
+// found by thread D (2026-11-05), comparing value categories with clang: kpp typed each as a value, so `bump(++x)` was refused ("no lvalue of its type"), an overload set left the call unresolved, and `auto&& v = (a = b);` was no reference to a
+void bump(int& r) { r += 10; }
+int pick(int& r)
+{
+  r += 100;
+  return 1;
+}
+int pick(long& r) { return 2; }
+int main()
+{
+  int x = 0;
+  int a = 1;
+  int b = 2;
+  bump(++x);
+  bump(a = b);
+  bump(x += 1);
+  int which = pick(--x);
+  int& r = ++x;
+  r = 7;
+  auto&& v = (a = b);
+  v = 9;
+  int& c = (b, x);
+  c += 1;
+  println(x, " ", a, " ", b, " ", which, " ", isSame<decltype(v), int&>);
+  return 0;
+}

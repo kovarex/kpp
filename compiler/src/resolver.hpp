@@ -33,13 +33,39 @@ struct TemplateArgs
 
 // Whether an expression names an object that outlives the expression (an lvalue): a variable or
 // parameter (a named rvalue reference included), a field, an element of an array or pointer, a
-// dereference. Calls and operators that yield references carry the reference in their type.
+// dereference, and the built-in operators C++ makes lvalues of a scalar: a prefix increment or
+// decrement, an assignment (`a = b`, `x += 1`), a comma whose right operand is one ([expr.pre.incr]
+// 1, [expr.ass] 1, [expr.comma] 1; until 2026-11-05 values: `bump(++x)` with `bump(int&)` was
+// refused). Calls and operators that yield references carry the reference in their type.
 inline bool isLvalueExpression(const Expr* e)
 {
   if (!e)
     return false;
+  // A scalar operand, of a built-in operator (a class's operator function gives its result type).
+  auto scalar = [](const Expr* x) {
+    const Ty* t = x ? x->ty : nullptr;
+    if (t && t->isReference())
+      t = t->inner;
+    return t && (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer);
+  };
   switch (e->kind)
   {
+    case NodeKind::BinaryExpr:
+    {
+      auto* b = static_cast<const BinaryExpr*>(e);
+      if (b->isKeyword)
+        return false;
+      switch (P(b->op))
+      {
+        case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign: case P::PercentAssign:
+        case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign: case P::ShrAssign:
+          return scalar(b->lhs) && b->call != OperatorCall::Function;
+        case P::Comma:
+          return b->call != OperatorCall::Function && isLvalueExpression(b->rhs);
+        default:
+          return false;
+      }
+    }
     case NodeKind::NameExpr:
     {
       Decl* d = static_cast<const NameExpr*>(e)->resolved;
@@ -63,6 +89,8 @@ inline bool isLvalueExpression(const Expr* e)
       const Ty* t = u->operand ? u->operand->ty : nullptr;
       if (t && t->isReference())
         t = t->inner;
+      if (!u->isKeyword && !u->postfix && (P(u->op) == P::PlusPlus || P(u->op) == P::MinusMinus))
+        return scalar(u->operand) && u->call != OperatorCall::Function; // `++x`
       return !u->isKeyword && !u->postfix && P(u->op) == P::Star && t && t->kind == TyKind::Pointer;
     }
     case NodeKind::ParenExpr:
