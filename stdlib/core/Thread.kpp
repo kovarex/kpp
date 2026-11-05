@@ -198,10 +198,9 @@ namespace thisThread
 
 // A mutex (std::mutex): lock, unlock, tryLock; not re-entrant (a thread locking it again waits
 // for itself forever).
-struct Mutex
+class Mutex
 {
-  platform::Lock lock_;
-
+public:
   Mutex() {}
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
@@ -210,15 +209,16 @@ struct Mutex
   void unlock() { this->lock_.unlock(); }
   bool tryLock() { return this->lock_.tryLock(); }
   bool try_lock() { return this->tryLock(); }
+
+private:
+  friend class ConditionVariable; // waits on lock_
+  platform::Lock lock_;
 };
 
 // A mutex its owning thread may lock again (std::recursive_mutex); every lock needs its unlock.
-struct RecursiveMutex
+class RecursiveMutex
 {
-  Mutex mutex;
-  Atomic<unsigned long> owner; // the owning thread's id; 0 (never a thread's) when free
-  i32 depth = 0;
-
+public:
   RecursiveMutex() {}
   RecursiveMutex(const RecursiveMutex&) = delete;
   RecursiveMutex& operator=(const RecursiveMutex&) = delete;
@@ -258,13 +258,17 @@ struct RecursiveMutex
       this->mutex.unlock();
     }
   }
+
+private:
+  Mutex mutex;
+  Atomic<unsigned long> owner; // the owning thread's id; 0 (never a thread's) when free
+  i32 depth = 0;
 };
 
 // A mutex that many readers may hold at once, or one writer (std::shared_mutex).
-struct SharedMutex
+class SharedMutex
 {
-  platform::SharedLock lock_;
-
+public:
   SharedMutex() {}
   SharedMutex(const SharedMutex&) = delete;
   SharedMutex& operator=(const SharedMutex&) = delete;
@@ -279,6 +283,9 @@ struct SharedMutex
   void lock_shared() { this->lockShared(); }
   void unlock_shared() { this->unlockShared(); }
   bool try_lock_shared() { return this->tryLockShared(); }
+
+private:
+  platform::SharedLock lock_;
 };
 
 // How a lock takes its mutex (std::defer_lock, std::try_to_lock, std::adopt_lock): not yet, by a
@@ -310,11 +317,9 @@ using ScopedLock = LockGuard<M>;
 // without a mutex (unlock: without the lock), resource_deadlock_would_occur when the lock is
 // already owned.
 template<typename M>
-struct UniqueLock
+class UniqueLock
 {
-  M* mutex_ = nullptr;
-  bool owns = false;
-
+public:
   UniqueLock() {}
   explicit UniqueLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lock(); }
   UniqueLock(M& mutex, DeferLock) : mutex_(&mutex) {}
@@ -391,16 +396,18 @@ struct UniqueLock
     if (this->owns)
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
   }
+
+private:
+  M* mutex_ = nullptr;
+  bool owns = false;
 };
 
 // A movable owner of a mutex's shared lock (std::shared_lock): UniqueLock's shape, through the
 // mutex's lockShared, tryLockShared and unlockShared.
 template<typename M>
-struct SharedLock
+class SharedLock
 {
-  M* mutex_ = nullptr;
-  bool owns = false;
-
+public:
   SharedLock() {}
   explicit SharedLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lockShared(); }
   SharedLock(M& mutex, DeferLock) : mutex_(&mutex) {}
@@ -476,6 +483,10 @@ struct SharedLock
     if (this->owns)
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
   }
+
+private:
+  M* mutex_ = nullptr;
+  bool owns = false;
 };
 
 // Whether a timed wait returned because its time ran out (std::cv_status).
@@ -485,10 +496,9 @@ enum class CvStatus { no_timeout, timeout };
 // with the predicate checked again under the lock: a wait may return without a notify (a spurious
 // wake-up), so a wait without a predicate is followed by the caller's check. A timed wait returns
 // timeout when its time has passed on its clock (wait_for: the steady clock).
-struct ConditionVariable
+class ConditionVariable
 {
-  platform::Condition condition;
-
+public:
   ConditionVariable() {}
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
@@ -499,7 +509,7 @@ struct ConditionVariable
   void notify_all() { this->notifyAll(); }
 
   // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
-  void wait(UniqueLock<Mutex>& lock) { this->condition.wait(lock.mutex_->lock_); }
+  void wait(UniqueLock<Mutex>& lock) { this->condition.wait(lock.mutex()->lock_); }
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
@@ -515,7 +525,7 @@ struct ConditionVariable
       auto now = Clock::now();
       if (!(now < t))
         return CvStatus::timeout;
-      if (this->condition.waitFor(lock.mutex_->lock_, t - now))
+      if (this->condition.waitFor(lock.mutex()->lock_, t - now))
         return CvStatus::no_timeout; // woken: by a notify, or spuriously
       // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
     }
@@ -545,6 +555,9 @@ struct ConditionVariable
   CvStatus wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitFor(lock, d); }
   template<typename Rep, typename Period, typename Predicate>
   bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready) { return this->waitFor(lock, d, move(ready)); }
+
+private:
+  platform::Condition condition;
 };
 
 // The unsigned integer of each size the atomic instructions work on.

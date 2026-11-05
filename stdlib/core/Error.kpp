@@ -94,11 +94,9 @@ i32 errcOfWindowsError(i32 error)
 // An error value with its category (std::error_code); 0 is no error. Compared with an Errc, a system
 // error equals the condition it means (Windows' ERROR_FILE_NOT_FOUND is no_such_file_or_directory;
 // elsewhere a system error is an errno value: platform::errcOfSystemError).
-struct ErrorCode
+class ErrorCode
 {
-  i32 value_ = 0;
-  ErrorCategory category_ = ErrorCategory{true};
-
+public:
   ErrorCode() {}
   ErrorCode(i32 value, ErrorCategory category) : value_(value), category_(category) {}
 
@@ -130,6 +128,10 @@ struct ErrorCode
       return false;
     return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == i32(condition);
   }
+
+private:
+  i32 value_ = 0;
+  ErrorCategory category_ = ErrorCategory{true};
 };
 
 // An Errc as an error code of the generic category (std::make_error_code).
@@ -165,15 +167,20 @@ public:
   void rethrow() const override { throw this->exception; }
 };
 
-struct ExceptionPtr
+class ExceptionPtr
 {
-  SharedPtr<ExceptionHolderBase> holder;
-
+public:
   ExceptionPtr() {}
   implicit ExceptionPtr(nullptr_t) {}
   explicit operator bool() const { return (bool)this->holder; }
   bool operator==(const ExceptionPtr& other) const = default;
   bool operator!=(const ExceptionPtr& other) const { return this->holder != other.holder; }
+
+private:
+  template<typename E> friend ExceptionPtr makeExceptionPtr(const E& exception);
+  friend void rethrowException(const ExceptionPtr& pointer);
+
+  SharedPtr<ExceptionHolderBase> holder;
 };
 
 // An ExceptionPtr to a copy of exception (std::make_exception_ptr); rethrowing it throws an E.

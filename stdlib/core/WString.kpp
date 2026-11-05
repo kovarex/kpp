@@ -2,12 +2,9 @@
 // always zero-terminated: what std::wstring converts to. String's interface over wchar_t;
 // specified in docs/stdlib/string.md, "WString". Conversions to and from UTF-8 live in StringUtil
 // of the program using it (and in Filesystem's path).
-struct WString
+class WString
 {
-  wchar_t* chars = nullptr;
-  ContainerSize unitCount = 0;
-  ContainerSize capacity = 0;
-
+public:
   // Not found, or to the end: the largest size, as C++'s npos is the largest size_t, so that a
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
   static const ContainerSize npos = ContainerSize(-1);
@@ -356,6 +353,11 @@ struct WString
     i32 c = this->compare(other);
     return c < 0 ? strong_ordering::less : c > 0 ? strong_ordering::greater : strong_ordering::equal;
   }
+
+private:
+  wchar_t* chars = nullptr;
+  ContainerSize unitCount = 0;
+  ContainerSize capacity = 0;
 };
 
 WString operator+(const wchar_t* left, const WString& right)

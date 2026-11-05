@@ -152,10 +152,9 @@ struct SharedState<void>
 };
 
 template<typename T>
-struct Future
+class Future
 {
-  SharedPtr<SharedState<T>> state;
-
+public:
   Future() {}
   Future(SharedPtr<SharedState<T>> state) : state(move(state)) {}
   Future(const Future<T>&) = delete;
@@ -183,13 +182,17 @@ struct Future
   FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+
+private:
+  template<typename U> friend class SharedFuture;
+
+  SharedPtr<SharedState<T>> state;
 };
 
 template<>
-struct Future<void>
+class Future<void>
 {
-  SharedPtr<SharedState<void>> state;
-
+public:
   Future() {}
   Future(SharedPtr<SharedState<void>> state) : state(move(state)) {}
   Future(const Future<void>&) = delete;
@@ -212,13 +215,15 @@ struct Future<void>
   FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+
+private:
+  SharedPtr<SharedState<void>> state;
 };
 
 template<typename T>
-struct SharedFuture
+class SharedFuture
 {
-  SharedPtr<SharedState<T>> state;
-
+public:
   SharedFuture() {}
   SharedFuture(Future<T>&& f) noexcept : state(move(f.state)) {}
   SharedFuture(const SharedFuture<T>& other) : state(other.state) {}
@@ -228,13 +233,15 @@ struct SharedFuture
   void wait() const { this->state->wait(); }
   template<typename Rep, typename Period>
   FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+
+private:
+  SharedPtr<SharedState<T>> state;
 };
 
 template<typename T>
-struct Promise
+class Promise
 {
-  SharedPtr<SharedState<T>> state;
-
+public:
   Promise() : state(makeShared<SharedState<T>>()) {}
   Promise(const Promise<T>&) = delete;
   Promise(Promise<T>&& other) noexcept : state(move(other.state)) {}
@@ -254,13 +261,15 @@ struct Promise
   void setValue(T&& value) { this->state->set(move(value)); }
 
   void set_exception(ExceptionPtr e) { this->state->setException(e); }
+
+private:
+  SharedPtr<SharedState<T>> state;
 };
 
 template<>
-struct Promise<void>
+class Promise<void>
 {
-  SharedPtr<SharedState<void>> state;
-
+public:
   Promise() : state(makeShared<SharedState<void>>()) {}
   Promise(const Promise<void>&) = delete;
   Promise(Promise<void>&& other) noexcept : state(move(other.state)) {}
@@ -276,6 +285,9 @@ struct Promise<void>
   void set_value() { this->state->set(); }
   void setValue() { this->state->set(); }
   void set_exception(ExceptionPtr e) { this->state->setException(e); }
+
+private:
+  SharedPtr<SharedState<void>> state;
 };
 
 // Calls callable and stores what it returns in state (a void callable just completes it). An
