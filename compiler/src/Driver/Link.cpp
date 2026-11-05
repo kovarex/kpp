@@ -42,7 +42,11 @@ std::string linkFlags(const Options& options, bool wideEntry)
     // --Xlink): Visual Studio shows the library's values in a windows-gnu build too, the bundled
     // toolchain's default.
     if (options.debugInfo)
+    {
       flags += " -g -Wl,--pdb= \"-Wl,--Xlink=/natvis:" + natvisPath(options) + "\"";
+      for (const std::string& file : options.natvisFiles)
+        flags += " \"-Wl,--Xlink=/natvis:" + file + "\"";
+    }
     for (const std::string& symbol : options.keepSymbols)
       flags += " -Wl,-u," + symbol;
     for (const std::string& lib : options.libs)
@@ -78,7 +82,11 @@ std::string linkFlags(const Options& options, bool wideEntry)
   if (wideEntry)
     flags += " -Wl,/ENTRY:wmainCRTStartup";
   if (options.debugInfo)
+  {
     flags += " -Wl,/DEBUG \"-Wl,/NATVIS:" + natvisPath(options) + "\""; // (the .natvis in the PDB: Visual Studio loads it with it)
+    for (const std::string& file : options.natvisFiles) // (the program's own: --natvis, build.kpp's natvis)
+      flags += " \"-Wl,/NATVIS:" + file + "\"";
+  }
   for (const std::string& symbol : options.keepSymbols)
     flags += " -Wl,/INCLUDE:" + symbol;
   for (const std::string& lib : options.libs)

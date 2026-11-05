@@ -339,6 +339,12 @@ void build(Project& project)
   `kpp --target freebsd` fails to link that one and leaves out the same library for Linux).
   An executable's own takes a platform the same way (`app.systemLibrary("ssl", Platform::FreeBSD)`,
   2026-11-05), and is linked once with its libraries' of the same name.
+- **A program's own .natvis** (thread F, 2026-11-05): `game.natvis("tools/factorio.natvis")`, a file
+  relative to the project with Visual Studio's display rules for the program's types, is linked into
+  the PDB of a `--debug-info` build for Windows beside the rules kppc writes for the standard library
+  (kppc's `--natvis FILE`; link.exe's or lld-link's `/NATVIS`, lld's MinGW driver's `--Xlink`).
+  Visual Studio finds it with the program (debugging.md, "Values in Visual Studio"). A missing file
+  fails the link. Tested by `tests/natvis.ps1` (natvis\project).
 - **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
   tests") of the executables and libraries named, all when none is: each one's roots, a
   library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter

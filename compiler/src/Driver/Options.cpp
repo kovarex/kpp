@@ -70,6 +70,8 @@ void usage(FILE* out)
           "  --unscoped-library-root NAME DIR  the same for an unscoped library: its names are bare everywhere\n"
           "  --cinclude D  directory searched by imported C headers (repeatable)\n"
           "  --lib F       a library (.lib) linked into the executable (repeatable)\n"
+          "  --natvis F    the program's own .natvis (Visual Studio's rules for its types), linked into the PDB of\n"
+          "                a --debug-info build for Windows beside the standard library's (repeatable; build.kpp's natvis)\n"
           "  --keep-symbol S  link in what defines the symbol S although nothing names it (a library's object that\n"
           "                registers itself), with any toolchain: link.exe's /INCLUDE:S, the GNU driver's -u S (repeatable)\n"
           "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"

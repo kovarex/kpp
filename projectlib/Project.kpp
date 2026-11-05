@@ -91,6 +91,7 @@ struct Executable
   Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
   Vector<String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
+  Vector<String> natvisFiles; // natvis()'s: Visual Studio's rules for the program's own types
   Deque<Dependency> uses;  // the kpp libraries it uses besides the project's (use())
   Vector<String> configs;   // config:: constants of this target, NAME=VALUE (kppConfig)
   String beforeBuildCommand;
@@ -129,6 +130,10 @@ struct Executable
   // linked once with its libraries' (compiler/src/Project/Build.cpp).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
   void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
+  // A .natvis file of the program's own (Visual Studio's display rules for its types), relative to the
+  // project's directory: linked into the PDB of a --debug-info build for Windows with the rules kppc
+  // writes for the standard library (kppc's --natvis; docs/debugging.md, "Values in Visual Studio").
+  void natvis(StringView path) { natvisFiles.push_back(path); }
   // A config:: constant in every configuration of this target, over the project's and the
   // configuration's.
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
@@ -619,6 +624,7 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   kppLines(out, "library", project.libraries);
   kppLines(out, "library", e.libraries);
   kppLines(out, "system-library", e.systemLibraries);
+  kppLines(out, "natvis", e.natvisFiles);
   kppLines(out, "cinclude", project.cIncludes);
   kppLines(out, "cinclude", e.cIncludes);
   kppLine(out, "before-build", e.beforeBuildCommand);

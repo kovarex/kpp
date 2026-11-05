@@ -173,6 +173,8 @@ int compile(int argc, char** argv)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)
       options.libs.push_back(argv[++i]);
+    else if (arg == "--natvis" && i + 1 < argc)
+      options.natvisFiles.push_back(argv[++i]);
     else if (arg == "--keep-symbol" && i + 1 < argc)
       options.keepSymbols.push_back(argv[++i]);
     else if (arg == "--exclude" && i + 1 < argc)

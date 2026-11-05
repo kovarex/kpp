@@ -1,0 +1,7 @@
+// tests\natvis.ps1: a project whose executable has a .natvis of its own (Executable::natvis), linked
+// into the PDB of its debug build beside the standard library's.
+void build(Project& project)
+{
+  Executable& values = project.executable("values", {"../values.kpp"});
+  values.natvis("point.natvis");
+}

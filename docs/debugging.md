@@ -210,8 +210,10 @@ A build with `--debug-info` for Windows (MSVC, or windows-gnu, the bundled toolc
 writes `NAME.natvis` beside `NAME.exe` and links it into the PDB (`/NATVIS`; lld's MinGW driver takes it
 as `--Xlink=/natvis:`), where Visual Studio finds it with the program: nothing to install. Until
 2026-11-05 a windows-gnu build had none, so a project built with an installed kpp showed `String` and
-`Vector` raw in Visual Studio (gorating with kpp 0.2.519); tests\windowsgnu.ps1 checks its PDB. It
-shows the library's values as values (compiler\src\natvis.cpp):
+`Vector` raw in Visual Studio (gorating with kpp 0.2.519); tests\windowsgnu.ps1 checks its PDB. A
+program's own rules for its own types go in beside it: build.kpp's `executable.natvis("FILE")` (kppc's
+`--natvis FILE`; build.md), as Factorio's tools\vs15\Visualizers\factorio.natvis for the converted
+game. It shows the library's values as values (compiler\src\natvis.cpp):
 - `String` and `StringView` as their text (a String's last byte tells a small string's length from
   the heap's mark, largeMark, taken from the library's literal);
 - `Vector<*>` and `Span<*>` as their elements, `UniquePtr<*>`, `SharedPtr<*>` and `Optional<*>` as

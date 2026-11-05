@@ -138,6 +138,8 @@ namespace projects
       args.push_back("--cinclude"), args.push_back(rooted(root, c).string());
     for (const std::string& l : p.libraries)
       args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
+    for (const std::string& n : p.natvis)
+      args.push_back("--natvis"), args.push_back(rooted(root, n).string());
     // The system libraries of the kpp libraries it uses (Library::systemLibrary), a library's own for
     // its tests, each once, those of another platform left out.
     std::vector<std::string> systemLibraries;

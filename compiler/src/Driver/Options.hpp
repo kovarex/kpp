@@ -46,6 +46,7 @@
     std::vector<LibraryRoot> libraryRoots;
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
+    std::vector<std::string> natvisFiles;  // --natvis FILE: the program's own .natvis, linked into the PDB
     std::vector<std::string> keepSymbols;  // --keep-symbol NAME: linked in although nothing names it
     std::vector<std::string> excluded;     // --exclude FILE: a file under the roots left out
     std::vector<std::pair<std::string, std::string>> filePrefixMap; // --file-prefix-map FROM=TO (source.hpp's programPath)

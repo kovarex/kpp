@@ -96,6 +96,7 @@ namespace projects
       {"debug-arguments", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugArguments = v; }},
       {"debug-directory", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugDirectory = v; }},
       {"link", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().links.push_back(v); }},
+      {"natvis", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().natvis.push_back(v); }},
       {"system-library", InProgram | InLibrary,
        [](Reading& r, const std::string& v)
        { (r.section == InProgram ? r.d.programs.back().systemLibraries : r.d.libraries.back().systemLibraries).push_back(v); }},

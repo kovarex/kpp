@@ -5,6 +5,7 @@
 # lists. run_tests.cmd runs it. -Update writes values.expected from this run.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
+$Kppc = (Resolve-Path $Kppc).Path # (the project's build runs in its own directory)
 $work = Join-Path $PSScriptRoot '..\build\tests\natvis'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
@@ -52,5 +53,24 @@ $expectedPath = Join-Path $PSScriptRoot 'natvis\values.expected'
 if ($Update) { [IO.File]::WriteAllLines($expectedPath, [string[]]$names); "natvis.ps1: wrote $expectedPath"; exit 0 }
 $d = Compare-Object @(Get-Content $expectedPath) $names -SyncWindow 0
 if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | ForEach-Object { "  $_" }; exit 1 }
-"ok   natvis ($($names.Count) rules, $size bytes, in the PDB)"
+
+# A program's own .natvis (build.kpp's Executable::natvis, kppc's --natvis): natvis\project builds
+# values.kpp with point.natvis; its debug build's PDB holds both that file and the one kppc writes.
+$project = Join-Path $work 'project'
+if (Test-Path $project) { cmd /c rd /s /q "$project" }
+New-Item -ItemType Directory -Force $project | Out-Null
+Copy-Item (Join-Path $PSScriptRoot 'natvis\project\*') $project -Force
+Copy-Item (Join-Path $PSScriptRoot 'natvis\values.kpp') $work
+Push-Location $project
+$ErrorActionPreference = 'Continue'
+$log = & $Kppc values debug --debug-info --no-server 2>&1 # (no compile server left holding the directory) | ForEach-Object { "$_" }
+$code = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+Pop-Location
+if ($code -ne 0) { "FAIL natvis: the project with its own .natvis does not build (exit $code)"; $log | Select-Object -Last 5 | ForEach-Object { "  $_" }; exit 1 }
+$pdb = Get-ChildItem $project -Recurse -Filter 'values.pdb' | Select-Object -First 1
+$streams = if ($pdb) { (& $pdbutil dump --named-streams $pdb.FullName) -join "`n" } else { '' }
+if ($streams -notmatch '/src/files/\S*point\.natvis' -or $streams -notmatch '/src/files/\S*values\.natvis')
+{ "FAIL natvis: the project's PDB lacks point.natvis or values.natvis"; exit 1 }
+"ok   natvis ($($names.Count) rules, $size bytes, in the PDB; a project's own .natvis beside it)"
 exit 0

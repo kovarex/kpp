@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tests\natvis.ps1: a program's own rule (build.kpp's natvis), for values.kpp's Point. -->
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="Point">
+    <DisplayString>({x}, {y})</DisplayString>
+  </Type>
+</AutoVisualizer>
