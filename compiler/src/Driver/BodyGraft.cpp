@@ -18,6 +18,28 @@ bool sameToken(const Token& a, std::string_view ta, const Token& b, std::string_
   }
 }
 
+// A false `when`'s dropped declarations (and the declaration-scope `if constexpr` branches the parser
+// skipped) are the same in both versions: the same token ranges' tokens, in order. The names a false
+// `when` keeps for a lookup to stop at (ParsedFile::absentDecls, ClassDecl::absentMembers) then stay
+// the kept file's, their tokens remapped with the rest (remapKeptFile).
+bool sameDropped(const ParsedFile& a, const std::vector<Token>& ta, std::string_view xa, const ParsedFile& b, const std::vector<Token>& tb,
+                 std::string_view xb)
+{
+  if (a.droppedTokens.size() != b.droppedTokens.size() || a.droppedWhen != b.droppedWhen)
+    return false;
+  for (size_t i = 0; i < a.droppedTokens.size(); ++i)
+  {
+    auto [as, ae] = a.droppedTokens[i];
+    auto [bs, be] = b.droppedTokens[i];
+    if (ae - as != be - bs || ae > ta.size() || be > tb.size())
+      return false;
+    for (uint32_t k = 0; k < ae - as; ++k)
+      if (!sameToken(ta[as + k], xa, tb[bs + k], xb))
+        return false;
+  }
+  return true;
+}
+
 bool collectBodies(Span<Decl*> decls, const std::vector<Token>& tokens, bool inTemplate, std::vector<Body>& out)
 {
   for (Decl* d : decls)
@@ -104,8 +126,8 @@ bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::
   parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);
   if (out.lexed.errorCount)
     return why = "the new text has lexical errors", false;
-  if (old.droppedWhen || out.parsed->droppedWhen)
-    return why = "a false when dropped a declaration (its name is kept in the index)", false;
+  if ((old.droppedWhen || out.parsed->droppedWhen) && !sameDropped(old, oldTokens, oldText, *out.parsed, out.tokens, out.text))
+    return why = "a false when's dropped declarations changed (their names are kept in the index)", false;
   if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
     return why = "the function bodies cannot be paired", false;
   if (!collectBodies(out.parsed->decls, out.tokens, false, out.newBodies) || out.oldBodies.size() != out.newBodies.size())
@@ -339,6 +361,16 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
     });
   };
   forEachNode(file.decls, remap);
+  // A false `when`'s absent declarations, which the walk over the tree does not reach: their tokens
+  // move too (the names stay in the index; sameDropped made sure they are the same).
+  for (Decl* d : file.absentDecls)
+    forEachNode(d, remap);
+  forEachNode(file.decls, [&](Node* n)
+  {
+    if (n->kind == NodeKind::ClassDecl)
+      for (Decl* m : static_cast<ClassDecl*>(n)->absentMembers)
+        forEachNode(m, remap);
+  });
   kept.global->forEachInstanceCopy(file, [&](Node* copy, const Decl* source)
   {
     if (!staleSources.count(source))
@@ -486,8 +518,8 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
   parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);
   if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
     return why = "the new text has errors", false;
-  if (old.droppedWhen || out.parsed->droppedWhen)
-    return why = "a false when dropped a declaration (its name is kept in the index)", false;
+  if ((old.droppedWhen || out.parsed->droppedWhen) && !sameDropped(old, oldTokens, oldText, *out.parsed, out.tokens, out.text))
+    return why = "a false when's dropped declarations changed (their names are kept in the index)", false;
   if (!tokenMap(oldTokens, oldText, out.tokens, out.text, out.map))
     return why = "the two versions differ too much to pair their tokens", false;
   std::vector<DeclaredFunction> oldFunctions, newFunctions;

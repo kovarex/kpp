@@ -1,0 +1,76 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error
+//--- step: the program
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return 2; }
+int main()
+{
+  Stats s;
+  println(shown() + s.hits);
+  return 0;
+}
+// expect: 3
+//--- step: a body edited, the when declarations above it untouched
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return 20; }
+int main()
+{
+  Stats s;
+  println(shown() + s.hits);
+  return 0;
+}
+// expect: 21
+//--- step: a body using the absent global
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return releaseCounter; }
+int main()
+{
+  Stats s;
+  println(shown() + s.hits);
+  return 0;
+}
+// error: 'releaseCounter' exists only when
+//--- step: a body using the absent member
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return 4; }
+int main()
+{
+  Stats s;
+  println(shown() + s.releaseHits);
+  return 0;
+}
+// error: 'releaseHits' exists only when
+//--- step: fixed again
+when (!config::debug) int releaseCounter = 0;
+struct Stats
+{
+  int hits = 1;
+  when (!config::debug) int releaseHits = 0;
+};
+int shown() { return 5; }
+int main()
+{
+  Stats s;
+  println(shown() + s.hits);
+  return 0;
+}
+// expect: 6
