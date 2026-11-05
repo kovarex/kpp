@@ -655,6 +655,10 @@
     // The iterator type of the free begin(range) found for a class without a begin() member (in
     // the class's namespace or from here), the call a range-for makes then; null if none.
     const Ty* freeBeginType(const Ty* t, Expr* rangeExpr);
+    // The free function `symbol(range)` a range-for over class t calls (begin or end), or null.
+    FunctionDecl* freeRangeFunction(const Ty* t, uint32_t symbol);
+    // Records on f the begin and end a range-for over class range calls (design.md 24).
+    void recordRangeFunctions(RangeForStmt* f, const Ty* range);
 
     // A data member declared as an array without a length (`int items[];`: a flexible array
     // member), as e names it (`s->items`, `items` in a member function), or a lone name in sizeof's

@@ -174,6 +174,18 @@
                                    describe(e->call, e->callee, e->calleeMember) + where);
     }
 
+    // A range-for's begin and end as codegen chose them (members when members) against the checker's.
+    void verifyRangeFunctions(RangeForStmt* f, bool members, FunctionDecl* begin, FunctionDecl* end, const Ty* range)
+    {
+      if (members == f->rangeMembers && begin == f->begin && end == f->end)
+        return;
+      auto name = [&](FunctionDecl* g) { return g ? qualifiedName(g) + " (" + locationOf(g, g->file) + ")" : std::string("none"); };
+      std::string where = currentFunctionName.empty() ? std::string() : " (in " + currentFunctionName + ")";
+      error(f, "decision check: codegen's range-for over " + types.toString(range, &symbols) + " calls " + (members ? "the members " : "the free ") +
+                   name(begin) + " and " + name(end) + ", the checker chose " + (f->rangeMembers ? "the members " : "the free ") + name(f->begin) +
+                   " and " + name(f->end) + where);
+    }
+
     // Finds the best member with the given name (searching bases, nearest class wins) for the
     // argument types and the object's constness. Returns the class type it was found in.
     FunctionDecl* findMemberFunction(const Ty* classTy, const std::string& name, const std::vector<const Ty*>& argTypes,

@@ -764,10 +764,11 @@
       }
     }
 
-    // Finds a zero-argument member function by name (searching bases), with the class it lives in.
+    // Finds a zero-argument member function by name (searching bases), with the class it lives in,
+    // for an object of classTy (a const one: its const overload).
     FunctionDecl* findMember(const Ty* classTy, const std::string& name, Node* at, const Ty** foundIn)
     {
-      return findOperator(classTy, name, 0, at, foundIn);
+      return findMemberFunction(classTy, name, {}, classTy, at, foundIn);
     }
 
     // A range whose begin()/end() return iterator objects: `it != end`, `*it` and `++it` go through

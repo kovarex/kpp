@@ -4210,6 +4210,58 @@ auto GlobalScope::Impl::Walker::typeOfLiteral(LiteralExpr* l) -> const Ty*
   }
 }
 
+auto GlobalScope::Impl::Walker::freeRangeFunction(const Ty* t, uint32_t symbol) -> FunctionDecl*
+{
+  std::vector<const Ty*> argTypes{types.lref(t)};
+  for (Scope* place : {impl.lexicalScopeOf(t->decl), scope})
+    for (Scope* s = place; s; s = s->parent)
+    {
+      if (s->kind == ScopeKind::Class)
+        continue;
+      Lookup look;
+      if (!impl.lookupInScope(s, symbol, look, 0))
+        continue;
+      if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
+      {
+        bool ambiguous;
+        return pickOverload(look.decl, look.overloads, argTypes, nullptr, nullptr, ambiguous);
+      }
+      break;
+    }
+  return nullptr;
+}
+
+auto GlobalScope::Impl::Walker::recordRangeFunctions(RangeForStmt* f, const Ty* range) -> void
+{
+  if (probesSharedNodes())
+    return;
+  f->begin = f->end = nullptr;
+  f->rangeMembers = false;
+  const Ty* t = types.unqualified(types.stripRef(range));
+  if (!t || !t->isKnown() || t->kind != TyKind::Class || types.isDependent(t))
+    return;
+  // C++ [stmt.ranged]: the class's members when it has a member named begin or end, else the free
+  // functions found for the range.
+  MemberResult begin = memberOf(range, impl.symBegin, nullptr, 0, false);
+  MemberResult end = memberOf(range, impl.symEnd, nullptr, 0, false);
+  if (begin.decl || end.decl)
+  {
+    if (!begin.decl || !end.decl || begin.decl->kind != NodeKind::FunctionDecl || end.decl->kind != NodeKind::FunctionDecl)
+      return;
+    bool ambiguous;
+    f->begin = pickOverload(begin.decl, begin.overloads, {}, &begin.subst, range, ambiguous);
+    f->end = pickOverload(end.decl, end.overloads, {}, &end.subst, range, ambiguous);
+    f->rangeMembers = true;
+  }
+  else
+  {
+    f->begin = freeRangeFunction(t, impl.symBegin);
+    f->end = freeRangeFunction(t, impl.symEnd);
+  }
+  if (!f->begin || !f->end)
+    f->begin = f->end = nullptr;
+}
+
 auto GlobalScope::Impl::Walker::freeBeginType(const Ty* t, Expr* rangeExpr) -> const Ty*
 {
   std::vector<const Ty*> argTypes{types.lref(t)};
@@ -5484,6 +5536,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         if (first && first->isKnown())
           range = record(f->range, types.array(first, uint32_t(b->args.size())));
       }
+      recordRangeFunctions(f, range);
       auto* v = static_cast<VariableDecl*>(f->var);
       walkType(v->type);
       const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);

@@ -343,7 +343,10 @@ struct IfStmt : Stmt
 };
 struct AssertStmt : Stmt { Expr* cond; uint32_t startToken, endToken; bool release = false; uint8_t testKind = 0; }; // tokens of the expression text // assert(cond); release_assert(cond); testKind 1 check(cond), 2 require(cond) in a test
 struct ForStmt : Stmt { Stmt* init = nullptr; Node* cond = nullptr; Expr* step = nullptr; Stmt* body; };
-struct RangeForStmt : Stmt { Decl* var; Expr* range; Stmt* body; };
+// begin, end: the functions the loop calls on a class range, as the checker chose them (design.md 24),
+// members of its class (or a base) when rangeMembers, else free functions taking the range; null when
+// the walk decided none (an array, a dependent range, no such function).
+struct RangeForStmt : Stmt { Decl* var; Expr* range; Stmt* body; FunctionDecl* begin = nullptr; FunctionDecl* end = nullptr; bool rangeMembers = false; };
 // `for constexpr (typename T : types<A, B>) body`, `for constexpr (int i : {1, 2, 4}) body`: var is a
 // TemplateParamDecl (a type, or a value with valueType), list a `types<...>` NamedType, a brace list of
 // constants or an expression naming a list; the body is instantiated once per element (design.md 8.2).

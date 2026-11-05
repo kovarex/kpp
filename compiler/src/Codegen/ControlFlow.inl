@@ -268,9 +268,33 @@
         }
         const Ty* beginIn = nullptr;
         const Ty* endIn = nullptr;
-        FunctionDecl* begin = findMember(range.ty, "begin", f, &beginIn);
-        FunctionDecl* end = findMember(range.ty, "end", f, &endIn);
+        // The begin and end the checker chose (design.md 24), in a body its walk typed for this
+        // function; KPP_VERIFY_DECISIONS keeps codegen's own choice, compared with the recorded one.
+        bool recorded = choicesRecorded && f->begin && f->end;
+        FunctionDecl* begin = nullptr;
+        FunctionDecl* end = nullptr;
+        if (recorded && !verifyDecisions())
+        {
+          if (f->rangeMembers)
+          {
+            begin = f->begin;
+            end = f->end;
+            beginIn = declaringClass(range.ty, begin, f);
+            endIn = declaringClass(range.ty, end, f);
+            if (!beginIn || !endIn)
+              unsupported(f, "a range's begin() and end() the checker chose, on a class that does not declare them");
+          }
+        }
+        else
+        {
+          // On the range's const as the checker typed it: a const range's `begin() const`.
+          const Ty* object = withCheckedConst(range, f->range).ty;
+          begin = findMember(object, "begin", f, &beginIn);
+          end = findMember(object, "end", f, &endIn);
+        }
         Value b, e;
+        if (recorded && verifyDecisions() && begin && end)
+          verifyRangeFunctions(f, true, begin, end, range.ty);
         if (begin && end)
         {
           // On the base that declares them, where it is (`for (T* t : *this)` in TriggerList, a
@@ -290,8 +314,10 @@
           // No such members: begin(__range) and end(__range), the free functions found for the
           // range's class, called with the range evaluated once (C++'s rule).
           const Ty* rangeRef = types.lref(types.unqualified(range.ty));
-          FunctionDecl* freeBegin = global.findFreeFunction("begin", {rangeRef}, currentFunction);
-          FunctionDecl* freeEnd = global.findFreeFunction("end", {rangeRef}, currentFunction);
+          FunctionDecl* freeBegin = recorded && !verifyDecisions() ? f->begin : global.findFreeFunction("begin", {rangeRef}, currentFunction);
+          FunctionDecl* freeEnd = recorded && !verifyDecisions() ? f->end : global.findFreeFunction("end", {rangeRef}, currentFunction);
+          if (recorded && verifyDecisions())
+            verifyRangeFunctions(f, false, freeBegin, freeEnd, range.ty);
           if (!freeBegin || !freeEnd)
             unsupported(f, "a range without begin()/end()");
           VariableDecl& var = rangeVariables.emplace_back();

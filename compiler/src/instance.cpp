@@ -351,6 +351,8 @@ Stmt* InstanceCopier::stmt(const Stmt* s)
       c->var = decl(c->var);
       c->range = expr(c->range);
       c->body = stmt(c->body);
+      c->begin = c->end = nullptr; // chosen by the copy's own walk
+      c->rangeMembers = false;
       return c;
     }
     case NodeKind::ForConstexprStmt:
