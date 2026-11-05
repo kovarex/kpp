@@ -769,6 +769,18 @@
   // literal's, its own arrays', a constant's): the first difference's sign, as unsigned bytes.
   // Elements of a wider type are compared by no bytes the evaluator has: no constant.
   std::optional<ConstValue> constMemcmp(const ConstValue& a, const ConstValue& b, const ConstValue& count, int depth);
+  // `memchr(p, c, n)` through any pointer the evaluation holds, as memcmp's: a pointer to the first
+  // of the n bytes from p equal to (unsigned char)c (of p's element type), else a null pointer
+  // (String::find). Elements wider than a byte: no constant.
+  std::optional<ConstValue> constMemchr(const ConstValue& p, const ConstValue& byte, const ConstValue& count, int depth);
+  // `strcmp(a, b)` as memcmp's, up to the terminating zero (Optional's enum from its name).
+  std::optional<ConstValue> constStrcmp(const ConstValue& a, const ConstValue& b, int depth);
+  // The pointer memcmp, memchr and strcmp read through: p's, an array given as it is pointing at its
+  // first element; none for anything else.
+  std::optional<ConstValue> constBytePointer(const ConstValue& p);
+  // The byte i bytes on from p (constBytePointer's), as an unsigned byte; none where the evaluator
+  // reads no element there or the element is wider than a byte (why: the function, for constWhy).
+  std::optional<int> constByteAt(const ConstValue& p, int64_t i, const char* why, int depth);
 
   // `memset(to, c, n)` of the evaluation's own objects: n bytes of chars, or zero over whole objects
   // or elements (each value-initialized to zero). Anything else is no constant.

@@ -1387,15 +1387,23 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
       return constCAllocation(name, values, c, depth);
     }
   if (!f->body && c->args.size() == 3 && f->params.size() == 3 && !f->name.empty())
-    if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset" || name == "memcmp")
+    if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset" || name == "memcmp" || name == "memchr")
     {
       std::vector<ConstValue> values;
       if (!constArguments(c->args, ctx, depth, values))
         return std::nullopt;
       return name == "memset"   ? constMemset(values[0], values[1], values[2], depth)
            : name == "memcmp"   ? constMemcmp(values[0], values[1], values[2], depth)
+           : name == "memchr"   ? constMemchr(values[0], values[1], values[2], depth)
                                 : constMemcpy(values[0], values[1], values[2], depth);
     }
+  if (!f->body && c->args.size() == 2 && f->params.size() == 2 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strcmp")
+  {
+    std::vector<ConstValue> values;
+    if (!constArguments(c->args, ctx, depth, values))
+      return std::nullopt;
+    return constStrcmp(values[0], values[1], depth);
+  }
   if (!f->body && c->args.size() == 1 && f->params.size() == 1 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strlen")
   {
     std::optional<ConstValue> text = constValue(c->args[0], ctx, depth + 1);
@@ -2638,7 +2646,11 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
   for (char c : bytes)
     chars.push_back(ConstValue::integer(int64_t(static_cast<signed char>(c)), ch));
   chars.push_back(ConstValue::integer(0, ch));
-  return ConstValue::object(types.array(types.qualified(ch, true, false), uint32_t(chars.size())), std::move(chars));
+  // (The type first: an argument moving chars may be evaluated before one reading its size, as
+  // clang-cl evaluates them, right to left. Until 2026-11-05 every literal was a `const char[]`
+  // on Windows, its length 0: a `const char (&)[4]` parameter took none.)
+  const Ty* type = types.array(types.qualified(ch, true, false), uint32_t(chars.size()));
+  return ConstValue::object(type, std::move(chars));
 }
 
 auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth, const ConstPlace* target) -> std::optional<ConstValue>
@@ -3603,7 +3615,8 @@ auto GlobalScope::Impl::constInitializerList(const Ty* u, const std::vector<Cons
   ConstValue items = ConstValue::integer(0, pt);
   if (!converted.empty())
   {
-    ConstValue backing = ConstValue::object(types.array(pt->inner, uint32_t(converted.size())), std::move(converted));
+    const Ty* backingType = types.array(pt->inner, uint32_t(converted.size())); // (before the move: constString's note)
+    ConstValue backing = ConstValue::object(backingType, std::move(converted));
     items = ConstValue::pointer(pt, backing.parts, 0);
   }
   return ConstValue::object(u, {items, *count});
@@ -5183,38 +5196,81 @@ auto GlobalScope::Impl::constMemcpy(const ConstValue& to, const ConstValue& from
   return to;
 }
 
+auto GlobalScope::Impl::constBytePointer(const ConstValue& p) -> std::optional<ConstValue>
+{
+  if (p.isObject() && p.type && types.unqualified(p.type)->kind == TyKind::Array && types.unqualified(p.type)->inner)
+    return ConstValue::pointer(types.pointer(types.unqualified(p.type)->inner), p.parts, 0); // an array given as it is
+  return p.isPointer() || p.isAddress() ? std::optional<ConstValue>(p) : std::nullopt;
+}
+
+auto GlobalScope::Impl::constByteAt(const ConstValue& p, int64_t i, const char* why, int depth) -> std::optional<int>
+{
+  std::optional<ConstValue> x = p.isAddress() ? constAddressMove(p, i, depth) : constPointerArith(P::Plus, p, ConstValue::integer(i, types.intType()));
+  std::optional<ConstValue> c = x ? (x->isAddress() ? constReadTarget(*x, depth + 1) : constDeref(*x)) : std::nullopt;
+  if (!c || c->kind != ConstValue::Kind::Int)
+    return std::nullopt;
+  if (std::optional<int64_t> width = c->type ? constSizeOf(c->type, depth) : std::nullopt; !width || *width != 1)
+  {
+    if (constWhy().empty())
+      constWhy() = std::string("a ") + why + " of elements wider than a byte";
+    return std::nullopt;
+  }
+  return int(uint8_t(c->i));
+}
+
 auto GlobalScope::Impl::constMemcmp(const ConstValue& a, const ConstValue& b, const ConstValue& count, int depth) -> std::optional<ConstValue>
 {
   if (count.kind != ConstValue::Kind::Int || count.i < 0)
     return std::nullopt;
-  auto pointer = [&](const ConstValue& p) -> std::optional<ConstValue> {
-    if (p.isObject() && p.type && types.unqualified(p.type)->kind == TyKind::Array && types.unqualified(p.type)->inner)
-      return ConstValue::pointer(types.pointer(types.unqualified(p.type)->inner), p.parts, 0); // an array given as it is
-    return p.isPointer() || p.isAddress() ? std::optional<ConstValue>(p) : std::nullopt;
-  };
-  std::optional<ConstValue> pa = pointer(a), pb = pointer(b);
+  std::optional<ConstValue> pa = constBytePointer(a), pb = constBytePointer(b);
   if (!pa || !pb)
     return std::nullopt;
   for (int64_t i = 0; i < count.i; ++i)
   {
-    std::optional<ConstValue> x = pa->isAddress() ? constAddressMove(*pa, i, depth) : constPointerArith(P::Plus, *pa, ConstValue::integer(i, types.intType()));
-    std::optional<ConstValue> y = pb->isAddress() ? constAddressMove(*pb, i, depth) : constPointerArith(P::Plus, *pb, ConstValue::integer(i, types.intType()));
-    std::optional<ConstValue> cx = x ? (x->isAddress() ? constReadTarget(*x, depth + 1) : constDeref(*x)) : std::nullopt;
-    std::optional<ConstValue> cy = y ? (y->isAddress() ? constReadTarget(*y, depth + 1) : constDeref(*y)) : std::nullopt;
-    if (!cx || !cy || cx->kind != ConstValue::Kind::Int || cy->kind != ConstValue::Kind::Int)
+    std::optional<int> ux = constByteAt(*pa, i, "memcmp", depth), uy = ux ? constByteAt(*pb, i, "memcmp", depth) : std::nullopt;
+    if (!ux || !uy)
       return std::nullopt;
-    std::optional<int64_t> wx = cx->type ? constSizeOf(cx->type, depth) : std::nullopt, wy = cy->type ? constSizeOf(cy->type, depth) : std::nullopt;
-    if (!wx || !wy || *wx != 1 || *wy != 1)
-    {
-      if (constWhy().empty())
-        constWhy() = "a memcmp of elements wider than a byte";
-      return std::nullopt;
-    }
-    int ux = int(uint8_t(cx->i)), uy = int(uint8_t(cy->i));
-    if (ux != uy)
-      return ConstValue::integer(ux < uy ? -1 : 1, types.intType());
+    if (*ux != *uy)
+      return ConstValue::integer(*ux < *uy ? -1 : 1, types.intType());
   }
   return ConstValue::integer(0, types.intType());
+}
+
+auto GlobalScope::Impl::constMemchr(const ConstValue& p, const ConstValue& byte, const ConstValue& count, int depth) -> std::optional<ConstValue>
+{
+  if (count.kind != ConstValue::Kind::Int || count.i < 0 || byte.kind != ConstValue::Kind::Int)
+    return std::nullopt;
+  std::optional<ConstValue> pa = constBytePointer(p);
+  if (!pa)
+    return std::nullopt;
+  for (int64_t i = 0; i < count.i; ++i)
+  {
+    std::optional<int> u = constByteAt(*pa, i, "memchr", depth);
+    if (!u)
+      return std::nullopt;
+    if (*u == int(uint8_t(byte.i)))
+      return pa->isAddress() ? constAddressMove(*pa, i, depth) : constPointerArith(P::Plus, *pa, ConstValue::integer(i, types.intType()));
+  }
+  return constConverted(ConstValue::integer(0), types.pointer(types.voidType()));
+}
+
+auto GlobalScope::Impl::constStrcmp(const ConstValue& a, const ConstValue& b, int depth) -> std::optional<ConstValue>
+{
+  std::optional<ConstValue> pa = constBytePointer(a), pb = constBytePointer(b);
+  if (!pa || !pb)
+    return std::nullopt;
+  for (int64_t i = 0;; ++i)
+  {
+    if (++constSteps() > 1000000)
+      return std::nullopt;
+    std::optional<int> ux = constByteAt(*pa, i, "strcmp", depth), uy = ux ? constByteAt(*pb, i, "strcmp", depth) : std::nullopt;
+    if (!ux || !uy)
+      return std::nullopt; // (past an array's end: no terminating zero)
+    if (*ux != *uy)
+      return ConstValue::integer(*ux < *uy ? -1 : 1, types.intType());
+    if (*ux == 0)
+      return ConstValue::integer(0, types.intType());
+  }
 }
 
 auto GlobalScope::Impl::constMemset(const ConstValue& to, const ConstValue& byte, const ConstValue& count, int depth) -> std::optional<ConstValue>
@@ -6854,7 +6910,8 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
                      : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
                                                                                         : nullptr;
-      if (have && (have == want || want->kind == TyKind::Void))
+      // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
+      if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
         basePart = std::vector<size_t>{};
       else if (have && have->kind == TyKind::Class && want->kind == TyKind::Class)
         basePart = constBasePath(have, want, depth + 1);
@@ -6886,7 +6943,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       const ConstPlace& at = *(*places)[i];
       ConstBinding alias{p->name, ConstValue::unset(type)};
       alias.type = basePart->empty() ? (*places)[i]->type : types.unqualified(type->inner);
-      alias.writable = !(type->inner && type->inner->isConst) && !at.readOnly;
+      alias.writable = !isConstObject(type->inner) && !at.readOnly;
       alias.aliasEnv = at.env;
       alias.aliasIndex = at.index;
       alias.aliasPath = at.path;

@@ -2532,6 +2532,10 @@ by its class's operator, not as pointers), and a call, a member function's too, 
 parameters to their defaults (spec language/consteval_string_view_and_default_arguments). A
 constant that calls a function without a body says so: "a call to puts, a C function, which has
 no body to run at compile time" (spec language/consteval_reason_names_a_call_it_cannot_run).
+String::find runs too: `memchr` and `strcmp` over chars as `memcmp` (2026-11-05), and a string
+literal or an array binds a reference to an array (`const char (&)[4]`, `const int (&)[3]` given an
+int[3], a forwarding `T&&`), so `Map<int, String>::emplace(2, "two")` is a constant (spec
+language/consteval_string_literal_binds_array_reference).
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`

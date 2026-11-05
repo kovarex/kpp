@@ -1,0 +1,46 @@
+// spec: at compile time a string literal binds a reference to an array of chars (`const char (&s)[4]`) and a forwarding reference (`T&&`, T deduced as `const char (&)[N]`), and an int[3] binds a `const int (&)[3]`, as at run time: the function reads it, takes its size and makes a String of it, so `Map<int, String>::emplace(2, "two")` (its Pair made by `forward<Args>(args)...` in the node) is a constant; String::find (memchr) and strcmp run at compile time too
+// found by thread D (2026-11-05): each was no constant, without a reason: the interpreter read a vector's size after moving it into the value it made (clang-cl evaluates a call's arguments right to left), so every string literal was a `const char[]` of length 0 in a kppc built for Windows (an InitializerList's backing array too), and an array's const being its elements', an int[3] was no `const int[3]` for the reference
+template<class T> constexpr long long forwarded(T&& s)
+{
+  String x(forward<T>(s));
+  return (long long)x.size();
+}
+template<class T> constexpr long long bound(T&& s) { return (long long)sizeof(s) * 10 + (s[1] - 'a'); }
+constexpr long long byArray(const char (&s)[4])
+{
+  const char* p = s;
+  return (long long)(p[2] - 'a');
+}
+constexpr long long elements(const int (&a)[3]) { return a[0] * 100 + a[1] * 10 + a[2]; }
+constexpr long long arrayLvalue()
+{
+  int a[3] = {1, 2, 3};
+  return elements(a);
+}
+constexpr long long emplaced()
+{
+  Map<int, String> m;
+  m.emplace(2, "two");
+  m.emplace(1, "one");
+  m.emplace(2, "again");
+  return (long long)m.size() * 10 + (long long)m[2].size();
+}
+constexpr long long found()
+{
+  String s = "hello world";
+  return (long long)s.find('w') * 100 + (long long)s.find("lo") * 10 + (s.find('z') == String::npos ? 1 : 0);
+}
+constexpr long long compared() { return (strcmp("abc", "abd") < 0 ? 100 : 0) + (strcmp("b", "a") > 0 ? 10 : 0) + (strcmp("same", "same") == 0 ? 1 : 0); }
+int main()
+{
+  constexpr long long a = forwarded("three");
+  constexpr long long b = bound("abc");
+  constexpr long long c = byArray("abc");
+  constexpr long long d = arrayLvalue();
+  constexpr long long e = emplaced();
+  constexpr long long f = found();
+  constexpr long long g = compared();
+  println(a, " ", forwarded("three"), " ", b, " ", bound("abc"), " ", c, " ", byArray("abc"), " ", d, " ", arrayLvalue());
+  println(e, " ", emplaced(), " ", f, " ", found(), " ", g, " ", compared());
+  return 0;
+}
