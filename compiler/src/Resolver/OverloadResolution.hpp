@@ -73,11 +73,6 @@
   // an rvalue reference counts (what an rvalue reference binds), not one that gives an lvalue.
   bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0, bool allowExplicit = false, bool rvalues = false);
 
-  // Whether class a, or a base of it, has a conversion operator to a type that is no class, what the code generator
-  // takes for a class where a scalar is wanted (its conversionOperator): any such non-explicit one, explicit ones too
-  // with allowExplicit (a bool wanted), and an operator template, whatever it gives. True where this cannot tell (a
-  // class not defined, bases or a result not known): the code generator decides those.
-  bool hasScalarConversion(const Ty* a, bool allowExplicit, int baseDepth = 0);
 
   // Whether data member m of a class template, a `when` member on its parameters (design.md 19), exists in the
   // instance whose arguments subst binds: its condition folded there, in the class's scope, as the layout folds it

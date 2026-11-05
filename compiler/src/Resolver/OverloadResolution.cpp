@@ -878,35 +878,6 @@ auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int dep
   return false;
 }
 
-auto GlobalScope::Impl::hasScalarConversion(const Ty* a, bool allowExplicit, int baseDepth) -> bool
-{
-  if (baseDepth > 8)
-    return true;
-  Scope* s = classScopeOf(a);
-  ClassDecl* def = classDefinition(a);
-  if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl || !def)
-    return true;
-  Subst subst = substFor(a);
-  for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
-  {
-    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
-      continue;
-    if (!m->templateParams.empty())
-      return true;
-    const Ty* ft = declaredTypeOf(m, &subst, 0);
-    const Ty* result = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
-    if (!result || !result->isKnown() || types.isDependent(result) || result->kind != TyKind::Class)
-      return true;
-  }
-  std::vector<const Ty*> bases;
-  if (!directBases(a, def, bases))
-    return true;
-  for (const Ty* b : bases)
-    if (b->kind != TyKind::Class || hasScalarConversion(b, allowExplicit, baseDepth + 1))
-      return true;
-  return false;
-}
-
 auto GlobalScope::Impl::whenMemberHolds(Decl* m, const Subst& subst, int depth) -> std::optional<bool>
 {
   Decl* c = m ? m->parent : nullptr;

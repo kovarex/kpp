@@ -447,7 +447,7 @@
     // variable's initializer (`takeInt(item)`, `Item* raw = item;` with a UniquePtr<Item>): C++ converts it only through
     // a conversion operator of the class. Without any it can take the checker's error, where the code generator stopped
     // at it as at a construct not supported yet. What the code generator takes is never one: a non-explicit conversion
-    // operator to a type that is no class, an explicit one for a bool (hasScalarConversion), a lambda without captures as
+    // operator to a type that is no class, an explicit one for a bool (chooseConversion), a lambda without captures as
     // a pointer to function. Only in code walked where it is written, not in a template's instance: there the walk's
     // candidate need not be the code generator's callee (a CRTP base's `triggered(x)`, which the derived class's
     // overload answers), and the code generator reports what it cannot convert, as before.
