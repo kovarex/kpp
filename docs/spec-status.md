@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1147 pass, 3 pending, 0 failing, 0 fixed** (1150 snippets, 210.7 s).
+**1150 pass, 3 pending, 0 failing, 0 fixed** (1153 snippets, 203.9 s).
 
 ## Language: statements, expressions, declarations
 
@@ -33,6 +33,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/assign_through_returned_reference.kpp` | assigning through a reference returned from a function | pass |  |  |
 | `language/attributes_noexcept.kpp` | noexcept, [[nodiscard]], [[maybe_unused]] | pass | 802 noexcept, 215 [[nodiscard]], 46 [[maybe_unused]], 68 alignas/alignof |  |
 | `language/auto_global_from_later_global.kpp` | a `const auto` global whose initializer names `const auto` globals declared after it is typed from theirs, in any order (symbols are order-independent): `const auto FULL = (CONTROL | INTEGER);` before CONTROL and INTEGER | pass | StackWalker's `CONTEXT_FULL`, which the C import writes as `const auto CONTEXT_FULL = (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT);` among the header's macro constants in name order, so before CONTEXT_INTEGER |  |
+| `language/auto_lambda_reads_constant_below_it.kpp` | a namespace-scope `auto` lambda called above its declaration reads a namespace-scope constant declared below it: the walk that types the lambda's initializer for the use above (constInitializerOf) sees the constant as the file's own walk does (`17 26`) | pass |  |  |
 | `language/auto_lambda_variables_used_above_them.kpp` | namespace-scope `auto` variables initialized by lambdas are usable above their declarations, by free and member functions alike: a lambda with a deduced return type (`twice`) and a generic one (`add`) called before the declarations are reached (`10 3 5`) | pass |  |  |
 | `language/auto_pointer_from_array.kpp` | `auto* p = object.array;` deduces a pointer to the elements of an array member (the array decays, as for `float* p = ...`), and writes through it reach the member | pass | SDLWindow::presentEngineMainFramebuffer's `auto* m = uniforms.customColorTransformationMatrix; m[0] = m[5] = m[10] = m[15] = 1;` (a float[16] member) |  |
 | `language/auto_variable_used_above_its_declaration.kpp` | a namespace-scope variable declared `auto` is usable above its declaration, as every other declaration is (order-independent symbols): a member function's body written before `auto migrate = [](auto& value, auto from, auto to) { ... };` calls it, and the lambda's type is known there (`7 5`) | pass | EnemyExpansionSettings.cpp's `auto migrateValue = [](auto& value, auto oldDefault, auto newDefault) {...};`, which migrateFromOldDefaults and migrateFrom_2_1_Defaults call; the converter keeps those two bodies outside their class, below the variable, until this passes |  |
@@ -1024,6 +1025,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/for_constexpr_types.kpp` | for constexpr over a list of types | pass |  |  |
 | `kpp/for_constexpr_values.kpp` | for constexpr over a list of constants | pass |  |  |
 | `kpp/implicit_constructors.kpp` | `implicit` constructors convert, others do not (kpp's default is explicit) | pass |  |  |
+| `kpp/library_auto_lambda_used_above.kpp` | in a scoped library (design.md 16), a namespace-scope `auto` lambda is called above its declaration by the library's own member function and by the program through the library's name: the library's top level is the scope the lambda's initializer is typed in for the use above, as its file's walk types it (`12 9`) | pass |  |  |
 | `kpp/library_constants_and_functions_of_c_macros.kpp` | a scoped library's interface converted from C macros (design.md 16, "As converted"): its number macros are constants of its scope with the macro's value and type (zstd::ZSTD_CONTENTSIZE_UNKNOWN is an unsigned long long, ZSTD_MAGICNUMBER an unsigned int, ZSTD_STRATEGY_MAX the enumeration's), and a function-like macro of values a function whose arithmetic is the macro's on the argument's type (an int argument gives an int, a size_t a size_t, a negative one the macro's value) | pass | zstd's interface (zstd.h), which the game writes zstd::ZSTD_COMPRESSBOUND, zstd::ZSTD_CONTENTSIZE_ERROR; programs/factorio/harness/zstd.c checks every one against the C build |  |
 | `kpp/library_declares_a_name_twice_is_error.kpp` | inside one scoped library two declarations of one name in two of its files are the global-clash error (design.md 16), as two of the program's are | pass | none yet |  |
 | `kpp/library_name_taken_by_the_program_is_error.kpp` | a scoped library's name is the program's qualifier for it (design.md 16): a namespace of the program or a global of that name is an error, never a silent merge with the library's names | pass | none yet |  |
@@ -1043,6 +1045,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/reflection_members.kpp` | members(T) with m.name, m.type and object.[m] | pass |  |  |
 | `kpp/requires_file.kpp` | `requires <condition>;` at the top of a file (compiled only when the config says so) | pass |  |  |
 | `kpp/run_command.kpp` | `kppc --run file.kpp args...` builds the program, runs it with the arguments and returns its exit code | pass |  |  |
+| `kpp/server_auto_lambda_used_above_edited.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a namespace-scope `auto` lambda called above its declaration by a member function, its body edited, then its parameter made generic: the use above calls the edited lambda each time | pass |  |  |
 | `kpp/server_removed_function_takes_its_error.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a function with an error added and then removed takes its error with it (E's repro, 2026-11-04: the error stayed until the server ended); a body fixed in place too | pass |  |  |
 | `kpp/test_build_error.kpp` | kppc --test runs nothing when the build printed an error, whatever its exit code (a test the parser could not read would silently not run) | pass |  |  |
 | `kpp/test_check_values.kpp` | a failing check prints its location, its text and a comparison's operand values, and the test goes on | pass |  |  |

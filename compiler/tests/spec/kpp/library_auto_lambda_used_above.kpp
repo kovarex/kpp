@@ -1,0 +1,8 @@
+// spec: in a scoped library (design.md 16), a namespace-scope `auto` lambda is called above its declaration by the library's own member function and by the program through the library's name: the library's top level is the scope the lambda's initializer is typed in for the use above, as its file's walk types it (`12 9`)
+int main()
+{
+  shapes::Square s;
+  s.side = 3;
+  println(s.area() + 3, " ", shapes::sq(3));
+  return 0;
+}

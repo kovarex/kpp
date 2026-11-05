@@ -1,0 +1,14 @@
+// spec: a namespace-scope `auto` lambda called above its declaration reads a namespace-scope constant declared below it: the walk that types the lambda's initializer for the use above (constInitializerOf) sees the constant as the file's own walk does (`17 26`)
+struct Scaler
+{
+  int scaled(int x) { return scale(x); }
+};
+auto scale = [](auto x) { return x * factor + offset; };
+const int factor = 3;
+constexpr int offset = 2;
+int main()
+{
+  Scaler s;
+  println(s.scaled(5), " ", scale(8));
+  return 0;
+}

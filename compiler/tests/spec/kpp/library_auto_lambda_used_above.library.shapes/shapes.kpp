@@ -1,0 +1,6 @@
+struct Square
+{
+  int side = 0;
+  int area() { return sq(side); }
+};
+auto sq = [](auto x) { return x * x; };

@@ -42,8 +42,31 @@ for ($i = 0; $i -lt 1000; $i++) { [void]$lambdas.AppendLine("  t += use$i();") }
 [void]$lambdas.AppendLine("  println(t);`n  return 0;`n}")
 $programs += 'returned lambdas (1,000, written here)'
 $sources += Join-Path $work 'returned_lambdas.kpp'
-$copiesOf = @($Copies) * ($programs.Count - 1) + [Math]::Max(1, [int]($Copies / 2))
 [IO.File]::WriteAllText($sources[-1], $lambdas.ToString())
+# Namespace-scope `auto` lambdas called above their declarations by member functions, whose bodies are
+# typed on other threads than the file's walk: each such use types the variable's initializer by a walk
+# of its own (constInitializerOf) that shares the lambda's closure with the file's walk of it
+# (Instantiation.cpp, computeDeclaredType). 500 generic and 500 plain ones, reading a constant below them.
+$above = New-Object System.Text.StringBuilder
+for ($i = 0; $i -lt 500; $i++)
+{
+  [void]$above.AppendLine("struct User$i`n{`n  int v = 1;`n  void run() { v = g$i(v) + h$i(v, 2); }`n};")
+  [void]$above.AppendLine("int use$i() { User$i u; u.run(); return u.v + g$i(3); }")
+}
+for ($i = 0; $i -lt 500; $i++)
+{
+  [void]$above.AppendLine("auto g$i = [](auto x) { return x * 2 + base; };")
+  [void]$above.AppendLine("auto h$i = [](int a, int b) { return a + b + $i; };")
+}
+[void]$above.AppendLine("const int base = 7;")
+[void]$above.AppendLine("int main()`n{`n  long long t = 0;")
+for ($i = 0; $i -lt 500; $i++) { [void]$above.AppendLine("  t += use$i();") }
+[void]$above.AppendLine("  println(t);`n  return 0;`n}")
+$programs += 'lambdas used above their declarations (1,000, written here)'
+$sources += Join-Path $work 'lambdas_above.kpp'
+[IO.File]::WriteAllText($sources[-1], $above.ToString())
+# The two written here are built half as many times as the others.
+$copiesOf = @($Copies) * ($programs.Count - 2) + @([Math]::Max(1, [int]($Copies / 2))) * 2
 
 # kppc started on its own: the process's WaitForExit and HasExited are kppc's alone. (Start-Process -Wait
 # waits for every process it leaves too, and a build that links leaves link.exe's vctip.exe, which
@@ -134,7 +157,7 @@ $genericSource = Join-Path $work 'generic_lambdas.kpp'
 [IO.File]::WriteAllText($genericSource, $generic.ToString())
 # (The returned lambdas too, with modules: a caller emits the operator on demand when it needs it before
 # the writer has, and the writer's own emission puts it where the caller would.)
-foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sources[-1])))
+foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sources[-2])))
 {
   $moduleTexts = @{}
   foreach ($run in 'j1', 'a', 'b')
@@ -155,4 +178,4 @@ foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sourc
   }
 }
 if ($failed -gt 0) { exit 1 }
-"ok   concurrency: $($programs.Count) programs built $Copies times each (the generated one $($copiesOf[-1])) at -j 32 under load, the IR always the -j 1 build's; 3,000 lambdas' and 1,000 returned lambdas' modules the same at -j 1 and -j 32"
+"ok   concurrency: $($programs.Count) programs built $Copies times each (the two generated ones $($copiesOf[-1])) at -j 32 under load, the IR always the -j 1 build's; 3,000 lambdas' and 1,000 returned lambdas' modules the same at -j 1 and -j 32"

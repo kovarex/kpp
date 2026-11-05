@@ -1,0 +1,40 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a namespace-scope `auto` lambda called above its declaration by a member function, its body edited, then its parameter made generic: the use above calls the edited lambda each time
+//--- step: the program
+struct Runner
+{
+  int run() { return step(4); }
+};
+auto step = [](int x) { return x + 1; };
+int main()
+{
+  Runner r;
+  println(r.run());
+  return 0;
+}
+// expect: 5
+//--- step: the lambda's body edited
+struct Runner
+{
+  int run() { return step(4); }
+};
+auto step = [](int x) { return x * 10; };
+int main()
+{
+  Runner r;
+  println(r.run());
+  return 0;
+}
+// expect: 40
+//--- step: the lambda made generic
+struct Runner
+{
+  int run() { return step(4); }
+};
+auto step = [](auto x) { return x * 100; };
+int main()
+{
+  Runner r;
+  println(r.run());
+  return 0;
+}
+// expect: 400
