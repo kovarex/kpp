@@ -1,0 +1,25 @@
+// spec: at compile time a class object as a condition converts by the conversion operator the compiled program calls: its operator bool (an explicit one too) before an operator to another scalar, whatever their order
+// factorio: the interpreter took the first constexpr conversion operator to a scalar in declaration order, so a constant condition could differ from the same condition at run time (design.md 24: one rule for which conversion operator a conversion runs, chooseConversion)
+struct Level
+{
+  int value = 0;
+  constexpr operator int() const { return value; }
+  constexpr explicit operator bool() const { return true; }
+};
+constexpr bool truth()
+{
+  Level level;
+  if (level)
+    return true;
+  return false;
+}
+static_assert(truth());
+int main()
+{
+  Level level;
+  bool atRunTime = false;
+  if (level)
+    atRunTime = true;
+  println(truth(), " ", atRunTime);
+  return 0;
+}

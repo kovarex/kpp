@@ -1781,40 +1781,24 @@ auto GlobalScope::Impl::constTruth(const ConstValue& v, int depth) -> std::optio
   if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(v.type)->kind != TyKind::Class || depth > 64)
     return std::nullopt;
   const Ty* t = types.unqualified(v.type);
-  for (const Ty* cls = t; cls;)
+  // The conversion operator the one rule chooses for a condition (design.md 24, chooseConversion), as
+  // codegen calls it: one to bool first (an explicit one too), else one to another scalar.
+  const Ty* cls = nullptr;
+  Subst subst;
+  auto* op = chooseConversion(t, types.boolType(), GlobalScope::ConversionKind::ToType, false, &cls, &subst);
+  if (!op || !cls || !constDefinition(op))
+    return std::nullopt;
+  std::optional<ConstValue> self = v;
+  if (types.unqualified(cls) != t)
   {
-    Scope* s = classScopeOf(cls);
-    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+    std::optional<std::vector<size_t>> path = constBasePath(t, cls, depth);
+    std::optional<ConstValue> part = path ? constPart(v, *path) : std::nullopt;
+    if (!part)
       return std::nullopt;
-    Subst subst = substFor(cls);
-    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
-    {
-      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !constDefinition(static_cast<FunctionDecl*>(m)))
-        continue;
-      const Ty* ft = declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0);
-      const Ty* to = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
-      if (!to || !(to->isArithmetic() || to->kind == TyKind::Enum))
-        continue;
-      std::optional<ConstValue> self = v;
-      std::vector<size_t> base;
-      if (cls != t)
-      {
-        std::optional<std::vector<size_t>> path = constBasePath(t, cls, depth);
-        std::optional<ConstValue> part = path ? constPart(v, *path) : std::nullopt;
-        if (!part)
-          return std::nullopt;
-        self = part;
-      }
-      std::optional<ConstValue> r = constCallOn(static_cast<FunctionDecl*>(m), subst, {}, &self, depth + 1);
-      return r && r->isScalar() ? std::optional<bool>(r->truthy()) : std::nullopt;
-    }
-    ClassDecl* def = classDefinition(cls);
-    std::vector<const Ty*> bases;
-    if (!def || !directBases(cls, def, bases) || bases.size() != 1)
-      return std::nullopt;
-    cls = bases[0];
+    self = part;
   }
-  return std::nullopt;
+  std::optional<ConstValue> r = constCallOn(op, subst, {}, &self, depth + 1);
+  return r && r->isScalar() ? std::optional<bool>(r->truthy()) : std::nullopt;
 }
 
 auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth) -> FunctionDecl*
