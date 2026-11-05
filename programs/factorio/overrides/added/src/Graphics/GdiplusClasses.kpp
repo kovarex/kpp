@@ -1,3 +1,4 @@
+requires config::platform == Platform::Windows; // (Windows' alone: the game's Windows code uses it)
 // GDI+ for kpp: the part of GDI+'s C++ interface (gdiplus.h) the game uses, written over GDI+'s flat
 // interface, the C functions gdiplus.dll exports (gdiplus.lib is on link.cmd's line). gdiplus.h is C++
 // (classes whose inline methods call that flat interface), so the C import cannot take it; these are

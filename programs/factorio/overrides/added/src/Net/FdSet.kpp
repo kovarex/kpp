@@ -1,3 +1,4 @@
+requires config::platform == Platform::Windows; // (Windows' alone: the game's Windows code uses it)
 // winsock2.h's FD_SET, a statement macro, as a function: TCPSocket and UDPSocket add their sockets to
 // the sets they select on, which the converter writes `kppFdSet(fd, set)`. As the macro does: a
 // socket already in the set is not added again, and none is added to a full set. (FD_ZERO is an

@@ -1244,6 +1244,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         if (entry.is_regular_file(ec))
         {
           std::string addedKey = entry.path().lexically_relative(added).generic_string();
+          // (only for a library this conversion converts: Linux's leaves StackWalker out)
+          std::string addedRoot = addedKey.substr(0, addedKey.find('/'));
+          if (std::none_of(roots.begin(), roots.end(), [&](const std::filesystem::path& r) { return r.filename().generic_string() == addedRoot; }))
+            continue;
           std::filesystem::path rel = outputKey(addedKey);
           std::filesystem::path target = outDir / rel;
           std::string addedText;

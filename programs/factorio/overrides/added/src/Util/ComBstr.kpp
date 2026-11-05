@@ -1,3 +1,4 @@
+requires config::platform == Platform::Windows; // (Windows' alone: the game's Windows code uses it)
 // comutil.h's _bstr_t, which the game has through comdef.h: a BSTR the object owns, made from a
 // wide or a narrow string (the narrow one converted with the ANSI code page, as _bstr_t converts it),
 // freed with the object, and passed to COM methods as the BSTR it holds. SystemUtil's WMI query

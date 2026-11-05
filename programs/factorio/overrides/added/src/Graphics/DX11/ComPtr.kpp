@@ -1,3 +1,4 @@
+requires config::platform == Platform::Windows; // (Windows' alone: the game's Windows code uses it)
 // ATL's CComPtr<T> (atlbase.h), which the DirectX backend keeps its COM objects in: a pointer to a
 // COM interface that AddRefs what it takes or copies and Releases what it lets go. As ATL's:
 // operator& gives the address of the (null) pointer for a function that writes one, and the
