@@ -78,6 +78,9 @@ Add 'check errors' (PsCheck 'tests\checkerrors.ps1') -seconds 12
 # KPP_OBJECT_CACHE: a second output directory takes the modules' objects from it, an edit compiles
 # what changed, builds at once share it (tests\objectcache.ps1).
 Add 'object cache' (PsCheck 'tests\objectcache.ps1') -seconds 6
+# An MSVC link runs link.exe directly with the clang driver's translation, kept while its key holds
+# (tests\directlink.ps1).
+Add 'direct link' (PsCheck 'tests\directlink.ps1') -seconds 10
 Add 'checkout' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\programs\factorio\tests\checkout.ps1') -seconds 8
 # Part 2.
 Add 'determinism' ((PsCheck 'tests\determinism.ps1') + @(if ($Full) { '-Full' })) -part 2 -seconds 144 -note 'FAIL determinism: the output depends on the thread count'

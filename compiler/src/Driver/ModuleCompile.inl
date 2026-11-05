@@ -153,6 +153,102 @@
     }
   }
 
+  // An MSVC link that is no LTO's runs link.exe directly, the clang driver's translation of the link's
+  // response file kept beside the executable: the driver, which finds MSVC's and the Windows SDK's
+  // libraries before it runs link.exe, took 141 to 519 ms by itself (`clang -###` on the game's 256
+  // objects, a loaded machine, 2026-11-05), every edit's link. EXE.link.direct holds the key, then
+  // link.exe's command; EXE.link.exe.rsp its arguments. The key: the response file's text, clang's
+  // path, size and time, and the environment the driver reads for the toolchain (a VsDevCmd's
+  // variables, PATH). A key that changed asks the driver again (`clang -###`, one run, its command
+  // kept); "" when its answer is not one link.exe command this can read (an argument with a quote or
+  // ending in a backslash), and the link goes through clang.
+  std::string directLinkCommand(const std::string& clang, const std::string& responsePath, const std::string& response, const std::string& exe)
+  {
+    Sha256 key;
+    key.add("kpp direct link 1\n");
+    key.add(objectcache::stamp(clang));
+    for (const char* name : {"PATH", "LIB", "LIBPATH", "INCLUDE", "VCINSTALLDIR", "VCToolsInstallDir", "VSINSTALLDIR", "VisualStudioVersion",
+                             "WindowsSdkDir", "WindowsSDKVersion", "UniversalCRTSdkDir", "UCRTVersion", "Platform"})
+    {
+      const char* value = getenv(name);
+      key.add(std::string("\n") + name + "=" + (value ? value : ""));
+    }
+    key.add("\n");
+    key.add(response);
+    std::string keyText = key.hex();
+    std::string cachePath = exe + ".link.direct";
+    std::string cached = readWholeFile(cachePath);
+    if (size_t end = cached.find('\n'); end != std::string::npos && cached.compare(0, end, keyText) == 0)
+      return cached.substr(end + 1);
+    // The driver's answer: its one job, link.exe's arguments each quoted, a backslash or a quote in
+    // one escaped with a backslash.
+    std::string said;
+    if (FILE* pipe = _popen(("\"\"" + clang + "\" -### @\"" + responsePath + "\" 2>&1\"").c_str(), "r"))
+    {
+      char chunk[65536];
+      size_t n;
+      while ((n = fread(chunk, 1, sizeof chunk, pipe)) > 0)
+        said.append(chunk, n);
+      if (_pclose(pipe) != 0)
+        return "";
+    }
+    std::vector<std::string> args;
+    for (size_t at = 0; at < said.size();)
+    {
+      size_t end = said.find('\n', at);
+      std::string_view line(said.data() + at, (end == std::string::npos ? said.size() : end) - at);
+      at = end == std::string::npos ? said.size() : end + 1;
+      if (line.size() < 2 || line[0] != ' ' || line[1] != '"')
+        continue;
+      if (!args.empty())
+        return ""; // (two jobs: not one link)
+      for (size_t i = 1; i < line.size();)
+      {
+        if (line[i] == ' ' || line[i] == '\r')
+        {
+          ++i;
+          continue;
+        }
+        if (line[i] != '"')
+          return "";
+        std::string arg;
+        for (++i; i < line.size() && line[i] != '"'; ++i)
+          arg += line[i] == '\\' && i + 1 < line.size() ? line[++i] : line[i];
+        if (i >= line.size())
+          return "";
+        ++i;
+        args.push_back(std::move(arg));
+      }
+    }
+    if (args.size() < 2)
+      return "";
+    std::string tool = std::filesystem::path(args[0]).filename().string();
+    for (char& c : tool)
+      c = char(tolower((unsigned char)c));
+    if (tool != "link.exe")
+      return "";
+    std::string arguments;
+    for (size_t i = 1; i < args.size(); ++i)
+    {
+      if (args[i].find('"') != std::string::npos || (!args[i].empty() && args[i].back() == '\\'))
+        return "";
+      arguments += "\"" + args[i] + "\"\n";
+    }
+    std::string linkResponse = exe + ".link.exe.rsp";
+    std::string command = "\"\"" + args[0] + "\" @\"" + linkResponse + "\"\"";
+    auto write = [](const std::string& path, const std::string& text) // (one that fails: the link goes through clang)
+    {
+      FILE* out = fopen(path.c_str(), "wb");
+      if (!out)
+        return false;
+      bool written = fwrite(text.data(), 1, text.size(), out) == text.size();
+      return fclose(out) == 0 && written;
+    };
+    if (!write(linkResponse, arguments) || !write(cachePath, keyText + "\n" + command))
+      return "";
+    return command;
+  }
+
   void runCodegen(Build& build)
   {
     std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
@@ -643,9 +739,14 @@
     std::string responsePath = options.exe + ".link.rsp";
     if (!writeFile(responsePath, response))
       return;
-    std::string link = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
+    // (an MSVC link that is no LTO's: link.exe directly, directLinkCommand)
+    std::string linkCommand = options.target.msvc() && !thinLTO && !fullLTO && !bundledToolchain()
+                                ? directLinkCommand(clang, responsePath, response, options.exe) : std::string();
+    if (linkCommand.empty())
+      linkCommand = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
+    std::string link = linkCommand;
     if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
-      link = "\"\"" + clang + "\" @\"" + responsePath + "\" > \"" + options.exe + ".link.txt\" 2>&1\"";
+      link = linkCommand.substr(0, linkCommand.size() - 1) + " > \"" + options.exe + ".link.txt\" 2>&1\"";
     if (int shared = sharedHits.load())
       during = ", " + std::to_string(shared) + " of them from KPP_OBJECT_CACHE" + during;
     // One build in 16 trims the shared cache to the most recently used 768 MB once it is past 1 GB.
