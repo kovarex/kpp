@@ -95,6 +95,11 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       const Ty* t = global.typeOfAstIn(static_cast<Type*>(arg), currentFunction, original);
       if (!t || !t->isKnown())
         unsupported(f, "an element of types<...> whose type is unknown");
+      if (arg->kind == NodeKind::PackType && t->kind == TyKind::Pack)
+      {
+        elements.insert(elements.end(), t->args.begin(), t->args.end()); // `types<Ts...>`: each type of the pack in turn
+        continue;
+      }
       elements.push_back(t);
     }
   }

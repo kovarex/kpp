@@ -1,0 +1,40 @@
+// spec: a `for constexpr` over the types of a template parameter pack (`types<Ts...>`, the pack among other types too) runs its body once per type of the pack, typed for it (show picks its overload for each), in the function and in a lambda written in it
+// found by thread D (2026-11-05), beside the lambda pack fix: the pack was one element, all its types at once: a body that names no overload ran once, silently (countTypes returned 1), and the calls of show were "a call that did not resolve"
+struct A { int v; };
+struct B { int v; };
+inline void show(int x) { println(x); }
+inline void show(const A& a) { println("A", a.v); }
+inline void show(const B& b) { println("B", b.v); }
+
+template<typename... Ts>
+void eachType()
+{
+  for constexpr (typename E : types<Ts...>)
+    show(E{5});
+  for constexpr (typename E : types<A, Ts..., B>)
+    show(E{6});
+}
+
+template<typename... Ts>
+int countTypes()
+{
+  int n = 0;
+  for constexpr (typename E : types<Ts...>)
+    n += 1;
+  return n;
+}
+
+template<typename... Ts>
+void eachTypeInLambda()
+{
+  auto g = [&]() { for constexpr (typename E : types<Ts...>) show(E{7}); };
+  g();
+}
+
+int main()
+{
+  eachType<B, int, A>();
+  eachTypeInLambda<int, A>();
+  println(countTypes<char, int, double>());
+  return 0;
+}
