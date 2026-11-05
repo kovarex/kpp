@@ -1,0 +1,27 @@
+// spec: a conversion to an enumeration declared without an underlying type of a value outside its range of values (the smallest bit field's that holds its enumerators, [dcl.enum]/8) is undefined ([expr.static.cast]/10), so a constant the program needs that does one is a compile error with its reason, as clang has it; an enumeration with an underlying type (enum class, `: unsigned char`) takes any value of it, and an empty one holds 0 and 1
+// error: consteval_enum_value_out_of_range_is_error.kpp:14: error: the constexpr variable two is no constant: a value of 2 out of its enumeration's range of values [0, 1]
+// error: consteval_enum_value_out_of_range_is_error.kpp:15: error: the constexpr variable eight is no constant: a value of 8 out of its enumeration's range of values [-8, 7]
+// error: consteval_enum_value_out_of_range_is_error.kpp:16: error: the constexpr variable below is no constant: a value of -9 out of its enumeration's range of values [-8, 7]
+// error: consteval_enum_value_out_of_range_is_error.kpp:17: error: the constexpr variable flags is no constant: a value of 8 out of its enumeration's range of values [0, 7]
+// error: consteval_enum_value_out_of_range_is_error.kpp:18: error: static assertion whose condition is no constant: a value of 2 out of its enumeration's range of values [0, 1]
+enum Duo { First, Second };
+enum Signed { Low = -3, High = 5 };
+enum Flags { One = 1, Five = One | 4 };
+enum class Scoped { Only };
+enum Small : unsigned char { Zero };
+enum Empty {};
+constexpr Duo one = (Duo)1;
+constexpr Duo two = (Duo)2;
+constexpr Signed eight = (Signed)8;
+constexpr Signed below = static_cast<Signed>(-9);
+constexpr Flags flags = (Flags)8;
+static_assert((Empty)2 != (Empty)0);
+constexpr Signed lowest = (Signed)-8;
+constexpr Flags seven = (Flags)7;
+constexpr Scoped scoped = (Scoped)300;
+constexpr Small small = (Small)300;
+constexpr Empty emptyOne = (Empty)1;
+int main()
+{
+  return 0;
+}

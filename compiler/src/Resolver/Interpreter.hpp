@@ -36,6 +36,12 @@
   std::mutex underlyingMutex;
   std::unordered_map<const Ty*, const Ty*> underlyingTypes;
   const Ty* declaredUnderlying(const Ty* t);
+  // ConstArith::enumRange: the range of values of an enumeration declared without an underlying
+  // type, from its enumerators' values; nullopt for one declared with, an instance's (a class
+  // template's member enum), or one whose enumerators are being evaluated or do not evaluate.
+  std::mutex enumRangeMutex;
+  std::unordered_map<const Ty*, std::optional<std::pair<int64_t, int64_t>>> enumRanges;
+  std::optional<std::pair<int64_t, int64_t>> enumValueRange(const Ty* t);
 
   // depth: nesting of the evaluation, calls included (`ratioGcd(b, a % b)` recursing a few times
   // inside a static member's initializer inside a requires clause).

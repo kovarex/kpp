@@ -1,0 +1,19 @@
+// spec: a floating division by zero or a floating result that is a NaN, in a constant the program needs, is a compile error with its reason, as clang has it (C++ [expr.pre]/4: a result not mathematically defined is undefined behaviour, and undefined behaviour is no constant): 1.0 / 0.0, 0.0 / 0.0, a float's, in a consteval call and in static_assert, and infinity minus infinity; an infinity from an overflow is a constant, as clang's
+// error: consteval_floating_division_by_zero_is_error.kpp:8: error: the constexpr variable inverse is no constant: a division by zero
+// error: consteval_floating_division_by_zero_is_error.kpp:9: error: the constexpr variable undefined is no constant: a division by zero
+// error: consteval_floating_division_by_zero_is_error.kpp:10: error: the constexpr variable single is no constant: a division by zero
+// error: consteval_floating_division_by_zero_is_error.kpp:12: error: the call of consteval reciprocal is no constant: a division by zero
+// error: consteval_floating_division_by_zero_is_error.kpp:13: error: static assertion whose condition is no constant: a division by zero
+// error: consteval_floating_division_by_zero_is_error.kpp:15: error: the constexpr variable none is no constant: a floating result that is a NaN (subtraction)
+constexpr double inverse = 1.0 / 0.0;
+constexpr double undefined = 0.0 / 0.0;
+constexpr float single = 1.0f / 0.0f;
+consteval double reciprocal(double d) { return 1.0 / d; }
+constexpr double viaCall = reciprocal(0.0);
+static_assert(1.0 / 0.0 > 0.0);
+constexpr double huge = 1e308 * 10.0;
+constexpr double none = huge - huge;
+int main()
+{
+  return 0;
+}

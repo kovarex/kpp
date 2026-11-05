@@ -2231,8 +2231,12 @@ declared with, bool, char, float or double) and C++'s arithmetic on them (ConstA
 with every suffix and escape, integral promotion and the usual arithmetic conversions, modular
 conversions between integer types, shifts in the promoted left type, IEEE `+ - * /` and
 comparisons), in two modes: *Required* for the checker, where a signed overflow, a division by
-zero, a shift by the width or more, or a float out of an integer's range fails the constant with
-its reason (static_assert reports it: `static assertion whose condition is no constant: signed
+zero (a floating one too), a floating result that is a NaN, a shift by the width or more, a float
+out of an integer's range, or a value out of the range of values of an enumeration declared without
+an underlying type ([dcl.enum]/8: `(E)2` for `enum E { A, B }`) fails the constant with
+its reason (each as clang 19 refuses it; a floating overflow to an infinity stays a constant, as
+there, and outside a required constant the folded value is IEEE's or the kept enumeration value,
+as at run time) (static_assert reports it: `static assertion whose condition is no constant: signed
 overflow in int32 (addition)`), and *Fold* for the code generator, where signed arithmetic wraps.
 The walk types number literals with the same function, so a literal's type and value cannot
 disagree. The checker's evaluator (constValue in resolver.cpp; constEval is its integer view)

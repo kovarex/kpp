@@ -186,6 +186,11 @@ struct ConstArith
   // The underlying type an enumeration type was declared with, or null for one declared without
   // (its values then compute as int, or as a 64-bit integer when int cannot hold them).
   std::function<const Ty*(const Ty*)> underlying;
+  // The range of values of an enumeration type declared without an underlying type, the smallest
+  // bit field's that holds its enumerators ([dcl.enum]/8), or nullopt (one declared with, or one
+  // whose enumerators are not known yet): a conversion out of it is no constant where one is
+  // required, as clang has it ([expr.static.cast]/10: undefined).
+  std::function<std::optional<std::pair<int64_t, int64_t>>(const Ty*)> enumRange;
 
   // A number or character literal as written (digit separators, suffixes, floats, hex floats,
   // escapes).

@@ -1,0 +1,12 @@
+// spec: a value out of an enumeration's range of values in an initializer that is no required constant (a const global, a local) is no compile error: the value is kept, as the C++ compilers do at run time; in range ones and an enumeration with an underlying type fold as before
+enum Duo { First, Second };
+enum Small : unsigned char { Zero };
+const Duo kept = (Duo)9;
+constexpr Small small = (Small)300;
+int main()
+{
+  int n = 7;
+  Duo local = (Duo)n;
+  println(int(kept), " ", int(local), " ", int(small), " ", int((Duo)1));
+  return 0;
+}

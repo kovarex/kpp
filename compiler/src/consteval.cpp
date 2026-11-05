@@ -459,9 +459,19 @@ std::optional<ConstValue> ConstArith::binary(P op, const ConstValue& l, const Co
       case P::Plus: x = a + b; break;
       case P::Minus: x = a - b; break;
       case P::Star: x = a * b; break;
-      case P::Slash: x = a / b; break; // IEEE: a division by zero is an infinity, as at run time
+      case P::Slash:
+        // A division by zero is undefined in C++ ([expr.mul]/4) and no constant where one is required,
+        // as clang has it; folded, it is IEEE's infinity or NaN, as at run time.
+        if (b == 0 && mode == ConstMode::Required)
+          return fail("a division by zero");
+        x = a / b;
+        break;
       default: return fail("this operator on a floating value");
     }
+    // A result that is a NaN is no number ([expr.pre]/4): no constant where one is required, as
+    // clang's rule (an infinity from an overflow is one).
+    if (x != x && mode == ConstMode::Required)
+      return fail(std::string("a floating result that is a NaN (") + (op == P::Plus ? "addition" : op == P::Minus ? "subtraction" : op == P::Star ? "multiplication" : "division") + ")");
     return ConstValue::floating(isDouble ? x : double(float(x)), types.floatType(isDouble ? 64 : 32));
   }
   if (op == P::Shl || op == P::Shr)
@@ -538,6 +548,21 @@ std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
     }
     case TyKind::Enum:
     {
+      if (mode == ConstMode::Required && enumRange)
+        if (std::optional<std::pair<int64_t, int64_t>> range = enumRange(t))
+        {
+          bool inRange;
+          int64_t shown;
+          if (v.isFloat())
+            inRange = v.f > double(range->first) - 1.0 && v.f < double(range->second) + 1.0, shown = int64_t(v.f);
+          else if (intTypeOf(v).isUnsigned && v.i < 0)
+            inRange = false, shown = v.i; // (beyond int64's range: no enumeration of int's reaches it)
+          else
+            inRange = v.i >= range->first && v.i <= range->second, shown = v.i;
+          if (!inRange)
+            return fail("a value of " + (intTypeOf(v).isUnsigned && !v.isFloat() ? std::to_string(uint64_t(shown)) : std::to_string(shown)) +
+                        " out of its enumeration's range of values [" + std::to_string(range->first) + ", " + std::to_string(range->second) + "]");
+        }
       // To the underlying type the enumeration was declared with; one declared without keeps
       // the value (every value of its enumerators fits it).
       if (const Ty* u = underlying ? underlying(t) : nullptr; u && u->kind != TyKind::Enum)

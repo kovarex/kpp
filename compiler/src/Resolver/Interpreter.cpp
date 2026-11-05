@@ -86,9 +86,73 @@ auto GlobalScope::Impl::replayUses(const std::vector<CollectedUse>& uses) -> voi
 
 auto GlobalScope::Impl::constArith() -> ConstArith
 {
+  auto range = [this](const Ty* e) { return enumValueRange(e); };
   if (const ConstHooks* h = constHooks())
-    return ConstArith{types, h->mode, &constWhy(), h->underlying ? h->underlying : [this](const Ty* e) { return declaredUnderlying(e); }};
-  return ConstArith{types, ConstMode::Required, &constWhy(), [this](const Ty* e) { return declaredUnderlying(e); }};
+    return ConstArith{types, h->mode, &constWhy(), h->underlying ? h->underlying : [this](const Ty* e) { return declaredUnderlying(e); }, range};
+  return ConstArith{types, ConstMode::Required, &constWhy(), [this](const Ty* e) { return declaredUnderlying(e); }, range};
+}
+
+auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<int64_t, int64_t>>
+{
+  t = t ? types.unqualified(t) : nullptr;
+  if (!t || t->kind != TyKind::Enum || !t->decl)
+    return std::nullopt;
+  {
+    std::lock_guard lock(enumRangeMutex);
+    if (auto it = enumRanges.find(t); it != enumRanges.end())
+      return it->second;
+  }
+  Decl* def = t->decl;
+  if (!def->ownScope)
+  {
+    Entry e{def, nullptr};
+    if (Scope* s = scopeOfEntry(e, 0))
+      def = s->owner;
+  }
+  if (!def || def->kind != NodeKind::EnumDecl)
+    return std::nullopt;
+  auto* e = static_cast<EnumDecl*>(def);
+  // A fixed underlying type (written, or an enum class's int) takes every value of it; an
+  // instance's enumeration (`Flag<A>::Enum`) is left unchecked.
+  if (e->underlying || e->isClass || !e->isDefinition || t != types.enumType(e))
+    return std::nullopt;
+  // Its enumerators are being evaluated on this thread (`B = A | 4` converts to the enumeration
+  // while its range is unknown): no range yet, and none kept.
+  for (const EnumeratorValues* f = enumeratorValues; f; f = f->outer)
+    if (f->e == e)
+      return std::nullopt;
+  int64_t low = 0, high = 0;
+  TypeContext ctx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
+                  e->file ? e->file->text : std::string_view()};
+  for (Decl* m : e->enumerators)
+  {
+    if (m->kind != NodeKind::EnumeratorDecl)
+      continue;
+    std::string* outer = &constWhy();
+    std::string saved = *outer;
+    std::optional<ConstValue> v = constValueOfDecl(m, ctx, 1);
+    *outer = saved; // (an enumerator that does not evaluate is the enumeration's error, not this conversion's)
+    if (!v || v->kind != ConstValue::Kind::Int)
+      return std::nullopt;
+    low = std::min(low, v->i), high = std::max(high, v->i);
+  }
+  // The smallest bit field that holds them all: [0, 2^M - 1] for no negative one, else the
+  // two's complement range of M bits; at least one bit (an empty enumeration holds 0 and 1).
+  auto bitsFor = [](int64_t x) { int b = 0; while (b < 63 && (x >> b) != 0) ++b; return b; };
+  std::pair<int64_t, int64_t> range;
+  if (low >= 0)
+  {
+    int m = std::max(1, bitsFor(high));
+    range = {0, m >= 63 ? INT64_MAX : (int64_t(1) << m) - 1};
+  }
+  else
+  {
+    int m = std::max(bitsFor(high) + 1, bitsFor(~low) + 1);
+    range = m >= 64 ? std::pair<int64_t, int64_t>{INT64_MIN, INT64_MAX} : std::pair<int64_t, int64_t>{-(int64_t(1) << (m - 1)), (int64_t(1) << (m - 1)) - 1};
+  }
+  std::lock_guard lock(enumRangeMutex);
+  enumRanges.emplace(t, range);
+  return range;
 }
 
 auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*

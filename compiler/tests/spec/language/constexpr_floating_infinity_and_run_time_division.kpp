@@ -1,0 +1,12 @@
+// spec: a floating overflow to an infinity is a constant (clang's rule), and a division by zero outside a required constant is IEEE's at run time: a const global initialised with 0.0 / 0.0 (stdlib's NAN) and a local division by a zero read at run time give an infinity and a NaN, no error
+constexpr double huge = 1e308 * 10.0;
+static_assert(huge > 1e308);
+const double inverse = 1.0 / 0.0;
+double divide(double a, double b) { return a / b; }
+int main()
+{
+  double zero = 0.0;
+  double nan = divide(zero, zero);
+  println(huge == inverse, " ", inverse > 0.0, " ", nan == nan, " ", NAN == NAN, " ", 1.0 / zero == inverse);
+  return 0;
+}
