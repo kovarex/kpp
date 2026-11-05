@@ -5,7 +5,8 @@
 # "file not found".
 param([Parameter(Mandatory = $true)][string]$Native,
       [string]$LlvmRc = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\llvm-rc.exe')
-$work = Join-Path $env:TEMP 'kpp-native-rc-test'
+# (a directory of this run's own: two threads' convert.cmd at once shared one and deleted each other's)
+$work = Join-Path $env:TEMP "kpp-native-rc-test-$PID"
 if (Test-Path $work) { cmd /c "rd /s /q `"$work`"" | Out-Null }
 $alone = Join-Path $work 'a\b\kpp-native'
 New-Item -ItemType Directory -Force $alone | Out-Null
@@ -20,5 +21,6 @@ if ($code -ne 0 -or -not $made)
   $output
   exit 1
 }
+cmd /c "rd /s /q `"$work`"" | Out-Null
 "factorio.rc: compiles from libraries\kpp-native alone"
 exit 0

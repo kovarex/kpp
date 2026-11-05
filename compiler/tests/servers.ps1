@@ -50,15 +50,14 @@ function Build([string]$name)
   $ErrorActionPreference = 'Stop'
   if ($code -ne 0) { Fail "$name did not build through a server: $report" }
 }
-# Waits up to $seconds for a process to end.
+# Waits up to $seconds for a server to end: on its process (WaitForExit returns when it ends), so the
+# limits are generous for a loaded machine (other threads' gates) and cost nothing when it ends at once.
 function Ended([int]$id, [int]$seconds)
 {
-  for ($i = 0; $i -lt $seconds * 4; $i++)
-  {
-    if (-not (Alive $id)) { return $true }
-    Start-Sleep -Milliseconds 250
-  }
-  return $false
+  if (-not (Alive $id)) { return $true }
+  $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if (-not $process) { return $true }
+  return $process.WaitForExit($seconds * 1000)
 }
 
 # 1. A server exits once its kppc changes (here: written again, with a later time).
@@ -72,7 +71,7 @@ else
   if (-not (Alive $id)) { Fail "the server ($id) is not running after its build" }
   Copy-Item $Kppc $copy -Force
   (Get-Item $copy).LastWriteTime = (Get-Date).AddMinutes(1)
-  if (-not (Ended $id 20)) { Fail "the server ($id) still runs 20 s after its kppc changed" }
+  if (-not (Ended $id 60)) { Fail "the server ($id) still runs 60 s after its kppc changed" }
   elseif (-not (Select-String -Path $log -SimpleMatch 'changed: exiting' -Quiet)) { Fail "the server's log does not say why it ended: $(Get-Content $log -Tail 2)" }
 }
 
@@ -85,7 +84,7 @@ $ErrorActionPreference = 'Continue'
 $said = & $copy --stop-all-servers 2>&1 | Out-String
 $ErrorActionPreference = 'Stop'
 if ($said -notmatch '2 compile servers stopped') { Fail "--stop-all-servers said: $said" }
-foreach ($id in $running) { if (-not (Ended $id 10)) { Fail "the server $id still runs after --stop-all-servers" } }
+foreach ($id in $running) { if (-not (Ended $id 30)) { Fail "the server $id still runs after --stop-all-servers" } }
 
 # 3. The server directory stays bounded: a server's start removes what is more than ten minutes old and
 # in no one's use (a copy of kppc whose server ended, the files of a key without a copy, a verify's
@@ -167,7 +166,7 @@ foreach ($columns in @($false, $true))
   $ErrorActionPreference = 'Continue'
   & $copy --stop-all-servers 2>&1 | Out-Null
   $ErrorActionPreference = 'Stop'
-  foreach ($id in $running) { Ended $id 10 | Out-Null }
+  foreach ($id in $running) { Ended $id 30 | Out-Null }
 }
 
 StopLeftovers

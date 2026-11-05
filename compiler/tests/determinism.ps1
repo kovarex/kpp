@@ -62,7 +62,16 @@ function Compare-Runs($runs, [string]$what, [string[]]$irFiles)
         $d | Select-Object -First 4 | ForEach-Object { Write-Host "  $($_.SideIndicator) $($_.InputObject)" }
       }
     }
-    if ($irFiles -and (Get-FileHash $irFiles[0]).Hash -ne (Get-FileHash $irFiles[$k]).Hash)
+    # (an IR that is not there or empty compares equal to another and proves nothing: the game's build
+    # wrote none for days, its scoped C libraries missing, 2026-11-05)
+    $empty = @(if ($irFiles) { $irFiles | Where-Object { -not (Test-Path $_) -or (Get-Item $_).Length -eq 0 } })
+    if ($k -eq 1 -and $empty)
+    {
+      $ok = $false
+      Write-Host "FAIL determinism ${what}: no IR written: $($empty -join ', ')"
+      $runs | ForEach-Object { $_.err } | Select-Object -First 4 | ForEach-Object { Write-Host "  $_" }
+    }
+    elseif ($irFiles -and (Get-FileHash $irFiles[0]).Hash -ne (Get-FileHash $irFiles[$k]).Hash)
     {
       $ok = $false
       Write-Host "FAIL determinism ${what}: the IR of $($runs[0].label) and $($runs[$k].label) differs"
@@ -178,13 +187,24 @@ else { "FAIL determinism private names: alone '$alone', after another file '$aft
 $tree = Join-Path $PSScriptRoot '..\..\programs\factorio\kpp'
 if (Test-Path (Join-Path $tree 'src'))
 {
-  $factorio = Join-Path $PSScriptRoot '..\..\programs\factorio'
-  $common = @('--std', "$PSScriptRoot\..\..\stdlib",
-    '--cinclude', 'C:\Factorio\libraries\SDL3\include', '--cinclude', 'C:\Factorio\libraries\SDL_Mixer\include',
-    '--cinclude', 'C:\Factorio\libraries\Lua', '--cinclude', 'C:\Factorio\libraries', '--cinclude', 'C:\Factorio\libraries\curl\include',
-    '--cinclude', 'C:\Factorio\libraries\glad\include', '--cinclude', 'C:\Factorio\libraries\trio', '--cinclude', "$factorio\native\include",
-    '--config', 'finalRelease=false', # (the game's FINAL_RELEASE code: link-settings.cmd's CINC)
-    '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\src")
+  $factorio = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\programs\factorio'))
+  # The headline build's inputs as convert.cmd's (its "full-src codegen errors" line): the C include
+  # directories and the converted C libraries, a scoped one as its library (--library-root), from
+  # link-settings.cmd, which link.cmd and run.cmd share; their paths are programs\factorio's.
+  $ErrorActionPreference = 'Continue'
+  $settings = @(cmd /d /c "cd /d `"$factorio`" && call .\link-settings.cmd > nul && set CINC && set CLIBKPP" 2>&1 | ForEach-Object { "$_" })
+  $ErrorActionPreference = 'Stop'
+  function Setting([string]$name)
+  {
+    $line = $settings | Where-Object { $_.StartsWith("$name=") } | Select-Object -First 1
+    if (-not $line) { throw "link-settings.cmd set no $name" }
+    return @($line.Substring($name.Length + 1).Split(' ', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
+      if ($_ -match '^(kpp|native)\\') { Join-Path $factorio $_ } else { $_ } })
+  }
+  $common = @('--std', "$PSScriptRoot\..\..\stdlib") + (Setting 'CINC') + @(
+    '--config', 'finalRelease=false', # (the game's FINAL_RELEASE code)
+    '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\crc32fast") +
+    (Setting 'CLIBKPP') + @("$tree\src")
   # The whole IR too (--emit-llvm), byte for byte: a name the code generator gives one of two
   # classes that print alike must not depend on which thread reached it first. The quick gate's: the
   # front end's report alone, at -j 8 and -j 32.

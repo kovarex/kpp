@@ -326,7 +326,7 @@ Lap 'zip'
 # builds and runs with that kpp, PATH cut as in the smoke test. Nothing there is the repository's.
 if (-not $NoSmokeTest)
 {
-  $zipTest = Join-Path ([IO.Path]::GetTempPath()) 'kpp-zip-test'
+  $zipTest = Join-Path ([IO.Path]::GetTempPath()) "kpp-zip-test-$PID" # (this run's own: two packagings at once shared one)
   if (Test-Path $zipTest) { & cmd /c rd /s /q $zipTest }
   [IO.Compression.ZipFile]::ExtractToDirectory("$out\kpp-$Version.zip", "$zipTest\kpp")
   $project = "$zipTest\uses-libraries"
