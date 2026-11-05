@@ -6,6 +6,7 @@ the C++ build").
 
   python -I menu-checksums.py GAME_DIR [--bin FOLDER] [--only NAME[,NAME...]]
   python -I menu-checksums.py --baseline [--ticks N]
+  python -I menu-checksums.py GAME_DIR --linux CONFIGURATION [--only NAME[,NAME...]]
 
 GAME_DIR is laid out as build.kpp and run.cmd lay out C:\\factorio-in-kpp: bin\\FOLDER\\factorio.exe
 (Debugx64 by default; Releasex64, FastDebugx64), with config-path.cfg in GAME_DIR naming its config\\,
@@ -13,6 +14,10 @@ whose write directory is GAME_DIR itself, as in C:\\Factorio. The games run one 
 directory's lock allows one game). The mods of that write directory count: menu-checksums.txt also
 keeps the C++ run's prototype list checksum, and a map whose run printed another one is reported as
 not comparable instead of as different (run.cmd's test_mod, a scratch mod).
+
+--linux runs the Linux build, GAME_DIR\\build\\CONFIGURATION\\factorio (kppc factorio --target linux),
+under WSL, reading C:\\Factorio\\data with a config and write directory of its own
+(kpp\\menu-checksums\\linux): the same simulations, the same checksums as the C++ build's on Windows.
 
 --baseline runs the C++ Debug build, C:\\Factorio\\bin\\Debugx64vs2022\\factorio-run.exe (the C++
 release build on disk is older than the source; "The release build"), with a config of its own whose
@@ -77,7 +82,12 @@ def baseline(ticks):
     print('%d maps into %s' % (len(lines), REFERENCE))
 
 
-def check(game, folder, only):
+def wsl_path(path):
+    path = os.path.abspath(path).replace('\\', '/')
+    return '/mnt/' + path[0].lower() + path[2:]
+
+
+def check(game, folder, only, linux=None):
     reference, ticks, prototypes = {}, None, None
     for line in open(REFERENCE, encoding='utf-8'):
         words = line.split()
@@ -89,16 +99,30 @@ def check(game, folder, only):
             prototypes = words[1]
         else:
             reference[words[0]] = words[1]
-    exe_dir = os.path.join(game, 'bin', folder)
-    exe = os.path.join(exe_dir, 'factorio.exe')
+    if linux:
+        exe_dir = os.path.join(game, 'build', linux)
+        exe = os.path.join(exe_dir, 'factorio')
+        write = os.path.join(OUT, 'linux')
+        os.makedirs(os.path.join(write, 'config'), exist_ok=True)
+        config = os.path.join(write, 'config', 'config.ini')
+        with open(config, 'w', newline='\n') as f:
+            f.write('; version=13\n[path]\nread-data=%s\nwrite-data=%s\n\n[other]\ncheck-updates=false\n'
+                    % (wsl_path(os.path.join(FACTORIO, 'data')), wsl_path(write)))
+    else:
+        exe_dir = os.path.join(game, 'bin', folder)
+        exe = os.path.join(exe_dir, 'factorio.exe')
     if not os.path.exists(exe):
         sys.exit('no game at %s' % exe)
     maps = [p for p in MAPS if not only or name_of(p) in only]
     same, differ, other = [], [], []
     for path in maps:
         name = name_of(path)
-        checksum, protos, _, seconds, code = run([exe, '--no-crash-handler', '--benchmark', path, '--benchmark-ticks', str(ticks)],
-                                                 exe_dir, os.path.join(OUT, 'logs', 'kpp-' + name + '.txt'))
+        if linux:
+            command = ['wsl.exe', '-e', wsl_path(exe), '--config', wsl_path(config), '--no-crash-handler', '--benchmark', wsl_path(path),
+                       '--benchmark-ticks', str(ticks)]
+        else:
+            command = [exe, '--no-crash-handler', '--benchmark', path, '--benchmark-ticks', str(ticks)]
+        checksum, protos, _, seconds, code = run(command, exe_dir, os.path.join(OUT, 'logs', ('linux-' if linux else 'kpp-') + name + '.txt'))
         expected = reference.get(name)
         if not checksum or not expected:
             state = 'no checksum (exit %d)' % code if not checksum else 'not in menu-checksums.txt'
@@ -126,6 +150,7 @@ def main():
     parser.add_argument('--baseline', action='store_true', help='measure the C++ build into menu-checksums.txt')
     parser.add_argument('--ticks', type=int, default=600, help='ticks per map for --baseline (default 600)')
     parser.add_argument('--only', help='comma-separated map names')
+    parser.add_argument('--linux', help='the Linux build\'s configuration (debug, release, final) below GAME_DIR\\build, run under WSL')
     args = parser.parse_args()
     os.makedirs(os.path.join(OUT, 'logs'), exist_ok=True)
     if args.baseline:
@@ -133,7 +158,7 @@ def main():
         return 0
     if not args.game:
         parser.error('give the game directory, or --baseline')
-    return check(args.game, args.bin, set(args.only.split(',')) if args.only else None)
+    return check(args.game, args.bin, set(args.only.split(',')) if args.only else None, args.linux)
 
 
 if __name__ == '__main__':
