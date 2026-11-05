@@ -1195,12 +1195,37 @@ namespace
     // Lookahead for `Name::Name::*` without allocating.
     bool memberPointerAhead() const
     {
+      // `C::*`, `ns::C::*`, and a class named with template arguments, `Box<T>::*` (each `<...>`
+      // skipped, nested ones and `>>` too).
       int i = 0;
-      while (atIdent(i) && at(P::ColonColon, i + 1))
+      while (atIdent(i))
       {
-        if (at(P::Star, i + 2))
+        ++i;
+        if (at(P::Less, i))
+        {
+          int depth = 0;
+          for (;; ++i)
+          {
+            if (at(TokenKind::End, i) || at(P::Semi, i) || at(P::LBrace, i) || at(P::RBrace, i))
+              return false;
+            if (at(P::Less, i) || at(P::LParen, i) || at(P::LBracket, i))
+              ++depth;
+            else if (at(P::Greater, i) || at(P::RParen, i) || at(P::RBracket, i))
+              --depth;
+            else if (at(P::Shr, i))
+              depth -= 2;
+            if (depth <= 0)
+              break;
+          }
+          if (depth < 0)
+            return false;
+          ++i;
+        }
+        if (!at(P::ColonColon, i))
+          return false;
+        if (at(P::Star, i + 1))
           return true;
-        i += 2;
+        ++i;
       }
       return false;
     }

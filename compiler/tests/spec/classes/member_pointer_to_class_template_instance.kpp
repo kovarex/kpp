@@ -1,0 +1,19 @@
+// spec: a pointer to a member of a class named with template arguments, `int Box<int>::* m`, `T Box<T>::* m` and nested ones (`Two<int, Two<int, char>>::*`, its `>>` too), as a parameter, a local and a global; the parser read `Box<int>::*` as no declarator until 2026-11-05 (expected ')' after parameters)
+template<typename T> struct Box
+{
+  T v;
+  T w;
+  static T get(Box<T>& b, T Box<T>::* m) { return b.*m; }
+};
+template<typename T, typename U> struct Two { T v; U u; };
+int Box<int>::* chosen = &Box<int>::w;
+int Two<int, Two<int, char>>::* first = &Two<int, Two<int, char>>::v;
+int read(Box<int>& b, int Box<int>::* m) { return b.*m; }
+int main()
+{
+  Box<int> b{3, 4};
+  int Box<int>::* local = &Box<int>::v;
+  Two<int, Two<int, char>> t{5, {6, 'x'}};
+  println(read(b, local), " ", Box<int>::get(b, chosen), " ", t.*first);
+  return 0;
+}
