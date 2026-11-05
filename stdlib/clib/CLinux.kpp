@@ -11,3 +11,14 @@ using FILE = _IO_FILE;
 extern "C" FILE* stdin;
 extern "C" FILE* stdout;
 extern "C" FILE* stderr;
+
+// math.h's fpclassify, a macro of glibc's (`__builtin_fpclassify (FP_NAN, ...)` with clang and GCC,
+// else its __MATH_TG over __fpclassify and __fpclassifyf): the import carries no function-like macro,
+// so it is the C library's own classifiers, whose results are glibc's FP_NAN 0, FP_INFINITE 1,
+// FP_ZERO 2, FP_SUBNORMAL 3 and FP_NORMAL 4 (isnan and the others: core/Math.kpp).
+extern "C" int __fpclassify(double value);
+extern "C" int __fpclassifyf(float value);
+int fpclassify(double value) { return __fpclassify(value); }
+int fpclassify(float value) { return __fpclassifyf(value); }
+template<typename T> requires isIntegral<T>
+int fpclassify(T value) { return fpclassify(double(value)); }
