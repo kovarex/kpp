@@ -4,7 +4,7 @@
 // is typed in place and kept as that instantiation's body, while the template's own nodes stay as
 // the parser and the generic pass left them. See docs/design.md, "Instantiations own their typed
 // bodies".
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include <unordered_map>
 
 class InstanceCopier

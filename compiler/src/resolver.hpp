@@ -3,7 +3,7 @@
 // into one shared scope tree (in parallel), phase 2 resolves type names and identifiers in all
 // declarations and function bodies against that tree and computes the type of every expression
 // (in parallel; the tree is read-only, canonical types are interned in a shared table).
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include "consteval.hpp"
 #include "TypeTable.hpp"
 #include <cstdint>

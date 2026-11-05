@@ -1,5 +1,5 @@
 #pragma once
-// Included by ast.hpp, after the nodes it holds.
+// A file's parse (Ast.hpp includes it, after the nodes it holds).
 
 struct ParsedFile
 {

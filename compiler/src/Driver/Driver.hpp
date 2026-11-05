@@ -8,7 +8,7 @@
 #include "parser.hpp"
 #include "config.hpp"
 #include "resolver.hpp"
-#include "ast_walk.hpp"
+#include "Ast/AstWalk.hpp"
 #include "generate.hpp"
 #include "project.hpp"
 #include "run.hpp"

@@ -3,7 +3,7 @@
 // pointer equality and two threads that build the same type (e.g. the same template
 // instantiation) get the same object. Qualifiers are part of the type: `const int` and `int`
 // are different Ty objects that share nothing but their kind.
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include <cstdint>
 #include <string>
 

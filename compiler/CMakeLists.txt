@@ -79,7 +79,7 @@ add_executable(kppc
   src/Project/Measure.cpp
   src/Project/Menu.cpp
   src/tests.cpp
-  src/ast_walk.cpp
+  src/Ast/AstWalk.cpp
   src/version.cpp
   src/backend.cpp
 )

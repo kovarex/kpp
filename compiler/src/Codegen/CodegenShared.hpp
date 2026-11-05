@@ -3,7 +3,7 @@
 // moved without a change).
 #pragma once
 #include "codegen.hpp"
-#include "ast_walk.hpp"
+#include "Ast/AstWalk.hpp"
 #include "consteval.hpp"
 #include "source.hpp"
 #include "Restore.hpp"

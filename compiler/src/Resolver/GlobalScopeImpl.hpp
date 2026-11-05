@@ -4,7 +4,7 @@
 #include "resolver.hpp"
 #include "consteval.hpp"
 #include "instance.hpp"
-#include "ast_walk.hpp"
+#include "Ast/AstWalk.hpp"
 #include "source.hpp"
 #include "Restore.hpp"
 #include <array>

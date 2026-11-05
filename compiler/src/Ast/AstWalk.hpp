@@ -4,7 +4,7 @@
 // file holds in place: a compile server's kept file points its nodes at a new version's tokens
 // (docs/compile-speed.md, step 4). It follows what InstanceCopier copies (instance.cpp), plus the
 // declarations only a file's top level has (namespaces, imports).
-#include "ast.hpp"
+#include "Ast.hpp"
 #include <functional>
 
 void forEachNode(Span<Decl*> decls, const std::function<void(Node*)>& each);

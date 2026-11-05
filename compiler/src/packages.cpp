@@ -1,5 +1,5 @@
 #include "packages.hpp"
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include "lexer.hpp"
 
 #include <algorithm>

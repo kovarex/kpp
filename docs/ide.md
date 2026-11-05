@@ -29,10 +29,10 @@ queries as VS + LSP.
   0.26 s, one module through clang 0.55 to 0.8 s; the incremental link alone 0.44 to 0.63 s
   ("The link in the edit loop"). A whole-function interface edit resolves in 0.9 to 1.0 s, anything
   the server cannot take incrementally is a build from scratch in the server (resolve 2 s).
-- **What the kept tree already carries** (ast.hpp): every node has its first token
+- **What the kept tree already carries** (Ast/): every node has its first token
   (`Node::token`), every declaration its file, parent and end token, every name
   (`NameExpr`, `MemberExpr`, `NamedType`) the declaration it resolved to (`resolved`), every
-  expression its type (`Expr::ty`), and `forEachNode` (ast_walk.cpp) walks a file's tree. That is
+  expression its type (`Expr::ty`), and `forEachNode` (Ast/AstWalk.cpp) walks a file's tree. That is
   definition, references and hover already computed; nothing has to be analysed again for the IDE.
 - **The dependency records** of step 2 (each body's and instance's names looked up and declarations
   used): "what depends on this" and rename's blast radius, for free.

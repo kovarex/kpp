@@ -1,5 +1,5 @@
 #pragma once
-// Included by ast.hpp, where it was.
+// The arena a file's syntax tree lives in (Node.hpp includes it).
 
 class Arena
 {

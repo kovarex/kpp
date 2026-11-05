@@ -1,7 +1,7 @@
 #pragma once
 // Code generation for the kpp v0 subset: textual LLVM IR for the whole program, compiled to
 // machine code by the bundled clang. See docs/design.md, "kpp v0".
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include "resolver.hpp"
 #include "target.hpp"
 #include <functional>

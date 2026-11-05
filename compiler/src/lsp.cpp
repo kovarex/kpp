@@ -1,6 +1,6 @@
 #include "lsp.hpp"
-#include "ast.hpp"
-#include "ast_walk.hpp"
+#include "Ast/Ast.hpp"
+#include "Ast/AstWalk.hpp"
 #include "resolver.hpp"
 #include "TypeTable.hpp"
 #include "project.hpp"

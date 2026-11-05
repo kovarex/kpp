@@ -3,7 +3,7 @@
 // See docs/path-to-factorio.md. It does the mechanical part (preprocessor lines, forward
 // declarations, `this->`, `implicit`, `fallthrough`, `std::` names) and reports what it could not
 // do, so that the compiler's errors on the output are the worklist.
-#include "ast.hpp"
+#include "Ast/Ast.hpp"
 #include "lexer.hpp"
 #include "resolver.hpp"
 #include <filesystem>
