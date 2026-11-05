@@ -1,0 +1,88 @@
+// struct Emitter's members: local variables and statements: the declarations, part of the struct's
+// body, included in it in Codegen/Emitter.hpp; the definitions in Statements.cpp (codegen.cpp
+// split, stage 2, 2026-11-05, moved without a change).
+    // A static local: `static T x` or `thread_local T x` in a function body (staticLocal).
+    static bool isStaticLocal(const VariableDecl* v);
+
+    // What the bodies nested in a body name (its lambdas', its local classes' member functions':
+    // code that other emissions than the body's may write), and the variables declared in the body
+    // itself, outside those.
+    struct NestedNames
+    {
+      std::unordered_set<const Decl*> named;
+      std::unordered_set<const Decl*> direct;
+    };
+    std::unordered_map<const Node*, NestedNames> nestedNamesByBody; // (emitFunction clears it: nodes go between builds)
+    const NestedNames& nestedNamesOf(Node* body);
+
+    // The function a static local is written in, when the variable is named after that function alone:
+    // a function no template makes or holds, the variable declared in its own body (not in a lambda's,
+    // whose operator names it). Null for any other. A copy of such a function is the function (the
+    // checker types an `auto` one's body in a copy, whose lambdas its callers get: `auto g = make();`).
+    FunctionDecl* plainWriter(VariableDecl* v);
+
+    // A local's type: its declaration's, or for `auto` its initializer's.
+    const Ty* localType(VariableDecl* v);
+
+    // A static local's storage, named after the function it belongs to (an IR name, `@"..."`) and
+    // numbered by where the variable is written (its token): the same name in every run.
+    std::string staticLocalName(const std::string& function, VariableDecl* v);
+
+    // The definition of a static local that code other emissions write names too (staticLocal's
+    // shared): linkonce_odr in a comdat of its own, every module naming it carrying this text, and the
+    // link keeping one object.
+    std::string sharedStaticText(const std::string& name, VariableDecl* v, const Ty* t, uint64_t alignment);
+
+    // A shared static local's definition in this module, belonging to the function being emitted (its
+    // own static, or a copy of another's it names): once per function and module, and a build of one
+    // module has it once.
+    void addSharedStatic(const std::string& name, const std::string& text);
+
+    // A static local named by code its function's emission does not write (a lambda's call operator,
+    // which a generic lambda's first caller emits; a local class's member function): the storage its
+    // function defines shared (staticLocal), with a copy of the definition in this module. Before the
+    // function is emitted, a plain function's (plainWriter) has the name and the definition that
+    // function will give it; another's is not known yet.
+    std::string staticLocalElsewhere(VariableDecl* v, Node* at);
+
+    // A const static local's initializer as a constant of type t, lowered as globalForOnce lowers a
+    // global's (a scalar folded, a string literal, an object or array the interpreter computes), or
+    // nothing (it is built on the first pass).
+    std::optional<std::string> staticConstant(VariableDecl* v, const Ty* t);
+
+    // `static T x = ...;` inside a function: a global of the program (in the module of the function),
+    // constructed on the first pass through the declaration, never destroyed. Not thread-safe yet.
+    // `thread_local T x;` (static or not): one per thread, the guard too, so each thread builds its
+    // own on its first pass (destroyed at no thread's exit yet). One that code in a lambda or a local
+    // class of the body names is shared: that code's operator or member function may be emitted
+    // elsewhere (a generic lambda's by its first caller, before or after the function, in another
+    // module or piece), which names it too (staticLocalElsewhere); the guard stays the function's.
+    void staticLocal(VariableDecl* v, const Ty* t);
+
+    // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
+    // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).
+    void declareTupleBindings(VariableDecl* v);
+
+    void declareLocal(VariableDecl* v);
+
+    // --debug-info: the instructions from here on are at the line `at` starts on (debugLines makes
+    // the marker their location): a statement's, a loop's step or condition emitted after its body.
+    // Not in a body inlined into its caller: those instructions are the call's. With variables
+    // (Shared::fullDebugInfo) the marker names the lexical block too, `  ;@LINE:BLOCK`.
+    void debugLine(Node* at);
+
+    // --debug-info with variables: a block statement's lexical block (not the function's body, whose
+    // variables are the function's own, as clang's), which the variables declared in it belong to; the
+    // previous block again when it ends (debugLine names it at the next statement).
+    uint32_t openDebugBlock(Node* at);
+
+    void statement(Stmt* s);
+
+    // Finds a zero-argument member function by name (searching bases), with the class it lives in,
+    // for an object of classTy (a const one: its const overload).
+    FunctionDecl* findMember(const Ty* classTy, const std::string& name, Node* at, const Ty** foundIn);
+
+    // A range whose begin()/end() return iterator objects: `it != end`, `*it` and `++it` go through
+    // the iterator class's operators. Both iterators live in the loop's scope (already open).
+    void iteratorLoop(RangeForStmt* f, Value begin, Value end);
+

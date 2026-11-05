@@ -27,6 +27,21 @@ add_executable(kppc
   src/Resolver/Interpreter.cpp
   src/types.cpp
   src/codegen.cpp
+  src/Codegen/Values.cpp
+  src/Codegen/DebugInfo.cpp
+  src/Codegen/FunctionDefinitions.cpp
+  src/Codegen/ControlFlow.cpp
+  src/Codegen/TypedUnions.cpp
+  src/Codegen/Statements.cpp
+  src/Codegen/Exceptions.cpp
+  src/Codegen/Scopes.cpp
+  src/Codegen/Expressions.cpp
+  src/Codegen/SseBuiltins.cpp
+  src/Codegen/Operators.cpp
+  src/Codegen/Constants.cpp
+  src/Codegen/Calls.cpp
+  src/Codegen/Functions.cpp
+  src/Codegen/ParameterPacks.cpp
   src/Codegen/Layout.cpp
   src/Codegen/EmitterNames.cpp
   src/Codegen/Diagnostics.cpp
