@@ -15,11 +15,11 @@
     std::string sretAddr; // Hidden return slot when returning a class.
     const Ty* currentClassTy = nullptr; // Instantiated class of the method being emitted.
     // design.md 24: the body's nodes were typed by a walk for this function alone (a plain function's,
-    // an instantiation's own copy, a lambda in either, a global's initializer: its own or its
-    // instance's copy, a generic lambda's instance's copy), so what the checker recorded on them (an
-    // operator's callee) is this function's and codegen calls it instead of choosing again. False
-    // for a body re-typed per pack element (a private instance, a generic lambda's private copy) and
-    // a lambda's call operator emitted on demand: codegen chooses there itself.
+    // an instantiation's own copy or a private copy retyped per element, a lambda in either, a
+    // global's initializer: its own or its instance's copy, a generic lambda's instance's copy or its
+    // private copy), so what the checker recorded on them (an operator's callee) is this function's
+    // and codegen calls it instead of choosing again. False for a lambda's call operator emitted on
+    // demand and a destructor thunk: codegen chooses there itself.
     bool choicesRecorded = false;
     // A generic lambda's call operator emitted from a private copy of its instance's body (one with
     // pack expansions or a `for constexpr` over a pack, retyped per element): that copy and the

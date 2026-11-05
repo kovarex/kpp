@@ -9,37 +9,104 @@ auto codegen::Emitter::retypedPerElement(FunctionDecl* f) -> bool
     for (Decl* tp : p->templateParams)
       if (tp->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(tp)->isPack)
         return true;
-  return containsForConstexpr(f->body);
+  if (!f->body)
+    return false;
+  // In a lambda's body too for an instantiation's copy, which other threads read (a lambda's `for
+  // constexpr` retypes the function it is written in); a plain function's own nodes are retyped in
+  // place there, as they were (its private copy's walks, with no arguments, gave the lambda's
+  // variable the type of the last element's walk: templates/for_constexpr_in_lambda_of_function).
+  auto [it, added] = forConstexprIn.try_emplace(f->body, false); // (by body: a compile server's edit grafts a new one)
+  if (added)
+    it->second = containsForConstexpr(f->body, (f->attributes & ATTR_InstanceCopy) != 0);
+  return it->second;
 }
 
-auto codegen::Emitter::containsForConstexpr(Stmt* s) -> bool
+auto codegen::Emitter::containsForConstexpr(Node* n, bool intoLambdas, int depth) -> bool
 {
-  if (!s)
+  if (!n || depth > 256)
     return false;
-  switch (s->kind)
+  auto in = [&](Node* c) { return containsForConstexpr(c, intoLambdas, depth + 1); };
+  auto any = [&](Span<Expr*> es)
+  {
+    for (Expr* e : es)
+      if (in(e))
+        return true;
+    return false;
+  };
+  switch (n->kind)
   {
     case NodeKind::ForConstexprStmt: return true;
     case NodeKind::BlockStmt:
-      for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
-        if (containsForConstexpr(inner))
+      for (Stmt* inner : static_cast<BlockStmt*>(n)->stmts)
+        if (in(inner))
           return true;
       return false;
-    case NodeKind::IfStmt: return containsForConstexpr(static_cast<IfStmt*>(s)->then) || containsForConstexpr(static_cast<IfStmt*>(s)->else_);
-    case NodeKind::ForStmt: return containsForConstexpr(static_cast<ForStmt*>(s)->body);
-    case NodeKind::RangeForStmt: return containsForConstexpr(static_cast<RangeForStmt*>(s)->body);
-    case NodeKind::WhileStmt: return containsForConstexpr(static_cast<WhileStmt*>(s)->body);
-    case NodeKind::DoStmt: return containsForConstexpr(static_cast<DoStmt*>(s)->body);
-    case NodeKind::SwitchStmt: return containsForConstexpr(static_cast<SwitchStmt*>(s)->body);
+    case NodeKind::ExprStmt: return in(static_cast<ExprStmt*>(n)->expr);
+    case NodeKind::DeclStmt:
+      for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+        if (in(d))
+          return true;
+      return false;
+    case NodeKind::VariableDecl: return in(static_cast<VariableDecl*>(n)->init); // (a condition that declares)
+    case NodeKind::IfStmt:
+    {
+      auto* i = static_cast<IfStmt*>(n);
+      return in(i->init) || in(i->cond) || in(i->then) || in(i->else_);
+    }
+    case NodeKind::ForStmt:
+    {
+      auto* f = static_cast<ForStmt*>(n);
+      return in(f->init) || in(f->cond) || in(f->step) || in(f->body);
+    }
+    case NodeKind::RangeForStmt: return in(static_cast<RangeForStmt*>(n)->range) || in(static_cast<RangeForStmt*>(n)->body);
+    case NodeKind::WhileStmt: return in(static_cast<WhileStmt*>(n)->cond) || in(static_cast<WhileStmt*>(n)->body);
+    case NodeKind::DoStmt: return in(static_cast<DoStmt*>(n)->body) || in(static_cast<DoStmt*>(n)->cond);
+    case NodeKind::SwitchStmt:
+    {
+      auto* s = static_cast<SwitchStmt*>(n);
+      return in(s->init) || in(s->cond) || in(s->body);
+    }
+    case NodeKind::ReturnStmt: return in(static_cast<ReturnStmt*>(n)->value);
     case NodeKind::TryStmt:
     {
-      auto* t = static_cast<TryStmt*>(s);
-      if (containsForConstexpr(t->body))
+      auto* t = static_cast<TryStmt*>(n);
+      if (in(t->body))
         return true;
       for (const TryStmt::Handler& h : t->handlers)
-        if (containsForConstexpr(h.body))
+        if (in(h.body))
           return true;
       return false;
     }
+    // A lambda's body is the function's nodes too (emitLambda retypes the function for it), and so
+    // is whatever holds a lambda.
+    case NodeKind::LambdaExpr:
+    {
+      if (!intoLambdas)
+        return false;
+      auto* l = static_cast<LambdaExpr*>(n);
+      for (const LambdaCapture& c : l->captures)
+        if (in(c.init))
+          return true;
+      return in(l->body);
+    }
+    case NodeKind::CallExpr: return in(static_cast<CallExpr*>(n)->callee) || any(static_cast<CallExpr*>(n)->args);
+    case NodeKind::IndexExpr: return in(static_cast<IndexExpr*>(n)->base) || any(static_cast<IndexExpr*>(n)->args);
+    case NodeKind::MemberExpr: return in(static_cast<MemberExpr*>(n)->base);
+    case NodeKind::UnaryExpr: return in(static_cast<UnaryExpr*>(n)->operand);
+    case NodeKind::BinaryExpr: return in(static_cast<BinaryExpr*>(n)->lhs) || in(static_cast<BinaryExpr*>(n)->rhs);
+    case NodeKind::ConditionalExpr:
+    {
+      auto* c = static_cast<ConditionalExpr*>(n);
+      return in(c->cond) || in(c->then) || in(c->else_);
+    }
+    case NodeKind::CastExpr: return in(static_cast<CastExpr*>(n)->operand);
+    case NodeKind::NamedCastExpr: return in(static_cast<NamedCastExpr*>(n)->operand);
+    case NodeKind::FunctionalCastExpr: return any(static_cast<FunctionalCastExpr*>(n)->args);
+    case NodeKind::NewExpr: return any(static_cast<NewExpr*>(n)->placement) || any(static_cast<NewExpr*>(n)->args);
+    case NodeKind::BraceInitExpr: return any(static_cast<BraceInitExpr*>(n)->args);
+    case NodeKind::ThrowExpr: return in(static_cast<ThrowExpr*>(n)->operand);
+    case NodeKind::ParenExpr: return in(static_cast<ParenExpr*>(n)->inner);
+    case NodeKind::FoldExpr: return in(static_cast<FoldExpr*>(n)->lhs) || in(static_cast<FoldExpr*>(n)->rhs);
     default: return false;
   }
 }
@@ -82,7 +149,10 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   currentFunction = f;
   retypedLambda = nullptr;
   retypedLambdaTy = nullptr;
-  choicesRecorded = f == checked;
+  // Its nodes were typed for this function alone (design.md 24): the checker's own copy by its walk,
+  // or a private copy by privateInstance's walk and then, per element of a pack expansion or a `for
+  // constexpr`, by retypeFor's (each a walk that records, of nodes no other emission reads).
+  choicesRecorded = true;
   bodyNow = f->body;
   nestedNamesByBody.clear();
   if (sh.debugInfo)

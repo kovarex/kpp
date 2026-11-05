@@ -4,9 +4,13 @@
     // --- function definitions ---
 
     // Whether emitting f re-types its nodes in place, once per element of a pack expansion (f or
-    // its class has a parameter pack) or of a `for constexpr` (design.md 8.2).
-    static bool retypedPerElement(FunctionDecl* f);
-    static bool containsForConstexpr(Stmt* s);
+    // its class has a parameter pack) or of a `for constexpr` (design.md 8.2), in its body or, for an
+    // instantiation's copy, in a lambda's there (whose nodes are f's): such a function is emitted from
+    // a private copy.
+    bool retypedPerElement(FunctionDecl* f);
+    std::unordered_map<const Stmt*, bool> forConstexprIn; // this emitter's answers of containsForConstexpr, by function body
+    // Whether n (a statement or an expression) has a `for constexpr`, or (intoLambdas) a lambda in it has one.
+    static bool containsForConstexpr(Node* n, bool intoLambdas = true, int depth = 0);
 
     void emitFunction(FunctionDecl* original, const TemplateArgs& args, const Ty* classTy, const std::string& nameOverride = "");
 
