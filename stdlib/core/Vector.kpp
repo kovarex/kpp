@@ -3,12 +3,9 @@
 // std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
 // is copied. Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
-struct Vector
+class Vector
 {
-  T* items = nullptr;
-  ContainerSize length = 0;
-  ContainerSize allocated = 0; // the capacity: elements that fit in the block
-
+public:
   using iterator = T*;
   using const_iterator = const T*;
   using reverse_iterator = ReverseIterator<T*>;
@@ -382,7 +379,7 @@ struct Vector
   }
   T* erase(const T* at) { return this->erase(at, at + 1); }
 
-  // Internals.
+private:
   // Destroys the elements from newLength on.
   void truncate(ContainerSize newLength)
   {
@@ -446,4 +443,8 @@ struct Vector
       new (target + i) T(source[i]);
     this->length += count;
   }
+
+  T* items = nullptr;
+  ContainerSize length = 0;
+  ContainerSize allocated = 0; // the capacity: elements that fit in the block
 };

@@ -152,13 +152,13 @@ struct Span
   // length, explicit for a fixed extent (std::span's range constructor), whose count the source's
   // must be (an Array's and a plain array's of a fixed extent only that count).
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
-  implicit Span(Vector<U>& values) : items(values.items), length(values.length) {}
+  implicit Span(Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U> requires (Extent == dynamicExtent && isConvertible<const U*, T*>)
-  implicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
+  implicit Span(const Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
-  explicit Span(Vector<U>& values) : items(values.items), length(values.length) {}
+  explicit Span(Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<const U*, T*>)
-  explicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
+  explicit Span(const Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
   implicit Span(Array<U, N>& values) : items(values.data()), length(N) {}
   template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
