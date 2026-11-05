@@ -15,10 +15,7 @@
 // What an Address or a MemberPointer value names. Made once and shared, never changed.
 struct ConstTarget
 {
-  bool operator==(const ConstTarget& o) const
-  {
-    return decl == o.decl && owner == o.owner && args == o.args && path == o.path && storage == o.storage;
-  }
+  bool operator==(const ConstTarget&) const = default;
 
   // Address: a variable of static storage (a global, a static member, a static local) or a
   // function. MemberPointer: a non-static data member or member function.

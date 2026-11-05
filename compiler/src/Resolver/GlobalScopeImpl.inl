@@ -196,7 +196,13 @@
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
   // scope tree so Phase 2 lookups remain lock-free. Keyed by (scope*, symbol).
-  struct DraftKey { Scope* scope; uint32_t symbol; bool operator==(const DraftKey& o) const { return scope == o.scope && symbol == o.symbol; } };
+  struct DraftKey
+  {
+    bool operator==(const DraftKey&) const = default;
+
+    Scope* scope;
+    uint32_t symbol;
+  };
   struct DraftHash { size_t operator()(const DraftKey& k) const { return std::hash<uintptr_t>()(reinterpret_cast<uintptr_t>(k.scope)) ^ (k.symbol * 2654435761u); } };
   static constexpr uint32_t draftShardCount = 16;
   struct DraftShard
