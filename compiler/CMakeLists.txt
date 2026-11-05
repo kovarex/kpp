@@ -22,6 +22,7 @@ add_executable(kppc
   src/Driver/Runtime.cpp
   src/convert.cpp
   src/lexer.cpp
+  src/SymbolTable.cpp
   src/parser.cpp
   src/resolver.cpp
   src/Resolver/Walker.cpp

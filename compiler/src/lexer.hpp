@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "SymbolTable.hpp"
 
 enum class TokenKind : uint8_t
 {
@@ -82,21 +83,6 @@ struct LexResult
   std::vector<Token> tokens;
   uint32_t lineCount = 0;
   uint32_t errorCount = 0;
-};
-
-// Interns identifier spellings to dense ids, safe to call from many threads at once.
-class SymbolTable
-{
-public:
-  SymbolTable();
-  ~SymbolTable();
-  uint32_t intern(std::string_view name);
-  std::string_view name(uint32_t id) const;
-  size_t size() const;
-
-private:
-  struct Impl;
-  Impl* impl;
 };
 
 std::string_view keywordSpelling(Kw id);
