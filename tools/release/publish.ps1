@@ -35,9 +35,10 @@ param(
   [string]$Registry = '/home/public/registry',
   [switch]$Mirror,
   # The forge's calls are tried again after a failure GitHub's side may clear (no response, a 5xx; an
-  # upload after any but 401/403/404), up to 4 times, waiting RetryWait, 3x and 6x that many seconds
+  # upload after any but 401 and 404), up to 4 times, waiting RetryWait, 3x and 6x that many seconds
   # between: 2026-11-05 two runs in a row lost their release to one 500 and one upload error
-  # ("Error updating policy"). tools/release/publish-test.ps1 passes 0.
+  # ("Error updating policy"), and run 42059133359 to that error once more as a 403, which was not
+  # tried again then. tools/release/publish-test.ps1 passes 0.
   [int]$RetryWait = 10
 )
 $ErrorActionPreference = 'Stop'
@@ -54,14 +55,14 @@ function PublishForge {
   }
   function Status($exception) { if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 } }
   # call, tried again after a failure (-Transient: only after no response or a 5xx; else after any but
-  # 401, 403 and 404), before running first (a partial upload deleted). The attempts are said with
+  # 401 and 404: an upload's "Error updating policy" came as a 403), before running first (a partial upload deleted). The attempts are said with
   # Write-Host: what a function writes to its output is its value.
   function Again([string]$what, [scriptblock]$call, [scriptblock]$before = $null, [switch]$Transient) {
     for ($attempt = 1; ; $attempt++) {
       try { return & $call }
       catch {
         $status = Status $_.Exception
-        $again = if ($Transient) { $status -eq 0 -or $status -ge 500 } else { $status -notin 401, 403, 404 }
+        $again = if ($Transient) { $status -eq 0 -or $status -ge 500 } else { $status -notin 401, 404 }
         if ($attempt -ge 4 -or -not $again) { throw }
         $wait = $RetryWait * @(1, 3, 6)[$attempt - 1]
         Write-Host "forge: $what failed ($(if ($status) { "HTTP $status" } else { 'no response' }): $($_.Exception.Message)); attempt $($attempt + 1) of 4 in $wait s"

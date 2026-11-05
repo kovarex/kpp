@@ -73,13 +73,13 @@ function Publish([string]$name, [object[]]$rules, [string[]]$expected) {
 
 try {
   # A new release: creating it fails once with a 500 and the first upload of a.zip once (GitHub's
-  # upload error); the release of the tag is looked up before the second POST, the half-made a.zip
+  # upload error, a 403: run 42059133359); the release of the tag is looked up before the second POST, the half-made a.zip
   # deleted before the second upload.
   Publish 'new' @(
     @('GET', '^/repos/o/r/releases/tags/v9\.9\.9$', @(, @(404, '{"message":"Not Found"}'))),
     @('DELETE', '^/repos/o/r/git/refs/tags/v9\.9\.9$', @(, @(422, '{"message":"Reference does not exist"}'))),
     @('POST', '^/repos/o/r/releases$', @(@(500, '{"message":"Server Error"}'), @(201, '{"id":1,"upload_url":"UPLOAD","assets":[]}'))),
-    @('POST', '^/upload/1/assets\?name=a\.zip$', @(@(502, '{"message":"Error updating policy"}'), @(201, '{"id":8,"name":"a.zip"}'))),
+    @('POST', '^/upload/1/assets\?name=a\.zip$', @(@(403, '{"message":"Error updating policy"}'), @(201, '{"id":8,"name":"a.zip"}'))),
     @('POST', '^/upload/1/assets\?name=b\.zip$', @(, @(201, '{"id":9,"name":"b.zip"}'))),
     @('GET', '^/repos/o/r/releases/1/assets$', @(, @(200, '[{"id":7,"name":"a.zip"}]'))),
     @('DELETE', '^/repos/o/r/releases/assets/7$', @(, @(204, '')))
@@ -89,7 +89,7 @@ try {
     'POST /repos/o/r/releases 500',
     'GET /repos/o/r/releases/tags/v9.9.9 404',
     'POST /repos/o/r/releases 201',
-    'POST /upload/1/assets?name=a.zip 502',
+    'POST /upload/1/assets?name=a.zip 403',
     'GET /repos/o/r/releases/1/assets 200',
     'DELETE /repos/o/r/releases/assets/7 204',
     'POST /upload/1/assets?name=a.zip 201',
