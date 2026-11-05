@@ -69,20 +69,6 @@ namespace
       kwMain = symbols.intern("main");
       kwCBool = symbols.intern("_Bool");
     }
-    uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool;
-    bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
-    uint32_t testCount = 0;   // Tests parsed so far in this file.
-    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,
-             kwTagMethod, kwTypeMember, kwSuite;
-    uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
-    uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
-    uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
-    bool sawVectorSize = false;      // C: `__attribute__((__vector_size__(N)))` seen since the last declaration (pushDecl).
-    bool pendingConst = false;       // `const static int x`: the const read among the specifiers, applied to the type that follows.
-    Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.
-    Expr* pendingCondition = nullptr; // conditional(expr) seen in the current specifiers.
-    Expr* pendingExplicitCondition = nullptr; // explicit(expr) seen in the current specifiers.
 
     void parseTranslationUnit()
     {
@@ -129,40 +115,12 @@ namespace
           }
       out.decls = makeSpan<Decl*>(mark);
     }
-
   private:
     enum class Scope { Namespace, Class, Enum, Local };
-
-    std::vector<Token>& toks;
-    const char* text;
-    SymbolTable& symbols;
-    ParsedFile& out;
-    Arena& arena;
-    uint32_t pos = 0;
-    std::vector<Node*> scratch;
-    Decl* currentParent = nullptr;
-    uint32_t currentClassName = UINT32_MAX;
-    Access currentAccess = Access::Default;
-    bool inRecovery = false;
-    // Every error() as it was called, a recovery's own too (diagnostics keeps the first of each): a
-    // C struct's body that had one is one the import could not read in full (the safety net in
-    // parseClassOrElaborated).
-    std::vector<Diagnostic> allErrors;
-    int depth = 0;
   public:
-    bool externC = false; // Inside extern "C".
-    Dialect dialect = Dialect::Cpp; // what the file is written in (parser.hpp)
     bool isC() const { return dialect == Dialect::C; }
     bool isKpp() const { return dialect == Dialect::KppSource; }
-    bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
-    const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
-    std::unordered_set<uint32_t> cTypedefNames; // in C: the typedef names declared so far (what `(Name)` casts to)
-    size_t classMembersMark = 0; // where the members of the class being parsed start in scratch
-    bool conditionMode = false; // Declarations inside `if (...)` end at ')' instead of ';'.
-    bool inRequires = false;    // Inside a requires-clause names are always template-ids.
-    std::vector<std::pair<uint32_t, Token>> splits; // '>>' tokens split in place, for undo on backtrack.
-
     // Backtracks to a saved position, undoing any token splits made after it.
     void restore(uint32_t save)
     {
@@ -413,9 +371,10 @@ namespace
 
     struct DepthGuard
     {
-      Parser& p;
       DepthGuard(Parser& p) : p(p) { ++p.depth; }
       ~DepthGuard() { --p.depth; }
+
+      Parser& p;
     };
 
     // --- attributes and other things we skip ---
@@ -557,8 +516,6 @@ namespace
     // Parses `a::b<args>::c`. In type context template arguments are always attempted; in
     // expression context they are only accepted when the token after '>' makes a template-id
     // plausible.
-    std::vector<NamePart> partScratch; // Reused by parseQualifiedName (which may recurse).
-
     bool parseQualifiedName(QualifiedName& name, bool typeContext, bool allowSpecial = true)
     {
       size_t partMark = partScratch.size();
@@ -855,7 +812,6 @@ namespace
       }
       return tag;
     }
-    uint64_t tag = 0;
 
     bool atBuiltinTypeIdent() const
     {
@@ -1815,10 +1771,6 @@ namespace
       bool present = false;
       Expr* requiresClause = nullptr;
     };
-    std::vector<uint32_t> templateTypeNames; // type parameters of the templates being parsed: known type names
-    // The value variables of the for constexpr loops being parsed (`for constexpr (auto a :
-    // alternatives(U))`): `a.type` names a type (design.md 8.5).
-    std::vector<uint32_t> descriptorNames;
 
     bool atDescriptorType()
     {
@@ -3154,9 +3106,10 @@ namespace
       // The type parameters are type names while the declaration (and its body) is parsed.
       struct TypeNamesGuard
       {
+        ~TypeNamesGuard() { names.resize(mark); }
+
         std::vector<uint32_t>& names;
         size_t mark;
-        ~TypeNamesGuard() { names.resize(mark); }
       } typeNamesGuard{templateTypeNames, templateTypeNames.size()};
       for (Decl* p : header.params)
         if (p && p->kind == NodeKind::TemplateParamDecl)
@@ -3198,10 +3151,11 @@ namespace
       // its static data members are built at startup, as C++ instantiates them all.
       struct DropExplicitInstantiation
       {
+        ~DropExplicitInstantiation() { if (drop && scratch.size() > mark) scratch.resize(mark); }
+
         std::vector<Node*>& scratch;
         size_t mark;
         bool drop;
-        ~DropExplicitInstantiation() { if (drop && scratch.size() > mark) scratch.resize(mark); }
       } dropInstantiation{scratch, scratch.size(), !header.present && header.params.empty()};
       if (at(Kw::class_) || at(Kw::struct_) || at(Kw::union_))
       {
@@ -4857,17 +4811,15 @@ namespace
       }
       return lhs;
     }
-
-    // Expression inside template arguments: no top-level '>' so relational operators are off.
-    bool noGreater = false;
     // Inside parentheses, brackets or an argument list `>` and `>>` are operators again, whatever
     // encloses them: `b < ((i >> 8) & 3)` read as a trial template argument list.
     struct GreaterAllowed
     {
-      bool& flag;
-      bool saved;
       explicit GreaterAllowed(bool& flag) : flag(flag), saved(flag) { flag = false; }
       ~GreaterAllowed() { flag = saved; }
+
+      bool& flag;
+      bool saved;
     };
     Expr* parseExpressionNoGreater(bool& sawLogical)
     {
@@ -5990,6 +5942,58 @@ namespace
           return e;
       }
     }
+  public:
+    uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool;
+    bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
+    uint32_t testCount = 0;   // Tests parsed so far in this file.
+    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,
+             kwTagMethod, kwTypeMember, kwSuite;
+    uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
+    uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
+    uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
+    bool sawVectorSize = false;      // C: `__attribute__((__vector_size__(N)))` seen since the last declaration (pushDecl).
+    bool pendingConst = false;       // `const static int x`: the const read among the specifiers, applied to the type that follows.
+    Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.
+    Expr* pendingCondition = nullptr; // conditional(expr) seen in the current specifiers.
+    Expr* pendingExplicitCondition = nullptr; // explicit(expr) seen in the current specifiers.
+  private:
+    std::vector<Token>& toks;
+    const char* text;
+    SymbolTable& symbols;
+    ParsedFile& out;
+    Arena& arena;
+    uint32_t pos = 0;
+    std::vector<Node*> scratch;
+    Decl* currentParent = nullptr;
+    uint32_t currentClassName = UINT32_MAX;
+    Access currentAccess = Access::Default;
+    bool inRecovery = false;
+    // Every error() as it was called, a recovery's own too (diagnostics keeps the first of each): a
+    // C struct's body that had one is one the import could not read in full (the safety net in
+    // parseClassOrElaborated).
+    std::vector<Diagnostic> allErrors;
+    int depth = 0;
+  public:
+    bool externC = false; // Inside extern "C".
+    Dialect dialect = Dialect::Cpp; // what the file is written in (parser.hpp)
+    bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
+    const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
+  private:
+    std::unordered_set<uint32_t> cTypedefNames; // in C: the typedef names declared so far (what `(Name)` casts to)
+    size_t classMembersMark = 0; // where the members of the class being parsed start in scratch
+    bool conditionMode = false; // Declarations inside `if (...)` end at ')' instead of ';'.
+    bool inRequires = false;    // Inside a requires-clause names are always template-ids.
+    std::vector<std::pair<uint32_t, Token>> splits; // '>>' tokens split in place, for undo on backtrack.
+    std::vector<NamePart> partScratch; // Reused by parseQualifiedName (which may recurse).
+    uint64_t tag = 0;
+    std::vector<uint32_t> templateTypeNames; // type parameters of the templates being parsed: known type names
+    // The value variables of the for constexpr loops being parsed (`for constexpr (auto a :
+    // alternatives(U))`): `a.type` names a type (design.md 8.5).
+    std::vector<uint32_t> descriptorNames;
+
+    // Expression inside template arguments: no top-level '>' so relational operators are off.
+    bool noGreater = false;
   };
 
   template<> constexpr NodeKind Parser::nodeKindOf<NamedType>() { return NodeKind::NamedType; }
