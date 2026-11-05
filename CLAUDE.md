@@ -10,6 +10,7 @@ simple templates, own standard library, C-only interop.
   it when a decision is made or changed. `docs/prototype-results.md`: measurements and method.
   `docs/stdlib/`: the standard library specification (self-contained; changing a rule there is a
   design decision), `docs/stdlib-conformance.md`: where stdlib/ does not meet it yet.
+  `docs/code-style.md`: kpp's code style (Factorio's), checked by `tools\style\kppstyle.py`.
 - `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kppc.exe` (CMake + Ninja +
   clang-cl from VS 2022). Benchmarks live in `compiler/bench/`, test inputs in `compiler/tests/`.
 - `stdlib/`: the standard library, written in kpp and compiled from source with every program
