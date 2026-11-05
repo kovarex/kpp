@@ -42,8 +42,9 @@
   // The one rule for which conversion operator a conversion runs (design.md 24; GlobalScope::chooseConversion).
   // contextualBool: a conversion to bool may use an explicit operator bool (a condition); false for a
   // copy-initialization, an argument (C++ [class.conv.fct] 2).
+  // ambiguous, when given: two operators were equally good (null returned).
   FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs,
-                                 bool contextualBool = true);
+                                 bool contextualBool = true, bool* ambiguous = nullptr);
 
   int listInitRank(const Ty* list, const Ty* p, int depth);
 

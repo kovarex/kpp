@@ -181,8 +181,10 @@ auto GlobalScope::Impl::chooseConstructor(const Ty* classType, const std::vector
 // design.md 24: the one rule for which conversion operator a conversion runs (GlobalScope::
 // chooseConversion says what it does), for codegen, the interpreter and the checker.
 auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, Subst* opArgs,
-                                         bool contextualBool) -> FunctionDecl*
+                                         bool contextualBool, bool* ambiguousOut) -> FunctionDecl*
 {
+  if (ambiguousOut)
+    *ambiguousOut = false;
   if (foundIn)
     *foundIn = nullptr;
   if (opArgs)
@@ -309,6 +311,8 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     else if (rank == bestRank && constMatch == bestConstMatch && c.f != best->f && kind == ConversionKind::ToType)
       ambiguous = true;
   }
+  if (ambiguousOut)
+    *ambiguousOut = best && ambiguous;
   if (!best || ambiguous)
     return nullptr; // (none, or two equally good: C++'s ambiguity, which codegen reports as no conversion)
   if (foundIn)
@@ -908,7 +912,10 @@ auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int dep
   // through an operator exactly when the call can run it. rvalues: a parameter binding an rvalue,
   // which an operator returning an lvalue reference does not give.
   Subst args;
-  FunctionDecl* f = chooseConversion(a, param, GlobalScope::ConversionKind::ToType, allowExplicit, nullptr, &args, allowExplicit);
+  bool ambiguous = false;
+  FunctionDecl* f = chooseConversion(a, param, GlobalScope::ConversionKind::ToType, allowExplicit, nullptr, &args, allowExplicit, &ambiguous);
+  if (ambiguous)
+    return true; // (C++: an ambiguous conversion is still a user-defined one, the overload viable; a call that chooses it is an error)
   if (!f)
     return false;
   if (rvalues)

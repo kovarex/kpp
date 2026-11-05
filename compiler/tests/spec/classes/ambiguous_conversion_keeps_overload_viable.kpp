@@ -1,0 +1,15 @@
+// spec: an argument whose class converts to the parameter by two equally good operators keeps the overload viable (C++ [over.best.ics]: an ambiguous conversion sequence is a user-defined one), and the call that chooses it is an error, never a silent choice of another overload
+// error: ambiguous_conversion_keeps_overload_viable.kpp:13: error: codegen does not support passing a class (X) where a scalar is expected yet (in main())
+// factorio: D's review of 1514538a (overload ranking by the one conversion rule, design.md 24)
+struct X
+{
+  operator long long() const { return 1; }
+  operator long double() const { return 2; }
+};
+void f(int v) { println("int ", v); }
+int main()
+{
+  X x;
+  f(x);
+  return 0;
+}
