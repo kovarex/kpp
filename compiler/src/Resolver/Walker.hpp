@@ -498,6 +498,8 @@
     // A member function marked override must override a virtual function of a base (C++
     // [class.virtual]): an error where it overrides none, in a class or a class template's instance.
     void checkOverride(FunctionDecl* f);
+    // A variable whose type is an abstract class (or an array of one): an error, as in C++.
+    void checkAbstractObject(VariableDecl* v, const Ty* declared);
     // A variable holding a Text: a parameter's local copy only, never a data member or a global.
     void checkTextVariable(VariableDecl* v, const Ty* declared);
 

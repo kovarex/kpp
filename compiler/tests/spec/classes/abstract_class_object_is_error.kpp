@@ -1,7 +1,6 @@
 // spec: an object of a class whose pure virtual function nothing overrides (it is abstract) is an error, as in C++: here Derived's write(int) does not override Base's write(unsigned), so `Derived d;` makes an object of an abstract class
 // factorio: found with classes/override_of_nothing_is_error: a stream deriving from OutStream whose old writeBytes(const char*, int) no longer overrode the pure writeBytes(const char*, ContainerSize) was still made, and writing to it called the pure virtual function (an access violation)
-// pending: an abstract class can be instantiated; the program crashes in the pure virtual call (D)
-// error: abstract_class_object_is_error.kpp:18: error: an object of the abstract class Derived
+// error: abstract_class_object_is_error.kpp:17: error: an object of the abstract class Derived
 class Base
 {
 public:

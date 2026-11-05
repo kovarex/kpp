@@ -2547,6 +2547,22 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
   impl.reportCheckerError(file, f->token, name + " is marked override but overrides no virtual function");
 }
 
+auto GlobalScope::Impl::Walker::checkAbstractObject(VariableDecl* v, const Ty* declared) -> void
+{
+  // (factorio: a stream whose writeBytes no longer overrode the pure one was made, and writing to it
+  // called the pure function)
+  if (!declared || probing || retypingElements || !file || file->isImported || (v->flags & (DF_Extern | DF_Typedef)))
+    return;
+  const Ty* t = types.unqualified(declared);
+  while (t->kind == TyKind::Array)
+    t = types.unqualified(t->inner);
+  if (t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t) || impl.containsAuto(t) || Impl::mentionsUnknown(t))
+    return;
+  if (std::optional<bool> abstract = impl.abstractClass(t, {}); abstract && *abstract)
+    impl.reportCheckerError(file, v->token, "an object of the abstract class " + types.toString(t, &impl.symbols) +
+                                                " (a pure virtual function of it or of a base that nothing overrides)");
+}
+
 auto GlobalScope::Impl::Walker::checkTextSignature(FunctionDecl* f) -> void
 {
   if (probing || !impl.textDecl() || activeSubst)
@@ -5043,6 +5059,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         const Ty* type = deducedLocal ? deducedLocal : declared;
         impl.checkConstexprVariable(v, type, ctx(), activeSubst ? bodyOf : nullptr, file);
       }
+      checkAbstractObject(v, deducedLocal ? deducedLocal : declared);
       break;
     }
     case NodeKind::ParamDecl: walkParam(static_cast<ParamDecl*>(d)); break;
