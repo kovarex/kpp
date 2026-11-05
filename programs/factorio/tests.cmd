@@ -45,9 +45,11 @@ set ASAN=0
 set RELEASE=0
 set ASANRUNTIME=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\lib\clang\19\lib\windows
 set ARGS=
+set SHARDS=
 :arguments
 if "%~1"=="" goto argumentsDone
 for %%o in (--crc-write --crc-against) do if "%~1"=="%%o" if "%~2"=="" (echo %%o needs a file& exit /b 1)
+if "%~1"=="--shards" (set SHARDS=%~2& shift& shift& goto arguments)
 if "%~1"=="--crc-write" (set ARGS=%ARGS% --crc-mode write --crc-file "%~f2"& shift& shift& goto arguments)
 if "%~1"=="--crc-against" (set ARGS=%ARGS% --crc-mode check --crc-file "%~f2"& shift& shift& goto arguments)
 if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--baseline-debug" (set BASELINE=1& set BASELINEDEBUG=1) else if "%~1"=="--asan" (set ASAN=1) else if "%~1"=="--release" (set RELEASE=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
@@ -91,6 +93,9 @@ if not exist %OUT%\factorio-test.exe (
   exit /b 1
 )
 set EXE=%OUT%\factorio-test.exe
+rem --shards N: the tests in N processes at once, each a group of suites (suites.py --shards; the
+rem batch run on master's: 88 s against 701 s in one process), its last line `tests: ALL PASSED (...)`.
+if defined SHARDS goto shards
 :run
 rem Run from the write directory, so that nothing the runner writes next to its working directory
 rem lands anywhere else.
@@ -103,3 +108,8 @@ echo == factorio-test exit %RESULT%; its output: %OUT%\tests.txt
 %SystemRoot%\System32\findstr.exe /c:"Success:" /c:"FAILURE:" /c:"Test time:" %OUT%\tests.txt
 echo == the C++ build: Success: 9006 tests passed (2026-10-29; tests.cmd --baseline measures it again)
 exit /b %RESULT%
+
+:shards
+if not "%ARGS%"=="" (echo tests: --shards takes no runner arguments: %ARGS%& exit /b 2)
+python -I "%HERE%suites.py" %EXE% %OUT%\shards --jobs %SHARDS% --shards %SHARDS%
+exit /b %errorlevel%
