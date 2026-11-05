@@ -1126,13 +1126,14 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
       std::vector<const Ty*> rest(given.begin() + std::min(i, given.size()), given.end());
       t = types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())});
     }
-    if (!t && param->isType && !param->isPack && param->defaultArg)
+    if (!t && !param->isPack && param->defaultArg)
     {
-      // Neither written nor deduced: its default (`template<typename Unused = void>`), which may
-      // name the parameters before it.
+      // Neither written nor deduced: its default (`template<typename Unused = void>`, a value's
+      // `template<class T, int N = 3>`, which `times(4)` was no constant without), which may name
+      // the parameters before it.
       TypeContext dctx{lexicalScopeOf(f), &params, bound.empty() ? nullptr : &bound, f->file ? f->file->tokens : nullptr,
                        f->file ? f->file->text : std::string_view()};
-      t = convertType(static_cast<Type*>(param->defaultArg), dctx, depth + 1);
+      t = param->isType ? convertType(static_cast<Type*>(param->defaultArg), dctx, depth + 1) : templateArgument(param->defaultArg, param, dctx, depth + 1);
     }
     if (!t || !t->isKnown() || types.isDependent(t))
       return false;

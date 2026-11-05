@@ -1,0 +1,14 @@
+// spec: at compile time a function template's value parameter that is neither written nor deduced takes its default, as a type parameter does: `times(4)` and `times<int>(2)` of `template<class T, int N = 3>`, a default naming the parameters before it (`int N = int(sizeof(T)) * 2`), and `three()` of `template<int N = 3>`
+// found by thread D (2026-11-05): constBindTemplate took the default of a type parameter only, so each call was no constant (the program, which instantiates them, gave the values)
+template<class T, int N = 3> int times(T v) { return v * N; }
+template<class T, int N = int(sizeof(T)) * 2> int scaled(T v) { return v * N; }
+template<int N = 3> int three() { return N; }
+constexpr int deduced = times(4);
+constexpr int partial = times<int>(2);
+constexpr int dependent = scaled(2);
+constexpr int none = three();
+int main()
+{
+  println(deduced, " ", times(4), " ", partial, " ", times<int>(2), " ", dependent, " ", scaled(2), " ", none, " ", three());
+  return 0;
+}
