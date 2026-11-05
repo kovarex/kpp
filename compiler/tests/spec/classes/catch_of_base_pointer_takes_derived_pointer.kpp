@@ -1,0 +1,63 @@
+// spec: a handler of a pointer type takes a thrown pointer that converts to it, as C++'s [except.handle] 3 has it: `catch (Second* p)` takes a thrown `Both*`, moved to its Second part (`2 3`), `catch (const Both* p)` a `Both*` (`3`) and `catch (void* p)` any object pointer (`1`); clang prints the same
+// pending: a thrown pointer's descriptor lists no conversions (its pointee's bases, const, void*), so only a handler of its own type takes it: the others fall through to `catch (...)`, and a handler of a base pointer would also need the offset added to the pointer's value, not to the exception object's address
+// found by thread B (2026-11-05), comparing kpp with clang; no code of the game or of kpp throws a pointer
+class First
+{
+public:
+  int a = 1;
+  virtual ~First() {}
+};
+class Second
+{
+public:
+  int b = 2;
+  virtual ~Second() {}
+  virtual int which() const { return 2; }
+};
+class Both : public First, public Second
+{
+public:
+  int c = 3;
+  int which() const override { return 3; }
+};
+Both object;
+int main()
+{
+  try
+  {
+    throw &object;
+  }
+  catch (Second* p)
+  {
+    println(p->b, " ", p->which());
+  }
+  catch (...)
+  {
+    println("other");
+  }
+  try
+  {
+    throw &object;
+  }
+  catch (const Both* p)
+  {
+    println(p->c);
+  }
+  catch (...)
+  {
+    println("other");
+  }
+  try
+  {
+    throw &object;
+  }
+  catch (void* p)
+  {
+    println(p == static_cast<void*>(&object) ? 1 : 0);
+  }
+  catch (...)
+  {
+    println("other");
+  }
+  return 0;
+}
