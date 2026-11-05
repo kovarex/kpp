@@ -27,6 +27,9 @@ add_executable(kppc
   src/Resolver/Interpreter.cpp
   src/types.cpp
   src/codegen.cpp
+  src/Codegen/Layout.cpp
+  src/Codegen/EmitterNames.cpp
+  src/Codegen/Diagnostics.cpp
   src/consteval.cpp
   src/instance.cpp
   src/source.cpp

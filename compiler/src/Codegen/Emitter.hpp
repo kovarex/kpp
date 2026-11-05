@@ -186,9 +186,9 @@ namespace codegen
 
     Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
 
-#include "Diagnostics.inl"
-#include "EmitterNames.inl"
-#include "Layout.inl"
+#include "Diagnostics.hpp"
+#include "EmitterNames.hpp"
+#include "Layout.hpp"
 #include "ClassMetadata.inl"
 #include "ParameterPacks.inl"
 #include "Lambdas.inl"
