@@ -1,0 +1,36 @@
+// spec: a constructor whose parameters all have default arguments is a default constructor at compile time as at run time: `Style()`, `Plain()`, `Plain p;` and `Plain p{}` run it with those arguments (`7 9 9 9 7 9`, the constant data and the locals alike)
+// found by thread B (2026-11-05, e2e defaultargs): the interpreter took the members' own defaults (0) for `T()` and `T x;`, so `Style viaInit = Style();`, constant data since dbc6c69e, held width 0 where the program's constructor gives 7 (a silent wrong answer)
+struct Style
+{
+  const Style* parent;
+  int width;
+  explicit Style(const Style* parent = nullptr, int width = 7) : parent(parent), width(width) {}
+};
+struct Plain
+{
+  int width;
+  constexpr Plain(int w = 9) : width(w) {}
+};
+Style viaInit = Style();
+constexpr Plain plainInit = Plain();
+constexpr int local()
+{
+  Plain p;
+  return p.width;
+}
+constexpr int braced()
+{
+  Plain p{};
+  return p.width;
+}
+constexpr int styled()
+{
+  Style s;
+  return s.width;
+}
+constexpr int cl = local(), cb = braced(), cs = styled();
+int main()
+{
+  println(viaInit.width, " ", plainInit.width, " ", cl, " ", cb, " ", cs, " ", local());
+  return 0;
+}

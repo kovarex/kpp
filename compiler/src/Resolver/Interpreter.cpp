@@ -2500,9 +2500,35 @@ auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth) -> std::op
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   if (!layout)
     return std::nullopt;
+  // A user-provided default constructor (none visible: no constant): one without parameters, or
+  // whose parameters all have default arguments (`Style(const Style* parent = nullptr, int width =
+  // 7)`, in the declaration or in the definition after the class), which `T()` and `T x;` run with
+  // those arguments, where the members' defaults were taken (a silent wrong answer: width 0, found
+  // by thread B); two such are ambiguous, as in C++.
+  FunctionDecl* defaultConstructor = nullptr;
+  int defaultConstructors = 0;
   for (FunctionDecl* c : layout->constructors)
-    if (c->params.empty() && !(c->flags & (DF_Default | DF_Delete)) && !c->builtin)
-      return constRunConstructor(c, t, {}, depth + 1); // a user-provided default constructor (none visible: no constant)
+  {
+    if ((c->flags & (DF_Default | DF_Delete)) || c->builtin || !c->templateParams.empty())
+      continue;
+    FunctionDecl* def = constDefinition(c);
+    bool defaulted = true;
+    for (size_t i = 0; i < c->params.size() && defaulted; ++i)
+      defaulted = static_cast<ParamDecl*>(c->params[i])->defaultValue ||
+                  (def && i < def->params.size() && static_cast<ParamDecl*>(def->params[i])->defaultValue);
+    if (!defaulted)
+      continue;
+    defaultConstructor = c;
+    ++defaultConstructors;
+  }
+  if (defaultConstructors > 1)
+  {
+    if (constWhy().empty())
+      constWhy() = "a default-initialization of " + types.toString(t, &symbols) + ", which more than one constructor takes without arguments";
+    return std::nullopt;
+  }
+  if (defaultConstructor)
+    return constRunConstructor(defaultConstructor, t, {}, depth + 1);
   std::vector<ConstValue> parts;
   if (!constMayMake(layout->bases.size() + layout->fields.size()))
     return std::nullopt;
