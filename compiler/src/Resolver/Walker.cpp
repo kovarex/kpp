@@ -4991,6 +4991,12 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         impl.checkAccessIn(v); // (a local, also a lambda's in a member initializer: with the function it is in)
       // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
       const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
+      // A retype with no arguments (a plain function's walk again after one per element of a `for
+      // constexpr` in its body or a lambda's there) deduces an `auto` local again: the type cached on
+      // it is the last element's walk's (a lambda's closure of that element, whose call operator
+      // codegen then emitted a second time).
+      if (retypingElements && !activeSubst && v->type && Impl::astMentionsAuto(v->type))
+        declared = typeOf(v->type);
       if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
         bindTemplateAddresses(v->init, declared); // `const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;`
       checkTextVariable(v, declared);
