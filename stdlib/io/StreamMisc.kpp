@@ -1,7 +1,7 @@
 // Miscellaneous stream types: IstreambufIterator and StreamSize, rarely used but mapped from
 // std::istreambuf_iterator and std::streamsize.
 
-using StreamSize = long long;
+using StreamSize = i64;
 
 // IstreambufIterator<Char> (std::istreambuf_iterator<char>): an input iterator over the characters
 // of an InFileStream, one get() at a time. A default-constructed one is the end, which an iterator
@@ -12,13 +12,13 @@ struct IstreambufIterator
 {
   static_assert(isSame<Char, char>, "IstreambufIterator reads the chars of an InFileStream");
   using value_type = Char;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = const Char*;
   using reference = Char;
   using iterator_category = InputIteratorTag;
 
   InFileStream* stream = nullptr;
-  int current = -1;
+  i32 current = -1;
 
   IstreambufIterator() {}
   explicit IstreambufIterator(InFileStream& s) : stream(&s)

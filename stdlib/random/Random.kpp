@@ -4,9 +4,9 @@
 
 struct RandomDevice
 {
-  unsigned long long operator()()
+  u64 operator()()
   {
-    unsigned long long x = (unsigned long long)platform::fastCounter();
+    u64 x = (u64)platform::fastCounter();
     x ^= x >> 30;
     x *= 0xbf58476d1ce4e5b9ull;
     x ^= x >> 27;
@@ -18,7 +18,7 @@ struct RandomDevice
 
 struct DefaultRandomEngine
 {
-  unsigned long long state[4];
+  u64 state[4];
 
   DefaultRandomEngine()
   {
@@ -29,7 +29,7 @@ struct DefaultRandomEngine
     this->state[3] = rd();
   }
 
-  explicit DefaultRandomEngine(unsigned long long seed)
+  explicit DefaultRandomEngine(u64 seed)
   {
     this->state[0] = seed;
     this->state[1] = seed * 6364136223846793005ull + 1;
@@ -37,7 +37,7 @@ struct DefaultRandomEngine
     this->state[3] = this->state[2] * 6364136223846793005ull + 1;
   }
 
-  void seed(unsigned long long s)
+  void seed(u64 s)
   {
     this->state[0] = s;
     this->state[1] = s * 6364136223846793005ull + 1;
@@ -45,11 +45,11 @@ struct DefaultRandomEngine
     this->state[3] = this->state[2] * 6364136223846793005ull + 1;
   }
 
-  unsigned long long operator()()
+  u64 operator()()
   {
-    unsigned long long result = this->state[1] * 5;
+    u64 result = this->state[1] * 5;
     result = (result << 7 | result >> 57) * 9;
-    unsigned long long t = this->state[1] << 17;
+    u64 t = this->state[1] << 17;
     this->state[2] ^= this->state[0];
     this->state[3] ^= this->state[1];
     this->state[1] ^= this->state[2];
@@ -59,16 +59,16 @@ struct DefaultRandomEngine
     return result;
   }
 
-  static unsigned long long min() { return 0; }
-  static unsigned long long max() { return ~0ull; }
-  void discard(unsigned long long count)
+  static u64 min() { return 0; }
+  static u64 max() { return ~0ull; }
+  void discard(u64 count)
   {
-    for (unsigned long long i = 0; i < count; ++i)
+    for (u64 i = 0; i < count; ++i)
       (*this)();
   }
 };
 
-template<typename IntType = int>
+template<typename IntType = i32>
 struct UniformIntDistribution
 {
   IntType low;
@@ -80,8 +80,8 @@ struct UniformIntDistribution
   template<typename Engine>
   IntType operator()(Engine& engine)
   {
-    unsigned long long range = (unsigned long long)(this->high - this->low) + 1;
-    unsigned long long raw = engine();
+    u64 range = (u64)(this->high - this->low) + 1;
+    u64 raw = engine();
     return this->low + (IntType)(raw % range);
   }
 

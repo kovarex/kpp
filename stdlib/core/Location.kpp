@@ -9,12 +9,12 @@
 struct CallerLocation
 {
   const char* sourceFile;
-  uint32_t sourceLine;
-  uint32_t sourceColumn;
+  u32 sourceLine;
+  u32 sourceColumn;
   const char* sourceFunction;
 
   const char* file_name() const { return this->sourceFile; }
-  uint32_t line() const { return this->sourceLine; }
-  uint32_t column() const { return this->sourceColumn; }
+  u32 line() const { return this->sourceLine; }
+  u32 column() const { return this->sourceColumn; }
   const char* function_name() const { return this->sourceFunction; }
 };

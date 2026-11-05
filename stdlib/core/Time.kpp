@@ -8,11 +8,11 @@
 
 // A fraction known at compile time (std::ratio): num and den are N/D in lowest terms, den positive
 // (gcd folds at compile time).
-template<long long N, long long D = 1>
+template<i64 N, i64 D = 1>
 struct Ratio
 {
-  static constexpr long long num = (D < 0 ? -N : N) / gcd(N, D);
-  static constexpr long long den = (D < 0 ? -D : D) / gcd(N, D);
+  static constexpr i64 num = (D < 0 ? -N : N) / gcd(N, D);
+  static constexpr i64 den = (D < 0 ? -D : D) / gcd(N, D);
 };
 using Nano = Ratio<1, 1000000000>;
 using Micro = Ratio<1, 1000000>;
@@ -109,14 +109,14 @@ struct Duration
   }
   // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
   // (Members, one per scalar type: C++ takes any rep, in the common type of the two.)
-  Duration<Rep, Period> operator*(int factor) const { return Duration<Rep, Period>(this->ticks * factor); }
-  Duration<Rep, Period> operator*(long long factor) const { return Duration<Rep, Period>(this->ticks * factor); }
+  Duration<Rep, Period> operator*(i32 factor) const { return Duration<Rep, Period>(this->ticks * factor); }
+  Duration<Rep, Period> operator*(i64 factor) const { return Duration<Rep, Period>(this->ticks * factor); }
   Duration<double, Period> operator*(double factor) const { return Duration<double, Period>((double)this->ticks * factor); }
-  Duration<Rep, Period> operator/(int divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
-  Duration<Rep, Period> operator/(long long divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
+  Duration<Rep, Period> operator/(i32 divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
+  Duration<Rep, Period> operator/(i64 divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
   Duration<double, Period> operator/(double divisor) const { return Duration<double, Period>((double)this->ticks / divisor); }
-  Duration<Rep, Period> operator%(int divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
-  Duration<Rep, Period> operator%(long long divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
+  Duration<Rep, Period> operator%(i32 divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
+  Duration<Rep, Period> operator%(i64 divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
   // Comparisons with a duration of any type, in their common duration.
   template<typename Rep2, typename Period2>
   bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) == 0; }
@@ -138,26 +138,26 @@ template<typename ToRep, typename ToPeriod, typename Rep, typename Period>
 Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, const Duration<ToRep, ToPeriod>* target)
 {
   // The factor (Period::num / Period::den) / (ToPeriod::num / ToPeriod::den), reduced.
-  long long multiplier = Period::num * ToPeriod::den;
-  long long divisor = Period::den * ToPeriod::num;
-  long long common = gcd(multiplier, divisor);
+  i64 multiplier = Period::num * ToPeriod::den;
+  i64 divisor = Period::den * ToPeriod::num;
+  i64 common = gcd(multiplier, divisor);
   multiplier /= common;
   divisor /= common;
   if constexpr (isFloatingPoint<ToRep> || isFloatingPoint<Rep>)
     return Duration<ToRep, ToPeriod>((ToRep)((double)d.ticks * (double)multiplier / (double)divisor));
   else if (divisor == 1)
-    return Duration<ToRep, ToPeriod>((ToRep)((long long)d.ticks * multiplier));
+    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.ticks * multiplier));
   else
-    return Duration<ToRep, ToPeriod>((ToRep)((long long)d.ticks * multiplier / divisor));
+    return Duration<ToRep, ToPeriod>((ToRep)((i64)d.ticks * multiplier / divisor));
 }
 
-using Nanoseconds = Duration<long long, Nano>;
-using Microseconds = Duration<long long, Micro>;
-using Milliseconds = Duration<long long, Milli>;
-using Seconds = Duration<long long>;
-using Minutes = Duration<long long, Ratio<60>>;
-using Hours = Duration<long long, Ratio<3600>>;
-using Days = Duration<long long, Ratio<86400>>;
+using Nanoseconds = Duration<i64, Nano>;
+using Microseconds = Duration<i64, Micro>;
+using Milliseconds = Duration<i64, Milli>;
+using Seconds = Duration<i64>;
+using Minutes = Duration<i64, Ratio<60>>;
+using Hours = Duration<i64, Ratio<3600>>;
+using Days = Duration<i64, Ratio<86400>>;
 
 // d in To's period (std::chrono::duration_cast): truncated toward zero for an integer To.
 template<typename To, typename Rep, typename Period>
@@ -185,9 +185,9 @@ To ceil(const Duration<Rep, Period>& d)
 
 // A number times a duration, as the duration times the number.
 template<typename R, typename P>
-Duration<R, P> operator*(int factor, const Duration<R, P>& d) { return d * factor; }
+Duration<R, P> operator*(i32 factor, const Duration<R, P>& d) { return d * factor; }
 template<typename R, typename P>
-Duration<R, P> operator*(long long factor, const Duration<R, P>& d) { return d * factor; }
+Duration<R, P> operator*(i64 factor, const Duration<R, P>& d) { return d * factor; }
 template<typename R, typename P>
 Duration<double, P> operator*(double factor, const Duration<R, P>& d) { return d * factor; }
 
@@ -209,7 +209,7 @@ auto inCommonDuration(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
 
 // The ticks of a and b in their common duration, compared.
 template<typename R1, typename P1, typename R2, typename P2>
-int compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
+i32 compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
 {
   auto x = inCommonDuration(a, b);
   auto y = inCommonDuration(b, a);
@@ -292,7 +292,7 @@ TimePoint<C, To> timePointCast(const TimePoint<C, D>& t) { return TimePoint<C, T
 // A monotonic clock in nanoseconds (std::chrono::steady_clock; also high_resolution_clock).
 struct SteadyClock
 {
-  using rep = long long;
+  using rep = i64;
   using period = Nano;
   using duration = Nanoseconds;
   using time_point = TimePoint<SteadyClock>;
@@ -306,20 +306,20 @@ using HighResolutionClock = SteadyClock;
 // when the system time is set.
 struct SystemClock
 {
-  using rep = long long;
+  using rep = i64;
   using period = Ratio<1, 10000000>;
-  using duration = Duration<long long, Ratio<1, 10000000>>;
+  using duration = Duration<i64, Ratio<1, 10000000>>;
   using time_point = TimePoint<SystemClock>;
   static constexpr bool is_steady = false;
 
-  static TimePoint<SystemClock> now() { return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>(platform::systemTicks())); }
+  static TimePoint<SystemClock> now() { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(platform::systemTicks())); }
   // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.
-  static long long to_time_t(const TimePoint<SystemClock>& t)
+  static i64 to_time_t(const TimePoint<SystemClock>& t)
   {
-    long long ticks = t.sinceEpoch.ticks;
+    i64 ticks = t.sinceEpoch.ticks;
     return ticks >= 0 ? ticks / 10000000 : -((-ticks + 9999999) / 10000000);
   }
-  static TimePoint<SystemClock> from_time_t(long long seconds) { return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>(seconds * 10000000)); }
+  static TimePoint<SystemClock> from_time_t(i64 seconds) { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000)); }
 };
 
 // d in whole milliseconds, rounded up, for the Windows waits: 0 for a negative d, and below
@@ -327,7 +327,7 @@ struct SystemClock
 template<typename Rep, typename Period>
 unsigned long waitMilliseconds(const Duration<Rep, Period>& d)
 {
-  long long ms = ceil<Milliseconds>(d).count();
+  i64 ms = ceil<Milliseconds>(d).count();
   if (ms <= 0)
     return 0;
   if (ms >= 0xFFFFFFFEll)
@@ -345,10 +345,10 @@ unsigned long waitMilliseconds(const Duration<Rep, Period>& d)
 // does not know keep their values.
 bool parseTime(const char* text, const char* format, tm* result)
 {
-  auto number = [&](int maxDigits, int& value) -> bool
+  auto number = [&](i32 maxDigits, i32& value) -> bool
   {
-    int digits = 0;
-    int n = 0;
+    i32 digits = 0;
+    i32 n = 0;
     while (digits < maxDigits && *text >= '0' && *text <= '9')
     {
       n = n * 10 + (*text - '0');
@@ -376,7 +376,7 @@ bool parseTime(const char* text, const char* format, tm* result)
       continue;
     }
     ++format;
-    int value = 0;
+    i32 value = 0;
     switch (*format)
     {
       case 'Y':

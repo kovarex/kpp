@@ -14,10 +14,10 @@
 struct String
 {
   // The object's bytes: the heap fields (a pointer and two sizes) and, after them, the mark byte.
-  static const int objectBytes = 32;
+  static const i32 objectBytes = 32;
   static const ContainerSize smallCapacity = objectBytes - 2;
-  static const int markIndex = objectBytes - 1;
-  static const int largeMark = 0x80;
+  static const i32 markIndex = objectBytes - 1;
+  static const i32 largeMark = 0x80;
 
   union
   {
@@ -34,7 +34,7 @@ struct String
   using const_iterator = const char*;
   using value_type = char;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = char&;
   using const_reference = const char&;
   using pointer = char*;
@@ -111,9 +111,9 @@ struct String
     {
       return true; // (at compile time always: see the top)
     }
-    return (uint8_t)this->smallChars[String::markIndex] == String::largeMark;
+    return (u8)this->smallChars[String::markIndex] == String::largeMark;
   }
-  ContainerSize size() const { return this->isLarge() ? this->heapLength : ContainerSize((uint8_t)this->smallChars[String::markIndex]); }
+  ContainerSize size() const { return this->isLarge() ? this->heapLength : ContainerSize((u8)this->smallChars[String::markIndex]); }
   ContainerSize length() const { return this->size(); }
   // Characters that fit without allocating.
   ContainerSize capacity() const { return this->isLarge() ? this->heapCapacity : String::smallCapacity; }
@@ -273,8 +273,8 @@ struct String
   // Searching. Every find returns the index of the first match at or after `from`, or npos.
   ContainerSize find(const char* needle, ContainerSize from) const
   {
-    size_t count = strlen(needle);
-    return count > (size_t)maxContainerSize ? npos : this->findBytes(needle, (ContainerSize)count, from);
+    usize count = strlen(needle);
+    return count > (usize)maxContainerSize ? npos : this->findBytes(needle, (ContainerSize)count, from);
   }
   ContainerSize find(const char* needle) const { return this->find(needle, 0); }
   ContainerSize find(const String& needle) const { return this->findBytes(needle.data(), needle.size(), 0); }
@@ -344,8 +344,8 @@ struct String
   }
   ContainerSize rfind(const char* needle, ContainerSize from) const
   {
-    size_t count = strlen(needle);
-    return count > (size_t)maxContainerSize ? npos : this->rfindBytes(needle, (ContainerSize)count, from);
+    usize count = strlen(needle);
+    return count > (usize)maxContainerSize ? npos : this->rfindBytes(needle, (ContainerSize)count, from);
   }
   ContainerSize rfind(const char* needle) const { return this->rfind(needle, npos); }
   ContainerSize rfind(const String& needle, ContainerSize from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
@@ -362,12 +362,12 @@ struct String
   ContainerSize find_last_of(const String& set) const { return this->find_last_of(set.c_str()); }
   ContainerSize find_last_of(char c) const { return this->rfind(c); }
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
-  uint64_t copy(char* dest, uint64_t count, uint64_t pos = 0) const
+  u64 copy(char* dest, u64 count, u64 pos = 0) const
   {
     ContainerSize length = this->size();
-    if (pos > (uint64_t)length)
+    if (pos > (u64)length)
       throwOutOfRange("String::copy: position out of range");
-    uint64_t available = (uint64_t)length - pos;
+    u64 available = (u64)length - pos;
     if (count > available)
       count = available;
     memcpy(dest, this->data() + pos, count);
@@ -375,25 +375,25 @@ struct String
   }
   // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
   // as operator<).
-  int compare(const String& other) const
+  i32 compare(const String& other) const
   {
     ContainerSize length = this->size(), otherLength = other.size();
-    int c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
+    i32 c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
     if (c != 0)
       return c;
     return length < otherLength ? -1 : length > otherLength ? 1 : 0;
   }
-  int compare(const char* other) const { return this->compare(String(other)); }
+  i32 compare(const char* other) const { return this->compare(String(other)); }
   // The substring [pos, pos + count) (count clamped to what there is) compared with other, as
   // C++'s compare(pos, count, str); OutOfRange when pos > size().
-  int compare(ContainerSize pos, ContainerSize count, const String& other) const
+  i32 compare(ContainerSize pos, ContainerSize count, const String& other) const
   {
     if (pos > this->size())
       throwOutOfRange("String::compare: position out of range");
     ContainerSize available = this->size() - pos;
     return String(this->data() + pos, count < available ? count : available).compare(other);
   }
-  int compare(ContainerSize pos, ContainerSize count, const char* other) const { return this->compare(pos, count, String(other)); }
+  i32 compare(ContainerSize pos, ContainerSize count, const char* other) const { return this->compare(pos, count, String(other)); }
   void swap(String& other)
   {
     String held(move(other));
@@ -402,7 +402,7 @@ struct String
   }
   static bool oneOf(char c, const char* set)
   {
-    for (size_t i = 0; set[i] != 0; ++i)
+    for (usize i = 0; set[i] != 0; ++i)
       if (set[i] == c)
         return true;
     return false;
@@ -493,19 +493,19 @@ struct String
   bool operator==(const char* other) const
   {
     ContainerSize length = this->size();
-    return strlen(other) == (size_t)length && memcmp(this->data(), other, length) == 0;
+    return strlen(other) == (usize)length && memcmp(this->data(), other, length) == 0;
   }
   bool operator!=(const char* other) const { return !(*this == other); }
   bool operator<(const String& other) const
   {
     ContainerSize length = this->size(), otherLength = other.size();
-    int c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
+    i32 c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
     return c != 0 ? c < 0 : length < otherLength;
   }
   // Byte-wise as <: gives >, <= and >= with a String or a const char* (and `"x" < s` below).
   strong_ordering operator<=>(const String& other) const { return strong_ordering(signOf(this->compare(other))); }
   strong_ordering operator<=>(const char* other) const { return strong_ordering(signOf(this->compare(other))); }
-  static int8_t signOf(int compared) { return compared < 0 ? -1 : compared > 0 ? 1 : 0; }
+  static i8 signOf(i32 compared) { return compared < 0 ? -1 : compared > 0 ? 1 : 0; }
 
   // Makes room for `needed` characters (exactly: growth by appending is geometric); LengthError
   // past maxContainerSize.
@@ -528,7 +528,7 @@ struct String
     }
     if (count > maxContainerSize)
       throwLengthError("string too long");
-    char* block = allocateArray<char>((unsigned long long)count + 1);
+    char* block = allocateArray<char>((u64)count + 1);
     memcpy(block, bytes, count);
     block[count] = 0;
     this->adopt(block, count, count);
@@ -601,7 +601,7 @@ struct String
     }
     else
     {
-      ContainerSize length = ContainerSize((uint8_t)this->smallChars[String::markIndex]);
+      ContainerSize length = ContainerSize((u8)this->smallChars[String::markIndex]);
       if (length < String::smallCapacity)
       {
         this->smallChars[length] = c;
@@ -688,7 +688,7 @@ struct String
     }
     if (count > maxContainerSize)
       throwLengthError("string too long");
-    char* block = allocateArray<char>((unsigned long long)count + 1);
+    char* block = allocateArray<char>((u64)count + 1);
     memcpy(block, bytes, count);
     block[count] = 0;
     this->heapChars = block;
@@ -728,7 +728,7 @@ struct String
   [[noinline]] void reallocate(ContainerSize newCapacity)
   {
     ContainerSize length = this->size();
-    char* block = allocateArray<char>((unsigned long long)newCapacity + 1);
+    char* block = allocateArray<char>((u64)newCapacity + 1);
     memcpy(block, this->data(), length + 1);
     this->adopt(block, length, newCapacity);
   }
@@ -756,7 +756,7 @@ struct String
     ContainerSize length = this->size(), capacity = this->capacity();
     ContainerSize newLength = sizeSum(length, count, "string too long");
     ContainerSize newCapacity = grownCapacity(capacity, newLength, 0, "string too long");
-    char* block = allocateArray<char>((unsigned long long)newCapacity + 1);
+    char* block = allocateArray<char>((u64)newCapacity + 1);
     memcpy(block, this->data(), length);
     memcpy(block + length, bytes, count);
     block[newLength] = 0;

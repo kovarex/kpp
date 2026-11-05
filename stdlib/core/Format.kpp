@@ -3,12 +3,12 @@
 // toString(x), a + b; format("{} of {}", a, b) puts them at a literal pattern's {}s.
 extern "C" int snprintf(char* buffer, size_t size, const char* format, ...);
 
-String toString(long long value)
+String toString(i64 value)
 {
   char digits[24];
-  int n = 0;
+  i32 n = 0;
   bool negative = value < 0;
-  unsigned long long magnitude = negative ? (unsigned long long)(-(value + 1)) + 1 : (unsigned long long)value;
+  u64 magnitude = negative ? (u64)(-(value + 1)) + 1 : (u64)value;
   do
   {
     digits[n] = (char)('0' + magnitude % 10);
@@ -26,10 +26,10 @@ String toString(long long value)
   return result;
 }
 
-String toString(unsigned long long value)
+String toString(u64 value)
 {
   char digits[24];
-  int n = 0;
+  i32 n = 0;
   do
   {
     digits[n] = (char)('0' + value % 10);
@@ -45,24 +45,24 @@ String toString(unsigned long long value)
   return result;
 }
 
-String toString(int value) { return toString((long long)value); }
-String toString(unsigned int value) { return toString((unsigned long long)value); }
-String toString(long value) { return toString((long long)value); } // (C's long, a type of its own as in std::to_string)
-String toString(unsigned long value) { return toString((unsigned long long)value); }
+String toString(i32 value) { return toString((i64)value); }
+String toString(u32 value) { return toString((u64)value); }
+String toString(long value) { return toString((i64)value); } // (C's long, a type of its own as in std::to_string)
+String toString(unsigned long value) { return toString((u64)value); }
 
 // A floating value's text is the shortest that reads back to the same value (design.md 14: all the
 // information, nothing lost): %g's form at the fewest significant digits that round-trip, 0.1 as
 // "0.1", 0.1 + 0.2 as "0.30000000000000004", 1e21 as "1e+21". Infinities and NaN are "inf", "-inf"
 // and "nan" on every platform (MSVC's %g writes "-nan(ind)"); a negative zero is "-0".
-String floatingText(double value, int maxDigits, bool asFloat)
+String floatingText(double value, i32 maxDigits, bool asFloat)
 {
   if (value != value)
     return String("nan");
   if (value != 0 && value * 0.5 == value)
     return String(value > 0 ? "inf" : "-inf");
   char buffer[40];
-  int n = 0;
-  for (int digits = 1; digits <= maxDigits; ++digits)
+  i32 n = 0;
+  for (i32 digits = 1; digits <= maxDigits; ++digits)
   {
     n = snprintf(buffer, 40, "%.*g", digits, value);
     double back = strtod(buffer, nullptr);
@@ -70,10 +70,10 @@ String floatingText(double value, int maxDigits, bool asFloat)
       break;
   }
   // (%g at few digits writes 100 as "1e+02": below 1e16, as Python's repr, positionally.)
-  for (int i = 0; i < n; ++i)
+  for (i32 i = 0; i < n; ++i)
     if (buffer[i] == 'e')
     {
-      int exponent = (int)strtol(buffer + i + 1, nullptr, 10);
+      i32 exponent = (i32)strtol(buffer + i + 1, nullptr, 10);
       if (exponent >= 0 && exponent < 16)
         n = snprintf(buffer, 40, "%.*g", exponent + 1 > maxDigits ? maxDigits : exponent + 1, value);
       break;

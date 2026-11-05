@@ -48,7 +48,7 @@ struct GreaterEqual<void>
 };
 
 // Variant helpers: InPlaceIndex and InPlaceType tags used in Variant construction.
-template<int I>
+template<i32 I>
 struct InPlaceIndex {};
 
 template<typename T>
@@ -58,12 +58,12 @@ struct PiecewiseConstruct_t {};
 const PiecewiseConstruct_t piecewiseConstruct;
 
 // Bit rotation (C++20 std::rotr).
-unsigned int rotr(unsigned int value, int count)
+u32 rotr(u32 value, i32 count)
 {
   return (value >> count) | (value << (32 - count));
 }
 
-unsigned long long rotr(unsigned long long value, int count)
+u64 rotr(u64 value, i32 count)
 {
   return (value >> count) | (value << (64 - count));
 }
@@ -71,8 +71,8 @@ unsigned long long rotr(unsigned long long value, int count)
 // The greatest common divisor of |a| and |b| (std::gcd), 0 when both are 0, and their least common
 // multiple (std::lcm), 0 when either is 0. Each is one return expression, so that it folds at
 // compile time as well (a Ratio's terms, the common period of two durations).
-constexpr long long gcd(long long a, long long b) { return b == 0 ? (a < 0 ? -a : a) : gcd(b, a % b); }
-constexpr long long lcm(long long a, long long b) { return a == 0 || b == 0 ? 0 : (a < 0 ? -a : a) / gcd(a, b) * (b < 0 ? -b : b); }
+constexpr i64 gcd(i64 a, i64 b) { return b == 0 ? (a < 0 ? -a : a) : gcd(b, a % b); }
+constexpr i64 lcm(i64 a, i64 b) { return a == 0 || b == 0 ? 0 : (a < 0 ? -a : a) / gcd(a, b) * (b < 0 ? -b : b); }
 
 // make_unique_for_overwrite: allocates uninitialized storage.
 template<typename T>

@@ -15,7 +15,7 @@ struct Vector
   using const_reverse_iterator = ReverseIterator<const T*>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -411,7 +411,7 @@ struct Vector
   }
   // Geometric growth (doubling, at least 4, at most maxContainerSize): n appends cost O(n) element
   // moves in total. LengthError when needed is past maxContainerSize (core/Sizes.kpp).
-  ContainerSize capacityFor(unsigned long long needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
+  ContainerSize capacityFor(u64 needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
   void ensureRoom(ContainerSize needed, bool strong = true)
   {
     if (needed > this->allocated)
@@ -427,13 +427,13 @@ struct Vector
       grown = nullptr;
       return this->items + this->length;
     }
-    grown = allocateArray<T>(this->capacityFor((unsigned long long)this->length + 1));
+    grown = allocateArray<T>(this->capacityFor((u64)this->length + 1));
     return grown + this->length;
   }
   void finishAppend(T* grown)
   {
     if (grown)
-      this->adoptBlock(grown, this->capacityFor((unsigned long long)this->length + 1));
+      this->adoptBlock(grown, this->capacityFor((u64)this->length + 1));
     ++this->length;
   }
   // Copy-constructs count elements from source after the last one (exact growth: the copy and

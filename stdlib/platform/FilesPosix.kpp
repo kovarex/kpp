@@ -13,26 +13,26 @@ struct dirent;
 
 namespace posix
 {
-  extern "C" int stat(const char* path, ::stat* out);
-  extern "C" int lstat(const char* path, ::stat* out);
-  extern "C" int statvfs(const char* path, ::statvfs* out);
+  extern "C" i32 stat(const char* path, ::stat* out);
+  extern "C" i32 lstat(const char* path, ::stat* out);
+  extern "C" i32 statvfs(const char* path, ::statvfs* out);
   extern "C" DIR* opendir(const char* path);
   extern "C" dirent* readdir(DIR* directory);
-  extern "C" int closedir(DIR* directory);
+  extern "C" i32 closedir(DIR* directory);
   extern "C" char* realpath(const char* path, char* resolved);
-  extern "C" char* getcwd(char* buffer, size_t size);
-  extern "C" int chdir(const char* path);
-  extern "C" int mkdir(const char* path, mode_t mode);
-  extern "C" int rmdir(const char* path);
-  extern "C" int unlink(const char* path);
-  extern "C" int chmod(const char* path, mode_t mode);
+  extern "C" char* getcwd(char* buffer, usize size);
+  extern "C" i32 chdir(const char* path);
+  extern "C" i32 mkdir(const char* path, mode_t mode);
+  extern "C" i32 rmdir(const char* path);
+  extern "C" i32 unlink(const char* path);
+  extern "C" i32 chmod(const char* path, mode_t mode);
 }
 
 namespace platform
 {
   // UTF-8 to the wide text (UTF-32 here) and back; an invalid sequence, or a wide character that is
   // no Unicode scalar value, becomes U+FFFD.
-  WString widenUtf8(const char* text, int length)
+  WString widenUtf8(const char* text, i32 length)
   {
     WString result;
     if (length <= 0)
@@ -46,47 +46,47 @@ namespace platform
     }
     return result;
   }
-  String narrowWide(const wchar_t* text, int length)
+  String narrowWide(const wchar_t* text, i32 length)
   {
     String result;
-    for (int i = 0; i < length; ++i)
+    for (i32 i = 0; i < length; ++i)
     {
       u32 c = (u32)text[i];
       appendUtf8(result, isScalarValue(c) ? c : 0xFFFD);
     }
     return result;
   }
-  String utf8Of(const filesystem::path& p) { return narrowWide(p.text.c_str(), (int)p.text.size()); }
+  String utf8Of(const filesystem::path& p) { return narrowWide(p.text.c_str(), (i32)p.text.size()); }
 
   // The calling thread's errno, of the system category (a system error is an errno value here).
   ErrorCode lastFileError() { return ErrorCode(*errnoLocation(), systemCategory()); }
   // The errors that mean the path does not resolve: ENOENT, ENOTDIR (the same values in both C
   // libraries).
-  bool isNotFoundError(int error) { return error == 2 || error == 20; }
+  bool isNotFoundError(i32 error) { return error == 2 || error == 20; }
   // mkdir's error when the path is there already: EEXIST.
-  bool isAlreadyThereError(int error) { return error == 17; }
+  bool isAlreadyThereError(i32 error) { return error == 17; }
 
   // A struct stat's storage (glibc's is 144 bytes, FreeBSD's 224), read at the C library's offsets.
   struct StatBuffer
   {
-    uint64_t words[32];
+    u64 words[32];
 
-    uint64_t at64(int offset) const
+    u64 at64(i32 offset) const
     {
-      uint64_t value = 0;
+      u64 value = 0;
       memcpy(&value, (const char*)this->words + offset, 8);
       return value;
     }
     // st_mode: 32 bits in glibc, 16 in FreeBSD, at the same offset; its bits fit in 16.
-    unsigned int mode() const
+    u32 mode() const
     {
-      uint16_t value = 0;
+      u16 value = 0;
       memcpy(&value, (const char*)this->words + statModeOffset, 2);
       return value;
     }
   };
 
-  filesystem::file_type typeOfMode(unsigned int mode)
+  filesystem::file_type typeOfMode(u32 mode)
   {
     switch (mode & 0170000) // S_IFMT
     {
@@ -105,7 +105,7 @@ namespace platform
   bool statOf(const filesystem::path& p, bool followLinks, StatBuffer& out, ErrorCode& ec)
   {
     String name = utf8Of(p);
-    int result = followLinks ? posix::stat(name.c_str(), (::stat*)out.words) : posix::lstat(name.c_str(), (::stat*)out.words);
+    i32 result = followLinks ? posix::stat(name.c_str(), (::stat*)out.words) : posix::lstat(name.c_str(), (::stat*)out.words);
     if (result != 0)
     {
       ec = lastFileError();
@@ -121,7 +121,7 @@ namespace platform
     StatBuffer buffer;
     if (!statOf(p, followLinks, buffer, ec))
       return false;
-    unsigned int mode = buffer.mode();
+    u32 mode = buffer.mode();
     out.type = typeOfMode(mode);
     out.directory = out.type == filesystem::file_type::directory;
     out.permissions = filesystem::perms(mode & 07777);
@@ -186,7 +186,7 @@ namespace platform
         const char* found = (const char*)entry + direntNameOffset;
         if (found[0] == '.' && (found[1] == 0 || (found[1] == '.' && found[2] == 0)))
           continue;
-        name = widenUtf8(found, (int)strlen(found));
+        name = widenUtf8(found, (i32)strlen(found));
         ErrorCode probe;
         if (!fileInfo(this->path / filesystem::path(name), false, info, probe))
           info = filesystem::FileInfo(); // gone since the listing: asked anew when it matters
@@ -204,7 +204,7 @@ namespace platform
       return filesystem::path();
     }
     ec.clear();
-    filesystem::path result = filesystem::path(widenUtf8(buffer, (int)strlen(buffer)));
+    filesystem::path result = filesystem::path(widenUtf8(buffer, (i32)strlen(buffer)));
     free(buffer);
     return result;
   }
@@ -239,7 +239,7 @@ namespace platform
       return filesystem::path();
     }
     ec.clear();
-    filesystem::path result = filesystem::path(widenUtf8(resolved, (int)strlen(resolved)));
+    filesystem::path result = filesystem::path(widenUtf8(resolved, (i32)strlen(resolved)));
     free(resolved);
     return result;
   }
@@ -250,26 +250,26 @@ namespace platform
     ec.clear();
     for (const char* name : {"TMPDIR", "TMP", "TEMP", "TEMPDIR"})
       if (const char* value = getenv(name); value && value[0] != 0)
-        return filesystem::path(widenUtf8(value, (int)strlen(value)));
+        return filesystem::path(widenUtf8(value, (i32)strlen(value)));
     return filesystem::path(L"/tmp");
   }
 
   // The space of the file system p is on (statvfs: its fragments' size times their counts).
   bool spaceOf(const filesystem::path& p, filesystem::space_info& result, ErrorCode& ec)
   {
-    uint64_t words[16];
+    u64 words[16];
     if (posix::statvfs(utf8Of(p).c_str(), (::statvfs*)words) != 0)
     {
       ec = lastFileError();
       return false;
     }
     ec.clear();
-    auto field = [&](int offset) {
-      uint64_t value = 0;
+    auto field = [&](i32 offset) {
+      u64 value = 0;
       memcpy(&value, (const char*)words + offset, 8);
       return value;
     };
-    uint64_t fragment = field(statvfsFragmentSizeOffset);
+    u64 fragment = field(statvfsFragmentSizeOffset);
     result.capacity = field(statvfsBlocksOffset) * fragment;
     result.free = field(statvfsFreeOffset) * fragment;
     result.available = field(statvfsAvailableOffset) * fragment;
@@ -338,7 +338,7 @@ namespace platform
     bool ok = true;
     for (;;)
     {
-      size_t count = fread(buffer, 1, sizeof(buffer), in);
+      usize count = fread(buffer, 1, sizeof(buffer), in);
       if (count == 0)
         break;
       if (fwrite(buffer, 1, count, out) != count)
@@ -377,7 +377,7 @@ namespace platform
       result = current | permissions;
     else if ((options & filesystem::perm_options::remove) != filesystem::perm_options(0))
       result = current & ~permissions;
-    if (posix::chmod(utf8Of(p).c_str(), (posix::mode_t)((unsigned int)result & 07777)) != 0)
+    if (posix::chmod(utf8Of(p).c_str(), (posix::mode_t)((u32)result & 07777)) != 0)
     {
       ec = lastFileError();
       return;

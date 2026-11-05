@@ -34,14 +34,14 @@ struct InFileStream
   operator bool() const { return this->good(); }
   bool operator!() const { return !this->good(); }
 
-  int get() { return this->handle ? fgetc(this->handle) : -1; }
+  i32 get() { return this->handle ? fgetc(this->handle) : -1; }
   // Skips up to count bytes, through the first delimiter met (std::istream::ignore; the tests'
   // ForkLogic skips an XML declaration with `in.ignore(Limits<StreamSize>::max(), '>')`).
-  InFileStream& ignore(long long count = 1, int delimiter = -1)
+  InFileStream& ignore(i64 count = 1, i32 delimiter = -1)
   {
-    for (long long i = 0; i < count && this->handle; ++i)
+    for (i64 i = 0; i < count && this->handle; ++i)
     {
-      int c = fgetc(this->handle);
+      i32 c = fgetc(this->handle);
       if (c == -1 || c == delimiter)
         break;
     }
@@ -85,10 +85,10 @@ public:
 // In pieces of at most maxContainerSize bytes, writeBytes' count being a size (core/Sizes.kpp).
 OutStream& operator<<(OutStream& s, const char* text)
 {
-  size_t remaining = strlen(text);
+  usize remaining = strlen(text);
   while (remaining > 0)
   {
-    ContainerSize piece = remaining > (size_t)maxContainerSize ? maxContainerSize : (ContainerSize)remaining;
+    ContainerSize piece = remaining > (usize)maxContainerSize ? maxContainerSize : (ContainerSize)remaining;
     s.writeBytes(text, piece);
     text += piece;
     remaining -= piece;
@@ -105,25 +105,25 @@ OutStream& operator<<(OutStream& s, char c)
   s.writeBytes(&c, 1);
   return s;
 }
-OutStream& operator<<(OutStream& s, int value)
+OutStream& operator<<(OutStream& s, i32 value)
 {
   char text[16];
   s.writeBytes(text, snprintf(text, sizeof(text), "%d", value));
   return s;
 }
-OutStream& operator<<(OutStream& s, unsigned int value)
+OutStream& operator<<(OutStream& s, u32 value)
 {
   char text[16];
   s.writeBytes(text, snprintf(text, sizeof(text), "%u", value));
   return s;
 }
-OutStream& operator<<(OutStream& s, long long value)
+OutStream& operator<<(OutStream& s, i64 value)
 {
   char text[24];
   s.writeBytes(text, snprintf(text, sizeof(text), "%lld", value));
   return s;
 }
-OutStream& operator<<(OutStream& s, unsigned long long value)
+OutStream& operator<<(OutStream& s, u64 value)
 {
   char text[24];
   s.writeBytes(text, snprintf(text, sizeof(text), "%llu", value));
@@ -207,17 +207,17 @@ StderrStream& operator<<(StderrStream& s, const String& text)
   fputs(text.c_str(), s.handle());
   return s;
 }
-StderrStream& operator<<(StderrStream& s, int value)
+StderrStream& operator<<(StderrStream& s, i32 value)
 {
   fprintf(s.handle(), "%d", value);
   return s;
 }
-StderrStream& operator<<(StderrStream& s, long long value)
+StderrStream& operator<<(StderrStream& s, i64 value)
 {
   fprintf(s.handle(), "%lld", value);
   return s;
 }
-StderrStream& operator<<(StderrStream& s, unsigned int value)
+StderrStream& operator<<(StderrStream& s, u32 value)
 {
   fprintf(s.handle(), "%u", value);
   return s;
@@ -279,7 +279,7 @@ bool getline(InFileStream& stream, String& line, char delimiter = '\n')
   line = String();
   if (!stream.good())
     return false;
-  int c;
+  i32 c;
   bool read = false;
   while ((c = stream.get()) != -1)
   {

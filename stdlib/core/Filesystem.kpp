@@ -8,8 +8,8 @@ namespace filesystem
 {
   // UTF-8 to the wide text and back (platform::widenUtf8, narrowWide); an invalid sequence becomes
   // U+FFFD.
-  WString widenUtf8(const char* text, int length) { return platform::widenUtf8(text, length); }
-  String narrowUtf16(const wchar_t* text, int length) { return platform::narrowWide(text, length); }
+  WString widenUtf8(const char* text, i32 length) { return platform::widenUtf8(text, length); }
+  String narrowUtf16(const wchar_t* text, i32 length) { return platform::narrowWide(text, length); }
 
   // --- path ---
 
@@ -224,9 +224,9 @@ namespace filesystem
 
     // Element by element: the root names as text, then a root directory before none, then the
     // relative parts' elements as text.
-    int compare(const path& other) const;
-    int compare(const WString& other) const { return this->compare(path(other)); }
-    int compare(const wchar_t* other) const { return this->compare(path(other)); }
+    i32 compare(const path& other) const;
+    i32 compare(const WString& other) const { return this->compare(path(other)); }
+    i32 compare(const wchar_t* other) const { return this->compare(path(other)); }
 
     path root_name() const { return path(this->text.substr(0, this->rootNameEnd())); }
     path root_directory() const
@@ -321,7 +321,7 @@ namespace filesystem
   struct pathIterator
   {
     using value_type = path;
-    using difference_type = ptrdiff_t;
+    using difference_type = i64;
     using pointer = const path*;
     using reference = const path&;
     using iterator_category = BidirectionalIteratorTag;
@@ -392,7 +392,7 @@ namespace filesystem
       *this = pathIterator::after(this->owner, this->position, this->length);
       return *this;
     }
-    pathIterator operator++(int)
+    pathIterator operator++(i32)
     {
       pathIterator before = *this;
       ++*this;
@@ -407,7 +407,7 @@ namespace filesystem
       *this = previous;
       return *this;
     }
-    pathIterator operator--(int)
+    pathIterator operator--(i32)
     {
       pathIterator before = *this;
       --*this;
@@ -420,9 +420,9 @@ namespace filesystem
   pathIterator path::begin() const { return pathIterator::first(this); }
   pathIterator path::end() const { return pathIterator(this, this->text.size() + 1, 0); }
 
-  int path::compare(const path& other) const
+  i32 path::compare(const path& other) const
   {
-    int names = this->root_name().text.compare(other.root_name().text);
+    i32 names = this->root_name().text.compare(other.root_name().text);
     if (names != 0)
       return names;
     bool directory = this->has_root_directory();
@@ -437,7 +437,7 @@ namespace filesystem
     pathIterator bEnd = otherRelative.end();
     for (; a != aEnd && b != bEnd; ++a, ++b)
     {
-      int c = a->text.compare(b->text);
+      i32 c = a->text.compare(b->text);
       if (c != 0)
         return c;
     }
@@ -518,7 +518,7 @@ namespace filesystem
     }
     if (a == aEnd && b == bEnd)
       return path(L".");
-    int count = 0;
+    i32 count = 0;
     for (; b != bEnd; ++b)
     {
       if (b->text == L"..")
@@ -531,7 +531,7 @@ namespace filesystem
     if (count == 0 && (a == aEnd || a->text.empty()))
       return path(L".");
     path result;
-    for (int i = 0; i < count; ++i)
+    for (i32 i = 0; i < count; ++i)
       result /= path(L"..");
     for (; a != aEnd; ++a)
       result /= *a;
@@ -557,7 +557,7 @@ namespace filesystem
 
   // POSIX permission bits; Windows has only the read-only attribute, which status reports as
   // 0555 (others 0777) and permissions sets when the result has no write bit.
-  enum class perms : unsigned int
+  enum class perms : u32
   {
     none = 0,
     owner_read = 0400,
@@ -579,25 +579,25 @@ namespace filesystem
     mask = 07777,
     unknown = 0xFFFF,
   };
-  perms operator|(perms a, perms b) { return perms((unsigned int)a | (unsigned int)b); }
-  perms operator&(perms a, perms b) { return perms((unsigned int)a & (unsigned int)b); }
-  perms operator^(perms a, perms b) { return perms((unsigned int)a ^ (unsigned int)b); }
-  perms operator~(perms a) { return perms(~(unsigned int)a & 0xFFFF); }
+  perms operator|(perms a, perms b) { return perms((u32)a | (u32)b); }
+  perms operator&(perms a, perms b) { return perms((u32)a & (u32)b); }
+  perms operator^(perms a, perms b) { return perms((u32)a ^ (u32)b); }
+  perms operator~(perms a) { return perms(~(u32)a & 0xFFFF); }
   perms& operator|=(perms& a, perms b) { return a = a | b; }
   perms& operator&=(perms& a, perms b) { return a = a & b; }
   perms& operator^=(perms& a, perms b) { return a = a ^ b; }
 
-  enum class perm_options : unsigned int
+  enum class perm_options : u32
   {
     replace = 1,
     add = 2,
     remove = 4,
     nofollow = 8,
   };
-  perm_options operator|(perm_options a, perm_options b) { return perm_options((unsigned int)a | (unsigned int)b); }
-  perm_options operator&(perm_options a, perm_options b) { return perm_options((unsigned int)a & (unsigned int)b); }
+  perm_options operator|(perm_options a, perm_options b) { return perm_options((u32)a | (u32)b); }
+  perm_options operator&(perm_options a, perm_options b) { return perm_options((u32)a & (u32)b); }
 
-  enum class copy_options : unsigned int
+  enum class copy_options : u32
   {
     none = 0,
     skip_existing = 1,
@@ -611,10 +611,10 @@ namespace filesystem
     create_hard_links = 0x4000,
     inRecursiveCopy = 0x10000, // kpp: copy's own mark for the entries of a directory it copies
   };
-  copy_options operator|(copy_options a, copy_options b) { return copy_options((unsigned int)a | (unsigned int)b); }
-  copy_options operator&(copy_options a, copy_options b) { return copy_options((unsigned int)a & (unsigned int)b); }
+  copy_options operator|(copy_options a, copy_options b) { return copy_options((u32)a | (u32)b); }
+  copy_options operator&(copy_options a, copy_options b) { return copy_options((u32)a & (u32)b); }
 
-  enum class directory_options : unsigned int
+  enum class directory_options : u32
   {
     none = 0,
     follow_directory_symlink = 1,
@@ -623,9 +623,9 @@ namespace filesystem
 
   struct space_info
   {
-    uint64_t capacity = 0;
-    uint64_t free = 0;
-    uint64_t available = 0;
+    u64 capacity = 0;
+    u64 free = 0;
+    u64 available = 0;
   };
 
   struct file_status
@@ -686,12 +686,12 @@ namespace filesystem
     file_type type = file_type::none;
     bool directory = false;
     perms permissions = perms::unknown;
-    uint64_t size = 0;
+    u64 size = 0;
     bool sizeKnown = false;
-    uint64_t writeTime = 0;
+    u64 writeTime = 0;
   };
 
-  bool isNotFound(int error) { return platform::isNotFoundError(error); }
+  bool isNotFound(i32 error) { return platform::isNotFoundError(error); }
 
   // --- what a path names ---
 
@@ -747,22 +747,22 @@ namespace filesystem
   bool is_other(const path& p) { return is_other(status(p)); }
 
   // The size of the regular file p, links followed; an error for a directory or a missing file.
-  uint64_t file_size(const path& p, ErrorCode& ec)
+  u64 file_size(const path& p, ErrorCode& ec)
   {
     FileInfo info;
     if (!platform::fileInfo(p, true, info, ec))
-      return (uint64_t)-1;
+      return (u64)-1;
     if (info.type == file_type::directory)
     {
       ec = make_error_code(Errc::is_a_directory);
-      return (uint64_t)-1;
+      return (u64)-1;
     }
     return info.size;
   }
-  uint64_t file_size(const path& p)
+  u64 file_size(const path& p)
   {
     ErrorCode ec;
-    uint64_t size = file_size(p, ec);
+    u64 size = file_size(p, ec);
     if (ec)
       throw filesystem_error(String("file_size"), p, ec);
     return size;
@@ -842,7 +842,7 @@ namespace filesystem
     bool is_directory() const { return filesystem::is_directory(this->status()); }
     bool is_regular_file() const { return filesystem::is_regular_file(this->status()); }
     bool is_symlink() const { return filesystem::is_symlink(this->symlink_status()); }
-    uint64_t file_size(ErrorCode& ec) const
+    u64 file_size(ErrorCode& ec) const
     {
       if (this->listed && this->info.sizeKnown)
       {
@@ -851,10 +851,10 @@ namespace filesystem
       }
       return filesystem::file_size(this->pathValue, ec);
     }
-    uint64_t file_size() const
+    u64 file_size() const
     {
       ErrorCode ec;
-      uint64_t s = this->file_size(ec);
+      u64 s = this->file_size(ec);
       if (ec)
         throw filesystem_error(String("directory_entry::file_size"), this->pathValue, ec);
       return s;
@@ -881,7 +881,7 @@ namespace filesystem
   struct directory_iterator
   {
     using value_type = directory_entry;
-    using difference_type = ptrdiff_t;
+    using difference_type = i64;
     using pointer = const directory_entry*;
     using reference = const directory_entry&;
     using iterator_category = InputIteratorTag;
@@ -1056,9 +1056,9 @@ namespace filesystem
     space_info result;
     if (!platform::spaceOf(p, result, ec))
     {
-      result.capacity = (uint64_t)-1;
-      result.free = (uint64_t)-1;
-      result.available = (uint64_t)-1;
+      result.capacity = (u64)-1;
+      result.free = (u64)-1;
+      result.available = (u64)-1;
     }
     return result;
   }
@@ -1155,7 +1155,7 @@ namespace filesystem
   }
   // Removes p and, for a directory (not a link to one), everything in it; the count removed, or
   // -1 on an error.
-  uint64_t remove_all(const path& p, ErrorCode& ec)
+  u64 remove_all(const path& p, ErrorCode& ec)
   {
     file_status s = symlink_status(p, ec);
     if (s.type() == file_type::not_found)
@@ -1164,31 +1164,31 @@ namespace filesystem
       return 0;
     }
     if (ec)
-      return (uint64_t)-1;
-    uint64_t count = 0;
+      return (u64)-1;
+    u64 count = 0;
     if (s.type() == file_type::directory)
     {
       Vector<path> children;
       for (directory_iterator it(p, ec); !ec && it != directory_iterator(); it.increment(ec))
         children.push_back(it->path());
       if (ec)
-        return (uint64_t)-1;
+        return (u64)-1;
       for (const path& child : children)
       {
-        uint64_t removed = remove_all(child, ec);
+        u64 removed = remove_all(child, ec);
         if (ec)
-          return (uint64_t)-1;
+          return (u64)-1;
         count += removed;
       }
     }
     if (remove(p, ec))
       ++count;
-    return ec ? (uint64_t)-1 : count;
+    return ec ? (u64)-1 : count;
   }
-  uint64_t remove_all(const path& p)
+  u64 remove_all(const path& p)
   {
     ErrorCode ec;
-    uint64_t count = remove_all(p, ec);
+    u64 count = remove_all(p, ec);
     if (ec)
       throw filesystem_error(String("remove_all"), p, ec);
     return count;
@@ -1335,7 +1335,7 @@ namespace filesystem
       directory_iterator it(p, ec);
       return !ec && it == directory_iterator();
     }
-    uint64_t size = file_size(p, ec);
+    u64 size = file_size(p, ec);
     return !ec && size == 0;
   }
   bool is_empty(const path& p)

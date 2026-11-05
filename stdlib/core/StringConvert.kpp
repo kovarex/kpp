@@ -4,17 +4,17 @@
 // (the C runtime's ERANGE, and for stoi int's range) OutOfRange, with the C++ runtime's messages.
 
 // The checks after a strto* call (errno cleared before it), std's way: name is the function's.
-void checkStringConversion(const String& str, const char* end, const char* name, size_t* idx)
+void checkStringConversion(const String& str, const char* end, const char* name, usize* idx)
 {
   if (end == str.c_str())
     throw InvalidArgument(String("invalid ") + name + " argument");
   if (*platform::errnoLocation() == 34) // ERANGE
     throw OutOfRange(String(name) + " argument out of range");
   if (idx)
-    *idx = size_t(end - str.c_str());
+    *idx = usize(end - str.c_str());
 }
 
-int stoi(const String& str, size_t* idx = nullptr, int base = 10)
+i32 stoi(const String& str, usize* idx = nullptr, i32 base = 10)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
@@ -23,10 +23,10 @@ int stoi(const String& str, size_t* idx = nullptr, int base = 10)
   // (C's long is int's size on Windows alone: elsewhere strtol holds what int cannot)
   if (value < -2147483647 - 1 || value > 2147483647)
     throw OutOfRange(String("stoi argument out of range"));
-  return int(value);
+  return i32(value);
 }
 
-long stol(const String& str, size_t* idx = nullptr, int base = 10)
+long stol(const String& str, usize* idx = nullptr, i32 base = 10)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
@@ -35,7 +35,7 @@ long stol(const String& str, size_t* idx = nullptr, int base = 10)
   return value;
 }
 
-unsigned long stoul(const String& str, size_t* idx = nullptr, int base = 10)
+unsigned long stoul(const String& str, usize* idx = nullptr, i32 base = 10)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
@@ -44,25 +44,25 @@ unsigned long stoul(const String& str, size_t* idx = nullptr, int base = 10)
   return value;
 }
 
-long long stoll(const String& str, size_t* idx = nullptr, int base = 10)
+i64 stoll(const String& str, usize* idx = nullptr, i32 base = 10)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
-  long long value = strtoll(str.c_str(), &end, base);
+  i64 value = strtoll(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoll", idx);
   return value;
 }
 
-unsigned long long stoull(const String& str, size_t* idx = nullptr, int base = 10)
+u64 stoull(const String& str, usize* idx = nullptr, i32 base = 10)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
-  unsigned long long value = strtoull(str.c_str(), &end, base);
+  u64 value = strtoull(str.c_str(), &end, base);
   checkStringConversion(str, end, "stoull", idx);
   return value;
 }
 
-float stof(const String& str, size_t* idx = nullptr)
+float stof(const String& str, usize* idx = nullptr)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
@@ -71,7 +71,7 @@ float stof(const String& str, size_t* idx = nullptr)
   return value;
 }
 
-double stod(const String& str, size_t* idx = nullptr)
+double stod(const String& str, usize* idx = nullptr)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;
@@ -83,7 +83,7 @@ double stod(const String& str, size_t* idx = nullptr)
 // strtod, not strtold: kpp's long double is a double, and off Windows C's is x87's 80 bits, which
 // strtold returns in a register a double is not read from (stold gave whatever was there, 0 for
 // "0.125" on FreeBSD and Linux). On Windows the UCRT's strtold is strtod.
-long double stold(const String& str, size_t* idx = nullptr)
+long double stold(const String& str, usize* idx = nullptr)
 {
   char* end = nullptr;
   *platform::errnoLocation() = 0;

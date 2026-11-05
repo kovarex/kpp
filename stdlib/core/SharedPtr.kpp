@@ -7,8 +7,8 @@
 // block, on exactly one thread.
 struct SharedControl
 {
-  Atomic<int> strong;
-  Atomic<int> weak;
+  Atomic<i32> strong;
+  Atomic<i32> weak;
   void (*destroy)(void*) noexcept = nullptr; // deletes the object as the type it was created with
   void* object = nullptr;
 
@@ -25,7 +25,7 @@ void sharedReleaseWeak(SharedControl* control) noexcept
 // A strong reference taken from a weak one, while the object lives (strong is not 0).
 bool sharedTryLock(SharedControl* control)
 {
-  int seen = control->strong.load();
+  i32 seen = control->strong.load();
   while (seen != 0)
     if (control->strong.compareExchange(seen, seen + 1))
       return true;
@@ -195,8 +195,8 @@ struct SharedPtr
   bool operator<(const SharedPtr<T>& other) const { return this->pointer < other.pointer; }
   bool operator==(nullptr_t) const { return this->pointer == nullptr; }
   bool operator!=(nullptr_t) const { return this->pointer != nullptr; }
-  int use_count() const { return this->control ? this->control->strong.load() : 0; }
-  int useCount() const { return this->use_count(); }
+  i32 use_count() const { return this->control ? this->control->strong.load() : 0; }
+  i32 useCount() const { return this->use_count(); }
 
   // A new control block for an object that has no owner yet; an object that derives from
   // EnableSharedFromThis learns its owner.
@@ -291,8 +291,8 @@ struct WeakPtr
   void reset() { this->release(); }
 
   bool expired() const { return !this->control || this->control->strong.load() == 0; }
-  int use_count() const { return this->control ? this->control->strong.load() : 0; }
-  int useCount() const { return this->use_count(); }
+  i32 use_count() const { return this->control ? this->control->strong.load() : 0; }
+  i32 useCount() const { return this->use_count(); }
   // A SharedPtr to the object while it lives, empty otherwise.
   SharedPtr<T> lock() const { return SharedPtr<T>::locked(this->pointer, this->control); }
 };
@@ -340,7 +340,7 @@ struct EnableSharedFromThis : EnableSharedFromThisBase
 // synchronised with them.
 platform::SharedLock sharedPtrLocks[16];
 
-platform::SharedLock& sharedPtrLockFor(const void* address) { return sharedPtrLocks[hashBits((uint64_t)address) >> 60]; }
+platform::SharedLock& sharedPtrLockFor(const void* address) { return sharedPtrLocks[hashBits((u64)address) >> 60]; }
 
 template<typename T>
 SharedPtr<T> atomicLoad(const SharedPtr<T>* p)

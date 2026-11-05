@@ -11,7 +11,7 @@ struct Array
   using const_iterator = const T*;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -78,7 +78,7 @@ struct Array<T, 0>
   using const_iterator = const T*;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -139,7 +139,7 @@ struct Span
   using iterator = T*;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -177,7 +177,7 @@ struct Span
   explicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
   ContainerSize size() const { return this->length; }
-  size_t size_bytes() const { return (size_t)this->length * sizeof(T); }
+  usize size_bytes() const { return (usize)this->length * sizeof(T); }
   bool empty() const { return this->length == 0; }
   T& operator[](ContainerSize index) const { return this->items[index]; }
   T* data() const { return this->items; }

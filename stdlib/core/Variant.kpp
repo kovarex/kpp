@@ -34,7 +34,7 @@ const T* getIf(const V* variant)
 }
 
 // getIf<I>(v): pointer to the I-th alternative, or nullptr.
-template<int I, typename V>
+template<i32 I, typename V>
 auto getIf(V* variant) -> decltype(&variant->template get<I>())
 {
   if (variant && variant->index() == I)
@@ -44,7 +44,7 @@ auto getIf(V* variant) -> decltype(&variant->template get<I>())
 
 // variantSize: the number of alternatives.
 template<typename V>
-constexpr int variantSize = V::size;
+constexpr i32 variantSize = V::size;
 
 // VariantAlternative<I, U>: the type of the typed union U's I-th alternative, a built-in of the
 // compiler's (design.md 8.5), as std::variant_alternative_t is.

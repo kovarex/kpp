@@ -44,7 +44,7 @@ struct Subrange : ViewBase
   It begin() const { return this->first; }
   It end() const { return this->last; }
   bool empty() const { return this->first == this->last; }
-  ptrdiff_t size() const { return distance(this->first, this->last); }
+  i64 size() const { return distance(this->first, this->last); }
 };
 
 // --- iotaView ---
@@ -53,7 +53,7 @@ template<typename T>
 struct IotaIterator
 {
   using value_type = T;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = const T*;
   using reference = T;
   using iterator_category = RandomAccessIteratorTag;
@@ -64,13 +64,13 @@ struct IotaIterator
   explicit IotaIterator(T value) : value(value) {}
 
   const T& operator*() const { return this->value; }
-  T operator[](ptrdiff_t n) const { return (T)(this->value + n); }
+  T operator[](i64 n) const { return (T)(this->value + n); }
   IotaIterator<T>& operator++()
   {
     ++this->value;
     return *this;
   }
-  IotaIterator<T> operator++(int)
+  IotaIterator<T> operator++(i32)
   {
     IotaIterator<T> before = *this;
     ++this->value;
@@ -81,25 +81,25 @@ struct IotaIterator
     --this->value;
     return *this;
   }
-  IotaIterator<T> operator--(int)
+  IotaIterator<T> operator--(i32)
   {
     IotaIterator<T> before = *this;
     --this->value;
     return before;
   }
-  IotaIterator<T>& operator+=(ptrdiff_t n)
+  IotaIterator<T>& operator+=(i64 n)
   {
     this->value = (T)(this->value + n);
     return *this;
   }
-  IotaIterator<T>& operator-=(ptrdiff_t n)
+  IotaIterator<T>& operator-=(i64 n)
   {
     this->value = (T)(this->value - n);
     return *this;
   }
-  IotaIterator<T> operator+(ptrdiff_t n) const { return IotaIterator<T>((T)(this->value + n)); }
-  IotaIterator<T> operator-(ptrdiff_t n) const { return IotaIterator<T>((T)(this->value - n)); }
-  ptrdiff_t operator-(const IotaIterator<T>& other) const { return (ptrdiff_t)this->value - (ptrdiff_t)other.value; }
+  IotaIterator<T> operator+(i64 n) const { return IotaIterator<T>((T)(this->value + n)); }
+  IotaIterator<T> operator-(i64 n) const { return IotaIterator<T>((T)(this->value - n)); }
+  i64 operator-(const IotaIterator<T>& other) const { return (i64)this->value - (i64)other.value; }
   bool operator==(const IotaIterator<T>& other) const { return this->value == other.value; }
   bool operator!=(const IotaIterator<T>& other) const { return this->value != other.value; }
   bool operator<(const IotaIterator<T>& other) const { return this->value < other.value; }
@@ -121,7 +121,7 @@ struct IotaView : ViewBase
   IotaIterator<T> begin() const { return IotaIterator<T>(this->first); }
   IotaIterator<T> end() const { return IotaIterator<T>(this->last); }
   bool empty() const { return !(this->first < this->last); }
-  ptrdiff_t size() const { return this->first < this->last ? (ptrdiff_t)this->last - (ptrdiff_t)this->first : 0; }
+  i64 size() const { return this->first < this->last ? (i64)this->last - (i64)this->first : 0; }
 };
 
 template<typename T, typename U>
@@ -133,7 +133,7 @@ template<typename It, typename F>
 struct TransformIterator
 {
   using value_type = typename IteratorTraits<It>::value_type;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = typename IteratorTraits<It>::iterator_category;
@@ -156,12 +156,12 @@ struct TransformIterator
     --this->position;
     return *this;
   }
-  TransformIterator<It, F>& operator+=(ptrdiff_t n)
+  TransformIterator<It, F>& operator+=(i64 n)
   {
     advance(this->position, n);
     return *this;
   }
-  ptrdiff_t operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
+  i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
   bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
   bool operator!=(const TransformIterator<It, F>& other) const { return this->position != other.position; }
 };
@@ -178,7 +178,7 @@ struct TransformView : ViewBase
   auto begin() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().begin(), &this->f); }
   auto end() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().end(), &this->f); }
   bool empty() const { return this->base.get().begin() == this->base.get().end(); }
-  ptrdiff_t size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+  i64 size() const { return distance(this->base.get().begin(), this->base.get().end()); }
   // The function of the first (last) element, with the reference it returns, as std's
   // view_interface gives them (TerritoryManager's `&getAllTerritories().front()`); the range is
   // not empty, and back() takes a bidirectional one.
@@ -211,7 +211,7 @@ template<typename It>
 struct ReverseViewIterator
 {
   using value_type = typename IteratorTraits<It>::value_type;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = BidirectionalIteratorTag;
@@ -252,7 +252,7 @@ struct ReverseView : ViewBase
   auto begin() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().end()); }
   auto end() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().begin()); }
   bool empty() const { return this->base.get().begin() == this->base.get().end(); }
-  ptrdiff_t size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+  i64 size() const { return distance(this->base.get().begin(), this->base.get().end()); }
 };
 
 template<typename Range>

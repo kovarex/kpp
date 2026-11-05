@@ -325,7 +325,7 @@ template<typename E>
 struct RbIterator
 {
   using value_type = RemoveConst<E>;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = BidirectionalIteratorTag;
@@ -352,7 +352,7 @@ struct RbIterator
     this->node = rbNext(this->node);
     return *this;
   }
-  RbIterator<E> operator++(int)
+  RbIterator<E> operator++(i32)
   {
     RbIterator<E> before = *this;
     this->node = rbNext(this->node);
@@ -363,7 +363,7 @@ struct RbIterator
     this->node = rbPrevious(this->node);
     return *this;
   }
-  RbIterator<E> operator--(int)
+  RbIterator<E> operator--(i32)
   {
     RbIterator<E> before = *this;
     this->node = rbPrevious(this->node);
@@ -799,7 +799,7 @@ struct Map
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
@@ -1081,7 +1081,7 @@ struct Set
   using const_iterator = RbIterator<const T>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -1274,7 +1274,7 @@ struct MultiMap
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
@@ -1462,7 +1462,7 @@ struct MultiSet
   using const_iterator = RbIterator<const T>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;

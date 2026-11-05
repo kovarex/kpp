@@ -10,9 +10,9 @@ struct timespec;
 
 namespace posix
 {
-  extern "C" int clock_gettime(int clock, timespec* time);
-  extern "C" int nanosleep(const timespec* duration, timespec* remaining);
-  extern "C" int sched_yield();
+  extern "C" i32 clock_gettime(i32 clock, timespec* time);
+  extern "C" i32 nanosleep(const timespec* duration, timespec* remaining);
+  extern "C" i32 sched_yield();
 }
 
 namespace platform
@@ -20,11 +20,11 @@ namespace platform
   // A struct timespec's two fields.
   struct TimeSpec
   {
-    int64_t seconds = 0;
-    int64_t nanoseconds = 0;
+    i64 seconds = 0;
+    i64 nanoseconds = 0;
   };
 
-  TimeSpec clockTime(int clock)
+  TimeSpec clockTime(i32 clock)
   {
     TimeSpec time;
     posix::clock_gettime(clock, (timespec*)&time);
@@ -32,7 +32,7 @@ namespace platform
   }
 
   // The monotonic clock in nanoseconds (SteadyClock).
-  int64_t steadyNanoseconds()
+  i64 steadyNanoseconds()
   {
     TimeSpec time = clockTime(clockMonotonic);
     return time.seconds * 1000000000 + time.nanoseconds;
@@ -40,10 +40,10 @@ namespace platform
 
   // A count that changes faster than the clocks tick, for seeds (RandomDevice): the monotonic
   // clock's nanoseconds.
-  int64_t fastCounter() { return steadyNanoseconds(); }
+  i64 fastCounter() { return steadyNanoseconds(); }
 
   // The wall clock in 100 ns ticks since 1970-01-01 UTC (SystemClock).
-  int64_t systemTicks()
+  i64 systemTicks()
   {
     TimeSpec time = clockTime(clockRealtime);
     return time.seconds * 10000000 + time.nanoseconds / 100;
@@ -54,7 +54,7 @@ namespace platform
   template<typename Rep, typename Period>
   void sleepFor(const Duration<Rep, Period>& d)
   {
-    long long nanoseconds = ceil<Nanoseconds>(d).count();
+    i64 nanoseconds = ceil<Nanoseconds>(d).count();
     if (nanoseconds <= 0)
       return;
     TimeSpec duration;
@@ -67,35 +67,35 @@ namespace platform
   void yield() { posix::sched_yield(); }
 
   // The text the C library has for a system error, an errno value here: strerror's.
-  String systemErrorMessage(int value) { return String(strerror(value)); }
+  String systemErrorMessage(i32 value) { return String(strerror(value)); }
   // The condition (an Errc's value) a system error means: itself, an errno value.
-  int errcOfSystemError(int value) { return value; }
+  i32 errcOfSystemError(i32 value) { return value; }
 }
 
 namespace posix
 {
   // (pthread_t and the locks' types are the C library's: PlatformLinux.kpp, PlatformFreeBSD.kpp. The
   // library passes its own storage of their sizes.)
-  extern "C" int pthread_create(pthread_t* thread, const pthread_attr_t* attributes, void* (*start)(void*), void* argument);
-  extern "C" int pthread_join(pthread_t thread, void** result);
-  extern "C" int pthread_detach(pthread_t thread);
+  extern "C" i32 pthread_create(pthread_t* thread, const pthread_attr_t* attributes, void* (*start)(void*), void* argument);
+  extern "C" i32 pthread_join(pthread_t thread, void** result);
+  extern "C" i32 pthread_detach(pthread_t thread);
   extern "C" pthread_t pthread_self();
-  extern "C" int pthread_mutex_lock(pthread_mutex_t* mutex);
-  extern "C" int pthread_mutex_trylock(pthread_mutex_t* mutex);
-  extern "C" int pthread_mutex_unlock(pthread_mutex_t* mutex);
-  extern "C" int pthread_mutex_destroy(pthread_mutex_t* mutex);
-  extern "C" int pthread_rwlock_rdlock(pthread_rwlock_t* lock);
-  extern "C" int pthread_rwlock_tryrdlock(pthread_rwlock_t* lock);
-  extern "C" int pthread_rwlock_wrlock(pthread_rwlock_t* lock);
-  extern "C" int pthread_rwlock_trywrlock(pthread_rwlock_t* lock);
-  extern "C" int pthread_rwlock_unlock(pthread_rwlock_t* lock);
-  extern "C" int pthread_rwlock_destroy(pthread_rwlock_t* lock);
-  extern "C" int pthread_cond_signal(pthread_cond_t* condition);
-  extern "C" int pthread_cond_broadcast(pthread_cond_t* condition);
-  extern "C" int pthread_cond_wait(pthread_cond_t* condition, pthread_mutex_t* mutex);
-  extern "C" int pthread_cond_timedwait(pthread_cond_t* condition, pthread_mutex_t* mutex, const timespec* deadline);
-  extern "C" int pthread_cond_destroy(pthread_cond_t* condition);
-  extern "C" long sysconf(int name);
+  extern "C" i32 pthread_mutex_lock(pthread_mutex_t* mutex);
+  extern "C" i32 pthread_mutex_trylock(pthread_mutex_t* mutex);
+  extern "C" i32 pthread_mutex_unlock(pthread_mutex_t* mutex);
+  extern "C" i32 pthread_mutex_destroy(pthread_mutex_t* mutex);
+  extern "C" i32 pthread_rwlock_rdlock(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_rwlock_tryrdlock(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_rwlock_wrlock(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_rwlock_trywrlock(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_rwlock_unlock(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_rwlock_destroy(pthread_rwlock_t* lock);
+  extern "C" i32 pthread_cond_signal(pthread_cond_t* condition);
+  extern "C" i32 pthread_cond_broadcast(pthread_cond_t* condition);
+  extern "C" i32 pthread_cond_wait(pthread_cond_t* condition, pthread_mutex_t* mutex);
+  extern "C" i32 pthread_cond_timedwait(pthread_cond_t* condition, pthread_mutex_t* mutex, const timespec* deadline);
+  extern "C" i32 pthread_cond_destroy(pthread_cond_t* condition);
+  extern "C" long sysconf(i32 name);
 }
 
 namespace platform
@@ -107,7 +107,7 @@ namespace platform
   // allocates its mutex on first use, which pthread_mutex_destroy releases).
   struct Lock
   {
-    uint64_t storage[mutexWords];
+    u64 storage[mutexWords];
 
     Lock() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this->storage; }
@@ -124,7 +124,7 @@ namespace platform
   // zeroed as PTHREAD_RWLOCK_INITIALIZER.
   struct SharedLock
   {
-    uint64_t storage[rwlockWords];
+    u64 storage[rwlockWords];
 
     SharedLock() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this->storage; }
@@ -144,7 +144,7 @@ namespace platform
   // (its clock the realtime one).
   struct Condition
   {
-    uint64_t storage[conditionWords];
+    u64 storage[conditionWords];
 
     Condition() { memset(this->storage, 0, sizeof(this->storage)); }
     posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this->storage; }
@@ -162,7 +162,7 @@ namespace platform
     template<typename Rep, typename Period>
     bool waitFor(Lock& lock, const Duration<Rep, Period>& d)
     {
-      long long nanoseconds = ceil<Nanoseconds>(d).count();
+      i64 nanoseconds = ceil<Nanoseconds>(d).count();
       if (nanoseconds < 0)
         nanoseconds = 0;
       TimeSpec deadline = clockTime(clockRealtime);
@@ -186,7 +186,7 @@ namespace platform
   // start one, and the same as its id in *id (pthread_self's in the thread).
   void* startThread(ThreadFunction start, void* parameter, unsigned long* id)
   {
-    uint64_t thread = 0; // a pthread_t: an unsigned long (glibc) or a pointer (FreeBSD)
+    u64 thread = 0; // a pthread_t: an unsigned long (glibc) or a pointer (FreeBSD)
     if (posix::pthread_create((posix::pthread_t*)&thread, nullptr, start, parameter) != 0)
       return nullptr;
     *id = (unsigned long)thread;
@@ -200,14 +200,14 @@ namespace platform
   unsigned long currentThreadId()
   {
     posix::pthread_t self = posix::pthread_self();
-    uint64_t id = 0;
+    u64 id = 0;
     memcpy(&id, &self, sizeof(self));
     return (unsigned long)id;
   }
   // The processors online (sysconf's _SC_NPROCESSORS_ONLN).
-  unsigned int processorCount()
+  u32 processorCount()
   {
     long count = posix::sysconf(scNprocessorsOnln);
-    return count > 0 ? (unsigned int)count : 1;
+    return count > 0 ? (u32)count : 1;
   }
 }

@@ -24,7 +24,7 @@ struct Deque
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -109,16 +109,16 @@ struct Deque
   void assign(InitializerList<T> items) { *this = items; }
 
   // Elements per block: about 512 bytes' worth, a power of two, at least 16.
-  static int blockSize()
+  static i32 blockSize()
   {
-    int size = 16;
-    while ((size_t)size * 2 * sizeof(T) <= 512)
+    i32 size = 16;
+    while ((usize)size * 2 * sizeof(T) <= 512)
       size *= 2;
     return size;
   }
-  static int blockShift()
+  static i32 blockShift()
   {
-    int shift = 0;
+    i32 shift = 0;
     while ((1 << shift) < Deque::blockSize())
       ++shift;
     return shift;
@@ -317,7 +317,7 @@ struct Deque
   {
     if (this->start == 0)
     {
-      long long last = this->length > 0 ? (this->start + this->length - 1) >> Deque::blockShift() : 0;
+      i64 last = this->length > 0 ? (this->start + this->length - 1) >> Deque::blockShift() : 0;
       this->remap(-1, last);
     }
     this->ensureBlock((this->start - 1) >> Deque::blockShift());
@@ -338,14 +338,14 @@ struct Deque
   // they would fill more than half of it. Block pointers move; blocks and elements do not.
   // The positions in the map's space (block * blockSize() + index) are sizes, so it has at most
   // maxContainerSize / blockSize() blocks: past them LengthError (core/Sizes.kpp).
-  void remap(long long first, long long last)
+  void remap(i64 first, i64 last)
   {
-    long long most = (long long)(maxContainerSize / Deque::blockSize());
-    long long neededBlocks = last - first + 1;
+    i64 most = (i64)(maxContainerSize / Deque::blockSize());
+    i64 neededBlocks = last - first + 1;
     if (neededBlocks > most)
       throwLengthError("deque too long");
     ContainerSize needed = (ContainerSize)neededBlocks;
-    long long doubled = this->mapLength < 8 ? 8 : (long long)this->mapLength;
+    i64 doubled = this->mapLength < 8 ? 8 : (i64)this->mapLength;
     while (doubled < neededBlocks * 2)
       doubled *= 2;
     ContainerSize newLength = doubled > most ? (ContainerSize)most : (ContainerSize)doubled;
@@ -356,8 +356,8 @@ struct Deque
     for (ContainerSize i = 0; i < this->mapLength; ++i)
       if (this->map[i])
       {
-        if ((long long)i >= first && (long long)i <= last)
-          newMap[(long long)i - first + offset] = this->map[i];
+        if ((i64)i >= first && (i64)i <= last)
+          newMap[(i64)i - first + offset] = this->map[i];
         else
           free(this->map[i]); // unused: no element lives there
       }
@@ -365,7 +365,7 @@ struct Deque
       free(this->map);
     this->map = newMap;
     this->mapLength = newLength;
-    this->start = ContainerSize((long long)this->start + ((long long)offset - first) * Deque::blockSize());
+    this->start = ContainerSize((i64)this->start + ((i64)offset - first) * Deque::blockSize());
   }
   void release()
   {
@@ -388,7 +388,7 @@ template<typename T>
 struct DequeIterator
 {
   using value_type = RemoveConst<T>;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = T*;
   using reference = T&;
   using iterator_category = RandomAccessIteratorTag;
@@ -405,7 +405,7 @@ struct DequeIterator
 
   T& operator*() const { return (*this->deque)[this->index]; }
   T* operator->() const { return &(*this->deque)[this->index]; }
-  T& operator[](ptrdiff_t offset) const { return (*this->deque)[ContainerSize(this->index + offset)]; }
+  T& operator[](i64 offset) const { return (*this->deque)[ContainerSize(this->index + offset)]; }
   bool operator==(const DequeIterator<T>& other) const { return this->index == other.index; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
   bool operator==(const DequeIterator<F>& other) const { return this->index == other.index; }
@@ -429,7 +429,7 @@ struct DequeIterator
     ++this->index;
     return *this;
   }
-  DequeIterator<T> operator++(int)
+  DequeIterator<T> operator++(i32)
   {
     DequeIterator<T> before = *this;
     ++this->index;
@@ -440,23 +440,23 @@ struct DequeIterator
     --this->index;
     return *this;
   }
-  DequeIterator<T> operator--(int)
+  DequeIterator<T> operator--(i32)
   {
     DequeIterator<T> before = *this;
     --this->index;
     return before;
   }
-  DequeIterator<T> operator+(ptrdiff_t offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index + offset)); }
-  DequeIterator<T> operator-(ptrdiff_t offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index - offset)); }
-  ptrdiff_t operator-(const DequeIterator<T>& other) const { return ptrdiff_t(this->index) - ptrdiff_t(other.index); }
+  DequeIterator<T> operator+(i64 offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index + offset)); }
+  DequeIterator<T> operator-(i64 offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index - offset)); }
+  i64 operator-(const DequeIterator<T>& other) const { return i64(this->index) - i64(other.index); }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  ptrdiff_t operator-(const DequeIterator<F>& other) const { return ptrdiff_t(this->index) - ptrdiff_t(other.index); }
-  DequeIterator<T>& operator+=(ptrdiff_t offset)
+  i64 operator-(const DequeIterator<F>& other) const { return i64(this->index) - i64(other.index); }
+  DequeIterator<T>& operator+=(i64 offset)
   {
     this->index += offset;
     return *this;
   }
-  DequeIterator<T>& operator-=(ptrdiff_t offset)
+  DequeIterator<T>& operator-=(i64 offset)
   {
     this->index -= offset;
     return *this;

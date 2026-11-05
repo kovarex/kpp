@@ -281,7 +281,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     for (const Decl* m : d->second.first->members)
       if (m->kind == NodeKind::FunctionDecl && nameOf(static_cast<const FunctionDecl*>(m)->name, symbols) == "blockSize" && file->tokens)
         found = tokenText(m, *file->tokens, file->text);
-    const std::string expected = "static int blockSize ( ) { int size = 16 ; while ( ( size_t ) size * 2 * sizeof ( T ) <= 512 ) size *= 2 ; return size ; }";
+    const std::string expected = "static i32 blockSize ( ) { i32 size = 16 ; while ( ( usize ) size * 2 * sizeof ( T ) <= 512 ) size *= 2 ; return size ; }";
     if (found != expected)
     {
       problems.push_back("Deque's blockSize is not the one its rule computes (" + found + "): the Deque rule is left out");

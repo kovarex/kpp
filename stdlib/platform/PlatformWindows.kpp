@@ -7,36 +7,36 @@ extern "C" int* _errno();
 
 namespace platform
 {
-  int64_t steadyClockFrequency = 0; // QueryPerformanceCounter's counts per second, read once
+  i64 steadyClockFrequency = 0; // QueryPerformanceCounter's counts per second, read once
 
   // The monotonic clock in nanoseconds (SteadyClock).
-  int64_t steadyNanoseconds()
+  i64 steadyNanoseconds()
   {
     if (steadyClockFrequency == 0)
       win32::QueryPerformanceFrequency((_LARGE_INTEGER*)&steadyClockFrequency);
-    int64_t counter = 0;
+    i64 counter = 0;
     win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
     // Split to keep the multiplication within 64 bits for long uptimes.
-    int64_t whole = counter / steadyClockFrequency;
-    int64_t rest = counter % steadyClockFrequency;
+    i64 whole = counter / steadyClockFrequency;
+    i64 rest = counter % steadyClockFrequency;
     return whole * 1000000000 + rest * 1000000000 / steadyClockFrequency;
   }
 
   // A count that changes faster than the clocks tick, for seeds (RandomDevice):
   // QueryPerformanceCounter's.
-  int64_t fastCounter()
+  i64 fastCounter()
   {
-    int64_t counter = 0;
+    i64 counter = 0;
     win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
     return counter;
   }
 
   // The wall clock in 100 ns ticks since 1970-01-01 UTC (SystemClock).
-  int64_t systemTicks()
+  i64 systemTicks()
   {
-    uint64_t fileTime = 0; // 100 ns ticks since 1601-01-01
+    u64 fileTime = 0; // 100 ns ticks since 1601-01-01
     win32::GetSystemTimePreciseAsFileTime((_FILETIME*)&fileTime);
-    return (int64_t)fileTime - 116444736000000000ll;
+    return (i64)fileTime - 116444736000000000ll;
   }
 
   // Blocks the calling thread for at least d's milliseconds, rounded up (Windows' timer may wake it
@@ -48,21 +48,21 @@ namespace platform
   void yield() { win32::SwitchToThread(); }
 
   // C's errno of the calling thread.
-  int* errnoLocation() { return _errno(); }
+  i32* errnoLocation() { return _errno(); }
 
   // The UCRT's errno values where the C libraries differ (errno.h; Errc).
-  const int errnoAgain = 11;
-  const int errnoDeadlock = 36;
-  const int errnoNameTooLong = 38;
-  const int errnoNoSys = 40;
-  const int errnoNotEmpty = 41;
-  const int errnoNotSupported = 129;
-  const int errnoOpNotSupported = 130;
-  const int errnoTimedOut = 138;
+  const i32 errnoAgain = 11;
+  const i32 errnoDeadlock = 36;
+  const i32 errnoNameTooLong = 38;
+  const i32 errnoNoSys = 40;
+  const i32 errnoNotEmpty = 41;
+  const i32 errnoNotSupported = 129;
+  const i32 errnoOpNotSupported = 130;
+  const i32 errnoTimedOut = 138;
 
   // The text Windows has for a system error (what GetLastError returns): FormatMessage's, in UTF-8,
   // without its line end.
-  String systemErrorMessage(int value)
+  String systemErrorMessage(i32 value)
   {
     wchar_t buffer[512];
     unsigned long count = win32::FormatMessageW(0x1000 | 0x200, nullptr, (unsigned long)value, 0, buffer, 512, nullptr); // FROM_SYSTEM | IGNORE_INSERTS
@@ -71,11 +71,11 @@ namespace platform
     if (count == 0)
       return String("unknown error ") + toString(value);
     char narrow[1536];
-    int length = win32::WideCharToMultiByte(65001, 0, buffer, (int)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
+    i32 length = win32::WideCharToMultiByte(65001, 0, buffer, (i32)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
     return String(narrow, length);
   }
   // The condition (an Errc's value) a system error means, or 0.
-  int errcOfSystemError(int value) { return errcOfWindowsError(value); }
+  i32 errcOfSystemError(i32 value) { return errcOfWindowsError(value); }
 
   // --- Threads and locks (Thread.kpp, SharedPtr.kpp) ---
 
@@ -141,5 +141,5 @@ namespace platform
   // The calling thread's id: never 0.
   unsigned long currentThreadId() { return win32::GetCurrentThreadId(); }
   // The machine's logical processors, in all its processor groups.
-  unsigned int processorCount() { return (unsigned int)win32::GetActiveProcessorCount(0xFFFF); }
+  u32 processorCount() { return (u32)win32::GetActiveProcessorCount(0xFFFF); }
 }

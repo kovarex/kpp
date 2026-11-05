@@ -27,16 +27,16 @@ ContainerSize checkedSize(N count, const char* what)
     if (count < 0)
       throwLengthError(what);
   }
-  if ((unsigned long long)count > maxContainerSize)
+  if ((u64)count > maxContainerSize)
     throwLengthError(what);
   return (ContainerSize)count;
 }
 
 // a + b as a container size, a being one: a length plus what is added to it. LengthError past
 // maxContainerSize (checked without forming the sum, which could wrap).
-ContainerSize sizeSum(ContainerSize a, unsigned long long b, const char* what)
+ContainerSize sizeSum(ContainerSize a, u64 b, const char* what)
 {
-  if (a > maxContainerSize || b > (unsigned long long)(maxContainerSize - a))
+  if (a > maxContainerSize || b > (u64)(maxContainerSize - a))
     throwLengthError(what);
   return a + (ContainerSize)b;
 }
@@ -44,7 +44,7 @@ ContainerSize sizeSum(ContainerSize a, unsigned long long b, const char* what)
 // The capacity after growing one of capacity to hold needed: doubled, at least needed and minimum,
 // at most maxContainerSize (instead of a doubling past the size's range); LengthError when needed
 // is past maxContainerSize.
-ContainerSize grownCapacity(ContainerSize capacity, unsigned long long needed, ContainerSize minimum, const char* what = "container too long")
+ContainerSize grownCapacity(ContainerSize capacity, u64 needed, ContainerSize minimum, const char* what = "container too long")
 {
   if (needed > maxContainerSize)
     throwLengthError(what);
@@ -54,7 +54,7 @@ ContainerSize grownCapacity(ContainerSize capacity, unsigned long long needed, C
 }
 
 // malloc of bytes, BadAlloc when it fails (instead of a null pointer the caller writes through).
-void* allocateBytes(size_t bytes)
+void* allocateBytes(usize bytes)
 {
   void* block = malloc(bytes == 0 ? 1 : bytes);
   if (!block)
@@ -65,9 +65,9 @@ void* allocateBytes(size_t bytes)
 // An uninitialized block for count elements of T, BadAlloc when malloc fails or when count * sizeof(T)
 // does not fit in a size_t (a u64 size of large elements).
 template<typename T>
-T* allocateArray(unsigned long long count)
+T* allocateArray(u64 count)
 {
-  if (count != 0 && count > ~(size_t)0 / sizeof(T))
+  if (count != 0 && count > ~(usize)0 / sizeof(T))
     throwBadAlloc();
-  return (T*)allocateBytes((size_t)count * sizeof(T));
+  return (T*)allocateBytes((usize)count * sizeof(T));
 }

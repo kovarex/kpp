@@ -5,72 +5,72 @@
 // Multiplies by 2^64 / golden ratio and folds the well-mixed high half into the low half (a
 // plain product leaves the low bits depending only on the low bits of the key: aligned pointers
 // would all land on every 16th slot).
-size_t hashBits(uint64_t value)
+usize hashBits(u64 value)
 {
-  uint64_t product = value * 11400714819323198485ull;
-  return (size_t)(product ^ (product >> 32));
+  u64 product = value * 11400714819323198485ull;
+  return (usize)(product ^ (product >> 32));
 }
 
-size_t hashOf(int value) { return hashBits((uint64_t)(unsigned int)value); }
-size_t hashOf(unsigned int value) { return hashBits((uint64_t)value); }
-size_t hashOf(long long value) { return hashBits((uint64_t)value); }
-size_t hashOf(unsigned long long value) { return hashBits(value); }
+usize hashOf(i32 value) { return hashBits((u64)(u32)value); }
+usize hashOf(u32 value) { return hashBits((u64)value); }
+usize hashOf(i64 value) { return hashBits((u64)value); }
+usize hashOf(u64 value) { return hashBits(value); }
 
 // Eight bytes per step, each word multiplied in, then the murmur3 finalizer: several times
 // faster than byte-at-a-time FNV-1a on keys longer than a few characters.
-size_t hashBytes(const char* bytes, ContainerSize count)
+usize hashBytes(const char* bytes, ContainerSize count)
 {
-  uint64_t hash = 0x9E3779B97F4A7C15ull ^ (uint64_t)count;
+  u64 hash = 0x9E3779B97F4A7C15ull ^ (u64)count;
   while (count >= 8)
   {
-    uint64_t word;
+    u64 word;
     memcpy(&word, bytes, 8);
     hash = (hash ^ word) * 0xFF51AFD7ED558CCDull;
     hash = hash ^ (hash >> 32);
     bytes += 8;
     count -= 8;
   }
-  uint64_t tail = 0;
+  u64 tail = 0;
   for (ContainerSize i = 0; i < count; ++i)
-    tail = tail | ((uint64_t)(uint8_t)bytes[i] << (8 * i));
+    tail = tail | ((u64)(u8)bytes[i] << (8 * i));
   hash = (hash ^ tail) * 0xFF51AFD7ED558CCDull;
   hash = hash ^ (hash >> 33);
   hash = hash * 0xC4CEB9FE1A85EC53ull;
   hash = hash ^ (hash >> 33);
-  return (size_t)hash;
+  return (usize)hash;
 }
 
-size_t hashOf(const String& text) { return hashBytes(text.data(), text.size()); }
+usize hashOf(const String& text) { return hashBytes(text.data(), text.size()); }
 
 // Pointers hash by address.
 template<typename T>
-size_t hashOf(T* pointer) { return hashBits((uint64_t)pointer); }
+usize hashOf(T* pointer) { return hashBits((u64)pointer); }
 
 // Floating-point values hash by value: 0.0 and -0.0 are equal, so they hash alike.
-size_t hashOf(double value)
+usize hashOf(double value)
 {
   if (value == 0.0)
     return hashBits(0);
-  uint64_t bits;
+  u64 bits;
   memcpy(&bits, &value, 8);
   return hashBits(bits);
 }
-size_t hashOf(float value) { return hashOf((double)value); }
+usize hashOf(float value) { return hashOf((double)value); }
 
 // Enumerations hash by their value.
 template<typename T> requires isEnum<T>
-size_t hashOf(T value) { return hashBits((uint64_t)(long long)value); }
+usize hashOf(T value) { return hashBits((u64)(i64)value); }
 
 // Smart pointers hash as the pointer they hold.
 template<typename T>
-size_t hashOf(const SharedPtr<T>& pointer) { return hashOf(pointer.get()); }
+usize hashOf(const SharedPtr<T>& pointer) { return hashOf(pointer.get()); }
 template<typename T>
-size_t hashOf(const UniquePtr<T>& pointer) { return hashOf(pointer.get()); }
+usize hashOf(const UniquePtr<T>& pointer) { return hashOf(pointer.get()); }
 
 // The default hasher of HashMap and HashSet (what std::hash converts to): hashOf of the value, so
 // a key type gets hashed by adding a hashOf overload for it.
 template<typename T>
 struct Hash
 {
-  size_t operator()(const T& value) const { return hashOf(value); }
+  usize operator()(const T& value) const { return hashOf(value); }
 };

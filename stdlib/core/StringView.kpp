@@ -9,7 +9,7 @@ struct StringView
   using const_iterator = const char*;
   using value_type = char;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = const char&;
   using const_reference = const char&;
   using pointer = const char*;
@@ -52,11 +52,11 @@ struct StringView
   }
   StringView substr(ContainerSize start) const { return this->substr(start, npos); }
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
-  uint64_t copy(char* dest, uint64_t count, uint64_t pos = 0) const
+  u64 copy(char* dest, u64 count, u64 pos = 0) const
   {
-    if (pos > (uint64_t)this->byteCount)
+    if (pos > (u64)this->byteCount)
       throwOutOfRange("StringView::copy: position out of range");
-    uint64_t available = (uint64_t)this->byteCount - pos;
+    u64 available = (u64)this->byteCount - pos;
     if (count > available)
       count = available;
     memcpy(dest, this->chars + pos, count);
@@ -161,7 +161,7 @@ struct StringView
   ContainerSize find_first_of(const char* set) const
   {
     for (ContainerSize i = 0; i < this->byteCount; ++i)
-      for (size_t k = 0; set[k] != 0; ++k)
+      for (usize k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           return i;
     return npos;
@@ -178,7 +178,7 @@ struct StringView
     for (ContainerSize i = 0; i < this->byteCount; ++i)
     {
       bool inSet = false;
-      for (size_t k = 0; set[k] != 0; ++k)
+      for (usize k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           inSet = true;
       if (!inSet)
@@ -196,7 +196,7 @@ struct StringView
   bool operator<(StringView other) const
   {
     ContainerSize common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
-    int c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
+    i32 c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
     return c != 0 ? c < 0 : this->byteCount < other.byteCount;
   }
   // Byte-wise as <: gives >, <= and >=.
@@ -214,10 +214,10 @@ struct StringView
 };
 
 String toString(StringView text) { return text.toString(); }
-size_t hashOf(StringView text)
+usize hashOf(StringView text)
 {
-  size_t h = 14695981039346656037ull;
+  usize h = 14695981039346656037ull;
   for (ContainerSize i = 0; i < text.byteCount; ++i)
-    h = (h ^ (size_t)(uint8_t)text.chars[i]) * 1099511628211ull;
+    h = (h ^ (usize)(u8)text.chars[i]) * 1099511628211ull;
   return h;
 }

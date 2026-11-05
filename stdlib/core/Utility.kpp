@@ -37,18 +37,18 @@ T&& declval();
 // relocate goes front to back, so the destination may overlap the source from below;
 // relocateBackward goes back to front, for a destination above the source.
 template<typename T>
-void relocate(T* destination, T* source, long long count)
+void relocate(T* destination, T* source, i64 count)
 {
-  for (long long i = 0; i < count; ++i)
+  for (i64 i = 0; i < count; ++i)
   {
     new (destination + i) T(move(source[i]));
     source[i].~T();
   }
 }
 template<typename T>
-void relocateBackward(T* destination, T* source, long long count)
+void relocateBackward(T* destination, T* source, i64 count)
 {
-  for (long long i = count; i-- > 0;)
+  for (i64 i = count; i-- > 0;)
   {
     new (destination + i) T(move(source[i]));
     source[i].~T();
@@ -59,9 +59,9 @@ void relocateBackward(T* destination, T* source, long long count)
 // (std::move_if_noexcept), so that a throw leaves the old block whole: Factorio's
 // `Sprite(Sprite&&) noexcept(false)` is copied.
 template<typename T>
-void relocateIfNoexcept(T* destination, T* source, long long count)
+void relocateIfNoexcept(T* destination, T* source, i64 count)
 {
-  for (long long i = 0; i < count; ++i)
+  for (i64 i = 0; i < count; ++i)
   {
     if constexpr (!isNothrowMoveConstructible<T> && isCopyConstructible<T>)
       new (destination + i) T(static_cast<const T&>(source[i]));
@@ -156,10 +156,10 @@ struct Pair
   // forwardAsTuple(...) for references to the arguments.
   template<typename... Args1, typename... Args2>
   Pair(PiecewiseConstruct_t, Tuple<Args1...> firstArgs, Tuple<Args2...> secondArgs)
-    : Pair(firstArgs, secondArgs, MakeIndexSequence<int(sizeof...(Args1))>(), MakeIndexSequence<int(sizeof...(Args2))>())
+    : Pair(firstArgs, secondArgs, MakeIndexSequence<i32(sizeof...(Args1))>(), MakeIndexSequence<i32(sizeof...(Args2))>())
   {
   }
-  template<typename... Args1, typename... Args2, int... I1, int... I2>
+  template<typename... Args1, typename... Args2, i32... I1, i32... I2>
   Pair(Tuple<Args1...>& firstArgs, Tuple<Args2...>& secondArgs, IndexSequence<I1...>, IndexSequence<I2...>)
     : first(get<I1>(move(firstArgs))...), second(get<I2>(move(secondArgs))...)
   {
@@ -211,8 +211,8 @@ Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>> makePair(A&& first, B&& second)
 // the class `==` as well; `a != b` is `!(a == b)` and `a < b` is `(a <=> b) < 0` for every class.
 struct strong_ordering
 {
-  int8_t value;
-  constexpr strong_ordering(int8_t value) : value(value) {}
+  i8 value;
+  constexpr strong_ordering(i8 value) : value(value) {}
   static inline const strong_ordering less = strong_ordering(-1);
   static inline const strong_ordering equal = strong_ordering(0);
   static inline const strong_ordering equivalent = strong_ordering(0);
@@ -221,11 +221,11 @@ struct strong_ordering
   // comparison with 0 is false.
   static inline const strong_ordering unordered = strong_ordering(2);
   constexpr bool operator==(const strong_ordering& other) const { return this->value == other.value; }
-  constexpr bool operator==(int zero) const { return this->value == zero; }
-  constexpr bool operator<(int zero) const { return this->value < zero; }
-  constexpr bool operator>(int zero) const { return this->value > zero && this->value != 2; }
-  constexpr bool operator<=(int zero) const { return this->value <= zero; }
-  constexpr bool operator>=(int zero) const { return this->value >= zero && this->value != 2; }
+  constexpr bool operator==(i32 zero) const { return this->value == zero; }
+  constexpr bool operator<(i32 zero) const { return this->value < zero; }
+  constexpr bool operator>(i32 zero) const { return this->value > zero && this->value != 2; }
+  constexpr bool operator<=(i32 zero) const { return this->value <= zero; }
+  constexpr bool operator>=(i32 zero) const { return this->value >= zero && this->value != 2; }
 };
 using weak_ordering = strong_ordering;
 using partial_ordering = strong_ordering;
@@ -257,18 +257,18 @@ struct Limits
   static constexpr bool is_iec559 = isFloatingPoint<T>;
   static constexpr bool is_bounded = isArithmetic<T>;
   static constexpr bool is_modulo = isIntegral<T> && !isSigned<T> && !isSame<T, bool>;
-  static constexpr int radix = isArithmetic<T> ? 2 : 0;
+  static constexpr i32 radix = isArithmetic<T> ? 2 : 0;
   // Bits of the value (integers: without the sign; floating point: of the significand).
-  static constexpr int digits = isSame<T, bool> ? 1 : isIntegral<T> ? int(sizeof(T)) * 8 - (isSigned<T> ? 1 : 0)
+  static constexpr i32 digits = isSame<T, bool> ? 1 : isIntegral<T> ? i32(sizeof(T)) * 8 - (isSigned<T> ? 1 : 0)
                                 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 24 : 53) : 0;
   // Decimal digits that survive a round trip through T; for floating point, the digits that
   // print every value of T distinctly.
-  static constexpr int digits10 = isIntegral<T> ? digits * 301 / 1000 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 6 : 15) : 0;
-  static constexpr int max_digits10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 9 : 17) : 0;
-  static constexpr int min_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? -125 : -1021) : 0;
-  static constexpr int min_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? -37 : -307) : 0;
-  static constexpr int max_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? 128 : 1024) : 0;
-  static constexpr int max_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 38 : 308) : 0;
+  static constexpr i32 digits10 = isIntegral<T> ? digits * 301 / 1000 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 6 : 15) : 0;
+  static constexpr i32 max_digits10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 9 : 17) : 0;
+  static constexpr i32 min_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? -125 : -1021) : 0;
+  static constexpr i32 min_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? -37 : -307) : 0;
+  static constexpr i32 max_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? 128 : 1024) : 0;
+  static constexpr i32 max_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 38 : 308) : 0;
 
   // The greatest value.
   static constexpr T max()
@@ -283,9 +283,9 @@ struct Limits
         return 1.7976931348623157e+308;
     }
     else if constexpr (isIntegral<T> && isSigned<T>)
-      return (T)(((unsigned long long)1 << (sizeof(T) * 8 - 1)) - 1);
+      return (T)(((u64)1 << (sizeof(T) * 8 - 1)) - 1);
     else if constexpr (isIntegral<T>)
-      return (T)~(unsigned long long)0;
+      return (T)~(u64)0;
     else
       return T();
   }
@@ -300,7 +300,7 @@ struct Limits
         return 2.2250738585072014e-308;
     }
     else if constexpr (isIntegral<T> && isSigned<T>)
-      return (T)(-(long long)(((unsigned long long)1 << (sizeof(T) * 8 - 1)) - 1) - 1);
+      return (T)(-(i64)(((u64)1 << (sizeof(T) * 8 - 1)) - 1) - 1);
     else
       return T();
   }
@@ -365,14 +365,14 @@ struct Limits
   {
     if constexpr (sizeof(T) == 4 && isFloatingPoint<T>)
     {
-      uint32_t bits = 0x7FC00000u;
+      u32 bits = 0x7FC00000u;
       T value;
       memcpy(&value, &bits, 4);
       return value;
     }
     else if constexpr (isFloatingPoint<T>)
     {
-      uint64_t bits = 0x7FF8000000000000ull;
+      u64 bits = 0x7FF8000000000000ull;
       T value;
       memcpy(&value, &bits, 8);
       return value;
@@ -384,14 +384,14 @@ struct Limits
   {
     if constexpr (sizeof(T) == 4 && isFloatingPoint<T>)
     {
-      uint32_t bits = 0x7FA00000u;
+      u32 bits = 0x7FA00000u;
       T value;
       memcpy(&value, &bits, 4);
       return value;
     }
     else if constexpr (isFloatingPoint<T>)
     {
-      uint64_t bits = 0x7FF4000000000000ull;
+      u64 bits = 0x7FF4000000000000ull;
       T value;
       memcpy(&value, &bits, 8);
       return value;

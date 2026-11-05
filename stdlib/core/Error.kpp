@@ -70,23 +70,23 @@ enum class Errc
 };
 
 // The condition a Windows error means, as std::system_category's equivalence maps it, or 0.
-int errcOfWindowsError(int error)
+i32 errcOfWindowsError(i32 error)
 {
   switch (error)
   {
-    case 2: case 3: case 15: case 53: case 67: case 123: case 161: return int(Errc::no_such_file_or_directory); // file, path not found; bad drive, network path, name
-    case 5: case 19: case 32: case 82: return int(Errc::permission_denied); // access denied, write protected, sharing violation, cannot make
-    case 17: return int(Errc::cross_device_link);
-    case 80: case 183: return int(Errc::file_exists);
-    case 145: return int(Errc::directory_not_empty);
-    case 267: return int(Errc::not_a_directory);
-    case 87: return int(Errc::invalid_argument);
-    case 39: case 112: return int(Errc::no_space_on_device);
-    case 170: return int(Errc::device_or_resource_busy);
-    case 206: return int(Errc::filename_too_long);
-    case 50: return int(Errc::not_supported);
-    case 4: return int(Errc::too_many_files_open);
-    case 29: case 30: return int(Errc::io_error); // write fault, read fault
+    case 2: case 3: case 15: case 53: case 67: case 123: case 161: return i32(Errc::no_such_file_or_directory); // file, path not found; bad drive, network path, name
+    case 5: case 19: case 32: case 82: return i32(Errc::permission_denied); // access denied, write protected, sharing violation, cannot make
+    case 17: return i32(Errc::cross_device_link);
+    case 80: case 183: return i32(Errc::file_exists);
+    case 145: return i32(Errc::directory_not_empty);
+    case 267: return i32(Errc::not_a_directory);
+    case 87: return i32(Errc::invalid_argument);
+    case 39: case 112: return i32(Errc::no_space_on_device);
+    case 170: return i32(Errc::device_or_resource_busy);
+    case 206: return i32(Errc::filename_too_long);
+    case 50: return i32(Errc::not_supported);
+    case 4: return i32(Errc::too_many_files_open);
+    case 29: case 30: return i32(Errc::io_error); // write fault, read fault
     default: return 0;
   }
 }
@@ -96,13 +96,13 @@ int errcOfWindowsError(int error)
 // elsewhere a system error is an errno value: platform::errcOfSystemError).
 struct ErrorCode
 {
-  int value_ = 0;
+  i32 value_ = 0;
   ErrorCategory category_ = ErrorCategory{true};
 
   ErrorCode() {}
-  ErrorCode(int value, ErrorCategory category) : value_(value), category_(category) {}
+  ErrorCode(i32 value, ErrorCategory category) : value_(value), category_(category) {}
 
-  int value() const { return this->value_; }
+  i32 value() const { return this->value_; }
   ErrorCategory category() const { return this->category_; }
   explicit operator bool() const { return this->value_ != 0; }
   void clear()
@@ -110,7 +110,7 @@ struct ErrorCode
     this->value_ = 0;
     this->category_ = systemCategory();
   }
-  void assign(int value, ErrorCategory category)
+  void assign(i32 value, ErrorCategory category)
   {
     this->value_ = value;
     this->category_ = category;
@@ -129,13 +129,13 @@ struct ErrorCode
   {
     if (this->value_ == 0)
       return false;
-    return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == int(condition);
+    return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == i32(condition);
   }
   bool operator!=(Errc condition) const { return !(*this == condition); }
 };
 
 // An Errc as an error code of the generic category (std::make_error_code).
-ErrorCode make_error_code(Errc condition) { return ErrorCode(int(condition), genericCategory()); }
+ErrorCode make_error_code(Errc condition) { return ErrorCode(i32(condition), genericCategory()); }
 
 // An exception for an ErrorCode (std::system_error): what() is the message given, then the code's.
 class SystemError : public RuntimeError
@@ -199,9 +199,9 @@ ExceptionPtr makeExceptionPtr(const E& exception)
 // kpp_terminate_handler (codegen: a throw and a rethrow add one, the start of a handler takes one
 // away). Not the UCRT's __uncaught_exceptions, which counts MSVC's own exceptions only: kpp raises
 // its own, and a destructor that unwinding ran read 0 (until 2026-11-05).
-private thread_local int uncaughtExceptionCount = 0;
+private thread_local i32 uncaughtExceptionCount = 0;
 extern "C" void kpp_uncaught_change(int delta) { uncaughtExceptionCount += delta; }
-int uncaught_exceptions() { return uncaughtExceptionCount; }
+i32 uncaught_exceptions() { return uncaughtExceptionCount; }
 
 // std::throw_with_nested: throws value. C++ also attaches the exception being handled when it is
 // called (a std::nested_exception base); kpp has no current_exception yet, so nothing is attached

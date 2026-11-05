@@ -11,9 +11,9 @@ struct TypeInfo
   const char* name() const { return this->typeName; }
   bool operator==(const TypeInfo& other) const
   {
-    size_t n = strlen(this->typeName);
+    usize n = strlen(this->typeName);
     return n == strlen(other.typeName) && memcmp(this->typeName, other.typeName, n) == 0;
   }
   bool operator!=(const TypeInfo& other) const { return !(*this == other); }
-  size_t hashCode() const { return hashOf(StringView(this->typeName)); }
+  usize hashCode() const { return hashOf(StringView(this->typeName)); }
 };

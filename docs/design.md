@@ -899,9 +899,11 @@ converted C++ of src, tests, CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32f
 Each rename changes no type, so the IR is unchanged. C's checks are the ones in
 C-integer-names-plan: map the new names back and get the old conversion byte for byte. C names
 stay in the imported headers, the kpp-native shims (C) and `extern "C"` declarations. The standard
-library (C's) writes `int` 983 times, `size_t` 99, `long long` 98, `ptrdiff_t` 92, `unsigned long`
-84 (Win32 bindings, which belong in extern "C"), `uint64_t` 62, `unsigned long long` 48 and
-`uint8_t` 41.
+library wrote `int` 983 times, `size_t` 99, `long long` 98, `ptrdiff_t` 92, `unsigned long` 84
+(Win32 bindings, which belong in extern "C"), `uint64_t` 62, `unsigned long long` 48 and `uint8_t`
+41. It writes kpp's names since 2026-11-05 (1,025 places in core, io, platform and random, by
+`--c-type-warnings`, the IR unchanged); C's stay in stdlib/clib (the C library's own interface),
+in `extern "C"`, and for `long`, `unsigned long` and `long double`, which kpp has no other name for.
 
 **The size width (decided 2026-11-01: u64, one String/Vector, by measurement).** Containers' sizes
 and indices are unsigned (decided). The question was their width: `u32`, `u64`, or a

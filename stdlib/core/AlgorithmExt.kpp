@@ -46,7 +46,7 @@ OutIt copyIf(InIt first, InIt last, OutIt out, F predicate)
   return out;
 }
 template<typename InIt, typename OutIt>
-OutIt copyN(InIt first, ptrdiff_t count, OutIt out)
+OutIt copyN(InIt first, i64 count, OutIt out)
 {
   for (; count > 0; --count, ++first, ++out)
     *out = *first;
@@ -105,14 +105,14 @@ bool equal(It1 first1, It1 last1, It2 first2, It2 last2)
 }
 
 template<typename It, typename V>
-It fillN(It first, ptrdiff_t count, const V& value)
+It fillN(It first, i64 count, const V& value)
 {
   for (; count > 0; --count, ++first)
     *first = value;
   return first;
 }
 template<typename It, typename F>
-It generateN(It first, ptrdiff_t count, F generator)
+It generateN(It first, i64 count, F generator)
 {
   for (; count > 0; --count, ++first)
     *first = generator();
@@ -239,8 +239,8 @@ void nthElement(It first, It nth, It last, F less)
 {
   if (nth == last)
     return;
-  int depthLimit = 0;
-  for (ptrdiff_t k = last - first; k > 1; k >>= 1)
+  i32 depthLimit = 0;
+  for (i64 k = last - first; k > 1; k >>= 1)
     depthLimit += 2;
   while (last - first > 16)
   {
@@ -276,7 +276,7 @@ It rotate(It first, It middle, It last)
     return first;
   if constexpr (isBidirectionalIterator<It>)
   {
-    ptrdiff_t moved = distance(middle, last);
+    i64 moved = distance(middle, last);
     reverse(first, middle);
     reverse(middle, last);
     reverse(first, last);

@@ -68,7 +68,7 @@ const double NAN = 0.0 / 0.0; // computed at startup: the compiler folds integer
 
 // abs for the floating-point types (the C runtime's abs takes an int; std::abs on a double
 // converts to `::abs` and finds these).
-int abs(int value) { return value < 0 ? -value : value; }
+i32 abs(i32 value) { return value < 0 ? -value : value; }
 float abs(float value) { return value < 0 ? -value : value; }
 double abs(double value) { return value < 0 ? -value : value; }
-long long abs(long long value) { return value < 0 ? -value : value; }
+i64 abs(i64 value) { return value < 0 ? -value : value; }

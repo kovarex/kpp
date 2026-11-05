@@ -50,27 +50,27 @@ namespace platform
   const unsigned long invalidAttributes = 0xFFFFFFFF;
   // INVALID_HANDLE_VALUE, the pointer of all ones (written through a 64-bit integer: `(void*)-1`
   // zero-extends -1 today, language/negative_integer_to_pointer).
-  void* const invalidHandle = (void*)(long long)-1;
+  void* const invalidHandle = (void*)(i64)-1;
   const unsigned long attributeReadOnly = 0x1;
   const unsigned long attributeDirectory = 0x10;
   const unsigned long attributeReparsePoint = 0x400;
 
   // UTF-8 to UTF-16 and back (CP_UTF8); an invalid sequence becomes U+FFFD.
-  WString widenUtf8(const char* text, int length)
+  WString widenUtf8(const char* text, i32 length)
   {
     if (length <= 0)
       return WString();
-    int count = win32::MultiByteToWideChar(65001, 0, text, length, nullptr, 0);
+    i32 count = win32::MultiByteToWideChar(65001, 0, text, length, nullptr, 0);
     WString result;
     result.resize(count);
     win32::MultiByteToWideChar(65001, 0, text, length, result.data(), count);
     return result;
   }
-  String narrowWide(const wchar_t* text, int length)
+  String narrowWide(const wchar_t* text, i32 length)
   {
     if (length <= 0)
       return String();
-    int count = win32::WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
+    i32 count = win32::WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
     String result;
     result.resize(count);
     win32::WideCharToMultiByte(65001, 0, text, length, result.data(), count, nullptr, nullptr);
@@ -78,13 +78,13 @@ namespace platform
   }
 
   // The calling thread's last error (GetLastError), of the system category.
-  ErrorCode lastFileError() { return ErrorCode((int)win32::GetLastError(), systemCategory()); }
+  ErrorCode lastFileError() { return ErrorCode((i32)win32::GetLastError(), systemCategory()); }
   // Win32 errors that mean the path does not resolve: file, path not found; a bad name, network
   // path, net name, path.
-  bool isNotFoundError(int error) { return error == 2 || error == 3 || error == 123 || error == 53 || error == 67 || error == 161; }
+  bool isNotFoundError(i32 error) { return error == 2 || error == 3 || error == 123 || error == 53 || error == 67 || error == 161; }
   // The errors of CreateDirectory that may mean the directory is there already:
   // ERROR_ALREADY_EXISTS, and ACCESS_DENIED for a drive's root.
-  bool isAlreadyThereError(int error) { return error == 183 || error == 5; }
+  bool isAlreadyThereError(i32 error) { return error == 183 || error == 5; }
 
   filesystem::FileInfo infoOfAttributes(unsigned long attributes, unsigned long sizeHigh, unsigned long sizeLow, Win32FileTime write)
   {
@@ -95,9 +95,9 @@ namespace platform
       info.type = filesystem::file_type::symlink;
     else
       info.type = info.directory ? filesystem::file_type::directory : filesystem::file_type::regular;
-    info.size = ((uint64_t)sizeHigh << 32) | sizeLow;
+    info.size = ((u64)sizeHigh << 32) | sizeLow;
     info.sizeKnown = info.type == filesystem::file_type::regular;
-    info.writeTime = ((uint64_t)write.high << 32) | write.low;
+    info.writeTime = ((u64)write.high << 32) | write.low;
     return info;
   }
 
@@ -236,7 +236,7 @@ namespace platform
       {
         if (!this->pending && !win32::FindNextFileW(this->find, (_WIN32_FIND_DATAW*)(void*)&this->data))
         {
-          int error = (int)win32::GetLastError();
+          i32 error = (i32)win32::GetLastError();
           if (error != 18)
             ec = ErrorCode(error, systemCategory());
           return false;
@@ -342,9 +342,9 @@ namespace platform
   // The space of the volume p is on; false (and ec) on an error.
   bool spaceOf(const filesystem::path& p, filesystem::space_info& result, ErrorCode& ec)
   {
-    unsigned long long available = 0;
-    unsigned long long total = 0;
-    unsigned long long free = 0;
+    u64 available = 0;
+    u64 total = 0;
+    u64 free = 0;
     if (!win32::GetDiskFreeSpaceExW(p.c_str(), (_ULARGE_INTEGER*)&available, (_ULARGE_INTEGER*)&total, (_ULARGE_INTEGER*)&free))
     {
       ec = lastFileError();

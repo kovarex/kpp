@@ -18,7 +18,7 @@ struct WStringConvert
   String to_bytes(const WString& wide)
   {
     String result;
-    for (int i = 0; i < wide.size(); ++i)
+    for (i32 i = 0; i < wide.size(); ++i)
     {
       wchar_t ch = wide[i];
       if (ch < 0x80)
@@ -41,10 +41,10 @@ struct WStringConvert
   WString from_bytes(const String& narrow)
   {
     WString result;
-    int i = 0;
+    i32 i = 0;
     while (i < narrow.size())
     {
-      unsigned char c = (unsigned char)narrow[i];
+      u8 c = (u8)narrow[i];
       wchar_t ch;
       if (c < 0x80)
       {
@@ -53,13 +53,13 @@ struct WStringConvert
       }
       else if (c < 0xE0)
       {
-        ch = (wchar_t)(((c & 0x1F) << 6) | ((unsigned char)narrow[i + 1] & 0x3F));
+        ch = (wchar_t)(((c & 0x1F) << 6) | ((u8)narrow[i + 1] & 0x3F));
         i += 2;
       }
       else
       {
-        ch = (wchar_t)(((c & 0x0F) << 12) | (((unsigned char)narrow[i + 1] & 0x3F) << 6)
-              | ((unsigned char)narrow[i + 2] & 0x3F));
+        ch = (wchar_t)(((c & 0x0F) << 12) | (((u8)narrow[i + 1] & 0x3F) << 6)
+              | ((u8)narrow[i + 2] & 0x3F));
         i += 3;
       }
       result.push_back(ch);

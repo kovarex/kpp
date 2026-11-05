@@ -15,54 +15,54 @@ struct __dirstream;
 namespace posix
 {
   // errno, which glibc's errno.h defines as (*__errno_location()).
-  extern "C" int* __errno_location();
+  extern "C" i32* __errno_location();
   using pthread_t = unsigned long;
   using pthread_attr_t = ::pthread_attr_t;
   using pthread_mutex_t = ::pthread_mutex_t;
   using pthread_cond_t = ::pthread_cond_t;
   using pthread_rwlock_t = ::pthread_rwlock_t;
   using DIR = __dirstream;
-  using mode_t = unsigned int;
+  using mode_t = u32;
 }
 
 namespace platform
 {
   // The clocks' ids (glibc's time.h).
-  const int clockRealtime = 0;
-  const int clockMonotonic = 1;
+  const i32 clockRealtime = 0;
+  const i32 clockMonotonic = 1;
 
   // The locks' sizes in 8-byte words (bits/pthreadtypes-arch.h, x86-64): pthread_mutex_t 40 bytes,
   // pthread_cond_t 48, pthread_rwlock_t 56.
-  const int mutexWords = 5;
-  const int conditionWords = 6;
-  const int rwlockWords = 7;
+  const i32 mutexWords = 5;
+  const i32 conditionWords = 6;
+  const i32 rwlockWords = 7;
   // sysconf's name for the processors online (bits/confname.h).
-  const int scNprocessorsOnln = 84;
+  const i32 scNprocessorsOnln = 84;
   // A thread's pthread_t from the handle startThread gave.
   posix::pthread_t threadOf(void* handle) { return (unsigned long)handle; }
 
   // Where the file system's structs keep what FilesPosix.kpp reads (glibc x86-64): struct stat (144
   // bytes) st_mode at 24, st_size at 48, st_mtim at 88 (st_dev at 0, st_ino at 8); struct statvfs
   // f_frsize at 8, f_blocks 16, f_bfree 24, f_bavail 32; struct dirent's d_name at 19.
-  const int statModeOffset = 24;
-  const int statSizeOffset = 48;
-  const int statWriteTimeOffset = 88;
-  const int statvfsFragmentSizeOffset = 8;
-  const int statvfsBlocksOffset = 16;
-  const int statvfsFreeOffset = 24;
-  const int statvfsAvailableOffset = 32;
-  const int direntNameOffset = 19;
+  const i32 statModeOffset = 24;
+  const i32 statSizeOffset = 48;
+  const i32 statWriteTimeOffset = 88;
+  const i32 statvfsFragmentSizeOffset = 8;
+  const i32 statvfsBlocksOffset = 16;
+  const i32 statvfsFreeOffset = 24;
+  const i32 statvfsAvailableOffset = 32;
+  const i32 direntNameOffset = 19;
 
   // C's errno of the calling thread.
-  int* errnoLocation() { return posix::__errno_location(); }
+  i32* errnoLocation() { return posix::__errno_location(); }
 
   // glibc's errno values where the C libraries differ (asm-generic/errno-base.h, errno.h; Errc).
-  const int errnoAgain = 11;
-  const int errnoDeadlock = 35;
-  const int errnoNameTooLong = 36;
-  const int errnoNoSys = 38;
-  const int errnoNotEmpty = 39;
-  const int errnoNotSupported = 95;
-  const int errnoOpNotSupported = 95;
-  const int errnoTimedOut = 110;
+  const i32 errnoAgain = 11;
+  const i32 errnoDeadlock = 35;
+  const i32 errnoNameTooLong = 36;
+  const i32 errnoNoSys = 38;
+  const i32 errnoNotEmpty = 39;
+  const i32 errnoNotSupported = 95;
+  const i32 errnoOpNotSupported = 95;
+  const i32 errnoTimedOut = 110;
 }

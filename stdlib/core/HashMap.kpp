@@ -11,8 +11,8 @@
 // entries in the slots themselves: faster, but every growth relocates them, invalidating
 // pointers and references. Erasing never moves other entries in either.
 
-const uint8_t hashSlotEmpty = 0;
-const uint8_t hashSlotDeleted = 1;
+const u8 hashSlotEmpty = 0;
+const u8 hashSlotDeleted = 1;
 
 // No slot: what findSlot and place return when there is none (the largest size; the slots are
 // at most half as many).
@@ -20,7 +20,7 @@ const ContainerSize hashNoSlot = ContainerSize(-1);
 
 // The tag byte of a used slot: the high bit, and the top seven bits of the hash (the low ones
 // already chose the slot).
-uint8_t hashTagOf(size_t hash) { return (uint8_t)(0x80 | (hash >> 57)); }
+u8 hashTagOf(usize hash) { return (u8)(0x80 | (hash >> 57)); }
 
 // A position in a table: a used slot, or the slot count for end(). A stable table's iterator also
 // holds its entry's node, and reaches the entry through it after the table grew (the slots it was
@@ -33,12 +33,12 @@ template<typename E, bool stable>
 struct HashIterator
 {
   using value_type = RemoveConst<E>;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = ForwardIteratorTag;
 
-  uint8_t* tags = nullptr;
+  u8* tags = nullptr;
   char* slots = nullptr;
   ContainerSize index = 0;
   ContainerSize capacity = 0;
@@ -53,7 +53,7 @@ struct HashIterator
     : tags(other.tags), slots(other.slots), index(other.index), capacity(other.capacity), node((E*)other.node) {}
   // (The node is found here and in skipFree, not in a function of its own: a call more per lookup
   // cost 8-13% in the hash lookup benchmarks, as functions of other modules are not inlined.)
-  HashIterator(uint8_t* tags, char* slots, ContainerSize index, ContainerSize capacity) : tags(tags), slots(slots), index(index), capacity(capacity)
+  HashIterator(u8* tags, char* slots, ContainerSize index, ContainerSize capacity) : tags(tags), slots(slots), index(index), capacity(capacity)
   {
     if constexpr (stable)
       this->node = index < capacity && tags[index] >= 0x80 ? ((E**)slots)[index] : nullptr;
@@ -80,7 +80,7 @@ struct HashIterator
     this->skipFree();
     return *this;
   }
-  HashIterator<E, stable> operator++(int)
+  HashIterator<E, stable> operator++(i32)
   {
     HashIterator<E, stable> before = *this;
     ++*this;
@@ -100,7 +100,7 @@ struct HashIterator
 template<typename E, typename K, typename KeyOf, typename Hasher, typename KeyEqual, bool stable>
 struct HashTable
 {
-  uint8_t* tags = nullptr;
+  u8* tags = nullptr;
   char* slots = nullptr; // capacity slots of E* (stable) or E
   ContainerSize capacity = 0;      // always a power of two
   ContainerSize count = 0;         // used slots
@@ -140,12 +140,12 @@ struct HashTable
   // Hash<K> (whose hashOf overloads mix already): slots come from the low bits and tags from the
   // high ones, so every bit has to depend on the whole key, which a hasher written for std (often
   // the identity, or a few shifts and xors) does not promise.
-  size_t hashKey(const K& key) const
+  usize hashKey(const K& key) const
   {
     if constexpr (isSame<Hasher, Hash<K>>)
       return this->hasher(key);
     else
-      return hashBits((uint64_t)this->hasher(key));
+      return hashBits((u64)this->hasher(key));
   }
 
   static ContainerSize slotSize()
@@ -173,16 +173,16 @@ struct HashTable
   HashIterator<E, stable> end() const { return this->iteratorAt(this->capacity); }
 
   // The slot holding key, or hashNoSlot.
-  ContainerSize findSlot(const K& key, size_t hash) const
+  ContainerSize findSlot(const K& key, usize hash) const
   {
     if (this->capacity == 0)
       return hashNoSlot;
-    uint8_t tag = hashTagOf(hash);
-    size_t mask = this->capacity - 1;
-    size_t i = hash & mask;
+    u8 tag = hashTagOf(hash);
+    usize mask = this->capacity - 1;
+    usize i = hash & mask;
     while (true)
     {
-      uint8_t t = this->tags[i];
+      u8 t = this->tags[i];
       if (t == hashSlotEmpty)
         return hashNoSlot;
       if (t == tag && this->equal(this->keyAt((ContainerSize)i), key))
@@ -194,18 +194,18 @@ struct HashTable
   // The slot holding key (found), or the free slot where it goes: the first deleted slot on its
   // probe path, else the empty one that ends it. hashNoSlot when taking an empty slot would fill the
   // table over 3/4: then it has to grow first.
-  ContainerSize place(const K& key, size_t hash, bool& found)
+  ContainerSize place(const K& key, usize hash, bool& found)
   {
     found = false;
     if (this->capacity == 0)
       return hashNoSlot;
-    uint8_t tag = hashTagOf(hash);
-    size_t mask = this->capacity - 1;
-    size_t i = hash & mask;
+    u8 tag = hashTagOf(hash);
+    usize mask = this->capacity - 1;
+    usize i = hash & mask;
     ContainerSize firstDeleted = hashNoSlot;
     while (true)
     {
-      uint8_t t = this->tags[i];
+      u8 t = this->tags[i];
       if (t == hashSlotEmpty)
         break;
       if (t == hashSlotDeleted)
@@ -229,7 +229,7 @@ struct HashTable
 
   // Builds the entry for hash in the free slot from the arguments.
   template<typename... Args>
-  E* emplaceAt(ContainerSize slot, size_t hash, Args&&... args)
+  E* emplaceAt(ContainerSize slot, usize hash, Args&&... args)
   {
     E* entry;
     if constexpr (stable)
@@ -277,7 +277,7 @@ struct HashTable
       if (other.tags[i] < 0x80)
         continue;
       const K& key = other.keyAt(i);
-      size_t hash = this->hashKey(key);
+      usize hash = this->hashKey(key);
       bool found;
       ContainerSize slot = this->place(key, hash, found);
       if (found)
@@ -382,14 +382,14 @@ struct HashTable
   // Both blocks before the table changes: BadAlloc leaves it as it was.
   void allocate(ContainerSize newCapacity)
   {
-    uint8_t* newTags = allocateArray<uint8_t>(newCapacity);
-    char* newSlots = (char*)malloc((size_t)newCapacity * HashTable::slotSize());
+    u8* newTags = allocateArray<u8>(newCapacity);
+    char* newSlots = (char*)malloc((usize)newCapacity * HashTable::slotSize());
     if (!newSlots)
     {
       free(newTags);
       throwBadAlloc();
     }
-    memset(newTags, hashSlotEmpty, (size_t)newCapacity);
+    memset(newTags, hashSlotEmpty, (usize)newCapacity);
     this->tags = newTags;
     this->slots = newSlots;
     this->capacity = newCapacity;
@@ -398,12 +398,12 @@ struct HashTable
   // Entries in nodes stay where they are; only the pointers move.
   void rehash(ContainerSize newCapacity)
   {
-    uint8_t* oldTags = this->tags;
+    u8* oldTags = this->tags;
     char* oldSlots = this->slots;
     ContainerSize oldCapacity = this->capacity;
     this->allocate(newCapacity);
     this->used = this->count;
-    size_t mask = newCapacity - 1;
+    usize mask = newCapacity - 1;
     for (ContainerSize i = 0; i < oldCapacity; ++i)
       if (oldTags[i] >= 0x80)
       {
@@ -412,8 +412,8 @@ struct HashTable
           entry = ((E**)oldSlots)[i];
         else
           entry = (E*)oldSlots + i;
-        size_t hash = this->hashKey(HashTable::keyOf(*entry));
-        size_t j = hash & mask;
+        usize hash = this->hashKey(HashTable::keyOf(*entry));
+        usize j = hash & mask;
         while (this->tags[j] != hashSlotEmpty)
           j = (j + 1) & mask;
         this->tags[j] = oldTags[i];
@@ -435,7 +435,7 @@ struct HashTable
     if (other.count == 0)
       return;
     this->allocate(other.capacity);
-    memcpy(this->tags, other.tags, (size_t)other.capacity);
+    memcpy(this->tags, other.tags, (usize)other.capacity);
     for (ContainerSize i = 0; i < other.capacity; ++i)
       if (other.tags[i] >= 0x80)
       {
@@ -488,7 +488,7 @@ struct HashMap
   using const_iterator = HashIterator<const Pair<K, V>, stable>;
   using value_type = Pair<K, V>;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
@@ -543,7 +543,7 @@ struct HashMap
   // The value for key, inserted default-constructed when new.
   V& operator[](const K& key)
   {
-    size_t hash = this->table.hashKey(key);
+    usize hash = this->table.hashKey(key);
     bool found;
     ContainerSize slot = this->table.place(key, hash, found);
     if (slot == hashNoSlot)
@@ -575,7 +575,7 @@ struct HashMap
   // The entry with the key and whether it was inserted (an existing value is kept).
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(const Pair<K, V>& entry)
   {
-    size_t hash = this->table.hashKey(entry.first);
+    usize hash = this->table.hashKey(entry.first);
     bool found;
     ContainerSize slot = this->table.place(entry.first, hash, found);
     if (slot == hashNoSlot)
@@ -590,7 +590,7 @@ struct HashMap
   }
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(Pair<K, V>&& entry)
   {
-    size_t hash = this->table.hashKey(entry.first);
+    usize hash = this->table.hashKey(entry.first);
     bool found;
     ContainerSize slot = this->table.place(entry.first, hash, found);
     if (slot == hashNoSlot)
@@ -608,7 +608,7 @@ struct HashMap
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(const K& key, Args&&... args)
   {
-    size_t hash = this->table.hashKey(key);
+    usize hash = this->table.hashKey(key);
     bool found;
     ContainerSize slot = this->table.place(key, hash, found);
     if (slot == hashNoSlot)
@@ -629,7 +629,7 @@ struct HashMap
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(KK&& key, Args&&... args)
   {
-    size_t hash = this->table.hashKey(key);
+    usize hash = this->table.hashKey(key);
     bool found;
     ContainerSize slot = this->table.place(key, hash, found);
     if (slot == hashNoSlot)
@@ -740,7 +740,7 @@ struct HashSet
   using const_iterator = HashIterator<const T, stable>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
@@ -787,7 +787,7 @@ struct HashSet
   // The entry with the value and whether it was inserted.
   Pair<iterator, bool> insert(const T& value)
   {
-    size_t hash = this->table.hashKey(value);
+    usize hash = this->table.hashKey(value);
     bool found;
     ContainerSize slot = this->table.place(value, hash, found);
     if (slot == hashNoSlot)
@@ -802,7 +802,7 @@ struct HashSet
   }
   Pair<iterator, bool> insert(T&& value)
   {
-    size_t hash = this->table.hashKey(value);
+    usize hash = this->table.hashKey(value);
     bool found;
     ContainerSize slot = this->table.place(value, hash, found);
     if (slot == hashNoSlot)

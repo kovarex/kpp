@@ -24,24 +24,24 @@ void appendPieceText(const T& value, String& out)
 // An unsigned value in base 16 or 8, zero-padded to `digits`.
 struct DigitsText
 {
-  unsigned long long value;
-  int digits;
-  int base;
+  u64 value;
+  i32 digits;
+  i32 base;
   bool upper;
 
   void appendTo(String& out) const
   {
     char buffer[24];
-    int n = 0;
-    unsigned long long rest = this->value;
+    i32 n = 0;
+    u64 rest = this->value;
     do
     {
-      int digit = int(rest % (unsigned long long)this->base);
+      i32 digit = i32(rest % (u64)this->base);
       buffer[n] = char(digit < 10 ? '0' + digit : (this->upper ? 'A' : 'a') + digit - 10);
       ++n;
-      rest /= (unsigned long long)this->base;
+      rest /= (u64)this->base;
     } while (rest != 0);
-    for (int i = n; i < this->digits; ++i)
+    for (i32 i = n; i < this->digits; ++i)
       out.append('0');
     while (n > 0)
     {
@@ -53,30 +53,30 @@ struct DigitsText
 
 // The bits of a value's own type, as C's %x and %o read it: hex(-1) of an int is ffffffff, of a long
 // long ffffffffffffffff.
-unsigned long long unsignedBits(int value) { return (unsigned int)value; }
-unsigned long long unsignedBits(unsigned int value) { return value; }
-unsigned long long unsignedBits(long value) { return (unsigned long)value; }
-unsigned long long unsignedBits(unsigned long value) { return value; }
-unsigned long long unsignedBits(long long value) { return (unsigned long long)value; }
-unsigned long long unsignedBits(unsigned long long value) { return value; }
-unsigned long long unsignedBits(short value) { return (unsigned short)value; }
-unsigned long long unsignedBits(unsigned short value) { return value; }
-unsigned long long unsignedBits(signed char value) { return (unsigned char)value; }
-unsigned long long unsignedBits(unsigned char value) { return value; }
+u64 unsignedBits(i32 value) { return (u32)value; }
+u64 unsignedBits(u32 value) { return value; }
+u64 unsignedBits(long value) { return (unsigned long)value; }
+u64 unsignedBits(unsigned long value) { return value; }
+u64 unsignedBits(i64 value) { return (u64)value; }
+u64 unsignedBits(u64 value) { return value; }
+u64 unsignedBits(i16 value) { return (u16)value; }
+u64 unsignedBits(u16 value) { return value; }
+u64 unsignedBits(i8 value) { return (u8)value; }
+u64 unsignedBits(u8 value) { return value; }
 
 template<typename T>
-DigitsText hex(T value, int digits = 0) { return DigitsText{unsignedBits(value), digits, 16, false}; }
+DigitsText hex(T value, i32 digits = 0) { return DigitsText{unsignedBits(value), digits, 16, false}; }
 template<typename T>
-DigitsText hexUpper(T value, int digits = 0) { return DigitsText{unsignedBits(value), digits, 16, true}; }
+DigitsText hexUpper(T value, i32 digits = 0) { return DigitsText{unsignedBits(value), digits, 16, true}; }
 template<typename T>
-DigitsText octal(T value, int digits = 0) { return DigitsText{unsignedBits(value), digits, 8, false}; }
+DigitsText octal(T value, i32 digits = 0) { return DigitsText{unsignedBits(value), digits, 8, false}; }
 
 // A floating value through one of C's conversions (f, g, e) at a precision; infinities and NaN as
 // toString writes them ("inf", "-inf", "nan").
 struct FloatingText
 {
   double value;
-  int precision;
+  i32 precision;
   char conversion;
 
   void appendTo(String& out) const
@@ -93,15 +93,15 @@ struct FloatingText
     }
     const char* format = this->conversion == 'f' ? "%.*f" : this->conversion == 'g' ? "%.*g" : "%.*e";
     char buffer[64];
-    int n = snprintf(buffer, 64, format, this->precision, this->value);
+    i32 n = snprintf(buffer, 64, format, this->precision, this->value);
     if (n < 64)
     {
       out.append(buffer, n);
       return;
     }
     // (1e308 has 309 digits before the point)
-    char* large = (char*)malloc(size_t(n) + 1);
-    snprintf(large, size_t(n) + 1, format, this->precision, this->value);
+    char* large = (char*)malloc(usize(n) + 1);
+    snprintf(large, usize(n) + 1, format, this->precision, this->value);
     out.append(large, n);
     free(large);
   }
@@ -109,13 +109,13 @@ struct FloatingText
 
 // `decimals` digits after the point, rounded to the nearest and a tie to even, as %.Nf: fixed(2.5, 0)
 // is "2".
-FloatingText fixed(double value, int decimals) { return FloatingText{value, decimals, 'f'}; }
+FloatingText fixed(double value, i32 decimals) { return FloatingText{value, decimals, 'f'}; }
 // `digits` significant digits, trailing zeros removed, an exponent below 1e-4 and from 1e(digits), as
 // %.Ng: significant(1234567.0, 6) is "1.23457e+06".
-FloatingText significant(double value, int digits) { return FloatingText{value, digits, 'g'}; }
+FloatingText significant(double value, i32 digits) { return FloatingText{value, digits, 'g'}; }
 // One digit, the point, `digits` more and the exponent of at least two digits, as %.Ne:
 // scientific(1234.5, 2) is "1.23e+03".
-FloatingText scientific(double value, int digits) { return FloatingText{value, digits, 'e'}; }
+FloatingText scientific(double value, i32 digits) { return FloatingText{value, digits, 'e'}; }
 
 // A piece's text with a '+' before it unless it starts with '-', as C's '+' flag.
 template<typename T>
@@ -143,7 +143,7 @@ template<typename T>
 struct AlignedText
 {
   T value;
-  int width;
+  i32 width;
   char fill;
   bool left;
 
@@ -152,21 +152,21 @@ struct AlignedText
     String text;
     appendPieceText(this->value, text);
     bool left = this->left || this->width < 0;
-    int count = (this->width < 0 ? -this->width : this->width) - int(text.size());
+    i32 count = (this->width < 0 ? -this->width : this->width) - i32(text.size());
     if (!left)
-      for (int i = 0; i < count; ++i)
+      for (i32 i = 0; i < count; ++i)
         out.append(this->fill);
     out.append(text);
     if (left)
-      for (int i = 0; i < count; ++i)
+      for (i32 i = 0; i < count; ++i)
         out.append(this->fill);
   }
 };
 
 template<typename T>
-AlignedText<T> alignRight(T value, int width, char fill = ' ') { return AlignedText<T>{value, width, fill, false}; }
+AlignedText<T> alignRight(T value, i32 width, char fill = ' ') { return AlignedText<T>{value, width, fill, false}; }
 template<typename T>
-AlignedText<T> alignLeft(T value, int width, char fill = ' ') { return AlignedText<T>{value, width, fill, true}; }
+AlignedText<T> alignLeft(T value, i32 width, char fill = ' ') { return AlignedText<T>{value, width, fill, true}; }
 
 // A piece's text zero-padded to `width` characters after its sign, as C's '0' flag: zeroPadded(-5, 4)
 // is "-005".
@@ -174,27 +174,27 @@ template<typename T>
 struct ZeroPaddedText
 {
   T value;
-  int width;
+  i32 width;
 
   void appendTo(String& out) const
   {
     String text;
     appendPieceText(this->value, text);
-    int count = this->width - int(text.size());
-    size_t from = 0;
+    i32 count = this->width - i32(text.size());
+    usize from = 0;
     if (text.size() > 0 && (text[0] == '-' || text[0] == '+' || text[0] == ' '))
     {
       out.append(text[0]);
       from = 1;
     }
-    for (int i = 0; i < count; ++i)
+    for (i32 i = 0; i < count; ++i)
       out.append('0');
     out.append(text.data() + from, text.size() - from);
   }
 };
 
 template<typename T>
-ZeroPaddedText<T> zeroPadded(T value, int width) { return ZeroPaddedText<T>{value, width}; }
+ZeroPaddedText<T> zeroPadded(T value, i32 width) { return ZeroPaddedText<T>{value, width}; }
 
 // A pointer as MSVC's %p writes it: 16 uppercase hexadecimal digits, no prefix. The one way to print a
 // pointer (design.md 14: a pointer is no piece of a text by itself).
@@ -202,7 +202,7 @@ struct AddressText
 {
   const void* pointer;
 
-  void appendTo(String& out) const { DigitsText{(unsigned long long)this->pointer, 16, 16, true}.appendTo(out); }
+  void appendTo(String& out) const { DigitsText{(u64)this->pointer, 16, 16, true}.appendTo(out); }
 };
 
 AddressText address(const void* pointer) { return AddressText{pointer}; }

@@ -16,29 +16,29 @@ struct _dirdesc;
 namespace posix
 {
   // errno, which FreeBSD's errno.h defines as (*__error()).
-  extern "C" int* __error();
+  extern "C" i32* __error();
   using pthread_t = pthread*;
   using pthread_attr_t = pthread_attr*;
   using pthread_mutex_t = pthread_mutex*;
   using pthread_cond_t = pthread_cond*;
   using pthread_rwlock_t = pthread_rwlock*;
   using DIR = _dirdesc;
-  using mode_t = unsigned short;
+  using mode_t = u16;
 }
 
 namespace platform
 {
   // The clocks' ids (FreeBSD's sys/_clock_id.h).
-  const int clockRealtime = 0;
-  const int clockMonotonic = 4;
+  const i32 clockRealtime = 0;
+  const i32 clockMonotonic = 4;
 
   // The locks' sizes in 8-byte words: each is a pointer to what the C library allocates on first use
   // (sys/_pthreadtypes.h).
-  const int mutexWords = 1;
-  const int conditionWords = 1;
-  const int rwlockWords = 1;
+  const i32 mutexWords = 1;
+  const i32 conditionWords = 1;
+  const i32 rwlockWords = 1;
   // sysconf's name for the processors online (unistd.h).
-  const int scNprocessorsOnln = 58;
+  const i32 scNprocessorsOnln = 58;
   // A thread's pthread_t from the handle startThread gave.
   posix::pthread_t threadOf(void* handle) { return (pthread*)handle; }
 
@@ -46,25 +46,25 @@ namespace platform
   // struct stat (224 bytes) st_mode (16 bits) at 24, st_mtim at 64, st_size at 112 (st_dev at 0,
   // st_ino at 8); struct statvfs (88 bytes) f_bavail at 0, f_bfree 8, f_blocks 16, f_frsize 64;
   // struct dirent's d_name at 24.
-  const int statModeOffset = 24;
-  const int statSizeOffset = 112;
-  const int statWriteTimeOffset = 64;
-  const int statvfsFragmentSizeOffset = 64;
-  const int statvfsBlocksOffset = 16;
-  const int statvfsFreeOffset = 8;
-  const int statvfsAvailableOffset = 0;
-  const int direntNameOffset = 24;
+  const i32 statModeOffset = 24;
+  const i32 statSizeOffset = 112;
+  const i32 statWriteTimeOffset = 64;
+  const i32 statvfsFragmentSizeOffset = 64;
+  const i32 statvfsBlocksOffset = 16;
+  const i32 statvfsFreeOffset = 8;
+  const i32 statvfsAvailableOffset = 0;
+  const i32 direntNameOffset = 24;
 
   // C's errno of the calling thread.
-  int* errnoLocation() { return posix::__error(); }
+  i32* errnoLocation() { return posix::__error(); }
 
   // FreeBSD's errno values where the C libraries differ (sys/errno.h; Errc).
-  const int errnoAgain = 35;
-  const int errnoDeadlock = 11;
-  const int errnoNameTooLong = 63;
-  const int errnoNoSys = 78;
-  const int errnoNotEmpty = 66;
-  const int errnoNotSupported = 45;
-  const int errnoOpNotSupported = 45;
-  const int errnoTimedOut = 60;
+  const i32 errnoAgain = 35;
+  const i32 errnoDeadlock = 11;
+  const i32 errnoNameTooLong = 63;
+  const i32 errnoNoSys = 78;
+  const i32 errnoNotEmpty = 66;
+  const i32 errnoNotSupported = 45;
+  const i32 errnoOpNotSupported = 45;
+  const i32 errnoTimedOut = 60;
 }

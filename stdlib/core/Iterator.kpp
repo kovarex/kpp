@@ -21,7 +21,7 @@ template<typename T>
 struct IteratorTraits<T*>
 {
   using value_type = RemoveConst<T>;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = T*;
   using reference = T&;
   using iterator_category = RandomAccessIteratorTag;
@@ -34,7 +34,7 @@ template<typename It>
 struct MoveIterator
 {
   using value_type = typename IteratorTraits<It>::value_type;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = typename IteratorTraits<It>::pointer;
   using reference = typename IteratorTraits<It>::value_type&&;
   using iterator_category = typename IteratorTraits<It>::iterator_category;
@@ -45,13 +45,13 @@ struct MoveIterator
   explicit MoveIterator(It it) : current(it) {}
 
   IteratorTraits<It>::value_type&& operator*() const { return move(*this->current); }
-  IteratorTraits<It>::value_type&& operator[](ptrdiff_t n) const { return move(this->current[n]); }
+  IteratorTraits<It>::value_type&& operator[](i64 n) const { return move(this->current[n]); }
   MoveIterator<It>& operator++()
   {
     ++this->current;
     return *this;
   }
-  MoveIterator<It> operator++(int)
+  MoveIterator<It> operator++(i32)
   {
     MoveIterator<It> tmp = *this;
     ++this->current;
@@ -62,25 +62,25 @@ struct MoveIterator
     --this->current;
     return *this;
   }
-  MoveIterator<It> operator--(int)
+  MoveIterator<It> operator--(i32)
   {
     MoveIterator<It> tmp = *this;
     --this->current;
     return tmp;
   }
-  MoveIterator<It>& operator+=(ptrdiff_t n)
+  MoveIterator<It>& operator+=(i64 n)
   {
     this->current += n;
     return *this;
   }
-  MoveIterator<It>& operator-=(ptrdiff_t n)
+  MoveIterator<It>& operator-=(i64 n)
   {
     this->current -= n;
     return *this;
   }
-  MoveIterator<It> operator+(ptrdiff_t n) const { return MoveIterator<It>(this->current + n); }
-  MoveIterator<It> operator-(ptrdiff_t n) const { return MoveIterator<It>(this->current - n); }
-  ptrdiff_t operator-(const MoveIterator<It>& other) const { return this->current - other.current; }
+  MoveIterator<It> operator+(i64 n) const { return MoveIterator<It>(this->current + n); }
+  MoveIterator<It> operator-(i64 n) const { return MoveIterator<It>(this->current - n); }
+  i64 operator-(const MoveIterator<It>& other) const { return this->current - other.current; }
   It base() const { return this->current; }
   bool operator==(const MoveIterator<It>& other) const { return this->current == other.current; }
   bool operator!=(const MoveIterator<It>& other) const { return this->current != other.current; }
@@ -98,7 +98,7 @@ template<typename Container>
 struct BackInsertIterator
 {
   using value_type = void;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = OutputIteratorTag;
@@ -129,7 +129,7 @@ template<typename Container>
 struct InsertIterator
 {
   using value_type = void;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = void;
   using reference = void;
   using iterator_category = OutputIteratorTag;
@@ -179,25 +179,25 @@ auto rend(const C& c) { return c.rend(); }
 template<typename C> requires requires (const C& c) { c.size(); }
 auto size(const C& c) { return c.size(); }
 template<typename C> requires requires (const C& c) { c.size(); }
-ptrdiff_t ssize(const C& c) { return (ptrdiff_t)c.size(); }
+i64 ssize(const C& c) { return (i64)c.size(); }
 // A built-in array's element count (SelectorCombinatorGui's `std::size(modeOfOperationMapping)`).
-template<typename T, int N>
-constexpr int size(const T (&array)[N]) { return N; }
-template<typename T, int N>
-constexpr ptrdiff_t ssize(const T (&array)[N]) { return N; }
+template<typename T, i32 N>
+constexpr i32 size(const T (&array)[N]) { return N; }
+template<typename T, i32 N>
+constexpr i64 ssize(const T (&array)[N]) { return N; }
 // A built-in array's ends (ValueToWidget's `begin(value)` of a `const T (&)[N]`,
 // CommandLineMultiplayer's `count(begin(startServerOptions), end(startServerOptions), true)`).
-template<typename T, int N>
+template<typename T, i32 N>
 constexpr T* begin(T (&array)[N]) { return array; }
-template<typename T, int N>
+template<typename T, i32 N>
 constexpr T* end(T (&array)[N]) { return array + N; }
-template<typename T, int N>
+template<typename T, i32 N>
 constexpr const T* cbegin(const T (&array)[N]) { return array; }
-template<typename T, int N>
+template<typename T, i32 N>
 constexpr const T* cend(const T (&array)[N]) { return array + N; }
-template<typename T, int N>
+template<typename T, i32 N>
 ReverseIterator<T*> rbegin(T (&array)[N]) { return ReverseIterator<T*>(array + N); }
-template<typename T, int N>
+template<typename T, i32 N>
 ReverseIterator<T*> rend(T (&array)[N]) { return ReverseIterator<T*>(array); }
 template<typename C> requires requires (const C& c) { c.empty(); }
 auto empty(const C& c) { return c.empty(); }

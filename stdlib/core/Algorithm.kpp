@@ -15,13 +15,13 @@ constexpr bool isBidirectionalIterator = isBaseOf<BidirectionalIteratorTag, type
 
 // The number of steps from first to last: O(1) for random access iterators, O(n) for the others.
 template<typename It>
-ptrdiff_t distance(It first, It last)
+i64 distance(It first, It last)
 {
   if constexpr (isRandomAccessIterator<It>)
     return last - first;
   else
   {
-    ptrdiff_t n = 0;
+    i64 n = 0;
     for (; first != last; ++first)
       ++n;
     return n;
@@ -31,7 +31,7 @@ ptrdiff_t distance(It first, It last)
 // Moves it n steps forward, or back for a negative n (a bidirectional iterator): O(1) for random
 // access iterators, O(|n|) for the others.
 template<typename It>
-void advance(It& it, ptrdiff_t n)
+void advance(It& it, i64 n)
 {
   if constexpr (isRandomAccessIterator<It>)
     it += n;
@@ -45,13 +45,13 @@ void advance(It& it, ptrdiff_t n)
   }
 }
 template<typename It>
-It next(It it, ptrdiff_t n = 1)
+It next(It it, i64 n = 1)
 {
   advance(it, n);
   return it;
 }
 template<typename It>
-It prev(It it, ptrdiff_t n = 1)
+It prev(It it, i64 n = 1)
 {
   advance(it, -n);
   return it;
@@ -97,9 +97,9 @@ It findIfNot(It first, It last, F predicate)
 }
 
 template<typename It, typename V>
-ptrdiff_t count(It first, It last, const V& value)
+i64 count(It first, It last, const V& value)
 {
-  ptrdiff_t n = 0;
+  i64 n = 0;
   for (; first != last; ++first)
     if (*first == value)
       ++n;
@@ -107,9 +107,9 @@ ptrdiff_t count(It first, It last, const V& value)
 }
 
 template<typename It, typename F>
-ptrdiff_t countIf(It first, It last, F predicate)
+i64 countIf(It first, It last, F predicate)
 {
-  ptrdiff_t n = 0;
+  i64 n = 0;
   for (; first != last; ++first)
     if (predicate(*first))
       ++n;
@@ -199,7 +199,7 @@ template<typename T>
 T max(InitializerList<T> values)
 {
   T best = values[0];
-  for (int i = 1; i < values.size(); ++i)
+  for (i32 i = 1; i < values.size(); ++i)
     if (best < values[i])
       best = values[i];
   return best;
@@ -208,7 +208,7 @@ template<typename T>
 T min(InitializerList<T> values)
 {
   T best = values[0];
-  for (int i = 1; i < values.size(); ++i)
+  for (i32 i = 1; i < values.size(); ++i)
     if (values[i] < best)
       best = values[i];
   return best;
@@ -317,9 +317,9 @@ It removeIf(It first, It last, F predicate)
 // iterators of the others staying valid; a sequence's (Vector, Deque, String) by removeIf and one
 // erase, the others keeping their order.
 template<typename Container, typename F>
-size_t eraseIf(Container& container, F predicate)
+usize eraseIf(Container& container, F predicate)
 {
-  size_t before = container.size();
+  usize before = container.size();
   if constexpr (requires { typename Container::key_type; })
   {
     for (auto it = container.begin(); it != container.end();)
@@ -389,10 +389,10 @@ void reverse(It first, It last)
 template<typename It, typename V, typename F>
 It lowerBound(It first, It last, const V& value, F less)
 {
-  ptrdiff_t count = distance(first, last);
+  i64 count = distance(first, last);
   while (count > 0)
   {
-    ptrdiff_t half = count / 2;
+    i64 half = count / 2;
     It middle = first;
     advance(middle, half);
     if (less(*middle, value))
@@ -415,10 +415,10 @@ It lowerBound(It first, It last, const V& value)
 template<typename It, typename V, typename F>
 It upperBound(It first, It last, const V& value, F less)
 {
-  ptrdiff_t count = distance(first, last);
+  i64 count = distance(first, last);
   while (count > 0)
   {
-    ptrdiff_t half = count / 2;
+    i64 half = count / 2;
     It middle = first;
     advance(middle, half);
     if (!less(value, *middle))
@@ -464,11 +464,11 @@ Pair<It, It> equalRange(It first, It last, const V& value) { return equalRange(f
 template<typename It, typename F>
 void sort(It first, It last, F less)
 {
-  ptrdiff_t count = last - first;
+  i64 count = last - first;
   if (count < 2)
     return;
-  int depthLimit = 0;
-  for (ptrdiff_t k = count; k > 1; k >>= 1)
+  i32 depthLimit = 0;
+  for (i64 k = count; k > 1; k >>= 1)
     depthLimit += 2;
   introSortLoop(first, last, depthLimit, less);
   insertionSort(first, last, less);
@@ -483,7 +483,7 @@ void sort(It first, It last)
 
 // Quicksorts until every range is at most 16 elements long, each element already in its range.
 template<typename It, typename F>
-void introSortLoop(It first, It last, int depthLimit, F& less)
+void introSortLoop(It first, It last, i32 depthLimit, F& less)
 {
   while (last - first > 16)
   {
@@ -567,10 +567,10 @@ void insertionSort(It first, It last, F& less)
 template<typename It, typename F>
 void heapSort(It first, It last, F& less)
 {
-  ptrdiff_t count = last - first;
-  for (ptrdiff_t i = count / 2; i-- > 0;)
+  i64 count = last - first;
+  for (i64 i = count / 2; i-- > 0;)
     heapSiftDown(first, i, count, less);
-  for (ptrdiff_t end = count - 1; end > 0; --end)
+  for (i64 end = count - 1; end > 0; --end)
   {
     swap(first[0], first[end]);
     heapSiftDown(first, 0, end, less);
@@ -579,13 +579,13 @@ void heapSort(It first, It last, F& less)
 
 // Restores the max-heap property below hole in the heap first[0, count).
 template<typename It, typename F>
-void heapSiftDown(It first, ptrdiff_t hole, ptrdiff_t count, F& less)
+void heapSiftDown(It first, i64 hole, i64 count, F& less)
 {
   using T = typename IteratorTraits<It>::value_type;
   T value = move(first[hole]);
   while (true)
   {
-    ptrdiff_t child = 2 * hole + 1;
+    i64 child = 2 * hole + 1;
     if (child >= count)
       break;
     if (child + 1 < count && less(first[child], first[child + 1]))
@@ -621,21 +621,21 @@ void stableSort(It first, It last, F less)
   }
   else
   {
-    ptrdiff_t count = last - first;
-    const ptrdiff_t run = 32;
-    for (ptrdiff_t start = 0; start < count; start += run)
+    i64 count = last - first;
+    const i64 run = 32;
+    for (i64 start = 0; start < count; start += run)
       insertionSort(first + start, first + (start + run < count ? start + run : count), less);
     if (count <= run)
       return;
     T* buffer = allocateArray<T>(count);
     T* from = first;
     T* to = buffer;
-    for (ptrdiff_t width = run; width < count; width *= 2)
+    for (i64 width = run; width < count; width *= 2)
     {
-      for (ptrdiff_t start = 0; start < count; start += 2 * width)
+      for (i64 start = 0; start < count; start += 2 * width)
       {
-        ptrdiff_t middle = start + width < count ? start + width : count;
-        ptrdiff_t end = start + 2 * width < count ? start + 2 * width : count;
+        i64 middle = start + width < count ? start + width : count;
+        i64 end = start + 2 * width < count ? start + 2 * width : count;
         mergeRelocating(from + start, from + middle, from + end, to + start, less);
       }
       T* swapped = from;
@@ -717,7 +717,7 @@ struct ReverseIterator
     --this->current;
     return *this;
   }
-  ReverseIterator<It> operator++(int)
+  ReverseIterator<It> operator++(i32)
   {
     ReverseIterator<It> before = *this;
     --this->current;
@@ -728,7 +728,7 @@ struct ReverseIterator
     ++this->current;
     return *this;
   }
-  ReverseIterator<It> operator--(int)
+  ReverseIterator<It> operator--(i32)
   {
     ReverseIterator<It> before = *this;
     ++this->current;

@@ -16,7 +16,7 @@ struct WString
   using const_iterator = const wchar_t*;
   using value_type = wchar_t;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = wchar_t&;
   using const_reference = const wchar_t&;
   using pointer = wchar_t*;
@@ -70,7 +70,7 @@ struct WString
 
   static ContainerSize lengthOf(const wchar_t* text)
   {
-    size_t n = 0;
+    usize n = 0;
     while (text != nullptr && text[n] != 0)
       ++n;
     return checkedSize(n, "string too long");
@@ -120,7 +120,7 @@ struct WString
     wchar_t* bigger = allocateArray<wchar_t>(newCapacity);
     if (this->chars)
     {
-      memcpy(bigger, this->chars, (size_t)(this->unitCount + 1) * sizeof(wchar_t));
+      memcpy(bigger, this->chars, (usize)(this->unitCount + 1) * sizeof(wchar_t));
       free(this->chars);
     }
     else
@@ -140,7 +140,7 @@ struct WString
       return this->append(copy.chars, count);
     }
     this->reserve(newLength);
-    memcpy(this->chars + this->unitCount, units, (size_t)count * sizeof(wchar_t));
+    memcpy(this->chars + this->unitCount, units, (usize)count * sizeof(wchar_t));
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
     return *this;
@@ -191,7 +191,7 @@ struct WString
       count = this->unitCount - index;
     if (count > 0)
     {
-      memmove(this->chars + index, this->chars + index + count, (size_t)(this->unitCount - index - count) * sizeof(wchar_t));
+      memmove(this->chars + index, this->chars + index + count, (usize)(this->unitCount - index - count) * sizeof(wchar_t));
       this->unitCount -= count;
       this->chars[this->unitCount] = 0;
     }
@@ -213,8 +213,8 @@ struct WString
     }
     this->reserve(newLength);
     // The units from index on, the terminating 0 with them, move up by count.
-    memmove(this->chars + index + count, this->chars + index, (size_t)(this->unitCount - index + 1) * sizeof(wchar_t));
-    memcpy(this->chars + index, units, (size_t)count * sizeof(wchar_t));
+    memmove(this->chars + index + count, this->chars + index, (usize)(this->unitCount - index + 1) * sizeof(wchar_t));
+    memcpy(this->chars + index, units, (usize)count * sizeof(wchar_t));
     this->unitCount += count;
     return *this;
   }
@@ -333,7 +333,7 @@ struct WString
   WString substr(ContainerSize start) const { return this->substr(start, npos); }
 
   // Negative, 0 or positive as this sorts before, with or after other, unit by unit.
-  int compare(const WString& other) const
+  i32 compare(const WString& other) const
   {
     ContainerSize n = this->unitCount < other.unitCount ? this->unitCount : other.unitCount;
     for (ContainerSize i = 0; i < n; ++i)
@@ -344,7 +344,7 @@ struct WString
   bool operator==(const WString& other) const
   {
     return this->unitCount == other.unitCount &&
-           (this->unitCount == 0 || memcmp(this->chars, other.chars, (size_t)this->unitCount * sizeof(wchar_t)) == 0);
+           (this->unitCount == 0 || memcmp(this->chars, other.chars, (usize)this->unitCount * sizeof(wchar_t)) == 0);
   }
   bool operator!=(const WString& other) const { return !(*this == other); }
   bool operator==(const wchar_t* text) const { return *this == WString(text); }
@@ -355,7 +355,7 @@ struct WString
   bool operator>=(const WString& other) const { return this->compare(other) >= 0; }
   strong_ordering operator<=>(const WString& other) const
   {
-    int c = this->compare(other);
+    i32 c = this->compare(other);
     return c < 0 ? strong_ordering::less : c > 0 ? strong_ordering::greater : strong_ordering::equal;
   }
 };

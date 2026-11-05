@@ -6,21 +6,21 @@
 // A SystemClock time point taken apart, in UTC.
 struct CivilTime
 {
-  int year = 1970;    // proleptic Gregorian; 0 is 1 BC
-  int month = 1;      // 1 to 12
-  int day = 1;        // 1 to the month's length
-  int hour = 0;       // 0 to 23
-  int minute = 0;     // 0 to 59
-  int second = 0;     // 0 to 59: no leap seconds
-  int nanosecond = 0; // 0 to 999999999, a multiple of 100 from a time point
-  int weekday = 4;    // 0 Sunday to 6 Saturday; ignored by fromCivilTime
+  i32 year = 1970;    // proleptic Gregorian; 0 is 1 BC
+  i32 month = 1;      // 1 to 12
+  i32 day = 1;        // 1 to the month's length
+  i32 hour = 0;       // 0 to 23
+  i32 minute = 0;     // 0 to 59
+  i32 second = 0;     // 0 to 59: no leap seconds
+  i32 nanosecond = 0; // 0 to 999999999, a multiple of 100 from a time point
+  i32 weekday = 4;    // 0 Sunday to 6 Saturday; ignored by fromCivilTime
 };
 
-bool isLeapYear(long long year) { return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0); }
+bool isLeapYear(i64 year) { return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0); }
 
-int daysInMonth(long long year, int month)
+i32 daysInMonth(i64 year, i32 month)
 {
-  constexpr int lengths[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  constexpr i32 lengths[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
   return month == 2 && isLeapYear(year) ? 29 : lengths[month - 1];
 }
 
@@ -28,45 +28,45 @@ int daysInMonth(long long year, int month)
 // ("chrono-Compatible Low-Level Date Algorithms", https://howardhinnant.github.io/date_algorithms.html),
 // which he donated to the public domain there ("Consider these donated to the public domain").
 // Days from 1970-01-01 to the date (negative before it); month 1 to 12, day 1 to 31.
-long long daysFromCivil(long long year, int month, int day)
+i64 daysFromCivil(i64 year, i32 month, i32 day)
 {
   year -= month <= 2 ? 1 : 0;
-  long long era = (year >= 0 ? year : year - 399) / 400;
-  long long yearOfEra = year - era * 400;
-  long long dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
-  long long dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+  i64 era = (year >= 0 ? year : year - 399) / 400;
+  i64 yearOfEra = year - era * 400;
+  i64 dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
+  i64 dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
   return era * 146097 + dayOfEra - 719468;
 }
 
 // The date daysFromCivil gives the days for, and its weekday (0 Sunday).
-void civilFromDays(long long days, CivilTime& out)
+void civilFromDays(i64 days, CivilTime& out)
 {
-  out.weekday = int(days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
+  out.weekday = i32(days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
   days += 719468;
-  long long era = (days >= 0 ? days : days - 146096) / 146097;
-  long long dayOfEra = days - era * 146097;
-  long long yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
-  long long dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
-  long long monthIndex = (5 * dayOfYear + 2) / 153;
-  out.day = int(dayOfYear - (153 * monthIndex + 2) / 5 + 1);
-  out.month = int(monthIndex < 10 ? monthIndex + 3 : monthIndex - 9);
-  out.year = int(yearOfEra + era * 400 + (out.month <= 2 ? 1 : 0));
+  i64 era = (days >= 0 ? days : days - 146096) / 146097;
+  i64 dayOfEra = days - era * 146097;
+  i64 yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+  i64 dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+  i64 monthIndex = (5 * dayOfYear + 2) / 153;
+  out.day = i32(dayOfYear - (153 * monthIndex + 2) / 5 + 1);
+  out.month = i32(monthIndex < 10 ? monthIndex + 3 : monthIndex - 9);
+  out.year = i32(yearOfEra + era * 400 + (out.month <= 2 ? 1 : 0));
 }
 
 // The civil fields of the time point, in UTC.
 CivilTime toCivilTime(const TimePoint<SystemClock>& t)
 {
-  long long ticks = t.time_since_epoch().count(); // 100 ns
-  long long perDay = 864000000000ll;
-  long long days = ticks >= 0 ? ticks / perDay : -((-ticks + perDay - 1) / perDay);
-  long long rest = ticks - days * perDay;
+  i64 ticks = t.time_since_epoch().count(); // 100 ns
+  i64 perDay = 864000000000ll;
+  i64 days = ticks >= 0 ? ticks / perDay : -((-ticks + perDay - 1) / perDay);
+  i64 rest = ticks - days * perDay;
   CivilTime c;
   civilFromDays(days, c);
-  long long seconds = rest / 10000000;
-  c.hour = int(seconds / 3600);
-  c.minute = int(seconds / 60 % 60);
-  c.second = int(seconds % 60);
-  c.nanosecond = int(rest % 10000000 * 100);
+  i64 seconds = rest / 10000000;
+  c.hour = i32(seconds / 3600);
+  c.minute = i32(seconds / 60 % 60);
+  c.second = i32(seconds % 60);
+  c.nanosecond = i32(rest % 10000000 * 100);
   return c;
 }
 
@@ -78,8 +78,8 @@ Optional<TimePoint<SystemClock>> fromCivilTime(const CivilTime& c)
   if (c.year < -29000 || c.year > 29000 || c.month < 1 || c.month > 12 || c.day < 1 || c.day > daysInMonth(c.year, c.month) || c.hour < 0 ||
       c.hour > 23 || c.minute < 0 || c.minute > 59 || c.second < 0 || c.second > 59 || c.nanosecond < 0 || c.nanosecond > 999999999)
     return Optional<TimePoint<SystemClock>>();
-  long long seconds = daysFromCivil(c.year, c.month, c.day) * 86400 + c.hour * 3600 + c.minute * 60 + c.second;
-  return Optional<TimePoint<SystemClock>>(TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>(seconds * 10000000 + c.nanosecond / 100)));
+  i64 seconds = daysFromCivil(c.year, c.month, c.day) * 86400 + c.hour * 3600 + c.minute * 60 + c.second;
+  return Optional<TimePoint<SystemClock>>(TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000 + c.nanosecond / 100)));
 }
 
 // --- text ---
@@ -88,10 +88,10 @@ const char* calendarMonthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "J
 const char* calendarDayNames[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 const char* calendarLongDayNames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
-void calendarAppendDigits(String& out, long long value, int digits)
+void calendarAppendDigits(String& out, i64 value, i32 digits)
 {
   char buffer[24];
-  for (int i = digits - 1; i >= 0; --i)
+  for (i32 i = digits - 1; i >= 0; --i)
   {
     buffer[i] = char('0' + value % 10);
     value /= 10;
@@ -101,7 +101,7 @@ void calendarAppendDigits(String& out, long long value, int digits)
 
 // The year as four digits; another year throws OutOfRange, since RFC 3339 and HTTP dates have
 // four.
-void calendarAppendYear(String& out, int year, const char* what)
+void calendarAppendYear(String& out, i32 year, const char* what)
 {
   if (year < 0 || year > 9999)
     throw OutOfRange(format("{}: the year {} has no four-digit form", StringView(what), year));
@@ -110,7 +110,7 @@ void calendarAppendYear(String& out, int year, const char* what)
 
 // An RFC 3339 timestamp in UTC: 2026-11-01T10:31:07Z, with fractionDigits (0 to 7) digits of the
 // second, truncated: 2026-11-01T10:31:07.123Z. A year outside 0 to 9999 throws OutOfRange.
-String formatRfc3339(const TimePoint<SystemClock>& t, int fractionDigits = 0)
+String formatRfc3339(const TimePoint<SystemClock>& t, i32 fractionDigits = 0)
 {
   if (fractionDigits < 0 || fractionDigits > 7)
     throw InvalidArgument(format("formatRfc3339: {} fraction digits, not 0 to 7", fractionDigits));
@@ -130,8 +130,8 @@ String formatRfc3339(const TimePoint<SystemClock>& t, int fractionDigits = 0)
   if (fractionDigits > 0)
   {
     out.append('.');
-    long long ticks = c.nanosecond / 100;
-    for (int i = fractionDigits; i < 7; ++i)
+    i64 ticks = c.nanosecond / 100;
+    for (i32 i = fractionDigits; i < 7; ++i)
       ticks /= 10;
     calendarAppendDigits(out, ticks, fractionDigits);
   }
@@ -172,15 +172,15 @@ struct CalendarReader
   bool atEnd() const { return this->at == this->text.size(); }
 
   // Exactly n digits.
-  int digits(int n)
+  i32 digits(i32 n)
   {
-    int value = 0;
+    i32 value = 0;
     if (!this->ok || this->at + n > this->text.size())
     {
       this->ok = false;
       return 0;
     }
-    for (int i = 0; i < n; ++i)
+    for (i32 i = 0; i < n; ++i)
     {
       char c = this->text[this->at + i];
       if (c < '0' || c > '9')
@@ -207,9 +207,9 @@ struct CalendarReader
   }
 
   // One of the names; returns its index.
-  int name(const char* const* names, int count)
+  i32 name(const char* const* names, i32 count)
   {
-    for (int i = 0; i < count && this->ok; ++i)
+    for (i32 i = 0; i < count && this->ok; ++i)
     {
       ContainerSize n = ContainerSize(strlen(names[i]));
       if (this->at + n <= this->text.size() && this->text.substr(this->at, n) == StringView(names[i]))
@@ -252,11 +252,11 @@ Optional<TimePoint<SystemClock>> parseRfc3339(StringView text)
   else
     r.ok = false;
   r.timeOfDay(c);
-  long long fraction = 0; // in 100 ns
+  i64 fraction = 0; // in 100 ns
   if (r.ok && !r.atEnd() && text[r.at] == '.')
   {
     ++r.at;
-    int count = 0;
+    i32 count = 0;
     while (!r.atEnd() && text[r.at] >= '0' && text[r.at] <= '9')
     {
       if (count < 7)
@@ -266,19 +266,19 @@ Optional<TimePoint<SystemClock>> parseRfc3339(StringView text)
     }
     if (count == 0)
       r.ok = false;
-    for (int i = count; i < 7; ++i)
+    for (i32 i = count; i < 7; ++i)
       fraction *= 10;
   }
-  long long offsetSeconds = 0;
+  i64 offsetSeconds = 0;
   if (r.ok && !r.atEnd() && (text[r.at] == 'Z' || text[r.at] == 'z'))
     ++r.at;
   else if (r.ok && !r.atEnd() && (text[r.at] == '+' || text[r.at] == '-'))
   {
     bool negative = text[r.at] == '-';
     ++r.at;
-    int hours = r.digits(2);
+    i32 hours = r.digits(2);
     r.literal(":");
-    int minutes = r.digits(2);
+    i32 minutes = r.digits(2);
     if (hours > 23 || minutes > 59)
       r.ok = false;
     offsetSeconds = (hours * 3600 + minutes * 60) * (negative ? -1 : 1);
@@ -290,7 +290,7 @@ Optional<TimePoint<SystemClock>> parseRfc3339(StringView text)
   Optional<TimePoint<SystemClock>> local = fromCivilTime(c);
   if (!local.hasValue())
     return local;
-  return Optional<TimePoint<SystemClock>>(local.value() + Duration<long long, Ratio<1, 10000000>>(fraction - offsetSeconds * 10000000));
+  return Optional<TimePoint<SystemClock>>(local.value() + Duration<i64, Ratio<1, 10000000>>(fraction - offsetSeconds * 10000000));
 }
 
 // An HTTP date in any of RFC 9110's three forms, which a recipient must read:
@@ -305,7 +305,7 @@ Optional<TimePoint<SystemClock>> parseHttpDate(StringView text, const TimePoint<
   CalendarReader r;
   r.text = text;
   CivilTime c;
-  int weekday = -1;
+  i32 weekday = -1;
   bool twoDigitYear = false;
   ContainerSize comma = text.find(',');
   if (comma == 3)
@@ -358,7 +358,7 @@ Optional<TimePoint<SystemClock>> parseHttpDate(StringView text, const TimePoint<
   if (twoDigitYear)
   {
     CivilTime today = toCivilTime(now);
-    int century = today.year - today.year % 100;
+    i32 century = today.year - today.year % 100;
     c.year += century;
     // More than 50 years in the future: the most recent past year with those two digits.
     CivilTime limit = today;

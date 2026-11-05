@@ -165,11 +165,11 @@ struct Thread
   // How many threads can run at once: the machine's logical processors (on Windows in all its
   // processor groups; elsewhere those online) (std::thread::hardware_concurrency, which may also say 0
   // for "not known"; this never does).
-  static unsigned int hardwareConcurrency() { return platform::processorCount(); }
-  static unsigned int hardware_concurrency() { return Thread::hardwareConcurrency(); }
+  static u32 hardwareConcurrency() { return platform::processorCount(); }
+  static u32 hardware_concurrency() { return Thread::hardwareConcurrency(); }
 };
 
-size_t hashOf(Thread::Id id) { return hashOf((unsigned int)id.value); }
+usize hashOf(Thread::Id id) { return hashOf((u32)id.value); }
 
 // The calling thread (what std::this_thread converts to).
 namespace thisThread
@@ -217,7 +217,7 @@ struct RecursiveMutex
 {
   Mutex mutex;
   Atomic<unsigned long> owner; // the owning thread's id; 0 (never a thread's) when free
-  int depth = 0;
+  i32 depth = 0;
 
   RecursiveMutex() {}
   RecursiveMutex(const RecursiveMutex&) = delete;
@@ -548,12 +548,12 @@ struct ConditionVariable
 };
 
 // The unsigned integer of each size the atomic instructions work on.
-template<int size>
+template<i32 size>
 struct AtomicWord {};
-template<> struct AtomicWord<1> { using Type = uint8_t; };
-template<> struct AtomicWord<2> { using Type = uint16_t; };
-template<> struct AtomicWord<4> { using Type = uint32_t; };
-template<> struct AtomicWord<8> { using Type = uint64_t; };
+template<> struct AtomicWord<1> { using Type = u8; };
+template<> struct AtomicWord<2> { using Type = u16; };
+template<> struct AtomicWord<4> { using Type = u32; };
+template<> struct AtomicWord<8> { using Type = u64; };
 
 // A T read and written atomically (sequentially consistent), for a T of 1, 2, 4 or 8 bytes that is
 // copied by its bits: integers, bool, floating point, enums, pointers, small structs. The value is
@@ -590,37 +590,37 @@ struct Atomic
   T load() const noexcept
   {
     if constexpr (sizeof(T) == 8)
-      return Atomic::valueOf((Word)kpp_atomic_load64((const long long*)this->word()));
+      return Atomic::valueOf((Word)kpp_atomic_load64((const i64*)this->word()));
     else if constexpr (sizeof(T) == 4)
       return Atomic::valueOf((Word)kpp_atomic_load32((const long*)this->word()));
     else if constexpr (sizeof(T) == 2)
-      return Atomic::valueOf(kpp_atomic_load16((const uint16_t*)this->word()));
+      return Atomic::valueOf(kpp_atomic_load16((const u16*)this->word()));
     else
-      return Atomic::valueOf(kpp_atomic_load8((const uint8_t*)this->word()));
+      return Atomic::valueOf(kpp_atomic_load8((const u8*)this->word()));
   }
   void store(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      kpp_atomic_store64((long long*)this->word(), (long long)w);
+      kpp_atomic_store64((i64*)this->word(), (i64)w);
     else if constexpr (sizeof(T) == 4)
       kpp_atomic_store32((long*)this->word(), (long)w);
     else if constexpr (sizeof(T) == 2)
-      kpp_atomic_store16((uint16_t*)this->word(), w);
+      kpp_atomic_store16((u16*)this->word(), w);
     else
-      kpp_atomic_store8((uint8_t*)this->word(), w);
+      kpp_atomic_store8((u8*)this->word(), w);
   }
   T exchange(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      return Atomic::valueOf((Word)kpp_atomic_exchange64((long long*)this->word(), (long long)w));
+      return Atomic::valueOf((Word)kpp_atomic_exchange64((i64*)this->word(), (i64)w));
     else if constexpr (sizeof(T) == 4)
       return Atomic::valueOf((Word)kpp_atomic_exchange32((long*)this->word(), (long)w));
     else if constexpr (sizeof(T) == 2)
-      return Atomic::valueOf(kpp_atomic_exchange16((uint16_t*)this->word(), w));
+      return Atomic::valueOf(kpp_atomic_exchange16((u16*)this->word(), w));
     else
-      return Atomic::valueOf(kpp_atomic_exchange8((uint8_t*)this->word(), w));
+      return Atomic::valueOf(kpp_atomic_exchange8((u8*)this->word(), w));
   }
   // True when the value had expected's bits and now has desired's; otherwise false, and expected
   // receives the current value.
@@ -630,13 +630,13 @@ struct Atomic
     Word next = Atomic::wordOf(desired);
     Word seen;
     if constexpr (sizeof(T) == 8)
-      seen = (Word)kpp_atomic_cas64((long long*)this->word(), (long long)next, (long long)want);
+      seen = (Word)kpp_atomic_cas64((i64*)this->word(), (i64)next, (i64)want);
     else if constexpr (sizeof(T) == 4)
       seen = (Word)kpp_atomic_cas32((long*)this->word(), (long)next, (long)want);
     else if constexpr (sizeof(T) == 2)
-      seen = kpp_atomic_cas16((uint16_t*)this->word(), next, want);
+      seen = kpp_atomic_cas16((u16*)this->word(), next, want);
     else
-      seen = kpp_atomic_cas8((uint8_t*)this->word(), next, want);
+      seen = kpp_atomic_cas8((u8*)this->word(), next, want);
     if (seen == want)
       return true;
     expected = Atomic::valueOf(seen);
@@ -660,13 +660,13 @@ struct Atomic
     {
       Word w = Atomic::wordOf(delta);
       if constexpr (sizeof(T) == 8)
-        return Atomic::valueOf((Word)kpp_atomic_add64((long long*)this->word(), (long long)w));
+        return Atomic::valueOf((Word)kpp_atomic_add64((i64*)this->word(), (i64)w));
       else if constexpr (sizeof(T) == 4)
         return Atomic::valueOf((Word)kpp_atomic_add32((long*)this->word(), (long)w));
       else if constexpr (sizeof(T) == 2)
-        return Atomic::valueOf(kpp_atomic_add16((uint16_t*)this->word(), w));
+        return Atomic::valueOf(kpp_atomic_add16((u16*)this->word(), w));
       else
-        return Atomic::valueOf(kpp_atomic_add8((uint8_t*)this->word(), w));
+        return Atomic::valueOf(kpp_atomic_add8((u8*)this->word(), w));
     }
   }
   T fetch_add(T delta) noexcept { return this->fetchAdd(delta); }
@@ -687,9 +687,9 @@ struct Atomic
     return *this;
   }
   T operator++() { return this->fetchAdd(1) + 1; }
-  T operator++(int) { return this->fetchAdd(1); }
+  T operator++(i32) { return this->fetchAdd(1); }
   T operator--() { return this->fetchSub(1) - 1; }
-  T operator--(int) { return this->fetchSub(1); }
+  T operator--(i32) { return this->fetchSub(1); }
   T operator+=(T delta) { return this->fetchAdd(delta) + delta; }
   T operator-=(T delta) { return this->fetchSub(delta) - delta; }
   bool operator==(T other) const { return this->load() == other; }
@@ -724,7 +724,7 @@ struct AtomicWaitSlot
   platform::Condition condition;
 };
 AtomicWaitSlot atomicWaitSlots[64];
-AtomicWaitSlot& atomicWaitSlot(const void* address) { return atomicWaitSlots[((uintptr_t)address >> 3) % 64]; }
+AtomicWaitSlot& atomicWaitSlot(const void* address) { return atomicWaitSlots[((u64)address >> 3) % 64]; }
 void atomicNotify(const void* address)
 {
   AtomicWaitSlot& slot = atomicWaitSlot(address);

@@ -54,16 +54,16 @@ void appendCTextPiece(const void* object, String& out)
 // from a char), a float or double as its shortest round-trip text, a bool as true or false.
 void appendTo(char value, String& out) { out.append(value); }
 void appendTo(bool value, String& out) { out.append(value ? "true" : "false"); }
-void appendTo(signed char value, String& out) { out.append(toString(int(value))); }
-void appendTo(unsigned char value, String& out) { out.append(toString((unsigned int)value)); }
-void appendTo(short value, String& out) { out.append(toString(int(value))); }
-void appendTo(unsigned short value, String& out) { out.append(toString((unsigned int)value)); }
-void appendTo(int value, String& out) { out.append(toString(value)); }
-void appendTo(unsigned int value, String& out) { out.append(toString(value)); }
+void appendTo(i8 value, String& out) { out.append(toString(i32(value))); }
+void appendTo(u8 value, String& out) { out.append(toString((u32)value)); }
+void appendTo(i16 value, String& out) { out.append(toString(i32(value))); }
+void appendTo(u16 value, String& out) { out.append(toString((u32)value)); }
+void appendTo(i32 value, String& out) { out.append(toString(value)); }
+void appendTo(u32 value, String& out) { out.append(toString(value)); }
 void appendTo(long value, String& out) { out.append(toString(value)); }
 void appendTo(unsigned long value, String& out) { out.append(toString(value)); }
-void appendTo(long long value, String& out) { out.append(toString(value)); }
-void appendTo(unsigned long long value, String& out) { out.append(toString(value)); }
+void appendTo(i64 value, String& out) { out.append(toString(value)); }
+void appendTo(u64 value, String& out) { out.append(toString(value)); }
 void appendTo(float value, String& out) { out.append(toString(value)); }
 void appendTo(double value, String& out) { out.append(toString(value)); }
 

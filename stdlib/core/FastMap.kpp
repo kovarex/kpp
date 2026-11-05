@@ -15,8 +15,8 @@ template<typename E>
 struct BTreeNode
 {
   BTreeNode<E>* parent;
-  int count;
-  int parentIndex; // this node's place among its parent's children
+  i32 count;
+  i32 parentIndex; // this node's place among its parent's children
   bool leaf;
   E entries[15];
 };
@@ -29,8 +29,8 @@ struct BTreeInterior : BTreeNode<E>
   BTreeNode<E>* children[16];
 };
 
-const int bTreeMaxEntries = 15;
-const int bTreeMinEntries = 7; // in every node but the root
+const i32 bTreeMaxEntries = 15;
+const i32 bTreeMinEntries = 7; // in every node but the root
 
 template<typename E>
 BTreeNode<E>** bTreeChildren(BTreeNode<E>* node) { return ((BTreeInterior<E>*)node)->children; }
@@ -42,16 +42,16 @@ template<typename E>
 struct BTreeIterator
 {
   using value_type = RemoveConst<E>;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using pointer = E*;
   using reference = E&;
   using iterator_category = BidirectionalIteratorTag;
 
   BTreeNode<RemoveConst<E>>* node = nullptr;
-  int index = 0;
+  i32 index = 0;
 
   BTreeIterator() {}
-  BTreeIterator(BTreeNode<RemoveConst<E>>* node, int index) : node(node), index(index) {}
+  BTreeIterator(BTreeNode<RemoveConst<E>>* node, i32 index) : node(node), index(index) {}
   template<typename F> requires (isSame<F, RemoveConst<E>> && !isSame<F, E>)
   implicit BTreeIterator(const BTreeIterator<F>& other) : node(other.node), index(other.index) {}
   template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
@@ -93,7 +93,7 @@ struct BTreeIterator
     // Otherwise that was the last entry, and (last leaf, count) is end().
     return *this;
   }
-  BTreeIterator<E> operator++(int)
+  BTreeIterator<E> operator++(i32)
   {
     BTreeIterator<E> before = *this;
     ++*this;
@@ -123,7 +123,7 @@ struct BTreeIterator
     this->index = climb->parentIndex - 1;
     return *this;
   }
-  BTreeIterator<E> operator--(int)
+  BTreeIterator<E> operator--(i32)
   {
     BTreeIterator<E> before = *this;
     --*this;
@@ -187,7 +187,7 @@ struct BTree
     BTreeNode<E>* node = this->root;
     while (node)
     {
-      int i = this->lowerIndex(node, key);
+      i32 i = this->lowerIndex(node, key);
       if (i < node->count && !(key < this->keyAt(node, i)))
         return BTreeIterator<E>(node, i);
       if (node->leaf)
@@ -204,7 +204,7 @@ struct BTree
     BTreeNode<E>* node = this->root;
     while (node)
     {
-      int i = this->lowerIndex(node, key);
+      i32 i = this->lowerIndex(node, key);
       if (i < node->count)
         result = BTreeIterator<E>(node, i);
       if (node->leaf)
@@ -220,7 +220,7 @@ struct BTree
     BTreeNode<E>* node = this->root;
     while (node)
     {
-      int i = this->upperIndex(node, key);
+      i32 i = this->upperIndex(node, key);
       if (i < node->count)
         result = BTreeIterator<E>(node, i);
       if (node->leaf)
@@ -252,7 +252,7 @@ struct BTree
     BTreeNode<E>* node = this->root;
     while (!node->leaf)
     {
-      int i = this->upperIndex(node, key);
+      i32 i = this->upperIndex(node, key);
       if (bTreeChildren(node)[i]->count == bTreeMaxEntries)
       {
         this->splitChild(node, i);
@@ -261,7 +261,7 @@ struct BTree
       }
       node = bTreeChildren(node)[i];
     }
-    int i = this->upperIndex(node, key);
+    i32 i = this->upperIndex(node, key);
     relocateBackward(node->entries + i + 1, node->entries + i, node->count - i);
     new (node->entries + i) E(move(entry));
     ++node->count;
@@ -280,7 +280,7 @@ struct BTree
     bool found = false;
     while (true)
     {
-      int i = this->lowerIndex(node, key);
+      i32 i = this->lowerIndex(node, key);
       if (i < node->count && !(key < KeyOf::of(node->entries[i])))
       {
         this->eraseAt(node, i);
@@ -306,23 +306,23 @@ struct BTree
 
   // Internals.
   // The key of entry i of node.
-  static const K& keyAt(const BTreeNode<E>* node, int i) { return KeyOf::of(node->entries[i]); }
+  static const K& keyAt(const BTreeNode<E>* node, i32 i) { return KeyOf::of(node->entries[i]); }
   // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
   // unpredictable branches over 15 entries (map.lookup 99 -> 57 ms for int keys); other keys
   // binary, since each comparison costs more.
-  static int lowerIndex(const BTreeNode<E>* node, const K& key)
+  static i32 lowerIndex(const BTreeNode<E>* node, const K& key)
   {
     if constexpr (sizeof(K) <= 8)
     {
-      int i = 0;
+      i32 i = 0;
       while (i < node->count && BTree::keyAt(node, i) < key)
         ++i;
       return i;
     }
-    int low = 0, high = node->count;
+    i32 low = 0, high = node->count;
     while (low < high)
     {
-      int middle = (low + high) / 2;
+      i32 middle = (low + high) / 2;
       if (BTree::keyAt(node, middle) < key)
         low = middle + 1;
       else
@@ -330,19 +330,19 @@ struct BTree
     }
     return low;
   }
-  static int upperIndex(const BTreeNode<E>* node, const K& key)
+  static i32 upperIndex(const BTreeNode<E>* node, const K& key)
   {
     if constexpr (sizeof(K) <= 8)
     {
-      int i = 0;
+      i32 i = 0;
       while (i < node->count && !(key < BTree::keyAt(node, i)))
         ++i;
       return i;
     }
-    int low = 0, high = node->count;
+    i32 low = 0, high = node->count;
     while (low < high)
     {
-      int middle = (low + high) / 2;
+      i32 middle = (low + high) / 2;
       if (key < BTree::keyAt(node, middle))
         high = middle;
       else
@@ -360,27 +360,27 @@ struct BTree
     node->leaf = leaf;
     return node;
   }
-  void setChild(BTreeNode<E>* node, int index, BTreeNode<E>* child)
+  void setChild(BTreeNode<E>* node, i32 index, BTreeNode<E>* child)
   {
     bTreeChildren(node)[index] = child;
     child->parent = node;
     child->parentIndex = index;
   }
   // Moves children [from, from + count) of source to target from index at.
-  void moveChildren(BTreeNode<E>* target, int at, BTreeNode<E>* source, int from, int count)
+  void moveChildren(BTreeNode<E>* target, i32 at, BTreeNode<E>* source, i32 from, i32 count)
   {
     BTreeNode<E>** children = bTreeChildren(source);
     if (target == source && at > from)
-      for (int k = count; k-- > 0;)
+      for (i32 k = count; k-- > 0;)
         this->setChild(target, at + k, children[from + k]);
     else
-      for (int k = 0; k < count; ++k)
+      for (i32 k = 0; k < count; ++k)
         this->setChild(target, at + k, children[from + k]);
   }
 
   // Splits the full child i of node: its upper 7 entries go to a new right sibling, the middle
   // one up into node.
-  void splitChild(BTreeNode<E>* node, int i)
+  void splitChild(BTreeNode<E>* node, i32 i)
   {
     BTreeNode<E>* child = bTreeChildren(node)[i];
     BTreeNode<E>* right = this->newNode(child->leaf);
@@ -400,7 +400,7 @@ struct BTree
 
   // Makes sure child i of node has more than the minimum of entries and returns the index of the
   // child that then holds what child i held (i - 1 after merging into the left sibling).
-  int fill(BTreeNode<E>* node, int i)
+  i32 fill(BTreeNode<E>* node, i32 i)
   {
     BTreeNode<E>** children = bTreeChildren(node);
     if (children[i]->count > bTreeMinEntries)
@@ -424,7 +424,7 @@ struct BTree
     return i - 1;
   }
   // Entry k of node moves down to the front of child k + 1; the last entry of child k takes its place.
-  void rotateRight(BTreeNode<E>* node, int k)
+  void rotateRight(BTreeNode<E>* node, i32 k)
   {
     BTreeNode<E>* left = bTreeChildren(node)[k];
     BTreeNode<E>* right = bTreeChildren(node)[k + 1];
@@ -440,7 +440,7 @@ struct BTree
     ++right->count;
   }
   // Entry k of node moves down to the end of child k; the first entry of child k + 1 takes its place.
-  void rotateLeft(BTreeNode<E>* node, int k)
+  void rotateLeft(BTreeNode<E>* node, i32 k)
   {
     BTreeNode<E>* left = bTreeChildren(node)[k];
     BTreeNode<E>* right = bTreeChildren(node)[k + 1];
@@ -456,7 +456,7 @@ struct BTree
     --right->count;
   }
   // Merges child k + 1 of node and entry k into child k (both children at the minimum).
-  void merge(BTreeNode<E>* node, int k)
+  void merge(BTreeNode<E>* node, i32 k)
   {
     BTreeNode<E>* left = bTreeChildren(node)[k];
     BTreeNode<E>* right = bTreeChildren(node)[k + 1];
@@ -474,7 +474,7 @@ struct BTree
   }
 
   // Removes entry i of node, which is the root or has more than the minimum of entries.
-  void eraseAt(BTreeNode<E>* node, int i)
+  void eraseAt(BTreeNode<E>* node, i32 i)
   {
     while (!node->leaf)
     {
@@ -545,20 +545,20 @@ struct BTree
   void destroy(BTreeNode<E>* node)
   {
     if (!node->leaf)
-      for (int i = 0; i <= node->count; ++i)
+      for (i32 i = 0; i <= node->count; ++i)
         this->destroy(bTreeChildren(node)[i]);
-    for (int i = 0; i < node->count; ++i)
+    for (i32 i = 0; i < node->count; ++i)
       node->entries[i].~E();
     free(node);
   }
   BTreeNode<E>* clone(const BTreeNode<E>* source)
   {
     BTreeNode<E>* node = this->newNode(source->leaf);
-    for (int i = 0; i < source->count; ++i)
+    for (i32 i = 0; i < source->count; ++i)
       new (node->entries + i) E(source->entries[i]);
     node->count = source->count;
     if (!source->leaf)
-      for (int i = 0; i <= source->count; ++i)
+      for (i32 i = 0; i <= source->count; ++i)
         this->setChild(node, i, this->clone(bTreeChildren((BTreeNode<E>*)source)[i]));
     else
       this->rightmost = node; // leaves are cloned left to right: the last one is the rightmost
@@ -596,7 +596,7 @@ struct FastMap
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = Pair<K, V>;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
@@ -775,7 +775,7 @@ struct FastSet
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
   using size_type = ContainerSize;
-  using difference_type = ptrdiff_t;
+  using difference_type = i64;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;

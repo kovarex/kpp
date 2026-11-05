@@ -8,15 +8,15 @@
 template<typename E>
 struct TupleSize {};
 template<typename E>
-constexpr int tupleSize = TupleSize<E>::value;
+constexpr i32 tupleSize = TupleSize<E>::value;
 
 // The type of element I of a tuple-like type E (std::tuple_element).
-template<int I, typename E>
+template<i32 I, typename E>
 struct TupleElement {};
 
 // One element of a Tuple, which is one of the Tuple's bases: I counts from the last element, so
 // that the leaves of a Tuple differ.
-template<int I, typename T>
+template<i32 I, typename T>
 struct TupleLeaf
 {
   T value;
@@ -47,9 +47,9 @@ struct TupleRest<> { using Type = EmptyTuple; };
 // Tuple of references and class template argument deduction work, templates/
 // partial_specialization_reference_argument; and so there is no Tuple of no elements.)
 template<typename H, typename... T>
-struct Tuple : TupleLeaf<int(sizeof...(T)), H>, TupleRest<T...>::Type
+struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
 {
-  using Leaf = TupleLeaf<int(sizeof...(T)), H>;
+  using Leaf = TupleLeaf<i32(sizeof...(T)), H>;
   using Rest = typename TupleRest<T...>::Type;
 
   // Every element value-initialized.
@@ -85,7 +85,7 @@ struct Tuple : TupleLeaf<int(sizeof...(T)), H>, TupleRest<T...>::Type
   // Element I (std::get, which is this): a reference to it, const for a const Tuple; getRvalue,
   // what get gives for an rvalue Tuple, an rvalue reference. A reference element is the reference
   // it is in each case.
-  template<int I>
+  template<i32 I>
   decltype(auto) get()
   {
     if constexpr (I == 0)
@@ -93,7 +93,7 @@ struct Tuple : TupleLeaf<int(sizeof...(T)), H>, TupleRest<T...>::Type
     else
       return static_cast<Rest&>(*this).template get<I - 1>();
   }
-  template<int I>
+  template<i32 I>
   decltype(auto) get() const
   {
     if constexpr (I == 0)
@@ -101,7 +101,7 @@ struct Tuple : TupleLeaf<int(sizeof...(T)), H>, TupleRest<T...>::Type
     else
       return static_cast<const Rest&>(*this).template get<I - 1>();
   }
-  template<int I>
+  template<i32 I>
   decltype(auto) getRvalue()
   {
     if constexpr (I == 0)
@@ -174,25 +174,25 @@ template<typename A, typename B>
 Tuple(Pair<A, B>) -> Tuple<A, B>;
 
 template<typename... Types>
-struct TupleSize<Tuple<Types...>> { static constexpr int value = int(sizeof...(Types)); };
-template<int I, typename H, typename... T>
+struct TupleSize<Tuple<Types...>> { static constexpr i32 value = i32(sizeof...(Types)); };
+template<i32 I, typename H, typename... T>
 struct TupleElement<I, Tuple<H, T...>> { using Type = typename TupleElement<I - 1, Tuple<T...>>::Type; };
 template<typename H, typename... T>
 struct TupleElement<0, Tuple<H, T...>> { using Type = H; };
 
 // Element I of a tuple (std::get): a reference to it, const from a const tuple; from an rvalue
 // tuple, an rvalue reference. A reference element is the reference it is in each case.
-template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+template<i32 I, typename... Types> requires (I >= 0 && I < i32(sizeof...(Types)))
 decltype(auto) get(Tuple<Types...>& t)
 {
   return t.template get<I>();
 }
-template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+template<i32 I, typename... Types> requires (I >= 0 && I < i32(sizeof...(Types)))
 decltype(auto) get(const Tuple<Types...>& t)
 {
   return t.template get<I>();
 }
-template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+template<i32 I, typename... Types> requires (I >= 0 && I < i32(sizeof...(Types)))
 decltype(auto) get(Tuple<Types...>&& t)
 {
   return t.template getRvalue<I>();
@@ -225,19 +225,19 @@ Tuple<Args&&...> forwardAsTuple(Args&&... args)
 
 // Array is tuple-like too (std::array): `auto [x, y] = array`, tupleSize<Array<T, N>>.
 template<typename T, ContainerSize N>
-struct TupleSize<Array<T, N>> { static constexpr int value = int(N); };
-template<int I, typename T, ContainerSize N>
+struct TupleSize<Array<T, N>> { static constexpr i32 value = i32(N); };
+template<i32 I, typename T, ContainerSize N>
 struct TupleElement<I, Array<T, N>> { using Type = T; };
-template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
+template<i32 I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 T& get(Array<T, N>& a) { return a[I]; }
-template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
+template<i32 I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 const T& get(const Array<T, N>& a) { return a[I]; }
-template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
+template<i32 I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 T&& get(Array<T, N>&& a) { return move(a[I]); }
 
 // Pair's members by index (std::get on a pair). Pair is not tuple-like (no TupleSize): a binding
 // takes first and second directly.
-template<int I, typename A, typename B> requires (I == 0 || I == 1)
+template<i32 I, typename A, typename B> requires (I == 0 || I == 1)
 auto& get(Pair<A, B>& p)
 {
   if constexpr (I == 0)
@@ -245,7 +245,7 @@ auto& get(Pair<A, B>& p)
   else
     return p.second;
 }
-template<int I, typename A, typename B> requires (I == 0 || I == 1)
+template<i32 I, typename A, typename B> requires (I == 0 || I == 1)
 const auto& get(const Pair<A, B>& p)
 {
   if constexpr (I == 0)
@@ -256,18 +256,18 @@ const auto& get(const Pair<A, B>& p)
 
 // A sequence of int constants as a type (std::integer_sequence of int): `IndexSequence<0, 1, 2>`;
 // MakeIndexSequence<N> is IndexSequence<0, ..., N - 1>, IndexSequenceFor<T...> one per type.
-template<int... I>
+template<i32... I>
 struct IndexSequence
 {
-  static constexpr int size() { return int(sizeof...(I)); }
+  static constexpr i32 size() { return i32(sizeof...(I)); }
 };
-template<int N, typename S>
+template<i32 N, typename S>
 struct IndexSequenceOf {};
-template<int N, int... I>
+template<i32 N, i32... I>
 struct IndexSequenceOf<N, IndexSequence<I...>> { using Type = typename IndexSequenceOf<N - 1, IndexSequence<N - 1, I...>>::Type; };
-template<int... I>
+template<i32... I>
 struct IndexSequenceOf<0, IndexSequence<I...>> { using Type = IndexSequence<I...>; };
-template<int N>
+template<i32 N>
 using MakeIndexSequence = typename IndexSequenceOf<N, IndexSequence<>>::Type;
 template<typename... T>
-using IndexSequenceFor = MakeIndexSequence<int(sizeof...(T))>;
+using IndexSequenceFor = MakeIndexSequence<i32(sizeof...(T))>;
