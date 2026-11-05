@@ -1,6 +1,5 @@
-// spec: a handler of a pointer type takes a thrown pointer that converts to it, as C++'s [except.handle] 3 has it: `catch (Second* p)` takes a thrown `Both*`, moved to its Second part (`2 3`), `catch (const Both* p)` a `Both*` (`3`) and `catch (void* p)` any object pointer (`1`); clang prints the same
-// pending: a thrown pointer's descriptor lists no conversions (its pointee's bases, const, void*), so only a handler of its own type takes it: the others fall through to `catch (...)`, and a handler of a base pointer would also need the offset added to the pointer's value, not to the exception object's address
-// found by thread B (2026-11-05), comparing kpp with clang; no code of the game or of kpp throws a pointer
+// spec: a handler of a pointer type by value or by const reference takes a thrown pointer that converts to it, and nullptr, as C++'s [except.handle] 3.3 and 3.4 have it: `catch (Second* p)` a thrown `Both*`, moved to its Second part (`2 3`), `catch (const Both* p)` a `Both*` (`3`), `catch (void* p)` any object pointer (`1`), `catch (Base* const& p)` a `Derived*`, a null `Derived*` and nullptr (null, `-1 0`), `catch (const void* p)` a string literal; `catch (char* p)` no `const char*`, and `catch (Base*& p)`, a non-const reference, its own type alone (3.1: `exact`); g++ prints the same, but for the `Base*&` handler, which g++ (whose type_info drops the reference) and MSVC (which calls a later `Base* const&` handler unreachable) also give a converted pointer
+// found by thread B (2026-11-05), comparing kpp with clang: a thrown pointer's descriptor listed no conversions, so only a handler of its own type took it and the others fell through to `catch (...)`; no code of the game or of kpp throws a pointer
 class First
 {
 public:
@@ -21,6 +20,63 @@ public:
   int which() const override { return 3; }
 };
 Both object;
+struct A
+{
+  int a = 1;
+};
+struct B
+{
+  int b = 2;
+};
+struct C : A, B
+{
+  int c = 3;
+};
+C plain;
+int which(int kind)
+{
+  try
+  {
+    if (kind == 0)
+      throw &plain;
+    if (kind == 1)
+      throw static_cast<C*>(nullptr);
+    if (kind == 2)
+      throw nullptr;
+    if (kind == 3)
+      throw "text";
+    if (kind == 4)
+      throw static_cast<const C*>(&plain);
+    if (kind == 5)
+      throw static_cast<B*>(&plain);
+    throw 5;
+  }
+  catch (B*& exact)
+  {
+    print("exact ", exact ? exact->b : -1, " ");
+    return 1;
+  }
+  catch (B* const& p)
+  {
+    print("B* const& ", p ? p->b : -1, " ", p == static_cast<B*>(&plain) ? 1 : 0, " ");
+    return 2;
+  }
+  catch (char* p)
+  {
+    print("char* ");
+    return 3;
+  }
+  catch (const void* p)
+  {
+    print("const void* ", p == static_cast<const void*>(&plain) ? 1 : 0, " ");
+    return 4;
+  }
+  catch (...)
+  {
+    print("any ");
+    return 5;
+  }
+}
 int main()
 {
   try
@@ -59,5 +115,7 @@ int main()
   {
     println("other");
   }
+  for (int kind = 0; kind <= 6; ++kind)
+    println("| ", which(kind));
   return 0;
 }

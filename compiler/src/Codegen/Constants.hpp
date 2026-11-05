@@ -108,7 +108,11 @@
 
     // The offset of the class whose descriptor is %target within one whose descriptor is %d (both
     // { name, n, [n x { base descriptor, offset }] }), searching the bases and theirs in order, or -1.
-    static std::string baseSearchFunction(const std::string& name);
+    // With nullDescriptor (kpp_eh_offset's), a target may be a pointer handler's marker
+    // { name, -2 or -1, the pointer's descriptor } (handlerTypeinfo): -2 takes nullptr, whose
+    // descriptor that is, and whatever the search finds for the pointer's descriptor; -1 that
+    // descriptor alone.
+    static std::string baseSearchFunction(const std::string& name, const std::string& nullDescriptor = "");
 
     // A floating-point constant in IR: the exact bits, rounded through float for 32-bit values.
     static std::string floatConstant(double value, uint8_t bits);

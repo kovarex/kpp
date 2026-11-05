@@ -45,8 +45,16 @@
 
     // The type descriptor matched against catch clauses, as a class descriptor is (descriptorFor):
     // { name, number of direct bases, [{ base's descriptor, base's offset }] }, so that a handler
-    // takes any base of the thrown class, with that base's offset.
+    // takes any base of the thrown class, with that base's offset. A pointer's lists what it
+    // converts to instead ([except.handle] 3.3), in the order searched: its pointee const, void*,
+    // a pointer to each base of a class it points to, at the base's offset.
     std::string typeinfoFor(const Ty* t, Node* at);
+
+    // What a handler of type t is matched against: a class's or a scalar's own descriptor
+    // (typeinfoFor), or for a pointer a marker that kpp_eh_offset reads (baseSearchFunction): by
+    // value or by const reference, any thrown pointer that converts to it and nullptr ([except.handle]
+    // 3.3, 3.4); by a non-const reference, its own type alone (3.1).
+    std::string handlerTypeinfo(const Ty* t, Node* at);
 
     // The destructor slot of a class that declares no destructor: a function destroying its members
     // and bases (destructorThunk), or one doing nothing when none of them needs it.

@@ -1,3 +1,10 @@
 2 3
 3
 1
+B* const& 2 1 | 2
+B* const& -1 0 | 2
+B* const& -1 0 | 2
+const void* 0 | 4
+const void* 1 | 4
+exact 2 | 1
+any | 5

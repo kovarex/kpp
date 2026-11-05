@@ -543,10 +543,20 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
   return Value{r, target, false};
 }
 
-auto codegen::Emitter::baseSearchFunction(const std::string& name) -> std::string
+auto codegen::Emitter::baseSearchFunction(const std::string& name, const std::string& nullDescriptor) -> std::string
 {
-  return "$" + name.substr(1) + " = comdat any\n" + baseSearchHeader(name) + "\n"
-         "entry:\n  %same = icmp eq ptr %d, %target\n  br i1 %same, label %yes, label %scan\n"
+  std::string markers;
+  if (!nullDescriptor.empty())
+    markers = "entry:\n  %tn = getelementptr inbounds i8, ptr %target, i64 8\n  %tcount = load i64, ptr %tn\n"
+              "  %marked = icmp slt i64 %tcount, 0\n  br i1 %marked, label %marker, label %plain\n"
+              "marker:\n  %rp = getelementptr inbounds i8, ptr %target, i64 16\n  %real = load ptr, ptr %rp\n"
+              "  %isExact = icmp eq i64 %tcount, -1\n  br i1 %isExact, label %exact, label %convert\n"
+              "exact:\n  %exactSame = icmp eq ptr %d, %real\n  %exactResult = select i1 %exactSame, i64 0, i64 -1\n  ret i64 %exactResult\n"
+              "convert:\n  %isNull = icmp eq ptr %d, " + nullDescriptor + "\n  br i1 %isNull, label %yes, label %convertSearch\n"
+              "convertSearch:\n  %c = call i64 " + name + "(ptr %d, ptr %real)\n  ret i64 %c\n"
+              "plain:\n";
+  return "$" + name.substr(1) + " = comdat any\n" + baseSearchHeader(name) + "\n" + (markers.empty() ? "entry:\n" : markers) +
+         "  %same = icmp eq ptr %d, %target\n  br i1 %same, label %yes, label %scan\n"
          "scan:\n  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
          "loop:\n  %i = phi i64 [ 0, %scan ], [ %i1, %next ]\n  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %no\n"
          "body:\n  %at = mul i64 %i, 16\n  %at1 = add i64 %at, 16\n  %e = getelementptr inbounds i8, ptr %d, i64 %at1\n  %b = load ptr, ptr %e\n"

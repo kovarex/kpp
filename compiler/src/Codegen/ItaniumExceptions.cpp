@@ -162,6 +162,31 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
   {
     display = types.toString(t, &symbols);
     name = "@\"kpp.ti." + display + "\""; // one descriptor per scalar type, pointers by pointee
+    if (t->kind == TyKind::Pointer && t->inner && t->inner->kind != TyKind::Function)
+    {
+      // What a thrown pointer converts to ([except.handle] 3.3), in the order searched: its pointee
+      // const, void* (the same address, before any base's), a pointer to each base of a class it
+      // points to, at the base's offset (until 2026-11-05 none: only a handler of its own type took it).
+      const Ty* pointee = t->inner;
+      bool isConst = pointee->isConst, isVolatile = pointee->isVolatile;
+      auto convertsTo = [&](const Ty* to, const std::string& offset)
+      { list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(to, at) + ", i64 " + offset + " }"; };
+      if (!isConst)
+        convertsTo(types.pointer(types.qualified(pointee, true, false)), "0");
+      if (types.unqualified(pointee)->kind != TyKind::Void)
+        convertsTo(types.pointer(types.qualified(types.voidType(), isConst, isVolatile)), "0");
+      const Ty* cls = types.unqualified(pointee);
+      if (isClass(cls) && !declaredOnly(cls))
+      {
+        const StructInfo& info = structFor(cls, at);
+        std::string structName = info.name;
+        std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+        std::vector<const Ty*> fieldTypes = info.fieldTypes;
+        for (auto& [baseDef, index] : bases)
+          convertsTo(types.pointer(types.qualified(fieldTypes[index], isConst, isVolatile)),
+                     "ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64)");
+      }
+    }
   }
   if (emittedShared[name])
     return name;
@@ -173,6 +198,27 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
   std::string arrayType = "[" + std::to_string(count) + " x { ptr, i64 }]";
   shared += sharedComdat(name) + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " + str + ", i64 " +
             std::to_string(count) + ", " + arrayType + " " + (count ? "[" + list + "]" : std::string("zeroinitializer")) + " }, comdat\n";
+  return name;
+}
+
+auto codegen::Emitter::handlerTypeinfo(const Ty* t, Node* at) -> std::string
+{
+  const Ty* pointer = types.unqualified(types.stripRef(t));
+  if (pointer->kind != TyKind::Pointer)
+    return typeinfoFor(t, at);
+  bool exact = t->isReference() && !types.stripRef(t)->isConst;
+  std::string real = typeinfoFor(pointer, at), display = types.toString(pointer, &symbols);
+  std::string name = "@\"kpp.ti." + std::string(exact ? "exact." : "convert.") + display + "\"";
+  auto lock = sharedLock();
+  if (emittedShared[name])
+    return name;
+  emittedShared[name] = true;
+  bool was = emittingShared;
+  emittingShared = true;
+  std::string str = cStringConstant(display);
+  emittingShared = was;
+  shared += sharedComdat(name) + name + " = linkonce_odr constant { ptr, i64, ptr } { ptr " + str + ", i64 " + (exact ? "-1" : "-2") + ", ptr " + real +
+            " }, comdat\n";
   return name;
 }
 
@@ -323,7 +369,7 @@ auto codegen::Emitter::tryStatement(TryStmt* t) -> void
     const Ty* pt = declType(t->handlers[i].param);
     if (!pt || !pt->isKnown())
       unsupported(t->handlers[i].param, "a catch parameter of unknown type");
-    ft += "  %off" + n + " = call i64 @kpp_eh_offset(ptr %ti, ptr " + typeinfoFor(pt, t) + ")\n"
+    ft += "  %off" + n + " = call i64 @kpp_eh_offset(ptr %ti, ptr " + handlerTypeinfo(pt, t) + ")\n"
           "  %ok" + n + " = icmp sge i64 %off" + n + ", 0\n  br i1 %ok" + n + ", label %yes" + n + ", label %" + nextL + "\n"
           "yes" + n + ":\n  call void @kpp_eh_push(ptr %rec, i32 " + n + ", i64 %off" + n + ")\n  ret i32 1\n";
   }
@@ -374,7 +420,34 @@ auto codegen::Emitter::catchHandlers(TryStmt* t, const std::string& slot, const 
       const Ty* pt = declType(h.param);
       std::string ap = newTemp(), obj = newTemp();
       fn += "  " + ap + " = getelementptr inbounds i8, ptr " + slot + ", i64 32\n  " + obj + " = load ptr, ptr " + ap + "\n";
-      if (pt->isReference())
+      const Ty* pointer = types.unqualified(types.stripRef(pt));
+      if (pointer->kind == TyKind::Pointer && !(pt->isReference() && !types.stripRef(pt)->isConst))
+      {
+        // A pointer handler by value or by const reference: the thrown pointer converted to its type
+        // ([except.handle] 3.3), moved by the offset the match found (the adjusted object's distance
+        // from the object, which holds the pointer), a null pointer staying null; a const reference
+        // binds the converted pointer, as a temporary. (A non-const reference matched its own type
+        // alone: it binds the exception object, below.)
+        std::string object = newTemp(), value = newTemp(), from = newTemp(), to = newTemp(), offset = newTemp(), moved = newTemp(),
+                    isNull = newTemp(), converted = newTemp();
+        fn += "  " + object + " = load ptr, ptr " + slot + "\n  " + value + " = load ptr, ptr " + object + "\n";
+        fn += "  " + from + " = ptrtoint ptr " + object + " to i64\n  " + to + " = ptrtoint ptr " + obj + " to i64\n";
+        fn += "  " + offset + " = sub i64 " + to + ", " + from + "\n  " + moved + " = getelementptr i8, ptr " + value + ", i64 " + offset + "\n";
+        fn += "  " + isNull + " = icmp eq ptr " + value + ", null\n  " + converted + " = select i1 " + isNull + ", ptr null, ptr " + moved + "\n";
+        std::string v = "%v" + std::to_string(temp++);
+        allocas += "  " + v + " = alloca ptr\n";
+        fn += "  store ptr " + converted + ", ptr " + v + "\n";
+        if (pt->isReference())
+        {
+          std::string ref = "%v" + std::to_string(temp++);
+          allocas += "  " + ref + " = alloca ptr\n";
+          fn += "  store ptr " + v + ", ptr " + ref + "\n";
+          locals[h.param] = {ref, pt, true};
+        }
+        else
+          locals[h.param] = {v, pt, false};
+      }
+      else if (pt->isReference())
       {
         std::string ref = "%v" + std::to_string(temp++);
         allocas += "  " + ref + " = alloca ptr\n";
@@ -423,7 +496,7 @@ auto codegen::Emitter::itaniumTry(TryStmt* t) -> void
     const Ty* pt = declType(h.param);
     if (!pt || !pt->isKnown())
       unsupported(h.param, "a catch parameter of unknown type");
-    frame.catchTypes.push_back(typeinfoFor(pt, t));
+    frame.catchTypes.push_back(handlerTypeinfo(pt, t));
   }
   ehFrames.push_back(frame);
   statement(t->body);
@@ -535,7 +608,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     emittingShared = false;
     std::string err = stderrStream();
     decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
-    shared += baseSearchFunction("@kpp_eh_offset");
+    shared += baseSearchFunction("@kpp_eh_offset", typeinfoFor(types.nullptrType(), nullptr)); // (a pointer handler takes nullptr)
     std::string message = exceptionMessage(fmt2), handler = terminateHandlerCall();
     shared += sharedComdat("@kpp_throw") +
               std::string(kppThrowHeader) + "\nentry:\n"
@@ -612,7 +685,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %args = alloca [3 x i64]\n  %a1 = getelementptr inbounds i64, ptr %args, i64 1\n  %a2 = getelementptr inbounds i64, ptr %args, i64 2\n"
               "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n" + uncaughtChange(1) +
               "  call void @RaiseException(i32 -536870911, i32 1, i32 3, ptr %args)\n  ret void\n}\n";
-    shared += baseSearchFunction("@kpp_eh_offset");
+    shared += baseSearchFunction("@kpp_eh_offset", typeinfoFor(types.nullptrType(), nullptr)); // (a pointer handler takes nullptr)
     shared += sharedComdat("@kpp_eh_push") +
               std::string(kppEhPushHeader) + "\nentry:\n"
               "  %d = load i64, ptr @kpp.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
