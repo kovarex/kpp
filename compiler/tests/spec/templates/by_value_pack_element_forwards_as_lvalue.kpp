@@ -1,6 +1,5 @@
-// spec: an element of a pack of parameters taken by value (`Args... args`) is an lvalue, so a forwarding reference given it deduces an lvalue reference and forward<> copies it, as C++ does: makeUnique<Holder>(args...) calls Holder's copy constructor, `copy copy copy [hello] [world]` as g++ prints
+// spec: an element of a pack of parameters taken by value (`Args... args`) is an lvalue, so a forwarding reference given it deduces an lvalue reference and forward<> copies it, as C++ does: makeUnique<Holder>(args...) calls Holder's copy constructor, of a forwarding pack's element bound to a temporary too (a named rvalue reference is an lvalue), `copy copy copy copy [hello] [world]` as g++ prints
 // found by thread B (2026-11-05): kpp deduced the element's own type (String, not String&), so the forwarding reference was an rvalue reference bound to the lvalue and forward<> moved from it: `copy move copy`; the game's RemoteCommandProcessor::addInterface (`Args... args` to makeUnique<InterfaceT>(nextID++, args...)) and LoadedSource::update move their arguments this way
-// pending: deduction of a forwarding reference from a by-value pack's element (D)
 class Holder
 {
 public:
@@ -22,6 +21,7 @@ int main()
 {
   String s = "hello";
   relayMake(s);
+  relayMake(String("temporary"));
   String t = "world";
   relayByValue(t);
   UniquePtr<Holder> direct = makeUnique<Holder>(s);

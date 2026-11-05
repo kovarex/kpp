@@ -1804,8 +1804,20 @@ auto GlobalScope::Impl::Walker::argTypesOf(const Span<Expr*>& args) -> std::vect
       continue;
     const Ty* t = walked ? walkedArgTypes[i] : a ? a->ty : nullptr;
     if (a && t && t->kind == TyKind::Pack)
+    {
+      // Each element as its pattern is one: `args...` of a pack of parameters gives lvalues (named),
+      // by value or forwarding, so that a forwarding reference given one deduces an lvalue
+      // reference and forward<> copies it (`Args... args` given a String deduced String, and
+      // makeUnique moved from it: templates/by_value_pack_element_forwards_as_lvalue).
+      Expr* pattern = a;
+      if (a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+          P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis && static_cast<UnaryExpr*>(a)->operand)
+        pattern = static_cast<UnaryExpr*>(a)->operand;
+      while (pattern->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(pattern)->inner)
+        pattern = static_cast<ParenExpr*>(pattern)->inner;
       for (const Ty* e : t->args)
-        out.push_back(argumentType(a, e, types));
+        out.push_back(argumentType(pattern, e, types));
+    }
     else if (a && a->kind == NodeKind::BraceInitExpr)
       out.push_back(braceListType(a, impl.initializerListDecl(), types));
     else
