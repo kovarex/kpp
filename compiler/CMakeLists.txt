@@ -15,6 +15,7 @@ add_executable(kppc
   src/lexer.cpp
   src/parser.cpp
   src/resolver.cpp
+  src/Resolver/Walker.cpp
   src/types.cpp
   src/codegen.cpp
   src/consteval.cpp
