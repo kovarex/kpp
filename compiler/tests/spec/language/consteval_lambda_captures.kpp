@@ -1,0 +1,101 @@
+// spec: lambdas that capture work at compile time as at run time: a capture by copy keeps the value it had (`[a]`, `[=]`, an init-capture `[x = a + 1]`), one by reference refers to the variable (`[&a]`, `[&]`, writes through it), `this` and a member named alone (`[=]` with `k`) are the object's; a closure stored, copied, called at once (`[&] { ... }()`) and passed to a function template that calls it (`count(v, [limit](int x) { ... })`); each constant equals what the program computes (`6 20 12 34 7 4 4 10 15 2` both)
+// found by thread D (2026-11-05): a lambda that captures was no constant at compile time, only one called where it is written without captures
+struct S
+{
+  int k = 5;
+  int run() const
+  {
+    auto f = [this](int v) { return v * this->k; };
+    return f(2);
+  }
+  int implicitThis() const
+  {
+    auto f = [=](int v) { return v * k; };
+    return f(3);
+  }
+};
+template<class F>
+constexpr int count(const Vector<int>& v, F pred)
+{
+  int n = 0;
+  for (int x : v)
+    if (pred(x))
+      ++n;
+  return n;
+}
+constexpr int copied()
+{
+  int a = 3;
+  auto f = [a]() { return a * 2; };
+  a = 10;
+  return f();
+}
+constexpr int referred()
+{
+  int a = 3;
+  auto f = [&a]() { return a * 2; };
+  a = 10;
+  return f();
+}
+constexpr int written()
+{
+  int a = 3;
+  auto f = [&a](int v) { a += v; };
+  f(4);
+  f(5);
+  return a;
+}
+constexpr int byDefaultCopy()
+{
+  int a = 3, b = 4;
+  auto f = [=]() { return a * 10 + b; };
+  a = 9;
+  return f();
+}
+constexpr int byDefaultReference()
+{
+  int a = 3, b = 4;
+  auto f = [&]() { a = a + b; };
+  auto g = f;
+  g();
+  return a;
+}
+constexpr int initCapture()
+{
+  int a = 3;
+  auto f = [x = a + 1]() { return x; };
+  return f();
+}
+constexpr int calledAtOnce()
+{
+  int a = 3;
+  return [&]() { return a + 1; }();
+}
+constexpr int member()
+{
+  S s;
+  return s.run();
+}
+constexpr int memberAlone()
+{
+  S s;
+  return s.implicitThis();
+}
+constexpr int passed()
+{
+  Vector<int> v;
+  v.push_back(1);
+  v.push_back(5);
+  v.push_back(8);
+  int limit = 4;
+  return count(v, [limit](int x) { return x > limit; });
+}
+constexpr int results[] = {copied(), referred(), written(), byDefaultCopy(), byDefaultReference(), initCapture(), calledAtOnce(), member(), memberAlone(), passed()};
+int main()
+{
+  println(copied(), " ", referred(), " ", written(), " ", byDefaultCopy(), " ", byDefaultReference(), " ", initCapture(), " ", calledAtOnce(), " ", member(), " ",
+          memberAlone(), " ", passed());
+  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8], " ",
+          results[9]);
+  return 0;
+}

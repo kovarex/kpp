@@ -545,6 +545,24 @@
   // body run as a function's, in the context it is written in. One that captures, or a generic
   // one, is no constant yet.
   std::optional<ConstValue> constCallLambda(LambdaExpr* l, CallExpr* c, const TypeContext& ctx, int depth);
+  // What a lambda captures, in its closure's order: the captures written (`[a, &b, x = e, this]`),
+  // then for `[=]` or `[&]` each variable of the functions around that the body names, and `this`
+  // where the body uses it.
+  struct ConstCapture
+  {
+    uint32_t symbol;
+    bool byRef;
+    bool isThis;
+    Expr* init; // an init-capture's
+    Decl* decl; // an init-capture's variable
+  };
+  bool constClosureCaptures(LambdaExpr* l, std::vector<ConstCapture>& out);
+  // A lambda as a value (`auto twice = [k](int v) { return v * k; };`): its closure, of type type,
+  // whose parts are the captures (a copy, or for one by reference and `this` the place's address).
+  std::optional<ConstValue> constClosure(LambdaExpr* l, const Ty* type, const TypeContext& ctx, int depth);
+  // A closure called: the lambda's body run where it is written, its captures bound by name (a copy
+  // read only, one by reference referring to its object), its parameters to the arguments.
+  std::optional<ConstValue> constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth);
 
   // A function pointer's call (`f(v)` with f a parameter holding `&twice`, `ops[0](5)`): the
   // function it points at, run with the arguments.

@@ -206,6 +206,7 @@ auto GlobalScope::Impl::constAsDeclared(std::optional<ConstValue> v, const Ty* t
   switch (u->kind)
   {
     case TyKind::Class:
+    case TyKind::Lambda: // (a closure object, its captures its parts: constClosure)
       return v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u ? v : std::nullopt;
     case TyKind::Array:
     {
@@ -217,7 +218,7 @@ auto GlobalScope::Impl::constAsDeclared(std::optional<ConstValue> v, const Ty* t
     }
     case TyKind::MemberPointer:
       return v->isMemberPointer() ? std::optional<ConstValue>(ConstValue::address(u, *v->target, ConstValue::Kind::MemberPointer)) : std::nullopt;
-    case TyKind::Function: case TyKind::Lambda: case TyKind::Void: case TyKind::Vector:
+    case TyKind::Function: case TyKind::Void: case TyKind::Vector:
       return std::nullopt;
     case TyKind::Pointer: case TyKind::Nullptr:
       return constPointerTo(*v, u);
@@ -543,6 +544,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     case NodeKind::ThrowExpr:
       constWhy() = constThrown(static_cast<ThrowExpr*>(e), ctx, depth); // (no constant: C++ rejects a throw in one)
       return std::nullopt;
+    case NodeKind::LambdaExpr:
+      return constClosure(static_cast<LambdaExpr*>(e), e->ty, ctx, depth); // `auto twice = [k](int v) { ... };`
     case NodeKind::NoexceptExpr:
       // The walk's answer (canThrow); its operand is not evaluated.
       if (static_cast<NoexceptExpr*>(e)->value < 0)
@@ -1103,6 +1106,10 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
       const Ty* argTy = a ? typeOfSignatureExpression(a, ctx) : nullptr;
       if ((!argTy || !argTy->isKnown() || types.isDependent(argTy)) && values[i].type && !values[i].type->isBraceList())
         argTy = values[i].type;
+      // A lambda written as the argument: its closure's type, as the walk typed it (typing it again
+      // makes another closure type, which the closure made from it is not of).
+      if (values[i].isObject() && values[i].type && types.unqualified(values[i].type)->kind == TyKind::Lambda)
+        argTy = values[i].type;
       argTypes.push_back(argTy && argTy->isKnown() ? (a ? argumentType(a, argTy, types) : argTy) : nullptr);
     }
     std::vector<const Ty*> patterns;
@@ -1178,7 +1185,14 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   while (called->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(called)->inner)
     called = static_cast<ParenExpr*>(called)->inner;
   if (called->kind == NodeKind::LambdaExpr)
-    return constCallLambda(static_cast<LambdaExpr*>(called), c, ctx, depth); // `[]() -> Shape { ... }()`
+  {
+    auto* l = static_cast<LambdaExpr*>(called);
+    if (l->captures.empty() && !l->defaultCapture)
+      return constCallLambda(l, c, ctx, depth); // `[]() -> Shape { ... }()`
+    // `[&]() { ... }()`: its closure made here, then called.
+    std::optional<ConstValue> closure = constClosure(l, called->ty, ctx, depth);
+    return closure ? constCallClosure(l, *closure, c, ctx, depth) : std::nullopt;
+  }
   if (c->callee->kind != NodeKind::NameExpr)
   {
     // `ops[0](5)`, `(*f)(5)`: through the function pointer the callee evaluates to.
@@ -3714,6 +3728,219 @@ auto GlobalScope::Impl::constAddressArith(P op, const ConstValue& l, const Const
   return std::nullopt;
 }
 
+auto GlobalScope::Impl::constClosureCaptures(LambdaExpr* l, std::vector<ConstCapture>& out) -> bool
+{
+  out.clear();
+  for (const LambdaCapture& cap : l->captures)
+  {
+    if (cap.isThis)
+      out.push_back({UINT32_MAX, true, true, nullptr, nullptr});
+    else if (cap.init)
+    {
+      // `[x = expr]`, `[&x = expr]`: the variable the capture declares.
+      auto* v = cap.decl && cap.decl->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(cap.decl) : nullptr;
+      if (!v || v->name.parts.size() != 1)
+        return false;
+      out.push_back({v->name.parts[0].symbol, cap.byRef, false, cap.init, v});
+    }
+    else
+      out.push_back({cap.symbol, cap.byRef, false, nullptr, nullptr});
+  }
+  if (!l->defaultCapture)
+    return true;
+  // `[=]`, `[&]`: the variables of the functions around that the body names (not the lambda's own
+  // parameters and locals, nor a global), each once in the order the body first names them, and
+  // `this` where the body uses it (a member named alone too), as codegen's captureList has them.
+  std::unordered_set<const Decl*> inner(l->params.begin(), l->params.end());
+  std::unordered_set<uint32_t> seen;
+  bool usesThis = false;
+  for (const ConstCapture& c : out)
+  {
+    if (c.decl)
+      inner.insert(c.decl);
+    if (c.isThis)
+      usesThis = true;
+    else
+      seen.insert(c.symbol);
+  }
+  bool thisCaptured = usesThis;
+  std::vector<uint32_t> names;
+  forEachNode(l->body, [&](Node* n) {
+    if (n->kind == NodeKind::VariableDecl || n->kind == NodeKind::ParamDecl)
+      inner.insert(static_cast<Decl*>(n)); // (the body's own: a nested lambda's parameters too)
+    else if (n->kind == NodeKind::ThisExpr)
+      usesThis = true;
+    else if (n->kind == NodeKind::NameExpr)
+    {
+      auto* x = static_cast<NameExpr*>(n);
+      Decl* d = x->resolved;
+      if (!d || x->name.parts.size() != 1 || x->name.global)
+        return;
+      if (d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl && !(d->flags & (DF_Static | DF_Typedef)))
+      {
+        usesThis = true; // `count` alone: this->count
+        return;
+      }
+      bool local = d->kind == NodeKind::ParamDecl ||
+                   (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && d->parent && d->parent->kind == NodeKind::FunctionDecl);
+      if (local && !inner.count(d) && seen.insert(x->name.parts[0].symbol).second)
+        names.push_back(x->name.parts[0].symbol);
+    }
+  });
+  for (uint32_t s : names)
+    out.push_back({s, l->defaultCapture == 2, false, nullptr, nullptr});
+  if (usesThis && !thisCaptured)
+    out.push_back({UINT32_MAX, true, true, nullptr, nullptr});
+  return true;
+}
+
+auto GlobalScope::Impl::constClosure(LambdaExpr* l, const Ty* type, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  const Ty* t = type ? types.unqualified(types.stripRef(type)) : nullptr;
+  std::vector<ConstCapture> captures;
+  if (!t || t->kind != TyKind::Lambda || !l->body || !constClosureCaptures(l, captures) || !constMayMake(captures.size()))
+    return std::nullopt;
+  // An address of a place the run holds (by reference): what a reference capture keeps.
+  auto addressOf = [&](const ConstPlace& p) -> std::optional<ConstValue> {
+    if (!p.type || !constAddressable(p))
+      return std::nullopt;
+    return ConstValue::address(types.pointer(p.type), constStorageTarget(p));
+  };
+  std::vector<ConstValue> parts;
+  for (const ConstCapture& c : captures)
+  {
+    std::optional<ConstValue> part;
+    if (c.isThis)
+    {
+      std::optional<ConstPlace> self = constThisPlace(ctx);
+      part = self ? addressOf(*self) : std::nullopt;
+    }
+    else if (c.init && c.byRef)
+    {
+      std::optional<ConstPlace> at = constPlaceOf(c.init, ctx, depth + 1, true);
+      part = at ? addressOf(*at) : std::nullopt;
+    }
+    else if (c.init)
+    {
+      const Ty* declared = c.decl ? constDeducedType(static_cast<VariableDecl*>(c.decl), nullptr) : nullptr;
+      part = declared && !containsAuto(declared) ? constInitialize(declared, c.init, ctx, depth + 1) : constValue(c.init, ctx, depth + 1);
+    }
+    else
+    {
+      // A local of the run, by its name: its place (by reference), or a copy of it.
+      std::optional<ConstPlace> at;
+      for (size_t i = ctx.env ? ctx.env->size() : 0; i-- > 0 && !at;)
+        if ((*ctx.env)[i].symbol == c.symbol && !(*ctx.env)[i].pack)
+        {
+          at = constResolve(ConstPlace{ctx.env, i, {}, (*ctx.env)[i].type});
+          at->type = (*ctx.env)[i].type;
+        }
+      if (at && c.byRef)
+        part = addressOf(*at);
+      else if (at)
+      {
+        part = constRead(*at);
+        if (part && part->isObject() && part->type && constCopyRunsCode(part->type))
+          part = constCopyConstruct(part->type, *part, at, false, depth + 1);
+      }
+    }
+    if (!part || part->isUnset())
+    {
+      if (constWhy().empty())
+        constWhy() = "a lambda's capture the evaluator cannot make";
+      return std::nullopt;
+    }
+    parts.push_back(*part);
+  }
+  return ConstValue::object(t, std::move(parts));
+}
+
+auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closure, CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  std::vector<ConstCapture> captures;
+  if (!l->body || !l->templateParams.empty() || c->args.size() > l->params.size() || !closure.isObject() || !closure.parts ||
+      !constClosureCaptures(l, captures) || captures.size() != closure.parts->size())
+    return std::nullopt;
+  std::vector<ConstValue> values;
+  for (Expr* a : c->args)
+  {
+    std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+    if (!v)
+      return std::nullopt;
+    values.push_back(*v);
+  }
+  struct Call
+  {
+    bool ok = ++constCalls() <= 512 && stackRoomLeft();
+    ~Call() { --constCalls(); }
+  } call;
+  if (!call.ok)
+    return std::nullopt;
+  std::vector<ConstBinding> env;
+  ConstFrame frame(&env);
+  // Where the lambda is written (its names, its file's tokens), whoever calls it; none of the
+  // caller's locals.
+  ParsedFile* file = l->closure && l->closure->file ? l->closure->file : nullptr;
+  TypeContext fctx{l->closure ? lexicalScopeOf(l->closure) : ctx.scope, nullptr, nullptr, file ? file->tokens : ctx.tokens,
+                   file ? file->text : ctx.text};
+  fctx.env = &env;
+  // The captures: a copy as a binding of its own, read only (the call operator is const); one by
+  // reference, and `this`, referring to the object where it is.
+  for (size_t i = 0; i < captures.size(); ++i)
+  {
+    const ConstValue& part = (*closure.parts)[i];
+    if (captures[i].isThis || captures[i].byRef)
+    {
+      std::optional<ConstPlace> at = part.isAddress() ? constStoragePlace(part, "a use of", depth) : std::nullopt;
+      if (!at)
+        return std::nullopt;
+      ConstPlace resolved = constResolve(*at);
+      ConstBinding alias{captures[i].isThis ? constThisSymbol : captures[i].symbol, ConstValue::unset(at->type)};
+      alias.type = at->type;
+      alias.writable = !resolved.readOnly;
+      alias.aliasEnv = resolved.env;
+      alias.aliasIndex = resolved.index;
+      alias.aliasPath = resolved.path;
+      env.push_back(std::move(alias));
+    }
+    else
+    {
+      env.push_back(constBinding(captures[i].symbol, part, part.type));
+      env.back().writable = false;
+    }
+  }
+  for (size_t i = 0; i < l->params.size(); ++i)
+  {
+    auto* p = static_cast<ParamDecl*>(l->params[i]);
+    if (p->kind != NodeKind::ParamDecl || p->isPack)
+      return std::nullopt;
+    const Ty* type = p->type ? convertType(p->type, fctx, 1) : nullptr;
+    if (type && containsAuto(type))
+      return std::nullopt;
+    std::optional<ConstValue> v = i < values.size() ? constConvertTo(values[i], type, 1)
+                                : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, 1) : std::nullopt;
+    if (!v)
+      return std::nullopt;
+    env.push_back(constBinding(p->name, *v, type));
+    if (type && type->isReference())
+      env.back().writable = false; // a copy of what the argument names
+  }
+  const Ty* returns = l->returnType ? convertType(l->returnType, fctx, 1) : nullptr;
+  if (returns && containsAuto(returns))
+    returns = nullptr;
+  fctx.returnType = returns;
+  fctx.namedReturn = constNamedReturn(l->body, returns, fctx, 1);
+  std::optional<ConstValue> result;
+  ConstFlow flow = constStatement(l->body, fctx, env, result, 1);
+  if (returns && types.unqualified(returns)->kind == TyKind::Void && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
+    return ConstValue::integer(0, types.voidType());
+  if ((flow == ConstFlow::Next || flow == ConstFlow::Returned) && !returns && !result && c->ty && types.unqualified(c->ty)->kind == TyKind::Void)
+    return ConstValue::integer(0, types.voidType()); // (one whose deduced result is void)
+  if (flow != ConstFlow::Returned || !result)
+    return std::nullopt;
+  return returns ? constConvertTo(result, returns, 1) : result;
+}
+
 auto GlobalScope::Impl::constCallLambda(LambdaExpr* l, CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   if (!l->body || !l->templateParams.empty() || !l->captures.empty() || l->defaultCapture || c->args.size() > l->params.size())
@@ -4824,6 +5051,14 @@ auto GlobalScope::Impl::constDestroyRunsCode(const Ty* t) -> bool
 auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth, const ConstPlace* at) -> bool
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (t && t->kind == TyKind::Lambda)
+  {
+    // A closure: its captures by copy destroyed, the last first (one by reference is an address).
+    for (size_t i = v.isObject() && v.parts ? v.parts->size() : 0; i-- > 0;)
+      if (const ConstValue& part = (*v.parts)[i]; part.isObject() && part.type && !constDestroy(part.type, part, depth + 1))
+        return false;
+    return true;
+  }
   if (!constDestroyRunsCode(t))
     return true;
   auto cannot = [&](const char* what) {
@@ -5336,6 +5571,9 @@ auto GlobalScope::Impl::constCallObject(Expr* object, CallExpr* c, const TypeCon
   if (!place && constPure(object))
     place = constPlaceOf(object, ctx, depth + 1);
   std::optional<ConstValue> self = place ? constRead(*place) : constValue(object, ctx, depth + 1);
+  if (self && self->isObject() && self->type)
+    if (LambdaExpr* l = lambdaOf(types.unqualified(types.stripRef(self->type))))
+      return constCallClosure(l, *self, c, ctx, depth); // `twice(5)`: a closure's body, its captures bound
   if (!self || !self->isObject() || !self->type || self->type->isBraceList() || types.unqualified(types.stripRef(self->type))->kind != TyKind::Class)
     return std::nullopt;
   if (!place)
