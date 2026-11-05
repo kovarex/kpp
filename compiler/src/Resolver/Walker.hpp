@@ -131,6 +131,10 @@
     // A checker error at token: in a template's instance once its function is emitted, never in the
     // template's own walk (its instances say), nowhere while probing or in imported C.
     void reportCheck(uint32_t token, const std::string& message);
+    // A non-const lvalue reference (declared) bound to a const object of its type or of a class
+    // derived from it (given: the initializer as an argument presents it, an lvalue's a T&): an
+    // error naming what is bound (`r`, `the result of get`), as C++'s [dcl.init.ref] 5 has it.
+    void checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given);
 
     // Whether f, a member function, is a non-const one called on a const object (objectTy): no
     // candidate in C++, whose implicit object parameter `C&` a const object does not bind
@@ -138,6 +142,12 @@
     bool nonConstOnConstObject(FunctionDecl* f, const Ty* objectTy);
 
     void checkConstObjectCall(FunctionDecl* f, const Ty* objectTy, uint32_t token);
+    // A call on a const object (objectTy) whose overloads (pickOverload's arguments) took none: the
+    // one a non-const object would have taken, a non-const member function, is the error
+    // checkConstObjectCall reports (`items.push_back(1)` in a const member function, push_back's
+    // two overloads both non-const), where the call was left unresolved, codegen's error.
+    void checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
+                                   const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token);
 
     // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
     // `f(long)` beside `f(int)`, one function in kpp, design.md "Types") is an error at the later
@@ -266,6 +276,11 @@
     const Ty* dependentNameType(Decl* d);
 
     const Ty* resolveName(NameExpr* e);
+    // The type of a data member a name finds without an object (`v`, `Base::b`, l's) in a member
+    // function, `this->v`: t made const where `this` points at const (a const member function's,
+    // also in a lambda in it), as memberOf makes a const object's members; a mutable, static or
+    // reference member's t as it is.
+    const Ty* memberThroughThis(const Lookup& l, const Ty* t);
 
     // `Accumulator::kind` (`&T::kind` in an instance) with kind a member of a base that an
     // instantiation's arguments choose (`class BehaviorTemplate : public Parent`, Parent =

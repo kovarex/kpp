@@ -1,0 +1,37 @@
+// spec: a non-const lvalue reference binds no const object, whatever binds it: a variable (`int& r = c;` with `const int c`, `S& t = s;` with `const S s`, `int& e{c};`), a function's result (`int& get() const { return this->v; }`, a const member function's member being const) and a range-for variable over const elements (`for (int& x : numbers)` with `const Vector<int> numbers`) are compile errors, as in C++ ([dcl.init.ref] 5; clang: "binding reference of type 'int' to value of type 'const int' drops 'const' qualifier"); a `const T&` binds each, and a `T&` an object that is not const
+// found by thread D (2026-11-05), comparing const errors with clang: each compiled, and writing through the reference changed the const object
+// error: nonconst_reference_binds_no_const_object.kpp:19: error: the result of get (int32&) is bound to a const object (const int32)
+// error: nonconst_reference_binds_no_const_object.kpp:30: error: r (int32&) is bound to a const object (const int32)
+// error: nonconst_reference_binds_no_const_object.kpp:31: error: t (S&) is bound to a const object (const S)
+// error: nonconst_reference_binds_no_const_object.kpp:32: error: e (int32&) is bound to a const object (const int32)
+// error: nonconst_reference_binds_no_const_object.kpp:34: error: x (int32&) is bound to a const object (const int32)
+struct S
+{
+  int v = 0;
+};
+struct Holder
+{
+  int v = 0;
+  int& own() { return this->v; }
+  const int& look() const { return this->v; }
+  int& get() const
+  {
+    return this->v;
+  }
+};
+int main()
+{
+  const int c = 1;
+  const S s;
+  const Vector<int> numbers = {1, 2};
+  int plain = 3;
+  int& fine = plain;
+  const int& ok = c;
+  int& r = c;
+  S& t = s;
+  int& e{c};
+  for (const int& y : numbers)
+    for (int& x : numbers)
+      x = y;
+  return fine + ok + r + t.v + e;
+}

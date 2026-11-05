@@ -1,0 +1,48 @@
+// spec: in a const member function the object is const ([class.this] 1: `this` is a `const T*`), and so is every data member named through it: written alone (`v = 1;`, `++count;`), with its class (`Base::b = 2;`), an array member's element (`this->cells[0] = 5;`, `cells[1] = 6;`), in a lambda that captures this; writing one or calling a non-const member function on it (`items.push_back(1)`) is a compile error, as in C++; a mutable member may change, and what a pointer member points at is no part of the object
+// found by thread D (2026-11-05), comparing const errors with clang: kpp refused `this->v = 1;` in a const member function and accepted `v = 1;` and the rest, which changed a const object
+// error: const_member_function_members_are_const.kpp:31: error: assignment to a const value (const int32)
+// error: const_member_function_members_are_const.kpp:32: error: increment of a const value (const int32)
+// error: const_member_function_members_are_const.kpp:33: error: the member function push_back is not const, and its object is a const Vector<int32>
+// error: const_member_function_members_are_const.kpp:34: error: assignment to a const value (const int32)
+// error: const_member_function_members_are_const.kpp:35: error: assignment to a const value (const int32)
+// error: const_member_function_members_are_const.kpp:36: error: assignment to a const value (const int32)
+// error: const_member_function_members_are_const.kpp:37: error: assignment to a const value (const int32)
+// error: const_member_function_members_are_const.kpp:38: error: assignment to a const value (const int32)
+struct Base
+{
+  int b = 0;
+};
+struct Counter : Base
+{
+  int v = 0;
+  int count = 0;
+  int cells[3] = {1, 2, 3};
+  mutable int reads = 0;
+  Vector<int> items;
+  int* target = nullptr;
+  int read() const
+  {
+    ++this->reads;
+    *this->target = 3;
+    return this->v + this->count + this->cells[0] + Base::b + int(this->items.size());
+  }
+  void set() const
+  {
+    v = 1;
+    ++count;
+    items.push_back(1);
+    Base::b = 2;
+    this->cells[0] = 5;
+    cells[1] = 6;
+    [this]() { v = 4; }();
+    [&]() { count = 4; }();
+  }
+};
+int main()
+{
+  int x = 0;
+  Counter c;
+  c.target = &x;
+  c.set();
+  return c.read();
+}

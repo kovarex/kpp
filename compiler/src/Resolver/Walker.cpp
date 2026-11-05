@@ -278,6 +278,20 @@ auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty*
   reportCheck(token, std::string(what) + " a const value (" + types.toString(object, &impl.symbols) + ")");
 }
 
+auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
+{
+  if (probing || !declared || declared->kind != TyKind::LRef || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
+      given->kind != TyKind::LRef || !given->inner || !given->isKnown() || types.isDependent(given) || types.isDependent(declared) ||
+      Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared) || !Impl::isConstObject(given->inner))
+    return;
+  const Ty* object = impl.unqualifiedDeep(given->inner);
+  const Ty* referred = impl.unqualifiedDeep(declared->inner);
+  if (object != referred && !(object->kind == TyKind::Class && referred->kind == TyKind::Class && impl.isBaseClass(referred, object)))
+    return; // (an object of another type: a conversion's, never the object itself)
+  reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a const object (" + types.toString(given->inner, &impl.symbols) +
+                         "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
+}
+
 auto GlobalScope::Impl::Walker::reportCheck(uint32_t token, const std::string& message) -> void
 {
   if (!file || file->isImported || probing)
@@ -301,6 +315,17 @@ auto GlobalScope::Impl::Walker::checkConstObjectCall(FunctionDecl* f, const Ty* 
   uint32_t symbol = impl.functionSymbol(f->name);
   reportCheck(token, "the member function " + std::string(symbol == UINT32_MAX ? "?" : impl.symbols.name(symbol)) +
                          " is not const, and its object is a " + types.toString(types.stripRef(objectTy), &impl.symbols));
+}
+
+auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
+                                                         const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token) -> void
+{
+  const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
+  if (probing || !o || !o->isConst || o->kind != TyKind::Class || !o->isKnown())
+    return;
+  bool ambiguous = false;
+  if (FunctionDecl* g = pickOverload(primary, overloads, argTypes, classSubst, types.unqualified(o), ambiguous, namePart, callArgs, nullptr); g && !ambiguous)
+    checkConstObjectCall(g, objectTy, token);
 }
 
 auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
@@ -1147,13 +1172,25 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     // base takes that base instantiation's arguments.
     if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))
       if (Subst s = impl.memberSubst(q, l.foundIn, 0); !s.pairs.empty())
-        return impl.declaredTypeOf(l.decl, &s, 0);
+        return memberThroughThis(l, impl.declaredTypeOf(l.decl, &s, 0));
     // `Fast::Enum::True` with an enum declared in a class template: that instance's enumerator.
     if (q->kind == TyKind::Enum)
       if (Subst s = impl.substFor(q); !s.pairs.empty())
         return impl.declaredTypeOf(l.decl, &s, 0);
   }
-  return typeOfResolvedName(l, e->name.last(), e);
+  return memberThroughThis(l, typeOfResolvedName(l, e->name.last(), e));
+}
+
+auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
+{
+  if (!t || !t->isKnown() || t->isReference() || Impl::isConstObject(t) || l.found != Found::Member || !l.decl || l.decl->kind != NodeKind::VariableDecl ||
+      (l.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !thisType ||
+      thisType->kind != TyKind::Pointer || !thisType->inner || !thisType->inner->isConst)
+    return t;
+  Scope* self = impl.classScopeOf(types.unqualified(thisType->inner));
+  if (!self || !reachesClassScope(self, l.foundIn, 0))
+    return t;
+  return types.qualified(t, true, t->isVolatile);
 }
 
 auto GlobalScope::Impl::Walker::memberOfQualifierInstance(NameExpr* e) -> Lookup
@@ -1644,9 +1681,10 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
     // `obj.method` used as a value is only meaningful in a call, which handles overloads.
   }
   // A data member of a const object is const (`rectangle.data.begin()` with `const Rect&
-  // rectangle` calls the const begin()), unless it is mutable, static or a reference.
+  // rectangle` calls the const begin()), unless it is mutable, static or a reference; an array
+  // member's elements are (`this->cells[0] = 5;` in a const member function was no error).
   if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) &&
-      !r.type->isReference() && r.type->kind != TyKind::Array && r.type->isKnown() && !r.type->isConst)
+      !r.type->isReference() && r.type->isKnown() && !Impl::isConstObject(r.type))
     if (const Ty* obj = types.stripRef(object); obj && obj->isConst)
       return types.qualified(r.type, true, r.type->isVolatile);
   return r.type ? r.type : types.unknown();
@@ -3543,6 +3581,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         // template with the arguments an earlier walk of this call recorded (the generic
         // one's). A single plain candidate stays: the code generator converts the arguments
         // itself and says so when it cannot.
+        checkConstObjectOverloads(d, l.overloads, argTypes, classSubst, implicitObject, &n->name.last(), c->args, c->token); // `touch(1)` in a const member function
         c->templateArgCount = 0;
         if (!onlyPlainCandidate(d, l.overloads))
           n->resolved = nullptr;
@@ -3708,6 +3747,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       }
       if (!f)
       {
+        checkConstObjectOverloads(r.decl, r.overloads, argTypes, &r.subst, object, &last, c->args, m->token); // `items.push_back(1)` on a const Vector
         ++stats.membersBound;
         c->templateArgCount = 0; // as for a name
         if (!onlyPlainCandidate(r.decl, r.overloads))
@@ -5397,6 +5437,19 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
+      // `int& r = c;` with `const int c`, `int& e{c};`: a non-const reference given a const object.
+      if (v->init && declared && declared->kind == TyKind::LRef && !impl.containsAuto(declared) && !v->name.empty())
+      {
+        Expr* bound = v->init;
+        const Ty* boundTy = initTy;
+        if (v->bracedInit && bound->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(bound)->args.size() == 1)
+        {
+          bound = static_cast<BraceInitExpr*>(bound)->args[0];
+          boundTy = bound ? bound->ty : nullptr;
+        }
+        if (bound && bound->kind != NodeKind::BraceInitExpr && boundTy)
+          checkConstDropped(bound->token, std::string(symbols.name(v->name.last().symbol)), declared, argumentType(bound, boundTy, types));
+      }
       bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
       if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
       {
@@ -6043,6 +6096,9 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           loopVarType = local;
         }
       }
+      // `for (int& x : numbers)` over const elements: a non-const reference given a const object.
+      if (declared && declared->kind == TyKind::LRef && !impl.containsAuto(declared) && !v->name.empty())
+        checkConstDropped(v->token, std::string(symbols.name(v->name.last().symbol)), declared, elementTypeOf(range, f->range));
       if (impl.containsAuto(declared))
       {
         const Ty* element = elementTypeOf(range, f->range);
@@ -6152,7 +6208,13 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
             if (value->kind == NodeKind::BraceInitExpr)
               checkExplicitListCopy(static_cast<BraceInitExpr*>(value), ft->inner);
             else
+            {
               checkExplicitCopy(t, ft->inner, value->token);
+              // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
+              if (ft->inner->kind == TyKind::LRef && t)
+                if (uint32_t symbol = impl.functionSymbol(bodyOf->name); symbol != UINT32_MAX)
+                  checkConstDropped(value->token, "the result of " + std::string(symbols.name(symbol)), ft->inner, argumentType(value, t, types));
+            }
           }
         }
       if (!decltypeReturns.empty() && decltypeReturns.back())
