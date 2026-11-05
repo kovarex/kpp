@@ -14,7 +14,7 @@ options.password = password;          // from the configuration, never from the 
 options.database = "gorating";
 MariaDbConnection db = MariaDbConnection::connect(options);
 
-MariaDbResult players = db.query("SELECT id, name, rating FROM user WHERE username = " + mariaDbQuote(username));
+MariaDbResult players = db.query("SELECT id, name, rating FROM user WHERE username = ", mariaDbQuote(username));
 for (ContainerSize i = 0; i < players.size(); ++i)
   println(players.text(i, "name"));
 
@@ -32,8 +32,8 @@ libraries, docs/build.md).
 | | |
 |---|---|
 | `MariaDbConnection::connect(const MariaDbOptions&)` | host, port, user, password, database, `timeoutMilliseconds` (30 s; 0 waits forever) |
-| `connection.query(StringView sql)` | one statement; a `CALL`'s results are read, the last one returned |
-| `connection.scalar(StringView sql)` | the first row's first value (`Optional<String>`); no row throws |
+| `connection.query(Text sql)` | one statement, given as pieces (`db.query("SELECT name FROM user WHERE id=", id)`, design.md 14); a `CALL`'s results are read, the last one returned |
+| `connection.scalar(Text sql)` | the first row's first value (`Optional<String>`); no row throws |
 | `connection.begin()`, `commit()`, `rollback()` | `START TRANSACTION`, `COMMIT`, `ROLLBACK` |
 | `connection.serverVersion` | as the server says it ("11.7.2-MariaDB") |
 | `MariaDbResult` | `columns`, `rows` (`Vector<Optional<String>>` each), `affectedRows`, `insertId`; `size()`, `column(name)`, `at(row, name)`, `text(row, name)` (NULL throws) |

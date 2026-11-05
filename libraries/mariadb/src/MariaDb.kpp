@@ -82,32 +82,35 @@ struct MariaDbConnection
     return connection;
   }
 
-  // Runs one statement (a CALL's results are read and dropped but the last); throws MariaDbError
-  // with the server's message and the statement.
-  MariaDbResult query(StringView sql)
+  // Runs one statement, given as pieces (`db.query("SELECT name FROM user WHERE id=", id)`), a
+  // CALL's results read and dropped but the last; throws MariaDbError with the server's message and
+  // the statement.
+  MariaDbResult query(Text sql)
   {
     if (!this->stream.isOpen())
       throw MariaDbError("the connection is closed", 0, String());
     this->sequence = 0;
     String packet;
     packet << char(0x03); // COM_QUERY
-    packet << sql;
+    sql.appendTo(packet);
     this->writePacket(packet);
+    StringView statement = StringView(packet).substr(1);
     MariaDbResult result;
     for (;;)
     {
-      bool more = this->readResult(result, sql);
+      bool more = this->readResult(result, statement);
       if (!more)
         return result;
     }
   }
 
   // The first row's value of the first column, for "SELECT COUNT(*)..." and the like; no row throws.
-  Optional<String> scalar(StringView sql)
+  Optional<String> scalar(Text sql)
   {
-    MariaDbResult result = this->query(sql);
+    String statement = toString(sql);
+    MariaDbResult result = this->query(statement);
     if (result.rows.empty() || result.columns.empty())
-      throw MariaDbError(format("no value from: {}", sql), 0, String());
+      throw MariaDbError(toString("no value from: ", statement), 0, String());
     return result.rows[0][0];
   }
 
