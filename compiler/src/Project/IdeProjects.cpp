@@ -32,10 +32,19 @@ namespace projects
         {
           for (const std::string& r : q->roots)
             target.roots.push_back(rooted(root, r));
+          // A used library's files under Libraries\NAME (its roots' own names below that when it has
+          // several), as the stdlib's are under Standard Library: each root's last directory alone
+          // put gorating's src and every library's src into one folder (G, 2026-11-05).
+          target.folders.resize(target.roots.size());
           for (const ProjectLibrary& l : q->kppLibraries)
           {
             for (const std::string& r : l.roots)
-              target.roots.push_back(rooted(root, r));
+            {
+              fs::path at = rooted(root, r).lexically_normal();
+              std::string own = at.has_filename() ? at.filename().string() : at.parent_path().filename().string();
+              target.roots.push_back(at);
+              target.folders.push_back("Libraries\\" + l.name + (l.roots.size() > 1 ? "\\" + own : std::string()));
+            }
             for (const std::string& e : l.excluded)
               target.excluded.push_back(rooted(root, e));
           }

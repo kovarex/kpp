@@ -341,6 +341,15 @@ void build(Project& project)
     $output = Kpp @('--no-server')
     $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
     if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
+    # Visual Studio's tree: each used library's files under Libraries\NAME (G, 2026-11-05: gorating's
+    # src and every library's src were one folder "src"), the program's own under src.
+    $output = (Kpp @('--no-server', '--generate-visual-studio-files')) -join "`n"
+    $filters = Get-Content 'build\visual-studio\app.vcxproj.filters' -Raw -ErrorAction SilentlyContinue
+    foreach ($pair in @(@('src\main.kpp', 'src'), @('libraries\greet\src\greet.kpp', 'Libraries\greet'), @('libraries\text\src\text.kpp', 'Libraries\text')))
+    {
+      if ($code -ne 0 -or $filters -notmatch ([regex]::Escape("$app\$($pair[0])") + '"><Filter>' + [regex]::Escape($pair[1]) + '</Filter>')) { Fail "Visual Studio's folder of $($pair[0]): not $($pair[1]): exit $code`n$output`n$filters" }
+    }
+    if ($filters -notmatch 'Filter Include="Libraries"') { Fail "Visual Studio's folder Libraries is missing:`n$filters" }
     # greet is scoped: a bare greeting() from the program is an error; text is unscoped (shout bare in greet).
     Set-Content 'src\main.kpp' "int main()`n{`n  println(greeting(`"app`"));`n  return 0;`n}"
     $output = (Kpp @('--no-server')) -join "`n"

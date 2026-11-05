@@ -831,7 +831,9 @@ kppc --generate-visual-studio-files --generate-vs-code-files <build options> --e
 
 - **Visual Studio:** `build\visual-studio\<name>.sln`, `.vcxproj` and `.vcxproj.filters`. Every
   source file is listed, in folders by source root and directory, the standard library as
-  *Standard Library*.
+  *Standard Library*, each used kpp library as *Libraries\NAME* (its roots' names below that when it
+  has several; 2026-11-05: by its root's name alone, gorating's src and every library's src were one
+  folder).
 - **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kppc
   did not write is never overwritten. A build task starts kpp itself (`"command"`: kpp's path,
   `"args"`, `"options": { "cwd" }`), no cmd between: VS Code quotes a process task's arguments

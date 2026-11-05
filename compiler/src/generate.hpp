@@ -41,6 +41,9 @@ struct IdeTarget
 {
   std::string name;
   std::vector<std::filesystem::path> roots;
+  // Per root, the folder Visual Studio's tree shows it as (a used library's: Libraries\NAME); empty
+  // or missing: the root's own directory name (src).
+  std::vector<std::string> folders;
   std::vector<std::filesystem::path> excluded;
   std::vector<IdeConfiguration> configurations;
 };

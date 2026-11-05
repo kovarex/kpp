@@ -112,10 +112,12 @@ namespace
     std::vector<std::pair<fs::path, std::string>> roots;
     if (!stdlib.empty())
       roots.push_back({stdlib, "Standard Library"});
-    for (const fs::path& root : target.roots)
+    for (size_t i = 0; i < target.roots.size(); ++i)
     {
-      fs::path path = root.lexically_normal();
+      fs::path path = target.roots[i].lexically_normal();
       std::string name = path.has_filename() ? path.filename().string() : path.parent_path().filename().string();
+      if (i < target.folders.size() && !target.folders[i].empty())
+        name = target.folders[i];
       roots.push_back({path, fs::is_regular_file(path) ? "" : name});
     }
     std::set<fs::path> excluded;
