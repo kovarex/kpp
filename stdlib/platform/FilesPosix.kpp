@@ -56,7 +56,7 @@ namespace platform
     }
     return result;
   }
-  String utf8Of(const filesystem::path& p) { return narrowWide(p.text.c_str(), (i32)p.text.size()); }
+  String utf8Of(const filesystem::path& p) { return narrowWide(p.c_str(), (i32)p.native().size()); }
 
   // The calling thread's errno, of the system category (a system error is an errno value here).
   ErrorCode lastFileError() { return ErrorCode(*errnoLocation(), systemCategory()); }

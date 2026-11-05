@@ -13,20 +13,19 @@ namespace filesystem
 
   // --- path ---
 
-  struct pathIterator;
+  class pathIterator;
 
   // A path (std::filesystem::path): wide text in the target's form. On Windows `\` and `/` are both
   // separators and a root name is a drive `C:` or a server `\\name`; elsewhere `/` is the one
   // separator (a `\` is part of a name) and there is no root name.
-  struct path
+  class path
   {
+  public:
     using value_type = wchar_t;
     using string_type = WString;
     using iterator = pathIterator;
     using const_iterator = pathIterator;
     static const wchar_t preferred_separator = config::platform == Platform::Windows ? L'\\' : L'/';
-
-    WString text;
 
     path() {}
     implicit path(const WString& source) : text(source) {}
@@ -297,6 +296,11 @@ namespace filesystem
 
     pathIterator begin() const;
     pathIterator end() const;
+
+  private:
+    friend class pathIterator; // reads text
+
+    WString text;
   };
 
   // Comparisons by compare(), free so that a String or a `const char*` converts on either side
@@ -318,18 +322,14 @@ namespace filesystem
   // The elements of a path, front to back: its root name, its root directory, each filename of
   // its relative part, and an empty element when it ends with a separator after a filename.
   // Dereferencing gives the element as a path (std::filesystem::path::iterator).
-  struct pathIterator
+  class pathIterator
   {
+  public:
     using value_type = path;
     using difference_type = i64;
     using pointer = const path*;
     using reference = const path&;
     using iterator_category = BidirectionalIteratorTag;
-
-    const path* owner = nullptr;
-    ContainerSize position = 0; // where the element starts; past the text's end for end()
-    ContainerSize length = 0;
-    path element;
 
     pathIterator() {}
     pathIterator(const path* owner, ContainerSize position, ContainerSize length) : owner(owner), position(position), length(length)
@@ -414,6 +414,12 @@ namespace filesystem
       return before;
     }
     bool operator==(const pathIterator& other) const { return this->owner == other.owner && this->position == other.position; }
+
+  private:
+    const path* owner = nullptr;
+    ContainerSize position = 0; // where the element starts; past the text's end for end()
+    ContainerSize length = 0;
+    path element;
   };
 
   pathIterator path::begin() const { return pathIterator::first(this); }
@@ -627,11 +633,9 @@ namespace filesystem
     u64 available = 0;
   };
 
-  struct file_status
+  class file_status
   {
-    file_type typeValue = file_type::none;
-    perms permsValue = perms::unknown;
-
+  public:
     file_status() {}
     explicit file_status(file_type type, perms permissions = perms::unknown) : typeValue(type), permsValue(permissions) {}
     file_type type() const { return this->typeValue; }
@@ -639,6 +643,10 @@ namespace filesystem
     void type(file_type type) { this->typeValue = type; }
     void permissions(perms permissions) { this->permsValue = permissions; }
     bool operator==(const file_status& other) const = default;
+
+  private:
+    file_type typeValue = file_type::none;
+    perms permsValue = perms::unknown;
   };
 
   bool status_known(file_status s) { return s.type() != file_type::none; }
@@ -788,12 +796,9 @@ namespace filesystem
   // --- directories ---
 
   // A directory's entry: its path, and what the listing said of it (std::filesystem::directory_entry).
-  struct directory_entry
+  class directory_entry
   {
-    filesystem::path pathValue;
-    FileInfo info;
-    bool listed = false; // info came with the listing
-
+  public:
     directory_entry() {}
     explicit directory_entry(const filesystem::path& p) : pathValue(p) {}
 
@@ -861,6 +866,13 @@ namespace filesystem
     bool operator==(const directory_entry& other) const { return this->pathValue == other.pathValue; }
     bool operator!=(const directory_entry& other) const { return this->pathValue != other.pathValue; }
     bool operator<(const directory_entry& other) const { return this->pathValue < other.pathValue; }
+
+  private:
+    friend class directory_iterator; // fills it in
+
+    filesystem::path pathValue;
+    FileInfo info;
+    bool listed = false; // info came with the listing
   };
 
   // A directory listing in progress, which copies of a directory_iterator share.
@@ -877,15 +889,14 @@ namespace filesystem
   // The entries of a directory, `.` and `..` left out, in the order the file system gives them
   // (std::filesystem::directory_iterator). Copies share the position; the end iterator is the
   // default-constructed one.
-  struct directory_iterator
+  class directory_iterator
   {
+  public:
     using value_type = directory_entry;
     using difference_type = i64;
     using pointer = const directory_entry*;
     using reference = const directory_entry&;
     using iterator_category = InputIteratorTag;
-
-    SharedPtr<DirectoryListing> listing;
 
     directory_iterator() {}
     explicit directory_iterator(const path& p)
@@ -948,6 +959,9 @@ namespace filesystem
     const directory_entry* operator->() const { return &this->listing->entry; }
     bool operator==(const directory_iterator& other) const = default;
     bool operator!=(const directory_iterator& other) const { return this->listing != other.listing; }
+
+  private:
+    SharedPtr<DirectoryListing> listing;
   };
   directory_iterator begin(directory_iterator it) { return it; }
   directory_iterator end(const directory_iterator& it) { return directory_iterator(); }
