@@ -275,6 +275,7 @@
 #include "ClassMetadata.inl"
 #include "ParameterPacks.inl"
 #include "Lambdas.inl"
+#include "DebugInfo.inl"
 #include "Functions.inl"
 #include "CCallingConvention.inl"
 #include "Calls.inl"
