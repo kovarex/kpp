@@ -535,8 +535,11 @@ void build(Project& project)
   `prebuiltLibrary` and `resource` with a `Platform` second argument count only in a build for that
   platform (`numbers.define("PLATFORM_ID=2", Platform::Linux);`, kept as "linux PLATFORM_ID=2",
   compiler/src/Project/CLibraryBuild.cpp's forPlatform), and an entry without one counts on every
-  platform. A resource script in a build for Linux or FreeBSD is an error (only a Windows program
-  links a .res). A library with C++ files links its C++ library, which an ELF object does not name
+  platform. An include directory that starts with `=` is in the target's sysroot, as GCC's `-I=`
+  (which Visual Studio's clang does not take with a Windows sysroot path): SDL3's
+  `include("=/usr/include/dbus-1.0", Platform::Linux)`; in a build for Windows it is an error. A
+  resource script in a build for Linux or FreeBSD is an error (only a Windows program links a
+  .res). A library with C++ files links its C++ library, which an ELF object does not name
   as a COFF one names MSVC's: libstdc++ statically for Linux (`-l:libstdc++.a`, as Factorio's Linux
   build links it: the program needs no particular libstdc++ of the system it runs on), libc++ and
   libcxxrt for FreeBSD. The Linux sysroot carries libstdc++'s headers and libraries for it

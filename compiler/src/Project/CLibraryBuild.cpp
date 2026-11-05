@@ -256,8 +256,20 @@ namespace projects
         version.pop_back();
       if (!version.empty() && fs::is_directory(installation / "VC" / "Tools" / "MSVC" / version, ec))
         flags += " /vctoolsdir " + quoteArg((installation / "VC" / "Tools" / "MSVC" / version).string());
+      // An include directory that starts with `=` is in the target's sysroot, as GCC's -I=DIR (which
+      // Visual Studio's clang does not take with a Windows sysroot): SDL's
+      // `include("=/usr/include/dbus-1.0", Platform::Linux)`. Elsewhere it is an error.
       for (const std::string& i : forPlatform(c.includes, platform))
-        flags += (gnu ? " -I" : " /I") + quoteArg(rooted(root, i).string());
+      {
+        if (!i.empty() && i[0] == '=' && !target.posix())
+        {
+          fprintf(stderr, "error: the C library %s: the include directory %s is in a sysroot, which only a build for Linux or FreeBSD has\n",
+                  c.name.c_str(), i.c_str());
+          return false;
+        }
+        fs::path dir = !i.empty() && i[0] == '=' ? (fs::path(target.sysroot) / fs::path(i.substr(1)).relative_path()).lexically_normal() : rooted(root, i);
+        flags += (gnu ? " -I" : " /I") + quoteArg(dir.string());
+      }
       for (const std::string& d : forPlatform(c.defines, platform))
         flags += (gnu ? " -D" : " /D") + quoteArg(d);
       for (const std::string& f : cFlags)
