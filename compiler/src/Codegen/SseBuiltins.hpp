@@ -46,3 +46,10 @@
     // __popcnt, as MSVC and clang-cl emit them. Nothing for other names.
     std::optional<Value> msvcBuiltin(NameExpr* n, CallExpr* c);
 
+    // GCC's builtins that C code calls, which the import declares (clang declares them itself, so no
+    // header does): __builtin_clz, __builtin_ctz and __builtin_popcount on unsigned int, unsigned
+    // long (the target's C long) and unsigned long long, __builtin_bswap16, 32 and 64,
+    // __builtin_expect, __builtin_prefetch and __builtin_alloca, as clang emits them. Nothing for
+    // other names.
+    std::optional<Value> gccBuiltin(NameExpr* n, CallExpr* c);
+

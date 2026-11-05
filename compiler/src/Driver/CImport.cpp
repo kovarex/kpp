@@ -714,6 +714,22 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   // CRT, math.h's on __builtin_fabsf among them): declared as the function wherever a header made it
   // a macro (its definition for the link is the program's: kpp-native's inline_c.c for the game).
   wrapper += "#ifdef HRESULT_FROM_WIN32\n#undef HRESULT_FROM_WIN32\nlong HRESULT_FROM_WIN32(long);\n#endif\n";
+  // GCC's builtins that C code calls (the game's Linux branches, glibc's inline functions): clang
+  // declares them itself, so no header does. Declared here for the program, each unless a header
+  // made it a macro (a library's `#define __builtin_expect(x, y) (x)` for MSVC); the code generator
+  // emits each one's instructions (gccBuiltin).
+  for (const char* declaration :
+       {"int __builtin_clz(unsigned int)", "int __builtin_clzl(unsigned long)", "int __builtin_clzll(unsigned long long)",
+        "int __builtin_ctz(unsigned int)", "int __builtin_ctzl(unsigned long)", "int __builtin_ctzll(unsigned long long)",
+        "int __builtin_popcount(unsigned int)", "int __builtin_popcountl(unsigned long)", "int __builtin_popcountll(unsigned long long)",
+        "unsigned short __builtin_bswap16(unsigned short)", "unsigned int __builtin_bswap32(unsigned int)",
+        "unsigned long long __builtin_bswap64(unsigned long long)", "long __builtin_expect(long, long)",
+        "void __builtin_prefetch(const void*, ...)", "void* __builtin_alloca(__SIZE_TYPE__)"})
+  {
+    std::string text = declaration;
+    size_t start = text.find("__builtin_"), end = text.find('(', start);
+    wrapper += "#ifndef " + text.substr(start, end - start) + "\n" + text + ";\n#endif\n";
+  }
   // The include directories as absolute paths, in the key and on clang's command line: a relative
   // `--cinclude native\include` names another directory in every worktree.
   std::error_code ec;

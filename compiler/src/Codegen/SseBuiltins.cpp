@@ -1123,3 +1123,150 @@ auto codegen::Emitter::msvcBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Va
   }
   return std::nullopt;
 }
+
+auto codegen::Emitter::gccBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Value>
+{
+  if (n->name.parts.size() != 1)
+    return std::nullopt;
+  std::string name = sym(n->name.parts[0].symbol);
+  auto arguments = [&](size_t least, size_t most)
+  {
+    if (c->args.size() < least || c->args.size() > most)
+      unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+  };
+  // cpuid.h's __get_cpuid_max, __get_cpuid and __get_cpuid_count, inline functions whose bodies are
+  // inline asm: the cpuid instruction as MSVC's __cpuid is (msvcBuiltin, the subleaf 0 where none is
+  // given), without branches. __get_cpuid answers a leaf only when the highest leaf of its range (0
+  // or 0x80000000) is at least it; otherwise it gives 0 and the four values stay as they were.
+  if (name == "__get_cpuid_max" || name == "__get_cpuid" || name == "__get_cpuid_count")
+  {
+    bool highestOnly = name == "__get_cpuid_max", withSubleaf = name == "__get_cpuid_count";
+    size_t count = highestOnly ? 2 : withSubleaf ? 6 : 5;
+    arguments(count, count);
+    const Ty* u32 = types.intType(32, true);
+    auto cpuid = [&](const std::string& leaf, const std::string& subleaf)
+    {
+      std::string regs = newTemp();
+      fn += "  " + regs + " = call { i32, i32, i32, i32 } asm sideeffect \"cpuid\", \"={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}\"(i32 " +
+            leaf + ", i32 " + subleaf + ")\n";
+      std::vector<std::string> out;
+      for (int i = 0; i < 4; ++i)
+      {
+        out.push_back(newTemp());
+        fn += "  " + out.back() + " = extractvalue { i32, i32, i32, i32 } " + regs + ", " + std::to_string(i) + "\n";
+      }
+      return out;
+    };
+    std::string leaf = convert(rvalue(c->args[0]), u32, c).text;
+    if (highestOnly)
+    {
+      // The highest leaf of the range in eax, and ebx (the vendor's first four letters for leaf 0) in
+      // *sig unless sig is null (stored into a slot of its own then).
+      std::string sig = convert(rvalue(c->args[1]), types.pointer(u32), c).text;
+      std::vector<std::string> regs = cpuid(leaf, "0");
+      std::string slot = "%v" + std::to_string(temp++), isNull = newTemp(), to = newTemp();
+      allocas += "  " + slot + " = alloca i32\n";
+      fn += "  " + isNull + " = icmp eq ptr " + sig + ", null\n";
+      fn += "  " + to + " = select i1 " + isNull + ", ptr " + slot + ", ptr " + sig + "\n";
+      fn += "  store i32 " + regs[1] + ", ptr " + to + "\n";
+      return Value{regs[0], u32};
+    }
+    std::string subleaf = withSubleaf ? convert(rvalue(c->args[1]), u32, c).text : "0";
+    std::vector<std::string> outs;
+    for (size_t i = withSubleaf ? 2 : 1; i < c->args.size(); ++i)
+      outs.push_back(convert(rvalue(c->args[i]), types.pointer(u32), c).text);
+    std::string range = newTemp(), none = newTemp(), below = newTemp(), refused = newTemp();
+    fn += "  " + range + " = and i32 " + leaf + ", -2147483648\n";
+    std::vector<std::string> highest = cpuid(range, "0");
+    fn += "  " + none + " = icmp eq i32 " + highest[0] + ", 0\n";
+    fn += "  " + below + " = icmp ult i32 " + highest[0] + ", " + leaf + "\n";
+    fn += "  " + refused + " = or i1 " + none + ", " + below + "\n";
+    std::vector<std::string> regs = cpuid(leaf, subleaf);
+    for (int i = 0; i < 4; ++i)
+    {
+      std::string old = newTemp(), kept = newTemp();
+      fn += "  " + old + " = load i32, ptr " + outs[size_t(i)] + "\n";
+      fn += "  " + kept + " = select i1 " + refused + ", i32 " + old + ", i32 " + regs[size_t(i)] + "\n";
+      fn += "  store i32 " + kept + ", ptr " + outs[size_t(i)] + "\n";
+    }
+    std::string answered = newTemp(), r = newTemp();
+    fn += "  " + answered + " = xor i1 " + refused + ", true\n";
+    fn += "  " + r + " = zext i1 " + answered + " to i32\n";
+    return Value{r, types.intType(32)};
+  }
+  if (!name.starts_with("__builtin_"))
+    return std::nullopt;
+  std::string base = name.substr(10);
+  // clz, ctz and popcount: the operand is an unsigned int, an unsigned long (the target's C long: 32
+  // bits on Windows, 64 on LP64 targets) or an unsigned long long by the suffix, the count an int.
+  // A zero's clz and ctz are its width (llvm.ctlz and llvm.cttz with is_zero_poison false; GCC
+  // leaves them undefined).
+  for (const char* prefix : {"clz", "ctz", "popcount"})
+  {
+    std::string p = prefix;
+    if (base.rfind(p, 0) != 0)
+      continue;
+    std::string suffix = base.substr(p.size());
+    const Ty* operand = suffix.empty() ? types.intType(32, true) : suffix == "l" ? types.longType(true) : suffix == "ll" ? types.intType(64, true) : nullptr;
+    if (!operand)
+      return std::nullopt;
+    arguments(1, 1);
+    std::string iN = "i" + std::to_string(operand->bits);
+    std::string v = convert(rvalue(c->args[0]), operand, c).text;
+    std::string op = p == "clz" ? "llvm.ctlz." : p == "ctz" ? "llvm.cttz." : "llvm.ctpop.";
+    std::string r = p == "popcount" ? sseCall(sseIntrinsic(op + iN, iN, iN), iN, iN + " " + v)
+                                    : sseCall(sseIntrinsic(op + iN, iN, iN + ", i1"), iN, iN + " " + v + ", i1 false");
+    if (operand->bits != 32)
+    {
+      std::string narrow = newTemp();
+      fn += "  " + narrow + " = trunc " + iN + " " + r + " to i32\n";
+      r = narrow;
+    }
+    return Value{r, types.intType(32)};
+  }
+  if (base == "bswap16" || base == "bswap32" || base == "bswap64")
+  {
+    arguments(1, 1);
+    int bits = std::stoi(base.substr(5));
+    std::string iN = "i" + std::to_string(bits);
+    std::string v = convert(rvalue(c->args[0]), types.intType(uint8_t(bits), true), c).text;
+    return Value{sseCall(sseIntrinsic("llvm.bswap." + iN, iN, iN), iN, iN + " " + v), types.intType(uint8_t(bits), true)};
+  }
+  if (base == "expect")
+  {
+    // The first argument's value (the second, a constant, only says which value is likely).
+    arguments(2, 2);
+    Value v = convert(rvalue(c->args[0]), types.longType(), c);
+    rvalue(c->args[1]);
+    return Value{v.text, types.longType()};
+  }
+  if (base == "prefetch")
+  {
+    // The address, then a read (0) or a write (1) and the locality 0 to 3, both constants (0 and 3
+    // when left out), as llvm.prefetch takes them.
+    arguments(1, 3);
+    auto constant = [&](size_t i, int64_t otherwise) -> int64_t
+    {
+      if (i >= c->args.size())
+        return otherwise;
+      std::optional<int64_t> k = evalConst(c->args[i], 0);
+      if (!k)
+        unsupported(c, name + " with an argument that is no constant");
+      return *k;
+    };
+    int64_t write = constant(1, 0), locality = constant(2, 3);
+    std::string address = convert(rvalue(c->args[0]), types.pointer(types.voidType()), c, true).text;
+    fn += "  call void " + sseIntrinsic("llvm.prefetch.p0", "void", "ptr, i32, i32, i32") + "(ptr " + address + ", i32 " + std::to_string(write & 1) +
+          ", i32 " + std::to_string(locality & 3) + ", i32 1)\n";
+    return Value{"", types.voidType(), false};
+  }
+  if (base == "alloca")
+  {
+    // Stack memory for the rest of the function, as _alloca's (aligned to 16 bytes, as clang's).
+    arguments(1, 1);
+    std::string size = convert(rvalue(c->args[0]), types.intType(64, true), c).text, r = newTemp();
+    fn += "  " + r + " = alloca i8, i64 " + size + ", align 16\n";
+    return Value{r, types.pointer(types.voidType()), false};
+  }
+  return std::nullopt;
+}

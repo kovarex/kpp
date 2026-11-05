@@ -3323,6 +3323,15 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   differs in width stays the header's (glibc's 64-bit `int_fast32_t`), and C's `long` itself stays
   `long`. Windows' typedefs were kpp's types already. Spec
   interop/c_import_fixed_width_typedefs_are_kpps (the same output on every target).
+- **GCC's builtins and cpuid.h (thread B, 2026-11-05):** clang declares GCC's builtins itself, so
+  no header does, and C code calls them (29 calls in the game's `#ifdef __GNUC__` branches, glibc's
+  inline functions). The import declares the ones C code calls: `__builtin_clz`, `__builtin_ctz` and
+  `__builtin_popcount` with their `l` (the target's C long) and `ll` forms, `__builtin_bswap16`,
+  `32` and `64`, `__builtin_expect`, `__builtin_prefetch` and `__builtin_alloca`; the code generator
+  emits each as clang does, beside MSVC's intrinsics (gccBuiltin). cpuid.h's `__get_cpuid_max`,
+  `__get_cpuid` and `__get_cpuid_count`, inline functions whose bodies are inline asm (which codegen
+  refuses), are its cpuid instruction, as MSVC's `__cpuid` is: the game's SystemUtil on Linux. Specs
+  interop/c_gcc_builtins and interop/c_cpuid_header.
 
 ### Stage 6, FreeBSD: the sysroot, the static link and the C import (2026-11-03)
 

@@ -457,6 +457,8 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         return *v;
       if (std::optional<Value> v = msvcBuiltin(n, c))
         return *v;
+      if (std::optional<Value> v = gccBuiltin(n, c))
+        return *v;
     }
     if (d && d->kind == NodeKind::FunctionDecl)
     {
