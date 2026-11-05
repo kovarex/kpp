@@ -150,12 +150,13 @@ namespace
     int depth = 0;
   public:
     bool externC = false; // Inside extern "C".
-    bool cMode = false;   // Preprocessed C text (imported headers): no macro heuristics.
+    Dialect dialect = Dialect::Cpp; // what the file is written in (parser.hpp)
+    bool isC() const { return dialect == Dialect::C; }
+    bool isKpp() const { return dialect == Dialect::KppSource; }
     bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
-    bool kppSource = false; // A .kpp file: no C macro idioms (the converter's C++ input has them).
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
-    std::unordered_set<uint32_t> cTypedefNames; // in cMode: the typedef names declared so far (what `(Name)` casts to)
+    std::unordered_set<uint32_t> cTypedefNames; // in C: the typedef names declared so far (what `(Name)` casts to)
     size_t classMembersMark = 0; // where the members of the class being parsed start in scratch
     bool conditionMode = false; // Declarations inside `if (...)` end at ')' instead of ';'.
     bool inRequires = false;    // Inside a requires-clause names are always template-ids.
@@ -288,7 +289,7 @@ namespace
     // C's structs (imported headers) are C's.
     bool inStruct() const
     {
-      return !cMode && currentParent && currentParent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(currentParent)->keyword == Kw::struct_ &&
+      return !isC() && currentParent && currentParent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(currentParent)->keyword == Kw::struct_ &&
              !static_cast<const ClassDecl*>(currentParent)->isTypedUnion;
     }
 
@@ -488,7 +489,7 @@ namespace
           advance();
           uint32_t from = pos;
           skipBalanced();
-          if (gnu && cMode)
+          if (gnu && isC())
             for (uint32_t i = from; i < pos && i < toks.size(); ++i)
               if (toks[i].getKind() == TokenKind::Identifier && (spelling(toks[i]) == "__vector_size__" || spelling(toks[i]) == "vector_size"))
                 sawVectorSize = true;
@@ -510,7 +511,7 @@ namespace
     // `KPP_API(dll) class X`. Returns true if something was skipped.
     bool skipMacroSpecifier()
     {
-      if (cMode)
+      if (isC())
         return false; // preprocessed C: there are no macros left to guess at
       if (!atMacroName())
         return false;
@@ -1080,7 +1081,7 @@ namespace
           r->referenced = type;
           type = r;
         }
-        else if (at(P::Caret) && !cMode && caretDeclarator())
+        else if (at(P::Caret) && !isC() && caretDeclarator())
         {
           // `T^`: the library's UniquePtr<T> written short, `::UniquePtr<T>` and nothing else (sugar,
           // design.md "T^"; printed back as `T^`, types.cpp).
@@ -1222,7 +1223,7 @@ namespace
       // clang's intrinsics headers) is left out: the importer would make it a plain float. So
       // __m128, __m128i and __m128d stay the compiler's own vector types, which the code generator's
       // SSE operations work on, and a use of another one (__v4sf) is an unresolved name.
-      if (cMode && sawVectorSize)
+      if (isC() && sawVectorSize)
       {
         sawVectorSize = false;
         if constexpr (std::is_same_v<T, VariableDecl>)
@@ -1241,7 +1242,7 @@ namespace
       scratch.push_back(d);
       // C declares a type before using it: the typedef names seen so far make `(HANDLE)(LONG_PTR)-1`
       // two casts (windows.h's INVALID_HANDLE_VALUE), not a call.
-      if (cMode)
+      if (isC())
         if constexpr (std::is_same_v<T, VariableDecl>)
           if ((d->flags & DF_Typedef) && d->name.parts.size() == 1)
             cTypedefNames.insert(d->name.parts[0].symbol);
@@ -1253,7 +1254,7 @@ namespace
     // every declaration of the import (SDL's `const _Bool*`): so nothing of that name is declared.
     bool namesCBool(const QualifiedName& name) const
     {
-      return cMode && name.parts.size() == 1 && name.parts[0].symbol == kwCBool;
+      return isC() && name.parts.size() == 1 && name.parts[0].symbol == kwCBool;
     }
 
     // MS C's anonymous member of a named struct type, `MONITORINFO;` in winuser.h's MONITORINFOEXW
@@ -1736,15 +1737,15 @@ namespace
       bool filePrivate = false;
       if (scope == Scope::Namespace && at(Kw::private_) && !at(P::Colon, 1))
       {
-        if (currentParent || cMode)
+        if (currentParent || isC())
           out.diagnostics.push_back({pos, "private is for a file's top-level declarations, not a namespace's"});
-        filePrivate = !currentParent && !cMode;
+        filePrivate = !currentParent && !isC();
         advance();
       }
       // `config TYPE NAME = DEFAULT;` (design.md, "config:: defaults in source") is read before parsing
       // and its tokens dropped (dropConfigDeclarations) where it may stand: first on its line at the
       // file's top level. One the parser meets stands elsewhere.
-      if (kppSource && tok().getKind() == TokenKind::Identifier && tok().id == kwConfig &&
+      if (isKpp() && tok().getKind() == TokenKind::Identifier && tok().id == kwConfig &&
           (at(TokenKind::Identifier, 1) || at(TokenKind::Keyword, 1)))
       {
         error("a config declaration (config TYPE NAME = DEFAULT;) stands at a file's top level, first on its line");
@@ -1809,7 +1810,7 @@ namespace
       uint32_t start = pos;
       if (at(TokenKind::End))
         return;
-      if (cMode && scope == Scope::Class && atIdent() && at(P::Semi, 1) && cTypedefNames.count(tok().id) &&
+      if (isC() && scope == Scope::Class && atIdent() && at(P::Semi, 1) && cTypedefNames.count(tok().id) &&
           currentParent && currentParent->kind == NodeKind::ClassDecl)
       {
         anonymousMemberOfNamedType(static_cast<ClassDecl*>(currentParent), start);
@@ -1825,7 +1826,7 @@ namespace
         parseWhen(scope);
         return;
       }
-      if (kppSource && atIdent(kwTest) && at(TokenKind::String, 1) && at(P::LBrace, 2) && (scope == Scope::Namespace || scope == Scope::Class))
+      if (isKpp() && atIdent(kwTest) && at(TokenKind::String, 1) && at(P::LBrace, 2) && (scope == Scope::Namespace || scope == Scope::Class))
       {
         parseTest(scope, start);
         return;
@@ -2226,7 +2227,7 @@ namespace
         // `Buf;`, `const Buf*;`: a type and no name declares nothing, which C++ makes ill-formed
         // ([dcl.dcl]); an unnamed bitfield (`int : 3;`) and a structured binding are declarations.
         if (first && d.name.empty() && !d.isFunction && !d.bitfield && d.structuredBindings.empty() && scope != Scope::Local &&
-            !conditionMode && !cMode)
+            !conditionMode && !isC())
           out.diagnostics.push_back({start, "the declaration declares nothing"});
         first = false;
         if (d.isFunction && (flags & DF_Typedef))
@@ -2381,7 +2382,7 @@ namespace
       // C headers parenthesise function names to suppress macro expansion:
       //   int (lua_gettop) (lua_State *L);
       // Strip the wrapping parens so the name is parsed normally.
-      if (cMode && at(P::LParen) && atIdent(1) && at(P::RParen, 2))
+      if (isC() && at(P::LParen) && atIdent(1) && at(P::RParen, 2))
       {
         advance();           // skip '('
         parseQualifiedName(d.name, true); // consume the function name
@@ -2498,7 +2499,7 @@ namespace
         d.type = parseArraySuffixes(d.type);
         // C's attributes after the bounds: `long mc_fpstate[64] __attribute__((__aligned__(16)))`
         // (FreeBSD's machine/ucontext.h), whose alignment the member takes (pushDecl).
-        if (cMode)
+        if (isC())
           skipAttributes();
       }
       if (at(P::LParen) && !d.name.empty())
@@ -2507,7 +2508,7 @@ namespace
         // at the contents: a parameter list starts with a type or is empty.
         if (looksLikeParameterList(scope))
         {
-          if (scope == Scope::Namespace && !cMode && !kppSource) // (in kpp it is a function: design.md 22)
+          if (scope == Scope::Namespace && dialect == Dialect::Cpp) // (in kpp it is a function: design.md 22)
             d.objectArgs = bareNameArguments();
           d.isFunction = true;
           parseFunctionSuffix(d);
@@ -2596,7 +2597,7 @@ namespace
       // `T x();` too (value-initialized); at namespace and class scope `T f(...)` is a function, and a
       // variable there is written with `=` or `{}`. A typedef's declarator is a function type when it
       // looks like one, wherever it stands; the converter's C++ input keeps C++'s guesses.
-      if (kppSource && !cMode && !typedefDeclarators)
+      if (isKpp() && !typedefDeclarators)
         return scope != Scope::Local;
       if (at(TokenKind::Number, 1) || at(TokenKind::String, 1) || at(TokenKind::Char, 1) || at(P::Minus, 1) ||
           at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1))
@@ -3665,7 +3666,7 @@ namespace
           base.access = Access::Default;
           for (;;)
           {
-            if (keyword == Kw::struct_ && !cMode && (at(Kw::private_) || at(Kw::protected_)))
+            if (keyword == Kw::struct_ && !isC() && (at(Kw::private_) || at(Kw::protected_)))
               out.structRule.push_back({pos, "a struct's bases are all public (a struct is a public value type, design.md \"struct and class\"): make it a class"});
             if (accept(Kw::virtual_)) base.isVirtual = true;
             else if (accept(Kw::public_)) base.access = Access::Public;
@@ -3705,7 +3706,7 @@ namespace
       // An imported C struct or union whose body had an error lost what the parser skipped (a member
       // in a construct it does not read): its layout would silently be another than C's, so a use
       // that needs it is an error (ClassDecl::importError). A pointer to it is still a pointer.
-      if (cMode && allErrors.size() > errorsBefore)
+      if (isC() && allErrors.size() > errorsBefore)
       {
         const Diagnostic& first = allErrors[errorsBefore];
         c->importError = first.message;
@@ -3734,7 +3735,7 @@ namespace
           f->params = Span<Decl*>{f->params.data + 1, 1};
         }
       }
-      if (keyword == Kw::struct_ && !cMode)
+      if (keyword == Kw::struct_ && !isC())
         for (Decl* m : c->members)
           if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)) && !(m->flags & DF_Friend))
             out.structRule.push_back({m->token, "a struct has no virtual functions (a struct is a public value type, design.md \"struct and class\"): make it a class"});
@@ -3781,7 +3782,7 @@ namespace
             c->name = d.name;
             selfType->name = d.name;
             synthetic = false;
-            if (cMode)
+            if (isC())
               cTypedefNames.insert(d.name.parts[0].symbol); // a type name, as a typedef's
             if (!accept(P::Comma))
               break;
@@ -4958,7 +4959,7 @@ namespace
         // No chained comparison without parentheses (design.md 22): `a < b > c` (which C++ reads as
         // `(a < b) > c`, a template-id to a reader), `a < b < c`, `a == b != c`. kpp's own sources
         // only: the converter's C++ input keeps C++'s reading.
-        if (kppSource && !isKeyword && lhs->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(lhs)->isKeyword)
+        if (isKpp() && !isKeyword && lhs->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(lhs)->isKeyword)
         {
           auto relational = [](uint32_t o) { return o == uint32_t(P::Less) || o == uint32_t(P::Greater) || o == uint32_t(P::LessEq) || o == uint32_t(P::GreaterEq); };
           auto equality = [](uint32_t o) { return o == uint32_t(P::EqEq) || o == uint32_t(P::NotEq); };
@@ -4975,7 +4976,7 @@ namespace
         Expr* paren = lhs; // also under casts: `(long long)(HANDLE) -2`
         while (paren->kind == NodeKind::CastExpr && static_cast<CastExpr*>(paren)->operand)
           paren = static_cast<CastExpr*>(paren)->operand;
-        if (!isKeyword && !cMode && paren->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(paren)->inner &&
+        if (!isKeyword && !isC() && paren->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(paren)->inner &&
             static_cast<ParenExpr*>(paren)->inner->kind == NodeKind::NameExpr &&
             (op == uint32_t(P::Minus) || op == uint32_t(P::Plus) || op == uint32_t(P::Star) || op == uint32_t(P::Amp)))
           out.castCandidates.push_back({b, currentParent});
@@ -5249,7 +5250,7 @@ namespace
       // After `(T)`: a cast if T is obviously a type (builtin, pointer, const...) or the next
       // token cannot continue an expression that `(T)` started.
       bool obviousType = t->kind != NodeKind::NamedType || isTemplateTypeName(t);
-      if (!obviousType && cMode)
+      if (!obviousType && isC())
       {
         const QualifiedName& name = static_cast<NamedType*>(t)->name;
         obviousType = name.parts.size() == 1 && !name.parts[0].hasTemplateArgs && cTypedefNames.count(name.parts[0].symbol);
@@ -5473,7 +5474,7 @@ namespace
           {
             // In kpp only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's
             // macro pasting (valid in the C++ the converter reads), whose pieces the literal would lose.
-            if (!at(TokenKind::String) && kppSource)
+            if (!at(TokenKind::String) && isKpp())
               error("a name next to a string literal (only string literals concatenate)");
             advance();
           }
@@ -5526,9 +5527,9 @@ namespace
               return node<ErrorExpr>(start);
           }
         case TokenKind::Identifier:
-          if (at(P::LParen, 1) && !cMode && spelling() == "offsetof")
+          if (at(P::LParen, 1) && !isC() && spelling() == "offsetof")
             return parseOffsetof(start);
-          if (at(P::LParen, 1) && !cMode && spelling() == "va_arg")
+          if (at(P::LParen, 1) && !isC() && spelling() == "va_arg")
             return parseVaArg(start);
           return parseNameExpr(start);
         case TokenKind::Punctuator:
@@ -5608,7 +5609,7 @@ namespace
       }
       if (at(TokenKind::String) && n->name.parts.size() == 1 && isAllCaps(spelling(toks[start])))
       {
-        if (kppSource)
+        if (isKpp())
           error("a name next to a string literal (only string literals concatenate)"); // `NAME "b"`, as above
         LiteralExpr* l = node<LiteralExpr>(start);
         l->literalKind = TokenKind::String;
@@ -6132,7 +6133,7 @@ namespace
   }
 }
 
-void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, bool cMode,
+void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, Dialect dialect,
                const ConfigValues* config)
 {
   filterDirectives(tokens, text);
@@ -6151,7 +6152,7 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     };
     tokens.erase(std::remove_if(tokens.begin(), tokens.end(), isNoise), tokens.end());
   }
-  if (cMode)
+  if (dialect == Dialect::C)
   {
     // C headers in the GNU dialect (MinGW-w64's, windows-gnu): `__extension__` before a declaration,
     // `__restrict__` (MSVC's `__restrict`), and `__attribute__((...))` where MSVC's put a calling convention, between a declaration's type
@@ -6207,15 +6208,14 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     }
     tokens = std::move(kept);
   }
-  if (!cMode && out.path.ends_with(".kpp"))
+  if (dialect == Dialect::KppSource)
     dropConfigDeclarations(tokens, text); // read before parsing (config.cpp)
   out.tokens = &tokens;
   out.text = text;
   out.arena.reserve(tokens.size() * 40 + 4096); // Measured: about 30 bytes of AST per token.
   Parser parser(tokens, text, symbols, out);
-  parser.externC = cMode;
-  parser.cMode = cMode;
-  parser.kppSource = !cMode && out.path.ends_with(".kpp"); // (the driver sets the path; the converter parses C++ without one)
+  parser.externC = dialect == Dialect::C;
+  parser.dialect = dialect;
   parser.config = config;
   parser.parseTranslationUnit();
 }

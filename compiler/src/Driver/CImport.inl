@@ -849,7 +849,7 @@
     parsed.back()->path = files.back().path.string();
     parsed.back()->index = uint32_t(parsed.size() - 1);
     parsed.back()->isImported = true;
-    parseFile(lexed.back().tokens, files.back().text, symbols, *parsed.back(), true, nullptr);
+    parseFile(lexed.back().tokens, files.back().text, symbols, *parsed.back(), Dialect::C, nullptr);
     for (size_t i = 0; i < parsed.size(); ++i)
     {
       // The vectors may have grown: re-point the parsed files at their tokens and text.

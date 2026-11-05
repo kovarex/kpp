@@ -623,7 +623,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     SymbolTable localSymbols;
     LexResult lexed = lex(slot->text, localSymbols);
     ParsedFile parsed;
-    parseFile(lexed.tokens, slot->text, localSymbols, parsed, false, nullptr);
+    parseFile(lexed.tokens, slot->text, localSymbols, parsed, Dialect::Cpp, nullptr);
     collectMemberOverrides(parsed.decls, "", lexed.tokens, slot->text, localSymbols, slot->memberClasses);
     collectOverrideKeys(parsed.decls, "", localSymbols, slot->keys, &slot->memberClasses);
     // What is appended to the converted file: the text without the `[[members]]` classes, which

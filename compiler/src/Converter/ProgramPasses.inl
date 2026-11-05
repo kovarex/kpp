@@ -506,7 +506,7 @@ static std::set<std::string> scopedNamesOf(const std::filesystem::path& dir, std
     }
     LexResult lexed = lex(text, symbols);
     ParsedFile parsed;
-    parseFile(lexed.tokens, text, symbols, parsed);
+    parseFile(lexed.tokens, text, symbols, parsed, Dialect::Cpp);
     auto add = [&](const QualifiedName& name)
     {
       if (name.parts.size() == 1 && name.last().symbol != UINT32_MAX)

@@ -122,7 +122,7 @@
     out.parsed->isLibrary = old.isLibrary;
     out.parsed->library = old.library;
     out.parsed->libraryScope = old.libraryScope;
-    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
+    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);
     if (out.lexed.errorCount)
       return why = "the new text has lexical errors", false;
     if (old.droppedWhen || out.parsed->droppedWhen)
@@ -560,7 +560,7 @@
     out.parsed->isLibrary = old.isLibrary;
     out.parsed->library = old.library;
     out.parsed->libraryScope = old.libraryScope;
-    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
+    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);
     if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
       return why = "the new text has errors", false;
     if (old.droppedWhen || out.parsed->droppedWhen)

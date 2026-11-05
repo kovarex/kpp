@@ -220,7 +220,7 @@
           if (root.scoped)
             parsed[i]->libraryScope = symbols.intern(root.name);
         }
-        parseFile(round == 0 ? lexed[i].tokens : tokens[i], files[i].text, symbols, *parsed[i], false, &options.configValues);
+        parseFile(round == 0 ? lexed[i].tokens : tokens[i], files[i].text, symbols, *parsed[i], dialectOfPath(parsed[i]->path), &options.configValues);
       });
       double t = seconds(Clock::now() - start);
       if (round > 0)
