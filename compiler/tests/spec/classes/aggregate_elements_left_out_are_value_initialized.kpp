@@ -1,0 +1,28 @@
+// spec: the elements and members a brace list leaves out are value-initialized, as from `{}` ([dcl.init.aggr] 5): an array of Q (a default constructor) given one value gets Q() for the rest (`Q q1[3] = {Q(1)}`, `Q q2[2] = {}`), an array of R (a default member initializer) gets R's defaults (`R r1[3] = {{9}}`, `R r2[2]{}`), and so does an array member, an array filled by brace elision, a base the list gives no value (`Der der{{1}}`: BaseCtor()), and an array of arrays; a list whose one element is a list initializes the aggregate's first member from it (`H c{{{2}, {3}}}`: r = {2, 3, 5}, n = 1), never its own list again (clang gives the same numbers)
+// found by thread D (2026-11-05), comparing kpp with clang on aggregates: the elements left out stayed zero (no constructor ran: `Q q1[3] = {Q(1)}` gave 1 0 0), a base left out stayed zero, and `H c{{{2}, {3}}}` put 3 into n; codegen only (the compile-time evaluator had them right)
+struct R { int v = 5; };
+struct Q { int v; Q() : v(42) {} Q(int x) : v(x) {} };
+struct H { R r[3]; int n = 1; };
+struct Arr { R items[3]; };
+struct Base { int b = 6; };
+struct BaseCtor { int c; BaseCtor() : c(77) {} };
+struct Der : Base, BaseCtor { int d = 8; };
+struct Grid { Q cells[2][2]; };
+int main()
+{
+  Q q1[3] = {Q(1)};
+  Q q2[2] = {};
+  R r1[3] = {{9}};
+  R r2[2]{};
+  H a{{{2}}};
+  H c{{{2}, {3}}};
+  H d{{{2}}, 7};
+  Arr arr = {R{1}};
+  Der der{{1}};
+  Grid g{{{Q(3)}}};
+  Q m[2][2] = {{Q(1)}};
+  println(q1[0].v, " ", q1[1].v, " ", q1[2].v, " ", q2[0].v, " ", q2[1].v, " ", r1[0].v, " ", r1[1].v, " ", r1[2].v, " ", r2[0].v, " ", r2[1].v);
+  println(a.r[0].v, " ", a.r[1].v, " ", a.r[2].v, " ", a.n, " ", c.r[0].v, " ", c.r[1].v, " ", c.r[2].v, " ", c.n, " ", d.r[2].v, " ", d.n);
+  println(arr.items[0].v, " ", arr.items[2].v, " ", der.b, " ", der.c, " ", der.d, " ", g.cells[0][0].v, " ", g.cells[0][1].v, " ", g.cells[1][1].v, " ", m[0][1].v, " ", m[1][0].v);
+  return 0;
+}

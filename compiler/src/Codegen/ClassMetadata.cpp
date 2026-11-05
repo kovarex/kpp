@@ -1149,9 +1149,12 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   }
   // (`return {{a, b}};` for an Optional<Pair<int, int>>: the inner list, one element of the
   // outer one, is an argument of a constructor, not the class's own list again; nor is the
-  // one value of `{.effectTexture = {bitmap}}`, which is the designated member's.)
+  // one value of `{.effectTexture = {bitmap}}`, which is the designated member's; nor is an
+  // aggregate's one element (`H h{{{2}, {3}}}`: its first member's list, as C++ has it; D,
+  // 2026-11-05: it was H's own list again, `{3}` went to H's second member, and `H a{{{2}}}`
+  // was unwrapped down to `2`).)
   if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text && !(listElements && hasUserConstructors(c)) &&
-      !(listElements && !pendingDesignators.empty()))
+      !(listElements && !pendingDesignators.empty()) && !(listElements && !hasUserConstructors(c) && !c->isTypedUnion))
   {
     // `T x{y}` with y a T, or of a class derived from T: a copy or a move of y, before any
     // initializer-list constructor (C++ DR 1467): `[names{::move(names)}]` moves the Vector.
@@ -1434,11 +1437,18 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         if (args.size() > ft->count)
           unsupported(at, "more values than the array of " + qualifiedName(c) + " holds");
         InlineParts parts(*this, at);
-        for (size_t i = 0; i < args.size(); ++i)
+        // (The elements the values leave out value-initialized, as from `{}`: D, 2026-11-05.)
+        size_t made = needsConstruction(ft->inner, at) ? ft->count : args.size();
+        for (size_t i = 0; i < made; ++i)
         {
           std::string element = newTemp();
           fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(i) + "\n";
-          initializeFrom(element, ft->inner, args[i], at);
+          if (i < args.size())
+            initializeFrom(element, ft->inner, args[i], at);
+          else if (isClass(ft->inner))
+            defaultConstruct(element, ft->inner, at);
+          else if (ft->inner->kind == TyKind::Array)
+            constructArray(element, ft->inner, at);
           parts.built(element, ft->inner);
         }
         return;
@@ -1452,11 +1462,14 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     {
       for (auto& [baseDef, baseFieldIdx] : info.bases)
       {
-        if (argIdx >= args.size())
-          break;
         std::string baseAddr = gep(info.name, addr, baseFieldIdx);
         const Ty* bt = info.fieldTypes[baseFieldIdx];
-        initializeFrom(baseAddr, bt, args[argIdx++], at);
+        if (argIdx < args.size())
+          initializeFrom(baseAddr, bt, args[argIdx++], at);
+        else if (needsConstruction(bt, at))
+          defaultConstruct(baseAddr, bt, at); // a base no value is for: value-initialized, as from `{}` (D, 2026-11-05: it stayed zero)
+        else
+          continue;
         parts.built(baseAddr, bt);
       }
       storeVptrs(addr, info); // the bases built pointed it at theirs
@@ -1543,11 +1556,20 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       {
         const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, d)]);
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
-        for (size_t e = 0; e < elided[i].size(); ++e)
+        // The values given, then the elements they leave out value-initialized, as from `{}`
+        // (their default constructor, their default member initializers; D, 2026-11-05: they
+        // stayed zero).
+        size_t made = needsConstruction(ft->inner, at) ? ft->count : elided[i].size();
+        for (size_t e = 0; e < made; ++e)
         {
           std::string element = newTemp();
           fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(e) + "\n";
-          initializeFrom(element, ft->inner, elided[i][e], at);
+          if (e < elided[i].size())
+            initializeFrom(element, ft->inner, elided[i][e], at);
+          else if (isClass(ft->inner))
+            defaultConstruct(element, ft->inner, at);
+          else if (ft->inner->kind == TyKind::Array)
+            constructArray(element, ft->inner, at);
           if (!info.isUnion)
             parts.built(element, ft->inner);
         }
@@ -2604,22 +2626,35 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     if (bi->args.empty())
     {
       storeZero(t, addr, at);
+      // `Q arr[2] = {}`, `R arr[2]{}`: each element value-initialized, its default constructor run
+      // or its default member initializers applied (D, 2026-11-05: zero alone left them out).
+      if (t->kind == TyKind::Array && needsConstruction(t, at))
+        constructArray(addr, t, at);
       return;
     }
     if (t->kind == TyKind::Array)
     {
-      // Element by element (nested lists for arrays of arrays); the rest stays zero. An element
-      // built is destroyed if a later one's initializer throws ([except.ctor]/3): an unwind-only
-      // cleanup each, dropped once the array is whole (its owner destroys it then).
+      // Element by element (nested lists for arrays of arrays); the elements the list leaves out
+      // value-initialized, as from `{}` ([dcl.init.aggr] 5: `Q arr[3] = {Q(1)}` runs Q() for the
+      // other two, `R arr[3] = {{9}}` gives them R's default member initializers; D, 2026-11-05:
+      // they stayed zero, a silent wrong answer), the rest of a scalar array zero. An element built
+      // is destroyed if a later one's initializer throws ([except.ctor]/3): an unwind-only cleanup
+      // each, dropped once the array is whole (its owner destroys it then).
       storeZero(t, addr, at);
       bool cleanups = !scopes.empty() && needsDestruction(t->inner, at);
+      size_t made = needsConstruction(t->inner, at) ? t->count : std::min<size_t>(bi->args.size(), t->count);
       std::vector<std::string> built;
-      for (size_t i = 0; i < bi->args.size() && i < t->count; ++i)
+      for (size_t i = 0; i < made; ++i)
       {
         std::string element = newTemp();
         fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
-        initializeFrom(element, t->inner, bi->args[i], at);
-        if (cleanups && i + 1 < bi->args.size() && i + 1 < t->count)
+        if (i < bi->args.size())
+          initializeFrom(element, t->inner, bi->args[i], at);
+        else if (isClass(t->inner))
+          defaultConstruct(element, t->inner, at);
+        else if (t->inner->kind == TyKind::Array)
+          constructArray(element, t->inner, at);
+        if (cleanups && i + 1 < made)
         {
           Object o{element, t->inner};
           o.unwindOnly = true;
