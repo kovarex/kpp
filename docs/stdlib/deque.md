@@ -22,7 +22,8 @@ iterators, in order), copy, move, `= {...}` (replaces the contents with the list
 `rbegin()`, `rend()`, `swap(other)`;
 `push_back`, `push_front`, `emplace_back`, `emplace_front`, `pop_back`, `pop_front` (not empty);
 `assign(first, last)`, `assign(count, value)`, `assign({...})` (replace the contents; the range
-must not be this deque's); `insert(position, value)`, `emplace(position, args...)` (the element made
+must not be this deque's); `insert(position, value)`, `insert(position, count, value)` (O(count + size())),
+`emplace(position, args...)` (the element made
 from args, then as insert) and `erase(position)` returning the position of the inserted element /
 the element after the erased one; `erase(first, last)`, removing the elements in [first, last) and
 returning the position of the element after them; `resize(n)`, `clear()`; `==` and `<=>`

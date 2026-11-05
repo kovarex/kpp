@@ -1,0 +1,31 @@
+// spec: the rest of std::string's search, replace, insert, compare and assign forms, each as std::string does (MSVC's STL printed the same for the C++ of this program): find(s, pos, n); find_last_of and find_last_not_of from a position (text, String and char); replace(pos, n, count, c), replace(first, last, text) with pointers, replace(pos, n, str, pos2, n2) (str this string too); insert(position, c) returning the new character's position; compare(pos, n, s, n2), compare(pos, n, str, pos2, n2); assign(str, pos, n); and OutOfRange when pos2 or pos is past str's end
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  String s = "hello world, hello";
+  printf("%d %d %d %d %d %d %d\n", (int)s.find("lo wx", 0, 4), (int)s.find("hel", 1, 3), (int)s.find_last_of("lo", 10), (int)s.find_last_of(String("h"), 12), (int)s.find_last_not_of("ol", 4), (int)s.find_last_not_of(String("lh"), 3), (int)s.find_last_of('o', 5));
+  String r = "abcdef";
+  r.replace(1, 2, 3, '-');
+  String r2 = "abcdef";
+  r2.replace(r2.begin() + 1, r2.begin() + 3, "XYZ");
+  String r3 = "abcdef";
+  r3.replace(r3.begin(), r3.begin() + 2, String("12"));
+  String r4 = "abcdef";
+  r4.replace(0, 2, String("0123456"), 2, 3);
+  String r5 = "abcdef";
+  r5.replace(0, 1, r5, 3, 100);
+  String i = "ac";
+  char* at = i.insert(i.begin() + 1, 'b');
+  printf("%s %s %s %s %s %s %d\n", r.c_str(), r2.c_str(), r3.c_str(), r4.c_str(), r5.c_str(), i.c_str(), (int)(at - i.begin()));
+  String c = "abcdef";
+  printf("%d %d %d %d\n", c.compare(1, 2, "bcx", 2) == 0, c.compare(1, 3, "bcd") == 0, c.compare(2, 2, String("xxcdxx"), 2, 2) == 0, c.compare(0, 2, String("ab"), 0, 100) == 0);
+  String a;
+  a.assign(String("0123456"), 2, 3);
+  String a2;
+  a2.assign(String("0123456"), 5, 100);
+  printf("%s %s\n", a.c_str(), a2.c_str());
+  try { a.assign(String("01"), 3, 1); printf("assigned\n"); } catch (const OutOfRange&) { printf("assign: out of range\n"); }
+  try { r.replace(0, 1, String("01"), 3, 1); printf("replaced\n"); } catch (const OutOfRange&) { printf("replace: out of range\n"); }
+  try { c.compare(0, 1, String("01"), 3, 1); printf("compared\n"); } catch (const OutOfRange&) { printf("compare: out of range\n"); }
+  return 0;
+}

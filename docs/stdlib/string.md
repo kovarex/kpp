@@ -48,26 +48,30 @@ forms that take a position return a position:
 - `append(text)`, `append(text, count)`, `append(first, last)` (the bytes of a pointer range),
   `append(count, c)`, `append(other, index, count)` (count bytes of other from index, fewer when
   other ends first), `push_back(c)`, `out << x` (any text piece, text.md; String has no `+=`).
-- `insert(index, text)`, `insert(index, count, c)`, `insert(position, first, last)`: index past
-  the end inserts at the end. O(size() + inserted).
+- `insert(index, text)`, `insert(index, count, c)`, `insert(position, first, last)`: throws OutOfRange
+  when index > size() (the string unchanged); index size() appends. O(size() + inserted).
+  `insert(position, c)` returns the new character's position.
 - `erase(index, count)`: removes count bytes from index (to the end when count is negative or
   reaches past it). Throws OutOfRange when index > size(). `erase(position)`,
   `erase(first, last)` with pointers, which return where the byte after the removed ones is now.
 - `replace(index, count, text)`, `replace(index, count, text, n)`: erase then insert; the text may be part of
-  the string (it is the text as it was before the call).
+  the string (it is the text as it was before the call). `replace(index, count, n, c)` (n copies of c),
+  `replace(first, last, text)` with pointers, `replace(index, count, other, index2, n)` (up to n bytes
+  of other from index2; OutOfRange when index2 > other.size()).
 - `resize(n)`, `resize(n, c)`: cut to n bytes, or append zero bytes / copies of c.
 - `reserve(n)`: afterwards `capacity() >= n`; `clear()`: empty, capacity stays; `pop_back()`.
 - `assign(text, count)`, `assign(first, last)` (the bytes of a pointer range), `assign(text)`,
-  `assign(other)`, `assign(count, c)`: replace the contents (text may point into this String).
+  `assign(other)`, `assign(count, c)`, `assign(other, index, count)` (up to count bytes of other from
+  index; OutOfRange when index > other.size()): replace the contents (text may point into this String).
 
 Searching (each returns an index or npos; `from` is where the search starts):
-- `find(text, from)`, `find(c, from)`: first occurrence at or after from. An empty text is found
-  at from when from <= size().
+- `find(text, from)`, `find(c, from)`, `find(text, from, n)` (the n bytes at text): first occurrence at
+  or after from. An empty text is found at from when from <= size().
 - `rfind(text, from)`, `rfind(c, from)`: the last occurrence starting at or before from (anywhere
   when from is npos or omitted). `find_first_of(set)`, `find_first_not_of(set)`,
   `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set;
-  `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c; `find_first_not_of` takes a
-  `from` too (set or c), as C++'s pos.
+  `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c; each takes a `from` too
+  (set or c), as C++'s pos: the last ones search at or before it.
 - `startsWith(prefix)`, `endsWith(suffix)` (kpp additions), and C++20's `starts_with(x)` and
   `ends_with(x)` of a text (a String, a StringView, a literal) or a char; StringView has the same.
 
@@ -81,7 +85,9 @@ Producing new strings:
 
 `compare(other)`: negative, zero or positive as this string orders before, equal to or after
 other by `<`. `compare(pos, count, other)`: the substring [pos, pos + count), count
-clamped to what there is, compared so; OutOfRange when pos > size(). `swap(other)`: exchanges the contents.
+clamped to what there is, compared so; OutOfRange when pos > size(). `compare(pos, count, text, n)` with
+the n bytes at text, `compare(pos, count, other, pos2, n)` with up to n bytes of other from pos2
+(OutOfRange when pos2 > other.size()). `swap(other)`: exchanges the contents.
 
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
 bytes), a proper prefix before the longer string; `<=>` orders the same way and gives `>`, `<=`

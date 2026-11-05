@@ -236,6 +236,18 @@ public:
     }
     return DequeIterator<T>(this, index);
   }
+  // count copies of value before index (appended, then rotated into place: O(count + size()));
+  // returns the position of the first one.
+  DequeIterator<T> insert(ContainerSize index, ContainerSize count, const T& value)
+  {
+    T copy(value); // value may be an element
+    ContainerSize old = this->length;
+    for (ContainerSize i = 0; i < count; ++i)
+      this->push_back(copy);
+    rotate(this->begin() + index, this->begin() + old, this->end());
+    return DequeIterator<T>(this, index);
+  }
+  DequeIterator<T> insert(const_iterator position, ContainerSize count, const T& value) { return this->insert(position.index, count, value); }
   DequeIterator<T> insert(const_iterator position, const T& value) { return this->insert(position.index, value); }
   DequeIterator<T> insert(const_iterator position, T&& value) { return this->insert(position.index, move(value)); }
   // An element made from args, inserted before position as insert does (std::deque::emplace).

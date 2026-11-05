@@ -1,0 +1,22 @@
+// spec: Deque's insert(position, count, value), returning the first new element's position, and ForwardList's removeIf(predicate) (std's remove_if, as List's) and sort() and sort(less) (stable), as std::deque and std::forward_list do (MSVC's STL printed the same for the C++ of this program) (`1: 1 7 7 7 5` / ` 1 1 3 5 / 5 3 1 1`)
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  Deque<int> d = {1, 5};
+  DequeIterator<int> di = d.insert(d.begin() + 1, 3, 7);
+  printf("%d:", (int)(di - d.begin()));
+  for (int x : d)
+    printf(" %d", x);
+  printf("\n");
+  ForwardList<int> f = {5, 1, 4, 1, 3};
+  f.removeIf([](int x) { return x == 4; });
+  f.sort();
+  for (int x : f)
+    printf(" %d", x);
+  f.sort([](int a, int b) { return a > b; });
+  printf(" /");
+  for (int x : f)
+    printf(" %d", x);
+  printf("\n");
+  return 0;
+}

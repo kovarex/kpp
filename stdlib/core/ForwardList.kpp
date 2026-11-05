@@ -155,11 +155,17 @@ public:
   ContainerSize remove(const T& value)
   {
     T copy(value); // value may be an element
+    return this->removeIf([&](const T& element) { return element == copy; });
+  }
+  // Removes every element for which predicate is true (std's remove_if); returns how many.
+  template<typename F>
+  ContainerSize removeIf(F predicate)
+  {
     ContainerSize removed = 0;
     ForwardIterator<T> previous = this->before_begin();
     while (previous.node->next)
     {
-      if (((ForwardNode<T>*)previous.node->next)->value == copy)
+      if (predicate(((ForwardNode<T>*)previous.node->next)->value))
       {
         this->erase_after(previous);
         ++removed;
@@ -168,6 +174,28 @@ public:
         ++previous;
     }
     return removed;
+  }
+  // Stable sort that relinks the nodes; elements do not move (as List's).
+  void sort()
+  {
+    this->sort([](const T& a, const T& b) { return a < b; });
+  }
+  template<typename F>
+  void sort(F less)
+  {
+    Vector<ForwardNode<T>*> nodes;
+    for (ForwardLinks* node = this->beforeHead.next; node; node = node->next)
+      nodes.push_back((ForwardNode<T>*)node);
+    if (nodes.size() < 2)
+      return;
+    stableSort(nodes.begin(), nodes.end(), [&](ForwardNode<T>* a, ForwardNode<T>* b) { return less(a->value, b->value); });
+    ForwardLinks* previous = &this->beforeHead;
+    for (ForwardNode<T>* node : nodes)
+    {
+      previous->next = node;
+      previous = node;
+    }
+    previous->next = nullptr;
   }
   void reverse()
   {
