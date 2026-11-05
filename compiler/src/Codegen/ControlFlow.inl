@@ -1,0 +1,615 @@
+// struct Emitter's members: for constexpr, range-for, conditions and switch. Part of codegen.cpp,
+// included in the struct's body in Codegen/Emitter.hpp (a file of its own since 2026-11-05, moved
+// without a change).
+    // `types<A, B, C>`: the compile-time list of types (design.md 8.1).
+    bool isTypesList(const NamedType* n)
+    {
+      return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && sym(n->name.parts[0].symbol) == "types";
+    }
+
+    // `members(T)` (design.md 8.3), `alternatives(U)` (8.5): the type reflected on, or null when
+    // the node is no such list; alternatives set when it is the latter.
+    Expr* reflectionSubject(Node* list, bool* alternatives = nullptr)
+    {
+      if (!list || list->kind != NodeKind::CallExpr)
+        return nullptr;
+      auto* c = static_cast<CallExpr*>(list);
+      if (!c->callee || c->callee->kind != NodeKind::NameExpr || c->args.size() != 1)
+        return nullptr;
+      const QualifiedName& name = static_cast<NameExpr*>(c->callee)->name;
+      if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
+        return nullptr;
+      std::string which = sym(name.parts[0].symbol);
+      if (which != "members" && which != "alternatives")
+        return nullptr;
+      if (alternatives)
+        *alternatives = which == "alternatives";
+      return c->args[0];
+    }
+
+    // The descriptors of a class's non-static data members, bases first, in declaration order.
+    void collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth)
+    {
+      if (depth > 16)
+        unsupported(at, "a class nested too deep for members(T)");
+      ClassDecl* def = classDef(cls->decl, at);
+      if (!def)
+        unsupported(at, "members(T) of a class without a definition");
+      TemplateArgs classArgs = global.classArgsOf(cls);
+      for (const ClassDecl::Base& b : def->bases)
+      {
+        const Ty* bt = global.typeOfAstIn(b.type, def, classArgs);
+        bt = bt ? types.unqualified(types.stripRef(bt)) : nullptr;
+        if (!isClass(bt))
+          unsupported(at, "members(T) with a base class of unknown type");
+        collectMembers(canonicalClass(bt, at), out, at, depth + 1);
+      }
+      for (Decl* d : def->members)
+      {
+        if (d->kind != NodeKind::VariableDecl || (d->flags & (DF_Static | DF_Typedef)))
+          continue;
+        auto* v = static_cast<VariableDecl*>(d);
+        if (v->name.empty())
+          continue;
+        const Ty* t = global.typeOfDeclIn(v, classArgs);
+        if (!t || !t->isKnown())
+          unsupported(at, "members(T) with a member of unknown type (" + sym(v->name.last().symbol) + ")");
+        out.push_back(types.member(t, v, cls));
+      }
+    }
+
+    // `for constexpr (typename T : types<A, B>) body` / `for constexpr (int i : {1, 2}) body`: the
+    // body once per element, re-typed and emitted with the loop variable bound to the element (a
+    // type, or a constant), the way a pack expansion binds each element in turn.
+    void forConstexpr(ForConstexprStmt* f)
+    {
+      forEachConstexprElement(f, [&](size_t)
+      {
+        pushScope();
+        statement(f->body);
+        popScope();
+      });
+    }
+
+    // The statements of a for constexpr body: those of its block, or the statement itself.
+    static std::vector<Stmt*> bodyStatements(Stmt* body)
+    {
+      if (!body)
+        return {};
+      if (body->kind == NodeKind::BlockStmt)
+        return std::vector<Stmt*>(static_cast<BlockStmt*>(body)->stmts.begin(), static_cast<BlockStmt*>(body)->stmts.end());
+      return {body};
+    }
+
+    // Runs body(index) once per element of a for constexpr list, with the function re-typed for
+    // the element and currentArgs binding the loop variable to it; the original typing is
+    // restored afterwards.
+    void forEachConstexprElement(ForConstexprStmt* f, const std::function<void(size_t)>& body)
+    {
+      auto* var = static_cast<TemplateParamDecl*>(f->var);
+      if (!currentFunction)
+        unsupported(f, "for constexpr outside a function");
+      TemplateArgs none;
+      TemplateArgs original = currentArgs ? *currentArgs : none;
+      std::vector<const Ty*> elements;
+      Node* list = f->list;
+      if (list && list->kind == NodeKind::NamedType && isTypesList(static_cast<NamedType*>(list)))
+      {
+        if (!var->isType)
+          unsupported(f, "a list of types for a for constexpr value variable");
+        for (Node* arg : static_cast<NamedType*>(list)->name.parts[0].templateArgs)
+        {
+          if (!arg || uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
+            unsupported(f, "an element of types<...> that is not a type");
+          const Ty* t = global.typeOfAstIn(static_cast<Type*>(arg), currentFunction, original);
+          if (!t || !t->isKnown())
+            unsupported(f, "an element of types<...> whose type is unknown");
+          elements.push_back(t);
+        }
+      }
+      else if (list && list->kind == NodeKind::BraceInitExpr)
+      {
+        if (var->isType)
+          unsupported(f, "a list of values for a for constexpr type variable");
+        const Ty* elementTy = var->valueType ? global.typeOfAstIn(var->valueType, currentFunction, original) : nullptr;
+        if (!elementTy || !elementTy->isKnown() || elementTy->kind == TyKind::Auto)
+          unsupported(f, "a for constexpr value variable without a written type");
+        for (Expr* e : static_cast<BraceInitExpr*>(list)->args)
+        {
+          std::optional<int64_t> v = evalConst(e);
+          if (!v)
+            unsupported(e, "a for constexpr element that is not a constant");
+          elements.push_back(types.valueType(elementTy, *v));
+        }
+      }
+      else if (bool alternatives = false; Expr* subject = reflectionSubject(list, &alternatives))
+      {
+        // `members(T)`: T's non-static data members, bases first, in declaration order;
+        // `alternatives(U)`: a typed union's alternatives, in declaration order.
+        if (var->isType)
+          unsupported(f, "members(T) or alternatives(U) for a for constexpr type variable");
+        const Ty* cls = nullptr;
+        if (subject->kind == NodeKind::NameExpr)
+        {
+          NamedType tmp{};
+          tmp.kind = NodeKind::NamedType;
+          tmp.name = static_cast<NameExpr*>(subject)->name;
+          cls = global.typeOfAstIn(&tmp, currentFunction, original);
+        }
+        cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+        if (!isClass(cls))
+          unsupported(f, alternatives ? "alternatives(U) where U is not a class" : "members(T) where T is not a class");
+        cls = canonicalClass(cls, f);
+        if (alternatives)
+        {
+          ClassDecl* u = typedUnionOf(cls, f);
+          if (!u)
+            unsupported(f, "alternatives(U) where U is not a typed union");
+          for (size_t i = 0; i < u->alternatives.size(); ++i)
+            elements.push_back(types.member(alternativeType(u, cls, i, f), u->alternatives[i], cls));
+        }
+        else
+          collectMembers(cls, elements, f, 0);
+      }
+      else
+        unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");
+      const TemplateArgs* savedArgs = currentArgs;
+      for (size_t index = 0; index < elements.size(); ++index)
+      {
+        TemplateArgs elementArgs = original;
+        bool bound = false;
+        for (auto& [d, t] : elementArgs.pairs)
+          if (d == var)
+            t = elements[index], bound = true;
+        if (!bound)
+          elementArgs.pairs.push_back({var, elements[index]});
+        global.retypeFor(currentFunction, elementArgs, currentClassTy);
+        currentArgs = &elementArgs;
+        body(index);
+        currentArgs = savedArgs;
+      }
+      if (!elements.empty())
+        global.retypeFor(currentFunction, original, currentClassTy);
+    }
+
+    // The temporary a range-for's range is a member subobject of (`Duo{...}.a`, `makeHolder().items[1]`):
+    // the base of a chain of `.member` and array elements, when it is a class prvalue. The reference
+    // the range binds extends its whole lifetime to the loop's end ([class.temporary]/6), not the
+    // other temporaries of the range's expression.
+    const Ty* rangeTemporaryBase(Expr* e)
+    {
+      bool member = false;
+      for (;;)
+      {
+        while (e && e->kind == NodeKind::ParenExpr)
+          e = static_cast<ParenExpr*>(e)->inner;
+        if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op == P::Dot)
+        {
+          Decl* d = static_cast<MemberExpr*>(e)->resolved;
+          if (!d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Static))
+            return nullptr;
+          e = static_cast<MemberExpr*>(e)->base;
+          member = true;
+          continue;
+        }
+        if (e && e->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(e)->base && static_cast<IndexExpr*>(e)->base->ty &&
+            types.stripRef(static_cast<IndexExpr*>(e)->base->ty)->kind == TyKind::Array)
+        {
+          e = static_cast<IndexExpr*>(e)->base;
+          member = true;
+          continue;
+        }
+        break;
+      }
+      if (!member || !e || !e->ty || e->ty->isReference() || isLvalueExpression(e) || !isClass(e->ty))
+        return nullptr;
+      return types.unqualified(e->ty);
+    }
+
+    // Moves the statement's temporary of class cls made since `since` (the last one: the base the
+    // range is a member of) to the loop's scope, which destroys it when the loop ends.
+    void extendRangeTemporary(const Ty* cls, size_t since, Node* at)
+    {
+      for (size_t i = statementTemps.size(); i-- > since;)
+        if (statementTemps[i].ty && isClass(statementTemps[i].ty) && canonicalClass(statementTemps[i].ty, at) == canonicalClass(cls, at))
+        {
+          scopes.back().push_back(statementTemps[i]);
+          statementTemps.erase(statementTemps.begin() + i);
+          return;
+        }
+    }
+
+    void rangeFor(RangeForStmt* f)
+    {
+      pushScope();
+      const Ty* rt = types.stripRef(f->range->ty);
+      const Ty* temporaryBase = rangeTemporaryBase(f->range);
+      size_t tempsBefore = statementTemps.size();
+      if (!rt || !rt->isKnown())
+        unsupported(f, "a range of unknown type");
+      std::string beginV, endV;
+      const Ty* elementTy;
+      if (rt->kind == TyKind::Array)
+      {
+        std::string base;
+        if (f->range->kind == NodeKind::BraceInitExpr)
+        {
+          // `for (X* kids : {&a, &b})`: the elements in a temporary array.
+          auto* b = static_cast<BraceInitExpr*>(f->range);
+          base = newObjectSlot(rt, f);
+          for (size_t i = 0; i < b->args.size(); ++i)
+          {
+            std::string slot = newTemp();
+            fn += "  " + slot + " = getelementptr inbounds " + llType(rt, f) + ", ptr " + base + ", i64 0, i64 " + std::to_string(i) + "\n";
+            initializeFrom(slot, rt->inner, b->args[i], f);
+          }
+        }
+        else
+          base = lvalue(f->range);
+        if (temporaryBase)
+          extendRangeTemporary(temporaryBase, tempsBefore, f);
+        beginV = newTemp();
+        fn += "  " + beginV + " = getelementptr inbounds " + llType(rt, f) + ", ptr " + base + ", i64 0, i64 0\n";
+        endV = newTemp();
+        fn += "  " + endV + " = getelementptr inbounds " + llType(rt, f) + ", ptr " + base + ", i64 0, i64 " + std::to_string(rt->count) + "\n";
+        elementTy = rt->inner;
+      }
+      else if (isClass(rt))
+      {
+        Value range = rvalue(f->range);
+        if (temporaryBase)
+          extendRangeTemporary(temporaryBase, tempsBefore, f);
+        if (range.isTemporary)
+        {
+          for (size_t i = statementTemps.size(); i-- > 0;)
+            if (statementTemps[i].addr == range.text)
+              statementTemps.erase(statementTemps.begin() + i);
+          scopes.back().push_back({range.text, range.ty});
+        }
+        const Ty* beginIn = nullptr;
+        const Ty* endIn = nullptr;
+        FunctionDecl* begin = findMember(range.ty, "begin", f, &beginIn);
+        FunctionDecl* end = findMember(range.ty, "end", f, &endIn);
+        Value b, e;
+        if (begin && end)
+        {
+          // On the base that declares them, where it is (`for (T* t : *this)` in TriggerList, a
+          // Vector<T*> after a polymorphic base: not at the object's address).
+          auto on = [&](const Ty* in)
+          {
+            std::string object = range.text;
+            if (canonicalClass(range.ty, f) != in)
+              baseAddress(range.ty, in, range.text, object, f);
+            return object;
+          };
+          b = callFunction(begin, global.classArgsOf(beginIn), beginIn, on(beginIn), "", {}, f);
+          e = callFunction(end, global.classArgsOf(endIn), endIn, on(endIn), "", {}, f);
+        }
+        else
+        {
+          // No such members: begin(__range) and end(__range), the free functions found for the
+          // range's class, called with the range evaluated once (C++'s rule).
+          const Ty* rangeRef = types.lref(types.unqualified(range.ty));
+          FunctionDecl* freeBegin = global.findFreeFunction("begin", {rangeRef}, currentFunction);
+          FunctionDecl* freeEnd = global.findFreeFunction("end", {rangeRef}, currentFunction);
+          if (!freeBegin || !freeEnd)
+            unsupported(f, "a range without begin()/end()");
+          VariableDecl& var = rangeVariables.emplace_back();
+          var.kind = NodeKind::VariableDecl;
+          var.token = f->range->token;
+          var.file = currentFile;
+          std::string slot = "%v" + std::to_string(temp++);
+          allocas += "  " + slot + " = alloca ptr\n";
+          fn += "  store ptr " + range.text + ", ptr " + slot + "\n";
+          locals[&var] = {slot, rangeRef, true};
+          NameExpr& name = rangeNames.emplace_back();
+          name.kind = NodeKind::NameExpr;
+          name.token = f->range->token;
+          name.resolved = &var;
+          name.ty = types.unqualified(range.ty);
+          Expr* arg = &name;
+          auto call = [&](FunctionDecl* callee) -> Value
+          {
+            TemplateArgs calleeArgs;
+            if (!callee->templateParams.empty())
+            {
+              global.deduceArgs(callee, {rangeRef}, calleeArgs);
+              if (calleeArgs.pairs.size() < callee->templateParams.size())
+                unsupported(f, "a call to " + qualifiedName(callee) + " whose template arguments could not be deduced");
+            }
+            return callFunction(callee, calleeArgs, nullptr, "", "", Span<Expr*>{&arg, 1}, f);
+          };
+          b = call(freeBegin);
+          e = call(freeEnd);
+        }
+        // `Iterator& begin()`, `const Iterator& end()`: the loop works on copies, C++'s `auto __begin
+        // = range.begin()` (HeuristicEntitySearch hands out its own iterator member).
+        auto byValue = [&](Value v) -> Value
+        {
+          if (!v.ty || !v.ty->isReference())
+            return v;
+          const Ty* t = types.unqualified(types.stripRef(v.ty));
+          if (t->kind == TyKind::Pointer)
+            return load(v.text, t, f);
+          if (!isClass(t))
+            return v;
+          std::string copy = newObjectSlot(t, f);
+          copyConstruct(copy, v.text, t, f);
+          return {copy, t, true};
+        };
+        b = byValue(b);
+        e = byValue(e);
+        if (b.ty && isClass(b.ty))
+        {
+          iteratorLoop(f, b, e);
+          popScope();
+          return;
+        }
+        if (!b.ty || b.ty->kind != TyKind::Pointer)
+          unsupported(f, "a range whose iterators are not pointers");
+        beginV = b.text;
+        endV = e.text;
+        elementTy = b.ty->inner;
+      }
+      else
+        unsupported(f, "this kind of range");
+      std::string itSlot = "%v" + std::to_string(temp++);
+      allocas += "  " + itSlot + " = alloca ptr\n";
+      fn += "  store ptr " + beginV + ", ptr " + itSlot + "\n";
+      destroyTemps();
+      std::string cL = newLabel("range.cond"), bL = newLabel("range.body"), sL = newLabel("range.step"), eL = newLabel("range.end");
+      emitBranch(cL);
+      startBlock(cL);
+      std::string it = newTemp();
+      fn += "  " + it + " = load ptr, ptr " + itSlot + "\n";
+      std::string done = newTemp();
+      fn += "  " + done + " = icmp eq ptr " + it + ", " + endV + "\n";
+      fn += "  br i1 " + done + ", label %" + eL + ", label %" + bL + "\n";
+      startBlock(bL);
+      pushScope();
+      // The loop variable: a reference binds to the element, a value copies it.
+      auto* v = static_cast<VariableDecl*>(f->var);
+      const Ty* vt = declType(v);
+      if (!vt || !vt->isKnown() || types.isDependent(vt))
+        unsupported(v, "a loop variable of unknown type");
+      std::string element = newTemp();
+      fn += "  " + element + " = load ptr, ptr " + itSlot + "\n";
+      std::string slot = "%v" + std::to_string(temp++);
+      if (vt->isReference())
+      {
+        std::string target = elementAs(element, elementTy, vt, v);
+        if (elementMadeInto(elementTy, vt))
+        {
+          // `for (const String& name : {"ref"})`: a String made from the element, the reference's
+          // (it lives for the iteration).
+          const Ty* cls = types.unqualified(types.stripRef(vt));
+          target = newObjectSlot(cls, v);
+          makeFromElement(target, cls, element, elementTy, v);
+          if (needsDestruction(cls, v))
+            scopes.back().push_back({target, cls});
+        }
+        allocas += "  " + slot + " = alloca ptr\n";
+        fn += "  store ptr " + target + ", ptr " + slot + "\n";
+        locals[v] = {slot, vt, true};
+      }
+      else
+      {
+        if (v == namedReturn)
+          slot = sretAddr; // built in the caller's result, each iteration (namedReturnVariable)
+        else
+          allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
+        if (elementMadeInto(elementTy, vt))
+          makeFromElement(slot, vt, element, elementTy, v);
+        else if (isClass(vt))
+          copyConstruct(slot, elementAs(element, elementTy, vt, v), vt, v);
+        else
+          store(load(element, elementTy, v), slot, vt, v);
+        locals[v] = {slot, vt, false};
+        if (needsDestruction(vt, v))
+          scopes.back().push_back({slot, vt});
+      }
+      declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
+      loops.push_back({eL, sL, scopes.size()});
+      subStatement(f->body);
+      loops.pop_back();
+      popScope();
+      emitBranch(sL);
+      startBlock(sL);
+      debugLine(f);
+      std::string cur = newTemp();
+      fn += "  " + cur + " = load ptr, ptr " + itSlot + "\n";
+      std::string next = newTemp();
+      fn += "  " + next + " = getelementptr inbounds " + llType(elementTy, f) + ", ptr " + cur + ", i64 1\n";
+      fn += "  store ptr " + next + ", ptr " + itSlot + "\n";
+      emitBranch(cL);
+      startBlock(eL);
+      popScope();
+    }
+
+    Value condition(Node* cond, Node* at)
+    {
+      if (!cond)
+        unsupported(at, "a missing condition");
+      if (cond->kind == NodeKind::DeclStmt)
+      {
+        auto* d = static_cast<DeclStmt*>(cond);
+        if (d->decls.size() != 1 || d->decls[0]->kind != NodeKind::VariableDecl)
+          unsupported(at, "this condition declaration");
+        auto* v = static_cast<VariableDecl*>(d->decls[0]);
+        declareLocal(v);
+        Local& l = locals[v];
+        if (l.isRef || l.ty->isReference())
+        {
+          // `if (const IDConnector<ItemID>& spoilResultID = itemID->spoilResult)`: the object the
+          // reference names is the condition (its operator bool), not the reference's address.
+          std::string object = newTemp();
+          fn += "  " + object + " = load ptr, ptr " + l.addr + "\n";
+          const Ty* objectTy = types.stripRef(l.ty);
+          return convert(isAggregate(objectTy) ? Value{object, objectTy} : load(object, objectTy, at), types.boolType(), at);
+        }
+        return convert(load(l.addr, l.ty, at), types.boolType(), at);
+      }
+      return convert(rvalue(static_cast<Expr*>(cond)), types.boolType(), at);
+    }
+
+    void switchStatement(SwitchStmt* sw)
+    {
+      pushScope();
+      if (sw->init)
+        statement(sw->init);
+      if (!sw->cond)
+        unsupported(sw, "a switch without a condition");
+      Value cond;
+      const Ty* switchedTy = nullptr;
+      if (sw->cond->kind == NodeKind::DeclStmt)
+      {
+        // `switch (const int type = table.get<uint32_t>("type"))`: the variable, in the switch's
+        // scope, and its value switched on.
+        auto* d = static_cast<DeclStmt*>(sw->cond);
+        if (d->decls.size() != 1 || d->decls[0]->kind != NodeKind::VariableDecl)
+          unsupported(sw, "this switch declaration");
+        auto* v = static_cast<VariableDecl*>(d->decls[0]);
+        declareLocal(v);
+        Local& l = locals[v];
+        cond = load(l.addr, l.ty, sw);
+        switchedTy = types.stripRef(l.ty);
+      }
+      else
+      {
+        cond = rvalue(static_cast<Expr*>(sw->cond));
+        switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a kpp enum's switch names every value
+      }
+      if (ClassDecl* c = typedUnionOf(cond.ty, sw))
+      {
+        // `switch (p)` on a typed union: its tag.
+        cond = Value{loadTag(c, cond.ty, cond.text, sw), tagType(c), false};
+        switchedTy = cond.ty;
+      }
+      else if (isClass(cond.ty))
+      {
+        // `switch (direction)` on an object: its conversion to an enum or integer (Direction's `operator Enum()`).
+        const Ty* owner = nullptr;
+        FunctionDecl* op = integralConversionOperator(cond.ty, sw, &owner);
+        if (!op)
+          unsupported(sw, "a switch on a class without a conversion to an enum or an integer");
+        cond = callConversion(op, cond.ty, owner, cond.text, sw);
+        switchedTy = cond.ty;
+      }
+      const Ty* ct = cond.ty->kind == TyKind::Enum ? enumUnderlying(cond.ty->decl) : cond.ty;
+      if (ct->kind != TyKind::Int && ct->kind != TyKind::Char && ct->kind != TyKind::Bool)
+        unsupported(sw, "a switch on a non-integer");
+      cond = convert(cond, ct, sw);
+      destroyTemps();
+      if (!sw->body || sw->body->kind != NodeKind::BlockStmt)
+        unsupported(sw, "a switch whose body is not a block");
+      auto* body = static_cast<BlockStmt*>(sw->body);
+      std::string endL = newLabel("switch.end");
+      std::string defaultL;
+      std::map<std::pair<const Stmt*, size_t>, std::string> caseLabels; // (label statement, for constexpr element) -> block
+      std::set<int64_t> covered;
+      std::string cases;
+      constexpr size_t topLevel = SIZE_MAX;
+      auto addLabel = [&](Stmt* st, size_t element)
+      {
+        if (st->kind == NodeKind::CaseStmt)
+        {
+          auto* c = static_cast<CaseStmt*>(st);
+          if (c->rangeEnd)
+            unsupported(st, "case ranges");
+          auto v = evalConst(c->value);
+          if (!v)
+            unsupported(st, "a case label that is not a constant");
+          std::string l = newLabel("case");
+          caseLabels[{st, element}] = l;
+          covered.insert(*v);
+          cases += "    " + llType(ct, sw) + " " + std::to_string(*v) + ", label %" + l + "\n";
+        }
+        else if (st->kind == NodeKind::DefaultStmt)
+        {
+          defaultL = newLabel("default");
+          caseLabels[{st, element}] = defaultL;
+        }
+      };
+      for (Stmt* st : body->stmts)
+      {
+        if (st->kind == NodeKind::ForConstexprStmt)
+        {
+          // `for constexpr (typename T : kinds) case T::kind: ...`: one case per element.
+          auto* fc = static_cast<ForConstexprStmt*>(st);
+          forEachConstexprElement(fc, [&](size_t element)
+          {
+            for (Stmt* inner : bodyStatements(fc->body))
+              addLabel(inner, element);
+          });
+          continue;
+        }
+        addLabel(st, topLevel);
+      }
+      std::string invalidL;
+      const Ty* condTy = switchedTy; // before the conversion to the underlying type
+      if (condTy && condTy->kind == TyKind::Enum && defaultL.empty())
+      {
+        Decl* def = global.definitionOf(condTy->decl);
+        auto* e = def && def->kind == NodeKind::EnumDecl ? static_cast<EnumDecl*>(def) : nullptr;
+        if (e && e->isKpp)
+        {
+          // A kpp enum: every value needs a case, and a value outside them aborts.
+          std::string missing;
+          for (Decl* d : e->enumerators)
+            if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d))))
+              missing += (missing.empty() ? "" : ", ") + sym(static_cast<EnumeratorDecl*>(d)->name);
+          if (!missing.empty())
+            error(sw, "switch on " + qualifiedName(e) + " does not handle " + missing);
+          invalidL = newLabel("switch.invalid");
+        }
+      }
+      fn += "  switch " + llType(ct, sw) + " " + cond.text + ", label %" + (invalidL.empty() ? (defaultL.empty() ? endL : defaultL) : invalidL) + " [\n" + cases + "  ]\n";
+      blockTerminated = true;
+      if (!invalidL.empty())
+      {
+        startBlock(invalidL);
+        auto [line, column] = lineColumnOf(sw->token);
+        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+                         std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + qualifiedName(condTy->decl)) + ")", false);
+        fn += "  unreachable\n";
+        usesAssert = true;
+        blockTerminated = true;
+      }
+      loops.push_back({endL, "", scopes.size()});
+      pushScope();
+      auto emitLabelled = [&](Stmt* st, size_t element)
+      {
+        if (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt)
+        {
+          const std::string& l = caseLabels[{st, element}];
+          emitBranch(l);
+          startBlock(l);
+          return;
+        }
+        if (st->kind == NodeKind::FallthroughStmt)
+          return;
+        statement(st);
+      };
+      for (Stmt* st : body->stmts)
+      {
+        if (st->kind == NodeKind::ForConstexprStmt)
+        {
+          auto* fc = static_cast<ForConstexprStmt*>(st);
+          forEachConstexprElement(fc, [&](size_t element)
+          {
+            pushScope();
+            for (Stmt* inner : bodyStatements(fc->body))
+              emitLabelled(inner, element);
+            popScope();
+          });
+          continue;
+        }
+        emitLabelled(st, topLevel);
+      }
+      popScope();
+      loops.pop_back();
+      emitBranch(endL);
+      startBlock(endL);
+      popScope();
+    }
+
