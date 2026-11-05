@@ -394,6 +394,25 @@ void runCodegen(Build& build)
     }
     return false;
   };
+  // The end of module k's compile, whichever compiler made its object (LLVM's back end in this process
+  // or clang), written once for both (J's refactoring list, item 4): a module compiled gets its hash
+  // file, so that the next build keeps its object, and goes into the shared cache; one that failed
+  // leaves no object (none of an earlier build linked in its place) and is reported with what its
+  // compiler said (code: clang's exit code, 0 for the back end's).
+  auto moduleCompiled = [&](size_t k, const std::string& hashText)
+  {
+    writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
+    if (!objectCacheKeys[k].empty())
+      objectcache::store(objectCacheDir, objectCacheKeys[k], objects[k]);
+  };
+  auto moduleFailed = [&](size_t k, int code, const std::string& llPath, std::string said)
+  {
+    ++failures;
+    std::error_code removed;
+    std::filesystem::remove(objects[k], removed);
+    std::lock_guard lock(moduleFailuresMutex);
+    moduleFailures.push_back({unsigned(k), code, llPath, std::move(said)});
+  };
   // Module k compiled by LLVM's back end in this process; its text is written next to the executable
   // only when LLVM rejects it, for the report.
   auto compileInProcess = [&](size_t k, const std::string& text, const std::string& hashText)
@@ -409,19 +428,11 @@ void runCodegen(Build& build)
       error = "cannot write " + objects[k];
     if (!compiled || !error.empty())
     {
-      ++failures;
-      std::error_code removed;
-      std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
       writeFile(llPath, text); // (the text LLVM rejected, for the report)
-      std::lock_guard lock(moduleFailuresMutex);
-      moduleFailures.push_back({unsigned(k), 0, llPath, error});
+      moduleFailed(k, 0, llPath, error);
     }
     else
-    {
-      writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
-      if (!objectCacheKeys[k].empty())
-        objectcache::store(objectCacheDir, objectCacheKeys[k], objects[k]);
-    }
+      moduleCompiled(k, hashText);
   };
   // Step 4's P2 (docs/codegen-speed.md): a debug build of several modules whose objects LLVM's back end
   // in this process makes has its program pieces compiled while codegen emits the instances, on
@@ -591,20 +602,12 @@ void runCodegen(Build& build)
     std::string command = "\"\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] +
                           "\" 2> \"" + errPath + "\"\"";
     if (int rc = system(command.c_str()); rc != 0)
-    {
-      ++failures;
-      std::error_code removed;
-      std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
-      std::lock_guard lock(moduleFailuresMutex);
-      moduleFailures.push_back({unsigned(k), rc, llPath, readWholeFile(errPath)});
-    }
+      moduleFailed(k, rc, llPath, readWholeFile(errPath));
     else
     {
-      writeFile(options.exe + "." + std::to_string(k) + ".hash", hashText);
       std::error_code removed;
       std::filesystem::remove(errPath, removed); // (-w: nothing in it)
-      if (!objectCacheKeys[k].empty())
-        objectcache::store(objectCacheDir, objectCacheKeys[k], objects[k]);
+      moduleCompiled(k, hashText);
     }
   };
   if (backEnd)
