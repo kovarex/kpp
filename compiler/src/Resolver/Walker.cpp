@@ -3783,8 +3783,25 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
         places.push_back(impl.lexicalScopeOf(t->decl));
     places.push_back(scope);
+    // Every place's operators ranked together, as C++ ranks argument-dependent lookup's and
+    // ordinary lookup's ([over.match.oper] 3): from each place the innermost scope declaring the
+    // name, and the operands' classes' friends. The first place with a viable one won:
+    // `left / Path(right)` with left a filesystem::path took filesystem's operator/(const path&,
+    // const path&), a path, over Filesystem's operator/(const path&, const Path&), which takes the
+    // operands exactly and gives the Path C++ gives (language/operator_from_every_associated_namespace).
+    std::vector<Entry> all;
+    std::unordered_set<Decl*> seen;
+    auto add = [&](const Lookup& look) {
+      if (look.overloads)
+      {
+        for (const Entry& e : *look.overloads)
+          if (e.decl && e.decl->kind == NodeKind::FunctionDecl && seen.insert(e.decl).second)
+            all.push_back(e);
+      }
+      else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && seen.insert(look.decl).second)
+        all.push_back(Entry{look.decl, nullptr});
+    };
     for (Scope* place : places)
-    {
       for (Scope* s = place; s; s = s->parent)
       {
         if (s->kind == ScopeKind::Class)
@@ -3793,14 +3810,20 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
         if (!impl.lookupInScope(s, symbol, look, 0))
           continue;
         if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
-          if (FunctionDecl* f = pick(friends.decl ? impl.mergeOverloads(look, friends) : look))
-            return f;
+          add(look);
         break;
       }
-    }
     if (friends.decl)
-      if (FunctionDecl* f = pick(friends))
+      add(friends);
+    if (!all.empty())
+    {
+      Lookup merged;
+      merged.found = Found::Global;
+      merged.decl = all[0].decl;
+      merged.overloads = &all;
+      if (FunctionDecl* f = pick(merged))
         return f;
+    }
     return nullptr;
   };
   if (member)

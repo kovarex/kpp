@@ -1,0 +1,25 @@
+// spec: a free operator is chosen among every associated namespace's and the expression's scope's together, as C++ ranks argument-dependent lookup's and ordinary lookup's ([over.match.oper] 3): `left / ext::Wrapped()` with left a base::Text calls ext's operator/(const base::Text&, const ext::Wrapped&), which takes the operands exactly, over base's operator/(const base::Text&, const base::Text&), and its Wrapped is the result (`2`)
+// found by thread D (2026-11-05) with the checker's copy-initialization check on the game's Filesystem.kpp (`left / Path(right)` with left a filesystem::path): the first namespace with a viable operator won, so the program called base's and printed 1 where C++ prints 2 (silent)
+namespace base
+{
+  struct Text
+  {
+    int kind = 1;
+  };
+  Text operator/(const Text& a, const Text& b) { return Text{}; }
+}
+namespace ext
+{
+  struct Wrapped : base::Text
+  {
+    Wrapped() { kind = 2; }
+  };
+  Wrapped operator/(const base::Text& a, const Wrapped& b) { return Wrapped(); }
+}
+int main()
+{
+  base::Text left;
+  auto r = left / ext::Wrapped();
+  println(r.kind);
+  return 0;
+}

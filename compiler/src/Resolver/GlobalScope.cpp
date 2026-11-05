@@ -619,6 +619,21 @@ FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*
     if (const Ty* t = a ? impl->types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
       places.push_back(impl->lexicalScopeOf(t->decl));
   places.push_back(impl->lexicalScopeOf(context));
+  // Every place's functions ranked together, as C++ ranks argument-dependent lookup's and ordinary
+  // lookup's: from each place the innermost scope declaring the name, and the friends (the walker's
+  // operatorFunction does the same: language/operator_from_every_associated_namespace).
+  std::vector<Entry> all;
+  std::unordered_set<Decl*> seen;
+  auto add = [&](const Lookup& look) {
+    if (look.overloads)
+    {
+      for (const Entry& e : *look.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl && seen.insert(e.decl).second)
+          all.push_back(e);
+    }
+    else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && seen.insert(look.decl).second)
+      all.push_back(Entry{look.decl, nullptr});
+  };
   for (Scope* place : places)
     for (Scope* s = place; s; s = s->parent)
     {
@@ -628,11 +643,17 @@ FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*
       if (!impl->lookupInScope(s, symbol, look, 0))
         continue;
       if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
-        if (FunctionDecl* f = choose(friends.decl ? impl->mergeOverloads(look, friends) : look))
-          return f;
+        add(look);
       break;
     }
-  return friends.decl ? choose(friends) : nullptr;
+  if (friends.decl)
+    add(friends);
+  if (all.empty())
+    return nullptr;
+  Lookup merged;
+  merged.decl = all[0].decl;
+  merged.overloads = &all;
+  return choose(merged);
 }
 
 const Ty* GlobalScope::hiddenFriendClass(FunctionDecl* f, const std::vector<const Ty*>& argTypes)

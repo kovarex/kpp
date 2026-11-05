@@ -1623,6 +1623,21 @@ auto GlobalScope::Impl::constFreeFunction(uint32_t symbol, const std::vector<con
     if (const Ty* t = a ? types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
       places.push_back(lexicalScopeOf(t->decl));
   places.push_back(scope);
+  // Every place's functions ranked together, as C++ ranks argument-dependent lookup's and ordinary
+  // lookup's (the walker's operatorFunction and GlobalScope::findFree do the same): from each place
+  // the innermost scope declaring the name, and the friends.
+  std::vector<Entry> all;
+  std::unordered_set<Decl*> seen;
+  auto add = [&](const Lookup& look) {
+    if (look.overloads)
+    {
+      for (const Entry& e : *look.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl && seen.insert(e.decl).second)
+          all.push_back(e);
+    }
+    else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && seen.insert(look.decl).second)
+      all.push_back(Entry{look.decl, nullptr});
+  };
   for (Scope* place : places)
     for (Scope* s = place; s; s = s->parent)
     {
@@ -1631,11 +1646,17 @@ auto GlobalScope::Impl::constFreeFunction(uint32_t symbol, const std::vector<con
       Lookup look;
       if (!lookupInScope(s, symbol, look, 0))
         continue;
-      if (FunctionDecl* f = choose(friends.decl && look.decl && look.decl->kind == NodeKind::FunctionDecl ? mergeOverloads(look, friends) : look))
-        return f;
+      add(look);
       break;
     }
-  return friends.decl ? choose(friends) : nullptr;
+  if (friends.decl)
+    add(friends);
+  if (all.empty())
+    return nullptr;
+  Lookup merged;
+  merged.decl = all[0].decl;
+  merged.overloads = &all;
+  return choose(merged);
 }
 
 auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::optional<ConstValue>* ran) -> std::optional<ConstPlace>
