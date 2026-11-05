@@ -1,0 +1,34 @@
+// spec: an unnamed bit field of width 0 (`int : 0;`) right after a bit field ends that field's storage unit: the next field starts at a boundary of the zero-width field's type's alignment, and the class takes that alignment; anywhere else it is nothing, as MSVC lays it out (sizes `2 8 2 8 8 4 16 4 12 4`, alignments `1 4 1 4 4 4 8 4 4 2`); the fields keep their values in objects, copies and constant data (`3 -3 13 -3 -7`); clang (MSVC target) and MSVC print the same
+// found by thread B (2026-11-05), comparing kpp with clang: `char : 0;` was "codegen does not support a bit field whose width is not a constant yet"
+struct Z1 { char a : 3; char : 0; char b : 4; };
+struct Z2 { int a : 3; int : 0; int b : 4; };
+struct Z3 { char a; int : 0; char b; };
+struct Z4 { int a : 3; char : 0; int b : 4; };
+struct Z5 { char a : 3; int : 0; char b : 4; };
+struct Z6 { int : 0; int a : 3; };
+struct Z7 { char a : 3; long long : 0; char b; };
+struct Z8 { char a : 3; int : 0; };
+struct Z9 { unsigned a : 4; unsigned : 0; unsigned : 0; unsigned b : 4; short c; };
+struct Z10 { char a : 3; short : 0; char b : 2; char c : 2; };
+Z5 global5 = {5, 9};
+int main()
+{
+  println(sizeof(Z1), " ", sizeof(Z2), " ", sizeof(Z3), " ", sizeof(Z4), " ", sizeof(Z5), " ", sizeof(Z6), " ", sizeof(Z7), " ", sizeof(Z8), " ", sizeof(Z9), " ",
+          sizeof(Z10));
+  println(alignof(Z1), " ", alignof(Z2), " ", alignof(Z3), " ", alignof(Z4), " ", alignof(Z5), " ", alignof(Z6), " ", alignof(Z7), " ", alignof(Z8), " ", alignof(Z9),
+          " ", alignof(Z10));
+  Z5 z{3, 11};
+  z.b = 13;
+  Z5 copy = z;
+  println(int(copy.a), " ", int(copy.b), " ", int(*((const unsigned char*)&copy + 4) & 15), " ", int(global5.a), " ", int(global5.b));
+  Z7 seven{};
+  seven.a = 2;
+  seven.b = 'x';
+  println((const char*)&seven.b - (const char*)&seven);
+  Z9 nine{};
+  nine.a = 9;
+  nine.b = 7;
+  nine.c = 300;
+  println(int(nine.a), " ", int(nine.b), " ", nine.c, " ", (const char*)&nine.c - (const char*)&nine);
+  return 0;
+}

@@ -105,6 +105,11 @@ namespace codegen
     uint64_t llvmAlign = 1;
     bool overAligned = false;                 // align > llvmAlign
     uint64_t tailPadding = 0;                 // the `[n x i8]` the struct's text ends with (after its byte of its own, when empty)
+    // MSVC's zero-width bit fields (`unsigned : 0;` right after a bit field): the alignment the
+    // next field starts at, by that field's index (none past the last), and the alignment the
+    // class takes from them; alignPadding pads for both.
+    std::vector<std::pair<uint32_t, uint64_t>> zeroWidthAligned;
+    uint64_t zeroWidthAlign = 0;
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
     bool failedShown = true;                  // false: it follows from a checker error (fail's shown), at every use

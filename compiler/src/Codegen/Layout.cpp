@@ -172,9 +172,16 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
                                                              "the member " + sym(static_cast<VariableDecl*>(m)->name.last().symbol), at));
       needed = needed || declaredAt[i] > llvmAlignOf(info.fieldTypes[i], at);
     }
+  // The field after a zero-width bit field at its boundary (MSVC's: the layout's zeroWidthAligned).
+  for (auto [index, boundary] : info.zeroWidthAligned)
+    if (index < declaredAt.size())
+    {
+      declaredAt[index] = std::max(declaredAt[index], boundary);
+      needed = needed || boundary > llvmAlignOf(info.fieldTypes[index], at);
+    }
   for (size_t i = 0; i < info.fieldTypes.size() && !needed; ++i)
     needed = !info.zeroSize[i] && overAlignedType(info.fieldTypes[i], at);
-  uint64_t declaredClass = c->alignment ? declaredAlignment(key, at) : 1;
+  uint64_t declaredClass = std::max<uint64_t>(c->alignment ? declaredAlignment(key, at) : 1, info.zeroWidthAlign);
   if (!needed && declaredClass <= natural)
     return 0;
   std::vector<const Ty*> fields;
@@ -613,13 +620,31 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         w = evalConst(widthExpr);
       }
       currentFile = savedFile;
-      if (!w || *w <= 0)
+      if (!w)
         unsupported(m, "a bit field whose width is not a constant");
+      if (*w < 0)
+        fail(m, "the layout of " + types.toString(key, &symbols) + ": the bit field " + memberName(m) + " has a negative width (" + std::to_string(*w) + ")");
       const Ty* unit = types.unqualified(ft);
       if (unit->kind == TyKind::Enum)
         unit = enumUnderlying(unit->decl);
       if (unit->kind == TyKind::Bool)
         unit = types.intType(8, true);
+      if (*w == 0)
+      {
+        // `unsigned : 0;` (unnamed: C++ has no other bit field of width 0), as MSVC lays it out:
+        // right after a bit field it ends that field's storage unit, the next field starts at a
+        // boundary of its type's alignment, and the class takes that alignment (alignPadding pads
+        // for them); anywhere else it is nothing. It holds no value: no field of the layout.
+        // (Until 2026-11-05: "a bit field whose width is not a constant".)
+        if (bitUnitIndex >= 0)
+        {
+          uint64_t boundary = alignOf(unit, m);
+          info.zeroWidthAligned.push_back({uint32_t(info.fieldTypes.size()), boundary});
+          info.zeroWidthAlign = std::max(info.zeroWidthAlign, boundary);
+        }
+        bitUnitIndex = -1;
+        continue;
+      }
       uint32_t unitBits = uint32_t(sizeOf(unit, m) * 8), width = uint32_t(*w);
       if (bitUnitIndex < 0 || bitUnitBits != unitBits || bitUsed + width > unitBits)
       {

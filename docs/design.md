@@ -490,7 +490,10 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
 - Bit fields are laid out as MSVC does: consecutive bit fields share a storage unit while their
   declared types have one size and their widths fit (`uint8_t x : 5; bool on : 1;` share a byte,
   `int a : 3; unsigned b : 4;` four bytes); a type of another size starts a new unit, aligned to
-  that type (2026-10-29, spec classes/bitfields_of_one_size_share_a_unit).
+  that type (2026-10-29, spec classes/bitfields_of_one_size_share_a_unit). An unnamed bit field of
+  width 0 (`int : 0;`) right after a bit field ends that unit: the next field starts at a boundary
+  of its type's alignment, which the class takes too; anywhere else it is nothing, as MSVC has it
+  (2026-11-05, spec classes/zero_width_bit_field_ends_its_unit).
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`
