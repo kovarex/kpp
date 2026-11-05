@@ -857,7 +857,10 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   funcletOverride.clear();
   resetFunctionState();
   currentFunction = nullptr;
-  choicesRecorded = false;
+  // The initializer's nodes were typed for this global alone, and their walk recorded its choices
+  // (design.md 24): a global's own by its file's walk, a class template's static member's or a
+  // variable template's by its instance's copy (GlobalScope::instanceInitializer, globalForOnce).
+  choicesRecorded = true;
   VariableDecl* def = definition ? definition : variableDefinition(v);
   currentFile = def->file;
   // Names in the initializer are typed from the declaration it belongs to (a member alias of
