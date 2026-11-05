@@ -217,6 +217,17 @@
   {
     for (Decl* p : scope->templateParams)
       templateParamNames.insert(static_cast<TemplateParamDecl*>(p)->name);
+    // A class's constructors and conversion functions are no names of its scope (they are reached
+    // through the class): their template parameters are classified here, or `template<Size N>
+    // View(T (&a)[N])` kept N a constrained type parameter and the bound of its array no bound.
+    if (scope->kind == ScopeKind::Class && scope->owner && scope->owner->kind == NodeKind::ClassDecl)
+      for (Decl* m : static_cast<ClassDecl*>(scope->owner)->members)
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Constructor | DF_Conversion)))
+          for (Decl* p : m->templateParams)
+          {
+            templateParamNames.insert(static_cast<TemplateParamDecl*>(p)->name);
+            classifyTemplateParam(static_cast<TemplateParamDecl*>(p), scope, m->templateParams);
+          }
     for (uint32_t i = 0; i < scope->shardCount; ++i)
       for (auto& [sym, entries] : scope->shards[i].map)
         for (const Entry& e : entries)
