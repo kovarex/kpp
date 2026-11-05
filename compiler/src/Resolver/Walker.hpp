@@ -275,6 +275,11 @@
     // compile error (it was instantiated as if unconstrained).
     void checkClassConstraints(NamedType* t, const Lookup& l);
 
+    // `S<Box<int>, int>` with `S<T, int>` and `S<Box<T>, U>` both matching and neither more
+    // specialized: ambiguous, a compile error as C++ has it ([temp.spec.partial.match] 1); the first
+    // declared was taken.
+    void checkSpecializationTie(NamedType* t, const Lookup& l);
+
     // Converts a type written in the current context.
     const Ty* typeOf(Type* t) { return impl.convertType(t, ctx(), 0); }
 

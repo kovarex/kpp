@@ -1039,7 +1039,7 @@ auto GlobalScope::Impl::argsDependent(const std::vector<const Ty*>& args) -> boo
   return false;
 }
 
-auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth) -> const Ty*
+auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied) -> const Ty*
 {
   if (!l.overloads || written.empty() || depth > 24)
     return nullptr;
@@ -1099,6 +1099,7 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
   // The most specialised: at least as specialised as every other match (`<T, T, R...>` over
   // `<T, F, R...>` for <B, B, C>). When none is, the first (declaration order).
   size_t best = 0;
+  bool found = partials.size() == 1;
   if (partials.size() > 1)
     for (size_t i = 0; i < partials.size(); ++i)
     {
@@ -1108,8 +1109,19 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
       if (all)
       {
         best = i;
+        found = true;
         break;
       }
+    }
+  if (!found && tied)
+    for (size_t i = 0; i < partials.size(); ++i)
+    {
+      bool beaten = false;
+      for (size_t k = 0; k < partials.size() && !beaten; ++k)
+        beaten = k != i && atLeastAsSpecialized(partials[k].decl, partials[i].decl, primary, depth) &&
+                 !atLeastAsSpecialized(partials[i].decl, partials[k].decl, primary, depth);
+      if (!beaten)
+        tied->push_back(partials[i].decl);
     }
   Candidate& m = partials[best];
   return types.classType(m.decl, Span<const Ty*>{m.deduced.data(), uint32_t(m.deduced.size())});

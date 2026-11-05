@@ -1,0 +1,18 @@
+// spec: two partial specializations that both match and neither of which is more specialized than the other are ambiguous, a compile error as C++ has it ([temp.spec.partial.match] 1; clang: "ambiguous partial specializations"): `S<Box<int>, int>` with `S<T, int>` and `S<Box<T>, U>`, `K<const int[3]>` with `K<const T>` and `K<T[N]>`, as a type and as a qualifier
+// error: ambiguous_partial_specializations_are_error.kpp:15: error: the partial specializations of K<const int32[3]> are ambiguous: K<const T>
+// error: ambiguous_partial_specializations_are_error.kpp:15: error: the partial specializations of S<Box<int32>, int32> are ambiguous: S<T, int32>
+// error: ambiguous_partial_specializations_are_error.kpp:16: error: the partial specializations of S<Box<int32>, int32> are ambiguous: S<T, int32>
+// found by thread D (2026-11-05), comparing kpp with clang on partial specializations: the first declared was taken
+template<class T> struct Box {};
+template<class T, class U> struct S { static constexpr int v = 0; };
+template<class T> struct S<T, int> { static constexpr int v = 2; };
+template<class T, class U> struct S<Box<T>, U> { static constexpr int v = 4; };
+template<class T> struct K { static constexpr int v = 0; };
+template<class T> struct K<const T> { static constexpr int v = 1; };
+template<class T, int N> struct K<T[N]> { static constexpr int v = 4; };
+int main()
+{
+  println(S<Box<int>, int>::v, " ", K<const int[3]>::v);
+  S<Box<int>, int> s;
+  return 0;
+}

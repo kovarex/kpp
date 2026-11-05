@@ -106,6 +106,14 @@ builds win less unless machine code is cached per function.
   2.5)` of `template<class T> f(T, T)` takes another overload or has none. The first deduction stood
   until then and the other arguments converted to it (`larger(1, 2.5)` gave 2; spec
   templates/parameter_deduced_twice_must_agree).
+- Partial specializations (2026-11-05): an array type is a template argument (`Kind<int[3]>`,
+  `Kind<T[N]>`, `Kind<T[]>`, `Kind<T[N][M]>`; `Take<table[2]>` stays an index for a constant
+  parameter, as `Frac<gcd(N, M)>` stays a call), so a partial specialization on arrays matches
+  them, the more specialized of `T[N]` and `T[N][M]` taken (templates/array_types_as_template_arguments;
+  the parser read `T[N]` there as an index and `Kind<int[3]>` silently took the primary). Two
+  partial specializations that both match and neither more specialized than the other are
+  ambiguous, a compile error where the type is named (templates/ambiguous_partial_specializations_are_error;
+  the first declared was taken).
 - Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
   the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
   constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,

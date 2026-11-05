@@ -181,7 +181,10 @@
   // specialised partial one (`template<typename T> struct Describe<T*>`) whose patterns deduce
   // from them (its class with the deduced arguments of its own parameters). A pack among `args`
   // stands for its elements. Null when there is none or an argument is still dependent.
-  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth);
+  // tied: when no matching partial specialization is more specialized than every other (C++:
+  // ambiguous, [temp.spec.partial.match] 1), those no other is more specialized than; the first
+  // declared of them is still the result, for the checker to report (checkSpecializationTie).
+  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied = nullptr);
 
   // A name as written, found from context: what lookupWritten finds, a using-declaration of an
   // enumerator taken for that enumerator (usingEnumerator).

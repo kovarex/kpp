@@ -947,9 +947,44 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
     ++stats.typesResolved;
   checkTemplateArgumentCount(t, l);
   checkClassConstraints(t, l);
+  checkSpecializationTie(t, l);
   for (const NamePart& part : t->name.parts)
     for (Node* arg : part.templateArgs)
       walkNode(arg);
+}
+
+auto GlobalScope::Impl::Walker::checkSpecializationTie(NamedType* t, const Lookup& l) -> void
+{
+  const NamePart& last = t->name.last();
+  if (!last.hasTemplateArgs || !l.decl || !l.overloads || !file || inGenericTemplate())
+    return;
+  Decl* primary = impl.primaryOf(*l.overloads);
+  if (!primary || primary->kind != NodeKind::ClassDecl || !(primary->attributes & ATTR_Specialized))
+    return;
+  std::vector<const Ty*> args;
+  for (size_t i = 0; i < last.templateArgs.size(); ++i)
+  {
+    const Ty* a = impl.templateArgument(last.templateArgs[i], impl.parameterFor(primary, i), ctx(), 0);
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
+      return;
+    args.push_back(a);
+  }
+  std::vector<ClassDecl*> tied;
+  impl.matchSpecialization(l, args, 0, &tied);
+  if (tied.size() < 2)
+    return;
+  std::string between;
+  for (ClassDecl* c : tied)
+  {
+    std::vector<const Ty*> patterns;
+    std::string written = impl.debugName(last.symbol) + "<";
+    if (impl.specializationPatterns(c, primary, patterns, 0))
+      for (size_t i = 0; i < patterns.size(); ++i)
+        written += (i ? ", " : "") + types.toString(patterns[i], &symbols);
+    between += (between.empty() ? "" : " and ") + written + "> (" + Impl::locationOf(c->file, c->token) + ")";
+  }
+  const Ty* named = types.classType(primary, Span<const Ty*>{args.data(), uint32_t(args.size())});
+  impl.reportCheckerError(file, t->token, "the partial specializations of " + types.toString(named, &symbols) + " are ambiguous: " + between);
 }
 
 auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup& l) -> void
@@ -1278,6 +1313,9 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     NamedType tmp{};
     tmp.kind = NodeKind::NamedType;
     tmp.name = qualifier;
+    tmp.token = e->token;
+    if (!qualifier.parts.empty() && qualifier.last().hasTemplateArgs) // `S<Box<int>, int>::v`: its specialization's tie too
+      checkSpecializationTie(&tmp, impl.lookupQualified(qualifier, scope, &locals, 0, activeSubst));
     const Ty* q = qualifier.parts.empty() ? typeOf(e->name.typeQualifier) : typeOf(&tmp);
     q = q ? types.unqualified(types.stripRef(q)) : types.unknown();
     // `IsSmall::value` with `struct IsSmall : Constant<bool, true> {}`: a member of a template
