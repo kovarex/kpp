@@ -5,9 +5,6 @@ namespace
 {
   struct Walk
   {
-    const std::function<void(Node*)>& each;
-    std::unordered_set<const Node*> seen; // a node reached twice (an init-capture's expression) is visited once
-
     bool first(Node* n) { return n && seen.insert(n).second; }
 
     void name(const QualifiedName& q)
@@ -347,6 +344,9 @@ namespace
         default: break;
       }
     }
+
+    const std::function<void(Node*)>& each;
+    std::unordered_set<const Node*> seen; // a node reached twice (an init-capture's expression) is visited once
   };
 }
 

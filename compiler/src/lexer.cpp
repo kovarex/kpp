@@ -34,12 +34,13 @@ namespace
 {
   struct KeywordMap
   {
-    std::unordered_map<std::string_view, uint32_t> map;
     KeywordMap()
     {
       for (uint32_t i = 0; i < std::size(keywords); ++i)
         map.emplace(keywords[i], i);
     }
+
+    std::unordered_map<std::string_view, uint32_t> map;
   };
   const KeywordMap& keywordMap()
   {
@@ -50,7 +51,6 @@ namespace
   // Punctuator candidates per first byte, longest first.
   struct PunctuatorIndex
   {
-    std::array<std::vector<uint32_t>, 256> byFirst;
     PunctuatorIndex()
     {
       for (uint32_t i = 0; i < std::size(punctuators); ++i)
@@ -59,6 +59,8 @@ namespace
         std::sort(list.begin(), list.end(),
                   [](uint32_t a, uint32_t b) { return punctuators[a].size() > punctuators[b].size(); });
     }
+
+    std::array<std::vector<uint32_t>, 256> byFirst;
   };
   const PunctuatorIndex& punctuatorIndex()
   {
@@ -84,20 +86,11 @@ struct SymbolTable::Impl
     std::shared_mutex mutex;
     std::unordered_map<std::string_view, uint32_t> map;
   };
-  Shard shards[shardCount];
-  // Names are stored in stable chunks so string_views in the maps stay valid.
-  std::mutex namesMutex;
-  std::vector<std::string*> names; // id -> name (pointer stable)
-  std::vector<std::unique_ptr<char[]>> chunks;
-  char* chunkPos = nullptr;
-  char* chunkEnd = nullptr;
   // id -> name, in blocks that never move, so that name() reads without a lock (it is asked for
   // all the time on every thread; under namesMutex it serialised the parallel front end). An id
   // is handed out only after its entry is written (through the shard's mutex), so a reader
   // holding an id sees it.
   static constexpr uint32_t blockBits = 12, blockSize = 1u << blockBits, maxBlocks = 1u << 12;
-  std::atomic<std::string_view*> blocks[maxBlocks] = {};
-  std::atomic<uint32_t> count{0};
 
   ~Impl()
   {
@@ -127,6 +120,16 @@ struct SymbolTable::Impl
     chunkPos += s.size();
     return result;
   }
+
+  Shard shards[shardCount];
+  // Names are stored in stable chunks so string_views in the maps stay valid.
+  std::mutex namesMutex;
+  std::vector<std::string*> names; // id -> name (pointer stable)
+  std::vector<std::unique_ptr<char[]>> chunks;
+  char* chunkPos = nullptr;
+  char* chunkEnd = nullptr;
+  std::atomic<std::string_view*> blocks[maxBlocks] = {};
+  std::atomic<uint32_t> count{0};
 };
 
 SymbolTable::SymbolTable() : impl(new Impl) {}
@@ -193,12 +196,6 @@ namespace
 
   struct Lexer
   {
-    const char* begin;
-    const char* p;
-    const char* end;
-    SymbolTable& symbols;
-    LexResult result;
-
     Lexer(std::string_view text, SymbolTable& symbols)
       : begin(text.data()), p(text.data()), end(text.data() + text.size()), symbols(symbols)
     {
@@ -521,6 +518,12 @@ namespace
       }
       push(TokenKind::End, p);
     }
+
+    const char* begin;
+    const char* p;
+    const char* end;
+    SymbolTable& symbols;
+    LexResult result;
   };
 }
 

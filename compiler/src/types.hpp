@@ -39,6 +39,14 @@ enum class TyKind : uint8_t
 
 struct Ty
 {
+  bool isReference() const { return kind == TyKind::LRef || kind == TyKind::RRef; }
+  bool isArithmetic() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Float; }
+  bool isIntegral() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Enum; }
+  bool isKnown() const { return kind != TyKind::Unknown; }
+  bool isBraceList() const { return kind == TyKind::Class && count == 1; }
+  bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
+  bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
+
   TyKind kind;
   uint8_t bits = 0;
   bool isUnsigned = false;
@@ -50,14 +58,6 @@ struct Ty
   const Ty* inner = nullptr;
   Span<const Ty*> args;
   Decl* decl = nullptr;
-
-  bool isReference() const { return kind == TyKind::LRef || kind == TyKind::RRef; }
-  bool isArithmetic() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Float; }
-  bool isIntegral() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Enum; }
-  bool isKnown() const { return kind != TyKind::Unknown; }
-  bool isBraceList() const { return kind == TyKind::Class && count == 1; }
-  bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
-  bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
 };
 
 class TypeTable
@@ -80,11 +80,6 @@ public:
   // C's `long` and `unsigned long` (design.md, "Types"): distinct from int and long long as in
   // C++, and as wide as the target's C long (32 bits on Windows, 64 on LP64 targets).
   const Ty* longType(bool isUnsigned = false);
-  uint8_t longBits = 32;
-  // wchar_t, and the units of L"..." and L'x': the target's C wchar_t (unsigned 16 bits, UTF-16, on
-  // Windows; a signed 32-bit int, UTF-32, as glibc, FreeBSD and macOS have it: docs/design.md,
-  // "Targets and hosts").
-  uint8_t wcharBits = 16;
   const Ty* wcharType() { return charType(wcharBits, wcharBits == 16); }
   // The integer conversion rank ([conv.rank]): long long above long above int above short above
   // the 8-bit types; 0 for a type that is no integer.
@@ -152,10 +147,16 @@ public:
   // Every class type with template arguments made so far, from the from-th on (in the order they
   // were made: an index into a list kept as they are interned, not a walk of every type).
   std::vector<const Ty*> classInstances(size_t from = 0);
-
 private:
   const Ty* intern(const Ty& t);
   struct Impl;
+public:
+  uint8_t longBits = 32;
+  // wchar_t, and the units of L"..." and L'x': the target's C wchar_t (unsigned 16 bits, UTF-16, on
+  // Windows; a signed 32-bit int, UTF-32, as glibc, FreeBSD and macOS have it: docs/design.md,
+  // "Targets and hosts").
+  uint8_t wcharBits = 16;
+private:
   Impl* impl;
   const Ty* void_;
   const Ty* bool_;

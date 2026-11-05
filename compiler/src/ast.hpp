@@ -70,13 +70,14 @@ private:
 template<typename T>
 struct Span
 {
-  T* data = nullptr;
-  uint32_t count = 0;
   T* begin() const { return data; }
   T* end() const { return data + count; }
   size_t size() const { return count; }
   bool empty() const { return count == 0; }
   T& operator[](size_t i) const { return data[i]; }
+
+  T* data = nullptr;
+  uint32_t count = 0;
 };
 
 #define KPP_NODE_KINDS(X) \
@@ -130,11 +131,12 @@ struct NamePart
 
 struct QualifiedName
 {
+  bool empty() const { return parts.empty(); }
+  const NamePart& last() const { return parts[parts.size() - 1]; }
+
   Span<NamePart> parts;
   bool global = false; // Leading `::`.
   Type* typeQualifier = nullptr; // `decltype(x)::member`: the parts are looked up in the class this type names.
-  bool empty() const { return parts.empty(); }
-  const NamePart& last() const { return parts[parts.size() - 1]; }
 };
 
 // --- Types ---
@@ -190,6 +192,8 @@ constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr
 
 struct Decl : Node
 {
+  std::atomic<struct Dependencies*> typeDependencies{nullptr}; // What computing cachedType read (the resolver's, owned by it).
+
   ParsedFile* file = nullptr; // The file this declaration was parsed from.
   uint32_t flags = 0;
   Access access = Access::Default;
@@ -198,7 +202,6 @@ struct Decl : Node
   Decl* parent = nullptr;     // Lexically enclosing declaration, set by the parser.
   Scope* ownScope = nullptr;  // Set by the resolver for namespaces, classes and enums.
   std::atomic<const Ty*> cachedType{nullptr}; // Declared type, filled lazily by the type checker (non-dependent only).
-  std::atomic<struct Dependencies*> typeDependencies{nullptr}; // What computing cachedType read (the resolver's, owned by it).
   uint8_t attributes = 0;     // ATTR_* bits.
   uint32_t endToken = 0;      // One past the declaration's last token (set when the parser finishes it).
   uint8_t builtin = 0;        // BUILTIN_*: a member the compiler generates (no body/initializer in the AST).
@@ -215,9 +218,10 @@ struct NamespaceDecl : Decl { uint32_t name = UINT32_MAX; Span<Decl*> decls; boo
 struct TemplateParamDecl : Decl { uint32_t name = UINT32_MAX; bool isType = true; bool isPack = false; Type* valueType = nullptr; Node* defaultArg = nullptr; Span<Decl*> innerParams; };
 struct ClassDecl : Decl
 {
+  struct Base { Type* type; Access access; bool isVirtual; bool isPack; };
+
   Kw keyword = Kw::struct_;
   QualifiedName name; // Empty for anonymous.
-  struct Base { Type* type; Access access; bool isVirtual; bool isPack; };
   Span<Base> bases;
   Span<Decl*> members;
   bool isDefinition = false;
@@ -264,12 +268,13 @@ struct EnumDecl : Decl
 struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; };
 struct FunctionDecl : Decl
 {
+  struct CtorInit { QualifiedName member; Span<Expr*> args; bool braced; bool isPack; };
+
   Type* returnType = nullptr; // Null for constructors, destructors, conversion operators.
   QualifiedName name;
   Span<Decl*> params; // ParamDecl*
   Type* trailingReturn = nullptr;
   Stmt* body = nullptr;
-  struct CtorInit { QualifiedName member; Span<Expr*> args; bool braced; bool isPack; };
   Span<CtorInit> ctorInits;
   Expr* requiresClause = nullptr;
   Expr* condition = nullptr; // conditional(expr): calls compile to nothing while expr is false.
@@ -362,7 +367,7 @@ struct ContinueStmt : Stmt {};
 struct FallthroughStmt : Stmt {};
 struct GotoStmt : Stmt { uint32_t label; };
 struct LabelStmt : Stmt { uint32_t label; };
-struct TryStmt : Stmt { Stmt* body; struct Handler { Decl* param; Stmt* body; }; Span<Handler> handlers; };
+struct TryStmt : Stmt { struct Handler { Decl* param; Stmt* body; }; Stmt* body; Span<Handler> handlers; };
 struct EmptyStmt : Stmt {};
 struct AsmStmt : Stmt {};
 struct ErrorStmt : Stmt { uint32_t endToken; };
@@ -451,6 +456,8 @@ struct Diagnostic
 
 struct ParsedFile
 {
+  struct NamespaceDecl* libraryNamespace = nullptr;
+
   Arena arena;
   Span<Decl*> decls;
   const std::vector<Token>* tokens = nullptr; // Set by parseFile; the driver keeps the vector alive.
@@ -477,7 +484,6 @@ struct ParsedFile
   // of that name its top-level declarations are in (the resolver's index makes it, their parent).
   std::string library;
   uint32_t libraryScope = UINT32_MAX;
-  struct NamespaceDecl* libraryNamespace = nullptr;
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files.
   // What names its lambdas' closures apart from other files' (`__lambda_<tag>_<n>`, the parser's), and
   // its private entities (filePrivatePrefix, `inflate.kpp@<tag>::helper`): a hash of the file's name

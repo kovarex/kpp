@@ -65,13 +65,7 @@ public:
     h.add(data);
     return h.hex();
   }
-
 private:
-  uint32_t state[8];
-  uint64_t length;
-  unsigned char block[64];
-  size_t used;
-
   static uint32_t rotr(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
   void compress(const unsigned char* p)
   {
@@ -100,4 +94,9 @@ private:
     }
     state[0] += a, state[1] += b, state[2] += c, state[3] += d, state[4] += e, state[5] += f, state[6] += g, state[7] += h;
   }
+
+  uint32_t state[8];
+  uint64_t length;
+  unsigned char block[64];
+  size_t used;
 };

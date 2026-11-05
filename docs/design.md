@@ -1659,6 +1659,11 @@ capital letters, like LinkHelper.cpp", and refactorings that are clear wins are 
   Lsp), PascalCase file names, one class per file where there is a class (`Walker.hpp`,
   `OverloadResolution.cpp`). A class too large for one file is split by topic into files named after
   it (`WalkerCalls.cpp`, `WalkerOperators.cpp`).
+- **Inside a class** (kovarex, 2026-11-05, for all of kpp's sources): member functions, nested
+  types and statics first, data members last (moved without changing their order, so that the
+  layout and every aggregate initialization stay as they were); a defaulted `operator==` where the
+  comparison is memberwise; no constructor written that the language gives; private data where the
+  class keeps an invariant.
 - **How it gets there.** Each split is a pure move first, pushed alone and checked byte-identical
   (object code or the game's IR), then made into real headers and classes one push at a time, so
   that other threads' rebases stay short. The files' line endings stay as they were (resolver LF,

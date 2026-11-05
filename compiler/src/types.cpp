@@ -63,7 +63,6 @@ namespace
 
 struct TypeTable::Impl
 {
-  const uint64_t id = nextTableId++;
   static constexpr uint32_t shardCount = 64;
   struct Shard
   {
@@ -72,6 +71,8 @@ struct TypeTable::Impl
     std::vector<std::unique_ptr<Ty>> owned;
     std::vector<std::unique_ptr<const Ty*[]>> argStorage;
   };
+
+  const uint64_t id = nextTableId++;
   Shard shards[shardCount];
   std::atomic<size_t> count{0};
   std::mutex classInstancesMutex;
@@ -467,8 +468,6 @@ namespace
   // template, instantiated per call.
   struct BoundParams
   {
-    Span<Decl*> params;
-    const BoundParams* outer;
     bool contains(Decl* d) const
     {
       for (const BoundParams* b = this; b; b = b->outer)
@@ -477,6 +476,9 @@ namespace
             return true;
       return false;
     }
+
+    Span<Decl*> params;
+    const BoundParams* outer;
   };
 
   bool dependent(const Ty* t, const BoundParams* bound)

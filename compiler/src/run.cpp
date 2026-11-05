@@ -302,13 +302,14 @@ int runProgram(int argc, char** argv, int runIndex)
   // most recent, and its lock let go.
   struct Unlock
   {
-    HANDLE lock;
-    std::filesystem::path root;
     ~Unlock()
     {
       trimRunDirectories(root);
       CloseHandle(lock);
     }
+
+    HANDLE lock;
+    std::filesystem::path root;
   } unlock{lock, root};
   std::string exe = (dir / (name + (target.windows() ? ".exe" : ""))).string(); // (NAME alone for Linux and FreeBSD)
 

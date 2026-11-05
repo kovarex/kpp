@@ -112,9 +112,10 @@ namespace projects
   // another build to compare with, by row.
   struct Measurement
   {
-    std::string target, configuration;
     struct Edit { std::string row, file, from, to; };
     struct Compare { std::string row, command, touch; };
+
+    std::string target, configuration;
     std::vector<Edit> edits;
     std::vector<Compare> compares;
   };
@@ -158,10 +159,11 @@ namespace projects
   // (clang for the target's triple, with the target's sysroot: --sysroot, else kppc's own beside it).
   struct LibraryTarget
   {
+    bool posix() const { return platform != "windows"; }
+
     std::string platform = "windows"; // windows, linux, freebsd: platformNames' short names
     std::string triple;               // clang's --target, off Windows
     std::string sysroot;              // off Windows; empty when there is none
-    bool posix() const { return platform != "windows"; }
   };
 
   // A C library's part of a build (prepareLibrary): its objects' compile commands and its resources',

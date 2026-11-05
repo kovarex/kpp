@@ -29,8 +29,9 @@ namespace
 
   struct Counts
   {
-    std::map<std::string, int> values;
     void add(const std::string& what, int n = 1) { values[what] += n; }
+
+    std::map<std::string, int> values;
   };
 
 #include "Converter/PreprocessorConfiguration.inl"

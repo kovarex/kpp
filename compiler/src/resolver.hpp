@@ -20,6 +20,8 @@ struct Scope;
 // Template parameter -> argument type, for queries about one instantiation.
 struct TemplateArgs
 {
+  bool empty() const { return pairs.empty(); }
+
   std::vector<std::pair<Decl*, const Ty*>> pairs;
   // While one element of a pack expansion is emitted: the packs its pattern expands and the
   // element's index. The pattern's own mentions of those packs name that element; everything else
@@ -28,7 +30,6 @@ struct TemplateArgs
   // `Array<Entry, sizeof...(Ts)>&`).
   std::vector<Decl*> elementPacks;
   uint32_t elementIndex = 0;
-  bool empty() const { return pairs.empty(); }
 };
 
 // Whether an expression names an object that outlives the expression (an lvalue): a variable or
@@ -193,6 +194,11 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
 
 struct ResolveStats
 {
+  struct Where { uint32_t file; uint32_t token; };
+  struct WhySite { const ParsedFile* file; uint32_t token; uint32_t count; };
+
+  void add(const ResolveStats& o);
+
   // Type names (in declarations, casts, template arguments...).
   uint64_t typesResolved = 0, typesDependent = 0, typesUnresolved = 0, typesBuiltinByName = 0;
   // Identifiers in expressions.
@@ -200,7 +206,6 @@ struct ResolveStats
   uint64_t qualifiedUnresolvedStd = 0; // std:: and other names that are not part of the corpus.
   uint64_t unresolvedMacroLike = 0;    // ALL_CAPS identifiers: almost always macros.
   std::unordered_map<uint32_t, uint32_t> unresolvedSymbols; // symbol -> count
-  struct Where { uint32_t file; uint32_t token; };
   std::unordered_map<uint32_t, Where> unresolvedFirst; // symbol -> first occurrence
   uint32_t fileIndex = 0; // Set by the driver before resolving, so first occurrences can be reported.
 
@@ -222,10 +227,7 @@ struct ResolveStats
   // --why: where expression types became unknown, keyed by cause << 56 | node kind << 32 | the
   // name or operator symbol of the expression whose typing failed.
   bool collectWhy = false;
-  struct WhySite { const ParsedFile* file; uint32_t token; uint32_t count; };
   std::unordered_map<uint64_t, WhySite> why;
-
-  void add(const ResolveStats& o);
 };
 
 // The --why report: per cause of unknown expression types, the most common failing constructs
@@ -251,10 +253,6 @@ public:
   std::vector<std::string> topLevelClashes();
   // Phase 2, thread-safe and read-only on the scope tree: resolve and type one file.
   void resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats);
-  // Resolves `count` files with resolveOne(i) on `threads` workers, which take the class instances'
-  // member bodies as tasks when they run out of files (queued by the files' walks instead of
-  // checked by the asking walk; a task may queue more), until nothing is left.
-  void resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne);
   // After the checker (and the code generator, which asks it for instance bodies) is done: the
   // static_asserts of the class template instances it made are checked, and the errors the checker
   // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition
@@ -386,10 +384,11 @@ public:
   // by a lookup in any class; null: a namespace's function).
   struct ChangedName
   {
+    static inline const void* const anyClass = reinterpret_cast<const void*>(uintptr_t(1));
+
     uint32_t symbol;
     const void* classScope;
     bool memberOnly = false; // a member function (no friend): only lookups in its class, or a class derived from it, reach it
-    static inline const void* const anyClass = reinterpret_cast<const void*>(uintptr_t(1));
   };
   // Step 4 (functions added, removed or changed in a kept file). unindexFunction: takes a function
   // out of the index (its scope's entry, or its class's out-of-line definitions). indexFunctions:
@@ -451,13 +450,6 @@ public:
                           size_t* dropped = nullptr, std::vector<const Decl*>* instancesOf = nullptr);
   // The instance statistics as the resolve counts them: every instance walk's but codegen's.
   ResolveStats instanceStatsAtResolveEnd();
-  // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.
-  void forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit);
-  // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
-  // with the declaration each was copied from: they index the file's tokens too.
-  void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
-  // The same for every file at once, with the file each copy's tokens index (`kppc --lsp`'s rename).
-  void forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit);
 
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();
@@ -651,11 +643,8 @@ public:
   // name with template arguments, under the instantiation args; nullopt if it is not one or
   // its arguments are still dependent.
   std::optional<bool> typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args);
-
-
 private:
   struct Impl;
-  Impl* impl;
   // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f;
   // returns what the body's returns deduced (an `auto` function's return type), or null.
   // retypingElements: a type pack bound to one element (retypeFor), whose static_asserts are not
@@ -665,4 +654,18 @@ private:
   // The free function named symbol for these argument types, looked up from the namespaces of the
   // argument classes and enums and from context's (findFreeOperator, findFreeFunction).
   FunctionDecl* findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context);
+public:
+  // Resolves `count` files with resolveOne(i) on `threads` workers, which take the class instances'
+  // member bodies as tasks when they run out of files (queued by the files' walks instead of
+  // checked by the asking walk; a task may queue more), until nothing is left.
+  void resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne);
+  // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.
+  void forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit);
+  // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
+  // with the declaration each was copied from: they index the file's tokens too.
+  void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
+  // The same for every file at once, with the file each copy's tokens index (`kppc --lsp`'s rename).
+  void forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit);
+private:
+  Impl* impl;
 };

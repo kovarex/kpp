@@ -65,16 +65,16 @@ enum class P : uint32_t
 // Compact token: 12 bytes. Text is recovered from the file by offset+length.
 struct Token
 {
+  TokenKind getKind() const { return TokenKind(kind); }
+  bool is(Kw k) const { return getKind() == TokenKind::Keyword && id == uint32_t(k); }
+  bool is(P p) const { return getKind() == TokenKind::Punctuator && id == uint32_t(p); }
+
   uint32_t offset;
   uint32_t length : 24;
   uint32_t kind : 7;
   uint32_t spliced : 1; // a literal with a line splice in it: its spelling is tokenSpelling's
   // Identifier: interned symbol id. Keyword: Kw. Punctuator: P. Else 0.
   uint32_t id;
-
-  TokenKind getKind() const { return TokenKind(kind); }
-  bool is(Kw k) const { return getKind() == TokenKind::Keyword && id == uint32_t(k); }
-  bool is(P p) const { return getKind() == TokenKind::Punctuator && id == uint32_t(p); }
 };
 
 struct LexResult

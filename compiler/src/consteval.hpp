@@ -15,6 +15,11 @@
 // What an Address or a MemberPointer value names. Made once and shared, never changed.
 struct ConstTarget
 {
+  bool operator==(const ConstTarget& o) const
+  {
+    return decl == o.decl && owner == o.owner && args == o.args && path == o.path && storage == o.storage;
+  }
+
   // Address: a variable of static storage (a global, a static member, a static local) or a
   // function. MemberPointer: a non-static data member or member function.
   Decl* decl = nullptr;
@@ -32,10 +37,6 @@ struct ConstTarget
   // decl then null. Only the interpreter reads one: an evaluation whose result holds it is no
   // constant.
   uint64_t storage = 0;
-  bool operator==(const ConstTarget& o) const
-  {
-    return decl == o.decl && owner == o.owner && args == o.args && path == o.path && storage == o.storage;
-  }
 };
 
 // A compile-time value. What the code generator may lower to constant data (globalForOnce; the
@@ -62,21 +63,6 @@ struct ConstTarget
 struct ConstValue
 {
   enum class Kind : uint8_t { Int, Float, Object, Pointer, Address, MemberPointer, Unset };
-  Kind kind = Kind::Int;
-  // Int: an integer, char, bool or enumeration type, the value normalised to its width and
-  // signedness; null for a value of no known type, read as a 64-bit signed integer (a null
-  // pointer is the Int 0 of a pointer type). Float: float or double. Object: a class or array
-  // type. Pointer, Address: a pointer type. MemberPointer: a member pointer type. Unset: a field's
-  // or element's type that no initializer set (reading it is no constant).
-  const Ty* type = nullptr;
-  int64_t i = 0; // Int; Pointer: the element it points at (the parts' size is one past the end)
-  double f = 0.0;
-  // Object: a class object's parts (its bases, then its non-static data members, in declaration
-  // order) or an array's elements. Pointer: the array it points into. A copy shares them and a
-  // write makes new ones, so that no value changes under another's feet.
-  std::shared_ptr<const std::vector<ConstValue>> parts;
-  // Address, MemberPointer: what it names.
-  std::shared_ptr<const ConstTarget> target;
 
   static ConstValue integer(int64_t v, const Ty* type = nullptr)
   {
@@ -135,6 +121,22 @@ struct ConstValue
   // A condition's value: a scalar's, or a pointer's (into an array, or a declaration's address:
   // never null).
   bool truthy() const { return isFloat() ? f != 0.0 : isPointer() || isAddress() || isMemberPointer() || i != 0; }
+
+  Kind kind = Kind::Int;
+  // Int: an integer, char, bool or enumeration type, the value normalised to its width and
+  // signedness; null for a value of no known type, read as a 64-bit signed integer (a null
+  // pointer is the Int 0 of a pointer type). Float: float or double. Object: a class or array
+  // type. Pointer, Address: a pointer type. MemberPointer: a member pointer type. Unset: a field's
+  // or element's type that no initializer set (reading it is no constant).
+  const Ty* type = nullptr;
+  int64_t i = 0; // Int; Pointer: the element it points at (the parts' size is one past the end)
+  double f = 0.0;
+  // Object: a class object's parts (its bases, then its non-static data members, in declaration
+  // order) or an array's elements. Pointer: the array it points into. A copy shares them and a
+  // write makes new ones, so that no value changes under another's feet.
+  std::shared_ptr<const std::vector<ConstValue>> parts;
+  // Address, MemberPointer: what it names.
+  std::shared_ptr<const ConstTarget> target;
 };
 
 // The bytes a narrow string literal token stands for (escapes, raw strings, u8), its prefix
@@ -180,18 +182,6 @@ bool isConstBinaryOperator(P op);
 // constant, with the reason in *why (the first one is kept: what stopped the evaluation).
 struct ConstArith
 {
-  TypeTable& types;
-  ConstMode mode = ConstMode::Required;
-  std::string* why = nullptr;
-  // The underlying type an enumeration type was declared with, or null for one declared without
-  // (its values then compute as int, or as a 64-bit integer when int cannot hold them).
-  std::function<const Ty*(const Ty*)> underlying;
-  // The range of values of an enumeration type declared without an underlying type, the smallest
-  // bit field's that holds its enumerators ([dcl.enum]/8), or nullopt (one declared with, or one
-  // whose enumerators are not known yet): a conversion out of it is no constant where one is
-  // required, as clang has it ([expr.static.cast]/10: undefined).
-  std::function<std::optional<std::pair<int64_t, int64_t>>(const Ty*)> enumRange;
-
   // A number or character literal as written (digit separators, suffixes, floats, hex floats,
   // escapes).
   std::optional<ConstValue> literal(TokenKind kind, std::string_view spelling);
@@ -200,7 +190,6 @@ struct ConstArith
   // An explicit or implicit conversion to an arithmetic, enumeration or bool type; nullopt for
   // any other target type.
   std::optional<ConstValue> convert(const ConstValue& v, const Ty* to);
-
 private:
   struct IntType
   {
@@ -216,4 +205,16 @@ private:
   static int64_t normalise(int64_t v, IntType it);
   std::optional<ConstValue> fail(const std::string& reason);
   std::optional<ConstValue> fitted(__int128 exact, IntType it, const char* what);
+public:
+  TypeTable& types;
+  ConstMode mode = ConstMode::Required;
+  std::string* why = nullptr;
+  // The underlying type an enumeration type was declared with, or null for one declared without
+  // (its values then compute as int, or as a 64-bit integer when int cannot hold them).
+  std::function<const Ty*(const Ty*)> underlying;
+  // The range of values of an enumeration type declared without an underlying type, the smallest
+  // bit field's that holds its enumerators ([dcl.enum]/8), or nullopt (one declared with, or one
+  // whose enumerators are not known yet): a conversion out of it is no constant where one is
+  // required, as clang has it ([expr.static.cast]/10: undefined).
+  std::function<std::optional<std::pair<int64_t, int64_t>>(const Ty*)> enumRange;
 };

@@ -13,6 +13,13 @@ struct Target
     Linux,
     FreeBSD,
   };
+
+  bool windows() const { return os == Os::Windows; }
+  bool msvc() const { return os == Os::Windows && !gnu; } // Visual Studio's headers, libraries and link.exe
+  bool posix() const { return os != Os::Windows; }
+  // ELF's data layout differs from COFF's only in the name mangling (`m:e`).
+  static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
   Os os = Os::Windows;
   std::string name = "windows"; // the short name (--target's, the reports')
   std::string triple = "x86_64-pc-windows-msvc";
@@ -21,12 +28,6 @@ struct Target
   // MSVC's, but MinGW-w64's headers and import libraries (the C runtime is the UCRT's ucrtbase.dll)
   // and lld's GNU driver: what the bundled toolchain (llvm-mingw) builds, with no Visual Studio.
   bool gnu = false;
-
-  bool windows() const { return os == Os::Windows; }
-  bool msvc() const { return os == Os::Windows && !gnu; } // Visual Studio's headers, libraries and link.exe
-  bool posix() const { return os != Os::Windows; }
-  // ELF's data layout differs from COFF's only in the name mangling (`m:e`).
-  static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
 };
 
 // The platforms' names, one table (thread J's refactoring list, 2026-11-05): config::platform's

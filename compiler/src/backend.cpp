@@ -90,9 +90,6 @@ namespace
   // printed, never dropped; a note goes with the error before it.
   struct Diagnostics
   {
-    const BackendOptions* options;
-    std::string errors;
-
     static void handle(const llvm::DiagnosticInfo* diagnostic, void* self)
     {
       const llvm::DiagnosticInfo& info = *diagnostic;
@@ -122,6 +119,9 @@ namespace
         break; // (only the remarks asked for arrive, and kppc asks for none)
       }
     }
+
+    const BackendOptions* options;
+    std::string errors;
   };
 }
 
