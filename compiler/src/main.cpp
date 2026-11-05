@@ -2294,9 +2294,16 @@ int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Head
           }, true);
         };
       }
-      cg = generateLLVM(parsed, global, symbols, options.debug, modules, despiteErrors, options.codegenThreads ? options.codegenThreads : options.threads,
-                        despiteErrors && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
-                        options.debugInfo, &options.target, options.optimize, backEnd ? &stream : nullptr);
+      CodegenOptions codegenOptions{.debug = options.debug,
+                                    .moduleCount = modules,
+                                    .despiteErrors = despiteErrors,
+                                    .threads = options.codegenThreads ? options.codegenThreads : options.threads,
+                                    .stubMissing = despiteErrors && options.stubMissing,
+                                    .inlineTrivial = !options.noInline,
+                                    .debugInfo = options.debugInfo,
+                                    .target = &options.target,
+                                    .optimize = options.optimize != 0}; // (resolved to 0 or 1 by now)
+      cg = generateLLVM(parsed, global, symbols, codegenOptions, servingBuild() ? &build.codegen : nullptr, backEnd ? &stream : nullptr);
       cg.changedModules.clear();
       if (backEnd)
         backEnd->raise(); // (codegen ended: the back end has every core)

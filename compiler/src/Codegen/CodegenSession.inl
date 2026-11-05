@@ -19,9 +19,8 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
   delete session;
 }
 
-static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream);
+static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
+                              const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -181,9 +180,8 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
   return moduleCount > 1 && debug && !optimize ? 2 * moduleCount : moduleCount;
 }
 
-CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                           CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream)
+CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
+                           const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -193,24 +191,15 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     std::vector<std::unique_ptr<ParsedFile>>* files;
     GlobalScope* global;
     const SymbolTable* symbols;
-    bool debug;
-    unsigned moduleCount;
-    bool despiteErrors;
-    unsigned threads;
-    bool stubMissing;
-    bool inlineTrivial;
+    const CodegenOptions* options;
     CodegenSessionPtr* keep;
-    bool debugInfo;
-    const Target* target;
-    bool optimize;
     PieceStream* stream;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, stream, {}};
+  } job{&files, &global, &symbols, &options, keep, stream, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
-                         j->keep, j->debugInfo, j->target, j->optimize, j->stream);
+    j->result = generate(*j->files, *j->global, *j->symbols, *j->options, j->keep, j->stream);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -220,7 +209,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, optimize, stream);
+  return generate(files, global, symbols, options, keep, stream);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -728,10 +717,13 @@ static std::string outputText(Emitter& em, unsigned i, const std::string& prefix
   return em.moduleText(i - sh.moduleCount, prefix, true, errors);
 }
 
-static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo, const Target* target, bool optimize, PieceStream* stream)
+static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
+                              const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
+  bool debug = options.debug, despiteErrors = options.despiteErrors, stubMissing = options.stubMissing;
+  bool inlineTrivial = options.inlineTrivial, debugInfo = options.debugInfo, optimize = options.optimize;
+  unsigned moduleCount = options.moduleCount, threads = options.threads;
+  const Target* target = options.target;
   // The build's state lives in a session (Shared refers to its result), kept for the next build
   // when asked (keep) or freed.
   CodegenSessionPtr session(new CodegenSession);

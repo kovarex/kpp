@@ -51,28 +51,37 @@ struct PieceStream
   std::function<void(unsigned k, std::string&& text)> piece;
 };
 
-// debug: config::debug; `assert` statements compile to nothing when it is false.
-// moduleCount > 1 splits the output into that many modules (functions by file, instantiations
-// by the hash of their name) so that LLVM can compile them in parallel.
-// despiteErrors: assemble the IR even when there are errors (--keep-going): the functions with
-// errors are left out and only declared, so that what remains can be compiled and linked.
-// threads: how many threads emit functions at once (the output does not depend on it).
-// stubMissing (with despiteErrors; a bring-up tool, never the default): every function an error
-// left out, and every one used without a definition, is defined as a stub that aborts with its
-// name and line when called, so that the program links and runs up to the first one it reaches.
-// inlineTrivial: calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md,
-// "Design: inlining trivial functions in kppc"); false (--no-inline) keeps every call.
+// What a build asks of codegen (generateLLVM), each by its name (J's refactoring list, item 14: the
+// entry took them as nine positional parameters, seven of them bools).
+struct CodegenOptions
+{
+  bool debug = true; // config::debug; `assert` statements compile to nothing when it is false.
+  // > 1 splits the output into that many modules (functions by file, instantiations by the hash of
+  // their name) so that LLVM can compile them in parallel.
+  unsigned moduleCount = 1;
+  // Assemble the IR even when there are errors (--keep-going): the functions with errors are left out
+  // and only declared, so that what remains can be compiled and linked.
+  bool despiteErrors = false;
+  unsigned threads = 1; // how many threads emit functions at once (the output does not depend on it)
+  // With despiteErrors (a bring-up tool, never the default): every function an error left out, and
+  // every one used without a definition, is defined as a stub that aborts with its name and line when
+  // called, so that the program links and runs up to the first one it reaches.
+  bool stubMissing = false;
+  // Calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md, "Design:
+  // inlining trivial functions in kppc"); false (--no-inline) keeps every call.
+  bool inlineTrivial = true;
+  // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
+  // through the kpp source (docs/debugging.md).
+  bool debugInfo = false;
+  const Target* target = nullptr; // the platform the IR is for (--target; null: Windows x64)
+  bool optimize = false; // --optimize: the modules are optimized (ThinLTO), and not split (codegenOutputModules)
+};
+
 // keep: hand the session back (a build of several modules) instead of freeing it: one with errors only
 // when each came from a program function's own emission (none assembled then).
-// debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
-// debugger steps through the kpp source (docs/debugging.md).
-// target: the platform the IR is for (--target; null: Windows x64).
-// optimize (--optimize): the modules are optimized (ThinLTO), and not split (codegenOutputModules).
 // stream: the program pieces handed over at level 0's barrier (PieceStream).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
-                           bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
-                           bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr,
-                           bool debugInfo = false, const Target* target = nullptr, bool optimize = false, PieceStream* stream = nullptr);
+                           const CodegenOptions& options, CodegenSessionPtr* keep = nullptr, PieceStream* stream = nullptr);
 
 // How many modules a build of moduleCount modules writes (CodegenResult::modules): a debug build of
 // several, not optimized, has each in two, its program piece (what the functions the program writes
