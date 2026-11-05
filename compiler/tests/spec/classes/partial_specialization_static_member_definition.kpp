@@ -1,0 +1,47 @@
+// spec: an out-of-class definition of a partial specialization's static data member (`template<class T> int Box<T*>::made = 20;`) defines that specialization's member, beside the primary template's definition (`template<class T> int Box<T>::made = 10;`) in either order: each instance has its own (Box<double>::made 10 then 11, Box<char>::made 10, Box<double*>::made 20), and an initializer naming the parameter takes the instance's (`sizeof(T)` is the pointee's in Box<T*>'s), at run time and as a constant (Cap's const members in a static_assert); clang prints the same
+// found by thread B (2026-11-06, comparing kpp with clang): the partial specialization's definition was attached to the primary template's member (the later of the two definitions won for Box<double>), and the partial specialization's member had none, 0
+template<class T>
+struct Box
+{
+  static int made;
+  static int size;
+};
+template<class T>
+struct Box<T*>
+{
+  static int made;
+  static int size;
+};
+template<class T>
+int Box<T*>::made = 20;
+template<class T>
+int Box<T>::made = 10;
+template<class T>
+int Box<T>::size = int(sizeof(T));
+template<class T>
+int Box<T*>::size = int(sizeof(T)) * 100;
+
+template<class T>
+struct Cap
+{
+  static const int bits;
+};
+template<class T>
+struct Cap<T*>
+{
+  static const int bits;
+};
+template<class T>
+const int Cap<T*>::bits = int(sizeof(T)) * 10;
+template<class T>
+const int Cap<T>::bits = 1;
+static_assert(Cap<int>::bits == 1 && Cap<double*>::bits == 80);
+
+int main()
+{
+  Box<double>::made++;
+  println(Box<double>::made, " ", Box<char>::made, " ", Box<double*>::made, " ", Box<char*>::made);
+  println(Box<double>::size, " ", Box<char>::size, " ", Box<double*>::size, " ", Box<char*>::size);
+  println(Cap<int>::bits, " ", Cap<double*>::bits);
+  return 0;
+}

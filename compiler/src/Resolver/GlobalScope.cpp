@@ -153,8 +153,12 @@ void GlobalScope::finishIndex()
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
     if (l.scope && l.scope->kind == ScopeKind::Class)
+    {
       if (Scope* special = impl->fullSpecializationScope(qualifier, context, &params, v->file, v->token))
         l.scope = special; // `int Flag<true>::counter = 100;`: the specialisation's member
+      else if (Scope* partial = impl->partialSpecializationScope(qualifier, l, context, v->templateParams, v->file))
+        l.scope = partial; // `template<class T> int Box<T*>::made = 20;`: the partial specialisation's, never the primary's
+    }
     if (l.scope && l.scope->kind == ScopeKind::Class)
     {
       // `template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;` (an instance of
@@ -1025,6 +1029,11 @@ TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArg
     params.push(static_cast<TemplateParamDecl*>(p)->name, p);
   Lookup l = impl->lookupQualified(qualifier, impl->lexicalScopeOf(v), &params, 0);
   Decl* cls = l.scope && l.scope->kind == ScopeKind::Class ? l.scope->owner : nullptr;
+  // (`template<class T> int Box<T*>::size = sizeof(T);`: the partial specialisation's parameters,
+  // which its instances' arguments name: T is Box<double*>'s double)
+  if (cls)
+    if (Scope* partial = impl->partialSpecializationScope(qualifier, l, impl->lexicalScopeOf(v), v->templateParams, v->file))
+      cls = partial->owner;
   if (!cls || cls->templateParams.size() > v->templateParams.size())
     return out;
   for (size_t i = 0; i < cls->templateParams.size(); ++i)
