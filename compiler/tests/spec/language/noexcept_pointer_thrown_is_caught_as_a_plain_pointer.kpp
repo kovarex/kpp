@@ -1,5 +1,4 @@
 // spec: a handler of `void (*)()` takes a thrown `void (*)() noexcept`, a function pointer conversion ([except.handle] 3.3), g++'s output (clang for MSVC targets does not)
-// pending: the catch compares the two types' identities (B)
 extern "C" import "stdio.h";
 void nf() noexcept {}
 int main()

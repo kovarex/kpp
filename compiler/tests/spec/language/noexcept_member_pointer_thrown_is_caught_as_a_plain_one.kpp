@@ -1,0 +1,55 @@
+// spec: a handler of `void (K::*)()` takes a thrown `void (K::*)() noexcept`, by value and by const reference; by a non-const reference only its own type; and nullptr as for a pointer ([except.handle] 3.1, 3.3, 3.4); g++'s output but for the third, where its runtime lets the non-const reference take it, against 3.3
+extern "C" import "stdio.h";
+class K
+{
+public:
+  void f() noexcept {}
+};
+using Own = void (K::*)() noexcept;
+using Plain = void (K::*)();
+int main()
+{
+  Own q = &K::f;
+  try
+  {
+    throw q;
+  }
+  catch (Plain got)
+  {
+    K k;
+    (k.*got)();
+    printf("caught plain\n");
+  }
+  try
+  {
+    throw q;
+  }
+  catch (const Plain& got)
+  {
+    printf("caught by const reference\n");
+  }
+  try
+  {
+    try
+    {
+      throw q;
+    }
+    catch (Plain& got)
+    {
+      printf("wrong: a reference to another type\n");
+    }
+  }
+  catch (Own& got)
+  {
+    printf("caught its own\n");
+  }
+  try
+  {
+    throw nullptr;
+  }
+  catch (Plain got)
+  {
+    printf("null %d\n", got == nullptr);
+  }
+  return 0;
+}

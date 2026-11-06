@@ -187,6 +187,10 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
       for (const BaseSubobject& base : handlerBases(cls, at))
         andConst(base.cls, base.offset);
   }
+  else if (t->kind == TyKind::Pointer && t->inner->isNoexcept())
+    convertsTo(types.pointer(types.withNoexcept(t->inner, false)), "0"); // (a function pointer conversion, [except.handle] 3.3)
+  else if (t->kind == TyKind::MemberPointer && t->inner && t->inner->kind == TyKind::Function && t->inner->isNoexcept() && !t->args.empty())
+    convertsTo(types.memberPointer(types.withNoexcept(t->inner, false), t->args[0]), "0");
   emittedShared[name] = true;
   bool was = emittingShared;
   emittingShared = true;
@@ -201,7 +205,7 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
 auto codegen::Emitter::handlerTypeinfo(const Ty* t, Node* at) -> std::string
 {
   const Ty* pointer = types.unqualified(types.stripRef(t));
-  if (pointer->kind != TyKind::Pointer)
+  if (pointer->kind != TyKind::Pointer && pointer->kind != TyKind::MemberPointer)
     return typeinfoFor(t, at);
   bool exact = t->isReference() && !types.stripRef(t)->isConst;
   std::string real = typeinfoFor(pointer, at), display = types.toString(pointer, &symbols);

@@ -1,0 +1,4 @@
+caught plain
+caught by const reference
+caught its own
+null 1
