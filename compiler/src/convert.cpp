@@ -93,5 +93,6 @@ void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolT
 #include "Converter/HeaderMacros.inl"
 #include "Converter/ProgramPasses.inl"
 #include "Converter/ConvertToKpp.inl"
+#include "Converter/StyleEmptyLines.inl"
 #include "Converter/ConfigurationMerge.inl"
 #include "Converter/SourceEdits.inl"

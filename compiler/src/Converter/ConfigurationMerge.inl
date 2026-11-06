@@ -1591,11 +1591,12 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
   std::map<std::string, std::string> merged; // the converted files, by path below outDir
   size_t files = 0;
   std::error_code ec;
+  // (the last merge writes the checkout: its .kpp files with the code style's empty lines)
   auto write = [&](const std::string& rel, const std::string& text)
   {
     std::filesystem::path target = outDir / rel;
     std::filesystem::create_directories(target.parent_path(), ec);
-    writeConvertedFile(target, text);
+    writeConvertedFile(target, target.extension() == ".kpp" ? withStyleEmptyLines(text) : text);
   };
   for (const auto& entry : std::filesystem::recursive_directory_iterator(debugDir, ec))
   {
