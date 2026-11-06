@@ -2320,9 +2320,30 @@ auto codegen::Emitter::orderOfScalars(Value l, Value r, Node* at) -> Value
   Value less = compare(P::Less, l, r, at);
   Value greater = compare(P::Greater, l, r, at);
   std::string g = newTemp(), res = newTemp();
-  fn += "  " + g + " = select i1 " + greater.text + ", i8 1, i8 0\n";
+  // Neither less nor greater: equal, or for floating values, unordered when one is a NaN (C++
+  // [expr.spaceship] 8: partial_ordering::unordered, the library's strong_ordering::unordered, 2,
+  // which no comparison with 0 holds; until 2026-11-06 `nan <=> 1.0` was equal: E's battery).
+  std::string otherwise = "0";
+  if ((l.ty && types.unqualified(l.ty)->kind == TyKind::Float) || (r.ty && types.unqualified(r.ty)->kind == TyKind::Float))
+  {
+    Value equal = compare(P::EqEq, l, r, at);
+    otherwise = newTemp();
+    fn += "  " + otherwise + " = select i1 " + equal.text + ", i8 0, i8 2\n";
+  }
+  fn += "  " + g + " = select i1 " + greater.text + ", i8 1, i8 " + otherwise + "\n";
   fn += "  " + res + " = select i1 " + less.text + ", i8 -1, i8 " + g + "\n";
   return {res, types.intType(8)};
+}
+
+auto codegen::Emitter::orderHolds(P cmp, Value order, Node* at) -> Value
+{
+  Value plain = compare(cmp, order, Value{"0", types.intType(8)}, at);
+  if (cmp != P::Greater && cmp != P::GreaterEq)
+    return plain; // (unordered, 2, is neither < 0, <= 0 nor == 0, and is != 0)
+  std::string ordered = newTemp(), r = newTemp();
+  fn += "  " + ordered + " = icmp ne i8 " + order.text + ", 2\n";
+  fn += "  " + r + " = and i1 " + plain.text + ", " + ordered + "\n";
+  return {r, types.boolType()};
 }
 
 auto codegen::Emitter::orderingObject(Value order, Node* at) -> Value
@@ -2535,7 +2556,7 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
     std::optional<Value> ordering = call(P::Spaceship);
     if (!ordering)
       return std::nullopt;
-    return compare(cmp, orderOf(*ordering, b), Value{"0", types.intType(8)}, b);
+    return orderHolds(cmp, orderOf(*ordering, b), b);
   };
   // `scale < ScreenshotRequest::MinScale` with a double on the left: the right operand's
   // `operator<=>(const double&)`, the operands the other way round (`0 < (b <=> a)`).
@@ -2552,7 +2573,7 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
       return std::nullopt;
     Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
     P swapped = cmp == P::Less ? P::Greater : cmp == P::Greater ? P::Less : cmp == P::LessEq ? P::GreaterEq : P::LessEq;
-    return compare(swapped, orderOf(ordering, b), Value{"0", types.intType(8)}, b);
+    return orderHolds(swapped, orderOf(ordering, b), b);
   };
   // C++20: a class whose operator<=> is defaulted has a defaulted operator==(const T&) too, which
   // takes a value of another type through T's converting constructor (`alertType ==
@@ -2641,8 +2662,12 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
       if (!findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
         return std::nullopt;
       Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
-      std::string negated = newTemp();
-      fn += "  " + negated + " = sub i8 0, " + orderOf(ordering, b).text + "\n";
+      // (unordered, 2, stays unordered: a NaN's is no less the other way round)
+      std::string turned = newTemp(), unordered = newTemp(), negated = newTemp();
+      std::string forward = orderOf(ordering, b).text;
+      fn += "  " + turned + " = sub i8 0, " + forward + "\n";
+      fn += "  " + unordered + " = icmp eq i8 " + forward + ", 2\n";
+      fn += "  " + negated + " = select i1 " + unordered + ", i8 2, i8 " + turned + "\n";
       Value order{negated, types.intType(8)};
       const Ty* ot = types.unqualified(types.stripRef(ordering.ty));
       return isClass(ot) ? orderingObject(order, b) : convert(order, ot, b);

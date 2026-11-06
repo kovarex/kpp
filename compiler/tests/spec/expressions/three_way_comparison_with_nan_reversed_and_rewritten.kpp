@@ -1,0 +1,28 @@
+// spec: a NaN's ordering is unordered through every form of a comparison (expressions/three_way_comparison_with_nan_is_unordered): a defaulted <=> over a double member, a class's own <=> with a double, its reversed candidates (`1.0 >= p` is `0 >= (p <=> 1.0)`, and `1.0 <=> p` stays unordered, not negated), and the built-in operators; ordered values still order (`2.0 <=> q` greater); clang prints the same
+// found by thread B with E's NaN report (2026-11-06): a rewritten > or >= counted unordered as greater, and a reversed <=> negated it
+struct P
+{
+  double x;
+  auto operator<=>(const P&) const = default;
+  bool operator==(const P&) const = default;
+  auto operator<=>(double d) const { return x <=> d; }
+  bool operator==(double d) const { return x == d; }
+};
+
+int r(bool b) { return b ? 1 : 0; }
+
+int main()
+{
+  volatile double zero = 0.0;
+  double nan = zero / zero;
+  P p{nan}, q{1.0}, s{1.0};
+  println(r(p < q), " ", r(p > q), " ", r(p <= q), " ", r(p >= q), " ", r(p == q), " ", r(p != q));
+  println(r(q < s), " ", r(q <= s), " ", r(q >= s), " ", r(q == s));
+  println(r(p < 1.0), " ", r(p >= 1.0), " ", r(1.0 >= p), " ", r(1.0 < p), " ", r(1.0 == p));
+  auto c1 = 1.0 <=> p;
+  auto c2 = p <=> 1.0;
+  auto c3 = 2.0 <=> q;
+  println(r(c1 < 0), " ", r(c1 > 0), " ", r(c1 == 0), " ", r(c2 >= 0), " | ", r(c3 > 0), " ", r(c3 < 0));
+  println(r(nan < 1.0), " ", r(nan >= 1.0), " ", r((nan <=> nan) == 0));
+  return 0;
+}

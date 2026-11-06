@@ -61,6 +61,9 @@
     void allocationFailure(Node* at, const std::string& stop);
     // A block malloc gave a new-expression: allocationFailure when it is null, never an object built there.
     void checkAllocation(const std::string& block, Node* at);
+    // `(a <=> b) cmp 0` of an order (an i8: -1, 0, 1, or 2 for unordered, a NaN's, which only != holds),
+    // what a rewritten `a >= b` tests: until 2026-11-06 unordered counted as greater (E's battery).
+    Value orderHolds(P cmp, Value order, Node* at);
     // An expression that needs an operator class cls has none of (`name`, "operator+="): an error.
     // The library's String and WString have no `+=` on purpose (`<<` appends: docs/stdlib/text.md,
     // design.md 14), which it says, with what to write.
