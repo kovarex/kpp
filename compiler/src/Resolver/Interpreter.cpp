@@ -859,12 +859,47 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       {
         // `sizeof("\033Lua")`: the literal is an array of its characters and the terminating null
         // (typed as a pointer to them elsewhere), so the array's size, not a pointer's.
-        std::optional<ConstValue> chars = constString(static_cast<LiteralExpr*>(operand), ctx);
+        // A wide one (L"", u"", U""): its code units and the null, each of its element's size
+        // (until 2026-11-06 constString, which reads narrow text only, failed, and sizeof(L"ab")
+        // was a pointer's 8 where it is 6 on Windows).
+        auto* literal = static_cast<LiteralExpr*>(operand);
+        const std::vector<Token>* toks = literal->file && literal->file->tokens ? literal->file->tokens : ctx.tokens;
+        std::string_view text = literal->file && literal->file->tokens ? literal->file->text : ctx.text;
+        if (toks && literal->token < toks->size())
+        {
+          std::string spliced;
+          std::string_view first = tokenSpelling(text, (*toks)[literal->token], spliced);
+          bool wideL = first.starts_with("L"), wide16 = first.starts_with("u") && !first.starts_with("u8"), wide32 = first.starts_with("U");
+          if (wideL || wide16 || wide32)
+          {
+            int unitBytes = wide16 ? 2 : wide32 ? 4 : int(types.wcharBits() / 8);
+            std::string bytes;
+            for (size_t i = literal->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String; ++i)
+            {
+              std::string pieceSpliced;
+              std::string_view piece = tokenSpelling(text, (*toks)[i], pieceSpliced);
+              size_t quote = piece.find('"');
+              if (quote == std::string_view::npos || !decodeNarrowString(piece.substr(quote), bytes))
+                return std::nullopt; // (no constant: never the pointer's size)
+            }
+            int64_t units = 0;
+            for (size_t i = 0; i < bytes.size();)
+            {
+              unsigned char c = bytes[i];
+              size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+              units += unitBytes == 2 && n == 4 ? 2 : 1; // (a surrogate pair in UTF-16)
+              i += n;
+            }
+            return ConstValue::integer((units + 1) * unitBytes, types.sizeType());
+          }
+        }
+        std::optional<ConstValue> chars = constString(literal, ctx);
         const Ty* element = operand->ty ? types.stripRef(operand->ty) : nullptr;
         element = element && (element->kind == TyKind::Pointer || element->kind == TyKind::Array) ? element->inner : nullptr;
         std::optional<int64_t> each = element ? constSizeOf(types.unqualified(element), depth + 1) : std::optional<int64_t>(1);
         if (chars && chars->parts && each)
           return ConstValue::integer(int64_t(chars->parts->size()) * *each, types.sizeType());
+        return std::nullopt; // (a literal's size, never its pointer's)
       }
       if (!t && s->operand && s->operand->ty)
         t = s->operand->ty;

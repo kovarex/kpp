@@ -1,0 +1,9 @@
+// spec: sizeof a wide string literal is its code units and the null, each of its element's size, as C++ has it: L"ab" three wchar_t (6 on Windows, 12 where wchar_t is 32 bits), u"ab" 6, U"ab" 12, a concatenation's, a character outside the BMP as a surrogate pair in UTF-16, at compile time too; until 2026-11-06 sizeof(L"ab") was a pointer's 8
+static_assert(sizeof(L"ab") == 3 * sizeof(wchar_t));
+static_assert(sizeof(U"ab") == 12);
+int main()
+{
+  wchar_t buffer[sizeof(L"hello") / sizeof(wchar_t)] = {};
+  println(sizeof(L"ab") / sizeof(wchar_t), " ", sizeof(u"ab"), " ", sizeof(U"ab"), " ", sizeof(u8"ab"), " ", sizeof("ab"), " ", sizeof(L"a" L"bc") / sizeof(wchar_t), " ", sizeof(u"\U0001F600"), " ", sizeof(buffer) / sizeof(buffer[0]));
+  return 0;
+}
