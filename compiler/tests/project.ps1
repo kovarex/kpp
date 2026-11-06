@@ -131,7 +131,7 @@ if (Run 'basic')
     $code = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($code -ne 2 -or $output -notmatch 'kpp debug' -or $output -notmatch 'nothing was asked') { Fail "kpp alone, input from a pipe: exit $code`n$output" }
-    $pipeName = 'msys-0123456789abcdef-pty0-from-master'
+    $pipeName = 'msys-{0:x16}-pty0-from-master' -f $PID # (one per run: two worktrees' gates at once found one name's instances busy)
     $pipe = New-Object IO.Pipes.NamedPipeServerStream($pipeName, [IO.Pipes.PipeDirection]::Out)
     $connected = $pipe.WaitForConnectionAsync()
     $info = New-Object Diagnostics.ProcessStartInfo
