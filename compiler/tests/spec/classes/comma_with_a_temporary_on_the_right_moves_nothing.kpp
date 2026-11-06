@@ -1,0 +1,35 @@
+// spec: a comma expression whose right operand is a temporary is that prvalue: it builds the result object itself, also of a class that cannot move ([expr.comma], [class.temporary])
+// pending: the result goes through a temporary, then a move: one move and one destruction too many, and a class with no move constructor must still compile (battery ce against clang)
+struct Counted
+{
+  static int moved, destroyed;
+  int value;
+  explicit Counted(int value) : value(value) {}
+  Counted(Counted&& other) : value(other.value) { moved++; }
+  ~Counted() { destroyed++; }
+};
+int Counted::moved = 0;
+int Counted::destroyed = 0;
+
+struct Pinned
+{
+  int value;
+  explicit Pinned(int value) : value(value) {}
+  Pinned(const Pinned&) = delete;
+  Pinned(Pinned&&) = delete;
+};
+
+Counted counted(int side) { return (side, Counted(4)); }
+Pinned pinned(int side) { return (side, Pinned(5)); }
+
+int main()
+{
+  {
+    Counted result = counted(1);
+    println(result.value);
+  }
+  println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  Pinned result = pinned(1);
+  println(result.value);
+  return 0;
+}

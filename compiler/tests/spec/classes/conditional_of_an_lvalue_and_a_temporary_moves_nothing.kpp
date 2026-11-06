@@ -1,0 +1,39 @@
+// spec: a conditional of an lvalue and a temporary is a prvalue: the chosen operand builds the result object itself, with no move after it ([expr.cond], [class.temporary])
+// pending: the result goes through a temporary, then a move: one move and one destruction too many (found through Optional::value_or, battery ov1 against clang)
+struct Counted
+{
+  static int copied, moved, destroyed;
+  int value;
+  explicit Counted(int value) : value(value) {}
+  Counted(const Counted& other) : value(other.value) { copied++; }
+  Counted(Counted&& other) : value(other.value) { moved++; }
+  ~Counted() { destroyed++; }
+};
+int Counted::copied = 0;
+int Counted::moved = 0;
+int Counted::destroyed = 0;
+
+Counted choose(bool first, const Counted& given) { return first ? given : Counted(2); }
+
+void report()
+{
+  println(Counted::copied, " copied, ", Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  Counted::copied = Counted::moved = Counted::destroyed = 0;
+}
+
+int main()
+{
+  {
+    Counted given(1);
+    Counted chosen = choose(true, given);
+    println(chosen.value);
+  }
+  report();
+  {
+    Counted given(1);
+    Counted chosen = choose(false, given);
+    println(chosen.value);
+  }
+  report();
+  return 0;
+}
