@@ -1,0 +1,14 @@
+// spec: zeroPadded of an infinity or a NaN pads with spaces, as the printf conversion it stands for does (C17 7.21.6.1: the 0 flag pads with zeros "except when converting an infinity or NaN"; the UCRT and glibc both write `[         inf]` for `%012.2f`), and a finite value with zeros after its sign (`[         inf] [        -inf] [        +inf] [         nan] [-0000001.50]`)
+// factorio: E's formatting battery against printf (fm1, 2026-11-06): zeroPadded(fixed(inf, 2), 12) wrote `000000000inf` and zeroPadded(withSign(...)) `+00000000inf`, where a converted `printf("%012.2f", x)` wrote spaces
+// pending: zeroPadded inserts zeros after the sign of any text, inf and nan included (C)
+extern "C" import "stdio.h";
+int main()
+{
+  volatile double one = 1.0, zero = 0.0;
+  double inf = one / zero, nan = zero / zero;
+  String out;
+  out << "[" << zeroPadded(fixed(inf, 2), 12) << "] [" << zeroPadded(fixed(-inf, 2), 12) << "] [" << zeroPadded(withSign(fixed(inf, 2)), 12) << "] ["
+      << zeroPadded(fixed(nan, 2), 12) << "] [" << zeroPadded(fixed(-1.5, 2), 11) << "]";
+  printf("%s\n", out.c_str());
+  return 0;
+}
