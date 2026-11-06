@@ -95,6 +95,14 @@ emitVtables). The linker keeps one table per class however many modules have it.
 name otherwise has none: one with template arguments, a local, anonymous or file-private one, one in
 an anonymous or inline namespace or in a class template, and std's classes and `type_info`, whose
 names the C runtime's own tables have. tests\debuginfo.ps1 checks the symbols of values.kpp's two.
+Not guarded: a C++ library linked in (built by MSVC or clang) with a polymorphic class of the same
+qualified name as a kpp class has a table of the same symbol, in a comdat too, and the linker keeps
+one of the two for both classes without a word (kind any or exactmatch alike; checked with a
+clang-cl object defining Shape, 2026-11-06), a wrong answer of a debug build. None in the game:
+none of the 21,828 names of factorio-test's debug build is among the 42 its libraries define (sdl,
+curl, re2, imgui, open-vcdiff, ...), and a converted class could not have one, the C++ build linking
+the same libraries. A strong definition in one home module would make it the linker's error
+(LNK2005), which the module-text homing would have to do (listed for thread B).
 
 ## What it costs
 
