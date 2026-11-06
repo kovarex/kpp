@@ -62,6 +62,17 @@ struct Array
       this->items[i] = value;
   }
 
+  // Exchanges the elements one by one (std::array::swap).
+  void swap(Array<T, N>& other)
+  {
+    for (ContainerSize i = 0; i < N; ++i)
+    {
+      T held = move(this->items[i]);
+      this->items[i] = move(other.items[i]);
+      other.items[i] = move(held);
+    }
+  }
+
   bool operator==(const Array<T, N>& other) const
   {
     for (ContainerSize i = 0; i < N; ++i)
@@ -126,6 +137,7 @@ struct Array<T, 0>
   const T& front() const { return *this->data(); }
   const T& back() const { return *this->data(); }
   void fill(const T& value) {}
+  void swap(Array<T, 0>& other) {}
   bool operator==(const Array<T, 0>& other) const { return true; }
   strong_ordering operator<=>(const Array<T, 0>& other) const { return strong_ordering::equal; }
 };
@@ -199,7 +211,13 @@ public:
   ReverseIterator<T*> crend() const { return this->rend(); }
   T& front() const { return this->items[0]; }
   T& back() const { return this->items[this->length - 1]; }
-  Span<T> subspan(ContainerSize offset, ContainerSize count) const { return Span<T>(this->items + offset, count); }
+
+  // A count of dynamicExtent (std::span's default) is the rest from offset.
+  Span<T> subspan(ContainerSize offset, ContainerSize count) const
+  {
+    return Span<T>(this->items + offset, count == dynamicExtent ? this->length - offset : count);
+  }
+
   Span<T> subspan(ContainerSize offset) const { return Span<T>(this->items + offset, this->length - offset); }
   Span<T> first(ContainerSize count) const { return Span<T>(this->items, count); }
   Span<T> last(ContainerSize count) const { return Span<T>(this->items + this->length - count, count); }

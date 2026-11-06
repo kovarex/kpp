@@ -26,7 +26,7 @@ Members:
   `rbegin()`, `rend()` (from the last element to the first), `front()`, `back()`. Accessing an
   element out of range is a program error, not checked.
 - `subspan(offset, count)`, `subspan(offset)`, `first(count)`, `last(count)`: Spans of any length
-  over a part.
+  over a part; a count of `dynamicExtent` is the rest from offset, as `subspan(offset)`.
 - `element_type`, `value_type`: T; `size_type`: ContainerSize; `iterator`, `pointer`: T*.
 
 *Differences from C++*: the count is a ContainerSize (common.md); a Span of a fixed extent stores its count like any

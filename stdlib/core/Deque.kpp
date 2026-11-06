@@ -273,6 +273,18 @@ public:
   }
 
   DequeIterator<T> insert(const_iterator position, ContainerSize count, const T& value) { return this->insert(position.index, count, value); }
+
+  // The listed elements before position, in order (appended, then rotated into place); returns
+  // the position of the first one, or position for an empty list.
+  DequeIterator<T> insert(const_iterator position, InitializerList<T> items)
+  {
+    ContainerSize index = position.index, old = this->length;
+    for (const T& item : items)
+      this->push_back(item);
+    rotate(this->begin() + index, this->begin() + old, this->end());
+    return DequeIterator<T>(this, index);
+  }
+
   DequeIterator<T> insert(const_iterator position, const T& value) { return this->insert(position.index, value); }
   DequeIterator<T> insert(const_iterator position, T&& value) { return this->insert(position.index, move(value)); }
   // An element made from args, inserted before position as insert does (std::deque::emplace).
@@ -338,6 +350,11 @@ public:
     while (this->length > 0)
       this->pop_back();
   }
+
+  // std::deque::shrink_to_fit, a request the standard lets an implementation decline: a block is
+  // freed already when removals empty it (see the top), so there is no unused element storage to
+  // give back; the map of block pointers keeps its size. Elements and references stay.
+  void shrink_to_fit() {}
 
 private:
   // The slot for a new last element; its block is allocated, the map regrown when needed.

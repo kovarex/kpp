@@ -207,6 +207,18 @@ public:
   ListIterator<T> insert(const_iterator position, const T& value) { return this->emplace(position, value); }
   ListIterator<T> insert(const_iterator position, T&& value) { return this->emplace(position, move(value)); }
 
+  // count copies of value before position; returns the first one's position, or position for none.
+  ListIterator<T> insert(const_iterator position, ContainerSize count, const T& value)
+  {
+    if (count == 0)
+      return iterator(position);
+    T copy(value); // value may be an element
+    ListIterator<T> first = this->emplace(position, copy);
+    for (ContainerSize i = 1; i < count; ++i)
+      this->emplace(position, copy);
+    return first;
+  }
+
   template<typename... Args>
   ListIterator<T> emplace(const_iterator position, Args&&... args)
   {

@@ -1,0 +1,46 @@
+// spec: std's members that the comparison battery found missing: Deque::insert(position, {list}) inserts the listed elements before position in order and returns the first one's position; List::insert(position, n, value) inserts n copies and returns the first one's position (position for n of 0), value may be an element of the list; Deque::shrink_to_fit() keeps the elements and their addresses; Array::swap(other) exchanges the elements (`2 7 | 0 1 7 8 9 2 3 | 1 | 3 5 | 1 3 3 3 2 | 1 2 | 1 1 2 3 | 9 9 9 1 2 3 | 0`)
+// factorio: E's container battery against std (dl1, 2026-11-06): these members did not compile; the coordinator asked for them
+extern "C" import "stdio.h";
+template <typename C> void show(const C& c)
+{
+  bool first = true;
+  for (const auto& x : c)
+  {
+    printf(first ? "%d" : " %d", (int)x);
+    first = false;
+  }
+}
+int main()
+{
+  Deque<int> d;
+  for (int i = 0; i < 4; ++i)
+    d.push_back(i);
+  auto at = d.insert(d.begin() + 2, {7, 8, 9});
+  printf("%d %d | ", (int)(at - d.begin()), *at);
+  show(d);
+  int* kept = &d[4];
+  d.shrink_to_fit();
+  printf(" | %d", (int)(kept == &d[4] && *kept == 9));
+  List<int> l;
+  l.push_back(1);
+  l.push_back(2);
+  auto li = l.insert(next(l.begin()), 3, 3);
+  printf(" | %d %d | ", *li, (int)l.size());
+  show(l);
+  auto same = l.insert(l.begin(), 0, 5);
+  printf(" | %d %d", (int)(same == l.begin()), *l.begin() + 1);
+  l.insert(l.end(), 1, l.front());
+  printf(" | %d", (int)(l.back() == 1));
+  Array<int, 3> x = {1, 2, 3}, y = {9, 9, 9};
+  x.swap(y);
+  printf(" ");
+  show(y);
+  printf(" | ");
+  show(x);
+  printf(" ");
+  show(y);
+  Array<int, 0> e, f;
+  e.swap(f);
+  printf(" | %d\n", (int)e.size());
+  return 0;
+}

@@ -15,7 +15,8 @@ Members: `List()`, `List({...})`, copy, move, `= {...}` (replaces the contents w
 elements); `size()` (O(1)), `empty()`, `front()`, `back()`;
 `begin()`, `end()` (bidirectional), `rbegin()`, `rend()`, `swap(other)`; `push_back`, `push_front`, `emplace_back`, `emplace_front`,
 `pop_back`, `pop_front`; `insert(position, value)` (before position, returns the new element's
-position), `emplace(position, args...)`, `erase(position)` (returns the next position),
+position), `insert(position, count, value)` (count copies, returns the first one's position, or
+position for none), `emplace(position, args...)`, `erase(position)` (returns the next position),
 `erase(first, last)`; `splice(position, other)` and `splice(position, other, it)` (move nodes
 from other without copying, O(1) for one element); `remove(value)`, `removeIf(predicate)`;
 `reverse()`; `sort()`, `sort(less)` (stable, O(n log n), moves nodes, not elements); `unique()`;
