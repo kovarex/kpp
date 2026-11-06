@@ -49,6 +49,13 @@ namespace host
   // A path from its UTF-8 text (Windows' paths are UTF-16; POSIX's are the bytes).
   std::filesystem::path pathOfUtf8(const std::string& text);
 
+  // This process's arguments from first on as UTF-8 text, as a kpp program's argv is (kppc --run's
+  // program arguments): on Windows the C runtime's wide argv, split from the command line as the
+  // narrow argv was (that one is the ANSI code page's: U+017E as 9e in 1250, Japanese as `??`); POSIX's
+  // as they are. False, with why, for an argument that has no UTF-8 form (a lone surrogate), named by
+  // its place counted from first (1).
+  bool argumentsAsUtf8(int argc, char** argv, int first, std::vector<std::string>& out, std::string& why);
+
   // fopen of a path of any characters (Windows: its UTF-16 form; POSIX: its bytes).
   FILE* openFile(const std::filesystem::path& path, const char* mode);
   // A command line run by the shell (cmd.exe, /bin/sh), read or written through a pipe: popen and

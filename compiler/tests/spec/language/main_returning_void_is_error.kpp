@@ -1,0 +1,6 @@
+// spec: main returns int (C++; MSVC takes `void main()` as an extension, kpp does not): the program's entry returns main's result as the exit code (language/main_with_one_parameter_is_error)
+// found by thread B (2026-11-06): the entry read an int result from a function that returned none
+// error: main is int main() or int main(int argc, char** argv)
+void main()
+{
+}

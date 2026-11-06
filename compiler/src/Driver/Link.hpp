@@ -25,6 +25,12 @@
   bool definesWideEntryOnly(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols);
 
 
+  // Whether the program is entered through wmain, so that the link names wmainCRTStartup: on Windows,
+  // a main that takes arguments (the generated wmain hands it the wide argv as UTF-8: codegen's
+  // emitEntry) or, without a main, the program's own wmain (the game's).
+  bool wideEntry(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols, const Target& target);
+
+
   // Splits a flag string on spaces, keeping quoted paths whole (without the quotes).
   std::vector<std::string> splitFlags(const std::string& text);
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,

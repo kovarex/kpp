@@ -1,0 +1,19 @@
+// spec: only the global main is the program's entry, as in C++: a namespace's main (tool::main) and a class's static main are functions like any other, of any signature
+// found by thread B (2026-11-06): tool::main was taken for the program's main (both named kpp.main), so the program did not build
+int main(int argc, char** argv);
+
+namespace tool
+{
+  int main(int x) { return x * 2; }
+}
+
+struct S
+{
+  static int main() { return 7; }
+};
+
+int main(int argc, char** argv)
+{
+  println(tool::main(21), " ", S::main(), " ", argc);
+  return 0;
+}

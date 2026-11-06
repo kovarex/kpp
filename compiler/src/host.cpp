@@ -9,8 +9,10 @@
 #include <vector>
 
 #ifdef _WIN32
+#include <corecrt_startup.h>
 #include <fcntl.h>
 #include <io.h>
+#include <stdlib.h>
 #include <windows.h>
 #else
 #include <cerrno>
@@ -186,6 +188,40 @@ namespace host
   int processId() { return int(GetCurrentProcessId()); }
 
   fs::path pathOfUtf8(const std::string& text) { return fs::path(wide(text)); }
+
+  bool argumentsAsUtf8(int argc, char** argv, int first, std::vector<std::string>& out, std::string& why)
+  {
+    // Arguments another caller made (kpp's --test of a project) are taken as they are: they are not the
+    // command line's.
+    if (argv != __argv)
+    {
+      out.assign(argv + std::min(first, argc), argv + argc);
+      return true;
+    }
+    // The C runtime parses the wide command line as it parsed the narrow one (and sets __argc again
+    // to the same count).
+    if (_configure_wide_argv(_crt_argv_unexpanded_arguments) != 0 || !__wargv || __argc != argc)
+    {
+      why = "the C runtime gave no wide arguments";
+      return false;
+    }
+    out.clear();
+    for (int i = first; i < argc; ++i)
+    {
+      // (WC_ERR_INVALID_CHARS: a lone surrogate fails, where it would be written as U+FFFD)
+      int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, __wargv[i], -1, nullptr, 0, nullptr, nullptr);
+      if (n <= 0)
+      {
+        why = "argument " + std::to_string(i - first + 1) + " holds a lone surrogate, which has no UTF-8 form";
+        return false;
+      }
+      std::string text(size_t(n), '\0');
+      WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, __wargv[i], -1, text.data(), n, nullptr, nullptr);
+      text.resize(size_t(n) - 1);
+      out.push_back(std::move(text));
+    }
+    return true;
+  }
 
   const char* executableSuffix() { return ".exe"; }
 
@@ -476,6 +512,12 @@ namespace host
   int processId() { return int(getpid()); }
 
   fs::path pathOfUtf8(const std::string& text) { return fs::path(text); }
+
+  bool argumentsAsUtf8(int argc, char** argv, int first, std::vector<std::string>& out, std::string&)
+  {
+    out.assign(argv + std::min(first, argc), argv + argc);
+    return true;
+  }
 
   const char* executableSuffix() { return ""; }
 

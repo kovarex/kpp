@@ -128,22 +128,32 @@ std::string ltoLinkFlags(const Options& options)
   return flags.empty() ? flags : flags.substr(1);
 }
 
-bool definesWideEntryOnly(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols)
+// The program's global definition of main or wmain (`name`), or null.
+static const FunctionDecl* entryDefinition(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols, std::string_view name)
 {
-  bool wide = false;
   for (const auto& file : parsed)
     for (Decl* d : file->decls)
       if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
       {
-        const QualifiedName& name = static_cast<FunctionDecl*>(d)->name;
-        if (name.parts.size() != 1 || name.parts[0].special != 0 || name.parts[0].symbol == UINT32_MAX)
-          continue;
-        std::string_view spelled = symbols.name(name.parts[0].symbol);
-        if (spelled == "main")
-          return false;
-        wide = wide || spelled == "wmain";
+        const QualifiedName& q = static_cast<FunctionDecl*>(d)->name;
+        if (q.parts.size() == 1 && q.parts[0].special == 0 && q.parts[0].symbol != UINT32_MAX && symbols.name(q.parts[0].symbol) == name)
+          return static_cast<FunctionDecl*>(d);
       }
-  return wide;
+  return nullptr;
+}
+
+bool definesWideEntryOnly(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols)
+{
+  return !entryDefinition(parsed, symbols, "main") && entryDefinition(parsed, symbols, "wmain");
+}
+
+bool wideEntry(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols, const Target& target)
+{
+  if (!target.windows())
+    return false;
+  if (const FunctionDecl* main = entryDefinition(parsed, symbols, "main"))
+    return !main->params.empty();
+  return entryDefinition(parsed, symbols, "wmain") != nullptr;
 }
 
 std::vector<std::string> splitFlags(const std::string& text)

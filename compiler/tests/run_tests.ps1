@@ -71,6 +71,8 @@ Add 'specfiles' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Fi
 Add 'runcache' (PsCheck 'tests\runcache.ps1') -seconds 3
 Add 'toolchain' (PsCheck 'tests\toolchain.ps1') -seconds 14
 Add 'windows-gnu' (PsCheck 'tests\windowsgnu.ps1') -seconds 46 -fullOnly $true
+# main's arguments as UTF-8 on Windows, a lone surrogate refused (tests\arguments.ps1).
+Add 'arguments' (PsCheck 'tests\arguments.ps1') -seconds 6
 Add 'import cache' (PsCheck 'tests\importcache.ps1') -seconds 4
 Add 'servers' (PsCheck 'tests\servers.ps1') -seconds 13
 Add 'edit cost' (PsCheck 'tests\editcost.ps1') -seconds 12

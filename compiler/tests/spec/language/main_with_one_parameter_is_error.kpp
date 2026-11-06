@@ -1,0 +1,9 @@
+// spec: main is `int main()` or `int main(int argc, char** argv)`, C++'s two forms, which the program's entry calls (const anywhere in argv's pointers is fine); another form is an error: one parameter here, an environment parameter or a void result in the snippets beside it
+// found by thread B (2026-11-06): the entry called main with no arguments when it took one, so this printed 0 in a release build (argc arrived by register luck at -O0)
+// error: main is int main() or int main(int argc, char** argv)
+extern "C" import "stdio.h";
+int main(int argc)
+{
+  printf("%d\n", argc);
+  return 0;
+}

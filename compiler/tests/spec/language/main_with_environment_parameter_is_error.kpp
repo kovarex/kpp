@@ -1,0 +1,9 @@
+// spec: main has no environment parameter (C's `char** envp`, which C++ leaves to the implementation): kpp's main is C++'s two forms on every target, and getenv reads the environment; the error says so (language/main_with_one_parameter_is_error)
+// found by thread B (2026-11-06): the entry called this main with no arguments; a release build printed nothing and ended with exit 3
+// error: main is int main() or int main(int argc, char** argv); getenv reads the environment
+extern "C" import "stdio.h";
+int main(int argc, char** argv, char** envp)
+{
+  printf("%d %s\n", argc, envp[0]);
+  return 0;
+}

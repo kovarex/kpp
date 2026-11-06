@@ -51,8 +51,10 @@ auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& 
 {
   if (global.isExternC(f))
     return "@" + sym(f->name.last().symbol);
-  if (f->name.parts.size() == 1 && (sym(f->name.parts[0].symbol) == "main" || sym(f->name.parts[0].symbol) == "wmain") && !global.owningClass(f))
-    return "@kpp." + sym(f->name.parts[0].symbol); // called by the generated @main (@wmain), which reports uncaught exceptions
+  // The global main (wmain): called by the generated @main (@wmain), which reports uncaught
+  // exceptions. A namespace's main is a function like any other (tool::main), as in C++.
+  if (f->name.parts.size() == 1 && !f->parent && (sym(f->name.parts[0].symbol) == "main" || sym(f->name.parts[0].symbol) == "wmain") && !global.owningClass(f))
+    return "@kpp." + sym(f->name.parts[0].symbol);
   ArgsScope scope(*this, &args);
   std::string q;
   if (classTy && !classTy->args.empty())

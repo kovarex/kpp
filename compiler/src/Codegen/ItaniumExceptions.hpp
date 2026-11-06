@@ -118,5 +118,13 @@
     // program's main and reports an exception nobody caught.
     void finishExceptionRuntime();
 
-    void emitEntry(const std::string& entry, const std::string& mainName);
+    // The C entry that calls the program's main or wmain (mainName, @kpp.main or @kpp.wmain), when the
+    // program defines it: whether it does. On Windows a main that takes arguments is entered through
+    // @wmain, which hands it the C runtime's wide argv as UTF-8 (wideArguments).
+    bool emitEntry(const std::string& mainName);
+    // The entry's lines that make %argv, main's UTF-8 arguments, from wmain's %wargv: one block from
+    // malloc, the pointers and then the texts (WideCharToMultiByte), never freed, as the C runtime's
+    // argv is not. An argument that has no UTF-8 form (a lone surrogate) ends the program before
+    // main, naming it, as no text can stand for it (kovarex, 2026-11-06: a path holding one throws).
+    std::string wideArguments();
 

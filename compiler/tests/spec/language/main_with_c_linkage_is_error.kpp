@@ -1,0 +1,9 @@
+// spec: main is not extern "C" (C++ too: a program that declares main with C language linkage is ill-formed): the program's entry is generated and calls it, reporting an exception nobody caught, and on Windows hands it UTF-8 arguments
+// found by thread B (2026-11-06): an extern "C" main was the C runtime's own entry, its argv the ANSI code page's on Windows and no report of an uncaught exception
+// error: main is not extern "C": the program's entry calls it
+extern "C" import "stdio.h";
+extern "C" int main(int argc, char** argv)
+{
+  printf("%d\n", argc);
+  return 0;
+}

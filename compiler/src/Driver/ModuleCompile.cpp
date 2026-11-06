@@ -558,7 +558,7 @@ void runCodegen(Build& build)
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
-                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, definesWideEntryOnly(parsed, symbols));
+                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target));
     if (options.deferLink) // (one module: its compile goes with the link)
     {
       deferLinkCommand(options, command);
@@ -724,7 +724,7 @@ void runCodegen(Build& build)
     response += "-fuse-ld=lld\n-flto\n" + optLevel + "\n";
   for (const std::string& flag : splitFlags(ltoLinkFlags(options)))
     response += flag + "\n";
-  for (const std::string& flag : splitFlags(linkFlags(options, definesWideEntryOnly(parsed, symbols))))
+  for (const std::string& flag : splitFlags(linkFlags(options, wideEntry(parsed, symbols, options.target))))
   {
     // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
     std::string one = slashes(flag);

@@ -134,7 +134,13 @@ int runProgram(int argc, char** argv, int runIndex)
   }
   else if (i < argc)
     sources.push_back(argv[i++]);
-  programArgs.assign(argv + i, argv + argc);
+  // (UTF-8, as the program's argv is: on Windows kppc's own argv is the ANSI code page's)
+  std::string notText;
+  if (!host::argumentsAsUtf8(argc, argv, i, programArgs, notText))
+  {
+    fprintf(stderr, "kppc %s: the program's %s\n", argv[runIndex], notText.c_str());
+    return 2;
+  }
   if (sources.empty())
   {
     fprintf(stderr, test ? "usage: kppc [options] --test <file-or-dir>... [-- runner arguments]\n"

@@ -785,33 +785,78 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
                                 "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti, i32 2)\n  unreachable\nno:\n  ret i32 0\n}\n"
                               : "  ret i32 0\n}\n");
   }
-  // @main, or @wmain for a program whose entry takes wide arguments (the game's, on Windows: the
-  // C runtime calls whichever the program defines).
-  for (const char* entry : {"main", "wmain"})
-    if (sh.target.windows() || std::string_view(entry) == "main") // (wmain is Windows' entry alone)
-      emitEntry(entry, "@kpp." + std::string(entry));
+  // The program's entry: main, or on Windows the program's wmain when it defines no main (the game's,
+  // which makes its wide arguments UTF-8 itself: design.md, "One spelling on every platform"). With
+  // both (the game's tests: src's wmain beside the runner's main) main is the entry, as the C++
+  // linkers choose it.
+  if (!emitEntry("@kpp.main") && sh.target.windows()) // (wmain is Windows' entry alone)
+    emitEntry("@kpp.wmain");
 }
 
-auto codegen::Emitter::emitEntry(const std::string& entry, const std::string& mainName) -> void
+auto codegen::Emitter::wideArguments() -> std::string
+{
+  ensureMalloc();
+  if (declaredNames.claim("@WideCharToMultiByte"))
+    decls += "declare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)\n";
+  if (declaredNames.claim("@fprintf"))
+    decls += "declare i32 @fprintf(ptr, ptr, ...)\n";
+  if (declaredNames.claim("@abort"))
+    decls += "declare void @abort()\n";
+  emittingShared = true;
+  std::string notText = cStringConstant("argument %d holds a lone surrogate, which has no UTF-8 form (main's argv is UTF-8)\n"),
+              noMemory = cStringConstant("no memory for main's arguments\n");
+  emittingShared = false;
+  // Each argument measured, then written after the argc + 1 pointers. CP_UTF8 is 65001; with
+  // WC_ERR_INVALID_CHARS (128) the conversion fails on a lone surrogate, which it would otherwise
+  // write as U+FFFD, a text that names another file.
+  std::string convert = "call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr ";
+  return "  %count = sext i32 %argc to i64\n  %slots = add i64 %count, 1\n  %table = shl i64 %slots, 3\n  br label %measure\n"
+         "measure:\n  %i = phi i64 [ 0, %entry ], [ %i.next, %measured ]\n  %size = phi i64 [ %table, %entry ], [ %size.next, %measured ]\n"
+         "  %measuring = icmp slt i64 %i, %count\n  br i1 %measuring, label %measure.one, label %allocate\n"
+         "measure.one:\n  %wp = getelementptr inbounds ptr, ptr %wargv, i64 %i\n  %w = load ptr, ptr %wp\n"
+         "  %n = " + convert + "%w, i32 -1, ptr null, i32 0, ptr null, ptr null)\n"
+         "  %which.i = trunc i64 %i to i32\n  %bad = icmp slt i32 %n, 1\n  br i1 %bad, label %fail, label %measured\n"
+         "measured:\n  %n64 = zext i32 %n to i64\n  %size.next = add i64 %size, %n64\n  %i.next = add i64 %i, 1\n  br label %measure\n"
+         "allocate:\n  %argv = call ptr @malloc(i64 %size)\n  %none = icmp eq ptr %argv, null\n  br i1 %none, label %fail, label %fill\n"
+         "fail:\n  %message = phi ptr [ " + notText + ", %measure.one ], [ " + noMemory + ", %allocate ]\n"
+         "  %which = phi i32 [ %which.i, %measure.one ], [ 0, %allocate ]\n" + stderrStream() +
+         "  %r0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr %message, i32 %which)\n  call void @abort()\n  unreachable\n"
+         "fill:\n  %j = phi i64 [ 0, %allocate ], [ %j.next, %fill.one ]\n  %at = phi i64 [ %table, %allocate ], [ %at.next, %fill.one ]\n"
+         "  %filling = icmp slt i64 %j, %count\n  br i1 %filling, label %fill.one, label %filled\n"
+         "fill.one:\n  %vp = getelementptr inbounds ptr, ptr %wargv, i64 %j\n  %v = load ptr, ptr %vp\n"
+         "  %out = getelementptr inbounds i8, ptr %argv, i64 %at\n  %slot = getelementptr inbounds ptr, ptr %argv, i64 %j\n  store ptr %out, ptr %slot\n"
+         "  %room64 = sub i64 %size, %at\n  %room = trunc i64 %room64 to i32\n"
+         "  %m = " + convert + "%v, i32 -1, ptr %out, i32 %room, ptr null, ptr null)\n"
+         "  %m64 = zext i32 %m to i64\n  %at.next = add i64 %at, %m64\n  %j.next = add i64 %j, 1\n  br label %fill\n"
+         "filled:\n  %end = getelementptr inbounds ptr, ptr %argv, i64 %count\n  store ptr null, ptr %end\n";
+}
+
+auto codegen::Emitter::emitEntry(const std::string& mainName) -> bool
 {
   std::string declare = declareLines[mainName];
   if (moduleCount <= 1)
   {
     std::string definition = body.fromFirst("define i32 " + mainName + "(");
     if (definition.empty())
-      return;
+      return false;
     declare = definition.substr(0, definition.find(")") + 1);
   }
   if (declare.empty())
-    return;
+    return false;
   bool args = declare.find("(i32, ptr)") != std::string::npos || declare.find("(i32 %p0, ptr %p1)") != std::string::npos;
+  // On Windows main's argv is wmain's, as UTF-8: the C runtime's own is in the ANSI code page (U+017E
+  // as 9e in 1250, Japanese as `??`), where every other target's is UTF-8, as all of kpp's narrow text
+  // is (design.md, "Targets and hosts"). The link then names wmainCRTStartup (driver::wideEntry).
+  bool utf8 = args && mainName == "@kpp.main" && sh.target.windows();
+  std::string entry = utf8 || mainName == "@kpp.wmain" ? "wmain" : "main";
   std::string call = "i32 " + mainName + (args ? "(i32 %argc, ptr %argv)" : "()");
   // On Windows the program's main runs under a handler whose filter (kpp.eh.filter.any) the search
   // reaches when no handler of the program takes a kpp exception: it reports the exception and ends
   // the program from the search, so the handler itself is never entered. (Off Windows, kpp_throw
   // reports and aborts itself.)
   bool reports = usesExceptions && sh.target.windows();
-  std::string text = "define i32 @" + entry + "(i32 %argc, ptr %argv) " + std::string(reports ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
+  std::string text = "define i32 @" + entry + "(i32 %argc, ptr " + (utf8 ? "%wargv" : "%argv") + ") " +
+                     std::string(reports ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n" + (utf8 ? wideArguments() : "");
   if (!reports)
     text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
   else
@@ -827,4 +872,5 @@ auto codegen::Emitter::emitEntry(const std::string& entry, const std::string& ma
     auto lock = sharedLock();
     sh.definitions[definedIn[mainName]].push_back(std::move(definition));
   }
+  return true;
 }

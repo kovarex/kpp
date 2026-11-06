@@ -3,6 +3,24 @@
 // its own since 2026-11-05 (codegen.cpp split, stage 2), moved without a change.
 #include "Emitter.hpp"
 
+// Whether a function type is one of the forms C++ gives main, which the program's entry calls
+// (emitEntry): int() or int(int, char**), wmain's int(int, wchar_t**), const anywhere in the
+// pointers (as C++ compilers take it). Another (main(int), the environment's main(int, char**,
+// char**)) was called with no arguments, by register luck at -O0 and with none in a release build.
+static bool entryForm(const Ty* ft, bool wide)
+{
+  auto isInt = [](const Ty* t) { return t && t->kind == TyKind::Int && t->bits == 32 && !t->isUnsigned && t->count == 0; };
+  auto pointee = [](const Ty* t) -> const Ty* { return t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array) ? t->inner : nullptr; };
+  if (!isInt(ft->inner) || ft->variadic)
+    return false;
+  if (ft->args.size() == 0)
+    return true;
+  if (ft->args.size() != 2 || !isInt(ft->args[0]))
+    return false;
+  const Ty* c = pointee(pointee(ft->args[1]));
+  return c && c->kind == TyKind::Char && (wide ? c->count == 1 : c->bits == 8 && c->count == 0 && !c->isUnsigned);
+}
+
 auto codegen::Emitter::retypedPerElement(FunctionDecl* f) -> bool
 {
   for (Decl* p = f; p; p = p->parent)
@@ -194,6 +212,11 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   }
   try
   {
+    if (bool wide = currentFunctionName == "@kpp.wmain"; (currentFunctionName == "@kpp.main" || (wide && sh.target.windows())) && !entryForm(ft, wide))
+      error(f, wide ? "wmain is int wmain() or int wmain(int argc, wchar_t** argv)"
+                    : "main is int main() or int main(int argc, char** argv)" + std::string(ft->args.size() == 3 ? "; getenv reads the environment" : ""));
+    else if (currentFunctionName == "@main") // (C++ too: a program that declares main with C language linkage is ill-formed)
+      error(f, "main is not extern \"C\": the program's entry calls it");
     Signature s = signatureOf(original);
     std::string params, returnType = s.returnType;
     std::vector<std::string> paramNames;

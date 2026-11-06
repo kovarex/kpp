@@ -5,7 +5,8 @@
   // What the executable links against: legacy_stdio_definitions (the printf family the UCRT
   // headers define inline), the Windows libraries programs commonly reach, --lib files; unused
   // functions go (/OPT:REF).
-  // wideEntry: the program defines wmain and no main, so the link names wmainCRTStartup itself. Left to
+  // wideEntry: the program is entered through wmain (driver::wideEntry: a main that takes arguments, on
+  // Windows, or the program's own wmain), so the link names wmainCRTStartup itself. Left to
   // infer the entry, lld-link takes a main that any library has when the program's objects are
   // bitcode (a ThinLTO release build): the game's opus.lib carries opus_compare.obj, and the release
   // game ran opus_compare's main, "found both wmain and main; using latter" (docs/path-to-factorio.md,
