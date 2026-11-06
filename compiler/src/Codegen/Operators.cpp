@@ -331,7 +331,7 @@ auto codegen::Emitter::operatorCall(Value object, const std::string& name, Span<
   if (!f)
   {
     if (required)
-      unsupported(at, qualifiedName(object.ty->decl) + " has no " + name);
+      missingOperator(at, object.ty, name);
     return {"", nullptr};
   }
   return memberCall(object, f, foundIn, args, at, sret);

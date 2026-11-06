@@ -61,6 +61,10 @@
     void allocationFailure(Node* at, const std::string& stop);
     // A block malloc gave a new-expression: allocationFailure when it is null, never an object built there.
     void checkAllocation(const std::string& block, Node* at);
+    // An expression that needs an operator class cls has none of (`name`, "operator+="): an error.
+    // The library's String and WString have no `+=` on purpose (`<<` appends: docs/stdlib/text.md,
+    // design.md 14), which it says, with what to write.
+    [[noreturn]] void missingOperator(Node* at, const Ty* cls, const std::string& name);
 
     // The bytes before the elements of `new T[n]`: a cookie whose last 8 hold n, when T needs
     // destroying (as MSVC's runtime lays it out), so that delete[] destroys all n; 16 for an element

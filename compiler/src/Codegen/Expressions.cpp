@@ -1254,6 +1254,14 @@ auto codegen::Emitter::allocationFailure(Node* at, const std::string& stop) -> v
   usesAssert = true;
 }
 
+auto codegen::Emitter::missingOperator(Node* at, const Ty* cls, const std::string& name) -> void
+{
+  std::string className = qualifiedName(cls->decl);
+  if (name == "operator+=" && (className == "String" || className == "WString") && cls->decl->file && cls->decl->file->isLibrary)
+    fail(at, className + " has no operator+=: `<<` appends to a " + className + " (docs/stdlib/text.md; design.md 14)");
+  unsupported(at, className + " has no " + name);
+}
+
 auto codegen::Emitter::checkAllocation(const std::string& block, Node* at) -> void
 {
   // (C++'s operator new throws std::bad_alloc when it cannot have the block, [basic.stc.dynamic.allocation]
@@ -2217,7 +2225,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       assignObject(l.text, src, l.ty, b, r.isTemporary || movable(b->rhs));
       return l;
     }
-    unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
+    missingOperator(b, l.ty, name);
   }
   if (isAssignment(op))
   {
@@ -2287,7 +2295,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       return callRvalue(result, b);
     if (std::optional<Value> rewritten = rewrittenComparison(b, op, l.ty, nullptr))
       return *rewritten;
-    unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
+    missingOperator(b, l.ty, name);
   }
   Value r = bitfieldOperand(b->rhs, rvalue(b->rhs));
   switch (op)
