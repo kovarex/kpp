@@ -7,6 +7,7 @@
 #include "Ast/AstWalk.hpp"
 #include "source.hpp"
 #include "Restore.hpp"
+#include "LineStarts.hpp"
 #include <array>
 #include <cctype>
 #include <set>

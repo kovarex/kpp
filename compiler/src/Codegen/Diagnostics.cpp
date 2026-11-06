@@ -31,9 +31,8 @@ auto codegen::Emitter::locationOf(Node* at, ParsedFile* file, bool column) -> st
   size_t token = std::min<size_t>(at->token, toks.size() - 1);
   if (at->kind == NodeKind::MemberExpr && token + 1 < toks.size() && toks[token + 1].getKind() == TokenKind::Identifier)
     ++token;
-  const std::vector<uint32_t>& starts = lineStarts[file];
-  size_t tokenLine = size_t(std::upper_bound(starts.begin(), starts.end(), toks[token].offset) - starts.begin());
-  return sourceLocation(file->path, tokenLine, 1 + toks[token].offset - starts[tokenLine - 1]);
+  const LineStarts& starts = lineStarts.try_emplace(file, file->text).first->second;
+  return sourceLocation(file->path, starts.line(toks[token].offset), starts.column(toks[token].offset));
 }
 
 auto codegen::Emitter::programLocationOf(Node* at, ParsedFile* file) -> std::string
@@ -49,15 +48,7 @@ auto codegen::Emitter::lineOf(Node* at, ParsedFile* file) -> size_t
     return 0;
   const std::vector<Token>& toks = *file->tokens;
   const Token& t = toks[std::min<size_t>(at->token, toks.size() - 1)];
-  std::vector<uint32_t>& starts = lineStarts[file];
-  if (starts.empty())
-  {
-    starts.push_back(0);
-    for (uint32_t i = 0; i < file->text.size(); ++i)
-      if (file->text[i] == '\n')
-        starts.push_back(i + 1);
-  }
-  return size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
+  return lineStarts.try_emplace(file, file->text).first->second.line(t.offset);
 }
 
 auto codegen::Emitter::fail(Node* at, const std::string& message, bool shown) -> void

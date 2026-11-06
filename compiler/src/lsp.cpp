@@ -5,6 +5,7 @@
 #include "TypeTable.hpp"
 #include "project.hpp"
 #include "source.hpp"
+#include "LineStarts.hpp"
 #include <chrono>
 #include <algorithm>
 #include <atomic>
@@ -223,16 +224,6 @@ namespace
     return out;
   }
 
-  // Where each line starts in a text.
-  std::vector<size_t> lineStarts(std::string_view text)
-  {
-    std::vector<size_t> starts{0};
-    for (size_t i = 0; i < text.size(); ++i)
-      if (text[i] == '\n')
-        starts.push_back(i + 1);
-    return starts;
-  }
-
   // UTF-16 code units from `from` to `to` in UTF-8 text.
   size_t utf16Units(std::string_view text, size_t from, size_t to)
   {
@@ -247,19 +238,19 @@ namespace
     return units;
   }
 
-  Json position(std::string_view text, const std::vector<size_t>& starts, size_t offset)
+  Json position(std::string_view text, const LineStarts& starts, size_t offset)
   {
-    size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), offset) - starts.begin()) - 1;
+    size_t line = starts.index(offset);
     return Json::object().set("line", line).set("character", utf16Units(text, starts[line], offset));
   }
 
-  Json range(std::string_view text, const std::vector<size_t>& starts, size_t from, size_t to)
+  Json range(std::string_view text, const LineStarts& starts, size_t from, size_t to)
   {
     return Json::object().set("start", position(text, starts, from)).set("end", position(text, starts, to));
   }
 
   // The byte offset of an LSP position (clamped to its line).
-  size_t offsetOf(std::string_view text, const std::vector<size_t>& starts, const Json& position)
+  size_t offsetOf(std::string_view text, const LineStarts& starts, const Json& position)
   {
     size_t line = size_t(std::max<int64_t>(0, position["line"].integer()));
     if (line >= starts.size())
@@ -609,7 +600,7 @@ namespace
       bool filesKnown = false;
       std::map<std::string, ParsedFile*> files;                          // by overlayKey
       std::unordered_map<const ParsedFile*, std::vector<Occurrence>> occurrences;
-      std::unordered_map<const ParsedFile*, std::vector<size_t>> starts;
+      std::unordered_map<const ParsedFile*, LineStarts> starts;
       bool referencesKnown = false;
       std::unordered_map<const Decl*, std::vector<std::pair<const ParsedFile*, uint32_t>>> references; // by canonical declaration
       std::vector<Symbol> symbols;
@@ -934,7 +925,7 @@ namespace
       return out;
     }
 
-    Json diagnosticJson(const std::string& text, const std::vector<size_t>& starts, const Diagnostic& d)
+    Json diagnosticJson(const std::string& text, const LineStarts& starts, const Diagnostic& d)
     {
       size_t line = std::min(d.line == 0 ? 0 : d.line - 1, starts.size() - 1);
       size_t lineStart = starts[line];
@@ -992,7 +983,7 @@ namespace
           text = d->second.text;
         else
           readFile(entry.first, text);
-        std::vector<size_t> starts = lineStarts(text);
+        LineStarts starts(text);
         Json list = Json::array();
         for (const Diagnostic& d : entry.second)
           list.push(diagnosticJson(text, starts, d));
@@ -1181,11 +1172,11 @@ namespace
       });
     }
 
-    const std::vector<size_t>& startsOf(const ParsedFile* f)
+    const LineStarts& startsOf(const ParsedFile* f)
     {
       auto found = cache.starts.find(f);
       if (found == cache.starts.end())
-        found = cache.starts.emplace(f, lineStarts(f->text)).first;
+        found = cache.starts.emplace(f, LineStarts(f->text)).first;
       return found->second;
     }
 
@@ -2041,8 +2032,8 @@ namespace
       });
       auto where = [&](const ParsedFile* f, uint32_t token)
       {
-        const std::vector<size_t>& starts = startsOf(f);
-        size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t((*f->tokens)[token].offset)) - starts.begin());
+        const LineStarts& starts = startsOf(f);
+        size_t line = starts.line((*f->tokens)[token].offset);
         return f->path + ":" + std::to_string(line);
       };
       for (const ParsedFile* f : program.files)
@@ -2357,7 +2348,7 @@ namespace
         ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
         if (!f || !f->tokens)
           return;
-        const std::vector<size_t>& starts = startsOf(f);
+        const LineStarts& starts = startsOf(f);
         size_t previousLine = 0, previousStart = 0;
         for (const Occurrence& o : occurrencesOf(f))
         {
@@ -2365,7 +2356,7 @@ namespace
           if (type < 0)
             continue;
           const Token& t = (*f->tokens)[o.token];
-          size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t(t.offset)) - starts.begin()) - 1;
+          size_t line = starts.index(t.offset);
           size_t start = utf16Units(f->text, starts[line], t.offset);
           int modifiers = (o.declaration ? ModifierDeclaration : 0) | (o.decl->file && o.decl->file->isLibrary ? ModifierDefaultLibrary : 0) | scopeModifiers(program, o.decl);
           data.push(line - previousLine).push(line == previousLine ? start - previousStart : start)
@@ -2469,7 +2460,7 @@ namespace
           d.text = c["text"].text;
           continue;
         }
-        std::vector<size_t> starts = lineStarts(d.text);
+        LineStarts starts(d.text);
         size_t from = offsetOf(d.text, starts, c["range"]["start"]);
         size_t to = std::max(from, offsetOf(d.text, starts, c["range"]["end"]));
         d.text.replace(from, to - from, c["text"].text);

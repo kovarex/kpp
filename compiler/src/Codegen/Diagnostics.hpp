@@ -3,7 +3,7 @@
 // (codegen.cpp split, stage 2, 2026-11-05, moved without a change).
     // --- diagnostics ---
 
-    std::unordered_map<const ParsedFile*, std::vector<uint32_t>> lineStarts; // per file: the offset each line starts at
+    std::unordered_map<const ParsedFile*, LineStarts> lineStarts; // per file: where its lines start
 
     // shown: false for a failure that follows from an error the checker reported (fail): the
     // checker's error is the build's, and the function fails as it would with this one.

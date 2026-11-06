@@ -1368,9 +1368,8 @@ auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> st
     return file ? file->path : std::string("?");
   const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
   size_t offset = std::min<size_t>(t.offset, file->text.size());
-  size_t lineStart = offset == 0 ? std::string_view::npos : file->text.rfind('\n', offset - 1);
-  lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
-  return sourceLocation(file->path, 1 + std::count(file->text.begin(), file->text.begin() + offset, '\n'), 1 + offset - lineStart);
+  LineStarts starts(file->text);
+  return sourceLocation(file->path, starts.line(offset), starts.column(offset));
 }
 
 auto GlobalScope::Impl::reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message) -> void
