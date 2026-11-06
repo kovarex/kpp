@@ -18,8 +18,10 @@ extern "C" double ldexp(double x, int exp);
 extern "C" double frexp(double x, int* exp);
 extern "C" double cbrt(double x);
 
-bool isnormal(double value) { return isfinite(value) && value != 0.0; }
-bool isnormal(float value) { return isfinite(value) && value != 0.0f; }
+// Neither zero nor subnormal, infinite or NaN: a magnitude of at least DBL_MIN (FLT_MIN). A
+// subnormal was normal (isnormal(4.9e-324) true where C's is false).
+bool isnormal(double value) { return isfinite(value) && abs(value) >= 2.2250738585072014e-308; }
+bool isnormal(float value) { return isfinite(value) && abs(value) >= 1.17549435e-38f; }
 
 float acos(float x) { return (float)acos((double)x); }
 float asin(float x) { return (float)asin((double)x); }

@@ -1,0 +1,15 @@
+// spec: abs of a floating value is its magnitude without a sign, as fabs and std::abs: abs(-0.0) is +0 (1 / abs(-0.0) is inf) and a NaN's sign bit is cleared; isnormal is false for a subnormal (4.9e-324, 1e-45f) as for zero, infinity and NaN; signbit reads the sign bit, a negative NaN's too (0.0 / 0.0 is one on x86-64). Before, abs(-0.0) was -0, isnormal of a subnormal true, and signbit of every NaN false: silent wrong answers. clang (MSVC's runtime) prints the same
+// found comparing kpp with clang (thread I's math battery)
+int main()
+{
+  volatile double zero = 0;
+  double nz = -zero;
+  float nzf = float(-zero);
+  double nan = zero / zero;
+  double sub = 4.9e-324 * (1 + zero);
+  float subf = 1e-45f * float(1 + zero);
+  println(1 / abs(nz), " ", 1 / double(abs(nzf)), " ", signbit(abs(nan)), " ", signbit(abs(-nan)), " ", abs(-2.5), " ", abs(-1.5f));
+  println(isnormal(sub), " ", isnormal(subf), " ", isnormal(2.2250738585072014e-308 * (1 + zero)), " ", isnormal(1.0), " ", isnormal(0.0), " ", isnormal(nan));
+  println(signbit(-nan) != signbit(nan), " ", signbit(-0.0), " ", signbit(0.0), " ", signbit(-1e-300), " ", signbit(-0.0f));
+  return 0;
+}

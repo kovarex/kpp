@@ -59,7 +59,22 @@ template<typename T> requires isIntegral<T>
 bool isinf(T value) { return false; }
 template<typename T> requires isIntegral<T>
 bool isfinite(T value) { return true; }
-bool signbit(double value) { return value < 0.0 || (value == 0.0 && 1.0 / value < 0.0); }
+
+// The sign bit: of a negative zero and of a NaN too (0.0 / 0.0 is a negative NaN on x86-64, so
+// std::signbit of it is true; a comparison never told it).
+bool signbit(double value)
+{
+  if (value != value)
+    return (bitCast<u64>(value) >> 63) != 0;
+  return value < 0.0 || (value == 0.0 && 1.0 / value < 0.0);
+}
+
+bool signbit(float value)
+{
+  if (value != value)
+    return (bitCast<u32>(value) >> 31) != 0;
+  return value < 0.0f || (value == 0.0f && 1.0f / value < 0.0f);
+}
 
 // math.h defines these through compiler builtins, which the importer cannot bring over.
 const float INFINITY = 1e39f;
@@ -67,8 +82,22 @@ const double HUGE_VAL = 1e309;
 const double NAN = 0.0 / 0.0; // computed at startup: the compiler folds integers only
 
 // abs for the floating-point types (the C runtime's abs takes an int; std::abs on a double
-// converts to `::abs` and finds these).
+// converts to `::abs` and finds these): the value without its sign, as fabs, so a negative zero's
+// is +0 (it was -0: 1 / abs(-0.0) was -inf) and a NaN's sign bit is cleared.
 i32 abs(i32 value) { return value < 0 ? -value : value; }
-float abs(float value) { return value < 0 ? -value : value; }
-double abs(double value) { return value < 0 ? -value : value; }
+
+float abs(float value)
+{
+  if (value != value)
+    return (float)fabs((double)value); // (fabsf is an inline of the UCRT's math.h: no symbol)
+  return value < 0 ? -value : value == 0 ? 0.0f : value;
+}
+
+double abs(double value)
+{
+  if (value != value)
+    return fabs(value);
+  return value < 0 ? -value : value == 0 ? 0.0 : value;
+}
+
 i64 abs(i64 value) { return value < 0 ? -value : value; }
