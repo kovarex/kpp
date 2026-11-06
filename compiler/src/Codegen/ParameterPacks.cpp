@@ -60,8 +60,60 @@ auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> v
 auto codegen::Emitter::templatePacksOf(Decl* param) -> std::vector<Decl*>
 {
   std::vector<Decl*> packs;
+  if (param && param->kind == NodeKind::VariableDecl)
+  {
+    // An init-capture pack (`[...w = v * 2]`): the template packs of the parameter packs its
+    // pattern expands, which an element of it is typed by (the walk types w's element from v's).
+    Expr* init = static_cast<VariableDecl*>(param)->init;
+    if (init && init->kind == NodeKind::UnaryExpr)
+      for (Decl* p : parameterPacksNamedIn(static_cast<UnaryExpr*>(init)->operand))
+        for (Decl* tp : templatePacksOf(p))
+          if (std::find(packs.begin(), packs.end(), tp) == packs.end())
+            packs.push_back(tp);
+    return packs;
+  }
   collectPacks(global.typeOfDecl(param), packs, 0);
   return packs;
+}
+
+auto codegen::Emitter::parameterPacksNamedIn(Node* n, int depth) -> std::vector<Decl*>
+{
+  std::vector<Decl*> out;
+  if (!n || depth > 32)
+    return out;
+  auto add = [&](Node* x) {
+    for (Decl* d : parameterPacksNamedIn(x, depth + 1))
+      if (std::find(out.begin(), out.end(), d) == out.end())
+        out.push_back(d);
+  };
+  switch (n->kind)
+  {
+    case NodeKind::NameExpr:
+      if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
+        out.push_back(d);
+      break;
+    case NodeKind::ParenExpr: add(static_cast<ParenExpr*>(n)->inner); break;
+    case NodeKind::UnaryExpr: add(static_cast<UnaryExpr*>(n)->operand); break;
+    case NodeKind::CastExpr: add(static_cast<CastExpr*>(n)->operand); break;
+    case NodeKind::NamedCastExpr: add(static_cast<NamedCastExpr*>(n)->operand); break;
+    case NodeKind::MemberExpr: add(static_cast<MemberExpr*>(n)->base); break;
+    case NodeKind::BinaryExpr:
+      add(static_cast<BinaryExpr*>(n)->lhs);
+      add(static_cast<BinaryExpr*>(n)->rhs);
+      break;
+    case NodeKind::CallExpr:
+      add(static_cast<CallExpr*>(n)->callee);
+      for (Expr* a : static_cast<CallExpr*>(n)->args)
+        add(a);
+      break;
+    case NodeKind::FunctionalCastExpr:
+      for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
+        add(a);
+      break;
+    default:
+      break;
+  }
+  return out;
 }
 
 auto codegen::Emitter::collectPacks(const Ty* t, std::vector<Decl*>& packs, int depth) -> void

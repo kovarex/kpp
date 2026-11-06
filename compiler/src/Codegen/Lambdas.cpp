@@ -175,6 +175,26 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
       // `[&x = expr]`: one pointing at what expr names.
       if (!cap.decl)
         unsupported(l, "an init-capture without its variable");
+      if (cap.isPack)
+      {
+        // `[...w = v * 2]`: a field for each element of the pack the pattern expands to, each
+        // initialised from the pattern for that element (an `auto` of its value: decayed; by
+        // reference the object it names); the body's expansions of w read them (packLocals).
+        Expr* pattern = static_cast<UnaryExpr*>(cap.init)->operand;
+        const Ty* pack = cap.init->ty ? types.unqualified(withCurrentArgs(cap.init->ty)) : nullptr;
+        if (!pack || pack->kind != TyKind::Pack)
+          pack = global.typeOfDecl(cap.decl);
+        if (!pack || pack->kind != TyKind::Pack)
+          unsupported(l, "an init-capture pack whose elements are not known");
+        for (size_t k = 0; k < pack->args.size(); ++k)
+        {
+          const Ty* e = types.stripRef(pack->args[k]);
+          if (!cap.byRef)
+            e = e->kind == TyKind::Array ? types.pointer(e->inner) : types.unqualified(e);
+          out.push_back({cap.decl, cap.byRef, pattern, int(k), e});
+        }
+        continue;
+      }
       out.push_back({cap.decl, cap.byRef, cap.init});
       continue;
     }
@@ -566,6 +586,28 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
       fn += "  store ptr " + thisPointer(l) + ", ptr " + field + "\n";
       continue;
     }
+    if (slots[i].init && slots[i].element >= 0)
+    {
+      // An init-capture pack's fields (captureList): the pattern once for each element, in order.
+      if (slots[i].element != 0)
+        continue; // (filled with the first)
+      size_t first = i;
+      forEachPackElement(slots[first].init, l, [&](size_t k)
+      {
+        size_t at = first + k;
+        if (at >= slots.size() || slots[at].decl != d)
+          unsupported(l, "an init-capture pack whose elements are not the closure's");
+        std::string elementField = gep(info.structName, slot, uint32_t(at));
+        if (slots[at].byRef)
+          fn += "  store ptr " + lvalue(slots[at].init) + ", ptr " + elementField + "\n";
+        else
+        {
+          initializeFrom(elementField, info.fieldTypes[at], slots[at].init, l);
+          parts.built(elementField, info.fieldTypes[at]);
+        }
+      });
+      continue;
+    }
     if (slots[i].init && slots[i].byRef)
     {
       // `[&entities = this->entities]`: the field points at what the initializer names.
@@ -782,6 +824,9 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
     std::vector<CaptureSlot> slots = captureList(l);
     if (slots.size() != info.captured.size())
       unsupported(l, "a lambda whose captures differ from its closure's");
+    for (const LambdaCapture& cap : l->captures)
+      if (cap.isPack && cap.decl)
+        packLocals[cap.decl] = {}; // (an init-capture pack of no elements is a pack too)
     for (size_t i = 0; i < info.captured.size(); ++i)
     {
       std::string field = gep(info.structName, "%closure", uint32_t(i));

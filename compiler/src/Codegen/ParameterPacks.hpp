@@ -13,6 +13,8 @@
     // names Args; `auto PrototypeT::*... members` names PrototypeT and the pack invented for the
     // `auto`. An expansion binds each of them to its i-th element together.
     std::vector<Decl*> templatePacksOf(Decl* param);
+    // The function parameter packs an expression names (an init-capture pack's pattern's).
+    std::vector<Decl*> parameterPacksNamedIn(Node* n, int depth = 0);
 
     static void collectPacks(const Ty* t, std::vector<Decl*>& packs, int depth);
 

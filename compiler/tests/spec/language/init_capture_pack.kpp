@@ -1,0 +1,43 @@
+// spec: an init-capture pack (C++20, `[...w = pattern]`, `[&...r = pattern]`) declares a pack of the closure's own variables, one for each element of the packs the pattern expands, each initialised from the pattern for that element as an `auto` (by reference: referring to what it names); the body expands, folds, counts (sizeof...) and forwards them like a parameter pack, beside other captures, none for an empty pack, a class element moved into its variable. Before, `[...` was a parse error ("expected a capture"). clang prints the same
+// found comparing kpp with clang (thread I's battery i9)
+extern "C" int printf(const char* format, ...);
+int sum3(int a, int b, int c) { return a * 100 + b * 10 + c; }
+template<typename... T> auto twice(T... v)
+{
+  return [...w = v * 2]() { return (w + ... + 0); };
+}
+template<typename... T> auto counted(T... v)
+{
+  int base = 7;
+  return [base, ...w = v]() { return base * 10 + int(sizeof...(w)); };
+}
+template<typename... T> void bump(T&... v)
+{
+  auto f = [&...r = v]() { ((r += 1), ...); };
+  f();
+}
+template<typename... T> int forwarded(T... v)
+{
+  auto f = [...w = v + 1]() { return sum3(w...); };
+  return f();
+}
+template<typename... T> int lengths(T... v)
+{
+  auto f = [...s = move(v)]() mutable
+  {
+    int total = 0;
+    ((total = total * 10 + int(s.size())), ...);
+    ((s = String("x")), ...);
+    return total;
+  };
+  int first = f();
+  return first * 10 + int((v.size() + ... + 0));
+}
+int main()
+{
+  int a = 1, b = 2;
+  bump(a, b);
+  printf("%d %d %d %d %d %d %d\n", twice(4, 5)(), twice()(), counted(1, 'x', 2.5)(), counted()(), a * 10 + b, forwarded(1, 2, 3),
+         lengths(String("abc"), String("de")));
+  return 0;
+}

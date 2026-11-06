@@ -6117,6 +6117,8 @@ namespace
         else
         {
           cap.byRef = accept(P::Amp);
+          uint32_t ellipsisToken = pos;
+          cap.isPack = accept(P::Ellipsis); // `[...w = e]`, `[&...w = e]`: an init-capture pack
           if (!atIdent())
           {
             error("expected a capture");
@@ -6138,6 +6140,19 @@ namespace
           {
             cap.init = parseExpression();
             expect(P::RParen, "expected ')'");
+          }
+          if (cap.isPack && !cap.init)
+            error("an init-capture pack takes an initializer: [...name = pattern]");
+          if (cap.isPack && cap.init)
+          {
+            // Its initializer is the pattern's expansion, one value for each element of the packs it
+            // names: the variable is a pack of them, as a parameter pack is (the walk types it so).
+            UnaryExpr* u = node<UnaryExpr>(ellipsisToken);
+            u->operand = cap.init;
+            u->op = uint32_t(P::Ellipsis);
+            u->isKeyword = false;
+            u->postfix = true;
+            cap.init = u;
           }
           if (cap.init)
           {

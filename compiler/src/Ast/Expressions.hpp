@@ -50,6 +50,7 @@ struct LambdaCapture
   bool isThis = false;
   Expr* init = nullptr;         // Init-capture `[x = expr]`.
   Decl* decl = nullptr;         // Init-capture: the variable it declares (a VariableDecl of type auto).
+  bool isPack = false;          // `[...w = v * 2]` (C++20): init, the pattern's expansion, is a pack of them.
 };
 struct LambdaExpr : Expr
 {

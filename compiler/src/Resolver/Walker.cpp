@@ -2125,6 +2125,10 @@ auto GlobalScope::Impl::Walker::packParamIn(Node* n, int depth) -> Decl*
     case NodeKind::CastExpr: return packParamIn(static_cast<CastExpr*>(n)->operand, depth + 1);
     case NodeKind::NamedCastExpr: return packParamIn(static_cast<NamedCastExpr*>(n)->operand, depth + 1);
     case NodeKind::MemberExpr: return packParamIn(static_cast<MemberExpr*>(n)->base, depth + 1);
+    case NodeKind::BinaryExpr: // `v * 2` (`[...w = v * 2]`, `f(v + 1)...`)
+      if (Decl* d = packParamIn(static_cast<BinaryExpr*>(n)->lhs, depth + 1))
+        return d;
+      return packParamIn(static_cast<BinaryExpr*>(n)->rhs, depth + 1);
     case NodeKind::CallExpr:
     {
       auto* c = static_cast<CallExpr*>(n);
