@@ -159,6 +159,8 @@ auto GlobalScope::Impl::traitArgs(const NamePart& part, const TypeContext& ctx, 
 
 auto GlobalScope::Impl::enumUnderlyingType(const Ty* e, const TypeContext& ctx, int depth) -> const Ty*
 {
+  if (const Ty* u = declaredUnderlying(types.unqualified(e)); u && u->isKnown())
+    return u; // (of an instance, and off Windows one as wide as its enumerators)
   Decl* def = e->decl;
   if (def && def->kind == NodeKind::EnumDecl && !def->ownScope)
   {

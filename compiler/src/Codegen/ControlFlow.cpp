@@ -524,7 +524,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
     cond = callConversion(op, cond.ty, owner, cond.text, sw);
     switchedTy = cond.ty;
   }
-  const Ty* ct = cond.ty->kind == TyKind::Enum ? enumUnderlying(cond.ty->decl) : cond.ty;
+  const Ty* ct = cond.ty->kind == TyKind::Enum ? enumUnderlying(cond.ty) : cond.ty;
   if (ct->kind != TyKind::Int && ct->kind != TyKind::Char && ct->kind != TyKind::Bool)
     unsupported(sw, "a switch on a non-integer");
   cond = convert(cond, ct, sw, true); // (an enumeration's value as its underlying integer: the switch's own)

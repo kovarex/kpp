@@ -42,28 +42,31 @@ auto codegen::Emitter::llType(const Ty* t, Node* at) -> std::string
     case TyKind::Vector:
       return "<" + std::to_string(t->count) + " x " + llType(t->inner, at) + ">";
     case TyKind::Class: return structFor(t, at).name;
-    case TyKind::Enum: return llType(enumUnderlying(t->decl), at);
+    case TyKind::Enum: return llType(enumUnderlying(t), at);
     default:
       unsupported(at, "the type " + types.toString(t, &symbols) + (t->kind == TyKind::Pack ? " (a parameter pack)" : t->kind == TyKind::Param ? " (a template parameter)" : "") +
                         (at ? std::string(" of ") + nodeKindName(at->kind) : std::string()));
   }
 }
 
+auto codegen::Emitter::enumUnderlying(const Ty* t) -> const Ty*
+{
+  // Of the instance it is read as (`template<class T> struct S { enum : T { a }; };`), the one this
+  // template's code is emitted for when it is named by its parameters.
+  t = withCurrentArgs(types.unqualified(t));
+  const Ty* u = global.underlyingOf(t);
+  if (u && u->isKnown() && !types.isDependent(u))
+    return u; // (written, or off Windows wider than int: `enum { big = 0x100000000 };`)
+  Decl* def = global.definitionOf(t->decl);
+  auto* e = static_cast<EnumDecl*>(def ? def : t->decl);
+  if (e->underlying)
+    unsupported(e, "an enumeration whose underlying type is a template parameter, outside an instance"); // (never int: its size and range are the argument's)
+  return types.intType(32);
+}
+
 auto codegen::Emitter::enumUnderlying(Decl* d) -> const Ty*
 {
-  Decl* def = global.definitionOf(d);
-  auto* e = static_cast<EnumDecl*>(def ? def : d);
-  if (e->underlying)
-  {
-    const Ty* u = global.typeOfAst(e->underlying, e);
-    if (u && u->isKnown() && !types.isDependent(u))
-      return u;
-    unsupported(e, "an enumeration whose underlying type is a template parameter"); // (never int: its size and range are the argument's)
-  }
-  if (!sh.target.windows() && !e->isClass && e->isDefinition)
-    if (const Ty* wide = global.wideUnderlying(e))
-      return wide; // (`enum { big = 0x100000000 };`)
-  return types.intType(32);
+  return enumUnderlying(types.enumType(d));
 }
 
 auto codegen::Emitter::storeZero(const Ty* t, const std::string& addr, Node* at) -> void

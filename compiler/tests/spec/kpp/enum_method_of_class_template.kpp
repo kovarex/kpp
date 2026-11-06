@@ -1,0 +1,17 @@
+// spec: a real enum of a class template: its methods and str() are the instance's, as wide as its underlying type
+// pending: no instance of an enumeration's method is emitted, a compile error; its count and values work (language/enum_underlying_type_from_template_parameter)
+extern "C" int printf(const char* format, ...);
+template<class T> struct S
+{
+  enum class Dir : T
+  {
+    { north = 5, east, south = 300 }
+    bool isNorth() const { return this == north; }
+  };
+};
+int main()
+{
+  for (S<long long>::Dir d : S<long long>::Dir::values)
+    printf("%s %d\n", d.str(), (int)d.isNorth());
+  return 0;
+}

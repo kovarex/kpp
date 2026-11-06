@@ -1,10 +1,41 @@
 // spec: an enumeration of a class template whose underlying type is the template's parameter: its size and range are the argument's
-// pending: the code generator refuses it (enumUnderlying has the declaration, not the instance); it read as int before, a wrong size without a word
 extern "C" int printf(const char* format, ...);
-template<class T> struct Und { enum : T { big = (T)-1, low = 1 }; enum class E : T { a = 2 }; };
+template<class T> struct Und
+{
+  enum : T { big = (T)-1, low = 1 };
+  enum class E : T { a = 2, b = 3 };
+  E field = E::b;
+  static long long viaMember() { return (long long)big + (long long)sizeof(E); }
+  static E make(int v) { return E(v); }
+  static T raw(E e) { return (T)e; }
+};
+template<class T> struct Tr { using type = T; };
+template<class T> struct Via { enum class F : typename Tr<T>::type { x = 7 }; };
+int a1[sizeof(Und<short>::E)];
+static_assert(sizeof(Und<long long>::big) == 8 && (int)Und<unsigned char>::big == 255, "in a constant");
+int which(int) { return 1; }
+int which(long long) { return 2; }
+int which(unsigned char) { return 3; }
+struct Hold { Und<unsigned char>::E c; Und<long long>::E l; };
+struct Bits { Und<signed char>::E s : 3; Und<unsigned char>::E u : 3; };
+Und<short>::E global1 = Und<short>::E::b;
+Und<signed char>::E pass(Und<signed char>::E x) { return (Und<signed char>::E)((signed char)x + 1); }
 int main()
 {
   printf("%d %d %d\n", (int)Und<unsigned char>::big, (int)Und<unsigned char>::E::a, (int)sizeof(Und<short>::E));
   printf("%lld %lld\n", (long long)Und<long long>::big, (long long)Und<short>::big);
+  printf("%d %d %d\n", (int)sizeof(a1), (int)sizeof(Und<long long>::big + 0), Und<unsigned char>::big << 1);
+  printf("%d %d %d\n", which(Und<long long>::big), which(Und<unsigned char>::big), which(Und<int>::big));
+  printf("%lld %lld\n", Und<long long>::viaMember(), Und<unsigned char>::viaMember());
+  printf("%d %d\n", (int)Und<signed char>::make(300), (int)Und<unsigned char>::raw(Und<unsigned char>::make(200)));
+  Und<short> us;
+  printf("%d %d %d\n", (int)us.field, (int)sizeof(us), (int)sizeof(Via<short>::F));
+  printf("%d\n", (int)sizeof(Hold));
+  Bits bits;
+  bits.s = (Und<signed char>::E)-1;
+  bits.u = (Und<unsigned char>::E)7;
+  printf("%d %d\n", (int)bits.s, (int)bits.u);
+  printf("%d %d\n", (int)global1, (int)pass((Und<signed char>::E)-3));
+  printf("%d %d\n", (Und<unsigned char>::E)200 > (Und<unsigned char>::E)100, (Und<signed char>::E)-56 < (Und<signed char>::E)100);
   return 0;
 }

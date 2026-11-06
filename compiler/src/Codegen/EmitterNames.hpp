@@ -45,7 +45,8 @@
 
     std::string llType(const Ty* t, Node* at = nullptr);
 
-    const Ty* enumUnderlying(Decl* d);
+    const Ty* enumUnderlying(const Ty* t);
+    const Ty* enumUnderlying(Decl* d); // (one that is no instance's)
 
     // Zeroes an object of type t at addr (value initialization): a struct or an array with a memset of
     // its size, anything else with a store. The instruction selector splits `store [1048576 x i8]

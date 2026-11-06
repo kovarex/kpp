@@ -113,10 +113,10 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
       fail(at, "a value of the enum class " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
   }
   // (`enum class E : bool`: converts as a bool does, `(E)2` to true, and reads as 0 or 1, never -1.)
-  auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t->decl)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };
+  auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };
   TyKind fk = kindOf(from), tk = kindOf(to);
-  auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };
-  auto unsignedOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? enumUnderlying(t->decl)->isUnsigned : t->isUnsigned; };
+  auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t)->bits) : t->bits; };
+  auto unsignedOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? enumUnderlying(t)->isUnsigned : t->isUnsigned; };
   if (isLambda(from) && tk == TyKind::Pointer && to->inner && to->inner->kind == TyKind::Function)
   {
     if (FunctionDecl* call = to->inner->isNoexcept() ? global.closureCallOperator(types.unqualified(from)) : nullptr; call && !global.isNoexcept(call, {}))
@@ -606,7 +606,7 @@ auto codegen::Emitter::promoted(const Ty* t) -> const Ty*
 {
   t = types.unqualified(types.stripRef(t));
   if (t->kind == TyKind::Enum)
-    t = enumUnderlying(t->decl); // (then promoted as it: an `enum : uint8_t` is an int, `U200 << 1` 400)
+    t = enumUnderlying(t); // (then promoted as it: an `enum : uint8_t` is an int, `U200 << 1` 400)
   return types.promoted(t); // (char32_t to unsigned int)
 }
 
@@ -1231,6 +1231,13 @@ auto codegen::Emitter::qualifierClass(Node* e, Node* at) -> const Ty*
 
 auto codegen::Emitter::staticMemberClass(VariableDecl* v, Node* e, Node* at, const Ty* classTy) -> const Ty*
 {
+  if (v->builtin == BUILTIN_EnumValues && !classTy && e && (e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr) && static_cast<Expr*>(e)->ty)
+  {
+    // `S<short>::Dir::values`: the array of that instance's enumerators, as its type says.
+    const Ty* array = types.unqualified(types.stripRef(static_cast<Expr*>(e)->ty));
+    const Ty* element = array->kind == TyKind::Array ? withCurrentArgs(types.unqualified(array->inner)) : nullptr;
+    return element && element->kind == TyKind::Enum && !element->args.empty() ? element : nullptr;
+  }
   Decl* owner = global.owningClass(v);
   if (!owner || owner->templateParams.empty())
     return nullptr;

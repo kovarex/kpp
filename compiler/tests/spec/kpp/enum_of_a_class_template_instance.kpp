@@ -1,0 +1,27 @@
+// spec: count, values, kppEnumeratorName and UnderlyingType of an enumeration of a class template are the instance's: its width, its enumerators (`Tm<3>` and `Tm<7>` share no table)
+extern "C" int printf(const char* format, ...);
+template<class T> struct S
+{
+  enum class Dir : T
+  {
+    { north = 5, east, south = 300, west }
+  };
+  enum Plain : T { one = 1, two = (T)-1 };
+};
+template<int N> struct Tm { enum E { first = N, second = N + 1 }; };
+template<class E> const char* named(E e) { return kppEnumeratorName(e); }
+template<class E> long long viaUnderlying(E e) { return (long long)sizeof(UnderlyingType<E>) * 1000 + (long long)static_cast<UnderlyingType<E>>(e); }
+int main()
+{
+  printf("%d %d\n", (int)S<short>::Dir::count, (int)S<long long>::Dir::count);
+  for (S<short>::Dir d : S<short>::Dir::values)
+    printf("%d\n", (int)d);
+  for (S<long long>::Dir d : S<long long>::Dir::values)
+    printf("%lld\n", (long long)d);
+  printf("%d %d\n", (int)sizeof(S<short>::Dir::values), (int)sizeof(S<long long>::Dir::values));
+  printf("%s %s\n", named(S<unsigned char>::two), named(S<long long>::one));
+  printf("%s %s %s\n", named(Tm<3>::first), named(Tm<3>::second), named(Tm<7>::second));
+  printf("%s\n", named((Tm<7>::E)3) ? "found" : "none");
+  printf("%lld %lld %lld\n", viaUnderlying(S<short>::Dir::south), viaUnderlying(S<long long>::Dir::west), viaUnderlying(S<unsigned char>::two));
+  return 0;
+}

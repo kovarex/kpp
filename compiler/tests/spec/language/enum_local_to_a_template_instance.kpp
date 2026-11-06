@@ -1,0 +1,43 @@
+// spec: an enumeration in the body of a template: its underlying type and enumerators are the instance's, in a local class too (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+template<class T> int fixedLocal()
+{
+  enum L : T { a = 1, b = (T)-1 };
+  L x = b;
+  return (int)sizeof(L) * 1000 + (int)x;
+}
+template<class T> struct InMember
+{
+  int f()
+  {
+    enum class L : T { a = 5 };
+    return (int)sizeof(L) * 10 + (int)L::a;
+  }
+  static int inClass()
+  {
+    struct In { enum : T { a = 9 }; enum class G : T { b = 1 }; };
+    return (int)sizeof(typename In::G) * 100 + (int)In::a;
+  }
+};
+template<class T> int chained()
+{
+  enum L { a = sizeof(T), b = a + 1 };
+  L x = b;
+  return (int)x;
+}
+template<class T> int inLambda()
+{
+  enum class L : T { a = 3 };
+  auto f = [](L x) { return (int)sizeof(x) * 10 + (int)x; };
+  return f(L::a);
+}
+int main()
+{
+  printf("%d %d %d\n", fixedLocal<unsigned char>(), fixedLocal<short>(), fixedLocal<long long>());
+  InMember<short> s;
+  InMember<long long> l;
+  printf("%d %d %d %d\n", s.f(), l.f(), InMember<short>::inClass(), InMember<long long>::inClass());
+  printf("%d %d\n", chained<char>(), chained<long long>());
+  printf("%d %d\n", inLambda<short>(), inLambda<long long>());
+  return 0;
+}

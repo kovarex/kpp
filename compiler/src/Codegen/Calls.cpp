@@ -143,6 +143,10 @@ static bool namesCLongDouble(const Type* t, int depth = 0)
 
 auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at) -> std::string
 {
+  if (f->parent && f->parent->kind == NodeKind::EnumDecl && !f->builtin)
+    for (Decl* o = f->parent; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl); o = o->parent)
+      if (!o->templateParams.empty())
+        unsupported(at ? at : f, "a method of an enumeration of a class template"); // (no instance of it is emitted: pending spec kpp/enum_method_of_class_template)
   if (f->builtin == BUILTIN_EnumFromStr)
     return useFunctionOnce(f, args, classTy);
   // An imported C function that takes or returns C's long double, or a pointer to one, off Windows:
@@ -338,7 +342,7 @@ auto codegen::Emitter::enumIntrinsic(int which, CallExpr* c) -> Value
     unsupported(c, "kppEnumeratorName of no enumeration");
   Decl* def = global.definitionOf(e->decl);
   auto* en = static_cast<EnumDecl*>(def ? def : e->decl);
-  std::string k = llType(enumUnderlying(en), c);
+  std::string k = llType(enumUnderlying(e), c);
   // (An enumeration of a class template's: each instance has its values, and a function of its own.)
   std::string name = "@\"kpp.enumName." + qualifiedName(en) + (e->args.empty() ? "" : "." + types.toString(e, &symbols)) + "\"";
   if (declaredNames.claim(name))

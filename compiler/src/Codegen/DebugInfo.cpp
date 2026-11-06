@@ -206,7 +206,7 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
       if (t->decl && t->decl->kind == NodeKind::EnumDecl)
       {
         auto* e = static_cast<EnumDecl*>(t->decl);
-        const Ty* underlying = enumUnderlying(e);
+        const Ty* underlying = enumUnderlying(t);
         std::string elements, enumerators;
         uint32_t next = 2;
         for (Decl* d : e->enumerators)

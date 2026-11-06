@@ -602,6 +602,10 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
     for (Decl* p : effectiveParams(e))
       if (p->kind == NodeKind::TemplateParamDecl)
         enumParams.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    if (instance && effectiveParams(e).empty())
+      for (const Subst::Pair& p : instance->pairs) // (in a function's instance: `enum { a = sizeof(T), b = a + 1 };`)
+        if (p.param->kind == NodeKind::TemplateParamDecl)
+          enumParams.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), &enumParams, instance, e->file ? e->file->tokens : nullptr,
                      e->file ? e->file->text : std::string_view()};
     // An enumerator written from the one before (`F1 = 2 * F0`) asks for it while this loop
@@ -813,23 +817,10 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
     }
     case TyKind::Enum:
     {
-      Decl* def = t->decl;
-      if (def && !static_cast<EnumDecl*>(def)->ownScope)
-      {
-        Entry e{def, nullptr};
-        if (Scope* s = scopeOfEntry(e, 0))
-          def = s->owner;
-      }
-      if (def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->underlying)
-      {
-        DeclContext dc;
-        declContextFor(def, dc);
-        TypeContext ctx2{dc.scope, &dc.params, nullptr, def->file ? def->file->tokens : nullptr,
-                        def->file ? def->file->text : std::string_view()};
-        if (const Ty* u = convertType(static_cast<EnumDecl*>(def)->underlying, ctx2, depth + 1))
-          if (u->isKnown())
-            return constSizeOf(u, depth + 1);
-      }
+      // (Of the instance, and off Windows as wide as its enumerators: declaredUnderlying.)
+      const Ty* u = declaredUnderlying(types.unqualified(t));
+      if (u && u->isKnown())
+        return constSizeOf(u, depth + 1);
       return 4; // default: int-sized
     }
     case TyKind::Class:

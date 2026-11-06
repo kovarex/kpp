@@ -1,0 +1,17 @@
+// spec: off Windows an enumeration of a template without a fixed type is as wide as the instance's enumerators ([dcl.enum] 7, g++'s output), in a function's body too; on Windows it stays int, as MSVC's is
+extern "C" int printf(const char* format, ...);
+template<long long N> long long wideLocal()
+{
+  enum L { a = N };
+  return (long long)sizeof(L) * 1000 + (long long)(a > 0);
+}
+template<long long N> struct Wide { enum { v = N }; enum E { w = N, x = 1 }; static long long get() { return (long long)v + 1; } };
+int inConstant[sizeof(Wide<0x100000000ll>::E)];
+int main()
+{
+  printf("%lld %lld %d\n", wideLocal<0x100000000ll>(), wideLocal<5>(), (int)sizeof(inConstant));
+  printf("%d %d %d\n", (int)sizeof(Wide<0x100000000ll>::v), (int)sizeof(Wide<0x100000000ll>::E), (int)sizeof(Wide<5>::E));
+  printf("%lld %lld\n", (long long)Wide<0x100000000ll>::v, Wide<0x100000000ll>::get());
+  printf("%d %d\n", Wide<0xFFFFFFFFll>::v > 0, (int)sizeof(Wide<0xFFFFFFFFll>::v + 0));
+  return 0;
+}

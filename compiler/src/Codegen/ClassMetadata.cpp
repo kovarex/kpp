@@ -2099,7 +2099,7 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
     auto* e = static_cast<EnumDecl*>(def ? def : valueTy->decl);
     if (e->underlying)
     {
-      const Ty* u = types.unqualified(enumUnderlying(e));
+      const Ty* u = types.unqualified(enumUnderlying(valueTy));
       isSigned = (u->kind == TyKind::Int || u->kind == TyKind::Char) && !u->isUnsigned;
     }
     else if (sh.target.windows())
@@ -2990,6 +2990,13 @@ auto codegen::Emitter::withCurrentArgs(const Ty* t, int depth) -> const Ty*
       for (const Ty* a : t->args)
         args.push_back(withCurrentArgs(a, depth + 1));
       return types.qualified(types.classType(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
+    }
+    case TyKind::Enum: // (an enumeration of a class template, named in its own code)
+    {
+      std::vector<const Ty*> args;
+      for (const Ty* a : t->args)
+        args.push_back(withCurrentArgs(a, depth + 1));
+      return types.qualified(types.enumType(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
     }
     default: return t;
   }

@@ -692,7 +692,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
       if (!t || !t->isKnown())
       {
         // Try to derive the type from the resolved declaration.
-        if (d && d->kind == NodeKind::ClassDecl)
+        if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl))
         {
           NamedType tmp{};
           tmp.kind = NodeKind::NamedType;
@@ -701,10 +701,8 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           t = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
           if (t) t = types.unqualified(types.stripRef(t));
           if (!t || !t->isKnown())
-            t = types.classType(static_cast<ClassDecl*>(d), {});
+            t = d->kind == NodeKind::EnumDecl ? types.enumType(d) : types.classType(static_cast<ClassDecl*>(d), {});
         }
-        else if (d && d->kind == NodeKind::EnumDecl)
-          t = types.enumType(static_cast<ClassDecl*>(d));
         else if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::TemplateParamDecl))
         {
           t = declType(d);

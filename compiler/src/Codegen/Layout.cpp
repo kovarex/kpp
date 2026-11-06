@@ -36,7 +36,7 @@ auto codegen::Emitter::sizeOf(const Ty* t, Node* at) -> uint64_t
     }
     case TyKind::Array: return t->count * sizeOf(t->inner, at);
     case TyKind::Vector: return t->count * sizeOf(t->inner, at);
-    case TyKind::Enum: return sizeOf(enumUnderlying(t->decl), at);
+    case TyKind::Enum: return sizeOf(enumUnderlying(t), at);
     case TyKind::Class: return classSizeAndAlign(t, at).first;
     default:
       unsupported(at, "sizeof " + types.toString(t, &symbols));
@@ -858,7 +858,7 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         fail(m, "the layout of " + types.toString(key, &symbols) + ": the bit field " + memberName(m) + " has a negative width (" + std::to_string(*w) + ")");
       const Ty* unit = types.unqualified(ft);
       if (unit->kind == TyKind::Enum)
-        unit = enumUnderlying(unit->decl);
+        unit = enumUnderlying(unit);
       if (unit->kind == TyKind::Bool)
         unit = types.intType(8, true);
       if (sysvBits)

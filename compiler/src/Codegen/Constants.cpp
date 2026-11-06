@@ -99,14 +99,14 @@ auto codegen::Emitter::variableTemplateArgs(NameExpr* n, VariableDecl* v, Node* 
 
 auto codegen::Emitter::foldArith() -> ConstArith
 {
-  return ConstArith{types, ConstMode::Fold, nullptr, [this](const Ty* e) { return e->decl ? enumUnderlying(e->decl) : nullptr; }};
+  return ConstArith{types, ConstMode::Fold, nullptr, [this](const Ty* e) { return e->decl ? enumUnderlying(e) : nullptr; }};
 }
 
 auto codegen::Emitter::foldHooks(Node* at, bool& layoutFailed) -> ConstHooks
 {
   ConstHooks hooks;
   hooks.mode = ConstMode::Fold;
-  hooks.underlying = [this](const Ty* e) { return e->decl ? enumUnderlying(e->decl) : nullptr; };
+  hooks.underlying = [this](const Ty* e) { return e->decl ? enumUnderlying(e) : nullptr; };
   hooks.layout = [this, at, &layoutFailed](const Ty* t, bool alignment) -> std::optional<int64_t>
   {
     try

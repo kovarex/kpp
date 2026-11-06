@@ -35,7 +35,7 @@
   // for one declared without, unknown when the written one cannot be converted.
   std::mutex underlyingMutex;
   std::unordered_map<const Ty*, const Ty*> underlyingTypes;
-  const Ty* declaredUnderlying(const Ty* t);
+  const Ty* declaredUnderlying(const Ty* t, const Subst* local = nullptr); // local: of a function's instance, for an enumeration in its body
   // ConstArith::enumRange: the range of values of an enumeration declared without an underlying
   // type, from its enumerators' values; nullopt for one declared with, an instance's (a class
   // template's member enum), or one whose enumerators are being evaluated or do not evaluate.

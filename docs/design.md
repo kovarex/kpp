@@ -441,6 +441,17 @@ text)` returns `Optional<E>`; the compiler declares it on every kpp enum and low
 library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
 
+An enumeration of a class template belongs to its instance (2026-11-06): the type carries the
+instance's arguments, so `enum : T`, `sizeof`, promotion, overload ranking, a bit field, `count`,
+`values`, `kppEnumeratorName` and `UnderlyingType` read the argument's type and the instance's
+enumerators (GlobalScope::underlyingOf, one answer for the checker and the code generator). One in a
+function's body is a copy of that instance's, whose walk keeps what its arguments make the underlying
+type. Off Windows one without a fixed type is as wide as that instance's enumerators; on Windows it
+stays int, as MSVC's is (clang's MSVC target widens it: not followed). Open: an enumeration's methods
+and `str()` are not emitted per instance, a compile error (pending spec kpp/enum_method_of_class_template).
+Specs language/enum_underlying_type_from_template_parameter, enum_local_to_a_template_instance,
+enum_wider_than_int_in_a_template and kpp/enum_of_a_class_template_instance.
+
 **8.5 Typed unions**, the proposal's `union enum`: an enum whose every value carries a typed
 payload, stored as the tag plus storage for the largest alternative.
 ```

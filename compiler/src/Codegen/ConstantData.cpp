@@ -850,10 +850,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   {
     // E::values: a constant array of the enumerators in declaration order.
     auto* e = static_cast<EnumDecl*>(v->parent);
-    std::string element = llType(enumUnderlying(e), at), elements;
+    const Ty* enumeration = classTy ? classTy : types.enumType(e); // (an instance's: staticMemberClass)
+    std::string element = llType(enumUnderlying(enumeration), at), elements;
     for (Decl* d : e->enumerators)
       if (d->kind == NodeKind::EnumeratorDecl)
-        elements += std::string(elements.empty() ? "" : ", ") + element + " " + std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(d)));
+        elements += std::string(elements.empty() ? "" : ", ") + element + " " + std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(d), enumeration));
     decls += name + " = internal constant " + llType(t, at) + " [" + elements + "]\n";
     return name;
   }

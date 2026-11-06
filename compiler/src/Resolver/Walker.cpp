@@ -4703,12 +4703,12 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       ++stats.callsResolved; // a functional cast, `int64_t(x)` included when int64_t is an imported typedef
       if (n->name.parts.size() > 1 &&
           (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::VariableDecl ||
-           (d->kind == NodeKind::ClassDecl && d->templateParams.empty() && !impl.effectiveParams(d).empty())))
+           ((d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && d->templateParams.empty() && !impl.effectiveParams(d).empty())))
       {
         // `Table::value_type(65)`: the alias as the type path reads it, with the qualifier's
         // instantiation substituted (Array<unsigned char, 4>::value_type is unsigned char);
         // `Surface::const_iterator(surface)`: the nested class of the base
-        // InfiniteRectangle<Chunk*> with that base's arguments.
+        // InfiniteRectangle<Chunk*> with that base's arguments; `Flag<A>::Enum(1)`: that instance's.
         NamedType written{};
         written.kind = NodeKind::NamedType;
         written.token = n->token;
@@ -6665,6 +6665,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
     {
       auto* e = static_cast<EnumDecl*>(d);
       walkType(e->underlying);
+      // Local to an instance of a function, this copy is that instance's alone, and only this walk
+      // has its arguments (a class template's enumeration has them in its type: substFor): what
+      // they make its underlying type is kept for all who ask later.
+      if (activeSubst && ownsNodes() && Impl::effectiveParams(e).empty())
+        impl.declaredUnderlying(types.enumType(e), activeSubst);
       Scope* saved = scope;
       const Ty* savedThis = thisType;
       if (e->ownScope)

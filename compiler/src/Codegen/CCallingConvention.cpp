@@ -7,7 +7,7 @@ auto codegen::Emitter::cScalars(const Ty* t, uint64_t base, std::vector<std::pai
 {
   t = types.unqualified(t);
   if (t->kind == TyKind::Enum)
-    return cScalars(enumUnderlying(t->decl), base, out, at);
+    return cScalars(enumUnderlying(t), base, out, at);
   if (t->kind == TyKind::Array)
   {
     uint64_t size = sizeOf(t->inner, at);

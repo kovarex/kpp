@@ -155,7 +155,7 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
   return range;
 }
 
-auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*
+auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> const Ty*
 {
   {
     std::lock_guard lock(underlyingMutex);
@@ -170,11 +170,13 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*
       def = s->owner;
   }
   const Ty* u = nullptr;
+  Subst instance = substFor(t); // (an instance's: `template<class T> struct S { enum : T { a }; };`)
+  const Subst* own = instance.empty() ? local : &instance;
   if (def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->underlying)
   {
     DeclContext dc;
     declContextFor(def, dc);
-    TypeContext ctx{dc.scope, &dc.params, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+    TypeContext ctx{dc.scope, &dc.params, own, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
     u = convertType(static_cast<EnumDecl*>(def)->underlying, ctx, 1);
     u = u ? types.unqualified(u) : nullptr;
     if (!u || !(u->kind == TyKind::Int || u->kind == TyKind::Char || u->kind == TyKind::Bool))
@@ -187,7 +189,7 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*
     // while they are being evaluated (`B = A | 4`), and nothing kept.
     auto* e = static_cast<EnumDecl*>(def);
     for (const EnumeratorValues* f = enumeratorValues; f; f = f->outer)
-      if (f->e == e)
+      if (f->e == e && (f->type == t || types.isDependent(t)))
         return nullptr;
     int64_t low = 0, high = 0;
     TypeContext ctx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
@@ -198,7 +200,7 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*
         continue;
       std::string* outer = &constWhy();
       std::string saved = *outer;
-      std::optional<ConstValue> v = constValueOfDecl(m, ctx, 1);
+      std::optional<ConstValue> v = constValueOfDecl(m, ctx, 1, own);
       *outer = saved; // (an enumerator that does not evaluate is the enumeration's error)
       if (!v || v->kind != ConstValue::Kind::Int)
         return nullptr; // (of a template, or not known yet)
