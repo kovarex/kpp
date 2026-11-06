@@ -8,6 +8,21 @@ void testsSetup(const Vector<String>& arguments)
   String program = "factorio-test";
   argv.push_back(program.data());
   Vector<String> copies = arguments;
+  // --jobs: each process writes to a directory of its own under --write-data (a log, saves, a lock the
+  // game takes), and without that option the processes would share the config's.
+  if (i32 worker = testWorker())
+  {
+    usize at = 0;
+    while (at < copies.size() && copies[at] != "--write-data")
+      ++at;
+    if (at + 1 >= copies.size())
+    {
+      print("factorio-test: --jobs needs --write-data\n");
+      ::exit(2);
+    }
+    copies[at + 1] = toString(copies[at + 1], "/worker-", worker);
+    Filesystem::create_directories(Filesystem::Path(copies[at + 1]));
+  }
   for (String& argument : copies)
     argv.push_back(argument.data());
   if (i32 result = fmain(i32(argv.size()), argv.data()))
