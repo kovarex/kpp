@@ -288,6 +288,8 @@ auto codegen::Emitter::classDef(Decl* decl, Node* at) -> ClassDecl*
 auto codegen::Emitter::canonicalClass(const Ty* t, Node* at) -> const Ty*
 {
   t = classKey(t);
+  if (isLambda(t))
+    return t; // (a closure is its own: its class is synthetic, declared only)
   ClassDecl* def = classDef(t->decl, at);
   std::vector<const Ty*> args;
   bool changed = def != t->decl;
@@ -451,6 +453,23 @@ auto codegen::Emitter::basesOf(ClassDecl* c, const TemplateArgs& args, Node* at)
 
 auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, std::string& typeLine) -> void
 {
+  if (isLambda(key))
+  {
+    // A closure as a class, the base of one (the overload-set idiom's `struct Overload : Ts...` given
+    // lambdas): its fields its captures as the closure's own struct type has them (a reference capture
+    // a pointer), no base, no vtable, and its struct type the closure's, which closureFor declares (so
+    // no type line here). A closure without captures is empty: no storage as a base.
+    const ClosureInfo& closure = closureFor(key, at);
+    info.name = closure.structName;
+    for (size_t i = 0; i < closure.fieldTypes.size(); ++i)
+      info.fieldTypes.push_back(closure.byRef[i] ? types.pointer(closure.fieldTypes[i]) : closure.fieldTypes[i]);
+    info.empty = closure.fieldTypes.empty();
+    info.size = sizeOf(key, at);
+    info.align = alignOf(key, at);
+    info.llvmAlign = info.align;
+    info.complete = true;
+    return;
+  }
   ClassDecl* c = static_cast<ClassDecl*>(key->decl);
   auto layoutError = [&](const std::string& why) { unsupported(at, "the layout of " + types.toString(key, &symbols) + ": " + why); };
   // A member as written (`Tick lastCheck`), for the error naming what has no known type.
@@ -552,11 +571,9 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   std::vector<const Ty*> baseKeys;
   for (const Ty* bt : basesOf(c, args, at))
   {
-    // (a closure as a base, the overload-set idiom's `struct Overload : Ts...` of lambdas: decided
-    // 2026-10-31 to stay an error until something needs it, spec templates/lambda_as_base_class_is_not_supported_yet)
-    if (isLambda(bt))
-      layoutError("a lambda's closure as a base class (" + types.toString(bt, &symbols) + ")");
-    if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
+    // (a closure as a base, the overload-set idiom's `struct Overload : Ts...` given lambdas: laid
+    // out as buildStruct lays a closure out)
+    if (!bt || (bt->kind != TyKind::Class && !isLambda(bt)) || types.isDependent(bt))
       layoutError("a base class whose type is unknown (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
     if (const Ty* draft = draftHeld(bt))
       undeclared("a base class", draft);

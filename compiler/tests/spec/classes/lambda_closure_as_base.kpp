@@ -1,0 +1,36 @@
+// spec: a lambda's closure is a base class through a template's pack of bases (`struct Holder : Ts...` with Ts a closure type): a capturing closure's captures are its base subobject (sizeof 8 with an int capture and an int member), a closure without captures takes no room as a base (sizeof 4), the aggregate copies the lambda into its base (the capture copied: `copy11 copy21`), a reference to the closure type binds to the base and calls it, and the base is destroyed with the object (`~21 ~11 ~1`); clang prints the same
+// found by thread A's C++ feature survey (2026-11-06): the overload-set idiom given lambdas; a call through the derived class (`Overload o{...}; o(41)`) is still templates/lambda_as_base_class_is_not_supported_yet
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) {}
+  Noisy(const Noisy& o) : id(o.id + 10) { print("copy", id, " "); }
+  ~Noisy() { print("~", id, " "); }
+};
+
+template<class... Ts>
+struct Holder : Ts...
+{
+  int tag = 9;
+};
+
+int main()
+{
+  int k = 5;
+  auto add = [k](int x) { return x + k; };
+  auto none = [](int x) { return x * 2; };
+  Holder<decltype(add)> h{add};
+  decltype(add)& asBase = h;
+  Holder<decltype(none)> n{none};
+  decltype(none)& noneBase = n;
+  println(asBase(10), " ", h.tag, " ", sizeof(h), " | ", noneBase(4), " ", n.tag, " ", sizeof(n));
+  {
+    Noisy noisy(1);
+    auto show = [noisy](int x) { return noisy.id + x; };
+    Holder<decltype(show)> held{show};
+    decltype(show)& base = held;
+    println("| ", base(100));
+  }
+  println("| done");
+  return 0;
+}

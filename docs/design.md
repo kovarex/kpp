@@ -2718,9 +2718,12 @@ The smallest language that is still kpp, as the target of the first code generat
   the constructors by its conversions and wins a tie; an explicit guide is no candidate for
   copy-initialisation (`T x = ...`). Why: guides are part of C++'s deduction, and dropping one
   (as the parser did) deduces other arguments than the code says, silently. Spec:
-  templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...` with `using
-  Ts::operator()...`, the overload-set idiom) is an error where such a class is laid out, until
-  something needs it (2026-10-31, templates/pack_of_base_classes_is_not_supported_yet).
+  templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...`) is a base per
+  element of its pack (2026-11-06, classes/pack_of_base_classes; an error from 2026-10-31 until
+  something needed it, thread A's C++ feature survey), and a lambda's closure is such a base too,
+  its captures its subobject (classes/lambda_closure_as_base). A call through the derived class to a
+  closure base's call operator (`Overload o{[](int) {...}, ...}; o(41)`, the overload-set idiom given
+  lambdas) is an error until it is done (templates/lambda_as_base_class_is_not_supported_yet).
 - **nullptr is the null pointer; the literal 0 is no pointer** (kovarex, 2026-11-04: "b is cleaner long
   term, and if we can convert it, I would prefer that, writing 0 instead of nullptr is not nice"; it
   replaced C++'s rule, kept from 2026-10-29 until the converter wrote nullptr, C's 6f248ebe). An integer

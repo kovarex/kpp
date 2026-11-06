@@ -166,6 +166,14 @@ auto codegen::Emitter::findMemberFunction(const Ty* classTy, const std::string& 
   FunctionDecl* found = nullptr;
   std::function<void(const Ty*)> search = [&](const Ty* cls)
   {
+    // A closure as a base (the overload-set idiom given lambdas): no member function of its own but
+    // its call operator, which a call through the derived class does not reach yet.
+    if (isLambda(cls))
+    {
+      if (name == "operator()")
+        unsupported(at, "the call operator of a lambda's closure as a base class (" + types.toString(cls, &symbols) + ")");
+      return;
+    }
     ClassDecl* c = classDef(cls->decl, at);
     std::vector<FunctionDecl*> candidates;
     for (Decl* m : c->members)

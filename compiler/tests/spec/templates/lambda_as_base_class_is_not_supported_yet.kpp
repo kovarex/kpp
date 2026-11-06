@@ -1,7 +1,6 @@
-// spec: a lambda's closure as a base class (`template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };` given lambdas, the overload-set idiom) is an error where the class is laid out, until it is supported; its deduction guide deduces the arguments (Overload<L1, L2>), and a pack of bases of classes is laid out (classes/pack_of_base_classes, 2026-11-06): the closures as bases and the call through them are what is missing
+// spec: the overload-set idiom given lambdas (`template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };`, `Overload o{[](int x) {...}, [](const char* s) {...}}`) stops at the call `o(41)` until a call through the derived class reaches a closure base's call operator; its deduction guide deduces the arguments (Overload<L1, L2>), and the closures are laid out as its bases (classes/lambda_closure_as_base, 2026-11-06)
 // factorio: Util.hpp's make_overload, whose one user (visitVariant, around std::visit) goes with the Variant mapping (library/variant): decided 2026-10-31 to be an error until something needs it
-// error: lambda_as_base_class_is_not_supported_yet.kpp:9: error: codegen does not support the layout of Overload<
-// error: >: a lambda's closure as a base class (
+// error: lambda_as_base_class_is_not_supported_yet.kpp:9: error: codegen does not support the call operator of a lambda's closure as a base class (
 template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
 template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 int main()
