@@ -1176,7 +1176,9 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **Before a push (by hand):** `compiler\tests\gate.cmd`, run_tests' quick run and the spec side by
   side, ending `gate: ALL PASSED (...)` and exit 0: about 3 minutes on PC-PRACOVNA with other
   threads' work running, against about 14 for run_tests and then the spec one after another before
-  (2026-11-05). What it leaves out runs here on every push.
+  (2026-11-05). Beside them it builds the `*_release.kpp` snippets for Linux and runs them under WSL
+  (a few seconds; skipped with a notice when WSL does not answer). What it leaves out runs here on
+  every push.
 - **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4`, in debug, `--release` and `--debug-info`:
   12 jobs, after build. A shard is
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
@@ -1184,9 +1186,11 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   when all of them are.
 - **package:** on master only, after build and beside the tests (kovarex, 2026-11-02): the package
   (below), handed on as the artifact `package` (zip, installer, kpp-vscode.vsix, kpp-visualstudio.vsix). It publishes nothing.
-- **publish:** on master only, and only when every job above is green (run_tests' halves, every
-  spec shard, package): the release and kpp.net (below). A red or cancelled run publishes nothing:
-  no release, no tag, no upload, and Latest stays where it was. A pull request packages nothing.
+- **publish:** on master only, and only when the jobs it needs are green (run_tests' halves, every
+  spec shard, package, linux_host): the release and kpp.net (below). If one of them is red or
+  cancelled it publishes nothing: no release, no tag, no upload, and Latest stays where it was. It
+  does not wait for the FreeBSD jobs, so a red one of those alone does not stop a release. A pull
+  request packages nothing.
 - **libraries_freebsd_build, libraries_freebsd_run:** on every run, after build; publish
   does not wait for them (kovarex, 2026-11-04: FreeBSD binaries' correctness belongs to kpp's own
   tests). `libraries\target-tests.ps1 -Target freebsd` builds every library's tests and kppsite's for

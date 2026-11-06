@@ -763,9 +763,11 @@ jobs:
           path: build/release/kpp-*-linux-x86_64.tar.gz
           if-no-files-found: error
 
-  # Publishes the package, only when every job above is green: run_tests' halves, every spec shard
-  # and package. A red run, or a cancelled one, publishes nothing: no release, no tag, no kpp.net
-  # upload, and Latest stays where it was.
+  # Publishes the package, only when the jobs it needs are green: run_tests' halves, every spec shard,
+  # package and linux_host. If one of them is red or cancelled it publishes nothing: no release, no
+  # tag, no kpp.net upload, and Latest stays where it was. It does not wait for the FreeBSD jobs
+  # (freebsd_build, freebsd_run, libraries_freebsd_build, libraries_freebsd_run): a red one of those
+  # alone does not stop a release.
   publish:
     needs: [run_tests, spec, package, linux_host]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'

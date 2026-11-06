@@ -7,7 +7,8 @@
 # What the quick run leaves out, CI runs on every push to master, and thread H runs the converted game's
 # tests on master in batches. -Full: run_tests --full (the whole of it) beside the spec.
 # gate.cmd runs it.
-param([switch]$Full)
+# -WslExe: what the Linux check's first call of wsl.exe runs (a stub that hangs tests its skip).
+param([switch]$Full, [string]$WslExe = 'wsl.exe')
 $ErrorActionPreference = 'Stop'
 $compiler = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location $compiler
@@ -73,6 +74,38 @@ $dbgLog = Join-Path $out 'spec-debug-info.log'
 $dbgWhat = if ($touchesDebugInfo) { 'the whole spec, the change touching debug information' } elseif ($changed.Count) { "$($changed.Count) snippets" } else { $null }
 if ($touchesDebugInfo) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc" $dbgLog }
 elseif ($changed.Count) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc --only $($changed -join ',')" $dbgLog }
+# And the release snippets (*_release.kpp, a few seconds) built for Linux and run under WSL: 0ef4abd1
+# (2026-11-06) made every throw crash in a Linux or FreeBSD release build, its ThinLTO dropping what
+# the C runtime's personality reaches, and only CI's linux_host and freebsd_run saw it. A WSL that does
+# not answer, or a program that times out under it, skips this with a notice: CI still runs it.
+$lnx = $null
+$lnxLog = Join-Path $out 'spec-linux.log'
+$lnxLast = 'spec linux release: skipped, no WSL'
+$lnxOk = $true
+if (Get-Command $WslExe -ErrorAction SilentlyContinue)
+{
+  $info = New-Object System.Diagnostics.ProcessStartInfo
+  $info.FileName = (Get-Command $WslExe).Source
+  $info.Arguments = '-e true'
+  $info.UseShellExecute = $false
+  $info.CreateNoWindow = $true
+  $probe = [System.Diagnostics.Process]::Start($info)
+  if (-not $probe.WaitForExit(120000))
+  {
+    $probe.Kill()
+    $lnxLast = 'spec linux release: skipped, WSL did not answer in 2 minutes'
+  }
+  elseif ($probe.ExitCode -eq 0)
+  {
+    if (-not $env:KPP_SYSROOT_LINUX)
+    {
+      $made = Start-Logged "powershell -NoProfile -ExecutionPolicy Bypass -File ..\tools\sysroot\linux.ps1" (Join-Path $out 'linux-sysroot.log')
+      $made.WaitForExit()
+    }
+    $releaseSnippets = @(Get-ChildItem -Recurse -File (Join-Path $compiler 'tests\spec') -Filter '*_release.kpp' | ForEach-Object { $_.FullName.Substring((Join-Path $compiler 'tests\spec\').Length) -replace '\\', '/' })
+    $lnx = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target linux --no-doc --only $($releaseSnippets -join ',')" $lnxLog
+  }
+}
 $rt.WaitForExit()
 Get-Content $rtLog
 $spec.WaitForExit()
@@ -103,9 +136,32 @@ if ($dbg)
   $dbgOk = $dbg.ExitCode -eq 0 -and $dbgLast -match 'ALL PASSED'
   $dbgLast
 }
+if ($lnx)
+{
+  # (by now run_tests and the spec have ended: this seldom waits, and a WSL that hung after the probe
+  # is given up on after 2 minutes)
+  if (-not $lnx.WaitForExit(120000))
+  {
+    & taskkill /T /F /PID $lnx.Id 2>&1 | Out-Null
+    $lnxLast = 'spec linux release: skipped, WSL did not finish in 2 minutes'
+  }
+  else
+  {
+    $lnxLines = @(Get-Content $lnxLog -ErrorAction SilentlyContinue)
+    $lnxFails = @($lnxLines | Where-Object { $_ -match '^FAIL' })
+    if ($lnxFails.Count -and -not @($lnxFails | Where-Object { $_ -notmatch 'program timed out' }).Count) { $lnxLast = "spec linux release: skipped, $($lnxFails.Count) timed out under WSL" }
+    else
+    {
+      $lnxFails
+      $lnxLast = (@($lnxLines | Where-Object { $_ })[-1]) -replace '^spec: ', 'spec linux release: '
+      $lnxOk = $lnx.ExitCode -eq 0 -and $lnxLast -match 'ALL PASSED'
+    }
+  }
+}
+$lnxLast
 $seconds = [int]((Get-Date) - $started).TotalSeconds
-$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED' -and $bsdOk -and $dbgOk
+$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED' -and $bsdOk -and $dbgOk -and $lnxOk
 $kind = if ($Full) { 'full' } else { 'quick' }
-if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $bsdLast ; $dbgLast ; $seconds s)"; exit 0 }
-"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $bsdLast; $dbgLast; $seconds s)"
+if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $bsdLast ; $dbgLast ; $lnxLast ; $seconds s)"; exit 0 }
+"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $bsdLast; $dbgLast; $lnxLast; $seconds s)"
 exit 1
