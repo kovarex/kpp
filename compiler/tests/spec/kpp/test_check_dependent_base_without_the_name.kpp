@@ -1,0 +1,27 @@
+// spec: a dependent base without a member of that name leaves check and require the statements
+// test:
+// exit: 1
+class Base
+{
+public:
+  int value = 1;
+};
+
+suite Dependent
+{
+  template<typename T> class Fixture : public T
+  {
+  public:
+    void go()
+    {
+      check(this->value == 1, "one");
+      require(this->value == 2, "two");
+    }
+  };
+
+  test Uses
+  {
+    Fixture<Base> fixture;
+    fixture.go();
+  }
+}

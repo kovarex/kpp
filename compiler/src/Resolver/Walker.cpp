@@ -270,6 +270,55 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
   impl.reportCheckerError(file, token, message);
 }
 
+// `check(a, b)` in a test is the statement (design.md 8.7), never a call of a `check` that a call
+// there would find: read as a check and a message, the call would be a silent wrong answer. A call
+// finds a name in the scopes around it, in an instance's dependent bases (which only the instance
+// knows) and in the namespaces of its arguments.
+auto GlobalScope::Impl::Walker::checkTestStatementName(const AssertStmt* a) -> void
+{
+  if (!a->testKind || !file || file->isImported || probing)
+    return;
+  const char* name = a->testKind == 1 ? "check" : a->testKind == 2 ? "require" : "fail";
+  uint32_t symbol = impl.symbols.intern(name);
+  Lookup found = impl.lookupUnqualified(symbol, scope, &locals, 0);
+  if (found.found == Found::No && activeSubst && thisType && thisType->kind == TyKind::Pointer)
+    impl.lookupThroughBaseInstances(types.unqualified(thisType->inner), symbol, found, 0);
+  if (found.found == Found::No)
+  {
+    // The statement's arguments: cond, or `cond || __kppMessage(arguments...)`; fail's message alone.
+    std::vector<const Expr*> arguments;
+    auto addMessage = [&](const Expr* e)
+    {
+      if (e && e->kind == NodeKind::CallExpr)
+        for (const Expr* argument : static_cast<const CallExpr*>(e)->args)
+          arguments.push_back(argument);
+    };
+    if (a->testKind == 3)
+      addMessage(a->cond);
+    else if (a->cond->kind == NodeKind::BinaryExpr && P(static_cast<const BinaryExpr*>(a->cond)->op) == P::OrOr)
+    {
+      arguments.push_back(static_cast<const BinaryExpr*>(a->cond)->lhs);
+      addMessage(static_cast<const BinaryExpr*>(a->cond)->rhs);
+    }
+    else
+      arguments.push_back(a->cond);
+    std::vector<Scope*> namespaces;
+    for (const Expr* argument : arguments)
+      if (argument && argument->ty && argument->ty->isKnown() && !types.isDependent(argument->ty))
+        impl.associatedNamespaces(types.unqualified(types.stripRef(argument->ty)), namespaces);
+    for (Scope* in : namespaces)
+      if (found.found == Found::No)
+        impl.lookupInScope(in, symbol, found, 0);
+  }
+  if (found.found == Found::No)
+    return;
+  std::string message = "'" + std::string(name) + "' in a test is the statement, and a declaration of that name is visible here: rename the declaration (design.md 8.7)";
+  if (activeSubst)
+    reportInInstance(a->token, message);
+  else
+    impl.reportCheckerError(file, a->token, message);
+}
+
 auto GlobalScope::Impl::Walker::reportInInstance(uint32_t token, std::string message) -> void
 {
   if (!bodyOf || undecidedBranches > 0)
@@ -7185,14 +7234,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).
       if (auto* a = static_cast<AssertStmt*>(s); a->release || a->testKind || impl.debug)
         walkExpr(a->cond);
-      // `check(a, b)` in a test is the statement (design.md 8.7), never a call of a visible `check`:
-      // a call read as a check and a message would be a silent wrong answer.
-      if (auto* a = static_cast<AssertStmt*>(s); a->testKind && file && !file->isImported && !probing)
-      {
-        const char* name = a->testKind == 1 ? "check" : a->testKind == 2 ? "require" : "fail";
-        if (impl.lookupUnqualified(impl.symbols.intern(name), scope, &locals, 0).found != Found::No)
-          impl.reportCheckerError(file, a->token, "'" + std::string(name) + "' in a test is the statement, and a declaration of that name is visible here: rename the declaration (design.md 8.7)");
-      }
+      checkTestStatementName(static_cast<AssertStmt*>(s));
       break;
     case NodeKind::DeclStmt:
       for (Decl* d : static_cast<DeclStmt*>(s)->decls)

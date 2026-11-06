@@ -1,0 +1,21 @@
+// spec: a check statement is an error when a call of that name would find a function in an argument's namespace
+// kppc: --tests
+// error: 'check' in a test is the statement
+namespace signals
+{
+  class Value
+  {
+  public:
+    explicit operator bool() const { return true; }
+  };
+
+  bool check(const Value& value, int expected) { return false; }
+}
+
+test argumentNamespace
+{
+  signals::Value value;
+  check(value, 3);
+}
+
+int main() { return 0; }

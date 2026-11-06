@@ -1,0 +1,25 @@
+// spec: in an instance, a check statement whose class has a dependent base with a member of that name is an error: only the instance knows the base, and check(1, 2) would silently not call it
+// kppc: --tests
+// error: 'check' in a test is the statement
+class Base
+{
+public:
+  bool check(int a, int b) { return a == b; }
+};
+
+suite Dependent
+{
+  template<typename T> class Fixture : public T
+  {
+  public:
+    void go() { check(1, 2); }
+  };
+
+  test Uses
+  {
+    Fixture<Base> fixture;
+    fixture.go();
+  }
+}
+
+int main() { return 0; }

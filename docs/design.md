@@ -631,13 +631,16 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   ambiguous name, or the running test itself, fails and ends the caller. `TestEnded` is what a
   failed `require` throws, for a destructor that must not let it out (the game's TestScenario::clear).
 - **A name that the statements hide.** In test code `check`, `require` and `fail` are statements, so
-  `check(a, b)` is a check with a message. When a declaration of that name is visible there (a local
-  lambda, a member, a fixture's member, a function of an enclosing namespace) the statement is a
-  compile error, "rename the declaration": the call would otherwise silently be read as a check.
+  `check(a, b)` is a check with a message. When a call of that name there would find a declaration (a local
+  lambda, a member, a fixture's member, a function of an enclosing namespace, a member of a base
+  that depends on a template parameter, which the instance reports, or a function of an argument's
+  namespace) the statement is a compile error, "rename the declaration": the call would otherwise
+  silently be read as a check.
   Elsewhere they stay ordinary names, and a test may call one qualified (`math::check(1)`).
 Spec snippets: kpp/test_suite_helper_uses_require, kpp/test_before_each, kpp/test_current_name,
 kpp/test_run_by_name, kpp/test_run_by_name_unknown, kpp/test_run_captured, kpp/test_run_hook,
-kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_suite_order, kpp/test_suite_declaration_order,
+kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_check_hidden_by_dependent_base_is_error,
+kpp/test_check_dependent_base_without_the_name, kpp/test_check_hidden_by_argument_namespace_is_error, kpp/test_suite_order, kpp/test_suite_declaration_order,
 kpp/test_same_name_in_two_suites, kpp/test_suite_declared_twice_is_error,
 kpp/test_duplicate_name_in_suite_is_error, kpp/test_suite_depends_unknown_is_error,
 kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/test_suite_tags,

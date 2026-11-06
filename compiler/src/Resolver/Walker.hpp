@@ -120,6 +120,7 @@
     // the walk could not decide may be the discarded one, and a member of a class template's
     // instance that nothing calls is never instantiated in C++: Array<const char, N>::fill).
     void reportInInstance(uint32_t token, std::string message);
+    void checkTestStatementName(const AssertStmt* a);
 
     // A warning at token: in an instance's body one that counts once its function is emitted
     // (Impl::instanceWarnings), none in an `if constexpr` branch the walk could not decide.
