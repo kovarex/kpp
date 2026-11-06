@@ -1,0 +1,36 @@
+// spec: at compile time a constructor is chosen by its arguments' value categories, as at run time: `C c(x)` with an int lvalue x takes C(const int&) over C(int&&), `C d(5)` takes C(int&&), and Tuple<int, int&> t(a, b) refers to b, so `get<1>(t) = 7` sets it (`12 7 12 7`, clang gives the same)
+// found by D (2026-11-06), after thread I's Tuple battery: the evaluator typed a scalar argument by its value, an rvalue, so it chose C(int&&) for an lvalue (22 at compile time where run time gave 12, a silent wrong answer), and Tuple<int, int&>(a, b) deduced its forwarding constructor's UT as int (no constant)
+// pending: constConstruct types only a class object's argument by its category; typing a scalar's as its reference made a reference bound through a pack expansion (`inner(forward<U>(u)...)`) refer to a copy (2 at compile time where run time gave 7), which comes first (D)
+struct C
+{
+  int v;
+
+  C(const int&) : v(1) {}
+  C(int&&) : v(2) {}
+};
+
+constexpr int chosen()
+{
+  int x = 0;
+  C c(x);
+  C d(5);
+  return c.v * 10 + d.v;
+}
+
+constexpr int referred()
+{
+  int a = 1;
+  int b = 2;
+  Tuple<int, int&> t(a, b);
+  get<1>(t) = 7;
+  return b;
+}
+
+constexpr int c1 = chosen();
+constexpr int c2 = referred();
+
+int main()
+{
+  println(c1, " ", c2, " ", chosen(), " ", referred());
+  return 0;
+}
