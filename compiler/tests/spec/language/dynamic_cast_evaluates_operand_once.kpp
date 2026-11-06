@@ -1,0 +1,43 @@
+// spec: a dynamic_cast evaluates its operand once, whatever the cast does: to a base or the same class (the static conversion), to a derived class (the run-time check) and to void*; clang prints the same
+// found by thread B beside A's dynamic_cast<void*> report (2026-11-06): a cast to a base or to the same class emitted its operand, then left the conversion to the caller, which emitted it again: `dynamic_cast<A*>(nextA())` called nextA() twice (5 calls here where C++ makes 3)
+class A
+{
+public:
+  virtual ~A() {}
+  int a = 1;
+};
+class B
+{
+public:
+  virtual ~B() {}
+  int b = 2;
+};
+class C : public A, public B
+{
+public:
+  int c = 3;
+};
+
+int calls = 0;
+C global;
+B* next()
+{
+  ++calls;
+  return &global;
+}
+A* nextA()
+{
+  ++calls;
+  return &global;
+}
+
+int main()
+{
+  A* up = dynamic_cast<A*>(nextA());
+  B* same = dynamic_cast<B*>(next());
+  C* down = dynamic_cast<C*>(next());
+  println(calls, " ", up == static_cast<A*>(&global), " ", same == static_cast<B*>(&global), " ", down == &global);
+  void* top = dynamic_cast<void*>(next());
+  println(calls, " ", top == (void*)&global);
+  return 0;
+}

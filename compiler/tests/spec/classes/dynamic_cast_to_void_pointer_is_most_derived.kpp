@@ -1,0 +1,31 @@
+// spec: `dynamic_cast<void*>(p)` of a pointer to a polymorphic class is the most derived object's address ([expr.dynamic.cast] 7), through a base that is not the first (`class C : public A, public B`, a B*) as through the first, a const void* alike, and null for null; clang prints the same
+// found by thread A's survey of C++ features against clang (2026-11-06): the cast converted the pointer alone, so a B* into a C gave the B subobject's address and `dynamic_cast<void*>(pb) == (void*)&c` was false
+class A
+{
+public:
+  virtual ~A() {}
+  int a = 1;
+};
+class B
+{
+public:
+  virtual ~B() {}
+  int b = 2;
+};
+class C : public A, public B
+{
+public:
+  int c = 3;
+};
+
+int main()
+{
+  C c;
+  B* pb = &c;
+  A* pa = &c;
+  const B* cpb = &c;
+  B* none = nullptr;
+  println(dynamic_cast<void*>(pb) == (void*)&c, " ", dynamic_cast<void*>(pa) == (void*)&c, " ", dynamic_cast<const void*>(cpb) == (const void*)&c, " ",
+          dynamic_cast<void*>(none) == nullptr);
+  return 0;
+}

@@ -500,15 +500,42 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
     return std::nullopt;
   bool pointer = target->kind == TyKind::Pointer;
   const Ty* tcls = pointer ? target->inner : target;
+  if (pointer && tcls && tcls->kind == TyKind::Void)
+  {
+    // `dynamic_cast<void*>(p)` ([expr.dynamic.cast] 7): the most derived object's address, the
+    // subobject's own less its offset in that object (its vtable's offset to the top), null for
+    // null. A conversion of the pointer alone gave a base's address that is not the first: `pb`
+    // itself for a B* into `class C : A, B` (thread A's survey, 2026-11-06).
+    Value p = rvalue(c->operand);
+    const Ty* pointee = p.ty && p.ty->kind == TyKind::Pointer ? p.ty->inner : nullptr;
+    if (!pointee || !isClass(pointee) || !structFor(pointee, e).polymorphic)
+      return explicitConvert(p, e->ty, e); // (a pointer to a class that is not polymorphic: C++'s error, the checker's)
+    auto lock = sharedLock();
+    if (declaredNames.claim("@kpp.mostderived"))
+    {
+      decls += "$kpp.mostderived = comdat any\n"
+               "define linkonce_odr ptr @kpp.mostderived(ptr %obj) comdat {\n"
+               "entry:\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %null, label %start\n"
+               "start:\n  %vt = load ptr, ptr %obj\n  %tp = getelementptr inbounds ptr, ptr %vt, i64 -2\n  %top = load ptr, ptr %tp\n"
+               "  %topi = ptrtoint ptr %top to i64\n  %neg = sub i64 0, %topi\n  %r = getelementptr i8, ptr %obj, i64 %neg\n  ret ptr %r\n"
+               "null:\n  ret ptr null\n}\n";
+    }
+    std::string r = newTemp();
+    fn += "  " + r + " = call ptr @kpp.mostderived(ptr " + p.text + ")\n";
+    return Value{r, target, false};
+  }
   if (!isClass(tcls))
     return std::nullopt;
   Value o = rvalue(c->operand);
   const Ty* scls = o.ty && o.ty->kind == TyKind::Pointer ? o.ty->inner : types.stripRef(o.ty);
+  // The static conversion of the value made (the same class or a base of it, or a class that is not
+  // polymorphic, the checker's error), never nullopt: the caller's conversion would emit the
+  // operand again, and `dynamic_cast<Base*>(next())` called next() twice (until 2026-11-06).
   if (!isClass(scls) || !structFor(scls, e).polymorphic)
-    return std::nullopt;
+    return explicitConvert(o, e->ty, e);
   std::vector<std::pair<std::string, uint32_t>> path;
   if (classKey(scls) == classKey(tcls) || basePath(scls, tcls, path, e))
-    return std::nullopt; // the same class or a base of it: the static conversion
+    return explicitConvert(o, e->ty, e);
   std::string descriptor = descriptorFor(tcls, e);
   useDescriptor(structFor(tcls, e));
   auto lock = sharedLock();
