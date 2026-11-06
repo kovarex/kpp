@@ -142,10 +142,48 @@ int scoped(int x)
   }
   return total;
 }
+// A function pointer has its signature, as clang's (noexcept is no part of CodeView's), and a pointer to
+// a member function its function's qualifiers: const and volatile on the class `this` points to, `&` and
+// `&&` on that pointer's record, in a member function's own type too.
+extern "C" int printf(const char* format, ...);
+int plainFunction(int x) { return x; }
+int noThrowFunction(int x) noexcept { return x; }
+void nothing() {}
+class Qualified
+{
+public:
+  int v = 3;
+  int plainOne() { return v; }
+  int constOne() const { return v; }
+  int volatileOne() volatile { return v; }
+  int bothOne() const volatile { return v; }
+  int leftOne() & { return v; }
+  int rightOne() && { return v; }
+  int noThrowOne() const noexcept { return v; }
+};
+int functionTypes(int x)
+{
+  int (*simple)(int) = plainFunction;
+  int (*noThrow)(int) noexcept = noThrowFunction;
+  void (*none)() = nothing;
+  int (*varargs)(const char*, ...) = printf;
+  int (Qualified::*plainMember)() = &Qualified::plainOne;
+  int (Qualified::*constMember)() const = &Qualified::constOne;
+  int (Qualified::*volatileMember)() volatile = &Qualified::volatileOne;
+  int (Qualified::*bothMember)() const volatile = &Qualified::bothOne;
+  int (Qualified::*leftMember)() & = &Qualified::leftOne;
+  int (Qualified::*rightMember)() && = &Qualified::rightOne;
+  int (Qualified::*noThrowMember)() const noexcept = &Qualified::noThrowOne;
+  none();
+  Qualified q;
+  return x + simple(1) + noThrow(1) + (q.*plainMember)() + (q.*constMember)() + (q.*volatileMember)() + (q.*bothMember)() + (q.*leftMember)() +
+         (Qualified().*rightMember)() + (q.*noThrowMember)() + (varargs != nullptr ? 1 : 0);
+}
 int main()
 {
   game::Point point{3, 4};
   scoped(3);
+  functionTypes(3);
   println(inspect(point, 2, game::Mode::On, "label"));
   return 0;
 }

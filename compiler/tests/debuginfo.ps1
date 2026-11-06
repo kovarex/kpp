@@ -67,9 +67,9 @@ function TypeName([string]$text)
     $suffix = @{ 'pointer' = '*'; 'ref' = '&'; 'rvalue ref' = '&&' }[$Matches[2]]
     return (TypeName $referent) + $suffix
   }
-  if ($lines[0] -match 'LF_MODIFIER' -and $body -match 'referent = (0x[0-9A-F]+(?: \([^)]*\))?), modifiers = (\w+)')
+  if ($lines[0] -match 'LF_MODIFIER' -and $body -match 'referent = (0x[0-9A-F]+(?: \([^)]*\))?), modifiers = (\w+(?: \| \w+)*)')
   {
-    $modifier = $Matches[2]
+    $modifier = $Matches[2] -replace ' \| ', ' '
     return "$modifier $(TypeName $Matches[1])"
   }
   if ($lines[0] -match 'LF_BITFIELD' -and $body -match 'type = (0x[0-9A-F]+(?: \([^)]*\))?), bit offset = (\d+), # bits = (\d+)')
@@ -84,11 +84,23 @@ function TypeName([string]$text)
   }
   return $text
 }
+# A pointer to a member function's `this`, which llvm-pdbutil's name for the type leaves out, with the
+# function's `&` or `&&`: two bits of that pointer's record, seen in its bytes alone.
+function MemberFunctionThis([string]$text)
+{
+  if ($text -notmatch '^(0x[0-9A-F]+)') { return '' }
+  $body = $script:records[$Matches[1]] -join ' '
+  if ($body -notmatch 'referent = (0x[0-9A-F]+)(?: \([^)]*\))?, mode = member fn pointer') { return '' }
+  if (($script:records[$Matches[1]] -join ' ') -notmatch 'this type = (0x[0-9A-F]+)') { return '' }
+  $self = $Matches[1]
+  $ref = if (($script:records[$self] -join ' ') -match '0000: \w{8} \w{8} \w{4}([12])') { @{ '1' = ' &'; '2' = ' &&' }[$Matches[1]] } else { '' }
+  return ", this $(TypeName $self)$ref"
+}
 function Summary([string]$pdb)
 {
   $script:records = @{}
   $current = $null
-  foreach ($line in (& $pdbutil dump -types $pdb))
+  foreach ($line in (& $pdbutil dump -types -type-data $pdb))
   {
     if ($line -match '^\s*(0x[0-9A-F]+) \| LF_') { $current = $Matches[1]; $script:records[$current] = New-Object System.Collections.Generic.List[string] }
     if ($current) { $script:records[$current].Add($line) }
@@ -105,7 +117,7 @@ function Summary([string]$pdb)
     $line = $symbols[$i]
     if ($depth -eq 0)
     {
-      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::area|scoped\(int32\)|Cell<Cell<int32> >::bump\(int32\))`')
+      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::area|Qualified::bothOne|Qualified::leftOne|scoped\(int32\)|functionTypes\(int32\)|Cell<Cell<int32> >::bump\(int32\))`')
       {
         $function = $Matches[1]
         $lines = New-Object System.Collections.Generic.List[string]
@@ -124,7 +136,8 @@ function Summary([string]$pdb)
       if ($symbols[$i + 1] -match 'type=(0x[0-9A-F]+(?: \(.*\))?), flags = (\w+)')
       {
         $kind = if ($Matches[2] -eq 'param') { 'parameter' } else { 'local' }
-        $lines.Add(('  ' * $depth) + "$kind $name $(TypeName $Matches[1])")
+        $type = $Matches[1]
+        $lines.Add(('  ' * $depth) + "$kind $name $(TypeName $type)$(MemberFunctionThis $type)")
       }
     }
     elseif ($line -match '\| S_BLOCK32') { $lines.Add(('  ' * $depth) + 'block'); ++$depth }

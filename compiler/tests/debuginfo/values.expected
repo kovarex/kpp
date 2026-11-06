@@ -2,6 +2,20 @@ function Cell<Cell<int32> >::bump(int32)
   member of Cell<Cell<int32> >
   parameter this Cell<Cell<int32> >*
   parameter by int
+function functionTypes(int32)
+  parameter x int
+  local simple int (int)*
+  local noThrow int (int)*
+  local none void ()*
+  local varargs int (const char*, <no type>)*
+  local plainMember int Qualified::() Qualified::*, this Qualified*
+  local constMember int Qualified::() Qualified::*, this const Qualified*
+  local volatileMember int Qualified::() Qualified::*, this volatile Qualified*
+  local bothMember int Qualified::() Qualified::*, this const volatile Qualified*
+  local leftMember int Qualified::() Qualified::*, this Qualified* &
+  local rightMember int Qualified::() Qualified::*, this Qualified* &&
+  local noThrowMember int Qualified::() Qualified::*, this const Qualified*
+  local q Qualified
 function game::Square::area
   member of game::Square
   parameter this const game::Square*
@@ -19,7 +33,7 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   local copied game::Point
   local cx int
   local cy int
-  local areaOf int game::Square::() game::Squar...
+  local areaOf int game::Square::() game::Squar..., this const game::Square*
   local cell Cell<Cell<int32> >
   local slot Cell<int32>::Slot
   block
@@ -33,6 +47,12 @@ function inspect::__lambda_f9e4fd6c_0::operator()(int32)
   parameter k int
   local sum int
   local mask game::Mask&
+function Qualified::bothOne
+  member of Qualified
+  parameter this const volatile Qualified*
+function Qualified::leftOne
+  member of Qualified
+  parameter this Qualified*
 function scoped(int32)
   parameter x int
   local total int

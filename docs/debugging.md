@@ -79,7 +79,13 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
 - **Basic types** as CodeView has them, without names of their own (`int`, `__int64`, `unsigned
   char`, `double`), each of kpp's integers a typedef of its name too: the PDB's S_UDT `int32`,
   `uint8`, which a natvis rule's `$T1` parses.
-- **Pointers, references, const, arrays** (their length), function pointers.
+- **Pointers, references, const, arrays** (their length), function pointers with their signature
+  (until 2026-11-06 every one read `void ()*`). noexcept is no part of a function type in CodeView, so
+  `int (*)(int)` and `int (*)(int) noexcept` are one record, as clang's; only a class named after them
+  differs (`Box<int32(int32) noexcept*>`).
+- **Pointers to member functions**: the function's const and volatile are the class `this` points to,
+  its `&` and `&&` a bit of that pointer's record, as clang's, and a member function's own type says the
+  same (battery f17, 2026-11-06; before, the first two reached a const member function only).
 - **Enums** with their enumerators and underlying type.
 - **Classes** with their data members at their offsets in kppc's own layout (a bit field at its
   bits), each with its access as written (`private:` in a class's public part, and so on), their

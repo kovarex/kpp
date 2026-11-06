@@ -308,7 +308,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       fn += "  store ptr " + paramNames[slot] + ", ptr " + thisSlot + "\n";
       locals[nullptr] = {thisSlot, nullptr, false};
       if (currentClassTy)
-        debugVariable("this", f, thisSlot, types.pointer((f->flags & DF_Const) ? types.qualified(currentClassTy, true, false) : currentClassTy), 1, true); // (a const one's points to const, as clang's)
+        debugVariable("this", f, thisSlot, types.pointer(types.qualified(currentClassTy, f->flags & DF_Const, f->flags & DF_Volatile)), 1, true); // (a const one's points to const, as clang's)
       ++slot;
     }
     if (s.hasSret)

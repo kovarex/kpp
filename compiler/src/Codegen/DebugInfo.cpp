@@ -152,6 +152,13 @@ auto codegen::Emitter::debuggerClassName(const Ty* t) const -> std::string
   return debuggerTypeName(name);
 }
 
+// A member function's `&` or `&&` in its DISubroutineType, which CodeView keeps on the `this` pointer's
+// record (the other qualifiers are the class `this` points to).
+static std::string debugRefQualifier(bool lvalue, bool rvalue)
+{
+  return lvalue ? "flags: DIFlagLValueReference, " : rvalue ? "flags: DIFlagRValueReference, " : "";
+}
+
 auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -> std::string
 {
   auto basic = [](const char* name, uint64_t bits, const char* encoding)
@@ -159,7 +166,8 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
   auto one = [](const std::string& node) { return debugId(0) + " = " + node + "\n"; };
   // (`T* const`'s qualifier is the pointer's: its unqualified type is the pointer.)
   if (const Ty* bare = types.unqualified(t); bare != t)
-    return one(std::string("!DIDerivedType(tag: ") + (t->isConst ? "DW_TAG_const_type" : "DW_TAG_volatile_type") + ", baseType: " + debugType(bare) + ")");
+    return one(std::string("!DIDerivedType(tag: ") + (t->isConst ? "DW_TAG_const_type" : "DW_TAG_volatile_type") +
+               ", baseType: " + debugType(t->isConst && t->isVolatile ? types.qualified(bare, false, true) : bare) + ")");
   switch (t->kind)
   {
     case TyKind::Bool: return one(basic("bool", 8, "DW_ATE_boolean"));
@@ -238,7 +246,16 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
                  metadataString(spelling) + ")");
     }
     case TyKind::Function:
-      return one("!DISubroutineType(types: !{})");
+    {
+      // Its result and parameters, as clang's: null for a void result and for C's `...`. (noexcept
+      // has no place in CodeView or in this node: clang's two types are one too.)
+      std::string list = t->inner && t->inner->isKnown() && t->inner->kind != TyKind::Void && !types.isDependent(t->inner) ? debugType(t->inner) : std::string("null");
+      for (const Ty* a : t->args)
+        list += ", " + (a && a->isKnown() && !types.isDependent(a) ? debugType(a) : std::string("null"));
+      if (t->variadic)
+        list += ", null";
+      return debugId(0) + " = !DISubroutineType(types: " + debugId(1) + ")\n" + debugId(1) + " = !{ " + list + " }\n";
+    }
     case TyKind::MemberPointer:
       // A pointer to a member function: its class and representation (MSVC's single or multiple
       // inheritance model, memberFunctionPointerAdjusts), which give a debugger its size.
@@ -246,17 +263,22 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
       {
         bool adjusts = memberFunctionPointerAdjusts(t, nullptr);
         // Its function type as a member function's (clang's): the result, `this` (artificial), the
-        // parameters, which CodeView writes as the class's LF_MFUNCTION.
+        // parameters, which CodeView writes as the class's LF_MFUNCTION. Its qualifiers are `this`'s.
         const Ty* ft = t->inner;
+        uint8_t qualifiers = ft->memberQualifiers();
         std::string list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
         list += ", " + debugId(3);
         for (const Ty* a : ft->args)
           list += ", " + (a && a->isKnown() ? debugType(a) : std::string("null"));
+        if (ft->variadic)
+          list += ", null";
         std::string cls = debugType(t->args[0]);
+        std::string self = debugType(types.qualified(t->args[0], qualifiers & TypeTable::MemberConst, qualifiers & TypeTable::MemberVolatile));
         return debugId(0) + " = !DIDerivedType(tag: DW_TAG_ptr_to_member_type, baseType: " + debugId(1) + ", size: " + (adjusts ? "128" : "64") +
                ", flags: " + (adjusts ? "DIFlagMultipleInheritance" : "DIFlagSingleInheritance") + ", extraData: " + cls + ")\n" + debugId(1) +
-               " = !DISubroutineType(types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n" + debugId(3) +
-               " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + cls + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
+               " = !DISubroutineType(" + debugRefQualifier(qualifiers & TypeTable::MemberLValue, qualifiers & TypeTable::MemberRValue) + "types: " + debugId(2) + ")\n" +
+               debugId(2) + " = !{ " + list + " }\n" + debugId(3) +
+               " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + self + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
       }
       // A pointer to a data member: the member's type, its class, and its size (4 bytes in MSVC's ABI,
       // MSVC's single inheritance model), as clang describes one (until 2026-11-06 an unsigned
@@ -448,10 +470,12 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
                      (isVirtual && introducer == cls ? " | DIFlagIntroducedVirtual" : "") + ", spFlags: " + (isVirtual ? "DISPFlagVirtual" : "0") +
                      (isVirtual ? ", virtualIndex: " + std::to_string(slot) + (adjustment ? ", thisAdjustment: " + std::to_string(adjustment) : std::string()) +
                                       ", containingType: " + classType : std::string()) + ")\n" +
-                     debugId(1) + " = !DISubroutineType(types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n";
+                     debugId(1) + " = !DISubroutineType(" +
+                     debugRefQualifier(m->refQualifier == FunctionDecl::RefQualifier::LValue, m->refQualifier == FunctionDecl::RefQualifier::RValue) +
+                     "types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n";
   if (!isStatic)
     text += debugId(3) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " +
-            debugType((m->flags & DF_Const) ? types.qualified(cls, true, false) : cls) + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
+            debugType(types.qualified(cls, m->flags & DF_Const, m->flags & DF_Volatile)) + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
   auto lock = sharedLock();
   Shared::DebugTypeText& made = sh.debugTypes[key];
   made.text = std::move(text);
