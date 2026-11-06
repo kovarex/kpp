@@ -12,7 +12,11 @@ auto codegen::Emitter::sizeOf(const Ty* t, Node* at) -> uint64_t
     case TyKind::Nullptr: case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Function:
       return 8;
     case TyKind::MemberPointer:
-      return memberFunctionPointerAdjusts(t, at) ? 16 : 8; // (a data member's offset, a function, or { function, adjustment })
+      // A data member's offset (4 bytes in MSVC's ABI, as MSVC and clang for Windows have it, 8 in
+      // Itanium's), a function, or { function, adjustment }.
+      if (!t->inner || t->inner->kind != TyKind::Function)
+        return sh.target.msvc() ? 4 : 8;
+      return memberFunctionPointerAdjusts(t, at) ? 16 : 8;
     case TyKind::Lambda:
     {
       // The closure struct's own size: its fields where LLVM puts them (a reference capture is
@@ -89,7 +93,7 @@ auto codegen::Emitter::alignOf(const Ty* t, Node* at) -> uint64_t
   switch (t->kind)
   {
     case TyKind::Array: return alignOf(t->inner, at);
-    case TyKind::MemberPointer: return 8;
+    case TyKind::MemberPointer: return !t->inner || t->inner->kind != TyKind::Function ? (sh.target.msvc() ? 4 : 8) : 8; // (sizeOf's)
     case TyKind::Vector: return t->count * sizeOf(t->inner, at); // SSE vectors are 16-byte aligned
     case TyKind::Class: return classSizeAndAlign(t, at).second;
     case TyKind::Lambda:

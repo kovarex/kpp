@@ -32,9 +32,10 @@ auto codegen::Emitter::llType(const Ty* t, Node* at) -> std::string
     case TyKind::Nullptr: case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Function:
       return "ptr";
     // A function (`{ ptr, i32 }` with the adjustment of `this` where the class has a base at an
-    // offset: memberFunctionPointerAdjusts), or a data member's offset within its class.
+    // offset: memberFunctionPointerAdjusts), or a data member's offset within its class (an i32 in
+    // MSVC's ABI, an i64 in Itanium's: memberOffsetType).
     case TyKind::MemberPointer:
-      return t->inner && t->inner->kind == TyKind::Function ? (memberFunctionPointerAdjusts(t, at) ? "{ ptr, i32 }" : "ptr") : "i64";
+      return t->inner && t->inner->kind == TyKind::Function ? (memberFunctionPointerAdjusts(t, at) ? "{ ptr, i32 }" : "ptr") : memberOffsetType();
     case TyKind::Lambda: return t->decl ? closureStructName(t) : "ptr";
     case TyKind::Array:
       return "[" + std::to_string(t->count) + " x " + llType(t->inner, at) + "]";

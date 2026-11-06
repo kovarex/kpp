@@ -446,6 +446,8 @@ void GlobalScope::setConverting(bool converting) { impl->converting = converting
 
 void GlobalScope::setDebug(bool debug) { impl->debug = debug; }
 
+void GlobalScope::setMsvcAbi(bool msvc) { impl->msvcAbi = msvc; }
+
 void GlobalScope::setLP64(bool lp64)
 {
   impl->cLong64 = lp64;

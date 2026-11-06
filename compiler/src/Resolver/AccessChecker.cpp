@@ -748,9 +748,12 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
     case TyKind::Function:
       return 8;
     case TyKind::MemberPointer:
-      // A data member's offset; a member function, with the adjustment of `this` where its class has
-      // a base at an offset (hasBaseAtOffset, the code generator's model).
-      return t->inner && t->inner->kind == TyKind::Function && !t->args.empty() && classHasBaseAtOffset(t->args[0], depth + 1) ? 16 : 8;
+      // A data member's offset (4 bytes in MSVC's ABI, 8 in Itanium's: setMsvcAbi); a member function,
+      // with the adjustment of `this` where its class has a base at an offset (hasBaseAtOffset, the
+      // code generator's model).
+      if (!t->inner || t->inner->kind != TyKind::Function)
+        return msvcAbi ? 4 : 8;
+      return !t->args.empty() && classHasBaseAtOffset(t->args[0], depth + 1) ? 16 : 8;
     case TyKind::Array:
     {
       auto inner = constSizeOf(t->inner, depth + 1);
@@ -927,6 +930,8 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
   }
   auto s = constSizeOf(t, depth);
   if (!s) return std::nullopt;
+  if (t->kind == TyKind::MemberPointer)
+    return std::min<int64_t>(*s, 8); // (a { function, adjustment } of 16 bytes is aligned as its pointer, as the code generator lays it out)
   return std::max<int64_t>(1, *s);
 }
 

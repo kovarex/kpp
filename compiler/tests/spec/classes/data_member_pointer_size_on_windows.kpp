@@ -1,0 +1,58 @@
+// spec: on Windows (MSVC's ABI) a pointer to a data member is 4 bytes, the member's offset in its class, as MSVC and clang for Windows lay it out: null is -1, a base's member converts to a derived class's (its offset grows), it is used through objects and pointers, held in arrays, classes and template arguments, and sizeof and alignof agree at compile time and at run time; clang for x86_64-pc-windows-msvc prints the same
+// target: windows (Itanium's ABI, the other targets', makes it 8 bytes, as g++ does; the same program prints 8s there)
+// found by thread F's battery (2026-11-06): it was 8 bytes on every target, so a class or an array holding one was larger than MSVC's
+struct A
+{
+  int a = 1;
+  double d = 2.5;
+};
+struct B
+{
+  int b = 3;
+  char c = 'c';
+};
+struct C : A, B
+{
+  int own = 4;
+};
+template<int N>
+struct Size
+{
+  static constexpr int value = N;
+};
+struct Holder
+{
+  int B::*field;
+  char tag;
+};
+template<int C::*M>
+int read(const C& c)
+{
+  return c.*M;
+}
+
+int main()
+{
+  C c;
+  int B::*pb = &B::b;
+  int C::*pc = pb;
+  int C::*own = &C::own;
+  int A::*none = nullptr;
+  println(c.*pb, " ", c.*pc, " ", c.*own, " ", none == nullptr ? 1 : 0);
+  println(pc == &C::b ? 1 : 0, " ", pc != own ? 1 : 0, " ", none ? 1 : 0);
+  C* p = &c;
+  p->*own = 40;
+  println(c.own, " ", p->*pc);
+  int C::*fields[3] = {&C::a, &C::b, &C::own};
+  int sum = 0;
+  for (int C::*f : fields)
+    sum += c.*f;
+  println(sum);
+  Holder h{&B::b, 'h'};
+  println(c.*h.field, " ", h.tag, " ", read<&C::own>(c));
+  constexpr int compileTime = sizeof(int A::*);
+  int runTime = sizeof(int A::*);
+  println(Size<sizeof(int A::*)>::value, " ", compileTime, " ", runTime, " ", sizeof(Holder), " ", sizeof(fields));
+  println(alignof(int A::*), " ", alignof(Holder));
+  return 0;
+}

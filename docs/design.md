@@ -565,6 +565,13 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   largest alignment after it, as MSVC does: `class Over { virtual ~Over(); char c; alignas(16)
   double d; }` has c at 16 and d at 32 (48 bytes), where Itanium's layout (the other targets) puts c
   right after the pointer, at 8 (2026-11-06, F's battery f9; spec classes/msvc_parts_after_own_vtable_pointer).
+- A pointer to a data member is the member's offset in its class, -1 when null: 4 bytes on Windows
+  (MSVC's ABI, as MSVC and clang for Windows have it), 8 on the other targets (Itanium's). A pointer to
+  a member function is its function, and beside it the adjustment of `this` (16 bytes) where the class
+  has a base at an offset (MSVC's multiple inheritance model). The code generator's layout and the
+  compile-time sizeof and alignof follow one rule (GlobalScope::hasBaseAtOffset, setMsvcAbi), so
+  `Size<sizeof(int A::*)>` and a run-time sizeof agree (2026-11-06, F's batteries; spec
+  classes/data_member_pointer_size_on_windows).
 - A bit field's value promotes by its width, as C++'s [conv.prom] 5 has it, on every target
   (kovarex 2026-11-05: "follow the standard here"; MSVC keeps the declared type): an operand of
   arithmetic, a comparison or `?:` that designates a bit field of an integer type is an int when

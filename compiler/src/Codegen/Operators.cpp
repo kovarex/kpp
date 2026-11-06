@@ -497,7 +497,7 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
       fn += "  " + res + " = xor i1 " + equal + ", true\n";
       return {res, types.boolType()};
     }
-    fn += "  " + res + " = icmp " + (op == P::EqEq ? "eq " : "ne ") + (function ? "ptr " : "i64 ") + l.text + ", " + r.text + "\n";
+    fn += "  " + res + " = icmp " + (op == P::EqEq ? "eq " : "ne ") + (function ? std::string("ptr ") : memberOffsetType() + " ") + l.text + ", " + r.text + "\n";
     return {res, types.boolType()};
   }
   if (l.ty->kind == TyKind::Pointer || r.ty->kind == TyKind::Pointer || l.ty->kind == TyKind::Nullptr || r.ty->kind == TyKind::Nullptr)

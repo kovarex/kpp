@@ -192,6 +192,7 @@
   bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked
   bool debug = true;         // GlobalScope::setDebug: config::debug (false: an assert's expression is discarded code)
   bool cLong64 = false;      // GlobalScope::setCLong64: the target's C long is 64 bits (printf's %ld)
+  bool msvcAbi = false;      // GlobalScope::setMsvcAbi: MSVC's C++ ABI (a pointer to a data member is 4 bytes)
   bool emitted(const FunctionDecl* f) const { return codeGenerated && emittedFunctions.count(f); }
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the

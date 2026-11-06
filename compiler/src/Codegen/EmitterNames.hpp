@@ -38,6 +38,10 @@
     const Ty* declType(Decl* d) { return currentArgs ? global.typeOfDeclIn(d, *currentArgs) : global.typeOfDecl(d); }
 
     const Ty* classKey(const Ty* t) { return types.unqualified(types.stripRef(t)); }
+    // The IR type of a pointer to a data member, the member's offset in its class: an i32 in MSVC's
+    // ABI (4 bytes, as MSVC and clang for Windows have it), an i64 in Itanium's (the resolver's
+    // constSizeOf says the same: GlobalScope::setMsvcAbi). Null is -1 in both.
+    std::string memberOffsetType() const { return sh.target.msvc() ? "i32" : "i64"; }
 
     std::string llType(const Ty* t, Node* at = nullptr);
 

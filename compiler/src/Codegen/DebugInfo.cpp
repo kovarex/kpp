@@ -256,6 +256,13 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
                " = !DISubroutineType(types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n" + debugId(3) +
                " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + cls + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
       }
+      // A pointer to a data member: the member's type, its class, and its size (4 bytes in MSVC's ABI,
+      // MSVC's single inheritance model), as clang describes one (until 2026-11-06 an unsigned
+      // integer of 8 bytes).
+      if (t->inner && t->inner->kind != TyKind::Function && t->inner->isKnown() && !types.isDependent(t->inner) && !t->args.empty() &&
+          isClass(t->args[0]) && !types.isDependent(t->args[0]))
+        return one("!DIDerivedType(tag: DW_TAG_ptr_to_member_type, baseType: " + debugType(t->inner) + ", size: " + std::to_string(sizeOf(t, nullptr) * 8) +
+                   (sh.target.msvc() ? ", flags: DIFlagSingleInheritance" : "") + ", extraData: " + debugType(t->args[0]) + ")");
       break;
     default:
       break;

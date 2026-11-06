@@ -266,6 +266,9 @@ public:
   // and hosts"): `long` is 64 bits and `wchar_t` (with L"..." and L'x') 32, printf's `%ld` takes 64
   // bits, and MSVC's lengths (`%I64d`) are no C library's there. Before anything is resolved.
   void setLP64(bool lp64);
+  // The target's C++ ABI is MSVC's (the windows target, not windows-gnu): a pointer to a data member
+  // is 4 bytes there (constSizeOf, as the code generator lays it out), 8 in Itanium's.
+  void setMsvcAbi(bool msvc);
   // A conversion's resolve (kppc --convert): both branches of an `if constexpr` in a function that is no
   // template are walked, as C++ checks them (the converter rewrites both); a build walks the taken one.
   void setConverting(bool converting);

@@ -165,7 +165,7 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   {
     bool function = from->inner && from->inner->kind == TyKind::Function;
     std::string tested = function && memberFunctionPointerAdjusts(from, at) ? memberFunctionParts(v.text).first : v.text; // (null: its function is)
-    fn += "  " + result() + " = icmp ne " + (function ? "ptr " + tested + ", null" : "i64 " + tested + ", -1") + "\n";
+    fn += "  " + result() + " = icmp ne " + (function ? "ptr " + tested + ", null" : memberOffsetType() + " " + tested + ", -1") + "\n";
     return {r, to};
   }
   // A pointer to a member function of one class as one of another, a base's as a derived class's
@@ -265,10 +265,11 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
         return {sharedThunk("@\"pmf." + irString(derived) + "." + function + "\"", methodSignature(from->inner, at), pathAtNull(path), v.text, -1), to};
       }
       std::string offset = newTemp(), sum = newTemp(), isNull = newTemp();
-      fn += "  " + offset + " = ptrtoint ptr " + pathAtNull(path) + " to i64\n";
-      fn += "  " + sum + " = add i64 " + v.text + ", " + offset + "\n";
-      fn += "  " + isNull + " = icmp eq i64 " + v.text + ", -1\n";
-      fn += "  " + result() + " = select i1 " + isNull + ", i64 -1, i64 " + sum + "\n";
+      std::string it = memberOffsetType();
+      fn += "  " + offset + " = ptrtoint ptr " + pathAtNull(path) + " to " + it + "\n";
+      fn += "  " + sum + " = add " + it + " " + v.text + ", " + offset + "\n";
+      fn += "  " + isNull + " = icmp eq " + it + " " + v.text + ", -1\n";
+      fn += "  " + result() + " = select i1 " + isNull + ", " + it + " -1, " + it + " " + sum + "\n";
       return {r, to};
     }
     // The other way (a derived class's member as one of its base, or an unrelated class's) is no

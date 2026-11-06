@@ -189,7 +189,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
               if (!cls || !isClass(cls) || !fieldAddress(cls, bound->decl, "null", addr, e))
                 unsupported(e, "a pointer to a member given as a template argument that is no field of its class");
               std::string r = newTemp();
-              fn += "  " + r + " = ptrtoint ptr " + addr + " to i64\n";
+              fn += "  " + r + " = ptrtoint ptr " + addr + " to " + memberOffsetType() + "\n";
               return {r, mp};
             }
           }
@@ -1615,7 +1615,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     if (!fieldAddress(cls, d, "null", addr, u))
       unsupported(u, "a pointer to a member that is not a field");
     std::string r = newTemp();
-    fn += "  " + r + " = ptrtoint ptr " + addr + " to i64\n";
+    fn += "  " + r + " = ptrtoint ptr " + addr + " to " + memberOffsetType() + "\n";
     return {r, mp};
   }
   if (op == P::Amp && u->operand->kind == NodeKind::NameExpr && static_cast<NameExpr*>(u->operand)->resolved &&
@@ -2679,7 +2679,7 @@ auto codegen::Emitter::memberPointerAddress(BinaryExpr* b) -> std::string
     base = moved;
   }
   std::string r = newTemp();
-  fn += "  " + r + " = getelementptr inbounds i8, ptr " + base + ", i64 " + offset.text + "\n";
+  fn += "  " + r + " = getelementptr inbounds i8, ptr " + base + ", " + memberOffsetType() + " " + offset.text + "\n"; // (an i32 index is sign-extended)
   return r;
 }
 
