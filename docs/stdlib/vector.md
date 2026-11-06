@@ -76,8 +76,10 @@ Adding and removing:
 - `emplace(position, args...)`: like insert, with an element built from the arguments: at the end in
   its place, as emplace_back builds it; before another element through a temporary that is moved
   in (the arguments may be elements the insertion moves).
-- `erase(position)`, `erase(first, last)`: destroys the element(s) and relocates the following ones
-  down; returns a pointer to the element after the removed ones (now at the removed position).
+- `erase(position)`, `erase(first, last)`: move-assigns the following elements down and destroys the
+  last ones, one destructor call per erased element, as std::vector does; returns a pointer to the
+  element after the removed ones (now at the removed position). A T without move assignment (which
+  std::vector cannot erase) is relocated down instead.
 - `clear()`: destroys all elements; the capacity stays.
 - `swap(other)`: exchanges the contents, O(1).
 

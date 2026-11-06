@@ -1,5 +1,5 @@
-// kpp standard library: Vector<T>. A growable array. When elements shift for an insert or erase,
-// they are relocated (move constructor, then destructor); when the buffer grows, as in
+// kpp standard library: Vector<T>. A growable array. When elements shift for an insert, they are
+// relocated (move constructor, then destructor); an erase move-assigns them, as std's; when the buffer grows, as in
 // std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
 // is copied. Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
@@ -424,10 +424,22 @@ public:
   T* erase(const T* first, const T* last)
   {
     ContainerSize index = ContainerSize(first - this->items), count = ContainerSize(last - first);
-    for (ContainerSize i = 0; i < count; ++i)
-      this->items[index + i].~T();
-    relocate(this->items + index, this->items + index + count, this->length - index - count);
-    this->length -= count;
+    if constexpr (isMoveAssignable<T>)
+    {
+      // As [vector.modifiers]: the elements after the erased ones are move-assigned down, then the
+      // last count are destroyed (one destructor call per erased element).
+      for (ContainerSize i = index; i + count < this->length; ++i)
+        this->items[i] = move(this->items[i + count]);
+      this->truncate(this->length - count);
+    }
+    else
+    {
+      // No move assignment (a kpp addition: std::vector::erase requires it): relocated down.
+      for (ContainerSize i = 0; i < count; ++i)
+        this->items[index + i].~T();
+      relocate(this->items + index, this->items + index + count, this->length - index - count);
+      this->length -= count;
+    }
     return this->items + index;
   }
 
