@@ -192,7 +192,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: [debug, release, debug-info]
+        # (windows-gnu: --target windows-gnu --release, what an installation's `kpp --release` builds, as
+        # the bundled toolchain is its default: until 2026-11-06 only debug builds of tests\run met that
+        # configuration, and its globals were built in reverse for four days)
+        config: [debug, release, debug-info, windows-gnu]
         shard: [1, 2, 3, 4]
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
@@ -261,9 +264,24 @@ jobs:
           "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "CPUs: $env:NUMBER_OF_PROCESSORS"
 
+      - name: llvm-mingw cache
+        if: matrix.config == 'windows-gnu'
+        uses: actions/cache@v4
+        with:
+          path: build/llvm-mingw
+          key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
+
+      - name: llvm-mingw
+        if: matrix.config == 'windows-gnu'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = & tools\sysroot\llvm-mingw.ps1 | Select-Object -Last 1
+          "KPP_CLANG=$root\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+
       - name: spec
         shell: cmd
-        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
+        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a

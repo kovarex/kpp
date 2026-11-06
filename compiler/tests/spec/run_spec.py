@@ -7,7 +7,7 @@ snippet says what it is about:
     // spec: default arguments
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
-    // pending on windows linux: why            (a known gap of those targets alone: windows, linux, freebsd)
+    // pending on windows linux: why            (a known gap of those targets alone: windows, windows-gnu, linux, freebsd)
     // kppc: --release                           (kppc options this snippet is always built with: a
                                                   gap that only one configuration shows)
     // error: static assertion failed            (the program must not compile, and the compiler's
@@ -18,7 +18,8 @@ snippet says what it is about:
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
     // exit: 3                                   (the program's exit code; 0 or 1 when not given)
-    // target: windows (why)                     (the snippet is about that target alone: skipped for others)
+    // target: windows (why)                     (the snippet is about that target alone: skipped for others;
+                                                  windows has windows-gnu too, windows-msvc is MSVC's ABI alone)
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
@@ -205,9 +206,11 @@ def header(path):
                     break
                 continue
             if m.group(1).startswith("pending on "):
-                # (`// pending on windows: why`: a gap of those targets alone; windows-gnu is Windows)
+                # (`// pending on windows: why`: a gap of those targets alone; windows-gnu is Windows,
+                # and `windows-gnu` alone names a gap of that dialect)
                 here = "windows" if TARGET in (None, "windows-gnu") else TARGET
-                if here in m.group(1)[len("pending on "):].split():
+                named = m.group(1)[len("pending on "):].split()
+                if here in named or (TARGET == "windows-gnu" and TARGET in named):
                     info["pending"] = m.group(2).strip()
             elif m.group(1) in ("error", "warning"):
                 info[m.group(1) + "s"].append(m.group(2).strip())
@@ -271,7 +274,7 @@ def build_and_run(path, area, name, work):
     on_target = (target or TARGET) == TARGET or (TARGET == "windows-gnu" and target == "windows")
     if TARGET and (not on_target or (TARGET != "windows-gnu" and not NATIVE and (info["run"] is not None or info["test"] is not None))):
         result["status"] = "skip"; return result
-    if not TARGET and target not in (None, "windows"):
+    if not TARGET and target not in (None, "windows", "windows-msvc"):
         result["status"] = "skip"; return result
     os.makedirs(work, exist_ok=True)
     libs = []

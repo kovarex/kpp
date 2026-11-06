@@ -1,4 +1,5 @@
 // spec: exit() destroys objects of static storage and the calling thread's thread_locals first of all, never its automatic objects ([basic.start.main], [basic.start.term]); atexit's function is ordered with them. clang's and g++'s output
+// pending on windows-gnu: the main thread's thread_locals go after the statics (their fiber-local slot, design.md)
 extern "C" int printf(const char* format, ...);
 extern "C" int atexit(void (*f)());
 extern "C" void exit(int code);

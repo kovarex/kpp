@@ -1,5 +1,5 @@
 // spec: on Windows (MSVC's layout) the bases and members of a class with a vtable pointer of its own start at their largest alignment after it, not merely after its 8 bytes: `char c; alignas(16) double d;` puts c at 16 and d at 32 (sizeof 48), and alignas(32) members push them to 32; a class whose vtable pointer is its primary base's lays its own members out as usual, a second polymorphic base keeps its own layout inside the derived class, and members of 8-byte alignment or less start at 8 as before; clang for x86_64-pc-windows-msvc prints the same
-// target: windows (Itanium's layout, the other targets', lays the parts after the pointer: c at 8 and d at 16)
+// target: windows-msvc (Itanium's layout, the other targets' and windows-gnu's, lays the parts after the pointer: c at 8 and d at 16)
 // found by thread F's battery f9 (2026-11-06): `class alignas(32) Over { virtual ~Over(); char c; alignas(16) double d; }` was 32 bytes with c at 8 and d at 16, where MSVC and clang make it 64 with c at 16 and d at 32
 class Plain
 {
