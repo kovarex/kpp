@@ -2297,17 +2297,21 @@ auto GlobalScope::Impl::constMemberwiseEqual(const ConstValue& l, const ConstVal
   return true;
 }
 
+auto GlobalScope::Impl::constScalarOrder(const ConstValue& l, const ConstValue& r) -> std::optional<int>
+{
+  std::optional<ConstValue> less = constArith().binary(P::Less, l, r), greater = constArith().binary(P::Greater, l, r);
+  std::optional<ConstValue> equal = constArith().binary(P::EqEq, l, r);
+  if (!less || !greater || !equal)
+    return std::nullopt;
+  return less->i ? -1 : greater->i ? 1 : equal->i ? 0 : 2; // (neither: a NaN, unordered)
+}
+
 auto GlobalScope::Impl::constMemberwiseOrder(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth) -> std::optional<int>
 {
   if (depth > 64)
     return std::nullopt;
   if (l.isScalar() && r.isScalar())
-  {
-    std::optional<ConstValue> less = constArith().binary(P::Less, l, r), greater = constArith().binary(P::Greater, l, r);
-    if (!less || !greater)
-      return std::nullopt;
-    return less->i ? -1 : greater->i ? 1 : 0;
-  }
+    return constScalarOrder(l, r);
   if (!l.isObject() || !r.isObject() || l.parts->size() != r.parts->size())
     return std::nullopt;
   if (l.type && types.unqualified(l.type)->kind == TyKind::Class)
@@ -2358,7 +2362,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
     if (!x || x->kind != NodeKind::BinaryExpr)
       return false;
     std::optional<P> op = constOperator(static_cast<BinaryExpr*>(x)->op, static_cast<BinaryExpr*>(x)->isKeyword);
-    return op && isConstBinaryOperator(*op);
+    return op && (isConstBinaryOperator(*op) || *op == P::Spaceship); // (`<=>`: constBinaryValues makes its ordering)
   };
   std::vector<BinaryExpr*> chain;
   Expr* first = e;
@@ -2408,7 +2412,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
         value = ConstValue::integer(*op == P::OrOr, types.boolType());
         continue;
       }
-    if (!op || !isConstBinaryOperator(*op))
+    if (!op || !(isConstBinaryOperator(*op) || *op == P::Spaceship))
       return std::nullopt;
     // After an operand that is no constant the others are still evaluated: a class's size
     // one of them needs defers a static_assert to the code generator's layouts
@@ -2485,6 +2489,16 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   if (!objects && (op == P::Plus || op == P::Minus || op == P::EqEq || op == P::NotEq))
     if (std::optional<ConstValue> a = decayed(l), b = decayed(r); a || b)
       return constPointerArith(op, a ? *a : l, b ? *b : r);
+  // `a <=> b` of two scalars: the library's strong_ordering (less, equal or greater, unordered
+  // where one is a NaN, C++'s partial_ordering), made by its constructor as codegen makes it.
+  if (op == P::Spaceship && l.isScalar() && r.isScalar() && (!enums || node->call != OperatorCall::Function))
+  {
+    std::optional<int> order = constScalarOrder(l, r);
+    const Ty* ordering = orderingType();
+    if (!order || !ordering || ordering->kind != TyKind::Class)
+      return std::nullopt;
+    return constConstruct(ordering, {ConstValue::integer(*order, types.intType(8))}, false, depth + 1);
+  }
   if (!l.isObject() && !r.isObject() && (!enums || (node->call != OperatorCall::Function && !verifyInterpreterDecisions())))
     return constArith().binary(op, l, r);
   auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
@@ -2627,7 +2641,8 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     std::optional<int> order = constMemberwiseOrder(l, r, ctx, depth + 1); // a defaulted `<=>`
     if (!order)
       return std::nullopt;
-    bool c = op == P::Less ? *order < 0 : op == P::Greater ? *order > 0 : op == P::LessEq ? *order <= 0 : *order >= 0;
+    // (unordered, 2: no relation holds)
+    bool c = *order != 2 && (op == P::Less ? *order < 0 : op == P::Greater ? *order > 0 : op == P::LessEq ? *order <= 0 : *order >= 0);
     return boolean(c);
   }
   return std::nullopt;

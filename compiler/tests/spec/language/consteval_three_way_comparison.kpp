@@ -1,0 +1,24 @@
+// spec: `a <=> b` of two scalars is a constant, the library's strong_ordering, and a NaN on either side makes it unordered, so it is neither less, equal nor greater than 0 (C++ [expr.spaceship] 8, std::partial_ordering::unordered); a defaulted <=> whose first differing member is a NaN says no relation holds either (`P{nan, 1} <= P{1.0, 2}` is false); at compile time, as clang has it
+// found by thread E (2026-11-06): `constexpr bool t = (1.0 <=> 2.0) < 0;` was no constant (the evaluator had no `<=>` of scalars), and its order of a defaulted <=> read a NaN as equal, so `P{nan, 1} <= P{1.0, 2}` was true at compile time, a silent wrong answer
+struct P
+{
+  double x;
+  int y;
+  auto operator<=>(const P&) const = default;
+  bool operator==(const P&) const = default;
+};
+
+constexpr double nan = Limits<double>::quiet_NaN();
+constexpr bool t = (1.0 <=> 2.0) < 0;
+constexpr bool u = (3 <=> 2) > 0;
+constexpr bool v = (2u <=> 2u) == 0;
+constexpr bool w = (nan <=> 1.0) == 0 || (nan <=> 1.0) < 0 || (nan <=> 1.0) > 0 || (nan <=> 1.0) <= 0 || (nan <=> 1.0) >= 0;
+constexpr bool x = P{nan, 1} < P{1.0, 2} || P{nan, 1} > P{1.0, 2} || P{nan, 1} <= P{1.0, 2} || P{nan, 1} >= P{1.0, 2};
+constexpr bool y = P{1.0, 1} < P{1.0, 2} && P{2.0, 0} > P{1.0, 5};
+static_assert(t && u && v && !w && !x && y);
+
+int main()
+{
+  println(t, " ", u, " ", v, " ", w, " ", x, " ", y);
+  return 0;
+}

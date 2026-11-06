@@ -294,9 +294,11 @@
   std::optional<bool> constMemberwiseEqual(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth);
 
   // `a <=> b` of two objects of one class with a defaulted `<=>`: the first part that differs
-  // decides, as -1, 0 or 1; nullopt where a part's order is no number's (a class with an
-  // operator<=> of its own).
+  // decides, as -1, 0 or 1, or 2 where two scalars are unordered (a NaN); nullopt where a part's
+  // order is no number's (a class with an operator<=> of its own).
   std::optional<int> constMemberwiseOrder(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth);
+  // The order of two scalars, as `<=>` gives it: -1, 0 or 1, and 2 (unordered) where one is a NaN.
+  std::optional<int> constScalarOrder(const ConstValue& l, const ConstValue& r);
 
   // An operator applied to values at least one of which is an object or a pointer: pointer
   // arithmetic; a class's member operator, a free one, or what C++20 rewrites (`a != b` as `!(a
