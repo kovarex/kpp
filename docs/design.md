@@ -532,7 +532,7 @@ the names, suites with depends and tags, fixtures, `generate`, the order, the er
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
 The mixed-sign rule is done too. Not yet (their snippets pending): a call's values, test functions;
-`--with-dependencies`, `--from`, `--after`, `--shuffle`, `--jobs` and the slow-test line. The parser
+`--jobs` and `--report`'s `"seconds"`. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
 ```
@@ -611,11 +611,16 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   and the summary then names the root failures, those without a failed dependency:
   `3 tests, 2 failed (root failures: A.y)`.
 - **The runner's options** add `--suite NAME` and `--skip-suite NAME` (repeatable), `--with-dependencies`
-  (adds the suites the selection depends on), `--from NAME` and `--after NAME` (start at a test of
-  the order), `--tag TAG`, `--exit-on-failure` and `--shuffle [SEED]`. Names on the command line
+  (adds the suites the selection depends on, whole, whatever selected the others; `--skip-suite`
+  still wins), `--from NAME` and `--after NAME` (start the selection in the order at a suite, a test's
+  full name or a test's name when one selected test has it, or just after it; an unknown or ambiguous
+  name is an error, exit code 2, and so are both options together), `--tag TAG`, `--exit-on-failure`
+  and `--shuffle [SEED]` (an unsigned number; without one the runner picks it; it prints `shuffle seed:
+  N`, and one seed gives one order on every target). Names on the command line
   match case-insensitively (a convenience, as Factorio's command line has it); `--filter` matches
   the full name. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`. A test that
-  runs longer than 5 minutes gets a warning line.
+  ran longer than 5 minutes gets a line when it ends, `slow test: Suite.Test ran longer than 300 s`
+  (`--slow SECONDS` sets the limit).
 - **Hooks.** If the program defines them, the runner calls `void testsSetup(const Vector<String>&
   arguments)` before the first test, with the arguments it does not know itself (without it an
   unknown argument is an error, exit code 2), `void testAfterEach()` after each test (a failure in it
@@ -645,7 +650,9 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
 Spec snippets: kpp/test_suite_helper_uses_require, kpp/test_before_each, kpp/test_current_name,
 kpp/test_run_by_name, kpp/test_run_by_name_unknown, kpp/test_run_captured, kpp/test_run_hook,
 kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_check_hidden_by_dependent_base_is_error,
-kpp/test_check_dependent_base_without_the_name, kpp/test_check_hidden_by_argument_namespace_is_error, kpp/test_suite_order, kpp/test_suite_declaration_order,
+kpp/test_check_dependent_base_without_the_name, kpp/test_check_hidden_by_argument_namespace_is_error,
+kpp/test_with_dependencies, kpp/test_from, kpp/test_after, kpp/test_from_unknown_is_error, kpp/test_shuffle,
+kpp/test_slow, kpp/test_suite_order, kpp/test_suite_declaration_order,
 kpp/test_same_name_in_two_suites, kpp/test_suite_declared_twice_is_error,
 kpp/test_duplicate_name_in_suite_is_error, kpp/test_suite_depends_unknown_is_error,
 kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/test_suite_tags,

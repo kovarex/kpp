@@ -1,0 +1,23 @@
+// spec: a test that ran longer than the limit gets a line when it ends (5 minutes; --slow SECONDS sets it)
+// test: --slow 0 --filter Other.*
+// exit: 0
+suite Base
+{
+  test First { println("Base.First"); }
+  test Second { println("Base.Second"); }
+}
+
+suite Middle depends Base
+{
+  test Only { println("Middle.Only"); }
+}
+
+suite Top depends Middle
+{
+  test Last { println("Top.Last"); }
+}
+
+suite Other
+{
+  test Alone { println("Other.Alone"); }
+}

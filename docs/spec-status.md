@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1549 pass, 6 pending, 0 failing, 0 fixed** (1555 snippets, 221.3 s).
+**1555 pass, 6 pending, 0 failing, 0 fixed** (1561 snippets, 204.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1390,6 +1390,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/server_body_edit_beside_false_when.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error | pass |  |  |
 | `kpp/server_kept_error_moves_with_its_line.kpp` | a compile server's build after an edit above an error the edit leaves alone reports that error at its new line, as a build from scratch does (typed checker errors keep their place, not their text: design.md 24) | pass |  |  |
 | `kpp/server_removed_function_takes_its_error.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a function with an error added and then removed takes its error with it (E's repro, 2026-11-04: the error stayed until the server ended); a body fixed in place too | pass |  |  |
+| `kpp/test_after.kpp` | --after NAME starts just after a test, or after the last test of a suite | pass |  |  |
 | `kpp/test_before_each.kpp` | the runner calls testBeforeEach() before each test; a failure that ends it fails the test and leaves its body out, and testAfterEach still runs | pass |  |  |
 | `kpp/test_build_error.kpp` | kppc --test runs nothing when the build printed an error, whatever its exit code (a test the parser could not read would silently not run) | pass |  |  |
 | `kpp/test_check_char_pointers_is_error.kpp` | inside check and require, == or != of two char pointers (or a char pointer and a string literal) is an error: it would compare addresses, where Factorio's CHECK_EQUAL compared the text | pass |  |  |
@@ -1411,6 +1412,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/test_filter.kpp` | the runner's --filter runs the tests whose full name ("file > name") contains the text, `*` matching anything | pass |  |  |
 | `kpp/test_fixture.kpp` | test Name : Fixture(arguments): the body is a member of a class derived from the fixture, built before the body and destroyed after it, also when the body fails | pass |  |  |
 | `kpp/test_fixture_constructor_fails.kpp` | an exception while building a fixture fails the test without running its body; one while destroying it fails the test too | pass |  |  |
+| `kpp/test_from.kpp` | --from NAME starts at a suite or test in the order; a name on the command line ignores case | pass |  |  |
+| `kpp/test_from_unknown_is_error.kpp` | --from a name that no selected suite or test has is an error, nothing runs | pass |  |  |
 | `kpp/test_generate.kpp` | generate Name { addTest(name, function); } adds tests when the runner starts; they take the generator's place in the suite's order, named Suite.Generator.name | pass |  |  |
 | `kpp/test_hooks.kpp` | the runner calls testsSetup(the arguments it does not know) before the first test, testAfterEach() after each and testsTeardown() after the last, when the program defines them | pass |  |  |
 | `kpp/test_identifier_name.kpp` | a test's name is an identifier, also outside a suite (8.7: no quoted form); there its full name stays file > name | pass |  |  |
@@ -1425,6 +1428,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/test_run_hook.kpp` | the program's testRun(run) wraps each test's fixture and body; it may catch the program's exception and call run again, which builds a new fixture; a failed require's TestEnded passes through | pass |  |  |
 | `kpp/test_runner.kpp` | `kppc --test file.kpp` builds the file's `test name { }` declarations with a runner in place of main and runs them all | pass |  |  |
 | `kpp/test_same_name_in_two_suites.kpp` | a test's name is scoped to its suite: two suites may each have a test Empty, and the full name Suite.Test tells them apart | pass |  |  |
+| `kpp/test_shuffle.kpp` | --shuffle SEED prints the seed and keeps the dependency order: one seed gives one order on every target | pass |  |  |
+| `kpp/test_slow.kpp` | a test that ran longer than the limit gets a line when it ends (5 minutes; --slow SECONDS sets it) | pass |  |  |
 | `kpp/test_suite_declaration_order.kpp` | the tests of a suite run in the order they are declared in it (kovarex, 2026-11-06) | pass |  |  |
 | `kpp/test_suite_declared_twice_is_error.kpp` | a suite is one block in one file: declaring it a second time is an error | pass |  |  |
 | `kpp/test_suite_depends_cycle_is_error.kpp` | suites that depend on each other in a cycle are an error that lists the cycle | pass |  |  |
@@ -1433,6 +1438,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/test_suite_name_hides_nothing.kpp` | suite names are a name context of their own: suite Beacon beside class Beacon hides nothing, and a suite's helpers are its own | pass |  |  |
 | `kpp/test_suite_order.kpp` | suites run in dependency order (each after every suite it depends on; of the suites ready, the first by name), then the tests outside suites | pass |  |  |
 | `kpp/test_suite_tags.kpp` | tags select suites: without --tag the untagged suites run, with --tag t the suites tagged t (Factorio's SUITE_MODPACKS) | pass |  |  |
+| `kpp/test_with_dependencies.kpp` | --with-dependencies adds the suites the selection depends on, directly or further back, whole, in their order | pass |  |  |
 | `kpp/tests_in_compiler.kpp` | `test name { check(...); }` declarations are accepted and cost nothing without --tests | pass |  |  |
 | `kpp/two_libraries_declare_one_name.kpp` | two scoped libraries and the program declare one name each (design.md 16: adding a scoped library never changes or breaks existing code): no clash, and each library's functions, globals, classes with their vtables and out-of-line members, and template instances are its own; a library names another's qualified | pass | none yet; zlib and minizip, ogg and vorbis, once each is a scoped library |  |
 | `kpp/typed_union_alternative_built_in_place.kpp` | assigning a temporary to a typed union's alternative of a fixed place (`target[a] = a.type(input)` with target a reference, a an alternative) builds the alternative in place from the constructor's arguments: no move, whatever C++17's order of the assignment's operands (the place does not depend on the right operand) | pass | DeserialiserHelper::loadSTDVariant (overrides) loading SegmentedUnitAI::AIState: Targeter's move constructor asserts the targeter is not being loaded, and the menu simulation vulcanus-punishment and the Simulations unit tests stopped there when the assignment's right operand was first made a temporary and moved from |  |

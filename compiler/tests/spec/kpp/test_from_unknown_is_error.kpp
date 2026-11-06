@@ -1,0 +1,23 @@
+// spec: --from a name that no selected suite or test has is an error, nothing runs
+// test: --from Nothing
+// exit: 2
+suite Base
+{
+  test First { println("Base.First"); }
+  test Second { println("Base.Second"); }
+}
+
+suite Middle depends Base
+{
+  test Only { println("Middle.Only"); }
+}
+
+suite Top depends Middle
+{
+  test Last { println("Top.Last"); }
+}
+
+suite Other
+{
+  test Alone { println("Other.Alone"); }
+}

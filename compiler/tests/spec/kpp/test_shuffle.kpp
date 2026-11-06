@@ -1,0 +1,23 @@
+// spec: --shuffle SEED prints the seed and keeps the dependency order: one seed gives one order on every target
+// test: --shuffle 3
+// exit: 0
+suite Base
+{
+  test First { println("Base.First"); }
+  test Second { println("Base.Second"); }
+}
+
+suite Middle depends Base
+{
+  test Only { println("Middle.Only"); }
+}
+
+suite Top depends Middle
+{
+  test Last { println("Top.Last"); }
+}
+
+suite Other
+{
+  test Alone { println("Other.Alone"); }
+}

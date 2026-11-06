@@ -1,0 +1,23 @@
+// spec: --with-dependencies adds the suites the selection depends on, directly or further back, whole, in their order
+// test: --filter Top.* --with-dependencies
+// exit: 0
+suite Base
+{
+  test First { println("Base.First"); }
+  test Second { println("Base.Second"); }
+}
+
+suite Middle depends Base
+{
+  test Only { println("Middle.Only"); }
+}
+
+suite Top depends Middle
+{
+  test Last { println("Top.Last"); }
+}
+
+suite Other
+{
+  test Alone { println("Other.Alone"); }
+}
