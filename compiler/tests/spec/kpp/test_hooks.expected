@@ -2,7 +2,7 @@ setup --heavy
 clean
 after each
 after each
-test_hooks.kpp:16:3: check failed: leaked == 0 (1 == 0): leaked 1
+test_hooks.kpp:15:3: check failed: leaked == 0 (1 == 0): leaked 1
 failed: Hooks.Leaky
 teardown
 2 tests, 1 failed

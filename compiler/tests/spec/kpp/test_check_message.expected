@@ -1,4 +1,4 @@
-test_check_message.kpp:11:7: check failed: counts[i] < 6 (7 < 6): item 2
-test_check_message.kpp:12:5: check failed: counts[0] == 5 (4 == 5): first
+test_check_message.kpp:10:7: check failed: counts[i] < 6 (7 < 6): item 2
+test_check_message.kpp:11:5: check failed: counts[0] == 5 (4 == 5): first
 failed: Messages.Items
 1 test, 1 failed

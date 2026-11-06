@@ -224,10 +224,10 @@ template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r) 
 
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
 // says the arguments; false, so that `cond || __kppMessage(...)` fails.
-template<typename... A> bool __kppMessage(const A&... arguments)
+bool __kppMessage(Text text)
 {
   __KppTestState& state = __kppTestState();
-  state.message = toString(arguments...);
+  state.message = toString(text);
   state.hasMessage = true;
   return false;
 }

@@ -1,5 +1,4 @@
 // spec: check(expr, arguments...) and require(expr, arguments...) print the arguments after the failure, as println prints them (Factorio's CHECK_*_SIGNED)
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test:
 // exit: 1
 suite Messages

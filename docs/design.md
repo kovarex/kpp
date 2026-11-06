@@ -522,11 +522,11 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
 kovarex decided this on 2026-11-06 so that the game's tests (Factorio's UnitTest++ fork: 562
 `SUITE`s, 7,648 `TEST`s, 1,186 `TEST_FIXTURE`s, 131 `TEST_PARAMETRISED_FIXTURE`s, 69 `DEPENDENCY`s,
 13 `TEST_GENERATOR`s, 52,089 check macros) convert to native tests instead of their expanded macros.
-The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2026-11-06 (part 1):
+The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2026-11-06:
 the names, suites with depends and tags, fixtures, `generate`, the order, the errors across files
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
-`--skip-suite` and `--tag`. Not yet (their snippets pending): the hooks, the message
-arguments, `fail`, `requireThrows`/`checkThrows`, a call's values, the mixed-sign rule, test functions;
+`--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
+Not yet (their snippets pending): a call's values, the mixed-sign rule, test functions;
 `--with-dependencies`, `--from`, `--after`, `--shuffle`, `--jobs` and the slow-test line. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.

@@ -1,5 +1,4 @@
 // spec: requireThrows<T>(expr) evaluates expr inside a try, is the caught T and ends the test unless one is thrown; checkThrows<T>(expr) is an Optional<T> and goes on
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test:
 // exit: 1
 int parse(int x)
@@ -15,7 +14,7 @@ suite Throwing
   {
     RuntimeError e = requireThrows<RuntimeError>(parse(-1));
     require(StringView(e.what()) == "negative");
-    println("caught ", e.what());
+    println("caught ", StringView(e.what()));
   }
 
   test DoesNotThrow

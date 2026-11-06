@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1524 pass, 10 pending, 0 failing, 0 fixed** (1534 snippets, 275.1 s).
+**1528 pass, 6 pending, 0 failing, 0 fixed** (1534 snippets, 499.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1332,12 +1332,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `kpp/test_check_call_values.kpp` | a failed check of a call (or of !call) shows its arguments' values, as a comparison shows its operands' | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got `test_check_call_values.kpp:13:5: check failed: isClose(x, 1.5, 0.01)`, expected `test_check_call_values.kpp:13:5: check failed: isClose(x, 1.5, 0.01) (1.52, 1.5, 0.01)` |
-| `kpp/test_check_message.kpp` | check(expr, arguments...) and require(expr, arguments...) print the arguments after the failure, as println prints them (Factorio's CHECK_*_SIGNED) | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got ``, expected `test_check_message.kpp:11:7: check failed: counts[i] < 6 (7 < 6): item 2` |
 | `kpp/test_check_mixed_sign.kpp` | inside check and require, a signed and an unsigned integer compare by value (std::cmp_equal's rule), as Factorio's CHECK_EQUAL does; outside a check the signed side converts | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 2: got `test_check_mixed_sign.kpp:12:5: check failed: u > m (4294967295 > -1)`, expected `test_check_mixed_sign.kpp:13:5: check failed: m == u (-1 == 4294967295)` |
-| `kpp/test_fail.kpp` | fail(arguments...) fails the test and ends it (Factorio's CHECK_FAILED) | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got ``, expected `test_fail.kpp:11:7: failed: unexpected state 3` |
-| `kpp/test_function_called_from.kpp` | a function or class declared test may use check and require; a failure names the check, then each test function's call up to the test | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got ``, expected `test_function_called_from.kpp:7:3: check failed: value >= 0 (-2 >= 0): value -2` |
-| `kpp/test_hooks.kpp` | the runner calls testsSetup(the arguments it does not know) before the first test, testAfterEach() after each and testsTeardown() after the last, when the program defines them | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got ``, expected `setup --heavy` |
-| `kpp/test_require_throws.kpp` | requireThrows<T>(expr) evaluates expr inside a try, is the caught T and ends the test unless one is thrown; checkThrows<T>(expr) is an Optional<T> and goes on | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 1: got ``, expected `caught negative` |
+| `kpp/test_function_called_from.kpp` | a function or class declared test may use check and require; a failure names the check, then each test function's call up to the test | pending |  | suites, fixtures and the checks of design.md 8.7 are not implemented yet; line 2: got `failed: Helpers.Values`, expected `test_function_called_from.kpp:16:5: called from here` |
 | `kpp/asserts_and_config.kpp` | assert and release_assert statements, config constants with if constexpr, conditional functions, CallerLocation | pass |  |  |
 | `kpp/attributes_inline.kpp` | [[noinline]] and [[forceinline]] attributes | pass |  |  |
 | `kpp/auto_return_through_for_constexpr.kpp` | an auto return type deduced from returns inside a `for constexpr` body, as if the body were written out once per element: `visitUnion(f, u)` over alternatives(U) returns f's result; a list of types (`sizeof(E)` of its type variable included) and a list of constants alike | pass |  |  |
@@ -1391,20 +1387,24 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/server_removed_function_takes_its_error.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a function with an error added and then removed takes its error with it (E's repro, 2026-11-04: the error stayed until the server ended); a body fixed in place too | pass |  |  |
 | `kpp/test_build_error.kpp` | kppc --test runs nothing when the build printed an error, whatever its exit code (a test the parser could not read would silently not run) | pass |  |  |
 | `kpp/test_check_char_pointers_is_error.kpp` | inside check and require, == or != of two char pointers (or a char pointer and a string literal) is an error: it would compare addresses, where Factorio's CHECK_EQUAL compared the text | pass |  |  |
+| `kpp/test_check_message.kpp` | check(expr, arguments...) and require(expr, arguments...) print the arguments after the failure, as println prints them (Factorio's CHECK_*_SIGNED) | pass |  |  |
 | `kpp/test_check_values.kpp` | a failing check prints its location, its text and a comparison's operand values, and the test goes on | pass |  |  |
 | `kpp/test_dependents_annotated.kpp` | after a failure the run goes on, dependents included (Factorio's default); a failure after a failed dependency says so, and the summary names the root failures | pass |  |  |
 | `kpp/test_duplicate_name_in_suite_is_error.kpp` | two tests of one name in one suite are an error | pass |  |  |
 | `kpp/test_exception.kpp` | an exception that leaves a test fails that test; one derived from Exception shows its message | pass |  |  |
 | `kpp/test_exit_on_failure_before_dependents.kpp` | --exit-on-failure stops after the first failed test has finished; dependencies run first, so a failing dependency stops the run before its dependents | pass |  |  |
+| `kpp/test_fail.kpp` | fail(arguments...) fails the test and ends it (Factorio's CHECK_FAILED) | pass |  |  |
 | `kpp/test_filter.kpp` | the runner's --filter runs the tests whose full name ("file > name") contains the text, `*` matching anything | pass |  |  |
 | `kpp/test_fixture.kpp` | test Name : Fixture(arguments): the body is a member of a class derived from the fixture, built before the body and destroyed after it, also when the body fails | pass |  |  |
 | `kpp/test_fixture_constructor_fails.kpp` | an exception while building a fixture fails the test without running its body; one while destroying it fails the test too | pass |  |  |
 | `kpp/test_generate.kpp` | generate Name { addTest(name, function); } adds tests when the runner starts; they take the generator's place in the suite's order, named Suite.Generator.name | pass |  |  |
+| `kpp/test_hooks.kpp` | the runner calls testsSetup(the arguments it does not know) before the first test, testAfterEach() after each and testsTeardown() after the last, when the program defines them | pass |  |  |
 | `kpp/test_identifier_name.kpp` | a test's name is an identifier, also outside a suite (8.7: no quoted form); there its full name stays file > name | pass |  |  |
 | `kpp/test_in_class.kpp` | a test inside a class sees the class's private members; it is the class's static function | pass |  |  |
 | `kpp/test_list.kpp` | the runner's --list prints every test's full name and location without running any | pass |  |  |
 | `kpp/test_report.kpp` | the runner's --report FILE (- for stdout) writes one JSON object per test (a suite's with its suite) and a summary, for editors and test explorers; the text in it is escaped | pass |  |  |
 | `kpp/test_require.kpp` | require ends the test when it fails, a failing release_assert (an assert in a debug build) inside a test fails that test, and the run goes on; check and require are never compiled out | pass |  |  |
+| `kpp/test_require_throws.kpp` | requireThrows<T>(expr) evaluates expr inside a try, is the caught T and ends the test unless one is thrown; checkThrows<T>(expr) is an Optional<T> and goes on | pass |  |  |
 | `kpp/test_runner.kpp` | `kppc --test file.kpp` builds the file's `test name { }` declarations with a runner in place of main and runs them all | pass |  |  |
 | `kpp/test_same_name_in_two_suites.kpp` | a test's name is scoped to its suite: two suites may each have a test Empty, and the full name Suite.Test tells them apart | pass |  |  |
 | `kpp/test_suite_declaration_order.kpp` | the tests of a suite run in the order they are declared in it (kovarex, 2026-11-06) | pass |  |  |
