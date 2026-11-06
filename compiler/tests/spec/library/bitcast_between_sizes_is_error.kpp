@@ -1,6 +1,5 @@
 // spec: bitCast<To>(from) reads from's bytes as a To only when the two have one size (std::bit_cast, C++ [bit.cast] 1: it takes part in overload resolution only then); between sizes it is a compile error, never a read past from or a part of it
 // factorio: E's comparison battery against C++ (bt1, 2026-11-06): bitCast<u64>(1.0f) compiled and printed b40f403f800000 (4 bytes of the float, 4 of whatever followed it), bitCast<u8>(1.0) printed 0; std::bit_cast rejects both
-// pending: bitCast reads `*(const To*)&from` whatever the sizes (Utility.kpp) (C)
 // error: static assertion failed
 extern "C" import "stdio.h";
 int main()

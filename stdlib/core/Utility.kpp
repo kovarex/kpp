@@ -90,9 +90,15 @@ T exchange(T& slot, U&& newValue)
   return old;
 }
 
-// The bits of one value read as another type of the same size (`bitCast<uint32_t>(f)`).
+// The bits of one value read as another type of the same size (`bitCast<uint32_t>(f)`, std::bit_cast).
+// Between sizes it is a compile error: it read past from (bitCast<u64>(1.0f) took 4 bytes after the
+// float) or a part of it.
 template<typename To, typename From>
-To bitCast(const From& from) { return *(const To*)&from; }
+To bitCast(const From& from)
+{
+  static_assert(sizeof(To) == sizeof(From), "bitCast: To and From must have one size, as std::bit_cast's");
+  return *(const To*)&from;
+}
 
 template<typename T>
 const T& min(const T& a, const T& b) { return b < a ? b : a; }
