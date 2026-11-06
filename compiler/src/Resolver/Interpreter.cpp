@@ -8512,6 +8512,10 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl ||
             d->kind == NodeKind::UsingDirectiveDecl || d->kind == NodeKind::UsingNameDecl) // (names the walk bound where written)
           continue;
+        // A local class or enumeration (`struct L { int a; int b = 9; };`): a type, nothing to run
+        // (D, 2026-11-06: it stopped the evaluation, every constexpr function declaring one no constant).
+        if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
+          continue;
         if (d->kind != NodeKind::VariableDecl || constDeclare(static_cast<VariableDecl*>(d), ctx, env, depth) != ConstFlow::Next)
           return ConstFlow::Failed;
       }

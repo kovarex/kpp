@@ -1,0 +1,37 @@
+// spec: a constexpr function may define a local class or enumeration and use it at compile time (a type definition is nothing to run): `struct L { int a; int b = 9; }` built from a brace list, copied and changed, a local enum's and a local enum class's enumerators, a local class with a member function; the same values at compile time and at run time (clang gives the same numbers)
+// found by thread D (2026-11-06, a battery of constexpr functions run at compile time and at run time against clang): the evaluator stopped at the definition, so every constexpr function that declared a local type was no constant ("the constexpr variable g is no constant")
+constexpr int build()
+{
+  struct L { int a; int b = 9; };
+  L l{4};
+  L m = l;
+  m.a += l.b;
+  return m.a * 100 + m.b;
+}
+
+constexpr int enumerators()
+{
+  enum Color { Red = 2, Green = 5 };
+  enum class Mode : char { A = 3, B };
+  return Red * 100 + Green * 10 + int(Mode::B);
+}
+
+constexpr int counted()
+{
+  struct Counter { int n = 0; constexpr int next() { return ++n; } };
+  Counter c;
+  c.next();
+  c.next();
+  return c.next();
+}
+
+constexpr int b = build();
+constexpr int e = enumerators();
+constexpr int c = counted();
+static_assert(build() == 1309 && enumerators() == 254 && counted() == 3);
+
+int main()
+{
+  println(b, " ", e, " ", c, " ", build(), " ", enumerators(), " ", counted());
+  return 0;
+}
