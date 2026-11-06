@@ -2571,12 +2571,21 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
 {
   if (ClassDecl* c = typedUnionOf(t, at))
   {
-    // The alternative held goes, the source's alternative and tag come; nothing for `u = u`, which
-    // copied from the alternative it had destroyed (until 2026-11-06: a String's freed text).
-    std::string same = newTemp(), assignL = newLabel("union.assign"), doneL = newLabel("union.assigned");
+    // One alternative in both: its operator=, as std::variant. Else the alternative held goes, the
+    // source's alternative and tag come. Nothing for `u = u`, which copied from the alternative it
+    // had destroyed (until 2026-11-06: a String's freed text).
+    std::string same = newTemp(), assignL = newLabel("union.assign"), heldL = newLabel("union.same"), otherL = newLabel("union.other"),
+                doneL = newLabel("union.assigned");
     fn += "  " + same + " = icmp eq ptr " + dst + ", " + src + "\n";
     fn += "  br i1 " + same + ", label %" + doneL + ", label %" + assignL + "\n";
     startBlock(assignL);
+    std::string sameTag = newTemp(), toTag = loadTag(c, t, dst, at), fromTag = loadTag(c, t, src, at);
+    fn += "  " + sameTag + " = icmp eq " + llType(tagType(c), at) + " " + toTag + ", " + fromTag + "\n";
+    fn += "  br i1 " + sameTag + ", label %" + heldL + ", label %" + otherL + "\n";
+    startBlock(heldL);
+    assignHeldAlternative(c, t, dst, src, move, at);
+    emitBranch(doneL);
+    startBlock(otherL);
     destroyAlternative(c, t, dst, at);
     copyAlternative(c, t, dst, src, move, at);
     emitBranch(doneL);

@@ -1,0 +1,23 @@
+construct 1
+-- from a union holding the same
+construct 2
+copy assign 2
+-- moved
+move assign 3
+-- by name, the same alternative
+construct 4
+move assign 4
+destroy 4
+-- another alternative
+destroy 4
+-- back
+construct 6
+destroy 6
+7
+-- reads what it holds
+49
+49
+-- its operator= throws
+no true
+-- end
+destroy 3

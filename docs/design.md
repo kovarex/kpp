@@ -443,8 +443,9 @@ switch (p) { case Integer: return format("{}", p[Integer]); case Text: return p[
 ```
 Alternatives are listed by `alternatives(Property)` for reflection. `InputAction`,
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
-Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (destroys the alternative held, sets
-the tag, constructs the value), `p[Integer]` (a release_assert on another tag), `p == Integer`,
+Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (the value first, which may read what the
+union holds; the alternative held takes it by its operator=, as std::variant, and another is
+destroyed and the value constructed: kovarex 2026-11-06), `p[Integer]` (a release_assert on another tag), `p == Integer`,
 `switch (p)` (exhaustive, as for a kpp enum), copying, assignment and destruction following the
 tag. Decided on the way: a default-constructed union holds its first alternative,
 default-constructed; the tag type is the nested kpp enum `Property::Tag` (so `tag.str()` and

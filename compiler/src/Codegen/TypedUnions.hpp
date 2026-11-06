@@ -61,6 +61,10 @@
     void destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
     // Copies (or moves) the alternative src holds into dst, tag included.
     void copyAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
+    // Whether an alternative of this type is a class with an operator= to call.
+    bool alternativeAssignable(const Ty* altTy, Node* at);
+    // dst and src hold one alternative: src's assigned to dst's, by its operator=.
+    void assignHeldAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
     // `p[Integer] = 5`: destroys the alternative held, sets the tag, constructs the new value.
     Value assignAlternative(IndexExpr* i, Expr* rhs, Node* at);
     // The tag values of a typed union's alternatives, in declaration order (the cases of a switch).

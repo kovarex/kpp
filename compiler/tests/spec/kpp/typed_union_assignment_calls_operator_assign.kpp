@@ -1,0 +1,73 @@
+// spec: a typed union assigned a value of the alternative it holds calls that type's operator=, as std::variant, whether from another union (`a = b`, copy and move) or through `u[Name] = value`; another alternative is destroyed and the new one constructed; the value is computed first, so it may read what the union holds, and if it throws the union keeps its alternative
+// factorio: kovarex's list of conformance gaps (item 5): it destroyed and copy-constructed, and `u[Text] = u[Text] + "!"` read the destroyed text
+class Noisy
+{
+public:
+  Noisy() {}
+  Noisy(int value) : value(value) { println("construct ", value); }
+  Noisy(const Noisy& other) : value(other.value) { println("copy construct ", value); }
+  Noisy(Noisy&& other) : value(other.value) { println("move construct ", value); }
+  Noisy& operator=(const Noisy& other) { value = other.value; println("copy assign ", value); return *this; }
+  Noisy& operator=(Noisy&& other) { value = other.value; println("move assign ", value); return *this; }
+  ~Noisy() { println("destroy ", value); }
+
+  int value = 0;
+};
+
+class Refusing
+{
+public:
+  Refusing() {}
+  Refusing(const Refusing&) {}
+  Refusing& operator=(const Refusing&) { throw RuntimeError("no"); }
+};
+
+union enum Held : u8
+{
+  { {int, Count}, {Noisy, Object}, {String, Words}, {Refusing, Picky} }
+};
+
+Noisy make(int value) { return Noisy(value); }
+
+int main()
+{
+  Held a;
+  Held b;
+  a[Object] = 1;
+  println("-- from a union holding the same");
+  b[Object] = 2;
+  a = b;
+  println("-- moved");
+  b[Object].value = 3;
+  a = move(b);
+  println("-- by name, the same alternative");
+  a[Object] = make(4);
+  println("-- another alternative");
+  a[Count] = 5;
+  println("-- back");
+  a[Object] = make(6);
+  a[Count] = a[Object].value + 1;
+  println(a[Count]);
+  println("-- reads what it holds");
+  Held text;
+  text[Words] = "a text long enough to be held outside the object";
+  text[Words] = text[Words] + "!";
+  println(text[Words].size());
+  text[Count] = (int)text[Words].size();
+  println(text[Count]);
+  println("-- its operator= throws");
+  Held picky;
+  picky[Picky] = Refusing();
+  Held other;
+  other[Picky] = Refusing();
+  try
+  {
+    picky = other;
+  }
+  catch (const RuntimeError& e)
+  {
+    println(StringView(e.what()), " ", picky == Held::Picky);
+  }
+  println("-- end");
+  return 0;
+}

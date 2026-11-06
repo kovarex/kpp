@@ -179,11 +179,109 @@ auto codegen::Emitter::assignAlternative(IndexExpr* i, Expr* rhs, Node* at) -> V
   Value base = rvalue(i->base);
   ClassDecl* c = typedUnionOf(base.ty, at);
   size_t index = alternativeIndex(c, i, at);
-  destroyAlternative(c, base.ty, base.text, at);
-  constructAlternative(c, base.ty, base.text, index, rhs, at);
   const Ty* altTy = alternativeType(c, base.ty, index, at);
   std::string addr = alternativeAddress(c, base.ty, base.text, index, at);
-  return isClass(altTy) ? Value{addr, altTy, false} : load(addr, altTy, at);
+  // A value that is no class first: it may read what the union holds (`p[Size] = p[Text].size()`).
+  if (!isClass(altTy) && altTy->kind != TyKind::Array)
+  {
+    std::string value = newObjectSlot(altTy, at);
+    initializeFrom(value, altTy, rhs, at);
+    destroyAlternative(c, base.ty, base.text, at);
+    copyBytes(addr, value, altTy, at);
+    setTag(c, base.ty, base.text, index, at);
+    return load(addr, altTy, at);
+  }
+  // No operator= to call (a class with a move constructor and none, which std::variant refuses;
+  // an array): the alternative held goes, the new one is built where it stays.
+  if (!alternativeAssignable(altTy, at))
+  {
+    destroyAlternative(c, base.ty, base.text, at);
+    constructAlternative(c, base.ty, base.text, index, rhs, at);
+    return isClass(altTy) ? Value{addr, altTy, false} : load(addr, altTy, at);
+  }
+  std::string same = newTemp(), assignL = newLabel("alternative.assign"), otherL = newLabel("alternative.other"), doneL = newLabel("alternative.done");
+  auto compareTag = [&] { fn += "  " + same + " = icmp eq " + llType(tagType(c), at) + " " + loadTag(c, base.ty, base.text, at) + ", " + std::to_string(index) + "\n"; };
+  const Ty* rhsTy = rhs->ty && rhs->ty->isKnown() ? types.stripRef(rhs->ty) : nullptr;
+  if (rhsTy && isClass(rhsTy) && classKey(rhsTy) == classKey(altTy) && (isLvalueExpression(rhs) || isXvalue(rhs)))
+  {
+    // An object: the alternative held is assigned from it, as std::variant; another goes for a
+    // copy of it.
+    Value from = rvalue(rhs);
+    bool move = movable(rhs);
+    compareTag();
+    fn += "  br i1 " + same + ", label %" + assignL + ", label %" + otherL + "\n";
+    startBlock(assignL);
+    assignObject(addr, from.text, altTy, at, move);
+    emitBranch(doneL);
+    startBlock(otherL);
+    destroyAlternative(c, base.ty, base.text, at);
+    setTag(c, base.ty, base.text, c->alternatives.size(), at);
+    if (move)
+      moveConstruct(addr, from.text, altTy, at);
+    else
+      copyConstruct(addr, from.text, altTy, at);
+    setTag(c, base.ty, base.text, index, at);
+    emitBranch(doneL);
+    startBlock(doneL);
+    return Value{addr, altTy, false};
+  }
+  // A new value, written once, into the one place it goes: where the alternative stays when the
+  // union holds another (built in place, no move: `target[a] = a.type(input)`, the game's loading,
+  // kpp/typed_union_alternative_built_in_place), a temporary to assign from when it holds this one.
+  std::string built = newLabel("alternative.build"), value = newObjectSlot(altTy, at), place = newTemp();
+  compareTag();
+  fn += "  br i1 " + same + ", label %" + built + ", label %" + otherL + "\n";
+  startBlock(otherL);
+  destroyAlternative(c, base.ty, base.text, at);
+  setTag(c, base.ty, base.text, c->alternatives.size(), at);
+  emitBranch(built);
+  startBlock(built);
+  fn += "  " + place + " = select i1 " + same + ", ptr " + value + ", ptr " + addr + "\n";
+  initializeFrom(place, altTy, rhs, at);
+  std::string setL = newLabel("alternative.set");
+  fn += "  br i1 " + same + ", label %" + assignL + ", label %" + setL + "\n";
+  startBlock(assignL);
+  assignObject(addr, value, altTy, at, true);
+  if (needsDestruction(altTy, at))
+    destroy(value, altTy, at);
+  emitBranch(doneL);
+  startBlock(setL);
+  setTag(c, base.ty, base.text, index, at);
+  emitBranch(doneL);
+  startBlock(doneL);
+  return Value{addr, altTy, false};
+}
+
+auto codegen::Emitter::alternativeAssignable(const Ty* altTy, Node* at) -> bool
+{
+  return isClass(altTy) && (declaresAssignment(altTy, at) || !declaresMoveMember(classDef(altTy->decl, at), altTy, false, at));
+}
+
+auto codegen::Emitter::assignHeldAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
+{
+  forHeldAlternative(c, t, dst, at, [&](size_t) { return true; }, [&](size_t i)
+  {
+    const Ty* altTy = alternativeType(c, t, i, at);
+    std::string from = alternativeAddress(c, t, src, i, at), to = alternativeAddress(c, t, dst, i, at);
+    if (alternativeAssignable(altTy, at))
+      assignObject(to, from, altTy, at, move);
+    else if (isClass(altTy))
+    {
+      // (no operator= to call: as for another alternative, the union holding none meanwhile)
+      std::string tag = loadTag(c, t, dst, at);
+      destroy(to, altTy, at);
+      setTag(c, t, dst, c->alternatives.size(), at);
+      if (move)
+        moveConstruct(to, from, altTy, at);
+      else
+        copyConstruct(to, from, altTy, at);
+      fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
+    }
+    else if (altTy->kind == TyKind::Array && needsDestruction(altTy, at))
+      transferArray(to, from, altTy, at, move, true);
+    else
+      copyBytes(to, from, altTy, at);
+  });
 }
 
 auto codegen::Emitter::alternativeTags(ClassDecl* c) -> std::vector<int64_t>
