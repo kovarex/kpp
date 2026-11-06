@@ -335,6 +335,7 @@ auto GlobalScope::Impl::isNoexcept(FunctionDecl* f, const Subst* subst) -> std::
   declContextFor(f, dc);
   ParsedFile* file = f->file;
   TypeContext ctx{dc.scope, &dc.params, subst, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  ctx.function = f; // (its parameters, which `noexcept(noexcept(a = b))` names)
   std::optional<int64_t> v = constEval(f->noexceptCondition, ctx, 0);
   if (!v)
     return std::nullopt;

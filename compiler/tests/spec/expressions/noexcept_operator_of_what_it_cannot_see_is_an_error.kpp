@@ -1,0 +1,20 @@
+// spec: what the noexcept operator does not decide yet is an error naming it, never a guess (Walker::canThrow): a braced list as an argument, a comparison C++ rewrites, a lambda capturing a class by value
+// error: the noexcept operator does not decide a braced list as an argument yet
+// error: the noexcept operator does not decide a comparison C++ rewrites yet
+// error: the noexcept operator does not decide a lambda capturing a class by value yet
+struct Box
+{
+  int v;
+  Box(int x) : v(x) {}
+  ~Box() {}
+  bool operator==(const Box& other) const { return this->v == other.v; }
+};
+int take(Box b) { return b.v; }
+int main()
+{
+  Box box(1);
+  bool a = noexcept(take({2}));
+  bool b = noexcept(box != box);
+  bool c = noexcept([box] { return box.v; });
+  return a + b + c;
+}

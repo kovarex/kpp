@@ -4418,6 +4418,17 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   funclets' UnwindHelp on Windows). Specs language/destructor_*, language/noexcept_*destructor*,
   templates/destructor_*.
 
+- **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
+  calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted
+  constructors by their parts and default member initializers, a by-value parameter's copy or conversion, a
+  conversion operator, default arguments, a temporary's destructor, new (an allocation function that may throw,
+  unless it is a placement one), a dynamic_cast to a reference that needs a check, typeid through a pointer. In a
+  template's own walk it stays undecided; a noexcept-specifier's `noexcept(noexcept(a = b))` is answered under
+  the instance's arguments, by a copy of the expression typed under them (the evaluator's NoexceptExpr, as
+  typeOfSignatureExpression does for decltype). It still refuses, as not decided, what it cannot see: a comparison
+  C++ rewrites, a braced list as an argument, a closure capturing a class by value, a fold. Specs
+  language/noexcept_operator_*, clang's output.
+
 - **A member function's qualifiers are part of its pointer's type** (D, 2026-11-06, as C++: a silent
   wrong answer fixed). `R (K::*)()`, `R (K::*)() const`, `volatile`, `&` and `&&` are five types
   (TypeTable::function's memberQualifiers, printed in the type); they were one, so a second partial

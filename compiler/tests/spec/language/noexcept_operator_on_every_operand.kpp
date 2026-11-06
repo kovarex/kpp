@@ -1,0 +1,65 @@
+// spec: the noexcept operator over every kind of operand ([except.spec] 6): casts, an index, a member, constructions, a class's operators, new with and without placement, dynamic_cast to a reference, typeid, lambdas, comma, each of which it refused as not decided; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> T&& dv() noexcept;
+struct Plain { int v = 0; int m() noexcept { return 1; } int t() { return 2; } };
+struct NoThrowCtor { NoThrowCtor() noexcept {} NoThrowCtor(int) noexcept {} NoThrowCtor(const NoThrowCtor&) noexcept {} NoThrowCtor(NoThrowCtor&&) noexcept {} };
+struct ThrowCtor { ThrowCtor() {} ThrowCtor(int) {} ThrowCtor(const ThrowCtor&) {} ThrowCtor(ThrowCtor&&) {} };
+struct ThrowDtor { ThrowDtor() noexcept {} ~ThrowDtor() noexcept(false) {} };
+struct Ops
+{
+  int operator+(int) const noexcept { return 1; }
+  int operator-(int) const { return 2; }
+  int operator[](int) const noexcept { return 3; }
+  int operator()(int) const noexcept { return 4; }
+  int operator*() const { return 5; }
+  Ops& operator=(const Ops&) noexcept { return *this; }
+  operator int() const noexcept { return 6; }
+  operator bool() const { return true; }
+};
+int fn(int) noexcept;
+int fnThrows(int);
+int takeClass(NoThrowCtor) noexcept;
+int takeThrowCopy(ThrowCtor) noexcept;
+int takeRef(const ThrowCtor&) noexcept;
+template <typename T> int fnTemplate(T) noexcept(sizeof(T) == 4);
+class Base { public: virtual ~Base() {} virtual int v() noexcept { return 1; } };
+class Derived : public Base { };
+int main()
+{
+  int i = 0;
+  int* p = &i;
+  Plain plain;
+  Ops ops;
+  NoThrowCtor nt;
+  ThrowCtor tc;
+  Base* b = nullptr;
+  printf("%d %d %d\n", noexcept(i + 1), noexcept(i = 2), noexcept(*p));
+  printf("%d %d %d\n", noexcept(p[0]), noexcept(&i), noexcept(i ? 1 : 2));
+  printf("%d %d %d\n", noexcept(sizeof(i)), noexcept((long)i), noexcept(static_cast<long>(i)));
+  printf("%d %d\n", noexcept(plain.m()), noexcept(plain.t()));
+  printf("%d %d\n", noexcept(plain.v), noexcept(plain.v + 1));
+  printf("%d %d\n", noexcept(NoThrowCtor()), noexcept(ThrowCtor()));
+  printf("%d %d\n", noexcept(NoThrowCtor(1)), noexcept(ThrowCtor(1)));
+  printf("%d %d\n", noexcept(NoThrowCtor{}), noexcept(ThrowCtor{}));
+  printf("%d %d\n", noexcept(NoThrowCtor(nt)), noexcept(ThrowCtor(tc)));
+  printf("%d %d\n", noexcept(ThrowDtor()), noexcept(Plain()));
+  printf("%d %d %d\n", noexcept(ops + 1), noexcept(ops - 1), noexcept(ops[0]));
+  printf("%d %d %d\n", noexcept(ops(1)), noexcept(*ops), noexcept(ops = ops));
+  printf("%d %d\n", noexcept((int)ops), noexcept((bool)ops));
+  printf("%d %d %d\n", noexcept(fn(1)), noexcept(fnThrows(1)), noexcept(fn(fnThrows(1))));
+  printf("%d %d %d\n", noexcept(takeClass(nt)), noexcept(takeThrowCopy(tc)), noexcept(takeRef(tc)));
+  printf("%d %d\n", noexcept(fnTemplate(1)), noexcept(fnTemplate(1.0)));
+  printf("%d %d\n", noexcept(new int), noexcept(new (p) int));
+  printf("%d %d\n", noexcept(new NoThrowCtor), noexcept(new (p) NoThrowCtor));
+  printf("%d %d\n", noexcept(b->v()), noexcept(dynamic_cast<Derived*>(b)));
+  printf("%d %d\n", noexcept(dynamic_cast<Derived&>(*b)), noexcept(static_cast<Derived*>(b)));
+  printf("%d\n", noexcept(throw 1));
+  printf("%d %d\n", noexcept([] {}), noexcept([] {}()));
+  printf("%d %d\n", noexcept([]() noexcept {}()), noexcept([=] { return i; }));
+  auto lambda = [](int x) noexcept { return x; };
+  printf("%d %d\n", noexcept(lambda(1)), noexcept(lambda));
+  printf("%d %d\n", noexcept((void)fn(1)), noexcept((fn(1), fnThrows(2))));
+  printf("%d %d\n", noexcept(i++), noexcept(++i));
+  printf("%d %d\n", noexcept(i == 1 && fn(1)), noexcept(!fnThrows(1)));
+  return 0;
+}

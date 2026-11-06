@@ -6204,6 +6204,163 @@ auto GlobalScope::Impl::Walker::constObjectPlaced(Expr* place) -> Decl*
   return t && t->isConst ? d : nullptr;
 }
 
+auto GlobalScope::Impl::Walker::functionThrows(FunctionDecl* f, const Subst* subst, std::string& unsupported) -> bool
+{
+  std::optional<bool> isNoexcept = impl.isNoexcept(f, subst);
+  if (!isNoexcept)
+    unsupported = "a call of a function whose noexcept condition is no constant here";
+  return isNoexcept && !*isNoexcept;
+}
+
+auto GlobalScope::Impl::Walker::destroyingThrows(const Ty* t, std::string& unsupported) -> bool
+{
+  std::optional<bool> mayThrow = impl.destructorMayThrow(t);
+  if (!mayThrow)
+    unsupported = "the destruction of a class holding a closure";
+  return mayThrow.value_or(false);
+}
+
+auto GlobalScope::Impl::Walker::defaultMembersThrow(const Ty* t, size_t given, std::string& unsupported, int depth) -> bool
+{
+  // [except.spec] 7: the constructors of the parts it builds, and the default member initializers, from
+  // the given-th part on (an aggregate's first ones are the list's).
+  ClassDecl* def = impl.classDefinition(t);
+  std::vector<const Ty*> bases;
+  if (!def || !impl.directBases(t, def, bases))
+  {
+    unsupported = "a construction of a class not known here";
+    return false;
+  }
+  bool any = false;
+  size_t part = 0;
+  for (const Ty* b : bases)
+    if (part++ >= given)
+      any = constructingThrows(b, {}, unsupported, depth + 1) || any;
+  Subst subst = impl.substFor(t);
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)) || part++ < given)
+      continue;
+    auto* v = static_cast<VariableDecl*>(m);
+    if (v->init)
+      any = canThrow(v->init, unsupported) || any;
+    else
+      any = constructingThrows(impl.declaredTypeOf(v, subst.pairs.empty() ? nullptr : &subst, 0), {}, unsupported, depth + 1) || any;
+  }
+  return any;
+}
+
+auto GlobalScope::Impl::Walker::constructingThrows(const Ty* t, const std::vector<const Ty*>& argTypes, std::string& unsupported, int depth) -> bool
+{
+  const Ty* u = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  while (u && u->kind == TyKind::Array)
+    u = types.unqualified(u->inner);
+  if (!u || !u->isKnown() || types.isDependent(u) || depth > 32)
+  {
+    unsupported = "a construction of a type not known here";
+    return false;
+  }
+  if (u->kind != TyKind::Class)
+    return false;
+  // A copy or a move, of the class or of one derived from it.
+  if (argTypes.size() == 1 && argTypes[0])
+    if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a == u || (a->kind == TyKind::Class && impl.isBaseClass(u, a)))
+    {
+      std::optional<bool> nothrow = impl.constructibleFromSelf(u, argTypes[0]->kind != TyKind::LRef && !argTypes[0]->isConst, TraitForm::Nothrow);
+      if (!nothrow)
+        unsupported = "a copy of a class that has none here";
+      return !nothrow.value_or(true);
+    }
+  bool ambiguous = false;
+  FunctionDecl* f = impl.chooseConstructor(u, argTypes, nullptr, nullptr, false, &ambiguous);
+  if (ambiguous)
+  {
+    unsupported = "a construction of a class by constructors equally good";
+    return false;
+  }
+  Subst subst = impl.substFor(u);
+  if (f && !f->templateParams.empty())
+    impl.deduceCall(f, impl.declaredTypeOf(f, &subst, 0), argTypes, subst);
+  if (f && (!(f->flags & DF_Default) || (f->flags & DF_Noexcept)))
+    return functionThrows(f, subst.pairs.empty() ? nullptr : &subst, unsupported);
+  // No constructor written: an implicit one, or an aggregate's elements each to its part in order.
+  bool any = false;
+  if (!f && !argTypes.empty())
+  {
+    ClassDecl* def = impl.classDefinition(u);
+    std::vector<const Ty*> parts;
+    if (!def || !impl.directBases(u, def, parts) || !impl.fieldTypes(u, def, parts) || argTypes.size() > parts.size())
+    {
+      unsupported = "a construction of a class not known here";
+      return false;
+    }
+    for (size_t i = 0; i < argTypes.size(); ++i)
+      any = constructingThrows(parts[i], {argTypes[i]}, unsupported, depth + 1) || any;
+  }
+  return defaultMembersThrow(u, argTypes.size(), unsupported, depth) || any;
+}
+
+auto GlobalScope::Impl::Walker::convertingThrows(Expr* from, const Ty* to, bool explicitCast, std::string& unsupported) -> bool
+{
+  const Ty* a = from && from->ty ? types.unqualified(types.stripRef(from->ty)) : nullptr;
+  const Ty* t = to ? types.unqualified(types.stripRef(to)) : nullptr;
+  if (!a || !t || !a->isKnown() || !t->isKnown() || types.isDependent(a) || types.isDependent(t))
+  {
+    unsupported = "an argument of a type not known here";
+    return false;
+  }
+  if (a->kind != TyKind::Class && t->kind != TyKind::Class)
+    return false;
+  bool byReference = to->isReference();
+  // A prvalue of the class is built where the parameter is; a reference binds what it can.
+  bool same = a == t || (a->kind == TyKind::Class && t->kind == TyKind::Class && impl.isBaseClass(t, a));
+  if (same && byReference)
+    return false;
+  if (t->kind == TyKind::Class)
+  {
+    bool built = same && a == t && !from->ty->isReference() && !isLvalueExpression(from);
+    bool constructs = !built && constructingThrows(t, {argumentType(from, from->ty, types)}, unsupported);
+    return constructs || destroyingThrows(t, unsupported);
+  }
+  const Ty* foundIn = nullptr;
+  Subst opArgs;
+  bool ambiguous = false;
+  FunctionDecl* op = impl.chooseConversion(a, t, GlobalScope::ConversionKind::ToType, explicitCast, &foundIn, &opArgs, explicitCast, &ambiguous);
+  if (!op || ambiguous)
+  {
+    unsupported = "a conversion of a class to a scalar";
+    return false;
+  }
+  return functionThrows(op, opArgs.pairs.empty() ? nullptr : &opArgs, unsupported);
+}
+
+auto GlobalScope::Impl::Walker::callArgumentsThrow(FunctionDecl* f, const Ty* signature, const Subst* subst, Span<Expr*> args, std::string& unsupported) -> bool
+{
+  bool any = false;
+  for (size_t i = 0; i < args.size(); ++i)
+  {
+    Expr* a = args[i];
+    if (a && a->kind == NodeKind::BraceInitExpr)
+    {
+      unsupported = "a braced list as an argument";
+      return false;
+    }
+    any = canThrow(a, unsupported) || any;
+    const Ty* parameter = signature && i < signature->args.size() ? signature->args[i] : nullptr;
+    if (parameter && a && (!parameter->isKnown() || types.isDependent(parameter) || parameter->kind == TyKind::Pack))
+      parameter = nullptr; // (a parameter of a template, as the call's instance has it: by the argument's own type)
+    if (parameter)
+      any = convertingThrows(a, parameter, false, unsupported) || any;
+  }
+  // The default arguments of those left out ([expr.call] 4 evaluates them where the call is).
+  if (f)
+    for (size_t i = args.size(); i < f->params.size(); ++i)
+      if (auto* p = static_cast<ParamDecl*>(f->params[i]); p->defaultValue)
+        any = canThrow(p->defaultValue, unsupported) || any;
+  (void)subst;
+  return any;
+}
+
 auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> bool
 {
   if (!e || !unsupported.empty())
@@ -6213,11 +6370,36 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
     const Ty* t = x && x->ty ? types.unqualified(types.stripRef(x->ty)) : nullptr;
     return t && t->isKnown() && t->kind != TyKind::Class;
   };
+  // A class by value, what a full-expression destroys at its end.
+  auto temporaryThrows = [&](const Expr* x)
+  {
+    return x && x->ty && x->ty->kind == TyKind::Class && !x->ty->isReference() && !isLvalueExpression(x) && destroyingThrows(x->ty, unsupported);
+  };
+  // An operator function: its operands to its parameters, and a result by value.
+  auto operatorThrows = [&](FunctionDecl* f, bool member, Expr* first, Expr* second)
+  {
+    Subst subst;
+    if (member && first && first->ty)
+      subst = impl.substFor(types.unqualified(types.stripRef(first->ty)));
+    const Subst* sp = subst.pairs.empty() ? nullptr : &subst;
+    const Ty* signature = impl.declaredTypeOf(f, sp, 0);
+    size_t next = 0;
+    bool any = canThrow(first, unsupported);
+    if (second)
+      any = canThrow(second, unsupported) || any;
+    if (!f->templateParams.empty())
+      return any || functionThrows(f, sp, unsupported); // (its parameters are the instance's)
+    if (!member && first && signature && next < signature->args.size())
+      any = convertingThrows(first, signature->args[next++], false, unsupported) || any;
+    if (second && signature && next < signature->args.size())
+      any = convertingThrows(second, signature->args[next], false, unsupported) || any;
+    return any || functionThrows(f, sp, unsupported);
+  };
   switch (e->kind)
   {
     case NodeKind::LiteralExpr: case NodeKind::NameExpr: case NodeKind::ThisExpr: case NodeKind::SizeofExpr:
     case NodeKind::HeldExpr: case NodeKind::DefaultValueExpr:
-    case NodeKind::NameofExpr: case NodeKind::NoexceptExpr:
+    case NodeKind::NameofExpr: case NodeKind::NoexceptExpr: case NodeKind::RequiresExpr:
       return false;
     case NodeKind::ParenExpr: return canThrow(static_cast<ParenExpr*>(e)->inner, unsupported);
     case NodeKind::ThrowExpr: return true;
@@ -6235,33 +6417,224 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       }
       return any || *mayThrow || (d->deallocator && (d->deallocator->flags & DF_Noexcept) && impl.isNoexcept(d->deallocator, activeSubst) != std::optional<bool>(true));
     }
+    case NodeKind::NewExpr:
+    {
+      // The allocation function, unless it is the placement one or a class's that says it does not; the
+      // constructor; the arguments of both. (A failing allocation is the allocator's: `new (nothrow)`.)
+      auto* n = static_cast<NewExpr*>(e);
+      bool any = false;
+      for (Expr* a : n->placement)
+        any = canThrow(a, unsupported) || any;
+      std::vector<const Ty*> argTypes;
+      Span<Expr*> args = n->args;
+      if (n->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+        args = static_cast<BraceInitExpr*>(args[0])->args;
+      for (Expr* a : args)
+      {
+        any = canThrow(a, unsupported) || any;
+        argTypes.push_back(a && a->ty ? argumentType(a, a->ty, types) : nullptr);
+      }
+      const Ty* made = e->ty && e->ty->kind == TyKind::Pointer ? e->ty->inner : nullptr;
+      any = constructingThrows(made, argTypes, unsupported) || any;
+      if (n->allocator)
+        return functionThrows(n->allocator, activeSubst, unsupported) || any;
+      return n->placement.empty() || any;
+    }
     case NodeKind::UnaryExpr:
-      if (!scalar(static_cast<UnaryExpr*>(e)->operand))
-        break; // (an overloaded operator)
-      return canThrow(static_cast<UnaryExpr*>(e)->operand, unsupported);
+    {
+      auto* u = static_cast<UnaryExpr*>(e);
+      if (u->call == OperatorCall::Function && u->callee)
+        return operatorThrows(u->callee, u->calleeMember, u->operand, nullptr) || temporaryThrows(e);
+      if (scalar(u->operand))
+        return canThrow(u->operand, unsupported);
+      if (!u->isKeyword && P(u->op) == P::Bang)
+        return canThrow(u->operand, unsupported) || convertingThrows(u->operand, types.boolType(), true, unsupported); // `!x`, a condition
+      if (!u->isKeyword && P(u->op) == P::Amp)
+        return canThrow(u->operand, unsupported); // the built-in `&` of an object
+      unsupported = "a built-in operator on a class's conversion";
+      return false;
+    }
     case NodeKind::BinaryExpr:
     {
       auto* b = static_cast<BinaryExpr*>(e);
-      if (!scalar(b->lhs) || !scalar(b->rhs))
-        break;
-      bool l = canThrow(b->lhs, unsupported), r = canThrow(b->rhs, unsupported);
-      return l || r;
+      if (b->call == OperatorCall::Function && b->callee)
+        return operatorThrows(b->callee, b->calleeMember, b->lhs, b->rhs) || temporaryThrows(e);
+      // (`o.*p`, `q->*p`: the built-in one on any object)
+      bool memberPointer = !b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar);
+      if ((scalar(b->lhs) && scalar(b->rhs)) || memberPointer)
+      {
+        bool l = canThrow(b->lhs, unsupported), r = canThrow(b->rhs, unsupported);
+        return l || r;
+      }
+      if (b->call == OperatorCall::Rewritten)
+      {
+        unsupported = "a comparison C++ rewrites";
+        return false;
+      }
+      if (!b->isKeyword && P(b->op) == P::Comma)
+      {
+        bool l = canThrow(b->lhs, unsupported), r = canThrow(b->rhs, unsupported);
+        return l || r || temporaryThrows(b->lhs);
+      }
+      // `a = b` of a class with no operator= written.
+      if (!b->isKeyword && P(b->op) == P::Assign && b->lhs->ty && b->rhs->ty && !scalar(b->lhs))
+      {
+        const Ty* t = types.unqualified(types.stripRef(b->lhs->ty));
+        std::optional<bool> nothrow = impl.assignableFromSelf(t, b->rhs->ty->kind != TyKind::LRef && !isLvalueExpression(b->rhs), TraitForm::Nothrow);
+        if (!nothrow)
+          unsupported = "an assignment of a class that has none here";
+        bool l = canThrow(b->lhs, unsupported), r = canThrow(b->rhs, unsupported);
+        return l || r || !nothrow.value_or(true);
+      }
+      unsupported = "a built-in operator on a class's conversion";
+      return false;
     }
     case NodeKind::ConditionalExpr:
     {
       auto* c = static_cast<ConditionalExpr*>(e);
-      if (!scalar(e))
-        break;
       bool any = canThrow(c->cond, unsupported);
+      if (c->cond && !scalar(c->cond))
+        any = convertingThrows(c->cond, types.boolType(), true, unsupported) || any;
       any = canThrow(c->then, unsupported) || any;
-      return canThrow(c->else_, unsupported) || any;
+      any = canThrow(c->else_, unsupported) || any;
+      return any || temporaryThrows(e);
+    }
+    case NodeKind::IndexExpr:
+    {
+      auto* x = static_cast<IndexExpr*>(e);
+      bool any = canThrow(x->base, unsupported);
+      if (scalar(x->base))
+      {
+        for (Expr* a : x->args)
+          any = canThrow(a, unsupported) || any;
+        return any;
+      }
+      const Ty* t = x->base->ty ? types.unqualified(types.stripRef(x->base->ty)) : nullptr;
+      MemberResult r = t ? memberOf(t, impl.opSymbols[uint32_t(P::LBracket)], nullptr, x->token, false) : MemberResult{};
+      bool ambiguous = false;
+      FunctionDecl* f = r.decl ? pickOverload(r.decl, r.overloads, argTypesOf(x->args), &r.subst, t, ambiguous, nullptr, {}, nullptr) : nullptr;
+      if (!f || ambiguous)
+      {
+        unsupported = "an index of a class";
+        return false;
+      }
+      const Subst* sp = r.subst.pairs.empty() ? nullptr : &r.subst;
+      return callArgumentsThrow(f, impl.declaredTypeOf(f, sp, 0), sp, x->args, unsupported) || any || functionThrows(f, sp, unsupported) || temporaryThrows(e);
+    }
+    case NodeKind::MemberExpr:
+    {
+      auto* m = static_cast<MemberExpr*>(e);
+      if (m->dynamicMember)
+        break;
+      const Ty* t = m->base && m->base->ty ? types.unqualified(types.stripRef(m->base->ty)) : nullptr;
+      if (m->op != P::Dot && t && t->kind == TyKind::Class)
+      {
+        // `p->x` through the class's operator->.
+        MemberResult r = memberOf(t, impl.opSymbols[uint32_t(P::Arrow)], nullptr, m->token, false);
+        bool ambiguous = false;
+        FunctionDecl* f = r.decl ? pickOverload(r.decl, r.overloads, {}, &r.subst, t, ambiguous, nullptr, {}, nullptr) : nullptr;
+        if (!f || ambiguous)
+        {
+          unsupported = "a member through a class's operator->";
+          return false;
+        }
+        return canThrow(m->base, unsupported) || functionThrows(f, r.subst.pairs.empty() ? nullptr : &r.subst, unsupported);
+      }
+      return canThrow(m->base, unsupported);
+    }
+    case NodeKind::CastExpr:
+    case NodeKind::NamedCastExpr:
+    {
+      Type* written = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->type : static_cast<NamedCastExpr*>(e)->type;
+      Expr* operand = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->operand : static_cast<NamedCastExpr*>(e)->operand;
+      bool any = canThrow(operand, unsupported);
+      const Ty* to = written ? typeOf(written) : e->ty;
+      // [except.spec] 6: a dynamic_cast to a reference that needs a runtime check.
+      if (e->kind == NodeKind::NamedCastExpr && static_cast<NamedCastExpr*>(e)->castKind == Kw::dynamic_cast_)
+      {
+        const Ty* from = operand->ty ? types.unqualified(types.stripRef(operand->ty)) : nullptr;
+        const Ty* target = to ? types.unqualified(types.stripRef(to)) : nullptr;
+        return any || (to && to->isReference() && !(from && target && (from == target || impl.isBaseClass(target, from))));
+      }
+      if (to && to->isReference())
+        return any;
+      if (to && operand->ty)
+        any = convertingThrows(operand, to, true, unsupported) || any;
+      return any;
+    }
+    case NodeKind::FunctionalCastExpr:
+    {
+      auto* f = static_cast<FunctionalCastExpr*>(e);
+      Span<Expr*> args = f->args;
+      if (f->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+        args = static_cast<BraceInitExpr*>(args[0])->args;
+      bool any = false;
+      std::vector<const Ty*> argTypes;
+      for (Expr* a : args)
+      {
+        any = canThrow(a, unsupported) || any;
+        argTypes.push_back(a && a->ty ? argumentType(a, a->ty, types) : nullptr);
+      }
+      const Ty* t = f->ty ? types.unqualified(types.stripRef(f->ty)) : nullptr;
+      if (!t || !t->isKnown())
+      {
+        unsupported = "a construction of a type not known here";
+        return false;
+      }
+      if (t->kind != TyKind::Class)
+        return any || (args.size() == 1 && args[0] && !scalar(args[0]) && convertingThrows(args[0], t, true, unsupported));
+      return constructingThrows(t, argTypes, unsupported) || any || destroyingThrows(t, unsupported);
+    }
+    case NodeKind::TypeidExpr:
+    {
+      // Of a glvalue of a polymorphic class, which a null pointer makes throw.
+      auto* t = static_cast<TypeidExpr*>(e);
+      if (t->operandType || !t->operand || uint8_t(t->operand->kind) < uint8_t(NodeKind::NameExpr))
+        return false;
+      auto* x = static_cast<Expr*>(t->operand);
+      const Ty* c = x->ty ? types.unqualified(types.stripRef(x->ty)) : nullptr;
+      std::optional<bool> polymorphic = c && c->kind == TyKind::Class ? impl.polymorphicClass(c) : std::optional<bool>(false);
+      Expr* bare = x;
+      while (bare && bare->kind == NodeKind::ParenExpr)
+        bare = static_cast<ParenExpr*>(bare)->inner;
+      bool throughPointer = bare && bare->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(bare)->isKeyword && P(static_cast<UnaryExpr*>(bare)->op) == P::Star;
+      return polymorphic.value_or(true) && throughPointer;
+    }
+    case NodeKind::LambdaExpr:
+    {
+      // Its captures by value are copied where it is made.
+      auto* l = static_cast<LambdaExpr*>(e);
+      bool any = false;
+      for (const LambdaCapture& cap : l->captures)
+        if (cap.init)
+          any = canThrow(cap.init, unsupported) || any;
+      std::optional<bool> mayThrow = impl.destructorMayThrow(l->ty);
+      if (!mayThrow)
+      {
+        // (what a closure holds by value is the code generator's: its class types decide nothing here)
+        for (const LambdaCapture& cap : l->captures)
+          if (!cap.byRef && !cap.isThis && !cap.init)
+          {
+            const Ty* held = nullptr;
+            if (Decl* d = locals.find(cap.symbol))
+              held = impl.declaredTypeOf(d, activeSubst, 0);
+            if (!held || types.unqualified(types.stripRef(held))->kind == TyKind::Class)
+              unsupported = "a lambda capturing a class by value";
+          }
+        if (l->defaultCapture == 1 && l->body)
+          forEachNode(l->body, [&](Node* n)
+          {
+            if (n->kind == NodeKind::NameExpr)
+              if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ParamDecl))
+                if (const Ty* held = impl.declaredTypeOf(d, activeSubst, 0); held && types.unqualified(types.stripRef(held))->kind == TyKind::Class)
+                  unsupported = "a lambda capturing a class by value";
+          });
+      }
+      return any;
     }
     case NodeKind::CallExpr:
     {
       auto* c = static_cast<CallExpr*>(e);
-      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(c->callee)->resolved
-                     : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
-                                                                            : nullptr;
       // `x.~X()`, `p->~X()`: as the destructor says, a scalar's none ([except.spec] 8).
       if (auto* m = c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee) : nullptr; m && !m->member.empty() && m->member.last().special == 1)
       {
@@ -6284,6 +6657,24 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
           unsupported = "a call of a destructor of a class holding a closure";
         return any || mayThrow.value_or(false);
       }
+      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved
+                     : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
+                                                                            : nullptr;
+      // `T(a, b)`, `T{a}` parsed as a call: a construction, and a destruction at the expression's end.
+      if (callee && (callee->kind == NodeKind::ClassDecl || (callee->flags & DF_Constructor) || callee->kind == NodeKind::UsingAliasDecl ||
+                     (callee->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(callee)->isType) ||
+                     (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef))))
+      {
+        const Ty* t = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+        bool any = false;
+        std::vector<const Ty*> argTypes;
+        for (Expr* a : c->args)
+        {
+          any = canThrow(a, unsupported) || any;
+          argTypes.push_back(a && a->ty ? argumentType(a, a->ty, types) : nullptr);
+        }
+        return constructingThrows(t, argTypes, unsupported) || any || (t && t->kind == TyKind::Class && destroyingThrows(t, unsupported));
+      }
       // `p()`, `(o.*m)()`, `l()`: noexcept as the pointer's function type, or the closure's call operator, says.
       const Ty* through = c->callee && c->callee->ty ? types.unqualified(types.stripRef(c->callee->ty)) : nullptr;
       if (through && through->kind == TyKind::Pointer)
@@ -6296,37 +6687,36 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
         std::optional<bool> isNoexcept = closure ? impl.isNoexcept(&closure->decl, activeSubst) : std::nullopt;
         through = isNoexcept ? types.function(types.voidType(), {}, false, false, *isNoexcept) : nullptr;
       }
+      // `o(1)`, an object's operator().
+      if (through && through->kind == TyKind::Class)
+      {
+        MemberResult r = memberOf(through, impl.opSymbols[uint32_t(P::LParen)], nullptr, c->token, false);
+        bool ambiguous = false;
+        FunctionDecl* f = r.decl ? pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, through, ambiguous, nullptr, {}, nullptr) : nullptr;
+        if (!f || ambiguous)
+        {
+          unsupported = "a call of an object";
+          return false;
+        }
+        const Subst* sp = r.subst.pairs.empty() ? nullptr : &r.subst;
+        bool any = canThrow(c->callee, unsupported);
+        any = callArgumentsThrow(f, impl.declaredTypeOf(f, sp, 0), sp, c->args, unsupported) || any;
+        return any || functionThrows(f, sp, unsupported) || temporaryThrows(e);
+      }
       if (through && through->kind != TyKind::Function)
         through = nullptr;
-      if (!through && (!callee || callee->kind != NodeKind::FunctionDecl || (callee->flags & DF_Constructor)))
+      if (!through && (!callee || callee->kind != NodeKind::FunctionDecl))
       {
-        unsupported = callee && (callee->kind == NodeKind::ClassDecl || (callee->flags & DF_Constructor)) ? "a construction of a class"
-                                                                                                          : "a call through a pointer or a closure";
+        unsupported = "a call through a pointer or a closure";
         return false;
       }
-      // A class by value: built where it is wanted, destroyed at the expression's end.
-      bool any = false;
-      if (e->ty && !scalar(e) && e->ty->kind != TyKind::Void && !e->ty->isReference())
-      {
-        std::optional<bool> mayThrow = impl.destructorMayThrow(e->ty);
-        if (!mayThrow)
-        {
-          unsupported = "a call returning a class that holds a closure";
-          return false;
-        }
-        any = *mayThrow;
-      }
-      for (Expr* a : c->args)
-      {
-        if (!scalar(a))
-        {
-          unsupported = "a call with an argument of class type";
-          return false;
-        }
-        any = canThrow(a, unsupported) || any;
-      }
+      bool any = temporaryThrows(e); // a class by value: built where it is wanted, destroyed at the expression's end
       if (through)
+      {
+        any = canThrow(c->callee, unsupported) || any;
+        any = callArgumentsThrow(nullptr, through, nullptr, c->args, unsupported) || any;
         return any || !through->isNoexcept();
+      }
       if (c->callee->kind == NodeKind::MemberExpr)
         any = canThrow(static_cast<MemberExpr*>(c->callee)->base, unsupported) || any;
       // A function template's condition under the call's own template arguments (c<int>() of
@@ -6334,21 +6724,32 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       auto* fd = static_cast<FunctionDecl*>(callee);
       Subst withCall;
       const Subst* subst = activeSubst;
-      if (!fd->templateParams.empty() && c->templateArgCount == fd->templateParams.size())
+      // A member of a class template: under the instance it is called on, or named through.
+      if (fd->parent && fd->parent->kind == NodeKind::ClassDecl && !Impl::effectiveParams(fd->parent).empty())
       {
-        if (activeSubst)
-          withCall = *activeSubst;
+        if (c->callee->kind == NodeKind::MemberExpr)
+        {
+          auto* m = static_cast<MemberExpr*>(c->callee);
+          const Ty* object = m->base->ty ? types.unqualified(types.stripRef(m->base->ty)) : nullptr;
+          if (object && object->kind == TyKind::Pointer)
+            object = types.unqualified(object->inner);
+          if (object && object->kind == TyKind::Class)
+            withCall = impl.memberSubst(object, fd->parent->ownScope, 0);
+        }
+        else if (auto* named = static_cast<NameExpr*>(c->callee); named->name.parts.size() > 1)
+          withCall = impl.qualifierSubst(named->name, TypeContext{scope, &locals, activeSubst}, 0, impl.lexicalScopeOf(fd));
+      }
+      if (activeSubst)
+        for (const Subst::Pair& p : activeSubst->pairs)
+          if (!withCall.find(p.param))
+            withCall.pairs.push_back(p);
+      if (!fd->templateParams.empty() && c->templateArgCount == fd->templateParams.size())
         for (size_t i = 0; i < c->templateArgCount; ++i)
           withCall.pairs.push_back({fd->templateParams[i], c->templateArgs[i]});
+      if (!withCall.pairs.empty())
         subst = &withCall;
-      }
-      std::optional<bool> noexcept_ = impl.isNoexcept(fd, subst);
-      if (!noexcept_)
-      {
-        unsupported = "a call of a function whose noexcept condition is no constant here";
-        return false;
-      }
-      return any || !*noexcept_;
+      any = callArgumentsThrow(fd, impl.declaredTypeOf(fd, subst, 0), subst, c->args, unsupported) || any;
+      return any || functionThrows(fd, subst, unsupported);
     }
     default:
       break;
@@ -7788,10 +8189,10 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       {
         std::string unsupported;
         bool throws = canThrow(n->operand, unsupported);
-        if (!unsupported.empty())
-          impl.reportCheckerError(file, e->token, "the noexcept operator does not decide " + unsupported + " yet");
-        else
+        if (unsupported.empty())
           n->value = throws ? 0 : 1;
+        else if (file && !probing)
+          impl.reportCheckerError(file, e->token, "the noexcept operator does not decide " + unsupported + " yet");
       }
       return record(e, types.boolType());
     }

@@ -1,0 +1,74 @@
+// spec: the noexcept operator counts what an expression calls without naming it: implicit and defaulted constructors by their parts and default member initializers, a by-value parameter's copy and conversion, a conversion operator, default arguments, a temporary's destructor; and inside a template, `noexcept(T())`, `noexcept(noexcept(a = b))` of a function template and of a member of a class template, answered under the instance's arguments; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> T&& dv() noexcept;
+struct Quiet { Quiet() noexcept {} Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return *this; } };
+struct Loud { Loud() {} Loud(int) {} Loud(const Loud&) {} Loud(Loud&&) {} Loud& operator=(const Loud&) { return *this; } };
+struct MoveQuiet { MoveQuiet() noexcept {} MoveQuiet(const MoveQuiet&) {} MoveQuiet(MoveQuiet&&) noexcept {} };
+struct ImplicitQuiet { Quiet q; int i = 1; };
+struct ImplicitLoud { Loud l; };
+struct InitLoud { Quiet q = Quiet(1); Loud l = Loud(1); };
+struct InitCall { int i = dv<int&>(); };
+struct Defaulted { Quiet q; Defaulted() = default; Defaulted(const Defaulted&) = default; };
+struct DefaultedLoud { Loud l; DefaultedLoud() = default; DefaultedLoud(const DefaultedLoud&) = default; };
+struct DeclaredNoexcept { Loud l; DeclaredNoexcept() noexcept = default; };
+struct FromInt { FromInt(int) noexcept {} };
+struct FromIntLoud { FromIntLoud(int) {} };
+struct Agg { int a; Quiet q; };
+struct AggLoud { int a; Loud l; };
+struct ToInt { operator int() const noexcept { return 1; } };
+struct ToIntLoud { operator int() const { return 2; } };
+struct Holder { Quiet member; Holder(const Quiet& q) noexcept : member(q) {} };
+struct WithDefault { WithDefault(int x = 1, Quiet q = Quiet()) noexcept {} };
+int byValue(Quiet) noexcept;
+int byValueLoud(Loud) noexcept;
+int byRef(const Quiet&) noexcept;
+int byFromInt(FromInt) noexcept;
+int byFromIntLoud(FromIntLoud) noexcept;
+int byConstRefLoud(const FromIntLoud&) noexcept;
+int byInt(int) noexcept;
+int defaulted(int a = 1, int b = 2) noexcept;
+int defaultedLoud(int a = byValueLoud(Loud())) noexcept;
+Quiet makeQuiet() noexcept;
+Loud makeLoud() noexcept;
+template <typename T> constexpr bool canCopy() { return noexcept(T(dv<const T&>())); }
+template <typename T> constexpr bool canMake() { return noexcept(T()); }
+template <typename T> constexpr bool canAssign() { return noexcept(dv<T&>() = dv<const T&>()); }
+template <typename T> void swapLike(T& a, T& b) noexcept(noexcept(T(static_cast<T&&>(a))) && noexcept(a = b)) {}
+template <typename T> struct Box { T v; void set(const T& x) noexcept(noexcept(v = x)) { v = x; } };
+int main()
+{
+  Quiet q;
+  Loud l;
+  ToInt ti;
+  ToIntLoud tl;
+  printf("%d %d %d\n", noexcept(ImplicitQuiet()), noexcept(ImplicitLoud()), noexcept(InitLoud()));
+  printf("%d %d %d\n", noexcept(Defaulted()), noexcept(DefaultedLoud()), noexcept(DeclaredNoexcept()));
+  printf("%d %d\n", noexcept(Defaulted(dv<const Defaulted&>())), noexcept(DefaultedLoud(dv<const DefaultedLoud&>())));
+  printf("%d %d\n", noexcept(ImplicitQuiet(dv<const ImplicitQuiet&>())), noexcept(ImplicitLoud(dv<const ImplicitLoud&>())));
+  printf("%d %d\n", noexcept(MoveQuiet(dv<MoveQuiet&&>())), noexcept(MoveQuiet(dv<const MoveQuiet&>())));
+  printf("%d %d %d\n", noexcept(Agg{1, q}), noexcept(AggLoud{1, l}), noexcept(Agg{}));
+  printf("%d %d %d\n", noexcept(byValue(q)), noexcept(byValueLoud(l)), noexcept(byRef(q)));
+  printf("%d %d %d\n", noexcept(byValue(Quiet())), noexcept(byValue(1)), noexcept(byValueLoud(1)));
+  printf("%d %d %d\n", noexcept(byFromInt(1)), noexcept(byFromIntLoud(1)), noexcept(byConstRefLoud(1)));
+  printf("%d %d\n", noexcept(byInt(ti)), noexcept(byInt(tl)));
+  printf("%d %d %d\n", noexcept(defaulted()), noexcept(defaulted(1)), noexcept(defaultedLoud()));
+  printf("%d %d\n", noexcept(makeQuiet()), noexcept(makeLoud()));
+  printf("%d %d\n", noexcept(byValue(makeQuiet())), noexcept(byValueLoud(makeLoud())));
+  printf("%d %d\n", noexcept(WithDefault()), noexcept(WithDefault(2)));
+  printf("%d %d\n", noexcept(Holder(q)), noexcept(Holder(1)));
+  printf("%d %d %d\n", canCopy<Quiet>(), canCopy<Loud>(), canCopy<int>());
+  printf("%d %d %d\n", canMake<Quiet>(), canMake<Loud>(), canMake<int>());
+  printf("%d %d %d\n", canAssign<Quiet>(), canAssign<Loud>(), canAssign<int>());
+  printf("%d %d\n", canAssign<ImplicitQuiet>(), canAssign<ImplicitLoud>());
+  Quiet a, b;
+  Loud c, d;
+  int e = 0, f = 0;
+  printf("%d %d %d\n", noexcept(swapLike(a, b)), noexcept(swapLike(c, d)), noexcept(swapLike(e, f)));
+  Box<Quiet> bq;
+  Box<Loud> bl;
+  printf("%d %d\n", noexcept(bq.set(q)), noexcept(bl.set(l)));
+  printf("%d %d\n", noexcept(q = q), noexcept(l = l));
+  printf("%d %d\n", noexcept(dv<ImplicitQuiet&>() = dv<ImplicitQuiet&>()), noexcept(dv<ImplicitLoud&>() = dv<ImplicitLoud&>()));
+  printf("%d\n", noexcept(q, 1));
+  return 0;
+}

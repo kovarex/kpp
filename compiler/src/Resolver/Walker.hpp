@@ -856,6 +856,13 @@
     // does not decide yet (an overloaded operator, a constructor, a call through a pointer) is named
     // in unsupported, an error, never a guess.
     bool canThrow(Expr* e, std::string& unsupported);
+    // What an expression calls without naming it ([except.spec] 6), for canThrow.
+    bool functionThrows(FunctionDecl* f, const Subst* subst, std::string& unsupported);
+    bool destroyingThrows(const Ty* t, std::string& unsupported);
+    bool constructingThrows(const Ty* t, const std::vector<const Ty*>& argTypes, std::string& unsupported, int depth = 0);
+    bool defaultMembersThrow(const Ty* t, size_t given, std::string& unsupported, int depth);
+    bool convertingThrows(Expr* from, const Ty* to, bool explicitCast, std::string& unsupported);
+    bool callArgumentsThrow(FunctionDecl* f, const Ty* signature, const Subst* subst, Span<Expr*> args, std::string& unsupported);
 
     // kpp requires nullptr (kovarex, 2026-11-04; design.md 4): e, the literal 0 of kpp's own sources (in
     // parentheses or not), made a pointer or member pointer of type target without a cast, is an error

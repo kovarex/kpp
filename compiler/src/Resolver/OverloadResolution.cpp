@@ -1674,7 +1674,7 @@ auto GlobalScope::Impl::requirementsExtraHold(RequiresExpr* r, const std::vector
   return unknownYet ? std::nullopt : std::optional<bool>(true);
 }
 
-auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx) -> const Ty*
+auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed) -> const Ty*
 {
   static thread_local int nesting = 0;
   FunctionDecl* f = ctx.function;
@@ -1699,6 +1699,8 @@ auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ct
       probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
   const Ty* t = probe.walkExpr(copy);
   --nesting;
+  if (typed)
+    *typed = copy;
   return t;
 }
 

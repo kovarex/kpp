@@ -863,10 +863,20 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     case NodeKind::LambdaExpr:
       return constClosure(static_cast<LambdaExpr*>(e), e->ty, ctx, depth); // `auto twice = [k](int v) { ... };`
     case NodeKind::NoexceptExpr:
-      // The walk's answer (canThrow); its operand is not evaluated.
-      if (static_cast<NoexceptExpr*>(e)->value < 0)
+    {
+      // The walk's answer (canThrow); its operand is not evaluated. A template's own walk left it to the
+      // arguments at hand (`noexcept(noexcept(a = b))`): a copy typed under them says.
+      int8_t value = static_cast<NoexceptExpr*>(e)->value;
+      if (value < 0 && ctx.subst)
+      {
+        Expr* typed = nullptr;
+        typeOfSignatureExpression(e, ctx, &typed);
+        value = typed ? static_cast<NoexceptExpr*>(typed)->value : int8_t(-1);
+      }
+      if (value < 0)
         return std::nullopt;
-      return ConstValue::integer(static_cast<NoexceptExpr*>(e)->value, types.boolType());
+      return ConstValue::integer(value, types.boolType());
+    }
     case NodeKind::SizeofExpr:
     {
       auto* s = static_cast<SizeofExpr*>(e);
