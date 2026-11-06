@@ -188,6 +188,12 @@
     // `int a[] = {1, 2}` has its bound from the list, `new T[n]` a run-time one.
     void checkArrayBounds(VariableDecl* v);
 
+    // An array of unknown bound whose values elide an element's braces: the bound the declaration's
+    // type counted, typing the values as a signature's (elementsFromValues), must be the one the
+    // walked values' types give (`In a[] = {x, y, z, w}` of locals, which a signature cannot type):
+    // an error otherwise, never a wrong bound.
+    void checkElidedBound(VariableDecl* v, const Ty* declared);
+
     // Whether a class the walk is in has a base no scope stands for until it is instantiated (a
     // template parameter, `class Wrapper : public T`), which may declare any name.
     bool inClassWithParameterBase();

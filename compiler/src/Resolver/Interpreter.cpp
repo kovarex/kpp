@@ -3484,11 +3484,7 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
     if (next >= values.size())
       return constEmpty(eu, true, depth + 1);
     Expr* x = values[next];
-    bool charArray = eu->kind == TyKind::Array && eu->inner && types.unqualified(eu->inner)->kind == TyKind::Char;
-    bool nested = (eu->kind == TyKind::Array || (eu->kind == TyKind::Class && constIsAggregate(eu, depth))) && x->kind != NodeKind::BraceInitExpr &&
-                  !(charArray && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::String) &&
-                  !(x->ty && types.unqualified(types.stripRef(x->ty)) == eu);
-    if (nested)
+    if (bracesElided(eu, x, x->ty, depth))
       return constElided(eu, values, next, ctx, depth + 1); // `Array<int, 3> a = {1, 2, 3}`: the braces of items elided
     ++next;
     return constInitialize(eu, x, ctx, depth + 1);
@@ -3533,10 +3529,90 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
   return ConstValue::object(t, std::move(parts));
 }
 
-auto GlobalScope::Impl::constIsAggregate(const Ty* t, int depth) -> bool
+auto GlobalScope::Impl::bracesElided(const Ty* et, Expr* value, const Ty* vt, int depth) -> bool
+{
+  if (!value || !et || et->isReference() || value->kind == NodeKind::BraceInitExpr || depth > 32)
+    return false;
+  et = types.unqualified(et);
+  Expr* inner = value;
+  while (inner->kind == NodeKind::ParenExpr)
+    inner = static_cast<ParenExpr*>(inner)->inner;
+  vt = vt && vt->isKnown() && !types.isDependent(vt) ? types.unqualified(types.stripRef(vt)) : nullptr;
+  if (et->kind == TyKind::Array)
+  {
+    // An array is initialized whole by an array of its own type, and one of characters by a
+    // string literal (typed as a pointer to its characters); a string literal for an array of
+    // pointers is its first element's (`Array<const char*, 3> a = {"a", "b", "c"}`).
+    const Ty* element = et->inner ? types.unqualified(et->inner) : nullptr;
+    bool characters = element && (element->kind == TyKind::Char || element->kind == TyKind::Int);
+    bool literal = inner->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(inner)->literalKind == TokenKind::String;
+    if (et->count == 0 || (characters && literal) || !vt)
+      return false;
+    return !(vt->kind == TyKind::Array && vt == et);
+  }
+  if (et->kind != TyKind::Class || !vt || !constIsAggregate(et, depth, true))
+    return false;
+  if (vt->kind != TyKind::Class)
+    return true; // a number, a pointer, an enumerator: no aggregate is made from one
+  return vt != et && !derivesFrom(vt, et) && !convertsByOperator(vt, et, 0, 0, false, true);
+}
+
+auto GlobalScope::Impl::valuesForElement(const Ty* et, Span<Expr*> values, size_t start, const std::function<const Ty*(Expr*)>& typeOf, int depth) -> size_t
+{
+  if (start >= values.size())
+    return 0;
+  et = types.unqualified(types.stripRef(et));
+  Expr* x = values[start];
+  bool elidable = (et->kind == TyKind::Array && et->count != 0) || (et->kind == TyKind::Class && constIsAggregate(et, depth, true));
+  if (depth > 32 || !elidable || !x || x->kind == NodeKind::BraceInitExpr || !bracesElided(et, x, typeOf(x), depth))
+    return 1;
+  size_t next = start;
+  auto element = [&](const Ty* t) -> bool
+  {
+    if (next >= values.size())
+      return false;
+    next += std::max<size_t>(1, valuesForElement(t, values, next, typeOf, depth + 1));
+    return true;
+  };
+  if (et->kind == TyKind::Array)
+  {
+    for (uint32_t i = 0; i < et->count && element(et->inner); ++i)
+    {
+    }
+    return next - start;
+  }
+  const ConstClassLayout* layout = constLayoutOf(et, depth);
+  if (!layout)
+    return 1;
+  bool union_ = layout->decl && layout->decl->keyword == Kw::union_;
+  for (const Ty* b : layout->bases)
+    if (!element(b))
+      return next - start;
+  for (size_t i = 0; i < layout->fields.size(); ++i)
+  {
+    if (layout->fields[i] && layout->fields[i]->name.empty())
+      continue; // an unnamed bit field: no member (an anonymous struct or union, a null field, is one)
+    if (!element(layout->fieldTypes[i]) || union_)
+      break;
+  }
+  return std::max<size_t>(1, next - start);
+}
+
+auto GlobalScope::Impl::elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf) -> size_t
+{
+  size_t next = 0, count = 0;
+  while (next < values.size())
+  {
+    next += std::max<size_t>(1, valuesForElement(et, values, next, typeOf));
+    ++count;
+  }
+  return count;
+}
+
+auto GlobalScope::Impl::constIsAggregate(const Ty* t, int depth, bool anonymousMembers) -> bool
 {
   const ConstClassLayout* layout = constLayoutOf(t, depth);
-  if (!layout || !layout->constructors.empty() || constInheritsConstructors(*layout) || layout->anonymous)
+  if (!layout || !layout->constructors.empty() || constInheritsConstructors(*layout) || (layout->anonymous && !anonymousMembers))
     return false;
   for (Decl* m : membersRead(layout->decl))
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Virtual))

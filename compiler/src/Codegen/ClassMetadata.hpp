@@ -342,6 +342,37 @@
     void initializeAggregateMember(const std::string& addr, const Ty* t, const StructInfo& info, Decl* d, Expr* value,
                                    std::set<size_t>& zeroedUnits, InlineParts& parts, Node* at);
 
+    // The type a value for member d of the aggregate t goes to: a bit field's declared type (a
+    // scalar: one value), a reference member's reference type, a union member's, a field's.
+    const Ty* aggregateMemberType(const Ty* t, const StructInfo& info, Decl* d, Node* at);
+
+    // Whether value initializes an element of type et as it is ([dcl.init.aggr] 16: "if the
+    // assignment-expression can initialize an element, the element is initialized"): a list, a value
+    // for a scalar, a reference or a class with constructors, a string literal or an array for an
+    // array, a value of the element's own class, of a class derived from it or converting to it.
+    // Otherwise the element is a subaggregate whose braces are elided: its own elements take the
+    // values in turn (a number for an aggregate member: `Out o{1, 2}` over `In in; int c;`).
+    bool initializesWhole(const Ty* et, Expr* value, Node* at);
+
+    // How many of values, from start, the aggregate or array t takes with its braces elided: one
+    // for each of its elements (an array's; a class's bases, then its aggregateMembers; a union's
+    // first member alone), or as many as an element takes itself when the value there does not
+    // initialize it whole; fewer when the values run out.
+    size_t elidedValues(const Ty* t, Span<Expr*> values, size_t start, Node* at, int depth = 0);
+
+    // An element of type et at addr (a member, a base, an array's element) initialized from the
+    // values its braces were elided from: an array's elements (initializeArrayElements), an
+    // aggregate class's parts (constructInto, as from a list of the values).
+    void initializeFromElided(const std::string& addr, const Ty* et, Span<Expr*> values, Node* at);
+
+    // The elements of the array of type t at addr (already zeroed) from values, each from the next
+    // value, or from as many as it takes when that does not initialize it whole (its braces elided:
+    // `In arr[2] = {1, 2, 3, 4}` is {{1, 2}, {3, 4}}, D, 2026-11-06: it was {1, 0}, {2, 0} with 3
+    // and 4 dropped); the elements left out value-initialized, as from `{}`; each element built
+    // destroyed if a later one's initializer throws ([except.ctor] 3). More values than the array
+    // takes is an error, as in C++ (they were dropped).
+    void initializeArrayElements(const std::string& addr, const Ty* t, Span<Expr*> values, Node* at);
+
     // A bit field initialised: from value (an aggregate's element, a constructor initializer's
     // argument; `: flag()` is explicit with none, a zero), else from its default member
     // initializer (`bool known : 1 = true;`). It shares its storage unit with its neighbours: the

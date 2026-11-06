@@ -1990,7 +1990,20 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
           t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
       }
       else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
-        t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
+      {
+        // `double a[] = {1, 2}`: an element for each value, or for each run of values an element
+        // takes with its braces elided (`In a[] = {1, 2, 3, 4}`: two, D, 2026-11-06: it was four).
+        // The values as the walk typed them (a local's, walked before its type is asked for), else
+        // typed as a signature's (a global's); the walk checks the bound again (checkElidedBound).
+        Span<Expr*> values = static_cast<BraceInitExpr*>(v->init)->args;
+        auto typeOf = [&](Expr* x) -> const Ty*
+        {
+          if (x->ty && x->ty->isKnown() && !types.isDependent(x->ty))
+            return x->ty;
+          return typeOfSignatureExpression(x, ctx);
+        };
+        t = types.array(t->inner, uint32_t(elementsFromValues(t->inner, values, typeOf)));
+      }
       // A static data member declared without its bound (`static Type const types[];`) has the
       // bound of its out-of-line definition (`Highlights::types[] = {...}`), as in C++.
       if (t && t->kind == TyKind::Array && t->count == 0 && !v->init)

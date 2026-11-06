@@ -1044,14 +1044,24 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
   }
   else if (!n->args.empty())
     unsupported(n, "new[] with constructor arguments");
-  // A count known here that is negative or below the list's length is C++'s error
-  // (`new int[2]{1, 2, 3}` wrote past its block until 2026-11-05); one equal to it leaves no rest
-  // to build (`new T[3]{a, b, c}` of a class with no default constructor).
+  // The elements the list initializes: one for each value, or for each run of values an element
+  // takes with its braces elided (`new In[2]{1, 2, 3}` of `struct In { int a; int b; }`: {1, 2} and
+  // {3, 0}, [dcl.init.aggr] 16; D, 2026-11-06: it was refused as three initializers for two).
+  std::vector<std::pair<size_t, size_t>> runs; // each element's first value and how many it takes
+  for (size_t k = 0; k < list.size();)
+  {
+    size_t take = initializesWhole(t, list[k], n) ? 1 : std::max<size_t>(1, elidedValues(t, list, k, n));
+    runs.push_back({k, take});
+    k += take;
+  }
+  // A count known here that is negative or below the elements the list initializes is C++'s
+  // error (`new int[2]{1, 2, 3}` wrote past its block until 2026-11-05); one equal to it leaves no
+  // rest to build (`new T[3]{a, b, c}` of a class with no default constructor).
   std::optional<int64_t> known = evalConst(sizeExpr);
   if (known && *known < 0)
     fail(n, "new[] of a negative count (" + std::to_string(*known) + ")");
-  if (known && uint64_t(*known) < list.size())
-    fail(n, "new[] of " + std::to_string(*known) + " elements given " + std::to_string(list.size()) + " initializers");
+  if (known && uint64_t(*known) < runs.size())
+    fail(n, "new[] of " + std::to_string(*known) + " elements given " + std::to_string(runs.size()) + " initializers");
   std::string count = convert(rvalue(sizeExpr), types.sizeType(), n).text;
   std::string stride = "ptrtoint (ptr getelementptr (" + llType(t, n) + ", ptr null, i32 1) to i64)"; // LLVM's own element size
   uint64_t cookie = arrayCookie(t, n);
@@ -1066,7 +1076,7 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     if (!list.empty())
     {
       std::string fewer = newTemp(), either = newTemp();
-      fn += "  " + fewer + " = icmp ult i64 " + count + ", " + std::to_string(list.size()) + "\n";
+      fn += "  " + fewer + " = icmp ult i64 " + count + ", " + std::to_string(runs.size()) + "\n";
       fn += "  " + either + " = or i1 " + bad + ", " + fewer + "\n";
       bad = either;
     }
@@ -1129,18 +1139,27 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
       decls += "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n";
     fn += "  call void @llvm.memset.p0.i64(ptr " + base + ", i8 0, i64 " + bytes + ", i1 false)\n";
   }
-  for (size_t i = 0; i < list.size(); ++i)
+  for (size_t i = 0; i < runs.size(); ++i)
   {
     std::string element = newTemp();
     fn += "  " + element + " = getelementptr inbounds " + llType(t, n) + ", ptr " + base + ", i64 " + std::to_string(i) + "\n";
-    initializeFrom(element, t, list[i], n);
+    auto [first, take] = runs[i];
+    if (take == 1 && initializesWhole(t, list[first], n))
+      initializeFrom(element, t, list[first], n);
+    else
+    {
+      if (!isClass(t) && t->kind != TyKind::Array)
+        unsupported(n, "brace elision into a new[] element of " + types.toString(t, &symbols));
+      storeZero(t, element, n);
+      initializeFromElided(element, t, Span<Expr*>{list.begin() + first, uint32_t(take)}, n);
+    }
     if (counted)
       fn += "  store i64 " + std::to_string(i + 1) + ", ptr " + builtSlot + "\n";
   }
-  bool rest = !known || uint64_t(*known) > list.size();
+  bool rest = !known || uint64_t(*known) > runs.size();
   if (rest && !scalar && (valueInit || needsConstruction(t, n)))
   {
-    fn += "  store i64 " + std::to_string(list.size()) + ", ptr " + builtSlot + "\n";
+    fn += "  store i64 " + std::to_string(runs.size()) + ", ptr " + builtSlot + "\n";
     std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
     emitBranch(loopL);
     startBlock(loopL);

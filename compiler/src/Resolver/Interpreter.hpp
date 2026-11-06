@@ -500,8 +500,27 @@
   std::optional<ConstValue> constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth);
 
   // An aggregate (C++20): a class without user-declared constructors, virtual functions or
-  // virtual bases (its bases aggregates too, as far as the interpreter needs).
-  bool constIsAggregate(const Ty* t, int depth);
+  // virtual bases (its bases aggregates too, as far as the interpreter needs). One with an anonymous
+  // struct or union member only when anonymousMembers (the interpreter initializes none through one;
+  // brace elision counts it as a member).
+  bool constIsAggregate(const Ty* t, int depth, bool anonymousMembers = false);
+
+  // Whether value (of type vt; null when not known) is the first of the values of the elements of
+  // an element of type et, et's braces elided ([dcl.init.aggr] 16), rather than et's own value: et
+  // an array (the value no string literal and no array) or an aggregate class (the value of no class
+  // that is et's, derived from it or converting to it), and the value no list. A value of a type not
+  // known is et's own. Codegen's initializesWhole follows the same rule.
+  bool bracesElided(const Ty* et, Expr* value, const Ty* vt, int depth);
+
+  // How many of values, from start, an element of type et takes: one, or with its braces elided one
+  // for each of its own elements in turn (an array's; an aggregate's bases, then its named members,
+  // a union's first alone), fewer when the values run out. typeOf gives a value's type.
+  size_t valuesForElement(const Ty* et, Span<Expr*> values, size_t start, const std::function<const Ty*(Expr*)>& typeOf, int depth = 0);
+
+  // The bound of an array of element type et of unknown bound that values initialize: an element
+  // for each run of values an element takes ([dcl.init.aggr] 10 and 16): `double a[] = {1, 2}` two,
+  // `In a[] = {1, 2, 3, 4}` two of `struct In { int a; int b; }`.
+  size_t elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf);
 
   // `T{...}` and `T x = {...}` for a class: an aggregate's members in order (designators
   // naming them), or the arguments of the constructor they choose.

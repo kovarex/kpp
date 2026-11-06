@@ -550,6 +550,30 @@ auto GlobalScope::Impl::Walker::checkArrayBounds(VariableDecl* v) -> void
   }
 }
 
+auto GlobalScope::Impl::Walker::checkElidedBound(VariableDecl* v, const Ty* declared) -> void
+{
+  if (probing || !file || file->isImported || !v->init || v->init->kind != NodeKind::BraceInitExpr || !declared || !declared->isKnown() ||
+      (inGenericTemplate() && !activeSubst))
+    return;
+  Type* written = v->type;
+  while (written && written->kind == NodeKind::ConstType)
+    written = static_cast<ConstType*>(written)->inner;
+  const Ty* t = types.unqualified(declared);
+  if (!written || written->kind != NodeKind::ArrayType || static_cast<ArrayType*>(written)->size || t->kind != TyKind::Array || !t->inner)
+    return;
+  if (const Ty* et = types.unqualified(t->inner); et->kind != TyKind::Array && et->kind != TyKind::Class)
+    return; // (elements whose braces no value elides: an element for each value, or a string's characters)
+  Span<Expr*> values = static_cast<BraceInitExpr*>(v->init)->args;
+  size_t count = impl.elementsFromValues(t->inner, values, [&](Expr* x) { return x->ty; });
+  if (count != t->count)
+  {
+    std::string name = v->name.empty() ? std::string("?") : impl.namePartText(v->name.last());
+    impl.reportCheckerError(file, v->token, "the array " + name + " of unknown bound takes " + std::to_string(count) + " elements from its " +
+                                                std::to_string(values.size()) + " values, whose braces are elided, but its type was counted with " +
+                                                std::to_string(t->count) + " before they were typed: write its bound");
+  }
+}
+
 auto GlobalScope::Impl::Walker::inClassWithParameterBase() -> bool
 {
   for (Scope* s = scope; s; s = s->parent)
@@ -6103,6 +6127,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
         bindTemplateAddresses(v->init, declared); // `const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;`
       checkTextVariable(v, declared);
+      checkElidedBound(v, declared);
       if (v->init && !v->bracedInit)
         noteZeroNull(v->init, declared); // `Node* a = 0;`
       if (v->init && declared && !impl.containsAuto(declared))

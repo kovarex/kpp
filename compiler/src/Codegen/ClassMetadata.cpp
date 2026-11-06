@@ -1301,6 +1301,14 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       InlineParts parts(*this, at);
       std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
       size_t next = 0;
+      // (A part whose braces C++ would elide, a number for an aggregate member, takes several of
+      // the elements: not done here, an error.)
+      auto whole = [&](const Ty* partTy, Expr* value)
+      {
+        if (value && !initializesWhole(partTy, value, at))
+          unsupported(at, "the elements of a pack with the braces of a part of " + qualifiedName(c) + " elided (" +
+                              types.toString(types.stripRef(partTy), &symbols) + " from a value of another type)");
+      };
       auto initializePart = [&](size_t i, Expr* value)
       {
         if (i < info.bases.size())
@@ -1308,6 +1316,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
           auto& [baseDef, baseFieldIdx] = info.bases[i];
           std::string baseAddr = gep(info.name, addr, baseFieldIdx);
           const Ty* bt = info.fieldTypes[baseFieldIdx];
+          whole(bt, value);
           if (value)
             initializeFrom(baseAddr, bt, value, at);
           else if (needsConstruction(bt, at))
@@ -1319,6 +1328,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         }
         if (i == info.bases.size() && !info.bases.empty())
           storeVptrs(addr, info); // the bases built pointed it at theirs
+        whole(aggregateMemberType(t, info, members[i - info.bases.size()], at), value);
         initializeAggregateMember(addr, t, info, members[i - info.bases.size()], value, zeroedUnits, parts, at);
       };
       forEachPackElement(pattern, at, [&](size_t) { initializePart(next++, pattern); });
@@ -1467,34 +1477,6 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       initializeFrom(addr, unionMemberType(t, info.fieldDecls[0], at), args[0], at);
       return;
     }
-    if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
-    {
-      // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element
-      // (not a run of bit fields whose storage unit is a byte array: SysV's, off Windows).
-      const Ty* ft = info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])];
-      if (ft->kind == TyKind::Array && !bitfieldIn(info, info.fieldDecls[0]))
-      {
-        std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, info.fieldDecls[0]));
-        if (args.size() > ft->count)
-          unsupported(at, "more values than the array of " + qualifiedName(c) + " holds");
-        InlineParts parts(*this, at);
-        // (The elements the values leave out value-initialized, as from `{}`: D, 2026-11-05.)
-        size_t made = needsConstruction(ft->inner, at) ? ft->count : args.size();
-        for (size_t i = 0; i < made; ++i)
-        {
-          std::string element = newTemp();
-          fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(i) + "\n";
-          if (i < args.size())
-            initializeFrom(element, ft->inner, args[i], at);
-          else if (isClass(ft->inner))
-            defaultConstruct(element, ft->inner, at);
-          else if (ft->inner->kind == TyKind::Array)
-            constructArray(element, ft->inner, at);
-          parts.built(element, ft->inner);
-        }
-        return;
-      }
-    }
     // C++17 aggregate init: base sub-objects consume the first args, then data members; each part
     // made is destroyed if a later one's initializer throws (InlineParts).
     InlineParts parts(*this, at);
@@ -1505,7 +1487,15 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       {
         std::string baseAddr = gep(info.name, addr, baseFieldIdx);
         const Ty* bt = info.fieldTypes[baseFieldIdx];
-        if (argIdx < args.size())
+        if (argIdx < args.size() && !initializesWhole(bt, args[argIdx], at))
+        {
+          // (a base's braces elided: `Der2 d{1, 2, 3}` over `struct Base2 { int u; int v; }` and
+          // its own `int w` gives the base 1 and 2, as C++ does)
+          size_t take = std::max<size_t>(1, elidedValues(bt, args, argIdx, at));
+          initializeFromElided(baseAddr, bt, Span<Expr*>{args.begin() + argIdx, uint32_t(take)}, at);
+          argIdx += take;
+        }
+        else if (argIdx < args.size())
           initializeFrom(baseAddr, bt, args[argIdx++], at);
         else if (needsConstruction(bt, at))
           defaultConstruct(baseAddr, bt, at); // a base no value is for: value-initialized, as from `{}` (D, 2026-11-05: it stayed zero)
@@ -1519,7 +1509,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     std::vector<Decl*> members = aggregateMembers(info, c);
     // Which value goes to which member: in order, or by name for `.x = 1` designators.
     std::vector<Expr*> valueOf(members.size(), nullptr);
-    std::vector<std::vector<Expr*>> elided(members.size()); // an array member's values without their braces
+    std::vector<std::vector<Expr*>> elided(members.size()); // a member's values without their braces (an array's, an aggregate's)
     size_t next = 0;
     for (size_t k = argIdx; k < args.size(); ++k)
     {
@@ -1543,21 +1533,19 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
           break; // anonymous/incomplete class with no known fields — already zeroed
         unsupported(at, "more values than " + qualifiedName(c) + " has fields");
       }
-      // Brace elision: an array member takes its elements' values from the list itself when the
-      // value there is no list and no array (`GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, ... }`
-      // fills Data4[8] from the last eight).
-      if (members[next]->kind == NodeKind::VariableDecl && !bitfieldIn(info, members[next]))
-        if (const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, members[next])]); ft->kind == TyKind::Array && ft->count > 0)
-          if (Expr* a = args[k]; a->kind != NodeKind::BraceInitExpr && a->ty && a->ty->isKnown() &&
-                                 !(a->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(a)->literalKind == TokenKind::String) &&
-                                 types.unqualified(types.stripRef(a->ty))->kind != TyKind::Array)
-          {
-            size_t take = std::min<size_t>(ft->count, args.size() - k);
-            elided[next] = std::vector<Expr*>(args.begin() + k, args.begin() + k + take);
-            k += take - 1;
-            ++next;
-            continue;
-          }
+      // Brace elision ([dcl.init.aggr] 16): a member that is an array or an aggregate takes its
+      // elements' values from the list itself when the value there does not initialize it whole
+      // (initializesWhole): `GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, ... }` fills Data4[8]
+      // from the last eight, and `Out o{1, 2}` over `In in; int c;` gives in both (D, 2026-11-06:
+      // an aggregate member took one value, in {1, 0} and c 2).
+      if (const Ty* mt = aggregateMemberType(t, info, members[next], at); !initializesWhole(mt, args[k], at))
+      {
+        size_t take = std::max<size_t>(1, elidedValues(mt, args, k, at));
+        elided[next] = std::vector<Expr*>(args.begin() + k, args.begin() + k + take);
+        k += take - 1;
+        ++next;
+        continue;
+      }
       valueOf[next++] = args[k];
     }
     if (info.flexible && !valueOf.empty() && valueOf.back())
@@ -1588,25 +1576,13 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       }
       if (!elided[i].empty())
       {
-        const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, d)]);
-        std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
-        // The values given, then the elements they leave out value-initialized, as from `{}`
-        // (their default constructor, their default member initializers; D, 2026-11-05: they
-        // stayed zero).
-        size_t made = needsConstruction(ft->inner, at) ? ft->count : elided[i].size();
-        for (size_t e = 0; e < made; ++e)
-        {
-          std::string element = newTemp();
-          fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(e) + "\n";
-          if (e < elided[i].size())
-            initializeFrom(element, ft->inner, elided[i][e], at);
-          else if (isClass(ft->inner))
-            defaultConstruct(element, ft->inner, at);
-          else if (ft->inner->kind == TyKind::Array)
-            constructArray(element, ft->inner, at);
-          if (!info.isUnion)
-            parts.built(element, ft->inner);
-        }
+        // The values its braces were elided from, then what they leave out value-initialized, as
+        // from `{}` (initializeFromElided).
+        const Ty* ft = types.unqualified(aggregateMemberType(t, info, d, at));
+        std::string fieldAddr = info.isUnion ? addr : gep(info.name, addr, fieldIndexOf(info, d));
+        initializeFromElided(fieldAddr, ft, Span<Expr*>{elided[i].data(), uint32_t(elided[i].size())}, at);
+        if (!info.isUnion)
+          parts.built(fieldAddr, ft);
         ++i;
         continue;
       }
@@ -1670,6 +1646,138 @@ auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const 
     constructArray(fieldAddr, ft, at);
   if (!reference && !info.isUnion)
     parts.built(fieldAddr, ft);
+}
+
+auto codegen::Emitter::aggregateMemberType(const Ty* t, const StructInfo& info, Decl* d, Node* at) -> const Ty*
+{
+  const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
+  if (d->kind == NodeKind::VariableDecl && bitfieldIn(info, d))
+    return declared ? declared : types.intType(32); // (a scalar: one value)
+  if (declared && declared->isReference())
+    return declared;
+  return info.isUnion ? unionMemberType(t, d, at) : info.fieldTypes[fieldIndexOf(info, d)];
+}
+
+auto codegen::Emitter::initializesWhole(const Ty* et, Expr* value, Node* at) -> bool
+{
+  if (!value || !et || et->isReference() || value->kind == NodeKind::BraceInitExpr)
+    return true;
+  et = types.unqualified(et);
+  Expr* inner = value;
+  while (inner->kind == NodeKind::ParenExpr)
+    inner = static_cast<ParenExpr*>(inner)->inner;
+  const Ty* vt = value->ty && value->ty->isKnown() ? types.unqualified(types.stripRef(withCurrentArgs(value->ty))) : nullptr;
+  if (vt && types.isDependent(vt))
+    vt = nullptr;
+  if (et->kind == TyKind::Array)
+  {
+    // An array is initialized whole by an array of its own type, and one of characters by a
+    // string literal (typed as a pointer to its characters); a string literal for an array of
+    // pointers is its first element's (`Array<const char*, 3> a = {"a", "b", "c"}`): as the
+    // checker's bracesElided has it.
+    const Ty* element = et->inner ? types.unqualified(et->inner) : nullptr;
+    bool characters = element && (element->kind == TyKind::Char || element->kind == TyKind::Int);
+    bool literal = inner->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(inner)->literalKind == TokenKind::String;
+    if (et->count == 0 || (characters && literal) || !vt)
+      return true;
+    return vt->kind == TyKind::Array && vt == et;
+  }
+  // Only an aggregate class has braces to elide: no constructor declared (`= default` either, C++20;
+  // none inherited), no virtual functions, no typed union, no InitializerList: as the checker's
+  // bracesElided has it, which counts an array's elements from its values.
+  if (!isClass(et) || !et->decl || isInitializerListType(et) || typedUnionOf(et, at))
+    return true;
+  ClassDecl* c = classDef(et->decl, at);
+  if (!c || inheritedConstructorBase(c) || structFor(et, at).polymorphic)
+    return true;
+  for (Decl* m : c->members)
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Constructor | DF_Virtual)))
+      return true;
+  if (!vt)
+    return true; // (a value of a type the checker left open: taken as it is)
+  if (!isClass(vt))
+    return false; // a number, a pointer, an enumerator: no aggregate converts from one
+  if (canonicalClass(vt, at) == canonicalClass(et, at))
+    return true;
+  std::vector<std::pair<std::string, uint32_t>> path;
+  return basePath(vt, et, path, at) || conversionOperator(vt, et, at);
+}
+
+auto codegen::Emitter::elidedValues(const Ty* t, Span<Expr*> values, size_t start, Node* at, int depth) -> size_t
+{
+  t = types.unqualified(types.stripRef(t));
+  size_t next = start;
+  // One element of type et: the value there, or the values its own elements take.
+  auto element = [&](const Ty* et) -> bool
+  {
+    if (next >= values.size())
+      return false;
+    if (depth > 32 || initializesWhole(et, values[next], at))
+      ++next;
+    else
+      next += std::max<size_t>(1, elidedValues(et, values, next, at, depth + 1));
+    return true;
+  };
+  if (t->kind == TyKind::Array)
+  {
+    for (uint32_t e = 0; e < t->count && element(t->inner); ++e)
+    {
+    }
+    return next - start;
+  }
+  if (!isClass(t) || !t->decl)
+    return start < values.size() ? 1 : 0;
+  const StructInfo& info = structFor(t, at);
+  for (auto& [baseDef, index] : info.bases)
+    if (!element(info.fieldTypes[index]))
+      return next - start;
+  for (Decl* d : aggregateMembers(info, classDef(t->decl, at)))
+    if (!element(aggregateMemberType(t, info, d, at)) || info.isUnion)
+      break; // (a union: its first member alone)
+  return next - start;
+}
+
+auto codegen::Emitter::initializeFromElided(const std::string& addr, const Ty* et, Span<Expr*> values, Node* at) -> void
+{
+  et = types.unqualified(types.stripRef(et));
+  if (et->kind == TyKind::Array)
+    initializeArrayElements(addr, et, values, at);
+  else
+    constructInto(addr, et, values, at, true);
+}
+
+auto codegen::Emitter::initializeArrayElements(const std::string& addr, const Ty* t, Span<Expr*> values, Node* at) -> void
+{
+  t = types.unqualified(types.stripRef(t));
+  const Ty* et = t->inner;
+  InlineParts parts(*this, at);
+  size_t next = 0;
+  uint32_t e = 0;
+  for (; e < t->count && next < values.size(); ++e)
+  {
+    std::string element = newTemp();
+    fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(e) + "\n";
+    if (initializesWhole(et, values[next], at))
+      initializeFrom(element, et, values[next++], at);
+    else
+    {
+      size_t take = std::max<size_t>(1, elidedValues(et, values, next, at));
+      initializeFromElided(element, et, Span<Expr*>{values.begin() + next, uint32_t(take)}, at);
+      next += take;
+    }
+    parts.built(element, et);
+  }
+  if (next < values.size())
+    fail(at, "more values than an array of " + std::to_string(t->count) + " " + types.toString(et, &symbols) + " takes (" +
+                 std::to_string(values.size()) + " where it takes " + std::to_string(next) + ")");
+  if (e < t->count && needsConstruction(et, at))
+  {
+    // The elements the values leave out, value-initialized as from `{}`: their default constructor
+    // or default member initializers (D, 2026-11-05: they stayed zero), in one loop for many.
+    std::string rest = newTemp();
+    fn += "  " + rest + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(e) + "\n";
+    constructArray(rest, types.array(et, t->count - e), at);
+  }
 }
 
 auto codegen::Emitter::bindingAddress(VariableDecl* v, Node* e, std::string& out) -> bool
@@ -2742,41 +2850,11 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     }
     if (t->kind == TyKind::Array)
     {
-      // Element by element (nested lists for arrays of arrays); the elements the list leaves out
-      // value-initialized, as from `{}` ([dcl.init.aggr] 5: `Q arr[3] = {Q(1)}` runs Q() for the
-      // other two, `R arr[3] = {{9}}` gives them R's default member initializers; D, 2026-11-05:
-      // they stayed zero, a silent wrong answer), the rest of a scalar array zero. An element built
-      // is destroyed if a later one's initializer throws ([except.ctor]/3): an unwind-only cleanup
-      // each, dropped once the array is whole (its owner destroys it then).
+      // Element by element, the braces of an element elided where it takes several values (`In
+      // arr[2] = {1, 2, 3, 4}`), the elements the list leaves out value-initialized, as from `{}`
+      // (initializeArrayElements); the rest of a scalar array zero.
       storeZero(t, addr, at);
-      bool cleanups = !scopes.empty() && needsDestruction(t->inner, at);
-      size_t made = needsConstruction(t->inner, at) ? t->count : std::min<size_t>(bi->args.size(), t->count);
-      std::vector<std::string> built;
-      for (size_t i = 0; i < made; ++i)
-      {
-        std::string element = newTemp();
-        fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
-        if (i < bi->args.size())
-          initializeFrom(element, t->inner, bi->args[i], at);
-        else if (isClass(t->inner))
-          defaultConstruct(element, t->inner, at);
-        else if (t->inner->kind == TyKind::Array)
-          constructArray(element, t->inner, at);
-        if (cleanups && i + 1 < made)
-        {
-          Object o{element, t->inner};
-          o.unwindOnly = true;
-          scopes.back().push_back(o);
-          built.push_back(element);
-        }
-      }
-      if (!built.empty())
-      {
-        std::vector<Object>& scope = scopes.back();
-        scope.erase(std::remove_if(scope.begin(), scope.end(),
-                                   [&](const Object& o) { return o.unwindOnly && std::find(built.begin(), built.end(), o.addr) != built.end(); }),
-                    scope.end());
-      }
+      initializeArrayElements(addr, t, bi->args, at);
       return;
     }
     if (bi->args.size() != 1)
