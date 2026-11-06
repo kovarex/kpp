@@ -59,7 +59,7 @@ namespace platform
   const unsigned long attributeDirectory = 0x10;
   const unsigned long attributeReparsePoint = 0x400;
 
-  // UTF-8 to UTF-16 and back (CP_UTF8); an invalid sequence becomes U+FFFD.
+  // UTF-8 to UTF-16 (CP_UTF8); an invalid sequence becomes U+FFFD.
   WString widenUtf8(const char* text, i32 length)
   {
     if (length <= 0)
@@ -71,7 +71,23 @@ namespace platform
     return result;
   }
 
+  // UTF-16 to UTF-8 (CP_UTF8). A lone surrogate has no UTF-8 form: SystemError with
+  // ERROR_NO_UNICODE_TRANSLATION (WC_ERR_INVALID_CHARS), as MSVC's path::string().
   String narrowWide(const wchar_t* text, i32 length)
+  {
+    if (length <= 0)
+      return String();
+    i32 count = win32::WideCharToMultiByte(65001, 128, text, length, nullptr, 0, nullptr, nullptr);
+    if (count == 0)
+      throw SystemError(ErrorCode(1113, systemCategory()));
+    String result;
+    result.resize(count);
+    win32::WideCharToMultiByte(65001, 128, text, length, result.data(), count, nullptr, nullptr);
+    return result;
+  }
+
+  // The same for text to show, not to name anything by: a lone surrogate becomes U+FFFD.
+  String narrowWideReplacing(const wchar_t* text, i32 length)
   {
     if (length <= 0)
       return String();
@@ -80,6 +96,49 @@ namespace platform
     result.resize(count);
     win32::WideCharToMultiByte(65001, 0, text, length, result.data(), count, nullptr, nullptr);
     return result;
+  }
+
+  // A UTF-8 copy getenv handed out, kept until its variable changes. A program reads few variables:
+  // a list, with no container instantiated for every program. Never destroyed: a global's
+  // destructor or an atexit function may still ask.
+  struct EnvironmentCopy
+  {
+    String name;
+    String value;
+    EnvironmentCopy* next = nullptr;
+  };
+
+  struct EnvironmentCopies
+  {
+    Mutex mutex;
+    EnvironmentCopy* first = nullptr;
+  };
+
+  char* environmentVariable(const char* name)
+  {
+    static EnvironmentCopies* copies = new EnvironmentCopies();
+    WString wideName = widenUtf8(name, (i32)strlen(name));
+    LockGuard<Mutex> guard(copies->mutex);
+    const wchar_t* wide = wideName.empty() ? nullptr : win32::_wgetenv(wideName.c_str());
+    if (!wide)
+      return nullptr;
+    i32 length = 0;
+    while (wide[length] != 0)
+      ++length;
+    String value = narrowWide(wide, length);
+    EnvironmentCopy* kept = copies->first;
+    while (kept && kept->name != name)
+      kept = kept->next;
+    if (!kept)
+    {
+      kept = new EnvironmentCopy();
+      kept->name = name;
+      kept->next = copies->first;
+      copies->first = kept;
+    }
+    if (kept->value != value)
+      kept->value = move(value);
+    return kept->value.data();
   }
 
   // The calling thread's last error (GetLastError), of the system category.
@@ -575,3 +634,7 @@ namespace platform
     return true;
   }
 }
+
+// C's getenv, whose text is UTF-8 here too (the C runtime's is the ANSI code page's): a program's
+// import of stdlib.h leaves it to this one. A value holding a lone surrogate throws SystemError.
+char* getenv(const char* name) { return platform::environmentVariable(name); }

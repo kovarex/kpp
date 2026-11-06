@@ -62,6 +62,7 @@ namespace platform
 
   // glibc's errno values where the C libraries differ (asm-generic/errno-base.h, errno.h; Errc).
   const i32 errnoAgain = 11;
+  const i32 errnoIllegalSequence = 84;
   const i32 errnoDeadlock = 35;
   const i32 errnoNameTooLong = 36;
   const i32 errnoNoSys = 38;

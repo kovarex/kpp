@@ -52,7 +52,23 @@ namespace platform
     return result;
   }
 
+  // The wide text to UTF-8. What is no scalar value (a lone surrogate) has no UTF-8 form:
+  // SystemError with EILSEQ, what libstdc++ refuses such a path with.
   String narrowWide(const wchar_t* text, i32 length)
+  {
+    String result;
+    for (i32 i = 0; i < length; ++i)
+    {
+      u32 c = (u32)text[i];
+      if (!isScalarValue(c))
+        throw SystemError(ErrorCode(errnoIllegalSequence, systemCategory()));
+      appendUtf8(result, c);
+    }
+    return result;
+  }
+
+  // The same for text to show, not to name anything by: such a value becomes U+FFFD.
+  String narrowWideReplacing(const wchar_t* text, i32 length)
   {
     String result;
     for (i32 i = 0; i < length; ++i)

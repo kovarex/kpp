@@ -58,7 +58,11 @@ Changing:
 - `make_preferred()`: every `/` becomes `\`. `clear()`, `swap(other)`.
 
 Text: `string()` and `u8string()` (UTF-8 String), `wstring()` (WString), `generic_string()`,
-`generic_u8string()` and `generic_wstring()` (the same with `/` for every `\`).
+`generic_u8string()` and `generic_wstring()` (the same with `/` for every `\`). A lone surrogate has
+no UTF-8 form: the narrow ones throw SystemError (Windows: ERROR_NO_UNICODE_TRANSLATION, as MSVC's;
+elsewhere EILSEQ, and every operation on such a path, whose name the system takes in UTF-8, throws it
+too: libstdc++ refuses the path itself), where U+FFFD would name another file. `wstring()` keeps it,
+and a filesystem_error's `what()` shows it as U+FFFD.
 
 `lexically_normal()`: separators made `\`; every `.` element and every `name\..` pair (name not
 `..`) removed; a `..` right after the root directory removed; no trailing separator after a final
@@ -202,12 +206,12 @@ compare value and category.
 
 `Errc`: the portable conditions with their errno values (operation_not_permitted 1,
 no_such_file_or_directory 2, no_such_process 3, interrupted 4, io_error 5,
-resource_unavailable_try_again 11, permission_denied 13, device_or_resource_busy 16,
+resource_unavailable_try_again 11, permission_denied 13, illegal_byte_sequence 42, device_or_resource_busy 16,
 file_exists 17, cross_device_link 18, no_such_device 19, not_a_directory 20, is_a_directory 21,
 invalid_argument 22, too_many_files_open 24, file_too_large 27, no_space_on_device 28,
 read_only_file_system 30, resource_deadlock_would_occur 36, filename_too_long 38,
 function_not_supported 40, directory_not_empty 41, not_supported 129,
-operation_not_supported 130, timed_out 138: the UCRT's; glibc's and FreeBSD's for the eight that differ there,
+operation_not_supported 130, timed_out 138: the UCRT's; glibc's and FreeBSD's for the nine that differ there,
 resource_unavailable_try_again, resource_deadlock_would_occur, filename_too_long,
 function_not_supported, directory_not_empty, not_supported, operation_not_supported and timed_out,
 stdlib/platform). `make_error_code(e)`: the ErrorCode of e in the

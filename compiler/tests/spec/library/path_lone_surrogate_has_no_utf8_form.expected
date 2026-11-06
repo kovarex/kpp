@@ -1,0 +1,7 @@
+lone: SystemError, an error code: true
+good: 3 bytes
+u8string: true
+generic_string: true
+generic_u8string: true
+wstring: true
+error: true true true

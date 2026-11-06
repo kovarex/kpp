@@ -1,0 +1,46 @@
+// spec: getenv's text is UTF-8 on every target, as all narrow text in kpp is: on Windows the stdlib's getenv reads the wide environment and keeps a UTF-8 copy until the variable changes, where the C runtime's gave the ANSI code page's bytes (`ž` as 9e, `日本` as `??`); the name is UTF-8 too, a program's import of stdlib.h has this getenv, and a value holding a lone surrogate, which has no UTF-8 form, throws SystemError with ERROR_NO_UNICODE_TRANSLATION as a path does (kovarex 2026-11-06)
+// factorio: Paths.kpp's getenv("HOME"), SystemUtil's ::getenv(variable.c_str()); found with main's argv (E's process battery, 2026-11-06)
+// target: windows (elsewhere the environment's bytes are the text)
+extern "C" import "stdlib.h";
+extern "C" import "stdio.h";
+
+void dump(const char* text)
+{
+  if (!text)
+  {
+    printf("null\n");
+    return;
+  }
+  for (const char* p = text; *p; ++p)
+    printf("%02x", (unsigned char)*p);
+  printf("|\n");
+}
+
+int main()
+{
+  _wputenv_s(L"KPP_SPEC_TEXT", L"ž 日本 \U0001F600");
+  dump(getenv("KPP_SPEC_TEXT"));
+  dump(::getenv("KPP_SPEC_MISSING"));
+  _wputenv_s(L"KPP_SPEC_ž", L"name");
+  dump(getenv("KPP_SPEC_ž"));
+  char* first = getenv("KPP_SPEC_TEXT");
+  char* second = getenv("KPP_SPEC_TEXT");
+  printf("%d\n", first == second); // kept while the variable stays
+  _wputenv_s(L"KPP_SPEC_TEXT", L"život");
+  dump(getenv("KPP_SPEC_TEXT"));
+  _wputenv_s(L"KPP_SPEC_TEXT", L"");
+  dump(getenv("KPP_SPEC_TEXT")); // removed, as _wputenv_s has it
+  char* (*function)(const char*) = getenv;
+  dump(function("KPP_SPEC_ž"));
+  wchar_t lone[3] = {L'a', (wchar_t)0xD800, 0};
+  _wputenv_s(L"KPP_SPEC_LONE", lone);
+  try
+  {
+    dump(getenv("KPP_SPEC_LONE"));
+  }
+  catch (const SystemError& e)
+  {
+    printf("SystemError %d\n", e.code().value());
+  }
+  return 0;
+}

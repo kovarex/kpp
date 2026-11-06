@@ -1,0 +1,38 @@
+// spec: a path holding a lone surrogate has no UTF-8 form, so string(), u8string() and generic_string() throw SystemError (kovarex 2026-11-06; MSVC's path::string() throws system_error with ERROR_NO_UNICODE_TRANSLATION, libstdc++ refuses such a path with illegal_byte_sequence), where they gave U+FFFD: text naming another file. wstring() keeps it, and a filesystem_error about the path can still be made (its message replaces what it cannot show, as MSVC's)
+// factorio: E's process battery (2026-11-06), the path half of the lone surrogate question main's argv raised
+void show(StringView what, const filesystem::path& p)
+{
+  try
+  {
+    String text = p.string();
+    println(what, ": ", text.size(), " bytes");
+  }
+  catch (const SystemError& e)
+  {
+    println(what, ": SystemError, an error code: ", (bool)e.code());
+  }
+}
+
+int main()
+{
+  WString lone = L"a";
+  lone.push_back((wchar_t)0xD800);
+  lone.push_back(L'b');
+  filesystem::path bad(lone);
+  show("lone", bad);
+  show("good", filesystem::path(L"až"));
+  bool threw = false;
+  try { bad.u8string(); } catch (const SystemError&) { threw = true; }
+  println("u8string: ", threw);
+  threw = false;
+  try { bad.generic_string(); } catch (const SystemError&) { threw = true; }
+  println("generic_string: ", threw);
+  threw = false;
+  try { bad.generic_u8string(); } catch (const SystemError&) { threw = true; }
+  println("generic_u8string: ", threw);
+  println("wstring: ", bad.wstring() == lone);
+  filesystem::filesystem_error one("one", bad, ErrorCode(2, systemCategory()));
+  filesystem::filesystem_error two("two", bad, bad, ErrorCode(2, systemCategory()));
+  println("error: ", String(one.what()).size() > 0, " ", String(two.what()).size() > 0, " ", one.path1().wstring() == lone);
+  return 0;
+}

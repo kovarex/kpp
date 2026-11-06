@@ -64,6 +64,7 @@ namespace platform
 
   // FreeBSD's errno values where the C libraries differ (sys/errno.h; Errc).
   const i32 errnoAgain = 35;
+  const i32 errnoIllegalSequence = 86;
   const i32 errnoDeadlock = 11;
   const i32 errnoNameTooLong = 63;
   const i32 errnoNoSys = 78;

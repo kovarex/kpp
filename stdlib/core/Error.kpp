@@ -49,6 +49,7 @@ enum class Errc
   interrupted = 4,
   io_error = 5,
   resource_unavailable_try_again = platform::errnoAgain,
+  illegal_byte_sequence = platform::errnoIllegalSequence,
   permission_denied = 13,
   device_or_resource_busy = 16,
   file_exists = 17,

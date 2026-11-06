@@ -52,6 +52,7 @@ namespace platform
 
   // The UCRT's errno values where the C libraries differ (errno.h; Errc).
   const i32 errnoAgain = 11;
+  const i32 errnoIllegalSequence = 42;
   const i32 errnoDeadlock = 36;
   const i32 errnoNameTooLong = 38;
   const i32 errnoNoSys = 40;

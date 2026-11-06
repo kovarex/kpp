@@ -6,8 +6,8 @@
 
 namespace filesystem
 {
-  // UTF-8 to the wide text and back (platform::widenUtf8, narrowWide); an invalid sequence becomes
-  // U+FFFD.
+  // UTF-8 to the wide text (platform::widenUtf8): an invalid sequence becomes U+FFFD. The wide text
+  // to UTF-8 (platform::narrowWide): a lone surrogate has no UTF-8 form and throws SystemError.
   WString widenUtf8(const char* text, i32 length) { return platform::widenUtf8(text, length); }
   String narrowUtf16(const wchar_t* text, i32 length) { return platform::narrowWide(text, length); }
 
@@ -740,7 +740,8 @@ namespace filesystem
   // --- errors ---
 
   // An error of an operation on paths (std::filesystem::filesystem_error): what() is the message
-  // given, then the error code's, then the paths in brackets.
+  // given, then the error code's, then the paths in brackets (a lone surrogate shown as U+FFFD, or
+  // making the error would throw another).
   class filesystem_error : public SystemError
   {
   public:
@@ -751,17 +752,20 @@ namespace filesystem
 
     filesystem_error(const String& what, const path& path1, ErrorCode code) : SystemError(code, what), path1Value(path1)
     {
-      this->message = what + ": " + code.message() + " [" + path1.string() + "]";
+      this->message = what + ": " + code.message() + " [" + shownPath(path1) + "]";
     }
 
     filesystem_error(const String& what, const path& path1, const path& path2, ErrorCode code)
       : SystemError(code, what), path1Value(path1), path2Value(path2)
     {
-      this->message = what + ": " + code.message() + " [" + path1.string() + "] [" + path2.string() + "]";
+      this->message = what + ": " + code.message() + " [" + shownPath(path1) + "] [" + shownPath(path2) + "]";
     }
 
     const path& path1() const { return this->path1Value; }
     const path& path2() const { return this->path2Value; }
+
+  private:
+    static String shownPath(const path& p) { return platform::narrowWideReplacing(p.c_str(), (i32)p.native().size()); }
   };
 
   // What the system says of a file (platform::fileInfo, and a directory listing's entries): its type

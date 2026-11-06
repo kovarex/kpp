@@ -8,6 +8,9 @@ requires config::platform != Platform::Windows;
 // same way; the library passes its own storage of the same layout.
 struct timespec;
 
+// The environment's text is its bytes here (FilesWindows.kpp for Windows' UTF-8 one).
+extern "C" char* getenv(const char* name);
+
 namespace posix
 {
   extern "C" i32 clock_gettime(i32 clock, timespec* time);
