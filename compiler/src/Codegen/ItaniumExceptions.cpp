@@ -328,6 +328,32 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
   // the cleanups between them, taking the unwind for a jump within the scope.
 }
 
+auto codegen::Emitter::constructorTryOf(FunctionDecl* f) -> TryStmt*
+{
+  if (!f->body || f->body->kind != NodeKind::BlockStmt)
+    return nullptr;
+  auto* b = static_cast<BlockStmt*>(f->body);
+  if (b->stmts.size() != 1 || b->stmts[0]->kind != NodeKind::TryStmt || !static_cast<TryStmt*>(b->stmts[0])->constructorTry)
+    return nullptr;
+  return static_cast<TryStmt*>(b->stmts[0]);
+}
+
+auto codegen::Emitter::tryBody(TryStmt* t) -> void
+{
+  if (!t->constructorTry || !currentFunction || !(currentFunction->flags & DF_Constructor))
+  {
+    statement(t->body);
+    return;
+  }
+  // A constructor's function-try-block: its member initializers inside the try, in a scope of
+  // their own, so that an exception destroys the subobjects made before the handler runs.
+  pushScope();
+  initializeMembers(thisPointer(currentFunction), currentClassTy, currentFunction->ctorInits, currentFunction, true);
+  destroyTemps();
+  statement(t->body);
+  popScope();
+}
+
 auto codegen::Emitter::tryStatement(TryStmt* t) -> void
 {
   usesExceptions = true;
@@ -339,7 +365,7 @@ auto codegen::Emitter::tryStatement(TryStmt* t) -> void
   markEH();
   std::string endL = newLabel("try.end"), dispatchL = newLabel("catch.dispatch"), handlerL = newLabel("catch.pad");
   ehFrames.push_back({false, dispatchL, currentFunclet(), "", "", scopes.size()});
-  statement(t->body);
+  tryBody(t);
   emitBranch(endL);
   EHFrame frame = ehFrames.back();
   ehFrames.pop_back();
@@ -499,7 +525,7 @@ auto codegen::Emitter::itaniumTry(TryStmt* t) -> void
     frame.catchTypes.push_back(handlerTypeinfo(pt, t));
   }
   ehFrames.push_back(frame);
-  statement(t->body);
+  tryBody(t);
   emitBranch(endL);
   frame = ehFrames.back();
   ehFrames.pop_back();

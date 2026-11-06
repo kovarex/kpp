@@ -36,7 +36,9 @@ struct ContinueStmt : Stmt {};
 struct FallthroughStmt : Stmt {};
 struct GotoStmt : Stmt { uint32_t label; };
 struct LabelStmt : Stmt { uint32_t label; };
-struct TryStmt : Stmt { struct Handler { Decl* param; Stmt* body; }; Stmt* body; Span<Handler> handlers; };
+// constructorTry: a constructor's function-try-block, whose try also holds the member initializers
+// (codegen's tryBody) and whose handlers end in a rethrow (the parser's).
+struct TryStmt : Stmt { struct Handler { Decl* param; Stmt* body; }; Stmt* body; Span<Handler> handlers; bool constructorTry = false; };
 struct EmptyStmt : Stmt {};
 struct AsmStmt : Stmt {};
 struct ErrorStmt : Stmt { uint32_t endToken; };

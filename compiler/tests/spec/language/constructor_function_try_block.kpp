@@ -1,0 +1,27 @@
+// spec: a constructor's function-try-block (Factorio's GameView): its handler takes what a member initializer or the body throws, after the subobjects already made are destroyed, and rethrows at its end, as C++ has it; until 2026-11-05 kpp dropped the handler, then made it an error
+struct Part
+{
+  int id;
+  Part(int i) : id(i) { if (i == 13) throw i; println("part ", id); }
+  ~Part() { println("part ", id, " gone"); }
+};
+struct Widget
+{
+  Part a;
+  Part b;
+  Widget(int second, bool bodyThrows) try : a(1), b(second)
+  {
+    println("body");
+    if (bodyThrows)
+      throw 2.5;
+  }
+  catch (int e) { println("handler int ", e); }
+  catch (double d) { println("handler double ", d); }
+};
+int main()
+{
+  try { Widget w(13, false); } catch (int e) { println("outer int ", e); }
+  try { Widget w(2, true); } catch (double d) { println("outer double ", d); }
+  { Widget w(3, false); println("made"); }
+  return 0;
+}

@@ -1,0 +1,17 @@
+part 1
+part 1 gone
+handler int 13
+outer int 13
+part 1
+part 2
+body
+part 2 gone
+part 1 gone
+handler double 2.5
+outer double 2.5
+part 1
+part 3
+body
+made
+part 3 gone
+part 1 gone

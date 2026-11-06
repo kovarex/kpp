@@ -374,7 +374,8 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       currentClassTy = nullptr;
       return;
     }
-    if (f->flags & DF_Constructor)
+    // (a constructor's function-try-block runs them inside its try: tryBody)
+    if ((f->flags & DF_Constructor) && !constructorTryOf(f))
     {
       initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f, true);
       destroyTemps();

@@ -1,0 +1,12 @@
+// spec: a destructor's function-try-block is an error until codegen does what C++ does with it (its handler runs after the members are destroyed and rethrows at its end), never one whose handlers are skipped
+// error: destructor_function_try_block_is_error.kpp:6: error: a function-try-block of a destructor is not supported yet
+struct Widget
+{
+  int v = 1;
+  ~Widget() try { println("bye"); } catch (...) { println("caught"); }
+};
+int main()
+{
+  Widget w;
+  return w.v;
+}

@@ -3013,18 +3013,34 @@ namespace
       {
         // A function-try-block, `int f() try { ... } catch (int e) { ... }`: the body is the try
         // statement, its handlers kept (until 2026-11-05 they were skipped, and what they caught
-        // left the function). A constructor's handler would also take what its member initializers
-        // throw, after their subobjects are destroyed, and a constructor's or destructor's
-        // rethrows at its end: not done yet, so an error.
+        // left the function). A constructor's (GameView's) also takes what its member initializers
+        // throw, after the subobjects made are destroyed (codegen runs them inside the try), and
+        // its handlers rethrow at their end, as C++ has it. A destructor's is not done yet.
         uint32_t tryStart = pos;
         accept(Kw::try_);
-        if (f->flags & (DF_Constructor | DF_Destructor))
-          error("a function-try-block of a constructor or destructor is not supported yet (its handler would also take what the member initializers throw)");
+        if (f->flags & DF_Destructor)
+          error("a function-try-block of a destructor is not supported yet");
         Decl* savedParent = currentParent;
         currentParent = f;
         TryStmt* s = node<TryStmt>(tryStart);
         s->body = parseBlock();
         s->handlers = parseHandlers();
+        if (f->flags & DF_Constructor)
+        {
+          s->constructorTry = true;
+          std::vector<TryStmt::Handler> handlers(s->handlers.begin(), s->handlers.end());
+          for (TryStmt::Handler& h : handlers)
+          {
+            ThrowExpr* rethrow = node<ThrowExpr>(h.body->token);
+            rethrow->operand = nullptr;
+            ExprStmt* last = node<ExprStmt>(h.body->token);
+            last->expr = rethrow;
+            BlockStmt* body = node<BlockStmt>(h.body->token);
+            body->stmts = makeSpanOf(std::vector<Stmt*>{h.body, last});
+            h.body = body;
+          }
+          s->handlers = makeSpanOf(handlers);
+        }
         BlockStmt* body = node<BlockStmt>(tryStart);
         body->stmts = makeSpanOf(std::vector<Stmt*>{s});
         f->body = body;

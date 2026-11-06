@@ -76,6 +76,12 @@
     // is a catchpad funclet reading that record; leaving it normally ends the exception.
     // Off Windows the Itanium model's landing pads and a dispatch block (itaniumTry).
     void tryStatement(TryStmt* t);
+    // A try statement's body; a constructor's function-try-block's with the member initializers
+    // before it, inside the try (C++: its handler takes what they throw, after the subobjects made
+    // are destroyed).
+    void tryBody(TryStmt* t);
+    // A constructor's function-try-block (its body is that try statement alone), or null.
+    static TryStmt* constructorTryOf(FunctionDecl* f);
 
     // The first handlerLabels.size() handlers of t, each at its label, with the caught exception's
     // record in slot (the object at offset 32): each binds its parameter, runs, ends the exception
