@@ -15,6 +15,7 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   local scaled inspect::__lambda_f9e4fd6c_0
   local values Vector<int32>
   local cell Cell<Cell<int32> >
+  local slot Cell<int32>::Slot
   block
     local half double
     local flags Flags

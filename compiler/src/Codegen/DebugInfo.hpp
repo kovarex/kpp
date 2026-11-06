@@ -38,7 +38,8 @@
     // A class's name there: debuggerTypeName of its qualified name, or `Item^` for the library's
     // UniquePtr<Item> with its default deleter (design.md 20), as the program writes it and errors
     // print it (TypeTable::toString's unqualified form). Visual Studio's Watch and Locals show it as
-    // the type.
+    // the type. A class declared in a class template has each class's arguments after it,
+    // `IntrusiveListImplementation<T, Tag, true, false>::List`, as C++ names it.
     std::string debuggerClassName(const Ty* t) const;
 
     // Type t's metadata: node 0 the type, the nodes it needs after it, other types by placeholder.

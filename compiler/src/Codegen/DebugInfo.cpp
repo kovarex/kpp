@@ -100,7 +100,56 @@ auto codegen::Emitter::debuggerClassName(const Ty* t) const -> std::string
   if (t && t->kind == TyKind::Class && !t->isConst && !t->isVolatile && !t->args.empty())
     if (std::string shown = types.toString(t, &symbols); !shown.empty() && shown.back() == '^')
       return debuggerTypeName(types.toString(t->args[0], &symbols, true)) + "^";
-  return debuggerTypeName(types.toString(t, &symbols, true));
+  std::string name = types.toString(t, &symbols, true);
+  // A class declared in a class template carries the enclosing template's arguments (then its
+  // own), which kppc's name writes after the innermost class, `Outer::Inner<A, B>`: here each
+  // class's arguments follow it, `Outer<A>::Inner<B>`, as C++ and MSVC's PDBs name it (the game's
+  // natvis rule `IntrusiveListImplementation<*,*,*,*>::List`).
+  if (t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && !t->args.empty() && !(t->decl->flags & DF_Specialization))
+  {
+    std::vector<ClassDecl*> chain; // the classes, outermost first
+    for (Decl* d = t->decl; d && d->kind == NodeKind::ClassDecl; d = d->parent)
+      chain.insert(chain.begin(), static_cast<ClassDecl*>(d));
+    size_t total = 0;
+    bool outerTemplate = false;
+    for (size_t i = 0; i < chain.size(); ++i)
+    {
+      total += chain[i]->templateParams.size();
+      outerTemplate = outerTemplate || (i + 1 < chain.size() && !chain[i]->templateParams.empty());
+    }
+    size_t open = name.find('<');
+    if (outerTemplate && total == t->args.size() && open != std::string::npos && name.back() == '>')
+    {
+      // The components of `ns::Outer::Inner`, the last chain.size() of them the classes'.
+      std::string base = name.substr(0, open);
+      std::vector<std::string> parts;
+      for (size_t at = 0;;)
+      {
+        size_t next = base.find("::", at);
+        parts.push_back(base.substr(at, next == std::string::npos ? std::string::npos : next - at));
+        if (next == std::string::npos)
+          break;
+        at = next + 2;
+      }
+      if (parts.size() >= chain.size())
+      {
+        std::string out;
+        size_t first = parts.size() - chain.size(), arg = 0;
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+          out += (i ? "::" : "") + parts[i];
+          if (i < first || chain[i - first]->templateParams.empty())
+            continue;
+          out += "<";
+          for (size_t k = 0; k < chain[i - first]->templateParams.size(); ++k, ++arg)
+            out += (k ? ", " : "") + types.toString(t->args[arg], &symbols, true);
+          out += ">";
+        }
+        name = out;
+      }
+    }
+  }
+  return debuggerTypeName(name);
 }
 
 auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -> std::string

@@ -63,7 +63,13 @@ template <typename T>
 class Cell
 {
 public:
+  struct Slot // (in the debugger Cell<T>::Slot, its class's arguments after the class)
+  {
+    T held{};
+  };
+
   T inner{};
+  Slot slot;
   int count = 0;
   int bump(int by)
   {
@@ -82,6 +88,8 @@ int inspect(const game::Point& point, int scale, game::Mode mode, StringView lab
   values.push_back(sum);
   Cell<Cell<int>> cell;
   sum += cell.bump(2);
+  Cell<int>::Slot slot;
+  sum += slot.held;
   {
     double half = sum / 2.0;
     Flags flags{};
