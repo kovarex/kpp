@@ -183,10 +183,10 @@
   std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
   // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
   // that body, errors once the code generator emits it (GlobalScope::functionEmitted).
-  std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceAssertErrors;
+  std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceAssertErrors;
   // (under checkerErrorsMutex) Names a template instance's function body uses that its arguments'
   // lookup does not find either, by that body: errors once the code generator emits it.
-  std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceNameErrors;
+  std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceNameErrors;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
   bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked

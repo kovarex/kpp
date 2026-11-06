@@ -388,14 +388,15 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
   }
   for (const auto& [f, errors] : impl->instanceAssertErrors)
     if (impl->emitted(f))
-      all.insert(errors.begin(), errors.end());
+      for (const CheckerError& e : errors)
+        all.insert(e.text());
   // (one the template's own walk reported at the definition already is that error, whichever walk
   // ran first)
   for (const auto& [f, errors] : impl->instanceNameErrors)
     if (impl->emitted(f))
-      for (const std::string& e : errors)
-        if (!messages.count(e.substr(0, e.find(" (in "))))
-          all.insert(e);
+      for (const CheckerError& e : errors)
+        if (std::string text = e.text(); !messages.count(text.substr(0, text.find(" (in "))))
+          all.insert(std::move(text));
   std::vector<std::string> out(all.begin(), all.end());
   std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
   return out;

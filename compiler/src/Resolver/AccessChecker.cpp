@@ -412,7 +412,7 @@ auto GlobalScope::Impl::checkStaticAssert(StaticAssertDecl* s, const TypeContext
   if (inFunction)
   {
     std::lock_guard lock(checkerErrorsMutex);
-    instanceAssertErrors[inFunction].push_back(locationOf(s->file, s->token) + ": error: " + message);
+    instanceAssertErrors[inFunction].push_back(CheckerError{s->file, s->token, message});
     return;
   }
   reportCheckerError(s->file, s->token, message);
@@ -445,7 +445,7 @@ auto GlobalScope::Impl::checkConstexprVariable(VariableDecl* v, const Ty* t, con
   if (inFunction)
   {
     std::lock_guard lock(checkerErrorsMutex);
-    instanceAssertErrors[inFunction].push_back(locationOf(where, v->token) + ": error: " + message);
+    instanceAssertErrors[inFunction].push_back(CheckerError{where, v->token, message});
     return;
   }
   reportCheckerError(where, v->token, message);

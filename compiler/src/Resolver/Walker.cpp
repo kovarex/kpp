@@ -279,7 +279,7 @@ auto GlobalScope::Impl::Walker::reportInInstance(uint32_t token, std::string mes
   if (!instance.empty())
     message += " (in " + instance + ")";
   std::lock_guard lock(impl.checkerErrorsMutex);
-  impl.instanceNameErrors[bodyOf].push_back(Impl::locationOf(file, token) + ": error: " + message);
+  impl.instanceNameErrors[bodyOf].push_back(CheckerError{file, token, message});
 }
 
 auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty* object, const char* what, const Expr* operand) -> void
