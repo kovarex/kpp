@@ -346,8 +346,9 @@ don't guess"), on the full converted game.
 1. **Build the query layer and the LSP adapter now** (phases 0 and 1, 3 to 4 thread-weeks)?
    **Decided 2026-10-31: yes, LSP** (kovarex: "Integrate with the Language Server Protocol ... which
    will allow intellisense to work in most editors"). Recommended: yes. It serves VS, VS Code and any later IDE, and the server is where the value is.
-2. **Build an own editor at all**, and when? Recommended: yes, starting phase 2 once phase 1 is in
-   use, accepting that it pays off only with phases 3 and 4.
+2. **Build an own editor at all**, and when? **Decided 2026-11-06 (kovarex): later, only when kpp is
+   fully mature with all features implemented.** No editor work until then. Decisions 3 to 8, as far
+   as they depend on the editor, are parked with it.
 3. **Written in kpp** (dogfooding, compiler gaps become spec snippets) **or C++**? Recommended: kpp.
 4. **Editor core**: own (piece table, GDI text) or Scintilla through its messages? Recommended:
    own; it is small, and Scintilla's model fights semantic colouring and overlays.

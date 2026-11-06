@@ -732,6 +732,10 @@ kpp/test_check_char_pointers_is_error.
   compile-time sizeof and alignof follow one rule (GlobalScope::hasBaseAtOffset, setMsvcAbi), so
   `Size<sizeof(int A::*)>` and a run-time sizeof agree (2026-11-06, F's batteries; spec
   classes/data_member_pointer_size_on_windows).
+  MSVC's unknown inheritance model (24 bytes, for a pointer to a member of a class incomplete where
+  the pointer's type is written) has no counterpart: symbols do not depend on order, every class is
+  known, so such a pointer has its class's size (the game's CommandWrapper::command, to a member
+  function of CommandProcessor, is 8 bytes where the C++ build has 24).
 - A bit field's value promotes by its width, as C++'s [conv.prom] 5 has it, on every target
   (kovarex 2026-11-05: "follow the standard here"; MSVC keeps the declared type): an operand of
   arithmetic, a comparison or `?:` that designates a bit field of an integer type is an int when
@@ -4102,7 +4106,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   LSP adapter first, then an editor written in kpp with a DbgEng debugger and hot reload. Its eight
   decisions are listed at the end of ide.md. **Decided 2026-10-31 (kovarex): integrate with the
   Language Server Protocol**, so that IntelliSense works in most editors: `kppc --lsp` (ide.md, "The
-  language server as built"). Whether to build an own editor on top stays open.
+  language server as built"). **Decided 2026-11-06 (kovarex): an own editor comes later, only when kpp
+  is fully mature with all features implemented.** No editor work until then; ide.md's decisions 3 to
+  8 that depend on the editor are parked with it.
 
 - **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`. Q2
   (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native tests) are settled by 8.7.
