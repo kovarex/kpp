@@ -1,0 +1,41 @@
+// spec: `&Self::read` taken in a member of a class template that the class Self derives from at an offset (ProtoBase<Proto> after Other in Proto), stored where a pointer to a member function of Self is wanted and called on a Self, calls read with `this` moved to the base (`50`), as clang prints; the address is typed with the template's own parameters and taken as Self's
+// factorio: LuaBinder<T>::registerCommonMetaMethods' `&T::luaIndex` for LuaPrototypeTemplate<...> instances, whose Lua prototypes have their template base at an offset: 44 "not supported yet" until the pointer's representation took it from the class it was taken for
+template<class T>
+struct Binder
+{
+  using PtFunc = int (T::*)();
+  static void registerRead(PtFunc f) { reader = f; }
+  static PtFunc reader;
+};
+template<class T>
+typename Binder<T>::PtFunc Binder<T>::reader = nullptr;
+
+class Other
+{
+public:
+  int o = 9;
+};
+
+template<class Self>
+class ProtoBase
+{
+public:
+  int read() { return this->x * 10; }
+  static void setUp() { Binder<Self>::registerRead(&Self::read); }
+  int x = 4;
+};
+
+class Proto : public Other, public ProtoBase<Proto>
+{
+public:
+  int y = 2;
+};
+
+int main()
+{
+  ProtoBase<Proto>::setUp();
+  Proto p;
+  p.x = 5;
+  println((p.*Binder<Proto>::reader)());
+  return 0;
+}

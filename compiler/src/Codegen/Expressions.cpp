@@ -1304,7 +1304,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       for (auto& [structName, index] : path)
         moved = moved || index != 0;
       int slot = f->templateParams.empty() ? slotOf(owner, f, u) : -1;
-      if (memberFunctionPointerAdjusts(mp, u))
+      if (hasBaseAtOffset(key, u))
       {
         // The multiple model: the function as its own class's (a virtual one through that class's
         // thunk reading the object's vtable), `this` moved to that class by the adjustment.
@@ -1323,7 +1323,10 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
         std::optional<uint64_t> offset = owner == key ? std::optional<uint64_t>(0) : baseOffsetIn(key, owner, u);
         if (!offset)
           unsupported(u, "a pointer to a member function of " + types.toString(owner, &symbols) + " as one of " + types.toString(key, &symbols));
-        return {memberFunctionValue(function, std::to_string(*offset)), mp};
+        // (typed as key's: `&T::luaIndex` in LuaBinder<T> was typed with its declaring template's own
+        // parameters, whose representation is not known)
+        const Ty* typed = types.isDependent(mp) ? types.memberPointer(withCurrentArgs(mp->inner), key) : mp;
+        return {memberFunctionValue(function, std::to_string(*offset)), typed};
       }
       if (slot < 0 && !moved)
       {

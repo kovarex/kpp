@@ -165,12 +165,16 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   // the single model (no adjustment) that would need one: a constant gets a thunk moving `this`, a
   // value read at run time must need none (else the program stops: C++ calls only on an object of
   // the derived class, which the value no longer knows). Null stays null.
-  if (fk == TyKind::MemberPointer && tk == TyKind::MemberPointer && from->inner && from->inner->kind == TyKind::Function && !from->args.empty() &&
-      !to->args.empty() && isClass(from->args[0]) && isClass(to->args[0]) && classKey(from->args[0]) != classKey(to->args[0]) &&
-      !types.isDependent(from->args[0]) && !types.isDependent(to->args[0]))
+  // (A value typed with a class template's own parameters, `LuaStruct<T>` or LuaPrototypeTemplate<...>
+  // named by `&T::luaIndex` in LuaBinder<T>: the address was taken as the instance's, its bits are
+  // the target's already, as the data members' below.)
+  const Ty* fromClass = fk == TyKind::MemberPointer && from->inner && from->inner->kind == TyKind::Function && !from->args.empty() && isClass(from->args[0])
+                          ? withCurrentArgs(from->args[0]) : nullptr;
+  const Ty* toClass = tk == TyKind::MemberPointer && !to->args.empty() && isClass(to->args[0]) ? withCurrentArgs(to->args[0]) : nullptr;
+  if (fromClass && toClass && types.isDependent(fromClass) && !types.isDependent(toClass))
+    return {v.text, to};
+  if (fromClass && toClass && !types.isDependent(fromClass) && !types.isDependent(toClass) && classKey(fromClass) != classKey(toClass))
   {
-    const Ty* fromClass = withCurrentArgs(from->args[0]);
-    const Ty* toClass = withCurrentArgs(to->args[0]);
     int64_t delta = 0;
     if (std::optional<uint64_t> down = baseOffsetIn(toClass, fromClass, at))
       delta = int64_t(*down); // a base's member as one of the derived class
