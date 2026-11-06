@@ -1,0 +1,19 @@
+// spec: `a < b` chooses among operator< and the rewritten `(a <=> b) < 0` by their conversions first (C++ [over.match.best]: a non-rewritten candidate wins only a tie), so a member operator< that needs b converted (a user-defined conversion) loses to an operator<=> template that takes b as it is: Box(1) < 1.5 compares 1 with 1.5, true, and Optional<int>(1) < 1.5 likewise, as with std::optional (`1 1 0`)
+// factorio: E's Optional/Pair/Tuple battery against C++ (tp1, 2026-11-06): Optional<int>(1) < 1.5 was false: 1.5 became Optional<int>(1) through the converting constructor and Optional's own operator< compared 1 with 1; std::optional's operator<(const optional<T>&, const U&) compares 1 with 1.5
+// pending: overload resolution prefers the non-rewritten operator< even when its argument needs a user-defined conversion and the rewritten <=> needs none (D)
+extern "C" import "stdio.h";
+struct Box
+{
+  int v;
+  Box(double d) : v((int)d) {}
+  bool operator<(const Box& other) const { return v < other.v; }
+  template <typename U>
+  strong_ordering operator<=>(const U& u) const { return v < u ? strong_ordering::less : v > u ? strong_ordering::greater : strong_ordering::equal; }
+};
+int main()
+{
+  Box one(1.0);
+  Optional<int> optionalOne = 1;
+  printf("%d %d %d\n", (int)(one < 1.5), (int)(optionalOne < 1.5), (int)(one < Box(1.5)));
+  return 0;
+}
