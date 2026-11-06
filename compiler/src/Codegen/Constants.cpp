@@ -197,8 +197,35 @@ auto codegen::Emitter::foldConst(Expr* e) -> std::optional<ConstValue>
   return v;
 }
 
-auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en) -> int64_t
+auto codegen::Emitter::enumeratorNamed(EnumeratorDecl* en, Expr* e) -> int64_t
 {
+  for (Decl* p = en->parent; p; p = p->parent)
+    if (!p->templateParams.empty())
+    {
+      if (std::optional<int64_t> v = evalConst(e))
+        return *v;
+      break;
+    }
+  return enumeratorValue(en, e->ty);
+}
+
+auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en, const Ty* type) -> int64_t
+{
+  // Of an instance (`Tm<3>::value`): as the interpreter computes it from the instance's arguments.
+  const Ty* instance = type ? withCurrentArgs(types.unqualified(types.stripRef(type))) : nullptr;
+  if (instance && instance->kind == TyKind::Enum && !instance->args.empty() && !types.isDependent(instance))
+  {
+    std::pair<Decl*, const Ty*> key{en, instance};
+    if (auto known = instanceEnumerators.find(key); known != instanceEnumerators.end())
+      return known->second;
+    bool layoutFailed = false;
+    ConstContextScope context(*this, en->parent);
+    std::optional<ConstValue> v = global.evaluateEnumerator(en, instance, foldHooks(en, layoutFailed));
+    if (!v || v->kind != ConstValue::Kind::Int)
+      unsupported(en, "the enumerator " + sym(en->name) + " of " + types.toString(instance, &symbols) + ", no constant the compiler could evaluate");
+    instanceEnumerators[key] = v->i;
+    return v->i;
+  }
   auto it = enumeratorValues.find(en);
   if (it != enumeratorValues.end())
     return it->second;
@@ -215,8 +242,12 @@ auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en) -> int64_t
         continue;
       auto* cur = static_cast<EnumeratorDecl*>(d);
       if (cur->value)
-        if (auto v = evalConst(cur->value))
-          next = *v;
+      {
+        std::optional<int64_t> v = evalConst(cur->value);
+        if (!v)
+          unsupported(cur, "the enumerator " + sym(cur->name) + ", no constant the compiler could evaluate"); // (never the one before plus one)
+        next = *v;
+      }
       enumeratorValues[cur] = next;
       ++next;
     }

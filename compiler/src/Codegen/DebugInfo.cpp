@@ -209,7 +209,7 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
           elements += (elements.empty() ? "" : ", ") + debugId(next);
           // An unsigned enumeration's value as its type holds it (`Top = ~0ull`, `None = -1`: LLVM
           // rejects an unsigned enumerator with a negative value).
-          int64_t value = enumeratorValue(en);
+          int64_t value = enumeratorValue(en, t);
           std::string valueText = std::to_string(value);
           if (underlying && underlying->isUnsigned)
           {

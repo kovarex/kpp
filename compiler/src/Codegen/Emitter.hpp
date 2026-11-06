@@ -3,6 +3,8 @@
 // namespace codegen (a file of its own since 2026-11-05). What is the current function's is its base,
 // FunctionState.
 #pragma once
+#include <map>
+
 #include "CodegenShared.hpp"
 
 namespace codegen
@@ -201,6 +203,7 @@ namespace codegen
     std::deque<BinaryExpr> comparisons;
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
     std::unordered_map<Decl*, int64_t> enumeratorValues;
+    std::map<std::pair<Decl*, const Ty*>, int64_t> instanceEnumerators; // (an instance's, enumeratorValue)
     std::unordered_map<Decl*, std::string> qualifiedNames; // qualifiedName() per declaration
 
     unsigned currentDepth = 0;       // of the function being emitted: 0 for one that is not an instantiation

@@ -1,0 +1,33 @@
+// spec: an enumeration of underlying type bool converts as a bool does: `(int)B::yes` is 1, never -1, and an integer cast to it is true when it is nonzero, as clang gives it ([expr.static.cast] 10). Before, the value was sign-extended from its one bit: a silent wrong answer; `(B)2` truncated to false
+// found comparing kpp with clang and g++ (thread I's battery en1)
+extern "C" int printf(const char* format, ...);
+enum class B : bool { no, yes };
+enum Bp : bool { pf, pt };
+int main()
+{
+  printf("%d %d %d %d\n", (int)B::yes, (int)B::no, (int)Bp::pt, (int)pt);
+  B a = (B)5;
+  B c = (B)2;
+  B d = (B)0;
+  int two = 2;
+  B e = (B)two;
+  B f = static_cast<B>(two);
+  Bp g = (Bp)two;
+  printf("%d %d %d %d %d %d %d\n", (int)a, (int)c, (int)d, a == B::yes, (int)e, (int)f, (int)g);
+  constexpr B cb = (B)2;
+  constexpr int cbi = (int)cb;
+  constexpr int cyes = (int)B::yes;
+  printf("%d %d %d\n", (int)cb, cbi, cyes);
+  long long ll = (long long)B::yes;
+  unsigned char uc = (unsigned char)B::yes;
+  double dd = (double)B::yes;
+  bool bb = (bool)B::yes;
+  printf("%lld %d %g %d %d\n", ll, uc, dd, bb, (int)sizeof(B));
+  printf("%d %d\n", (int)(B::yes > B::no), +pt);
+  switch (a)
+  {
+    case B::no: printf("no\n"); break;
+    case B::yes: printf("yes\n"); break;
+  }
+  return 0;
+}

@@ -112,7 +112,8 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
       fail(at, "a value of the enum class " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
   }
-  auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? TyKind::Int : t->kind; };
+  // (`enum class E : bool`: converts as a bool does, `(E)2` to true, and reads as 0 or 1, never -1.)
+  auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t->decl)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };
   TyKind fk = kindOf(from), tk = kindOf(to);
   auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };
   auto unsignedOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? enumUnderlying(t->decl)->isUnsigned : t->isUnsigned; };

@@ -589,12 +589,21 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
     if (!e || e->kind != NodeKind::EnumDecl)
       return std::nullopt;
     // In the enum's own scope: `GENERIC = NOTHING` names an earlier enumerator of an enum class.
-    TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
-                     e->file ? e->file->text : std::string_view()};
-    // Of the instance it is named through (`Flag<A>::Enum`); the enum alone where none is bound.
-    const Ty* enumType = enumTypeIn(e, classSubst ? classSubst : ctx.subst);
+    // Of the instance it is named through (`Flag<A>::Enum`, `Tm<3>::value`, its value written from
+    // the template's parameters: `enum { value = N * 2 };`); the enum alone where none is bound.
+    const Subst* instance = classSubst ? classSubst : ctx.subst;
+    const Ty* enumType = enumTypeIn(e, instance);
     if (types.isDependent(enumType))
+    {
       enumType = types.enumType(e);
+      instance = nullptr;
+    }
+    LocalStack enumParams;
+    for (Decl* p : effectiveParams(e))
+      if (p->kind == NodeKind::TemplateParamDecl)
+        enumParams.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), &enumParams, instance, e->file ? e->file->tokens : nullptr,
+                     e->file ? e->file->text : std::string_view()};
     // An enumerator written from the one before (`F1 = 2 * F0`) asks for it while this loop
     // computes it: the values found so far answer, so that a chain is evaluated once, not again
     // for each link (2^n steps).
@@ -620,7 +629,7 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       if (cur->value)
       {
         // (its value as a walk of it typed it: constWalkedCopy)
-        std::optional<ConstValue> v = constConverted(constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, nullptr), ectx, depth + 1), enumType);
+        std::optional<ConstValue> v = constConverted(constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, instance), ectx, depth + 1), enumType);
         if (!v)
           return std::nullopt;
         next = *v;

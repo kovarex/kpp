@@ -50,7 +50,10 @@
     // literal, the commonest, needs no context.
     std::optional<ConstValue> foldConst(Expr* e);
 
-    int64_t enumeratorValue(EnumeratorDecl* en);
+    // The value of the enumerator e names: of a template's, as e reads it under this instance
+    // (`Outer<4>::Plain::twice`, whose enumeration has no arguments of its own).
+    int64_t enumeratorNamed(EnumeratorDecl* en, Expr* e);
+    int64_t enumeratorValue(EnumeratorDecl* en, const Ty* type = nullptr); // type: the enumeration it is read as, an instance's
 
     // A string literal's bytes with its escapes decoded, UTF-8 as the source is: a universal character
     // name (`é`, `\U0001F600`) is its code point's UTF-8; an octal escape (up to three digits,

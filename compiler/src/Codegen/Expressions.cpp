@@ -164,7 +164,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         if (std::optional<int64_t> c = evalConst(e)) // a builtin trait used as a value
           return {e->ty && e->ty->kind == TyKind::Bool ? std::string(*c ? "true" : "false") : std::to_string(*c), e->ty};
       if (d && d->kind == NodeKind::EnumeratorDecl)
-        return {std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(d))), e->ty};
+        return {std::to_string(enumeratorNamed(static_cast<EnumeratorDecl*>(d), e)), e->ty};
       if (d && d->kind == NodeKind::TemplateParamDecl)
       {
         // A non-type template parameter is a constant of the instantiation; a function given
@@ -306,7 +306,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       {
         if (m->base->kind != NodeKind::NameExpr)
           rvalue(m->base); // `make().E` calls make, as `make().staticMember` does
-        return {std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(m->resolved))), e->ty};
+        return {std::to_string(enumeratorNamed(static_cast<EnumeratorDecl*>(m->resolved), e)), e->ty};
       }
       if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
       {

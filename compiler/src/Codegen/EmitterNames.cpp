@@ -54,9 +54,12 @@ auto codegen::Emitter::enumUnderlying(Decl* d) -> const Ty*
   Decl* def = global.definitionOf(d);
   auto* e = static_cast<EnumDecl*>(def ? def : d);
   if (e->underlying)
-    if (const Ty* u = global.typeOfAst(e->underlying, e))
-      if (u->isKnown())
-        return u;
+  {
+    const Ty* u = global.typeOfAst(e->underlying, e);
+    if (u && u->isKnown() && !types.isDependent(u))
+      return u;
+    unsupported(e, "an enumeration whose underlying type is a template parameter"); // (never int: its size and range are the argument's)
+  }
   return types.intType(32);
 }
 

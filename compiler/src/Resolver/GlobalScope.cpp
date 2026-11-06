@@ -1464,6 +1464,23 @@ std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl*
 }
 
 // t null: the value of e as an expression (evaluate).
+std::optional<ConstValue> GlobalScope::evaluateEnumerator(Decl* enumerator, const Ty* enumType, const ConstHooks& hooks)
+{
+  struct Lent
+  {
+    explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
+    ~Lent() { Impl::constHooks() = saved; }
+
+    const ConstHooks* saved = Impl::constHooks();
+  };
+  ParsedFile* file = enumerator->parent ? enumerator->parent->file : nullptr;
+  Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+  Lent lent(hooks);
+  Subst s = impl->substFor(enumType);
+  Impl::TypeContext ctx{impl->lexicalScopeOf(enumerator->parent), nullptr, nullptr, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  return impl->constValueOfDecl(enumerator, ctx, 0, s.empty() ? nullptr : &s);
+}
+
 std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                            const ConstHooks& hooks)
 {

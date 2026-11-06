@@ -1,0 +1,44 @@
+// spec: an enumerator of a class template is its instance's: `enum { value = N * 2, next = value + 1 };` read through `Tm<3>::value`, in the template's own members, in a member enumeration or a nested class, in a constant expression, a template argument and a case label. Before, `Tm<3>::value` at run time read 0 (the failed evaluation gave the one before plus one), and at compile time was no constant: a silent wrong answer, the oldest template idiom. clang's and g++'s output
+// found comparing kpp with clang and g++ (thread I's battery en1)
+extern "C" int printf(const char* format, ...);
+template<int N> struct Tm
+{
+  enum { value = N * 2, next = value + 1 };
+  enum class C { v = N, w };
+  enum Named { x = N + 1, y };
+  static const int k = value;
+  int arr[value];
+  int get() const { return value + y; }
+  static int unq() { return next; }
+  Named named() const { return y; }
+  int sw(int i) const { switch (i) { case value: return 1; case next: return 2; default: return 0; } }
+};
+template<class T> struct Sz { enum { size = sizeof(T), twice = size * 2 }; };
+template<int N> struct Fact { enum { value = N * Fact<N - 1>::value }; };
+template<> struct Fact<0> { enum { value = 1 }; };
+template<class T> struct Und { enum : T { big = (T)-1, low = 1 }; enum class E : T { a = 2 }; };
+template<int N> int useIt() { return Tm<N>::value + 1; }
+template<class T, int M> struct Two { enum { r = sizeof(T) * M }; static constexpr int s = r + 1; };
+template<int N> struct Outer { template<int M> struct In { enum { sum = N + M }; }; struct Plain { enum { twice = N * 2 }; }; };
+template<int N> struct Derived : Tm<N> { enum { more = Tm<N>::value + 1 }; int m() const { return Tm<N>::next + more; } };
+template<int N> constexpr int fn() { enum { local = N * 3 }; return local; }
+template<int N> constexpr int fn2() { enum class L { a = N, b }; return (int)L::b; }
+int main()
+{
+  printf("%d %d\n", Tm<3>::value, Tm<3>::next);
+  int ia = Tm<3>::value;
+  constexpr int ib = Tm<3>::value;
+  printf("%d %d %d %d %d %d\n", ia, ib, (int)Tm<3>::C::v, (int)Tm<3>::C::w, (int)Tm<3>::x, (int)Tm<3>::y);
+  printf("%d %d %d %d %d\n", Tm<3>::k, (int)sizeof(Tm<3>), Sz<double>::size, Sz<double>::twice, Fact<4>::value);
+  printf("%d %d\n", useIt<4>(), useIt<5>());
+  Tm<5>::Named n = Tm<5>::y;
+  printf("%d\n", (int)n);
+  Tm<2> t;
+  printf("%d %d %d %d %d %d\n", t.get(), Tm<2>::unq(), (int)t.named(), t.sw(4), t.sw(5), t.sw(6));
+  printf("%d %d\n", Two<int, 3>::r, Two<int, 3>::s);
+  printf("%d %d\n", Outer<1>::In<2>::sum, Outer<4>::Plain::twice);
+  Derived<3> dv;
+  printf("%d %d\n", dv.m(), Derived<3>::more);
+  printf("%d %d\n", fn<2>(), fn2<4>());
+  return 0;
+}

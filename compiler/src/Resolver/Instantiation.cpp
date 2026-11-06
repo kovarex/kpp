@@ -508,7 +508,7 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
     if (constant)
     {
       Subst qs; // `Array<int, Bits<int16_t>::valueBits>`: the member under the instantiation's arguments
-      if (an.parts.size() > 1 && l.decl->kind == NodeKind::VariableDecl)
+      if (an.parts.size() > 1 && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::EnumeratorDecl))
         qs = qualifierSubst(an, ctx, depth + 1, l.foundIn);
       v = constValueOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
       if (!v && l.decl->kind == NodeKind::TemplateParamDecl)

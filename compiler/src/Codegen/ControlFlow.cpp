@@ -585,7 +585,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
       // A kpp enum: every value needs a case, and a value outside them aborts.
       std::string missing;
       for (Decl* d : e->enumerators)
-        if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d))))
+        if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d), condTy)))
           missing += (missing.empty() ? "" : ", ") + sym(static_cast<EnumeratorDecl*>(d)->name);
       if (!missing.empty())
         error(sw, "switch on " + qualifiedName(e) + " does not handle " + missing);

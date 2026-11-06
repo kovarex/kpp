@@ -1,0 +1,10 @@
+// spec: an enumeration of a class template whose underlying type is the template's parameter: its size and range are the argument's
+// pending: the code generator refuses it (enumUnderlying has the declaration, not the instance); it read as int before, a wrong size without a word
+extern "C" int printf(const char* format, ...);
+template<class T> struct Und { enum : T { big = (T)-1, low = 1 }; enum class E : T { a = 2 }; };
+int main()
+{
+  printf("%d %d %d\n", (int)Und<unsigned char>::big, (int)Und<unsigned char>::E::a, (int)sizeof(Und<short>::E));
+  printf("%lld %lld\n", (long long)Und<long long>::big, (long long)Und<short>::big);
+  return 0;
+}

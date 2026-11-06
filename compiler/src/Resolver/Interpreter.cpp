@@ -1128,7 +1128,7 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
         return memberConstant(l.decl, ctx, qs);
   // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
   // arguments.
-  if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
+  if (n->name.parts.size() > 1 && l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::EnumeratorDecl))
     if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
       return memberConstant(l.decl, ctx, qs);
   // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`, a function's

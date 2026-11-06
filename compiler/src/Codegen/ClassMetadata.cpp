@@ -2092,7 +2092,7 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
     {
       isSigned = false;
       for (Decl* en : e->enumerators)
-        if (en && en->kind == NodeKind::EnumeratorDecl && enumeratorValue(static_cast<EnumeratorDecl*>(en)) < 0)
+        if (en && en->kind == NodeKind::EnumeratorDecl && enumeratorValue(static_cast<EnumeratorDecl*>(en), valueTy) < 0)
           isSigned = true;
     }
   }

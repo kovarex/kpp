@@ -536,6 +536,8 @@ public:
   // when the interpreter cannot evaluate it yet; cleared by clearConstantReason.
   static std::string constantReason();
   static void clearConstantReason();
+  // The value of an enumerator of the enumeration enumType, an instance's (`Tm<3>::value`).
+  std::optional<ConstValue> evaluateEnumerator(Decl* enumerator, const Ty* enumType, const ConstHooks& hooks);
   std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                 const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are
