@@ -1681,7 +1681,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     verifyOperatorCall(b, OperatorCall::Builtin);
     return logical(op == P::AndAnd, b->lhs, b->rhs, b);
   }
-  if (op == P::Comma)
+  if (op == P::Comma && !chosen) // (a class's operator, the walk chose: called below)
   {
     rvalue(b->lhs);
     return rvalue(b->rhs);

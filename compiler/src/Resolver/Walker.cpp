@@ -5198,7 +5198,22 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
   }
   P op = P(b->op);
   if (op == P::Comma)
+  {
+    // `(a, b)` with an operator, that takes a's and b's classes (C++ lets a class overload it):
+    // its call; else the built-in comma, b. Until 2026-11-06 always b, the operator ignored.
+    const Ty* ls = types.stripRef(l), *rs = types.stripRef(r);
+    if (ls && rs && (ls->kind == TyKind::Class || rs->kind == TyKind::Class) && ls->isKnown() && rs->isKnown() && !types.isDependent(ls) &&
+        !types.isDependent(rs))
+      if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types));
+          t && operatorCall == OperatorCall::Function && operatorChosen)
+      {
+        call = operatorCall;
+        callee = operatorChosen;
+        member = operatorIsMember;
+        return t;
+      }
     return r;
+  }
   checkTextOperators(b, op, l, r);
   const Ty* ls = types.stripRef(l);
   const Ty* rs = types.stripRef(r);

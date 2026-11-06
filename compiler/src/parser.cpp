@@ -2531,6 +2531,13 @@ namespace
         }
         if (atIdent())
           parseQualifiedName(d.name, true);
+        // `int (*choose(bool up))(int)`: a function's own parameters inside the parentheses, the
+        // ones after them its result's (a pointer to a function); was "expected ')' in declarator".
+        if (at(P::LParen) && !d.name.empty())
+        {
+          d.isFunction = true;
+          parseFunctionSuffix(d);
+        }
         // Array suffix inside the parens.
         inner = parseArraySuffixes(inner);
         if (!expect(P::RParen, "expected ')' in declarator"))

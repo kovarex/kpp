@@ -1,0 +1,17 @@
+// spec: a class's operator, is called for `(a, b)` of its operands, as C++ has it; without one (or between scalars) the comma is the built-in one, its right operand; until 2026-11-06 the built-in one always, the operator ignored (a silent wrong answer)
+struct Digits
+{
+  int v;
+  Digits operator,(Digits o) const { return {v * 10 + o.v}; }
+};
+struct Plain { int v; };
+int main()
+{
+  Digits a{1}, b{2}, c{3};
+  Digits joined = (a, b, c);
+  Plain p{3}, q{4};
+  Plain right = (p, q);
+  int i = (1, 2);
+  println(joined.v, " ", right.v, " ", i);
+  return 0;
+}
