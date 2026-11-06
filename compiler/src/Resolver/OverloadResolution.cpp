@@ -2790,6 +2790,37 @@ auto GlobalScope::Impl::memberOperatorRanks(FunctionDecl* f, const Subst& subst,
   return ranks;
 }
 
+auto GlobalScope::Impl::binaryOperatorRanks(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs) -> std::vector<int>
+{
+  if (!f)
+    return {};
+  // (a template's own parameters deduced from the operands, beside its class's in subst)
+  Subst deduced = subst;
+  if (!f->templateParams.empty())
+  {
+    std::vector<const Ty*> operands;
+    if (!member)
+      operands.push_back(lhs);
+    operands.push_back(rhs);
+    deduceCall(f, declaredTypeOf(f, deduced.empty() ? nullptr : &deduced, 0), operands, deduced);
+    for (Decl* p : f->templateParams)
+      if (const Ty* bound = deduced.find(p); !bound || !bound->isKnown() || types.isDependent(bound))
+        return {};
+  }
+  const Ty* ft = declaredTypeOf(f, deduced.empty() ? nullptr : &deduced, 0);
+  if (!ft || ft->kind != TyKind::Function || types.isDependent(ft) || mentionsUnknown(ft) || ft->args.size() < (member ? 1u : 2u))
+    return {};
+  std::vector<int> ranks;
+  if (member)
+    ranks = {0, std::max(1, conversionRank(rhs, ft->args[0])) - 1};
+  else
+    ranks = {std::max(1, conversionRank(lhs, ft->args[0])) - 1, std::max(1, conversionRank(rhs, ft->args[1])) - 1};
+  for (int r : ranks)
+    if (r >= NotViable - 1)
+      return {};
+  return ranks;
+}
+
 auto GlobalScope::Impl::memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity) -> bool
 {
   std::vector<int> ranks = memberOperatorRanks(f, subst, rhs, arity);

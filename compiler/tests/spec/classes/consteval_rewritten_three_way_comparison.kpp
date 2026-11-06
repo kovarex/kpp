@@ -1,0 +1,27 @@
+// spec: at compile time `a < b` takes the rewritten `(a <=> b) < 0` where the checker chose it: over a member operator< that converts b by a constructor (`Box(1.0) < 1.5` true, as Optional<int>(1) < 1.5), and for a class with no operator<= (`Box(2.0) <= 1.5` false), the operator<=> template run and its ordering compared with 0; the same at run time (clang gives the same)
+// found with classes/rewritten_three_way_beats_operator_needing_a_conversion (2026-11-06): the evaluator called the operator< the checker had not chosen (Box(1.0) < 1.5 false at compile time), and it ran no user operator<=> for a rewritten comparison (no constant)
+struct Box
+{
+  int v;
+
+  constexpr Box(double d) : v((int)d) {}
+  constexpr bool operator<(const Box& other) const { return v < other.v; }
+
+  template<typename U>
+  constexpr strong_ordering operator<=>(const U& u) const
+  {
+    return v < u ? strong_ordering::less : v > u ? strong_ordering::greater : strong_ordering::equal;
+  }
+};
+
+constexpr bool c1 = Box(1.0) < 1.5;
+constexpr bool c2 = Box(1.0) < Box(1.5);
+constexpr bool c3 = Box(2.0) <= 1.5;
+constexpr bool c4 = Optional<int>(1) < 1.5;
+static_assert(c1 && !c2 && !c3 && c4);
+
+int main()
+{
+  println(c1, " ", c2, " ", c3, " ", c4, " ", Box(1.0) < 1.5, " ", Box(2.0) <= 1.5);
+  return 0;
+}

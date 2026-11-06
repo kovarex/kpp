@@ -2106,6 +2106,11 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       member = nullptr;
       implicitAssignment = true;
     }
+    // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0`, a better match than the class's
+    // own operator< (Walker::rewrittenThreeWayBeats): neither the member nor a free operator<.
+    bool rewrittenRelation = b->call == OperatorCall::Rewritten && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq);
+    if (rewrittenRelation)
+      member = nullptr;
     // A free operator taking the operands strictly better than the member is called: C++ ranks
     // them together, as the checker does (classes/operator_member_and_free_ranked_together).
     if (member && op != P::Assign && b->lhs->ty && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
@@ -2126,7 +2131,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     }
     // A free `operator+(const char*, const String&)` and the like, templates among them
     // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
-    if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+    if (!rewrittenRelation && b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
       if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction))
       {
         verifyOperatorCall(b, OperatorCall::Function, f, false);

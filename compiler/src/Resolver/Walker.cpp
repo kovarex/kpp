@@ -5065,6 +5065,31 @@ auto GlobalScope::Impl::Walker::implicitEquality(const Ty* lhs, const Ty* rhs, u
   return impl.conversionRank(rhs, types.lref(types.qualified(cls, true, false))) < Impl::NotViable;
 }
 
+auto GlobalScope::Impl::Walker::rewrittenThreeWayBeats(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token) -> bool
+{
+  std::vector<int> mine = impl.binaryOperatorRanks(f, subst, member, lhs, rhs);
+  if (mine.size() != 2)
+    return false;
+  // (theirs ranks the operands in the candidate's own order: the reversed one takes rhs first)
+  auto better = [&](const std::vector<int>& theirs, bool reversed) {
+    if (theirs.size() != 2)
+      return false;
+    int l = reversed ? theirs[1] : theirs[0], r = reversed ? theirs[0] : theirs[1];
+    return l <= mine[0] && r <= mine[1] && (l < mine[0] || r < mine[1]);
+  };
+  Subst forward;
+  bool forwardMember = false;
+  if (FunctionDecl* g = operatorFunction(P::Spaceship, lhs, rhs, token, 2, forward, forwardMember))
+    if (better(impl.binaryOperatorRanks(g, forward, forwardMember, lhs, rhs), false))
+      return true;
+  Subst reversed;
+  bool reversedMember = false;
+  if (FunctionDecl* g = operatorFunction(P::Spaceship, rhs, lhs, token, 2, reversed, reversedMember))
+    if (better(impl.binaryOperatorRanks(g, reversed, reversedMember, rhs, lhs), true))
+      return true;
+  return false;
+}
+
 auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure, const Ty* lhsOperand) -> const Ty*
 {
   const Ty* l = types.stripRef(lhs);
@@ -5077,6 +5102,15 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   operatorCall = OperatorCall::Undecided;
   if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
   {
+    // `one < 1.5` with a member operator<(const Box&), which converts 1.5 by a constructor, and an
+    // operator<=> template taking it as it is: the rewritten `(one <=> 1.5) < 0`, a better match
+    // (classes/rewritten_three_way_beats_operator_needing_a_conversion; it compared 1 with 1).
+    if (arity == 2 && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq) &&
+        rewrittenThreeWayBeats(f, subst, isMember, lhsOperand ? lhsOperand : lhs, rhs, token))
+    {
+      operatorCall = OperatorCall::Rewritten;
+      return types.boolType();
+    }
     // A member that takes the right operand by a user-defined conversion against the built-in
     // operator through the left one's conversion operator: neither is better, as C++ ranks them
     // (B's `float32x4 < __m128`, which clang rejects; kpp took the member).

@@ -399,6 +399,10 @@
   // implicit object parameter as no conversion, then rhs to its parameter (arity 2), exact and
   // qualification as one rank; empty for a template or a type not known (not ranked then).
   std::vector<int> memberOperatorRanks(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity);
+  // The ranks of binary operator f on lhs and rhs, as memberOperatorRanks has them (a member's object
+  // as no conversion), a template's parameters bound in subst; empty where f takes them not or its
+  // type is not known.
+  std::vector<int> binaryOperatorRanks(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs);
   // Whether member operator f takes the operands with no conversion (no free one can be better).
   bool memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity);
   // Whether free operator free (freeSubst: its class's arguments, a friend's) takes lhs and rhs

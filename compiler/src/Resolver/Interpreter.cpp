@@ -2607,6 +2607,48 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     }
     return std::nullopt; // no such operator
   };
+  // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0` over the class's own operator<, a
+  // better match (Walker::rewrittenThreeWayBeats): that operator<=>'s ordering against 0, or the
+  // reversed `0 < (1.5 <=> one)`'s, never the operator< (it compared 1 with 1 at compile time).
+  bool relation = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq;
+  if (relation && node && node->call == OperatorCall::Rewritten && !verifyInterpreterDecisions())
+  {
+    const ConstValue zero = ConstValue::integer(0, types.intType(32));
+    for (int reversed = 0; reversed < 2; ++reversed)
+    {
+      const ConstValue& a = reversed ? r : l;
+      const ConstValue& b = reversed ? l : r;
+      if (!a.isObject() || !a.type || types.unqualified(types.stripRef(a.type))->kind != TyKind::Class)
+        continue;
+      Subst subst;
+      FunctionDecl* f = constClassOperator(a.type, P::Spaceship, {constOperandType(b, reversed ? lo : ro)}, subst, depth, true);
+      if (!f || constDefaulted(f) || !constDefinition(f))
+        continue;
+      if (!f->templateParams.empty())
+      {
+        CallExpr call{};
+        call.kind = NodeKind::CallExpr;
+        call.token = node->token;
+        Expr* operand = reversed ? node->lhs : node->rhs;
+        call.args = Span<Expr*>{&operand, 1};
+        LocalStack own;
+        std::vector<uint8_t> categories{(reversed ? lo : ro) ? (reversed ? lo : ro)->category : uint8_t(0)};
+        if (!constBindTemplate(f, {}, &call, {b}, ctx, depth, subst, own, &categories))
+          return std::nullopt;
+      }
+      std::optional<ConstValue> self = a;
+      std::optional<ConstValue> ordering = constCallOn(f, subst, {b}, &self, depth + 1);
+      if (!ordering)
+        return std::nullopt;
+      P mirrored = op == P::Less ? P::Greater : op == P::Greater ? P::Less : op == P::LessEq ? P::GreaterEq : P::LessEq;
+      return constBinaryValues(reversed ? mirrored : op, *ordering, zero, ctx, depth + 1);
+    }
+    // (a defaulted <=>: the member-by-member order, as below; never the class's own operator<)
+    std::optional<int> order = constMemberwiseOrder(l, r, ctx, depth + 1);
+    if (!order)
+      return std::nullopt;
+    return boolean(*order != 2 && (op == P::Less ? *order < 0 : op == P::Greater ? *order > 0 : op == P::LessEq ? *order <= 0 : *order >= 0));
+  }
   if (std::optional<std::optional<ConstValue>> found = direct(op, l, r, lo, ro))
     return *found;
   if (enums)
