@@ -1,5 +1,4 @@
 // spec: a functional cast whose type is a dependent alias (`C(m)` with `using C = typename X<M>::Type;`, `MakeUnsigned<T>(x)`) folds in constant evaluation as static_cast to the same type does (`3 5 / 3 5`)
-// pending: a functional cast through a dependent alias does not fold at compile time ("static assertion whose condition the compiler cannot evaluate yet"); the stdlib's gcd writes static_cast instead (D)
 extern "C" int printf(const char* format, ...);
 template<typename M> struct Same { using Type = M; };
 template<typename M> constexpr M viaLocalAlias(M m) { using C = typename Same<M>::Type; return C(m); }

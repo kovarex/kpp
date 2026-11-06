@@ -1577,8 +1577,9 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     }
   }
   // `size_t(5)`, `uint8_t(x)`, `RenderLayer::LayerType(RenderLayer::LAST)`, `Tag(0)`, `U(2 * limit)`:
-  // a type's name called with one value converts it, with none makes a zero.
-  if (c->args.size() <= 1 && !callee->name.last().hasTemplateArgs)
+  // a type's name called with one value converts it, with none makes a zero; an alias template's too,
+  // `MakeUnsigned<T>(value)`.
+  if (c->args.size() <= 1 && (!callee->name.last().hasTemplateArgs || (d && d->kind == NodeKind::UsingAliasDecl)))
   {
     const Ty* to = !d && callee->name.parts.size() == 1 ? builtinByName(callee->name.parts[0].symbol) : nullptr;
     if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
@@ -1588,6 +1589,10 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
       named.kind = NodeKind::NamedType;
       named.token = callee->token;
       named.name = callee->name;
+      // (an alias local to the function, `using C = typename Same<M>::Type;`, as the walk found it:
+      // convertType reads its type under the context's arguments, where a lookup finds no local alias)
+      if (d->kind == NodeKind::UsingAliasDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl)
+        named.resolved = d;
       to = types.unqualified(convertType(&named, ctx, depth + 1));
     }
     if (to && (to->isArithmetic() || to->kind == TyKind::Enum))
