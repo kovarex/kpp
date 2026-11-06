@@ -1,0 +1,9 @@
+// spec: NAN is the positive quiet NaN, as C's NAN and Limits<double>::quiet_NaN(): signbit(NAN) is false and signbit(-NAN) true, in a float too. Before, NAN was 0.0 / 0.0 computed at startup, the processor's default NaN, which is negative on x86-64: a silent wrong answer once signbit reads a NaN's sign. clang (MSVC's math.h) prints the same
+// found comparing kpp with clang (thread I's math battery)
+int main()
+{
+  double n = NAN;
+  float f = NAN;
+  println(signbit(n), " ", signbit(f), " ", signbit(-n), " ", isnan(n), " ", isnan(f), " ", n != n);
+  return 0;
+}
