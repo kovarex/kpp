@@ -15,8 +15,8 @@ pieces are what converted printf specifiers become.
   is `0.30000000000000004`, `1.0 / 3` is `0.3333333333333333`, and the float `1.0f / 3` is
   `0.33333334`. The form is C's `%g` at that number of significant digits: an exponent below 1e-4
   (`1.5e-07`) and from 1e16 (`1e+21`, `1.2345678901234568e+17`), positional between (`100`, `-2.75`,
-  `16777216`). A negative zero is `-0`; infinities are `inf` and `-inf`, and NaN is `nan`, on every
-  platform.
+  `16777216`, the float `1.5e10f` as its exact digits `15000000512`). A negative zero is `-0`;
+  infinities are `inf` and `-inf`, and NaN is `nan`, on every platform.
 
 **Difference from C++:** `std::to_string` of a floating value is `%f`, six decimals (`0.100000`). The
 conversion is to write `fixed(x, 6)` for it, which is that text exactly (with the printf rewrite).

@@ -1,0 +1,8 @@
+// spec: toString of a float below 1e16 is positional, as of a double (docs/stdlib/text.md, Numbers): its exact digits, which read back to the same float; an exponent only from 1e16. Before, a float from 1e9 on kept %g's exponent ("1e+10"), the positional rewrite capped at the float's 9 digits
+int main()
+{
+  float floats[] = {1e8f, 1e9f, 1e10f, 1.5e10f, 1.23456789e12f, 1e15f, 1e16f, 1e17f};
+  for (float value : floats)
+    println(toString(value));
+  return 0;
+}

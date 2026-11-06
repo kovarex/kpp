@@ -69,13 +69,15 @@ String floatingText(double value, i32 maxDigits, bool asFloat)
     if (asFloat ? (float)back == (float)value : back == value)
       break;
   }
-  // (%g at few digits writes 100 as "1e+02": below 1e16, as Python's repr, positionally.)
+  // (%g at few digits writes 100 as "1e+02": below 1e16, as Python's repr, positionally, at every
+  // digit before the point: a float from 1e9 on too, 1.5e10f as "15000000512", where %g at its 9
+  // digits would keep the exponent.)
   for (i32 i = 0; i < n; ++i)
     if (buffer[i] == 'e')
     {
       i32 exponent = (i32)strtol(buffer + i + 1, nullptr, 10);
       if (exponent >= 0 && exponent < 16)
-        n = snprintf(buffer, 40, "%.*g", exponent + 1 > maxDigits ? maxDigits : exponent + 1, value);
+        n = snprintf(buffer, 40, "%.*g", exponent + 1, value);
       break;
     }
   String result;
