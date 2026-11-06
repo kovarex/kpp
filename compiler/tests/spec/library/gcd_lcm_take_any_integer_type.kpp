@@ -1,0 +1,11 @@
+// spec: gcd and lcm take two integers of any types and return their common type, as std::gcd and std::lcm do: an unsigned 64-bit value above i64's range is that value, never read as a negative one (gcd(2^64 - 1, 5) is 5), and gcd of two ints is an int (`5 18446744073709551615 4 4 255`)
+// factorio: E's comparison battery against C++ (nm1, 2026-11-06): gcd(18446744073709551615ULL, 5ULL) was 1 in kpp, 5 in clang and g++
+// pending: gcd and lcm take i64, so an unsigned value above i64's range is read as negative and the result is wrong without a word (C)
+extern "C" import "stdio.h";
+int main()
+{
+  unsigned long long big = 18446744073709551615ULL;
+  printf("%llu %llu %d %d %d\n", (unsigned long long)gcd(big, 5ULL), (unsigned long long)lcm(big / 5, 5ULL), (int)sizeof(gcd(12, 18)), (int)sizeof(lcm(3, 4)),
+         (int)gcd((unsigned char)255, (unsigned char)255));
+  return 0;
+}
