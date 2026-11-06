@@ -3216,10 +3216,13 @@ auto GlobalScope::Impl::constCategory(Expr* e, Expr*& source) -> uint8_t
     {
       const QualifiedName& n = static_cast<NameExpr*>(c->callee)->name;
       std::string_view name = n.empty() ? std::string_view() : symbols.name(n.last().symbol);
-      if (name == "move" || (name == "forward" && !(e->ty && e->ty->kind == TyKind::LRef)))
+      // (`forward<T&>(x)` is x, an lvalue: its source is x too, whose place the result is; an
+      // expansion of `forward<U>(u)...` with U an lvalue reference handed its element on as a copy,
+      // which a reference then referred to, D 2026-11-06)
+      if (name == "move" || name == "forward")
       {
         source = c->args[0];
-        return 2;
+        return name == "forward" && e->ty && e->ty->kind == TyKind::LRef ? 1 : 2;
       }
     }
   }
@@ -3926,18 +3929,22 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
   // type a reference), as overload resolution sees them: by the values' types alone every argument
   // was an rvalue, so `Pair<M, M> p(m, n)` chose Pair(A&&, B&&) and moved from m and n at compile
   // time only (language/consteval_forwarding_constructor_copies_lvalue); else the values' types.
-  // (A class object's only, where an lvalue is copied and an rvalue moved: a string literal, an
-  // lvalue array, stays the value's pointer, as the values' types gave it.)
+  // (A class object's, a scalar's and an enumerator's, where an lvalue binds what an rvalue does
+  // not: a string literal, an lvalue array, stays the value's pointer, as the values' types gave
+  // it. A scalar's too since D, 2026-11-06: `C c(x)` with an int x chose C(int&&) over
+  // C(const int&) at compile time, 22 where run time gave 12, a silent wrong answer, and
+  // Tuple<int, int&>(a, b) deduced its forwarding constructor's UT as int, no constant.)
+  auto byCategory = [&](const Ty* at) { return at && (at->kind == TyKind::Class || at->isArithmetic() || at->kind == TyKind::Enum); };
   std::vector<const Ty*> typed = argTypes;
   bool typedWritten = written && written->size() == args.size();
   for (size_t i = 0; typedWritten && i < typed.size(); ++i)
     if (Expr* a = (*written)[i]; a && a->ty && a->ty->isKnown() && !types.isDependent(a->ty) && !mentionsUnknown(a->ty) && !constIsExpansion(a) &&
-                                 types.unqualified(types.stripRef(a->ty))->kind == TyKind::Class)
+                                 byCategory(types.unqualified(types.stripRef(a->ty))))
       typed[i] = argumentType(a, a->ty, types);
   // (Else by the categories constArguments gave: `new (node) E(forward<Args>(args)...)`, Map's node.)
   if (!typedWritten && categories && categories->size() == args.size())
     for (size_t i = 0; i < typed.size(); ++i)
-      if (const Ty* at = typed[i] ? types.unqualified(types.stripRef(typed[i])) : nullptr; at && at->kind == TyKind::Class && (*categories)[i] != 0)
+      if (const Ty* at = typed[i] ? types.unqualified(types.stripRef(typed[i])) : nullptr; byCategory(at) && (*categories)[i] != 0)
       {
         bool readOnly = places && i < places->size() && (*places)[i] && !(*places)[i]->writable();
         const Ty* object = readOnly ? types.qualified(at, true, false) : at;
