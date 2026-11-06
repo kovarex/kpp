@@ -11,7 +11,7 @@ namespace projects
   LibraryTarget libraryTarget(const Program& p, const Request& request)
   {
     LibraryTarget out;
-    Target target;
+    Target target = hostTarget();
     std::string sysroot;
     for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
       for (size_t i = 0; i + 1 < list->size(); ++i)

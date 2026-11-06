@@ -76,7 +76,7 @@
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
     bool packages = false;         // --packages: the code packages and what each file declares (design.md, "Code packages")
-    Target target;                 // --target: the platform the program is built for (Windows x64 by default)
+    Target target = hostTarget();  // --target: the platform the program is built for (the host's by default)
     bool targetChosen = false;     // --target was given (else the toolchain's own: windows-gnu for the bundled one)
     std::string sysroot;           // --sysroot: the target's headers and libraries, for another platform than the host
   };

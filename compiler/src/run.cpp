@@ -148,7 +148,7 @@ int runProgram(int argc, char** argv, int runIndex)
   bool noRun = noRunAt != options.end();
   if (noRun)
     options.erase(noRunAt);
-  Target target;
+  Target target = hostTarget();
   for (size_t k = 0; k + 1 < options.size(); ++k)
     if (options[k] == "--target")
     {

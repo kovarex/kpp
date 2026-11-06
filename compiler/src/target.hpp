@@ -89,3 +89,17 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
     why = "is no target kppc knows (windows, windows-gnu, linux, freebsd)";
   return false;
 }
+
+// The platform kppc runs on, --target's default (design.md, "Targets and hosts" 1): windows on
+// Windows, linux on Linux, freebsd on FreeBSD (thread E's Linux host, 2026-11-06).
+inline Target hostTarget()
+{
+  Target t;
+  std::string why;
+#if defined(__linux__)
+  targetNamed("linux", t, why);
+#elif defined(__FreeBSD__)
+  targetNamed("freebsd", t, why);
+#endif
+  return t;
+}

@@ -157,16 +157,19 @@ int printVersion()
   printf("compiler: %s\n", compiler.string().c_str());
   std::string problem = selectToolchain(compiler, "");
   std::string clang = problem.empty() ? clangPath() : "";
-  const char* kind = bundledToolchain()      ? "bundled: builds windows-gnu by default"
-                     : getenv("KPP_CLANG") ? "KPP_CLANG's"
-                                           : "Visual Studio's: builds windows by default";
+  // (the toolchain's default target: the bundled one's windows-gnu, else the host's own platform)
+  std::string byDefault = std::string("builds ") + hostTarget().name + " by default";
+  std::string kind = bundledToolchain()      ? std::string("bundled: builds windows-gnu by default")
+                     : getenv("KPP_CLANG") ? std::string("KPP_CLANG's")
+                     : hostTarget().windows() ? "Visual Studio's: " + byDefault
+                                              : "the system's: " + byDefault;
   std::error_code ec;
   if (!problem.empty())
     printf("toolchain: none: %s\n", problem.c_str());
   else if (std::filesystem::exists(clang, ec))
-    printf("toolchain: %s (%s)\n", clang.c_str(), kind);
+    printf("toolchain: %s (%s)\n", clang.c_str(), kind.c_str());
   else
-    printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind);
+    printf("toolchain: none: %s (%s) does not exist\n", clang.c_str(), kind.c_str());
   // Visual Studio's too where it is not the default: whether --toolchain msvc (and a build.kpp's
   // msvc,bundled) finds it here, and if not, what to install.
   if (!problem.empty() || bundledToolchain() || getenv("KPP_CLANG"))

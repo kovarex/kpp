@@ -1,4 +1,5 @@
 #include "source.hpp"
+#include "target.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -558,7 +559,18 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
   std::filesystem::path root = compiler.parent_path() / "sysroots" / name;
   std::error_code ec;
   if (!std::filesystem::is_directory(root / "usr" / "include", ec))
+  {
+    // The host's own platform (a Linux kppc building for Linux) with no sysroot beside kppc: the
+    // host's own system is the sysroot, as a native clang takes it (thread E, 2026-11-06).
+    Target host = hostTarget();
+    if (!host.windows() && std::string(platformOf(host.os).name) + "-x86_64" == name && std::filesystem::is_directory("/usr/include", ec))
+    {
+      if (what)
+        *what = "the host's own system";
+      return "/";
+    }
     return {};
+  }
   if (what)
   {
     std::string text;

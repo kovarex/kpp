@@ -79,11 +79,11 @@ namespace projects
   }
 
   // The platform a program is built for, as Library::systemLibrary names it (windows, linux, freebsd):
-  // the last --target of build.kpp's arguments and the command line's, windows without one. One kppc
-  // does not know is windows here, and kppc reports it.
+  // the last --target of build.kpp's arguments and the command line's, the host's without one. One kppc
+  // does not know leaves the host's here, and kppc reports it.
   std::string targetPlatform(const Program& p, const Request& request)
   {
-    Target target;
+    Target target = hostTarget();
     for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
       for (size_t i = 0; i + 1 < list->size(); ++i)
         if ((*list)[i] == "--target")
