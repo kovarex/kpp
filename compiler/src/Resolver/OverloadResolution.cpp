@@ -1210,6 +1210,14 @@ auto GlobalScope::Impl::pushEnclosingTemplateParams(Decl* d, LocalStack& own) ->
       own.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
 }
 
+auto GlobalScope::Impl::pushFunctionParams(Decl* d, LocalStack& own) -> void
+{
+  if (d && d->kind == NodeKind::FunctionDecl)
+    for (Decl* p : static_cast<FunctionDecl*>(d)->params)
+      if (p && p->kind == NodeKind::ParamDecl)
+        own.push(static_cast<ParamDecl*>(p)->name, p);
+}
+
 auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int depth) -> std::optional<bool>
 {
   if (!e || depth > 16)
@@ -1247,6 +1255,7 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
   }
   LocalStack own;
   pushEnclosingTemplateParams(f, own);
+  pushFunctionParams(f, own);
   TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   if (e->kind == NodeKind::NameExpr)
   {
@@ -1917,6 +1926,7 @@ auto GlobalScope::Impl::requiresHolds(FunctionDecl* f, const Subst& deduced) -> 
     }
   LocalStack own;
   pushEnclosingTemplateParams(f, own);
+  pushFunctionParams(f, own);
   std::string undeclared = undeclaredNameIn(f->requiresClause, f, own);
   std::string name = f->name.empty() ? std::string("?") : debugName(f->name.last().symbol);
   if (undeclared.empty())

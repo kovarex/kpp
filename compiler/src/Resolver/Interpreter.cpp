@@ -823,6 +823,12 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       // an enumerator's its enumeration (`sizeof(E::X)`: its underlying type's size, an unscoped
       // enumeration's int's).
       Decl* named = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
+      // A name the walk left unresolved, as the context's locals have it: a function parameter in a
+      // trailing requires clause (`requires (sizeof(v) <= 4)`, pushFunctionParams).
+      if (!named && s->type && s->type->kind == NodeKind::NamedType && ctx.locals && static_cast<NamedType*>(s->type)->name.parts.size() == 1)
+        if (Decl* d = lookupQualified(static_cast<NamedType*>(s->type)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+            d && (d->kind == NodeKind::ParamDecl || d->kind == NodeKind::VariableDecl))
+          named = d;
       // `sizeof(copy)` in a class template's member, copy one of several `when` data members of the name (design.md 19):
       // the instance's own, whose condition holds under its arguments (none or two: no constant).
       if (named && named->kind == NodeKind::VariableDecl && named->when && named->whenKnown < 0 && ctx.subst && named->parent &&

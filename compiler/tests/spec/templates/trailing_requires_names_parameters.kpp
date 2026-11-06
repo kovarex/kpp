@@ -1,0 +1,13 @@
+// spec: a trailing requires clause names the function's parameters ([dcl.decl] 4): `int g(auto x) requires Small<decltype(x)>` holds for g(1) (an int, 4 bytes) and not for g(1.0), which takes the overload requiring the opposite, and `template<class T> int h(T v) requires (sizeof(v) <= 4)` likewise (clang prints the same)
+// found by thread A's survey of C++ features (2026-11-06, kpp against clang 19): "the requires clause of g cannot be evaluated for __auto_0 = int32", the parameters not in scope in the clause
+template<class T> concept Small = sizeof(T) <= 4;
+int g(auto x) requires Small<decltype(x)> { return 3; }
+int g(auto x) requires (!Small<decltype(x)>) { return 4; }
+template<class T> int h(T v) requires (sizeof(v) <= 4) { return 5; }
+template<class T> int h(T v) requires (sizeof(v) > 4) { return 6; }
+
+int main()
+{
+  println(g(1), " ", g(1.0), " ", h('a'), " ", h(2.5));
+  return 0;
+}

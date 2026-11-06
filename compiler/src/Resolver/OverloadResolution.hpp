@@ -152,6 +152,10 @@
   // The template parameters of d and of the templates around it, as locals of a context in d.
   static void pushEnclosingTemplateParams(Decl* d, LocalStack& own);
 
+  // A function's parameters, which its trailing requires clause names (`int g(auto x) requires
+  // Small<decltype(x)>`, [dcl.decl] 4): in scope in a constraint, typed by the deduced arguments.
+  static void pushFunctionParams(Decl* d, LocalStack& own);
+
   // The value of a requires clause under the deduced arguments: `!`, `&&`, `||` and parentheses
   // over its parts, each a requires-expression (its requirements probed for the arguments), a
   // concept (its definition for them), a boolean trait (`isIntegral<T>`), or any other constant
