@@ -7,8 +7,10 @@ it needs:
 - **input** iterators (`*it`, `++it`, `==`): the scans that read the range once;
 - **forward** iterators (an input iterator that can be copied and read again, and written through):
   the algorithms that rearrange in place, and the binary searches;
-- **bidirectional** iterators (also `--it`): reverse, nextPermutation, copyBackward;
-- **random access** iterators (also `it + n`, `it - n`, `a - b`, `a < b`, `it[n]`): sorting.
+- **bidirectional** iterators (also `--it`): reverse, reverseCopy, nextPermutation, prevPermutation,
+  copyBackward;
+- **random access** iterators (also `it + n`, `it - n`, `a - b`, `a < b`, `it[n]`): sorting, partial
+  sorts and heaps.
 
 An iterator type says its category in `iterator_category` (`InputIteratorTag`,
 `ForwardIteratorTag`, `BidirectionalIteratorTag`, `RandomAccessIteratorTag`, `OutputIteratorTag`;
@@ -53,16 +55,37 @@ are equal; without it, `operator==`. Results that are counts or distances are `p
 - `count(first, last, value)`, `countIf(first, last, predicate)`.
 - `allOf`, `anyOf`, `noneOf(first, last, predicate)`; allOf and noneOf are true for an empty range.
 - `forEach(first, last, f)`: calls f(x) for every element in order; returns f.
+  `forEachN(first, n, f)`: for the first n elements (none for n <= 0); returns the position after them.
 - `minElement(first, last [, less])`, `maxElement(first, last [, less])`: the first least
-  (greatest) element, or last for an empty range.
+  (greatest) element, or last for an empty range. `minmaxElement(first, last [, less])`: the pair
+  (the first least, the last greatest), both last for an empty range; at most 3/2 (n - 1) comparisons.
 - `equal(first1, last1, first2 [, same])`: whether the range equals the one from first2 of the same
   length; `equal(first1, last1, first2, last2)`: whether the two ranges are equal, lengths included.
 - `lexicographicalCompare(first1, last1, first2, last2 [, less])`: whether the first range comes
   before the second in dictionary order.
+- `mismatch(first1, last1, first2 [, same])`, `mismatch(first1, last1, first2, last2 [, same])`: the
+  pair of first positions where the ranges differ, or where the first range (either range) ends.
 - `adjacentFind(first, last [, same])`: the first of two equal neighbours, or last.
+- `findFirstOf(first1, last1, first2, last2 [, same])`: the first element of the first range equal to
+  any of the second, or last1.
 - `accumulate(first, last, init [, op])`: init with every element added in order
   (`init = init + x`, or `init = op(init, x)`).
 - `min({a, b, c})`, `max({a, b, c})`: of a brace list.
+- `minmax(a, b [, less])`: a Pair of references to the arguments, (b, a) when b is less than a and
+  (a, b) otherwise. `minmax({a, b, c} [, less])`: a Pair of copies of the first least and the last
+  greatest; the list must not be empty.
+
+## Searching for subranges (forward iterators)
+
+- `search(first1, last1, first2, last2 [, same])`: the first place the second range occurs in the
+  first, first1 for an empty second range, last1 when it does not occur.
+- `findEnd(first1, last1, first2, last2 [, same])`: the last such place, last1 for an empty second
+  range or when it does not occur.
+- `searchN(first, last, n, value [, same])`: the first run of n elements equal to value (`same(x,
+  value)`), first for n <= 0, last when there is none.
+- `isPermutation(first1, last1, first2 [, same])`, `isPermutation(first1, last1, first2, last2 [,
+  same])`: whether the second range holds the same elements as the first, as many of each, in any
+  order. O(n^2) comparisons.
 
 ## Numeric
 
@@ -106,7 +129,20 @@ iterator included; the functions return the position after the last element writ
   range's element first.
 - `setDifference(first1, last1, first2, last2, out [, less])`: the elements of the first sorted
   range that are not in the second (as many times as the first has more), in order.
-  `setIntersection(...)`: those in both.
+  `setIntersection(...)`: those in both. `setUnion(...)`: those in either, an element as many times
+  as the range with more of it has it, the first range's before the second's. `setSymmetricDifference(...)`:
+  those in one range and not the other, as many times as the one range has more, in order.
+- `includes(first1, last1, first2, last2 [, less])`: whether every element of the second sorted range
+  is in the first, as many times.
+- `removeCopy(first, last, out, value)`, `removeCopyIf(first, last, out, predicate)`: the elements
+  that are not equal to value (do not satisfy predicate), in order.
+- `replaceCopy(first, last, out, old, new)`, `replaceCopyIf(first, last, out, predicate, new)`: the
+  range with new written for each element equal to old (satisfying predicate).
+- `uniqueCopy(first, last, out [, same])`: the first of every run of equal neighbours.
+- `reverseCopy(first, last, out)` (bidirectional): the range backwards. `rotateCopy(first, middle,
+  last, out)`: [middle, last), then [first, middle).
+- `partitionCopy(first, last, outTrue, outFalse, predicate)`: the elements that satisfy predicate to
+  outTrue, the others to outFalse, in order; returns the Pair of both ends.
 
 ## Rearranging in place (forward iterators)
 
@@ -120,11 +156,23 @@ iterator included; the functions return the position after the last element writ
   erase, the others keeping their order. O(n) predicate calls (2026-10-30).
 - `unique(first, last [, same])`: keeps the first of every run of equal neighbours, moved to the
   front; returns the end of the kept ones.
+- `swapRanges(first1, last1, first2)`: exchanges the range with the one of its length from first2;
+  returns the end of that one. They must not overlap.
 - `reverse(first, last)` (bidirectional).
 - `rotate(first, middle, last)`: moves middle's element to first, keeping the cyclic order;
   returns the new position of first's element. O(n).
 - `nextPermutation(first, last [, less])` (bidirectional): the next greater arrangement in
   dictionary order, returning true; from the greatest, the least one (sorted), returning false.
+  `prevPermutation(first, last [, less])`: the next smaller one; from the least, the greatest one,
+  returning false.
+- `partition(first, last, predicate)`: moves the elements that satisfy predicate before the others,
+  by swaps, and returns the first of the others. Not stable; exactly n predicate calls.
+- `stablePartition(first, last, predicate)`: the same, each group keeping its order; moves the elements
+  from the first that fails on through a temporary buffer of them; exactly n predicate calls.
+- `isPartitioned(first, last, predicate)`: whether no element that satisfies predicate comes after
+  one that does not; true for an empty range.
+- `partitionPoint(first, last, predicate)`: the end of the satisfying elements of a partitioned range,
+  O(log n) predicate calls.
 
 ## Sorting (random access iterators)
 
@@ -137,6 +185,14 @@ iterator included; the functions return the position after the last element writ
 - `nthElement(first, nth, last [, less])`: afterwards *nth is the element that would be there if
   the range were sorted, nothing before it is greater and nothing after it is less. O(n) on
   average.
+- `partialSort(first, middle, last [, less])`: the least middle - first elements, sorted, in
+  [first, middle); the others after them in no particular order. O(n log m) comparisons, m the sorted part.
+- `partialSortCopy(first, last, outFirst, outLast [, less])`: the least elements of the range, sorted,
+  written to [outFirst, outLast) (random access) as far as both reach; returns the end of what was
+  written. The range is not changed, and can be of input iterators.
+- `inplaceMerge(first, middle, last [, less])`: the sorted ranges [first, middle) and [middle, last)
+  become one sorted range, stable, the first range's element first on ties; through a temporary buffer
+  of the first range, with n - 1 comparisons at most. Forward iterators are enough.
 - `isSorted(first, last [, less])`: whether no element is less than the one before it;
   `isSortedUntil(first, last [, less])`: the end of the longest sorted prefix. O(n), forward
   iterators.
@@ -153,8 +209,21 @@ comparisons; O(log n) iterator steps for random access iterators, O(n) for the o
 - `equalRange(first, last, value [, less])`: the pair (lowerBound, upperBound).
 - `binarySearch(first, last, value [, less])`: whether an element equivalent to value is there.
 
+## Heaps (random access iterators)
+
+A max-heap under less: no element is less than the ones below it (the children of position i are at
+2i + 1 and 2i + 2), so its first element is a greatest one. How equal elements end up arranged is
+unspecified.
+
+- `makeHeap(first, last [, less])`: arranges the range as a heap. O(n) comparisons.
+- `pushHeap(first, last [, less])`: adds the element at last - 1 to the heap [first, last - 1). O(log n).
+- `popHeap(first, last [, less])`: moves the first element to last - 1, and [first, last - 1) is a heap
+  again. O(log n).
+- `sortHeap(first, last [, less])`: a heap sorted ascending. Not stable. O(n log n).
+- `isHeap(first, last [, less])`: whether the range is a heap; `isHeapUntil(first, last [, less])`: the
+  end of the longest prefix that is one.
+
 ## Not specified yet
 
-Partitioning (partition, stablePartition), partial sorts, the heap functions, set union and
-symmetric difference, searches for subranges (search, findEnd, mismatch); none of them has a
-user in the converted code yet.
+shuffle, sample, shiftLeft and shiftRight; clamp with a less, min and max of a brace list with a less.
+None of them has a user in the converted code yet.

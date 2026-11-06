@@ -416,3 +416,742 @@ void uninitializedCopy(const T* first, const T* last, T* dest)
 // The reverse of it (std::make_reverse_iterator).
 template<typename It>
 ReverseIterator<It> makeReverseIterator(It it) { return ReverseIterator<It>(it); }
+
+// --- Partitions (std::partition and its family) ---
+
+// The elements for which predicate is true moved before the others (unstable); returns the first of
+// the others.
+template<typename It, typename F>
+It partition(It first, It last, F predicate)
+{
+  first = findIfNot(first, last, predicate);
+  if (first == last)
+    return first;
+  for (It it = next(first); it != last; ++it)
+    if (predicate(*it))
+    {
+      iterSwap(first, it);
+      ++first;
+    }
+  return first;
+}
+
+// As partition, each group keeping its order (through a buffer of the range's length).
+template<typename It, typename F>
+It stablePartition(It first, It last, F predicate)
+{
+  using T = typename IteratorTraits<It>::value_type;
+  first = findIfNot(first, last, predicate); // what comes before stays, no element moved onto itself
+  if (first == last)
+    return first;
+  Vector<T> rejected;
+  rejected.push_back(move(*first));
+  It out = first;
+  for (It it = next(first); it != last; ++it)
+    if (predicate(*it))
+    {
+      *out = move(*it);
+      ++out;
+    }
+    else
+      rejected.push_back(move(*it));
+  It result = out;
+  for (T& value : rejected)
+  {
+    *out = move(value);
+    ++out;
+  }
+  return result;
+}
+
+// Whether every element for which predicate is true comes before every other one.
+template<typename It, typename F>
+bool isPartitioned(It first, It last, F predicate)
+{
+  first = findIfNot(first, last, predicate);
+  return noneOf(first, last, predicate);
+}
+
+// The first element of a partitioned range for which predicate is false (a binary search).
+template<typename It, typename F>
+It partitionPoint(It first, It last, F predicate)
+{
+  i64 count = distance(first, last);
+  while (count > 0)
+  {
+    i64 half = count / 2;
+    It middle = next(first, half);
+    if (predicate(*middle))
+    {
+      first = next(middle);
+      count -= half + 1;
+    }
+    else
+      count = half;
+  }
+  return first;
+}
+
+// The elements for which predicate is true copied to outTrue, the others to outFalse; returns both
+// ends.
+template<typename It, typename OutTrue, typename OutFalse, typename F>
+Pair<OutTrue, OutFalse> partitionCopy(It first, It last, OutTrue outTrue, OutFalse outFalse, F predicate)
+{
+  for (; first != last; ++first)
+    if (predicate(*first))
+    {
+      *outTrue = *first;
+      ++outTrue;
+    }
+    else
+    {
+      *outFalse = *first;
+      ++outFalse;
+    }
+  return Pair<OutTrue, OutFalse>(outTrue, outFalse);
+}
+
+// --- Heaps (std::make_heap and its family): a max-heap under less, its greatest element first ---
+
+template<typename It, typename F>
+void heapSiftUp(It first, i64 hole, F& less)
+{
+  using T = typename IteratorTraits<It>::value_type;
+  T value = move(first[hole]);
+  while (hole > 0)
+  {
+    i64 parent = (hole - 1) / 2;
+    if (!less(first[parent], value))
+      break;
+    first[hole] = move(first[parent]);
+    hole = parent;
+  }
+  first[hole] = move(value);
+}
+
+template<typename It, typename F>
+void makeHeap(It first, It last, F less)
+{
+  i64 count = last - first;
+  for (i64 i = count / 2; i-- > 0;)
+    heapSiftDown(first, i, count, less);
+}
+
+template<typename It>
+void makeHeap(It first, It last)
+{
+  makeHeap(first, last, Less<>());
+}
+
+// The element at last - 1 added to the heap [first, last - 1).
+template<typename It, typename F>
+void pushHeap(It first, It last, F less)
+{
+  if (last - first > 1)
+    heapSiftUp(first, last - first - 1, less);
+}
+
+template<typename It>
+void pushHeap(It first, It last)
+{
+  pushHeap(first, last, Less<>());
+}
+
+// The greatest element moved to last - 1, the rest a heap again.
+template<typename It, typename F>
+void popHeap(It first, It last, F less)
+{
+  i64 count = last - first;
+  if (count < 2)
+    return;
+  iterSwap(first, first + (count - 1));
+  heapSiftDown(first, 0, count - 1, less);
+}
+
+template<typename It>
+void popHeap(It first, It last)
+{
+  popHeap(first, last, Less<>());
+}
+
+// A heap sorted ascending.
+template<typename It, typename F>
+void sortHeap(It first, It last, F less)
+{
+  for (; last - first > 1; --last)
+    popHeap(first, last, less);
+}
+
+template<typename It>
+void sortHeap(It first, It last)
+{
+  sortHeap(first, last, Less<>());
+}
+
+// The end of the longest prefix that is a heap.
+template<typename It, typename F>
+It isHeapUntil(It first, It last, F less)
+{
+  i64 count = last - first;
+  for (i64 child = 1; child < count; ++child)
+    if (less(first[(child - 1) / 2], first[child]))
+      return first + child;
+  return last;
+}
+
+template<typename It>
+It isHeapUntil(It first, It last)
+{
+  return isHeapUntil(first, last, Less<>());
+}
+
+template<typename It, typename F>
+bool isHeap(It first, It last, F less)
+{
+  return isHeapUntil(first, last, less) == last;
+}
+
+template<typename It>
+bool isHeap(It first, It last)
+{
+  return isHeapUntil(first, last, Less<>()) == last;
+}
+
+// --- Partial sorts ---
+
+// The least middle - first elements, sorted, before middle; the rest in no particular order.
+template<typename It, typename F>
+void partialSort(It first, It middle, It last, F less)
+{
+  makeHeap(first, middle, less);
+  i64 count = middle - first;
+  for (It it = middle; it != last; ++it)
+    if (less(*it, *first))
+    {
+      iterSwap(it, first);
+      heapSiftDown(first, 0, count, less);
+    }
+  sortHeap(first, middle, less);
+}
+
+template<typename It>
+void partialSort(It first, It middle, It last)
+{
+  partialSort(first, middle, last, Less<>());
+}
+
+// The least elements of [first, last), sorted, copied into [outFirst, outLast) (as many as fit);
+// returns the end of what was written.
+template<typename InIt, typename OutIt, typename F>
+OutIt partialSortCopy(InIt first, InIt last, OutIt outFirst, OutIt outLast, F less)
+{
+  OutIt out = outFirst;
+  for (; first != last && out != outLast; ++first, ++out)
+    *out = *first;
+  makeHeap(outFirst, out, less);
+  i64 count = out - outFirst;
+  for (; first != last; ++first)
+    if (count > 0 && less(*first, *outFirst))
+    {
+      *outFirst = *first;
+      heapSiftDown(outFirst, 0, count, less);
+    }
+  sortHeap(outFirst, out, less);
+  return out;
+}
+
+template<typename InIt, typename OutIt>
+OutIt partialSortCopy(InIt first, InIt last, OutIt outFirst, OutIt outLast)
+{
+  return partialSortCopy(first, last, outFirst, outLast, Less<>());
+}
+
+// --- Sorted ranges: union, symmetric difference, includes, inplaceMerge ---
+
+// Every element of either sorted range, an element in both as many times as it is in the one with
+// more of it, from the first range where equal (std::set_union).
+template<typename It1, typename It2, typename OutIt, typename F>
+OutIt setUnion(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
+{
+  for (; first1 != last1; ++out)
+  {
+    if (first2 == last2)
+      return copy(first1, last1, out);
+    if (less(*first2, *first1))
+    {
+      *out = *first2;
+      ++first2;
+    }
+    else
+    {
+      *out = *first1;
+      if (!less(*first1, *first2))
+        ++first2;
+      ++first1;
+    }
+  }
+  return copy(first2, last2, out);
+}
+
+template<typename It1, typename It2, typename OutIt>
+OutIt setUnion(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out)
+{
+  return setUnion(first1, last1, first2, last2, out, Less<>());
+}
+
+// The elements of either sorted range that are not in the other (std::set_symmetric_difference).
+template<typename It1, typename It2, typename OutIt, typename F>
+OutIt setSymmetricDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
+{
+  while (first1 != last1)
+  {
+    if (first2 == last2)
+      return copy(first1, last1, out);
+    if (less(*first1, *first2))
+    {
+      *out = *first1;
+      ++out;
+      ++first1;
+    }
+    else if (less(*first2, *first1))
+    {
+      *out = *first2;
+      ++out;
+      ++first2;
+    }
+    else
+    {
+      ++first1;
+      ++first2;
+    }
+  }
+  return copy(first2, last2, out);
+}
+
+template<typename It1, typename It2, typename OutIt>
+OutIt setSymmetricDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out)
+{
+  return setSymmetricDifference(first1, last1, first2, last2, out, Less<>());
+}
+
+// Whether the second sorted range is a subsequence of the first (as many of each element).
+template<typename It1, typename It2, typename F>
+bool includes(It1 first1, It1 last1, It2 first2, It2 last2, F less)
+{
+  for (; first2 != last2; ++first1)
+  {
+    if (first1 == last1 || less(*first2, *first1))
+      return false;
+    if (!less(*first1, *first2))
+      ++first2;
+  }
+  return true;
+}
+
+template<typename It1, typename It2>
+bool includes(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return includes(first1, last1, first2, last2, Less<>());
+}
+
+// The sorted ranges [first, middle) and [middle, last) merged in place, stable (through a buffer of
+// the first range).
+template<typename It, typename F>
+void inplaceMerge(It first, It middle, It last, F less)
+{
+  using T = typename IteratorTraits<It>::value_type;
+  Vector<T> left;
+  for (It it = first; it != middle; ++it)
+    left.push_back(move(*it));
+  T* a = left.begin();
+  T* aEnd = left.end();
+  It b = middle;
+  It out = first;
+  while (a != aEnd)
+  {
+    if (b != last && less(*b, *a))
+    {
+      *out = move(*b);
+      ++b;
+    }
+    else
+    {
+      *out = move(*a);
+      ++a;
+    }
+    ++out;
+  }
+}
+
+template<typename It>
+void inplaceMerge(It first, It middle, It last)
+{
+  inplaceMerge(first, middle, last, Less<>());
+}
+
+// --- Searches ---
+
+// The first place [first2, last2) occurs in [first1, last1), first1 for an empty needle, last1 when
+// none.
+template<typename It1, typename It2, typename F>
+It1 search(It1 first1, It1 last1, It2 first2, It2 last2, F same)
+{
+  for (;; ++first1)
+  {
+    It1 a = first1;
+    for (It2 b = first2;; ++a, ++b)
+    {
+      if (b == last2)
+        return first1;
+      if (a == last1)
+        return last1;
+      if (!same(*a, *b))
+        break;
+    }
+  }
+}
+
+template<typename It1, typename It2>
+It1 search(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return search(first1, last1, first2, last2, EqualTo<>());
+}
+
+// The last place [first2, last2) occurs in [first1, last1); last1 for an empty needle or none.
+template<typename It1, typename It2, typename F>
+It1 findEnd(It1 first1, It1 last1, It2 first2, It2 last2, F same)
+{
+  if (first2 == last2)
+    return last1;
+  It1 result = last1;
+  for (;;)
+  {
+    It1 at = search(first1, last1, first2, last2, same);
+    if (at == last1)
+      return result;
+    result = at;
+    first1 = next(at);
+  }
+}
+
+template<typename It1, typename It2>
+It1 findEnd(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return findEnd(first1, last1, first2, last2, EqualTo<>());
+}
+
+// The first run of count elements equal to value; first for a count of 0 or less, last when none.
+template<typename It, typename V, typename F>
+It searchN(It first, It last, i64 count, const V& value, F same)
+{
+  if (count <= 0)
+    return first;
+  for (; first != last; ++first)
+  {
+    if (!same(*first, value))
+      continue;
+    It start = first;
+    i64 run = 0;
+    while (first != last && same(*first, value) && run < count)
+    {
+      ++first;
+      ++run;
+    }
+    if (run == count)
+      return start;
+    if (first == last)
+      return last;
+  }
+  return last;
+}
+
+template<typename It, typename V>
+It searchN(It first, It last, i64 count, const V& value)
+{
+  return searchN(first, last, count, value, EqualTo<>());
+}
+
+// The first element of [first1, last1) equal to any of [first2, last2), or last1.
+template<typename It1, typename It2, typename F>
+It1 findFirstOf(It1 first1, It1 last1, It2 first2, It2 last2, F same)
+{
+  for (; first1 != last1; ++first1)
+    for (It2 it = first2; it != last2; ++it)
+      if (same(*first1, *it))
+        return first1;
+  return last1;
+}
+
+template<typename It1, typename It2>
+It1 findFirstOf(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return findFirstOf(first1, last1, first2, last2, EqualTo<>());
+}
+
+// The first positions where the two ranges differ (or either ends).
+template<typename It1, typename It2, typename F>
+Pair<It1, It2> mismatch(It1 first1, It1 last1, It2 first2, It2 last2, F same)
+{
+  while (first1 != last1 && first2 != last2 && same(*first1, *first2))
+  {
+    ++first1;
+    ++first2;
+  }
+  return Pair<It1, It2>(first1, first2);
+}
+
+template<typename It1, typename It2>
+Pair<It1, It2> mismatch(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return mismatch(first1, last1, first2, last2, EqualTo<>());
+}
+
+template<typename It1, typename It2, typename F>
+Pair<It1, It2> mismatch(It1 first1, It1 last1, It2 first2, F same)
+{
+  while (first1 != last1 && same(*first1, *first2))
+  {
+    ++first1;
+    ++first2;
+  }
+  return Pair<It1, It2>(first1, first2);
+}
+
+template<typename It1, typename It2>
+Pair<It1, It2> mismatch(It1 first1, It1 last1, It2 first2)
+{
+  return mismatch(first1, last1, first2, EqualTo<>());
+}
+
+// Whether the second range holds the same elements as the first in some order (O(n^2) compares).
+template<typename It1, typename It2, typename F>
+bool isPermutation(It1 first1, It1 last1, It2 first2, It2 last2, F same)
+{
+  if (distance(first1, last1) != distance(first2, last2))
+    return false;
+  for (It1 it = first1; it != last1; ++it)
+  {
+    auto sameAsIt = [&](const auto& x) { return same(*it, x); };
+    if (findIf(first1, it, sameAsIt) != it)
+      continue; // counted at its first occurrence
+    if (countIf(first1, last1, sameAsIt) != countIf(first2, last2, sameAsIt))
+      return false;
+  }
+  return true;
+}
+
+template<typename It1, typename It2>
+bool isPermutation(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  return isPermutation(first1, last1, first2, last2, EqualTo<>());
+}
+
+template<typename It1, typename It2, typename F>
+bool isPermutation(It1 first1, It1 last1, It2 first2, F same)
+{
+  return isPermutation(first1, last1, first2, next(first2, distance(first1, last1)), same);
+}
+
+template<typename It1, typename It2>
+bool isPermutation(It1 first1, It1 last1, It2 first2)
+{
+  return isPermutation(first1, last1, first2, EqualTo<>());
+}
+
+// --- Copying forms ---
+
+template<typename InIt, typename OutIt, typename V>
+OutIt removeCopy(InIt first, InIt last, OutIt out, const V& value)
+{
+  for (; first != last; ++first)
+    if (!(*first == value))
+    {
+      *out = *first;
+      ++out;
+    }
+  return out;
+}
+
+template<typename InIt, typename OutIt, typename F>
+OutIt removeCopyIf(InIt first, InIt last, OutIt out, F predicate)
+{
+  for (; first != last; ++first)
+    if (!predicate(*first))
+    {
+      *out = *first;
+      ++out;
+    }
+  return out;
+}
+
+template<typename InIt, typename OutIt, typename V>
+OutIt replaceCopy(InIt first, InIt last, OutIt out, const V& oldValue, const V& newValue)
+{
+  for (; first != last; ++first, ++out)
+    *out = *first == oldValue ? newValue : *first;
+  return out;
+}
+
+template<typename InIt, typename OutIt, typename F, typename V>
+OutIt replaceCopyIf(InIt first, InIt last, OutIt out, F predicate, const V& newValue)
+{
+  for (; first != last; ++first, ++out)
+    *out = predicate(*first) ? newValue : *first;
+  return out;
+}
+
+// The range with each run of equal elements written once.
+template<typename InIt, typename OutIt, typename F>
+OutIt uniqueCopy(InIt first, InIt last, OutIt out, F same)
+{
+  if (first == last)
+    return out;
+  typename IteratorTraits<InIt>::value_type previous = *first;
+  *out = previous;
+  ++out;
+  for (++first; first != last; ++first)
+    if (!same(previous, *first))
+    {
+      previous = *first;
+      *out = previous;
+      ++out;
+    }
+  return out;
+}
+
+template<typename InIt, typename OutIt>
+OutIt uniqueCopy(InIt first, InIt last, OutIt out)
+{
+  return uniqueCopy(first, last, out, EqualTo<>());
+}
+
+template<typename It, typename OutIt>
+OutIt reverseCopy(It first, It last, OutIt out)
+{
+  while (last != first)
+  {
+    --last;
+    *out = *last;
+    ++out;
+  }
+  return out;
+}
+
+// [middle, last) then [first, middle) written to out.
+template<typename It, typename OutIt>
+OutIt rotateCopy(It first, It middle, It last, OutIt out)
+{
+  return copy(first, middle, copy(middle, last, out));
+}
+
+// The elements of [first1, last1) exchanged with as many from first2; returns the end of the second.
+template<typename It1, typename It2>
+It2 swapRanges(It1 first1, It1 last1, It2 first2)
+{
+  for (; first1 != last1; ++first1, ++first2)
+    iterSwap(first1, first2);
+  return first2;
+}
+
+// f(x) for the first count elements; returns the position after them.
+template<typename It, typename F>
+It forEachN(It first, i64 count, F f)
+{
+  for (; count > 0; --count, ++first)
+    f(*first);
+  return first;
+}
+
+// --- Permutations, minmax ---
+
+// The previous permutation in lexicographical order; false (and the last one, descending) after the
+// first.
+template<typename It, typename F>
+bool prevPermutation(It first, It last, F less)
+{
+  return nextPermutation(first, last, [&](const auto& a, const auto& b) { return less(b, a); });
+}
+
+template<typename It>
+bool prevPermutation(It first, It last)
+{
+  return prevPermutation(first, last, Less<>());
+}
+
+// The first least and the last greatest element, as std::minmax_element: taken two at a time, at
+// most 3/2 n compares.
+template<typename It, typename F>
+Pair<It, It> minmaxElement(It first, It last, F less)
+{
+  Pair<It, It> result(first, first);
+  if (first == last)
+    return result;
+  ++first;
+  if (first == last)
+    return result;
+  if (less(*first, *result.first))
+    result.first = first;
+  else
+    result.second = first;
+  ++first;
+  while (first != last)
+  {
+    It a = first;
+    ++first;
+    if (first == last)
+    {
+      if (less(*a, *result.first))
+        result.first = a;
+      else if (!less(*a, *result.second))
+        result.second = a;
+      break;
+    }
+    It b = first;
+    ++first;
+    It lower = a;
+    It upper = b;
+    if (less(*b, *a))
+    {
+      lower = b;
+      upper = a;
+    }
+    if (less(*lower, *result.first))
+      result.first = lower;
+    if (!less(*upper, *result.second))
+      result.second = upper;
+  }
+  return result;
+}
+
+template<typename It>
+Pair<It, It> minmaxElement(It first, It last)
+{
+  return minmaxElement(first, last, Less<>());
+}
+
+// (a, b) ordered: (b, a) when b is less than a, as std::minmax (references to the arguments).
+template<typename T, typename F>
+Pair<const T&, const T&> minmax(const T& a, const T& b, F less)
+{
+  return less(b, a) ? Pair<const T&, const T&>(b, a) : Pair<const T&, const T&>(a, b);
+}
+
+template<typename T>
+Pair<const T&, const T&> minmax(const T& a, const T& b)
+{
+  return minmax(a, b, Less<>());
+}
+
+// The first least and the last greatest of a brace list, as copies.
+template<typename T, typename F>
+Pair<T, T> minmax(InitializerList<T> values, F less)
+{
+  Pair<const T*, const T*> found = minmaxElement(values.begin(), values.end(), less);
+  return Pair<T, T>(*found.first, *found.second);
+}
+
+template<typename T>
+Pair<T, T> minmax(InitializerList<T> values)
+{
+  return minmax(values, Less<>());
+}

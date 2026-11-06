@@ -1,0 +1,582 @@
+// spec: the rest of <algorithm> under kpp's names, each as std's: partition, stablePartition, isPartitioned, partitionPoint, partitionCopy; makeHeap, pushHeap, popHeap, sortHeap, isHeap, isHeapUntil; partialSort, partialSortCopy; setUnion, setSymmetricDifference, includes, inplaceMerge; search, findEnd, searchN, findFirstOf, mismatch, isPermutation; removeCopy(If), replaceCopy(If), uniqueCopy, reverseCopy, rotateCopy, swapRanges, forEachN; prevPermutation, minmaxElement, minmax. The forms with a predicate, other iterator categories, move-only elements, empty ranges, ties, std's compare and call counts, 300 random ranges against sort; the expected output is what libstdc++ prints for the same program, and MSVC's STL but for its minmax_element, over std's compare bound for an even n
+// factorio: thread K, none of these had a user in the converted code; the batteries against std found them missing
+extern "C" import "stdio.h";
+
+struct Item
+{
+  int key;
+  int order;
+};
+
+bool itemLess(const Item& a, const Item& b) { return a.key < b.key; }
+bool itemSame(const Item& a, const Item& b) { return a.key == b.key; }
+bool isOdd(int x) { return x % 2 != 0; }
+bool descending(int a, int b) { return a > b; }
+bool sameParity(int a, int b) { return a % 2 == b % 2; }
+bool lessBox(const UniquePtr<int>& a, const UniquePtr<int>& b) { return *a < *b; }
+
+void show(const char* what, const Vector<int>& v)
+{
+  printf("%s:", what);
+  for (int x : v)
+    printf(" %d", x);
+  printf("\n");
+}
+
+void showItems(const char* what, const Vector<Item>& v)
+{
+  printf("%s:", what);
+  for (const Item& x : v)
+    printf(" %d/%d", x.key, x.order);
+  printf("\n");
+}
+
+void showBoxes(const char* what, const Vector<UniquePtr<int>>& v)
+{
+  printf("%s:", what);
+  for (const UniquePtr<int>& x : v)
+    printf(" %d", x ? *x : -1);
+  printf("\n");
+}
+
+Vector<UniquePtr<int>> boxes(const Vector<int>& values)
+{
+  Vector<UniquePtr<int>> result;
+  for (int x : values)
+    result.push_back(UniquePtr<int>(new int(x)));
+  return result;
+}
+
+unsigned seed = 12345;
+int nextRandom(int limit)
+{
+  seed = seed * 1664525u + 1013904223u;
+  return (int)((seed >> 8) % (unsigned)limit);
+}
+
+void basics()
+{
+  {
+    Vector<int> v = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    auto mid = partition(v.begin(), v.end(), isOdd);
+    printf("partition %d odd first %d %d\n", (int)(mid - v.begin()), (int)allOf(v.begin(), mid, isOdd), (int)noneOf(mid, v.end(), isOdd));
+    printf("isPartitioned %d %d\n", (int)isPartitioned(v.begin(), v.end(), isOdd), (int)isPartitioned(v.begin() + 1, v.end(), isOdd));
+    printf("partitionPoint %d\n", (int)(partitionPoint(v.begin(), v.end(), isOdd) - v.begin()));
+    Vector<int> w = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    auto smid = stablePartition(w.begin(), w.end(), isOdd);
+    show("stablePartition", w);
+    printf("stablePartition at %d\n", (int)(smid - w.begin()));
+    Vector<Item> items = {{3, 0}, {1, 1}, {2, 2}, {1, 3}, {3, 4}, {2, 5}};
+    stablePartition(items.begin(), items.end(), [](const Item& x) { return x.key != 2; });
+    showItems("stablePartition items", items);
+    Vector<int> evens, odds;
+    partitionCopy(v.begin(), v.end(), backInserter(odds), backInserter(evens), isOdd);
+    printf("partitionCopy %d %d\n", (int)odds.size(), (int)evens.size());
+  }
+  {
+    Vector<int> v = {9, 3, 7, 1, 8, 2, 6, 4, 5, 0};
+    partialSort(v.begin(), v.begin() + 4, v.end());
+    printf("partialSort %d %d %d %d\n", v[0], v[1], v[2], v[3]);
+    Vector<int> out(3);
+    Vector<int> src = {5, 1, 4, 2, 3};
+    auto end = partialSortCopy(src.begin(), src.end(), out.begin(), out.end());
+    printf("partialSortCopy %d %d %d / %d\n", out[0], out[1], out[2], (int)(end - out.begin()));
+    Vector<int> big(8);
+    end = partialSortCopy(src.begin(), src.end(), big.begin(), big.end());
+    printf("partialSortCopy into more %d\n", (int)(end - big.begin()));
+  }
+  {
+    Vector<int> h = {3, 1, 4, 1, 5, 9, 2, 6};
+    makeHeap(h.begin(), h.end());
+    printf("makeHeap top %d isHeap %d\n", h[0], (int)isHeap(h.begin(), h.end()));
+    h.push_back(10);
+    pushHeap(h.begin(), h.end());
+    printf("pushHeap top %d\n", h[0]);
+    popHeap(h.begin(), h.end());
+    printf("popHeap back %d top %d\n", h.back(), h[0]);
+    h.pop_back();
+    sortHeap(h.begin(), h.end());
+    show("sortHeap", h);
+    Vector<int> g = {9, 5, 8, 1, 7};
+    printf("isHeapUntil %d\n", (int)(isHeapUntil(g.begin(), g.end()) - g.begin()));
+    Vector<int> mh = {3, 1, 4, 1, 5};
+    makeHeap(mh.begin(), mh.end(), [](int a, int b) { return a > b; });
+    printf("min heap top %d\n", mh[0]);
+  }
+  {
+    Vector<int> a = {1, 2, 2, 3, 5, 7};
+    Vector<int> b = {2, 3, 3, 4, 7, 8};
+    Vector<int> u, s, i, d;
+    setUnion(a.begin(), a.end(), b.begin(), b.end(), backInserter(u));
+    setSymmetricDifference(a.begin(), a.end(), b.begin(), b.end(), backInserter(s));
+    setIntersection(a.begin(), a.end(), b.begin(), b.end(), backInserter(i));
+    setDifference(a.begin(), a.end(), b.begin(), b.end(), backInserter(d));
+    show("setUnion", u);
+    show("setSymmetricDifference", s);
+    show("setIntersection", i);
+    show("setDifference", d);
+    Vector<int> sub = {2, 3, 7};
+    Vector<int> notSub = {2, 2, 2};
+    printf("includes %d %d\n", (int)includes(a.begin(), a.end(), sub.begin(), sub.end()), (int)includes(a.begin(), a.end(), notSub.begin(), notSub.end()));
+    Vector<int> m = {1, 4, 6, 2, 3, 5};
+    inplaceMerge(m.begin(), m.begin() + 3, m.end());
+    show("inplaceMerge", m);
+    Vector<Item> mi = {{1, 0}, {3, 1}, {1, 2}, {2, 3}, {3, 4}};
+    inplaceMerge(mi.begin(), mi.begin() + 2, mi.end(), itemLess);
+    showItems("inplaceMerge stable", mi);
+  }
+  {
+    Vector<int> v = {1, 2, 3, 4, 1, 2, 3, 4, 5};
+    Vector<int> needle = {2, 3, 4};
+    Vector<int> none = {9};
+    Vector<int> empty;
+    printf("search %d %d %d\n", (int)(search(v.begin(), v.end(), needle.begin(), needle.end()) - v.begin()), (int)(search(v.begin(), v.end(), none.begin(), none.end()) - v.begin()), (int)(search(v.begin(), v.end(), empty.begin(), empty.end()) - v.begin()));
+    printf("findEnd %d %d\n", (int)(findEnd(v.begin(), v.end(), needle.begin(), needle.end()) - v.begin()), (int)(findEnd(v.begin(), v.end(), empty.begin(), empty.end()) - v.begin()));
+    Vector<int> runs = {1, 7, 7, 2, 7, 7, 7, 3};
+    printf("searchN %d %d %d\n", (int)(searchN(runs.begin(), runs.end(), 3, 7) - runs.begin()), (int)(searchN(runs.begin(), runs.end(), 4, 7) - runs.begin()), (int)(searchN(runs.begin(), runs.end(), 0, 7) - runs.begin()));
+    Vector<int> set = {5, 3};
+    printf("findFirstOf %d\n", (int)(findFirstOf(v.begin(), v.end(), set.begin(), set.end()) - v.begin()));
+    Vector<int> other = {1, 2, 3, 9, 9};
+    auto mm = mismatch(v.begin(), v.end(), other.begin(), other.end());
+    printf("mismatch %d %d\n", (int)(mm.first - v.begin()), (int)(mm.second - other.begin()));
+    Vector<int> perm = {4, 3, 2, 1, 1, 2, 3, 4, 5};
+    printf("isPermutation %d %d\n", (int)isPermutation(v.begin(), v.end(), perm.begin()), (int)isPermutation(v.begin(), v.end(), other.begin(), other.end()));
+    printf("count %d countIf %d\n", (int)count(v.begin(), v.end(), 2), (int)countIf(v.begin(), v.end(), isOdd));
+  }
+  {
+    Vector<int> v = {1, 2, 2, 3, 3, 3, 4, 2};
+    Vector<int> a, b, c, d, e, f, g;
+    removeCopy(v.begin(), v.end(), backInserter(a), 2);
+    removeCopyIf(v.begin(), v.end(), backInserter(b), isOdd);
+    replaceCopy(v.begin(), v.end(), backInserter(c), 3, 30);
+    replaceCopyIf(v.begin(), v.end(), backInserter(d), isOdd, 0);
+    uniqueCopy(v.begin(), v.end(), backInserter(e));
+    reverseCopy(v.begin(), v.end(), backInserter(f));
+    rotateCopy(v.begin(), v.begin() + 3, v.end(), backInserter(g));
+    show("removeCopy", a);
+    show("removeCopyIf", b);
+    show("replaceCopy", c);
+    show("replaceCopyIf", d);
+    show("uniqueCopy", e);
+    show("reverseCopy", f);
+    show("rotateCopy", g);
+    Vector<int> x = {1, 2, 3};
+    Vector<int> y = {7, 8, 9, 10};
+    swapRanges(x.begin(), x.end(), y.begin());
+    show("swapRanges x", x);
+    show("swapRanges y", y);
+    Vector<int> n = {1, 2, 3, 4};
+    int sum = 0;
+    forEachN(n.begin(), 3, [&](int k) { sum += k; });
+    printf("forEachN %d\n", sum);
+  }
+  {
+    Vector<int> p = {3, 2, 1};
+    int steps = 0;
+    while (prevPermutation(p.begin(), p.end()))
+      ++steps;
+    printf("prevPermutation %d steps, then %d %d %d\n", steps, p[0], p[1], p[2]);
+    Vector<int> v = {4, 1, 7, 1, 7, 3};
+    auto mm = minmaxElement(v.begin(), v.end());
+    printf("minmaxElement %d %d\n", (int)(mm.first - v.begin()), (int)(mm.second - v.begin()));
+    auto pr = minmax(5, 3);
+    printf("minmax %d %d\n", pr.first, pr.second);
+    printf("clamp %d %d %d\n", clamp(5, 1, 3), clamp(-2, 1, 3), clamp(2, 1, 3));
+  }
+}
+
+void predicateForms()
+{
+  Vector<int> a = {1, 3, 5, 2, 4};
+  Vector<int> b = {7, 9, 2, 2, 4};
+  auto m3 = mismatch(a.begin(), a.end(), b.begin(), sameParity);
+  auto m5 = mismatch(a.begin(), a.end(), b.begin(), b.end(), sameParity);
+  auto m2 = mismatch(a.begin(), a.end(), b.begin());
+  printf("mismatch %d %d %d\n", (int)(m3.first - a.begin()), (int)(m5.second - b.begin()), (int)(m2.first - a.begin()));
+  Vector<int> shorter = {1, 3};
+  auto ms = mismatch(a.begin(), a.end(), shorter.begin(), shorter.end());
+  printf("mismatch shorter %d %d\n", (int)(ms.first - a.begin()), (int)(ms.second == shorter.end()));
+  Vector<int> c = {2, 4, 6, 1, 3};
+  printf("isPermutation same %d %d\n", (int)isPermutation(a.begin(), a.end(), c.begin(), sameParity), (int)isPermutation(a.begin(), a.end(), c.begin(), c.end(), sameParity));
+  Vector<int> d = {2, 4, 6, 8, 3};
+  printf("isPermutation different %d %d %d\n", (int)isPermutation(a.begin(), a.end(), d.begin(), sameParity), (int)isPermutation(a.begin(), a.end(), d.begin(), d.end(), sameParity), (int)isPermutation(a.begin(), a.end(), shorter.begin(), shorter.end()));
+  Vector<int> dup1 = {1, 1, 2};
+  Vector<int> dup2 = {1, 2, 2};
+  printf("isPermutation duplicates %d\n", (int)isPermutation(dup1.begin(), dup1.end(), dup2.begin(), dup2.end()));
+  Vector<int> u;
+  uniqueCopy(a.begin(), a.end(), backInserter(u), sameParity);
+  show("uniqueCopy same", u);
+  Vector<int> needle = {4, 6};
+  printf("search same %d\n", (int)(search(a.begin(), a.end(), needle.begin(), needle.end(), sameParity) - a.begin()));
+  Vector<int> needle2 = {1, 1};
+  printf("findEnd same %d\n", (int)(findEnd(a.begin(), a.end(), needle2.begin(), needle2.end(), sameParity) - a.begin()));
+  printf("searchN same %d\n", (int)(searchN(a.begin(), a.end(), 2, 8, sameParity) - a.begin()));
+  printf("findFirstOf same %d\n", (int)(findFirstOf(a.begin(), a.end(), needle.begin(), needle.end(), sameParity) - a.begin()));
+  Vector<int> x = {9, 7, 5, 3};
+  Vector<int> y = {8, 7, 3};
+  Vector<int> un, sd;
+  setUnion(x.begin(), x.end(), y.begin(), y.end(), backInserter(un), descending);
+  setSymmetricDifference(x.begin(), x.end(), y.begin(), y.end(), backInserter(sd), descending);
+  show("setUnion less", un);
+  show("setSymmetricDifference less", sd);
+  Vector<int> sub = {7, 3};
+  printf("includes less %d\n", (int)includes(x.begin(), x.end(), sub.begin(), sub.end(), descending));
+  Vector<int> p = {4, 8, 1, 9, 3, 7};
+  partialSort(p.begin(), p.begin() + 3, p.end(), descending);
+  printf("partialSort less %d %d %d\n", p[0], p[1], p[2]);
+  Vector<int> out(2);
+  partialSortCopy(p.begin(), p.end(), out.begin(), out.end(), descending);
+  show("partialSortCopy less", out);
+  Vector<int> h = {4, 8, 1, 9, 3, 7};
+  makeHeap(h.begin(), h.end(), descending);
+  printf("heap less %d %d %d\n", h[0], (int)isHeap(h.begin(), h.end(), descending), (int)isHeap(h.begin(), h.end()));
+  h.push_back(0);
+  pushHeap(h.begin(), h.end(), descending);
+  printf("pushHeap less %d\n", h[0]);
+  popHeap(h.begin(), h.end(), descending);
+  printf("popHeap less %d %d\n", h.back(), h[0]);
+  h.pop_back();
+  printf("isHeapUntil less %d\n", (int)(isHeapUntil(h.begin(), h.end(), descending) == h.end()));
+  sortHeap(h.begin(), h.end(), descending);
+  show("sortHeap less", h);
+  Vector<int> pp = {1, 2, 3};
+  bool more = prevPermutation(pp.begin(), pp.end(), descending);
+  printf("prevPermutation less %d: %d %d %d\n", (int)more, pp[0], pp[1], pp[2]);
+  more = prevPermutation(pp.begin(), pp.end(), descending);
+  printf("prevPermutation less %d: %d %d %d\n", (int)more, pp[0], pp[1], pp[2]);
+  Vector<int> im = {9, 5, 1, 8, 2};
+  inplaceMerge(im.begin(), im.begin() + 3, im.end(), descending);
+  show("inplaceMerge less", im);
+}
+
+void otherIterators()
+{
+  List<int> l = {1, 2, 3, 4, 5, 6, 7};
+  auto lp = partition(l.begin(), l.end(), isOdd);
+  printf("partition list %d %d\n", (int)distance(l.begin(), lp), (int)allOf(l.begin(), lp, isOdd));
+  auto lpoint = partitionPoint(l.begin(), l.end(), isOdd);
+  printf("partitionPoint list %d\n", (int)(lpoint == lp));
+  List<int> sl = {1, 2, 3, 4, 5, 6, 7};
+  stablePartition(sl.begin(), sl.end(), isOdd);
+  printf("stablePartition list:");
+  for (int x : sl)
+    printf(" %d", x);
+  printf("\n");
+  ForwardList<int> f = {1, 2, 3, 2, 3, 4, 2, 2};
+  auto fp = partition(f.begin(), f.end(), isOdd);
+  printf("partition forward %d\n", (int)distance(f.begin(), fp));
+  ForwardList<int> g = {1, 2, 3, 2, 3, 4, 2, 2};
+  Vector<int> n = {2, 3};
+  printf("search forward %d\n", (int)distance(g.begin(), search(g.begin(), g.end(), n.begin(), n.end())));
+  printf("findEnd forward %d\n", (int)distance(g.begin(), findEnd(g.begin(), g.end(), n.begin(), n.end())));
+  printf("searchN forward %d\n", (int)distance(g.begin(), searchN(g.begin(), g.end(), 2, 2)));
+  printf("isPermutation forward %d\n", (int)isPermutation(g.begin(), g.end(), g.begin(), g.end()));
+  auto gm = minmaxElement(g.begin(), g.end());
+  printf("minmaxElement forward %d %d\n", (int)distance(g.begin(), gm.first), (int)distance(g.begin(), gm.second));
+  Deque<int> d = {5, 2, 8, 1, 9, 3};
+  makeHeap(d.begin(), d.end());
+  printf("deque heap %d %d\n", d[0], (int)isHeap(d.begin(), d.end()));
+  sortHeap(d.begin(), d.end());
+  printf("deque sorted %d %d\n", d.front(), d.back());
+  Deque<int> dp = {5, 2, 8, 1, 9, 3};
+  partialSort(dp.begin(), dp.begin() + 2, dp.end());
+  printf("deque partialSort %d %d\n", dp[0], dp[1]);
+  Deque<int> dm = {1, 5, 9, 2, 6};
+  inplaceMerge(dm.begin(), dm.begin() + 3, dm.end());
+  printf("deque inplaceMerge %d %d %d %d %d\n", dm[0], dm[1], dm[2], dm[3], dm[4]);
+  int array[] = {6, 1, 8, 3};
+  int* end = array + 4;
+  auto am = minmaxElement(array, end);
+  printf("array minmaxElement %d %d\n", *am.first, *am.second);
+  int trueOut[4];
+  int falseOut[4];
+  auto ends = partitionCopy(array, end, trueOut, falseOut, isOdd);
+  printf("partitionCopy ends %d %d\n", (int)(ends.first - trueOut), (int)(ends.second - falseOut));
+  String text = "abracadabra";
+  String part = "bra";
+  printf("search string %d %d\n", (int)(search(text.begin(), text.end(), part.begin(), part.end()) - text.begin()), (int)(findEnd(text.begin(), text.end(), part.begin(), part.end()) - text.begin()));
+  Vector<char> vowels = {'e', 'c'};
+  printf("findFirstOf string %d\n", (int)(findFirstOf(text.begin(), text.end(), vowels.begin(), vowels.end()) - text.begin()));
+  Set<int> s = {1, 3, 5};
+  Vector<int> all = {1, 2, 3, 4, 5};
+  printf("includes set %d\n", (int)includes(all.begin(), all.end(), s.begin(), s.end()));
+  Vector<int> reversed;
+  List<int> forReverse = {1, 2, 3};
+  reverseCopy(forReverse.begin(), forReverse.end(), backInserter(reversed));
+  show("reverseCopy list", reversed);
+  auto swapEnd = swapRanges(all.begin(), all.begin() + 2, all.begin() + 3);
+  printf("swapRanges end %d\n", (int)(swapEnd - all.begin()));
+  show("swapRanges one vector", all);
+}
+
+void owningElements()
+{
+  Vector<String> names = {"a long string that is not held inline, first", "b long string that is not held inline, second", "x", "c long string that is not held inline, third"};
+  stablePartition(names.begin(), names.end(), [](const String& s) { return s.size() > 1; });
+  for (const String& s : names)
+    printf("[%s]", s.c_str());
+  printf("\n");
+  Vector<String> all = {"same text long enough not to be inline, one", "same text long enough not to be inline, two"};
+  stablePartition(all.begin(), all.end(), [](const String&) { return true; });
+  printf("[%s][%s]\n", all[0].c_str(), all[1].c_str());
+  stablePartition(all.begin(), all.end(), [](const String&) { return false; });
+  printf("[%s][%s]\n", all[0].c_str(), all[1].c_str());
+  Vector<UniquePtr<int>> b = boxes({4, 1, 3, 2, 6, 5});
+  stablePartition(b.begin(), b.end(), [](const UniquePtr<int>& x) { return *x % 2 == 0; });
+  showBoxes("stablePartition boxes", b);
+  auto cut = partition(b.begin(), b.end(), [](const UniquePtr<int>& x) { return *x > 3; });
+  printf("partition boxes %d\n", (int)(cut - b.begin()));
+  makeHeap(b.begin(), b.end(), lessBox);
+  printf("heap boxes %d\n", *b[0]);
+  popHeap(b.begin(), b.end(), lessBox);
+  printf("popHeap boxes %d\n", *b.back());
+  pushHeap(b.begin(), b.end(), lessBox);
+  sortHeap(b.begin(), b.end(), lessBox);
+  showBoxes("sortHeap boxes", b);
+  Vector<UniquePtr<int>> c = boxes({6, 2, 5, 1, 4, 3});
+  partialSort(c.begin(), c.begin() + 3, c.end(), lessBox);
+  printf("partialSort boxes %d %d %d\n", *c[0], *c[1], *c[2]);
+  Vector<UniquePtr<int>> m = boxes({1, 3, 5, 2, 4, 6});
+  inplaceMerge(m.begin(), m.begin() + 3, m.end(), lessBox);
+  showBoxes("inplaceMerge boxes", m);
+  Vector<UniquePtr<int>> x = boxes({1, 2});
+  Vector<UniquePtr<int>> y = boxes({3, 4});
+  swapRanges(x.begin(), x.end(), y.begin());
+  showBoxes("swapRanges boxes", x);
+}
+
+void edges()
+{
+  Vector<int> e;
+  Vector<int> one = {7};
+  Vector<int> v = {3, 1, 2};
+  printf("partition empty %d\n", (int)(partition(e.begin(), e.end(), isOdd) == e.end()));
+  printf("stablePartition empty %d\n", (int)(stablePartition(e.begin(), e.end(), isOdd) == e.end()));
+  printf("isPartitioned empty %d\n", (int)isPartitioned(e.begin(), e.end(), isOdd));
+  printf("partitionPoint empty %d\n", (int)(partitionPoint(e.begin(), e.end(), isOdd) == e.end()));
+  makeHeap(e.begin(), e.end());
+  sortHeap(e.begin(), e.end());
+  printf("isHeap empty %d %d\n", (int)isHeap(e.begin(), e.end()), (int)isHeap(one.begin(), one.end()));
+  pushHeap(one.begin(), one.end());
+  popHeap(one.begin(), one.end());
+  printf("heap of one %d\n", one[0]);
+  partialSort(v.begin(), v.begin(), v.end());
+  printf("partialSort of none %d\n", (int)v.size());
+  partialSort(v.begin(), v.end(), v.end());
+  show("partialSort of all", v);
+  Vector<int> none;
+  printf("partialSortCopy into none %d\n", (int)(partialSortCopy(v.begin(), v.end(), none.begin(), none.end()) == none.end()));
+  Vector<int> u;
+  setUnion(v.begin(), v.end(), e.begin(), e.end(), backInserter(u));
+  setUnion(e.begin(), e.end(), v.begin(), v.end(), backInserter(u));
+  show("setUnion with empty", u);
+  Vector<int> s;
+  setSymmetricDifference(e.begin(), e.end(), v.begin(), v.end(), backInserter(s));
+  setSymmetricDifference(v.begin(), v.end(), e.begin(), e.end(), backInserter(s));
+  show("setSymmetricDifference with empty", s);
+  printf("includes empty %d %d %d\n", (int)includes(v.begin(), v.end(), e.begin(), e.end()), (int)includes(e.begin(), e.end(), e.begin(), e.end()), (int)includes(e.begin(), e.end(), v.begin(), v.end()));
+  inplaceMerge(v.begin(), v.begin(), v.end());
+  inplaceMerge(v.begin(), v.end(), v.end());
+  show("inplaceMerge one side empty", v);
+  printf("search empty %d %d %d\n", (int)(search(v.begin(), v.end(), e.begin(), e.end()) == v.begin()), (int)(search(e.begin(), e.end(), v.begin(), v.end()) == e.end()), (int)(search(e.begin(), e.end(), e.begin(), e.end()) == e.begin()));
+  Vector<int> longer = {1, 2, 3, 4, 5};
+  printf("search longer needle %d\n", (int)(search(v.begin(), v.end(), longer.begin(), longer.end()) == v.end()));
+  printf("findEnd none %d\n", (int)(findEnd(v.begin(), v.end(), longer.begin(), longer.end()) == v.end()));
+  printf("searchN none %d %d\n", (int)(searchN(v.begin(), v.end(), 0, 9) == v.begin()), (int)(searchN(v.begin(), v.end(), -1, 9) == v.begin()));
+  Vector<int> at = {1, 7, 7};
+  printf("searchN at the end %d %d\n", (int)(searchN(at.begin(), at.end(), 2, 7) - at.begin()), (int)(searchN(at.begin(), at.end(), 3, 7) == at.end()));
+  printf("findFirstOf none %d %d\n", (int)(findFirstOf(v.begin(), v.end(), e.begin(), e.end()) == v.end()), (int)(findFirstOf(e.begin(), e.end(), v.begin(), v.end()) == e.end()));
+  auto em = minmaxElement(e.begin(), e.end());
+  printf("minmaxElement empty %d %d\n", (int)(em.first == e.end()), (int)(em.second == e.end()));
+  auto om = minmaxElement(one.begin(), one.end());
+  printf("minmaxElement one %d %d\n", (int)(om.first == one.begin()), (int)(om.second == one.begin()));
+  Vector<int> w;
+  uniqueCopy(e.begin(), e.end(), backInserter(w));
+  rotateCopy(v.begin(), v.begin(), v.end(), backInserter(w));
+  rotateCopy(v.begin(), v.end(), v.end(), backInserter(w));
+  show("rotateCopy at the ends", w);
+  printf("isPermutation empty %d\n", (int)isPermutation(e.begin(), e.end(), e.begin(), e.end()));
+  printf("prevPermutation empty %d %d\n", (int)prevPermutation(e.begin(), e.end()), (int)prevPermutation(one.begin(), one.end()));
+  int called = 0;
+  auto stop = forEachN(v.begin(), 0, [&](int) { ++called; });
+  printf("forEachN none %d %d\n", called, (int)(stop == v.begin()));
+  Vector<int> twice = {1, 2, 3};
+  forEachN(twice.begin(), 2, [](int& x) { x *= 10; });
+  show("forEachN writes", twice);
+}
+
+void ties()
+{
+  Vector<Item> a = {{1, 0}, {2, 1}, {2, 2}, {4, 3}};
+  Vector<Item> b = {{2, 10}, {3, 11}, {4, 12}, {4, 13}};
+  Vector<Item> u, s;
+  setUnion(a.begin(), a.end(), b.begin(), b.end(), backInserter(u), itemLess);
+  setSymmetricDifference(a.begin(), a.end(), b.begin(), b.end(), backInserter(s), itemLess);
+  showItems("setUnion ties", u);
+  showItems("setSymmetricDifference ties", s);
+  Vector<int> x = {1, 1, 1, 2};
+  Vector<int> y = {1, 1, 3};
+  Vector<int> xu, xs;
+  setUnion(x.begin(), x.end(), y.begin(), y.end(), backInserter(xu));
+  setSymmetricDifference(x.begin(), x.end(), y.begin(), y.end(), backInserter(xs));
+  show("setUnion repeats", xu);
+  show("setSymmetricDifference repeats", xs);
+  Vector<int> twoOnes = {1, 1};
+  Vector<int> threeOnes = {1, 1, 1};
+  printf("includes repeats %d %d\n", (int)includes(x.begin(), x.end(), threeOnes.begin(), threeOnes.end()), (int)includes(y.begin(), y.end(), threeOnes.begin(), threeOnes.end()));
+  printf("includes repeats %d\n", (int)includes(y.begin(), y.end(), twoOnes.begin(), twoOnes.end()));
+  Vector<Item> items = {{2, 0}, {1, 1}, {3, 2}, {1, 3}, {3, 4}, {2, 5}, {1, 6}, {3, 7}};
+  for (int n = 1; n <= (int)items.size(); ++n)
+  {
+    auto mm = minmaxElement(items.begin(), items.begin() + n, itemLess);
+    printf(" %d/%d", mm.first->order, mm.second->order);
+  }
+  printf("\n");
+  Item p{1, 0};
+  Item q{1, 1};
+  auto same = minmax(p, q, itemLess);
+  printf("minmax tie %d %d\n", same.first.order, same.second.order);
+  auto flipped = minmax(q, p, [](const Item& l, const Item& r) { return l.order < r.order; });
+  printf("minmax less %d %d\n", flipped.first.order, flipped.second.order);
+  printf("minmax refers %d %d\n", (int)(&same.first == &p), (int)(&same.second == &q));
+  auto list = minmax({5, 2, 9, 2, 9, 1 + 1});
+  printf("minmax list %d %d\n", list.first, list.second);
+  auto listLess = minmax({5, 2, 9}, descending);
+  printf("minmax list less %d %d\n", listLess.first, listLess.second);
+  auto itemList = minmax({Item{1, 0}, Item{0, 1}, Item{1, 2}, Item{0, 3}, Item{1, 4}}, itemLess);
+  printf("minmax list ties %d %d\n", itemList.first.order, itemList.second.order);
+  Vector<Item> r = {{1, 0}, {1, 1}, {2, 2}, {2, 3}};
+  Vector<Item> ru;
+  uniqueCopy(r.begin(), r.end(), backInserter(ru), itemSame);
+  showItems("uniqueCopy keeps the first", ru);
+}
+
+void counts()
+{
+  for (int n : {0, 1, 2, 3, 10, 11, 1000, 1001})
+  {
+    Vector<int> v;
+    for (int i = 0; i < n; ++i)
+      v.push_back(nextRandom(50));
+    int compares = 0;
+    minmaxElement(v.begin(), v.end(), [&](int a, int b) { ++compares; return a < b; });
+    int bound = n < 2 ? 0 : 3 * (n - 1) / 2;
+    int calls = 0;
+    Vector<int> w = v;
+    partition(w.begin(), w.end(), [&](int x) { ++calls; return x % 2 != 0; });
+    int stableCalls = 0;
+    w = v;
+    stablePartition(w.begin(), w.end(), [&](int x) { ++stableCalls; return x % 2 != 0; });
+    printf("n %d compares in bound %d, predicate calls %d %d\n", n, (int)(compares <= bound), calls, stableCalls);
+  }
+}
+
+// Against sort and simple loops, each result hashed: 300 random ranges.
+void randomRanges()
+{
+  unsigned hash = 0;
+  for (int round = 0; round < 300; ++round)
+  {
+    int n = nextRandom(40);
+    int spread = 1 + nextRandom(20);
+    Vector<int> v;
+    for (int i = 0; i < n; ++i)
+      v.push_back(nextRandom(spread));
+    Vector<int> sorted = v;
+    sort(sorted.begin(), sorted.end());
+    Vector<int> h = v;
+    makeHeap(h.begin(), h.end());
+    bool good = isHeap(h.begin(), h.end());
+    sortHeap(h.begin(), h.end());
+    good = good && h == sorted;
+    Vector<int> grown;
+    for (int x : v)
+    {
+      grown.push_back(x);
+      pushHeap(grown.begin(), grown.end());
+      good = good && isHeap(grown.begin(), grown.end());
+    }
+    while (!grown.empty())
+    {
+      popHeap(grown.begin(), grown.end());
+      good = good && grown.back() == sorted[grown.size() - 1];
+      grown.pop_back();
+      good = good && isHeap(grown.begin(), grown.end());
+    }
+    int k = n == 0 ? 0 : nextRandom(n + 1);
+    Vector<int> p = v;
+    partialSort(p.begin(), p.begin() + k, p.end());
+    good = good && equal(p.begin(), p.begin() + k, sorted.begin()) && isPermutation(p.begin(), p.end(), v.begin(), v.end());
+    Vector<int> copied(k);
+    auto copiedEnd = partialSortCopy(v.begin(), v.end(), copied.begin(), copied.end());
+    good = good && copiedEnd == copied.end() && equal(copied.begin(), copied.end(), sorted.begin());
+    Vector<Item> items;
+    for (int i = 0; i < n; ++i)
+      items.push_back(Item{v[i], i});
+    Vector<Item> stable = items;
+    auto cut = stablePartition(stable.begin(), stable.end(), [](const Item& x) { return x.key % 3 == 0; });
+    int previous = -1;
+    for (auto it = stable.begin(); it != cut; ++it)
+    {
+      good = good && it->key % 3 == 0 && it->order > previous;
+      previous = it->order;
+    }
+    previous = -1;
+    for (auto it = cut; it != stable.end(); ++it)
+    {
+      good = good && it->key % 3 != 0 && it->order > previous;
+      previous = it->order;
+    }
+    good = good && isPartitioned(stable.begin(), stable.end(), [](const Item& x) { return x.key % 3 == 0; });
+    good = good && partitionPoint(stable.begin(), stable.end(), [](const Item& x) { return x.key % 3 == 0; }) == cut;
+    Vector<Item> m = items;
+    stableSort(m.begin(), m.begin() + k, itemLess);
+    stableSort(m.begin() + k, m.end(), itemLess);
+    Vector<Item> merged;
+    merge(m.begin(), m.begin() + k, m.begin() + k, m.end(), backInserter(merged), itemLess);
+    inplaceMerge(m.begin(), m.begin() + k, m.end(), itemLess);
+    for (int i = 0; i < n; ++i)
+      good = good && m[i].key == merged[i].key && m[i].order == merged[i].order;
+    Vector<int> other;
+    int otherSize = nextRandom(30);
+    for (int i = 0; i < otherSize; ++i)
+      other.push_back(nextRandom(spread));
+    sort(other.begin(), other.end());
+    Vector<int> u, s;
+    setUnion(sorted.begin(), sorted.end(), other.begin(), other.end(), backInserter(u));
+    setSymmetricDifference(sorted.begin(), sorted.end(), other.begin(), other.end(), backInserter(s));
+    for (int x : u)
+      hash = hash * 31u + (unsigned)x;
+    for (int x : s)
+      hash = hash * 37u + (unsigned)x;
+    hash = hash * 41u + (unsigned)includes(sorted.begin(), sorted.end(), other.begin(), other.end());
+    auto found = search(v.begin(), v.end(), other.begin(), other.begin() + (otherSize < 2 ? otherSize : 2));
+    hash = hash * 43u + (unsigned)(found - v.begin());
+    auto last = findEnd(v.begin(), v.end(), other.begin(), other.begin() + (otherSize < 2 ? otherSize : 2));
+    hash = hash * 47u + (unsigned)(last - v.begin());
+    auto run = searchN(v.begin(), v.end(), 2, spread / 2);
+    hash = hash * 53u + (unsigned)(run - v.begin());
+    auto mm = minmaxElement(v.begin(), v.end());
+    hash = hash * 59u + (unsigned)(mm.first - v.begin()) * 64u + (unsigned)(mm.second - v.begin());
+    Vector<int> perm = sorted;
+    if (nextRandom(2) == 0 && n > 0)
+      perm[nextRandom(n)] += 1;
+    hash = hash * 61u + (unsigned)isPermutation(v.begin(), v.end(), perm.begin(), perm.end());
+    if (!good)
+      printf("round %d wrong\n", round);
+  }
+  printf("random hash %u\n", hash);
+}
+
+int main()
+{
+  basics();
+  predicateForms();
+  otherIterators();
+  owningElements();
+  edges();
+  ties();
+  counts();
+  randomRanges();
+  return 0;
+}

@@ -1,0 +1,148 @@
+partition 5 odd first 1 1
+isPartitioned 1 1
+partitionPoint 5
+stablePartition: 1 3 5 7 9 2 4 6 8
+stablePartition at 5
+stablePartition items: 3/0 1/1 1/3 3/4 2/2 2/5
+partitionCopy 5 4
+partialSort 0 1 2 3
+partialSortCopy 1 2 3 / 3
+partialSortCopy into more 5
+makeHeap top 9 isHeap 1
+pushHeap top 10
+popHeap back 10 top 9
+sortHeap: 1 1 2 3 4 5 6 9
+isHeapUntil 4
+min heap top 1
+setUnion: 1 2 2 3 3 4 5 7 8
+setSymmetricDifference: 1 2 3 4 5 8
+setIntersection: 2 3 7
+setDifference: 1 2 5
+includes 1 0
+inplaceMerge: 1 2 3 4 5 6
+inplaceMerge stable: 1/0 1/2 2/3 3/1 3/4
+search 1 9 0
+findEnd 5 9
+searchN 4 8 0
+findFirstOf 2
+mismatch 3 3
+isPermutation 1 0
+count 2 countIf 5
+removeCopy: 1 3 3 3 4
+removeCopyIf: 2 2 4 2
+replaceCopy: 1 2 2 30 30 30 4 2
+replaceCopyIf: 0 2 2 0 0 0 4 2
+uniqueCopy: 1 2 3 4 2
+reverseCopy: 2 4 3 3 3 2 2 1
+rotateCopy: 3 3 3 4 2 1 2 2
+swapRanges x: 7 8 9
+swapRanges y: 1 2 3 10
+forEachN 6
+prevPermutation 5 steps, then 3 2 1
+minmaxElement 1 4
+minmax 3 5
+clamp 3 1 2
+mismatch 2 2 0
+mismatch shorter 2 1
+isPermutation same 0 0
+isPermutation different 0 0 0
+isPermutation duplicates 0
+uniqueCopy same: 1 2
+search same 3
+findEnd same 1
+searchN same 3
+findFirstOf same 3
+setUnion less: 9 8 7 5 3
+setSymmetricDifference less: 9 8 5
+includes less 1
+partialSort less 9 8 7
+partialSortCopy less: 9 8
+heap less 1 1 0
+pushHeap less 0
+popHeap less 0 1
+isHeapUntil less 1
+sortHeap less: 9 8 7 4 3 1
+prevPermutation less 1: 1 3 2
+prevPermutation less 1: 2 1 3
+inplaceMerge less: 9 8 5 2 1
+partition list 4 1
+partitionPoint list 1
+stablePartition list: 1 3 5 7 2 4 6
+partition forward 3
+search forward 1
+findEnd forward 3
+searchN forward 6
+isPermutation forward 1
+minmaxElement forward 0 5
+deque heap 9 1
+deque sorted 1 9
+deque partialSort 1 2
+deque inplaceMerge 1 2 5 6 9
+array minmaxElement 1 8
+partitionCopy ends 2 2
+search string 1 8
+findFirstOf string 4
+includes set 1
+reverseCopy list: 3 2 1
+swapRanges end 5
+swapRanges one vector: 4 5 3 1 2
+[a long string that is not held inline, first][b long string that is not held inline, second][c long string that is not held inline, third][x]
+[same text long enough not to be inline, one][same text long enough not to be inline, two]
+[same text long enough not to be inline, one][same text long enough not to be inline, two]
+stablePartition boxes: 4 2 6 1 3 5
+partition boxes 3
+heap boxes 6
+popHeap boxes 6
+sortHeap boxes: 1 2 3 4 5 6
+partialSort boxes 1 2 3
+inplaceMerge boxes: 1 2 3 4 5 6
+swapRanges boxes: 3 4
+partition empty 1
+stablePartition empty 1
+isPartitioned empty 1
+partitionPoint empty 1
+isHeap empty 1 1
+heap of one 7
+partialSort of none 3
+partialSort of all: 1 2 3
+partialSortCopy into none 1
+setUnion with empty: 1 2 3 1 2 3
+setSymmetricDifference with empty: 1 2 3 1 2 3
+includes empty 1 1 0
+inplaceMerge one side empty: 1 2 3
+search empty 1 1 1
+search longer needle 1
+findEnd none 1
+searchN none 1 1
+searchN at the end 1 1
+findFirstOf none 1 1
+minmaxElement empty 1 1
+minmaxElement one 1 1
+rotateCopy at the ends: 1 2 3 1 2 3
+isPermutation empty 1
+prevPermutation empty 0 0
+forEachN none 0 1
+forEachN writes: 10 20 3
+setUnion ties: 1/0 2/1 2/2 3/11 4/3 4/13
+setSymmetricDifference ties: 1/0 2/2 3/11 4/13
+setUnion repeats: 1 1 1 2 3
+setSymmetricDifference repeats: 1 2 3
+includes repeats 1 0
+includes repeats 1
+ 0/0 1/0 1/2 1/2 1/4 1/4 1/4 1/7
+minmax tie 0 1
+minmax less 0 1
+minmax refers 1 1
+minmax list 2 9
+minmax list less 9 2
+minmax list ties 1 4
+uniqueCopy keeps the first: 1/0 2/2
+n 0 compares in bound 1, predicate calls 0 0
+n 1 compares in bound 1, predicate calls 1 1
+n 2 compares in bound 1, predicate calls 2 2
+n 3 compares in bound 1, predicate calls 3 3
+n 10 compares in bound 1, predicate calls 10 10
+n 11 compares in bound 1, predicate calls 11 11
+n 1000 compares in bound 1, predicate calls 1000 1000
+n 1001 compares in bound 1, predicate calls 1001 1001
+random hash 688633139
