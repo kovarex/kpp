@@ -182,12 +182,15 @@ To durationCast(const Duration<Rep, Period>& d)
   return convertDuration(d, (const To*)nullptr);
 }
 
-// Rounded down, up, and to the nearest (ties to even) instead of toward zero.
+// Rounded down, up, and to the nearest (ties to even) instead of toward zero, as std::chrono's
+// floor, ceil and round. Compared in the two durations' exact common duration (compareDurations): a
+// comparison in double nanoseconds lost a remainder past 2^53 ns, about 104 days
+// (floor<Microseconds>(Nanoseconds(-100000000000000001)) was -100000000000000, not ...001).
 template<typename To, typename Rep, typename Period>
 To floor(const Duration<Rep, Period>& d)
 {
   To t = durationCast<To>(d);
-  if (Duration<double, Nano>(t) > Duration<double, Nano>(d))
+  if (t > d)
     t -= To(1);
   return t;
 }
@@ -196,9 +199,24 @@ template<typename To, typename Rep, typename Period>
 To ceil(const Duration<Rep, Period>& d)
 {
   To t = durationCast<To>(d);
-  if (Duration<double, Nano>(t) < Duration<double, Nano>(d))
+  if (t < d)
     t += To(1);
   return t;
+}
+
+template<typename To, typename Rep, typename Period>
+  requires (!isFloatingPoint<typename To::rep>)
+To round(const Duration<Rep, Period>& d)
+{
+  To lower = floor<To>(d);
+  To upper = lower + To(1);
+  auto below = d - lower;
+  auto above = upper - d;
+  if (below < above)
+    return lower;
+  if (above < below)
+    return upper;
+  return lower.count() % 2 == 0 ? lower : upper;
 }
 
 // A number times a duration, as the duration times the number.

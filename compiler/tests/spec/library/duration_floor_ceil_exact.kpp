@@ -1,0 +1,12 @@
+// spec: floor, ceil and round of a duration (std::chrono's) are exact for any count: compared in the two durations' common duration, a remainder of 1 ns past 2^53 ns (about 104 days) still rounds down or up; round goes to the nearest, a tie to the even count. Before, floor and ceil compared in double nanoseconds and lost it (floor<Microseconds>(Nanoseconds(-100000000000000001)) was -100000000000000 where std gives ...001), a silent wrong answer, and there was no round. clang (MSVC's std::chrono) prints the same
+// found comparing kpp with std::chrono (thread I's time battery)
+int main()
+{
+  Nanoseconds far(-100000000000000001);
+  Nanoseconds farUp(100000000000000001);
+  println(floor<Microseconds>(far).count(), " ", ceil<Microseconds>(far).count(), " ", floor<Seconds>(farUp).count(), " ", ceil<Seconds>(farUp).count());
+  println(floor<Seconds>(Nanoseconds(-1)).count(), " ", ceil<Seconds>(Nanoseconds(-1)).count(), " ", floor<Seconds>(Milliseconds(1500)).count(), " ", ceil<Seconds>(Milliseconds(-1500)).count());
+  println(round<Seconds>(Milliseconds(2500)).count(), " ", round<Seconds>(Milliseconds(3500)).count(), " ", round<Seconds>(Milliseconds(-2500)).count(), " ", round<Seconds>(Milliseconds(2501)).count(), " ",
+          round<Milliseconds>(Nanoseconds(-1500000)).count(), " ", round<Seconds>(farUp).count());
+  return 0;
+}
