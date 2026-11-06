@@ -86,6 +86,10 @@ int inspect(const game::Point& point, int scale, game::Mode mode, StringView lab
   sum = scaled(1) + game::counter - game::Shape::made;
   Vector<int> values;
   values.push_back(sum);
+  for (int each : values) // (the loop variable: a local of its block)
+    sum += each - each;
+  int (game::Square::*areaOf)() const = &game::Square::area;
+  sum += (game::Square().*areaOf)() * 0;
   Cell<Cell<int>> cell;
   sum += cell.bump(2);
   Cell<int>::Slot slot;

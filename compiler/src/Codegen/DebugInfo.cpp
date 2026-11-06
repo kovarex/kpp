@@ -243,8 +243,18 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
       if (t->inner && t->inner->kind == TyKind::Function && !t->args.empty() && isClass(t->args[0]) && !types.isDependent(t->args[0]))
       {
         bool adjusts = memberFunctionPointerAdjusts(t, nullptr);
-        return one(std::string("!DIDerivedType(tag: DW_TAG_ptr_to_member_type, baseType: ") + debugType(t->inner) + ", size: " + (adjusts ? "128" : "64") +
-                   ", flags: " + (adjusts ? "DIFlagMultipleInheritance" : "DIFlagSingleInheritance") + ", extraData: " + debugType(t->args[0]) + ")");
+        // Its function type as a member function's (clang's): the result, `this` (artificial), the
+        // parameters, which CodeView writes as the class's LF_MFUNCTION.
+        const Ty* ft = t->inner;
+        std::string list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
+        list += ", " + debugId(3);
+        for (const Ty* a : ft->args)
+          list += ", " + (a && a->isKnown() ? debugType(a) : std::string("null"));
+        std::string cls = debugType(t->args[0]);
+        return debugId(0) + " = !DIDerivedType(tag: DW_TAG_ptr_to_member_type, baseType: " + debugId(1) + ", size: " + (adjusts ? "128" : "64") +
+               ", flags: " + (adjusts ? "DIFlagMultipleInheritance" : "DIFlagSingleInheritance") + ", extraData: " + cls + ")\n" + debugId(1) +
+               " = !DISubroutineType(types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n" + debugId(3) +
+               " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + cls + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
       }
       break;
     default:

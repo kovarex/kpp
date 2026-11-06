@@ -1054,6 +1054,8 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
     allocas += "  " + slot + " = alloca ptr\n";
     fn += "  store ptr " + addr + ", ptr " + slot + "\n";
     locals[v] = {slot, vt, true};
+    if (!v->name.empty())
+      debugVariable(sym(v->name.last().symbol), v, slot, vt); // the loop variable, each iteration's
   }
   else
   {
@@ -1079,6 +1081,8 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
     else
       store(callRvalue(element, v), slot, vt, v);
     locals[v] = {slot, vt, false};
+    if (!v->name.empty())
+      debugVariable(sym(v->name.last().symbol), v, slot, vt); // the loop variable, each iteration's
     if (needsDestruction(vt, v))
       scopes.back().push_back({slot, vt});
   }
