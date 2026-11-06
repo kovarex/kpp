@@ -99,6 +99,10 @@
   // arguments: `Const<float> : Value<float>` with Value's `operator const T&()`), gives a value
   // that converts to param by a standard conversion. With rvalues, only one that gives a value or
   // an rvalue reference counts (what an rvalue reference binds), not one that gives an lvalue.
+  // Whether t names a member of a class no longer dependent that has none such (a substitution failure).
+  bool namesMissingMember(const Ty* t, int depth = 0);
+  // Whether t names a member of a class (`typename X<...>::type`), anywhere in it.
+  bool namesDependentMember(const Ty* t, int depth = 0);
   bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0, bool allowExplicit = false, bool rvalues = false);
 
 

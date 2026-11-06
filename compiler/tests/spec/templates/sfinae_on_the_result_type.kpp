@@ -1,0 +1,11 @@
+// spec: a function template whose result type names a member its class does not have under the deduced arguments is no candidate (SFINAE, C++ [temp.deduct] 8): `typename OnlyIf<sizeof(T) == 4, int>::type` drops out for a double, its twin for an int
+// factorio: A's language-feature survey against clang (features.py, sfinae_enable_if): kpp took the first template for both calls, its result a member OnlyIf<false> does not have
+template<bool B, class T = void> struct OnlyIf {};
+template<class T> struct OnlyIf<true, T> { using type = T; };
+template<class T> typename OnlyIf<sizeof(T) == 4, int>::type kind(T) { return 4; }
+template<class T> typename OnlyIf<sizeof(T) == 8, int>::type kind(T) { return 8; }
+int main()
+{
+  println(kind(1), " ", kind(1.0));
+  return 0;
+}

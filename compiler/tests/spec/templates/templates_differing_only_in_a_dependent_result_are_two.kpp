@@ -1,0 +1,11 @@
+// spec: two function templates whose signatures differ only in a result type that depends on a value (`typename Pick<sizeof(T) == 4>::type` and `== 8`) are two templates, and a call both take equally well is ambiguous, as in C++
+// error: templates_differing_only_in_a_dependent_result_are_two.kpp:9: error: the call of f with (int32) is ambiguous
+// factorio: D's lead from A's survey: kpp took the second definition for a redeclaration of the first and printed "1 1"; clang reports both calls ambiguous
+template<bool B> struct Pick { using type = int; };
+template<class T> typename Pick<sizeof(T) == 4>::type f(T) { return 1; }
+template<class T> typename Pick<sizeof(T) == 8>::type f(T) { return 2; }
+int main()
+{
+  println(f(1));
+  return 0;
+}

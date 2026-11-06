@@ -2141,7 +2141,46 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // declared twice, whose first declaration a tie took.
   if (a->body && b->body && (constrained(a) || constrained(b)))
     return false;
+  // Two definitions of a function template are two templates: one template defined twice is an
+  // error, and their types may differ only where the comparison cannot tell (results that depend on
+  // a value, `typename OnlyIf<sizeof(T) == 4, int>::type` against `== 8`), which made the second a
+  // redeclaration of the first and its calls the first's. A `when` pair, one of them absent in the
+  // configuration, stays one function.
+  if (a->body && b->body && !a->templateParams.empty() && !b->templateParams.empty() && !a->when && !b->when)
+    return false;
   return typeAs(b, a) == matchedType(a);
+}
+
+// Whether t names a member of a class that is no longer dependent and has no such member (what
+// substitute leaves of `typename OnlyIf<false, int>::type`): a substitution failure.
+auto GlobalScope::Impl::namesMissingMember(const Ty* t, int depth) -> bool
+{
+  if (!t || depth > 16)
+    return false;
+  if (t->kind == TyKind::DependentMember && t->inner && t->inner->kind == TyKind::Class && !types.isDependent(t->inner) &&
+      std::all_of(t->inner->args.begin(), t->inner->args.end(), [](const Ty* a) { return a && a->isKnown(); }))
+    return true;
+  if (namesMissingMember(t->inner, depth + 1))
+    return true;
+  for (const Ty* a : t->args)
+    if (namesMissingMember(a, depth + 1))
+      return true;
+  return false;
+}
+
+// Whether t names a member of a class (`typename X<...>::type`), anywhere in it.
+auto GlobalScope::Impl::namesDependentMember(const Ty* t, int depth) -> bool
+{
+  if (!t || depth > 16)
+    return false;
+  if (t->kind == TyKind::DependentMember)
+    return true;
+  if (namesDependentMember(t->inner, depth + 1))
+    return true;
+  for (const Ty* a : t->args)
+    if (namesDependentMember(a, depth + 1))
+      return true;
+  return false;
 }
 
 auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit, const std::vector<bool>* nullConstants, std::vector<FunctionDecl*>* tiedOut, const std::vector<const Ty*>* bitFieldPromotions) -> FunctionDecl*
@@ -2294,6 +2333,17 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     }
     if (ok && !constraintsHold(f, deduced))
       ok = false; // `requires isIntegral<T>`: the constraint fails for these arguments
+    // SFINAE on the result ([temp.deduct] 8): a template whose result type, under the deduced
+    // arguments, names a member its class does not have (`typename OnlyIf<sizeof(T) == 4,
+    // int>::type` for a double, OnlyIf<false> having no type) is no candidate.
+    if (ok && argsConcrete && !f->templateParams.empty() && ft && ft->kind == TyKind::Function && namesDependentMember(ft->inner))
+    {
+      // (typed again under the deduced arguments, as the call's result is: the declaration's own
+      // typing leaves a value such as `sizeof(T) == 4` uncomputed)
+      const Ty* typed = declaredTypeOf(f, &deduced, 0);
+      if (typed && typed->kind == TyKind::Function && (!typed->inner || !typed->inner->isKnown() || namesMissingMember(typed->inner)))
+        ok = false; // (a member the class does not have types as no type at all, or as that member of the class)
+    }
     c.emptyText = textAt != SIZE_MAX && argTypes.size() <= textAt;
     if (ok)
       viable.push_back(std::move(c));
