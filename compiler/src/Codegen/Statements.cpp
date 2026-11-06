@@ -575,7 +575,15 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     fn += "  store ptr " + addr + ", ptr " + slot + "\n";
     return;
   }
-  if (v->init && isClass(t))
+  // A constexpr local of a scalar type is its constant, the value a constant evaluation of its
+  // initializer gives (`constexpr int c = which();` with `if consteval` in which: its compile-time
+  // branch), never a call made at run time, which took the other branch (until 2026-11-06).
+  std::optional<std::string> constant;
+  if ((v->flags & DF_Constexpr) && v->init && !isClass(t) && t->kind != TyKind::Array && !t->isReference())
+    constant = staticConstant(v, t);
+  if (constant)
+    fn += "  store " + llType(t, v) + " " + *constant + ", ptr " + slot + "\n";
+  else if (v->init && isClass(t))
     initializeExtending(slot, t, v, v->init, "", false);
   else if (v->init)
     initializeFrom(slot, t, v->init, v);

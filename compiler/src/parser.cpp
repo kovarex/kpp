@@ -2440,7 +2440,7 @@ namespace
         else if (accept(Kw::inline_)) flags |= DF_Inline;
         else if (accept(Kw::constexpr_)) flags |= DF_Constexpr;
         else if (accept(Kw::consteval_)) flags |= DF_Consteval;
-        else if (accept(Kw::constinit_)) flags |= DF_Constexpr;
+        else if (accept(Kw::constinit_)) {} // (constinit asks for a constant initializer, and makes nothing const: it was constexpr, so `counter += 1` was "assignment to a const value")
         else if (accept(Kw::friend_)) flags |= DF_Friend;
         else if (accept(Kw::extern_)) flags |= DF_Extern;
         else if (accept(Kw::mutable_)) flags |= DF_Mutable;

@@ -1,0 +1,22 @@
+// spec: a constexpr local of a scalar type is its initializer's constant, as C++ evaluates it at compile time: `constexpr int c = which();` with `if consteval` in which takes the compile-time branch (1), where the same call at run time takes the other (2); until 2026-11-06 the local's initializer was a run-time call, 2 for both (a silent wrong answer)
+constexpr int which()
+{
+  if consteval
+  {
+    return 1;
+  }
+  else
+  {
+    return 2;
+  }
+}
+constexpr double scaled(double x) { return x * 2.5; }
+int main()
+{
+  constexpr int atCompileTime = which();
+  int atRunTime = which();
+  constexpr double d = scaled(2.0);
+  constexpr const char* text = "kpp";
+  println(atCompileTime, " ", atRunTime, " ", d, " ", StringView(text));
+  return 0;
+}

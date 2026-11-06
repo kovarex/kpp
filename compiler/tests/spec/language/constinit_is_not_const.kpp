@@ -1,0 +1,14 @@
+// spec: constinit asks for a constant initializer and makes nothing const (C++20): a constinit global or static member is assigned later; until 2026-11-06 kpp read it as constexpr, and `counter += 1` was "assignment to a const value"
+struct Config
+{
+  static constexpr int base = 5;
+  static inline constinit int counter = base * 2;
+};
+constinit int global = 7;
+int main()
+{
+  Config::counter += 1;
+  global *= 3;
+  println(Config::counter, " ", global);
+  return 0;
+}
