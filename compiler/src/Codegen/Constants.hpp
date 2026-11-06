@@ -135,6 +135,10 @@
     std::string holdTestCall(const FunctionDecl* f);
     void releaseTestCall(const std::string& held);
     void forgetTestCall(FunctionDecl* f);
+    Node* checkedCallOf(const AssertStmt* a);
+    bool isCheckedCall(Span<Expr*> callArgs, Node* at) const;
+    void keepCheckedArguments(const std::vector<std::pair<const Ty*, std::string>>& list, size_t leading, Node* at);
+    void showCheckedArguments(const std::string& cond, Node* at);
 
     // conditional(expr) on a function: false means the function and every call to it vanish.
     bool conditionHolds(FunctionDecl* f);

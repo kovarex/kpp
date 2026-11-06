@@ -4970,6 +4970,9 @@ namespace
         s->startToken = pos;
         s->cond = parseAssignment();
         s->endToken = pos;
+        // (a call, or `!call`: a failure shows its arguments, Emitter::checkedCallOf)
+        Expr* called = s->cond->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(s->cond)->op) == P::Bang ? static_cast<UnaryExpr*>(s->cond)->operand : s->cond;
+        s->checksCall = called->kind == NodeKind::CallExpr;
         if (s->cond->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(s->cond)->isKeyword)
         {
           auto* b = static_cast<BinaryExpr*>(s->cond);

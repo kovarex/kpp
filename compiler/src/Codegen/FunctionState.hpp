@@ -56,6 +56,14 @@
       const Ty* ty;
       bool isRef;
     };
+    // An argument of the call a check tests (design.md 8.7): its address, or a scalar's value and
+    // LLVM type. No type: it has no value to show.
+    struct CheckedArgument
+    {
+      const Ty* type = nullptr;
+      std::string value;
+      std::string scalar;
+    };
     struct Object
     {
       std::string addr;
@@ -170,6 +178,8 @@
     std::unordered_map<uint32_t, LabelPlace> labelPlaces;
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
+    Node* checkedCall = nullptr;              // The call a check statement tests, and its arguments.
+    std::vector<CheckedArgument> checkedArguments;
     // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`):
     // the elements of its brace lists, nested ones included. A temporary one of them makes that a
     // reference member binds lives as long as the variable ([class.temporary] 6), never only to the

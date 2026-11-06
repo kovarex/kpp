@@ -1,0 +1,9 @@
+// spec: an InitializerList object converts to no class that has no constructor taking it: only a braced list converts through its elements
+// pending: isConvertible<const InitializerList<int>&, StringView> is true: overload ranking treats the object as the braced list (found by check's call values)
+class P { };
+int main()
+{
+  println(isConvertible<const InitializerList<P*>&, StringView>);
+  println(isConvertible<const InitializerList<int>&, StringView>);
+  return 0;
+}

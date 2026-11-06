@@ -1051,7 +1051,11 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       auto* a = static_cast<AssertStmt*>(s);
       if (!a->release && !a->testKind && !debug)
         break; // assert compiles to nothing outside debug builds
+      checkedCall = checkedCallOf(a);
+      checkedArguments.clear();
       Value cond = condition(a->cond, s);
+      checkedCall = nullptr;
+      showCheckedArguments(cond.text, s); // (while the statement's temporaries live)
       destroyTemps();
       std::string okL = newLabel("assert.ok"), failL = newLabel("assert.fail");
       fn += "  br i1 " + cond.text + ", label %" + okL + ", label %" + failL + "\n";

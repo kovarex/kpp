@@ -598,8 +598,7 @@ The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2
 the names, suites with depends and tags, fixtures, `generate`, the order, the errors across files
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
-The mixed-sign rule is done too. Not yet (its snippet pending): a call's values;
-and `--jobs`. The parser
+The mixed-sign rule and a call's values are done too. Not yet: `--jobs`. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
 ```
@@ -649,7 +648,16 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   statements of the language, as `check` is: kpp has no lazily evaluated arguments.
 - **Values in a failure.** Besides a top-level comparison's two operands (8.6), a top-level call
   shows its arguments' values, `!call` too: `check failed: isClose(x, 1.5, 0.01) (1.52, 1.5,
-  0.01)`, so `CHECK_CLOSE`, `CHECK_BETWEEN` and `CHECK_CONTAINS` become ordinary functions.
+  0.01)`, so `CHECK_CLOSE`, `CHECK_BETWEEN` and `CHECK_CONTAINS` become ordinary functions. The
+  values are the ones the function took, after their conversions, so the check means what the call
+  alone means and each argument is evaluated once; `--report` lists them as `values`. The compiler
+  keeps them where the call has them, and a check that passes runs nothing for them, except that a
+  class by value is copied bytewise first (the callee may change it). So what a reference parameter
+  shows is the object as the call left it, a class by value with a destructor shows `?` (the callee
+  destroyed it), as do an `InitializerList` and a value `__kppShow` cannot say, a null pointer shows `null`, an argument left
+  to its default is not listed, and a `char*` is read as C text. A call of a function or a member
+  function has them; a call through a pointer or of a closure has none. The checked call is not
+  inlined by kppc.
 - **Integers in a check compare by value.** Inside `check` and `require`, a comparison of a signed
   and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
   4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.

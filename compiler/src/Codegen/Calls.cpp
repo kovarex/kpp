@@ -885,6 +885,85 @@ auto codegen::Emitter::forgetTestCall(FunctionDecl* f) -> void
     emitCall("", "void @kpp_test_forget()", false);
 }
 
+// A failed check of a call shows the call's arguments, as the function took them (design.md 8.7): the
+// values are already there when it fails, so a check that passes runs nothing for them. But for a
+// class by value, which the callee owns and may change: a copy of its bytes, or, when the callee
+// destroys it, no value.
+auto codegen::Emitter::checkedCallOf(const AssertStmt* a) -> Node*
+{
+  if (!a->checksCall)
+    return nullptr;
+  Expr* e = a->cond;
+  if (e->kind == NodeKind::BinaryExpr)
+    e = static_cast<BinaryExpr*>(e)->lhs; // (`cond || __kppMessage(...)`: the parser's)
+  return e->kind == NodeKind::UnaryExpr ? static_cast<UnaryExpr*>(e)->operand : e;
+}
+
+// (at the call itself: a conversion of one of its arguments goes by the same node)
+auto codegen::Emitter::isCheckedCall(Span<Expr*> callArgs, Node* at) const -> bool
+{
+  return at == checkedCall && callArgs.begin() == static_cast<CallExpr*>(checkedCall)->args.begin();
+}
+
+auto codegen::Emitter::keepCheckedArguments(const std::vector<std::pair<const Ty*, std::string>>& list, size_t leading, Node* at) -> void
+{
+  for (size_t i = leading; i < list.size(); ++i)
+  {
+    const auto& [t, text] = list[i];
+    size_t space = text.rfind(' ');
+    CheckedArgument kept;
+    if (t && space != std::string::npos && !isInitializerListType(types.unqualified(types.stripRef(t)))) // (a list has no text)
+    {
+      kept.type = types.unqualified(types.stripRef(t));
+      kept.value = text.substr(space + 1);
+      std::string passedAs = text.substr(0, space);
+      if (!t->isReference() && isClass(kept.type) && passedAs == "ptr")
+      {
+        if (needsDestruction(kept.type, at))
+          kept.type = nullptr;
+        else
+        {
+          std::string copy = newObjectSlot(kept.type, at);
+          copyBytes(copy, kept.value, kept.type, at);
+          kept.value = copy;
+        }
+      }
+      else if (!t->isReference())
+        kept.scalar = std::move(passedAs);
+    }
+    checkedArguments.push_back(std::move(kept));
+  }
+}
+
+auto codegen::Emitter::showCheckedArguments(const std::string& cond, Node* at) -> void
+{
+  if (checkedArguments.empty())
+    return;
+  std::string showL = newLabel("check.values"), goL = newLabel("check.go");
+  fn += "  br i1 " + cond + ", label %" + goL + ", label %" + showL + "\n";
+  startBlock(showL);
+  for (const CheckedArgument& kept : checkedArguments)
+  {
+    FunctionDecl* show = kept.type ? global.findFreeFunction("__kppCallValue", {kept.type}, nullptr) : global.findFreeFunction("__kppCallValue", {}, nullptr);
+    if (!show)
+      unsupported(at, "a check of a call outside a test build");
+    TemplateArgs args;
+    if (!show->templateParams.empty())
+      args.pairs.push_back({show->templateParams[0], kept.type});
+    std::string value = kept.value;
+    if (!kept.scalar.empty())
+    {
+      value = newTemp();
+      allocas += "  " + value + " = alloca " + kept.scalar + "\n";
+      fn += "  store " + kept.scalar + " " + kept.value + ", ptr " + value + "\n";
+    }
+    emitCall("", "void " + useFunction(show, args, nullptr, at) + "(" + (kept.type ? "ptr " + value : std::string()) + ")", true);
+  }
+  checkedArguments.clear();
+  emitBranch(goL);
+  startBlock(goL);
+}
+
 auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
                                     const std::string& indirect, const std::vector<std::string>& leading, std::vector<std::string>* emitted) -> Value
 {
@@ -906,7 +985,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     return defaultedCall(f, classTy, thisArg, callArgs, at);
   if (!conditionHolds(f))
     return {"", types.voidType(), false}; // conditional(false): no call, arguments not evaluated
-  if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted)
+  if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted && !isCheckedCall(callArgs, at))
   {
     if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
       return *v;
@@ -981,6 +1060,8 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     argList.push_back({pt ? pt : arg->ty ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr, std::move(text)});
     ++position;
   }
+  if (isCheckedCall(callArgs, at))
+    keepCheckedArguments(argList, leading.size(), at);
   if (cFunction)
     lowerCArguments(argList, s.hasSret && cResult.inMemory, at);
   for (auto& [t, text] : argList)

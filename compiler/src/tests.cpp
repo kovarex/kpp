@@ -34,6 +34,7 @@ struct __KppTestFailure
   bool hasValues = false;
   String left;
   String right;
+  Vector<String> arguments;
 };
 
 struct __KppTest
@@ -135,6 +136,7 @@ struct __KppTestState
   String left;
   String right;
   const char* op = "";
+  Vector<String> arguments; // a failed call's
   String note;    // in place of the values: requireThrows' "nothing was thrown"
   bool hasMessage = false;
   String message; // a check's message arguments, or fail's
@@ -236,6 +238,14 @@ int __kppRegisterSuite(const char* name, const char* depends, const char* tags)
 // The value as text, when its appendTo or a str() method can say it.
 template<typename T> bool __kppShow(const T& value, String& text)
 {
+  if constexpr (isPointer<T>)
+  {
+    if (!value)
+    {
+      text = "null";
+      return true;
+    }
+  }
   if constexpr (isArithmetic<T>)
   {
     text = toString(value);
@@ -342,6 +352,19 @@ template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r)
     return l >= r || __kppNote(l, r, ">=");
 }
 
+// One argument of a failed check's call (design.md 8.7), which the compiler calls; `?` for one it
+// cannot show or has no value of.
+template<typename T> void __kppCallValue(const T& value)
+{
+  String text;
+  __kppTestState().arguments.push_back(__kppShow(value, text) ? text : String("?"));
+}
+
+void __kppCallValue()
+{
+  __kppTestState().arguments.push_back(String("?"));
+}
+
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
 // says the arguments; false, so that `cond || __kppMessage(...)` fails.
 template<typename... Pieces> bool __kppMessage(const Pieces&... pieces)
@@ -374,6 +397,18 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
     failure.right = state.right;
     shown << " (" << state.left << " " << StringView(state.op) << " " << state.right << ")";
   }
+  else if (!state.arguments.empty())
+  {
+    failure.arguments = state.arguments;
+    shown << " (";
+    for (int i = 0; i < int(state.arguments.size()); ++i)
+    {
+      if (i > 0)
+        shown.append(", ");
+      shown << state.arguments[i];
+    }
+    shown << ")";
+  }
   else if (!state.note.empty())
     shown << " (" << state.note << ")";
   if (state.hasMessage)
@@ -386,6 +421,7 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
     println(shown);
   }
   state.hasValues = false;
+  state.arguments.clear();
   state.note = String();
   state.hasMessage = false;
   state.failures.push_back(failure);
@@ -726,6 +762,17 @@ String __kppJsonTest(const __KppTest& test, const char* status, const Vector<__K
          << StringView(f.kind) << "\",\"expression\":" << __kppJson(f.expression);
     if (f.hasValues)
       line << ",\"values\":[" << __kppJson(f.left) << "," << __kppJson(f.right) << "]";
+    else if (!f.arguments.empty())
+    {
+      line.append(",\"values\":[");
+      for (int k = 0; k < int(f.arguments.size()); ++k)
+      {
+        if (k > 0)
+          line.append(",");
+        line << __kppJson(f.arguments[k]);
+      }
+      line.append("]");
+    }
     line.append("}");
   }
   line.append("]}\n");
