@@ -1,0 +1,66 @@
+// spec: on Windows (MSVC's layout) the bases and members of a class with a vtable pointer of its own start at their largest alignment after it, not merely after its 8 bytes: `char c; alignas(16) double d;` puts c at 16 and d at 32 (sizeof 48), and alignas(32) members push them to 32; a class whose vtable pointer is its primary base's lays its own members out as usual, a second polymorphic base keeps its own layout inside the derived class, and members of 8-byte alignment or less start at 8 as before; clang for x86_64-pc-windows-msvc prints the same
+// target: windows (Itanium's layout, the other targets', lays the parts after the pointer: c at 8 and d at 16)
+// found by thread F's battery f9 (2026-11-06): `class alignas(32) Over { virtual ~Over(); char c; alignas(16) double d; }` was 32 bytes with c at 8 and d at 16, where MSVC and clang make it 64 with c at 16 and d at 32
+class Plain
+{
+public:
+  virtual ~Plain() = default;
+  char c = 'c';
+  double d = 2;
+};
+class Over
+{
+public:
+  virtual ~Over() = default;
+  char c = 'o';
+  alignas(16) double d = 1;
+};
+class Derived : public Over
+{
+public:
+  char e = 'e';
+  alignas(32) int z = 3;
+};
+class Second
+{
+public:
+  virtual ~Second() = default;
+  alignas(32) char big = 'b';
+  char small = 's';
+};
+class Both : public Plain, public Second
+{
+public:
+  int tail = 4;
+};
+class alignas(32) Aligned
+{
+public:
+  virtual ~Aligned() = default;
+  char c = 'a';
+  alignas(16) double d = 1;
+};
+
+template<class T, class M>
+int offsetIn(const T& object, const M& member)
+{
+  return int((const char*)&member - (const char*)&object);
+}
+
+int main()
+{
+  Plain p;
+  Over o;
+  Derived d;
+  Second s;
+  Both b;
+  Aligned a;
+  println("plain ", sizeof(Plain), " ", offsetIn(p, p.c), " ", offsetIn(p, p.d));
+  println("over ", sizeof(Over), " ", offsetIn(o, o.c), " ", offsetIn(o, o.d));
+  println("derived ", sizeof(Derived), " ", offsetIn(d, d.c), " ", offsetIn(d, d.d), " ", offsetIn(d, d.e), " ", offsetIn(d, d.z));
+  println("second ", sizeof(Second), " ", offsetIn(s, s.big), " ", offsetIn(s, s.small));
+  println("both ", sizeof(Both), " ", offsetIn(b, b.big), " ", offsetIn(b, b.small), " ", offsetIn(b, b.tail));
+  println("aligned ", sizeof(Aligned), " ", alignof(Aligned), " ", offsetIn(a, a.c), " ", offsetIn(a, a.d));
+  println(o.c, " ", o.d, " ", d.z, " ", s.small, " ", b.tail, " ", a.c);
+  return 0;
+}

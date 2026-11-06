@@ -214,6 +214,30 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
     }
   for (size_t i = 0; i < info.fieldTypes.size() && !needed; ++i)
     needed = !info.zeroSize[i] && overAlignedType(info.fieldTypes[i], at);
+  // MSVC's layout of a class with a vtable pointer of its own: its bases and members are pushed back
+  // by the pointer's size rounded up to their largest alignment, not merely laid after it
+  // (clang's MicrosoftRecordLayoutBuilder::injectVFPtr): with `char c; alignas(16) double d;` c is at
+  // 16 and d at 32, where the pointer's 8 bytes put c at 8 (F's battery f9, 2026-11-06). The
+  // first part after the pointer starts there (each later one keeps its place relative to it).
+  // Itanium's (the other targets, windows-gnu's too) lays them after the pointer.
+  uint64_t vptrShift = 0;
+  size_t firstAfterVptr = info.fieldTypes.size();
+  if (sh.target.msvc() && info.polymorphic && !info.primaryBase && !info.fieldTypes.empty())
+  {
+    uint64_t largest = 1;
+    for (size_t i = 1; i < info.fieldTypes.size(); ++i)
+      if (!info.zeroSize[i])
+      {
+        largest = std::max({largest, alignOf(info.fieldTypes[i], at), declaredAt[i]});
+        firstAfterVptr = std::min(firstAfterVptr, i);
+      }
+    uint64_t pointer = sizeOf(info.fieldTypes[0], at);
+    vptrShift = (pointer + largest - 1) / largest * largest;
+    if (vptrShift > pointer && firstAfterVptr < info.fieldTypes.size())
+      needed = true;
+    else
+      vptrShift = 0;
+  }
   uint64_t declaredClass = std::max<uint64_t>(c->alignment ? declaredAlignment(key, at) : 1, info.bitFieldAlign);
   if (!needed && declaredClass <= natural)
     return 0;
@@ -227,6 +251,8 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
     uint64_t want = none ? 1 : std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]);
     uint64_t llvmWant = none ? 1 : llvmAlignOf(info.fieldTypes[i], at);
     uint64_t place = (offset + want - 1) / want * want;
+    if (i == firstAfterVptr && vptrShift)
+      place = std::max(place, vptrShift); // (MSVC's push back after its own vtable pointer, above)
     if (place != (offset + llvmWant - 1) / llvmWant * llvmWant)
     {
       fields.push_back(types.array(types.intType(8), uint32_t(place - offset)));

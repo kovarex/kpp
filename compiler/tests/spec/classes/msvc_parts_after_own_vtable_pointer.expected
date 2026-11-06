@@ -1,0 +1,7 @@
+plain 24 8 16
+over 48 16 32
+derived 96 16 32 48 64
+second 64 32 33
+both 128 64 65 96
+aligned 64 32 16 32
+o 1 3 s 4 a
