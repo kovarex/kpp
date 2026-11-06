@@ -2140,6 +2140,24 @@ them yet (the questions: C:\kpp-sandbox\handoff\A-stage1-language-questions.md).
 
 Specs: language/safe_navigation*, language/elvis.
 
+### 23b. Required `override` (warning built 2026-11-06, Q5 to Q8 awaiting kovarex)
+Every function that overrides a virtual one says so. It lands in three steps: a warning under a flag,
+counted on the game, then the converter writes the word, then an error. `--override-warnings` is the
+first step and changes nothing else. It reads the in-class declaration: an out-of-line definition cannot
+say `override`. A class template is read per instance, each instance the program names, called or not,
+as a virtual call reaches a member no walk does. So far exempt: destructors, and `final` alone.
+
+The game's count (factorio-in-kpp's src, libraries and tests at Factorio 4c178a5b915, tests.cmd's build
+with --override-warnings --emit-llvm): 13 functions, all in libraries\cxxopts\cxxopts.kpp, and 490
+destructors if Q5 does not exempt them.
+
+Open until the error lands: `override` of nothing in an instance is reported only for a member called by
+name (spec classes/override_of_nothing_in_an_instance_is_error, pending). The instance loop that serves the
+warning reports with no unit, so a compile server would keep such an error after its fix: the error needs a
+unit it can forget.
+
+Specs: language/override_warnings_mode, classes/override_of_nothing_is_error.
+
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
 capital letters, like LinkHelper.cpp", and refactorings that are clear wins are pushed without asking.

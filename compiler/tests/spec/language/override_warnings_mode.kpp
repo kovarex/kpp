@@ -1,0 +1,47 @@
+// spec: --override-warnings: a function that overrides a virtual one and does not say so is a warning at its name, in a class and in an instance whose base is its parameter, at the declaration and never on an out-of-line definition, which cannot say it; a destructor, `final`, `override`, a hiding non-virtual and a new function are not
+// kppc: --override-warnings
+// warning: override_warnings_mode.kpp:21: warning: f overrides a virtual function: write override
+// warning: override_warnings_mode.kpp:30: warning: g overrides a virtual function: write override
+// warning: override_warnings_mode.kpp:36: warning: g overrides a virtual function: write override
+// no-warning: override_warnings_mode.kpp:38:
+// no-warning: override_warnings_mode.kpp:39:
+class Base
+{
+public:
+  virtual ~Base() {}
+  virtual void f() {}
+  virtual int g() const { return 1; }
+  virtual void h() {}
+  void plain() {}
+};
+class Derived : public Base
+{
+public:
+  ~Derived() {}
+  void f() {}
+  int g() const override { return 2; }
+  void h() final {}
+  void plain() {}
+  void other() {}
+};
+template<class T> class Over : public T
+{
+public:
+  int g() const { return 3; }
+};
+class Outside : public Base
+{
+public:
+  void f() override;
+  int g() const;
+};
+void Outside::f() {}
+int Outside::g() const { return 4; }
+int main()
+{
+  Derived d;
+  Over<Base> o;
+  Base* b = &o;
+  println(d.g(), " ", b->g());
+  return 0;
+}

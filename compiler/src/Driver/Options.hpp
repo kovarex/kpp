@@ -24,6 +24,7 @@
     bool accessWarnings = false; // --access-warnings
     bool returnCopyWarnings = false; // --return-copy-warnings
     bool zeroNullWarnings = false; // --zero-null-warnings
+    bool overrideWarnings = false; // --override-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;

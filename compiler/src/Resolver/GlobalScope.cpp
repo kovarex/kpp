@@ -419,6 +419,20 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     if (impl->resolveSpecialization(cls, 0) != cls)
       continue;
     auto* c = static_cast<ClassDecl*>(cls->decl);
+    // --override-warnings: an instance overrides through a member nothing calls by name, which no walk
+    // reaches (a virtual call does not), so each instance says what its members override.
+    if (overrideWarningsOn() && c->file && !c->file->isImported)
+    {
+      Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
+      for (Decl* m : membersRead(c))
+        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor)))
+          if (std::optional<bool> overrides = impl->overridesVirtual(cls, impl->overrideKey(static_cast<FunctionDecl*>(m), cls), 0); overrides && *overrides)
+          {
+            const NamePart& n = static_cast<FunctionDecl*>(m)->name.last();
+            std::string name = n.special ? std::string("this operator") : impl->debugName(n.symbol);
+            noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name + " overrides a virtual function: write override");
+          }
+    }
     Subst subst = impl->substFor(cls);
     LocalStack params;
     for (Decl* p : Impl::effectiveParams(c))

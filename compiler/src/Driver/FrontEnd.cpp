@@ -443,6 +443,7 @@ void runResolve(Build& build)
   if (options.accessWarnings)
     global.enableAccessWarnings();
   setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's)
+  setOverrideWarnings(options.overrideWarnings);
   if (options.convertDir.empty())
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
   if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)

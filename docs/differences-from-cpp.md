@@ -394,6 +394,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **C++:** `override` is optional.
 - **kpp:** every function that overrides a virtual one says so. *Open:* whether destructors are exempt,
   whether `final` alone counts, the check per instance for a base that is a template parameter.
+- **Status:** `--override-warnings` lists them; the game has 13 functions, and 490 destructors ([design 23b](design.md)).
 - **Why:** a change in a base cannot silently unhook an override.
 - **See:** [design 6][d6]; the readme's Planned.
 

@@ -44,6 +44,8 @@ void usage(FILE* out)
           "                (docs/design.md, \"struct and class\"); no error, no other change\n"
           "  --zero-null-warnings  a literal 0 that would be a pointer (an error, docs/design.md 4) is a warning instead:\n"
           "                convert.cmd's nullptr pass rewrites what they name\n"
+          "  --override-warnings  warn of each function that overrides a virtual one and does not say so (the readme's\n"
+          "                Planned); no error, no other change\n"
           "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"
           "                the result's place (a named return), and why; no error, no other change\n"
           "  --struct-rule  a struct is a public value type: one with a private or protected section, a base that is not\n"

@@ -14,6 +14,8 @@ snippet says what it is about:
                                                   output must say this; one line per expected error)
     // warning: long is C's type                 (the program compiles, runs and prints its .expected, and the
                                                   compiler's output says this; one line per expected warning)
+    // no-warning: x.kpp:36                      (and the compiler's output does not say this, as a `warning:`
+                                                  line alone cannot tell: it looks for what it names and no more)
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
@@ -194,13 +196,13 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "run": None, "test": None,
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "no-warnings": [], "run": None, "test": None,
             "exit": None, "kppc": "", "target": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("//--- step"):
                 break # (a snippet of steps: each step's own expect and error lines are its own)
-            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -212,7 +214,7 @@ def header(path):
                 named = m.group(1)[len("pending on "):].split()
                 if here in named or (TARGET == "windows-gnu" and TARGET in named):
                     info["pending"] = m.group(2).strip()
-            elif m.group(1) in ("error", "warning"):
+            elif m.group(1) in ("error", "warning", "no-warning"):
                 info[m.group(1) + "s"].append(m.group(2).strip())
             else:
                 info[m.group(1)] = m.group(2).strip()
@@ -326,6 +328,10 @@ def build_and_run(path, area, name, work):
     missing = [w for w in info["warnings"] if w not in c.stdout + c.stderr]
     if missing:
         result["status"] = "FAIL"; result["note"] = f"no warning `{missing[0]}`"
+        return finish(result)
+    unwanted = [w for w in info["no-warnings"] if w in c.stdout + c.stderr]
+    if unwanted:
+        result["status"] = "FAIL"; result["note"] = f"a warning that should not be: `{unwanted[0]}`"
         return finish(result)
     if TARGET == "freebsd":
         # Into the bundle, beside run.sh: the program as <area>.<name>.elf, and its expected output,

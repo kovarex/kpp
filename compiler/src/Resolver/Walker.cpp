@@ -3845,7 +3845,11 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
   checkDestructorRedeclared(f);
   // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
   // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
-  if (!(f->flags & DF_Override) || probing || retypingElements || !file || file->isImported)
+  // Under --override-warnings: the ones that override and do not say so. A destructor and `final` need
+  // not, as the rule stands so far (design.md's questions for kovarex), and an out-of-line definition
+  // cannot: the word is its class's declaration's.
+  bool unmarked = overrideWarningsOn() && f->name.parts.size() == 1 && !(f->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor));
+  if ((!(f->flags & DF_Override) && !unmarked) || probing || retypingElements || !file || file->isImported)
     return;
   Decl* cls = impl.owningClassOf(f);
   if (!cls || cls->kind != NodeKind::ClassDecl)
@@ -3858,10 +3862,16 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
   if (!self || !self->isKnown() || types.isDependent(self))
     return;
   std::optional<bool> overrides = impl.overridesVirtual(self, impl.overrideKey(f, self), 0);
-  if (!overrides || *overrides)
-    return;
   const NamePart& n = f->name.last();
   std::string name = (f->flags & DF_Destructor) ? std::string("the destructor") : n.special ? std::string("this operator") : impl.debugName(n.symbol);
+  if (unmarked)
+  {
+    if (overrides && *overrides)
+      noteOverrideWarning(Impl::locationOf(file, f->token) + ": warning: " + name + " overrides a virtual function: write override");
+    return;
+  }
+  if (!overrides || *overrides)
+    return;
   impl.reportCheckerError(file, f->token, name + " is marked override but overrides no virtual function");
 }
 
