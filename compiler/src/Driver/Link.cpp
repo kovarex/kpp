@@ -25,8 +25,27 @@ std::string natvisPath(const Options& options)
   return std::filesystem::path(options.exe).replace_extension(".natvis").string();
 }
 
+// The link of every target but MSVC's takes lld (-fuse-ld=lld: ld.lld, lld's GNU driver), which clang
+// finds beside itself or on PATH. Where it is not, the build fails naming it (B, 2026-11-06: a Linux
+// host's clang may come without lld; never GNU ld in its place, whose links differ).
+void requireLld()
+{
+  std::string ld = std::string("ld.lld") + host::executableSuffix();
+  std::filesystem::path clang = clangPath();
+  std::error_code ec;
+  if (std::filesystem::exists(clang.parent_path() / ld, ec) || std::filesystem::exists(std::filesystem::canonical(clang, ec).parent_path() / ld, ec) ||
+      !host::findOnPath("ld.lld").empty())
+    return;
+  fprintf(stderr, "error: the link needs ld.lld (lld), which is neither beside %s nor on PATH: install lld (apt install lld, dnf install lld, "
+                  "pkg install llvm)\n",
+          clang.string().c_str());
+  codegenExit = 1;
+}
+
 std::string linkFlags(const Options& options, bool wideEntry)
 {
+  if (options.target.gnu || !options.target.windows())
+    requireLld();
   // Windows' GNU dialect (windows-gnu): lld's GNU driver, unused sections dropped as /OPT:REF
   // drops them, the Windows libraries programs commonly reach, ucrtbase's functions MinGW-w64's
   // import libraries leave out, -municode for a wmain, --lib files.
