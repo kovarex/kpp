@@ -1086,6 +1086,15 @@ namespace
           return nullptr;
         }
         type = n;
+        if (!typename_ && !elaborated && at(Kw::auto_))
+        {
+          // `Integral auto`, `SameAs<int> auto` (C++20's constrained placeholder): the concept on the
+          // `auto`, a parameter's invented template parameter's type-constraint (inventAutoParams).
+          AutoType* a = node<AutoType>(pos);
+          advance();
+          a->constraint = n;
+          type = a;
+        }
       }
       // Trailing cv-qualifiers.
       for (;;)
@@ -5559,6 +5568,8 @@ namespace
             {
               std::vector<Expr*> requirements;
               std::vector<Type*> typeRequirements;
+              std::vector<Type*> resultConstraints; // (one per requirement)
+              std::vector<Expr*> nested;
               while (!at(P::RBrace) && !at(TokenKind::End))
               {
                 if (accept(Kw::typename_))
@@ -5568,17 +5579,38 @@ namespace
                 }
                 else if (accept(P::LBrace))
                 {
-                  if (Expr* e = parseExpression())
-                    requirements.push_back(e);
+                  Expr* e = parseExpression();
                   expect(P::RBrace, "expected '}' after the compound requirement");
-                  while (!at(P::Semi) && !at(P::RBrace) && !at(TokenKind::End))
-                    advance(); // `-> Constraint<...>`: the result's constraint is not checked
+                  accept(Kw::noexcept_); // (not checked: kpp's exceptions say nothing of noexcept to a requirement)
+                  Type* constraint = nullptr;
+                  if (accept(P::Arrow))
+                  {
+                    // `-> Integral`, `-> SameAs<int>`: the result's type-constraint, checked as
+                    // Integral<decltype((e))> (until 2026-11-06 skipped: never checked).
+                    constraint = parseType();
+                    if (!constraint || constraint->kind != NodeKind::NamedType)
+                      error("expected a type-constraint after '->' in a compound requirement");
+                  }
+                  if (e)
+                  {
+                    requirements.push_back(e);
+                    resultConstraints.push_back(constraint);
+                  }
+                }
+                else if (accept(Kw::requires_))
+                {
+                  // A nested requirement: its expression must hold (until 2026-11-06 it was taken for a
+                  // simple requirement, which holds when the expression is well-formed).
+                  if (Expr* e = parseExpression())
+                    nested.push_back(e);
                 }
                 else
                 {
-                  accept(Kw::requires_); // a nested requirement: its expression must hold, which the typing of a constant does not check
                   if (Expr* e = parseExpression())
+                  {
                     requirements.push_back(e);
+                    resultConstraints.push_back(nullptr);
+                  }
                 }
                 if (!accept(P::Semi))
                 {
@@ -5590,6 +5622,8 @@ namespace
               expect(P::RBrace, "expected '}' after the requirements");
               r->requirements = makeSpanOf(requirements);
               r->typeRequirements = makeSpanOf(typeRequirements);
+              r->resultConstraints = makeSpanOf(resultConstraints);
+              r->nested = makeSpanOf(nested);
             }
             return r;
           }
@@ -6076,6 +6110,27 @@ namespace
       }
     }
 
+    // The `auto` in a parameter type (mentionsAuto's), or null.
+    static AutoType* autoIn(Type* t)
+    {
+      for (;;)
+      {
+        if (!t)
+          return nullptr;
+        switch (t->kind)
+        {
+          case NodeKind::AutoType: return static_cast<AutoType*>(t);
+          case NodeKind::ConstType: t = static_cast<ConstType*>(t)->inner; break;
+          case NodeKind::PointerType: t = static_cast<PointerType*>(t)->pointee; break;
+          case NodeKind::LRefType: t = static_cast<LRefType*>(t)->referenced; break;
+          case NodeKind::RRefType: t = static_cast<RRefType*>(t)->referenced; break;
+          case NodeKind::PackType: t = static_cast<PackType*>(t)->pattern; break;
+          case NodeKind::MemberPointerType: t = static_cast<MemberPointerType*>(t)->pointee; break;
+          default: return nullptr;
+        }
+      }
+    }
+
     // The same type with its `auto` replaced (in place) by the given type.
     static Type* replaceAuto(Type* t, Type* with)
     {
@@ -6127,6 +6182,8 @@ namespace
         TemplateParamDecl* tp = decl<TemplateParamDecl>(p->type->token);
         tp->isType = true;
         tp->isPack = p->isPack;
+        if (AutoType* a = autoIn(p->type); a && a->constraint)
+          tp->valueType = a->constraint; // `Integral auto x`: `template<Integral T>`'s constraint
         tp->name = symbols.intern("__auto_" + std::to_string(autoCount++));
         NamedType* named = node<NamedType>(p->type->token);
         NamePart part;

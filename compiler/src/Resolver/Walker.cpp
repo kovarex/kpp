@@ -6107,6 +6107,12 @@ auto GlobalScope::Impl::Walker::walkType(Type* t) -> void
     return;
   switch (t->kind)
   {
+    case NodeKind::AutoType:
+      // A constrained placeholder that no parameter's invented template parameter took (a variable's,
+      // a result's): its constraint is not checked yet, so an error, never an unchecked `auto`.
+      if (static_cast<AutoType*>(t)->constraint && !probing && file && !file->isImported)
+        reportHere(t->token, "a constrained placeholder (`Concept auto`) is supported for a function's parameters only yet");
+      break;
     case NodeKind::NamedType:
       walkType(static_cast<NamedType*>(t)->name.typeQualifier); // `decltype(x)::member`: x typed first
       resolveTypeName(static_cast<NamedType*>(t));
@@ -8022,12 +8028,26 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
       }
+      std::vector<const Ty*> resultTypes;
+      bool dependent = false;
       for (Expr* requirement : r->requirements)
       {
         Expr* copy = copier.expression(requirement);
-        if (const Ty* ty = probe.walkExpr(copy); !ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy) ||
-                                                 (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
+        const Ty* ty = probe.walkExpr(copy);
+        if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy) ||
+            (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
+        dependent = dependent || (ty && impl.types.isDependent(ty));
+        resultTypes.push_back(ty ? argumentType(copy, ty, impl.types) : nullptr);
+      }
+      // The compound requirements' result constraints and the nested requirements (requirementsExtraHold).
+      if (satisfied && !dependent && (!r->nested.empty() || std::any_of(r->resultConstraints.begin(), r->resultConstraints.end(), [](Type* t) { return t != nullptr; })))
+      {
+        Decl* owner = bodyOf ? static_cast<Decl*>(bodyOf) : nullptr;
+        Subst none;
+        if (owner)
+          if (std::optional<bool> extra = impl.requirementsExtraHold(r, resultTypes, owner, activeSubst ? *activeSubst : none); extra && !*extra)
+            satisfied = false;
       }
       r->satisfied = satisfied;
       return record(e, types.boolType());

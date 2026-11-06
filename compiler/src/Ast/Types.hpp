@@ -26,6 +26,7 @@ struct FunctionType : Type { Type* result; Span<Decl*> params; bool isConst = fa
 // file: the file it is written in, whose tokens type its expression again under an instance's
 // arguments where the context has none (a qualified name's template arguments, as a lookup reads them).
 struct DecltypeType : Type { Expr* expr; bool isAuto = false; const struct ParsedFile* file = nullptr; };
-struct AutoType : Type { bool isDecltypeAuto = false; };
+// constraint: a constrained placeholder's concept (`Integral auto`, `SameAs<int> auto`), null for none.
+struct AutoType : Type { bool isDecltypeAuto = false; struct NamedType* constraint = nullptr; };
 struct MemberPointerType : Type { Type* classType; Type* pointee; };
 struct PackType : Type { Type* pattern; };

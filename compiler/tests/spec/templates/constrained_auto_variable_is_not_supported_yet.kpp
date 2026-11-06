@@ -1,0 +1,15 @@
+// spec: a constrained placeholder that is not a function parameter's (`Integral auto v = 5;`, a result's) is an error until its constraint is checked, never an unchecked `auto`
+// error: constrained_auto_variable_is_not_supported_yet.kpp:13: error: a constrained placeholder (`Concept auto`) is supported for a function's parameters only yet
+// factorio: thread J's concepts battery (2026-11-06)
+template<typename T>
+struct IsInt
+{
+  static constexpr bool value = false;
+};
+template<typename T>
+concept Integral = IsInt<T>::value;
+int main()
+{
+  Integral auto v = 5;
+  return v;
+}

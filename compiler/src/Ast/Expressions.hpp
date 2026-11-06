@@ -91,6 +91,17 @@ struct TypeidExpr : Expr { Node* operand; const Ty* operandType = nullptr; Decl*
 struct FoldExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; };
 // requires(params) { requirements; }: true when every requirement is well-typed for the types at
 // hand; the type checker sets satisfied where the expression is typed (again per instantiation).
-struct RequiresExpr : Expr { Span<Decl*> params; Span<Expr*> requirements; Span<Type*> typeRequirements; bool satisfied = false; };
+// resultConstraints: one per requirement, the type-constraint of a compound one (`{ t.size() } ->
+// Integral`), null for none. nested: the nested requirements (`requires sizeof(T) <= 2;`), each a
+// constraint that must hold.
+struct RequiresExpr : Expr
+{
+  Span<Decl*> params;
+  Span<Expr*> requirements;
+  Span<Type*> typeRequirements;
+  Span<Type*> resultConstraints;
+  Span<Expr*> nested;
+  bool satisfied = false;
+};
 struct ParenExpr : Expr { Expr* inner; };
 struct ErrorExpr : Expr {};

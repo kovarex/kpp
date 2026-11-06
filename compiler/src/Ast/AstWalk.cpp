@@ -339,6 +339,10 @@ namespace
           exprs(c->requirements);
           for (Type* t : c->typeRequirements)
             type(t);
+          for (Type* t : c->resultConstraints)
+            if (t)
+              type(t);
+          exprs(c->nested);
           break;
         }
         case NodeKind::ParenExpr: expr(static_cast<ParenExpr*>(e)->inner); break;

@@ -1488,6 +1488,7 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
     else if (!namesOnlyAccessible(copy, fn, context, nullptr))
       return false;
   }
+  std::vector<const Ty*> resultTypes;
   for (Expr* requirement : r->requirements)
   {
     Expr* copy = copier.expression(requirement);
@@ -1498,8 +1499,56 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
       dependent = true;
     else if (!namesOnlyAccessible(copy, fn, context, nullptr))
       return false;
+    resultTypes.push_back(argumentType(copy, ty, types));
   }
-  return dependent ? std::nullopt : std::optional<bool>(true);
+  if (dependent)
+    return std::nullopt;
+  return requirementsExtraHold(r, resultTypes, owner, s);
+}
+
+auto GlobalScope::Impl::resultConstraintHolds(Type* constraint, const Ty* type, Decl* owner, const Subst& s) -> std::optional<bool>
+{
+  if (!constraint || constraint->kind != NodeKind::NamedType || !type || !type->isKnown() || types.isDependent(type))
+    return std::nullopt;
+  LocalStack own;
+  pushEnclosingTemplateParams(owner, own);
+  TypeContext ctx{lexicalScopeOf(owner), &own, &s, owner->file ? owner->file->tokens : nullptr, owner->file ? owner->file->text : std::string_view()};
+  const QualifiedName& name = static_cast<NamedType*>(constraint)->name;
+  VariableDecl* concept_ = conceptOf(lookupQualified(name, ctx.scope, &own, 1, &s).decl);
+  if (!concept_ || concept_->templateParams.empty())
+    return false;
+  std::vector<const Ty*> given{type};
+  size_t n = concept_->templateParams.size();
+  for (Node* written : name.last().templateArgs)
+  {
+    const Ty* a = templateArgument(written, concept_->templateParams[std::min(given.size(), n - 1)], ctx, 1);
+    if (!a || !a->isKnown() || types.isDependent(a) || mentionsUnknown(a))
+      return std::nullopt;
+    given.push_back(a);
+  }
+  return conceptHolds(concept_, given, 1);
+}
+
+auto GlobalScope::Impl::requirementsExtraHold(RequiresExpr* r, const std::vector<const Ty*>& resultTypes, Decl* owner, const Subst& s) -> std::optional<bool>
+{
+  bool unknownYet = false;
+  for (size_t i = 0; i < r->resultConstraints.size(); ++i)
+  {
+    if (!r->resultConstraints[i])
+      continue;
+    std::optional<bool> v = resultConstraintHolds(r->resultConstraints[i], i < resultTypes.size() ? resultTypes[i] : nullptr, owner, s);
+    if (v && !*v)
+      return false;
+    unknownYet = unknownYet || !v;
+  }
+  for (Expr* e : r->nested)
+  {
+    std::optional<bool> v = constraintValue(e, owner, s, 1);
+    if (v && !*v)
+      return false;
+    unknownYet = unknownYet || !v;
+  }
+  return unknownYet ? std::nullopt : std::optional<bool>(true);
 }
 
 auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx) -> const Ty*
@@ -1727,7 +1776,7 @@ auto GlobalScope::Impl::normalizeConstraint(NormalConstraint& n, const Node* e, 
   return int(n.terms.size() - 1);
 }
 
-auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, FunctionDecl* f, const Subst& s) -> int
+auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, Decl* f, const Subst& s) -> int
 {
   int root = -1;
   auto conjoin = [&](int t) {
@@ -1787,9 +1836,26 @@ auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, FunctionDecl*
     }
     conjoin(formed ? normalizeConstraint(n, concept_->init, concept_, cs, 1) : -1);
   }
-  if (f->requiresClause)
-    conjoin(normalizeConstraint(n, f->requiresClause, f, s, 1));
+  if (f->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(f)->requiresClause)
+    conjoin(normalizeConstraint(n, static_cast<FunctionDecl*>(f)->requiresClause, f, s, 1));
   return root;
+}
+
+auto GlobalScope::Impl::constraintsSubsume(Decl* a, Decl* b) -> bool
+{
+  if (a->templateParams.size() != b->templateParams.size())
+    return false;
+  Subst sa, sb;
+  for (size_t i = 0; i < a->templateParams.size(); ++i)
+  {
+    sa.pairs.push_back({a->templateParams[i], types.param(a->templateParams[i])});
+    sb.pairs.push_back({b->templateParams[i], types.param(a->templateParams[i])});
+  }
+  NormalConstraint an, bn;
+  int at = associatedConstraints(an, a, sa), bt = associatedConstraints(bn, b, sb);
+  if (at == -2 || bt == -2)
+    return false;
+  return subsumes(an, at, bn, bt);
 }
 
 auto GlobalScope::Impl::constraintClauses(const NormalConstraint& n, int t, bool disjunction, std::vector<std::vector<int>>& out) -> bool

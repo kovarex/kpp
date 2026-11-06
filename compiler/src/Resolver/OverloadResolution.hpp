@@ -215,6 +215,14 @@
   // template, a constrained function) is well-typed under s, probed on a scratch walker; nullopt
   // while one still depends on a parameter.
   std::optional<bool> requirementsHold(RequiresExpr* r, Decl* owner, const Subst& s);
+  // A compound requirement's type-constraint (`{ e } -> C<X>`) for the expression's type: C<type, X>
+  // ([expr.prim.req.compound] 1.3.2), the written arguments read where owner is, under s. nullopt
+  // when it cannot be told yet (an argument not known); false for a constraint naming no concept.
+  std::optional<bool> resultConstraintHolds(Type* constraint, const Ty* type, Decl* owner, const Subst& s);
+  // r's nested requirements and compound requirements' result constraints (requirementsHold and the
+  // walk's typing of a requires-expression check the rest): resultTypes the type of each requirement
+  // (decltype((e)); null where not known).
+  std::optional<bool> requirementsExtraHold(RequiresExpr* r, const std::vector<const Ty*>& resultTypes, Decl* owner, const Subst& s);
 
   // An expression in a function's signature (`decltype(callable())` in its trailing return type)
   // typed under ctx's substitution, with the function's parameters in scope: a copy of it is
@@ -274,7 +282,13 @@
   // f's associated constraints normalized under s ([temp.constr.decl] 3: its template parameters'
   // type-constraints, then its requires clause, conjoined): the root term, -1 for none (true), -2
   // when they cannot be normalized.
-  int associatedConstraints(NormalConstraint& n, FunctionDecl* f, const Subst& s);
+  int associatedConstraints(NormalConstraint& n, Decl* f, const Subst& s);
+
+  // Whether a's associated constraints subsume b's ([temp.constr.order]), their template parameters
+  // taken position by position (a partial specialisation's constrained parameters, as two
+  // functions' are in moreConstrained): true when neither has any; false when they cannot be
+  // normalized or their parameter counts differ.
+  bool constraintsSubsume(Decl* a, Decl* b);
 
   // The clauses of term t (-1: none, true): its disjunctive normal form (disjunction), or its
   // conjunctive one: each clause a list of atom indices; false when they grow past a bound.

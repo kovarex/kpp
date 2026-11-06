@@ -1153,11 +1153,48 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
       continue;
     }
     Candidate m{c, {}};
-    if (matchPatterns(c, primary, args, m.deduced, depth))
+    if (!matchPatterns(c, primary, args, m.deduced, depth))
+      continue;
+    // Its constrained template parameters' constraints, for the deduced arguments ([temp.spec.partial.match]
+    // 2: a partial specialisation whose constraints are not satisfied does not match; until 2026-11-06
+    // they were never checked: `template<Floating T> struct Traits<T>` matched an int and a class).
+    bool satisfied = true;
+    Subst own;
+    for (size_t i = 0; i < c->templateParams.size() && i < m.deduced.size(); ++i)
+      own.pairs.push_back({c->templateParams[i], m.deduced[i]});
+    for (Decl* tp : c->templateParams)
+    {
+      if (tp->kind != NodeKind::TemplateParamDecl)
+        continue;
+      std::optional<bool> holds = typeConstraintHolds(static_cast<TemplateParamDecl*>(tp), c, own, depth + 1);
+      if (holds && !*holds)
+        satisfied = false;
+      else if (!holds)
+      {
+        const Ty* t = own.find(tp);
+        if (t && t->isKnown() && !types.isDependent(t) && !mentionsUnknown(t))
+        {
+          reportCheckerError(c->file, tp->token, "the constraint on " + std::string(symbols.name(static_cast<TemplateParamDecl*>(tp)->name)) +
+                                                     " of a partial specialization cannot be evaluated for " + types.toString(t, &symbols));
+          satisfied = false;
+        }
+      }
+    }
+    if (satisfied)
       partials.push_back(std::move(m));
   }
   if (partials.empty())
     return nullptr;
+  // At least as specialised: by the patterns, and where the patterns are the same both ways, by the
+  // constraints, the one whose constraints subsume the other's ([temp.func.order] 6.2.2 as
+  // [temp.spec.partial.order] applies it: `template<Signed T>` over `template<Integral T>`).
+  auto atLeastAsSpecialized = [&](ClassDecl* a, ClassDecl* b, Decl* p, int d) -> bool
+  {
+    bool ab = this->atLeastAsSpecialized(a, b, p, d);
+    if (!ab || !this->atLeastAsSpecialized(b, a, p, d))
+      return ab;
+    return constraintsSubsume(a, b);
+  };
   // The most specialised: at least as specialised as every other match (`<T, T, R...>` over
   // `<T, F, R...>` for <B, B, C>). When none is, the first (declaration order).
   size_t best = 0;

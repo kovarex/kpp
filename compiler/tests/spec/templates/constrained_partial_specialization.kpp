@@ -1,0 +1,57 @@
+// spec: a partial specialization with constrained template parameters matches only arguments that satisfy its constraints, and of two whose patterns are the same the one whose constraints subsume the other's is taken ([temp.spec.partial.match] 2, [temp.spec.partial.order], [temp.constr.order]): `template<Signed T>` over `template<Integral T>`, the primary for a type neither takes
+// factorio: thread J's concepts battery against clang (2026-11-06): the constraints were never checked, and the first declared took every argument (1 1 1 1 1 for clang's 1 2 3 0 1); clang's output
+template<typename T>
+struct IsInt
+{
+  static constexpr bool value = false;
+};
+template<> struct IsInt<int> { static constexpr bool value = true; };
+template<> struct IsInt<unsigned> { static constexpr bool value = true; };
+template<> struct IsInt<long long> { static constexpr bool value = true; };
+template<> struct IsInt<bool> { static constexpr bool value = true; };
+template<typename T>
+struct IsFloat
+{
+  static constexpr bool value = false;
+};
+template<> struct IsFloat<float> { static constexpr bool value = true; };
+template<> struct IsFloat<double> { static constexpr bool value = true; };
+template<typename T>
+concept Integral = IsInt<T>::value;
+template<typename T>
+concept Signed = Integral<T> && (T(-1) < T(0));
+template<typename T>
+concept Floating = IsFloat<T>::value;
+template<typename T>
+struct Traits
+{
+  static constexpr int id = 0;
+};
+template<Integral T>
+struct Traits<T>
+{
+  static constexpr int id = 1;
+};
+template<Signed T>
+struct Traits<T>
+{
+  static constexpr int id = 2;
+};
+template<Floating T>
+struct Traits<T>
+{
+  static constexpr int id = 3;
+};
+template<typename T>
+struct Traits<T*>
+{
+  static constexpr int id = 4;
+};
+struct Plain
+{
+};
+int main()
+{
+  println(Traits<unsigned>::id, " ", Traits<long long>::id, " ", Traits<double>::id, " ", Traits<Plain>::id, " ", Traits<bool>::id, " ", Traits<int*>::id);
+  return 0;
+}

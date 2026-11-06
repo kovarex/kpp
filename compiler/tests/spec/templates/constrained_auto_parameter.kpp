@@ -1,0 +1,27 @@
+// spec: a constrained placeholder parameter (`Integral auto x`, C++20's abbreviated function template) is an invented template parameter with that type-constraint, checked and ordered as `template<Integral T>` is: an argument that does not satisfy it drops the overload, and a more constrained one is preferred; in a generic lambda too
+// factorio: thread J's concepts battery against clang (2026-11-06): `Integral auto` did not parse ("expected ')' after parameters"); clang's output
+template<typename T>
+struct IsInt
+{
+  static constexpr bool value = false;
+};
+template<> struct IsInt<int> { static constexpr bool value = true; };
+template<> struct IsInt<unsigned> { static constexpr bool value = true; };
+template<typename T>
+concept Integral = IsInt<T>::value;
+template<typename T>
+concept Signed = Integral<T> && (T(-1) < T(0));
+template<typename T, typename U>
+concept Same = IsSame<T, U>::value;
+int kind(Integral auto) { return 1; }
+int kind(Signed auto) { return 2; }
+template<typename T>
+int kind(T) { return 3; }
+int twice(const Same<int> auto& v) { return v * 2; }
+int main()
+{
+  unsigned u = 3;
+  auto onlyInts = [](Integral auto v) { return v + 1; };
+  println(kind(u), " ", kind(-1), " ", kind(1.5), " ", twice(21), " ", onlyInts(4));
+  return 0;
+}

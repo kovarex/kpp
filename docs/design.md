@@ -106,6 +106,17 @@ builds win less unless machine code is cached per function.
   where the specialization is named, one its argument does not satisfy a compile error
   (templates/class_template_constraint_is_checked; the game's InfiniteRectangle<ConvertibleToBool T>
   is given pointers, which satisfy it).
+  A partial specialization's constrained template parameters are checked for the arguments it
+  deduces: one whose constraints do not hold does not match, and of two with the same patterns the
+  one whose constraints subsume the other's is taken (2026-11-06: they were never checked, and the
+  first declared took every argument; templates/constrained_partial_specialization). A
+  requires-expression's compound requirement checks its result's type-constraint (`{ t.size() } ->
+  Integral` is Integral<decltype((t.size()))>) and a nested requirement (`requires sizeof(T) <= 2;`)
+  must evaluate to true (2026-11-06: the first was skipped, the second only type-checked;
+  templates/requires_compound_and_nested_requirements). A constrained placeholder parameter
+  (`Integral auto x`) is its invented template parameter's type-constraint; one anywhere else (a
+  variable's, a result's) is an error until it is checked (templates/constrained_auto_parameter,
+  templates/constrained_auto_variable_is_not_supported_yet).
 - Deduction from several arguments (2026-11-05): a template parameter that two arguments deduce
   gets the same type from each, else the template is no candidate ([temp.deduct.type] 2): `f(1,
   2.5)` of `template<class T> f(T, T)` takes another overload or has none. The first deduction stood

@@ -625,6 +625,8 @@ Expr* InstanceCopier::expr(const Expr* e)
       c->params = declList(c->params);
       c->requirements = exprs(c->requirements);
       c->typeRequirements = span(c->typeRequirements, [&](Type*& t) { t = type(t); });
+      c->resultConstraints = span(c->resultConstraints, [&](Type*& t) { t = t ? type(t) : nullptr; });
+      c->nested = exprs(c->nested);
       out = c;
       break;
     }
@@ -906,6 +908,11 @@ void InstanceCopier::fixReferences(Node* root)
           push(r);
         for (Type* t : static_cast<RequiresExpr*>(n)->typeRequirements)
           push(t);
+        for (Type* t : static_cast<RequiresExpr*>(n)->resultConstraints)
+          if (t)
+            push(t);
+        for (Expr* x : static_cast<RequiresExpr*>(n)->nested)
+          push(x);
         break;
       case NodeKind::ParenExpr: push(static_cast<ParenExpr*>(n)->inner); break;
       default: break;
