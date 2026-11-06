@@ -3884,6 +3884,13 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
     return std::nullopt;
   if (args.size() == 1 && args[0].isObject() && args[0].type && types.unqualified(types.stripRef(args[0].type)) == t)
     return args[0]; // a copy (the interpreter's values are copied by value)
+  // `B b = d;`, `B(makeD())`, `Out{d, 5}` with d of a class derived from B, which declares no
+  // constructor: B's implicit copy constructor given d's base part, a copy of it (slicing), not
+  // B's members initialized from d (no constant: "a conversion of D to int32").
+  if (args.size() == 1 && args[0].isObject() && args[0].type && !args[0].type->isBraceList() && layout->constructors.empty() &&
+      !constInheritsConstructors(*layout))
+    if (std::optional<std::vector<size_t>> base = constBasePath(args[0].type, t, depth + 1); base && !base->empty())
+      return constPart(args[0], *base);
   if (layout->decl && layout->decl->isTypedUnion)
     return constTypedUnion(t, *layout, args, depth);
   if (layout->constructors.empty() && !constInheritsConstructors(*layout))

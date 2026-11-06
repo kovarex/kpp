@@ -1,0 +1,31 @@
+// spec: at compile time an aggregate B made from an object of a class derived from it copies that object's B part (slicing, B's implicit copy constructor), as at run time: `B b2 = makeD();`, `B(makeD())`, a member of an aggregate from a D prvalue or a D constant (`Out{makeD(), 5}`, `Out{d, 7}`) (clang gives the same)
+// found by D (2026-11-06) checking aggregate member initialization at compile time: each was no constant ("a conversion of D to int32"), as B's members were initialized from the D object
+struct B
+{
+  int x;
+};
+
+struct D : B
+{
+  int y;
+};
+
+struct Out
+{
+  B b;
+  int z;
+};
+
+constexpr D makeD() { return D{{1}, 2}; }
+constexpr B b2 = makeD();
+constexpr Out o2{makeD(), 5};
+constexpr Out o3{B(makeD()), 6};
+constexpr D d{{3}, 4};
+constexpr Out o4{d, 7};
+
+int main()
+{
+  Out r{makeD(), 8};
+  println(b2.x, " ", o2.b.x, " ", o2.z, " ", o3.b.x, " ", o3.z, " ", o4.b.x, " ", o4.z, " ", r.b.x, " ", r.z);
+  return 0;
+}
