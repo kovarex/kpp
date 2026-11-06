@@ -1,0 +1,18 @@
+// spec: in a pack expansion, `sizeof(a)` of a function parameter pack names one element and is that element's size (not sizeof..., which counts the pack): a fold whose operand mentions the pack only inside sizeof (`(0 + ... + (sizeof(a) == sizeof(int) ? 1 : 0))`), a comma fold, a conditional over it, through a reference element's referred type. Before, the fold expanded no pack ("a fold expression that expands no parameter pack"), and with the pack found, sizeof was the whole pack's ("sizeof int32, double, char, int32"). clang prints the same
+// found by thread A (C:\kpp-sandbox\scratch\resolver\feat\out\variadic_format_fold.kpp), the pack named only inside sizeof
+template<class... A> int countInts(A... a) { return (0 + ... + (sizeof(a) == sizeof(int) ? 1 : 0)); }
+template<class... A> int sizes(A... a)
+{
+  int s = 0;
+  ((s = s * 10 + int(sizeof(a))), ...);
+  return s;
+}
+template<class... A> int referred(A&... a) { return (int(sizeof(a)) + ... + 0); }
+template<class F, class... A> auto applyAll(F f, A... a) { return (f(a) + ...); }
+int main()
+{
+  double d = 1;
+  short h = 2;
+  println(countInts(1, 2.0, 'c', 3), " ", countInts(), " ", sizes('a', short(1), 2, 3.0), " ", referred(d, h), " ", applyAll([](int x) { return x * x; }, 1, 2, 3));
+  return 0;
+}

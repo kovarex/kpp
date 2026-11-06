@@ -534,6 +534,13 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
           unsupported(e, "sizeof... of something that is not a parameter pack");
         return {std::to_string(packLocals[param].size()), types.sizeType()};
       }
+      // `sizeof(a)` of a function parameter pack's element, bound while its expansion is emitted
+      // (`(0 + ... + (sizeof(a) == 4 ? 1 : 0))`): that element's size (the pack's whole type has none).
+      Decl* named = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved
+                  : s->operand && s->operand->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(s->operand)->resolved : nullptr;
+      if (named && named->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(named)->isPack && s->sizeofKind != Kw::alignof_)
+        if (auto local = locals.find(named); local != locals.end() && local->second.ty && local->second.ty->isKnown())
+          return {std::to_string(sizeOf(types.stripRef(local->second.ty), e)), types.sizeType()};
       auto v = evalConst(e);
       if (!v)
         unsupported(e, "this sizeof");

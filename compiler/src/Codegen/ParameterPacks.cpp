@@ -52,6 +52,27 @@ auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> v
       for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
         packsIn(a, out, depth + 1);
       return;
+    case NodeKind::ConditionalExpr:
+      packsIn(static_cast<ConditionalExpr*>(n)->cond, out, depth + 1);
+      packsIn(static_cast<ConditionalExpr*>(n)->then, out, depth + 1);
+      packsIn(static_cast<ConditionalExpr*>(n)->else_, out, depth + 1);
+      return;
+    case NodeKind::SizeofExpr:
+    {
+      // `sizeof(a)` of one element (`(0 + ... + (sizeof(a) == 4 ? 1 : 0))`; not sizeof..., which
+      // counts the pack): its operand, or the name the parser read as a type.
+      auto* s = static_cast<SizeofExpr*>(n);
+      if (s->isPack)
+        return;
+      packsIn(s->operand, out, depth + 1);
+      if (s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->name.parts.size() == 1)
+      {
+        Decl* d = static_cast<NamedType*>(s->type)->resolved;
+        if (d && packLocals.count(d) && std::find(out.begin(), out.end(), d) == out.end())
+          out.push_back(d);
+      }
+      return;
+    }
     default:
       return;
   }
