@@ -741,7 +741,11 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
           if (!currentClassTy)
             unsupported(e, "a member used outside a method");
           const BitfieldInfo* bits = nullptr;
-          std::string addr = memberObject(currentClassTy, d, thisPointer(e), e, &bits); // `r = v` with r a reference member
+          const Ty* objectTy = currentClassTy;
+          std::string object = thisPointer(e);
+          if (const Ty* qualifier = implicitThisQualifier(n, e)) // `Right::pad`: this->Right::pad
+            moveToQualifier(objectTy, object, d, qualifier, e);
+          std::string addr = memberObject(objectTy, d, object, e, &bits); // `r = v` with r a reference member
           lvalueBitfield = {e, bits};
           return addr;
         }
@@ -812,24 +816,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         // with id in a virtual base is the one shared subobject's.
         // The qualifier's subobject first: `b.Right::id` with Base under both Left and Right is
         // the id of Right's Base, not of the first Base among the bases.
-        Decl* owner = global.owningClass(d);
-        const Ty* instance = owner ? instantiationIn(qualifier, owner, e) : nullptr;
-        if (instance && qualifier != canonicalClass(baseTy, e) && qualifier != instance)
-        {
-          std::string addr;
-          if (!baseAddress(baseTy, qualifier, object, addr, e))
-            unsupported(e, "a member of " + types.toString(qualifier, &symbols) + ", which is no base of " + types.toString(baseTy, &symbols));
-          object = addr;
-          baseTy = qualifier;
-        }
-        if (instance && instance != canonicalClass(baseTy, e))
-        {
-          std::string addr;
-          if (!baseAddress(baseTy, instance, object, addr, e))
-            unsupported(e, "a member of " + types.toString(instance, &symbols) + ", which is no base of " + types.toString(baseTy, &symbols));
-          object = addr;
-          baseTy = instance;
-        }
+        moveToQualifier(baseTy, object, d, qualifier, e);
       }
       const BitfieldInfo* bits = nullptr;
       std::string addr = memberObject(baseTy, d, object, e, &bits);
@@ -1210,6 +1197,33 @@ auto codegen::Emitter::memberQualifier(MemberExpr* m, Node* at) -> const Ty*
   TemplateArgs none;
   const Ty* q = global.typeOfAstIn(&written, typingContext(), currentArgs ? *currentArgs : none);
   return q && isClass(types.stripRef(q)) ? canonicalClass(types.unqualified(types.stripRef(q)), at) : nullptr;
+}
+
+auto codegen::Emitter::implicitThisQualifier(NameExpr* n, Node* at) -> const Ty*
+{
+  const Ty* q = qualifierType(n, at);
+  // (`Box::x` in a class of Box<int>: the injected name, no instance of its own to move to.)
+  return q && !(q->args.empty() && !classDef(q->decl, at)->templateParams.empty()) ? q : nullptr;
+}
+
+auto codegen::Emitter::moveToQualifier(const Ty*& objectTy, std::string& object, Decl* member, const Ty* qualifier, Node* at) -> void
+{
+  Decl* owner = global.owningClass(member);
+  const Ty* instance = owner ? instantiationIn(qualifier, owner, at) : nullptr;
+  if (!instance)
+    return;
+  auto moveTo = [&](const Ty* base)
+  {
+    std::string addr;
+    if (!baseAddress(objectTy, base, object, addr, at))
+      unsupported(at, "a member of " + types.toString(base, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
+    object = addr;
+    objectTy = base;
+  };
+  if (qualifier != canonicalClass(objectTy, at) && qualifier != instance)
+    moveTo(qualifier);
+  if (instance != canonicalClass(objectTy, at))
+    moveTo(instance);
 }
 
 auto codegen::Emitter::qualifierClass(Node* e, Node* at) -> const Ty*

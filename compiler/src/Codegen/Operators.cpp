@@ -608,29 +608,20 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           unsupported(c, "a method call outside a method");
         thisArg = thisPointer(c);
         classTy = isClass(currentClassTy) ? currentClassTy : nullptr;
-        if (owner->kind == NodeKind::ClassDecl && classTy && classDef(owner, c) != classDef(currentClassTy->decl, c))
+        // `Right::get()`, `Chain<Tail...>::count()` in Chain<Head, Tail...>: this->Right::get().
+        if (const Ty* qualifier = owner->kind == NodeKind::ClassDecl && classTy ? implicitThisQualifier(n, c) : nullptr)
+          moveToQualifier(classTy, thisArg, f, qualifier, c);
+        if (owner->kind == NodeKind::ClassDecl && classTy && classDef(owner, c) != classDef(classTy->decl, c))
         {
           // Inherited method: find the base subobject of the right class.
-          const Ty* base = baseInstantiation(currentClassTy, owner, c);
+          const Ty* base = baseInstantiation(classTy, owner, c);
           std::string addr;
-          if (base && baseAddress(currentClassTy, base, thisArg, addr, c))
+          if (base && baseAddress(classTy, base, thisArg, addr, c))
           {
             thisArg = addr;
             classTy = base;
           }
         }
-        else if (owner->kind == NodeKind::ClassDecl && classTy && n->name.parts.size() > 1)
-          if (const Ty* q = qualifierType(n, c); q && classDef(q->decl, c) == classDef(owner, c) && q != canonicalClass(currentClassTy, c))
-          {
-            // `Chain<Tail...>::count()` in Chain<Head, Tail...>: the member of the base the
-            // qualifier names, an instance of the same template as this class.
-            std::string addr;
-            if (!baseAddress(currentClassTy, q, thisArg, addr, c))
-              unsupported(c, "a call of " + qualifiedName(f) + " through " + types.toString(q, &symbols) + ", which is no base of " +
-                                 types.toString(currentClassTy, &symbols));
-            thisArg = addr;
-            classTy = q;
-          }
       }
       std::string indirect;
       if (classTy && n->name.parts.size() == 1 && !thisArg.empty())

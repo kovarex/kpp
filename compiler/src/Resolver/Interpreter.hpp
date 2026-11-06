@@ -226,6 +226,9 @@
   // The path from an object of class from to its base subobject of class to (`OptionalMapPosition`
   // given where a `MapPosition` is wanted: slicing), or nullopt when to is no base of from.
   std::optional<std::vector<size_t>> constBasePath(const Ty* from, const Ty* to, int depth);
+  // `Right::x` of an object: the path to the part of the qualifier's class, moving objectType to
+  // it (the empty path, objectType as it is, for no such qualifier: a base there twice needs it).
+  std::vector<size_t> constQualifierPath(const Ty*& objectType, const QualifiedName& name, const TypeContext& ctx, int depth);
 
   // The candidates a class offers for a member function or operator named symbol, its own or a
   // base's, and the arguments of the class they are found in for an object of type t.

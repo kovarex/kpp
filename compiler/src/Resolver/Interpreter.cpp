@@ -1792,8 +1792,12 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   bool qualified = callee->name.parts.size() > 1;
   if (qualified && object && object->isObject() && object->type && f->parent)
   {
-    std::vector<size_t> path;
-    if (const Ty* owner = constBaseDeclaring(object->type, f->parent, path, 0); owner && !path.empty())
+    const Ty* holder = object->type;
+    std::vector<size_t> path = constQualifierPath(holder, callee->name, ctx, depth);
+    std::vector<size_t> rest;
+    const Ty* owner = constBaseDeclaring(holder, f->parent, rest, 0);
+    path.insert(path.end(), rest.begin(), rest.end());
+    if (owner && !path.empty())
     {
       self->path.insert(self->path.end(), path.begin(), path.end());
       self->type = owner;
@@ -2002,13 +2006,37 @@ auto GlobalScope::Impl::constBasePath(const Ty* from, const Ty* to, int depth) -
   const ConstClassLayout* layout = constLayoutOf(from, depth);
   if (!layout || depth > 16)
     return std::nullopt;
+  // (A base there twice, Left's and Right's: no one path, so no constant unless a qualified name
+  // chooses one (constQualifierPath), rather than the first one's value.)
+  std::optional<std::vector<size_t>> found;
   for (size_t b = 0; b < layout->bases.size(); ++b)
     if (std::optional<std::vector<size_t>> inner = constBasePath(layout->bases[b], to, depth + 1))
     {
+      if (found)
+        return std::nullopt;
       inner->insert(inner->begin(), b);
-      return inner;
+      found = std::move(inner);
     }
-  return std::nullopt;
+  return found;
+}
+
+auto GlobalScope::Impl::constQualifierPath(const Ty*& objectType, const QualifiedName& name, const TypeContext& ctx, int depth) -> std::vector<size_t>
+{
+  if (name.parts.size() < 2)
+    return {};
+  NamedType written{};
+  written.kind = NodeKind::NamedType;
+  written.name = name;
+  written.name.parts.count -= 1;
+  const Ty* q = convertType(&written, ctx, depth + 1);
+  q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+  if (!q || q->kind != TyKind::Class)
+    return {};
+  std::optional<std::vector<size_t>> path = constBasePath(objectType, q, depth + 1);
+  if (!path)
+    return {};
+  objectType = q;
+  return *path;
 }
 
 auto GlobalScope::Impl::constMembersNamed(const Ty* t, uint32_t symbol, Subst& subst, int depth, bool templates) -> std::vector<FunctionDecl*>
@@ -2946,13 +2974,17 @@ auto GlobalScope::Impl::constFieldPath(const Ty* t, Decl* field, int depth) -> s
         inner->insert(inner->begin(), layout->bases.size() + i); // through the anonymous member
         return inner;
       }
+  // (In a base there twice: no one path, as constBasePath.)
+  std::optional<std::vector<size_t>> found;
   for (size_t b = 0; b < layout->bases.size(); ++b)
     if (std::optional<std::vector<size_t>> inner = constFieldPath(layout->bases[b], field, depth + 1))
     {
+      if (found)
+        return std::nullopt;
       inner->insert(inner->begin(), b);
-      return inner;
+      found = std::move(inner);
     }
-  return std::nullopt;
+  return found;
 }
 
 auto GlobalScope::Impl::constPart(const ConstValue& v, const std::vector<size_t>& path) -> std::optional<ConstValue>
@@ -6812,12 +6844,15 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
         object = constRead(*self);
       if (!object || !object->isObject())
         return std::nullopt;
-      if (std::optional<std::vector<size_t>> path = constFieldPath(object->type, d, 0))
+      const Ty* holder = object->type;
+      std::vector<size_t> through = constQualifierPath(holder, static_cast<NameExpr*>(e)->name, ctx, depth);
+      if (std::optional<std::vector<size_t>> path = constFieldPath(holder, d, 0))
       {
-        const ConstClassLayout* layout = constLayoutOf(object->type, 0);
+        const ConstClassLayout* layout = constLayoutOf(holder, 0);
+        self->path.insert(self->path.end(), through.begin(), through.end());
         self->path.insert(self->path.end(), path->begin(), path->end());
         self->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
-        self->bits = constBitsOf(object->type, d);
+        self->bits = constBitsOf(holder, d);
         return constThroughReference(*self, depth);
       }
     }
@@ -6910,13 +6945,16 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     if (!object || !object->isObject())
       return std::nullopt;
     d = constFieldNamed(d, m->member, object->type);
-    std::optional<std::vector<size_t>> path = d ? constFieldPath(object->type, d, 0) : std::nullopt;
+    const Ty* holder = object->type;
+    std::vector<size_t> through = constQualifierPath(holder, m->member, ctx, depth);
+    std::optional<std::vector<size_t>> path = d ? constFieldPath(holder, d, 0) : std::nullopt;
     if (!path)
       return std::nullopt;
+    base->path.insert(base->path.end(), through.begin(), through.end());
     base->path.insert(base->path.end(), path->begin(), path->end());
-    const ConstClassLayout* layout = constLayoutOf(object->type, 0);
+    const ConstClassLayout* layout = constLayoutOf(holder, 0);
     base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
-    base->bits = constBitsOf(object->type, d);
+    base->bits = constBitsOf(holder, d);
     return constThroughReference(*base, depth);
   }
   if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
@@ -7447,9 +7485,13 @@ auto GlobalScope::Impl::constMemberRead(MemberExpr* m, const TypeContext& ctx, i
   if (!object || !object->isObject())
     return std::nullopt;
   Decl* d = constFieldNamed(m->resolved, m->member, object->type);
-  std::optional<std::vector<size_t>> path = d ? constFieldPath(object->type, d, 0) : std::nullopt;
+  const Ty* holder = object->type;
+  std::vector<size_t> through = constQualifierPath(holder, m->member, ctx, depth);
+  std::optional<std::vector<size_t>> path = d ? constFieldPath(holder, d, 0) : std::nullopt;
+  if (path)
+    path->insert(path->begin(), through.begin(), through.end());
   std::optional<ConstValue> part = path ? constPart(*object, *path) : std::nullopt;
-  const ConstClassLayout* layout = part ? constLayoutOf(object->type, 0) : nullptr;
+  const ConstClassLayout* layout = part ? constLayoutOf(holder, 0) : nullptr;
   const Ty* declared = layout ? declaredTypeOf(d, !layout->subst.empty() ? &layout->subst : nullptr, 0) : nullptr;
   if (part && constRefersTo(*part, declared))
     return constReadTarget(*part, depth + 1); // a reference member: what it refers to, as it is now

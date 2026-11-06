@@ -1,0 +1,115 @@
+// spec: in a member function `Base::x`, with no object written, is `this->Base::x`: the member of the base the qualifier names, wherever it stands, as the same name through `this->` or an object was (`Right::pad` read the first base's pad, `Slot<double>::get()` ran on Slot<int>, without a word, and a function of a base repeated under Left and Right was an ambiguous conversion). clang and g++ print the same
+// found by thread J's inheritance battery (h1, h5, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct Left { int pad = 7; };
+struct Right { int pad = 8; int twice() { return pad * 2; } };
+struct Both : Left, Right
+{
+  int right() { return Right::pad; }
+  int left() { return Left::pad; }
+  void set() { Right::pad = 80; Right::pad += 1; ++Left::pad; }
+  int callRight() { return Right::twice(); }
+  int inLambda() { auto l = [this] { return Right::pad; }; return l(); }
+  int* place() { return &(Right::pad); }
+};
+struct Tagged : Both
+{
+  int fromBelow() { return Right::pad + Both::Right::pad; }
+};
+template<class T> class Slot
+{
+public:
+  T value;
+  Slot(T v) : value(v) {}
+  T get() { return value; }
+  void put(T v) { value = v; }
+};
+class Two : public Slot<int>, public Slot<double>
+{
+public:
+  Two() : Slot<int>(1), Slot<double>(2.5) {}
+  double d() { return Slot<double>::get() + Slot<double>::value; }
+  int i() { return Slot<int>::get() + Slot<int>::value; }
+  void set() { Slot<double>::put(4.5); Slot<int>::value = 3; }
+};
+template<class T> class Generic : public Slot<int>, public Slot<T>
+{
+public:
+  Generic() : Slot<int>(1), Slot<T>(T(9)) {}
+  T other() { return Slot<T>::get() + Slot<T>::value; }
+};
+// a base repeated under two paths: the qualifier chooses the path
+class Id
+{
+public:
+  int id;
+  Id(int v) : id(v) {}
+  virtual ~Id() {}
+  virtual int who() { return id; }
+  int plain() { return id + 10; }
+};
+class P : public Id { public: P() : Id(1) {} };
+class Q : public Id { public: Q() : Id(2) {} };
+class Twice : public P, public Q
+{
+public:
+  int who() override { return P::who() * 100 + Q::who(); }
+  int plain2() { return P::plain() * 100 + Q::plain(); }
+  int ids() { return P::id * 10 + Q::id; }
+};
+// a virtual function named with a qualifier does not dispatch, in a second base too
+class V1 { public: int a = 1; virtual ~V1() {} };
+class V2 { public: int b = 2; virtual ~V2() {} virtual int f() { return b; } };
+class V3 : public V1, public V2 { public: int f() override { return 50 + V2::f(); } };
+// the implicit assignment and an operator of a second base by name
+class O2
+{
+public:
+  int v = 0;
+  O2& operator=(const O2& o) { v = o.v + 1; return *this; }
+  int operator()(int x) { return v + x; }
+};
+class O3 : public Left, public O2
+{
+public:
+  void assign(const O2& o) { O2::operator=(o); }
+  int call() { return O2::operator()(5); }
+};
+// at compile time
+struct CL { int pad = 7; };
+struct CR { int pad = 8; constexpr int get() const { return pad; } };
+struct CB : CL, CR
+{
+  constexpr int right() const { return CR::pad; }
+  constexpr int call() const { return CR::get(); }
+};
+constexpr int atCompileTime = CB{}.right() * 10 + CB{}.call();
+int main()
+{
+  Both b;
+  printf("%d %d %d %d\n", b.right(), b.left(), b.callRight(), b.inLambda());
+  b.set();
+  *b.place() += 1;
+  printf("%d %d\n", b.Right::pad, b.Left::pad);
+  Tagged t;
+  printf("%d\n", t.fromBelow());
+  Two two;
+  printf("%.1f %d\n", two.d(), two.i());
+  two.set();
+  printf("%.1f %d\n", two.d(), two.i());
+  Generic<double> g;
+  printf("%.1f\n", g.other());
+  Twice w;
+  Q& q = w;
+  printf("%d %d %d %d\n", w.who(), q.who(), w.plain2(), w.ids());
+  V3 v;
+  V2& r = v;
+  printf("%d\n", r.f());
+  O3 o;
+  O2 from;
+  from.v = 4;
+  o.assign(from);
+  printf("%d %d\n", o.v, o.call());
+  printf("%d\n", atCompileTime);
+  return 0;
+}

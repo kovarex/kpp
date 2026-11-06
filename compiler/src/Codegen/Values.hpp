@@ -158,6 +158,14 @@
     Value implicitAssignment(const std::string& addr, const Ty* objectTy, const Ty* target, Expr* arg, Node* at);
 
     const Ty* memberQualifier(MemberExpr* m, Node* at);
+    // The class a member named with no object is qualified with (`Right::pad` in a member
+    // function), if it names one of its own.
+    const Ty* implicitThisQualifier(NameExpr* n, Node* at);
+    // Moves `object`, an objectTy, to the instance of member's class that qualifier is or derives
+    // from, through the qualifier's own subobject: `b.Right::id` with Base under both Left and
+    // Right is the id of Right's Base, and `this->Hook<Robot, TagB>::id` of that instance of Hook,
+    // not of the first base holding a field of that declaration.
+    auto moveToQualifier(const Ty*& objectTy, std::string& object, Decl* member, const Ty* qualifier, Node* at) -> void;
 
     // `Counted<int>::instances`: the instantiation a qualified static member belongs to (null for
     // an unqualified name or a class that is not a template).
