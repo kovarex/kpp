@@ -19,14 +19,11 @@ struct RandomDevice
 class DefaultRandomEngine
 {
 public:
-  DefaultRandomEngine()
-  {
-    RandomDevice rd;
-    this->state[0] = rd();
-    this->state[1] = rd();
-    this->state[2] = rd();
-    this->state[3] = rd();
-  }
+  // The seed a default-constructed engine starts from, so that its sequence is the same in every run
+  // (std::default_random_engine's default_seed); RandomDevice is the nondeterministic source.
+  static constexpr u64 default_seed = 1;
+
+  DefaultRandomEngine() { this->seed(default_seed); }
 
   explicit DefaultRandomEngine(u64 seed)
   {
@@ -75,7 +72,8 @@ template<typename IntType = i32>
 class UniformIntDistribution
 {
 public:
-  UniformIntDistribution() : low(0), high(0) {}
+  // [0, IntType's greatest value], as std's default b.
+  UniformIntDistribution() : low(0), high(Limits<IntType>::max()) {}
   UniformIntDistribution(IntType low, IntType high) : low(low), high(high) {}
 
   template<typename Engine>
@@ -84,8 +82,15 @@ public:
     // In u64, where the difference cannot wrap: a range of the type's every value is 2^64 there,
     // which wraps to 0, and then every raw value is one (the engine gives 64 random bits).
     u64 range = (u64)this->high - (u64)this->low + 1;
+    if (range == 0)
+      return (IntType)((u64)this->low + engine());
+    // Every value equally likely ([rand.dist.uni.int]): raw values below 2^64 mod range would make
+    // the low part of the range more likely under `raw % range`, so they are drawn again.
+    u64 rejectBelow = (0 - range) % range;
     u64 raw = engine();
-    return (IntType)((u64)this->low + (range == 0 ? raw : raw % range));
+    while (raw < rejectBelow)
+      raw = engine();
+    return (IntType)((u64)this->low + raw % range);
   }
 
   IntType a() const { return this->low; }

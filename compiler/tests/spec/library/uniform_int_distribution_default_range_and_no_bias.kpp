@@ -1,6 +1,5 @@
 // spec: UniformIntDistribution<T>() ranges from 0 to T's greatest value (std::uniform_int_distribution's default b is numeric_limits<T>::max()), and every value of [a, b] is equally likely however wide the range ([rand.dist.uni.int]: P(i) = 1 / (b - a + 1)): over [0, 3 * 2^62) a third of the draws are below 2^62 (`0 2147483647 1 1`)
 // factorio: E's <random> battery against C++ (ra1, 2026-11-06): the default distribution gave b 0 (every draw 0); over [0, 3 * 2^62) half the draws were below 2^62 (raw % range doubles the low third), with std::uniform_int_distribution a third
-// pending: the default constructor sets high to 0, and operator() takes the engine's value modulo the range, biased whenever the range does not divide 2^64 (C)
 extern "C" import "stdio.h";
 int main()
 {
