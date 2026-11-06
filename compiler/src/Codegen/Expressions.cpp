@@ -1841,6 +1841,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       }
     }
     std::string addr = lvalue(u->operand);
+    prefixTarget = addr;
     // A bit-field: its own bits of the storage unit, read and written back as an assignment
     // does them, a prefix one's value read back (wrapped to the field's width).
     const BitfieldInfo* bits = bitfieldNamed(u->operand);

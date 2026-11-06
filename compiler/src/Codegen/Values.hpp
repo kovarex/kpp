@@ -114,6 +114,7 @@
     std::string variableTemplateObject(NameExpr* n, VariableDecl* v, Node* at);
 
     std::string lvalue(Expr* e);
+    std::string prefixTarget; // The address the last built-in `++`/`--` wrote: lvalue's for a prefix one.
 
     // A global built at startup (a class with a constructor, or an initializer that is not a
     // constant): a function constructing it, run from llvm.global_ctors in definition order (see

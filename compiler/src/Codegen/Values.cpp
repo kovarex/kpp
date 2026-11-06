@@ -863,8 +863,10 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       }
       if (!u->isKeyword && !u->postfix && (P(u->op) == P::PlusPlus || P(u->op) == P::MinusMinus))
       {
+        // (the operand once, as rvalue evaluated it: `++f()` bound to a reference calls f once)
+        prefixTarget.clear();
         rvalue(e);
-        return lvalue(u->operand);
+        return !prefixTarget.empty() ? prefixTarget : lvalue(u->operand);
       }
       break;
     }

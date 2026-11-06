@@ -1,0 +1,15 @@
+// spec: a prefix ++ bound to a reference evaluates its operand once, a temporary's too: `++f()` called f twice and bound the second, unincremented result
+int calls = 0;
+int values[3] = {1, 2, 3};
+int& element() { ++calls; return values[0]; }
+int* first() { ++calls; return values; }
+int show(int* const& p) { return *p; }
+
+int main()
+{
+  int& a = ++element();
+  println(a, " ", calls);
+  calls = 0;
+  println(show(++first()), " ", calls);
+  return 0;
+}
