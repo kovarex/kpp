@@ -1490,13 +1490,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       TemplateArgs opArgs;
       if (FunctionDecl* op = conversionOperator(argTy, types.unqualified(referenced), at, &owner, false, &opArgs))
       {
-        TemplateArgs classArgs = global.classArgsOf(owner);
-        const Ty* returned = nullptr;
-        {
-          ArgsScope scope(*this, &classArgs);
-          const Ty* fnTy = declType(op);
-          returned = fnTy ? fnTy->inner : nullptr;
-        }
+        const Ty* returned = conversionReturns(op, owner);
         if (returned && returned->kind == TyKind::LRef && !types.stripRef(returned)->isConst &&
             types.unqualified(types.stripRef(returned)) == types.unqualified(referenced))
           return "ptr " + callConversion(op, argTy, owner, lvalue(arg), at, &opArgs, true).text;
@@ -1705,7 +1699,28 @@ auto codegen::Emitter::namesBitField(Expr* e) -> bool
   return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield;
 }
 
-auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at) -> std::string
+auto codegen::Emitter::conversionReturns(FunctionDecl* op, const Ty* owner) -> const Ty*
+{
+  TemplateArgs classArgs = global.classArgsOf(owner);
+  ArgsScope scope(*this, &classArgs);
+  const Ty* fnTy = declType(op);
+  return fnTy ? fnTy->inner : nullptr;
+}
+
+auto codegen::Emitter::lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at) -> std::optional<std::string>
+{
+  const Ty* owner = nullptr;
+  TemplateArgs opArgs;
+  const Ty* want = types.unqualified(referenced);
+  FunctionDecl* op = conversionOperator(have, want, at, &owner, false, &opArgs);
+  const Ty* returned = op ? conversionReturns(op, owner) : nullptr;
+  if (!returned || returned->kind != TyKind::LRef || (types.stripRef(returned)->isConst && !referenced->isConst) ||
+      types.unqualified(types.stripRef(returned)) != want)
+    return std::nullopt;
+  return callConversion(op, have, owner, rvalue(value).text, at, &opArgs, true).text;
+}
+
+auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot) -> std::string
 {
   auto scalar = [](const Ty* t)
   {
@@ -1715,14 +1730,27 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   const Ty* referenced = types.stripRef(refTy);
   const Ty* want = types.unqualified(referenced);
   const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
-  if (bindsBitField(value) && want->isKnown() && !types.isDependent(want) && scalar(want))
+  // A temporary of the referenced type holding the value, converted.
+  auto temporary = [&]
   {
-    // `const uint8_t& bound = data.progress;`: a temporary holding the bit-field's value, as C++
-    // binds it (the field has no address; its storage unit's holds its neighbours too).
     Value converted = convert(rvalue(value), want, at);
-    std::string slot = newObjectSlot(want, at);
+    std::string slot = makeSlot ? makeSlot(want) : newObjectSlot(want, at);
     fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
     return slot;
+  };
+  // `const uint8_t& bound = data.progress;`: a temporary holding the bit-field's value, as C++
+  // binds it (the field has no address; its storage unit's holds its neighbours too).
+  if (bindsBitField(value) && want->isKnown() && !types.isDependent(want) && scalar(want))
+    return temporary();
+  // `int& r = object;`, `const int& r = object;`: the lvalue its conversion operator gives, else a
+  // temporary of what it gives by value. (Until 2026-11-06 the object's own address, read as an
+  // int: its first member's value, or the bytes of a double.)
+  if (have && isClass(have) && want->isKnown() && !types.isDependent(want))
+  {
+    if (std::optional<std::string> bound = lvalueByConversion(value, have, referenced, at))
+      return *bound;
+    if (scalar(want) && (refTy->kind == TyKind::RRef || referenced->isConst))
+      return temporary();
   }
   if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
     return lvalue(value);
@@ -1734,10 +1762,7 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
       unsupported(at, "binding " + types.toString(refTy, &symbols) + " to a value of type " + types.toString(have, &symbols));
     return lvalue(value);
   }
-  Value converted = convert(rvalue(value), want, at);
-  std::string slot = newObjectSlot(want, at);
-  fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
-  return slot;
+  return temporary();
 }
 
 auto codegen::Emitter::convertedTemporary(const Ty* cls, Expr* arg, Node* at) -> std::string

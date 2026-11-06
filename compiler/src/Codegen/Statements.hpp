@@ -78,6 +78,13 @@
     // An object of static storage for a temporary that a reference of static storage keeps
     // (extendingStatic's name and a number), zero-initialised, never destroyed.
     std::string staticTemporary(const Ty* type, Node* at);
+    // The address a reference of static storage (a global, a static member, a static local; name
+    // its global) is bound to, the initialization emitted, as a local's reference binds: a base's
+    // part, a conversion operator's lvalue, or a temporary of static storage of its own, which
+    // lives as long as the reference ([class.temporary] 6) and is never destroyed.
+    std::string staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread);
+    // The one value a reference's `(expr)` or `{expr}` initializer binds, as `= expr` does.
+    static Expr* referenceInitializer(VariableDecl* v, Expr* init);
 
     // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
     // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).

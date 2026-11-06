@@ -267,7 +267,14 @@
     static Expr* bindingDesignator(Expr* e);
 
 
-    std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at);
+    // makeSlot: where a temporary of the referenced type goes (a reference of static storage's lives
+    // as long as it, staticReferenceTarget), by default a slot of this function.
+    std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot = {});
+    // The lvalue of `referenced` a class's conversion operator gives (`operator int&()`, [dcl.init.ref]
+    // 5.1.2), called on value, an object of the class `have`; none when no operator gives one.
+    std::optional<std::string> lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at);
+    // What a conversion operator returns, in terms of the class that declares it.
+    const Ty* conversionReturns(FunctionDecl* op, const Ty* owner);
 
     // A temporary of class type cls built from a non-class value through a converting
     // constructor, alive until the end of the full expression: what a reference parameter binds to.

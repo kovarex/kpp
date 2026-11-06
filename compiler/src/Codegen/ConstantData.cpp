@@ -344,7 +344,10 @@ auto codegen::Emitter::classConstant(const ConstValue& v, const Ty* t, Node* at,
   StructInfo& info = structFor(t, at);
   ClassDecl* c = classDef(t->decl, at);
   if (info.polymorphic)
+  {
+    constantHasVptr = true;
     return std::nullopt;
+  }
   // A union, the storage of a typed union too: its active member's bytes as the storage's integers.
   // (Until 2026-11-05 a union, a typed union and a class with an anonymous member were built at
   // startup, which a global initialized before them in their file read as zero: thread D's note on
@@ -535,6 +538,31 @@ auto codegen::Emitter::constantData(const Ty* t, Expr* value, VariableDecl* def,
   if (!v)
     return std::nullopt;
   return constantText(*v, t, at);
+}
+
+auto codegen::Emitter::referenceConstant(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at) -> std::optional<std::string>
+{
+  Expr* init = referenceInitializer(def, value);
+  const Ty* target = types.unqualified(types.stripRef(t));
+  const Ty* given = init->ty && init->ty->isKnown() && !types.isDependent(init->ty) ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
+  std::vector<std::pair<std::string, uint32_t>> path;
+  if (!given || !isLvalueExpression(init) || bindsBitField(init) ||
+      (given != target && !(isClass(given) && isClass(target) && (canonicalClass(given, at) == canonicalClass(target, at) || basePath(given, target, path, at)))))
+    return std::nullopt; // (a temporary, a conversion: bound at run time)
+  UnaryExpr address{};
+  address.kind = NodeKind::UnaryExpr;
+  address.token = init->token;
+  address.operand = init;
+  address.op = uint32_t(P::Amp);
+  address.isKeyword = false;
+  address.postfix = false;
+  bool layoutFailed = false;
+  const Ty* pointer = types.pointer(types.stripRef(t));
+  ConstContextScope context(*this, def);
+  std::optional<ConstValue> v = global.evaluateInitializer(pointer, &address, def->file, def, args, foldHooks(at, layoutFailed));
+  if (!v || v->kind != ConstValue::Kind::Address || !v->target || !v->target->decl || (v->target->decl->flags & DF_ThreadLocal))
+    return std::nullopt; // (a thread_local has no address before a thread runs)
+  return addressConstant(*v->target, at);
 }
 
 auto codegen::Emitter::takePreEvaluated(PreEvaluated& pre) -> void
@@ -870,11 +898,32 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
       refuseOutsideItsFunction(v, at); // (globalAddress refuses it first)
     if (threadLocal)
       unsupported(at, "a thread_local reference");
+    // Bound to an object of static storage: constant initialization ([basic.start.static] 2), bound
+    // from the program's start for whatever reads it first. (Until 2026-11-06 at startup: a global
+    // initialized before it read through a null pointer.)
+    if (value)
+    {
+      Restore<ParsedFile*> file(currentFile);
+      currentFile = def->file;
+      if (std::optional<std::string> target = referenceConstant(t, value, def, classArgs, at))
+      {
+        decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant ptr " + *target + ", comdat" + debugGlobal(name, def, t) + "\n";
+        return name;
+      }
+    }
     decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat" + debugGlobal(name, def, t) + "\n";
     if (value)
       emitGlobalConstructor(v, name, t, value, at, false, def);
     return name;
   }
+  // A constant whose bytes no LLVM constant gives, for its vtable pointers: constant initialization
+  // all the same ([basic.start.static] 2, `const Logger logger;` of a constexpr constructor), so
+  // built before every other startup function, which may read it whatever their order. Its
+  // constructor, one the interpreter ran, reads no global built at startup. (Until 2026-11-06 in its
+  // place: a global initialized before it read zeros, and called through a null vtable pointer.)
+  Restore<bool> vptrRestore(constantHasVptr);
+  constantHasVptr = false;
+  bool builtFirst = false;
   if (value)
   {
     std::optional<ConstValue> c;
@@ -923,6 +972,7 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
       if (isAutomaticLocal(v))
         refuseOutsideItsFunction(v, at, true);
       constructed = true;
+      builtFirst = evaluated && constantHasVptr;
       // A constexpr variable needs its constant (design.md "A constexpr variable needs its
       // constant"): one the checker left to the code generator (its value needs exact layouts)
       // and that is no constant here either is an error, never a global built at startup, which
@@ -939,13 +989,15 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     // with none), constant data as an initializer's value is, else built at startup. (Until
     // 2026-11-05 always built at startup, which a global initialized before it in its file read as
     // zero: thread D's spec language/constexpr_global_without_initializer_is_constant_data.)
-    if (std::optional<std::string> data = constantData(st, nullptr, def, classArgs, at))
+    bool evaluated = false;
+    if (std::optional<std::string> data = constantData(st, nullptr, def, classArgs, at, &evaluated))
       init = *data;
     else
     {
       if (isAutomaticLocal(v))
         refuseOutsideItsFunction(v, at, true); // (as one with an initializer)
       constructed = true;
+      builtFirst = evaluated && constantHasVptr;
     }
   }
   currentFile = saved;
@@ -964,6 +1016,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
            (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
            alignSuffix(st, variableAlignment(def, def, at), at) + debugGlobal(name, def, t) + "\n";
   if (constructed)
+  {
+    Restore<std::optional<Shared::Startup>> startupRestore(startupAt);
+    if (builtFirst && !threadLocal && !startupAt)
+      startupAt = Shared::Startup{0, 0, 0, std::string()};
     emitGlobalConstructor(v, name, st, value, at, threadLocal, def);
+  }
   return name;
 }

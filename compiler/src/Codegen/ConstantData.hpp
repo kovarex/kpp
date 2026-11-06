@@ -58,9 +58,15 @@
     // lowered (constantText), or nothing (it is built at startup). evaluated: whether the
     // interpreter computed the value (nothing then means no LLVM constant expresses it yet).
     std::optional<std::string> constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at, bool* evaluated = nullptr);
+    // What a reference of static storage initialized by value holds when that is an object of static
+    // storage the interpreter can name: its address, as an LLVM constant.
+    std::optional<std::string> referenceConstant(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at);
     // Why constantData's evaluation gave no value (the interpreter's reason, maybe none): said by
     // the error for a constexpr variable that is no constant.
     std::string notConstantWhy;
+    // constantText met an object with vtable pointers, which no constant of a shared text can name
+    // (the vtables are their module's): its global is built first of all, see globalForOnce.
+    bool constantHasVptr = false;
 
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     // A global's initializer evaluated before globalFor takes the shared lock (preEvaluateGlobal): the

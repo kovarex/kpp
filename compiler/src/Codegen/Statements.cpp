@@ -86,7 +86,8 @@ auto codegen::Emitter::staticLocalName(const std::string& function, VariableDecl
     owner = owner.substr(2, owner.size() - 3);
   else if (!owner.empty() && owner[0] == '@')
     owner = owner.substr(1);
-  return "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
+  // (`static auto [a, b] = pair;`: its hidden object has no name, its token tells it apart.)
+  return "@\"" + owner + "::" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + "." + std::to_string(v->token) + "\"";
 }
 
 auto codegen::Emitter::sharedStaticText(const std::string& name, VariableDecl* v, const Ty* t, uint64_t alignment) -> std::string
@@ -172,8 +173,10 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   // first pass to what the initializer names (an lvalue: a reference bound to a temporary would
   // need the temporary kept for the program).
   bool isRef = t->isReference();
-  if (isRef && (!v->init || !(isLvalueExpression(v->init) || (v->init->ty && v->init->ty->isReference()))))
-    unsupported(v, "a static local reference bound to a temporary");
+  if (isRef && !v->init)
+    unsupported(v, "a reference without an initializer");
+  if (isRef && (v->flags & DF_ThreadLocal) && !(isLvalueExpression(v->init) || (v->init->ty && v->init->ty->isReference())))
+    unsupported(v, "a thread_local reference bound to a temporary");
   bool shared = nestedNamesOf(bodyNow).named.count(v) != 0;
   FunctionDecl* plain = shared ? plainWriter(v) : nullptr;
   std::string name = staticLocalName(plain ? functionName(plain, {}, nullptr) : currentFunctionName, v);
@@ -196,6 +199,18 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
         globals[v] = name;
       }
       locals[v] = {name, t, false};
+      return;
+    }
+  // (A reference bound to an object of static storage the same: `static int& r = x;` past a case label.)
+  if (!shared && isRef && !(v->flags & DF_ThreadLocal))
+    if (std::optional<std::string> target = referenceConstant(t, v->init, v, currentArgs ? *currentArgs : TemplateArgs(), v))
+    {
+      addOwnedEntry(name + " = internal constant ptr " + *target + "\n");
+      {
+        auto lock = sharedLock();
+        globals[v] = name;
+      }
+      locals[v] = {name, t, true};
       return;
     }
   std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
@@ -260,7 +275,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     statementTemps.push_back(giveBack);
   }
   if (isRef)
-    fn += "  store ptr " + lvalue(v->init) + ", ptr " + name + "\n";
+    fn += "  store ptr " + staticReferenceTarget(v, name, t, v->init, v, perThread) + ", ptr " + name + "\n";
   else if (v->init && isClass(t))
     initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
   else if (v->init)
@@ -336,6 +351,76 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   if (extendingThreadLocal && needsDestruction(type, at))
     threadLocalTemporaries.push_back({name, type}); // (destroyed at the thread's exit, after the variable)
   return name;
+}
+
+auto codegen::Emitter::referenceInitializer(VariableDecl* v, Expr* init) -> Expr*
+{
+  if (init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(init)->type == v->type &&
+      static_cast<FunctionalCastExpr*>(init)->args.size() == 1)
+    init = static_cast<FunctionalCastExpr*>(init)->args[0];
+  if (init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(init)->text && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
+      static_cast<BraceInitExpr*>(init)->designators.empty())
+    init = static_cast<BraceInitExpr*>(init)->args[0];
+  return init;
+}
+
+auto codegen::Emitter::staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread) -> std::string
+{
+  init = referenceInitializer(v, init);
+  {
+    // A member of a temporary (`const int& n = make().id;`) would keep the whole temporary.
+    Expr* e = init;
+    bool member = false;
+    while (e && (e->kind == NodeKind::ParenExpr || (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow)))
+    {
+      member = member || e->kind == NodeKind::MemberExpr;
+      e = e->kind == NodeKind::ParenExpr ? static_cast<ParenExpr*>(e)->inner : static_cast<MemberExpr*>(e)->base;
+    }
+    if (member && e && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e))
+      unsupported(at, "a reference of static storage bound to a member of a temporary");
+  }
+  uint32_t temporaries = 0;
+  auto temporary = [&](const Ty* type)
+  {
+    extendingStatic = name;
+    extendingThreadLocal = perThread;
+    extendingCount = temporaries++;
+    std::string made = staticTemporary(type, at);
+    extendingStatic.clear();
+    return made;
+  };
+  const Ty* target = types.unqualified(types.stripRef(t));
+  const Ty* given = init->ty && init->ty->isKnown() && !types.isDependent(init->ty) ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
+  bool named = isLvalueExpression(init) || (init->ty && init->ty->isReference());
+  if (!isClass(target) && !(isLambda(target) && given && isClass(given)))
+  {
+    if (named || (given && isClass(given)))
+      return scalarReferenceTarget(t, init, at, temporary);
+    std::string made = temporary(target);
+    initializeFrom(made, target, init, at);
+    return made;
+  }
+  std::vector<std::pair<std::string, uint32_t>> path;
+  bool same = given && isClass(given) && canonicalClass(given, at) == canonicalClass(target, at);
+  bool derived = given && isClass(given) && !same && basePath(given, target, path, at);
+  if (named && same)
+    return rvalue(init).text;
+  if (named && derived)
+    return convert(rvalue(init), target, at).text;
+  if (!same && !derived && given && isClass(given))
+  {
+    // An operator that gives a reference binds what it refers to; one that gives a value, as a
+    // converting constructor, makes the temporary below.
+    const Ty* owner = nullptr;
+    TemplateArgs opArgs;
+    if (FunctionDecl* op = conversionOperator(given, target, at, &owner, false, &opArgs))
+      if (const Ty* returned = conversionReturns(op, owner); returned && returned->isReference())
+        return convert(rvalue(init), target, at).text;
+  }
+  const Ty* made = derived ? given : target;
+  std::string object = temporary(made);
+  initializeFrom(object, made, init, at);
+  return derived ? convert(Value{object, made}, target, at).text : object;
 }
 
 auto codegen::Emitter::debugAggregateBindings(VariableDecl* v) -> void
@@ -481,13 +566,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     // `const Sprite& s(expr);`, `T& r{expr};`: a reference initialised directly binds to the one
     // value, as `= expr` does (a copy into a temporary needs a copy constructor, Sprite's is
     // deleted).
-    Expr* init = v->init;
-    if (init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(init)->type == v->type &&
-        static_cast<FunctionalCastExpr*>(init)->args.size() == 1)
-      init = static_cast<FunctionalCastExpr*>(init)->args[0];
-    if (init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(init)->text && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
-        static_cast<BraceInitExpr*>(init)->designators.empty())
-      init = static_cast<BraceInitExpr*>(init)->args[0];
+    Expr* init = referenceInitializer(v, v->init);
     // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4, as for a parameter:
     // argumentText). Until 2026-11-05 `S&& r = a;` bound a itself, and a move from r moved a.
     // (`auto&& value = this->state;` is an lvalue reference since D's cee07bff, as in C++.)

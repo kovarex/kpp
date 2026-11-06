@@ -1,0 +1,25 @@
+// spec: a static structured binding: its hidden object, which has no name, is built once at the first pass (before: kppc crashed on the name). clang's output
+// found comparing kpp with clang (thread I's battery si2)
+extern "C" int printf(const char* format, ...);
+int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
+struct Agg { int a; int b; int c = 3; };
+int bindStatic()
+{
+  static auto [x, y, z] = Agg{say("x", 4), 5};
+  return x++ + y + z;
+}
+int bindArray()
+{
+  static int data[2] = {1, 2};
+  static auto& [p, q] = data;
+  return p++ + q;
+}
+int main()
+{
+  int a = bindStatic();
+  int b = bindStatic();
+  int c = bindArray();
+  int d = bindArray();
+  printf("%d %d %d %d\n", a, b, c, d);
+  return 0;
+}

@@ -1,0 +1,5 @@
+init viaVirtual = 2
+init viaMember = 5
+init viaDefaulted = 7
+init viaHolder = 5
+2 5 7 5

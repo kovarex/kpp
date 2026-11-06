@@ -29,7 +29,12 @@ This file records decisions that have been made. When a decision changes, update
   Globals built at startup are built in definition order within a file (a global's
   initializer may read, directly or through functions, the globals defined before it in its
   file); files go in the driver's order, the library first, and a program must not depend on
-  that order across files (as C++ across translation units). Every one is built, whether
+  that order across files (as C++ across translation units). A global the interpreter can evaluate
+  is constant initialization, as in C++ ([basic.start.static] 2): whatever reads it, in any order, has
+  its value (constant data; a reference to an object of static storage is that address; an object
+  with vtable pointers, which no constant of the shared text can name, is built before every other
+  startup function, its constructor being one the interpreter ran, spec
+  language/constant_initialization_of_polymorphic_global). Every one is built, whether
   anything reads it or not (an initializer that registers something, as C++ runs it): globals
   of namespaces and static data members of classes that are no templates; a static member of
   a class template is built when an instance of it is used, and every one of an instance an

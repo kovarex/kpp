@@ -1,0 +1,94 @@
+// spec: a reference of static storage (a global, a static member, a static local) binds as a local reference does: a base's part at its offset, a conversion operator's lvalue, a temporary of static storage when the types differ (`const long long& r = intGlobal;` keeps its value; `static const double& s = intGlobal`). Before, it held the initializer's address as it was: `const B2& r = d` read B1's member, `const long long& r = intGlobal` read eight bytes of an int: silent wrong answers. Bound to an object of static storage it is constant initialization ([basic.start.static] 2): a global built before it reads through it, where it read through null. clang's and g++'s output
+// found comparing kpp with clang (thread I's battery si4)
+extern "C" int printf(const char* format, ...);
+int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
+struct B1 { int a = 1; };
+struct B2 { int b = 2; int get() const { return b; } };
+struct D : B1, B2 { int c = 3; };
+D d;
+D* dp = &d;
+D& getD() { return d; }
+D makeD() { D x; x.b = 22; return x; }
+int intGlobal = 7;
+double doubleGlobal = 2.5;
+long long wide = 0x100000005LL;
+int garr[3] = {1, 2, 3};
+int fn(int x) { return x + 1; }
+struct Conv { int v = 41; B2 base; operator int&() { return v; } operator B2&() { return base; } };
+Conv conv;
+const B2& r1 = d;
+B2& r2 = d;
+const long long& r3 = intGlobal;
+const double& r4 = intGlobal;
+const int& r5 = doubleGlobal;
+const int& r5b = wide;
+const B2& r6 = *dp;
+const B2& r7 = getD();
+const B2& r8 = makeD();
+const B2& r8b = D();
+int& r9 = conv;
+B2& r10 = conv;
+const char* const& r11 = "abc";
+const char (&r12)[4] = "abc";
+int (&r13)[3] = garr;
+int (&r14)(int) = fn;
+D d2;
+const B2& r15 = intGlobal > 0 ? d : d2;
+struct Bits { int a : 3; int b : 5; };
+Bits bits = {1, 9};
+const int& r16 = bits.b;
+int&& r17 = 5;
+B2&& r18 = D();
+const B2& r19 = static_cast<B2&>(d);
+const B2* const& r20 = &d;
+const void* const& r21 = &d;
+const int& r22 = garr[1];
+const long long& r23 = garr[1];
+const unsigned& r24 = intGlobal;
+const bool& r25 = intGlobal;
+const B1& r26 = d;
+struct R { const B2& b; const long long l; int& i; };
+R rr = {d, intGlobal, intGlobal};
+struct Hold { static const B2& sb; static const long long& sl; };
+const B2& Hold::sb = d;
+const long long& Hold::sl = intGlobal;
+extern int& lateRef;
+extern const B2& lateBase;
+int e1 = say("e1 lateRef", lateRef);
+int e2 = say("e2 lateBase", lateBase.b);
+int lateTarget = 9;
+int& lateRef = lateTarget;
+const B2& lateBase = d;
+void locals()
+{
+  static const B2& s1 = d;
+  static B2& s2 = d;
+  static const long long& s3 = intGlobal;
+  static const double& s4 = intGlobal;
+  static const int& s5 = doubleGlobal;
+  static const B2& s6 = *dp;
+  static const B2& s7 = getD();
+  static int& s9 = conv;
+  static B2& s10 = conv;
+  static const B2& s15 = intGlobal > 0 ? d : d2;
+  static const int& s16 = bits.b;
+  static int&& s17 = 5;
+  static const B2* const& s20 = &d;
+  printf("%d %d %lld %g %d %d %d %d %d %d %d %d %d %d\n", s1.b, s2.b, s3, s4, s5, s6.b, s7.b, 22, s9, s10.b, s15.b, s16, s17, s20->b);
+}
+int main()
+{
+  intGlobal = 100;
+  doubleGlobal = 100.5;
+  wide = 100;
+  printf("%d %d %lld %g %d %d\n", r1.b, r2.b, r3, r4, r5, r5b);
+  printf("%d %d %d %d %d %d\n", r6.b, r7.b, r8.b, r8b.b, r9, r10.b);
+  printf("%s %s %d %d %d\n", r11, r12, r13[1], r14(1), r15.b);
+  bits.b = 3;
+  printf("%d %d %d %d %d\n", r16, r17, r18.b, r19.b, r20->b);
+  printf("%d %d %d %lld %u %d %d\n", (int)(r21 == (const void*)(const D*)&d), (int)(r21 == (const void*)(const B2*)&d), r22, r23, r24, r25, r26.a);
+  printf("%d %lld %d %d %lld\n", rr.b.b, rr.l, rr.i, Hold::sb.b, Hold::sl);
+  printf("%d %d\n", e1, e2);
+  locals();
+  return 0;
+}

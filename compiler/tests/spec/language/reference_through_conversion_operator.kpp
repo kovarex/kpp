@@ -1,0 +1,21 @@
+// spec: a reference bound through a conversion operator is what the operator gives ([dcl.init.ref] 5): the lvalue its reference result names (`int& r = object;` with `operator int&()`), else a temporary of its value (`const long long& r = object;`, `const int& r = withDouble`). Before, the reference bound the object itself and read its first bytes as the type: 1 for 41, 4.9e-324 for 2.5, a silent wrong answer. clang's output
+// found comparing kpp with clang (thread I's static initialization batteries)
+extern "C" int printf(const char* format, ...);
+struct C1 { int pad = 1; int v = 41; operator int&() { return v; } };
+struct C2 { int pad = 1; operator int() const { return 5; } };
+struct C3 { int pad = 1; double d = 2.5; operator double&() { return d; } };
+struct Bx { int v; Bx(int x) : v(x + 1) {} };
+int main()
+{
+  C1 a; C2 b; C3 c;
+  int& r1 = a;
+  const int& r2 = a;
+  const int& r3 = b;
+  const long long& r4 = b;
+  const double& r5 = c;
+  const int& r6 = c;
+  int x = 4;
+  const Bx& r7 = x;
+  printf("%d %d %d %lld %g %d %d\n", r1, r2, r3, r4, r5, r6, r7.v);
+  return 0;
+}
