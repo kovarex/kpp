@@ -53,7 +53,33 @@ function PublishForge {
   } else {
     @{ Authorization = "token $token"; Accept = 'application/json' }
   }
-  function Status($exception) { if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 } }
+  function Status($exception) {
+    if ($exception.Data.Contains('status')) { return [int]$exception.Data['status'] } # (CurlPost's)
+    if ($exception.Response) { [int]$exception.Response.StatusCode } else { 0 }
+  }
+  # A file POSTed by curl.exe (Windows' own), its answer's JSON returned: Windows PowerShell's
+  # Invoke-RestMethod -InFile took 245 s for the 116 MB zip where curl took under 3 s (a local
+  # listener, 2026-11-06), and publish spent 200 of its 226 s uploading. The headers, the token among
+  # them, go through a file, not the command line. A failure throws with its HTTP status (0: none) for
+  # Status and Again.
+  function CurlPost([string]$uri, [string]$file, [string]$contentType) {
+    $headerFile = [IO.Path]::GetTempFileName()
+    $answer = [IO.Path]::GetTempFileName()
+    try {
+      $lines = @($headers.Keys | ForEach-Object { "${_}: $($headers[$_])" }) + "Content-Type: $contentType"
+      [IO.File]::WriteAllLines($headerFile, [string[]]$lines)
+      $code = & curl.exe -sS -o $answer -w '%{http_code}' -X POST -H "@$headerFile" --data-binary "@$((Resolve-Path $file).Path)" $uri 2>&1
+      $exit = $LASTEXITCODE
+      $body = [IO.File]::ReadAllText($answer)
+    } finally { Remove-Item $headerFile, $answer -ErrorAction SilentlyContinue }
+    $status = if ($exit -eq 0 -and "$code" -match '^\d+$') { [int]"$code" } else { 0 }
+    if ($exit -ne 0 -or $status -lt 200 -or $status -ge 300) {
+      $e = [Exception]::new($(if ($exit -ne 0) { "curl.exe exit ${exit}: $code" } else { "HTTP ${status}: $body" }))
+      $e.Data['status'] = $status
+      throw $e
+    }
+    return $body | ConvertFrom-Json
+  }
   # call, tried again after a failure (-Transient: only after no response or a 5xx; else after any but
   # 401 and 404: an upload's "Error updating policy" came as a 403), before running first (a partial upload deleted). The attempts are said with
   # Write-Host: what a function writes to its output is its value.
@@ -105,7 +131,7 @@ function PublishForge {
   function UploadOnce($release, [string]$file, [string]$name) {
     if ($forge -eq 'github') {
       $upload = ($release.upload_url -replace '\{.*\}$', '') + "?name=$([uri]::EscapeDataString($name))"
-      return Invoke-RestMethod -Method POST -Uri $upload -Headers $headers -ContentType 'application/octet-stream' -InFile $file
+      return CurlPost $upload $file 'application/octet-stream'
     }
     # multipart/form-data with the file as "attachment", built by hand: Windows PowerShell 5.1 has no -Form.
     $boundary = [guid]::NewGuid().ToString('N')
