@@ -1,0 +1,17 @@
+// spec: an array of pointers to member functions declared as C++ writes it (`int (C::*fns[2])() = {&C::f, &C::g}`) is an array of `int (C::*)()`, called through each element (`1 2`), as an array of function pointers (`int (*table[2])()`) is one of `int (*)()`; clang prints the same
+// found by thread F's battery f3 (2026-11-06): the declarator's array kept `int C::*`, a pointer to a data member, and the initializer "does not support a conversion from int32() C::* to int32 C::*"
+class C
+{
+public:
+  int f() { return 1; }
+  int g() { return 2; }
+};
+int one() { return 3; }
+int main()
+{
+  C c;
+  int (C::*fns[2])() = {&C::f, &C::g};
+  int (*table[1])() = {&one};
+  println((c.*fns[0])(), " ", (c.*fns[1])(), " ", table[0]());
+  return 0;
+}

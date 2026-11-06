@@ -6080,6 +6080,7 @@ namespace
         case NodeKind::RRefType: { auto* r = static_cast<RRefType*>(t); r->referenced = rebase(r->referenced, base, newBase); return t; }
         case NodeKind::ConstType: { auto* c = static_cast<ConstType*>(t); c->inner = rebase(c->inner, base, newBase); return t; }
         case NodeKind::ArrayType: { auto* a = static_cast<ArrayType*>(t); a->element = rebase(a->element, base, newBase); return t; }
+        case NodeKind::MemberPointerType: { auto* m = static_cast<MemberPointerType*>(t); m->pointee = rebase(m->pointee, base, newBase); return t; }
         default: return t;
       }
     }
