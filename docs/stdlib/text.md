@@ -13,9 +13,11 @@ pieces are what converted printf specifiers become.
 - A floating value, `double` or `float`, is the shortest text that reads back to the same value of
   its own type: all its information, nothing lost (kovarex, 2026-11-01). `0.1` is `0.1`, `0.1 + 0.2`
   is `0.30000000000000004`, `1.0 / 3` is `0.3333333333333333`, and the float `1.0f / 3` is
-  `0.33333334`. The form is C's `%g` at that number of significant digits: an exponent below 1e-4
-  (`1.5e-07`) and from 1e16 (`1e+21`, `1.2345678901234568e+17`), positional between (`100`, `-2.75`,
-  `16777216`, the float `1.5e10f` as its exact digits `15000000512`). A negative zero is `-0`;
+  `0.33333334`. With those N significant digits and the decimal exponent X of the first one, the
+  form is an exponent (as C's `%e`) when X is below -4 (`1.5e-07`) or at least 16 and at least N
+  (`1e+16`, `1e+21`, `1.2345678901234568e+17`), and positional otherwise (`100`, `-2.75`, `16777216`,
+  `1000000000000000` for 1e15, the 17 digits `63522638825431704` as `%.17g` writes them, the float
+  `1.5e10f` as its exact digits `15000000512`): C's `%.Ng`, positional below 1e16. A negative zero is `-0`;
   infinities are `inf` and `-inf`, and NaN is `nan`, on every platform.
 
 **Difference from C++:** `std::to_string` of a floating value is `%f`, six decimals (`0.100000`). The
