@@ -3782,6 +3782,42 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   - (`uncaught_exceptions()` off Windows, listed here until 2026-11-05: it counts kpp's own
     exceptions on every target since b55e5442, library/uncaught_exceptions_during_unwinding.)
 
+### Stage 5, kppc on a Linux host (2026-11-06, thread E with A, B, D and F's files)
+
+- **The host layer** is `compiler/src/host.hpp` and `host.cpp`, not the proposal's `runWithStack`
+  set: what kppc and kpp did through Win32 or the C runtime's Windows names, behind one interface,
+  its Windows half the code it replaced, moved unchanged. It covers:
+  - the platform's name, the executable's path, the process id;
+  - files by any path, pipes to a shell command, a shell command run to its end
+    (`host::shell`: cmd's whole-line quoting on Windows, `/bin/sh` on POSIX), a program run with
+    its arguments (`host::run`: CreateProcess, posix_spawn);
+  - whether stdin is a person, Ctrl+C, the machine's description and load, a lock file held
+    shared or alone, the language server's streams;
+  - PATH lookup and case rules for paths.
+- **No #ifdef outside host.cpp**, but for three Windows-only parts that compile to an explicit
+  "not yet" on POSIX: source.cpp's watched listing (ReadDirectoryChangesW) and Visual Studio's clang
+  (vswhere), and server.cpp, the compile server (named pipes). `host::compileServer` is false
+  there: kpp and `kppc --run` build in their own process, `--server` is an error that says so, and
+  the language server's in-process builds say the same.
+- **On a Linux host**:
+  - the default target is the host's (B's `hostTarget()`, c68df005), and the sysroot the host's
+    own system unless one sits beside kppc;
+  - the toolchain is the bundled one, KPP_CLANG's, else the clang on PATH;
+  - every non-MSVC link needs lld, and a missing ld.lld is an error naming the package (B's
+    rule: never GNU ld in its place);
+  - clang 19 is needed: kppc's IR names LLVM 19's intrinsics, which clang 18 links as undefined
+    symbols (`llvm.eh.typeid.for.p0`).
+- **Built with CMake** on Linux (Threads, `-std=c++20`, not gnu++20, whose `linux` macro breaks
+  the converter). `run_spec.py` on a Linux host runs build/kppc and the snippets natively.
+- **Tested** by `.github/workflows/linux-host.yml` on every push: ubuntu-24.04 with clang 19, lld 19
+  and Ninja builds kppc, `kppc --run` builds and runs hello world, and the spec runs natively. First
+  green on master at b644530d: spec ALL PASSED (1375 pass, 2 pending, 22 skipped for linux, the
+  Windows-only snippets and the compile server's steps).
+- **Not yet:** the compile server and the language server on POSIX (a Unix socket, A's; F's), kpp's
+  C libraries built on a Linux host (CLibraryBuild names llvm-ar.exe and llvm-lib.exe), macOS as a
+  host (host.cpp has its executable path and machine description; nothing tested), FreeBSD as a
+  host (the same), and a release for Linux (packaging, E's).
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
