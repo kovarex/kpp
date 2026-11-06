@@ -3896,6 +3896,16 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
   `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
 
+- **Two-phase lookup of a template's non-dependent calls** (a known deviation, logged 2026-11-06, A;
+  kept until kovarex decides). C++ binds a call in a template that depends on no parameter where
+  the template is defined, with the declarations before it: `int helper(double); template<class
+  T> int call(T) { return helper(1); } int helper(int);` makes `call(0)` 1. kpp's lookup is
+  order-independent (symbols are, by design), so it sees `helper(int)` too and gives 2. Converted
+  C++ could differ silently where a better overload is declared after a template that calls a name
+  without its parameters. Matching C++ would take, for such a call, only the declarations before
+  the template's definition (in its file, and the files before it); the alternative is to keep the
+  order-independent answer and document it as kpp's rule.
+
 - **noexcept in the function type** (a known deviation, logged 2026-11-05, D; not implemented until
   kovarex wants it). C++17 made noexcept part of a function's type: `void (*)() noexcept` and
   `void (*)()` are two types, a pointer to a noexcept function converts to a plain one and never the
