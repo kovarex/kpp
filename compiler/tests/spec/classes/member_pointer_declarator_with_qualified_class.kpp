@@ -1,0 +1,22 @@
+// spec: a pointer to member declarator whose class is named with its namespace (`int (game::Square::*areaOf)() const`, `int game::Square::*side`), as a local, a global and a parameter, is a declaration, as clang has it: `4 4 3`
+// found by thread F's battery (2026-11-06): a local's `int (game::Square::*areaOf)() const = ...` was read as an expression (`expected ')'`), the lookahead taking one name before `::*`
+namespace game
+{
+  class Square
+  {
+  public:
+    int area() const { return this->side * this->side; }
+    int side = 2;
+  };
+}
+int (game::Square::*globalArea)() const = &game::Square::area;
+int call(const game::Square& s, int (game::Square::*f)() const) { return (s.*f)(); }
+int main()
+{
+  game::Square square;
+  int (game::Square::*areaOf)() const = &game::Square::area;
+  int game::Square::*side = &game::Square::side;
+  square.*side = 2;
+  println((square.*areaOf)(), " ", call(square, globalArea), " ", square.*side + 1);
+  return 0;
+}

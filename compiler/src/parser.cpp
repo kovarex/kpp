@@ -147,6 +147,21 @@ namespace
     bool at(Kw k, int ahead = 0) const { return tok(ahead).is(k); }
     bool atIdent(int ahead = 0) const { return at(TokenKind::Identifier, ahead); }
     bool atIdent(uint32_t symbol, int ahead = 0) const { return atIdent(ahead) && tok(ahead).id == symbol; }
+    // `C::*`, `game::Square::*` from token `ahead`: a pointer to member's class and star; the index
+    // after the star, or 0.
+    int memberPointerAhead(int ahead) const
+    {
+      int i = ahead;
+      if (!atIdent(i))
+        return 0;
+      while (atIdent(i) && at(P::ColonColon, i + 1))
+      {
+        if (at(P::Star, i + 2))
+          return i + 3;
+        i += 2;
+      }
+      return 0;
+    }
     std::string_view spelling(const Token& t) const { return std::string_view(text + t.offset, t.length); }
     std::string_view spelling(int ahead = 0) const { return spelling(tok(ahead)); }
     void advance()
@@ -2509,7 +2524,7 @@ namespace
       // Function pointer / reference-to-array: ( * name )(params) or ( & name )[N]
       if (at(P::LParen) && (((at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) &&
                              (atIdent(2) || at(Kw::const_, 2) || at(Kw::volatile_, 2) || at(P::Star, 2) || atIdent(1) && false)) ||
-                            (atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))))
+                            memberPointerAhead(1) > 0))
       {
         advance();
         Type* inner = parseTypeSuffixes(d.type);
@@ -2800,8 +2815,8 @@ namespace
         else if (at(P::LParen))
         {
           int i = 1;
-          if (atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))
-            i = 4; // `R (C::*name)(...)`
+          if (int after = memberPointerAhead(1))
+            i = after; // `R (C::*name)(...)`, `R (game::C::*name)(...)`
           else
             while (at(P::Star, i) || at(P::Amp, i) || at(P::AndAnd, i) || at(Kw::const_, i))
               ++i;
@@ -4682,8 +4697,8 @@ namespace
           case Kw::decltype_:
             break; // speculative path below
           default:
-            if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && atIdent(2) && at(P::ColonColon, 3) && at(P::Star, 4))
-              return true; // `int (Calc::*op)(int)`: a pointer to a member
+            if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && memberPointerAhead(2))
+              return true; // `int (Calc::*op)(int)`, `int (game::Calc::*op)(int)`: a pointer to a member
             if (isBuiltinTypeKeyword(Kw(tok().id)) && parenthesisedDeclaratorAhead(1, true))
               return true; // `void (*callback)();`, `int (*op)(int) = twice;`: a function pointer declarator
             return isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1);
@@ -4728,7 +4743,7 @@ namespace
           else if (parenthesisedDeclaratorAhead(0, !(t->kind == NodeKind::NamedType && static_cast<NamedType*>(t)->name.parts.size() == 1 &&
                                                      !static_cast<NamedType*>(t)->name.parts[0].hasTemplateArgs && !static_cast<NamedType*>(t)->name.global)))
             result = true; // function pointer declarator `R (*f)(...)`, pointer to an array `R (*p)[N]`; `f(*p);` and `f(&x);` are calls
-          else if (at(P::LParen) && atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))
+          else if (at(P::LParen) && memberPointerAhead(1))
             result = true; // pointer to member declarator `R (C::*name)(...)`
           else if (at(P::LBracket) && autoUnderRefs(t))
             result = true;
