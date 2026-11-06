@@ -1753,6 +1753,26 @@ auto codegen::Emitter::initializeArrayElements(const std::string& addr, const Ty
   InlineParts parts(*this, at);
   size_t next = 0;
   uint32_t e = 0;
+  if (std::any_of(values.begin(), values.end(), [&](Expr* v) { return isPackExpansion(v); }))
+  {
+    // `int a[] = {0, v..., 100}`, `{N * N...}`: an element for each value the expansions give, in
+    // order, each initializing its element whole (braces elided around a pack's elements: an
+    // error). They were taken as one value each ("taking the address of v").
+    if (size_t total = expandedCount(values, at); total > t->count)
+      fail(at, "more values than an array of " + std::to_string(t->count) + " " + types.toString(et, &symbols) + " takes (" +
+                   std::to_string(total) + ")");
+    forEachExpanded(values, at, [&](Expr* one)
+    {
+      if (!initializesWhole(et, one, at))
+        unsupported(at, "an element of an array initialized from a pack expansion with its braces elided");
+      std::string element = newTemp();
+      fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(e) + "\n";
+      initializeFrom(element, et, one, at);
+      parts.built(element, et);
+      ++e;
+    });
+    next = values.size();
+  }
   for (; e < t->count && next < values.size(); ++e)
   {
     std::string element = newTemp();

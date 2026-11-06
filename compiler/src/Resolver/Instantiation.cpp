@@ -2002,7 +2002,7 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
             return x->ty;
           return typeOfSignatureExpression(x, ctx);
         };
-        t = types.array(t->inner, uint32_t(elementsFromValues(t->inner, values, typeOf)));
+        t = types.array(t->inner, uint32_t(elementsFromValues(t->inner, values, typeOf, ctx.subst)));
       }
       // A static data member declared without its bound (`static Type const types[];`) has the
       // bound of its out-of-line definition (`Highlights::types[] = {...}`), as in C++.

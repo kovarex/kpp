@@ -1,0 +1,40 @@
+// spec: a pack expansion in an array's brace list gives an element for each of the pack's elements, in order, among other values (`int values[] = {0, v..., 100}`), from a function parameter pack, a non-type template parameter pack (`{N...}`, `{N * N...}`) and a pack of class objects; an array of unknown bound counts them (sizeof is the expanded count), and a bound written with room left zeroes the rest. Before, the expansion was one value ("codegen does not support taking the address of v", "a template parameter whose value is not known here"). clang prints the same
+// found comparing kpp with clang (thread I's battery i9)
+struct Cell
+{
+  int a;
+  int b;
+};
+template<typename... T> int fromParameters(T... v)
+{
+  int values[] = {0, int(v)..., 100};
+  int s = 0;
+  for (int x : values)
+    s = s * 3 + x;
+  return s * 100 + int(sizeof(values) / sizeof(values[0]));
+}
+template<int... N> int fromConstants()
+{
+  int plain[] = {N...};
+  int squares[] = {N * N...};
+  return plain[0] * 1000 + squares[sizeof...(N) - 1] * 10 + int(sizeof(squares) / sizeof(int));
+}
+template<typename... C> int fromObjects(C... c)
+{
+  Cell cells[] = {c..., Cell{9, 9}};
+  int s = 0;
+  for (const Cell& x : cells)
+    s = s * 10 + x.a + x.b;
+  return s;
+}
+template<typename... T> int withRoom(T... v)
+{
+  int values[6] = {v...};
+  return values[0] + values[1] * 10 + values[5] * 100;
+}
+int main()
+{
+  println(fromParameters(), " ", fromParameters(5, 6.5, 'a'), " ", fromConstants<4, 5, 7>(), " ", fromConstants<3>());
+  println(fromObjects(Cell{1, 2}, Cell{3, 1}), " ", fromObjects(), " ", withRoom(3, 4), " ", withRoom());
+  return 0;
+}

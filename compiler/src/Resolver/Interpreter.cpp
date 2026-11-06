@@ -3604,11 +3604,22 @@ auto GlobalScope::Impl::valuesForElement(const Ty* et, Span<Expr*> values, size_
   return std::max<size_t>(1, next - start);
 }
 
-auto GlobalScope::Impl::elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf) -> size_t
+auto GlobalScope::Impl::elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf, const Subst* subst) -> size_t
 {
   size_t next = 0, count = 0;
   while (next < values.size())
   {
+    if (constIsExpansion(values[next]))
+    {
+      Expr* pattern = static_cast<UnaryExpr*>(values[next])->operand;
+      Decl* pack = subst ? packNamedIn(pattern, *subst) : nullptr;
+      const Ty* bound = pack ? subst->find(pack) : nullptr;
+      if (!bound || bound->kind != TyKind::Pack)
+        return 0; // (the template's own walk: the bound is the instance's)
+      count += bound->args.size();
+      ++next;
+      continue;
+    }
     next += std::max<size_t>(1, valuesForElement(et, values, next, typeOf));
     ++count;
   }

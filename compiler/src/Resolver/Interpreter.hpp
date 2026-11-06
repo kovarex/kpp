@@ -519,8 +519,10 @@
 
   // The bound of an array of element type et of unknown bound that values initialize: an element
   // for each run of values an element takes ([dcl.init.aggr] 10 and 16): `double a[] = {1, 2}` two,
-  // `In a[] = {1, 2, 3, 4}` two of `struct In { int a; int b; }`.
-  size_t elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf);
+  // `In a[] = {1, 2, 3, 4}` two of `struct In { int a; int b; }`. A pack expansion among them
+  // (`int a[] = {0, v..., 100}`) is an element for each of the pack's elements under subst (its
+  // values' braces elided around none of them); unknown without one (0).
+  size_t elementsFromValues(const Ty* et, Span<Expr*> values, const std::function<const Ty*(Expr*)>& typeOf, const Subst* subst = nullptr);
 
   // `T{...}` and `T x = {...}` for a class: an aggregate's members in order (designators
   // naming them), or the arguments of the constructor they choose.

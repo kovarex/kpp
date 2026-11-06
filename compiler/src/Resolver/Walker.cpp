@@ -564,7 +564,7 @@ auto GlobalScope::Impl::Walker::checkElidedBound(VariableDecl* v, const Ty* decl
   if (const Ty* et = types.unqualified(t->inner); et->kind != TyKind::Array && et->kind != TyKind::Class)
     return; // (elements whose braces no value elides: an element for each value, or a string's characters)
   Span<Expr*> values = static_cast<BraceInitExpr*>(v->init)->args;
-  size_t count = impl.elementsFromValues(t->inner, values, [&](Expr* x) { return x->ty; });
+  size_t count = impl.elementsFromValues(t->inner, values, [&](Expr* x) { return x->ty; }, activeSubst);
   if (count != t->count)
   {
     std::string name = v->name.empty() ? std::string("?") : impl.namePartText(v->name.last());
