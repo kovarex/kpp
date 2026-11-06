@@ -103,6 +103,11 @@ public:
   // are made of, which must tell every two types apart.
   std::string toString(const Ty* t, const SymbolTable* symbols, bool qualified = false) const;
   size_t size() const;
+  // The types made that mention no unknown one: the report's count, the same at every thread count.
+  // (A lookup another thread has not finished yet answers unknown for a moment, and a type made of
+  // that answer, `IntrusiveListImplementation<<unknown>, ...>` while UnitGroup's bases are resolved,
+  // was made in some runs only: the count of all of them differed between -j 8 and -j 32.)
+  size_t sizeWithoutUnknown() const;
   // Every class type with template arguments made so far, from the from-th on (in the order they
   // were made: an index into a list kept as they are interned, not a walk of every type).
   std::vector<const Ty*> classInstances(size_t from = 0);

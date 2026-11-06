@@ -304,6 +304,8 @@ public:
   size_t scopeCount() const;
   size_t entryCount() const;
   size_t typeCount() const;
+  // The types that mention no unknown one (TypeTable::sizeWithoutUnknown): the report's, deterministic.
+  size_t typeCountWithoutUnknown() const;
   struct InstantiationStats
   {
     size_t classes, functions, bodies, requests, waits;

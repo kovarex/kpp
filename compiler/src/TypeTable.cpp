@@ -145,6 +145,37 @@ const Ty* TypeTable::intern(const Ty& t)
 
 size_t TypeTable::size() const { return impl->count.load(); }
 
+size_t TypeTable::sizeWithoutUnknown() const
+{
+  std::unordered_map<const Ty*, bool> memo;
+  auto mentions = [&](auto& self, const Ty* t, int depth) -> bool
+  {
+    if (!t || depth > 64)
+      return false;
+    if (t->kind == TyKind::Unknown)
+      return true;
+    // (an unnamed class made in no file, the placeholder such an answer leaves as a default argument: `?@0`)
+    if (t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(t->decl)->name.empty() &&
+        !t->decl->file && t->decl->token == 0)
+      return true;
+    if (auto it = memo.find(t); it != memo.end())
+      return it->second;
+    bool found = self(self, t->inner, depth + 1);
+    for (const Ty* a : t->args)
+      found = found || self(self, a, depth + 1);
+    memo.emplace(t, found);
+    return found;
+  };
+  size_t n = 0;
+  for (Impl::Shard& s : impl->shards)
+  {
+    std::shared_lock lock(s.mutex);
+    for (auto& [hash, t] : s.map)
+      n += !mentions(mentions, t, 0);
+  }
+  return n;
+}
+
 std::vector<const Ty*> TypeTable::classInstances(size_t from)
 {
   std::lock_guard lock(impl->classInstancesMutex);

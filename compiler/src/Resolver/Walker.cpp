@@ -1988,7 +1988,11 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
   m->resolved = r.decl;
   if (r.decl)
   {
-    if (r.type && types.isDependent(r.type))
+    // (A plain member function of a known object is bound whatever its type says yet: one whose
+    // `auto` result is not deduced yet (another thread deducing it) read as dependent, so the count
+    // depended on the threads' timing: `getScreenPositionFunction()`, the headline at -j 8 and 32.)
+    bool plainFunction = r.decl->kind == NodeKind::FunctionDecl && r.decl->templateParams.empty() && !types.isDependent(types.stripRef(object));
+    if (r.type && types.isDependent(r.type) && !plainFunction)
       ++stats.membersDependent;
     else
       ++stats.membersBound;
@@ -4561,6 +4565,23 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       ++stats.callsResolved;
       m->resolved = f;
       const Ty* fnTy = impl.declaredTypeOf(f, &r.subst, 0);
+      // A plain `auto` member function's signature: the one its instance deduces (returnTypeOfCall's),
+      // never what declaredTypeOf has cached by now, which another thread's walk of the body writes
+      // or not yet: the member access was typed `auto(...)` or deduced, and counted dependent or
+      // bound, by the threads' timing (`getScreenPositionFunction()`, the headline at -j 8 and 32).
+      const Ty* deducedResult = nullptr;
+      if (f->templateParams.empty() && f->returnType && !f->trailingReturn && Impl::astMentionsAuto(f->returnType) && fnTy &&
+          fnTy->kind == TyKind::Function)
+      {
+        deducedResult = returnTypeOfCall(f, &r.subst, c->args, &last, c);
+        const Ty* declared = impl.computeDeclaredType(f, &r.subst, 0); // (the auto one)
+        if (deducedResult && deducedResult->isKnown() && declared && declared->kind == TyKind::Function)
+        {
+          std::vector<const Ty*> params(declared->args.begin(), declared->args.end());
+          fnTy = types.function(impl.deducedShape(declared->inner, deducedResult), Span<const Ty*>{params.data(), uint32_t(params.size())},
+                                declared->variadic, declared->isCConvention());
+        }
+      }
       record(m, fnTy);
       if (fnTy && fnTy->kind == TyKind::Function)
         for (size_t i = 0; i < c->args.size() && i < fnTy->args.size(); ++i)
@@ -4570,7 +4591,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       else
         ++stats.membersBound;
       bindOverloadSets(sets, fnTy);
-      return returnTypeOfCall(f, &r.subst, c->args, &last, c);
+      return deducedResult ? deducedResult : returnTypeOfCall(f, &r.subst, c->args, &last, c);
     }
     if (r.type && types.isDependent(r.type))
       ++stats.membersDependent;

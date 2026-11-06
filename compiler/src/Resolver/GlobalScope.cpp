@@ -1893,6 +1893,7 @@ void GlobalScope::retypeLambdaFor(const Ty* lambdaTy, LambdaExpr* body, const Te
 size_t GlobalScope::scopeCount() const { return impl->scopes.load(); }
 size_t GlobalScope::entryCount() const { return impl->entries.load(); }
 size_t GlobalScope::typeCount() const { return impl->types.size(); }
+size_t GlobalScope::typeCountWithoutUnknown() const { return impl->types.sizeWithoutUnknown(); }
 
 void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
 
