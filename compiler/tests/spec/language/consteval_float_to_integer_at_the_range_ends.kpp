@@ -1,0 +1,28 @@
+// spec: at compile time a floating value converts to the integer its truncation gives, up to both ends of the type: -2^63 itself was refused, as the bound -2^63 - 1 is no double; clang's output
+extern "C" int printf(const char* format, ...);
+constexpr double twoTo63 = 9223372036854775808.0;
+constexpr long long a = (long long)(-twoTo63);
+constexpr long long b = static_cast<long long>(-9223372036854775808.0);
+constexpr long long c = (long long)-9223372036854775808.0f;
+constexpr long long d = (long long)(-9223372036854774784.0);
+constexpr long long e = (long long)(9223372036854774784.0);
+constexpr unsigned long long f = (unsigned long long)(18446744073709549568.0);
+constexpr unsigned long long g = (unsigned long long)(9223372036854775808.0);
+constexpr int h = (int)(-2147483648.0);
+constexpr int i = (int)(2147483647.0);
+constexpr int j = (int)(-2147483648.9);
+constexpr int k = (int)(2147483647.9);
+constexpr short l = (short)(-32768.0);
+constexpr short m = (short)(32767.9);
+constexpr signed char n = (signed char)(-128.0);
+constexpr unsigned char o = (unsigned char)(255.9);
+constexpr unsigned int p = (unsigned int)(4294967295.9);
+constexpr unsigned int q = (unsigned int)(-0.9);
+constexpr long long r = (long long)(-0.0);
+int main()
+{
+  printf("%lld %lld %lld %lld %lld\n", a, b, c, d, e);
+  printf("%llu %llu\n", f, g);
+  printf("%d %d %d %d %d %d %d %d %u %u %lld\n", h, i, j, k, (int)l, (int)m, (int)n, (int)o, p, q, r);
+  return 0;
+}

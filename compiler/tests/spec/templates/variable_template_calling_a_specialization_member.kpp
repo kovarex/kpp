@@ -1,0 +1,22 @@
+// spec: a variable template's initializer calling a static member under arguments that pick a specialization: the specialization's member (`N1<T>::n()` of `a<int*>` was no constant: the walk, which sees the initializer once, found the primary's); clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct N1 { static constexpr int n() { return 0; } };
+template <typename T> struct N1<T*> { static constexpr int n() { return 1; } };
+template <> struct N1<char> { static constexpr int n() { return 2; } };
+template <typename T> struct N2 { static constexpr int n() { return 0; } };
+template <typename T> struct N2<T&> { static constexpr int n() { return 3; } };
+template <typename T> struct N3 { static constexpr int n() { return 0; } };
+template <typename T> struct N3<T&> { static constexpr int n(int x = 4) { return x; } };
+template <typename T> constexpr int a = N1<T>::n();
+template <typename T> constexpr int b = N2<T>::n();
+template <typename T> constexpr int c = N3<T>::n();
+template <typename T> constexpr int f() { return N2<T>::n(); }
+template <typename T> constexpr int d = f<T>();
+int main()
+{
+  printf("%d %d %d\n", a<int*>, a<char>, a<int>);
+  printf("%d\n", d<int&>);
+  printf("%d\n", c<int&>);
+  printf("%d\n", b<int&>);
+  return 0;
+}

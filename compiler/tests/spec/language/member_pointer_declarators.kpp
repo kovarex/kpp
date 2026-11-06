@@ -1,0 +1,56 @@
+// spec: what a declarator makes of a pointer to a member function: `int (P::*const p)()`, `int (P::**pp)()`, `int (P::*&r)()`, `int (P::*const *q)()`, arrays, parameters, members, results (J's battery: read as a plain pointer to the function, the class dropped), and of a pointer to a data member; clang's output
+extern "C" int printf(const char* format, ...);
+struct P { int f() { return 1; } int h() { return 4; } int g() const { return 2; } int x = 3; int y = 5; };
+using F = int (P::*)();
+int (P::*const cp)() = &P::f;
+int (P::*plain)() = &P::f;
+int (P::**pp)() = &plain;
+int (P::*const *cpp)() = &cp;
+int (P::*&rp)() = plain;
+int (P::*arr[2])() = {&P::f, &P::h};
+int (P::*const carr[2])() = {&P::h, &P::f};
+int P::*const dm = &P::x;
+int P::*dplain = &P::y;
+int P::**dpp = &dplain;
+int P::*const *dcpp = &dm;
+int P::*&drp = dplain;
+int P::*darr[2] = {&P::x, &P::y};
+F const aliased = &P::h;
+int (P::*volatile vp)() = &P::f;
+int (P::*const volatile cvp)() = &P::h;
+int (P::*const gp)() const = &P::g;
+int takeConst(P& o, int (P::*const q)()) { return (o.*q)(); }
+int takePointer(P& o, int (P::**q)()) { return (o.**q)(); }
+int takeReference(P& o, int (P::*&q)()) { return (o.*q)(); }
+int (P::*pick(int i))() { return i ? &P::h : &P::f; }
+int (P::**pickPointer())() { return &plain; }
+struct Holder
+{
+  int (P::*const member)();
+  int (P::**pointer)();
+  int P::*const data;
+  Holder() : member(&P::h), pointer(&plain), data(&P::y) {}
+};
+int main()
+{
+  P o;
+  printf("%d %d %d %d\n", (o.*cp)(), (o.*plain)(), (o.**pp)(), (o.**cpp)());
+  printf("%d %d %d %d %d\n", (o.*rp)(), (o.*arr[1])(), (o.*carr[0])(), o.*dm, o.*dplain);
+  printf("%d %d %d %d %d\n", o.**dpp, o.**dcpp, o.*drp, o.*darr[1], (o.*aliased)());
+  printf("%d %d %d\n", (o.*vp)(), (o.*cvp)(), (o.*gp)());
+  printf("%d %d %d\n", takeConst(o, &P::h), takePointer(o, &plain), takeReference(o, plain));
+  printf("%d %d %d\n", (o.*pick(0))(), (o.*pick(1))(), (o.**pickPointer())());
+  Holder h;
+  printf("%d %d %d\n", (o.*h.member)(), (o.**h.pointer)(), o.*h.data);
+  int (P::*const local)() = &P::h;
+  int (P::*localPlain)() = &P::f;
+  int (P::**localPointer)() = &localPlain;
+  int (P::*const *localConst)() = &local;
+  *localPointer = &P::h;
+  int P::*const localData = &P::x;
+  int P::**none = nullptr;
+  printf("%d %d %d %d %d\n", (o.*local)(), (o.*localPlain)(), (o.**localConst)(), o.*localData, none == nullptr);
+  P* p = &o;
+  printf("%d %d\n", (p->*local)(), (p->**localPointer)());
+  return 0;
+}

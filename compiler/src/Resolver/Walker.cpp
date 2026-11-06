@@ -1540,6 +1540,11 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     ++stats.namesGlobal;
     return types.boolType();
   }
+  // Before the lookup, which converts them: `decltype((i))` reads what its operand's name resolved to
+  // (`Name<decltype((i))>::value` was Name<int>, silently).
+  for (const NamePart& part : e->name.parts)
+    for (Node* arg : part.templateArgs)
+      walkNode(arg);
   Lookup l = impl.lookupQualified(e->name, scope, &locals, 0, activeSubst);
   if (l.found == Found::No && e->name.parts.size() > 1)
     l = memberOfQualifierInstance(e);
@@ -1569,9 +1574,6 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   }
   if (!whenLookup(l, e))
     return types.unknown(); // (design.md 19: reported, or the instances' to tell)
-  for (const NamePart& part : e->name.parts)
-    for (Node* arg : part.templateArgs)
-      walkNode(arg);
   switch (l.found)
   {
     case Found::No:
@@ -4424,6 +4426,10 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         return ft->inner;
       }
     }
+    // (before the lookup, which converts them: resolveName)
+    for (const NamePart& part : n->name.parts)
+      for (Node* arg : part.templateArgs)
+        walkNode(arg);
     Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
     Impl::preferValue(l); // (`stat("/", &s)`: the function, not the struct's aggregate initialisation)
     if (!whenLookup(l, n))
@@ -4488,9 +4494,6 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         !(l.found == Found::No && impl.builtinByName(n->name.parts[0].symbol)))
       addArgumentDependentCandidates(l, n->name.parts[0].symbol, argTypesOf(c->args), friendArgs, n->token);
     n->resolved = l.decl;
-    for (const NamePart& part : n->name.parts)
-      for (Node* arg : part.templateArgs)
-        walkNode(arg);
     switch (l.found)
     {
       case Found::No:

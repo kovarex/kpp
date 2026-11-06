@@ -1,0 +1,50 @@
+// spec: decltype of an expression as a template argument of a name in an expression is decltype's own: `Name<decltype((i))>::n()` was Name<int>, silently (J), as the name's arguments were converted before they were walked and `(i)` named nothing yet; `decltype((i)) x` and `using A = decltype((i))` were right; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct Name { static constexpr int n() { return 0; } };
+template <typename T> struct Name<T&> { static constexpr int n() { return 1; } };
+template <typename T> struct Name<T&&> { static constexpr int n() { return 2; } };
+template <typename T> struct Name<const T> { static constexpr int n() { return 3; } };
+template <typename T> struct Name<const T&> { static constexpr int n() { return 4; } };
+template <typename T> int callOf() { return Name<T>::n(); }
+template <typename T> constexpr int valueOf = Name<T>::n();
+struct S { int m = 1; int& r; int&& rr; const int c = 2; S(int& x, int&& y) : r(x), rr(static_cast<int&&>(y)) {} };
+int global = 0;
+const int cglobal = 1;
+int& ref() { return global; }
+int&& rref() { return static_cast<int&&>(global); }
+int value() { return 1; }
+template <typename U> int inTemplate(U u) { return Name<decltype((u))>::n() * 10 + Name<decltype(u)>::n(); }
+int main()
+{
+  int i = 0;
+  int& r = i;
+  int&& rr = static_cast<int&&>(i);
+  const int c = 1;
+  S s(i, 2);
+  S* p = &s;
+  printf("%d %d\n", Name<decltype((i))>::n(), Name<decltype(i)>::n());
+  printf("%d %d\n", Name<decltype((r))>::n(), Name<decltype(r)>::n());
+  printf("%d %d\n", Name<decltype((rr))>::n(), Name<decltype(rr)>::n());
+  printf("%d %d\n", Name<decltype((c))>::n(), Name<decltype(c)>::n());
+  printf("%d %d\n", Name<decltype((global))>::n(), Name<decltype(global)>::n());
+  printf("%d %d\n", Name<decltype((cglobal))>::n(), Name<decltype(cglobal)>::n());
+  printf("%d %d\n", Name<decltype((s.m))>::n(), Name<decltype(s.m)>::n());
+  printf("%d %d\n", Name<decltype((s.r))>::n(), Name<decltype(s.r)>::n());
+  printf("%d %d\n", Name<decltype((s.rr))>::n(), Name<decltype(s.rr)>::n());
+  printf("%d %d\n", Name<decltype((s.c))>::n(), Name<decltype(s.c)>::n());
+  printf("%d %d\n", Name<decltype((p->m))>::n(), Name<decltype(p->m)>::n());
+  printf("%d %d %d\n", Name<decltype(ref())>::n(), Name<decltype(rref())>::n(), Name<decltype(value())>::n());
+  printf("%d %d %d\n", Name<decltype(i + 1)>::n(), Name<decltype(++i)>::n(), Name<decltype(i++)>::n());
+  printf("%d %d\n", Name<decltype(*p)>::n(), Name<decltype(p->m + 1)>::n());
+  printf("%d %d\n", Name<decltype(static_cast<int&&>(i))>::n(), Name<decltype(static_cast<int&>(i))>::n());
+  printf("%d %d\n", callOf<decltype((i))>(), callOf<decltype(i)>());
+  printf("%d %d\n", valueOf<decltype((i))>, valueOf<decltype(i)>);
+  printf("%d %d\n", inTemplate(1), inTemplate<int&>(i));
+  decltype((i)) x = i;
+  using A = decltype((i));
+  printf("%d %d\n", Name<decltype(x)>::n(), Name<A>::n());
+  printf("%d\n", int(sizeof(Name<decltype((i))>)));
+  auto l = [&] { return Name<decltype((i))>::n(); };
+  printf("%d\n", l());
+  return 0;
+}

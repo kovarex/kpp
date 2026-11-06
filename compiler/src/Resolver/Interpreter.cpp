@@ -1655,10 +1655,13 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     }
     return std::nullopt; // (a pointer the trait gives: not evaluated yet)
   }
-  if (!d || d->kind == NodeKind::TemplateParamDecl)
+  // `Name<T>::n()` in a variable template's initializer, walked once: the primary's member, where the
+  // arguments may pick a specialization, whose member it is (`v<int*>` was no constant).
+  bool ofThePrimary = d && d->kind == NodeKind::FunctionDecl && callee->name.parts.size() > 1 && ctx.subst && d->parent && (d->parent->attributes & ATTR_Specialized);
+  if (!d || d->kind == NodeKind::TemplateParamDecl || ofThePrimary)
   {
     Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
-    d = l.decl;
+    d = l.decl || !ofThePrimary ? l.decl : d;
     // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
     // functions of the name, the one whose parameters the arguments fill, when one does.
     if (d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->params.size() != c->args.size() && l.overloads)

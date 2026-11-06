@@ -1,0 +1,36 @@
+// spec: the same with no name: `int (P::*const)()`, `int (P::**)()` in an alias, a cast, a template argument, a parameter, sizeof, and with a name in a condition and a for's initializer; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+struct P { int f() { return 1; } int h() { return 4; } int g() const { return 2; } };
+using C1 = int (P::*const)();
+using C2 = int (P::**)();
+using C3 = int (P::*&)();
+using C4 = int (P::*const *)();
+using C5 = int (P::**const)();
+using C6 = int (P::*)() const;
+using Plain = int (P::*)();
+int (P::*plain)() = &P::f;
+int noName(int (P::*const)(), int (P::**)(), int (P::*&)()) { return 7; }
+template <typename T> struct Box { T value; };
+int main()
+{
+  printf("%d\n", Same<C1, const Plain>::value);
+  printf("%d\n", Same<C2, Plain*>::value);
+  printf("%d\n", Same<C3, Plain&>::value);
+  printf("%d\n", Same<C4, const Plain*>::value);
+  printf("%d\n", Same<C5, Plain* const>::value);
+  printf("%d\n", Same<C6, int (P::*)() const>::value);
+  P o;
+  printf("%d\n", noName(&P::f, &plain, plain));
+  auto c = static_cast<int (P::**)()>(&plain);
+  printf("%d\n", (o.**c)());
+  Box<int (P::**)()> b{&plain};
+  printf("%d\n", (o.**b.value)());
+  printf("%d\n", int(sizeof(int (P::*const)())) == int(sizeof(Plain)));
+  if (int (P::*const q)() = &P::h)
+    printf("%d\n", (o.*q)());
+  for (int (P::**r)() = &plain; r; r = nullptr)
+    printf("%d\n", (o.**r)());
+  return 0;
+}

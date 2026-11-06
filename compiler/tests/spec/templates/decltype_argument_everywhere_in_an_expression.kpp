@@ -1,0 +1,38 @@
+// spec: as templates/decltype_argument_of_a_name_in_an_expression, in each place a type goes in an expression: a static member's value, a member type, a functional cast, new, a function template's and a member template's arguments, static_cast, constexpr; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct Name { static constexpr int n() { return 0; } static constexpr int value = 0; using Type = char; int v = 0; };
+template <typename T> struct Name<T&> { static constexpr int n() { return 1; } static constexpr int value = 1; using Type = short; int v = 1; };
+template <typename T> struct Name<T&&> { static constexpr int n() { return 2; } static constexpr int value = 2; using Type = long long; int v = 2; };
+template <typename T> constexpr int f() { return Name<T>::n(); }
+struct Obj { template <typename T> int m() { return Name<T>::n(); } template <typename T> static int s() { return Name<T>::n(); } };
+template <typename T> struct Member { template <typename U> static int m() { return Name<U>::n() * 10 + Name<T>::n(); } };
+int main()
+{
+  int i = 0;
+  int&& rr = static_cast<int&&>(i);
+  Obj o;
+  printf("%d %d\n", Name<decltype((i))>::value, Name<decltype(i)>::value);
+  printf("%d %d\n", Name<decltype((rr))>::value, Name<decltype(rr)>::value);
+  printf("%d %d\n", int(sizeof(Name<decltype((i))>::Type)), int(sizeof(Name<decltype(i)>::Type)));
+  printf("%d %d\n", Name<decltype((i))>().v, Name<decltype(i)>{}.v);
+  Name<decltype((i))> a;
+  Name<decltype(i)> b;
+  printf("%d %d\n", a.v, b.v);
+  auto* c = new Name<decltype((i))>;
+  printf("%d\n", c->v);
+  delete c;
+  printf("%d %d\n", f<decltype((i))>(), f<decltype(i)>());
+  printf("%d %d\n", o.m<decltype((i))>(), o.template m<decltype(i)>());
+  printf("%d %d\n", Obj::s<decltype((i))>(), Obj::s<decltype(i)>());
+  printf("%d\n", Member<decltype((i))>::m<decltype((rr))>());
+  printf("%d\n", Member<decltype(i)>::m<decltype(rr)>());
+  typename Name<decltype((i))>::Type t = 0;
+  printf("%d\n", int(sizeof(t)));
+  printf("%d\n", int(sizeof(static_cast<typename Name<decltype((i))>::Type>(0))));
+  auto* p = static_cast<Name<decltype((i))>*>(nullptr);
+  printf("%d\n", p == nullptr);
+  constexpr int k = Name<decltype((i))>::n();
+  static_assert(Name<decltype((i))>::n() == 1);
+  printf("%d\n", k);
+  return 0;
+}
