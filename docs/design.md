@@ -37,7 +37,12 @@ This file records decisions that have been made. When a decision changes, update
   all its members), built where the explicit instantiation is written, in the order of the
   members' definitions. A `thread_local` (a global, a
   static member or a local) is one object per thread, built by each thread at its first use
-  (a local at its first pass), not at startup; none is destroyed at a thread's exit yet.
+  (a local at its first pass), not at startup, and destroyed when the thread ends, the last built
+  first, with the temporaries its initializer extended after it (2026-11-06: kpp_thread_atexit, on
+  Windows a fiber-local slot's callback, elsewhere the C library's __cxa_thread_atexit; one built
+  from constant data is built at first use too, so that its destruction is registered; spec
+  language/thread_local_destroyed_at_thread_exit). The main thread's are destroyed as it ends,
+  if the system runs them then; statics stay undestroyed (the open question).
 - **One multithreaded compiler process** sharing one symbol table, instead of independent
   per-file processes:
   1. Index: parse all files in parallel, build the global symbol tree, record unresolved

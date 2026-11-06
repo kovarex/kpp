@@ -949,6 +949,13 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
     }
   }
   currentFile = saved;
+  // A thread_local that needs destroying is built by each thread at its first use, constant or not:
+  // the destruction at the thread's exit is registered then (registerThreadExits).
+  if (threadLocal && !constructed && needsDestruction(st, at))
+  {
+    constructed = true;
+    init = "zeroinitializer";
+  }
   // Defined in every module, merged by the linker (one instance per program). Two entries: the
   // shared text is sorted, and the definition (an `@` line) has to come after the struct types
   // (`%` lines) a constant initializer names; the comdat line (`$`) would sort first.

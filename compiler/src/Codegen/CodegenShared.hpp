@@ -329,6 +329,7 @@ namespace codegen
     FinalAnswers<const Ty*, ClosureInfo*> finalClosures; // laid-out closures (closureFor)
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
+    std::atomic<bool> usesThreadExit{false};             // a thread_local is destroyed at its thread's exit: kpp_thread_atexit
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
     std::atomic<bool> usesNoexceptFilter{false};         // Windows: a noexcept function's catchpad names kpp.eh.filter.noexcept
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted

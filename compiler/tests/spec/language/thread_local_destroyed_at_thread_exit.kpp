@@ -1,0 +1,74 @@
+// spec: a thread_local object is destroyed when its thread ends, the last built first ([basic.stc.thread] 2, [basic.start.term] 1): a global's, a static member's and a local's, one built from constant data too, an array's elements, and a temporary its initializer extended (after it); each thread destroys its own
+// factorio: thread J's thread_local battery against clang (2026-11-06): none was destroyed at a thread's exit (design.md 2 said so); clang's order of destruction (clang builds a thread's thread_locals when it starts, kpp at their first use: both C++'s, so only the destructions and what the thread read are printed)
+int events[64];
+int logged = 0;
+int seen = 0;
+void note(int v)
+{
+  events[logged++] = v;
+}
+void read(int v)
+{
+  seen += v;
+}
+struct Tracked
+{
+  int id;
+  Tracked(int i) : id(i) { note(1000 + i); }
+  ~Tracked() { note(2000 + id); }
+};
+struct Constant
+{
+  int id;
+  constexpr Constant(int i) : id(i) {}
+  ~Constant() { note(4000 + id); }
+};
+struct Holder
+{
+  static thread_local Tracked perThread;
+};
+thread_local Tracked Holder::perThread{5};
+thread_local Tracked first{1};
+thread_local Tracked second{2};
+thread_local Constant constant{7};
+thread_local Tracked pair[2] = {Tracked{30}, Tracked{31}};
+struct Ref
+{
+  const Tracked& to;
+};
+thread_local Ref extended{Tracked{8}};
+Tracked& local()
+{
+  thread_local Tracked inFunction{3};
+  return inFunction;
+}
+void work(int which)
+{
+  read(10 + which);
+  read(Holder::perThread.id);
+  read(first.id);
+  read(second.id);
+  read(constant.id);
+  read(pair[1].id);
+  read(extended.to.id);
+  read(local().id);
+}
+int main()
+{
+  Thread a(work, 1);
+  a.join();
+  for (int i = 0; i < logged; ++i)
+    if (events[i] >= 2000)
+      print(events[i], " ");
+  println(seen);
+  seen = 0;
+  logged = 0;
+  Thread b(work, 2);
+  b.join();
+  for (int i = 0; i < logged; ++i)
+    if (events[i] >= 2000)
+      print(events[i], " ");
+  println(seen);
+  seen = 0;
+  return 0;
+}

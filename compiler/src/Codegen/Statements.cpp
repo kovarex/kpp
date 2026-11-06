@@ -270,6 +270,8 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
     constructArray(name, t, v);
   destroyTemps(); // (the claim's cleanup with them: the initializer returned)
+  if (perThread && !isRef)
+    registerThreadExits(name, t, v); // destroyed when the thread ends ([basic.stc.thread] 2)
   fn += "  store atomic i8 " + std::string(perThread ? "1" : "2") + ", ptr " + guard + " release, align 1\n";
   emitBranch(done);
   startBlock(done);
@@ -331,6 +333,8 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   std::string name = extendingStatic.substr(0, extendingStatic.size() - 1) + ".temp" + std::to_string(extendingCount++) + "\"";
   addOwnedEntry(name + (extendingThreadLocal ? " = internal thread_local global " : " = internal global ") + llType(type, at) + " zeroinitializer" +
                 alignSuffix(type, 0, at) + "\n");
+  if (extendingThreadLocal && needsDestruction(type, at))
+    threadLocalTemporaries.push_back({name, type}); // (destroyed at the thread's exit, after the variable)
   return name;
 }
 

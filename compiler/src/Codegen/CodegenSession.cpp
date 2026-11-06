@@ -1001,6 +1001,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   };
   emitLevels();
   e.finishAssertRuntime();
+  e.finishThreadExitRuntime();
   e.finishExceptionRuntime();
   if (sh.stubMissing)
   {

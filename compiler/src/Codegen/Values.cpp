@@ -1038,6 +1038,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   currentRequestedByContext.clear();
   try
   {
+    threadLocalTemporaries.clear();
     if (perThread)
     {
       {
@@ -1094,6 +1095,8 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
     else if (t->kind == TyKind::Array)
       constructArray(name, t, at); // `static Style styles[3];`
     destroyTemps();
+    if (perThread)
+      registerThreadExits(name, t->isReference() ? types.voidType() : t, at); // destroyed when the thread ends ([basic.stc.thread] 2)
     popScope();
     if (perThread)
       fn += "  br label %tls.done\ntls.done:\n";

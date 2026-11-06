@@ -240,7 +240,8 @@ auto codegen::Emitter::destructorThunk(const Ty* t, Node* at) -> std::string
 {
   if (!needsDestruction(t, at))
     return "null";
-  std::string name = "@kpp.dtor." + structFor(t, at).name.substr(8);
+  // (an array's: `thread_local Tracked pair[2];` destroyed at its thread's exit)
+  std::string name = isClass(t) ? "@kpp.dtor." + structFor(t, at).name.substr(8) : "@\"kpp.dtor." + types.toString(t, &symbols) + "\"";
   auto lock = sharedLock(); // held while the thunk is emitted: one emitter writes it
   if (emittedShared[name])
     return name;

@@ -130,6 +130,7 @@ namespace codegen
     std::unordered_map<std::string, std::string>& declareLines = sh.declareLines;
     bool& debug = sh.debug;
     std::atomic<bool>& usesAssert = sh.usesAssert;
+    std::atomic<bool>& usesThreadExit = sh.usesThreadExit;
     std::unordered_map<std::string, const Ty*>& irTypeNames = sh.irTypeNames;
     std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
     std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;

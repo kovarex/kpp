@@ -773,7 +773,7 @@ auto codegen::Emitter::runtimeHeaders() -> std::vector<std::string>
 {
   return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
           kppEhFilterAnyHeader, kppEhFilterNoexceptHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
-          kppEhEnterHeader,   kppEhTerminateHeader};
+          kppEhEnterHeader,   kppEhTerminateHeader, kppThreadAtExitHeader};
 }
 
 auto codegen::Emitter::declareFromHeader(const std::string& text) -> std::string
@@ -1645,6 +1645,80 @@ auto codegen::Emitter::stderrStream() -> std::string
   if (declaredNames.claim(stream))
     decls += stream + " = external global ptr\n";
   return "  %err = load ptr, ptr " + stream + "\n";
+}
+
+auto codegen::Emitter::registerThreadExits(const std::string& addr, const Ty* t, Node* at) -> void
+{
+  std::vector<std::pair<std::string, const Ty*>> objects;
+  if (needsDestruction(t, at))
+    objects.push_back({addr, t});
+  for (size_t i = threadLocalTemporaries.size(); i-- > 0;)
+    objects.push_back(threadLocalTemporaries[i]); // (built before the variable: destroyed after it)
+  threadLocalTemporaries.clear();
+  // Registered in reverse, so that the variable, registered last, is destroyed first.
+  for (size_t i = objects.size(); i-- > 0;)
+  {
+    std::string dtor = destructorThunk(objects[i].second, at);
+    if (dtor == "null")
+      continue;
+    usesThreadExit = true;
+    fn += "  call void @kpp_thread_atexit(ptr " + dtor + ", ptr " + objects[i].first + ")\n";
+  }
+}
+
+auto codegen::Emitter::finishThreadExitRuntime() -> void
+{
+  if (!usesThreadExit || !declaredNames.claim("@kpp_thread_atexit"))
+    return;
+  emittingShared = true;
+  if (!sh.target.windows())
+  {
+    // The C library's: glibc's __cxa_thread_atexit_impl, FreeBSD's __cxa_thread_atexit, given the
+    // program's __dso_handle.
+    std::string impl = sh.target.os == Target::Os::FreeBSD ? "@__cxa_thread_atexit" : "@__cxa_thread_atexit_impl";
+    if (declaredNames.claim(impl))
+      decls += "declare i32 " + impl + "(ptr, ptr, ptr)\n";
+    if (declaredNames.claim("@__dso_handle"))
+      decls += "@__dso_handle = external hidden global i8\n"; // (crtbegin's: glibc finds the program's link map by it; null crashed a static program)
+    shared += sharedComdat("@kpp_thread_atexit") + std::string(kppThreadAtExitHeader) + "\nentry:\n  %r = call i32 " + impl +
+              "(ptr %dtor, ptr %object, ptr @__dso_handle)\n  ret void\n}\n";
+    emittingShared = false;
+    return;
+  }
+  // Windows: this thread's list of what to destroy (a node: next, dtor, object), and one fiber-local
+  // slot whose callback runs the list when a thread that set the slot ends.
+  ensureMalloc();
+  if (declaredNames.claim("@FlsAlloc"))
+    decls += "declare dllimport i32 @FlsAlloc(ptr)\n";
+  if (declaredNames.claim("@FlsFree"))
+    decls += "declare dllimport i32 @FlsFree(i32)\n";
+  if (declaredNames.claim("@FlsSetValue"))
+    decls += "declare dllimport i32 @FlsSetValue(i32, ptr)\n";
+  shared += sharedComdat("@kpp.thread.slot") + "@kpp.thread.slot = linkonce_odr global i32 -1, comdat\n";
+  shared += sharedComdat("@kpp.thread.exits") + "@kpp.thread.exits = linkonce_odr thread_local global ptr null, comdat\n";
+  shared += sharedComdat("@kpp_thread_exit") +
+            "define linkonce_odr void @kpp_thread_exit(ptr %unused) comdat {\nentry:\n  br label %next\n"
+            "next:\n  %node = load ptr, ptr @kpp.thread.exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
+            "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr @kpp.thread.exits\n"
+            "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  %dtor = load ptr, ptr %dp\n"
+            "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  %object = load ptr, ptr %op\n"
+            "  call void @free(ptr %node)\n  call void %dtor(ptr %object)\n  br label %next\n"
+            "end:\n  ret void\n}\n";
+  shared += sharedComdat("@kpp_thread_atexit") + std::string(kppThreadAtExitHeader) +
+            "\nentry:\n  %slot = load atomic i32, ptr @kpp.thread.slot acquire, align 4\n  %none = icmp eq i32 %slot, -1\n"
+            "  br i1 %none, label %alloc, label %push\n"
+            "alloc:\n  %new = call i32 @FlsAlloc(ptr @kpp_thread_exit)\n"
+            "  %pair = cmpxchg ptr @kpp.thread.slot, i32 -1, i32 %new acq_rel acquire, align 4\n"
+            "  %won = extractvalue { i32, i1 } %pair, 1\n  %other = extractvalue { i32, i1 } %pair, 0\n"
+            "  br i1 %won, label %push, label %lost\n"
+            "lost:\n  %freed = call i32 @FlsFree(i32 %new)\n  br label %push\n"
+            "push:\n  %index = phi i32 [ %slot, %entry ], [ %new, %alloc ], [ %other, %lost ]\n"
+            "  %node = call ptr @malloc(i64 24)\n  %head = load ptr, ptr @kpp.thread.exits\n  store ptr %head, ptr %node\n"
+            "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  store ptr %dtor, ptr %dp\n"
+            "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  store ptr %object, ptr %op\n"
+            "  store ptr %node, ptr @kpp.thread.exits\n"
+            "  %set = call i32 @FlsSetValue(i32 %index, ptr inttoptr (i64 1 to ptr))\n  ret void\n}\n";
+  emittingShared = false;
 }
 
 auto codegen::Emitter::finishAssertRuntime() -> void

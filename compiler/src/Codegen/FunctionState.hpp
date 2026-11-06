@@ -180,6 +180,9 @@
     bool operandConversion = false;
     bool extendingThreadLocal = false;
     uint32_t extendingCount = 0;
+    // The temporaries a thread_local's initializer extended that need destroying (staticTemporary):
+    // destroyed at the thread's exit after the variable (registerThreadExits).
+    std::vector<std::pair<std::string, const Ty*>> threadLocalTemporaries;
     std::vector<Loop> loops;
     std::vector<EHFrame> ehFrames;
     std::string ehBlocks;                                     // cleanup pads of the current function
