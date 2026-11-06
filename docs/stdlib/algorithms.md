@@ -64,6 +64,21 @@ are equal; without it, `operator==`. Results that are counts or distances are `p
   (`init = init + x`, or `init = op(init, x)`).
 - `min({a, b, c})`, `max({a, b, c})`: of a brace list.
 
+## Numeric
+
+std's `<numeric>` under kpp's names, each as std's, run in order:
+- `reduce(first, last [, init [, op]])` (init a value-initialized element when omitted),
+  `innerProduct(first1, last1, first2, init [, sum, product])`, `transformReduce(first1, last1,
+  first2, init [, reduce, transform])` and `transformReduce(first, last, init, reduce, transform)`.
+- `partialSum(first, last, out [, op])`, `adjacentDifference(first, last, out [, op])`,
+  `inclusiveScan(first, last, out [, op [, init]])`, `exclusiveScan(first, last, out, init [, op])`,
+  `transformInclusiveScan(first, last, out, op, transform [, init])`, `transformExclusiveScan(first,
+  last, out, init, op, transform)`: out may be first.
+- `iota(first, last, value)`: value, value + 1, ... over the range.
+- `gcd(m, n)`, `lcm(m, n)`: of any two integer types, in their common type, on the absolute values.
+- `midpoint(a, b)`: of integers without overflow, rounded towards a; of floating point values without
+  overflow; of two pointers into one array. `lerp(a, b, t)`: exact at t 0 and 1, monotonic, a for a == b.
+
 ## Writing
 
 The output position `out` is any iterator that can be written through and stepped, an output

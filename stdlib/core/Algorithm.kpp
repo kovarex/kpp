@@ -236,6 +236,207 @@ T accumulate(It first, It last, T init, F op)
   return init;
 }
 
+// --- Numeric (std's <numeric>, under kpp's names) ---
+
+// As accumulate, in any order where op is associative and commutative (std::reduce, which this runs
+// in order); init defaults to a value-initialized element.
+template<typename It>
+RemoveCvRef<decltype(*declval<It>())> reduce(It first, It last)
+{
+  return accumulate(first, last, RemoveCvRef<decltype(*declval<It>())>());
+}
+
+template<typename It, typename T>
+T reduce(It first, It last, T init)
+{
+  return accumulate(first, last, move(init));
+}
+
+template<typename It, typename T, typename F>
+T reduce(It first, It last, T init, F op)
+{
+  return accumulate(first, last, move(init), op);
+}
+
+// init with the products of the two ranges' elements added (std::inner_product), or with
+// sum(init, product(x, y)).
+template<typename It1, typename It2, typename T>
+T innerProduct(It1 first1, It1 last1, It2 first2, T init)
+{
+  for (; first1 != last1; ++first1, ++first2)
+    init = move(init) + *first1 * *first2;
+  return init;
+}
+
+template<typename It1, typename It2, typename T, typename Sum, typename Product>
+T innerProduct(It1 first1, It1 last1, It2 first2, T init, Sum sum, Product product)
+{
+  for (; first1 != last1; ++first1, ++first2)
+    init = sum(move(init), product(*first1, *first2));
+  return init;
+}
+
+// std::transform_reduce: as innerProduct for two ranges; for one, init with transform(x) of every
+// element reduced by op.
+template<typename It1, typename It2, typename T>
+T transformReduce(It1 first1, It1 last1, It2 first2, T init)
+{
+  return innerProduct(first1, last1, first2, move(init));
+}
+
+template<typename It1, typename It2, typename T, typename Reduce, typename Transform>
+requires (!isInvocable<Transform, decltype(*declval<It1>())>)
+T transformReduce(It1 first1, It1 last1, It2 first2, T init, Reduce reduce, Transform transform)
+{
+  return innerProduct(first1, last1, first2, move(init), reduce, transform);
+}
+
+template<typename It, typename T, typename Reduce, typename Transform>
+requires isInvocable<Transform, decltype(*declval<It>())>
+T transformReduce(It first, It last, T init, Reduce reduce, Transform transform)
+{
+  for (; first != last; ++first)
+    init = reduce(move(init), transform(*first));
+  return init;
+}
+
+// The running sums of [first, last) written to out (std::partial_sum); out may be first.
+template<typename It, typename OutIt>
+OutIt partialSum(It first, It last, OutIt out)
+{
+  return partialSum(first, last, out, [](const auto& a, const auto& b) { return a + b; });
+}
+
+template<typename It, typename OutIt, typename F>
+OutIt partialSum(It first, It last, OutIt out, F op)
+{
+  if (first == last)
+    return out;
+  RemoveCvRef<decltype(*declval<It>())> sum = *first;
+  *out = sum;
+  for (++first, ++out; first != last; ++first, ++out)
+  {
+    sum = op(move(sum), *first);
+    *out = sum;
+  }
+  return out;
+}
+
+// The first element, then each element minus the one before it (std::adjacent_difference); out may
+// be first.
+template<typename It, typename OutIt>
+OutIt adjacentDifference(It first, It last, OutIt out)
+{
+  return adjacentDifference(first, last, out, [](const auto& a, const auto& b) { return a - b; });
+}
+
+template<typename It, typename OutIt, typename F>
+OutIt adjacentDifference(It first, It last, OutIt out, F op)
+{
+  if (first == last)
+    return out;
+  RemoveCvRef<decltype(*declval<It>())> previous = *first;
+  *out = previous;
+  for (++first, ++out; first != last; ++first, ++out)
+  {
+    RemoveCvRef<decltype(*declval<It>())> value = *first;
+    *out = op(value, move(previous));
+    previous = move(value);
+  }
+  return out;
+}
+
+// std::inclusive_scan: as partialSum, an init (when given) before the first element.
+template<typename It, typename OutIt>
+OutIt inclusiveScan(It first, It last, OutIt out)
+{
+  return partialSum(first, last, out);
+}
+
+template<typename It, typename OutIt, typename F>
+OutIt inclusiveScan(It first, It last, OutIt out, F op)
+{
+  return partialSum(first, last, out, op);
+}
+
+template<typename It, typename OutIt, typename F, typename T>
+OutIt inclusiveScan(It first, It last, OutIt out, F op, T init)
+{
+  for (; first != last; ++first, ++out)
+  {
+    init = op(move(init), *first);
+    *out = init;
+  }
+  return out;
+}
+
+// std::exclusive_scan: init, then the running sums without the element at each position; out may be
+// first.
+template<typename It, typename OutIt, typename T>
+OutIt exclusiveScan(It first, It last, OutIt out, T init)
+{
+  return exclusiveScan(first, last, out, move(init), [](const auto& a, const auto& b) { return a + b; });
+}
+
+template<typename It, typename OutIt, typename T, typename F>
+OutIt exclusiveScan(It first, It last, OutIt out, T init, F op)
+{
+  for (; first != last; ++first, ++out)
+  {
+    T next = op(init, *first);
+    *out = move(init);
+    init = move(next);
+  }
+  return out;
+}
+
+// std::transform_inclusive_scan and std::transform_exclusive_scan: the scans of transform(x).
+template<typename It, typename OutIt, typename F, typename Transform>
+OutIt transformInclusiveScan(It first, It last, OutIt out, F op, Transform transform)
+{
+  if (first == last)
+    return out;
+  auto sum = transform(*first);
+  *out = sum;
+  for (++first, ++out; first != last; ++first, ++out)
+  {
+    sum = op(move(sum), transform(*first));
+    *out = sum;
+  }
+  return out;
+}
+
+template<typename It, typename OutIt, typename F, typename Transform, typename T>
+OutIt transformInclusiveScan(It first, It last, OutIt out, F op, Transform transform, T init)
+{
+  for (; first != last; ++first, ++out)
+  {
+    init = op(move(init), transform(*first));
+    *out = init;
+  }
+  return out;
+}
+
+template<typename It, typename OutIt, typename T, typename F, typename Transform>
+OutIt transformExclusiveScan(It first, It last, OutIt out, T init, F op, Transform transform)
+{
+  for (; first != last; ++first, ++out)
+  {
+    T next = op(init, transform(*first));
+    *out = move(init);
+    init = move(next);
+  }
+  return out;
+}
+
+// value, value + 1, ... written over [first, last) (std::iota).
+template<typename It, typename T>
+void iota(It first, It last, T value)
+{
+  for (; first != last; ++first, ++value)
+    *first = value;
+}
+
 // --- Writing ---
 
 // Writes f(x) for every x of [first, last) to out; returns one past the last written.

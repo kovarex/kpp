@@ -96,13 +96,15 @@ constexpr U gcdUnsigned(U a, U b) { return b == 0 ? a : gcdUnsigned(b, static_ca
 template<typename T>
 constexpr MakeUnsigned<T> unsignedMagnitude(T value)
 {
-  return value < 0 ? static_cast<MakeUnsigned<T>>(static_cast<MakeUnsigned<T>>(0) - static_cast<MakeUnsigned<T>>(value)) : static_cast<MakeUnsigned<T>>(value);
+  return value < 0 ? static_cast<MakeUnsigned<T>>(static_cast<MakeUnsigned<T>>(0) - static_cast<MakeUnsigned<T>>(value))
+                   : static_cast<MakeUnsigned<T>>(value);
 }
 
 template<typename M, typename N> requires (isIntegral<M> && isIntegral<N> && !isSame<M, bool> && !isSame<N, bool>)
 constexpr GcdType<M, N> gcd(M m, N n)
 {
-  return static_cast<GcdType<M, N>>(gcdUnsigned(unsignedMagnitude(static_cast<GcdType<M, N>>(m)), unsignedMagnitude(static_cast<GcdType<M, N>>(n))));
+  return static_cast<GcdType<M, N>>(
+    gcdUnsigned(unsignedMagnitude(static_cast<GcdType<M, N>>(m)), unsignedMagnitude(static_cast<GcdType<M, N>>(n))));
 }
 
 template<typename M, typename N> requires (isIntegral<M> && isIntegral<N> && !isSame<M, bool> && !isSame<N, bool>)
@@ -113,6 +115,51 @@ constexpr GcdType<M, N> lcm(M m, N n)
   auto a = unsignedMagnitude(static_cast<GcdType<M, N>>(m));
   auto b = unsignedMagnitude(static_cast<GcdType<M, N>>(n));
   return static_cast<GcdType<M, N>>(a / gcdUnsigned(a, b) * b);
+}
+
+// Halfway from a to b (std::midpoint): an integer's without overflow, rounded towards a; a floating
+// point value's without overflow at its range's ends; a pointer's within its array.
+template<typename T> requires (isIntegral<T> && !isSame<T, bool>)
+constexpr T midpoint(T a, T b)
+{
+  MakeUnsigned<T> ua = static_cast<MakeUnsigned<T>>(a), ub = static_cast<MakeUnsigned<T>>(b);
+  if (a > b)
+    return static_cast<T>(ua - static_cast<MakeUnsigned<T>>(static_cast<MakeUnsigned<T>>(ua - ub) / 2));
+  return static_cast<T>(ua + static_cast<MakeUnsigned<T>>(static_cast<MakeUnsigned<T>>(ub - ua) / 2));
+}
+
+template<typename T> requires isFloatingPoint<T>
+constexpr T midpoint(T a, T b)
+{
+  constexpr T low = Limits<T>::min() * 2;
+  constexpr T high = Limits<T>::max() / 2;
+  T absA = a < 0 ? -a : a;
+  T absB = b < 0 ? -b : b;
+  if (absA <= high && absB <= high)
+    return (a + b) / 2;
+  if (absA < low)
+    return a + b / 2;
+  if (absB < low)
+    return a / 2 + b;
+  return a / 2 + b / 2;
+}
+
+template<typename T>
+constexpr T* midpoint(T* a, T* b)
+{
+  return a + (b - a) / 2;
+}
+
+// a + t (b - a) (std::lerp): exactly a at t 0 and b at t 1, monotonic in t, and a for a == b.
+template<typename T> requires isFloatingPoint<T>
+constexpr T lerp(T a, T b, T t)
+{
+  if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
+    return t * b + (1 - t) * a;
+  if (t == 1)
+    return b;
+  T x = a + t * (b - a);
+  return (t > 1) == (b > a) ? (b < x ? x : b) : (x < b ? x : b);
 }
 
 // make_unique_for_overwrite: allocates uninitialized storage.

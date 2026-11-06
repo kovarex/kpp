@@ -1,0 +1,16 @@
+reduce 15 25 120
+inner 55 55
+treduce 55
+psum 1 3 6 10 15
+adiff 1 1 1 1 1
+iscan 1 2 6 24 120
+escan 100 101 103 106 110
+tiscan 1 5 14 30 55
+tescan 0 1 5 14 30
+inplace 5 9 12 14 15
+iota -2 -1 0 1 2
+mid 2147483646 -1 2 3
+midu 18446744073709551614
+midf 2.5 1.35e+308 -1.35e+308
+midp 2
+lerp 2.5 2 3 0 3

@@ -1,0 +1,29 @@
+// spec: <numeric>'s algorithms and midpoint and lerp, as std's (MSVC's STL and libstdc++ print the same for the C++ of this program): reduce, innerProduct, transformReduce (two ranges, and one with a transform), partialSum (in place too), adjacentDifference, inclusiveScan, exclusiveScan, transformInclusiveScan, transformExclusiveScan and iota under kpp's names; midpoint of integers without overflow (rounding towards the first), of unsigned values, of doubles near their limits and of pointers; lerp exact at its ends, monotonic, and a constant for equal ends
+extern "C" int printf(const char* format, ...);
+
+int main()
+{
+  auto MUL = [](int x, int y) { return x * y; };
+  auto PLUS = [](int x, int y) { return x + y; };
+  auto SQUARE = [](int x) { return x * x; };
+  int a[] = {1, 2, 3, 4, 5};
+  int out[5] = {};
+  printf("reduce %d %d %d\n", (int)reduce(a, a + 5), (int)reduce(a, a + 5, 10), (int)reduce(a, a + 5, 1, MUL));
+  printf("inner %d %d\n", (int)innerProduct(a, a + 5, a, 0), (int)transformReduce(a, a + 5, a, 0));
+  printf("treduce %d\n", (int)transformReduce(a, a + 5, 0, PLUS, SQUARE));
+  partialSum(a, a + 5, out); printf("psum %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  adjacentDifference(a, a + 5, out); printf("adiff %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  inclusiveScan(a, a + 5, out, MUL); printf("iscan %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  exclusiveScan(a, a + 5, out, 100); printf("escan %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  transformInclusiveScan(a, a + 5, out, PLUS, SQUARE); printf("tiscan %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  transformExclusiveScan(a, a + 5, out, 0, PLUS, SQUARE); printf("tescan %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  int b[5] = {5, 4, 3, 2, 1};
+  partialSum(b, b + 5, b); printf("inplace %d %d %d %d %d\n", b[0], b[1], b[2], b[3], b[4]);
+  iota(out, out + 5, -2); printf("iota %d %d %d %d %d\n", out[0], out[1], out[2], out[3], out[4]);
+  printf("mid %d %d %d %d\n", midpoint(2147483647, 2147483645), midpoint(-2147483647 - 1, 2147483647), midpoint(1, 4), midpoint(4, 1));
+  printf("midu %llu\n", (unsigned long long)midpoint(18446744073709551615ULL, 18446744073709551613ULL));
+  printf("midf %g %g %g\n", midpoint(1.0, 4.0), midpoint(1e308, 1.7e308), midpoint(-1e308, -1.7e308));
+  printf("midp %d\n", (int)(midpoint(a, a + 5) - a));
+  printf("lerp %g %g %g %g %g\n", lerp(0.0, 10.0, 0.25), lerp(1.0, 2.0, 1.0), lerp(1.0, 2.0, 2.0), lerp(-1.0, 1.0, 0.5), lerp(3.0, 3.0, 0.7));
+  return 0;
+}
