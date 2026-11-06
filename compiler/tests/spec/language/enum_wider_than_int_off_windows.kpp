@@ -1,5 +1,4 @@
 // spec: an enumeration without a fixed underlying type holds its enumerators off Windows: its type is the first of int, unsigned, long, unsigned long that does ([dcl.enum] 7), as g++ and clang have it; on Windows it is int, as MSVC's is
-// pending on linux freebsd: every such enumeration is int: `uBig > 0` false, bBig truncated to 0, sizeof 4
 extern "C" int printf(const char* format, ...);
 enum Unsig { u0, uBig = 0xFFFFFFFFu };
 enum Big { b0, bBig = 0x100000000LL };

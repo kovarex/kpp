@@ -536,6 +536,9 @@ public:
   // when the interpreter cannot evaluate it yet; cleared by clearConstantReason.
   static std::string constantReason();
   static void clearConstantReason();
+  // The underlying type of an enumeration without a fixed one when it is not int (off Windows, an
+  // enumerator int cannot hold); null when it is.
+  const Ty* wideUnderlying(Decl* enumeration);
   // The value of an enumerator of the enumeration enumType, an instance's (`Tm<3>::value`).
   std::optional<ConstValue> evaluateEnumerator(Decl* enumerator, const Ty* enumType, const ConstHooks& hooks);
   std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,

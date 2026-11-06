@@ -60,6 +60,9 @@ auto codegen::Emitter::enumUnderlying(Decl* d) -> const Ty*
       return u;
     unsupported(e, "an enumeration whose underlying type is a template parameter"); // (never int: its size and range are the argument's)
   }
+  if (!sh.target.windows() && !e->isClass && e->isDefinition)
+    if (const Ty* wide = global.wideUnderlying(e))
+      return wide; // (`enum { big = 0x100000000 };`)
   return types.intType(32);
 }
 

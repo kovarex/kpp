@@ -629,7 +629,11 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       if (cur->value)
       {
         // (its value as a walk of it typed it: constWalkedCopy)
-        std::optional<ConstValue> v = constConverted(constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, instance), ectx, depth + 1), enumType);
+        std::optional<ConstValue> written = constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, instance), ectx, depth + 1);
+        // (Off Windows an enumeration without a fixed type is as wide as its enumerators, which are
+        // what is being found out: declaredUnderlying. `big = 0x100000000` stays, on Windows it is int.)
+        bool holdsItsValue = written && written->kind == ConstValue::Kind::Int && !e->underlying && !e->isClass && types.longBits() == 64;
+        std::optional<ConstValue> v = holdsItsValue ? ConstValue::integer(written->i, enumType) : constConverted(written, enumType);
         if (!v)
           return std::nullopt;
         next = *v;

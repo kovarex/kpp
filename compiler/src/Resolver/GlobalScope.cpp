@@ -1464,6 +1464,14 @@ std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl*
 }
 
 // t null: the value of e as an expression (evaluate).
+const Ty* GlobalScope::wideUnderlying(Decl* enumeration)
+{
+  ParsedFile* file = enumeration->file;
+  Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+  const Ty* u = impl->declaredUnderlying(impl->types.enumType(enumeration));
+  return u && u->isKnown() ? u : nullptr;
+}
+
 std::optional<ConstValue> GlobalScope::evaluateEnumerator(Decl* enumerator, const Ty* enumType, const ConstHooks& hooks)
 {
   struct Lent

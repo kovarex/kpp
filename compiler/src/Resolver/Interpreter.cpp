@@ -180,6 +180,33 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t) -> const Ty*
     if (!u || !(u->kind == TyKind::Int || u->kind == TyKind::Char || u->kind == TyKind::Bool))
       return types.unknown(); // not kept: a later conversion may succeed
   }
+  else if (def && def->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(def)->isClass && types.longBits() == 64 && static_cast<EnumDecl*>(def)->isDefinition)
+  {
+    // Without a fixed type, off Windows: the first of int, unsigned, long, unsigned long that holds
+    // its enumerators ([dcl.enum] 7, as g++ and clang have it; MSVC's is always int). None known
+    // while they are being evaluated (`B = A | 4`), and nothing kept.
+    auto* e = static_cast<EnumDecl*>(def);
+    for (const EnumeratorValues* f = enumeratorValues; f; f = f->outer)
+      if (f->e == e)
+        return nullptr;
+    int64_t low = 0, high = 0;
+    TypeContext ctx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
+                    e->file ? e->file->text : std::string_view()};
+    for (Decl* m : e->enumerators)
+    {
+      if (m->kind != NodeKind::EnumeratorDecl)
+        continue;
+      std::string* outer = &constWhy();
+      std::string saved = *outer;
+      std::optional<ConstValue> v = constValueOfDecl(m, ctx, 1);
+      *outer = saved; // (an enumerator that does not evaluate is the enumeration's error)
+      if (!v || v->kind != ConstValue::Kind::Int)
+        return nullptr; // (of a template, or not known yet)
+      low = std::min(low, v->i), high = std::max(high, v->i);
+    }
+    if (low < INT32_MIN || high > INT32_MAX)
+      u = low >= 0 && high <= int64_t(UINT32_MAX) ? types.intType(32, true) : types.longType();
+  }
   std::lock_guard lock(underlyingMutex);
   underlyingTypes.emplace(t, u);
   return u;
