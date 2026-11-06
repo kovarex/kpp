@@ -606,6 +606,36 @@ private:
   platform::Condition condition;
 };
 
+// How an atomic operation orders the memory accesses around it (std::memory_order). Every Atomic
+// operation is sequentially consistent, the strongest order, whichever is asked: each order is
+// accepted where C++ takes one and gives at least what it promises.
+enum class MemoryOrder
+{
+  relaxed,
+  consume,
+  acquire,
+  release,
+  acq_rel,
+  seq_cst,
+};
+
+using memory_order = MemoryOrder;
+const MemoryOrder memory_order_relaxed = MemoryOrder::relaxed;
+const MemoryOrder memory_order_consume = MemoryOrder::consume;
+const MemoryOrder memory_order_acquire = MemoryOrder::acquire;
+const MemoryOrder memory_order_release = MemoryOrder::release;
+const MemoryOrder memory_order_acq_rel = MemoryOrder::acq_rel;
+const MemoryOrder memory_order_seq_cst = MemoryOrder::seq_cst;
+
+// A fence (std::atomic_thread_fence, atomic_signal_fence): an atomic read-modify-write of a word of
+// its own, which orders every access before it against every access after it, as a sequentially
+// consistent fence; the call keeps the compiler from moving accesses across it too.
+i32 atomicFenceWord = 0;
+void atomicThreadFence(MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
+void atomic_thread_fence(MemoryOrder order) { atomicThreadFence(order); }
+void atomicSignalFence(MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
+void atomic_signal_fence(MemoryOrder order) { atomicSignalFence(order); }
+
 // The unsigned integer of each size the atomic instructions work on.
 template<i32 size>
 struct AtomicWord {};
@@ -710,8 +740,81 @@ struct Atomic
   bool compare_exchange_strong(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
   bool compare_exchange_weak(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
 
+  // The same with memory orders (each sequentially consistent: MemoryOrder).
+  T load(MemoryOrder order) const noexcept { return this->load(); }
+  void store(T v, MemoryOrder order) noexcept { this->store(v); }
+  T exchange(T v, MemoryOrder order) noexcept { return this->exchange(v); }
+  bool compareExchange(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
+  bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
+  void wait(T old, MemoryOrder order) const { this->wait(old); }
+
+  // An integer's bits and-ed, or-ed or xor-ed with mask (std::atomic::fetch_and, fetch_or,
+  // fetch_xor): the value before, one indivisible step (a compare-exchange loop).
+  T fetchAnd(T mask) noexcept
+    requires isIntegral<T> && !isSame<T, bool>
+  {
+    T seen = this->load();
+    while (!this->compareExchange(seen, (T)(seen & mask)))
+    {
+    }
+    return seen;
+  }
+
+  T fetchOr(T mask) noexcept
+    requires isIntegral<T> && !isSame<T, bool>
+  {
+    T seen = this->load();
+    while (!this->compareExchange(seen, (T)(seen | mask)))
+    {
+    }
+    return seen;
+  }
+
+  T fetchXor(T mask) noexcept
+    requires isIntegral<T> && !isSame<T, bool>
+  {
+    T seen = this->load();
+    while (!this->compareExchange(seen, (T)(seen ^ mask)))
+    {
+    }
+    return seen;
+  }
+
+  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchAnd(mask); }
+  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchOr(mask); }
+  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchXor(mask); }
+  T operator&=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchAnd(mask) & mask); }
+  T operator|=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchOr(mask) | mask); }
+
+  T operator^=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchXor(mask) ^ mask); }
+
+  // A pointer moved by delta elements (std::atomic<T*>::fetch_add): the pointer before.
+  T fetchAdd(i64 delta) noexcept
+    requires isPointer<T>
+  {
+    i64 bytes = delta * (i64)sizeof(RemovePointer<T>);
+    Word before = (Word)kpp_atomic_add64((i64*)this->word(), bytes);
+    return Atomic::valueOf(before);
+  }
+
+  T fetchSub(i64 delta) noexcept requires isPointer<T> { return this->fetchAdd(-delta); }
+  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this->fetchAdd(delta); }
+  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this->fetchAdd(-delta); }
+  T operator++() requires isPointer<T> { return this->fetchAdd((i64)1) + 1; }
+  T operator++(i32) requires isPointer<T> { return this->fetchAdd((i64)1); }
+  T operator--() requires isPointer<T> { return this->fetchAdd((i64)-1) - 1; }
+  T operator--(i32) requires isPointer<T> { return this->fetchAdd((i64)-1); }
+  T operator+=(i64 delta) requires isPointer<T> { return this->fetchAdd(delta) + delta; }
+
+  T operator-=(i64 delta) requires isPointer<T> { return this->fetchAdd(-delta) - delta; }
+
   // The value before adding delta.
   T fetchAdd(T delta) noexcept
+    requires (!isPointer<T>)
   {
     if constexpr (isFloatingPoint<T>)
     {
@@ -735,9 +838,10 @@ struct Atomic
     }
   }
 
-  T fetch_add(T delta) noexcept { return this->fetchAdd(delta); }
+  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this->fetchAdd(delta); }
 
   T fetchSub(T delta) noexcept
+    requires (!isPointer<T>)
   {
     if constexpr (isFloatingPoint<T>)
       return this->fetchAdd(-delta);
@@ -745,7 +849,7 @@ struct Atomic
       return this->fetchAdd((T)(0 - delta));
   }
 
-  T fetch_sub(T delta) noexcept { return this->fetchSub(delta); }
+  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this->fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
   operator T() const { return this->load(); }
@@ -756,12 +860,12 @@ struct Atomic
     return *this;
   }
 
-  T operator++() { return this->fetchAdd(1) + 1; }
-  T operator++(i32) { return this->fetchAdd(1); }
-  T operator--() { return this->fetchSub(1) - 1; }
-  T operator--(i32) { return this->fetchSub(1); }
-  T operator+=(T delta) { return this->fetchAdd(delta) + delta; }
-  T operator-=(T delta) { return this->fetchSub(delta) - delta; }
+  T operator++() requires (!isPointer<T>) { return this->fetchAdd(1) + 1; }
+  T operator++(i32) requires (!isPointer<T>) { return this->fetchAdd(1); }
+  T operator--() requires (!isPointer<T>) { return this->fetchSub(1) - 1; }
+  T operator--(i32) requires (!isPointer<T>) { return this->fetchSub(1); }
+  T operator+=(T delta) requires (!isPointer<T>) { return this->fetchAdd(delta) + delta; }
+  T operator-=(T delta) requires (!isPointer<T>) { return this->fetchSub(delta) - delta; }
   bool operator==(T other) const { return this->load() == other; }
   bool operator!=(T other) const { return this->load() != other; }
 

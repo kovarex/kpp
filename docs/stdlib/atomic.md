@@ -23,7 +23,17 @@ Members:
 - Integers: `fetchAdd(delta)` / `fetch_add`, `fetchSub(delta)` / `fetch_sub`, returning the value
   before; `++`, `--` (prefix returns the new value, postfix the old), `+=`, `-=` (returning the new
   value). The arithmetic wraps around for every integer type, signed ones too.
+- Integers (not bool): `fetchAnd(mask)` / `fetch_and`, `fetchOr` / `fetch_or`, `fetchXor` /
+  `fetch_xor`, returning the value before; `&=`, `|=`, `^=` returning the new value.
 - Floating point: `fetchAdd`, `fetchSub`, `+=`, `-=` as for integers, each one indivisible.
+- Pointers (`Atomic<T*>`): `fetchAdd(n)` / `fetch_add`, `fetchSub(n)` / `fetch_sub`, `++`, `--`,
+  `+=`, `-=` move the pointer by n elements of T, as pointer arithmetic does.
+- Every operation also takes C++'s memory-order arguments (`load(order)`, `store(value, order)`,
+  `exchange`, `compareExchange` and `compare_exchange_strong`/`_weak` with one order or a success
+  and a failure order, `fetch_add` ... `fetch_xor`, `wait`): `MemoryOrder` (also `memory_order`)
+  relaxed, consume, acquire, release, acq_rel, seq_cst, and the constants `memory_order_relaxed` ...
+  `memory_order_seq_cst`. Each operation stays sequentially consistent whatever order it is
+  given, which is at least what every order asks.
 - `== value`, `!= value`: comparisons of the loaded value.
 - `is_lock_free()`: true.
 - `wait(old)`: blocks while the value's bytes equal old's; returns at once when they differ.
@@ -48,5 +58,10 @@ after the lock is released.
 The free functions on a plain SharedPtr (`atomicLoad`, `atomicStore`, `atomicExchange`) are in
 sharedptr.md.
 
-*Differences from C++*: there are no memory-order arguments (every operation is sequentially
-consistent), and no Atomic of a type larger than 8 bytes other than SharedPtr.
+`atomicThreadFence(order)` / `atomic_thread_fence` and `atomicSignalFence(order)` /
+`atomic_signal_fence`: a sequentially consistent fence (an atomic read-modify-write of a word of the
+library's own), whatever the order.
+
+*Differences from C++*: a weaker memory order is accepted and gives sequential consistency (the
+cost of a stronger order on x86-64 is one locked instruction for a store, nothing for a load), and
+there is no Atomic of a type larger than 8 bytes other than SharedPtr.
