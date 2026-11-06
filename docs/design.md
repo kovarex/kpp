@@ -114,6 +114,15 @@ builds win less unless machine code is cached per function.
   partial specializations that both match and neither more specialized than the other are
   ambiguous, a compile error where the type is named (templates/ambiguous_partial_specializations_are_error;
   the first declared was taken).
+- Class-type template parameters (2026-11-06, C++20 [temp.param] 6): `template<Fixed F>` takes a
+  constant of the class, a named constexpr object or a brace list (`scaled<Fixed{3, 14}>()`, which
+  the parser reads as an expression there). The argument is the object's value, its parts (bases,
+  then data members) each an integer, bool, char or enumeration value or an object of such parts
+  (TypeTable::objectValue, printed `Fixed{3, 14}`): arguments of equal parts are one instance. In
+  the template the parameter is a constant lvalue of that value, one object per value (codegen's
+  linkonce_odr `template.object.Fixed{3, 14}`, so `&F` is the same in every instance given it); the
+  evaluator reads it as the object. A part of a floating, pointer or reference type gives no
+  argument yet (an error at the use). Spec templates/class_type_template_argument, clang's output.
 - Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
   the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
   constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,

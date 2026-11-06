@@ -101,6 +101,11 @@
   const Ty* functionArgument(const Lookup& l, Decl* param, int depth);
 
   const Ty* templateArgument(Node* arg, Decl* param, const TypeContext& ctx, int depth);
+  // A class object's value as a template argument (TypeTable::objectValue) and back: its parts
+  // integers (bool, char, integer, enumeration) and objects of such parts; null (nullopt) for any
+  // other part (a floating value, a pointer, a reference), which no argument holds yet.
+  const Ty* objectArgument(const ConstValue& v, int depth = 0);
+  std::optional<ConstValue> argumentObject(const Ty* t, int depth = 0);
 
   uint32_t functionSymbol_ = UINT32_MAX;
   uint32_t functionSymbolId();

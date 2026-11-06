@@ -476,6 +476,8 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
     if (ctx.subst)
       if (const Ty* t = elementOf(d, ctx.subst->find(d), ctx); t && t->kind == TyKind::Value)
       {
+        if (t->isObjectValue())
+          return argumentObject(t); // `template<Fixed F>`: the object given, by its parts
         if (!t->decl)
           return ConstValue::integer(t->value, t->inner);
         // `Expr<add, 3>`'s fold: the address of the function (or variable) given, never the null

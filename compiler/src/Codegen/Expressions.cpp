@@ -169,6 +169,8 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       {
         // A non-type template parameter is a constant of the instantiation; a function given
         // for `float (*func)(float, float)` is that function's address.
+        if (std::string object = templateParameterObject(d, e); !object.empty())
+          return {object, templateParameterClass(d)};
         if (currentArgs)
           for (auto& [p, bound] : currentArgs->pairs)
           {
@@ -1075,6 +1077,35 @@ auto codegen::Emitter::deleterFor(const Ty* key, const std::string& irName, std:
                        : globalFreeCall("%block", std::to_string(sizeOf(key, at)), false, at);
   definitions += "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr void " + name + "(ptr %block) comdat {\nentry:\n  call " + call + "\n  ret void\n}\n";
   return name;
+}
+
+auto codegen::Emitter::templateParameterObject(Decl* d, Node* at) -> std::string
+{
+  const Ty* bound = nullptr;
+  if (currentArgs)
+    for (auto& [p, b] : currentArgs->pairs)
+      if (p == d)
+        bound = b;
+  if (!bound || !bound->isObjectValue())
+    return "";
+  const Ty* cls = types.unqualified(bound->inner);
+  std::optional<ConstValue> value = global.argumentObject(bound);
+  std::optional<std::string> text = value ? constantText(*value, cls, at) : std::nullopt;
+  if (!text)
+    unsupported(at, "the object " + types.toString(bound, &symbols) + " given as a template argument");
+  std::string name = "@\"template.object." + types.toString(bound, &symbols) + "\"";
+  if (declaredNames.claim(name))
+    decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant " + llType(cls, at) + " " + *text + ", comdat\n";
+  return name;
+}
+
+auto codegen::Emitter::templateParameterClass(Decl* d) -> const Ty*
+{
+  if (currentArgs)
+    for (auto& [p, b] : currentArgs->pairs)
+      if (p == d && b && b->isObjectValue())
+        return types.unqualified(b->inner);
+  return nullptr;
 }
 
 auto codegen::Emitter::programAllocationFunctions() -> bool

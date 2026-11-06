@@ -349,6 +349,15 @@ const Ty* TypeTable::functionValue(const Ty* of, Decl* function)
   return intern(t);
 }
 
+const Ty* TypeTable::objectValue(const Ty* of, Span<const Ty*> parts)
+{
+  Ty t{TyKind::Value};
+  t.inner = of;
+  t.args = parts;
+  t.count = 1;
+  return intern(t);
+}
+
 const Ty* TypeTable::member(const Ty* memberType, Decl* decl, const Ty* cls)
 {
   Ty t{TyKind::Member};
@@ -677,7 +686,16 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     case TyKind::Param: s += declName(t->decl); break;
     case TyKind::DependentMember: s += toString(t->inner, symbols, qualified) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;
     case TyKind::Value:
-      if (t->decl)
+      if (t->isObjectValue())
+      {
+        // A class object as the argument, by its parts' values: `Fixed{3, 14}` (two of equal parts
+        // are one argument, and one instantiation name).
+        s += toString(t->inner, symbols, qualified) + "{";
+        for (size_t i = 0; i < t->args.size(); ++i)
+          s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
+        s += "}";
+      }
+      else if (t->decl)
       {
         // A function as the argument, named with its namespaces and classes: `Functions::add` and
         // `Folding::add` are different arguments (and instantiation names).

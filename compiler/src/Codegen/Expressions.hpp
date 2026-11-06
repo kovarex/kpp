@@ -41,6 +41,12 @@
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
     int programAllocates = -1; // GlobalScope::programAllocationFunctions, asked once (-1: not yet)
+
+    // The object a class-type template parameter names in this instantiation (`template<Fixed F>`
+    // given Fixed{3, 14}, C++20's template parameter object): the address of a constant of that
+    // value, one per value (linkonce_odr); empty when d is bound to no class object here.
+    std::string templateParameterObject(Decl* d, Node* at);
+    const Ty* templateParameterClass(Decl* d); // its class (null: no class object)
     bool programAllocationFunctions();
 
     // The call (for emitCall) that gives back the block a new-expression allocated without a class's

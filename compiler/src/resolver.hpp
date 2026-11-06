@@ -460,6 +460,8 @@ public:
   // emitted, never a candidate); and the global `operator delete` (array: `operator delete[]`) that
   // takes the size after the pointer (sized) or not, the program's where it replaced the library's.
   bool programAllocationFunctions();
+  // A class object given as a template argument (TypeTable::objectValue), as the value it is.
+  std::optional<ConstValue> argumentObject(const Ty* t);
   bool replacedAllocation(const FunctionDecl* f);
   FunctionDecl* globalDeallocation(bool array, bool sized);
   // The arguments for the out-of-class definition of a class template's static data member:

@@ -6023,8 +6023,9 @@ namespace
         return l;
       }
       // `Name{...}` is a braced functional cast / aggregate construction (not in a requires
-      // clause, where the brace after the constraint opens the function's body).
-      if (at(P::LBrace) && !noGreater && !inRequires)
+      // clause, where the brace after the constraint opens the function's body); in a template
+      // argument too (`scaled<Fixed{3, 14}>()`, a class-type template argument).
+      if (at(P::LBrace) && !inRequires)
       {
         // Distinguish from a block starting after an expression statement: only at expression
         // positions where '{' cannot start a statement. The caller contexts (arguments,

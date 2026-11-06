@@ -554,6 +554,20 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   }
   else
     v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);
+  if (v && v->isObject() && v->type && types.unqualified(v->type)->kind == TyKind::Class)
+  {
+    // `scaled<Fixed{3, 14}>()`, `scaled<twoTen>()` for `template<Fixed F>`: the object's value, of
+    // the parameter's class (C++20 [temp.param] 6); any other parameter takes no object.
+    const Ty* of = nullptr;
+    if (param && param->kind == NodeKind::TemplateParamDecl)
+      if (auto* p = static_cast<TemplateParamDecl*>(param); !p->isType && p->valueType)
+        of = convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1);
+    const Ty* u = of ? types.unqualified(types.stripRef(of)) : nullptr;
+    if (u && u->kind != TyKind::Auto && u != types.unqualified(v->type))
+      return types.unknown();
+    const Ty* object = objectArgument(*v);
+    return object ? object : types.unknown();
+  }
   if (!v || v->isFloat())
     return types.unknown(); // a floating argument: no constant parameter holds one yet
   if (v->isAddress())
@@ -582,6 +596,53 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   if (!v)
     return types.unknown();
   return types.valueType(of, v->i);
+}
+
+auto GlobalScope::Impl::objectArgument(const ConstValue& v, int depth) -> const Ty*
+{
+  if (!v.isObject() || !v.type || !v.parts || depth > 32)
+    return nullptr;
+  std::vector<const Ty*> parts;
+  for (const ConstValue& p : *v.parts)
+  {
+    const Ty* pt = p.type ? types.unqualified(p.type) : nullptr;
+    if (p.isObject())
+    {
+      const Ty* inner = objectArgument(p, depth + 1);
+      if (!inner)
+        return nullptr;
+      parts.push_back(inner);
+    }
+    else if (p.kind == ConstValue::Kind::Int && pt && (pt->isIntegral() || pt->kind == TyKind::Enum))
+      parts.push_back(types.valueType(pt, p.i));
+    else if (p.isUnset() && pt && (pt->isIntegral() || pt->kind == TyKind::Enum))
+      parts.push_back(types.valueType(pt, 0));
+    else
+      return nullptr;
+  }
+  return types.objectValue(types.unqualified(v.type), Span<const Ty*>{parts.data(), uint32_t(parts.size())});
+}
+
+auto GlobalScope::Impl::argumentObject(const Ty* t, int depth) -> std::optional<ConstValue>
+{
+  if (!t || !t->isObjectValue() || depth > 32)
+    return std::nullopt;
+  std::vector<ConstValue> parts;
+  for (const Ty* p : t->args)
+  {
+    if (p && p->isObjectValue())
+    {
+      std::optional<ConstValue> inner = argumentObject(p, depth + 1);
+      if (!inner)
+        return std::nullopt;
+      parts.push_back(*inner);
+    }
+    else if (p && p->kind == TyKind::Value && !p->decl)
+      parts.push_back(ConstValue::integer(p->value, p->inner));
+    else
+      return std::nullopt;
+  }
+  return ConstValue::object(t->inner, std::move(parts));
 }
 
 auto GlobalScope::Impl::functionSymbolId() -> uint32_t

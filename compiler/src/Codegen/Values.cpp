@@ -753,7 +753,11 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       if (d->kind == NodeKind::EnumeratorDecl)
         break; // an enumerator bound to a reference: its value goes to a temporary (below)
       if (d->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(d)->isType)
+      {
+        if (std::string object = templateParameterObject(d, e); !object.empty())
+          return object; // `template<Fixed F>`: the template parameter object, a constant of its value
         break; // a constant template parameter bound to a reference (`take(K)`): the same
+      }
       if (d->kind == NodeKind::FunctionDecl && !(global.owningClass(d) && !(d->flags & DF_Static)))
       {
         // A function bound to a reference (`call(add, 2, 3)` with `F&& f`): the function itself,

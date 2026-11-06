@@ -1020,6 +1020,7 @@ FunctionDecl* GlobalScope::declarationOf(FunctionDecl* def) { return impl->decla
 
 Decl* GlobalScope::owningClass(Decl* d) { return impl->owningClassOf(d); }
 bool GlobalScope::programAllocationFunctions() { return impl->programAllocationFunctions(); }
+std::optional<ConstValue> GlobalScope::argumentObject(const Ty* t) { return impl->argumentObject(t); }
 bool GlobalScope::replacedAllocation(const FunctionDecl* f) { return impl->replacedAllocation(f); }
 FunctionDecl* GlobalScope::globalDeallocation(bool array, bool sized) { return impl->globalDeallocation(array, sized); }
 

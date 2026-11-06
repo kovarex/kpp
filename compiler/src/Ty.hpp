@@ -46,6 +46,7 @@ struct Ty
   bool isBraceList() const { return kind == TyKind::Class && count == 1; }
   bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
   bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
+  bool isObjectValue() const { return kind == TyKind::Value && count == 1; }     // TypeTable::objectValue
 
   TyKind kind;
   uint8_t bits = 0;
