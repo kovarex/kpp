@@ -1,0 +1,17 @@
+// spec: a class template whose base is another instance of itself (`template<int N, int... I> struct MakeSeq : MakeSeq<N - 1, N - 1, I...>`), ended by a specialisation (`template<int... I> struct MakeSeq<0, I...> { using type = Seq<I...>; }`): a member named through an instance (`MakeSeq<4>::type`, `Count<3>::value`) is the one of the instance its bases reach, the specialisation's. Before, the template's own scope had no base (a base naming itself is left out of the static lookup) and `M<1>::type` was a compile error ("codegen does not support this sizeof yet"). clang prints the same
+// found comparing kpp with clang (thread I's battery i7: an index sequence built by recursion)
+template<int... I> struct Seq {};
+template<int N, int... I> struct MakeSeq : MakeSeq<N - 1, N - 1, I...> {};
+template<int... I> struct MakeSeq<0, I...> { using type = Seq<I...>; static constexpr int size = sizeof...(I); };
+template<int... I> int weigh(Seq<I...>) { return ((I * 10) + ... + 0); }
+template<int N> struct M : M<N - 1> {};
+template<> struct M<0> { using type = short; static constexpr int depth = 0; };
+template<int N, int K> struct Sum : Sum<N - 1, K + N> {};
+template<int K> struct Sum<0, K> { static constexpr int value = K; };
+int main()
+{
+  MakeSeq<3>::type s;
+  M<5>::type m = 1;
+  println(weigh(s), " ", weigh(MakeSeq<5>::type()), " ", MakeSeq<4>::size, " ", sizeof(m), " ", sizeof(M<2>::type), " ", M<3>::depth, " ", Sum<4, 0>::value);
+  return 0;
+}

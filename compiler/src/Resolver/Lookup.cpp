@@ -1211,7 +1211,10 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     Lookup step;
     if (current)
     {
-      if (!lookupInScopeOrPrivate(current, context, part.symbol, step, depth))
+      lookupInScopeOrPrivate(current, context, part.symbol, step, depth);
+      if (currentTy)
+        lookupThroughBaseInstances(currentTy, part.symbol, step, depth); // `G<0>::type` with G<N> : E<N> and E<0> a specialisation
+      if (step.found == Found::No)
         return {};
     }
     else
@@ -1282,6 +1285,15 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     }
     else if (step.scope && step.scope->kind == ScopeKind::Class && step.scope->owner && effectiveParams(step.scope->owner).empty())
       stepTy = types.classType(step.scope->owner, {});
+    else if (subst && !part.hasTemplateArgs && step.scope && step.scope->kind == ScopeKind::Class && step.scope->owner &&
+             step.decl == step.scope->owner && step.decl->kind == NodeKind::ClassDecl)
+    {
+      // `typename G::type` in a member of G<N>, instantiated: the injected class name is the
+      // instance whose body this is, G<0>, so that its bases are the ones its arguments pick.
+      if (const Ty* self = selfType(step.decl))
+        if (const Ty* sub = types.unqualified(substitute(self, *subst, depth + 1)); sub && sub->kind == TyKind::Class && !types.isDependent(sub))
+          stepTy = sub;
+    }
     else if (step.scope && step.decl && step.decl->kind == NodeKind::UsingAliasDecl && step.decl->templateParams.empty())
     {
       // `using HorizontalScrollBar = ScrollBar<HorizontalPolicy>;` then

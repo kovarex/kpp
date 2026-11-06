@@ -1,0 +1,34 @@
+// spec: inside a member of a class template whose base is a specialisation for the instance's arguments (`template<int N> struct G : E<N>` with `template<> struct E<0>`, `template<typename T> struct H : P<T, T*>` with P's partial specialisation `P<T, T*>`), the base's members named through the injected class name (`typename G::type`, `G::k`), through `this->` and through the base itself are the specialisation's, in G<0> as in G<1>. Before, `G::type` and `G::k` there were the primary's (sizeof 2, k 1 in G<0>): a silent wrong answer. clang prints the same
+// found comparing kpp with clang (thread I, after templates/member_through_base_explicit_specialization)
+template<int N> struct E
+{
+  using type = short;
+  static constexpr int k = 1;
+  int kk = 100;
+};
+template<> struct E<0>
+{
+  using type = long long;
+  static constexpr int k = 2;
+  int kk = 200;
+};
+template<typename T, typename U> struct P { using type = char; static constexpr int k = 10; };
+template<typename T> struct P<T, T*> { using type = double; static constexpr int k = 20; };
+template<int N> struct G : E<N>
+{
+  int viaThis() const { return this->k * 1000 + this->kk; }
+  int viaClass() const { return int(sizeof(typename G::type)) * 10 + G::k; }
+  int viaBase() const { return int(sizeof(typename E<N>::type)) * 10 + E<N>::k; }
+};
+template<typename T> struct H : P<T, T*>
+{
+  int viaClass() const { return int(sizeof(typename H::type)) * 100 + H::k; }
+};
+int main()
+{
+  G<0> g;
+  G<1> g1;
+  H<int> h;
+  println(g.viaThis(), " ", g.viaClass(), " ", g.viaBase(), " ", g1.viaThis(), " ", g1.viaClass(), " ", g1.viaBase(), " ", h.viaClass());
+  return 0;
+}

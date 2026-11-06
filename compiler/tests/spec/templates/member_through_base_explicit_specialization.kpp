@@ -1,0 +1,27 @@
+// spec: a class template's base written with the template's parameters (`struct G : E<N>`, `struct D : E<N - 3>`) is, in an instance whose arguments pick an explicit specialization of E (`template<> struct E<0>`), that specialization: a member type and a static constant named through the derived instance (`G<0>::type`, `D<3>::k`) are the specialization's, as its member functions are. Before, they were the primary template's (sizeof(G<0>::type) 2, not 8; G<0>::k 1, not 2): a silent wrong answer. clang prints the same
+// found comparing kpp with clang (thread I's battery i7)
+template<int N> struct E
+{
+  using type = short;
+  static constexpr int k = 1;
+  int f() const { return 10; }
+};
+template<> struct E<0>
+{
+  using type = long long;
+  static constexpr int k = 2;
+  int f() const { return 20; }
+};
+template<int N> struct G : E<N> {};
+template<int N> struct D : E<N - 3> {};
+template<typename T> int kOf() { return T::k; }
+int main()
+{
+  G<0>::type a = 1;
+  D<3>::type b = 1;
+  G<5>::type c = 1;
+  G<0> g;
+  D<3> d;
+  println(sizeof(a), " ", sizeof(b), " ", sizeof(c), " ", G<0>::k, " ", D<3>::k, " ", G<5>::k, " ", kOf<G<0>>(), " ", g.f(), " ", d.f());
+  return 0;
+}

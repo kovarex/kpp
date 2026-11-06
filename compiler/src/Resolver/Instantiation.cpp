@@ -110,7 +110,9 @@ auto GlobalScope::Impl::memberTypeOf(const Ty* t, uint32_t symbol, int depth) ->
   if (!inside || depth > 16)
     return nullptr;
   Lookup inner;
-  if (lookupInScope(inside, symbol, inner, depth + 1) && inner.decl)
+  lookupInScope(inside, symbol, inner, depth + 1);
+  lookupThroughBaseInstances(t, symbol, inner, depth + 1); // (in the specialisation a base instance is)
+  if (inner.found != Found::No && inner.decl)
   {
     Subst s2 = memberSubst(t, inner.foundIn, depth + 1); // a member of a base: that base's arguments
     TypeContext c2{inside, nullptr, &s2};
@@ -173,6 +175,70 @@ auto GlobalScope::Impl::instantiationOfBase(const Ty* t, Scope* cls, Scope* in, 
         return found;
     }
   return nullptr;
+}
+
+auto GlobalScope::Impl::lookupThroughBaseInstances(const Ty* t, uint32_t symbol, Lookup& l, int depth) -> void
+{
+  if (!t || t->kind != TyKind::Class || !t->decl || depth > 16 || types.isDependent(t))
+    return;
+  Scope* cls = classScopeOf(t);
+  if (!cls || cls->baseTypes.empty() || !cls->owner || l.found == Found::Dependent || l.absent)
+    return; // (a false `when`'s name is no base's)
+  if (l.found != Found::No)
+  {
+    // Found in the class itself, in a base no specialisation can replace, or in the base t
+    // derives from as found: the static lookup is t's.
+    Scope* in = l.foundIn;
+    if (!in || in == cls || in->kind != ScopeKind::Class || !in->owner || !(in->owner->attributes & ATTR_Specialized) ||
+        instantiationOfBase(t, cls, in, depth + 1))
+      return;
+  }
+  Lookup instead;
+  if (lookupInBaseInstances(t, cls, symbol, instead, depth + 1))
+    l = instead;
+}
+
+auto GlobalScope::Impl::lookupInBaseInstances(const Ty* t, Scope* cls, uint32_t symbol, Lookup& out, int depth) -> bool
+{
+  if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+    return false;
+  Subst own = substFor(t);
+  LocalStack params;
+  for (Decl* p : cls->templateParams)
+    params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+  pushEnclosingTemplateParams(cls->owner->parent, params);
+  ParsedFile* file = cls->owner->file;
+  TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  bool any = false;
+  for (Type* b : cls->baseTypes)
+    for (const Ty* bt : baseInstances(b, ctx, depth + 1))
+    {
+      if (!bt || bt->kind != TyKind::Class || !bt->decl || bt == t || types.isDependent(bt))
+        continue;
+      Scope* bs = classScopeOf(bt);
+      if (!bs)
+        continue;
+      Lookup l;
+      lookupInScope(bs, symbol, l, depth + 1);
+      lookupThroughBaseInstances(bt, symbol, l, depth + 1);
+      if (l.found == Found::No)
+        continue;
+      if (!any)
+      {
+        out = l;
+        any = true;
+        continue;
+      }
+      // Two bases that have the name: one static member, type or enumerator reached twice is one
+      // name; anything else is ambiguous, as lookupInScope has it ([class.member.lookup] 6).
+      if (out.ambiguousWith || l.found == Found::Dependent || out.found == Found::Dependent || symbol == opSymbols[size_t(P::Assign)])
+        continue;
+      if (l.foundIn == out.foundIn && l.decl == out.decl && !isInstanceMember(l.decl))
+        continue;
+      out.ambiguousWith = l.decl;
+      out.ambiguousIn = l.foundIn;
+    }
+  return any;
 }
 
 auto GlobalScope::Impl::instantiationsOfBase(const Ty* t, Scope* cls, Scope* in, int depth, std::vector<const Ty*>& out) -> void

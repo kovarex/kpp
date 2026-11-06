@@ -40,6 +40,19 @@
   // is cls; null when in is no base of it.
   const Ty* instantiationOfBase(const Ty* t, Scope* cls, Scope* in, int depth);
 
+  // l, the lookup of symbol in the scope of class type t (t's arguments known), made right for
+  // t's bases as its arguments pick them: a member found in a base class template's primary
+  // scope (the static lookup's bases) is the member of the specialisation t's base is, when it is
+  // one (`template<int N> struct G : E<N>` with `template<> struct E<0>`: G<0>'s `type` is
+  // E<0>'s); a member the static lookup did not find is looked for in t's base instances
+  // (`template<int N> struct M : M<N - 1>`, whose own scope has no base, and M<0> a
+  // specialisation: M<1>'s `type` is M<0>'s). Unchanged otherwise.
+  void lookupThroughBaseInstances(const Ty* t, uint32_t symbol, Lookup& l, int depth);
+  // The lookup of symbol in t's base instances (lookupThroughBaseInstances applied to each): the
+  // first that has it, ambiguousWith set when another has another member of the name; false when
+  // none does.
+  bool lookupInBaseInstances(const Ty* t, Scope* cls, uint32_t symbol, Lookup& out, int depth);
+
   // Every instantiation of the base class whose scope is `in` that class type t (scope cls) is or
   // derives from, directly or not, each once: Holder<2, int>, Holder<1, double> and Holder<0,
   // String> of a tuple built from such bases.
