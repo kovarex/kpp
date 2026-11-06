@@ -570,22 +570,20 @@ auto codegen::Emitter::sseBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Val
 
   // --- shifts ---
   // Immediate shifts: slli, srli, srai
-  auto shiftImmOp = [&](const std::string& op, const Ty* vt) -> std::optional<Value>
+  // (The hardware's: a count past the width gives 0, or the sign. An IR shift of one is poison,
+  // which an optimized build turned into anything.)
+  auto shiftImmOp = [&](const std::string& intr, const Ty* vt) -> std::optional<Value>
   {
     if (c->args.size() < 2) return std::nullopt;
     std::string a = sseArg(c->args[0], vt, c);
     std::string imm = sseScalar(c->args[1], types.intType(32), c);
-    // Splat the immediate into a vector
-    std::string splat = newTemp();
-    fn += "  " + splat + " = insertelement " + ll(vt) + " zeroinitializer, i32 " + imm + ", i32 0\n";
-    std::string splat2 = newTemp();
-    fn += "  " + splat2 + " = shufflevector " + ll(vt) + " " + splat + ", " + ll(vt) + " undef, <" + std::to_string(vt->count) + " x i32> zeroinitializer\n";
-    return sseResult(sseBinOp(op, ll(vt), a, splat2), vt, c);
+    std::string i = sseIntrinsic(intr, ll(vt), ll(vt) + ", i32");
+    return sseResult(sseCall(i, ll(vt), ll(vt) + " " + a + ", i32 " + imm), vt, c);
   };
 
-  if (name == "_mm_slli_epi32") return shiftImmOp("shl", v4i);
-  if (name == "_mm_srli_epi32") return shiftImmOp("lshr", v4i);
-  if (name == "_mm_srai_epi32") return shiftImmOp("ashr", v4i);
+  if (name == "_mm_slli_epi32") return shiftImmOp("llvm.x86.sse2.pslli.d", v4i);
+  if (name == "_mm_srli_epi32") return shiftImmOp("llvm.x86.sse2.psrli.d", v4i);
+  if (name == "_mm_srai_epi32") return shiftImmOp("llvm.x86.sse2.psrai.d", v4i);
 
   // Variable shifts (by __m128i count, low 64 bits):
   auto shiftVarOp = [&](const std::string& intr, const Ty* vt) -> std::optional<Value>

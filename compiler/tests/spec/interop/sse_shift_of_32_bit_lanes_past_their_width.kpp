@@ -1,0 +1,29 @@
+// spec: _mm_slli_epi32, _mm_srli_epi32 and _mm_srai_epi32 by a count past the lane's width give what the hardware gives, zeros or the sign, in every build: they were IR shifts, poison for such a count, which printed garbage in an optimized build and a wrong sign at -O0. clang prints the same
+// found by thread J's SSE battery (2026-11-06)
+// target: windows (intrin.h)
+extern "C" import "intrin.h";
+extern "C" int printf(const char* format, ...);
+volatile int shiftCount = 32;
+void show(__m128i v)
+{
+  unsigned x[4];
+  _mm_storeu_si128((__m128i*)x, v);
+  printf("%x %x %x %x\n", x[0], x[1], x[2], x[3]);
+}
+int main()
+{
+  __m128i a = _mm_setr_epi32(1, -1, 0x7fffffff, (int)0x80000000);
+  show(_mm_slli_epi32(a, 31));
+  show(_mm_slli_epi32(a, 32));
+  show(_mm_slli_epi32(a, 100));
+  show(_mm_srli_epi32(a, 31));
+  show(_mm_srli_epi32(a, 32));
+  show(_mm_srli_epi32(a, 255));
+  show(_mm_srai_epi32(a, 31));
+  show(_mm_srai_epi32(a, 32));
+  show(_mm_srai_epi32(a, 64));
+  show(_mm_slli_epi32(a, shiftCount));
+  show(_mm_srli_epi32(a, shiftCount));
+  show(_mm_srai_epi32(a, shiftCount));
+  return 0;
+}
