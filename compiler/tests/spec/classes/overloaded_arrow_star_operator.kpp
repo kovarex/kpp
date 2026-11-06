@@ -1,0 +1,18 @@
+// spec: a class's operator->* is called for `object->*k` with object of that class (a smart pointer's), as C++ has it; a pointer's ->* and an object's .* with a member pointer stay the built-in ones; until 2026-11-06 "codegen does not support ->* on something that is not a pointer"
+struct Ptr
+{
+  int* p;
+  int operator->*(int k) const { return *p + k; }
+};
+struct M { int v; };
+int main()
+{
+  int x = 4;
+  Ptr q{&x};
+  M m{7};
+  M* pm = &m;
+  int M::* mv = &M::v;
+  int viaOperator = q->*5;
+  println(viaOperator, " ", q->*1, " ", pm->*mv, " ", m.*mv);
+  return 0;
+}

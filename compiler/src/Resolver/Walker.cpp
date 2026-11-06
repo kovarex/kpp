@@ -5290,7 +5290,8 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
   const Ty* rs = types.stripRef(r);
   if (!ls || !rs)
     return types.unknown();
-  if (op == P::DotStar || op == P::ArrowStar)
+  // (`obj->*k` with obj of a class that overloads operator->*: its call, below)
+  if ((op == P::DotStar || op == P::ArrowStar) && (rs->kind == TyKind::MemberPointer || ls->kind != TyKind::Class))
     return rs->kind == TyKind::MemberPointer ? types.lref(rs->inner) : types.unknown();
   if ((op == P::EqEq || op == P::NotEq) &&
       ((typedUnionOf(ls) && rs->kind == TyKind::Enum) || (typedUnionOf(rs) && ls->kind == TyKind::Enum)))

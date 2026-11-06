@@ -907,7 +907,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
     case NodeKind::BinaryExpr:
     {
       auto* b = static_cast<BinaryExpr*>(e);
-      if (!b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar))
+      if (!b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar) &&
+          !(P(b->op) == P::ArrowStar && b->lhs->ty && isClass(types.stripRef(b->lhs->ty)))) // (a class's operator->*: its call)
         return memberPointerAddress(b);
       if (!b->isKeyword && isAssignment(P(b->op)))
       {

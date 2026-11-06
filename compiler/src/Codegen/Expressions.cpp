@@ -1910,7 +1910,8 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     rvalue(b->lhs);
     return rvalue(b->rhs);
   }
-  if (op == P::DotStar || op == P::ArrowStar)
+  // (a class's operator->*, `object->*k` with object no pointer: called below as any operator)
+  if ((op == P::DotStar || op == P::ArrowStar) && !(op == P::ArrowStar && b->lhs->ty && isClass(types.stripRef(b->lhs->ty))))
   {
     std::string addr = memberPointerAddress(b);
     const Ty* mt = b->ty ? types.stripRef(b->ty) : nullptr;
