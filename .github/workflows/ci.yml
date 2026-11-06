@@ -675,6 +675,21 @@ jobs:
           "$kppc" --stop-server --exe app main.kpp | grep -q "compile server stopped"
           "$kppc" --stop-server --exe app main.kpp | grep -q "no compile server runs for these arguments"
 
+      # The compile server's crash report on Linux: a request with KPP_SERVER_CRASH_TEST=1 crashes the
+      # server on purpose; its client says so and builds in its own process; the server's log has the
+      # signal and a stack naming the function that crashed.
+      - name: the compile server's crash report
+        run: |
+          mkdir -p /tmp/crash && cd /tmp/crash
+          printf 'int main()\n{\n  println("built");\n  return 0;\n}\n' > main.kpp
+          KPP_SERVER_CRASH_TEST=1 "$GITHUB_WORKSPACE/compiler/build/kppc" --server --exe app main.kpp 2> err.txt
+          [ "$(./app)" = "built" ]
+          grep -q "the compile server ended without finishing the build" err.txt
+          log=$(grep -l "crashing on purpose" /tmp/kppc-server-$(id -u)/*.log)
+          grep "crashed in build\|^.*\]   " "$log"
+          grep -q "crashed in build 1: signal 11" "$log"
+          grep -q "kppServerCrashForTest" "$log"
+
       # The language server on Linux (tests/lsp_smoke.py): an error published at its place, none once
       # the file is fixed, shutdown and exit.
       - name: the language server

@@ -26,6 +26,10 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <execinfo.h>
+#include <memory>
 extern char** environ;
 #endif
 #include <atomic>
@@ -532,6 +536,36 @@ namespace
     return true;
   }
 
+  // The crash report's stack (Windows' logStack): a frame a line, its module and offset (resolvable
+  // with addr2line later) and the function's name, demangled, where the module exports it (kppc is
+  // linked with -rdynamic on POSIX). On an alternate stack each thread sets up (useCrashStack), so
+  // that an overflowing build's stack is reported too.
+  void useCrashStack()
+  {
+    static thread_local std::vector<char> alternate(size_t(1) << 16);
+    stack_t s{};
+    s.ss_sp = alternate.data();
+    s.ss_size = alternate.size();
+    sigaltstack(&s, nullptr);
+  }
+
+#endif
+
+}
+
+// A crash on purpose, for the test of the crash report (a request whose environment has
+// KPP_SERVER_CRASH_TEST=1): a write through a null pointer in a function of its own, which the
+// logged stack names (outside the anonymous namespace: its name is exported, -rdynamic).
+[[gnu::noinline]] void kppServerCrashForTest()
+{
+  volatile int* nowhere = nullptr;
+  *nowhere = 1;
+}
+
+namespace
+{
+
+#ifndef _WIN32
   // Waits up to ms for process pid to end (another process's: polled); true when it has.
   bool waitForEnd(pid_t pid, int ms)
   {
@@ -937,6 +971,7 @@ namespace
     int error = pthread_create(&thread, &attributes, [](void* p) -> void*
     {
       Run* r = static_cast<Run*>(p);
+      useCrashStack(); // (its own: a build's stack overflow is reported)
       BuildJob* j = r->job;
       std::vector<char*> argv;
       for (std::string& a : j->args)
@@ -1192,6 +1227,11 @@ namespace
     }
     logLine("build %zu: %u arguments, in %s, the last %s", ++builds, argc, cwd.c_str(), args.back().c_str());
     applyEnvironment(environment);
+    if (const char* crash = getenv("KPP_SERVER_CRASH_TEST"); crash && strcmp(crash, "1") == 0)
+    {
+      logLine("build %zu: KPP_SERVER_CRASH_TEST: crashing on purpose", builds);
+      kppServerCrashForTest();
+    }
 #ifdef _WIN32
     SetCurrentDirectoryA(cwd.c_str());
 #else
@@ -1501,6 +1541,30 @@ int runClient(int argc, char** argv, CompileFunction compile)
 }
 
 #ifndef _WIN32
+static void crashLogged(int sig, siginfo_t* info, void*)
+{
+  logLine("crashed in build %zu: signal %d (%s) at %p", builds, sig, strsignal(sig), info ? info->si_addr : nullptr);
+  void* frames[48];
+  int n = backtrace(frames, 48);
+  for (int i = 1; i < n; ++i) // (from the handler's caller: the frame that faulted)
+  {
+    Dl_info where{};
+    if (!dladdr(frames[i], &where))
+    {
+      logLine("  ? %p", frames[i]);
+      continue;
+    }
+    const char* module = where.dli_fname ? strrchr(where.dli_fname, '/') : nullptr;
+    int status = 0;
+    char* demangled = where.dli_sname ? abi::__cxa_demangle(where.dli_sname, nullptr, nullptr, &status) : nullptr;
+    logLine("  %s+0x%llx %s", module ? module + 1 : (where.dli_fname ? where.dli_fname : "?"),
+            (unsigned long long)(static_cast<char*>(frames[i]) - static_cast<char*>(where.dli_fbase)),
+            demangled ? demangled : where.dli_sname ? where.dli_sname : "");
+    free(demangled);
+  }
+  raise(sig); // (SA_RESETHAND: the default action now, the process ends as it would have)
+}
+
 // POSIX: KEY.lock held for the server's life makes it the key's one server; the socket bound after
 // it (a stale one from a server that crashed is removed first: the lock says no one serves it).
 int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
@@ -1523,14 +1587,17 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   serverLog = logPath(key);
   logLine("started");
   markDiagnosticLocations(); // each client prints them in its own form
-  // Why it ended, for the client that loses it (no stack: the signal's name and the build).
+  // Why it ended, for the client that loses it: the signal, the build, the address and the stack
+  // (crashLogged; an alternate stack per thread, so that a stack overflow is reported too).
+  useCrashStack();
   for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
-    signal(sig, [](int sig)
-    {
-      logLine("crashed in build %zu: signal %d (%s)", builds, sig, strsignal(sig));
-      signal(sig, SIG_DFL);
-      raise(sig);
-    });
+  {
+    struct sigaction action{};
+    action.sa_sigaction = crashLogged;
+    action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESETHAND;
+    sigemptyset(&action.sa_mask);
+    sigaction(sig, &action, nullptr);
+  }
   signal(SIGPIPE, SIG_IGN); // (a client gone is a failed write)
   setvbuf(stdout, nullptr, _IONBF, 0);
   lastActivity = nowSeconds();

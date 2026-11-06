@@ -111,7 +111,10 @@ else()
   # A POSIX host (design.md, "Targets and hosts", 5): clang or g++ with libstdc++, POSIX threads; the
   # main thread's stack is the system's (8 MB on Linux, as /STACK gives it on Windows).
   find_package(Threads REQUIRED)
-  target_link_libraries(kppc PRIVATE Threads::Threads)
+  target_link_libraries(kppc PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+  # -rdynamic: the compile server's crash report names each frame's function (dladdr reads the
+  # dynamic symbol table; server.cpp's crashLogged).
+  target_link_options(kppc PRIVATE -rdynamic)
 endif()
 
 # LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names the
