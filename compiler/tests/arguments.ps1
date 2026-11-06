@@ -11,6 +11,10 @@ $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
 function Fail([string]$what) { "FAIL arguments: $what"; $script:failed++ }
 
+# --no-server below: a compile server started here kept $work as its current directory, and the next
+# run or a cleanup could not delete it (2026-11-06). One left by a run from before that goes first.
+. "$PSScriptRoot\testservers.ps1"
+Stop-TestServers $work
 if (Test-Path $work) { cmd /c rd /s /q $work }
 New-Item -ItemType Directory -Force $work | Out-Null
 $source = Join-Path $work 'bytes.kpp'
@@ -68,9 +72,9 @@ foreach ($target in 'windows', 'windows-gnu')
 
 # kppc --run: the program's arguments as UTF-8 (kppc's own argv is the ANSI code page's), a lone
 # surrogate refused.
-$r = RunWith $Kppc @('--quiet', '--run', $source, ([string][char]0x17E), $pair)
+$r = RunWith $Kppc @('--quiet', '--no-server', '--run', $source, ([string][char]0x17E), $pair)
 if ($r.out -ne 'c5be 78f09f9880' -or $r.exit -ne 0) { Fail "kppc --run, ordinary text and a surrogate pair: '$($r.out)' exit $($r.exit) $($r.err)" }
-$r = RunWith $Kppc @('--quiet', '--run', $source, 'ok', $lone)
+$r = RunWith $Kppc @('--quiet', '--no-server', '--run', $source, 'ok', $lone)
 if ($r.exit -ne 2 -or $r.err -notmatch "kppc --run: the program's argument 2 holds a lone surrogate") { Fail "kppc --run, a lone surrogate: '$($r.out)' exit $($r.exit) '$($r.err)'" }
 
 if ($failed -eq 0) { "ok   arguments: UTF-8 main arguments on windows and windows-gnu, a lone surrogate refused, kppc --run's passed on" }
