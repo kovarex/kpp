@@ -269,7 +269,14 @@ Every menu simulation of the game, kpp e13691d3 against the all-in-one, all from
 - These maps run 600 ticks of small factories, about 260 ms each; the two saves above are larger and
   closer to level (0.95x and 0.97x), so the maps do not replace them.
 - **Not the same on both sides:** kpp's builds run with `--no-crash-handler`, C++ without it, the
-  script's method since 2026-11-04. Whether it matters is not measured yet.
+  script's method since 2026-11-04, and it flatters kpp. kpp final of e13691d3 with its crash
+  handler against the same executable without it, 3 rounds interleaved (load before 0.7-1.2% on
+  average, one map run again, checksums equal): 10,012, 9,994 and 9,928 ms against 9,716, 9,847 and
+  9,847, so 0.8-3.1% by round, 4.2% by the sum of medians (10,115 against 9,711), and slower on 38
+  of the 45 maps. Scaled by that, kpp final would be about 0.85x-0.87x, if the handler costs C++
+  nothing, which is not measured. The two saves' figures (0.95x, 0.97x) came from `bench.py` with the
+  same difference and were not measured with the handler. The next run gives all the builds one
+  command line.
 - **This figure may move, either way:** it predates 89c13a5a, where up to 923 places in the game's
   generated code went from a move to a copy, as C++ does (candidates in simulation code:
   ShootingTarget, GrowingPlant, TrackingMapPosition, CargoDestination), and a change still to come
