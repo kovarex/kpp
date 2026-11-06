@@ -32,10 +32,6 @@ dtor per type
 atexit h4
 dtor fn static 2
 dtor last
-ctor static built in a destructor
-LateStatic done
-atexit h3
-dtor static built in a destructor
 uses other: used by later
 dtor used by later
 dtor after atexit h2

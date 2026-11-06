@@ -1,0 +1,22 @@
+// spec: what is registered while the program ends runs next: a static built in a destructor or in an atexit function, an atexit function registered by one, as Windows' and glibc's exit have it (clang's and g++'s output)
+// pending on freebsd: its C library runs these in an order of its own, as for a C++ program there
+extern "C" int printf(const char* format, ...);
+extern "C" int atexit(void (*f)());
+struct Tr
+{
+  const char* n;
+  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
+  ~Tr() { printf("dtor %s\n", n); }
+};
+void h3() { printf("atexit h3\n"); }
+struct LateStatic { ~LateStatic() { static Tr t("static built in a destructor"); atexit(h3); printf("LateStatic done\n"); } };
+void handler() { static Tr o("static built in an atexit function"); printf("handler\n"); }
+Tr first{"first"};
+LateStatic late;
+Tr last{"last"};
+int main()
+{
+  atexit(handler);
+  printf("main\n");
+  return 0;
+}

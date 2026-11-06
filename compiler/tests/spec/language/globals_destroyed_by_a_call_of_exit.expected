@@ -9,6 +9,5 @@ exit
 dtor thread local of main
 dtor fn static
 handler
-AtExitOrder
 dtor g2
 dtor g1

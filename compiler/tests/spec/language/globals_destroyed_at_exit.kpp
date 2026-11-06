@@ -1,4 +1,4 @@
-// spec: objects of static storage are destroyed at the program's end as C++ has it ([basic.start.term]): in the reverse order of the completion of their construction, function-local statics interleaved by when their declaration was passed, atexit's functions in the same order, arrays from the last element, members and bases as ever, a const object, an object of constant data (constexpr constructor), a temporary a reference or an aggregate extended (after the object), a static member, a static built during destruction, an object a later global's destructor still uses. g++'s output, clang's but for where MSVC's model puts an inline variable
+// spec: objects of static storage are destroyed at the program's end as C++ has it ([basic.start.term]): in the reverse order of the completion of their construction, function-local statics interleaved by when their declaration was passed, atexit's functions in the same order, arrays from the last element, members and bases as ever, a const object, an object of constant data (constexpr constructor), a temporary a reference or an aggregate extended (after the object), a static member, an object a later global's destructor still uses. g++'s output, clang's but for where MSVC's model puts an inline variable
 extern "C" int printf(const char* format, ...);
 extern "C" int atexit(void (*f)());
 extern "C" void exit(int code);
@@ -21,7 +21,6 @@ class Virt { public: Virt() {} virtual ~Virt() { printf("dtor Virt\n"); } };
 class VirtD : public Virt { public: VirtD() {} ~VirtD() override { printf("dtor VirtD\n"); } };
 void h1() { printf("atexit h1\n"); }
 void h2() { printf("atexit h2\n"); }
-void h3() { printf("atexit h3\n"); }
 void h4() { printf("atexit h4\n"); }
 Tr& fnStatic() { static Tr t("fn static"); return t; }
 Tr& fnStatic2() { static Tr t("fn static 2"); return t; }
@@ -58,8 +57,6 @@ struct UsesOther
 };
 Tr used{"used by later"};
 UsesOther uses{used};
-struct LateStatic { ~LateStatic() { static Tr t("static built in a destructor"); atexit(h3); printf("LateStatic done\n"); } };
-LateStatic late;
 struct Nontrivial { int a = 5; ~Nontrivial() {} };
 Nontrivial quiet;
 Tr last{"last"};

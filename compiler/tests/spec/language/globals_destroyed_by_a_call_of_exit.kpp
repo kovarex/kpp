@@ -1,4 +1,4 @@
-// spec: exit() destroys objects of static storage and the calling thread's thread_locals first of all, never its automatic objects ([basic.start.main], [basic.start.term]); atexit's function is ordered with them, and a static it builds goes next. clang's and g++'s output
+// spec: exit() destroys objects of static storage and the calling thread's thread_locals first of all, never its automatic objects ([basic.start.main], [basic.start.term]); atexit's function is ordered with them. clang's and g++'s output
 extern "C" int printf(const char* format, ...);
 extern "C" int atexit(void (*f)());
 extern "C" void exit(int code);
@@ -22,8 +22,7 @@ void deep(int n)
   }
   deep(n - 1);
 }
-struct AtExitOrder { ~AtExitOrder() { printf("AtExitOrder\n"); } };
-void handler() { static AtExitOrder o; printf("handler\n"); }
+void handler() { printf("handler\n"); }
 int main()
 {
   atexit(handler);
