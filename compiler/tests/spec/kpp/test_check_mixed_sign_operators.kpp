@@ -1,0 +1,34 @@
+// spec: every comparison in a check compares a signed and an unsigned integer by value, either way round and at any width, when it is the check's whole expression; bool stays out of the rule, and two integers of one signedness compare as ever
+// test:
+// exit: 0
+suite Signs
+{
+  test Operators
+  {
+    i64 minus = -1;
+    u64 huge = 18446744073709551615u;
+    u8 small = 200;
+    i8 negative = -56;
+    check(minus != huge);
+    check(huge != minus);
+    check(!(minus != huge)); // nested in an expression, the comparison is C++'s: the signed side converts
+    check(minus < huge);
+    check(huge > minus);
+    check(minus <= huge);
+    check(huge >= minus);
+    check(negative < small);
+    check(small > negative);
+    check(small != negative);
+    int two = 2;
+    unsigned twoToo = 2;
+    check(two == twoToo);
+    check(twoToo == two);
+    check(two <= twoToo);
+    check(two >= twoToo);
+    bool yes = true;
+    unsigned one = 1;
+    check(yes == one);
+    check(minus < 0);
+    check(huge > 0);
+  }
+}

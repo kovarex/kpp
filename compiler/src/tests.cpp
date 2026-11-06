@@ -211,22 +211,70 @@ template<typename L, typename R> bool __kppNote(const L& l, const R& r, const ch
 }
 // C text: a pointer to characters or an array of them (a string literal), whose == compares addresses.
 template<typename T> constexpr bool __kppIsCText = (isPointer<T> || isArray<T>) && isConvertible<const T&, const char*>;
+// A signed and an unsigned integer in a check compare by value (design.md 8.7), as std::cmp_equal and
+// std::cmp_less do; bool is no number here.
+template<typename L, typename R> constexpr bool __kppMixedSign =
+  isIntegral<L> && isIntegral<R> && !isSame<L, bool> && !isSame<R, bool> && isSigned<L> != isSigned<R>;
+template<typename L, typename R> bool __kppValueEqual(const L& l, const R& r)
+{
+  if constexpr (isSigned<L>)
+    return l >= 0 && u64(l) == u64(r);
+  else
+    return r >= 0 && u64(l) == u64(r);
+}
+template<typename L, typename R> bool __kppValueLess(const L& l, const R& r)
+{
+  if constexpr (isSigned<L>)
+    return l < 0 || u64(l) < u64(r);
+  else
+    return r >= 0 && u64(l) < u64(r);
+}
 template<typename L, typename R> bool __kppEqual(const L& l, const R& r)
 {
   static_assert(!(__kppIsCText<L> && __kppIsCText<R>),
                 "check: == of two char pointers compares addresses: write StringView(a) == b, or cast to (const void*) to compare the addresses");
-  return l == r || __kppNote(l, r, "==");
+  if constexpr (__kppMixedSign<L, R>)
+    return __kppValueEqual(l, r) || __kppNote(l, r, "==");
+  else
+    return l == r || __kppNote(l, r, "==");
 }
 template<typename L, typename R> bool __kppNotEqual(const L& l, const R& r)
 {
   static_assert(!(__kppIsCText<L> && __kppIsCText<R>),
                 "check: != of two char pointers compares addresses: write StringView(a) != b, or cast to (const void*) to compare the addresses");
-  return l != r || __kppNote(l, r, "!=");
+  if constexpr (__kppMixedSign<L, R>)
+    return !__kppValueEqual(l, r) || __kppNote(l, r, "!=");
+  else
+    return l != r || __kppNote(l, r, "!=");
 }
-template<typename L, typename R> bool __kppLess(const L& l, const R& r) { return l < r || __kppNote(l, r, "<"); }
-template<typename L, typename R> bool __kppLessEqual(const L& l, const R& r) { return l <= r || __kppNote(l, r, "<="); }
-template<typename L, typename R> bool __kppGreater(const L& l, const R& r) { return l > r || __kppNote(l, r, ">"); }
-template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r) { return l >= r || __kppNote(l, r, ">="); }
+template<typename L, typename R> bool __kppLess(const L& l, const R& r)
+{
+  if constexpr (__kppMixedSign<L, R>)
+    return __kppValueLess(l, r) || __kppNote(l, r, "<");
+  else
+    return l < r || __kppNote(l, r, "<");
+}
+template<typename L, typename R> bool __kppLessEqual(const L& l, const R& r)
+{
+  if constexpr (__kppMixedSign<L, R>)
+    return !__kppValueLess(r, l) || __kppNote(l, r, "<=");
+  else
+    return l <= r || __kppNote(l, r, "<=");
+}
+template<typename L, typename R> bool __kppGreater(const L& l, const R& r)
+{
+  if constexpr (__kppMixedSign<L, R>)
+    return __kppValueLess(r, l) || __kppNote(l, r, ">");
+  else
+    return l > r || __kppNote(l, r, ">");
+}
+template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r)
+{
+  if constexpr (__kppMixedSign<L, R>)
+    return !__kppValueLess(l, r) || __kppNote(l, r, ">=");
+  else
+    return l >= r || __kppNote(l, r, ">=");
+}
 
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
 // says the arguments; false, so that `cond || __kppMessage(...)` fails.

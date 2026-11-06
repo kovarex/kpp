@@ -1,4 +1,4 @@
 outside a check: true
-test_check_mixed_sign.kpp:13:5: check failed: m == u (-1 == 4294967295)
+test_check_mixed_sign.kpp:12:5: check failed: m == u (-1 == 4294967295)
 failed: Signs.Compare
 1 test, 1 failed

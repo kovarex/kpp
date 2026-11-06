@@ -526,7 +526,7 @@ The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2
 the names, suites with depends and tags, fixtures, `generate`, the order, the errors across files
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
-Not yet (their snippets pending): a call's values, the mixed-sign rule, test functions;
+The mixed-sign rule is done too. Not yet (their snippets pending): a call's values, test functions;
 `--with-dependencies`, `--from`, `--after`, `--shuffle`, `--jobs` and the slow-test line. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
@@ -580,7 +580,9 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
 - **Integers in a check compare by value.** Inside `check` and `require`, a comparison of a signed
   and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
   4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.
-  It keeps `CHECK_EQUAL`'s meaning.
+  It keeps `CHECK_EQUAL`'s meaning. The rule covers the comparison that is the check's whole
+  expression: nested in one (`check(!(a == b))`, `check(a == b && c)`) it is C++'s, as a game's
+  `CHECK(a == b && c)` always was.
 - **Char pointers in a check.** Inside `check` and `require`, `==` or `!=` between two char pointers
   (`const char*`, `char*`, or one of them and a string literal) is a compile error, "compares
   addresses: write StringView(a) == b, or cast to (const void*) to compare the addresses":
