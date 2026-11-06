@@ -1866,7 +1866,8 @@ A declaration that exists in the current scope only when a constant condition ho
 - The condition is any constant expression, as `if constexpr`'s: a `config::` value, or a property of
   a template's types (decided per instance).
 - When it is false, the declaration does not exist: no storage, no constructor, and its initializer is
-  neither evaluated nor checked, as a discarded branch.
+  neither evaluated nor checked, as a discarded branch. A false `operator=` leaves the class its implicit
+  assignment, as when it is not declared at all (`#ifdef DEBUG` around it in the game's classes).
 - When it is true, it is an ordinary declaration of that scope: the same lifetime and the same place
   of its destructor.
 - A use of the name is checked in the configuration (and template instance) being built: where the

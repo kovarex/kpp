@@ -1,0 +1,49 @@
+// spec: a `when` assignment operator that is false does not exist, so the class has the implicit one, as `#ifdef DEBUG` around it did
+class Tracked
+{
+public:
+  int value = 0;
+  Tracked() = default;
+  Tracked(const Tracked& other) : value(other.value) {}
+  when (config::debug) Tracked& operator=(const Tracked& other) { this->value = other.value + 100; return *this; }
+};
+
+class Moved
+{
+public:
+  int value = 0;
+  Moved() = default;
+  when (config::debug) Moved& operator=(const Moved& other) { this->value = other.value + 100; return *this; }
+  when (config::debug) Moved& operator=(Moved&& other) noexcept { this->value = other.value + 200; return *this; }
+};
+
+class Derived : public Tracked
+{
+};
+
+int main()
+{
+  Tracked a;
+  Tracked b;
+  b.value = 3;
+  a = b;
+  println(a.value);
+  Moved c;
+  Moved d;
+  d.value = 4;
+  c = d;
+  println(c.value);
+  c = move(d);
+  println(c.value);
+  Derived e;
+  Derived f;
+  f.value = 5;
+  e = f;
+  println(e.value);
+  Vector<Tracked> list;
+  list.push_back(b);
+  list.push_back(a);
+  list.assign(1, b); // (Vector's own assignment of its elements)
+  println(list.size(), " ", list[0].value);
+  return 0;
+}

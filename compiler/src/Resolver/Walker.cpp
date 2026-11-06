@@ -1945,7 +1945,7 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
         return *viaBase;
     }
   }
-  if (!found && l.absent)
+  if (!found && l.absent && symbols.name(symbol) != "operator=") // (`operator=`: the implicit one, as when it is not declared at all)
   {
     // A member a false `when` dropped (design.md 19): used where its condition is not known to hold.
     if (file && !file->isImported && !probing && token)
