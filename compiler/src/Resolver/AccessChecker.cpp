@@ -751,6 +751,33 @@ auto GlobalScope::Impl::classHasBaseAtOffset(const Ty* cls, int depth) -> bool
 
 bool GlobalScope::hasBaseAtOffset(const Ty* cls) { return impl->classHasBaseAtOffset(cls, 0); }
 
+auto GlobalScope::Impl::classStartsWithBase(const Ty* cls, const Ty* base, int depth) -> bool
+{
+  if (cls == base)
+    return true;
+  ClassDecl* def = nullptr;
+  ClassDecl* baseDef = nullptr;
+  std::vector<const Ty*> bases = classBasesOf(cls, def, depth);
+  classBasesOf(base, baseDef, depth);
+  if (!def)
+    return false;
+  if (def == baseDef && cls->args.size() == base->args.size() && std::equal(cls->args.begin(), cls->args.end(), base->args.begin()))
+    return true; // (a forward declaration's type and the definition's)
+  bool anyPolymorphic = false;
+  for (const Ty* b : bases)
+    anyPolymorphic = anyPolymorphic || classDeclaredPolymorphic(b, depth + 1);
+  if (!anyPolymorphic && classDeclaredPolymorphic(cls, depth))
+    return false; // (its own vtable pointer is at the start)
+  for (const Ty* b : bases) // (the first one the layout places: the first polymorphic one, or the first)
+    if (b && (!anyPolymorphic || classDeclaredPolymorphic(b, depth + 1)))
+      return classStartsWithBase(b, base, depth + 1);
+  return false;
+}
+
+bool GlobalScope::classStartsWith(const Ty* cls, const Ty* base) { return impl->classStartsWithBase(cls, base, 0); }
+
+bool GlobalScope::classDerivesFrom(const Ty* cls, const Ty* base) { return impl->derivesFrom(cls, base); }
+
 auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int64_t>
 {
   if (!t || depth > 24)

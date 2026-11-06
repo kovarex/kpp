@@ -1,0 +1,44 @@
+// spec: an override's result class that derives from the overrider, which C++ cannot declare (the result must be complete at the override) and kpp's order of declarations can, is an error: each class's layout would wait for the other's, and the result came back unmoved or was refused by which was asked for first
+// error: the override E::get returns Late, which derives from E
+// found by thread B (2026-11-06), writing classes/covariant_override_takes_its_own_slot
+class X
+{
+public:
+  int x = 1;
+  virtual ~X() {}
+};
+class Pad
+{
+public:
+  int pad = 9;
+  virtual ~Pad() {}
+};
+class A
+{
+public:
+  virtual ~A() {}
+  virtual X* get() { return nullptr; }
+};
+class Late;
+class E : public A
+{
+public:
+  Late* get() override;
+};
+class Late : public Pad, public E, public X
+{
+public:
+  int late = 8;
+};
+Late* E::get()
+{
+  static Late s;
+  return &s;
+}
+int main()
+{
+  E e;
+  A& a = e;
+  println(a.get()->x);
+  return 0;
+}

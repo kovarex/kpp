@@ -382,6 +382,8 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
   if (isVirtual)
   {
     std::string key = methodKey(m);
+    // (a base's slot of another result is not this function's: a covariant override with a slot of its own)
+    const Ty* result = structFor(cls, nullptr).vtables[0].slots[slot].result;
     std::function<const Ty*(const Ty*, int)> deepest = [&](const Ty* t, int depth) -> const Ty*
     {
       if (depth > 32)
@@ -390,7 +392,8 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
       if (!tc)
         return nullptr;
       for (const Ty* b : basesOf(tc, global.classArgsOf(canonicalClass(t, nullptr)), nullptr))
-        if (b && isClass(b) && structFor(b, nullptr).polymorphic && slotKeyed(structFor(b, nullptr), key) >= 0)
+        if (int inBase = b && isClass(b) && structFor(b, nullptr).polymorphic ? slotKeyed(structFor(b, nullptr), key) : -1;
+            inBase >= 0 && structFor(b, nullptr).vtables[0].slots[inBase].result == result)
         {
           const Ty* below = deepest(b, depth + 1);
           return below ? below : b;

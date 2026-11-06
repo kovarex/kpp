@@ -1078,10 +1078,14 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
   }
   auto addToPrimary = [&](const VtableSlot& slot)
   {
+    const VtableSlot* last = nullptr;
     for (const VtableSlot& s : tables[0].slots)
       if (s.key == slot.key)
-        return;
-    tables[0].slots.push_back(slot);
+        last = &s;
+    // (a covariant override's result that does not start with the class the slot gives back: its
+    // callers here want the whole result, those of the slot a base of it, at another address)
+    if (!last || (slot.result && last->result && !global.classStartsWith(slot.result, last->result)))
+      tables[0].slots.push_back(slot);
   };
   bool declaresDestructor = false;
   {
@@ -1102,11 +1106,24 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
         for (VtableSlot& s : t.slots)
           if (s.key == own.key)
           {
+            const Ty* callersExpect = s.result;
             s = own;
+            s.result = callersExpect;
             overrides = true;
           }
       if (overrides || (f->flags & (DF_Virtual | DF_Override)))
+      {
+        bool pointer = false;
+        own.result = resultClassOf(f, key, pointer);
+        // (Its layout would wait for this one, or this one for it, by which is asked for first. C++
+        // cannot declare it: the result must be complete at the override.)
+        if (own.result && global.classDerivesFrom(own.result, key) && !global.classStartsWith(key, own.result)) // (not the class itself)
+          for (const Vtable& t : tables)
+            for (const VtableSlot& s : t.slots)
+              if (s.key == own.key && s.result && !(global.classStartsWith(s.result, own.result) && global.classStartsWith(own.result, s.result)))
+                fail(f, "the override " + qualifiedName(f) + " returns " + types.toString(own.result, &symbols) + ", which derives from " + types.toString(key, &symbols));
         addToPrimary(own);
+      }
     }
   }
   if (!declaresDestructor)
@@ -1190,7 +1207,9 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
                                          : implicitDestructor(slot.owner, at); // a class declaring none still destroys its own members
       // (a covariant override's result moved to the base its callers here expect: until 2026-11-05
       // `Second* s = &both; s->self()` gave the whole object's address back as the Second)
-      ResultMove move = covariantMove(key, table, slot, at);
+      ResultMove move = covariantMove(slot, at);
+      if (move.bytes && t == 0 && slotKeyed(info, slot.key) == int(s))
+        unsupported(at, "the covariant override " + qualifiedName(slot.function) + " in " + types.toString(key, &symbols) + ": its slot gives a base of its result, where calls through the class want all of it");
       if (!samePlace(slot.ownerPath, table.path) || move.bytes)
       {
         std::string thunk = "@\"thunk." + classIrName(key, info) + "." + std::to_string(t) + "." + std::to_string(s) + "\"";
@@ -1365,47 +1384,21 @@ auto codegen::Emitter::baseOffsetIn(const Ty* derived, const Ty* base, Node* at)
   return offset;
 }
 
-auto codegen::Emitter::covariantMove(const Ty* key, const Vtable& table, const VtableSlot& slot, Node* at) -> ResultMove
+auto codegen::Emitter::covariantMove(const VtableSlot& slot, Node* at) -> ResultMove
 {
   bool pointer = false;
-  const Ty* result = slot.function ? resultClassOf(slot.function, slot.owner, pointer) : nullptr;
-  if (!result)
+  const Ty* result = slot.function && slot.result ? resultClassOf(slot.function, slot.owner, pointer) : nullptr;
+  if (!result || result == slot.result)
     return {};
-  // The classes whose callers reach the function through this table: the class at its path, and
-  // its primary bases, which share its vtable pointer; each expects the result its own view of
-  // the function declares (its primary vtable's slot of that key).
-  const Ty* sharer = key;
-  for (uint32_t index : table.path)
-    sharer = structFor(sharer, at).fieldTypes[index];
-  std::optional<uint64_t> common;
-  std::string commonView;
-  for (int depth = 0; sharer && depth < 64; ++depth)
-  {
-    const StructInfo& info = structFor(sharer, at);
-    const Ty* next = info.primaryBase;
-    const VtableSlot* seen = nullptr;
-    if (!info.vtables.empty())
-      for (const VtableSlot& s : info.vtables[0].slots)
-        if (s.key == slot.key)
-          seen = &s;
-    bool viewPointer = false;
-    const Ty* view = !seen || !seen->function ? nullptr
-                     : seen->function == slot.function && canonicalClass(seen->owner, at) == canonicalClass(slot.owner, at)
-                         ? result // (the override itself: its own result, nothing to move)
-                         : resultClassOf(seen->function, seen->owner, viewPointer);
-    std::optional<uint64_t> offset = view ? baseOffsetIn(result, view, at) : std::nullopt;
-    if (offset && !common)
-    {
-      common = offset;
-      commonView = types.toString(view, &symbols);
-    }
-    else if (offset && *offset != *common)
-      unsupported(at, "the covariant override " + qualifiedName(slot.function) + " in " + types.toString(key, &symbols) + ": callers through one vtable expect its " +
-                          types.toString(result, &symbols) + " as a " + commonView + " and as a " + types.toString(view, &symbols) +
-                          ", at different places of it (one vtable slot cannot give both)");
-    sharer = next;
-  }
-  return common && *common ? ResultMove{*common, pointer} : ResultMove{};
+  // (either may be a forward declaration's type, which has no bases)
+  const Ty* whole = canonicalClass(result, at);
+  const Ty* part = canonicalClass(slot.result, at);
+  if (whole == part)
+    return {};
+  std::optional<uint64_t> offset = baseOffsetIn(whole, part, at);
+  if (!offset)
+    unsupported(at, "the override " + qualifiedName(slot.function) + " returns " + types.toString(result, &symbols) + ", which has no base " + types.toString(slot.result, &symbols) + " to give back to the function's callers");
+  return *offset ? ResultMove{*offset, pointer} : ResultMove{};
 }
 
 auto codegen::Emitter::adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at,
@@ -1599,7 +1592,7 @@ auto codegen::Emitter::slotKeyed(const StructInfo& info, const std::string& key)
 {
   if (info.vtables.empty())
     return -1;
-  for (size_t i = 0; i < info.vtables[0].slots.size(); ++i)
+  for (size_t i = info.vtables[0].slots.size(); i-- > 0;) // (the last of a key: the one calls through this class use)
     if (info.vtables[0].slots[i].key == key)
       return int(i);
   return -1;

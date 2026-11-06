@@ -181,6 +181,7 @@
   // with a virtual function of its own or a polymorphic base is polymorphic; one with no data member,
   // not polymorphic, and only empty bases is empty).
   bool classHasBaseAtOffset(const Ty* cls, int depth);
+  bool classStartsWithBase(const Ty* cls, const Ty* base, int depth);
   bool classDeclaredPolymorphic(const Ty* cls, int depth);
   bool classDeclaredEmpty(const Ty* cls, int depth);
   std::vector<const Ty*> classBasesOf(const Ty* cls, ClassDecl*& def, int depth);

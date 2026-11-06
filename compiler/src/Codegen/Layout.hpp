@@ -167,17 +167,14 @@
     void emitVtables(const Ty* key, StructInfo& info, Node* at);
 
     // How far a vtable entry moves the result of its function: a covariant override returns a
-    // pointer or reference to its own result class, of which the callers through that vtable
-    // expect a base (the function as the classes sharing the table declare or inherit it: the class
-    // at the table's path and its primary bases), at bytes into it; a pointer may be null, which
-    // stays null. Callers that expect results at different places are an error (one slot cannot
-    // give both).
+    // pointer or reference to its own result class, of which the slot's callers expect a base
+    // (VtableSlot::result), at bytes into it; a pointer may be null, which stays null.
     struct ResultMove
     {
       uint64_t bytes = 0;
       bool pointer = false;
     };
-    ResultMove covariantMove(const Ty* key, const Vtable& table, const VtableSlot& slot, Node* at);
+    ResultMove covariantMove(const VtableSlot& slot, Node* at);
 
     // The class whose object f, a member of owner, returns a pointer or a reference to (pointer
     // says which), or null for any other result.

@@ -42,6 +42,9 @@ namespace codegen
   // One slot of a vtable: the function it calls (the final overrider), the class that function is
   // a member of, and the base fields from the vtable's class down to that class's subobject, where
   // `this` has to point (a thunk moves it there from the subobject whose vtable pointer was used).
+  // A key has several slots in a table where a covariant override's result does not start with the
+  // class its callers so far expect: the override takes a slot of its own, the last of its key, and
+  // the earlier ones keep their callers, each with the result they expect (design.md section 9).
   struct VtableSlot
   {
     std::string key;                  // name(param types) [const], "~" for the destructor
@@ -49,6 +52,7 @@ namespace codegen
     const Ty* owner = nullptr;
     std::vector<uint32_t> ownerPath;
     bool overridesTest = false; // over a test function, whose call notes its site (Emitter::forgetTestCall)
+    const Ty* result = nullptr;       // the class whose pointer or reference this slot's callers expect back: the function's that made the slot, whichever overrides it
   };
   // One vtable pointer in the objects of a class, and the table it points at (design.md section 9).
   struct Vtable

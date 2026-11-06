@@ -522,6 +522,12 @@ public:
   // an empty base takes no bytes), so that sizeof agrees at compile time and at run time, and never
   // from a layout, which may hold such a pointer to the class itself.
   bool hasBaseAtOffset(const Ty* cls);
+  // Whether an object of class cls starts with its subobject of class base, or is one, from the
+  // declarations as hasBaseAtOffset (a layout may need the class asking): only the first base the
+  // layout places counts, so a false may be a base that takes the start after an empty one.
+  bool classStartsWith(const Ty* cls, const Ty* base);
+  // Whether base is a base of cls, from the declarations.
+  bool classDerivesFrom(const Ty* cls, const Ty* base);
   // The value init gives an object of type t when it initializes one (a global's or static
   // member's initializer: `Flags f = {A, B};`, `Array<int, 3> a = {1, 2, 3}`, `Box b = Box(1, 2);`):
   // a brace list's elements, a constructor's arguments, a conversion; no init (`constexpr P p;`):

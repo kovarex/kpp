@@ -748,6 +748,11 @@ kpp/test_check_char_pointers_is_error.
   in the class's primary vtable (the Itanium ABI's choice; MSVC adjusts `this` in the overrider
   instead), so a call through the class itself needs no thunk. A call moves `this` to the subobject
   of the class that declares the function and calls through that subobject's vtable pointer.
+  A covariant override whose result does not start with the class the slot gives back takes a new
+  slot in the primary vtable (both C++ ABIs' choice), which calls through its class use; the
+  slots it overrides keep their callers through a thunk that moves the result to the base they
+  expect, a null pointer staying null. Each slot records the class its callers expect
+  (2026-11-06; spec classes/covariant_override_moving_result_along_primary_bases).
   Constructors point every vtable pointer at the class's vtables once the bases are built, and a
   destructor points them back at its class's on entry, so virtual calls during construction and
   destruction reach the class being built or destroyed, as in C++. A copy gets its own class's

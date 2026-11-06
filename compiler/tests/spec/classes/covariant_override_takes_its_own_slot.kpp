@@ -1,0 +1,158 @@
+// spec: a covariant override whose result has the overridden result's class at an offset takes a slot of its own, each level keeping its callers: through A the X part, through the override's class the whole result, null staying null, a class inheriting the override calling the new slot and a result of the class itself; clang prints the same
+// found by thread J's battery h2 (2026-11-06): `W* get() override` over `virtual X* A::get()`, W's X after its Pad, was refused
+class X
+{
+public:
+  int x = 1;
+  virtual ~X() {}
+  virtual int id() { return x; }
+};
+class Pad
+{
+public:
+  int pad = 9;
+  virtual ~Pad() {}
+};
+class W : public Pad, public X
+{
+public:
+  int w = 5;
+  int id() override { return x + w + 100; }
+};
+class V : public Pad, public W
+{
+public:
+  int v = 7;
+  int id() override { return x + w + v + 200; }
+};
+class A
+{
+public:
+  virtual ~A() {}
+  virtual X* get() { return nullptr; }
+  virtual X& ref()
+  {
+    static X s;
+    return s;
+  }
+  virtual int after() { return 1; }
+};
+class B : public A
+{
+public:
+  W* get() override
+  {
+    static W s;
+    return &s;
+  }
+  W& ref() override
+  {
+    static W s;
+    return s;
+  }
+  virtual int later() { return 2; }
+};
+class C : public B
+{
+public:
+  V* get() override
+  {
+    static V s;
+    return &s;
+  }
+};
+class Inherits : public B
+{
+public:
+  int after() override { return 3; }
+};
+class Null : public A
+{
+public:
+  W* get() override { return nullptr; }
+};
+class P
+{
+public:
+  virtual ~P() {}
+  virtual X* self() { return nullptr; }
+};
+class Self : public P, public X
+{
+public:
+  int mine = 4;
+  Self* self() override { return this; }
+};
+void base()
+{
+  B b;
+  A& a = b;
+  println(a.get()->id(), " ", b.get()->w, " ", b.get()->pad, " ", a.ref().id(), " ", b.ref().w);
+  X* part = a.get();
+  W* whole = b.get();
+  println(part == static_cast<X*>(whole) ? 1 : 0, " ", a.after(), " ", b.later());
+}
+void levels()
+{
+  C c;
+  A& a = c;
+  B& b = c;
+  println(a.get()->id(), " ", b.get()->id(), " ", b.get()->w, " ", c.get()->v, " ", a.ref().id());
+}
+void inherited()
+{
+  Inherits i;
+  A& a = i;
+  println(a.get()->id(), " ", i.get()->w, " ", a.after(), " ", i.later());
+}
+void nulls()
+{
+  Null n;
+  A& a = n;
+  println(a.get() == nullptr ? 1 : 0, " ", n.get() == nullptr ? 1 : 0);
+}
+void itself()
+{
+  Self s;
+  P& p = s;
+  println(p.self() == static_cast<X*>(&s) ? 1 : 0, " ", s.self()->mine, " ", p.self()->x);
+}
+// the same result in both, derived from the overrider: nothing covariant
+class Later;
+class Q
+{
+public:
+  virtual ~Q() {}
+  virtual Later* make() { return nullptr; }
+};
+class R : public Q
+{
+public:
+  Later* make() override;
+};
+class Later : public Pad, public R
+{
+public:
+  int k = 6;
+};
+Later* R::make()
+{
+  static Later s;
+  return &s;
+}
+void same()
+{
+  R r;
+  Q& q = r;
+  println(q.make()->k);
+}
+int main()
+{
+  base();
+  levels();
+  inherited();
+  nulls();
+  itself();
+  same();
+  return 0;
+}
