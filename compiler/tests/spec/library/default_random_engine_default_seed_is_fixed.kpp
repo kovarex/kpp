@@ -1,0 +1,13 @@
+// spec: a default-constructed DefaultRandomEngine starts from one fixed seed, so two of them, in one run or in two, give the same sequence, as std::default_random_engine's default constructor (default_seed) does; RandomDevice is the nondeterministic source (`10`)
+// factorio: E's <random> battery against C++ (ra1, 2026-11-06): two default-constructed engines agreed on 0 of 10 values (each seeds itself from RandomDevice); std's agree on all 10
+// pending: DefaultRandomEngine() seeds its state from RandomDevice (C)
+extern "C" import "stdio.h";
+int main()
+{
+  DefaultRandomEngine a, b;
+  int same = 0;
+  for (int i = 0; i < 10; ++i)
+    same += a() == b();
+  printf("%d\n", same);
+  return 0;
+}
