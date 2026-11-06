@@ -1,0 +1,22 @@
+// spec: println of an enumeration of a class template gives the enumerator's name by that instance's values, each instance on its own (S<3>::E::B is 4, S<8>::E::A is 8); a value that names none prints as any enumeration's does
+// found by thread A (2026-11-06): 846b9a44 made it a compile error (the enumerator with no instance to evaluate it), and it had printed E<3>(4), the instance's values never matched
+template<int N> struct S
+{
+  enum class E { A = N, B };
+};
+template<int N> struct T
+{
+  enum class F { A, B };
+};
+enum class Plain { X = 3 };
+int main()
+{
+  S<3>::E e = S<3>::E::B;
+  S<8>::E g = S<8>::E::A;
+  S<8>::E h = S<8>::E::B;
+  S<8>::E outside = S<8>::E(4);
+  T<1>::F f = T<1>::F::B;
+  println(e, " ", g, " ", h, " ", f, " ", Plain::X);
+  println(outside);
+  return 0;
+}

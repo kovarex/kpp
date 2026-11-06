@@ -333,13 +333,14 @@ auto codegen::Emitter::enumIntrinsic(int which, CallExpr* c) -> Value
   if (c->args.size() != 1)
     unsupported(c, "kppEnumeratorName with no value");
   Value v = rvalue(c->args[0]);
-  const Ty* e = v.ty ? types.unqualified(types.stripRef(v.ty)) : nullptr;
+  const Ty* e = v.ty ? types.unqualified(types.stripRef(withCurrentArgs(v.ty))) : nullptr;
   if (!e || e->kind != TyKind::Enum || !e->decl)
     unsupported(c, "kppEnumeratorName of no enumeration");
   Decl* def = global.definitionOf(e->decl);
   auto* en = static_cast<EnumDecl*>(def ? def : e->decl);
   std::string k = llType(enumUnderlying(en), c);
-  std::string name = "@\"kpp.enumName." + qualifiedName(en) + "\"";
+  // (An enumeration of a class template's: each instance has its values, and a function of its own.)
+  std::string name = "@\"kpp.enumName." + qualifiedName(en) + (e->args.empty() ? "" : "." + types.toString(e, &symbols)) + "\"";
   if (declaredNames.claim(name))
   {
     emittingShared = true;
@@ -350,10 +351,11 @@ auto codegen::Emitter::enumIntrinsic(int which, CallExpr* c) -> Value
       if (d->kind == NodeKind::EnumeratorDecl)
       {
         auto* x = static_cast<EnumeratorDecl*>(d);
-        if (!seen.insert(std::to_string(enumeratorValue(x))).second)
+        std::string value = std::to_string(enumeratorValue(x, e));
+        if (!seen.insert(value).second)
           continue;
         std::string l = "e" + std::to_string(i++);
-        cases += "    " + k + " " + std::to_string(enumeratorValue(x)) + ", label %" + l + "\n";
+        cases += "    " + k + " " + value + ", label %" + l + "\n";
         blocks += l + ":\n  ret ptr " + cStringConstant(sym(x->name)) + "\n";
       }
     shared += "$" + name.substr(1) + " = comdat any\n"
