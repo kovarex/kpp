@@ -595,11 +595,99 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  # kpp on a Linux host (docs/design.md, "Targets and hosts", 5), on ubuntu: kppc built with CMake,
+  # clang 19, lld and Ninja, hello world and a project with C libraries built and run with kppc --run,
+  # the spec's snippets built and run natively, and kpp's Linux release packaged
+  # (tools/release/package-linux.sh), which publish uploads beside the Windows package (E, 2026-11-06;
+  # it was linux-host.yml, a workflow of its own, while the Linux host was new).
+  linux_host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # Upstream SDL 3.4.18's headers for the two interop snippets that import SDL3/SDL.h, as ci.yml's
+      # spec job has them: kpp.net's mirror, else SDL's release, checked by SHA-256.
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+    steps:
+      # The whole history: kpp's version counts the commits since VERSION last changed.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Clang 19, as the bundled toolchain's (kppc's IR names LLVM 19's intrinsics: clang 18, Ubuntu
+      # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kppc takes
+      # it through KPP_CLANG, and clang-19's ld.lld is beside it.
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang-19 lld-19 ninja-build cmake
+          echo "KPP_CLANG=/usr/bin/clang-19" >> "$GITHUB_ENV"
+          clang-19 --version | head -n 1
+          /usr/lib/llvm-19/bin/ld.lld --version
+          echo "CPUs: $(nproc)"
+
+      - name: SDL3 headers
+        run: |
+          dir="$RUNNER_TEMP/sdl"
+          mkdir -p "$dir"
+          fetch() { curl -fsSL --retry 3 -o "$dir/$SDL_NAME" "$1" && echo "$SDL_SHA256  $dir/$SDL_NAME" | sha256sum -c -; }
+          fetch "https://kpp.net/registry/mirror/$SDL_SHA256/$SDL_NAME" || fetch "$SDL_FALLBACK"
+          unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
+          test -f "$dir/SDL3-3.4.18/include/SDL3/SDL.h"
+          echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
+
+      - name: Build kppc
+        run: |
+          cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+          cmake --build compiler/build
+          compiler/build/kppc --version
+
+      # The program's output, its arguments and its exit code through kppc --run.
+      - name: hello world
+        run: |
+          mkdir -p /tmp/hello
+          printf 'int main(int argc, char** argv)\n{\n  println("hello from linux ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
+          set +e
+          out=$(compiler/build/kppc --run /tmp/hello/hello.kpp a b)
+          code=$?
+          set -e
+          echo "$out (exit $code)"
+          [ "$out" = "hello from linux 3" ] && [ $code -eq 3 ]
+
+      # kpp on a project with C libraries (tests/targets/clibrary: a C file, a C++ file, a define per
+      # platform, Linux's own library with a sysroot include directory), built natively with clang 19
+      # and llvm-ar beside it, in debug and in release (ThinLTO): `42 linux 10`.
+      - name: a project with C libraries
+        run: |
+          cp -r compiler/tests/targets/clibrary /tmp/clibrary
+          cd /tmp/clibrary
+          for configuration in debug release; do
+            out=$("$GITHUB_WORKSPACE/compiler/build/kppc" "$configuration" --run | tail -n 1)
+            echo "$configuration: $out"
+            [ "$out" = "42 linux 10" ]
+          done
+
+      - name: spec on a Linux host
+        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
+
+      # kpp's Linux release (tools/release/package-linux.sh: the tarball, its smoke test outside the
+      # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so
+      # it needs only glibc (2.39, this runner's) and the system's clang 19 and lld.
+      - name: Package
+        run: sh tools/release/package-linux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kpp-linux
+          path: build/release/kpp-*-linux-x86_64.tar.gz
+          if-no-files-found: error
+
   # Publishes the package, only when every job above is green: run_tests' halves, every spec shard
   # and package. A red run, or a cancelled one, publishes nothing: no release, no tag, no kpp.net
   # upload, and Latest stays where it was.
   publish:
-    needs: [run_tests, spec, package]
+    needs: [run_tests, spec, package, linux_host]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 30
@@ -614,11 +702,16 @@ jobs:
           name: package
           path: build/release
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: kpp-linux
+          path: build/release
+
       - name: The package's files
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix") {
+          foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix", "build\release\kpp-$env:KPP_VERSION-linux-x86_64.tar.gz") {
             if (-not (Test-Path $f)) { throw "no $f in the artifact package" }
             "$f $((Get-Item $f).Length) bytes"
           }
@@ -640,8 +733,8 @@ jobs:
           $tested = 'every test green, including the --release and --debug-info spec'
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag $env:KPP_TAG -Commit "${{ github.sha }}" -MakeLatest false `
             -Version $v -KppNet "${{ vars.KPP_NET_SSH }}" -Title $title `
-            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp-vscode.vsix is the VS Code extension: the installer offers it, or run code --install-extension kpp-vscode.vsix (a double-click opens Visual Studio's installer, which does not take it). kpp-visualstudio.vsix is the Visual Studio 2022 extension (17.14 or later): the installer offers it, or open it." `
-            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix"
+            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, $tested. Install with kpp-$v-setup.exe (Program Files\kpp, on PATH), or unzip kpp-$v.zip anywhere. Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs. kpp-vscode.vsix is the VS Code extension: the installer offers it, or run code --install-extension kpp-vscode.vsix (a double-click opens Visual Studio's installer, which does not take it). kpp-visualstudio.vsix is the Visual Studio 2022 extension (17.14 or later): the installer offers it, or open it. kpp-$v-linux-x86_64.tar.gz is kpp for Linux x86-64: unpack it anywhere; it needs glibc 2.39 or later and the system's clang 19 and lld." `
+            -Files "build\release\kpp-$v.zip", "build\release\kpp-$v-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix", "build\release\kpp-$v-linux-x86_64.tar.gz"
 
       # The release of the highest version (compared as numbers) becomes "Latest", so an older commit's
       # run that finishes after a newer one's (triggers have concurrency groups of their own) never
