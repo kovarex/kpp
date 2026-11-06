@@ -1,5 +1,4 @@
 // spec: generate Name { addTest(name, function); } adds tests when the runner starts; they take the generator's place in the suite's order, named Suite.Generator.name
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test: --list
 // exit: 0
 suite Saves
