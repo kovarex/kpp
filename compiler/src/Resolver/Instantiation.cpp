@@ -1008,7 +1008,9 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
       continue;
     const Ty* inst = substitute(ft, d);
     const Ty* result = inst ? types.unqualified(inst->inner) : nullptr;
-    if (!result || result->kind != TyKind::Class || result->decl != cls || !result->isKnown() || types.isDependent(result))
+    // (The class's arguments may pick a specialization: `Box<M...>` with one M is `Box<M>`'s instance.)
+    if (!result || result->kind != TyKind::Class || !result->isKnown() || types.isDependent(result) ||
+        (result->decl != cls && primaryArgumentsOf(result, cls, 0).empty()))
       continue;
     std::vector<int> r;
     for (size_t i = 0; i < argTypes.size() && i < inst->args.size(); ++i)
@@ -1044,7 +1046,7 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
   // `Pairish p = Pairish<int, double>(1, 2.5);`, `Duration budget = Milliseconds(5);`: a value of
   // an instantiation of the same template gives its arguments (C++'s copy deduction candidate).
   if (argTypes.size() == 1 && argTypes[0])
-    if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a && a->kind == TyKind::Class && a->decl == cls && !a->args.empty())
+    if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a && a->kind == TyKind::Class && ((a->decl == cls && !a->args.empty()) || !primaryArgumentsOf(a, cls, 0).empty()))
       return a;
   std::vector<int> guideRanks;
   const Ty* fromGuide = deduceFromGuides(cls, argTypes, copyInit, guideRanks);
@@ -1102,20 +1104,22 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
       }
       if (!t)
         all = false;
-      else
+      else if (!spliceIfPack(t, args)) // `Box(M&... values)`: Box<int, double>, its elements
         args.push_back(t);
     }
     if (!all)
       continue;
     bool ok = true;
     std::vector<int> ranks;
-    for (size_t i = 0; i < argTypes.size() && i < ft->args.size() && ok; ++i)
+    const Ty* inst = substitute(ft, d); // (as a whole: `M&... values` becomes one parameter for each element)
+    for (size_t i = 0; i < argTypes.size() && i < inst->args.size() && ok; ++i)
     {
-      ranks.push_back(conversionRank(argTypes[i], substitute(ft->args[i], d)));
+      ranks.push_back(conversionRank(argTypes[i], inst->args[i]));
       ok = ranks.back() < NotViable;
     }
     if (ok)
-      return fromGuide && !strictlyBetter(ranks, guideRanks) ? fromGuide : types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())});
+      // (The arguments may pick a specialization: `W w(&a)` is W<int*>, an instance of W<T*> if there is one.)
+      return fromGuide && !strictlyBetter(ranks, guideRanks) ? fromGuide : resolveSpecialization(types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())}), 0);
   }
   return fromGuide;
 }
@@ -1207,12 +1211,13 @@ auto GlobalScope::Impl::deduceAggregateArgs(const Ty* primary, const std::vector
     const Ty* t = d.find(p);
     if (!t || !t->isKnown() || types.isDependent(t))
       return nullptr;
-    args.push_back(t);
+    if (!spliceIfPack(t, args))
+      args.push_back(t);
   }
   for (const auto& [arg, member] : checks)
     if (conversionRank(arg, substitute(member, d)) >= NotViable)
       return nullptr;
-  return types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())});
+  return resolveSpecialization(types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())}), 0);
 }
 
 auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart& lastPart, const TypeContext& ctx, int depth) -> const Ty*

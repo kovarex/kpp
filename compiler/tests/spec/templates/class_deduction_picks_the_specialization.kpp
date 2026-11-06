@@ -1,0 +1,151 @@
+// spec: class template argument deduction names the class the arguments pick: `W w(&a)` from a constructor of the primary template is W<int*>, an instance of the partial specialization W<T*> where there is one, as are a guide's, a pack's (`Box(M&...)` with one element is Box<M>), an aggregate's, a functional cast's, a new's and a global's, clang's output; a constructor's pack without a guide deduces too
+// factorio: found by D's battery on E's pending guide spec (2026-11-06): `W w(&a)` called the primary template's members, without a word
+extern "C" import "stdio.h";
+template <typename... M>
+struct Box
+{
+  Box(M&... values) {}
+  int count() const { return (int)sizeof...(M); }
+};
+template <typename M>
+struct Box<M>
+{
+  Box(M& value) {}
+  int count() const { return 100; }
+};
+template <typename... M>
+Box(M&...) -> Box<M...>;
+
+// no guide: the constructor's own pack
+template <typename... M>
+struct NG
+{
+  NG(M&... values) {}
+  int count() const { return (int)sizeof...(M); }
+};
+template <typename M>
+struct NG<M>
+{
+  NG(M& value) {}
+  int count() const { return 200; }
+};
+template <typename... M>
+struct NP
+{
+  NP(M... values) {}
+  int count() const { return (int)sizeof...(M); }
+};
+// non-pack: a partial specialization by pointer, from a constructor
+template <typename T>
+struct W
+{
+  W(T v) {}
+  int id() const { return 1; }
+};
+template <typename T>
+struct W<T*>
+{
+  W(T* v) {}
+  int id() const { return 2; }
+};
+template <>
+struct W<char>
+{
+  W(char v) {}
+  int id() const { return 3; }
+};
+// a guide giving a full specialization and a partial one
+template <typename T>
+struct G
+{
+  G(T v, int) {}
+  int id() const { return 1; }
+};
+template <typename T>
+struct G<T*>
+{
+  G(T*, int) {}
+  G(float, int) {}
+  int id() const { return 2; }
+};
+template <>
+struct G<long>
+{
+  G(long, int) {}
+  int id() const { return 3; }
+};
+G(short, int) -> G<long>;
+G(float, int) -> G<int*>;
+// the pair of a pack and a leading type
+template <typename A, typename... R>
+struct L
+{
+  L(A a, R... r) {}
+  int id() const { return 1 + (int)sizeof...(R); }
+};
+template <typename A>
+struct L<A>
+{
+  L(A a) {}
+  int id() const { return 50; }
+};
+// a copy of an instance of a specialization deduces it
+template <typename... M>
+int total(Box<M...>& b) { return b.count(); }
+int injected(); int aggregates(); int fns(); int ret(); int globals();
+int main()
+{
+  int a = 0, b = 0;
+  Box one(a);
+  Box two(a, b);
+  printf("%d %d\n", one.count(), two.count());
+  Box one2 = one;
+  printf("%d %d\n", one2.count(), total(one));
+  NG n1(a);
+  NG n2(a, b);
+  printf("%d %d\n", n1.count(), n2.count());
+  NP p1(a);
+  NP p2(a, 1.5);
+  printf("%d %d\n", p1.count(), p2.count());
+  W w1(1);
+  W w2(&a);
+  W w3('c');
+  printf("%d %d %d\n", w1.id(), w2.id(), w3.id());
+  G g1(1, 1);
+  G g2(&a, 1);
+  G g3((short)1, 1);
+  G g4(1.5f, 1);
+  printf("%d %d %d %d\n", g1.id(), g2.id(), g3.id(), g4.id());
+  L l1(1);
+  L l2(1, 2);
+  L l3(1, 2.5, 'c');
+  printf("%d %d %d\n", l1.id(), l2.id(), l3.id());
+  auto x = Box(a);
+  auto y = W(&a);
+  printf("%d %d\n", x.count(), y.id());
+  auto* h = new Box(a);
+  printf("%d\n", h->count());
+  delete h;
+  printf("%d %d %d %d %d\n", injected(), aggregates(), fns(), ret(), globals());
+  return 0;
+}
+template <typename T>
+struct Inj
+{
+  T v;
+  Inj(T x) : v(x) {}
+  int f(double d) { Inj c(d); return sizeof(c); } // the injected name: Inj<T>, never Inj<double>
+};
+int injected() { Inj<char> i('a'); return i.f(2.5); }
+template <typename T> struct Ag { T v; int id() const { return 1; } };
+template <typename T> struct Ag<T*> { T* v; int id() const { return 2; } };
+int aggregates() { int a = 0; Ag x{1}; Ag y{&a}; return x.id() * 10 + y.id(); }
+struct Other { int v; };
+template <typename T> struct Fn { Fn(T) {} int id() const { return 1; } };
+template <typename R, typename A> struct Fn<R (*)(A)> { Fn(R (*)(A)) {} int id() const { return 2; } };
+int twice(int x) { return x * 2; }
+int fns() { Fn f(twice); Fn g(1); return f.id() * 10 + g.id(); }
+int ret() { return W(&twice).id() + (new W(1.5))->id() * 10; }
+W global1{&twice};
+Fn global2{twice};
+int globals() { return global1.id() * 10 + global2.id(); }

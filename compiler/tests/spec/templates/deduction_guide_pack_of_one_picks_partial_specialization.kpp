@@ -1,6 +1,5 @@
 // spec: class template argument deduction through a deduction guide with a pack (`template<typename... M> Box(M&...) -> Box<M...>;`) deduces Box<A> from one argument, and the object is the partial specialization Box<M> where one matches, as it is Box<A, B> of the primary template from two (`1 2`)
 // factorio: E's ScopedLock (2026-11-06, std::scoped_lock's guides): `ScopedLock lock(a, b)` deduced, `ScopedLock lock(a)` did not: "codegen does not support a local of unknown type (lock) yet"
-// pending: the guide's one-element pack deduces, but the partial specialization of one parameter is not chosen for the deduced class (D)
 extern "C" import "stdio.h";
 template <typename... M>
 struct Box
