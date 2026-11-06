@@ -300,12 +300,12 @@ namespace projects
         job.logs.push_back(job.directory / (stem + ".log"));
         // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
         if (gnu)
-          job.commands.push_back("\"" + quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
-                                 " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
+          job.commands.push_back(quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
+                                 " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
         else
-          job.commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
+          job.commands.push_back(quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
                                  " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
-                                 " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1\"");
+                                 " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
       }
       job.compiles = job.commands.size();
       job.lib = clibDirectory(root, cFlags, platform) / (c.name + (target.posix() ? ".a" : ".lib"));
@@ -327,8 +327,8 @@ namespace projects
           fresh = false;
       if (fresh)
         continue;
-      job.commands.push_back("\"cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
-                             " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()) + "\"");
+      job.commands.push_back("cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
+                             " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()));
       job.scripts.push_back(script);
       job.resources.push_back(res);
     }
@@ -351,7 +351,7 @@ namespace projects
       threads.emplace_back([&]
       {
         for (size_t i; (i = next++) < work.size();)
-          if (system(jobs[work[i].first].commands[work[i].second].c_str()) != 0)
+          if (host::shell(jobs[work[i].first].commands[work[i].second]) != 0)
             jobs[work[i].first].failed[work[i].second] = true;
       });
     for (std::thread& t : threads)
@@ -398,13 +398,13 @@ namespace projects
         fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
       // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
       fs::path tools = fs::path(clangPath()).parent_path();
-      std::string archive = job.gnu ? "\"" + quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(job.lib.string()) + " @" +
-                                        quoteArg((job.directory / "objects.rsp").string()) + "\""
-                                    : "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(job.lib.string()) + " @" +
-                                        quoteArg((job.directory / "objects.rsp").string()) + "\"";
+      std::string archive = job.gnu ? quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(job.lib.string()) + " @" +
+                                        quoteArg((job.directory / "objects.rsp").string())
+                                    : quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(job.lib.string()) + " @" +
+                                        quoteArg((job.directory / "objects.rsp").string());
       if (job.gnu)
         fs::remove(job.lib, ec); // (llvm-ar adds to an archive that is there)
-      if (system(archive.c_str()) != 0)
+      if (host::shell(archive) != 0)
       {
         fprintf(stderr, "error: %s could not archive the C library %s\n", job.gnu ? "llvm-ar" : "llvm-lib", c.name.c_str());
         ok = false;

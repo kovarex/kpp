@@ -221,7 +221,7 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
     arguments += "\"" + args[i] + "\"\n";
   }
   std::string linkResponse = exe + ".link.exe.rsp";
-  std::string command = "\"\"" + args[0] + "\" @\"" + linkResponse + "\"\"";
+  std::string command = "\"" + args[0] + "\" @\"" + linkResponse + "\"";
   auto write = [](const std::string& path, const std::string& text) // (one that fails: the link goes through clang)
   {
     FILE* out = fopen(path.c_str(), "wb");
@@ -553,8 +553,8 @@ void runCodegen(Build& build)
     std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
-    std::string command = "\"\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
-                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, definesWideEntryOnly(parsed, symbols)) + "\"";
+    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
+                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, definesWideEntryOnly(parsed, symbols));
     if (options.deferLink) // (one module: its compile goes with the link)
     {
       deferLinkCommand(options, command);
@@ -562,7 +562,7 @@ void runCodegen(Build& build)
       return;
     }
     start = Clock::now();
-    int rc = system(command.c_str());
+    int rc = host::shell(command);
     report("clang:   %.3f s (%s, exit %d)\n", seconds(Clock::now() - start), level, rc);
     if (rc != 0)
     {
@@ -600,9 +600,9 @@ void runCodegen(Build& build)
     // clang's messages go to a file of the module's, printed with the failure below (32 clangs
     // writing to one stderr at once interleave).
     std::string errPath = options.exe + "." + std::to_string(k) + ".clang.txt";
-    std::string command = "\"\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] +
-                          "\" 2> \"" + errPath + "\"\"";
-    if (int rc = system(command.c_str()); rc != 0)
+    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] +
+                          "\" 2> \"" + errPath + "\"";
+    if (int rc = host::shell(command); rc != 0)
       moduleFailed(k, rc, llPath, readWholeFile(errPath));
     else
     {
@@ -733,10 +733,10 @@ void runCodegen(Build& build)
   std::string linkCommand = options.target.msvc() && !thinLTO && !fullLTO && !bundledToolchain()
                               ? directLinkCommand(clang, responsePath, response, options.exe) : std::string();
   if (linkCommand.empty())
-    linkCommand = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
+    linkCommand = "\"" + clang + "\" @\"" + responsePath + "\"";
   std::string link = linkCommand;
   if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
-    link = linkCommand.substr(0, linkCommand.size() - 1) + " > \"" + options.exe + ".link.txt\" 2>&1\"";
+    link = linkCommand + " > \"" + options.exe + ".link.txt\" 2>&1";
   if (int shared = sharedHits.load())
     during = ", " + std::to_string(shared) + " of them from KPP_OBJECT_CACHE" + during;
   // One build in 16 trims the shared cache to the most recently used 768 MB once it is past 1 GB.
@@ -749,7 +749,7 @@ void runCodegen(Build& build)
            options.threads, cached.load(), during.c_str());
     return;
   }
-  int rc = system(link.c_str());
+  int rc = host::shell(link);
   report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged%s) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
          options.threads, cached.load(), during.c_str(), seconds(Clock::now() - start), rc);
   if (rc != 0)

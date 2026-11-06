@@ -1,6 +1,63 @@
 #include "server.hpp"
 #include "source.hpp"
 
+#ifndef _WIN32
+// The compile server on POSIX hosts: not yet (design.md, "Targets and hosts", 5: a Unix domain
+// socket in place of the named pipe, thread A's). host::compileServer is false there, so kpp and
+// kppc --run build in their own process; asking for the server is an error that says so, never a
+// build that silently runs elsewhere.
+#include <cstdio>
+#include <unistd.h>
+
+int runClient(int, char**, CompileFunction)
+{
+  fprintf(stderr, "kppc: the compile server (--server) is Windows-only so far; build without it (--no-server)\n");
+  return 2;
+}
+
+int runServer(const char*, const char*, const char*, CompileFunction)
+{
+  fprintf(stderr, "kppc: the compile server is Windows-only so far\n");
+  return 2;
+}
+
+int stopServer(int, char**) { return 0; } // (no compile server runs on this host)
+bool stopServerQuietly(int, char**) { return true; }
+int stopAllServers() { return 0; }
+std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>&) { return {}; }
+
+void buildDone(int exitCode)
+{
+  fflush(stdout);
+  fflush(stderr);
+  _exit(exitCode);
+}
+
+bool servingBuild() { return false; }
+
+int buildInThisProcess(CompileFunction, std::vector<std::string>, std::string&, std::string& err, std::vector<std::string>*)
+{
+  err = "kppc: a build captured in this process (the language server's) is Windows-only so far\n";
+  return 1;
+}
+
+bool replayBuild(uint64_t, const std::vector<std::string>&, const std::function<std::vector<std::string>()>&, bool, int&) { return false; }
+bool leftAsKept(const std::string&) { return false; }
+bool replayDisabled() { return false; }
+
+std::string environmentBlock()
+{
+  extern char** environ;
+  std::string out;
+  for (char** e = environ; e && *e; ++e)
+    out.append(*e).push_back('\0');
+  return out;
+}
+
+void logBuildNote(const std::string&) {}
+void noteIncrementalBuild() {}
+#else
+
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
@@ -1243,3 +1300,4 @@ std::vector<std::vector<std::string>> stopServers(const std::function<bool(const
   }
   return stopped;
 }
+#endif

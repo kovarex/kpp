@@ -150,7 +150,7 @@ std::map<std::string, std::string> expandMacroCalls(const std::string& defines, 
     return out;
   fwrite(text.data(), 1, text.size(), w);
   fclose(w);
-  if (system(("\"\"" + clang + "\" -x c -w" + includeArgs + " \"" + source.string() + "\" -E -P -o \"" + expanded.string() + "\"\"").c_str()) != 0)
+  if (host::shell("\"" + clang + "\" -x c -w" + includeArgs + " \"" + source.string() + "\" -E -P -o \"" + expanded.string() + "\"") != 0)
     return out; // the bodies stay as they are (not constants)
   std::string result = readWholeFile(expanded);
   for (size_t p = 0; p < result.size();) // the markers' lines (one with an empty expansion is the marker alone)
@@ -939,9 +939,9 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     }
     fwrite(wrapper.data(), 1, wrapper.size(), w);
     fclose(w);
-    std::string base = "\"\"" + clang + "\" -x c -w" + includeArgs + " \"" + wrapperPath.string() + "\"";
-    int rc = system((base + " -E -P -MD -MF \"" + makeDeps.string() + "\" -o \"" + preprocessed.string() + "\"\"").c_str());
-    int rc2 = system((base + " -E -dM -o \"" + defines.string() + "\"\"").c_str());
+    std::string base = "\"" + clang + "\" -x c -w" + includeArgs + " \"" + wrapperPath.string() + "\"";
+    int rc = host::shell(base + " -E -P -MD -MF \"" + makeDeps.string() + "\" -o \"" + preprocessed.string() + "\"");
+    int rc2 = host::shell(base + " -E -dM -o \"" + defines.string() + "\"");
     if (rc != 0 || rc2 != 0)
     {
       // Which of the headers the target does not have, each named where the program imports it
@@ -958,7 +958,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
       {
         fwrite(probe.data(), 1, probe.size(), p);
         fclose(p);
-        if (system((base.substr(0, base.rfind(" \"")) + " \"" + probePath.string() + "\" -E -P -o \"" + probed.string() + "\"\"").c_str()) == 0)
+        if (host::shell(base.substr(0, base.rfind(" \"")) + " \"" + probePath.string() + "\" -E -P -o \"" + probed.string() + "\"") == 0)
         {
           std::string out = readWholeFile(probed);
           for (size_t at = out.find("kpp_missing_header "); at != std::string::npos; at = out.find("kpp_missing_header ", at + 1))

@@ -1,6 +1,7 @@
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <map>
 #include <set>
 #include <mutex>
@@ -8,7 +9,10 @@
 #include <thread>
 #include <unordered_map>
 #include <cstdio>
+#include "host.hpp"
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
                                                 const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps)
@@ -50,6 +54,7 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
   return result;
 }
 
+#ifdef _WIN32
 namespace
 {
   // A directory's kept listing and its change notifications (collectFilesWatched). A thread of its
@@ -329,7 +334,16 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
   note += "watch: " + root.string() + " listed again (a file or directory added, removed or renamed, or notifications lost); ";
   return give(w);
 }
-
+#else
+// No watch on POSIX yet (inotify, kqueue): a compile server, whose builds alone list through it, is
+// Windows-only so far (host::compileServer). The listing is collectFiles', with its stamps.
+std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::path& root, const std::vector<std::string>& extensions,
+                                                       std::vector<FileStamp>& stamps, std::string& note, std::string& missed)
+{
+  stamps.clear();
+  return collectFiles(root, extensions, &stamps);
+}
+#endif
 namespace
 {
   std::mutex overlayMutex;
@@ -340,9 +354,7 @@ namespace
 std::string overlayKey(const std::filesystem::path& path)
 {
   std::error_code ec;
-  std::wstring w = std::filesystem::absolute(path, ec).lexically_normal().wstring();
-  CharLowerBuffW(w.data(), DWORD(w.size()));
-  return std::filesystem::path(w).string();
+  return host::pathKey(std::filesystem::absolute(path, ec).lexically_normal());
 }
 
 void setFileOverlay(const std::filesystem::path& path, const std::string* text)
@@ -376,7 +388,7 @@ bool readFile(const std::filesystem::path& path, std::string& out)
       return true;
     }
   }
-  FILE* file = _wfopen(path.c_str(), L"rb");
+  FILE* file = host::openFile(path, "rb");
   if (!file)
     return false;
   fseek(file, 0, SEEK_END);
@@ -513,7 +525,8 @@ std::string programPath(const std::string& path)
     return path;
   std::string full = comparablePath(path);
   for (const auto& [from, to] : filePrefixMap)
-    if (full.size() > from.size() && full[from.size()] == '/' && _strnicmp(full.c_str(), from.c_str(), from.size()) == 0)
+    if (full.size() > from.size() && full[from.size()] == '/' &&
+        std::equal(from.begin(), from.end(), full.begin(), [](char a, char b) { return host::pathsIgnoreCase ? std::tolower((unsigned char)a) == std::tolower((unsigned char)b) : a == b; }))
     {
       std::string rest = full.substr(from.size() + 1);
       return to.empty() ? rest : to + "/" + rest;
@@ -523,9 +536,7 @@ std::string programPath(const std::string& path)
 
 std::filesystem::path compilerPath()
 {
-  wchar_t buffer[MAX_PATH];
-  DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-  return std::filesystem::path(std::wstring(buffer, length));
+  return host::executablePath();
 }
 
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
@@ -563,10 +574,14 @@ namespace
   bool chosenBundled = false;
   std::string skippedToolchains; // why a list's toolchains before the one taken are not here (toolchainSkipped)
 
-  std::filesystem::path bundledClang(const std::filesystem::path& compiler) { return compiler.parent_path() / "bin" / "clang.exe"; }
+  std::filesystem::path bundledClang(const std::filesystem::path& compiler) { return compiler.parent_path() / "bin" / (std::string("clang") + host::executableSuffix()); }
 
   std::string visualStudioClang();
   std::string visualStudioMissing();
+
+  // A POSIX host's own clang, on PATH (Linux's, FreeBSD's, macOS's), when kpp has none of its own and
+  // KPP_CLANG names none; empty on Windows, whose clang is the bundled one or Visual Studio's.
+  std::string systemClang() { return host::platformName() == std::string("windows") ? std::string() : host::findOnPath("clang").string(); }
 }
 
 std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain)
@@ -625,6 +640,8 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
     chosenClang = bundledClang(compiler).string();
     chosenBundled = true;
   }
+  else if (std::string system = systemClang(); !system.empty())
+    chosenClang = system;
   else if (visualStudioClang().empty())
     return "this kpp has no toolchain of its own (" + bundledClang(compiler).parent_path().string() + "), and building with Visual Studio's " +
            visualStudioMissing();
@@ -657,7 +674,7 @@ std::string visualStudioToolchain(std::string& missing)
 
 void setThreadBelowNormal(bool below)
 {
-  SetThreadPriority(GetCurrentThread(), below ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL);
+  host::setThreadBelowNormal(below);
 }
 
 std::string clangPath()
@@ -669,9 +686,12 @@ std::string clangPath()
   std::error_code ec;
   if (std::filesystem::path bundled = bundledClang(compilerPath()); std::filesystem::exists(bundled, ec))
     return bundled.string();
+  if (std::string system = systemClang(); !system.empty())
+    return system;
   return visualStudioClang();
 }
 
+#ifdef _WIN32
 namespace
 {
 // vswhere's lines for these arguments: the Visual Studio installer's own (KPP_VSWHERE names another,
@@ -825,7 +845,13 @@ std::string visualStudioMissing()
          "under Individual components, \"C++ Clang Compiler for Windows\"";
 }
 }
-
+#else
+namespace
+{
+  std::string visualStudioClang() { return ""; }
+  std::string visualStudioMissing() { return "toolchain is Windows-only: on this host kpp builds with its own (bin/clang), KPP_CLANG's or the clang on PATH"; }
+}
+#endif
 namespace
 {
   std::atomic<bool> zeroNullWarningsEnabled{false};

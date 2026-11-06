@@ -71,7 +71,7 @@ std::string madeOnce(const std::string& stem, const std::string& ext, const std:
     fputs(text.c_str(), f);
     fclose(f);
   }
-  int rc = system(("\"" + command(input.string(), output.string()) + "\"").c_str());
+  int rc = host::shell(command(input.string(), output.string()));
   std::filesystem::remove(input, ec);
   if (rc != 0 || !std::filesystem::exists(output, ec))
   {

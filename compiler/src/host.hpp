@@ -29,6 +29,22 @@ namespace host
   std::filesystem::path executablePath();
   int processId();
 
+  // An executable's file name suffix: ".exe", "".
+  const char* executableSuffix();
+  // The program name finds on PATH (name with executableSuffix); empty when none.
+  std::filesystem::path findOnPath(const std::string& name);
+  // The calling thread's priority below normal (the compile server's background work), or normal.
+  void setThreadBelowNormal(bool below);
+
+  // Whether the host's file names ignore case (Windows'), and the key two spellings of one path share
+  // (lower-cased there; its text as it is on POSIX).
+#ifdef _WIN32
+  constexpr bool pathsIgnoreCase = true;
+#else
+  constexpr bool pathsIgnoreCase = false;
+#endif
+  std::string pathKey(const std::filesystem::path& path);
+
   // A path from its UTF-8 text (Windows' paths are UTF-16; POSIX's are the bytes).
   std::filesystem::path pathOfUtf8(const std::string& text);
 
@@ -39,6 +55,13 @@ namespace host
   // the command line is quoted whole for cmd /c, which takes those quotes off.
   FILE* openPipe(const std::string& command, const char* mode);
   int closePipe(FILE* pipe);
+
+  // A command line run by the shell to its end, its exit code (system's, the wait status decoded on
+  // POSIX): on Windows cmd /c with the whole line quoted (so that one starting with a quoted program
+  // path keeps its quotes), in directory first when given (cd /d DIR && ...; POSIX: cd DIR && ...).
+  int shell(const std::string& command, const std::filesystem::path& directory = {});
+  // A command line as given (a build step build.kpp wrote): system's, the line not quoted again.
+  int shellAsIs(const std::string& line);
 
   // The null device as a shell command line names it: NUL, /dev/null.
   const char* nullDevice();

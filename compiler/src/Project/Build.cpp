@@ -22,7 +22,7 @@ namespace projects
       std::string command;
       for (const std::string& a : args)
         command += (command.empty() ? "" : " ") + quoteArg(a);
-      return system(("\"" + command + "\"").c_str());
+      return host::shell(command);
     }
     std::vector<char*> argv;
     for (std::string& a : args)
@@ -241,7 +241,7 @@ namespace projects
       fprintf(stderr, "warning: %s (%s): --toolchain %s takes %s: %s\n", p.name.c_str(), p.configuration.c_str(), toolchain.c_str(),
               toolchainName().c_str(), skipped.c_str());
     fs::create_directories(exe.parent_path(), ec);
-    if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, p.configuration).c_str()) != 0)
+    if (!p.beforeBuild.empty() && host::shellAsIs(withExe(p.beforeBuild, exe, p.configuration)) != 0)
     {
       fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
       return 1;
@@ -354,7 +354,7 @@ namespace projects
     if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
     {
       auto linkStart = Clock::now();
-      int rc = system(readText(command).c_str());
+      int rc = host::shell(readText(command));
       linkSeconds = since(linkStart);
       if (rc != 0)
       {
@@ -395,7 +395,7 @@ namespace projects
       fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
     auto afterStart = Clock::now();
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
-        system(withExe(p.afterBuild, exe, p.configuration).c_str()) != 0)
+        host::shellAsIs(withExe(p.afterBuild, exe, p.configuration)) != 0)
     {
       fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
       return 1;
@@ -422,12 +422,12 @@ namespace projects
   int runProgram(const fs::path& root, const Program& p, const Request& request, const std::vector<std::string>& extra)
   {
     Launch l = launchOf(root, p, request);
-    std::string command = "cd /d " + quoteArg(l.directory.string()) + " && " + quoteArg(l.program.string());
+    std::string command = quoteArg(l.program.string());
     if (!l.arguments.empty())
       command += " " + l.arguments;
     for (const std::string& a : extra)
       command += " " + quoteArg(a);
-    return system(("\"" + command + "\"").c_str());
+    return host::shell(command, l.directory); // (cd /d DIR && ..., as it was; cd DIR && ... on POSIX)
   }
 
   // kpp --test: the tests of the executables and libraries asked for (all when none is named) in

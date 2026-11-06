@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/file.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -186,12 +187,36 @@ namespace host
 
   fs::path pathOfUtf8(const std::string& text) { return fs::path(wide(text)); }
 
+  const char* executableSuffix() { return ".exe"; }
+
+  std::string pathKey(const fs::path& path)
+  {
+    std::wstring w = path.wstring();
+    CharLowerBuffW(w.data(), DWORD(w.size()));
+    return fs::path(w).string();
+  }
+
+  void setThreadBelowNormal(bool below) { SetThreadPriority(GetCurrentThread(), below ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL); }
+
   FILE* openFile(const fs::path& path, const char* mode) { return _wfopen(path.c_str(), wide(mode).c_str()); }
   // (cmd /c takes the first and the last quote off a command line that starts with one: the whole is
   // quoted, so that one starting with a quoted program path keeps its quotes)
   FILE* openPipe(const std::string& command, const char* mode) { return _popen(("\"" + command + "\"").c_str(), mode); }
   int closePipe(FILE* pipe) { return _pclose(pipe); }
   const char* nullDevice() { return "NUL"; }
+
+  int shell(const std::string& command, const fs::path& directory)
+  {
+    if (directory.empty())
+      return system(("\"" + command + "\"").c_str());
+    // (quoted as generate.cpp's quoteArg quotes an argument for cmd)
+    std::string dir = directory.string();
+    if (dir.empty() || dir.find_first_of(" \t&|<>^") != std::string::npos)
+      dir = "\"" + dir + "\"";
+    return system(("\"cd /d " + dir + " && " + command + "\"").c_str());
+  }
+
+  int shellAsIs(const std::string& line) { return system(line.c_str()); }
 
   size_t readStream(Stream stream, char* buffer, size_t size)
   {
@@ -452,6 +477,20 @@ namespace host
 
   fs::path pathOfUtf8(const std::string& text) { return fs::path(text); }
 
+  const char* executableSuffix() { return ""; }
+
+  std::string pathKey(const fs::path& path) { return path.string(); }
+
+  // (Linux's nice applies to a thread, its own task; elsewhere the call changes nothing)
+  void setThreadBelowNormal(bool below)
+  {
+#if defined(__linux__)
+    setpriority(PRIO_PROCESS, 0, below ? 5 : 0);
+#else
+    (void)below;
+#endif
+  }
+
   FILE* openFile(const fs::path& path, const char* mode) { return fopen(path.c_str(), mode); }
   // (popen takes "r" or "w" alone: a pipe has no text mode to leave)
   FILE* openPipe(const std::string& command, const char* mode) { return popen(command.c_str(), std::string(mode).find('w') != std::string::npos ? "w" : "r"); }
@@ -465,6 +504,28 @@ namespace host
   }
 
   const char* nullDevice() { return "/dev/null"; }
+
+  namespace
+  {
+    int exitCodeOf(int status)
+    {
+      if (status == -1)
+        return -1;
+      return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    }
+  }
+
+  int shell(const std::string& command, const fs::path& directory)
+  {
+    if (directory.empty())
+      return exitCodeOf(system(command.c_str()));
+    std::string dir = directory.string(), quoted = "'";
+    for (char c : dir)
+      quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return exitCodeOf(system(("cd " + quoted + "' && " + command).c_str()));
+  }
+
+  int shellAsIs(const std::string& line) { return exitCodeOf(system(line.c_str())); }
 
   size_t readStream(Stream stream, char* buffer, size_t size)
   {
@@ -711,6 +772,32 @@ namespace host
     handle_ = -1;
   }
 #endif
+
+  fs::path findOnPath(const std::string& name)
+  {
+    const char* path = getenv("PATH");
+    if (!path)
+      return {};
+#ifdef _WIN32
+    const char separator = ';';
+#else
+    const char separator = ':';
+#endif
+    std::string list = path, file = name + executableSuffix();
+    for (size_t at = 0; at <= list.size();)
+    {
+      size_t end = std::min(list.find(separator, at), list.size());
+      if (end > at)
+      {
+        std::error_code ec;
+        fs::path candidate = fs::path(list.substr(at, end - at)) / file;
+        if (fs::is_regular_file(candidate, ec))
+          return candidate;
+      }
+      at = end + 1;
+    }
+    return {};
+  }
 
   FileLock::FileLock(FileLock&& other) noexcept : path_(std::move(other.path_)), handle_(other.handle_) { other.handle_ = -1; }
 

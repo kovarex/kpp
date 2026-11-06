@@ -137,7 +137,8 @@ namespace projects
     std::vector<std::string> configurations; // --debug, --release
     std::vector<std::pair<std::string, std::string>> settings;
     std::vector<std::string> passed;         // kppc's own options, given to every build
-    bool run = false, test = false, visualStudio = false, vsCode = false, server = true, msvc = false, stop = false;
+    bool run = false, test = false, visualStudio = false, vsCode = false, msvc = false, stop = false;
+    bool server = host::compileServer; // through the compile server (--no-server: not), where the host has one
     bool verbose = false; // --verbose: kppc's report of each build (its phases' times), not --quiet
     bool options = false; // kpp options: list the libraries' options of the cells asked for
     std::vector<std::string> runArguments;   // --run's: the program's; --test's: the runner's
