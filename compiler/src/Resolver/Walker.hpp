@@ -735,11 +735,12 @@
     // also has for it): whether lhs's class has it and rhs converts to the class.
     bool implicitEquality(const Ty* lhs, const Ty* rhs, uint32_t token);
 
-    // Whether `lhs op rhs`, a relational operator, is the rewritten `(lhs <=> rhs) op 0` (or the
-    // reversed `0 op (rhs <=> lhs)`) over operator f, which the lookup found: where that operator<=>
-    // takes the operands strictly better than f does ([over.match.best] 2: the conversions first,
-    // the non-rewritten candidate winning only a tie).
-    bool rewrittenThreeWayBeats(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token);
+    // Whether `lhs op rhs`, a comparison, is a rewritten candidate over operator f, which the lookup
+    // found: `(lhs <=> rhs) op 0` or the reversed `0 op (rhs <=> lhs)` for a relational operator,
+    // `!(lhs == rhs)` or `!(rhs == lhs)` for `!=`, `rhs == lhs` for `==`. One wins where it takes
+    // the operands strictly better than f ([over.match.best] 2.1), or as well where f is a template's
+    // specialization and it is not (2.4, before the non-rewritten candidate's tie-breaker, 2.8).
+    bool rewrittenBeats(P op, FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token);
 
     // The type of `lhs op rhs` (or `op lhs`) through an operator function, or for what every class
     // has; null when there is none (counted as unknown here only when countFailure). lhsOperand:

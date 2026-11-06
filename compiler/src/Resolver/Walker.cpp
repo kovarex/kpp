@@ -5065,27 +5065,34 @@ auto GlobalScope::Impl::Walker::implicitEquality(const Ty* lhs, const Ty* rhs, u
   return impl.conversionRank(rhs, types.lref(types.qualified(cls, true, false))) < Impl::NotViable;
 }
 
-auto GlobalScope::Impl::Walker::rewrittenThreeWayBeats(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token) -> bool
+auto GlobalScope::Impl::Walker::rewrittenBeats(P op, FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token) -> bool
 {
   std::vector<int> mine = impl.binaryOperatorRanks(f, subst, member, lhs, rhs);
   if (mine.size() != 2)
     return false;
+  bool mineTemplate = !f->templateParams.empty();
   // (theirs ranks the operands in the candidate's own order: the reversed one takes rhs first)
-  auto better = [&](const std::vector<int>& theirs, bool reversed) {
-    if (theirs.size() != 2)
+  auto beats = [&](FunctionDecl* g, const std::vector<int>& theirs, bool reversed) {
+    if (!g || g == f || theirs.size() != 2)
       return false;
     int l = reversed ? theirs[1] : theirs[0], r = reversed ? theirs[0] : theirs[1];
-    return l <= mine[0] && r <= mine[1] && (l < mine[0] || r < mine[1]);
-  };
-  Subst forward;
-  bool forwardMember = false;
-  if (FunctionDecl* g = operatorFunction(P::Spaceship, lhs, rhs, token, 2, forward, forwardMember))
-    if (better(impl.binaryOperatorRanks(g, forward, forwardMember, lhs, rhs), false))
+    if (l <= mine[0] && r <= mine[1] && (l < mine[0] || r < mine[1]))
       return true;
+    return l == mine[0] && r == mine[1] && mineTemplate && g->templateParams.empty();
+  };
+  P with = op == P::EqEq || op == P::NotEq ? P::EqEq : P::Spaceship;
+  if (op != P::EqEq) // (`a == b`'s forward candidate is f itself)
+  {
+    Subst forward;
+    bool forwardMember = false;
+    if (FunctionDecl* g = operatorFunction(with, lhs, rhs, token, 2, forward, forwardMember))
+      if (beats(g, impl.binaryOperatorRanks(g, forward, forwardMember, lhs, rhs), false))
+        return true;
+  }
   Subst reversed;
   bool reversedMember = false;
-  if (FunctionDecl* g = operatorFunction(P::Spaceship, rhs, lhs, token, 2, reversed, reversedMember))
-    if (better(impl.binaryOperatorRanks(g, reversed, reversedMember, rhs, lhs), true))
+  if (FunctionDecl* g = operatorFunction(with, rhs, lhs, token, 2, reversed, reversedMember))
+    if (beats(g, impl.binaryOperatorRanks(g, reversed, reversedMember, rhs, lhs), true))
       return true;
   return false;
 }
@@ -5104,9 +5111,10 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   {
     // `one < 1.5` with a member operator<(const Box&), which converts 1.5 by a constructor, and an
     // operator<=> template taking it as it is: the rewritten `(one <=> 1.5) < 0`, a better match
-    // (classes/rewritten_three_way_beats_operator_needing_a_conversion; it compared 1 with 1).
-    if (arity == 2 && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq) &&
-        rewrittenThreeWayBeats(f, subst, isMember, lhsOperand ? lhsOperand : lhs, rhs, token))
+    // (classes/rewritten_three_way_beats_operator_needing_a_conversion; it compared 1 with 1);
+    // `w != x` with an operator!= template beside an operator== taking x as well: `!(w == x)`.
+    if (arity == 2 && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::EqEq || op == P::NotEq) &&
+        rewrittenBeats(op, f, subst, isMember, lhsOperand ? lhsOperand : lhs, rhs, token))
     {
       operatorCall = OperatorCall::Rewritten;
       return types.boolType();

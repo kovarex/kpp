@@ -2108,9 +2108,11 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       member = nullptr;
       implicitAssignment = true;
     }
-    // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0`, a better match than the class's
-    // own operator< (Walker::rewrittenThreeWayBeats): neither the member nor a free operator<.
-    bool rewrittenRelation = b->call == OperatorCall::Rewritten && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq);
+    // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0`, `w != x` as `!(w == x)`, each a
+    // better match than the class's own operator (Walker::rewrittenBeats): neither the member nor a
+    // free operator of its own.
+    bool rewrittenRelation = b->call == OperatorCall::Rewritten && (op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq ||
+                                                                    op == P::EqEq || op == P::NotEq);
     if (rewrittenRelation)
       member = nullptr;
     // A free operator taking the operands strictly better than the member is called: C++ ranks

@@ -2608,7 +2608,7 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     return std::nullopt; // no such operator
   };
   // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0` over the class's own operator<, a
-  // better match (Walker::rewrittenThreeWayBeats): that operator<=>'s ordering against 0, or the
+  // better match (Walker::rewrittenBeats): that operator<=>'s ordering against 0, or the
   // reversed `0 < (1.5 <=> one)`'s, never the operator< (it compared 1 with 1 at compile time).
   bool relation = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq;
   if (relation && node && node->call == OperatorCall::Rewritten && !verifyInterpreterDecisions())
@@ -2649,8 +2649,12 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
       return std::nullopt;
     return boolean(*order != 2 && (op == P::Less ? *order < 0 : op == P::Greater ? *order > 0 : op == P::LessEq ? *order <= 0 : *order >= 0));
   }
-  if (std::optional<std::optional<ConstValue>> found = direct(op, l, r, lo, ro))
-    return *found;
+  // (`w != x` rewritten as `!(w == x)` over the class's own operator!=, a template's: the
+  // rewritten equality below, never that operator)
+  bool rewrittenEquality = (op == P::EqEq || op == P::NotEq) && node && node->call == OperatorCall::Rewritten && !verifyInterpreterDecisions();
+  if (!rewrittenEquality)
+    if (std::optional<std::optional<ConstValue>> found = direct(op, l, r, lo, ro))
+      return *found;
   if (enums)
     return constArith().binary(op, l, r); // (KPP_VERIFY_DECISIONS: no operator function takes them)
   if (op == P::EqEq || op == P::NotEq)
