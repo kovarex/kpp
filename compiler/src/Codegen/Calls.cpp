@@ -812,6 +812,11 @@ auto codegen::Emitter::inlinedConstructor(FunctionDecl* f, const TemplateArgs& a
 auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
                                     const std::string& indirect, const std::vector<std::string>& leading, std::vector<std::string>* emitted) -> Value
 {
+  // A closure's call operator (the resolver's closureCallOperator) is called as its lambda
+  // (memberCall: `o(41)` through a class derived from closures); any other call of it (`o.operator()(41)`)
+  // is not followed yet, never a call of a function of its name.
+  if (global.closureOfCallOperator(f))
+    unsupported(at, "a call of a lambda's call operator by its name, through a class derived from its closure");
   if ((f->flags & DF_Delete) && global.definitionOf(f, args) == f) // a deleted template's explicit specialisation is no deleted function
     unsupported(at, "a call to the deleted function " + qualifiedName(f));
   if (global.isExternC(f))

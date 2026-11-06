@@ -450,7 +450,8 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
       scopes.back().push_back(made);
     };
     std::string addr;
-    if (isClass(types.stripRef(t)))
+    const Ty* initClass = init->ty ? types.unqualified(types.stripRef(init->ty)) : nullptr;
+    if (isClass(types.stripRef(t)) || (isLambda(types.stripRef(t)) && isClass(initClass))) // (a class derived from a closure type binds its base subobject)
     {
       // `const Sorted& r = path;`, `const String& s = "text";`: a value of another type that is
       // neither of a derived class nor converts by an operator binds to a temporary the class's
@@ -463,7 +464,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
         const Ty* owner = nullptr;
         TemplateArgs opArgs;
         bool converts = isClass(initTy) && (basePath(initTy, target, path, v) || conversionOperator(initTy, target, v, &owner, false, &opArgs));
-        if (!converts && findConstructor(target, {init->ty}, v))
+        if (!converts && isClass(target) && findConstructor(target, {init->ty}, v))
         {
           std::string tmp = newObjectSlot(target, v);
           Expr* one = init;

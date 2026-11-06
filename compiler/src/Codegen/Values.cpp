@@ -118,6 +118,15 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   auto unsignedOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? enumUnderlying(t->decl)->isUnsigned : t->isUnsigned; };
   if (isLambda(from) && tk == TyKind::Pointer && to->inner && to->inner->kind == TyKind::Function)
     return {lambdaThunk(from, to->inner, at), to}; // a lambda without captures as a pointer to function
+  if (fk == TyKind::Class && isLambda(to))
+  {
+    // A class derived from a closure type (the overload-set idiom given lambdas) as that closure:
+    // its base subobject, wherever it lies, as for a base class.
+    std::string addr;
+    if (!baseAddress(from, to, v.text, addr, at))
+      unsupported(at, "a conversion of " + types.toString(from, &symbols) + " to the closure type " + types.toString(to, &symbols) + ", no base of it");
+    return {addr, to, v.isTemporary && addr == v.text};
+  }
   if (fk == TyKind::Class || tk == TyKind::Class)
   {
     if (fk == TyKind::Class && tk == TyKind::Class)
@@ -334,7 +343,7 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   }
   if (tk == TyKind::Pointer && (fk == TyKind::Pointer || fk == TyKind::Nullptr || fk == TyKind::Function || fk == TyKind::Array))
   {
-    if (fk == TyKind::Pointer && isClass(from->inner) && isClass(to->inner) && classKey(from->inner) != classKey(to->inner))
+    if (fk == TyKind::Pointer && isClass(from->inner) && isAggregate(to->inner) && classKey(from->inner) != classKey(to->inner)) // (to a base, a closure base too)
     {
       std::string addr;
       if (baseAddress(from->inner, to->inner, v.text, addr, at))

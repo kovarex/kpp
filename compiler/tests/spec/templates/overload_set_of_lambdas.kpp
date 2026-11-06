@@ -1,0 +1,61 @@
+// spec: the overload-set idiom given lambdas (`template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };`): the closures' call operators are one overload set, a call through the class takes the one overload resolution chooses, called on its base subobject with its captures: by the argument's conversions (a char promotes to int, a float to double), a non-template over a generic lambda on a tie and the generic one on an exact match, a mutable lambda's state kept in its base, reference captures, a class's own call operator beside the closures', a closure beside a class with its own, through a template's call, and a closure as the one base found by lookup (no using-declaration); clang prints the same
+// found by thread A's C++ feature survey (2026-11-06); until then the call was an error (the layout came first: classes/lambda_closure_as_base). Util.hpp's make_overload is the game's one use (visitVariant, around std::visit), which goes with the Variant mapping (library/variant)
+template<typename... Ts>
+struct Overload : Ts...
+{
+  using Ts::operator()...;
+};
+template<typename... Ts>
+Overload(Ts...) -> Overload<Ts...>;
+
+template<class... Ts>
+struct Tagged : Ts...
+{
+  using Ts::operator()...;
+  int tag = 7;
+  int operator()(double d) const { return tag + int(d * 10); }
+};
+template<class... Ts>
+Tagged(Ts...) -> Tagged<Ts...>;
+
+struct Counter
+{
+  int base;
+  int operator()(long x) const { return base + int(x); }
+};
+
+template<class F, class A>
+auto apply(F&& f, A a) { return f(a); }
+
+int main()
+{
+  int k = 5;
+  Overload o{[](int x) { return x + 1; }, [k](const char* s) { return k + 100 + int(s[0]); }};
+  println(o(41), " ", o("abc"));
+  Overload p{[](int x) { return 1; }, [](double x) { return 2; }};
+  println(p(1), " ", p(2.5), " ", p('c'), " ", p(1.5f));
+  Overload g{[](int x) { return 10; }, [](auto x) { return int(sizeof(x)); }};
+  println(g(5), " ", g(2.5), " ", g(short(1)), " ", g("text"));
+  Overload m{[n = 0]() mutable { return ++n; }, [](int x) { return -x; }};
+  int a1 = m();
+  int a2 = m();
+  int a3 = m(9);
+  println(a1, " ", a2, " ", a3);
+  int total = 0;
+  Overload r{[&total](int x) { total += x; return total; }, [&total](const char* s) { total += 1000; return total; }};
+  r(3);
+  r("x");
+  r(4);
+  println(total);
+  Tagged t{[](int x) { return x * 3; }};
+  println(t(4), " ", t(0.5), " ", t.tag);
+  Overload c{[](int x) { return x + 1000; }, Counter{50}};
+  println(c(1), " ", c(2L));
+  println(apply(o, 1), " ", apply(o, "q"));
+  auto twice = [k](int x) { return 2 * x + k; };
+  struct Wrapper : decltype(twice) { int extra = 3; };
+  Wrapper w{twice};
+  println(w(10), " ", w.extra);
+  println(sizeof(o), " ", sizeof(p), " ", sizeof(r));
+  return 0;
+}

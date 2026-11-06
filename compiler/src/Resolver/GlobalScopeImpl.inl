@@ -752,6 +752,21 @@
   std::mutex lambdaEnvMutex;
   std::unordered_map<const Ty*, LambdaEnv> lambdaEnvs; // keyed by the lambda's type (one per enclosing instantiation)
 
+  // A closure type's call operator as a member function (closureCall, OverloadResolution.hpp): the
+  // declaration, the one overload a member lookup of operator() gives, the closure type and its
+  // signature. Made at first use, kept for the build; by the closure type and by the declaration.
+  struct ClosureCall
+  {
+    FunctionDecl decl;
+    NamePart name; // its name's one part, operator()
+    std::vector<Entry> entries;
+    const Ty* closure = nullptr;
+    const Ty* signature = nullptr;
+  };
+  std::mutex closureCallMutex;
+  std::unordered_map<const Ty*, std::unique_ptr<ClosureCall>> closureCalls;
+  std::unordered_map<const FunctionDecl*, ClosureCall*> closureCallsByDecl;
+
   static LambdaExpr* lambdaOf(const Ty* t)
   {
     if (!t || t->kind != TyKind::Lambda || !t->decl || t->decl->kind != NodeKind::ClassDecl)

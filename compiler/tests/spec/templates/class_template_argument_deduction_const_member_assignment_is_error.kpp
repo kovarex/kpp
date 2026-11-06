@@ -1,0 +1,12 @@
+// spec: a member of a const object whose class template arguments are deduced (`const Box b{1};`) is const: assigning to it is an error, as in C++
+// found by thread B's overload-set battery (2026-11-06): the deduced type dropped the declaration's const, and `b.v = 5;` compiled (templates/class_template_argument_deduction_keeps_const)
+// error: class_template_argument_deduction_const_member_assignment_is_error.kpp:10: error: assignment to a const value (const int32)
+template<class T>
+struct Box { T v; };
+
+int main()
+{
+  const Box b{1};
+  b.v = 5;
+  return b.v;
+}

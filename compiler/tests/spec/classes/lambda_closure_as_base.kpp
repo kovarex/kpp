@@ -1,5 +1,5 @@
 // spec: a lambda's closure is a base class through a template's pack of bases (`struct Holder : Ts...` with Ts a closure type): a capturing closure's captures are its base subobject (sizeof 8 with an int capture and an int member), a closure without captures takes no room as a base (sizeof 4), the aggregate copies the lambda into its base (the capture copied: `copy11 copy21`), a reference to the closure type binds to the base and calls it, and the base is destroyed with the object (`~21 ~11 ~1`); clang prints the same
-// found by thread A's C++ feature survey (2026-11-06): the overload-set idiom given lambdas; a call through the derived class (`Overload o{...}; o(41)`) is still templates/lambda_as_base_class_is_not_supported_yet
+// found by thread A's C++ feature survey (2026-11-06): the overload-set idiom given lambdas; a call through the derived class (`Overload o{...}; o(41)`) is templates/overload_set_of_lambdas, a conversion to a closure base that is not the first classes/conversion_to_closure_base
 struct Noisy
 {
   int id;

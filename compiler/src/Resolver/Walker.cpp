@@ -1543,7 +1543,8 @@ auto GlobalScope::Impl::Walker::memberOfInstantiatedBases(const Ty* t, Scope* cl
   for (Type* b : cls->baseTypes)
     for (const Ty* bt : impl.baseInstances(b, ctx, 1))
     {
-      if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
+      // (a closure base too: its call operator, impl.closureCall)
+      if (!bt || (bt->kind != TyKind::Class && bt->kind != TyKind::Lambda) || !bt->decl || types.isDependent(bt))
         continue;
       MemberResult r = memberOf(bt, symbol, nullptr, token, false);
       if (!r.decl)
@@ -1688,6 +1689,17 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
     r.type = types.param(nullptr);
     return r;
   }
+  // A closure type's one member, its call operator (impl.closureCall): what `using
+  // Ts::operator()...;` names in a class derived from closures, and what a lookup through such a
+  // base finds.
+  if (t->kind == TyKind::Lambda && symbol == impl.opSymbols[uint32_t(P::LParen)] && (!name || name->parts.size() <= 1))
+    if (ClosureCall* call = impl.closureCall(types.unqualified(t)))
+    {
+      r.decl = &call->decl;
+      r.overloads = &call->entries;
+      r.type = call->signature;
+      return r;
+    }
   if (t->kind != TyKind::Class && t->kind != TyKind::Enum)
   {
     r.why = Why::Base;
@@ -4577,10 +4589,27 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
     if (r.decl && r.decl->kind == NodeKind::FunctionDecl)
     {
       bool ambiguous;
-      if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, t, ambiguous))
+      std::vector<const Ty*> argTypes = argTypesOf(c->args);
+      std::vector<FunctionDecl*> tied;
+      if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, t, ambiguous, nullptr, {}, &tied))
       {
         if (!ambiguous)
           checkConstObjectCall(f, t, c->token);
+        // A closure base's call operator (`using Ts::operator()...;`, the overload-set idiom): the
+        // lambda's call, as on the closure itself. Two that take the arguments alike (`[](int)
+        // {...}` twice) are an ambiguous call, as in C++, never the first one's.
+        bool closureTied = false;
+        for (FunctionDecl* g : tied)
+          closureTied = closureTied || impl.closureCallOf(g);
+        if (ambiguous && closureTied)
+        {
+          NamePart callOperator;
+          callOperator.special = 2;
+          callOperator.opToken = uint32_t(P::LParen);
+          reportAmbiguousCall(c, callOperator, argTypes, tied, &r.subst);
+        }
+        if (ClosureCall* call = impl.closureCallOf(f))
+          return callResultOfValue(call->closure, c, written);
         return returnTypeOfCall(f, &r.subst, c->args, nullptr);
       }
       if (onlyPlainCandidate(r.decl, r.overloads)) // `sink(d)` with a `void operator()(Base&& x)`, as for a name
@@ -6365,8 +6394,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         const Ty* deduced = impl.deduceClassArgs(declared, argTypes, !direct);
         if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
           deduced = impl.deduceAggregateArgs(declared, argTypes);
-        if (deduced && (v->flags & DF_Constexpr))
-          deduced = types.qualified(deduced, true, false); // `constexpr Array names = {...}` is const
+        // `constexpr Array names = {...}` is const, and `const Box b{1};` is a const Box<int> as
+        // `const Box<int>` is: the declaration's qualifiers stay (until 2026-11-06 a const one
+        // was dropped, so b.get() called the non-const get() and `b.v = 5` compiled).
+        if (deduced && ((v->flags & DF_Constexpr) || declared->isConst || declared->isVolatile))
+          deduced = types.qualified(deduced, (v->flags & DF_Constexpr) || declared->isConst, declared->isVolatile);
         if (deduced)
         {
           v->cachedType.store(deduced, std::memory_order_release);

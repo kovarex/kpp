@@ -2739,9 +2739,16 @@ The smallest language that is still kpp, as the target of the first code generat
   templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...`) is a base per
   element of its pack (2026-11-06, classes/pack_of_base_classes; an error from 2026-10-31 until
   something needed it, thread A's C++ feature survey), and a lambda's closure is such a base too,
-  its captures its subobject (classes/lambda_closure_as_base). A call through the derived class to a
-  closure base's call operator (`Overload o{[](int) {...}, ...}; o(41)`, the overload-set idiom given
-  lambdas) is an error until it is done (templates/lambda_as_base_class_is_not_supported_yet).
+  its captures its subobject (classes/lambda_closure_as_base), converting to it as to any base
+  (classes/conversion_to_closure_base). A closure type's call operator is a member function for
+  lookup and overload resolution, as in C++ ([expr.prim.lambda.closure] 4): `using Ts::operator()...;`
+  names the closures' call operators, one overload set with the class's own, ranked by the one rule
+  (rule 24; a generic lambda as a template), and a call through the class (`Overload o{[](int)
+  {...}, ...}; o(41)`, the overload-set idiom given lambdas) calls the chosen lambda on its base
+  subobject (2026-11-06, templates/overload_set_of_lambdas); two that take the arguments alike are an
+  ambiguous call. A variable whose arguments are deduced keeps its declaration's const and volatile
+  (`const Box b{1};` is a const Box<int>; until 2026-11-06 the const was dropped,
+  templates/class_template_argument_deduction_keeps_const).
 - **nullptr is the null pointer; the literal 0 is no pointer** (kovarex, 2026-11-04: "b is cleaner long
   term, and if we can convert it, I would prefer that, writing 0 instead of nullptr is not nice"; it
   replaced C++'s rule, kept from 2026-10-29 until the converter wrote nullptr, C's 6f248ebe). An integer

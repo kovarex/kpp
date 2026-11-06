@@ -1,0 +1,21 @@
+// spec: a variable whose class template arguments are deduced keeps its declaration's const (C++'s [dcl.type.class.deduct]: the placeholder is replaced, the qualifiers stay): `const Box b{1};` is a const Box<int>, so b.get() calls `get() const` as for `const Box<int> c{1};`, a global and a static local alike; clang prints the same
+// found by thread B's overload-set battery (2026-11-06): the deduced type replaced the declared one without its const (only a constexpr one's was kept), so b.get() called the non-const get() and `b.v = 5;` compiled (templates/class_template_argument_deduction_const_member_assignment_is_error)
+template<class T>
+struct Box
+{
+  T v;
+  int get() { return 1; }
+  int get() const { return 2; }
+};
+
+const Box g{1};
+
+int main()
+{
+  const Box b{1};
+  static const Box s{2};
+  const Box<int> c{3};
+  Box m{4};
+  println(b.get(), " ", g.get(), " ", s.get(), " ", c.get(), " ", m.get());
+  return 0;
+}

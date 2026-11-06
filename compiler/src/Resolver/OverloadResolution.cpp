@@ -2130,10 +2130,56 @@ auto GlobalScope::Impl::checkCFunctionTypes() -> void
   cFunctions.clear();
 }
 
+auto GlobalScope::Impl::closureCall(const Ty* lambdaTy) -> ClosureCall*
+{
+  LambdaExpr* l = lambdaOf(lambdaTy);
+  if (!l)
+    return nullptr;
+  auto* closure = static_cast<ClassDecl*>(lambdaTy->decl);
+  std::lock_guard lock(closureCallMutex);
+  std::unique_ptr<ClosureCall>& slot = closureCalls[lambdaTy];
+  if (slot)
+    return slot.get();
+  slot = std::make_unique<ClosureCall>();
+  ClosureCall& c = *slot;
+  FunctionDecl& f = c.decl;
+  f.kind = NodeKind::FunctionDecl;
+  f.token = l->token;
+  f.file = closure->file;
+  f.parent = closure;
+  f.access = Access::Public;
+  f.flags = DF_Operator | (l->isMutable ? 0u : uint32_t(DF_Const));
+  f.templateParams = l->templateParams;
+  f.isTemplate = !l->templateParams.empty();
+  f.params = l->params;
+  f.endToken = closure->endToken;
+  c.name.special = 2;
+  c.name.opToken = uint32_t(P::LParen);
+  f.name.parts = Span<NamePart>{&c.name, 1};
+  c.closure = lambdaTy;
+  c.signature = types.function(lambdaTy->inner ? lambdaTy->inner : types.unknown(), lambdaTy->args, lambdaTy->variadic);
+  c.entries.push_back(Entry{&f, nullptr});
+  closureCallsByDecl[&f] = &c;
+  return &c;
+}
+
+auto GlobalScope::Impl::closureCallOf(const FunctionDecl* f) -> ClosureCall*
+{
+  if (!maybeClosureCall(f))
+    return nullptr;
+  std::lock_guard lock(closureCallMutex);
+  auto it = closureCallsByDecl.find(f);
+  return it == closureCallsByDecl.end() ? nullptr : it->second;
+}
+
 auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
 {
   if (a == b)
     return true;
+  // Two closures' call operators are two functions, whatever their types (`[](int) {...}` twice in
+  // one overload set: ambiguous, as in C++).
+  if (closureCallOf(a) || closureCallOf(b))
+    return false;
   // A C function's static is its linkage, which a later extern declaration takes from a visible
   // static one (C11 6.2.2p4): MSVC 14.44's time.h defines time static inline, CTime.kpp declares
   // it extern "C", one function.

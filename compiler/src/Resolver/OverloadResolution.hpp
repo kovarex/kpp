@@ -360,6 +360,22 @@
   // a header and the library both declare.
   bool sameFunction(FunctionDecl* a, FunctionDecl* b);
 
+  // A closure type's call operator as a member function ([expr.prim.lambda.closure] 4), so that a
+  // member lookup finds it and overload resolution ranks it beside any other candidate (`using
+  // Ts::operator()...;` in a class derived from closures, the overload-set idiom): a declaration
+  // only, in no class's members, its parameters and template parameters the lambda's, const unless
+  // the lambda is mutable, its type the closure type's signature (declaredTypeOf; a generic
+  // lambda's result unknown, deduced per call). One per closure type; null for any other type.
+  ClosureCall* closureCall(const Ty* lambdaTy);
+  // The closure call operator f is (closureCall), or null: a call of it calls the lambda
+  // (genericLambdaCall, codegen's callClosure), never a function of that name.
+  ClosureCall* closureCallOf(const FunctionDecl* f);
+  static bool maybeClosureCall(const Decl* d)
+  {
+    return d && d->kind == NodeKind::FunctionDecl && d->parent && d->parent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d->parent)->isClosure &&
+           !static_cast<const FunctionDecl*>(d)->body;
+  }
+
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr, const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr, const std::vector<const Ty*>* bitFieldPromotions = nullptr);
 
   // C++ ranks a class's member operator and the free ones together ([over.match.oper]); the checker

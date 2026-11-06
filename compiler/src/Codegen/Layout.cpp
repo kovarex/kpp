@@ -267,8 +267,8 @@ auto codegen::Emitter::variableAlignment(VariableDecl* v, Decl* context, Node* a
 auto codegen::Emitter::declaredOnly(const Ty* t) -> bool
 {
   t = classKey(t);
-  if (!t || !t->decl)
-    return false;
+  if (!t || !t->decl || isLambda(t))
+    return false; // (a closure type is defined by its lambda: its synthetic class is declared only)
   Decl* def = global.definitionOf(t->decl);
   return !def || def->kind != NodeKind::ClassDecl;
 }

@@ -166,12 +166,18 @@ auto codegen::Emitter::findMemberFunction(const Ty* classTy, const std::string& 
   FunctionDecl* found = nullptr;
   std::function<void(const Ty*)> search = [&](const Ty* cls)
   {
-    // A closure as a base (the overload-set idiom given lambdas): no member function of its own but
-    // its call operator, which a call through the derived class does not reach yet.
+    // A closure as a base (the overload-set idiom given lambdas): its one member function, its call
+    // operator (the resolver's closureCallOperator), which memberCall calls as the lambda.
     if (isLambda(cls))
     {
-      if (name == "operator()")
-        unsupported(at, "the call operator of a lambda's closure as a base class (" + types.toString(cls, &symbols) + ")");
+      if (name != "operator()")
+        return;
+      if (FunctionDecl* call = global.closureCallOperator(cls); call && global.chooseOverload({call}, argTypes, {}, objectTy ? objectTy : cls))
+      {
+        found = call;
+        if (foundIn)
+          *foundIn = cls;
+      }
       return;
     }
     ClassDecl* c = classDef(cls->decl, at);
@@ -220,12 +226,22 @@ auto codegen::Emitter::findMemberFunction(const Ty* classTy, const std::string& 
         const Ty* base = info.fieldTypes[index];
         bool chosen = false;
         for (const Ty* n : named)
-          chosen = chosen || (isClass(n) && canonicalClass(n, at) == canonicalClass(base, at));
-        if (named.empty())
+          chosen = chosen || ((isClass(n) || isLambda(n)) && canonicalClass(n, at) == canonicalClass(base, at));
+        if (named.empty() && !isLambda(base))
           if (ClassDecl* bd = classDef(base->decl, at); bd && !bd->name.empty() && bd->name.last().symbol == un.parts[0].symbol)
             chosen = true;
         if (!chosen)
           continue;
+        if (isLambda(base))
+        {
+          // `using Ts::operator()...;` with a closure among Ts: its call operator.
+          if (FunctionDecl* call = name == "operator()" ? global.closureCallOperator(base) : nullptr)
+          {
+            candidates.push_back(call);
+            usedFrom[call] = base;
+          }
+          continue;
+        }
         for (Decl* bm : classDef(base->decl, at)->members)
         {
           if (bm->kind != NodeKind::FunctionDecl || (!templates && !bm->templateParams.empty()))
@@ -255,6 +271,11 @@ auto codegen::Emitter::findMemberFunction(const Ty* classTy, const std::string& 
     std::vector<const Ty*> baseTypes;
     for (auto& [baseDef, index] : info.bases)
       baseTypes.push_back(info.fieldTypes[index]);
+    // Two closure bases whose call operators no using-declaration above joins in one overload set:
+    // C++'s lookup finds the name in both, ambiguous (the checker's error); one the class names in a
+    // way not followed here (`using decltype(l1)::operator();`) would be the first base's.
+    if (name == "operator()" && std::count_if(baseTypes.begin(), baseTypes.end(), [&](const Ty* b) { return isLambda(b); }) > 1)
+      unsupported(at, "a call of the call operators of " + types.toString(cls, &symbols) + "'s lambda closure bases that no `using Ts::operator()...;` names");
     for (const Ty* b : baseTypes)
       if (!found)
         search(b);
@@ -336,6 +357,15 @@ auto codegen::Emitter::declaringClass(const Ty* objectTy, FunctionDecl* f, Node*
 
 auto codegen::Emitter::memberCall(Value object, FunctionDecl* f, const Ty* foundIn, Span<Expr*> args, Node* at, const std::string& sret) -> Value
 {
+  // A closure base's call operator (the overload-set idiom given lambdas): the lambda called on
+  // that base subobject, its captures there.
+  if (const Ty* closure = global.closureOfCallOperator(f))
+  {
+    std::string base = object.text;
+    if (!baseAddress(object.ty, closure, object.text, base, at))
+      unsupported(at, "a call of a lambda's call operator on " + types.toString(object.ty, &symbols) + ", which has no base of its closure type");
+    return callClosure(Value{base, closure}, args, sret, at);
+  }
   std::string thisArg = object.text;
   if (canonicalClass(object.ty, at) != foundIn)
   {

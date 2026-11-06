@@ -549,6 +549,13 @@ public:
   FunctionDecl* chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                                const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous = nullptr,
                                const std::vector<bool>* nullConstants = nullptr);
+  // A closure type's call operator as a member function ([expr.prim.lambda.closure] 4): a candidate
+  // of chooseOverload beside a class's own (`using Ts::operator()...;` in a class derived from
+  // closures), a declaration only, in no class's members; null for any other type.
+  FunctionDecl* closureCallOperator(const Ty* lambdaTy);
+  // The closure type whose call operator f is (closureCallOperator), or null: a call of it calls
+  // the lambda, never a function of that name.
+  const Ty* closureOfCallOperator(const FunctionDecl* f);
   // The constructor of class classType (known, not dependent) a construction with these arguments
   // runs (design.md 24: one rule for codegen, the interpreter and the checker): the class's own
   // constructors and those it inherits by `using Base::Base;` (a base's copy and move constructors

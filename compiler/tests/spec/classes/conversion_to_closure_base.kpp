@@ -1,0 +1,30 @@
+// spec: a class derived from lambdas' closure types converts to a closure base that is not its first as to any base class, to that base subobject with its captures: a reference to it (const or not), a pointer to it, a copy of it, a static_cast to it, and a pointer to the class converted to a pointer to it; clang prints the same
+// found by thread B's overload-set battery (2026-11-06): a reference to the second closure base bound the object's own address, so its call read the first closure's captures (1021 where C++ gives 1320), and a pointer or a copy was refused
+template<class... Ts>
+struct Holder : Ts...
+{
+  int tag = 9;
+};
+
+int main()
+{
+  int a = 1, b = 20, c = 300;
+  auto first = [a](int x) { return x + a; };
+  auto second = [b, c](int x) { return x + b + c; };
+  using First = decltype(first);
+  using Second = decltype(second);
+  Holder<First, Second> h{first, second};
+  Second& s = h;
+  First& f = h;
+  const Second& cs = h;
+  println(s(1000), " ", f(1000), " ", cs(2000), " ", h.tag);
+  const Second* p = &h;
+  println((*p)(5));
+  Second copy = h;
+  println(copy(7));
+  println(static_cast<Second&>(h)(6));
+  Holder<First, Second>* hp = &h;
+  Second* sp = hp;
+  println((*sp)(8));
+  return 0;
+}

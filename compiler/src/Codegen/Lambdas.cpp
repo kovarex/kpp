@@ -538,6 +538,14 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
     return;
   }
   Value v = rvalue(init);
+  if (isClass(v.ty))
+  {
+    // A class derived from the closure type (the overload-set idiom given lambdas): its base
+    // subobject, copied (moved from a temporary, which the statement still destroys whole).
+    bool move = v.isTemporary || movable(init);
+    copyClosure(addr, convert(v, types.unqualified(t), at).text, types.unqualified(t), at, move);
+    return;
+  }
   if (!isLambda(v.ty))
     unsupported(at, "initialising a lambda variable from something else");
   if (v.isTemporary && relocatesBitwise(t, at))

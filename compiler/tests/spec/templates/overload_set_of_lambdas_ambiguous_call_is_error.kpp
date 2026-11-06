@@ -1,0 +1,11 @@
+// spec: two closures of an overload set (`using Ts::operator()...;`) whose call operators take the arguments alike make the call ambiguous, as in C++, never the first one's; so does a mutable lambda's call operator, which a non-const object's implicit object parameter binds better, beside a const one that takes the argument better (clang: "call to object of type 'Overload<...>' is ambiguous")
+// found by thread B's overload-set battery (2026-11-06), with the call through closure bases (templates/overload_set_of_lambdas)
+// error: overload_set_of_lambdas_ambiguous_call_is_error.kpp:10: error: the call of operator with (int32) is ambiguous between int32(int32) (
+template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
+template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;
+
+int main()
+{
+  Overload o{[](int x) { return 1; }, [](int y) { return 2; }};
+  return o(5);
+}

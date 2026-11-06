@@ -1813,6 +1813,12 @@ auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int depth) -
 {
   if (!d || depth > 40)
     return types.unknown();
+  // A closure type's call operator (closureCall): the closure type's signature, under any
+  // substitution (a class derived from the closure asks with its own arguments, which name none of
+  // the lambda's types). Made from the lambda's walk: no declaration's type to record or cache.
+  if (maybeClosureCall(d))
+    if (ClosureCall* c = closureCallOf(static_cast<FunctionDecl*>(d)))
+      return c->signature;
   recordUse(USE_DeclaredType, d);
   bool useCache = !subst || subst->empty();
   if (useCache)
@@ -2018,7 +2024,7 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
       // initializer (CTAD), as the walk deduces a local's.
       if (v->init && isUndeducedClassTemplate(t) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl))
         if (const Ty* deduced = deducedFromInitializer(t, v, ctx))
-          t = deduced;
+          t = t->isConst || t->isVolatile ? types.qualified(deduced, t->isConst, t->isVolatile) : deduced; // (`const Box g{1};` is a const Box<int>)
       // A constexpr variable is const (`decltype(COUNT)` is `const int`), an array of them of
       // const elements; one whose type is deduced stays as deduced.
       if ((v->flags & DF_Constexpr) && t && t->isKnown() && !t->isReference() && !containsAuto(t))

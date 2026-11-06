@@ -1616,6 +1616,18 @@ FunctionDecl* GlobalScope::chooseOverload(const std::vector<FunctionDecl*>& cand
   return f;
 }
 
+FunctionDecl* GlobalScope::closureCallOperator(const Ty* lambdaTy)
+{
+  Impl::ClosureCall* c = impl->closureCall(lambdaTy);
+  return c ? &c->decl : nullptr;
+}
+
+const Ty* GlobalScope::closureOfCallOperator(const FunctionDecl* f)
+{
+  Impl::ClosureCall* c = impl->closureCallOf(f);
+  return c ? c->closure : nullptr;
+}
+
 FunctionDecl* GlobalScope::chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes,
                                             const std::vector<bool>* nullConstants, const Ty** inheritedFrom)
 {
