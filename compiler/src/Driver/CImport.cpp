@@ -735,6 +735,182 @@ std::string clangToolchain(const std::string& clang, const std::string& includeA
   return out;
 }
 
+// The `#pragma pack` state of the preprocessed text given to each struct and union it applies to:
+// a definition under pack(n) reads `struct __kpp_pack(n) Name {`, which the parser keeps on the class
+// and buildStruct lays out by. Every form of MSVC's and clang's, and an error (returned) for what is
+// not understood: a pack, or another pragma that changes a layout, is never skipped.
+std::string applyPragmaPack(std::string& text)
+{
+  struct Pushed
+  {
+    int value;
+    std::string label;
+  };
+  std::vector<Pushed> stack;
+  int current = 0; // 0: the target's default
+  std::string out;
+  out.reserve(text.size() + text.size() / 16);
+  auto identChar = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+  auto validValue = [](int n) { return n == 1 || n == 2 || n == 4 || n == 8 || n == 16; };
+  // One `#pragma pack(...)`'s arguments, split at commas, spaces gone.
+  auto applyPack = [&](const std::string& line, size_t open) -> std::string
+  {
+    size_t close = line.rfind(')');
+    if (open == std::string::npos || close == std::string::npos || close < open)
+      return "`" + line + "` is no form of #pragma pack kpp knows";
+    std::vector<std::string> arguments(1);
+    for (size_t i = open + 1; i < close; ++i)
+      if (line[i] == ',')
+        arguments.emplace_back();
+      else if (!isspace((unsigned char)line[i]))
+        arguments.back() += line[i];
+    if (arguments.size() == 1 && arguments[0].empty())
+      arguments.clear();
+    auto number = [](const std::string& s) { return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) { return isdigit((unsigned char)c); }); };
+    if (arguments.empty())
+    {
+      current = 0;
+      return "";
+    }
+    const std::string& action = arguments[0];
+    if (action == "show" && arguments.size() == 1)
+      return "";
+    if (number(action) && arguments.size() == 1)
+    {
+      if (!validValue(atoi(action.c_str())))
+        return "`" + line + "`: a packing is 1, 2, 4, 8 or 16";
+      current = atoi(action.c_str());
+      return "";
+    }
+    if ((action != "push" && action != "pop") || arguments.size() > 3)
+      return "`" + line + "` is no form of #pragma pack kpp knows";
+    std::string label;
+    int value = -1;
+    for (size_t i = 1; i < arguments.size(); ++i)
+      if (number(arguments[i]) && i + 1 == arguments.size())
+        value = atoi(arguments[i].c_str());
+      else if (!arguments[i].empty() && i == 1 && !isdigit((unsigned char)arguments[i][0]))
+        label = arguments[i];
+      else
+        return "`" + line + "` is no form of #pragma pack kpp knows";
+    if (value != -1 && !validValue(value))
+      return "`" + line + "`: a packing is 1, 2, 4, 8 or 16";
+    if (action == "push")
+      stack.push_back({current, label});
+    else if (label.empty())
+    {
+      if (!stack.empty())
+      {
+        current = stack.back().value;
+        stack.pop_back();
+      }
+    }
+    else
+    {
+      // Back to the entry of that label, which goes too; with none, as clang, nothing changes.
+      size_t at = stack.size();
+      while (at > 0 && stack[at - 1].label != label)
+        --at;
+      if (at > 0)
+      {
+        current = stack[at - 1].value;
+        stack.resize(at - 1);
+      }
+    }
+    if (value != -1)
+      current = value;
+    return "";
+  };
+  bool lineStart = true;
+  for (size_t i = 0; i < text.size();)
+  {
+    char c = text[i];
+    if (c == '\n')
+      lineStart = true;
+    else if (lineStart && c == '#')
+    {
+      size_t end = std::min(text.find('\n', i), text.size());
+      std::string line = text.substr(i, end - i);
+      while (!line.empty() && isspace((unsigned char)line.back()))
+        line.pop_back();
+      size_t word = line.find_first_not_of(" \t", 1);
+      if (word != std::string::npos && line.compare(word, 6, "pragma") == 0)
+      {
+        size_t name = line.find_first_not_of(" \t", word + 6);
+        size_t nameEnd = name;
+        while (nameEnd < line.size() && identChar(line[nameEnd]))
+          ++nameEnd;
+        std::string pragma = name == std::string::npos ? "" : line.substr(name, nameEnd - name);
+        if (pragma == "pack")
+        {
+          size_t open = line.find_first_not_of(" \t", nameEnd);
+          std::string problem = applyPack(line, open != std::string::npos && line[open] == '(' ? open : std::string::npos);
+          if (!problem.empty())
+            return problem;
+        }
+        else if (pragma == "ms_struct" || pragma == "align" || pragma == "options")
+          return "`" + line + "` changes how structs are laid out, which kpp does not do";
+      }
+      out.append(text, i, end - i);
+      i = end;
+      continue;
+    }
+    else if (!isspace((unsigned char)c))
+      lineStart = false;
+    if (c == '"' || c == '\'')
+    {
+      size_t from = i;
+      for (++i; i < text.size() && text[i] != c && text[i] != '\n'; ++i)
+        if (text[i] == '\\')
+          ++i;
+      i = std::min(i + 1, text.size());
+      out.append(text, from, i - from);
+      continue;
+    }
+    if (!identChar(c))
+    {
+      out += c;
+      ++i;
+      continue;
+    }
+    size_t from = i;
+    while (i < text.size() && identChar(text[i]))
+      ++i;
+    std::string_view word(text.data() + from, i - from);
+    out += word;
+    if (current == 0 || (word != "struct" && word != "union"))
+      continue;
+    // A definition? `struct`, its attributes, its name, `{`; anything else names a struct.
+    size_t at = i;
+    for (;;)
+    {
+      while (at < text.size() && isspace((unsigned char)text[at]))
+        ++at;
+      size_t nameEnd = at;
+      while (nameEnd < text.size() && identChar(text[nameEnd]))
+        ++nameEnd;
+      if (nameEnd == at)
+        break;
+      at = nameEnd;
+      while (at < text.size() && isspace((unsigned char)text[at]))
+        ++at;
+      if (at < text.size() && text[at] == '(')
+      {
+        int depth = 0;
+        do
+        {
+          depth += text[at] == '(' ? 1 : text[at] == ')' ? -1 : 0;
+          ++at;
+        } while (depth > 0 && at < text.size());
+      }
+    }
+    if (at < text.size() && text[at] == '{')
+      out += " __kpp_pack(" + std::to_string(current) + ")";
+  }
+  text = std::move(out);
+  return "";
+}
+
 bool sameWrittenType(const Type* a, const Type* b)
 {
   if (!a || !b || a->kind != b->kind)
@@ -910,7 +1086,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   }
   uint64_t hash = 1469598103934665603ull;
   // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
-  for (unsigned char c : "kpp import 10\n" + wrapper + includeArgs + "\n" + toolchain)
+  for (unsigned char c : "kpp import 11\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);
@@ -981,6 +1157,13 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (own + ".x.c"), clang, includeArgs);
     text = readWholeFile(preprocessed);
     text += macroConstants(definesText, expansions, typedefNames(text), valueNames(text));
+    std::string packProblem = applyPragmaPack(text);
+    if (!packProblem.empty())
+    {
+      fprintf(stderr, "error: importing C headers: %s\n", packProblem.c_str());
+      codegenExit = 1;
+      return;
+    }
     if (!options.target.windows())
       text = vaListForSysV(text);
     // The import, then its stamps (a reader that finds the import with older stamps checks those:

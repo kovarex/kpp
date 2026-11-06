@@ -1,0 +1,12 @@
+// spec: the Windows SDK's structs under pack(n) and __declspec(align): MINIDUMP_EXCEPTION_INFORMATION (pack(4)) as MiniDumpWriteDump reads it, CONTEXT whose 16-byte alignment pack(8) does not lower (MSVC's required alignment), SYSTEM_LOGICAL_PROCESSOR_INFORMATION
+// found by thread F's PDB comparison (2026-11-06): CrashHandler passes MINIDUMP_EXCEPTION_INFORMATION to MiniDumpWriteDump, 24 bytes in kpp, 16 in C++
+// target: windows (the SDK)
+extern "C" import "windows.h";
+extern "C" import "dbghelp.h";
+int main()
+{
+  println(sizeof(MINIDUMP_EXCEPTION_INFORMATION), " ", alignof(MINIDUMP_EXCEPTION_INFORMATION));
+  println(sizeof(CONTEXT), " ", alignof(CONTEXT));
+  println(sizeof(BITMAPFILEHEADER), " ", sizeof(IMAGE_DOS_HEADER), " ", sizeof(WIN32_FIND_DATAW));
+  return 0;
+}

@@ -1,0 +1,23 @@
+// spec: every form of #pragma pack in an imported header, as the C compiler lays it out, checked against a C library's own offsetof and sizeof: labels (`push, name, n`, `pop, name`), a pack(n) between push and pop, _Pragma from a macro, a union, a nested struct, a member of a struct packed itself, an array of them, pack(16), show, a pop with nothing pushed; a struct named but not defined under it is not affected; C writes through the same structs kpp reads
+// found by thread F's PDB comparison (2026-11-06)
+// target: windows (the bit field's place is MSVC's)
+extern "C" import "c_pragma_pack_forms.h";
+int main()
+{
+  Labelled labelled; Inner inner; Changed changed; Natural natural; ThroughPragma through; Holder holder; Bits bits; Outside outside; Wide wide;
+  println(sizeof(Labelled) * 100 + ((char*)&labelled.v - (char*)&labelled), " ", cOffsets(0));
+  println(sizeof(Inner) * 100 + ((char*)&inner.v - (char*)&inner), " ", cOffsets(1));
+  println(sizeof(Changed) * 100 + ((char*)&changed.d - (char*)&changed), " ", cOffsets(2));
+  println(sizeof(Natural) * 100 + ((char*)&natural.d - (char*)&natural), " ", cOffsets(3));
+  println(sizeof(ThroughPragma) * 100 + ((char*)&through.v - (char*)&through), " ", cOffsets(4));
+  println(sizeof(Mixed) * 100 + alignof(Mixed), " ", cOffsets(5));
+  println(sizeof(Holder) * 100 + ((char*)&holder.natural - (char*)&holder), " ", cOffsets(6));
+  println(sizeof(Bits) * 100 + ((char*)&bits.d - (char*)&bits), " ", cOffsets(7));
+  println(sizeof(Outside) * 100 + ((char*)&outside.array - (char*)&outside), " ", cOffsets(8));
+  println(sizeof(Wide) * 100 + ((char*)&wide.d - (char*)&wide), " ", cOffsets(9));
+  println(sizeof(AfterExtraPop) * 100 + alignof(Holder), " ", cOffsets(10));
+  Changed pair[2];
+  cFill(&holder, pair);
+  println(holder.nested.v == 0x01020304, " ", holder.natural.d, " ", pair[1].d);
+  return 0;
+}

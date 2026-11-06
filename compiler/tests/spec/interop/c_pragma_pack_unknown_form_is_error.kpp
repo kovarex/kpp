@@ -1,0 +1,4 @@
+// spec: a form of #pragma pack the import does not understand is an error, as is a pragma that lays structs out another way (ms_struct): never skipped
+// error: a packing is 1, 2, 4, 8 or 16
+extern "C" import "c_pragma_pack_unknown_form_is_error.h";
+int main() { return 0; }

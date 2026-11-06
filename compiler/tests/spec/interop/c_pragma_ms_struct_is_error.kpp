@@ -1,0 +1,4 @@
+// spec: `#pragma ms_struct` lays structs out by another compiler's rules, which kpp does not do: an error, never skipped
+// error: changes how structs are laid out
+extern "C" import "c_pragma_ms_struct_is_error.h";
+int main() { return 0; }

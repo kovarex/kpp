@@ -249,6 +249,16 @@ builds win less unless machine code is cached per function.
   base at offset 0, as C++ has it, so the layout is C's and its members are the struct's; anywhere
   else it is a member with a name of its own (the layout stays right; its members by their names
   are an error). (2026-10-29, spec interop/c_anonymous_member_of_named_type.)
+- `#pragma pack` in an imported header lays its structs and unions out as the C compiler does, every
+  form of MSVC's and clang's (`pack(n)`, `pack()`, `push`, `pop`, labels, `show`, `_Pragma`): the import
+  gives each definition under a packing `__kpp_pack(n)` after `struct` (applyPragmaPack, in the cached
+  import), and a member's alignment is at most n. A required alignment (`__declspec(align)`, an SSE
+  vector, or a class holding one) stays on MSVC's layout and gives way to n on Itanium's (clang's two
+  layout builders: CONTEXT stays 16-aligned under the SDK's pack(8)). A form not understood, and a
+  pragma that lays structs out another way (`ms_struct`, `align`, `options`), is an error; so are bit
+  fields under a packing that matters off Windows (not done). Until 2026-11-06 the pragma lines were
+  skipped without a word: MINIDUMP_EXCEPTION_INFORMATION was 24 bytes where C has 16 (thread F's PDB
+  comparison; specs interop/c_pragma_*).
 - A C function a header declares or defines and kpp declares `extern "C"` with its parameters is one
   function, its `static` included: a later extern declaration takes a visible static one's linkage
   (C11 6.2.2p4). A call reaches the header's definition when it has one. MSVC 14.44's time.h defines

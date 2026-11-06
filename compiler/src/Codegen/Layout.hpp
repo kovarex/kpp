@@ -74,6 +74,10 @@
     // The instantiation type with the definition as its decl (forward declarations map here).
     const Ty* canonicalClass(const Ty* t, Node* at);
 
+    // The alignment declared on t or on what it holds (__declspec(align), alignas, an SSE vector),
+    // which #pragma pack does not lower on MSVC's layout; 1 when none.
+    uint64_t requiredAlignment(const Ty* t, Node* at);
+
     // Type t with every class in it named by its definition, a forward declaration's decl and the
     // definition's being one class: the key of a class's layout (and IR name) is then the same however
     // its arguments were reached (`ReverseIterator<const agui::Widget**>` with Widget declared ahead in

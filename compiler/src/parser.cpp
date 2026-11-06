@@ -490,6 +490,19 @@ namespace
           expect(P::RParen, "expected ')' after __declspec(align(...)");
           expect(P::RParen, "expected ')' after __declspec(align(...)");
         }
+        else if (isC() && atIdent() && spelling() == "__kpp_pack" && at(P::LParen, 1))
+        {
+          // The #pragma pack in force at a struct's definition (applyPragmaPack, the C import).
+          pendingPack = uint8_t(atoi(std::string(spelling(2)).c_str()));
+          for (int i = 0; i < 4; ++i)
+            advance();
+        }
+        else if (isC() && atIdent() && spelling() == "__pragma" && at(P::LParen, 1) && atIdent(2) && spelling(2) == "pack")
+        {
+          error("__pragma(pack(...)) reached the C parser: the preprocessor keeps it as #pragma pack");
+          advance();
+          skipBalanced();
+        }
         else if (atIdent() && spelling() == "__attribute__" && at(P::LParen, 1) && at(P::LParen, 2) && atIdent(3) &&
                  (spelling(3) == "aligned" || spelling(3) == "__aligned__" || spelling(3) == "align") && at(P::LParen, 4))
         {
@@ -4239,6 +4252,8 @@ namespace
       c->flags |= flags;
       c->alignment = pendingAlignment;
       pendingAlignment = nullptr;
+      c->pack = pendingPack;
+      pendingPack = 0;
       c->attributes |= pendingAttributes & (ATTR_Packed | ATTR_NoDiscard | ATTR_Deprecated); // `struct [[packed]] Tile`, `[[packed]] struct Tile`
       noteDeprecation(c);
       c->templateParams = templ.params;
@@ -6825,6 +6840,7 @@ namespace
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.
+    uint8_t pendingPack = 0;         // C: __kpp_pack(n) after `struct`: the next class's ClassDecl::pack.
     uint32_t pendingDeprecation = UINT32_MAX; // [[deprecated("why")]]: why's token
 
     // A [[deprecated]] declaration (its attribute pending): recorded with its reason for the warnings.

@@ -25,7 +25,7 @@ struct ParsedFile;
 constexpr uint8_t ATTR_NoInline = 1, ATTR_ForceInline = 2, ATTR_VectorCall = 4, ATTR_Draft = 8; // Decl::attributes, from [[...]] / resolver
 constexpr uint8_t ATTR_Specialized = 16; // a class template that has specialisations (the resolver's finishIndex)
 constexpr uint8_t ATTR_InstanceCopy = 32; // an instantiation's own copy of a function (InstanceCopier::function)
-constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members without padding, alignment 1 (C++'s #pragma pack(push, 1))
+constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members without padding, alignment 1 (C's #pragma pack: ClassDecl::pack)
 constexpr uint16_t ATTR_NoDiscard = 256;  // [[nodiscard]] on a function, class or enumeration: a call's result discarded is a warning (Walker::checkDiscarded)
 constexpr uint16_t ATTR_Deprecated = 512; // [[deprecated]], [[deprecated("why")]]: a call of the function is a warning (ParsedFile::deprecations has why)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
@@ -69,6 +69,7 @@ struct ClassDecl : Decl
   bool isFinal = false;
   bool isClassConst = false;
   bool isClosure = false;         // Synthetic class standing for a lambda's closure type.
+  uint8_t pack = 0;               // C: the #pragma pack(n) in force at its definition, 0 for none.
   Expr* alignment = nullptr;      // `struct alignas(16) X`: the alignment written.
   // An imported C struct or union whose body the import could not read in full (a member in a
   // construct the C parser does not read): the parser's message and the symbol of the token it

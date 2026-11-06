@@ -192,23 +192,44 @@ auto codegen::Emitter::overAlignedType(const Ty* t, Node* at) -> bool
 
 auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* key, const TemplateArgs& args, Node* at) -> uint64_t
 {
-  uint64_t natural = 1;
-  for (size_t i = 0; i < info.fieldTypes.size(); ++i)
-    if (!info.zeroSize[i] && !info.packed)
-      natural = std::max(natural, llvmAlignOf(info.fieldTypes[i], at));
-  info.llvmAlign = natural;
-  if (info.packed)
-    return 0;
   std::vector<uint64_t> declaredAt(info.fieldTypes.size(), 0); // a member's own alignas
-  bool needed = false;
   for (Decl* m : c->members)
     if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->alignment && info.fieldIndex.count(m))
     {
       uint32_t i = info.fieldIndex[m];
       declaredAt[i] = std::max(declaredAt[i], alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args,
                                                              "the member " + sym(static_cast<VariableDecl*>(m)->name.last().symbol), at));
-      needed = needed || declaredAt[i] > llvmAlignOf(info.fieldTypes[i], at);
     }
+  // A C struct under #pragma pack(n): a member's alignment is at most n, its padding then written
+  // out in a packed LLVM struct. A required alignment (__declspec(align), an SSE vector) stays on
+  // MSVC's layout, and gives way to n on Itanium's (clang's two record layout builders). Where no
+  // member is aligned to more than n, the pack changes nothing and the layout stays the plain one
+  // (most of windows.h is under pack(8)).
+  auto alignmentUnderPack = [&](size_t i)
+  {
+    uint64_t own = std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]);
+    uint64_t required = sh.target.msvc() ? std::max(requiredAlignment(info.fieldTypes[i], at), declaredAt[i]) : 1;
+    return std::max(std::min<uint64_t>(own, c->pack), required);
+  };
+  if (c->pack)
+  {
+    for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+      if (!info.zeroSize[i] && alignmentUnderPack(i) < std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]))
+        info.packedTo = c->pack;
+    if (!sh.target.windows() && !info.bitfields.empty() && (info.packedTo || info.bitFieldAlign > c->pack))
+      fail(at, "the layout of " + types.toString(key, &symbols) + ": bit fields under #pragma pack off Windows are not supported");
+    info.packed = info.packed || info.packedTo;
+  }
+  uint64_t natural = 1;
+  for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+    if (!info.zeroSize[i] && !info.packed)
+      natural = std::max(natural, llvmAlignOf(info.fieldTypes[i], at));
+  info.llvmAlign = natural;
+  if (info.packed && !info.packedTo)
+    return 0;
+  bool needed = info.packedTo != 0;
+  for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+    needed = needed || declaredAt[i] > llvmAlignOf(info.fieldTypes[i], at);
   // The field after a zero-width bit field at its boundary (MSVC's: the layout's zeroWidthAligned).
   for (auto [index, boundary] : info.zeroWidthAligned)
     if (index < declaredAt.size())
@@ -252,8 +273,8 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
   for (size_t i = 0; i < info.fieldTypes.size(); ++i)
   {
     bool none = info.zeroSize[i];
-    uint64_t want = none ? 1 : std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]);
-    uint64_t llvmWant = none ? 1 : llvmAlignOf(info.fieldTypes[i], at);
+    uint64_t want = none ? 1 : info.packedTo ? alignmentUnderPack(i) : std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]);
+    uint64_t llvmWant = none || info.packedTo ? 1 : llvmAlignOf(info.fieldTypes[i], at);
     uint64_t place = (offset + want - 1) / want * want;
     if (i == firstAfterVptr && vptrShift)
       place = std::max(place, vptrShift); // (MSVC's push back after its own vtable pointer, above)
@@ -573,9 +594,18 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         info.anonymous.push_back({m, 0});
       size = std::max(size, sizeOf(ft, at));
       align = std::max(align, alignOf(ft, at));
+      info.requiredAlign = std::max(info.requiredAlign, requiredAlignment(ft, at));
       if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->alignment)
-        align = std::max(align, alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args, "the member " + memberName(m), at));
+      {
+        uint64_t declared = alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args, "the member " + memberName(m), at);
+        align = std::max(align, declared);
+        info.requiredAlign = std::max(info.requiredAlign, declared);
+      }
     }
+    info.requiredAlign = std::max(info.requiredAlign, c->alignment ? declaredAlignment(key, at) : 1);
+    // #pragma pack(n): as in a struct (alignPadding).
+    if (c->pack)
+      align = std::max(std::min<uint64_t>(align, c->pack), sh.target.msvc() ? info.requiredAlign : 1);
     // A [[packed]] union (ImmutableString's, in a packed class: MSVC's #pragma pack(1)) is as
     // large as its largest member, aligned to 1: no padding up to a member's alignment.
     if (c->attributes & ATTR_Packed)
@@ -887,6 +917,9 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   info.packed = (c->attributes & ATTR_Packed) != 0;
   uint64_t tailPadding = alignPadding(info, c, key, args, at);
   info.tailPadding = tailPadding;
+  info.requiredAlign = c->alignment ? declaredAlignment(key, at) : 1;
+  for (const Ty* field : info.fieldTypes)
+    info.requiredAlign = std::max(info.requiredAlign, requiredAlignment(field, at));
   std::string line = info.name + " = type " + (info.packed ? "<{ " : "{ ");
   for (size_t i = 0; i < info.fieldTypes.size(); ++i)
     line += (i ? ", " : "") + (info.zeroSize[i] ? std::string("[0 x i8]") : llType(info.fieldTypes[i], c));
@@ -919,6 +952,16 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
     info.vtables = collectVtables(key, c, args, baseKeys, finalIndex, primary, at);
     emitVtables(key, info, at);
   }
+}
+
+auto codegen::Emitter::requiredAlignment(const Ty* t, Node* at) -> uint64_t
+{
+  t = types.unqualified(t);
+  while (t->kind == TyKind::Array)
+    t = types.unqualified(t->inner);
+  if (t->kind == TyKind::Vector)
+    return alignOf(t, at);
+  return isClass(t) ? structFor(t, at).requiredAlign : 1;
 }
 
 auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys, const std::vector<uint32_t>& baseIndex, int primary, Node* at) -> std::vector<Vtable>

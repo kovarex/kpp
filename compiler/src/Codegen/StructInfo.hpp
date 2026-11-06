@@ -14,6 +14,8 @@ struct StructInfo
   bool empty = false;
   std::vector<bool> zeroSize;              // per field: an empty base laid out without storage
   bool packed = false;                     // [[packed]]: `<{ ... }>`, every member at alignment 1
+  uint64_t packedTo = 0;                   // #pragma pack(n) changed this layout: `<{ ... }>` with its padding as fields
+  uint64_t requiredAlign = 1;              // requiredAlignment's answer
   // Its last data member is a flexible array member (`T items[];`, C99's): a `[0 x T]` field, so
   // the size ends where the array starts (rounded up to the alignment); the elements are past it.
   bool flexible = false;
