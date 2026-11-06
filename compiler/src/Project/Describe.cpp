@@ -158,7 +158,9 @@ namespace projects
         target = request.passed[i + 1];
     s += "  return otherwise;\n}\n"
          "StringView kppProjectName() { return " + kppString(root.filename().string()) + "; }\n"
-         "StringView kppCommandLineTarget() { return " + kppString(target) + "; }\n";
+         "StringView kppCommandLineTarget() { return " + kppString(target) + "; }\n"
+         // (the default target, kppc's hostTarget: Cell::platform without any --target)
+         "StringView kppHostTarget() { return " + kppString(host::platformName()) + "; }\n";
     return s;
   }
 

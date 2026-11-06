@@ -170,7 +170,7 @@ struct Cell
   Executable target;
   Vector<String> configs; // this cell's config:: constants (config()), NAME=VALUE
   // The platform the cell is built for (kppCellPlatform): the last --target of the project's, the
-  // configuration's and the target's arguments and the command line's, Windows without one; so that
+  // configuration's and the target's arguments and the command line's, the host's without one; so that
   // configure(cell) gives a Linux build its own steps (`if (cell.platform == Platform::Windows)`
   // around a cmd command). A --target that configure(cell) adds is not in it, and kpp stops the build
   // when the platform it builds for is not this one.
@@ -614,7 +614,7 @@ void kppLastTarget(String& name, const Vector<String>& arguments)
 // generated settings').
 Platform kppCellPlatform(const Project& project, const Configuration& resolved, const Executable& target)
 {
-  String name;
+  String name = kppHostTarget(); // (none given: the host's, kppc's default target)
   kppLastTarget(name, project.arguments);
   kppLastTarget(name, resolved.arguments);
   kppLastTarget(name, target.arguments);

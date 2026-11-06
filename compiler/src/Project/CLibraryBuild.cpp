@@ -116,6 +116,25 @@ namespace projects
     return {};
   }
 
+  // One of LLVM's tools (llvm-ar, llvm-lib, llvm-rc) of the clang that builds the C libraries: beside
+  // it (Visual Studio's, the bundled toolchain's), beside its real path (a Linux distribution's
+  // /usr/bin/clang-19 is /usr/lib/llvm-19/bin/clang, where its tools are), else on PATH. Empty, the
+  // error said, where none is.
+  std::string llvmTool(const std::string& name, const std::string& library)
+  {
+    std::string file = name + host::executableSuffix();
+    fs::path clang = clangPath();
+    std::error_code ec;
+    for (const fs::path& dir : {clang.parent_path(), fs::canonical(clang, ec).parent_path()})
+      if (!dir.empty() && fs::is_regular_file(dir / file, ec))
+        return (dir / file).string();
+    if (fs::path onPath = host::findOnPath(name); !onPath.empty())
+      return onPath.string();
+    fprintf(stderr, "error: the C library %s needs %s, which is neither beside %s nor on PATH: install LLVM's tools (apt install llvm, "
+                    "dnf install llvm)\n", library.c_str(), name.c_str(), clang.string().c_str());
+    return "";
+  }
+
   fs::file_time_type modified(const fs::path& path)
   {
     std::error_code ec;
@@ -327,7 +346,10 @@ namespace projects
           fresh = false;
       if (fresh)
         continue;
-      job.commands.push_back("cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
+      std::string llvmRc = llvmTool("llvm-rc", c.name);
+      if (llvmRc.empty())
+        return false;
+      job.commands.push_back("cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg(llvmRc) +
                              " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()));
       job.scripts.push_back(script);
       job.resources.push_back(res);
@@ -397,11 +419,14 @@ namespace projects
       if (rsp)
         fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
       // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
-      fs::path tools = fs::path(clangPath()).parent_path();
-      std::string archive = job.gnu ? quoteArg((tools / "llvm-ar.exe").string()) + " rcs " + quoteArg(job.lib.string()) + " @" +
-                                        quoteArg((job.directory / "objects.rsp").string())
-                                    : quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(job.lib.string()) + " @" +
-                                        quoteArg((job.directory / "objects.rsp").string());
+      std::string tool = llvmTool(job.gnu ? "llvm-ar" : "llvm-lib", c.name);
+      if (tool.empty())
+      {
+        ok = false;
+        continue;
+      }
+      std::string archive = job.gnu ? quoteArg(tool) + " rcs " + quoteArg(job.lib.string()) + " @" + quoteArg((job.directory / "objects.rsp").string())
+                                    : quoteArg(tool) + " /nologo /out:" + quoteArg(job.lib.string()) + " @" + quoteArg((job.directory / "objects.rsp").string());
       if (job.gnu)
         fs::remove(job.lib, ec); // (llvm-ar adds to an archive that is there)
       if (host::shell(archive) != 0)

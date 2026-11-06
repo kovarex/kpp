@@ -75,5 +75,18 @@ jobs:
           echo "$out (exit $code)"
           [ "$out" = "hello from linux 3" ] && [ $code -eq 3 ]
 
+      # kpp on a project with C libraries (tests/targets/clibrary: a C file, a C++ file, a define per
+      # platform, Linux's own library with a sysroot include directory), built natively with clang 19
+      # and llvm-ar beside it, in debug and in release (ThinLTO): `42 linux 10`.
+      - name: a project with C libraries
+        run: |
+          cp -r compiler/tests/targets/clibrary /tmp/clibrary
+          cd /tmp/clibrary
+          for configuration in debug release; do
+            out=$("$GITHUB_WORKSPACE/compiler/build/kppc" "$configuration" --run | tail -n 1)
+            echo "$configuration: $out"
+            [ "$out" = "42 linux 10" ]
+          done
+
       - name: spec on a Linux host
         run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
