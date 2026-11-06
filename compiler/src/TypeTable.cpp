@@ -237,6 +237,26 @@ const Ty* TypeTable::charType(uint8_t bits, bool isUnsigned)
   return intern(t);
 }
 
+const Ty* TypeTable::wcharType()
+{
+  Ty t{TyKind::Char};
+  t.bits = this->cWcharBits;
+  t.isUnsigned = this->cWcharBits == 16;
+  t.count = 1;
+  return intern(t);
+}
+
+const Ty* TypeTable::promoted(const Ty* t)
+{
+  switch (t->kind)
+  {
+    case TyKind::Bool: return intType(32);
+    case TyKind::Char: return t->bits == 32 && t->isUnsigned ? intType(32, true) : intType(32); // ([conv.prom] 2)
+    case TyKind::Int: return t->bits < 32 ? intType(32) : t;
+    default: return t;
+  }
+}
+
 const Ty* TypeTable::floatType(uint8_t bits)
 {
   Ty t{TyKind::Float};
@@ -660,7 +680,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
   {
     case TyKind::Void: s += "void"; break;
     case TyKind::Bool: s += "bool"; break;
-    case TyKind::Char: s += t->bits == 8 ? (t->isUnsigned ? "unsigned char" : "char") : t->bits == 16 ? "char16_t" : "char32_t"; break;
+    case TyKind::Char: s += t->isWchar() ? "wchar_t" : t->bits == 8 ? (t->isUnsigned ? "char8_t" : "char") : t->bits == 16 ? "char16_t" : "char32_t"; break;
     case TyKind::Int:
       if (t->isLong())
       {

@@ -2873,8 +2873,13 @@ The smallest language that is still kpp, as the target of the first code generat
   long"; it decides Q1 of "Targets and hosts" below). The integer types are C++'s, with C++'s
   identities and overloads:
   - `char`, `signed char` and `unsigned char` are three types (`char` stays signed on every
-    target); `__int8` is `char`, as MSVC has it. `char8_t`, `char16_t`, `char32_t` are types of
-    their own. (`wchar_t` is still `char16_t`: Q2.)
+    target); `__int8` is `char`, as MSVC has it. `char8_t`, `char16_t`, `char32_t` and `wchar_t`
+    are types of their own, each with its own template instances: `wchar_t` is as wide and as
+    signed as the target's C wchar_t (Q2) but never the `char16_t` or `char32_t` of its size
+    (`Ty::isWchar`; until 2026-11-06 it was `char16_t` itself on Windows and shared `char32_t`'s
+    instances elsewhere, E's limits battery). `char32_t` promotes to `unsigned int`, as `int`
+    cannot hold its values, the other character types to `int` (C++ [conv.prom] 2,
+    `TypeTable::promoted`: the checker, codegen and overload ranking alike).
   - `int`, `long` and `long long` are three types, `unsigned long` and its siblings likewise. So
     `f(int)` beside `f(long)` is two overloads, `X<int>` and `X<long>` two instances, `1L` a
     `long`, `int` to `long` an integral conversion (no promotion: a `short` promotes to `int`

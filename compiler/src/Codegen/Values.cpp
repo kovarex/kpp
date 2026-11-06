@@ -595,9 +595,7 @@ auto codegen::Emitter::promoted(const Ty* t) -> const Ty*
   t = types.unqualified(types.stripRef(t));
   if (t->kind == TyKind::Enum)
     t = enumUnderlying(t->decl); // (then promoted as it: an `enum : uint8_t` is an int, `U200 << 1` 400)
-  if (t->kind == TyKind::Bool || t->kind == TyKind::Char || (t->kind == TyKind::Int && t->bits < 32))
-    return types.intType(32);
-  return t;
+  return types.promoted(t); // (char32_t to unsigned int)
 }
 
 auto codegen::Emitter::commonArithmetic(const Ty* a, const Ty* b) -> const Ty*

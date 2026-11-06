@@ -1,0 +1,14 @@
+// spec: char32_t promotes to unsigned int, as int cannot hold its values, and the other character types to int (C++ [conv.prom] 2): given f(int) and f(unsigned), f(U'a') calls f(unsigned), a promotion beating a conversion, and f(u'a'), f(L'a') and f(u8'a') call f(int); an unscoped enumeration over char32_t promotes as char32_t does; `U'a' + 1` is an unsigned int and `-U'a'` 4294967199, at compile time too (clang gives the same)
+// found with E's char32_t_is_unsigned_on_every_target (2026-11-06): kpp promoted char32_t to int, so f(U'a') called f(int), -U'a' was -97 and Big > 0 was false
+extern "C" import "stdio.h";
+const char* f(int) { return "int"; }
+const char* f(unsigned) { return "unsigned"; }
+enum Wide : char32_t { Big = 4000000000u };
+static_assert(Big > 0 && -U'a' == 4294967199u);
+
+int main()
+{
+  printf("%s %s %s %s %s\n", f(U'a'), f(u'a'), f(L'a'), f(u8'a'), f(Big));
+  printf("%d %u %d\n", (int)isSame<decltype(U'a' + 1), unsigned>, -U'a', (int)(Big > 0));
+  return 0;
+}

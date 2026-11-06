@@ -1,6 +1,5 @@
 // spec: char16_t, char32_t and wchar_t are three types, each with instances of its own, also where wchar_t has char16_t's size and sign (Windows) or char32_t's size (Linux, FreeBSD): a template instantiated for each answers for each (`char16_t char32_t wchar_t`)
 // factorio: E's comparison battery against C++ (lm1, 2026-11-06): on Linux Limits<char32_t> after Limits<wchar_t> gave wchar_t's values (signed, max 2147483647); on Windows which<char16_t>() answered "wchar_t"
-// pending: an instance of a template is shared by character types of one size whose names the type table writes alike (TypeTable.cpp writes every 16-bit character type char16_t and every 32-bit one char32_t), so the second one's instance is the first's (D)
 extern "C" import "stdio.h";
 template <typename T> const char* which()
 {

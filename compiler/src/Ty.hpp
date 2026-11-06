@@ -11,7 +11,8 @@ enum class TyKind : uint8_t
 {
   Void,
   Bool,
-  Char,    // bits = 8/16/32, isUnsigned
+  Char,    // bits = 8/16/32, isUnsigned; count = 1 marks wchar_t (TypeTable::wcharType): a type of its own beside
+           // char16_t and char32_t, as wide and as signed as the target's C wchar_t
   Int,     // bits = 8/16/32/64, isUnsigned; count = 1 marks C's `long` (TypeTable::longType): a type of its
            // own beside int and long long, as wide as the target's C long
   Float,   // bits = 32/64
@@ -45,6 +46,7 @@ struct Ty
   bool isKnown() const { return kind != TyKind::Unknown; }
   bool isBraceList() const { return kind == TyKind::Class && count == 1; }
   bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
+  bool isWchar() const { return kind == TyKind::Char && count == 1; } // wchar_t
   bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
   bool isObjectValue() const { return kind == TyKind::Value && count == 1; }     // TypeTable::objectValue
 

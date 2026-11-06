@@ -35,10 +35,17 @@ public:
   }
   uint8_t longBits() const { return this->cLongBits; }
   uint8_t wcharBits() const { return this->cWcharBits; }
-  const Ty* wcharType() { return charType(this->cWcharBits, this->cWcharBits == 16); }
+  // wchar_t: a type of its own (count = 1), never char16_t or char32_t, which have its size and on
+  // Windows its sign too: as wide as the target's C wchar_t, unsigned where that is 16 bits.
+  const Ty* wcharType();
   // The integer conversion rank ([conv.rank]): long long above long above int above short above
   // the 8-bit types; 0 for a type that is no integer.
   static int integerRank(const Ty* t);
+  // The type an arithmetic type t (unqualified) promotes to ([conv.prom]): bool, the character types
+  // and the integers narrower than int to int, but char32_t to unsigned int, as int cannot hold its
+  // values; any other type (a wider integer, a floating one) is itself. Not an enumeration's: the
+  // caller promotes its underlying type.
+  const Ty* promoted(const Ty* t);
   // The usual arithmetic conversions ([expr.arith.conv]) of two promoted arithmetic types.
   const Ty* usualArithmetic(const Ty* a, const Ty* b);
   const Ty* sizeType() { return intType(64, true); }

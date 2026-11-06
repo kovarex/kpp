@@ -164,8 +164,10 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
   {
     case TyKind::Bool: return one(basic("bool", 8, "DW_ATE_boolean"));
     case TyKind::Char:
+      if (t->isWchar()) // (as clang names and encodes it: the debuggers' wchar_t)
+        return one(basic("wchar_t", t->bits, t->isUnsigned ? "DW_ATE_unsigned" : "DW_ATE_signed"));
       if (t->bits == 8)
-        return one(t->isUnsigned ? basic("unsigned char", 8, "DW_ATE_unsigned_char") : basic("char", 8, "DW_ATE_signed_char"));
+        return one(t->isUnsigned ? basic("char8_t", 8, "DW_ATE_UTF") : basic("char", 8, "DW_ATE_signed_char"));
       return one(basic(t->bits == 16 ? "char16_t" : "char32_t", t->bits, "DW_ATE_UTF"));
     case TyKind::Float: return one(basic(t->bits == 32 ? "float" : "double", t->bits, "DW_ATE_float"));
     case TyKind::Nullptr: return one("!DIBasicType(tag: DW_TAG_unspecified_type, name: \"decltype(nullptr)\")");

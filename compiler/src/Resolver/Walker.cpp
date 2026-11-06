@@ -4819,8 +4819,7 @@ auto GlobalScope::Impl::Walker::promote(const Ty* t) -> const Ty*
   t = types.unqualified(types.stripRef(t));
   switch (t->kind)
   {
-    case TyKind::Bool: case TyKind::Char: return types.intType(32);
-    case TyKind::Int: return t->bits < 32 ? types.intType(32) : t;
+    case TyKind::Bool: case TyKind::Char: case TyKind::Int: return types.promoted(t); // (char32_t to unsigned int)
     case TyKind::Enum:
     {
       // One with a fixed underlying type promotes as that type does ([conv.prom]/4: an `enum :

@@ -648,7 +648,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     case TyKind::Char:
       if (isInt(a))
       {
-        bool promotion = p == types.intType(32) && (a->kind == TyKind::Bool || a->kind == TyKind::Char || a->bits < 32); // to int only, never long
+        // to int only, never long; char32_t to unsigned int, not int ([conv.prom] 2)
+        bool promotion = p != a && p == types.promoted(a);
         return promotion ? 2 : 3;
       }
       if (a->kind == TyKind::Float)
@@ -668,8 +669,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         {
           if (p == u)
             return 2;
-          bool uPromotes = u->kind == TyKind::Bool || u->kind == TyKind::Char || (u->kind == TyKind::Int && u->bits < 32);
-          return toInt && uPromotes ? 2 : 3;
+          return p == types.promoted(types.unqualified(u)) ? 2 : 3;
         }
         return toInt ? 2 : 3;
       }
