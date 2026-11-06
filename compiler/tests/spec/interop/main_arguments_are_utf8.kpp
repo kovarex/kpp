@@ -1,0 +1,17 @@
+// spec: main's argv is UTF-8 on every target, as all narrow text in kpp is (filesystem.md: a path from a String is read as UTF-8; design.md "Targets and hosts": `main`, with UTF-8 `argv`), so an argument names the file it names: `ž` arrives as its two UTF-8 bytes, `日本` as six, where the Windows C runtime's argv is in the ANSI code page (`c5be e697a5e69cac`)
+// factorio: E's process battery against C++ (en3, 2026-11-06): on Windows argv held the ANSI code page's bytes (`ž` as 9e in 1250, `日本` as `??`), so filesystem::exists(path(argv[1])) missed a file named ž.txt that the same C++ program finds (C++ reads a narrow path in the ANSI code page too)
+// run: ž 日本
+// pending on windows: the Windows entry passes the C runtime's ANSI argv to main (B)
+extern "C" import "stdio.h";
+int main(int argc, char** argv)
+{
+  for (int i = 1; i < argc; ++i)
+  {
+    if (i > 1)
+      printf(" ");
+    for (const char* p = argv[i]; *p; ++p)
+      printf("%02x", (unsigned char)*p);
+  }
+  printf("\n");
+  return 0;
+}
