@@ -80,7 +80,7 @@ auto GlobalScope::Impl::replayUses(const std::vector<CollectedUse>& uses) -> voi
     if (kind == USE_RanBody)
       ranBody(static_cast<const FunctionDecl*>(what));
     else if (kind == USE_ReportedError)
-      reportCheckerErrorText(*static_cast<const std::string*>(what));
+      reportCheckerError(*static_cast<const CheckerError*>(what));
   replayCollected(uses);
 }
 

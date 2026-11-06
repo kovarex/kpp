@@ -38,6 +38,27 @@ extern "C" __declspec(dllimport) void __stdcall GetCurrentThreadStackLimits(unsi
 
 enum class ScopeKind : uint8_t { Namespace, Class, Enum };
 
+// An error the checker reported: where (the file and the token) and what. Rendered as the text a
+// build prints (`path:line: error: message`, the place as sourceLocation writes it) only when the
+// errors are asked for (GlobalScope::checkerErrors); kept by place, so that what asks whether a
+// function or a range of tokens has one reads the place, never the text.
+struct CheckerError
+{
+  bool operator==(const CheckerError&) const = default;
+  std::string text() const; // (TypeOfAst.cpp)
+  struct Hash
+  {
+    size_t operator()(const CheckerError& e) const
+    {
+      return std::hash<const void*>()(e.file) ^ (size_t(e.token) * 2654435761u) ^ (std::hash<std::string>()(e.message) << 1);
+    }
+  };
+
+  const ParsedFile* file;
+  uint32_t token;
+  std::string message;
+};
+
 struct Entry
 {
   Decl* decl;

@@ -1,0 +1,27 @@
+// spec: a compile server's build after an edit above an error the edit leaves alone reports that error at its new line, as a build from scratch does (typed checker errors keep their place, not their text: design.md 24)
+//--- step: an error in a function below another
+int helper()
+{
+  return 2;
+}
+int broken() { return nosuchname; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// error: server_kept_error_moves_with_its_line.kpp:5: error: 'nosuchname' is not declared
+//--- step: two lines added to the body above it
+int helper()
+{
+  int a = 1;
+  int b = 1;
+  return a + b;
+}
+int broken() { return nosuchname; }
+int main()
+{
+  println(helper());
+  return 0;
+}
+// error: server_kept_error_moves_with_its_line.kpp:7: error: 'nosuchname' is not declared

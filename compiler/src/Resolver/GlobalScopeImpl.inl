@@ -167,12 +167,11 @@
   std::unordered_map<Decl*, std::vector<VariableDecl*>> variableSpecializations;
   std::unordered_map<Decl*, Scope*> specializationMembers;         // `int Flag<true>::value() {...}` -> Flag<true>'s scope (finishIndex).
   std::mutex checkerErrorsMutex;
-  // `path:line: error: ...`, each once (a failed static_assert), with the units that reported it
-  // (reportingUnit; null: none, or a build that records no units).
-  std::unordered_map<std::string, std::vector<const void*>> checkerErrorSet;
-  // Where each was reported (its file and token; GlobalScope::checkerErrorIn).
-  std::unordered_map<std::string, std::pair<const ParsedFile*, uint32_t>> checkerErrorPlaces;
-  std::unordered_set<std::string> reportedErrorTexts;              // what a collected USE_ReportedError points at (never erased)
+  // Each error the checker reported (its file, token and message; rendered as text only when the
+  // errors are asked for, checkerErrors), with the units that reported it (reportingUnit; null: none,
+  // or a build that records no units).
+  std::unordered_map<CheckerError, std::vector<const void*>, CheckerError::Hash> checkerErrorSet;
+  std::unordered_set<CheckerError, CheckerError::Hash> reportedErrors; // what a collected USE_ReportedError points at (never erased)
   struct LayoutAssert                                              // a static_assert on a class's size or alignment
   {
     StaticAssertDecl* decl = nullptr;

@@ -1362,7 +1362,8 @@ auto GlobalScope::Impl::findStaticBoolValue(ClassDecl* c, int depth) -> Variable
   return nullptr;
 }
 
-auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> std::string
+// `path:line` of a token, `path:line:column` with --diagnostic-columns (sourceLocation).
+static std::string placeOf(const ParsedFile* file, uint32_t token)
 {
   if (!file || !file->tokens || file->tokens->empty())
     return file ? file->path : std::string("?");
@@ -1372,22 +1373,23 @@ auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> st
   return sourceLocation(file->path, starts.line(offset), starts.column(offset));
 }
 
+auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> std::string { return placeOf(file, token); }
+
+std::string CheckerError::text() const { return placeOf(this->file, this->token) + ": error: " + this->message; }
+
 auto GlobalScope::Impl::reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message) -> void
 {
-  std::string text = locationOf(file, token) + ": error: " + message;
-  reportCheckerErrorText(text);
-  std::lock_guard lock(checkerErrorsMutex);
-  checkerErrorPlaces[text] = {file, token};
+  reportCheckerError(CheckerError{file, token, message});
 }
 
-auto GlobalScope::Impl::reportCheckerErrorText(const std::string& text) -> void
+auto GlobalScope::Impl::reportCheckerError(const CheckerError& error) -> void
 {
   std::lock_guard lock(checkerErrorsMutex);
-  std::vector<const void*>& units = checkerErrorSet[text];
+  std::vector<const void*>& units = checkerErrorSet[error];
   if (std::find(units.begin(), units.end(), reportingUnit) == units.end())
     units.push_back(reportingUnit);
   if (usesCollector) // (a cached answer's computation: its later askers report it too, replayUses)
-    usesCollector->push_back({USE_ReportedError, &*reportedErrorTexts.insert(text).first});
+    usesCollector->push_back({USE_ReportedError, &*reportedErrors.insert(error).first});
 }
 
 auto GlobalScope::Impl::forgetErrorsOf(const std::unordered_set<const void*>& units) -> void
@@ -1399,10 +1401,7 @@ auto GlobalScope::Impl::forgetErrorsOf(const std::unordered_set<const void*>& un
   {
     std::erase_if(it->second, [&](const void* u) { return u && units.count(u); });
     if (it->second.empty())
-    {
-      checkerErrorPlaces.erase(it->first);
       it = checkerErrorSet.erase(it);
-    }
     else
       ++it;
   }

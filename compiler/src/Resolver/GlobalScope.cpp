@@ -378,9 +378,14 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
     return std::make_tuple(e.substr(0, colon), std::strtol(e.c_str() + colon + 1, nullptr, 10), e);
   };
   std::lock_guard lock(impl->checkerErrorsMutex);
-  std::unordered_set<std::string> all;
+  std::unordered_set<std::string> all; // (rendered: two errors that read the same are one)
+  std::unordered_set<std::string> messages;
   for (const auto& [e, units] : impl->checkerErrorSet)
-    all.insert(e);
+  {
+    std::string text = e.text();
+    messages.insert(text);
+    all.insert(std::move(text));
+  }
   for (const auto& [f, errors] : impl->instanceAssertErrors)
     if (impl->emitted(f))
       all.insert(errors.begin(), errors.end());
@@ -389,7 +394,7 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
   for (const auto& [f, errors] : impl->instanceNameErrors)
     if (impl->emitted(f))
       for (const std::string& e : errors)
-        if (!impl->checkerErrorSet.count(e.substr(0, e.find(" (in "))))
+        if (!messages.count(e.substr(0, e.find(" (in "))))
           all.insert(e);
   std::vector<std::string> out(all.begin(), all.end());
   std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
@@ -453,8 +458,7 @@ bool GlobalScope::unitlessErrorIn(const std::string& path)
 {
   std::lock_guard lock(impl->checkerErrorsMutex);
   for (const auto& [e, units] : impl->checkerErrorSet)
-    if (e.size() > path.size() && e.compare(0, path.size(), path) == 0 && e[path.size()] == ':' &&
-        std::find(units.begin(), units.end(), nullptr) != units.end())
+    if (e.file && e.file->path == path && std::find(units.begin(), units.end(), nullptr) != units.end())
       return true;
   return false;
 }
@@ -467,8 +471,7 @@ bool GlobalScope::checkerErrorIn(const FunctionDecl* f)
   if (impl->instanceNameErrors.count(f) || impl->instanceAssertErrors.count(f))
     return true; // (an instance's copy: its own errors)
   for (const auto& [e, units] : impl->checkerErrorSet)
-    if (auto it = impl->checkerErrorPlaces.find(e); it != impl->checkerErrorPlaces.end() && it->second.first == f->file && it->second.second >= f->token &&
-                                                     it->second.second < f->endToken)
+    if (e.file == f->file && e.token >= f->token && e.token < f->endToken)
       return true;
   return false;
 }
@@ -477,8 +480,7 @@ bool GlobalScope::checkerErrorWithin(const ParsedFile* file, uint32_t from, uint
 {
   std::lock_guard lock(impl->checkerErrorsMutex);
   for (const auto& [e, units] : impl->checkerErrorSet)
-    if (auto it = impl->checkerErrorPlaces.find(e); it != impl->checkerErrorPlaces.end() && it->second.first == file && it->second.second >= from &&
-                                                     it->second.second <= to)
+    if (e.file == file && e.token >= from && e.token <= to)
       return true;
   return false;
 }
@@ -488,7 +490,7 @@ bool GlobalScope::undeclaredReported(const std::string& name)
   std::string said = "'" + name + "' is not declared";
   std::lock_guard lock(impl->checkerErrorsMutex);
   for (const auto& [e, units] : impl->checkerErrorSet)
-    if (e.size() >= said.size() && e.compare(e.size() - said.size(), said.size(), said) == 0)
+    if (e.message.size() >= said.size() && e.message.compare(e.message.size() - said.size(), said.size(), said) == 0)
       return true;
   return false;
 }
