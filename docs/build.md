@@ -1189,7 +1189,9 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **publish:** on master only, and only when the jobs it needs are green (run_tests' halves, every
   spec shard, package, linux_host): the release and kpp.net (below). If one of them is red or
   cancelled it publishes nothing: no release, no tag, no upload, and Latest stays where it was. It
-  does not wait for the FreeBSD jobs, so a red one of those alone does not stop a release. A pull
+  does not wait for the FreeBSD jobs, so a red one of those alone does not stop a release. It checks
+  the artifacts it downloads against the SHA-256 their jobs wrote (`tools\release\check-files.ps1`),
+  downloads them once more if they differ, and publishes nothing if they differ again. A pull
   request packages nothing.
 - **libraries_freebsd_build, libraries_freebsd_run:** on every run, after build; publish
   does not wait for them (kovarex, 2026-11-04: FreeBSD binaries' correctness belongs to kpp's own

@@ -530,6 +530,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      sums: ${{ steps.package.outputs.sums }}
     steps:
       - uses: actions/checkout@v4
 
@@ -584,7 +585,9 @@ jobs:
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { throw 'no Inno Setup' }
 
+      # (sums: each file's SHA-256, for publish's tools\release\check-files.ps1)
       - name: Package
+        id: package
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -592,6 +595,9 @@ jobs:
           tools\release\package.ps1
           if (-not (Test-Path "build\release\kpp-$env:KPP_VERSION-setup.exe")) { throw 'no installer' }
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
+          $files = "kpp-$env:KPP_VERSION.zip", "kpp-$env:KPP_VERSION-setup.exe", 'kpp/kpp-vscode.vsix', 'kpp/kpp-visualstudio.vsix'
+          $sums = ($files | ForEach-Object { "$_=$((Get-FileHash -Algorithm SHA256 "build/release/$_").Hash.ToLowerInvariant())" }) -join ' '
+          "sums=$sums" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
@@ -613,6 +619,8 @@ jobs:
   linux_host:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    outputs:
+      sums: ${{ steps.package.outputs.sums }}
     env:
       # Upstream SDL 3.4.18's headers for the two interop snippets that import SDL3/SDL.h, as ci.yml's
       # spec job has them: kpp.net's mirror, else SDL's release, checked by SHA-256.
@@ -755,7 +763,12 @@ jobs:
       # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so
       # it needs only glibc (2.39, this runner's) and the system's clang 19 and lld.
       - name: Package
-        run: sh tools/release/package-linux.sh
+        id: package
+        run: |
+          sh tools/release/package-linux.sh
+          cd build/release
+          file=$(ls kpp-*-linux-x86_64.tar.gz)
+          echo "sums=$file=$(sha256sum "$file" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -776,15 +789,48 @@ jobs:
     env:
       KPP_VERSION: ${{ needs.package.outputs.version }}
       KPP_TAG: ${{ needs.package.outputs.tag }}
+      KPP_SUMS: ${{ needs.package.outputs.sums }} ${{ needs.linux_host.outputs.sums }}
     steps:
       - uses: actions/checkout@v4
 
+      # The artifacts, checked against the SHA-256 their jobs wrote and downloaded once more if they
+      # differ: on 2026-11-06 (run 42236543487) download-artifact ended with no error after 50 MB of a
+      # 116 MB zip. A second difference fails the next step, and nothing is published.
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: package
           path: build/release
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kpp-linux
+          path: build/release
+
+      - name: The downloaded files
+        id: downloaded
+        continue-on-error: true
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\release\check-files.ps1 -Dir build\release -Sums $env:KPP_SUMS
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Start the download again
+        if: steps.downloaded.outcome == 'failure'
+        shell: powershell
+        run: Remove-Item -Recurse -Force build\release
+
+      - uses: actions/download-artifact@v4
+        if: steps.downloaded.outcome == 'failure'
+        continue-on-error: true
+        with:
+          name: package
+          path: build/release
+
+      - uses: actions/download-artifact@v4
+        if: steps.downloaded.outcome == 'failure'
+        continue-on-error: true
         with:
           name: kpp-linux
           path: build/release
@@ -793,6 +839,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\release\check-files.ps1 -Dir build\release -Sums $env:KPP_SUMS
+          if ($LASTEXITCODE -ne 0) { throw 'the artifacts are not the files their jobs built' }
           foreach ($f in "build\release\kpp-$env:KPP_VERSION.zip", "build\release\kpp-$env:KPP_VERSION-setup.exe", "build\release\kpp\kpp-vscode.vsix", "build\release\kpp\kpp-visualstudio.vsix", "build\release\kpp-$env:KPP_VERSION-linux-x86_64.tar.gz") {
             if (-not (Test-Path $f)) { throw "no $f in the artifact package" }
             "$f $((Get-Item $f).Length) bytes"
