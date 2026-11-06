@@ -1,0 +1,35 @@
+// spec: at compile time a call's template arguments are deduced from its arguments' types with the calling function's local aliases in scope over what the scope declares of their names: `twice(static_cast<Narrow>(v))` with a local `using Narrow = T;` (T = i64) beside a global `using Narrow = u8;` doubles 300 as an i64, 600, and a local `using C = M;` beside a program's class C deduces M; the same at run time (clang gives the same)
+// found by thread K's gcd with local aliases (2026-11-06): the deduction typed `static_cast<Narrow>(v)` again without the local alias in scope, so it deduced u8 and doubled 44: 88 at compile time where run time gave 600, a silent wrong answer; beside a class C, Ratio's gcd was no constant
+using Narrow = u8;
+
+class C
+{
+public:
+  int c = 3;
+};
+
+template<typename T> constexpr T twice(T v) { return v + v; }
+template<typename T> constexpr MakeUnsigned<T> magnitude(T v) { return static_cast<MakeUnsigned<T>>(v < 0 ? -v : v); }
+
+template<typename T>
+constexpr i64 viaLocal(T v)
+{
+  using Narrow = T;
+  return twice(static_cast<Narrow>(v));
+}
+
+template<typename M>
+constexpr u64 viaClassName(M m)
+{
+  using C = M;
+  return magnitude(static_cast<C>(m));
+}
+
+constexpr i64 r = viaLocal(i64(300));
+constexpr u64 s = viaClassName(i64(-7));
+
+int main()
+{
+  println(r, " ", s, " ", viaLocal(i64(300)), " ", viaClassName(i64(-7)));
+  return 0;
+}

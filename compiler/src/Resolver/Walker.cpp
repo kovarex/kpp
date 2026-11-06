@@ -1095,6 +1095,19 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
     l.decl = named;
     l.scope = named->ownScope;
   }
+  // A name an earlier walk found among its function's local aliases, classes and enumerations, walked
+  // again where those are not in scope (a copy typed on its own: typeOfSignatureExpression's probe,
+  // which deduces a call's template arguments at compile time), names that declaration still, not
+  // what the scope declares of the name: gcd's `using C = GcdType<M, N>;`, in `unsignedMagnitude(
+  // static_cast<C>(m))`, deduced a program's class C (D, 2026-11-06).
+  if (l.found != Found::Local && t->resolved && t->name.parts.size() == 1 && t->resolved->parent && t->resolved->parent->kind == NodeKind::FunctionDecl &&
+      (t->resolved->kind == NodeKind::UsingAliasDecl || t->resolved->kind == NodeKind::ClassDecl || t->resolved->kind == NodeKind::EnumDecl ||
+       (t->resolved->kind == NodeKind::VariableDecl && (t->resolved->flags & DF_Typedef))))
+  {
+    l.found = Found::Local;
+    l.decl = t->resolved;
+    l.scope = t->resolved->ownScope;
+  }
   t->resolved = l.decl;
   if (l.found == Found::No)
   {
