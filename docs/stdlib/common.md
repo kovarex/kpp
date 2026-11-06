@@ -23,9 +23,10 @@ element type, and a count of elements whose bytes no allocation can hold throws 
 
 `::operator new(n)` and `operator new[](n)` give a block of n bytes (at least one), and throw
 BadAlloc when it cannot be had; `::operator delete(p)` and `operator delete[](p)`, with or without
-the size after p, give it back, nothing for null. *Difference from C++*: a program does not replace
-them (an error), and a new-expression does not call them (it allocates with malloc, or with the
-class's own operator new; design.md, "Allocation functions").
+the size after p, give it back, nothing for null; new[] is new, a sized one the unsized one, delete[]
+delete. A program may replace any of them, and new and delete then call them (design.md,
+"Allocation functions"). *Difference from C++*: the library's containers and strings allocate with
+malloc, never through them, so a replacement does not see their memory.
 
 ## Element requirements
 

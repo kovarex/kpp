@@ -929,8 +929,11 @@ std::vector<std::string> GlobalScope::topLevelClashes()
             {
               // Overloads of one function; but the parameters of one of the library's is that function
               // declared again (`gcd(long long, long long)`), which the program cannot have twice.
+              // (a replacement of the library's allocation functions, `void* operator new(size_t)`, is no
+              // second definition: the program's replaces it, design.md "Allocation functions")
               for (const Entry& l : entries)
                 if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
+                    !impl->replacedAllocation(static_cast<FunctionDecl*>(l.decl)) &&
                     sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
                 {
                   out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
@@ -1016,6 +1019,9 @@ const Ty* GlobalScope::typeOfAst(Type* t, Decl* context)
 FunctionDecl* GlobalScope::declarationOf(FunctionDecl* def) { return impl->declarationOfDefinition(def); }
 
 Decl* GlobalScope::owningClass(Decl* d) { return impl->owningClassOf(d); }
+bool GlobalScope::programAllocationFunctions() { return impl->programAllocationFunctions(); }
+bool GlobalScope::replacedAllocation(const FunctionDecl* f) { return impl->replacedAllocation(f); }
+FunctionDecl* GlobalScope::globalDeallocation(bool array, bool sized) { return impl->globalDeallocation(array, sized); }
 
 TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArgs)
 {

@@ -637,7 +637,8 @@ auto codegen::Emitter::collectFunctions(Span<Decl*> decls, std::vector<FunctionD
       case NodeKind::FunctionDecl:
       {
         auto* f = static_cast<FunctionDecl*>(d);
-        if (f->body && f->templateParams.empty() && !global.isTemplateContext(f) && !(f->file && f->file->isImported))
+        // (not the library's allocation function a program replaced: the program's is that function)
+        if (f->body && f->templateParams.empty() && !global.isTemplateContext(f) && !(f->file && f->file->isImported) && !global.replacedAllocation(f))
           out.push_back(f);
         break;
       }

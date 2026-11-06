@@ -1,0 +1,55 @@
+// spec: a class's own operator new[] and operator delete[] are called by new[] and delete[] ([expr.new] 9-12, [expr.delete] 10): with the size the elements and the cookie take (the cookie a class with a destructor has), after the elements' destructors, never for null, a placement form's with its arguments, and the operator delete[] when an element's constructor throws, after the elements built are destroyed; `::new` and `::delete[]` pass them by. A sized operator delete[] gets the size operator new[] was asked for, which a cookie keeps for an element type without one too (as clang has it on the Itanium ABI: clang for windows passes one element's size there)
+// factorio: the class operator new work (thread J, the forms left over); clang's output, the sized line as clang's for freebsd
+int throwsMade = 0;
+struct Trivial
+{
+  int v;
+  void* operator new[](size_t size) { println("trivial new[] ", size); return malloc(size); }
+  void operator delete[](void* p) { println("trivial delete[]"); free(p); }
+};
+struct TrivialSized
+{
+  int v;
+  void* operator new[](size_t size) { println("sized new[] ", size); return malloc(size); }
+  void operator delete[](void* p, size_t size) { println("sized delete[] ", size); free(p); }
+};
+struct Destructed
+{
+  int v = 1;
+  ~Destructed() { println("~", v); }
+  void* operator new[](size_t size) { println("destructed new[] ", size); return malloc(size); }
+  void operator delete[](void* p, size_t size) { println("destructed delete[] ", size); free(p); }
+};
+struct Throws
+{
+  Throws() { if (++throwsMade == 3) throw throwsMade; }
+  ~Throws() { println("~Throws"); }
+  void* operator new[](size_t size) { println("throws new[] ", size); return malloc(size); }
+  void operator delete[](void* p) { println("throws delete[]"); free(p); }
+};
+struct Arena { char bytes[64]; int used = 0; };
+struct Pooled
+{
+  int v = 5;
+  void* operator new[](size_t size, Arena& a) { println("arena new[] ", size); void* p = a.bytes + a.used; a.used += int(size); return p; }
+};
+int main()
+{
+  int n = 3;
+  Trivial* a = new Trivial[n];
+  delete[] a;
+  TrivialSized* b = new TrivialSized[n];
+  delete[] b;
+  Destructed* c = new Destructed[2];
+  delete[] c;
+  try { new Throws[4]; } catch (int x) { println("caught ", x); }
+  Trivial* g = ::new Trivial[2];
+  ::delete[] g;
+  Trivial* none = nullptr;
+  delete[] none;
+  Arena arena;
+  Pooled* p = new (arena) Pooled[2];
+  println(p[1].v, " ", arena.used);
+  println("end");
+  return 0;
+}

@@ -1,0 +1,47 @@
+// spec: a delete through a virtual destructor gives the memory back through the operator delete of the object's own class ([expr.delete] 10, [class.free] 4): a derived class's own, sized with the whole object's size, one it inherits, and through a second base the one the most derived class declares; free for a class with none
+// factorio: the class operator new work (thread J, the forms left over: it was refused); clang's output
+class Base
+{
+public:
+  int a = 1;
+  virtual ~Base() { println("~Base"); }
+};
+class Pooled : public Base
+{
+public:
+  long long b = 2;
+  ~Pooled() override { println("~Pooled"); }
+  void* operator new(size_t size) { println("pooled new ", size); return malloc(size); }
+  void operator delete(void* p, size_t size) { println("pooled delete ", size); free(p); }
+};
+class MorePooled : public Pooled
+{
+public:
+  long long c = 3;
+};
+class Other
+{
+public:
+  int o = 4;
+  virtual ~Other() { println("~Other"); }
+};
+class Second : public Other, public Pooled
+{
+public:
+  ~Second() override { println("~Second"); }
+  void operator delete(void* p) { println("second delete"); free(p); }
+};
+int main()
+{
+  Base* plain = new Base;
+  delete plain;
+  Base* p = new Pooled;
+  delete p;
+  Base* m = new MorePooled;
+  delete m;
+  Pooled* through = new Second;
+  delete through;
+  Base* none = nullptr;
+  delete none;
+  return 0;
+}

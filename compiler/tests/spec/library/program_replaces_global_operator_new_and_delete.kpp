@@ -1,0 +1,72 @@
+// spec: a program replaces the library's global allocation functions by defining them ([replacement.functions], [new.delete]), and declares placement forms of its own: every new-expression and delete-expression then calls the global ones, a delete with the size when there is a sized one (as clang's sized deallocation), new[] through the library's operator new[] (which is operator new), delete[] through the library's operator delete[] (operator delete), a placement form's operator delete when the constructor throws, and a delete through a virtual destructor with the whole object's size
+// factorio: the class operator new work (thread J, the forms left over: a program's own were refused); clang's output
+int news = 0;
+int deletes = 0;
+int sizedDeletes = 0;
+void* operator new(usize size)
+{
+  ++news;
+  return malloc(size == 0 ? 1 : size);
+}
+void operator delete(void* p)
+{
+  ++deletes;
+  free(p);
+}
+void operator delete(void* p, usize size)
+{
+  ++sizedDeletes;
+  println("sized delete ", size);
+  free(p);
+}
+void* operator new(usize size, int tag)
+{
+  println("tagged new ", size, " ", tag);
+  return operator new(size);
+}
+void operator delete(void* p, int tag)
+{
+  println("tagged delete ", tag);
+  operator delete(p);
+}
+struct Thing
+{
+  int a = 1;
+  ~Thing() {}
+};
+struct Throws
+{
+  Throws() { throw 2; }
+};
+class Base
+{
+public:
+  int b = 2;
+  virtual ~Base() {}
+};
+class Derived : public Base
+{
+public:
+  long long d = 3;
+};
+int main()
+{
+  int* i = new int(3);
+  delete i;
+  Thing* t = new Thing;
+  delete t;
+  Thing* things = new Thing[3];
+  delete[] things;
+  int* numbers = ::new int[2];
+  ::delete[] numbers;
+  Base* b = new Derived;
+  delete b;
+  void* raw = ::operator new(8);
+  ::operator delete(raw);
+  int* tagged = new (7) int(1);
+  delete tagged;
+  try { new (9) Throws; } catch (int x) { println("caught ", x); }
+  try { new Throws; } catch (int x) { println("caught ", x); }
+  println(news, " ", deletes, " ", sizedDeletes);
+  return 0;
+}

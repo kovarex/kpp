@@ -633,28 +633,39 @@ meant:
   arguments ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8). Overloaded operators
   follow the built-in operator's order.
 - `new` allocates before it evaluates the initializer's arguments ([expr.new] 19).
+- Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
+  of `+`), and so does kpp: code must not depend on it.
 
 Allocation functions (2026-11-06). `new T` of a class with its own operator new (a member, or a
 base's) calls it with the size and the placement arguments, `new (args) T` choosing among the
 class's by overload resolution, and a delete-expression calls the class's operator delete after the
 destructor: its `operator delete(void*)`, else `operator delete(void*, size_t)` with the class's
-size, never for a null pointer. When the constructor throws, the memory goes back through the
-class's usual operator delete for `new T`, and for a placement form through the one whose
-parameters after the first are its operator new's, or none. They are static members whether or not
-they say so; the type checker chooses them and records them on the node (NewExpr::allocator,
-deallocator; DeleteExpr::deallocator; design.md 24). A class's operator new hides the global ones
-(`new (p) T` it does not take is an error), and `::new` and `::delete` pass the class's by. The
-library declares the global ones, `::operator new(n)`, `operator new[](n)`, `::operator delete(p)`
-(sized or not: stdlib/core/Sizes.kpp), malloc and free with BadAlloc; a new-expression of a class
-without its own allocates with malloc itself. Not supported yet, and an error where declared: a
-class's operator new[] and operator delete[], a polymorphic class's operator delete (C++ calls the
-deleted object's class's through a virtual destructor), a program's own global allocation
-functions, and an operator new that is a template. Specs: classes/class_operator_new_and_delete_are_called,
+size, never for a null pointer. `new T[n]` and `delete[]` call the class's operator new[] and
+operator delete[] alike, with the size the elements and the cookie take; a sized operator delete[]
+gets the size operator new[] was asked for, which a cookie keeps for an element type without a
+destructor too (as the Itanium ABI has it; clang for Windows passes one element's size). A delete
+through a virtual destructor calls the operator delete of the object's own class, which slot -3 of
+its vtable holds (a function calling it, null for free). When the constructor throws, the memory
+goes back through the class's usual operator delete for `new T`, and for a placement form through
+the one whose parameters after the first are its operator new's, or none. They are static members
+whether or not they say so; the type checker chooses them and records them on the node
+(NewExpr::allocator, deallocator; DeleteExpr::deallocator; design.md 24). A class's operator new
+hides the global ones (`new (p) T` it does not take is an error), and `::new` and `::delete` pass
+the class's by. The library declares the global ones, `::operator new(n)`, `operator new[](n)`,
+`::operator delete(p)` (sized or not: stdlib/core/Sizes.kpp), malloc and free with BadAlloc, calling
+each other as C++'s do (new[] is new, a sized one the unsized one, delete[] delete). A program may
+replace any of them by defining it ([replacement.functions]): its definition is that function (the
+library's is never a candidate, nor emitted), and it may declare placement forms of its own. When a
+program declares any global allocation function, every new-expression and delete-expression without
+a class's own calls the global ones (a delete the sized one, as clang's sized deallocation; delete[]
+the sized one when there is a cookie; a virtual destructor's through slot -3 with the whole object's
+size); otherwise new and delete allocate with malloc and free themselves. The library's containers
+allocate with malloc either way (docs/stdlib-conformance.md). Not supported yet, and an error: an
+operator new that is a template. Specs: classes/class_operator_new_and_delete_are_called,
 classes/class_operator_delete_when_the_constructor_throws, classes/class_template_operator_new_and_delete,
-library/global_operator_new_and_delete, and the errors classes/placement_new_without_the_class_operator_new,
-classes/delete_without_a_usual_class_operator_delete, classes/class_operator_new_array_is_not_supported_yet.
-- Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
-  of `+`), and so does kpp: code must not depend on it.
+classes/class_operator_new_array_and_delete_array, classes/polymorphic_class_operator_delete,
+library/global_operator_new_and_delete, library/program_replaces_global_operator_new_and_delete, and the errors
+classes/placement_new_without_the_class_operator_new, classes/delete_without_a_usual_class_operator_delete.
 
 An assignment used as an lvalue (`int& r = (a[i++] = v);`) is the place it stored to; its left
 operand is evaluated once. Specs: expressions/assignment_evaluates_right_operand_first,

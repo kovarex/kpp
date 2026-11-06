@@ -40,12 +40,22 @@
     Value conditionalOfBranches(ConditionalExpr* c);
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
+    int programAllocates = -1; // GlobalScope::programAllocationFunctions, asked once (-1: not yet)
+    bool programAllocationFunctions();
+
+    // The call (for emitCall) that gives back the block a new-expression allocated without a class's
+    // own operator new: free, or, when the program declares its own allocation functions, the global
+    // operator delete (array: delete[]), the one that takes the size when size is given and there is
+    // one ([expr.delete] 10; as clang's sized deallocation).
+    std::string globalFreeCall(const std::string& block, const std::string& size, bool array, Node* at);
     void ensureMalloc();
 
     // The bytes before the elements of `new T[n]`: a cookie whose last 8 hold n, when T needs
     // destroying (as MSVC's runtime lays it out), so that delete[] destroys all n; 16 for an element
     // aligned to 16, malloc's alignment. A type that needs no destroying has none (delete[] frees).
-    uint64_t arrayCookie(const Ty* t, Node* at);
+    // sizedDelete: the class's usual operator delete[] takes the size (the type checker's
+    // sizedDeallocation), which needs the count however t is destroyed (at least 8 then).
+    uint64_t arrayCookie(const Ty* t, Node* at, bool sizedDelete = false);
 
     // A loop over the elements of type t at base with an index in an i64 slot: from first up to
     // count, or from count down to 0 (backwards: the last element first).
@@ -92,13 +102,26 @@
 
     // `delete[] p`: with a cookie (arrayCookie), the n elements destroyed, the last first, then the
     // block freed; nothing for null. Without one, the block freed.
-    void arrayDelete(const std::string& p, const Ty* t, Node* at);
+    // dealloc: the class's own operator delete[] the type checker chose (DeleteExpr::deallocator), in
+    // place of free, with the block's size after it when sized.
+    void arrayDelete(const std::string& p, const Ty* t, Node* at, FunctionDecl* dealloc = nullptr, bool sized = false);
 
     // The call (for emitCall: "void @f(ptr %b, i64 8)") of a class's own operator delete f, which
     // the type checker chose for an object of class t (DeleteExpr::deallocator, NewExpr::deallocator),
-    // on the block at block: with t's size after it when sized, then extra (a placement form's
-    // arguments, as its operator new took them).
-    std::string deallocationCall(FunctionDecl* f, bool sized, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at);
+    // on the block at block: with its size after it (an i64's text) when size is not empty, then
+    // extra (a placement form's arguments, as its operator new took them). t: the class.
+    std::string deallocationCall(FunctionDecl* f, const std::string& size, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at);
+
+    // The usual operator delete of class cls, as a delete-expression's lookup finds it ([expr.delete]
+    // 10, [class.free]): the class's own, else its bases' (one of them; two is an error), its
+    // `operator delete(void*)` before `operator delete(void*, size_t)` (sized). owner: the class that
+    // declares it. Null when none declares one.
+    FunctionDecl* classDeallocation(const Ty* cls, const Ty*& owner, bool& sized, Node* at, int depth = 0);
+
+    // Slot -3 of class key's vtables (emitVtables): a function `void(ptr block)` calling key's
+    // operator delete (classDeallocation) on the whole object's block, its definition added to
+    // definitions, named after irName; "null" when key has none (delete frees).
+    std::string deleterFor(const Ty* key, const std::string& irName, std::string& definitions, Node* at);
 
     Value unary(UnaryExpr* u);
 

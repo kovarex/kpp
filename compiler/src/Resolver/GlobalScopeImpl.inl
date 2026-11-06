@@ -558,6 +558,72 @@
     return h ? h : 1;
   }
 
+  // GlobalScope::programAllocationFunctions, replacedAllocation, globalDeallocation.
+  bool programAllocationFunctions()
+  {
+    for (uint32_t s : {symOperatorNew, symOperatorNewArray, symOperatorDelete, symOperatorDeleteArray})
+    {
+      Lookup l;
+      if (!lookupInScope(&root, s, l, 0))
+        continue;
+      auto own = [](const Decl* d) { return d && d->kind == NodeKind::FunctionDecl && d->file && !d->file->isLibrary && !d->file->isImported; };
+      if (l.overloads)
+      {
+        for (const Entry& e : *l.overloads)
+          if (own(e.decl))
+            return true;
+      }
+      else if (own(l.decl))
+        return true;
+    }
+    return false;
+  }
+
+  bool replacedAllocation(const FunctionDecl* f)
+  {
+    if (!f || !f->file || !f->file->isLibrary || f->name.parts.size() != 1 || f->name.last().special != 0 || (f->parent && f->parent->kind != NodeKind::NamespaceDecl))
+      return false;
+    uint32_t s = f->name.last().symbol;
+    if (s != symOperatorNew && s != symOperatorNewArray && s != symOperatorDelete && s != symOperatorDeleteArray)
+      return false;
+    Lookup l;
+    if (!lookupInScope(&root, s, l, 0) || !l.overloads)
+      return false;
+    const Ty* mine = declaredTypeOf(const_cast<FunctionDecl*>(f), nullptr, 0);
+    for (const Entry& e : *l.overloads)
+    {
+      if (!e.decl || e.decl == f || e.decl->kind != NodeKind::FunctionDecl || !e.decl->file || e.decl->file->isLibrary || e.decl->file->isImported)
+        continue;
+      const Ty* theirs = declaredTypeOf(e.decl, nullptr, 0);
+      if (mine && theirs && mine->kind == TyKind::Function && theirs->kind == TyKind::Function && mine->args.size() == theirs->args.size() &&
+          std::equal(mine->args.begin(), mine->args.end(), theirs->args.begin()))
+        return true;
+    }
+    return false;
+  }
+
+  FunctionDecl* globalDeallocation(bool array, bool sized)
+  {
+    Lookup l;
+    if (!lookupInScope(&root, array ? symOperatorDeleteArray : symOperatorDelete, l, 0))
+      return nullptr;
+    std::vector<Decl*> all;
+    if (l.overloads)
+      for (const Entry& e : *l.overloads)
+        all.push_back(e.decl);
+    else
+      all.push_back(l.decl);
+    for (Decl* d : all)
+    {
+      if (!d || d->kind != NodeKind::FunctionDecl || replacedAllocation(static_cast<FunctionDecl*>(d)))
+        continue;
+      auto* f = static_cast<FunctionDecl*>(d);
+      if (f->params.size() == (sized ? 2u : 1u) && f->templateParams.empty())
+        return f;
+    }
+    return nullptr;
+  }
+
   // The class a member (possibly defined out of line) belongs to (GlobalScope::owningClass).
   Decl* owningClassOf(Decl* d)
   {

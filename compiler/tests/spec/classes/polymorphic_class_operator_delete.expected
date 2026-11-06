@@ -1,0 +1,15 @@
+~Base
+pooled new 24
+~Pooled
+~Base
+pooled delete 24
+pooled new 32
+~Pooled
+~Base
+pooled delete 32
+pooled new 40
+~Second
+~Pooled
+~Base
+~Other
+second delete

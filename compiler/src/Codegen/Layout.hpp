@@ -143,7 +143,9 @@
     // (MSVC's layout and COM's: a C object's table of functions is called as a kpp class's, and the
     // reverse). Slot -1 is the class's descriptor (typeid, dynamic_cast), slot -2 the offset of the
     // subobject holding the pointer within the whole object (delete and dynamic_cast find the whole
-    // object with it).
+    // object with it), slot -3 the function that gives the whole object's block back when delete
+    // goes through a virtual destructor: the class's own operator delete's (deleterFor), or null for
+    // free ([expr.delete] 10: the operator delete of the object's own class).
     // The name a class's vtables, thunks and typeinfo are called by: its printed name, and for a class
     // whose printed name another class shares, the number its IR type got (irTypeName's ".N"). A
     // local class of a function template has one name for all instances

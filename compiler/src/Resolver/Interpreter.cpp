@@ -6174,7 +6174,7 @@ auto GlobalScope::Impl::constNew(NewExpr* n, const TypeContext& ctx, int depth) 
 {
   if (!n->type || n->placement.size() > 1)
     return std::nullopt;
-  if (n->allocator)
+  if (n->allocator && owningClassOf(n->allocator))
   {
     // A class's own operator new is no constant expression's ([expr.const] 5.19: only the global
     // allocation functions are).

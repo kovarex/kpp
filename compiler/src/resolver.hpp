@@ -454,6 +454,14 @@ public:
   // them, not the value its last typing left on the shared node. nullopt when it cannot be told.
   std::optional<bool> requirementsHold(RequiresExpr* r, Decl* owner, const TemplateArgs& args);
   Decl* owningClass(Decl* d);                    // The class a member (possibly defined out of line) belongs to.
+  // A program's own global allocation and deallocation functions (design.md, "Allocation functions"):
+  // whether it declares any (new and delete then call the global ones, not malloc and free); whether
+  // f, one of the library's, is replaced by a program definition of the same parameters (not
+  // emitted, never a candidate); and the global `operator delete` (array: `operator delete[]`) that
+  // takes the size after the pointer (sized) or not, the program's where it replaced the library's.
+  bool programAllocationFunctions();
+  bool replacedAllocation(const FunctionDecl* f);
+  FunctionDecl* globalDeallocation(bool array, bool sized);
   // The arguments for the out-of-class definition of a class template's static data member:
   // classArgs, and the definition's own declarations of the class's parameters bound the same.
   TemplateArgs definitionArgs(Decl* def, const TemplateArgs& classArgs);

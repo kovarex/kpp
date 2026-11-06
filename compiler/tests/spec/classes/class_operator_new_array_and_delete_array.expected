@@ -1,0 +1,16 @@
+trivial new[] 12
+trivial delete[]
+sized new[] 20
+sized delete[] 20
+destructed new[] 16
+~1
+~1
+destructed delete[] 16
+throws new[] 12
+~Throws
+~Throws
+throws delete[]
+caught 3
+arena new[] 8
+5 8
+end

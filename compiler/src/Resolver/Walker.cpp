@@ -503,7 +503,7 @@ auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
       continue;
     auto* g = static_cast<FunctionDecl*>(e.decl);
     if (g->body && g->templateParams.empty() && !g->condition && !Impl::isFunctionSpecialization(g) && !Impl::isMemberSpecialization(g) &&
-        before(g, f) && (!first || before(g, first)) && impl.sameFunction(f, g))
+        before(g, f) && (!first || before(g, first)) && !impl.replacedAllocation(g) && !impl.replacedAllocation(f) && impl.sameFunction(f, g))
       first = g;
   }
   if (!first)
@@ -2051,11 +2051,11 @@ auto GlobalScope::Impl::Walker::reportAmbiguousCall(CallExpr* c, const NamePart&
   impl.reportCheckerError(file, c->token, message);
 }
 
-auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared) -> FunctionDecl*
+auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array) -> FunctionDecl*
 {
   sized = false;
   declared = false;
-  MemberResult r = memberOf(t, impl.symOperatorDelete, nullptr, token, false);
+  MemberResult r = memberOf(t, array ? impl.symOperatorDeleteArray : impl.symOperatorDelete, nullptr, token, false);
   if (!r.decl || r.decl->kind != NodeKind::FunctionDecl)
     return nullptr;
   declared = true;
@@ -2083,16 +2083,19 @@ auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, b
   return withSize;
 }
 
-auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t) -> void
+auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t, bool array) -> void
 {
   n->allocator = nullptr;
   n->deallocator = nullptr;
   n->sizedDeallocation = false;
-  if (!t || t->kind != TyKind::Class)
-    return;
-  MemberResult r = memberOf(t, impl.symOperatorNew, nullptr, n->token, false);
+  MemberResult r;
+  if (t && t->kind == TyKind::Class && !n->global)
+    r = memberOf(t, array ? impl.symOperatorNewArray : impl.symOperatorNew, nullptr, n->token, false);
   if (!r.decl || r.decl->kind != NodeKind::FunctionDecl)
+  {
+    chooseGlobalAllocation(n, t, array);
     return;
+  }
   std::vector<const Ty*> argTypes{types.sizeType()};
   for (const Ty* a : argTypesOf(n->placement))
     argTypes.push_back(a);
@@ -2103,8 +2106,10 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t) -> voi
     std::string with;
     for (const Ty* a : argTypes)
       with += (with.empty() ? "" : ", ") + types.toString(types.unqualified(types.stripRef(a)), &symbols);
-    reportHere(n->token, "the new of a " + types.toString(t, &symbols) + (ambiguous ? " is ambiguous: more than one of its class's operator new takes (" : ": none of its class's operator new takes (") +
-                             with + ")" + (ambiguous ? "" : " (`::new` allocates with the global one)"));
+    std::string name = array ? "operator new[]" : "operator new";
+    reportHere(n->token, std::string(array ? "the new[] of " : "the new of a ") + types.toString(t, &symbols) +
+                             (ambiguous ? " is ambiguous: more than one of its class's " + name + " takes (" : ": none of its class's " + name + " takes (") + with + ")" +
+                             (ambiguous ? "" : " (`::new` allocates with the global one)"));
     return;
   }
   if (!f->templateParams.empty())
@@ -2113,15 +2118,18 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t) -> voi
     return;
   }
   n->allocator = f;
+  // (sizedDeallocation: the class's usual operator delete takes the size; an array's then has a
+  // cookie, whatever operator new[] made it, for delete[] to know its size)
+  bool declared = false;
+  FunctionDecl* usual = usualDeallocation(t, n->token, n->sizedDeallocation, declared, array);
   if (n->placement.empty())
   {
-    bool declared = false;
-    n->deallocator = usualDeallocation(t, n->token, n->sizedDeallocation, declared);
+    n->deallocator = usual;
     return;
   }
   // A placement form's: the operator delete whose parameters after the first are the operator
   // new's, none when the class declares no such one (the memory is then not given back, as in C++).
-  MemberResult d = memberOf(t, impl.symOperatorDelete, nullptr, n->token, false);
+  MemberResult d = memberOf(t, array ? impl.symOperatorDeleteArray : impl.symOperatorDelete, nullptr, n->token, false);
   if (!d.decl || d.decl->kind != NodeKind::FunctionDecl)
     return;
   std::vector<FunctionDecl*> candidates;
@@ -2148,6 +2156,66 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t) -> voi
   }
 }
 
+auto GlobalScope::Impl::Walker::chooseGlobalAllocation(NewExpr* n, const Ty* t, bool array) -> void
+{
+  if (!t || !t->isKnown() || types.isDependent(t) || !impl.programAllocationFunctions())
+    return; // (malloc, or the placement at an address)
+  Lookup l;
+  if (!impl.lookupInScope(&impl.root, array ? impl.symOperatorNewArray : impl.symOperatorNew, l, 0))
+    return;
+  std::vector<const Ty*> argTypes{types.sizeType()};
+  for (const Ty* a : argTypesOf(n->placement))
+    argTypes.push_back(a);
+  bool ambiguous = false;
+  FunctionDecl* f = pickOverload(l.decl, l.overloads, argTypes, nullptr, nullptr, ambiguous);
+  if (!f || ambiguous)
+  {
+    const Ty* place = n->placement.size() == 1 ? types.unqualified(types.stripRef(argTypes[1])) : nullptr;
+    if (!ambiguous && place && (place->kind == TyKind::Pointer || place->kind == TyKind::Array))
+      return; // `new (p) T`: the library's placement at an address
+    std::string with;
+    for (const Ty* a : argTypes)
+      with += (with.empty() ? "" : ", ") + types.toString(types.unqualified(types.stripRef(a)), &symbols);
+    reportHere(n->token, std::string(ambiguous ? "more than one" : "no") + " global " + (array ? "operator new[]" : "operator new") + " takes (" + with + ")");
+    return;
+  }
+  if (!f->templateParams.empty())
+  {
+    reportHere(n->token, "a global operator new that is a template is not supported yet");
+    return;
+  }
+  n->allocator = f;
+  if (n->placement.empty())
+    return; // (the usual global operator delete gives it back: codegen's globalDeallocation)
+  // A placement form's: the global operator delete whose parameters after the first are its, none
+  // when there is no such one (the memory is then not given back, as in C++).
+  Lookup d;
+  if (!impl.lookupInScope(&impl.root, array ? impl.symOperatorDeleteArray : impl.symOperatorDelete, d, 0))
+    return;
+  std::vector<Decl*> all;
+  if (d.overloads)
+    for (const Entry& c : *d.overloads)
+      all.push_back(c.decl);
+  else
+    all.push_back(d.decl);
+  for (Decl* c : all)
+  {
+    if (!c || c->kind != NodeKind::FunctionDecl || impl.replacedAllocation(static_cast<FunctionDecl*>(c)))
+      continue;
+    auto* g = static_cast<FunctionDecl*>(c);
+    if (g->params.size() != f->params.size() || !g->templateParams.empty())
+      continue;
+    bool same = true;
+    for (size_t i = 1; i < f->params.size() && same; ++i)
+      same = impl.declaredTypeOf(f->params[i], nullptr, 0) == impl.declaredTypeOf(g->params[i], nullptr, 0);
+    if (same)
+    {
+      n->deallocator = g;
+      return;
+    }
+  }
+}
+
 auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart, Span<Expr*> callArgs, std::vector<FunctionDecl*>* tied) -> FunctionDecl*
 {
   std::vector<FunctionDecl*> candidates;
@@ -2159,6 +2227,9 @@ auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<En
   }
   else if (primary && primary->kind == NodeKind::FunctionDecl)
     candidates.push_back(static_cast<FunctionDecl*>(primary));
+  // The library's allocation function a program replaced is no candidate: the program's is it.
+  if (candidates.size() > 1)
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [&](FunctionDecl* c) { return impl.replacedAllocation(c); }), candidates.end());
   // The arguments that are the literal 0, a null pointer for a pointer parameter.
   std::vector<bool> nullConstants;
   bool anyNull = false;
@@ -6171,27 +6242,6 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       auto* f = static_cast<FunctionDecl*>(d);
       if (activeSubst && (f->attributes & ATTR_InstanceCopy))
         impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
-      // The allocation and deallocation functions new and delete do not call yet, declared: an error,
-      // never silently passed by. The library's global ones are functions to call (`::operator
-      // new(n)`); a program's own global ones (a replacement, or a placement form `new (3) int`
-      // would call) are not called by new and delete. A class's own operator new and operator delete are called (chooseAllocation), its
-      // array forms not yet; nor a polymorphic class's operator delete, which C++ looks up in the
-      // class of the object deleted through a virtual destructor ([expr.delete] 10, [class.free] 4).
-      if (!activeSubst && !probing && file && !file->isImported && !f->name.empty() && f->name.last().special == 0)
-      {
-        uint32_t s = f->name.last().symbol;
-        bool array = s == impl.symOperatorNewArray || s == impl.symOperatorDeleteArray;
-        if (array || s == impl.symOperatorNew || s == impl.symOperatorDelete)
-        {
-          Decl* cls = impl.owningClassOf(f);
-          if (!cls && !file->isLibrary)
-            impl.reportCheckerError(file, f->token, "a program's own global " + std::string(symbols.name(s)) + " (a replacement of the library's, or a form of its own) is not supported yet");
-          else if (cls && array)
-            impl.reportCheckerError(file, f->token, "a class's own " + std::string(symbols.name(s)) + " is not supported yet");
-          else if (cls && s == impl.symOperatorDelete && cls->kind == NodeKind::ClassDecl && impl.polymorphicClass(impl.selfType(cls)).value_or(false))
-            impl.reportCheckerError(file, f->token, "a polymorphic class's own operator delete is not supported yet");
-        }
-      }
       Scope* saved = scope;
       const Ty* savedThis = thisType;
       walkType(f->returnType);
@@ -7485,8 +7535,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       }
       else
         checkListNarrowing(n->args, t);
-      if (!array && !n->global)
-        chooseAllocation(n, t);
+      chooseAllocation(n, t, array);
       return record(e, t->isKnown() ? types.pointer(t) : t);
     }
     case NodeKind::DeleteExpr:
@@ -7495,14 +7544,15 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       walkExpr(d->operand);
       d->deallocator = nullptr;
       const Ty* p = d->operand->ty ? types.unqualified(types.stripRef(d->operand->ty)) : nullptr;
-      if (!d->isArray && !d->global && p && p->kind == TyKind::Pointer && p->inner && types.unqualified(p->inner)->kind == TyKind::Class)
+      if (!d->global && p && p->kind == TyKind::Pointer && p->inner && types.unqualified(p->inner)->kind == TyKind::Class)
       {
         bool declared = false;
         const Ty* cls = types.unqualified(p->inner);
-        d->deallocator = usualDeallocation(cls, d->token, d->sizedDeallocation, declared);
+        d->deallocator = usualDeallocation(cls, d->token, d->sizedDeallocation, declared, d->isArray);
+        std::string name = d->isArray ? "operator delete[]" : "operator delete";
         if (!d->deallocator && declared)
-          reportHere(d->token, "the delete of a " + types.toString(cls, &symbols) +
-                                   " finds its class's operator delete, and none of them is the usual one, operator delete(void*) or operator delete(void*, size_t)");
+          reportHere(d->token, std::string(d->isArray ? "the delete[] of " : "the delete of a ") + types.toString(cls, &symbols) + " finds its class's " + name +
+                                   ", and none of them is the usual one, " + name + "(void*) or " + name + "(void*, size_t)");
       }
       return record(e, types.voidType());
     }

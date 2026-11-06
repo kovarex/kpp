@@ -22,6 +22,11 @@ optimizer may remove when the block does not escape, and its BadAlloc with it: `
 whose block nothing keeps returns where C++ (which never elides a call of operator new by name)
 throws bad_alloc (library/global_operator_new_and_delete keeps the block).
 
+**A program's replacement of `::operator new`** (core/Sizes.kpp, 2026-11-06): the containers and
+strings allocate with malloc, never through the global allocation functions, so a program that
+replaces them sees its new-expressions' memory only, where std's allocator calls them for every
+container.
+
 **The terminate handler** (core/Error.kpp, 2026-11-04): an exception that ends the program (nobody
 catches it, or it leaves a noexcept function) prints its type and message on stderr first, and only
 then calls the handler setTerminate installed, where C++'s terminate calls the handler alone (its

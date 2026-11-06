@@ -1005,11 +1005,12 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
   Restore<std::string> requesterContextRestore(currentRequestedByContext);
   currentContext = currentFunctionName;
   currentRequestedByContext.clear();
+  std::string deleter = deleterFor(key, classIrName(key, info), thunks, at);
   for (size_t t = 0; t < tables.size(); ++t)
   {
     Vtable& table = tables[t];
     table.name = "@\"vtable." + classIrName(key, info) + (t ? "." + std::to_string(t) : std::string()) + "\"";
-    std::string entries = "ptr " + subobjectAtNull(key, table.path, at) + ", ptr " + ti;
+    std::string entries = "ptr " + deleter + ", ptr " + subobjectAtNull(key, table.path, at) + ", ptr " + ti;
     for (size_t s = 0; s < table.slots.size(); ++s)
     {
       const VtableSlot& slot = table.slots[s];
@@ -1031,9 +1032,9 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
       }
       entries += ", ptr " + target;
     }
-    std::string tableType = "[" + std::to_string(table.slots.size() + 2) + " x ptr]";
+    std::string tableType = "[" + std::to_string(table.slots.size() + 3) + " x ptr]";
     text += "$" + table.name.substr(1) + " = comdat any\n" + table.name + " = linkonce_odr constant " + tableType + " [" + entries + "], comdat\n";
-    table.vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + table.name + ", i64 0, i64 2)";
+    table.vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + table.name + ", i64 0, i64 3)";
   }
   info.vtables = std::move(tables);
   info.vtableName = info.vtables[0].name;

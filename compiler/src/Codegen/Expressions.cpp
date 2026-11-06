@@ -787,7 +787,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         unsupported(e, "new of an unknown type");
       if (n->type && n->type->kind == NodeKind::ArrayType && static_cast<ArrayType*>(n->type)->size)
       {
-        if (!n->placement.empty())
+        if (!n->placement.empty() && !n->allocator)
           unsupported(e, "placement new of an array");
         return {arrayNew(n, t, static_cast<ArrayType*>(n->type)->size), e->ty};
       }
@@ -795,12 +795,12 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       std::vector<std::string> placed; // the placement arguments as a class's operator new took them
       if (n->allocator)
       {
-        // The class's own operator new, with the size and the placement arguments (the type
-        // checker's choice, Walker::chooseAllocation).
-        const Ty* in = declaringClass(t, n->allocator, e);
-        if (!in)
+        // The class's own operator new, or a global one the program declares, with the size and
+        // the placement arguments (the type checker's choice, Walker::chooseAllocation).
+        const Ty* in = global.owningClass(n->allocator) ? declaringClass(t, n->allocator, e) : nullptr;
+        if (global.owningClass(n->allocator) && !in)
           unsupported(e, "the operator new chosen for a class that does not declare it");
-        r = callFunction(n->allocator, global.classArgsOf(in), in, "", "", n->placement, e, "", {"i64 " + std::to_string(sizeOf(t, e))}, &placed).text;
+        r = callFunction(n->allocator, in ? global.classArgsOf(in) : TemplateArgs{}, in, "", "", n->placement, e, "", {"i64 " + std::to_string(sizeOf(t, e))}, &placed).text;
       }
       else if (n->placement.size() == 1)
       {
@@ -825,7 +825,9 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         allocation.unwindOnly = true;
         allocation.freeMemory = true;
         if (n->deallocator)
-          allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation, t, r, placed, e);
+          allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation && n->placement.empty() ? std::to_string(sizeOf(t, e)) : "", t, r, placed, e);
+        else if (programAllocationFunctions())
+          allocation.freeCall = globalFreeCall(r, std::to_string(sizeOf(t, e)), false, e);
         statementTemps.push_back(allocation);
         size_t at = statementTemps.size() - 1;
         constructInto(r, t, n->args, e);
@@ -882,7 +884,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       ensureMalloc();
       if (d->isArray)
       {
-        arrayDelete(p.text, p.ty->inner, e);
+        arrayDelete(p.text, p.ty->inner, e, d->deallocator, d->sizedDeallocation);
         return {"", types.voidType()};
       }
       if (isClass(p.ty->inner) && (needsDestruction(p.ty->inner, e) || structFor(p.ty->inner, e).polymorphic))
@@ -897,19 +899,40 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         // base at an offset (a second base): the block starts at the whole object, which slot -2
         // of the vtable gives (read before the destructor runs).
         std::string block = p.text;
+        std::string deleter; // through a virtual destructor: the object's own class's operator delete, slot -3 (null: free)
         if (slotKeyed(structFor(p.ty->inner, e), "~") >= 0)
         {
-          std::string vptr = newTemp(), slot = newTemp(), offset = newTemp(), bytes = newTemp(), back = newTemp();
+          std::string vptr = newTemp(), slot = newTemp(), offset = newTemp(), bytes = newTemp(), back = newTemp(), deleterSlot = newTemp();
           block = newTemp();
+          deleter = newTemp();
           fn += "  " + vptr + " = load ptr, ptr " + p.text + "\n";
           fn += "  " + slot + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 -2\n";
           fn += "  " + offset + " = load ptr, ptr " + slot + "\n";
           fn += "  " + bytes + " = ptrtoint ptr " + offset + " to i64\n";
           fn += "  " + back + " = sub i64 0, " + bytes + "\n";
           fn += "  " + block + " = getelementptr i8, ptr " + p.text + ", i64 " + back + "\n";
+          fn += "  " + deleterSlot + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 -3\n";
+          fn += "  " + deleter + " = load ptr, ptr " + deleterSlot + "\n";
         }
         destroy(p.text, p.ty->inner, e, true);
-        emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation, p.ty->inner, block, {}, e) : "void @free(ptr " + block + ")", false);
+        if (!deleter.empty())
+        {
+          std::string isFree = newTemp(), freeL = newLabel("delete.free"), ownL = newLabel("delete.own");
+          fn += "  " + isFree + " = icmp eq ptr " + deleter + ", null\n";
+          fn += "  br i1 " + isFree + ", label %" + freeL + ", label %" + ownL + "\n";
+          blockTerminated = true;
+          startBlock(ownL);
+          emitCall("", "void " + deleter + "(ptr " + block + ")", false);
+          emitBranch(endL);
+          startBlock(freeL);
+          emitCall("", "void @free(ptr " + block + ")", false); // (deleterFor's null: no allocation function of the program's)
+          emitBranch(endL);
+          startBlock(endL);
+          return {"", types.voidType()};
+        }
+        emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, block, {}, e)
+                                    : globalFreeCall(block, std::to_string(sizeOf(p.ty->inner, e)), false, e),
+                 false);
         emitBranch(endL);
         startBlock(endL);
         return {"", types.voidType()};
@@ -936,7 +959,21 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
         blockTerminated = true;
         startBlock(objectL);
-        emitCall("", deallocationCall(d->deallocator, d->sizedDeallocation, p.ty->inner, p.text, {}, e), false);
+        emitCall("", deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, p.text, {}, e), false);
+        emitBranch(endL);
+        startBlock(endL);
+        return {"", types.voidType()};
+      }
+      if (programAllocationFunctions())
+      {
+        // The global operator delete, not called for a null pointer (as clang has it).
+        std::string isNull = newTemp(), objectL = newLabel("delete.object"), endL = newLabel("delete.end");
+        fn += "  " + isNull + " = icmp eq ptr " + p.text + ", null\n";
+        fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
+        blockTerminated = true;
+        startBlock(objectL);
+        const Ty* pointee = types.unqualified(p.ty->inner);
+        emitCall("", globalFreeCall(p.text, pointee->kind == TyKind::Void ? "" : std::to_string(sizeOf(pointee, e)), false, e), false);
         emitBranch(endL);
         startBlock(endL);
         return {"", types.voidType()};
@@ -949,17 +986,103 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
   }
 }
 
-auto codegen::Emitter::deallocationCall(FunctionDecl* f, bool sized, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at) -> std::string
+auto codegen::Emitter::deallocationCall(FunctionDecl* f, const std::string& size, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at) -> std::string
 {
-  const Ty* in = declaringClass(t, f, at);
-  if (!in)
+  const Ty* in = global.owningClass(f) ? declaringClass(t, f, at) : nullptr;
+  if (global.owningClass(f) && !in)
     unsupported(at, "the operator delete chosen for a class that does not declare it");
-  std::string text = "void " + useFunction(f, global.classArgsOf(in), in, at) + "(ptr " + block;
-  if (sized)
-    text += ", i64 " + std::to_string(sizeOf(t, at));
+  std::string text = "void " + useFunction(f, in ? global.classArgsOf(in) : TemplateArgs{}, in, at) + "(ptr " + block;
+  if (!size.empty())
+    text += ", i64 " + size;
   for (const std::string& x : extra)
     text += ", " + x;
   return text + ")";
+}
+
+auto codegen::Emitter::classDeallocation(const Ty* cls, const Ty*& owner, bool& sized, Node* at, int depth) -> FunctionDecl*
+{
+  if (!cls || !isClass(cls) || depth > 64)
+    return nullptr;
+  const Ty* key = canonicalClass(cls, at);
+  ClassDecl* c = classDef(key->decl, at);
+  if (!c)
+    return nullptr;
+  FunctionDecl* unsized = nullptr;
+  FunctionDecl* withSize = nullptr;
+  bool declared = false;
+  for (Decl* m : c->members)
+  {
+    if (m->kind != NodeKind::FunctionDecl)
+      continue;
+    auto* f = static_cast<FunctionDecl*>(m);
+    if (f->name.empty() || f->name.last().special != 0 || sym(f->name.last().symbol) != "operator delete")
+      continue;
+    declared = true;
+    if (f->params.size() == 1 && !unsized)
+      unsized = f;
+    else if (f->params.size() == 2 && !withSize)
+      withSize = f;
+  }
+  if (declared)
+  {
+    if (!unsized && !withSize)
+      fail(at, "the operator delete of " + types.toString(key, &symbols) + ", which a virtual destructor's delete calls, has no usual form, operator delete(void*) or operator delete(void*, size_t)");
+    owner = key;
+    sized = !unsized;
+    return unsized ? unsized : withSize;
+  }
+  FunctionDecl* found = nullptr;
+  for (const Ty* b : basesOf(c, global.classArgsOf(key), at))
+  {
+    const Ty* from = nullptr;
+    bool fromSized = false;
+    if (FunctionDecl* f = classDeallocation(b, from, fromSized, at, depth + 1))
+    {
+      if (found && f != found)
+        fail(at, "the operator delete of " + types.toString(key, &symbols) + " is ambiguous: more than one of its bases declares one");
+      found = f;
+      owner = from;
+      sized = fromSized;
+    }
+  }
+  return found;
+}
+
+auto codegen::Emitter::deleterFor(const Ty* key, const std::string& irName, std::string& definitions, Node* at) -> std::string
+{
+  const Ty* owner = nullptr;
+  bool sized = false;
+  FunctionDecl* f = classDeallocation(key, owner, sized, at);
+  if (!f && !programAllocationFunctions())
+    return "null";
+  std::string name = "@\"delete." + irName + "\"";
+  std::string call = f ? deallocationCall(f, sized ? std::to_string(sizeOf(key, at)) : "", owner, "%block", {}, at)
+                       : globalFreeCall("%block", std::to_string(sizeOf(key, at)), false, at);
+  definitions += "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr void " + name + "(ptr %block) comdat {\nentry:\n  call " + call + "\n  ret void\n}\n";
+  return name;
+}
+
+auto codegen::Emitter::programAllocationFunctions() -> bool
+{
+  if (programAllocates < 0)
+    programAllocates = global.programAllocationFunctions() ? 1 : 0;
+  return programAllocates == 1;
+}
+
+auto codegen::Emitter::globalFreeCall(const std::string& block, const std::string& size, bool array, Node* at) -> std::string
+{
+  if (!programAllocationFunctions())
+  {
+    ensureMalloc();
+    return "void @free(ptr " + block + ")";
+  }
+  FunctionDecl* f = size.empty() ? nullptr : global.globalDeallocation(array, true);
+  std::string passed = f ? size : "";
+  if (!f)
+    f = global.globalDeallocation(array, false);
+  if (!f)
+    unsupported(at, std::string("no global ") + (array ? "operator delete[]" : "operator delete") + " to give the block back with");
+  return deallocationCall(f, passed, nullptr, block, {}, at);
 }
 
 auto codegen::Emitter::bitfieldNamed(Expr* e) -> const BitfieldInfo*
@@ -1067,9 +1190,9 @@ auto codegen::Emitter::ensureMalloc() -> void
     decls += "declare void @free(ptr)\n";
 }
 
-auto codegen::Emitter::arrayCookie(const Ty* t, Node* at) -> uint64_t
+auto codegen::Emitter::arrayCookie(const Ty* t, Node* at, bool sizedDelete) -> uint64_t
 {
-  if (!needsDestruction(t, at))
+  if (!needsDestruction(t, at) && !sizedDelete)
     return 0;
   const Ty* inner = t;
   while (inner->kind == TyKind::Array)
@@ -1111,7 +1234,7 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     fail(n, "new[] of " + std::to_string(*known) + " elements given " + std::to_string(runs.size()) + " initializers");
   std::string count = convert(rvalue(sizeExpr), types.sizeType(), n).text;
   std::string stride = "ptrtoint (ptr getelementptr (" + llType(t, n) + ", ptr null, i32 1) to i64)"; // LLVM's own element size
-  uint64_t cookie = arrayCookie(t, n);
+  uint64_t cookie = arrayCookie(t, n, n->allocator && n->sizedDeallocation);
   if (!known)
   {
     // A count that is negative (a huge size_t), too large for the block's size to be computed, or
@@ -1148,8 +1271,22 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     total = newTemp();
     fn += "  " + total + " = add i64 " + bytes + ", " + std::to_string(cookie) + "\n";
   }
-  std::string block = newTemp();
-  emitCall(block + " = ", "ptr @malloc(i64 " + total + ")", false);
+  std::string block;
+  std::vector<std::string> placed; // the placement arguments as the class's operator new[] took them
+  if (n->allocator)
+  {
+    // The class's own operator new[], or a global one the program declares, with the size, the
+    // cookie's included, and the placement arguments (the type checker's choice, Walker::chooseAllocation).
+    const Ty* in = global.owningClass(n->allocator) ? declaringClass(t, n->allocator, n) : nullptr;
+    if (global.owningClass(n->allocator) && !in)
+      unsupported(n, "the operator new[] chosen for a class that does not declare it");
+    block = callFunction(n->allocator, in ? global.classArgsOf(in) : TemplateArgs{}, in, "", "", n->placement, n, "", {"i64 " + total}, &placed).text;
+  }
+  else
+  {
+    block = newTemp();
+    emitCall(block + " = ", "ptr @malloc(i64 " + total + ")", false);
+  }
   std::string base = block;
   if (cookie)
   {
@@ -1167,7 +1304,13 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
   Object allocation{block, t};
   allocation.unwindOnly = true;
   allocation.freeMemory = true;
-  statementTemps.push_back(allocation);
+  if (n->deallocator)
+    allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation && n->placement.empty() ? total : "", t, block, placed, n);
+  else if (programAllocationFunctions() && n->placement.empty())
+    allocation.freeCall = globalFreeCall(block, cookie ? total : "", true, n);
+  bool released = !n->allocator || n->deallocator || n->placement.empty(); // (a placement form without its operator delete[] gives nothing back)
+  if (released)
+    statementTemps.push_back(allocation);
   std::string builtSlot = "%v" + std::to_string(temp++);
   allocas += "  " + builtSlot + " = alloca i64\n";
   fn += "  store i64 0, ptr " + builtSlot + "\n";
@@ -1227,16 +1370,29 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     emitBranch(loopL);
     startBlock(endL);
   }
-  statementTemps.erase(statementTemps.begin() + mark, statementTemps.begin() + mark + (counted ? 2 : 1));
+  statementTemps.erase(statementTemps.begin() + mark, statementTemps.begin() + mark + (counted ? 1 : 0) + (released ? 1 : 0));
   return base;
 }
 
-auto codegen::Emitter::arrayDelete(const std::string& p, const Ty* t, Node* at) -> void
+auto codegen::Emitter::arrayDelete(const std::string& p, const Ty* t, Node* at, FunctionDecl* dealloc, bool sized) -> void
 {
-  uint64_t cookie = arrayCookie(t, at);
-  if (!cookie)
+  uint64_t cookie = arrayCookie(t, at, dealloc && sized);
+  if (!cookie && !dealloc && !programAllocationFunctions())
   {
     emitCall("", "void @free(ptr " + p + ")", false); // free(null) does nothing
+    return;
+  }
+  if (!cookie)
+  {
+    // The class's own operator delete[], not called for a null pointer (as clang has it).
+    std::string isNull = newTemp(), callL = newLabel("delete.array"), endL = newLabel("delete.end");
+    fn += "  " + isNull + " = icmp eq ptr " + p + ", null\n";
+    fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + callL + "\n";
+    blockTerminated = true;
+    startBlock(callL);
+    emitCall("", dealloc ? deallocationCall(dealloc, "", t, p, {}, at) : globalFreeCall(p, "", true, at), false);
+    emitBranch(endL);
+    startBlock(endL);
     return;
   }
   std::string isNull = newTemp(), arrayL = newLabel("delete.array"), endL = newLabel("delete.end");
@@ -1250,7 +1406,29 @@ auto codegen::Emitter::arrayDelete(const std::string& p, const Ty* t, Node* at) 
   forEachElement(p, t, "0", count, true, at, [&](const std::string& element) { destroy(element, t, at); });
   std::string block = newTemp();
   fn += "  " + block + " = getelementptr inbounds i8, ptr " + p + ", i64 -" + std::to_string(cookie) + "\n";
-  emitCall("", "void @free(ptr " + block + ")", false);
+  if (dealloc)
+  {
+    std::string size;
+    if (sized)
+    {
+      // The size operator new[] was asked for: the elements' and the cookie's.
+      std::string bytes = newTemp();
+      size = newTemp();
+      fn += "  " + bytes + " = mul i64 " + count + ", " + std::to_string(sizeOf(t, at)) + "\n";
+      fn += "  " + size + " = add i64 " + bytes + ", " + std::to_string(cookie) + "\n";
+    }
+    emitCall("", deallocationCall(dealloc, size, t, block, {}, at), false);
+  }
+  else if (programAllocationFunctions())
+  {
+    // The global operator delete[] with the size operator new[] was asked for.
+    std::string bytes = newTemp(), size = newTemp();
+    fn += "  " + bytes + " = mul i64 " + count + ", " + std::to_string(sizeOf(t, at)) + "\n";
+    fn += "  " + size + " = add i64 " + bytes + ", " + std::to_string(cookie) + "\n";
+    emitCall("", globalFreeCall(block, size, true, at), false);
+  }
+  else
+    emitCall("", "void @free(ptr " + block + ")", false);
   emitBranch(endL);
   startBlock(endL);
 }

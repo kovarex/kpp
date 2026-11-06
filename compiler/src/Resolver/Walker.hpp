@@ -385,12 +385,21 @@
     // throws (usualDeallocation's, or the placement one whose parameters after the first are the
     // operator new's). t is the class allocated. An operator new that takes no such arguments is an
     // error, as in C++.
-    void chooseAllocation(NewExpr* n, const Ty* t);
+    // array: `new T[n]`, of the class's operator new[] and operator delete[]. Without a class's own
+    // (or with `::new`): chooseGlobalAllocation.
+    void chooseAllocation(NewExpr* n, const Ty* t, bool array);
+
+    // The global operator new (array: new[]) for (size, the placement arguments...) when the program
+    // declares its own allocation functions (GlobalScope::programAllocationFunctions), recorded on n
+    // with a placement form's operator delete; a placement at an address no global one takes stays
+    // the library's. Otherwise nothing: new allocates with malloc.
+    void chooseGlobalAllocation(NewExpr* n, const Ty* t, bool array);
 
     // The operator delete a delete-expression of a class t object calls ([expr.delete] 10): the class's
     // own `operator delete(void*)`, else its `operator delete(void*, size_t)` (sized). Null when the
     // class (or a base) declares none (declared false) or only other forms (declared true).
-    FunctionDecl* usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared);
+    // array: its operator delete[] (delete[]).
+    FunctionDecl* usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array);
 
     FunctionDecl* pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart = nullptr, Span<Expr*> callArgs = {}, std::vector<FunctionDecl*>* tied = nullptr);
 

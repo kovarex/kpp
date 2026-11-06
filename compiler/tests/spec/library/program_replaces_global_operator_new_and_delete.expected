@@ -1,0 +1,11 @@
+sized delete 4
+sized delete 4
+sized delete 24
+tagged new 4 7
+sized delete 4
+tagged new 1 9
+tagged delete 9
+caught 2
+sized delete 1
+caught 2
+9 4 5

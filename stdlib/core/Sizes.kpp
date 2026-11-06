@@ -64,15 +64,16 @@ void* allocateBytes(usize bytes)
 
 // The global allocation and deallocation functions ([new.delete.single], [new.delete.array]):
 // `::operator new(n)` a block of n bytes (at least one), BadAlloc when malloc cannot give it, and
-// `::operator delete(p)` (sized or not) gives it back; nothing for null. A new-expression allocates
-// with malloc itself (with a class's own operator new when it declares one), not through these, and
-// a program does not replace them (an error).
+// `::operator delete(p)` gives it back; nothing for null. A program may replace any of them
+// ([replacement.functions]; design.md, "Allocation functions"), and these call each other as C++'s
+// do: new[] is new, a sized one is the unsized one, delete[] is delete. A new-expression calls them
+// (or a class's own) only when the program declares its own; otherwise it allocates with malloc.
 void* operator new(usize bytes) { return allocateBytes(bytes); }
-void* operator new[](usize bytes) { return allocateBytes(bytes); }
+void* operator new[](usize bytes) { return operator new(bytes); }
 void operator delete(void* block) { free(block); }
-void operator delete[](void* block) { free(block); }
-void operator delete(void* block, usize) { free(block); }
-void operator delete[](void* block, usize) { free(block); }
+void operator delete[](void* block) { operator delete(block); }
+void operator delete(void* block, usize) { operator delete(block); }
+void operator delete[](void* block, usize) { operator delete[](block); }
 
 // An uninitialized block for count elements of T, BadAlloc when malloc fails or when count * sizeof(T)
 // does not fit in a size_t (a u64 size of large elements).
