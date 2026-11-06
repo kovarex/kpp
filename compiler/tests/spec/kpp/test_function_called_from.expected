@@ -1,0 +1,5 @@
+test_function_called_from.kpp:7:3: check failed: value >= 0 (-2 >= 0): value -2
+test_function_called_from.kpp:16:5: called from here
+test_function_called_from.kpp:25:5: called from here
+failed: Helpers.Values
+1 test, 1 failed

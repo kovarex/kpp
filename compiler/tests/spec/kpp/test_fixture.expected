@@ -1,0 +1,7 @@
+built 0
+destroyed 1
+built 10
+test_fixture.kpp:26:5: check failed: value == 12 (11 == 12)
+destroyed 11
+failed: Counting.WithStart
+2 tests, 1 failed

@@ -1,0 +1,13 @@
+// spec: the tests of a suite run in the order they are declared in it (kovarex, 2026-11-06)
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 0
+suite Order
+{
+  test Zebra { println("Zebra"); }
+  test Apple { println("Apple"); }
+
+  void helper() {}
+
+  test Mango { println("Mango"); }
+}

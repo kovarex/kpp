@@ -1,0 +1,22 @@
+// spec: an exception while building a fixture fails the test without running its body; one while destroying it fails the test too
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+class Refuses
+{
+public:
+  Refuses() { throw RuntimeError("no map"); }
+};
+
+class Leaks
+{
+public:
+  ~Leaks() noexcept(false) { throw RuntimeError("an entity leaked"); }
+};
+
+suite Fixtures
+{
+  test Building : Refuses { println("not reached"); }
+  test Destroying : Leaks { println("body ran"); }
+  test After { println("after"); }
+}

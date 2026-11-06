@@ -1,0 +1,17 @@
+// spec: a failed check of a call (or of !call) shows its arguments' values, as a comparison shows its operands'
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+bool isClose(double a, double b, double tolerance) { return a - b <= tolerance && b - a <= tolerance; }
+bool contains(StringView text, StringView part) { return text.find(part) != StringView::npos; }
+
+suite Values
+{
+  test Calls
+  {
+    double x = 1.52;
+    check(isClose(x, 1.5, 0.01));
+    check(!contains("inserter", "sert"));
+    check(isClose(x, 1.5, 0.1));
+  }
+}

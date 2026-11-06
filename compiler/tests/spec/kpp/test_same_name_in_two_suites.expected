@@ -1,0 +1,4 @@
+test_same_name_in_two_suites.kpp:7:16: check failed: 1 == 2 (1 == 2)
+failed: Belts.Empty
+Pipes.Empty
+2 tests, 1 failed

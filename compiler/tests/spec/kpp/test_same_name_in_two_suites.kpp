@@ -1,0 +1,13 @@
+// spec: a test's name is scoped to its suite: two suites may each have a test Empty, and the full name Suite.Test tells them apart
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+suite Belts
+{
+  test Empty { check(1 == 2); }
+}
+
+suite Pipes
+{
+  test Empty { println("Pipes.Empty"); }
+}

@@ -1,0 +1,6 @@
+test_dependents_annotated.kpp:7:16: check failed: 1 == 2 (1 == 2)
+failed: Belts.Moves
+test_dependents_annotated.kpp:12:17: check failed: 2 == 3 (2 == 3)
+failed: Splitters.Splits (after failures in: Belts)
+Splitters.Merges
+3 tests, 2 failed (root failures: Belts.Moves)

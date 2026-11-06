@@ -1,0 +1,15 @@
+// spec: inside check and require, a signed and an unsigned integer compare by value (std::cmp_equal's rule), as Factorio's CHECK_EQUAL does; outside a check the signed side converts
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+suite Signs
+{
+  test Compare
+  {
+    int m = -1;
+    unsigned u = 4294967295u;
+    println("outside a check: ", m == u);
+    check(u > m);
+    check(m == u);
+  }
+}

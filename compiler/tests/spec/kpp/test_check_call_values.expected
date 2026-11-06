@@ -1,0 +1,4 @@
+test_check_call_values.kpp:13:5: check failed: isClose(x, 1.5, 0.01) (1.52, 1.5, 0.01)
+test_check_call_values.kpp:14:5: check failed: !contains("inserter", "sert") (inserter, sert)
+failed: Values.Calls
+1 test, 1 failed

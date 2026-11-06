@@ -1,0 +1,28 @@
+// spec: a function or class declared test may use check and require; a failure names the check, then each test function's call up to the test
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+test void requireNonNegative(int value)
+{
+  require(value >= 0, "value ", value);
+}
+
+test class Checker
+{
+public:
+  void all(int a, int b)
+  {
+    requireNonNegative(a);
+    requireNonNegative(b);
+  }
+};
+
+suite Helpers
+{
+  test Values
+  {
+    Checker checker;
+    checker.all(1, -2);
+    println("not reached");
+  }
+}

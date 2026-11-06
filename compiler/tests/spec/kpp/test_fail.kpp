@@ -1,0 +1,14 @@
+// spec: fail(arguments...) fails the test and ends it (Factorio's CHECK_FAILED)
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 1
+suite Failing
+{
+  test Unreachable
+  {
+    int state = 3;
+    if (state != 2)
+      fail("unexpected state ", state);
+    println("not reached");
+  }
+}

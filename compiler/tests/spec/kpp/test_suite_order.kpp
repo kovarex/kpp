@@ -1,0 +1,25 @@
+// spec: suites run in dependency order (each after every suite it depends on; of the suites ready, the first by name), then the tests outside suites
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test:
+// exit: 0
+suite Combined depends Belts, Inserters
+{
+  test Both { println("Combined.Both"); }
+}
+
+suite Inserters depends Belts
+{
+  test Picks { println("Inserters.Picks"); }
+}
+
+suite Belts
+{
+  test Moves { println("Belts.Moves"); }
+}
+
+suite Alone
+{
+  test Runs { println("Alone.Runs"); }
+}
+
+test Loose { println("loose"); }

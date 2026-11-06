@@ -1,0 +1,25 @@
+// spec: the runner calls testsSetup(the arguments it does not know) before the first test, testAfterEach() after each and testsTeardown() after the last, when the program defines them
+// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
+// test: --heavy --filter Hooks.*
+// exit: 1
+int leaked = 0;
+
+void testsSetup(const Vector<String>& arguments)
+{
+  for (const String& argument : arguments)
+    println("setup ", argument);
+}
+
+test void testAfterEach()
+{
+  println("after each");
+  require(leaked == 0, "leaked ", leaked);
+}
+
+void testsTeardown() { println("teardown"); }
+
+suite Hooks
+{
+  test Clean { println("clean"); }
+  test Leaky { leaked = 1; }
+}

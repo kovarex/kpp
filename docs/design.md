@@ -515,6 +515,97 @@ could not read would otherwise silently not run (kpp/test_build_error). Not yet:
 compile error for two tests of one name, `--jobs N`.
 Spec snippets: kpp/tests_in_compiler, kpp/test_runner, kpp/test_check_values, kpp/test_require,
 kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_build_error.
+8.7 replaces the quoted name: a test's name is an identifier.
+
+**8.7 Suites, fixtures, dependencies and the rest of the checks (decided 2026-11-06).**
+kovarex decided this on 2026-11-06 so that the game's tests (Factorio's UnitTest++ fork: 562
+`SUITE`s, 7,648 `TEST`s, 1,186 `TEST_FIXTURE`s, 131 `TEST_PARAMETRISED_FIXTURE`s, 69 `DEPENDENCY`s,
+13 `TEST_GENERATOR`s, 52,089 check macros) convert to native tests instead of their expanded macros.
+The survey and the converter's mapping: [test-suites.md](test-suites.md). Not implemented yet: the
+spec snippets below are pending.
+```
+suite DragBuildingBelt depends DragBuilding, TransportBelt
+{
+  test GhostForwardsOverObstacle : GameViewFixtureForBelts
+  {
+    buildEntities(1, "<<<  v  ");                 // the fixture's member
+    require(entityAt(3, 1) != nullptr, "row ", 1);
+  }
+}
+```
+- **Names.** A suite's and a test's name is an identifier, case-sensitive as every kpp name; there
+  is no quoted form (the 8.6 strings are renamed when this is implemented). Suite names are a name
+  context of their own: they are found only after `suite` and `depends` (and by the runner), never
+  by ordinary lookup, so `suite Beacon` beside `class Beacon` hides nothing. A test's name is
+  scoped to its suite: two suites may each have a test `Empty`. A test's full name is
+  `Suite.Test`; a test outside a suite keeps `file > test`. Compile errors: two suites of one name
+  (a suite is one block in one file), two tests of one name in one suite, a `depends` naming no
+  suite, a dependency cycle (the error lists it).
+- **Suites.** `suite Name [depends A, B] [tags t1, t2] { ... }` at namespace scope. Its other
+  declarations (helper functions and classes) are in a scope of the suite's own, seen by its tests
+  only. Dependencies are between suites only. `tags` replace Factorio's `SUITE_MODPACKS`: without
+  `--tag`, the runner runs the untagged suites; `--tag t` runs those tagged t.
+- **Order.** Suites run in dependency order (Kahn's algorithm; of the suites that are ready, the
+  first by name); the **tests of a suite run in the order they are declared in it** (kovarex),
+  then the tests outside suites in today's order. The order is decided at compile time, so
+  `--list` shows it. `--shuffle [SEED]` alone changes it: it shuffles within the dependency order
+  and prints the seed.
+- **Fixtures.** `test Name : Fixture` or `test Name : Fixture(arguments)`: the body is a member
+  function of a class derived from `Fixture`, so it names the fixture's members unqualified. The
+  fixture is constructed before the body and destroyed after it, also when the body fails; a
+  failure or exception while constructing it fails the test with `test failed: creating fixture
+  Fixture: <what>` (the body does not run), one while destroying it with `tearing down fixture`.
+- **Generated tests.** `generate Name { ... }` in a suite runs when the runner starts and adds
+  tests with `addTest(name, function)` (a `String` and a `Function<void()>`): Factorio's
+  `TEST_GENERATOR` (one test per save file, per entity pair). They take the generator's place in
+  the suite's order, in the order added; their full name is `Suite.Generator.name`.
+- **Checks.** `check(expr)` continues after a failure and `require(expr)` ends the test, as in
+  8.6; the converter writes `require` for every Factorio `CHECK*` (Factorio's fork ends the test at
+  each failed check). New forms: `check(expr, arguments...)` and `require(expr, arguments...)`
+  print the arguments after the failure as `println` prints them (Factorio's `_SIGNED` ids);
+  `fail(arguments...)` fails and ends the test (`CHECK_FAILED`); `requireThrows<T>(expr)` evaluates
+  `expr` inside a try, fails and ends the test unless a `T` (or a class derived from it) is thrown,
+  and is the caught exception; `checkThrows<T>(expr)` is an `Optional<T>` and continues. These are
+  statements of the language, as `check` is: kpp has no lazily evaluated arguments.
+- **Values in a failure.** Besides a top-level comparison's two operands (8.6), a top-level call
+  shows its arguments' values, `!call` too: `check failed: isClose(x, 1.5, 0.01) (1.52, 1.5,
+  0.01)`, so `CHECK_CLOSE`, `CHECK_BETWEEN` and `CHECK_CONTAINS` become ordinary functions.
+- **Integers in a check compare by value.** Inside `check` and `require`, a comparison of a signed
+  and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
+  4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.
+  It keeps `CHECK_EQUAL`'s meaning.
+- **Test functions.** A function or class declared `test` (`test void requireBuildable(...)`,
+  `test class GameViewFixture { ... }`) is compiled only in a test build and may use `check`,
+  `require` and `fail`. A failure there names the check's location, then one `called from` line per
+  test function up to the test (`file:line:column: called from here`): Factorio's
+  `_SOURCELOCATION` variants and its own check macros. A lambda inside a test is part of the test.
+- **After a failure** (Factorio's behaviour, `tests/TestRunner.cpp:33-60`): the failed test ends,
+  the run goes on, dependents included. `--exit-on-failure` (off by default) stops after the first
+  failed test has finished; the rest count as not run (`3 tests, 1 failed, 1 not run`), and since
+  dependencies run first, a failure in a dependency stops the run before its dependents. With
+  `--jobs N` it starts no further suite. Reporting only: a failed test of a suite whose
+  dependency, directly or further back, had a failure, prints `failed: B.x (after failures in: A)`,
+  and the summary then names the root failures, those without a failed dependency:
+  `3 tests, 2 failed (root failures: A.y)`.
+- **The runner's options** add `--suite NAME` and `--skip-suite NAME` (repeatable), `--with-dependencies`
+  (adds the suites the selection depends on), `--from NAME` and `--after NAME` (start at a test of
+  the order), `--tag TAG`, `--exit-on-failure` and `--shuffle [SEED]`. Names on the command line
+  match case-insensitively (a convenience, as Factorio's command line has it); `--filter` matches
+  the full name. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`. A test that
+  runs longer than 5 minutes gets a warning line.
+- **Hooks.** If the program defines them, the runner calls `void testsSetup(const Vector<String>&
+  arguments)` before the first test, with the arguments it does not know itself (without it an
+  unknown argument is an error, exit code 2), `void testAfterEach()` after each test (a failure in it
+  fails that test), and `void testsTeardown()` after the last. The converted game keeps its options
+  (`--config`, CRC mode, heavy mode, graphics) and its per-test checks (leaked entities) there.
+Spec snippets (pending): kpp/test_suite_order, kpp/test_suite_declaration_order,
+kpp/test_same_name_in_two_suites, kpp/test_suite_declared_twice_is_error,
+kpp/test_duplicate_name_in_suite_is_error, kpp/test_suite_depends_unknown_is_error,
+kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/test_suite_tags,
+kpp/test_fixture, kpp/test_fixture_constructor_fails, kpp/test_generate, kpp/test_check_message,
+kpp/test_fail, kpp/test_require_throws, kpp/test_check_call_values, kpp/test_check_mixed_sign,
+kpp/test_function_called_from, kpp/test_dependents_annotated,
+kpp/test_exit_on_failure_before_dependents, kpp/test_hooks, kpp/test_identifier_name.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
 - kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
@@ -3060,7 +3151,7 @@ Spec snippet: `kpp/run_command`.
 
 ### (b) Native tests: the rest of 8.6
 - **Declaration** as 8.6: `test "name" { ... }` at namespace scope or in a class. The name is a
-  string; two tests of one name in one program are a compile error (not yet). A test's full name
+  string (an identifier since 8.7); two tests of one name in one program are a compile error (not yet). A test's full name
   is its file's path as the build names it (later its package, "Code packages") and its name:
   `core/Vector.kpp > push_back grows`.
 - **Checks.** `check(expr)` records a failure and continues; `require(expr)` records it and ends
@@ -3087,11 +3178,11 @@ Spec snippet: `kpp/run_command`.
   them in N processes of the same executable, each a share, and a crash fails only its test (the
   process is started again for the rest of its share), which is what `suites.py` does by hand for
   the converted UnitTest++. No threads inside one process: tests may use globals.
-- **The converted UnitTest++.** The game's tests stay UnitTest++, converted as they are: they are
-  the game's code, compared with the C++ build's run (9006 passing). **Q4**: should the converter
-  (thread C) later turn `SUITE`/`TEST`/`CHECK`/`CHECK_EQUAL` into `test` and `check`, so the game's
-  tests run under the native runner (a suite becomes a filter)? Proposed: not now; the native
-  runner first serves new kpp code and the standard library.
+- **The converted UnitTest++.** Q4 is answered (kovarex, 2026-11-06): the converter (thread C)
+  turns `SUITE`, `TEST`, the fixtures, `DEPENDENCY`, the generators and the check macros into
+  native suites, tests and `require`, and the game's tests run under the native runner with its
+  hooks (8.7; the mapping in [test-suites.md](test-suites.md)). Until then they stay UnitTest++,
+  converted as they are.
 - **Spec snippets stay** output comparisons: they specify the compiler (the pass/pending table);
   tests check kpp code. Each test construct (declaration, check values, require, the failure
   format, filtering) gets its spec snippet first, as every feature does.

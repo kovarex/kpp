@@ -1,0 +1,5 @@
+caught negative
+test_require_throws.kpp:23:32: check failed: checkThrows<RuntimeError>(parse(2)) (nothing was thrown)
+test_require_throws.kpp:25:5: check failed: requireThrows<RuntimeError>(parse(3)) (nothing was thrown)
+failed: Throwing.DoesNotThrow
+2 tests, 1 failed
