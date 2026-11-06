@@ -673,7 +673,12 @@ jobs:
           grep -q "no input changed, the previous build's output sent again" /tmp/kppc-server-$(id -u)/*.log
           grep -q "incremental:" /tmp/kppc-server-$(id -u)/*.log
           "$kppc" --stop-server --exe app main.kpp | grep -q "compile server stopped"
-          if pgrep -f "kppc --serve"; then echo "a compile server is still running"; exit 1; fi
+          "$kppc" --stop-server --exe app main.kpp | grep -q "no compile server runs for these arguments"
+
+      # The language server on Linux (tests/lsp_smoke.py): an error published at its place, none once
+      # the file is fixed, shutdown and exit.
+      - name: the language server
+        run: python3 compiler/tests/lsp_smoke.py
 
       - name: a project with C libraries
         run: |
