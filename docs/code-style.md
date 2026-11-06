@@ -183,5 +183,9 @@ a missing space after `if`/`for`/`while`/`switch`, `X() {}`. `--fix` corrects th
 the spaces at line ends (it adds and removes empty lines only, never inside a string or comment
 that spans lines); the rest it reports. `--summary` counts by rule, `--rule NAME` keeps one rule.
 
+run_tests checks the rules `--fix` corrects in the kpp files git tracks under stdlib/, libraries/,
+programs/, projectlib/ and kppnet/ (`--fixable --tracked`): a function added without its empty lines
+fails it, and `python tools\style\kppstyle.py --fix PATH` corrects it.
+
 The spec snippets are not reformatted by `--fix`: their expected messages name line numbers. A new
 snippet is written in the style.

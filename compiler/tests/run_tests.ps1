@@ -89,6 +89,9 @@ Add 'generate' (PsCheck 'tests\generate.ps1') -part 2 -seconds 11
 Add 'project' (PsCheck 'tests\project.ps1') -part 2 -seconds 133
 # Part 1 again.
 Add 'lower case' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'tests\lowercase.ps1') -seconds 1
+# kpp's code style (docs/code-style.md): the empty lines and line ends of the kpp code in the repository,
+# what `python tools\style\kppstyle.py --fix` corrects.
+Add 'code style' @('python', '-I', '..\tools\style\kppstyle.py', '--fixable', '--tracked', '..\stdlib', '..\libraries', '..\programs', '..\projectlib', '..\kppnet') -seconds 2 -note 'FAIL code style: python tools\style\kppstyle.py --fix PATH corrects it (docs/code-style.md)'
 # Code packages (tests\packages.ps1, docs/design.md): kppc --packages lists each directory as a package,
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
