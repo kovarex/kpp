@@ -874,7 +874,9 @@ kpp/test_check_char_pointers_is_error.
   Uncaught exceptions print `unhandled exception of type T: message`, call the terminate handler
   `setTerminate` installed (one for the program, kpp's own on every target), and abort; the search
   ends the program before anything unwinds, the throw site on the stack (2026-11-04). Rules that follow
-  from this: destructors do not throw; `extern "C"` functions do not throw (calls to them stay
+  from this: a destructor is noexcept unless it says otherwise, as in C++, and a `noexcept(false)` one
+  throws to the scope that ran it (spec language/noexcept_false_destructor_throws_to_its_caller);
+  `extern "C"` functions do not throw (calls to them stay
   plain calls); an exception cannot pass through a C callback frame that was not compiled for
   unwinding; a handler of a pointer by value or by const reference takes a thrown pointer that
   converts to it, as C++'s [except.handle] 3.3 and 3.4 have it (2026-11-05, 0b2ed657: a derived
@@ -3967,8 +3969,8 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   `pointer_bitwise_operator_is_an_error`'s expected error no longer names wchar_t's type. The suite
   on Linux: 855 pass, 3 pending, 23 skipped, and 37 failing, every one stage 3's (20 throws) or
   stage 4's (17 Win32 links).
-- **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: kpp
-  types a string literal as a pointer.
+- **Seen on the way:** `sizeof(L"ab")` was a pointer's 8 on every target; since 77aaaa1a it is C++'s
+  array size, its code units and the null (spec language/sizeof_string_literal).
 - **An imported typedef of a name kpp builds in is kpp's type (thread B, 2026-11-05):** glibc and
   FreeBSD declare `int64_t`, `ptrdiff_t`, `intptr_t` and `ssize_t` as `long` and `uint64_t`,
   `size_t` and `uintptr_t` as `unsigned long` on LP64 targets (MSVC as `long long`). With `long` a
