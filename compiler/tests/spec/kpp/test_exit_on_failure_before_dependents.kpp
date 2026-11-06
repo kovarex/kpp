@@ -1,5 +1,4 @@
 // spec: --exit-on-failure stops after the first failed test has finished; dependencies run first, so a failing dependency stops the run before its dependents
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test: --exit-on-failure
 // exit: 1
 suite Splitters depends Belts

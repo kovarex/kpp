@@ -1,5 +1,4 @@
 // spec: a test's name is an identifier, also outside a suite (8.7: no quoted form); there its full name stays file > name
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test: --list
 // exit: 0
 test squareOfThree { check(3 * 3 == 9); }

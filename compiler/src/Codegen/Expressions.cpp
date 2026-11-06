@@ -434,7 +434,9 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
     {
       Expr* o = static_cast<NameofExpr*>(e)->operand;
       std::string text;
-      if (o->kind == NodeKind::NameExpr)
+      if (!o)
+        text = sym(static_cast<NameofExpr*>(e)->text);
+      else if (o->kind == NodeKind::NameExpr)
         text = sym(static_cast<NameExpr*>(o)->name.last().symbol);
       else if (o->kind == NodeKind::MemberExpr)
         text = sym(static_cast<MemberExpr*>(o)->member.last().symbol);

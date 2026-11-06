@@ -284,7 +284,7 @@ libraries uses it. Spec language/lambda_capture_of_this_by_copy_is_error.
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
 into eleven cases and none of them needs textual substitution, so kpp has no preprocessor. The
 replacements, in the order of how much code they remove:
-1. Tests and `check` in the compiler: `test "name" { ... }` declarations the compiler collects
+1. Tests and `check` in the compiler: `test name { ... }` declarations the compiler collects
    and the standard runner selects; `check(expr)` reports the text, the location and the operand
    values and records the failure instead of aborting.
 2. `assert`/`release_assert` as statements of the language (text, location, operand values;
@@ -492,13 +492,13 @@ kpp/typed_union_valueless_and_self_assignment.)
 
 **8.6 Tests in the compiler.**
 ```
-test "Direction::isVertical"
+test directionIsVertical
 {
   check(Direction::North.isVertical());
   check(Direction::East.str() == "East");
 }
 ```
-A `test "name" { ... }` declaration may appear at namespace scope or inside a class (where it
+A `test name { ... }` declaration (8.6 had a quoted name; 8.7 made it an identifier) may appear at namespace scope or inside a class (where it
 sees private members). `check(expr)` records a failure with the expression text, the location
 and the operand values and continues; `require(expr)` ends the test. Tests are compiled only
 with `kppc --tests`, which generates the runner (`--run-test <name or file>` selects); without
@@ -522,8 +522,14 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
 kovarex decided this on 2026-11-06 so that the game's tests (Factorio's UnitTest++ fork: 562
 `SUITE`s, 7,648 `TEST`s, 1,186 `TEST_FIXTURE`s, 131 `TEST_PARAMETRISED_FIXTURE`s, 69 `DEPENDENCY`s,
 13 `TEST_GENERATOR`s, 52,089 check macros) convert to native tests instead of their expanded macros.
-The survey and the converter's mapping: [test-suites.md](test-suites.md). Not implemented yet: the
-spec snippets below are pending.
+The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2026-11-06 (part 1):
+the names, suites with depends and tags, fixtures, the order, the errors across files
+(driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
+`--skip-suite` and `--tag`. Not yet (their snippets pending): `generate`, the hooks, the message
+arguments, `fail`, `requireThrows`/`checkThrows`, a call's values, the mixed-sign rule, test functions;
+`--with-dependencies`, `--from`, `--after`, `--shuffle`, `--jobs` and the slow-test line. The parser
+writes each test, fixture class and suite registration as tokens it then reads (parseTest,
+parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
 ```
 suite DragBuildingBelt depends DragBuilding, TransportBelt
 {
@@ -548,8 +554,8 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   `--tag`, the runner runs the untagged suites; `--tag t` runs those tagged t.
 - **Order.** Suites run in dependency order (Kahn's algorithm; of the suites that are ready, the
   first by name); the **tests of a suite run in the order they are declared in it** (kovarex),
-  then the tests outside suites in today's order. The order is decided at compile time, so
-  `--list` shows it. `--shuffle [SEED]` alone changes it: it shuffles within the dependency order
+  then the tests outside suites in today's order. The runner computes the order when it
+  starts, the same every run, and `--list` shows it. `--shuffle [SEED]` alone changes it: it shuffles within the dependency order
   and prints the seed.
 - **Fixtures.** `test Name : Fixture` or `test Name : Fixture(arguments)`: the body is a member
   function of a class derived from `Fixture`, so it names the fixture's members unqualified. The
@@ -575,6 +581,11 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
   4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.
   It keeps `CHECK_EQUAL`'s meaning.
+- **Char pointers in a check.** Inside `check` and `require`, `==` or `!=` between two char pointers
+  (`const char*`, `char*`, or one of them and a string literal) is a compile error, "compares
+  addresses: write StringView(a) == b, or cast to (const void*) to compare the addresses":
+  Factorio's `CHECK_EQUAL` compared their text (`strcmp`), and the converter, which has no types
+  in test bodies, writes `require(a == e)` for every `CHECK_EQUAL`; the error points out the sites.
 - **Test functions.** A function or class declared `test` (`test void requireBuildable(...)`,
   `test class GameViewFixture { ... }`) is compiled only in a test build and may use `check`,
   `require` and `fail`. A failure there names the check's location, then one `called from` line per
@@ -606,7 +617,8 @@ kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/te
 kpp/test_fixture, kpp/test_fixture_constructor_fails, kpp/test_generate, kpp/test_check_message,
 kpp/test_fail, kpp/test_require_throws, kpp/test_check_call_values, kpp/test_check_mixed_sign,
 kpp/test_function_called_from, kpp/test_dependents_annotated,
-kpp/test_exit_on_failure_before_dependents, kpp/test_hooks, kpp/test_identifier_name.
+kpp/test_exit_on_failure_before_dependents, kpp/test_hooks, kpp/test_identifier_name,
+kpp/test_check_char_pointers_is_error.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
 - kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
@@ -3057,7 +3069,7 @@ file's `main` is left out of a test build.
 // square.kpp
 int square(int x) { return x * x; }
 
-test "square"
+test square
 {
   check(square(3) == 9);
   check(square(-2) == 5);    // fails: square.kpp:7:3: check failed: square(-2) == 5 (4 == 5)
@@ -3151,7 +3163,7 @@ Spec snippet: `kpp/run_command`.
 `#!` run as a script? Proposed: no; one explicit spelling.
 
 ### (b) Native tests: the rest of 8.6
-- **Declaration** as 8.6: `test "name" { ... }` at namespace scope or in a class. The name is a
+- **Declaration** as 8.6: `test name { ... }` at namespace scope or in a class. The name is a
   string (an identifier since 8.7); two tests of one name in one program are a compile error (not yet). A test's full name
   is its file's path as the build names it (later its package, "Code packages") and its name:
   `core/Vector.kpp > push_back grows`.

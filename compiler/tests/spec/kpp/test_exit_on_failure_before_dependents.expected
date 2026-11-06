@@ -1,4 +1,4 @@
-test_exit_on_failure_before_dependents.kpp:14:5: check failed: 1 == 2 (1 == 2)
+test_exit_on_failure_before_dependents.kpp:13:5: check failed: 1 == 2 (1 == 2)
 the failed test finishes
 failed: Belts.Moves
 3 tests, 1 failed, 2 not run

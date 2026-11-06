@@ -1,5 +1,4 @@
 // spec: two tests of one name in one suite are an error
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // kppc: --tests
 // error: test 'Empty' is declared twice in suite 'Belts'
 suite Belts

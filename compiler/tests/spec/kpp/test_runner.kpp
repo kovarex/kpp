@@ -1,16 +1,16 @@
-// spec: `kppc --test file.kpp` builds the file's `test "name" { }` declarations with a runner in place of main and runs them all
+// spec: `kppc --test file.kpp` builds the file's `test name { }` declarations with a runner in place of main and runs them all
 // test:
 // exit: 0
 int square(int x) { return x * x; }
 // Outside a test, check is an ordinary name.
 int check(int x) { return x + 1; }
 
-test "square of three"
+test squareOfThree
 {
   check(square(3) == 9);
 }
 
-test "square of a negative"
+test squareOfANegative
 {
   check(square(-2) == 4);
   check(square(0) == 0);

@@ -1,13 +1,16 @@
-// spec: the runner's --report FILE (- for stdout) writes one JSON object per test and a summary, for editors and test explorers
-// test: --report - --filter "\"quoted\"" --filter fails
+// spec: the runner's --report FILE (- for stdout) writes one JSON object per test (a suite's with its suite) and a summary, for editors and test explorers; the text in it is escaped
+// test: --report - --filter fails --filter Parsing.*
 // exit: 1
-test "fails"
+test fails
 {
-  int x = 3;
-  check(x == 4);
+  String s("a\"b");
+  check(s == "a\"c");
 }
 
-test "a \"quoted\" name"
+suite Parsing
 {
-  check(true);
+  test quotes
+  {
+    check(true);
+  }
 }

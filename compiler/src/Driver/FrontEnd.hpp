@@ -8,6 +8,12 @@
   size_t checkConfigEnumerations(Build& build);
 
 
+  // The test suites across the program's files (design.md 8.7; ParsedFile::testSuites, a --tests
+  // build's): two suites of one name, two tests of one name in a suite, a depends naming no suite,
+  // suites that depend on each other in a cycle. Each an error, on stderr; their number.
+  size_t checkTestSuites(Build& build);
+
+
   void runResolve(Build& build);
   void reportParse(Build& build, double parseTime);
   void reportResolve(Build& build);

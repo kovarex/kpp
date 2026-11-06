@@ -1,0 +1,12 @@
+// spec: inside check and require, == or != of two char pointers (or a char pointer and a string literal) is an error: it would compare addresses, where Factorio's CHECK_EQUAL compared the text
+// kppc: --tests
+// error: == of two char pointers compares addresses
+const char* fluidName() { return "steam"; }
+
+test fluidNames
+{
+  require(StringView(fluidName()) == "steam");
+  require(fluidName() == "steam");
+}
+
+int main() { return 0; }

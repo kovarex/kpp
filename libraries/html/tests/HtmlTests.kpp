@@ -7,7 +7,7 @@ constexpr HtmlTemplate htmlTestSearch{"<a href=\"/library/{{name}}?q={{query}}#{
 constexpr HtmlTemplate htmlTestPage{"<!DOCTYPE html>\n<html><head><title>{{title}}</title><style>p { color: red; }</style></head>"
                                     "<body><!-- a comment -->{{content}}<br><img src=\"logo.png\" alt=\"{{title}}\"/></body></html>"};
 
-test "escaping"
+test escaping
 {
   check(htmlEscape("a < b && c > \"d\" 'e'") == "a &lt; b &amp;&amp; c &gt; &quot;d&quot; &#39;e&#39;");
   check(htmlEscape("") == "");
@@ -15,7 +15,7 @@ test "escaping"
   check(SafeHtml::escape("<b>").str() == "&lt;b&gt;");
 }
 
-test "a template made at compile time"
+test aTemplateMadeAtCompileTime
 {
   static_assert(htmlTestCard.countParts() == 9);
   SafeHtml card = htmlTestCard.render({{"kind", "featured"}, {"url", "https://kpp.net/json"}, {"name", "json <1.0>"}, {"summary", "\"fast\" & strict"}});
@@ -26,13 +26,13 @@ test "a template made at compile time"
   check(holes[3] == "summary");
 }
 
-test "holes in a URL"
+test holesInAUrl
 {
   SafeHtml link = htmlTestSearch.render({{"name", "a b/c"}, {"query", "x&y=1/2"}, {"part", "h\xC3\xA9"}});
   check(link.str() == "<a href=\"/library/a%20b/c?q=x%26y%3D1%2F2#h%C3%A9\">x</a>");
 }
 
-test "SafeHtml goes in as it is, and a page nests templates"
+test safeHtmlGoesInAsItIsAndAPageNestsTemplates
 {
   SafeHtml body = SafeHtml::trusted("<p>made by <b>markdown</b></p>");
   SafeHtml page = htmlTestPage.render({{"title", "kpp & you"}, {"content", body}});
@@ -58,7 +58,7 @@ String htmlTemplateErrorOf(const char* text)
   }
 }
 
-test "malformed templates"
+test malformedTemplates
 {
   check(htmlTemplateErrorOf("<p>{{name}}</p>") == "");
   check(htmlTemplateErrorOf("<p>{{name</p>") == "1:4: a '{{' without its '}}'");
@@ -99,7 +99,7 @@ String htmlRenderErrorOf(const HtmlTemplate& t, InitializerList<HtmlArgument> ar
   }
 }
 
-test "renders that do not fit"
+test rendersThatDoNotFit
 {
   HtmlTemplate link("<a href=\"{{url}}\">{{name}}</a>");
   check(htmlRenderErrorOf(link, {{"url", "https://a"}, {"name", "a"}}) == "");
@@ -121,7 +121,7 @@ constexpr HtmlTemplate optionTemplate{R"(<option value="{{value}}" ?selected="{{
 constexpr HtmlTemplate checkboxTemplate{R"(<input type="checkbox" ?checked="{{on}}" ?disabled="{{off}}"/>)"};
 constexpr HtmlTemplate sidesTemplate{R"(<select><option ?selected="{{black}}">B</option><option ?selected="{{white}}">W</option></select>)"};
 
-test "boolean attributes"
+test booleanAttributes
 {
   check(optionTemplate.render({{"value", 2}, {"chosen", true}}).str() == "<option value=\"2\" selected>2</option>");
   check(optionTemplate.render({{"value", 3}, {"chosen", false}}).str() == "<option value=\"3\">3</option>");

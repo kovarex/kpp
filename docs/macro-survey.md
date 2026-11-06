@@ -79,7 +79,7 @@ the expression text, the location and the operand values. Factorio adds 37 helpe
 (`CHECK_BUILDABILITY` 712, `CHECK_LUA_NUMBER_EQUALS` 707, `SETUP_MUSIC_*` 110,
 `TEST_GENERATOR(Name)` with `class TestGenerator_##Name`), all of them wrapping `CHECK_EQUAL`.
 
-kpp: the proposal's "test tools" item. `test "name" { ... }` is a declaration the compiler
+kpp: the proposal's "test tools" item. `test name { ... }` is a declaration the compiler
 collects and the standard runner selects by name, file or suite; fixtures are ordinary classes;
 `check(a == b)` is built in and reports like `assert` does (text, location, operand values), with
 `check` failures recorded instead of aborting. With that, the 55,800 library uses and all 37 helper

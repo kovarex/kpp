@@ -36,7 +36,7 @@ struct CastExpr : Expr { Type* type; Expr* operand; };
 struct NamedCastExpr : Expr { Kw castKind; Type* type; Expr* operand; };
 struct SizeofExpr : Expr { Kw sizeofKind; Type* type = nullptr; Expr* operand = nullptr; bool isPack = false; };
 struct CallerExpr : Expr {}; // `caller` as a default argument: the compiler fills in the call site.
-struct NameofExpr : Expr { Expr* operand; }; // nameof(x): the last name of x as a string literal.
+struct NameofExpr : Expr { Expr* operand; uint32_t text = UINT32_MAX; }; // nameof(x): the last name of x as a string literal. Without an operand: text's spelling (the parser's `__kpp_text X`, design.md 8.7).
 // noexcept(e), the operator: whether e cannot throw (its operand is not evaluated). value is the
 // walk's answer (GlobalScope::canThrow): 1 true, 0 false, -1 not decided (a template's own walk).
 struct NoexceptExpr : Expr { Expr* operand; int8_t value = -1; };

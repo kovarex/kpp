@@ -51,7 +51,7 @@ struct HttpClientTestServer
 
 void httpClientRunTestServer(HttpClientTestServer* server) { server->run(); }
 
-test "GET, POST, headers, a redirect, statuses"
+test getPostHeadersARedirectStatuses
 {
   HttpClientTestServer server;
   server.listener = net::TcpListener::listen("127.0.0.1", 0);
@@ -103,7 +103,7 @@ bool httpClientThrows(StringView url, StringView expected)
   return false;
 }
 
-test "errors"
+test errors
 {
   i32 port = 0;
   {
@@ -125,7 +125,7 @@ test "errors"
   check(httpClientThrows(toString("http://127.0.0.1:", silent.port(), "/"), "timed out"));
 }
 
-test "HTTPS, when asked for"
+test httpsWhenAskedFor
 {
   const char* asked = getenv("HTTPCLIENT_TEST_HTTPS");
   if (asked == nullptr)

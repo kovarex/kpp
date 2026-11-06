@@ -1,5 +1,4 @@
 // spec: depends must name a suite of the program (names are case-sensitive)
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // kppc: --tests
 // error: no suite named 'belts'
 suite Belts

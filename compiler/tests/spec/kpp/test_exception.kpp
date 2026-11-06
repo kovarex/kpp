@@ -1,7 +1,7 @@
 // spec: an exception that leaves a test fails that test; one derived from Exception shows its message
 // test:
 // exit: 1
-test "standard"
+test standard
 {
   throw RuntimeError("the disk is full");
 }
@@ -10,12 +10,12 @@ struct Custom
 {
 };
 
-test "other"
+test other
 {
   throw Custom();
 }
 
-test "after"
+test after
 {
   println("still running");
 }

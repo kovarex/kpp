@@ -319,8 +319,8 @@ void build(Project& project)
 }
 '@
     Set-Content 'libraries\greet\build.kpp' $greet
-    Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest `"greeting`"`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
-    Set-Content 'libraries\greet\tests\more.kpp' "test `"greeting twice`"`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
+    Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest greeting`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
+    Set-Content 'libraries\greet\tests\more.kpp' "test greetingTwice`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
     $text = "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n  text.unscoped = true;`n}"
     Set-Content 'libraries\text\build.kpp' $text
     Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r << `"! `"; return r; }"
@@ -427,7 +427,7 @@ if (Run 'syslibs')
     # for every platform, the link fails.
     New-Item -ItemType Directory -Force 'libraries\sys\src' | Out-Null
     $sysBuild = "void build(Project& project)`n{`n  Library& sys = project.library(`"sys`");`n  sys.version = `"1.0.0`";`n  LINKS`n}"
-    Set-Content 'libraries\sys\src\sys.kpp' "extern `"C`" unsigned long GetFileVersionInfoSizeA(const char* name, unsigned long* handle);`nbool versioned() { unsigned long h = 0; return GetFileVersionInfoSizeA(`"kernel32.dll`", &h) > 0; }`ntest `"kernel32 has a version`"`n{`n  check(versioned());`n}"
+    Set-Content 'libraries\sys\src\sys.kpp' "extern `"C`" unsigned long GetFileVersionInfoSizeA(const char* name, unsigned long* handle);`nbool versioned() { unsigned long h = 0; return GetFileVersionInfoSizeA(`"kernel32.dll`", &h) > 0; }`ntest kernel32HasAVersion`n{`n  check(versioned());`n}"
     Set-Content 'src\main.kpp' "int main()`n{`n  if (sys::versioned())`n    println(`"versioned`");`n  else`n    println(`"none`");`n  return 0;`n}"
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
     Set-Content 'libraries\sys\build.kpp' ($sysBuild -replace 'LINKS', "sys.systemLibrary(`"version`", Platform::Windows);`n  sys.systemLibrary(`"nosuchlibrary`", Platform::FreeBSD);")

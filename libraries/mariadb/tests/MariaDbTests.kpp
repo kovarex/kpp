@@ -15,7 +15,7 @@ String mariaDbHex(StringView data)
   return out;
 }
 
-test "SHA-1"
+test sha1
 {
   check(mariaDbHex(mariaDbSha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");
   check(mariaDbHex(mariaDbSha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
@@ -32,14 +32,14 @@ String mariaDbTestScramble()
   return scramble;
 }
 
-test "mysql_native_password"
+test mysql_native_password
 {
   // Python: SHA1(p) XOR SHA1(scramble + SHA1(SHA1(p))) for p = "secret", scramble bytes 1 to 20.
   check(mariaDbHex(mariaDbNativePassword("secret", mariaDbTestScramble())) == "b32bb3a583e1340c0a1108d58b1be49781ad8c2f");
   check(mariaDbNativePassword("", mariaDbTestScramble()).empty());
 }
 
-test "quoting"
+test quoting
 {
   check(mariaDbQuote("plain") == "'plain'");
   check(mariaDbQuote("it's \"x\"") == "'it\\'s \\\"x\\\"'");
@@ -50,7 +50,7 @@ test "quoting"
   check(mariaDbQuoteOrNull(Optional<String>(String("x"))) == "'x'");
 }
 
-test "length-encoded integers"
+test lengthEncodedIntegers
 {
   u64 values[] = {0, 250, 251, 65535, 65536, 16777215, 16777216, 0xffffffffffffull};
   for (u64 value : values)
@@ -191,7 +191,7 @@ struct MariaDbFakeServer
 
 void mariaDbRunFakeServer(MariaDbFakeServer* server) { server->run(); }
 
-test "the protocol, against a fake server"
+test theProtocolAgainstAFakeServer
 {
   MariaDbFakeServer server;
   server.listener = net::TcpListener::listen("127.0.0.1", 0);
@@ -242,7 +242,7 @@ test "the protocol, against a fake server"
   check(server.quit);
 }
 
-test "no server"
+test noServer
 {
   i32 port = 0;
   {

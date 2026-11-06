@@ -52,6 +52,16 @@ struct ParsedFile
   // declaration it is written in. It declares nothing; the class's static data members are built
   // at startup (GlobalScope::explicitInstantiationsOf).
   std::vector<std::pair<NamedType*, Decl*>> explicitInstantiations;
+  // Its test suites (design.md 8.7; parsed only in a --tests build), for the checks across files
+  // (driver::checkTestSuites): two suites of one name, two tests of one name in a suite, a depends
+  // naming no suite, a cycle. Each with its name's token, its dependencies' and its tests' names
+  // with their tokens.
+  struct TestSuite
+  {
+    uint32_t name = UINT32_MAX, token = 0;
+    std::vector<std::pair<uint32_t, uint32_t>> depends, tests;
+  };
+  std::vector<TestSuite> testSuites;
   uint32_t declCount = 0; // All declaration nodes created.
   uint32_t functionBodies = 0;
   uint32_t nodeCount = 0;

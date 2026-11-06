@@ -430,6 +430,7 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
   file.declCount = c.parsed->declCount;
   file.functionBodies = c.parsed->functionBodies;
   file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
+  file.testSuites = c.parsed->testSuites;
   file.nodeCount = c.parsed->nodeCount;
   file.arenaBytesReported = c.parsed->arena.bytesAllocated();
   kept.grafts.push_back(std::move(c.parsed)); // its arena holds the new bodies
@@ -782,6 +783,7 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
   file.declCount = c.parsed->declCount;
   file.functionBodies = c.parsed->functionBodies;
   file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
+  file.testSuites = c.parsed->testSuites;
   file.nodeCount = c.parsed->nodeCount;
   file.arenaBytesReported = c.parsed->arena.bytesAllocated();
   kept.grafts.push_back(std::move(c.parsed));
