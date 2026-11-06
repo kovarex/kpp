@@ -442,8 +442,11 @@ auto codegen::Emitter::catchHandlers(TryStmt* t, const std::string& slot, const 
     startBlock(handlerLabels[i]);
     pushScope();
     scopes.back().push_back({slot, nullptr, true});
+    uint32_t outerDebugBlock = debugBlock;
     if (h.param)
     {
+      openDebugBlock(h.param); // (the parameter is its handler's, as a block's variable)
+      debugLine(h.param);
       const Ty* pt = declType(h.param);
       std::string ap = newTemp(), obj = newTemp();
       fn += "  " + ap + " = getelementptr inbounds i8, ptr " + slot + ", i64 32\n  " + obj + " = load ptr, ptr " + ap + "\n";
@@ -496,9 +499,12 @@ auto codegen::Emitter::catchHandlers(TryStmt* t, const std::string& slot, const 
         fn += "  " + loaded + " = load " + llType(pt, h.param) + ", ptr " + obj + "\n  store " + llType(pt, h.param) + " " + loaded + ", ptr " + v + "\n";
         locals[h.param] = {v, pt, false};
       }
+      if (uint32_t name = static_cast<ParamDecl*>(h.param)->name; name != UINT32_MAX)
+        debugVariable(sym(name), h.param, locals[h.param].addr, pt);
     }
     statement(h.body);
     popScope();
+    debugBlock = outerDebugBlock;
     if (!blockTerminated && pad.empty())
       emitBranch(endL);
     else if (!blockTerminated)

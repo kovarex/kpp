@@ -621,6 +621,23 @@ auto codegen::Emitter::openDebugBlock(Node* at) -> uint32_t
   return outer;
 }
 
+// Whether a statement declares a variable in its head (`for (int i = 0; ...)`, `if (int c = f())`):
+// the variable is the statement's, in a lexical block of its own, or the `i` of two loops of a
+// function would be two variables of one scope to a debugger, a watch of `i` naming either.
+static bool declaresInHead(Stmt* s)
+{
+  auto declares = [](Node* n) { return n && n->kind == NodeKind::DeclStmt; };
+  switch (s->kind)
+  {
+    case NodeKind::ForStmt: return declares(static_cast<ForStmt*>(s)->init);
+    case NodeKind::RangeForStmt: return true;
+    case NodeKind::IfStmt: return declares(static_cast<IfStmt*>(s)->init) || declares(static_cast<IfStmt*>(s)->cond);
+    case NodeKind::WhileStmt: return declares(static_cast<WhileStmt*>(s)->cond);
+    case NodeKind::SwitchStmt: return declares(static_cast<SwitchStmt*>(s)->init) || declares(static_cast<SwitchStmt*>(s)->cond);
+    default: return false;
+  }
+}
+
 auto codegen::Emitter::statement(Stmt* s) -> void
 {
   if (!s)
@@ -633,6 +650,9 @@ auto codegen::Emitter::statement(Stmt* s) -> void
   struct DepthGuard { ~DepthGuard() { --d; } int& d; } dg{recursionDepth};
   if (blockTerminated)
     startBlock(newLabel("dead"));
+  struct DebugBlockGuard { ~DebugBlockGuard() { block = outer; } uint32_t& block; uint32_t outer; } debugBlockGuard{debugBlock, debugBlock};
+  if (declaresInHead(s))
+    openDebugBlock(s);
   debugLine(s);
   switch (s->kind)
   {

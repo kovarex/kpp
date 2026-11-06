@@ -19,10 +19,11 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   local copied game::Point
   local cx int
   local cy int
-  local each int
   local areaOf int game::Square::() game::Squar...
   local cell Cell<Cell<int32> >
   local slot Cell<int32>::Slot
+  block
+    local each int
   block
     local half double
     local flags Flags
@@ -32,6 +33,21 @@ function inspect::__lambda_f9e4fd6c_0::operator()(int32)
   parameter k int
   local sum int
   local mask game::Mask&
+function scoped(int32)
+  parameter x int
+  local total int
+  block
+    local i int
+  block
+    local i int
+  block
+    local c int
+  block
+    local w int
+  block
+    local s int
+  block
+    local e int
 class game::Point, 8 bytes
   member x int at 0, public
   member y int at 4, public

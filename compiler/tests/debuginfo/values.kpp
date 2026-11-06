@@ -111,9 +111,41 @@ int inspect(const game::Point& point, int scale, game::Mode mode, StringView lab
   return sum + (int)values.size();
 }
 
+// The variables a statement declares in its head are the statement's, each loop's `i` in a block of
+// its own. A catch parameter is its handler's.
+int scoped(int x)
+{
+  int total = 0;
+  for (int i = 0; i < x; ++i)
+    total += i;
+  for (int i : {1, 2})
+    total += i;
+  if (int c = x % 3)
+    total += c;
+  while (int w = total % 2)
+    total += w;
+  switch (int s = total % 4)
+  {
+    case 0:
+      total += s;
+      break;
+    default:
+      total -= s;
+  }
+  try
+  {
+    throw x;
+  }
+  catch (int e)
+  {
+    total += e;
+  }
+  return total;
+}
 int main()
 {
   game::Point point{3, 4};
+  scoped(3);
   println(inspect(point, 2, game::Mode::On, "label"));
   return 0;
 }

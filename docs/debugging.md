@@ -56,7 +56,12 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
 - **Variables**: each parameter (`this` artificial, the object pointer) and local by its kpp name,
   at its declaration's line, in the lexical block of the block statement it is declared in (a
   function's own body is the function's scope, as clang has it): the debugger shows a block's
-  variables where its code is. A variable's address is its alloca, or the pointer a parameter
+  variables where its code is. What a statement declares in its head (`for (int i = 0; ...)`, a
+  range-`for`'s variable, `if (int c = f())`, `while`, `switch`) is in a block of that statement, and
+  a catch parameter in one of its handler (2026-11-06; battery f15: they were the function's, so two
+  loops' `i` were two variables of one scope, and a catch parameter was not described; Visual Studio
+  now reads the second loop's `i` as 100, 101 in a loop from 100). clang has `while`'s and `switch`'s
+  and a catch parameter at the function's scope. A variable's address is its alloca, or the pointer a parameter
   passed by address is; a reference's type is the reference, its slot holding the pointer. A
   lambda's captures are its operator's variables by their names: one by value is its field of the
   closure, one by reference that field's reference (`int&`), a captured `this` the enclosing class's
