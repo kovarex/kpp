@@ -1,0 +1,47 @@
+// spec: a member whose constructor throws was never constructed, so its destructor does not run while the constructor unwinds; only the members built before it are destroyed (C++ [except.ctor] 3), also when the constructor's body calls a function that may throw: one Part destroyed of the three objects, the one built before the throw (`0 0 1`)
+// factorio: E's exceptions battery against C++ (ex1, 2026-11-06): on Windows, Part's destructor ran for the member whose constructor threw, whenever the class's constructor body called a function that may throw (`1 1 1`); on Linux `0 0 1`
+// pending on windows: the cleanup that destroys the member covers its own constructor call (B)
+extern "C" import "stdio.h";
+int destroyed = 0;
+void work() { printf("not reached "); }
+struct Part
+{
+  int id;
+  Part(int i) : id(i)
+  {
+    if (i == 1)
+      throw i;
+  }
+  ~Part() { ++destroyed; }
+};
+class Whole
+{
+public:
+  Part part{1};
+  Whole() { work(); }
+};
+class Listed
+{
+public:
+  Part part;
+  Listed() : part(1) { work(); }
+};
+class Two
+{
+public:
+  Part a{2};
+  Part b{1};
+  Two() { work(); }
+};
+int main()
+{
+  try { Whole w; } catch (int) {}
+  printf("%d ", destroyed);
+  destroyed = 0;
+  try { Listed l; } catch (int) {}
+  printf("%d ", destroyed);
+  destroyed = 0;
+  try { Two t; } catch (int) {}
+  printf("%d\n", destroyed);
+  return 0;
+}
