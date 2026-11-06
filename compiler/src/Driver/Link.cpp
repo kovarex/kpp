@@ -125,6 +125,11 @@ std::string ltoLinkFlags(const Options& options)
     flags += msvc ? " -Wl,/opt:lldltopartitions=" + partitions : " -Wl,--lto-partitions=" + partitions;
   if (options.optLevel != 2)
     flags += msvc ? " -Wl,/opt:lldlto=" + level : " -Wl,--lto-O" + level;
+  // MinGW-w64's startup walks .ctors from its end, and LLVM writes the list reversed for that only
+  // when told it has .ctors: lld's LTO back end assumes .init_array, so a release build's globals
+  // were built last to first.
+  if (options.target.gnu)
+    flags += " -Wl,-mllvm,-use-ctors";
   return flags.empty() ? flags : flags.substr(1);
 }
 

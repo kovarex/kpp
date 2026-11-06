@@ -35,6 +35,15 @@ else
   $streams = (& (Join-Path $vs 'VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe') dump --named-streams "$work\natvis.pdb") -join "`n"
   if ($streams -notmatch '/src/files/\S*natvis\.natvis') { $failed += "natvis (the PDB has no /src/files/...natvis.natvis)" }
 }
+# A release build links through LTO, whose back end is lld's: the globals built in definition order
+# (MinGW-w64's startup runs .ctors from its end), thin and whole-program.
+$startup = "$PSScriptRoot\spec\language\startup_in_definition_order"
+foreach ($lto in @(), @('--lto', 'full'))
+{
+  & $Kppc --quiet --target windows-gnu --release @lto --exe "$work\startup.exe" "$startup.kpp" > "$work\startup.compile.txt" 2>&1
+  $out = (& "$work\startup.exe" | Out-String).Trim() -replace "`r", ''
+  if ($out -ne (Get-Content -Raw "$startup.expected").Trim().Replace("`r", '')) { $failed += "startup order in a release build $lto" }
+}
 foreach ($f in $failed) { "FAIL windows-gnu $f" }
 if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs, and the .natvis in a --debug-info build's PDB" }
 exit $failed.Count
