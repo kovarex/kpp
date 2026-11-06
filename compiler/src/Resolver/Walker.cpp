@@ -435,8 +435,10 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
 
 auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
 {
+  // (an instance's own member, `template<> int Converter<double>::kind() const`, is no second
+  // definition of the template's: isMemberSpecialization)
   if (!f->body || activeSubst || probing || !file || file->isImported || !f->templateParams.empty() || f->condition ||
-      f->name.empty() || Impl::isFunctionSpecialization(f) || inGenericTemplate())
+      f->name.empty() || Impl::isFunctionSpecialization(f) || Impl::isMemberSpecialization(f) || inGenericTemplate())
     return;
   // (not recorded as what f's walk reads: a compile server's build would walk f again for every
   // overload added to its name, and its codegen then emitted f twice. So an edit that adds a
@@ -459,8 +461,8 @@ auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
     if (!e.decl || e.decl == f || e.decl->kind != NodeKind::FunctionDecl)
       continue;
     auto* g = static_cast<FunctionDecl*>(e.decl);
-    if (g->body && g->templateParams.empty() && !g->condition && !Impl::isFunctionSpecialization(g) && before(g, f) &&
-        (!first || before(g, first)) && impl.sameFunction(f, g))
+    if (g->body && g->templateParams.empty() && !g->condition && !Impl::isFunctionSpecialization(g) && !Impl::isMemberSpecialization(g) &&
+        before(g, f) && (!first || before(g, first)) && impl.sameFunction(f, g))
       first = g;
   }
   if (!first)

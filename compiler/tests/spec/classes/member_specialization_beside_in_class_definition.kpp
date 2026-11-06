@@ -1,0 +1,20 @@
+// spec: an explicit specialization of a member function for one instance of a class template (`template<> int Converter<double>::kind() const { return 2; }`), beside the member's definition inside the class template, is that instance's member and no second definition: Converter<double>::kind() is 2, every other instance's 1 (`1 2 1`); clang prints the same
+// found by thread B (2026-11-06, comparing kpp with clang): the duplicate-definition check took it for a second definition of kind ("the function kind is defined twice"), where only an out-of-class member definition was told apart before
+template<class T>
+struct Converter
+{
+  T base;
+  int kind() const { return 1; }
+};
+
+template<>
+int Converter<double>::kind() const { return 2; }
+
+int main()
+{
+  Converter<int> ci{41};
+  Converter<double> cd{2.5};
+  Converter<char> cc{'a'};
+  println(ci.kind(), " ", cd.kind(), " ", cc.kind());
+  return 0;
+}
