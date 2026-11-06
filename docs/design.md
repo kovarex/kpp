@@ -535,6 +535,10 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   and written as an integer of its bytes, align 1. A [[packed]] class keeps MSVC's rules. Spec
   interop/c_struct_bit_fields_match_c: a struct shared with C, its size, alignment, offsets and
   fields as C's on each target.
+- Every empty base takes no storage (Itanium's rule), on every target: MSVC gives only the first
+  empty base none unless the class says `__declspec(empty_bases)`, so a class with two empty bases
+  (`struct T : Empty, Empty2 { char c; };`) is 1 byte in kpp and 2 with MSVC (found comparing with
+  clang, 2026-11-06). kpp shares classes with C alone, which has no bases.
 - A bit field's value promotes by its width, as C++'s [conv.prom] 5 has it, on every target
   (kovarex 2026-11-05: "follow the standard here"; MSVC keeps the declared type): an operand of
   arithmetic, a comparison or `?:` that designates a bit field of an integer type is an int when
