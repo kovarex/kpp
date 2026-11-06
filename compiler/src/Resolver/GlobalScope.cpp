@@ -1835,6 +1835,11 @@ bool GlobalScope::isNoexcept(FunctionDecl* f, const TemplateArgs& args)
   return !v || *v; // (a condition that is no constant: as declared, noexcept)
 }
 
+bool GlobalScope::constructsWithoutThrowing(const Ty* t, bool move)
+{
+  return impl->constructibleFromSelf(t, move, Impl::TraitForm::Nothrow).value_or(false);
+}
+
 Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)
 {
   if (args.empty() || !v->init || !v->file || !v->file->tokens)

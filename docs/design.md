@@ -456,7 +456,7 @@ Alternatives are listed by `alternatives(Property)` for reflection. `InputAction
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
 Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (the value first, which may read what the
 union holds; the alternative held takes it by its operator=, as std::variant, and another is
-destroyed and the value constructed: kovarex 2026-11-06), `p[Integer]` (a release_assert on another tag), `p == Integer`,
+destroyed and the value constructed: kovarex 2026-11-06; the rule below), `p[Integer]` (a release_assert on another tag), `p == Integer`,
 `switch (p)` (exhaustive, as for a kpp enum), copying, assignment and destruction following the
 tag. Decided on the way: a default-constructed union holds its first alternative,
 default-constructed; the tag type is the nested kpp enum `Property::Tag` (so `tag.str()` and
@@ -509,13 +509,40 @@ it so. `VariantAlternative<I, U>` is the type of the I-th alternative (a built-i
 compiler's, as std::variant_alternative_t). Spec snippets: kpp/typed_union_comparisons,
 kpp/typed_union_variant_alternative.
 
-A union whose new alternative's construction throws (`u[C] = x`, a copy or move assignment whose
-copy throws) holds none, as std::variant's valueless_by_exception: its tag is `Tag::count` until an
-alternative is built, it is destroyed as holding nothing, a copy of it is valueless too, it equals
-only a valueless union and orders before every other, and `switch` on it aborts as on any invalid
-enum value. `u = u` keeps u. (2026-11-06, E's battery: the tag was set first, and the never-built
-alternative was destroyed later; specs kpp/typed_union_alternative_that_throws_is_not_destroyed,
-kpp/typed_union_valueless_and_self_assignment.)
+`u[Name] = x` and `u = x` are std::variant's assignment ([variant.assign]):
+- x is evaluated first, a temporary `T(...)` included: it may read what the union holds, directly or
+  through a reference, and if that throws the union keeps its alternative.
+- The alternative held takes x by its operator= (for x of another type the one the checker chose
+  for it, as `get<T>(v) = x`).
+- Another alternative goes, and the new one is built in its place from x. Where building it from x
+  can throw and the class's move cannot, a temporary of the class is built before anything goes, and
+  moved: such a throw leaves the union as it was.
+
+As for std::variant, an x that refers into the alternative held is gone when x goes to the place
+itself: `u[Name] = move(u[Other].member)`, a copy that cannot throw, a class whose move can. A class
+with no copy or move constructor cannot be assigned a value of its own class (a compile error;
+std::variant refuses it too).
+
+*Built in place.* No assignment builds an alternative where it stays, as the value comes first. A
+class that must not move (the game's Targeter, registered with the deserialiser while it loads) is
+built by the union's destructor and placement new from a tag, which is std::variant's emplace:
+`u.~U(); new (&u) U(U::Name, T(input));` or `new (&u) U(U::Name, a, b);`, with no move, whichever
+alternative was held, which goes first (the arguments must not refer to it). The converter's
+generated `emplace<T>(args...)` and the game's loading are written so. Until 2026-11-06 `u[Name] =
+T(...)` was built in place when the union held another alternative, the held one destroyed before
+the value was evaluated: reading it directly stopped on the alternative check, and reading it
+through a reference silently read the destroyed object, printing empty strings (thread B; specs
+kpp/typed_union_new_alternative_reads_the_held_one, kpp/typed_union_value_reads_the_held_one_through_a_reference,
+kpp/typed_union_value_of_another_type, kpp/typed_union_alternative_built_in_place,
+kpp/typed_union_assigned_class_that_cannot_move_is_error).
+
+A union whose new alternative's construction throws once the held one has gone (`u[C] = x` by the
+rule above, a copy or move assignment whose copy throws) holds none, as std::variant's
+valueless_by_exception: its tag is `Tag::count` until an alternative is built, it is destroyed as
+holding nothing, a copy of it is valueless too, it equals only a valueless union and orders before
+every other, and `switch` on it aborts as on any invalid enum value. `u = u` keeps u. (2026-11-06,
+E's battery: the tag was set first, and the never-built alternative was destroyed later; specs
+kpp/typed_union_alternative_that_throws_is_not_destroyed, kpp/typed_union_valueless_and_self_assignment.)
 
 **8.6 Tests in the compiler.**
 ```

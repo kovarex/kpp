@@ -12,6 +12,8 @@ destroy 4
 destroy 4
 -- back
 construct 6
+move construct 6
+destroy 6
 destroy 6
 7
 -- reads what it holds

@@ -1,5 +1,5 @@
-// spec: `u[Other] = value` where the new class value reads the alternative held: std::variant's `v = T(get<U>(v))` computes it first; kpp builds a new alternative in place (the game's loading needs no move: kpp/typed_union_alternative_built_in_place), and destroys the held one before, so reading it stops on the check that the union holds that alternative (it holds none by then): loud, but not what C++ does
-// pending: the place is the alternative's own storage: the arguments would have to be evaluated before the held alternative goes, or the construction proved not to read the union (B, 2026-11-06)
+// spec: `u[Other] = value` where the new class value reads the alternative held, as std::variant's `v = T(get<U>(v))`: the value comes first, then the held one goes and the value is moved to its place (design.md 8.5)
+// until 2026-11-06 the value was built in the alternative's place, the held one destroyed before it: this stopped on the check that the union holds that alternative
 class Named
 {
 public:

@@ -1,0 +1,20 @@
+// spec: assigning needs the value first and then its move to the alternative's place: a class with no copy or move constructor cannot be assigned, as for std::variant; it is built in place (kpp/typed_union_alternative_built_in_place)
+// error: typed_union_assigned_class_that_cannot_move_is_error.kpp:18: error: the alternative Fixed of the typed union U cannot be assigned: Pinned has no copy or move constructor, and the value comes first (build it in place: the union's destructor, then new (&u) U(U::Fixed, ...))
+class Pinned
+{
+public:
+  Pinned(int value) : value(value) {}
+  Pinned(const Pinned&) = delete;
+  Pinned(Pinned&&) = delete;
+  int value;
+};
+union enum U : u8
+{
+  { {int, Number}, {Pinned, Fixed} }
+};
+int main()
+{
+  U u;
+  u[U::Fixed] = Pinned(1);
+  return u[U::Fixed].value;
+}

@@ -1,0 +1,64 @@
+// spec: `u[Name] = x` with x of another type than the alternative's: the alternative held takes it by that class's operator= for x, as `get<T>(v) = x`, which need not mean what the constructor for x means; another alternative is destroyed once the class's value of x is built, and if that throws the union keeps what it holds (design.md 8.5)
+// found by thread B (2026-11-06): x was always converted, and the conversion assigned
+class Fixed
+{
+public:
+  Fixed(int raw) : raw(raw)
+  {
+    if (raw < 0)
+      throw RuntimeError("no");
+    println("constructed ", raw);
+  }
+  Fixed(Fixed&& other) noexcept : raw(other.raw) { println("moved ", raw); }
+  Fixed& operator=(Fixed&& other) noexcept
+  {
+    raw = other.raw;
+    println("move assigned ", raw);
+    return *this;
+  }
+  Fixed& operator=(int whole)
+  {
+    raw = whole * 100;
+    println("assigned ", whole);
+    return *this;
+  }
+  int raw;
+};
+
+union enum Held : u8
+{
+  { {String, Words}, {Fixed, Number} }
+};
+
+int twice(int value)
+{
+  println("evaluated once");
+  return value * 2;
+}
+
+int main()
+{
+  Held h;
+  h[Words] = "a text long enough to be held outside the object";
+  println("-- another alternative");
+  h[Number] = 5;
+  println(h[Number].raw);
+  println("-- the alternative held");
+  h[Number] = twice(5);
+  println(h[Number].raw);
+  println("-- a value of its class");
+  h[Number] = Fixed(7);
+  println(h[Number].raw);
+  println("-- the value throws, the union keeps what it holds");
+  Held text;
+  text[Words] = "a text long enough to be held outside the object";
+  try
+  {
+    text[Number] = -1;
+  }
+  catch (const RuntimeError& e)
+  {
+    println(StringView(e.what()), " ", text[Words].size());
+  }
+  return 0;
+}

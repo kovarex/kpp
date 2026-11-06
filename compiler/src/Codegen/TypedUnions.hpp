@@ -65,8 +65,13 @@
     bool alternativeAssignable(const Ty* altTy, Node* at);
     // dst and src hold one alternative: src's assigned to dst's, by its operator=.
     void assignHeldAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
-    // `p[Integer] = 5`: destroys the alternative held, sets the tag, constructs the new value.
-    Value assignAlternative(IndexExpr* i, Expr* rhs, Node* at);
+    // `p[Integer] = 5`: setAlternative for the alternative the left operand names.
+    Value assignAlternative(BinaryExpr* b);
+    // rhs assigned to alternative index of the union at obj (`u[Name] = rhs`, named being that
+    // assignment, or `u = rhs`, null): as std::variant's assignment (design.md 8.5).
+    Value setAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, BinaryExpr* named, Node* at);
+    // Whether operator= f takes a cls (its copy or move assignment), no value of another type.
+    bool isAssignmentOf(FunctionDecl* f, const Ty* cls, Node* at);
     // The tag values of a typed union's alternatives, in declaration order (the cases of a switch).
     std::vector<int64_t> alternativeTags(ClassDecl* c);
 

@@ -1228,9 +1228,10 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       constructAlternative(c, t, addr, size_t(*index), args.size() == 2 ? args[1] : nullptr, at);
     else
     {
-      setTag(c, t, addr, size_t(*index), at);
+      setTag(c, t, addr, c->alternatives.size(), at); // (holding none meanwhile: constructAlternative)
       constructInto(alternativeAddress(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
                     Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, at);
+      setTag(c, t, addr, size_t(*index), at);
     }
     return;
   }

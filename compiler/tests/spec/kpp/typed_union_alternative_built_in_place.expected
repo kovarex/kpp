@@ -1,1 +1,23 @@
 true 7
+-- again, the same alternative: destroyed and built
+destroyed 7
+8
+-- from the constructor's arguments
+destroyed 8
+9
+-- through a generated emplace
+destroyed 9
+3
+-- a constructor that throws leaves it holding none
+destroyed 3
+no true
+-- assigned: the value first, then moved to its place
+moved
+destroyed 9
+9
+-- assigned the alternative held
+assigned
+destroyed 10
+10
+-- end
+destroyed 10

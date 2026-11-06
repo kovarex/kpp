@@ -1030,10 +1030,11 @@
                                 "  template<typename T>\n" + indent + "  T* getIf() { " + loop + "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n" +
                                 indent + "  template<typename T>\n" + indent + "  const T* getIf() const { " + loop +
                                 "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n" +
-                                // std::variant's emplace<T>(args...) and index(), a size_t as std's (a
-                                // `%zu` reads 8 bytes, a << writes them).
+                                // std::variant's emplace<T>(args...), built where it stays (`=` would
+                                // move it: design.md 8.5), and index(), a size_t as std's (a `%zu`
+                                // reads 8 bytes, a << writes them).
                                 indent + "  template<typename T, typename... Args>\n" + indent + "  T& emplace(Args&&... args) { " + loop +
-                                "{ (*this)[a] = T(forward<Args>(args)...); return (*this)[a]; } }\n" + indent +
+                                "{ this->~" + u + "(); new (this) " + u + "(a.tag, T(forward<Args>(args)...)); return (*this)[a]; } }\n" + indent +
                                 "  size_t index() const { return size_t(this->tag()); }\n";
           std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + generic + indent + "};";
           if (v.member)

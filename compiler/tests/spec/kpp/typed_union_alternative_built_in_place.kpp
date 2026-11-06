@@ -1,27 +1,82 @@
-// spec: assigning a temporary to a typed union's alternative of a fixed place (`target[a] = a.type(input)` with target a reference, a an alternative) builds the alternative in place from the constructor's arguments: no move, whatever C++17's order of the assignment's operands (the place does not depend on the right operand)
-// factorio: DeserialiserHelper::loadSTDVariant (overrides) loading SegmentedUnitAI::AIState: Targeter's move constructor asserts the targeter is not being loaded, and the menu simulation vulcanus-punishment and the Simulations unit tests stopped there when the assignment's right operand was first made a temporary and moved from
-struct Loaded
+// spec: an alternative built where it stays, no move and no assignment: the union's destructor, then placement new from a tag and the value or the constructor's arguments, std::variant's emplace (the held one goes first: the arguments must not refer to it); `=` builds the value first and moves it to its place (design.md 8.5)
+// factorio: DeserialiserHelper::loadSTDVariant (overrides) loading SegmentedUnitAI::AIState: Targeter's move constructor asserts the targeter is not being loaded, and the menu simulation vulcanus-punishment and the Simulations unit tests stopped there when the alternative was moved; the union's generated emplace<T> builds it so too
+class Loaded
 {
+public:
   int value = 0;
   Loaded(int v) : value(v) {}
+  Loaded(int v, int w) : value(v + w)
+  {
+    if (w < 0)
+      throw RuntimeError("no");
+  }
   Loaded(Loaded&& other) : value(other.value) { println("moved"); }
   Loaded(const Loaded& other) : value(other.value) { println("copied"); }
+  Loaded& operator=(Loaded&& other)
+  {
+    value = other.value;
+    println("assigned");
+    return *this;
+  }
+  ~Loaded() { println("destroyed ", value); }
 };
 union enum Slot : uint8_t
 {
   { {int, Empty}, {Loaded, Full} }
+
+  template<typename T, typename... Args>
+  T& emplace(Args&&... args)
+  {
+    for constexpr (auto a : alternatives(Slot))
+      if constexpr (isSame<a.type, T>)
+      {
+        this->~Slot();
+        new (this) Slot(a.tag, T(forward<Args>(args)...));
+        return (*this)[a];
+      }
+  }
 };
 template<class U>
 void load(U& target, int input)
 {
   for constexpr (auto a : alternatives(U))
     if (a.tag == U::Full)
-      target[a] = a.type(input);
+    {
+      target.~U();
+      new (&target) U(a.tag, a.type(input));
+    }
 }
 int main()
 {
   Slot slot;
   load(slot, 7);
   println(slot == Slot::Full, " ", slot[Slot::Full].value);
+  println("-- again, the same alternative: destroyed and built");
+  load(slot, 8);
+  println(slot[Slot::Full].value);
+  println("-- from the constructor's arguments");
+  slot.~Slot();
+  new (&slot) Slot(Slot::Full, 4, 5);
+  println(slot[Slot::Full].value);
+  println("-- through a generated emplace");
+  slot.emplace<Loaded>(1, 2);
+  println(slot[Slot::Full].value);
+  println("-- a constructor that throws leaves it holding none");
+  try
+  {
+    slot.~Slot();
+    new (&slot) Slot(Slot::Full, 1, -2);
+  }
+  catch (const RuntimeError& e)
+  {
+    println(StringView(e.what()), " ", slot.tag() == Slot::Tag::count);
+  }
+  println("-- assigned: the value first, then moved to its place");
+  slot[Slot::Full] = Loaded(9);
+  println(slot[Slot::Full].value);
+  println("-- assigned the alternative held");
+  slot[Slot::Full] = Loaded(10);
+  println(slot[Slot::Full].value);
+  println("-- end");
   return 0;
 }

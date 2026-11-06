@@ -174,82 +174,175 @@ auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::str
   fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
 }
 
-auto codegen::Emitter::assignAlternative(IndexExpr* i, Expr* rhs, Node* at) -> Value
+auto codegen::Emitter::assignAlternative(BinaryExpr* b) -> Value
 {
+  auto* i = static_cast<IndexExpr*>(b->lhs);
   Value base = rvalue(i->base);
-  ClassDecl* c = typedUnionOf(base.ty, at);
-  size_t index = alternativeIndex(c, i, at);
-  const Ty* altTy = alternativeType(c, base.ty, index, at);
-  std::string addr = alternativeAddress(c, base.ty, base.text, index, at);
-  // A value that is no class first: it may read what the union holds (`p[Size] = p[Text].size()`).
+  ClassDecl* c = typedUnionOf(base.ty, b);
+  return setAlternative(c, base.ty, base.text, alternativeIndex(c, i, b), b->rhs, b, b);
+}
+
+auto codegen::Emitter::setAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, BinaryExpr* named, Node* at) -> Value
+{
+  // As std::variant ([variant.assign], design.md 8.5). The right operand comes first: it may read
+  // what the union holds, and if evaluating it throws the union keeps its alternative. The
+  // alternative held then takes it by its operator=. Another goes, the union holding none meanwhile
+  // (constructAlternative), and the alternative is built in its place from what the operand made,
+  // or from a temporary of its class built before anything goes, where that can throw and its move
+  // cannot: a class that must not move at all is built in place by the union's destructor and
+  // placement new, std::variant's emplace (kpp/typed_union_alternative_built_in_place).
+  const Ty* altTy = alternativeType(c, t, index, at);
+  std::string addr = alternativeAddress(c, t, obj, index, at);
+  auto replaceBy = [&](auto&& build)
+  {
+    destroyAlternative(c, t, obj, at);
+    setTag(c, t, obj, c->alternatives.size(), at);
+    build();
+    setTag(c, t, obj, index, at);
+  };
   if (!isClass(altTy) && altTy->kind != TyKind::Array)
   {
     std::string value = newObjectSlot(altTy, at);
     initializeFrom(value, altTy, rhs, at);
-    destroyAlternative(c, base.ty, base.text, at);
+    destroyAlternative(c, t, obj, at);
     copyBytes(addr, value, altTy, at);
-    setTag(c, base.ty, base.text, index, at);
+    setTag(c, t, obj, index, at);
     return load(addr, altTy, at);
   }
-  // No operator= to call (a class with a move constructor and none, which std::variant refuses;
-  // an array): the alternative held goes, the new one is built where it stays.
-  if (!alternativeAssignable(altTy, at))
+  // (a temporary of the alternative's type: destroyed with the statement's)
+  auto temporary = [&](const std::string& value)
   {
-    destroyAlternative(c, base.ty, base.text, at);
-    constructAlternative(c, base.ty, base.text, index, rhs, at);
-    return isClass(altTy) ? Value{addr, altTy, false} : load(addr, altTy, at);
+    if (needsDestruction(altTy, at))
+      statementTemps.push_back({value, altTy});
+  };
+  if (altTy->kind == TyKind::Array) // (no operator= to call: the elements move to their place)
+  {
+    std::string value = newObjectSlot(altTy, at);
+    initializeFrom(value, altTy, rhs, at);
+    temporary(value);
+    replaceBy([&] { transferArray(addr, value, altTy, at, true, false); });
+    return load(addr, altTy, at);
   }
-  std::string same = newTemp(), assignL = newLabel("alternative.assign"), otherL = newLabel("alternative.other"), doneL = newLabel("alternative.done");
-  auto compareTag = [&] { fn += "  " + same + " = icmp eq " + llType(tagType(c), at) + " " + loadTag(c, base.ty, base.text, at) + ", " + std::to_string(index) + "\n"; };
   const Ty* rhsTy = rhs->ty && rhs->ty->isKnown() ? types.stripRef(rhs->ty) : nullptr;
-  if (rhsTy && isClass(rhsTy) && classKey(rhsTy) == classKey(altTy) && (isLvalueExpression(rhs) || isXvalue(rhs)))
+  bool ownClass = rhsTy && isClass(rhsTy) && classKey(rhsTy) == classKey(altTy);
+  bool list = !rhsTy || rhs->kind == NodeKind::BraceInitExpr; // (no value of its own: the class is built from it)
+  if ((ownClass || list) && !movableByConstructor(altTy, at))
   {
-    // An object: the alternative held is assigned from it, as std::variant; another goes for a
-    // copy of it.
-    Value from = rvalue(rhs);
-    bool move = movable(rhs);
-    compareTag();
+    auto* name = static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(c->tagEnum)->enumerators[index]);
+    std::string u = qualifiedName(c), alternative = sym(name->name);
+    fail(at, "the alternative " + alternative + " of the typed union " + u + " cannot be assigned: " + types.toString(altTy, &symbols) +
+                 " has no copy or move constructor, and the value comes first (build it in place: the union's destructor, then new (&u) " + u + "(" + u +
+                 "::" + alternative + ", ...))");
+  }
+  // A class with a move constructor and no operator=, which std::variant refuses, is replaced.
+  bool assignable = alternativeAssignable(altTy, at);
+  std::string assignL = newLabel("alternative.assign"), otherL = newLabel("alternative.other"), doneL = newLabel("alternative.done");
+  auto branchOnHeld = [&]
+  {
+    if (!assignable)
+    {
+      emitBranch(otherL);
+      return;
+    }
+    std::string same = newTemp();
+    fn += "  " + same + " = icmp eq " + llType(tagType(c), at) + " " + loadTag(c, t, obj, at) + ", " + std::to_string(index) + "\n";
     fn += "  br i1 " + same + ", label %" + assignL + ", label %" + otherL + "\n";
-    startBlock(assignL);
-    assignObject(addr, from.text, altTy, at, move);
+    blockTerminated = true;
+  };
+  // Each branch's temporaries end with it: the other did not make them.
+  auto branch = [&](const std::string& label, auto&& body)
+  {
+    startBlock(label);
+    size_t temps = statementTemps.size();
+    body();
+    destroyTempsFrom(temps);
     emitBranch(doneL);
-    startBlock(otherL);
-    destroyAlternative(c, base.ty, base.text, at);
-    setTag(c, base.ty, base.text, c->alternatives.size(), at);
-    if (move)
-      moveConstruct(addr, from.text, altTy, at);
-    else
-      copyConstruct(addr, from.text, altTy, at);
-    setTag(c, base.ty, base.text, index, at);
-    emitBranch(doneL);
+  };
+  auto throughTemporary = [&](auto&& build)
+  {
+    std::string value = newObjectSlot(altTy, at);
+    build(value);
+    temporary(value);
+    replaceBy([&] { moveConstruct(addr, value, altTy, at); });
+  };
+  bool moveCanThrow = !global.constructsWithoutThrowing(altTy, true);
+  if (!ownClass && !list)
+  {
+    // A value of another type, evaluated once: the alternative held takes it by the class's
+    // operator= for it, and another goes for the constructor for it, at the place itself where that
+    // cannot throw or the class's move can. With neither to tell apart, it is a new value (below).
+    FunctionDecl* constructor = findConstructor(altTy, argTypesOf(Span<Expr*>{&rhs, 1}), at);
+    FunctionDecl* chosen = named && !verifyDecisions() ? recordedOperator(named) : nullptr;
+    bool straight = moveCanThrow || (constructor && global.isNoexcept(constructor, global.classArgsOf(canonicalClass(altTy, at))));
+    bool ownOperator = chosen && !isAssignmentOf(chosen, altTy, at);
+    if (straight || ownOperator)
+    {
+      EvaluatedOperand value(*this, rhs, at);
+      PlaceName alternative(*this, addr, altTy, rhs->token);
+      branchOnHeld();
+      if (assignable)
+        branch(assignL, [&]
+        {
+          Restore<const Expr*> restore(evaluatedFirst);
+          evaluatedFirst = value.standIn;
+          BinaryExpr assignment = *named;
+          assignment.lhs = &alternative.name;
+          assignment.rhs = value.standIn;
+          binary(&assignment);
+        });
+      branch(otherL, [&]
+      {
+        if (straight)
+          replaceBy([&] { initializeFrom(addr, altTy, value.standIn, at); });
+        else
+          throughTemporary([&](const std::string& to) { initializeFrom(to, altTy, value.standIn, at); });
+      });
+      startBlock(doneL);
+      return Value{addr, altTy, false};
+    }
+  }
+  else if (ownClass && (isLvalueExpression(rhs) || isXvalue(rhs) || rhs->ty->kind == TyKind::LRef))
+  {
+    // An object: a move goes to the place itself, as a copy does where it cannot throw or the
+    // class's move can; any other copy comes first, so that its throw leaves the union as it was.
+    std::string from = lvalue(rhs);
+    bool move = movable(rhs);
+    branchOnHeld();
+    if (assignable)
+      branch(assignL, [&] { assignObject(addr, from, altTy, at, move); });
+    branch(otherL, [&]
+    {
+      if (move)
+        replaceBy([&] { moveConstruct(addr, from, altTy, at); });
+      else if (moveCanThrow || global.constructsWithoutThrowing(altTy, false))
+        replaceBy([&] { copyConstruct(addr, from, altTy, at); });
+      else
+        throughTemporary([&](const std::string& to) { copyConstruct(to, from, altTy, at); });
+    });
     startBlock(doneL);
     return Value{addr, altTy, false};
   }
-  // A new value, written once, into the one place it goes: where the alternative stays when the
-  // union holds another (built in place, no move: `target[a] = a.type(input)`, the game's loading,
-  // kpp/typed_union_alternative_built_in_place), a temporary to assign from when it holds this one.
-  std::string built = newLabel("alternative.build"), value = newObjectSlot(altTy, at), place = newTemp();
-  compareTag();
-  fn += "  br i1 " + same + ", label %" + built + ", label %" + otherL + "\n";
-  startBlock(otherL);
-  destroyAlternative(c, base.ty, base.text, at);
-  setTag(c, base.ty, base.text, c->alternatives.size(), at);
-  emitBranch(built);
-  startBlock(built);
-  fn += "  " + place + " = select i1 " + same + ", ptr " + value + ", ptr " + addr + "\n";
-  initializeFrom(place, altTy, rhs, at);
-  std::string setL = newLabel("alternative.set");
-  fn += "  br i1 " + same + ", label %" + assignL + ", label %" + setL + "\n";
-  startBlock(assignL);
-  assignObject(addr, value, altTy, at, true);
-  if (needsDestruction(altTy, at))
-    destroy(value, altTy, at);
-  emitBranch(doneL);
-  startBlock(setL);
-  setTag(c, base.ty, base.text, index, at);
-  emitBranch(doneL);
+  // A new value of the class: a temporary, assigned from or moved to the place.
+  std::string value = newObjectSlot(altTy, at);
+  initializeFrom(value, altTy, rhs, at);
+  temporary(value);
+  branchOnHeld();
+  if (assignable)
+    branch(assignL, [&] { assignObject(addr, value, altTy, at, true); });
+  branch(otherL, [&] { replaceBy([&] { moveConstruct(addr, value, altTy, at); }); });
   startBlock(doneL);
   return Value{addr, altTy, false};
+}
+
+auto codegen::Emitter::isAssignmentOf(FunctionDecl* f, const Ty* cls, Node* at) -> bool
+{
+  if (f->params.size() != 1)
+    return false;
+  TemplateArgs args = global.classArgsOf(canonicalClass(cls, at));
+  ArgsScope scope(*this, &args);
+  const Ty* parameter = declType(f->params[0]);
+  parameter = parameter ? types.stripRef(parameter) : nullptr;
+  return parameter && isClass(parameter) && classKey(parameter) == classKey(cls);
 }
 
 auto codegen::Emitter::alternativeAssignable(const Ty* altTy, Node* at) -> bool

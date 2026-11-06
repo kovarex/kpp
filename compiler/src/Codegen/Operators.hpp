@@ -67,6 +67,32 @@
 
     Value operatorCall(Value object, const std::string& name, Span<Expr*> args, Node* at, bool required, const std::string& sret = "");
 
+    // An expression naming a place code generation already has, for the length of this object.
+    struct PlaceName
+    {
+      PlaceName(Emitter& emitter, const std::string& at, const Ty* t, uint32_t token);
+      PlaceName(const PlaceName&) = delete;
+      ~PlaceName();
+
+      Emitter& e;
+      VariableDecl variable{};
+      NameExpr name{};
+    };
+
+    // An operand evaluated before the expression it is in, here where this object is made:
+    // standIn stands for it there, as the place it designates, evaluating nothing again.
+    struct EvaluatedOperand
+    {
+      EvaluatedOperand(Emitter& e, Expr* rhs, Node* at);
+
+      PlaceName place;
+      NamedCastExpr rvalueCast{};
+      Expr* standIn = nullptr;
+
+    private:
+      static std::string placeOf(Emitter& e, Expr* rhs, Node* at);
+    };
+
     // The operator function the checker chose for e (design.md 24), when codegen calls the recorded
     // choice: a function, in a body whose nodes its own walk typed (choicesRecorded). Null: codegen
     // chooses itself (the built-in operator, a rewritten comparison, an undecided node).

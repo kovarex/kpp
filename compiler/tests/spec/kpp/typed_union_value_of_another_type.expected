@@ -1,0 +1,14 @@
+-- another alternative
+constructed 5
+moved 5
+5
+-- the alternative held
+evaluated once
+assigned 10
+1000
+-- a value of its class
+constructed 7
+move assigned 7
+7
+-- the value throws, the union keeps what it holds
+no 48

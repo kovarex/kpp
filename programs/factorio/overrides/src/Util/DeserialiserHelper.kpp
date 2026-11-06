@@ -37,11 +37,14 @@ private:
     for constexpr (auto a : alternatives(U))
       if (alternativeIndex == uint32_t(int(a.tag)))
       {
+        // Built where it stays, as the emplace of the C++ source: `=` would move it, and a
+        // Targeter being loaded must not move (design.md 8.5).
+        target.~U();
         if constexpr (should_construct<a.type, DeserialiserType&>)
-          target[a] = a.type(input);
+          new (&target) U(a.tag, a.type(input));
         else
         {
-          target[a] = a.type();
+          new (&target) U(a.tag, a.type());
           input.template load<a.type>(target[a]);
         }
         return;

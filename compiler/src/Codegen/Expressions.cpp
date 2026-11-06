@@ -2009,6 +2009,47 @@ auto codegen::Emitter::callChosenOperator(Expr* e, FunctionDecl* f, bool member,
   return callRvalue(callFunction(f, fnArgs, classTy, "", "", operands, e), e);
 }
 
+codegen::Emitter::PlaceName::PlaceName(Emitter& emitter, const std::string& at, const Ty* t, uint32_t token) : e(emitter)
+{
+  variable.kind = NodeKind::VariableDecl;
+  variable.token = token;
+  name.kind = NodeKind::NameExpr;
+  name.token = token;
+  name.resolved = &variable;
+  name.ty = t;
+  e.locals[&variable] = {at, t, false};
+}
+
+codegen::Emitter::PlaceName::~PlaceName() { e.locals.erase(&variable); }
+
+codegen::Emitter::EvaluatedOperand::EvaluatedOperand(Emitter& e, Expr* rhs, Node* at) : place(e, placeOf(e, rhs, at), rhs->ty ? e.types.stripRef(rhs->ty) : nullptr, rhs->token)
+{
+  // An lvalue stands as a variable at its place; a temporary of a class, or an xvalue, as
+  // `static_cast<T&&>` of one (still an rvalue, for operator=(T&&)); a scalar prvalue as the
+  // value stored, cast back to a prvalue.
+  const Ty* rty = place.name.ty;
+  rvalueCast.kind = NodeKind::NamedCastExpr;
+  rvalueCast.token = rhs->token;
+  rvalueCast.castKind = Kw::static_cast_;
+  rvalueCast.operand = &place.name;
+  rvalueCast.ty = e.isClass(rty) || e.isLambda(rty) ? e.types.rref(rty) : rty; // (a closure too: `fn = [q = move(p)]() {...}`)
+  standIn = isLvalueExpression(rhs) || (rhs->ty && rhs->ty->kind == TyKind::LRef) ? static_cast<Expr*>(&place.name) : &rvalueCast; // (`sourceRef()` returning T&)
+}
+
+auto codegen::Emitter::EvaluatedOperand::placeOf(Emitter& e, Expr* rhs, Node* at) -> std::string
+{
+  const Ty* rty = rhs->ty ? e.types.stripRef(rhs->ty) : nullptr;
+  if (!rty || !rty->isKnown())
+    e.unsupported(at, "an assignment whose right operand, evaluated first (C++17), has no known type");
+  if (isLvalueExpression(rhs) || (rhs->ty && rhs->ty->kind == TyKind::LRef) || isXvalue(rhs))
+    return e.lvalue(rhs);
+  if (e.isClass(rty) || e.isLambda(rty))
+    return e.rvalue(rhs).text; // (a temporary, destroyed with the statement's)
+  std::string slot = e.newObjectSlot(rty, at);
+  e.store(e.rvalue(rhs), slot, rty, at);
+  return slot;
+}
+
 auto codegen::Emitter::binary(BinaryExpr* b) -> Value
 {
   if (b->isKeyword)
@@ -2053,46 +2094,11 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
   if (isAssignment(op) && (isClass(lt) || isClass(rt) || (op != P::Assign && lt && lt->kind == TyKind::Enum)) && b->rhs &&
       b->rhs->kind != NodeKind::BraceInitExpr && b->rhs != evaluatedFirst && mayWrite(b->rhs) && !fixedPlace(b->lhs))
   {
-    // An lvalue stands as a variable at its place; a temporary of a class, or an xvalue, as
-    // `static_cast<T&&>` of one (still an rvalue, for operator=(T&&)); a scalar prvalue as the
-    // value stored, cast back to a prvalue.
-    Expr* rhs = b->rhs;
-    const Ty* rty = rhs->ty ? types.stripRef(rhs->ty) : nullptr;
-    if (!rty || !rty->isKnown())
-      unsupported(b, "an assignment whose right operand, evaluated first (C++17), has no known type");
-    bool lvalueOperand = isLvalueExpression(rhs) || (rhs->ty && rhs->ty->kind == TyKind::LRef); // (`sourceRef()` returning T&)
-    bool object = isClass(rty) || isLambda(rty); // (a closure too: `fn = [q = move(p)]() {...}`)
-    std::string at;
-    if (lvalueOperand || isXvalue(rhs))
-      at = lvalue(rhs);
-    else if (object)
-      at = rvalue(rhs).text; // (a temporary, destroyed with the statement's)
-    else
-    {
-      at = newObjectSlot(rty, b);
-      store(rvalue(rhs), at, rty, b);
-    }
-    VariableDecl evaluated{};
-    evaluated.kind = NodeKind::VariableDecl;
-    evaluated.token = rhs->token;
-    NameExpr place{};
-    place.kind = NodeKind::NameExpr;
-    place.token = rhs->token;
-    place.resolved = &evaluated;
-    place.ty = rty;
-    locals[&evaluated] = {at, rty, false};
-    struct Forget { ~Forget() { locals.erase(d); } std::unordered_map<Decl*, Local>& locals; Decl* d; } forget{locals, &evaluated};
-    NamedCastExpr rvalueCast{};
-    rvalueCast.kind = NodeKind::NamedCastExpr;
-    rvalueCast.token = rhs->token;
-    rvalueCast.castKind = Kw::static_cast_;
-    rvalueCast.operand = &place;
-    rvalueCast.ty = object ? types.rref(rty) : rty;
-    Expr* standIn = lvalueOperand ? static_cast<Expr*>(&place) : &rvalueCast;
+    EvaluatedOperand evaluated(*this, b->rhs, b);
     Restore<const Expr*> restore(evaluatedFirst);
-    evaluatedFirst = standIn;
+    evaluatedFirst = evaluated.standIn;
     BinaryExpr assignment = *b;
-    assignment.rhs = standIn;
+    assignment.rhs = evaluated.standIn;
     Value assigned = binary(&assignment);
     if (assignedAt == &assignment)
       assignedAt = b;
@@ -2100,18 +2106,16 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
   }
   if (op == P::Assign && b->lhs->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(b->lhs)->base->ty &&
       typedUnionOf(types.stripRef(static_cast<IndexExpr*>(b->lhs)->base->ty), b))
-    return assignAlternative(static_cast<IndexExpr*>(b->lhs), b->rhs, b); // `p[Integer] = 5`: the tag and the value
+    return assignAlternative(b); // `p[Integer] = 5`: the tag and the value
   if ((op == P::EqEq || op == P::NotEq) &&
       ((typedUnionOf(lt, b) && rt && rt->kind == TyKind::Enum) || (typedUnionOf(rt, b) && lt && lt->kind == TyKind::Enum)))
     return compareTag(b, op == P::NotEq);
   if (op == P::Assign && rt && rt->isKnown() && !types.isDependent(rt))
     if (ClassDecl* u = typedUnionOf(lt, b); u && !(isClass(rt) && canonicalClass(rt, b) == canonicalClass(lt, b)))
     {
-      // `s = Attacking{7};`: the alternative held goes, the value's comes (design.md 8.5).
+      // `s = Attacking{7};`: as `s[Attacking] = ...`, the alternative of the value's type (design.md 8.5).
       std::string obj = lvalue(b->lhs);
-      size_t index = alternativeForValue(u, lt, rt, b);
-      destroyAlternative(u, lt, obj, b);
-      constructAlternative(u, lt, obj, index, b->rhs, b);
+      setAlternative(u, lt, obj, alternativeForValue(u, lt, rt, b), b->rhs, nullptr, b);
       return {obj, lt, false};
     }
   // The operator function the checker chose (design.md 24): a class's member or free operator, an

@@ -1,0 +1,69 @@
+// spec: the value assigned to a typed union may read what it holds through a reference or a pointer, which no check sees: the value comes first, so each line prints its text (design.md 8.5)
+// found by thread B (2026-11-06): the alternative held was destroyed first, and these read the destroyed String: empty lines, exit 0
+class Named
+{
+public:
+  Named(const String& name) : name(name) {}
+  String name;
+};
+
+class Both
+{
+public:
+  Both(const char* first, const char* second) : first(first), second(String(second)) {}
+  String first;
+  Named second;
+};
+
+union enum Held : u8
+{
+  { {int, Count}, {String, Words}, {Named, Object}, {Both, Two} }
+};
+
+const char* text = "a text long enough to be held outside the object";
+Held* current = nullptr;
+
+Named reachedThroughAPointer() { return Named((*current)[Words]); }
+
+int main()
+{
+  Held h;
+  h[Words] = text;
+  String& alias = h[Words];
+  h[Object] = Named(alias);
+  println(h[Object].name);
+
+  Held whole;
+  whole[Words] = text;
+  String& wholeAlias = whole[Words];
+  whole = Named(wholeAlias);
+  println(whole[Object].name);
+
+  Held same;
+  same[Words] = text;
+  String& self = same[Words];
+  same = self;
+  println(same[Words]);
+
+  Held count;
+  count[Count] = 4;
+  count = count[Count] + 1;
+  println(count[Count]);
+
+  Held inside;
+  inside[Two] = Both(text, "the second text, long enough to be held outside too");
+  inside[Object] = inside[Two].second;
+  println(inside[Object].name);
+
+  Held first;
+  first[Two] = Both(text, "second");
+  first[Words] = first[Two].first;
+  println(first[Words]);
+
+  Held reached;
+  reached[Words] = text;
+  current = &reached;
+  reached[Object] = reachedThroughAPointer();
+  println(reached[Object].name);
+  return 0;
+}
