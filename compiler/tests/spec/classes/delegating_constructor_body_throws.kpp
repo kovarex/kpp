@@ -1,0 +1,40 @@
+// spec: once the delegated-to constructor is done the object is whole, so a delegating constructor's body that throws runs the destructor and destroys the members ([except.ctor] 4). kpp ran neither. clang and g++ print the same
+// found by thread J's special members battery (n2, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct L
+{
+  int id;
+  L(int i) : id(i) { printf("L%d ", id); }
+  ~L() { printf("~L%d ", id); }
+};
+struct Thrower
+{
+  L l;
+  Thrower() : l(3) { printf("made "); }
+  Thrower(int) : Thrower() { printf("body "); throw 1; }
+  Thrower(char) : Thrower(1) { printf("never "); }
+  ~Thrower() { printf("~Thrower "); }
+};
+class Base
+{
+public:
+  L l;
+  Base() : l(1) { printf("base "); }
+  Base(int) : Base() { throw 2; }
+  virtual ~Base() { printf("~Base "); }
+};
+class Derived : public Base
+{
+public:
+  L m;
+  Derived() : Base(1), m(2) { printf("never "); }
+  ~Derived() { printf("~Derived "); }
+};
+int main()
+{
+  try { Thrower t(1); } catch (int e) { printf("caught %d\n", e); }
+  try { Thrower t('c'); } catch (int e) { printf("caught %d\n", e); }
+  try { Derived d; } catch (int e) { printf("caught %d\n", e); }
+  try { Thrower* t = new Thrower(1); delete t; } catch (int e) { printf("caught %d\n", e); }
+  return 0;
+}

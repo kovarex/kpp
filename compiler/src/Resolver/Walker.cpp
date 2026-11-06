@@ -6929,6 +6929,18 @@ auto GlobalScope::Impl::Walker::declareLocal(Decl* d) -> void
     case NodeKind::VariableDecl:
     {
       auto* v = static_cast<VariableDecl*>(d);
+      if ((v->flags & DF_Extern) && v->name.parts.size() == 1)
+      {
+        // `extern int x;` in a block: the namespace's x, whatever hides it here ([basic.link] 7),
+        // no variable of its own (until 2026-11-06 it was one, a local reading 0).
+        uint32_t symbol = v->name.parts[0].symbol;
+        Lookup l = impl.lookupUnqualified(symbol, scope, nullptr, 0);
+        if (l.found == Found::No || !l.decl || l.decl->kind != NodeKind::VariableDecl)
+          reportCheck(v->token, "extern " + std::string(impl.symbols.name(symbol)) + " in a block: no namespace declares a variable of the name");
+        else
+          locals.push(symbol, l.decl);
+        break;
+      }
       if (v->name.parts.size() == 1)
         locals.push(v->name.parts[0].symbol, v);
       for (Expr* b : v->structuredBindings)

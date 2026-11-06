@@ -1,0 +1,70 @@
+// spec: a variable declared in a while or for condition lives for one iteration ([stmt.while] 2, [stmt.for] 1): destroyed after the body and, in a for, after the step, on continue, on break and when its condition ends the loop. kpp destroyed none of them. clang prints the same; g++ destroys a for's variable before the step, against the while the standard defines it by
+// found by thread J's control flow battery (n1, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+  operator bool() const { return id % 2 != 0; }
+};
+T make(int i) { return T(i); }
+int firstOdd(int n)
+{
+  while (T w = make(n))
+  {
+    if (n == 5)
+      return w.id;
+    n += 2;
+  }
+  return 0;
+}
+int main()
+{
+  int n = 3;
+  while (T w = make(n))
+  {
+    printf("body%d ", w.id);
+    if (n == 7)
+      break;
+    n += 2;
+  }
+  printf("|\n");
+  n = 0;
+  while (T w = make(2 * n + 1))
+  {
+    n++;
+    if (n == 2)
+      continue;
+    if (n == 3)
+      break;
+    printf("body ");
+  }
+  printf("|\n");
+  n = 2;
+  while (T w = make(n))
+    printf("never ");
+  printf("|\n");
+  for (int i = 0; T f = make(i * 2 + 1); i++, printf("step "))
+  {
+    if (i == 1)
+      continue;
+    if (i == 2)
+      break;
+    printf("f%d ", f.id);
+  }
+  printf("|\n");
+  for (int i = 1; T f = make(i); i++)
+    printf("f%d ", f.id);
+  printf("|\n");
+  int total = 0;
+  for (int i = 0; int k = 3 - i; i++)
+    total += k;
+  for (int i = 0; T f = make(i * 2 + 1); i += f.id)
+    if (i > 3)
+      break;
+  printf("| %d\n", total);
+  printf("%d\n", firstOdd(3));
+  return 0;
+}

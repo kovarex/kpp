@@ -1,0 +1,43 @@
+// spec: at compile time as at run time: a variable a while or for condition declares lives for one iteration (a declaration there was no constant), and a class with a destructor of its own has no implicit move, so its members copy (the run moved them, emptying the source). The compiled lines are clang's and g++'s; clang's own constant evaluation forgets the last condition variable's destructor
+// found by thread J's control flow and special members batteries (2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  int* log;
+  constexpr T(int i, int* l) : id(i), log(l) { *log = *log * 10 + 1; }
+  constexpr ~T() { *log = *log * 10 + 2; }
+  constexpr operator bool() const { return id % 2 != 0; }
+};
+constexpr int whileBreaks() { int log = 0; int n = 1; while (T w = T(n, &log)) { n += 2; if (n > 3) break; } return log; }
+constexpr int whileEnds() { int log = 0; int n = 1; while (T w = T(n, &log)) n += 1; return log; }
+constexpr int forEnds() { int log = 0; for (int i = 1; T w = T(i, &log); i++) log = log * 10 + 3; return log; }
+constexpr int forSums() { int total = 0; for (int i = 0; int k = 3 - i; i++) total += k; return total; }
+struct L
+{
+  int id;
+  constexpr L(int i) : id(i) {}
+  constexpr L(const L& o) : id(o.id) {}
+  constexpr L(L&& o) : id(o.id) { o.id = -1; }
+  constexpr L& operator=(const L& o) { id = o.id; return *this; }
+  constexpr L& operator=(L&& o) { id = o.id; o.id = -1; return *this; }
+};
+struct WithDestructor { L l; constexpr WithDestructor(int i) : l(i) {} constexpr ~WithDestructor() {} };
+struct WithCopy { L l; constexpr WithCopy(int i) : l(i) {} constexpr WithCopy(const WithCopy&) = default; constexpr WithCopy& operator=(const WithCopy&) = default; };
+struct Plain { L l; constexpr Plain(int i) : l(i) {} };
+template<class X> constexpr int afterMove()
+{
+  X a(1);
+  X b(static_cast<X&&>(a));
+  int result = a.l.id;
+  X c(2);
+  c = static_cast<X&&>(b);
+  return result * 10 + b.l.id;
+}
+constexpr int a = whileBreaks(), b = whileEnds(), c = forEnds(), d = forSums(), e = afterMove<WithDestructor>(), f = afterMove<WithCopy>(), g = afterMove<Plain>();
+int main()
+{
+  printf("%d %d %d %d %d %d %d\n", a, b, c, d, e, f, g);
+  printf("%d %d %d %d %d %d %d\n", whileBreaks(), whileEnds(), forEnds(), forSums(), afterMove<WithDestructor>(), afterMove<WithCopy>(), afterMove<Plain>());
+  return 0;
+}

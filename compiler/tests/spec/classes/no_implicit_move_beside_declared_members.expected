@@ -1,0 +1,12 @@
+destructor: copy 1 | copy= 1
+~ ~ ~ defaulted destructor: copy 1 | copy= 1
+defaulted copy: copy 1 | copy= 1
+defaulted assignment: copy 1 | copy= 1
+other assignment: move -1 | move= -1
+plain: move -1 | move= -1
+copy move 1 -1
+copy= move= 1 -1
+~ ~ copy move 1 -1
+copy= move= 1 -1
+~ ~ 5
+~ 

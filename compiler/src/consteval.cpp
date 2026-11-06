@@ -583,8 +583,8 @@ std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
       if (v.isFloat())
       {
         // Truncation toward zero; a value the type cannot hold is undefined, so no constant.
-        double lo = it.isUnsigned ? -1.0 : -std::ldexp(1.0, it.bits - 1) - 1.0, hi = std::ldexp(1.0, it.isUnsigned ? it.bits : it.bits - 1);
-        if (!(v.f > lo && v.f < hi))
+        double whole = std::trunc(v.f), lo = it.isUnsigned ? 0.0 : -std::ldexp(1.0, it.bits - 1), hi = std::ldexp(1.0, it.isUnsigned ? it.bits : it.bits - 1);
+        if (!(whole >= lo && whole < hi))
           return fail(std::string("a floating value out of the range of ") + typeName(it.bits, it.isUnsigned));
         int64_t x = it.isUnsigned && v.f >= 9223372036854775808.0 ? int64_t(uint64_t(v.f)) : int64_t(v.f);
         return ConstValue::integer(normalise(x, it), t);

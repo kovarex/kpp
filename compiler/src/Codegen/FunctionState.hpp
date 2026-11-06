@@ -95,6 +95,7 @@
     {
       std::string breakLabel, continueLabel;
       size_t scopeDepth;
+      size_t continueDepth = size_t(-1); // where continue leaves scopes to, when not at scopeDepth
     };
     // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
     // filter function per try statement matches the thrown type against the handlers, and the

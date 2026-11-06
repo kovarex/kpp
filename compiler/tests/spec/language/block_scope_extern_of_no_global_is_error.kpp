@@ -1,0 +1,7 @@
+// spec: an `extern` in a block that no namespace declares is an error, not a variable of its own reading 0
+// error: extern missing in a block: no namespace declares a variable of the name
+int main()
+{
+  extern int missing;
+  return missing;
+}

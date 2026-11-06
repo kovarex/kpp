@@ -5466,7 +5466,9 @@ namespace
         Stmt* dummy = nullptr;
         parseCondition(dummy, s->cond, false);
       }
-      expect(P::Semi, "expected ';' in for");
+      // (a declaration in the condition, `for (; T x = next(); )`, took its ';' with it)
+      if (!(s->cond && s->cond->kind == NodeKind::DeclStmt && toks[pos - 1].is(P::Semi)))
+        expect(P::Semi, "expected ';' in for");
       if (!at(P::RParen))
         s->step = parseExpression();
       expect(P::RParen, "expected ')' after for");

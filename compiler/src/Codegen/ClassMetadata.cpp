@@ -811,6 +811,7 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
     if (const FunctionDecl::CtorInit* self = own.empty() ? nullptr : initFor(own.last().symbol); self && !initializerNamesOther(t, *self, t, at))
     {
       constructInto(addr, t, self->args, at);
+      builtPart(addr, t); // (whole now: if the body throws, its destructor runs, [except.ctor] 4)
       return;
     }
   }
@@ -2256,7 +2257,11 @@ auto codegen::Emitter::implicitCopyOrMoveTakes(ClassDecl* c, const Ty* t, const 
     if (f->flags & DF_Destructor)
       destructor = true;
     else if (!f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign)
-      assignment = true;
+    {
+      // Only a copy or move assignment takes the implicit move away, not `operator=(int)`.
+      const Ty* q = f->params.size() == 1 ? declType(f->params[0]) : nullptr;
+      assignment = assignment || (q && isClass(types.stripRef(q)) && classKey(types.stripRef(q)) == classKey(t));
+    }
     else if ((f->flags & DF_Constructor) && f->templateParams.empty() && f->params.size() == 1)
     {
       const Ty* q = declType(f->params[0]);
@@ -2333,7 +2338,10 @@ auto codegen::Emitter::moveConstruct(const std::string& dst, const std::string& 
     memberwiseConstruct(dst, src, t, at, true);
     return;
   }
-  copyConstruct(dst, src, t, at, true); // the user copy constructor if any, else memberwise moves
+  // The user copy constructor if any, else memberwise: moves where the class has its implicit move
+  // constructor, copies where it has none, its source left as it is (a destructor, copy
+  // constructor or copy assignment of its own, [class.copy.ctor] 8).
+  copyConstruct(dst, src, t, at, c->isTypedUnion || implicitCopyOrMoveTakes(c, t, types.rref(types.unqualified(t)), at));
 }
 
 auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move) -> void
@@ -2608,8 +2616,18 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
   if (op && foundIn && foundIn != canonicalClass(t, at) && !declaresAssignment(t, at, true))
     op = nullptr;
   bool defaulted = op && (op->flags & DF_Default);
+  // Without a move assignment, declared or implicit, a move is a copy, its source left as it is
+  // ([class.copy.assign] 4); `operator=(const T&) = default` is the copy assignment.
   if (defaulted)
-    op = nullptr; // `operator=(const T&) = default`: the memberwise assignment below
+  {
+    TemplateArgs args = global.classArgsOf(foundIn);
+    ArgsScope scope(*this, &args);
+    const Ty* pt = op->params.size() == 1 ? declType(op->params[0]) : nullptr;
+    move = move && pt && pt->kind == TyKind::RRef;
+    op = nullptr; // the memberwise assignment below
+  }
+  else if (move && !op && !implicitCopyOrMoveTakes(classDef(t->decl, at), t, types.rref(types.unqualified(t)), at))
+    move = false;
   if (op)
   {
     if (op->flags & DF_Delete)

@@ -730,6 +730,24 @@ static bool declaresInHead(Stmt* s)
   }
 }
 
+auto codegen::Emitter::endIteration(bool declares, size_t outside, const std::string& condLabel, const std::string& falseLabel, const std::string& endLabel) -> void
+{
+  if (falseLabel != endLabel)
+  {
+    if (!blockTerminated)
+      leaveScopes(outside);
+    emitBranch(condLabel);
+    startBlock(falseLabel);
+    leaveScopes(outside);
+    emitBranch(endLabel);
+    popScope(); // (its objects are destroyed on both ways out)
+    return;
+  }
+  if (declares)
+    popScope();
+  emitBranch(condLabel);
+}
+
 auto codegen::Emitter::statement(Stmt* s) -> void
 {
   if (!s)
@@ -848,6 +866,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           unsupported(d, "a when declaration the checker did not decide");
         if (d->whenKnown == 0)
           continue; // `when (false)` (design.md 19): no storage, no constructor, no destructor
+        if (d->flags & DF_Extern)
+          continue; // `extern int x;` in a block: the namespace's x, its uses resolved to it
         if (d->kind == NodeKind::VariableDecl)
         {
           // A variable whose initialization a jump into its scope would skip (jumpBypassesInitialization):
@@ -1061,14 +1081,21 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       std::string cL = newLabel("while.cond"), bL = newLabel("while.body"), eL = newLabel("while.end");
       emitBranch(cL);
       startBlock(cL);
+      // `while (T x = next())`: x lives for one iteration, the last one's ending with a false
+      // condition ([stmt.while] 2).
+      size_t outside = scopes.size();
+      bool declares = w->cond->kind == NodeKind::DeclStmt;
+      if (declares)
+        pushScope();
       Value cond = condition(w->cond, s);
       destroyTemps();
-      fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
+      std::string fL = declares && !scopes.back().empty() ? newLabel("while.false") : eL;
+      fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + fL + "\n";
       startBlock(bL);
-      loops.push_back({eL, cL, scopes.size()});
+      loops.push_back({eL, cL, outside});
       subStatement(w->body);
       loops.pop_back();
-      emitBranch(cL);
+      endIteration(declares, outside, cL, fL, eL);
       startBlock(eL);
       break;
     }
@@ -1099,17 +1126,26 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       std::string cL = newLabel("for.cond"), bL = newLabel("for.body"), sL = newLabel("for.step"), eL = newLabel("for.end");
       emitBranch(cL);
       startBlock(cL);
+      // `for (; T x = next(); step)`: x lives for one iteration, the step included ([stmt.for] 1:
+      // the step ends the body of the while it stands for), so continue stays in its scope.
+      size_t outside = scopes.size();
+      bool declares = f->cond && f->cond->kind == NodeKind::DeclStmt;
+      if (declares)
+        pushScope();
+      std::string fL = eL;
       if (f->cond)
       {
         debugLine(f->cond);
         Value cond = condition(f->cond, s);
         destroyTemps();
-        fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
+        if (declares && !scopes.back().empty())
+          fL = newLabel("for.false");
+        fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + fL + "\n";
       }
       else
         fn += "  br label %" + bL + "\n";
       startBlock(bL);
-      loops.push_back({eL, sL, scopes.size()});
+      loops.push_back({eL, sL, outside, scopes.size()});
       subStatement(f->body);
       loops.pop_back();
       emitBranch(sL);
@@ -1120,7 +1156,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         rvalue(f->step);
         destroyTemps();
       }
-      emitBranch(cL);
+      endIteration(declares, outside, cL, fL, eL);
       startBlock(eL);
       popScope();
       break;
@@ -1136,7 +1172,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       for (size_t i = loops.size(); i-- > 0;)
         if (!loops[i].continueLabel.empty())
         {
-          leaveScopes(loops[i].scopeDepth);
+          leaveScopes(loops[i].continueDepth != size_t(-1) ? loops[i].continueDepth : loops[i].scopeDepth);
           emitBranch(loops[i].continueLabel);
           return;
         }

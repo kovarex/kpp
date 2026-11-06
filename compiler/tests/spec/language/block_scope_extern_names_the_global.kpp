@@ -1,0 +1,47 @@
+// spec: `extern int x;` in a block names the namespace's x, whatever hides it there, and is no variable of its own ([basic.link] 7): it read 0 and wrote a local of its own. clang and g++ print the same
+// found by thread J's lookup battery (n8, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+int shadowed = 1;
+int plainUse() { extern int shadowed; return shadowed; }
+int oneShadow()
+{
+  int shadowed = 2;
+  {
+    extern int shadowed;
+    return shadowed;
+  }
+}
+int later()
+{
+  extern int definedAfter;
+  return definedAfter;
+}
+int definedAfter = 5;
+namespace n
+{
+  int inner = 6;
+  int useInner()
+  {
+    int inner = 0;
+    {
+      extern int inner;
+      return inner;
+    }
+  }
+}
+int setIt()
+{
+  extern int shadowed;
+  shadowed = 9;
+  return shadowed;
+}
+int main()
+{
+  int a = plainUse();
+  int b = oneShadow();
+  int c = later();
+  int d = n::useInner();
+  int e = setIt();
+  printf("%d %d %d %d %d %d\n", a, b, c, d, e, shadowed);
+  return 0;
+}

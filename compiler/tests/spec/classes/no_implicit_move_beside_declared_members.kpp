@@ -1,0 +1,62 @@
+// spec: a class that declares a destructor, copy constructor or copy assignment has no implicit move constructor or assignment ([class.copy.ctor] 8, [class.copy.assign] 4): an rvalue copies it and its members, the source left as it is. kpp moved the members, emptying the source. An operator= of another type keeps the implicit move. clang and g++ print the same
+// found by thread J's special members battery (n2, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+template<class T> T&& rv(T& x) { return static_cast<T&&>(x); }
+struct L
+{
+  int id;
+  L(int i) : id(i) {}
+  L(const L& o) : id(o.id) { printf("copy "); }
+  L(L&& o) : id(o.id) { o.id = -1; printf("move "); }
+  L& operator=(const L& o) { id = o.id; printf("copy= "); return *this; }
+  L& operator=(L&& o) { id = o.id; o.id = -1; printf("move= "); return *this; }
+};
+struct Dtor { L l; Dtor(int i) : l(i) {} ~Dtor() { printf("~ "); } };
+struct DefaultedDtor { L l; DefaultedDtor(int i) : l(i) {} ~DefaultedDtor() = default; };
+struct CopyDefaulted { L l; CopyDefaulted(int i) : l(i) {} CopyDefaulted(const CopyDefaulted&) = default; };
+struct AssignDefaulted { L l; AssignDefaulted(int i) : l(i) {} AssignDefaulted& operator=(const AssignDefaulted&) = default; };
+struct OtherAssign { L l; OtherAssign(int i) : l(i) {} OtherAssign& operator=(int i) { l.id = i; return *this; } };
+struct Plain { L l; Plain(int i) : l(i) {} };
+struct Outer { Dtor d; Plain p; Outer(int i) : d(i), p(i) {} };
+struct DerivedDtor : public Dtor { L m; DerivedDtor(int i) : Dtor(i), m(i) {} };
+template<class T> void run(const char* name)
+{
+  printf("%s: ", name);
+  T a(1);
+  T b(rv(a));
+  printf("%d | ", a.l.id);
+  T c(2);
+  c = rv(b);
+  printf("%d\n", b.l.id);
+}
+Dtor made()
+{
+  Dtor x(5);
+  return x;
+}
+int main()
+{
+  run<Dtor>("destructor");
+  run<DefaultedDtor>("defaulted destructor");
+  run<CopyDefaulted>("defaulted copy");
+  run<AssignDefaulted>("defaulted assignment");
+  run<OtherAssign>("other assignment");
+  run<Plain>("plain");
+  {
+    Outer a(1);
+    Outer b(rv(a));
+    printf("%d %d\n", a.d.l.id, a.p.l.id);
+    b = rv(a);
+    printf("%d %d\n", a.d.l.id, a.p.l.id);
+  }
+  {
+    DerivedDtor a(1);
+    DerivedDtor b(rv(a));
+    printf("%d %d\n", a.l.id, a.m.id);
+    b = rv(a);
+    printf("%d %d\n", a.l.id, a.m.id);
+  }
+  Dtor d = made();
+  printf("%d\n", d.l.id);
+  return 0;
+}

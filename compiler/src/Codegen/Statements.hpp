@@ -111,6 +111,10 @@
     uint32_t openDebugBlock(Node* at);
 
     void statement(Stmt* s);
+    // The end of a loop's body, back to condLabel. A variable its condition declared (declares)
+    // ends here each time; one with a destructor also at falseLabel, the way out when the condition
+    // is false, which goes on to endLabel. The scope of such a variable closes here.
+    void endIteration(bool declares, size_t outside, const std::string& condLabel, const std::string& falseLabel, const std::string& endLabel);
 
     // Finds a zero-argument member function by name (searching bases), with the class it lives in,
     // for an object of classTy (a const one: its const overload).

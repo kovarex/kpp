@@ -1,0 +1,14 @@
+// spec: a floating value of exactly -2^63 is in long long's range, and one that truncates to the lowest value of a narrower type is in its: the compile-time conversion refused them, at run time they convert. clang and g++ print the same
+// found by thread J's arithmetic fuzzer (2026-11-06)
+extern "C" int printf(const char* format, ...);
+constexpr double lowest = -9223372036854775808.0;
+constexpr long long a = (long long)lowest;
+constexpr int b = (int)-2147483648.5;
+constexpr signed char c = (signed char)-128.9;
+constexpr unsigned d = (unsigned)-0.9;
+constexpr unsigned long long e = (unsigned long long)18446744073709549568.0;
+int main()
+{
+  printf("%lld %d %d %u %llu\n", a, b, (int)c, d, e);
+  return 0;
+}

@@ -3427,6 +3427,10 @@ auto GlobalScope::Impl::constCopyConstruct(const Ty* t, const ConstValue& v, con
     std::vector<std::optional<ConstPlace>> places{at};
     return constRunConstructor(ctor, t, {v}, depth + 1, nullptr, nullptr, &places, target);
   }
+  // No move constructor, declared or implicit (a copy constructor, copy assignment or destructor
+  // of its own, [class.copy.ctor] 8): a move is a copy, the members copied.
+  if (!special.moveCtor && (special.copyCtor || special.copyCtorNonConst || special.copyAssign || special.copyAssignNonConst || special.moveAssign || special.destructor))
+    moving = false;
   std::vector<ConstValue> parts;
   size_t n = layout->bases.size() + layout->fields.size();
   if (v.parts->size() != n)
@@ -3513,6 +3517,13 @@ auto GlobalScope::Impl::constAssignObject(const ConstPlace& place, const Ty* t, 
     std::vector<uint8_t> categories{category};
     std::optional<ConstValue> self = constRead(place);
     return self && constCallOn(f, subst, {v}, &self, depth + 1, &place, &places, &categories);
+  }
+  // No move assignment, declared or implicit ([class.copy.assign] 4): a move is a copy.
+  if (def && category != 1)
+  {
+    SpecialMembers special = specialMembersOf(def);
+    if (!special.moveAssign && (special.copyCtor || special.copyCtorNonConst || special.moveCtor || special.copyAssign || special.copyAssignNonConst || special.destructor))
+      category = 1;
   }
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   size_t n = layout ? layout->bases.size() + layout->fields.size() : 0;
@@ -8666,6 +8677,16 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
     std::optional<bool> truth = v ? constTruth(*v, depth + 1) : std::nullopt;
     return constEndTemps(temps, depth, truth.has_value()) ? truth : std::nullopt;
   };
+  // `T x = e` as a condition: x joins env, its value the condition.
+  auto declaredCondition = [&](Node* c) -> std::optional<bool> {
+    size_t before = env.size();
+    if (constStatement(static_cast<DeclStmt*>(c), ctx, env, result, depth + 1) != ConstFlow::Next || env.size() != before + 1)
+      return std::nullopt;
+    const ConstBinding& b = env.back();
+    if (b.aliasEnv)
+      return std::nullopt; // (a reference declared as the condition)
+    return constTruth(b.value, depth + 1);
+  };
   switch (s->kind)
   {
     case NodeKind::BlockStmt:
@@ -8774,19 +8795,7 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         size_t mark = env.size();
         if (i->init && constStatement(i->init, ctx, env, result, depth + 1) != ConstFlow::Next)
           return ConstFlow::Failed;
-        std::optional<bool> cond;
-        if (i->cond && i->cond->kind == NodeKind::DeclStmt)
-        {
-          size_t before = env.size();
-          if (constStatement(static_cast<DeclStmt*>(i->cond), ctx, env, result, depth + 1) != ConstFlow::Next || env.size() != before + 1)
-            return ConstFlow::Failed;
-          const ConstBinding& b = env.back();
-          if (b.aliasEnv)
-            return ConstFlow::Failed; // (a reference declared as the condition)
-          cond = constTruth(b.value, depth + 1);
-        }
-        else
-          cond = condition(i->cond);
+        std::optional<bool> cond = i->cond && i->cond->kind == NodeKind::DeclStmt ? declaredCondition(i->cond) : condition(i->cond);
         if (!cond)
           return ConstFlow::Failed;
         ConstFlow flow = constStatement(*cond ? i->then : i->else_, ctx, env, result, depth + 1);
@@ -8829,9 +8838,10 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
       }
       for (bool first = true;; first = false)
       {
+        size_t iteration = env.size(); // (a variable the condition declares lives for one, the step included)
         if (cond && (testFirst || !first))
         {
-          std::optional<bool> go = condition(cond);
+          std::optional<bool> go = cond->kind == NodeKind::DeclStmt ? declaredCondition(cond) : condition(cond);
           if (!go)
             return ConstFlow::Failed;
           if (!*go)
@@ -8851,6 +8861,8 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
           if (!constValue(step, ctx, depth + 1) || !constEndTemps(temps, depth))
             return ConstFlow::Failed;
         }
+        if (!constEndLocals(env, iteration, depth))
+          return ConstFlow::Failed;
         if (!cond && !testFirst)
           break; // `do ... while` with no condition: not C++
       }
