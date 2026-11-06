@@ -7123,7 +7123,12 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       auto* c = static_cast<CastExpr*>(e);
       walkType(c->type);
       const Ty* operand = walkExpr(c->operand);
-      return record(e, probedCast(typeOf(c->type), operand));
+      const Ty* t = typeOf(c->type);
+      // `(double (*)(double))twice`: an overloaded function's name takes the overload of the cast's
+      // type ([over.over] 1, an explicit conversion), as an initializer's does; it took the first one
+      bindTemplateAddresses(c->operand, t);
+      operand = c->operand && c->operand->ty ? c->operand->ty : operand;
+      return record(e, probedCast(t, operand));
     }
     case NodeKind::NamedCastExpr:
     {
@@ -7131,6 +7136,11 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       walkType(c->type);
       const Ty* operand = walkExpr(c->operand);
       const Ty* t = typeOf(c->type);
+      if (c->castKind == Kw::static_cast_)
+      {
+        bindTemplateAddresses(c->operand, t); // (`static_cast<long long (*)(long long)>(twice)`: as the C-style cast above)
+        operand = c->operand && c->operand->ty ? c->operand->ty : operand;
+      }
       checkCastConst(c, operand, t); // `static_cast<S&&>(s)` of a const s
       return record(e, c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t);
     }

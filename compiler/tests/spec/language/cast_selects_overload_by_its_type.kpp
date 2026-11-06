@@ -1,0 +1,17 @@
+// spec: a cast of an overloaded function's name to a pointer to function picks the overload of that type, as C++'s [over.over] has it for an explicit conversion: `static_cast<long long (*)(long long)>(twice)` is the long long one, a C-style cast `(double (*)(double))twice` and `static_cast<double (*)(double)>(&twice)` the double one, also as a function template's argument; clang prints the same
+// found by thread B (2026-11-06, comparing kpp with clang): the cast took the first overload, the int one, and converted its address to the other pointer type, so the call ran int twice through the wrong signature (6 where C++ has 9, 2.0 where it has 5.0)
+int twice(int x) { return x * 2; }
+double twice(double x) { return x * 2.5; }
+long long twice(long long x) { return x * 3; }
+
+template<class R, class A>
+R call(R (*f)(A), A v) { return f(v); }
+
+int main()
+{
+  auto pl = static_cast<long long (*)(long long)>(twice);
+  auto pd = (double (*)(double))twice;
+  auto pa = static_cast<double (*)(double)>(&twice);
+  println(pl(3), " ", pd(3), " ", pa(2), " ", call(static_cast<double (*)(double)>(twice), 2.0));
+  return 0;
+}
