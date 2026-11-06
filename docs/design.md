@@ -596,7 +596,8 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
 - **Checks.** `check(expr)` continues after a failure and `require(expr)` ends the test, as in
   8.6; the converter writes `require` for every Factorio `CHECK*` (Factorio's fork ends the test at
   each failed check). New forms: `check(expr, arguments...)` and `require(expr, arguments...)`
-  print the arguments after the failure as `println` prints them (Factorio's `_SIGNED` ids);
+  print the arguments after the failure as `println` prints them, C text and a `str()` method too, and
+  `?` for a value with no text (Factorio's `_SIGNED` ids, which the converter cannot type);
   `fail(arguments...)` fails and ends the test (`CHECK_FAILED`); `requireThrows<T>(expr)` evaluates
   `expr` inside a try, fails and ends the test unless a `T` (or a class derived from it) is thrown,
   and is the caught exception; `checkThrows<T>(expr)` is an `Optional<T>` and continues. These are
@@ -662,6 +663,8 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   fixture, runs the body and destroys the fixture, and the hook may call it again (the game's
   rerun on `LatencyTestDesyncError`, for the desync report). Without the hook the runner calls `run`
   once. A failure's `TestEnded` passes through the hook; a hook that catches everything must let it go.
+  `void testAssertFailed(const char* file, int line, int column, const char* text)` replaces what a
+  failing assert does in a test build (it fails the test): the game's throws, and its tests check that.
 - **What a test build adds for the program.** `StringView currentTestName()` is the running test's
   full name, empty outside a test. `bool runTest(StringView name)` runs a registered test in place,
   through `testRun` and without `testBeforeEach` and `testAfterEach` (as the game's `Test::Run`),
@@ -3291,7 +3294,7 @@ Spec snippet: `kpp/run_command`.
 - **The converted UnitTest++.** Q4 is answered (kovarex, 2026-11-06): the converter (thread C)
   turns `SUITE`, `TEST`, the fixtures, `DEPENDENCY`, the generators and the check macros into
   native suites, tests and `require`, and the game's tests run under the native runner with its
-  hooks (8.7; the mapping in [test-suites.md](test-suites.md)). Until then they stay UnitTest++,
+  hooks (8.7; the mapping in [test-suites.md](test-suites.md)). Until 2026-11-06 they stayed UnitTest++,
   converted as they are.
 - **Spec snippets stay** output comparisons: they specify the compiler (the pass/pending table);
   tests check kpp code. Each test construct (declaration, check values, require, the failure

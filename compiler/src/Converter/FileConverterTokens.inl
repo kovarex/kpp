@@ -428,6 +428,7 @@
       // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
       // release_assert-like macro).
       std::string text = this->renameOutsideArguments(withFileAndLine(untagged(rescanMacros(expandMacroOnce(m, args, spellings, useOffset), useOffset), true), useOffset));
+      text = withTestMarksResolved(std::move(text));
       return atDeclarationScope(useOffset) ? bracedObjects(std::move(text)) : text;
     }
     // Whether the text at offset stands at namespace or class scope, outside every function body:

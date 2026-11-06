@@ -84,6 +84,8 @@ void setConvertRelease();
 // kppc --convert-final: FinalRelease's (Release's with FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE).
 void setConvertFinal();
 void setConvertMarks();
+// kppc --convert-native-tests: the game's UnitTest++ tests as kpp's suites, tests and checks (design.md 8.7).
+void setConvertNativeTests();
 // kppc --convert-platform windows|linux: the platform the game is preprocessed for (Windows' defines
 // and MSVC's predefines, or Linux's and those --convert-predefines FILE gives, clang's `-dM -E`
 // output). False for another name or an unreadable file.

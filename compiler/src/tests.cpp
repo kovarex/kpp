@@ -219,7 +219,18 @@ int __kppRegisterSuite(const char* name, const char* depends, const char* tags)
 // The value as text, when its appendTo or a str() method can say it.
 template<typename T> bool __kppShow(const T& value, String& text)
 {
-  if constexpr (requires { value.appendTo(text); })
+  if constexpr (isArithmetic<T>)
+  {
+    text = toString(value);
+    return true;
+  }
+  else if constexpr (isConvertible<const T&, StringView>)
+  {
+    StringView view = value;
+    text = String(view);
+    return true;
+  }
+  else if constexpr (requires { value.appendTo(text); })
   {
     text = String();
     value.appendTo(text);
@@ -233,8 +244,7 @@ template<typename T> bool __kppShow(const T& value, String& text)
   }
   else if constexpr (requires { value.str(); })
   {
-    text = String(value.str());
-    return true;
+    return __kppShow(value.str(), text);
   }
   else
     return false;
@@ -317,10 +327,12 @@ template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r)
 
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
 // says the arguments; false, so that `cond || __kppMessage(...)` fails.
-bool __kppMessage(Text text)
+template<typename... Pieces> bool __kppMessage(const Pieces&... pieces)
 {
   __KppTestState& state = __kppTestState();
-  state.message = toString(text);
+  state.message = String();
+  String piece;
+  ((__kppShow(pieces, piece) ? (state.message << piece, 0) : (state.message << "?", 0)), ...);
   state.hasMessage = true;
   return false;
 }
@@ -603,7 +615,8 @@ bool runTest(StringView name, CallerLocation here = caller)
   return passed;
 }
 
-extern "C" void kpp_assert_failed(const char* file, int line, int column, const char* text)
+// A failing assert: the program's testAssertFailed if it has one (the game's throws, and its tests check that).
+template<typename T = void> void testAssertFailed(const char* file, int line, int column, const char* text)
 {
   if (!__kppTestState().running)
   {
@@ -612,6 +625,11 @@ extern "C" void kpp_assert_failed(const char* file, int line, int column, const 
   }
   __kppFail(file, line, column, "assert", text, "assertion failed");
   throw TestEnded();
+}
+
+extern "C" void kpp_assert_failed(const char* file, int line, int column, const char* text)
+{
+  testAssertFailed(file, line, column, text);
 }
 
 // Whether text contains the pattern, whose `*` match anything.

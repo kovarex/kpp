@@ -1,0 +1,78 @@
+// UnitTest++'s comparisons (Checks.h, Checks.cpp) as plain functions, for the checks the conversion
+// writes as `require(UnitTest::isClose(a, e, t))` (kppc --convert-native-tests, design.md 8.7): a
+// failed check shows a call's argument values, so these only answer.
+
+namespace UnitTest
+{
+  template<typename Actual, typename Expected, typename Tolerance>
+  bool isClose(const Actual& actual, const Expected& expected, const Tolerance& tolerance)
+  {
+    return (actual >= (expected - tolerance)) && (actual <= (expected + tolerance));
+  }
+
+  template<typename Actual, typename Expected, typename Tolerance>
+  bool isClosePercentage(const Actual& actual, const Expected& expected, const Tolerance& tolerancePercentage)
+  {
+    Expected toleranceAbsolute = tolerancePercentage * expected / 100;
+    if (toleranceAbsolute < 0)
+      toleranceAbsolute = -toleranceAbsolute;
+    return isClose(actual, expected, toleranceAbsolute);
+  }
+
+  template<typename Actual, typename Lower, typename Upper>
+  bool isBetween(const Actual& value, const Lower& lowerBound, const Upper& upperBound)
+  {
+    return value > lowerBound && value < upperBound;
+  }
+
+  template<typename Actual, typename Lower, typename Upper>
+  bool isBetweenOrEqual(const Actual& value, const Lower& lowerBound, const Upper& upperBound)
+  {
+    return value >= lowerBound && value <= upperBound;
+  }
+
+  template<typename Actual, typename Expected>
+  bool isArrayEqual(const Actual& actual, const Expected& expected)
+  {
+    if (actual.size() != expected.size())
+      return false;
+    for (usize i = 0; i < actual.size(); ++i)
+      if (!(actual[i] == expected[i]))
+        return false;
+    return true;
+  }
+
+  template<typename Actual, typename Expected, typename Tolerance>
+  bool isArrayClose(const Actual& actual, const Expected& expected, const Tolerance& tolerance)
+  {
+    if (actual.size() != expected.size())
+      return false;
+    for (usize i = 0; i < actual.size(); ++i)
+      if (!isClose(actual[i], expected[i], tolerance))
+        return false;
+    return true;
+  }
+
+  bool contains(StringView actual, StringView substring)
+  {
+    return actual.find(substring) != StringView::npos;
+  }
+
+  // Text or a container's elements, as CheckStartsWith. Its container branch writes its failure and
+  // answers true all the same (Checks.h:290), so that check cannot fail: two of the game's tests,
+  // Deconstruction.DragAndDropDeconstructionPlanner{Entity,Tile}FilterWithLatency, pass in C++ only by
+  // that, and this answers as it does.
+  template<typename Actual, typename Prefix>
+  bool startsWith(const Actual& actual, const Prefix& prefix)
+  {
+    if constexpr (isConvertible<const Actual&, StringView> && isConvertible<const Prefix&, StringView>)
+    {
+      StringView text = actual, start = prefix;
+      return text.size() >= start.size() && text.substr(0, start.size()) == start;
+    }
+    else
+    {
+      return true;
+    }
+  }
+}

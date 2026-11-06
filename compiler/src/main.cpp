@@ -64,7 +64,7 @@ namespace
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
-    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1},
+    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-native-tests", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1},
     {"--no-run", 0}};
 }
 

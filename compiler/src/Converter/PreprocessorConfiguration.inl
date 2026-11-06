@@ -247,6 +247,10 @@
   bool convertRelease = false;
   bool convertFinal = false;
   bool convertMarks = false;
+  // With kppc --convert-native-tests, the game's UnitTest++ tests are written as kpp's own (design.md
+  // 8.7): SUITE as `suite`, TEST and TEST_FIXTURE as `test`, every CHECK as `require`
+  // (nativeTestMacroBodies in Preprocessor.inl).
+  bool convertNativeTests = false;
   // With kppc --convert-platform linux (CONVERSION.md TODO 17), the game as fbuild.bff builds it for
   // Linux x86-64: its Linux `.defines` (LINUX, LUA_USE_POSIX, `NULL=0L`...) and `.architectureSpecificDefines`
   // (ARCH_X86_64) for the Windows ones, the configuration's and the libraries' defines as for Windows,

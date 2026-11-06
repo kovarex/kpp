@@ -1,6 +1,7 @@
 @echo off
-rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++), built and run as
-rem run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
+rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++, converted to kpp's own
+rem suites and tests, design.md 8.7: kppc --tests, the runner's options and the game's hooks in
+rem overrides\added\tests\TestHooks.kpp), built and run as run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
 rem one (the checkout given as an argument, else FACTORIO_IN_KPP), with UnitTest++. The
 rem build links link-settings.cmd's libraries with --keep-going and --stub-missing (a function the
 rem code generator left out aborts when a test reaches it) and the crash report, into
@@ -8,7 +9,7 @@ rem kpp\tests-run\factorio-test.exe. The run has a write directory of its own, k
 rem (config, log, script output; never %APPDATA%, never C:\Factorio), and reads the game's data and
 rem the tests' saves, images and mods from C:\Factorio, as the C++ build's factorio-test.exe does
 rem (the tests open `read-data/../tests/...`): read only. Further arguments go to the tests (`--suite
-rem Lua`, `--test SomeTest`, `--exit-on-failure`). The runner's summary line is printed next to the C++
+rem Lua`, `--filter Suite.SomeTest`, `--exit-on-failure`). The runner's summary line is printed next to the C++
 rem build's: 9006 tests passed (2026-10-29). `tests.cmd --baseline` runs the C++ build's own
 rem C:\Factorio\bin\Releasex64vs2022\factorio-test.exe the same way (its own write directory
 rem kpp\tests-baseline\run) to measure that again. A stub or a failed assertion ends the run where it
@@ -84,7 +85,7 @@ for %%l in (%CLIBRARIES%) do if exist "%HERE%c-libraries\%%l\interface.txt" (cal
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude %CONVERSION%\libraries\%%l
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
-%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --tests --ext .kpp --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
 echo == %OUT%\factorio-test.exe, built by kppc (exit %errorlevel%) from %CONVERSION% with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %OUT%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %OUT%\build-errors.txt
@@ -105,8 +106,8 @@ echo == running %EXE% --config %OUT%\config.ini --write-data %OUT%\run --no-colo
 set RESULT=%errorlevel%
 popd
 echo == factorio-test exit %RESULT%; its output: %OUT%\tests.txt
-%SystemRoot%\System32\findstr.exe /c:"Success:" /c:"FAILURE:" /c:"Test time:" %OUT%\tests.txt
-echo == the C++ build: Success: 9006 tests passed (2026-10-29; tests.cmd --baseline measures it again)
+%SystemRoot%\System32\findstr.exe /r /c:"Success:" /c:"FAILURE:" /c:"Test time:" /c:"^[0-9]* tests*, [0-9]* failed" %OUT%\tests.txt
+echo == the C++ build: Success: 9501 tests passed (2026-11-06; tests.cmd --baseline measures it again)
 exit /b %RESULT%
 
 :shards

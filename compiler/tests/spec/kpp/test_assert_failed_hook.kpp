@@ -1,0 +1,14 @@
+// spec: a program's testAssertFailed replaces what a failing assert does in a test build (the game's throws, and its tests check that)
+// test:
+// exit: 0
+void testAssertFailed(const char* file, int line, int column, const char* text)
+{
+  throw RuntimeError(String(text));
+}
+
+test AssertThrows
+{
+  int x = 1;
+  requireThrows<RuntimeError>(([&] { release_assert(x == 2); })());
+  println("went on");
+}

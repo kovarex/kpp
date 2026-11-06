@@ -231,6 +231,8 @@ int compile(int argc, char** argv)
       setConvertFinal();
     else if (arg == "--convert-marks")
       setConvertMarks();
+    else if (arg == "--convert-native-tests")
+      setConvertNativeTests();
     else if (arg == "--convert-platform" && i + 1 < argc)
     {
       if (!setConvertPlatform(argv[++i]))
@@ -529,6 +531,8 @@ int compile(int argc, char** argv)
       return 2;
     }
     options.configValues["mingw"] = parseConfigValue(options.target.gnu ? "true" : "false");
+    if (!options.configValues.count("tests"))
+      options.configValues["tests"] = parseConfigValue("false");
     options.debug = options.configValues["debug"].number != 0;
     if (options.optimize < 0)
       options.optimize = !options.debug;

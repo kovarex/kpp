@@ -7,4 +7,4 @@ src/Graphics/SpriteLoaders.kpp SpriteLoaders.cpp:2 release  PACKAGED_BUILD leave
 src/Gui/GraphicsSettingsGui.kpp GraphicsSettingsGui.cpp:6 release  `<< this->developerOptionsFrame` in the general part's flow chain, which FinalRelease leaves out: kpp's final build shows the developer options frame
 src/Main.kpp Main.cpp:13 release  the add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
 src/Main.kpp Main.cpp:21 release  the runtime-sprite-reload option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
-tests/Main.kpp Main.cpp:10 release  the tests' add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final tests accept it
+tests/Main.kpp Main.cpp:8 release  the tests' add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final tests accept it

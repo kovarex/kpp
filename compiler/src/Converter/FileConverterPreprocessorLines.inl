@@ -328,7 +328,9 @@
                    "// release_assert is kpp's own statement, which takes its file, line and expression text where\n"
                    "// it is written. A failing one, and a failing assert, comes here, to " + *failure + "\n"
                    "// as the macro called it.\n"
-                   "extern \"C\" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* expression) { " + *failure +
+                   "when (!config::tests) extern \"C\" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* expression) { " + *failure +
+                   "(file, line, expression); }\n"
+                   "test void testAssertFailed(const char* file, i32 line, i32 column, const char* expression) { " + *failure +
                    "(file, line, expression); }" + trailing;
           }
           // (one that is nothing, too: GameRenderer.cpp's CHECK_AND_ADVANCE_STATE in Release; its uses

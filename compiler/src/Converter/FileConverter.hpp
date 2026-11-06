@@ -494,6 +494,16 @@
       std::string text = expansion;
       while (!text.empty() && isspace((unsigned char)text.back()))
         text.pop_back();
+      // (--convert-native-tests: `test Name : Fixture`, `test Name : Fixture(Parameter)`)
+      if (classesByName && open < toks.size() && toks[open].is(P::LBrace) && text.rfind("test ", 0) == 0 && text.find(" : ") != std::string::npos)
+      {
+        std::string fixture = text.substr(text.find(" : ") + 3);
+        fixture = fixture.substr(0, fixture.find('('));
+        while (!fixture.empty() && isspace((unsigned char)fixture.back()))
+          fixture.pop_back();
+        noteFixtureBodyOf(fixture.substr(fixture.rfind(':') == std::string::npos ? 0 : fixture.rfind(':') + 1), open);
+        return;
+      }
       if (!classesByName || open >= toks.size() || !toks[open].is(P::LBrace) || text.size() < 8 || text.compare(text.size() - 7, 7, "::Run()") != 0)
         return;
       size_t nameEnd = text.size() - 7, nameStart = nameEnd;
@@ -513,6 +523,11 @@
       std::string fixture = last == std::string::npos ? base : base.substr(last + 1);
       while (!fixture.empty() && isspace((unsigned char)fixture.front()))
         fixture.erase(fixture.begin());
+      noteFixtureBodyOf(fixture, open);
+    }
+    // The body from token open of a test of fixture class fixture (by its unqualified name).
+    void noteFixtureBodyOf(const std::string& fixture, uint32_t open)
+    {
       auto found = classesByName->find(fixture);
       if (found == classesByName->end() || found->second.empty())
         return;
@@ -641,6 +656,9 @@
         }
       auto replaced = [&](const std::string& name, const std::string& body) -> const std::string&
       {
+        if (convertNativeTests)
+          if (auto n = nativeTestMacroBodies().find(name); n != nativeTestMacroBodies().end())
+            return n->second;
         auto r = replacedMacroBodies.find(name);
         return r == replacedMacroBodies.end() ? body : r->second;
       };

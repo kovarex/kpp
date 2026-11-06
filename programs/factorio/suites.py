@@ -62,6 +62,9 @@ if only:
 suites = sorted(suites)
 
 # What each process runs: (its name, the runner's arguments that pick its tests).
+# The converted tests run under kpp's test runner (design.md 8.7), the C++ build's under UnitTest++: their
+# options and summary lines differ. kpp's writes each test's result to OUT\reports\UNIT.jsonl.
+native = not os.path.abspath(exe).lower().startswith(FACTORIO.lower())
 units = [(s, ['--suite', s]) for s in suites]
 if shards:
     weight = {}
@@ -76,7 +79,9 @@ if shards:
         g = min(groups, key=lambda g: g[0])
         g[0] += weight.get(s, 12.0)
         g[1].append(s)
-    units = [('shard%d' % (k + 1), ['--suites', ','.join(sorted(g[1]))]) for k, g in enumerate(groups) if g[1]]
+    def picks(names):
+        return [a for n in sorted(names) for a in ('--suite', n)] if native else ['--suites', ','.join(sorted(names))]
+    units = [('shard%d' % (k + 1), picks(g[1])) for k, g in enumerate(groups) if g[1]]
 
 workers = queue.Queue()
 for w in range(jobs):
@@ -95,6 +100,9 @@ def one(unit):
     try:
         run = os.path.join(wdir, 'run')
         command = [exe, '--config', os.path.join(wdir, 'config.ini'), '--write-data', run, '--no-colors'] + picks
+        if native:
+            os.makedirs(os.path.join(out, 'reports'), exist_ok=True)
+            command += ['--report', os.path.join(out, 'reports', suite + '.jsonl')]
         start = time.time()
         try:
             p = subprocess.run(command, cwd=run, capture_output=True, timeout=timeout)
@@ -111,6 +119,9 @@ def one(unit):
         m = re.search(r'FAILURE: (\d+) out of (\d+) tests failed', output)
         if m:
             failed, total = int(m.group(1)), int(m.group(2))
+        m = re.search(r'^(\d+) tests?, (\d+) failed', output, re.M)
+        if m:
+            total, failed = int(m.group(1)), int(m.group(2))
         m = re.search(r'kppc [^:\n]*: (.+?) at (\S+?):(\d+)', output)
         stub = m.group(1) if m else ''
         return suite, code, total, failed, stub, time.time() - start

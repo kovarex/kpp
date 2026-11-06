@@ -1,0 +1,107 @@
+// The hooks of kpp's test runner (design.md 8.7): what tests/Main.cpp, tests/TestRunner.cpp and
+// UnitTest++'s Test::Run did around the tests. The runner handles its own options and passes the others
+// here: the game's.
+
+void testsSetup(const Vector<String>& arguments)
+{
+  Vector<char*> argv;
+  String program = "factorio-test";
+  argv.push_back(program.data());
+  Vector<String> copies = arguments;
+  for (String& argument : copies)
+    argv.push_back(argument.data());
+  if (i32 result = fmain(i32(argv.size()), argv.data()))
+    ::exit(result);
+}
+
+// The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares.
+private String testNameAsUnitTest()
+{
+  String name = String(currentTestName());
+  usize dot = name.find('.');
+  if (dot != String::npos)
+    name[dot] = '/';
+  return name;
+}
+
+void testBeforeEach()
+{
+  crcDumper.open(testNameAsUnitTest());
+}
+
+// A desync in a latency test: the test runs again to write the desync report (Test::HandleDesync),
+// and its failure comes from that run.
+test private void reportDesync(const Function<void()>& run, StringView what)
+{
+  if (TestGlobals::desyncReportGenerationRun)
+    throw RuntimeError("TestGlobals::desyncReportGeneration was true when it should not have been");
+  if (!TestGlobals::desyncReportGenerationEnabled)
+    fail("Unhandled exception while running test (desync report generation disabled): ", what);
+  if (TestGlobals::heavyMode)
+    fail("Unhandled exception while running test (desync report generation run disabled in heavy mode): ", what);
+  TestGlobals::desyncReportGenerationRun = true;
+  String fullName = testNameAsUnitTest();
+  StringUtil::replace_all(fullName, '/', '-');
+  TestGlobals::desyncedTestName = fullName;
+  String failure;
+  try
+  {
+    run();
+    failure = "Desync did not occur during desync detection run.";
+  }
+  catch (const LatencyTestDesyncErrorHandled& handled)
+  {
+    TestGlobals::desyncedTestName = "";
+    failure = toString("Desync while running test: ", StringView(handled.what()));
+  }
+  catch (const TestEnded&)
+  {
+    TestGlobals::desyncReportGenerationRun = false;
+    throw;
+  }
+  catch (const Exception& e)
+  {
+    failure = toString("Unhandled exception while running desync detection run.: ", StringView(e.what()));
+  }
+  TestGlobals::desyncReportGenerationRun = false;
+  fail(failure);
+}
+
+test void testRun(Function<void()> run)
+{
+  try
+  {
+    run();
+  }
+  catch (const LatencyTestDesyncError& e)
+  {
+    reportDesync(run, StringView(e.what()));
+  }
+  catch (const LatencyTestDesyncErrorHandled& e)
+  {
+    fail("Desync while running test: ", StringView(e.what()));
+  }
+}
+
+test void testAfterEach()
+{
+  TestRunner::postTestValidation(nullptr);
+  if (global && global->appManager && !GlobalContext::headlessMode)
+    global->appManager->eraseIf([](AppManagerState* state)
+    {
+      return !dynamic_cast<InMainMenu*>(state) && !dynamic_cast<InTests*>(state);
+    });
+}
+
+void testsTeardown()
+{
+  if (writeCrc)
+    crcDumper.writeData(TestGlobals::crcFilePath);
+  delete currentRun;
+  if constexpr (!config::finalRelease)
+    if (Entity::count != 0)
+    {
+      print("leaked ", usize(Entity::count.load()), " entities\n");
+      ::abort();
+    }
+}

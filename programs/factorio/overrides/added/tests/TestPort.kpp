@@ -1,0 +1,37 @@
+// The C++ test listens on the fixed port 12345, and TCPSocket::bind sets SO_REUSEADDR, with which
+// Windows lets a second process bind that port too: two runs of the tests at once (two worktrees)
+// connect into each other's listeners and hang or crash. Each run here listens on a port of its own,
+// one the system hands out (bound to port 0 and read back); the tests check what the C++ ones do.
+
+// A port no socket has bound: the one the system gives a socket bound to port 0. Winsock is started
+// here as well, as SocketCppCompatibility's starter may be built after this file's globals.
+// The probe is closed before the tests bind the port (TCPSocket::bind makes a socket of its own),
+// so until then another process could take it: one binding that port by number, as the system
+// gives the next bind to port 0 the following free port, not the one just released.
+// (Winsock on Windows, POSIX's sockets elsewhere: SocketHppCompatibility's SystemSocketType and
+// INVALID_SOCKET on both)
+uint16_t freeTestPort()
+{
+  if constexpr (config::platform == Platform::Windows)
+  {
+    WSADATA wsaData;
+    if (WSAStartup(0x0202, &wsaData) != 0)
+      throw SocketError("WSAStartup failed");
+  }
+  SystemSocketType probe = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (probe == INVALID_SOCKET)
+    throw SocketError("Creating socket failed: " + lastSocketErrorString());
+  sockaddr_in address = {};
+  address.sin_family = AF_INET;
+  socklen_t length = sizeof address;
+  if (::bind(probe, (sockaddr*)&address, length) != 0 || getsockname(probe, (sockaddr*)&address, &length) != 0)
+    throw SocketError("Can't find a free port: " + lastSocketErrorString());
+  if constexpr (config::platform == Platform::Windows)
+  {
+    ::closesocket(probe);
+    WSACleanup();
+  }
+  if constexpr (config::platform == Platform::Linux)
+    ::close(probe);
+  return ntohs(address.sin_port);
+}

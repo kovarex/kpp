@@ -42,6 +42,7 @@ namespace
 #include "Converter/Overrides.inl"
 #include "Converter/MacroKinds.inl"
 #include "Converter/ParamNamePlace.inl"
+#include "Converter/NativeTests.inl"
 #include "Converter/FileConverter.hpp"
 
   std::string relativeTo(const std::filesystem::path& p, const std::vector<std::filesystem::path>& roots)

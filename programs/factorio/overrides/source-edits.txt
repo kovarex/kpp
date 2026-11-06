@@ -422,3 +422,340 @@
 + #if defined(LINUX) && !defined(__FreeBSD__)
 +   // glibc won't release free'd memory back to the OS without asking.
 +   malloc_trim(0);
+
+# The tests' entry point is kpp's test runner (design.md 8.7, docs/test-suites.md): tests/Main.cpp's fmain
+# becomes what testsSetup (overrides/added/tests/TestHooks.kpp) calls, which keeps the game's options and
+# state; the selection of tests, their order and the run are the runner's.
+
+@ tests/Main.cpp: what fmain's scope guarded happens in testsTeardown: the leak check
+- #ifndef FINAL_RELEASE
+-   ScopedCallback leakGuard([]
+-   {
+-     if (Entity::count != 0)
+-     {
+-       printf("leaked %zu entities\n", Entity::count.load());
+- #ifndef __SANITIZE_ADDRESS__
+-       abort();
+- #endif
+-     }
+-   });
+- #endif
+-
++
+
+@ tests/Main.cpp: the run lives until testsTeardown
+-   TestRun run(argv[0]);
++   TestRun& run = *new TestRun(argv[0]);
++   currentRun = &run;
+
+@ tests/Main.cpp: the file's state testsTeardown reads
+- [[nodiscard]]
+- int fmain(int argc, char** argv)
++ TestRun* currentRun = nullptr;
++ bool writeCrc = false;
++
++ [[nodiscard]]
++ int fmain(int argc, char** argv)
+
+@ tests/Main.cpp: writing the CRCs happens in testsTeardown
+-   bool writeCrc = false;
+-   ScopedCallback writeCrcGuard([&writeCrc]
+-   {
+-     if (writeCrc)
+-       crcDumper.writeData(TestGlobals::crcFilePath);
+-   });
++
+
+@ tests/Main.cpp: the runner runs the generators, sorts the tests and selects them; a save or a desync report is run here, not tests
+-     TestGeneratorsList::getInstance().runAllTestGenerators();
+-     UnitTest::SuiteList::getInstance().setup();
+-     UnitTest::TestList::getInstance().filterModpack(TestGlobals::activeModpack);
+-     UnitTest::TestList::getInstance().sort();
+-     run.postSuitesSetup();
+-
+-     TestSelector testSelector;
+- #ifndef NINTENDO_SWITCH
+-     if (run.config.interactive)
+-     {
+-       if (!InteractiveTestSelect(testSelector, run.config, run.persistentContext).select())
+-         return 0;
+-     }
+-     else
+- #endif
+-       testSelector.configure(variables_map);
+-
+-     int result;
+-     do
+-     {
+-       result = run(variables_map, testSelector, writeCrc, run.config, run.persistentContext);
+-     }
+-     while (run.config.interactive
+- #ifndef NINTENDO_SWITCH
+-       && InteractiveTestSelect(testSelector, run.config, run.persistentContext).select()
+- #endif
+-       );
+-     if (run.config.interactive)
+-       run.persistentContext.save();
+-     return result;
++     if (run.config.interactive || run.config.fork)
++       throw std::runtime_error("--interactive and --fork are not in the native runner; --jobs replaces --fork");
++     if (variables_map.count("save") || variables_map.count("add-tags"))
++     {
++       TestSelector testSelector;
++       std::exit(run(variables_map, testSelector, writeCrc, run.config, run.persistentContext));
++     }
++     return 0;
+
+@ tests/Main.cpp: the runner is the program's main
+- int main(int argc, char** argv)
+- {
+-   return fmain(argc, argv);
+- }
++
+
+@ tests/TestRunner.cpp: an exception in the validation fails the test through the runner
+-     curTest->HandleExceptions("running post test validation");
++     throw;
+
+@ tests/TestUtil.cpp: the running test's name is the runner's
+-       const UnitTest::TestDetails* details = UnitTest::CurrentTest::Details();
+-       const uint32_t index = indexes[details->name.getValueExplicit()]++;
++       const std::string testName(currentTestName());
++       const uint32_t index = indexes[testName]++;
+
+@ tests/TestUtil.cpp: the running test's name is the runner's
+- ssprintf("%s-dump-%05u", details->name.c_str(), index)
++ ssprintf("%s-dump-%05u", testName.c_str(), index)
+
+@ tests/TestPlanetGeneration.cpp: the running test's name is the runner's
+- UnitTest::CurrentTest::Details()->name.c_str(),
++ std::string(currentTestName()).c_str(),
+
+@ tests/TestScenario.cpp: whether a test is running is the runner's
+-   if (UnitTest::CurrentTest::Details())
++   if (!currentTestName().empty())
+
+@ tests/TestScenario.cpp: a failed require throws the runner's TestEnded
+-     catch (const UnitTest::TerminateTestException&)
++     catch (const TestEnded&)
+
+@ tests/TestCraftingMachine.cpp: a failed check ends the test, so a helper that returns had no failure
+-     int failureCount = UnitTest::CurrentTest::Results()->getFailureCount();
+-
++
+
+@ tests/TestCraftingMachine.cpp: a failed check ends the test, so a helper that returns had no failure
+-     return failureCount == UnitTest::CurrentTest::Results()->getFailureCount();
++     return true;
+
+@ tests/TestLuaEvents.cpp: the reporter's tag named the event in a failure's line: the runner has no reporter
+-       if (auto reporter = UnitTest::CurrentTest::Results()->getTestReporter())
+-         reporter->setTag(eventToEventName(LuaEventType(i)));
+-
++
+
+@ tests/TestLuaEvents.cpp: the reporter's tag named the event in a failure's line: the runner has no reporter
+-     if (auto reporter = UnitTest::CurrentTest::Results()->getTestReporter())
+-       reporter->setTag(std::string());
++
+
+@ tests/TestFixtureInterferences.cpp: the runner runs a test by name; its failure is the caller's, as Test::Run's was
+-     UnitTest::TestList::getInstance().index.at(testName)->Run();
++     CHECK(::runTest(testName));
+
+@ tests/LuaCheckMacros.hpp: the check by its macro, which the conversion writes as require
+-   CHECK_INTERNAL(UnitTest::CheckEqual(actual, convert_input_to_lua_string(expected), CHECK_INTERNAL_stream), sourceLocation.file_name(), sourceLocation.line(), nullptr)
++   CHECK_EQUAL_SOURCELOCATION(actual, convert_input_to_lua_string(expected), sourceLocation)
+
+@ tests/TestTCPSocket.cpp: each run listens on a port of its own (freeTestPort, overrides/added/tests/TestPort.kpp): two runs at once on the fixed port connect into each other's listeners
+-   const char* ipv4ListenOnAddress = "0.0.0.0:12345";
+-   const char* ipv4Address = "127.0.0.1:12345";
++   uint16_t testPort = freeTestPort();
++   std::string ipv4ListenOnAddressText = "0.0.0.0:" + std::to_string(testPort);
++   std::string ipv4AddressText = "127.0.0.1:" + std::to_string(testPort);
++   std::string ipv6ListenOnAddressText = "[::]:" + std::to_string(testPort);
++   std::string ipv6AddressText = "[::1]:" + std::to_string(testPort);
++   const char* ipv4ListenOnAddress = ipv4ListenOnAddressText.c_str();
++   const char* ipv4Address = ipv4AddressText.c_str();
+
+@ tests/TestTCPSocket.cpp: each run listens on a port of its own
+-   const char* ipv6ListenOnAddress = "[::]:12345";
+-   const char* ipv6Address = "[::1]:12345";
++   const char* ipv6ListenOnAddress = ipv6ListenOnAddressText.c_str();
++   const char* ipv6Address = ipv6AddressText.c_str();
+
+@ tests/TestTCPSocket.cpp: each run listens on a port of its own
+-     socket.bind(SocketAddress("0.0.0.0:12345", SocketType::Socket));
++     socket.bind(SocketAddress(ipv4ListenOnAddress, SocketType::Socket));
+
+@ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured (runCaptured): no reporter, no test object
+-   class CustomReporter : public UnitTest::TestReporter
+-   {
+-   public:
+-     bool propagateReports = false;
+-     UnitTest::TestReporter* innerReporter;
+-     char const* message;
+-
+-     CustomReporter(UnitTest::TestReporter* innerReporter)
+-     {
+-       this->innerReporter = innerReporter;
+-     }
+-
+-     virtual void reportFailure(const UnitTest::TestDetails& details, char const* failure) override
+-     {
+-       this->message = failure;
+-       if (this->propagateReports)
+-         this->innerReporter->reportFailure(details, failure);
+-     }
+-
+-     virtual void reportTestStart(UnitTest::TestDetails const& details) override
+-     {
+-       if (this->propagateReports)
+-         this->innerReporter->reportTestStart(details);
+-     }
+-
+-     virtual void reportTestFinish(const UnitTest::Test& test, UnitTest::TestTime testTime) override
+-     {
+-       if (this->propagateReports)
+-         this->innerReporter->reportTestFinish(test, testTime);
+-     }
+-
+-     virtual void reportSummary(int a, int b, int c, UnitTest::TestTime testTime) override
+-     {
+-       if (this->propagateReports)
+-         this->innerReporter->reportSummary(a, b, c, testTime);
+-     }
+-
+-     virtual void setTag(const std::string& tag) override
+-     {
+-       if (this->propagateReports)
+-         this->innerReporter->setTag(tag);
+-     }
+-   };
+-
+-   class InnerTest : public UnitTest::Test
+-   {
+-   public:
+-     InnerTest(char const* testName, UnitTest::Suite* suite) : UnitTest::Test(testName, suite) {}
+-
+-     virtual UnitTest::FixtureHelperBase* CreateFixtureHelper() const override { return new Helper(); }
+-   };
+-
++
+
+@ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured
+-     InnerTest test(innerTestName.c_str(), UnitTest::SuiteList::getInstance().getSuite(suiteName));
+-
+-     CustomReporter reporter = CustomReporter(UnitTest::CurrentTest::Results()->getTestReporter());
+-     reporter.propagateReports = expectingSuccessfulTestRun && !suppressReporting;
+-     UnitTest::TestResults innerResults = UnitTest::TestResults(&reporter);
+-
++     bool passed = false;
+
+@ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured
+-       ScopedSetter<UnitTest::TestResults*> resultsSetter(UnitTest::CurrentTest::Results(), &innerResults);
+-       ScopedSetter<const UnitTest::TestDetails*> detailsSetter(UnitTest::CurrentTest::Details());
++
+
+@ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured
+-       test.Run();
+-       TestRunner::postTestValidation(&test);
++       passed = runCaptured([this] { T fixture; this->testInstructions(fixture); });
++       TestRunner::postTestValidation(nullptr);
+
+@ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured
+-     bool testResultExpectationMet = expectingSuccessfulTestRun.asBool() != innerResults.isCurrentTestFailed();
++     bool testResultExpectationMet = expectingSuccessfulTestRun.asBool() == passed;
+
+@ tests/TestEnums.cpp: requireThrows takes an expression
+-     CHECK_THROW(TestEnum e3("x"), std::runtime_error);
+-     CHECK_THROW(TestEnum e4("X"), std::runtime_error);
++     CHECK_THROW(TestEnum("x"), std::runtime_error);
++     CHECK_THROW(TestEnum("X"), std::runtime_error);
+
+@ tests/TestEnums.cpp: requireThrows takes an expression
+-     CHECK_THROW(TestEnum e4(uint8_t(255)), std::runtime_error);
++     CHECK_THROW(TestEnum(uint8_t(255)), std::runtime_error);
+
+@ tests/TestDragBuilding.cpp: a test's name is an identifier (tests.cmd's comparison with C++ maps it back)
+-   TEST_FIXTURE(GameViewFixtureForPipes, 2x2UndergroundPipeSmartFixing)
++   TEST_FIXTURE(GameViewFixtureForPipes, UndergroundPipe2x2SmartFixing)
+
+@ tests/TestZipPackage.cpp: a test's name is an identifier (tests.cmd's comparison with C++ maps it back)
+-   TEST_FIXTURE(TempDirectoryFixture, 4GBZipFileWriteRead)
++   TEST_FIXTURE(TempDirectoryFixture, ZipFile4GBWriteRead)
+
+@ tests/TestLatencyCar.cpp: the suite's parameters stand in a namespace of LatencyCarParameters.hpp, which SUITE's namespace was
+- SUITE(LatencyCar)
+- {
++ SUITE(LatencyCar)
++ {
++   using namespace SuiteLatencyCar;
+
+@ tests/MetaTestRunner.hpp: the inner test is a function, with no fixture helper class
+- template<typename T, typename Helper>
++ template<typename T>
+
+@ tests/TestMetaTestRunner.cpp: the inner test is a function, with no fixture helper class
+-   class FixtureMetaTestRunnerFixtureTestWrapperHelper;
+-   auto metaTestRunner = MetaTestRunner<Fixture, FixtureMetaTestRunnerFixtureTestWrapperHelper>(
++   auto metaTestRunner = MetaTestRunner<Fixture>(
+
+@ tests/TestLatencyInputFixture.cpp: the inner test is a function, with no fixture helper class
+-   class CustomLatencyInputFixtureLatencyInputFixtureTestWrapperHelper;
+-   auto metaTestRunner = MetaTestRunner<CustomLatencyInputFixture, CustomLatencyInputFixtureLatencyInputFixtureTestWrapperHelper>(
++   auto metaTestRunner = MetaTestRunner<CustomLatencyInputFixture>(
+
+@ src/Logistics/LogisticCellParameters.hpp: the test's helper class this named a friend is a test body, which no declaration can name
+-   uint32_t chargingStationCount;
++ public:
++   uint32_t chargingStationCount;
++ protected:
+
+@ tests/TestLua.cpp: CHECK_EQUAL compared char pointers' text; `==` of two in a check is an error
+- CHECK_EQUAL(loadResult == LUA_ERRSYNTAX ? "load error" : "loaded successfully", "load error");
++ CHECK_EQUAL(std::string_view(loadResult == LUA_ERRSYNTAX ? "load error" : "loaded successfully"), "load error");
+
+@ tests/TestAudioWorkingSound.cpp: CHECK_EQUAL compared char pointers' text; `==` of two in a check is an error
+- assemblingMachine2Prototype->getType(), assemblingMachine3Prototype->getType()
++ std::string_view(assemblingMachine2Prototype->getType()), assemblingMachine3Prototype->getType()
+
+@ tests/TestIntrusivePairingHeap.cpp: the suite's function, named without SUITE's namespace, beside a member of its name
+-     void checkPopsInOrder()
++     void popsInOrder()
+
+@ tests/TestIntrusivePairingHeap.cpp: the suite's function, named without SUITE's namespace
+-       SuiteIntrusivePairingHeap::checkPopsInOrder(this->heap);
++       checkPopsInOrder(this->heap);
+
+@ tests/TestIntrusivePairingHeap.cpp: the suite's function, named without SUITE's namespace
+-       this->checkPopsInOrder();
++       this->popsInOrder();
+
+@ tests/TestNoiseProgram.cpp: the suite's function, named without SUITE's namespace, beside locals of its name
+-   void checkArray(const float* actual, std::array<float, size> expected)
++   void checkArrayOf(const float* actual, std::array<float, size> expected)
+
+@ tests/TestNoiseProgram.cpp: the suite's function, named without SUITE's namespace
+-     static constexpr auto checkArray = SuiteNoiseProgram::checkArray<16>;
++     static constexpr auto checkArray = checkArrayOf<16>;
+
+@ tests/TestNoiseProgram.cpp: the suite's function, named without SUITE's namespace
+-     static constexpr auto checkArray = SuiteNoiseProgram::checkArray<9>;
++     static constexpr auto checkArray = checkArrayOf<9>;
+
+@ tests/TestNoiseProgram.cpp: the suite's function, named without SUITE's namespace
+- checkArray<4>(
++ checkArrayOf<4>(
+
+@ tests/TestClearCursor.cpp: `==` of two char pointers in a check is an error: their text, which is what the check means
+- scenario.getCursorStack()->getID()->getType() == CorePrototypes::copyPasteToolPrototype->getType()
++ std::string_view(scenario.getCursorStack()->getID()->getType()) == CorePrototypes::copyPasteToolPrototype->getType()
+
+@ tests/TestRichText.cpp: the check is of the two pointers, which `==` of char pointers in a check takes as a mistake: (const void*) says so
+-     CHECK(sections.sections[0].text.data() == sections.sections[0].fullText.data());
++     CHECK(static_cast<const void*>(sections.sections[0].text.data()) == static_cast<const void*>(sections.sections[0].fullText.data()));
+
+@ tests/MetaTestRunner.hpp: the inner test through the game's testRun, as Test::Run's desync handling
+-       passed = runCaptured([this] { T fixture; this->testInstructions(fixture); });
++       passed = runCaptured([this] { ::testRun([this] { T fixture; this->testInstructions(fixture); }); });

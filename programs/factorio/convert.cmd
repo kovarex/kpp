@@ -99,11 +99,11 @@ rem FastDebug and its Release preprocess it, each #if group marked, made one tex
 rem a group whose two texts differ written as `if constexpr (config::debug)`
 rem (overrides\configuration-choices.txt: the few no `if constexpr` can choose between).
 for %%c in (debug release final) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%c
-%KPPC% --no-std --quiet --convert-marks --convert kpp\whole-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks --convert-release --convert kpp\whole-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests --convert kpp\whole-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests --convert-release --convert kpp\whole-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 rem And the official builds' FinalRelease (docs/final-release.md): Release's defines with FINAL_RELEASE,
 rem PACKAGED_BUILD and ALL_IN_ONE, a group whose text it alone has written with config::finalRelease.
-%KPPC% --no-std --quiet --convert-marks --convert-final --convert kpp\whole-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests --convert-final --convert kpp\whole-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 rem The same three for Linux (docs/design.md 12, "The game's platforms as config::platform"; CONVERT_LINUX=0
 rem leaves it out, the checkout then Windows' alone)
 rem (--convert-platform linux, clang's predefines in linux-predefines.txt; StackWalker is Windows' alone), each configuration's two made
@@ -117,12 +117,12 @@ for %%c in (debug release final) do if exist kpp\whole-freebsd-%%c rd /s /q kpp\
 for %%c in (debug release final) do if exist kpp\whole-posix-%%c rd /s /q kpp\whole-posix-%%c
 set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
 set FREEBSDCONVERT=--convert-platform freebsd --convert-predefines freebsd-predefines.txt
-%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert kpp\whole-linux-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert kpp\whole-freebsd-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-release --convert kpp\whole-linux-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert-release --convert kpp\whole-freebsd-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks %LINUXCONVERT% --convert-final --convert kpp\whole-linux-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPPC% --no-std --quiet --convert-marks %FREEBSDCONVERT% --convert-final --convert kpp\whole-freebsd-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert kpp\whole-linux-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert kpp\whole-freebsd-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert-release --convert kpp\whole-linux-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert-release --convert kpp\whole-freebsd-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert-final --convert kpp\whole-linux-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+%KPPC% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert-final --convert kpp\whole-freebsd-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 set STEP=the platforms made one
 for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-linux-%%c kpp\whole-freebsd-%%c kpp\whole-posix-%%c Linux FreeBSD > kpp\whole-posix-%%c.log 2>&1 || (type kpp\whole-posix-%%c.log& goto :failed)
 for %%c in (debug release final) do %KPPC% --convert-merge-platform kpp\whole-%%c kpp\whole-posix-%%c kpp\whole-both-%%c Windows Linux,FreeBSD > kpp\whole-both-%%c.log 2>&1 || (type kpp\whole-both-%%c.log& goto :failed)
@@ -187,7 +187,7 @@ set STEP=the nullptr pass
 %KPPC% --std ..\..\stdlib %CINC% --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\zero-null.txt
 python -I fix-null.py kpp\zero-null.txt kpp || goto :failed
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-whole.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
+%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --tests --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-whole.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
 python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
 rem And the Linux branches: Linux's build of the merged checkout (until it compiles, its other errors
 rem are B's list; the warnings of the code it reaches are written all the same).
@@ -196,7 +196,7 @@ rem made once by tools\sysroot\linux.ps1, and the Linux build's own include (lib
 set GAMESYSROOT=..\..\compiler\build\sysroots\linux-x86_64-factorio
 if not "%CONVERT_LINUX%"=="0" if not exist %GAMESYSROOT%\kpp-sysroot.txt powershell -NoProfile -ExecutionPolicy Bypass -File ..\..\tools\sysroot\linux.ps1 -ExtraPackages linux-packages.txt -Out %GAMESYSROOT% > kpp\sysroot.log 2>&1 || (type kpp\sysroot.log& goto :failed)
 if not "%CONVERT_LINUX%"=="0" (
-  %KPPC% --std ..\..\stdlib %CINC% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --ext .kpp --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
+  %KPPC% --std ..\..\stdlib %CINC% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --ext .kpp --tests --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
   python -I fix-null.py kpp\zero-null-linux.txt "%WHOLE%" || goto :failed
 )
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
@@ -215,7 +215,7 @@ rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
 echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --zero-null-warnings --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --tests --ext .kpp --errors 0 --unresolved 0 --zero-null-warnings --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 for /f %%n in ('type kpp\tests-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set TESTSERRORS=%%n

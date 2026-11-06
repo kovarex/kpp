@@ -472,3 +472,18 @@ the libraries' owners told through the coordinator), so no tree ever has both fo
 - The rule is design.md 8.7, with its spec snippets (pending until implemented).
 - The parser and the runner, then C's converter mapping (section e). That last step needs a whole
   `convert.cmd` and the game's tests, 9,501, compared by test name with the C++ build.
+
+## The conversion as it stands (2026-11-06)
+
+`kppc --convert-native-tests` (Converter/NativeTests.inl), convert.cmd's default: the 9,501 tests of Factorio
+4c178a5b915 pass under the native runner, and their names are the C++ build's (its `--xml` against the
+runner's `--report`), with three mappings: a generated test is `Suite.Generator.name` where UnitTest++ has
+`Suite.Generator_name`, and 2x2UndergroundPipeSmartFixing and 4GBZipFileWriteRead, whose names are no
+identifiers, are UndergroundPipe2x2SmartFixing and ZipFile4GBWriteRead (overrides/source-edits.txt).
+- libraries/UnitTest++ stays a library: TestTestSelector, TestFailedTests, TestInteractiveTestSelect and
+  others test the game's selection and fork code on its Test and Suite classes. Nothing runs through it.
+- `--fork`, `--interactive` and the selection options (`--test`, `--tests`, `--suites`, ...) are gone with
+  tests/Main.cpp's run: `--suite`, `--filter` and suites.py's shards do that. `--save` and `--add-tags` stay.
+- UnitTest++'s CheckStartsWith answers true for a container that does not start with the prefix
+  (Checks.h:290, after writing its failure). `UnitTest::startsWith` answers as it does, as
+  Deconstruction.DragAndDropDeconstructionPlanner{Entity,Tile}FilterWithLatency fail otherwise.
