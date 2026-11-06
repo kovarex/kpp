@@ -569,6 +569,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       name = &static_cast<EnumDecl*>(d)->name;
     else if (d->kind == NodeKind::FunctionDecl)
       name = &static_cast<FunctionDecl*>(d)->name; // a function as a template argument
+    else if (d->kind == NodeKind::VariableDecl)
+      name = &static_cast<VariableDecl*>(d)->name; // a data member as one (`readField<&Pos::x>`: never "?", which made it Pos::y's instance too)
     else if (d->kind == NodeKind::TemplateParamDecl)
     {
       uint32_t n = static_cast<TemplateParamDecl*>(d)->name;

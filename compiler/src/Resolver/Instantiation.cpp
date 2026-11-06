@@ -531,6 +531,25 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
     Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
     if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
       return functionArgument(l, param, depth);
+    // `readField<&Pos::x>` for `template<int Pos::*Field>`: a data member of a class, the pointer
+    // to it a value of the member pointer type that holds the member's declaration, as a function's
+    // value holds the function (D, 2026-11-06: no argument was made, and the instance could not be
+    // emitted). Not one of a class template's members, whose instance the declaration does not say.
+    if (l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)) && l.decl->parent &&
+        l.decl->parent->kind == NodeKind::ClassDecl && effectiveParams(l.decl->parent).empty())
+    {
+      const Ty* of = nullptr;
+      if (param && param->kind == NodeKind::TemplateParamDecl)
+        if (auto* p = static_cast<TemplateParamDecl*>(param); !p->isType && p->valueType)
+          of = convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1);
+      const Ty* u = of ? types.unqualified(types.stripRef(of)) : nullptr;
+      if (!u || u->kind != TyKind::MemberPointer || types.isDependent(u) || mentionsUnknown(u)) // (`int C::*F` beside `class C`: the field's own)
+      {
+        const Ty* member = declaredTypeOf(l.decl, nullptr, depth + 1);
+        u = member && member->isKnown() ? types.memberPointer(member, selfType(l.decl->parent)) : nullptr;
+      }
+      return u && u->isKnown() && !types.isDependent(u) ? types.functionValue(u, l.decl) : types.unknown();
+    }
     v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);
   }
   else

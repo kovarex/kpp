@@ -1,0 +1,37 @@
+// spec: a pointer to a data member is a template argument ([temp.arg.nontype]): `template<int Pos::*Field> int readField(const Pos& p) { return p.*Field; }` gives readField<&Pos::x> and readField<&Pos::y>, two instances, each reading its own field, and a write through one (`p.*Field += by`), at run time and at compile time alike; a parameter typed by an earlier one (`template<class C, int C::*F>`), an `auto` one, a class template's (`Reader<&A::v>` beside `Reader<&A::w>`), a member of a namespace's class (clang gives the same numbers)
+// found by thread F's battery (2026-11-06): "codegen does not support emitting the function template readField without its argument Field", no argument made of `&Pos::x`; the instance names of two such arguments then were one (a variable's name read as "?"), so that readField<&Pos::y> read x
+struct Pos { int x = 1; int y = 2; };
+template<int Pos::*Field> constexpr int readField(const Pos& p) { return p.*Field; }
+template<int Pos::*Field> constexpr void bump(Pos& p, int by) { p.*Field += by; }
+
+struct A { int v = 1; int w = 2; };
+struct B { int v = 30; long long big = 40; };
+namespace ns { struct C { int v = 500; }; }
+template<class C, int C::*F> int get(const C& c) { return c.*F; }
+template<auto F, class C> long long anyField(const C& c) { return c.*F; }
+template<int A::*F> struct Reader { int read(const A& a) const { return a.*F; } };
+
+constexpr int atCompileTime()
+{
+  Pos p;
+  bump<&Pos::y>(p, 40);
+  return readField<&Pos::x>(p) * 100 + readField<&Pos::y>(p);
+}
+
+constexpr int c = atCompileTime();
+static_assert(atCompileTime() == 142);
+
+int main()
+{
+  Pos p;
+  bump<&Pos::x>(p, 10);
+  println(readField<&Pos::x>(p), " ", readField<&Pos::y>(p), " ", c, " ", atCompileTime());
+  A a;
+  B b;
+  ns::C n;
+  Reader<&A::v> rv;
+  Reader<&A::w> rw;
+  println(get<A, &A::v>(a), " ", get<A, &A::w>(a), " ", get<B, &B::v>(b), " ", get<ns::C, &ns::C::v>(n));
+  println(anyField<&A::w>(a), " ", anyField<&B::big>(b), " ", anyField<&B::v>(b), " ", rv.read(a), " ", rw.read(a));
+  return 0;
+}

@@ -171,11 +171,26 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         // for `float (*func)(float, float)` is that function's address.
         if (currentArgs)
           for (auto& [p, bound] : currentArgs->pairs)
+          {
             if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::FunctionDecl)
             {
               refuseCAddress(static_cast<FunctionDecl*>(bound->decl), e);
               return {useFunction(static_cast<FunctionDecl*>(bound->decl), {}, nullptr, e), bound->inner};
             }
+            if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::VariableDecl && bound->inner &&
+                types.unqualified(types.stripRef(bound->inner))->kind == TyKind::MemberPointer)
+            {
+              // `template<int Pos::*Field>` given &Pos::x: the field's offset, as `&Pos::x` gives it.
+              const Ty* mp = types.unqualified(types.stripRef(bound->inner));
+              const Ty* cls = mp->args.empty() ? nullptr : withCurrentArgs(mp->args[0]);
+              std::string addr;
+              if (!cls || !isClass(cls) || !fieldAddress(cls, bound->decl, "null", addr, e))
+                unsupported(e, "a pointer to a member given as a template argument that is no field of its class");
+              std::string r = newTemp();
+              fn += "  " + r + " = ptrtoint ptr " + addr + " to i64\n";
+              return {r, mp};
+            }
+          }
         std::optional<int64_t> v = evalConst(e);
         const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
         if (t && t->kind == TyKind::Value && t->inner)
