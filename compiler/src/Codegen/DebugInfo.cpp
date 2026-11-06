@@ -335,6 +335,92 @@ auto codegen::Emitter::staticConstant(VariableDecl* v, const Ty* t, const Templa
   return ", extraData: i" + std::to_string(bits) + " " + std::to_string(n);
 }
 
+auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args) -> std::string
+{
+  if (!cls || !c || !m->templateParams.empty() || (m->flags & (DF_Constructor | DF_Destructor | DF_Friend)) || m->builtin || m->name.parts.size() != 1 ||
+      m->name.last().special || m->name.last().symbol == UINT32_MAX)
+    return {};
+  const Ty* ft = global.typeOfDeclIn(m, args);
+  if (!ft || ft->kind != TyKind::Function || !ft->isKnown() || types.isDependent(ft))
+    return {};
+  bool isStatic = (m->flags & DF_Static) != 0;
+  bool isVirtual = !isStatic && (m->flags & (DF_Virtual | DF_Override)) != 0;
+  int slot = isVirtual ? slotOf(cls, m, m) : -1;
+  if (isVirtual && slot < 0)
+    return {}; // (a virtual function without a slot in the primary vtable: no call the debugger could make right)
+  // As clang describes one: the class that introduced the function (the deepest base whose primary
+  // vtable has its key, first in declaration order), its slot there, and that base's offset in cls
+  // (thisAdjustment): the debugger calls through that subobject's vtable pointer, which reaches the
+  // object's override (kpp's secondary vtables mirror the base's). Introduced here when no base has it.
+  const Ty* introducer = cls;
+  uint64_t adjustment = 0;
+  if (isVirtual)
+  {
+    std::string key = methodKey(m);
+    std::function<const Ty*(const Ty*, int)> deepest = [&](const Ty* t, int depth) -> const Ty*
+    {
+      if (depth > 32)
+        return nullptr;
+      ClassDecl* tc = t->decl ? classDef(t->decl, nullptr) : nullptr;
+      if (!tc)
+        return nullptr;
+      for (const Ty* b : basesOf(tc, global.classArgsOf(canonicalClass(t, nullptr)), nullptr))
+        if (b && isClass(b) && structFor(b, nullptr).polymorphic && slotKeyed(structFor(b, nullptr), key) >= 0)
+        {
+          const Ty* below = deepest(b, depth + 1);
+          return below ? below : b;
+        }
+      return nullptr;
+    };
+    if (const Ty* base = deepest(cls, 0))
+      if (std::optional<uint64_t> offset = baseOffsetIn(cls, base, nullptr))
+      {
+        introducer = base;
+        adjustment = *offset;
+        slot = slotKeyed(structFor(base, nullptr), key);
+      }
+    // An override of a function a base at an offset introduced is not listed: Visual Studio calls
+    // such a one (thisAdjustment) wrongly, clang's too (a garbage result); without it the debugger
+    // takes the base's, which it calls right through that base's vtable pointer.
+    if (slot < 0 || adjustment)
+      return {};
+  }
+  std::string spelling = "method " + irString(cls) + "#" + std::to_string(index);
+  uint64_t key = 14695981039346656037ull;
+  for (unsigned char ch : spelling)
+    key = (key ^ ch) * 1099511628211ull;
+  std::string placeholder = debugTypePlaceholder(key);
+  {
+    auto lock = sharedLock();
+    auto [it, isNew] = sh.debugTypes.try_emplace(key);
+    if (!isNew && it->second.generation == sh.debugGeneration)
+      return placeholder;
+    it->second.generation = sh.debugGeneration;
+  }
+  std::string classType = debugType(cls);
+  std::string list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
+  if (!isStatic)
+    list += ", " + debugId(3);
+  for (const Ty* a : ft->args)
+    list += ", " + (a && a->isKnown() && !types.isDependent(a) ? debugType(a) : std::string("null"));
+  std::string access = m->access == Access::Public ? " | DIFlagPublic" : m->access == Access::Protected ? " | DIFlagProtected" :
+                       m->access == Access::Private ? " | DIFlagPrivate" : "";
+  std::string text = debugId(0) + " = !DISubprogram(name: " + metadataString(sym(m->name.last().symbol)) + ", scope: " + classType +
+                     ", type: " + debugId(1) + ", flags: DIFlagPrototyped" + access + (isStatic ? " | DIFlagStaticMember" : "") +
+                     (isVirtual && introducer == cls ? " | DIFlagIntroducedVirtual" : "") + ", spFlags: " + (isVirtual ? "DISPFlagVirtual" : "0") +
+                     (isVirtual ? ", virtualIndex: " + std::to_string(slot) + (adjustment ? ", thisAdjustment: " + std::to_string(adjustment) : std::string()) +
+                                      ", containingType: " + classType : std::string()) + ")\n" +
+                     debugId(1) + " = !DISubroutineType(types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n";
+  if (!isStatic)
+    text += debugId(3) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " +
+            debugType((m->flags & DF_Const) ? types.qualified(cls, true, false) : cls) + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
+  auto lock = sharedLock();
+  Shared::DebugTypeText& made = sh.debugTypes[key];
+  made.text = std::move(text);
+  made.type = nullptr;
+  return placeholder;
+}
+
 auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth) -> void
 {
   auto* c = static_cast<ClassDecl*>(ct->decl);
@@ -455,6 +541,12 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
              ", baseType: " + debugType(st) + flagsOf({"DIFlagStaticMember", access(m->access)}) + staticConstant(v, st, args) + ")\n";
     element(id);
   }
+  // Its member functions (debugMethod), each a node shared with its definition's `declaration:`.
+  if (spelling && sh.target.windows())
+    for (size_t i = 0; i < c->members.size(); ++i)
+      if (c->members[i]->kind == NodeKind::FunctionDecl)
+        if (std::string method = debugMethod(ct, c, static_cast<FunctionDecl*>(c->members[i]), i, args); !method.empty())
+          elements += (elements.empty() ? "" : ", ") + method;
   std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
   uint32_t list = next++;
   nodes += debugId(list) + " = !{ " + elements + "}\n";
@@ -609,7 +701,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   // DIFlagObjectPointer). The PDB then has it as a member function (LF_MFUNC_ID, LF_MFUNCTION), and
   // Visual Studio evaluates `this` and `this->member` in it; as a free function it said "'this' may
   // only be used inside a nonstatic member function" (F's find, 2026-11-05). DWARF keeps the file.
-  std::string spName0 = spName, spScope = file, spType = "!2", typeNodes;
+  std::string spName0 = spName, spScope = file, spType = "!2", typeNodes, spDeclaration;
   const DebugVariable* self = nullptr;
   for (const DebugVariable& v : debugVariables)
     if (v.artificial && v.arg == 1 && v.name == "this")
@@ -642,10 +734,28 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       spName0 = spName.substr(prefix);
       spScope = classType;
       spType = debugId(extra);
+      // The declaration in the class's debug information (debugMethod), which the debugger calls.
+      if (currentFunction)
+      {
+        FunctionDecl* declared = global.declarationOf(currentFunction);
+        if (!declared)
+          declared = currentFunction;
+        if (ClassDecl* c = cls->decl ? classDef(cls->decl, nullptr) : nullptr)
+          for (size_t i = 0; i < c->members.size(); ++i)
+            if (c->members[i] == declared)
+              if (std::string method = debugMethod(cls, c, declared, i, global.classArgsOf(canonicalClass(cls, nullptr))); !method.empty())
+              {
+                // (named as the declaration, `area`, as clang's: the debugger finds the function
+                // a watch calls by its class and name; `area() const` was no name it looks for)
+                spDeclaration = ", declaration: " + method;
+                spName0 = sym(declared->name.last().symbol);
+              }
+      }
     }
   }
   out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName0 + "\", scope: " + spScope + ", file: " + file + ", line: " +
-         std::to_string(declLine) + ", type: " + spType + ", scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0)\n";
+         std::to_string(declLine) + ", type: " + spType + ", scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0" + spDeclaration +
+         ")\n";
   out += typeNodes;
   if (variables)
   {

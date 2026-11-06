@@ -2,7 +2,7 @@ function Cell<Cell<int32> >::bump(int32)
   member of Cell<Cell<int32> >
   parameter this Cell<Cell<int32> >*
   parameter by int
-function game::Square::area() const
+function game::Square::area
   member of game::Square
   parameter this const game::Square*
 function inspect(const game::Point&, int32, game::Mode, StringView)

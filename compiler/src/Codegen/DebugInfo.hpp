@@ -81,6 +81,15 @@
     // LLVM's CodeView writer lists them as the enclosing class's, as MSVC's PDBs do). Named (its
     // spelling, which identifies it) or, for an anonymous member's class, not.
     void debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth = 0);
+    // A member function's declaration in its class's debug information (CodeView's LF_ONEMETHOD),
+    // the placeholder of a node shared like a type's: the class's composite lists it, and the
+    // function's definition names it (`declaration:`), so that a watch expression calls the function
+    // (`shape.area()`), as with clang's. A virtual one is introduced at its slot in the class's
+    // primary vtable (slotOf: every virtual function of a class has one there), which the debugger
+    // calls through the object's vtable pointer. Empty for a member it does not describe: a template,
+    // a constructor, a destructor, an operator, a friend, one of unknown type. index: its place among
+    // c's members (its key with the class).
+    std::string debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args);
     // A static constexpr data member's value as its member node's extraData (`, extraData: i8 16`;
     // CodeView's S_CONSTANT Class::NAME, which a watch and a natvis rule read: `flags & FILTER_WHITELIST`),
     // for an integer, character or enumeration whose initializer the evaluator folds without running
