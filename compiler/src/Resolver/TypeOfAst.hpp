@@ -33,6 +33,10 @@
     // of the caller's full expression): a reference result to it is that value, not one to a local
     // of the call.
     bool referenceToTemporary = false;
+    // Its declaration (a local's VariableDecl, a parameter's ParamDecl): what an argument naming it
+    // is typed by when a call's template arguments are deduced (constBindTemplate), over anything
+    // of its name the scope declares.
+    Decl* decl = nullptr;
   };
   struct TypeContext
   {

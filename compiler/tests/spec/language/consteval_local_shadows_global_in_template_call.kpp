@@ -1,0 +1,20 @@
+// spec: at compile time a call's template arguments are deduced from its arguments' own types, a local's or a parameter's over a global of the same name: beside a global `constexpr int g2`, `sizeOf(g2)` of a local `long long g2` is 8 and `twice(g2)` of 3000000000 is 6000000000, a parameter `long long g2` alike, and a local Tuple<int, char> t2 beside a global long t2 gives get<0>(t2) 3; the same at run time (clang gives the same)
+// found by thread I's Tuple battery (2026-11-06): the evaluator typed the argument without the run's locals, as the global: `sizeOf(g2)` was 4 at compile time where run time gave 8, a silent wrong answer, and get<0>(t2) was no constant
+constexpr int g2 = 5;
+constexpr long t2 = 5;
+template<class T> constexpr int sizeOf(const T&) { return int(sizeof(T)); }
+template<class T> constexpr T twice(T t) { return t + t; }
+constexpr int local() { long long g2 = 3; return sizeOf(g2); }
+constexpr long long doubled() { long long g2 = 3000000000; return twice(g2); }
+constexpr int parameter(long long g2) { return sizeOf(g2); }
+constexpr int tuple() { Tuple<int, char> t2(3, 'a'); return get<0>(t2); }
+constexpr int lv = local();
+constexpr long long dv = doubled();
+constexpr int pv = parameter(1);
+constexpr int tv = tuple();
+
+int main()
+{
+  println(lv, " ", dv, " ", pv, " ", tv, " ", local(), " ", doubled(), " ", parameter(1), " ", tuple());
+  return 0;
+}

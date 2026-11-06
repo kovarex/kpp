@@ -1381,6 +1381,30 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
     TypeContext pctx{lexicalScopeOf(f), &own, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
     // The arguments' types: as the walk types an argument written alone, else (`Math::isNaN(d)`
     // in a function being run, d a binding of the run; an expanded pack's elements) the value's.
+    // The run's own locals and parameters are in scope for it, over anything of their names the
+    // context's scope declares: a local `long long g2` beside a global `int g2` deduced int from
+    // the global (D, 2026-11-06: `sizeOf(g2)` was 4 at compile time and 8 at run time, a silent
+    // wrong answer). A name the run binds with no declaration recorded is typed by its value.
+    LocalStack runLocals;
+    if (ctx.locals)
+      runLocals = *ctx.locals;
+    if (ctx.env)
+      for (const ConstBinding& b : *ctx.env)
+        if (b.decl)
+          runLocals.push(b.symbol, b.decl);
+    TypeContext actx = ctx;
+    actx.locals = &runLocals;
+    auto boundWithoutDecl = [&](Expr* a) {
+      while (a && a->kind == NodeKind::ParenExpr)
+        a = static_cast<ParenExpr*>(a)->inner;
+      if (!a || a->kind != NodeKind::NameExpr || static_cast<NameExpr*>(a)->name.parts.size() != 1 || !ctx.env)
+        return false;
+      uint32_t symbol = static_cast<NameExpr*>(a)->name.parts[0].symbol;
+      for (size_t i = ctx.env->size(); i-- > 0;)
+        if ((*ctx.env)[i].symbol == symbol)
+          return !(*ctx.env)[i].decl;
+      return false;
+    };
     std::vector<const Ty*> argTypes;
     bool expansions = false;
     for (Expr* a : c->args)
@@ -1388,7 +1412,7 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
     for (size_t i = 0; i < values.size(); ++i)
     {
       Expr* a = !expansions && i < c->args.size() ? c->args[i] : nullptr;
-      const Ty* argTy = a ? typeOfSignatureExpression(a, ctx) : nullptr;
+      const Ty* argTy = a && !boundWithoutDecl(a) ? typeOfSignatureExpression(a, actx) : nullptr;
       if ((!argTy || !argTy->isKnown() || types.isDependent(argTy)) && values[i].type && !values[i].type->isBraceList())
         argTy = values[i].type;
       // A lambda written as the argument: its closure's type, as the walk typed it (typing it again
@@ -7623,6 +7647,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
       alias.aliasEnv = at->env;
       alias.aliasIndex = at->index;
       env.push_back(std::move(alias));
+      env.back().decl = p;
       return true;
     }
   }
@@ -7638,6 +7663,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     alias.aliasPath = at.path;
     alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
     env.push_back(std::move(alias));
+    env.back().decl = p;
     return true;
   }
   std::optional<ConstValue> v;
@@ -7666,6 +7692,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
   if (!v)
     return false;
   env.push_back(constBinding(p->name, *v, type));
+  env.back().decl = p;
   // A by-value parameter is the callee's to destroy, once the evaluator knows it made it (a copy,
   // a prvalue, a default).
   env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
@@ -8147,6 +8174,8 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
   // `auto [a, b] = e;`: the hidden object bound as a variable is, then its names (constBindNames).
   uint32_t symbol = structured ? constHiddenSymbol : v->name.parts[0].symbol;
   auto named = [&](size_t at) {
+    if (!structured && at < env.size())
+      env[at].decl = v;
     return !structured || constBindNames(v, env, at, ctx, depth) ? ConstFlow::Next : ConstFlow::Failed;
   };
   const Ty* type = v->type ? constDeducedType(v, convertType(v->type, ctx, depth + 1)) : nullptr;
