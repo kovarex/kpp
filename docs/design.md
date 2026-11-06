@@ -591,6 +591,10 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   `require` and `fail`. A failure there names the check's location, then one `called from` line per
   test function up to the test (`file:line:column: called from here`): Factorio's
   `_SOURCELOCATION` variants and its own check macros. A lambda inside a test is part of the test.
+  Which functions are test functions (coordinator, 2026-11-06): every function and class declared
+  in a suite is one implicitly; `test class X` makes all its member functions test functions,
+  out-of-class bodies included; and a function's first declaration decides, so later declarations
+  may repeat or omit `test`, and adding it later is a compile error.
 - **After a failure** (Factorio's behaviour, `tests/TestRunner.cpp:33-60`): the failed test ends,
   the run goes on, dependents included. `--exit-on-failure` (off by default) stops after the first
   failed test has finished; the rest count as not run (`3 tests, 1 failed, 1 not run`), and since
@@ -2072,7 +2076,7 @@ extended to the library.
     listed once. A directory with no files of its own but packages under it is listed too.
     compiler/tests/packages.ps1 checks it (run_tests).
 - Reflection (step 2): `packageof(T)` gives a constant descriptor (`name`, `description`,
-  `parent`), so for example the test runner can run all tests of one package (`--run-test
+  `parent`), so for example the test runner can run all tests of one package (`--filter
   "Factorio > Train"`).
 - Cost to the compiler: the package is a field of the file, found once when the file list is
   built. Name lookup does not look at it, so it changes nothing in the front-end numbers.
@@ -3184,13 +3188,15 @@ Spec snippet: `kpp/run_command`.
   substring of the full name, `*` matching anything; repeatable), `--list` (the tests, no run),
   `--report FILE` (below), `--jobs N` (below). One line per failure and `failed: <full name>`
   after a failed test, then a summary: `12 tests, 1 failed`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
-  build failed. **Q2**: `--filter` as above instead of 8.6's `--run-test <name or file>`? (Built
-  as `--filter` on 2026-10-30, the coordinator's call, reversible.)
-- **Isolation and parallelism.** **Q3**, proposed: by default the tests run in one process, one
-  after another (the fastest; a crash ends the run and is reported as that test's); `--jobs N` runs
-  them in N processes of the same executable, each a share, and a crash fails only its test (the
-  process is started again for the rest of its share), which is what `suites.py` does by hand for
-  the converted UnitTest++. No threads inside one process: tests may use globals.
+  build failed. **Q2 is settled by 8.7** (2026-11-06): `--filter` replaces 8.6's `--run-test <name or
+  file>`; it matches the full name, and `--suite`, `--skip-suite` and `--tag` select beside it.
+- **Isolation and parallelism.** **Q3 is settled by 8.7** (2026-11-06; test-suites.md (d), and its
+  question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in one
+  process, one after another (the fastest; a crash ends the run and is reported as that test's);
+  `--jobs N` (not built yet) schedules whole suites over N processes of the same executable, a suite
+  starting after its dependencies have finished, and a crash fails only its test (the process is
+  started again for the rest of its share), which is what `suites.py` does by hand for the converted
+  UnitTest++. No threads inside one process: tests may use globals.
 - **The converted UnitTest++.** Q4 is answered (kovarex, 2026-11-06): the converter (thread C)
   turns `SUITE`, `TEST`, the fixtures, `DEPENDENCY`, the generators and the check macros into
   native suites, tests and `require`, and the game's tests run under the native runner with its
@@ -4072,9 +4078,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   Language Server Protocol**, so that IntelliSense works in most editors: `kppc --lsp` (ide.md, "The
   language server as built"). Whether to build an own editor on top stays open.
 
-- **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
-  `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
-  converted UnitTest++ as native tests.
+- **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`. Q2
+  (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native tests) are settled by 8.7.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
 

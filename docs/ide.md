@@ -282,7 +282,7 @@ the editor.
 
 - **Code packages** (decided 2026-11-04): the package tree, the directories with their README.md's
   first paragraph on hover, is the IDE's project view; search shows package paths.
-- **Tests in the compiler** (design.md 8: `test name { ... }`, `kppc --tests`, `--run-test`):
+- **Tests in the compiler** (design.md 8: `test name { ... }`, `kppc --tests`, `--filter`):
   run the test under the cursor, a package's tests, failures with their operand values as
   diagnostics. Thread G's work on testing kpp code defines the runner's output; the IDE consumes it.
 - **Configurations** (thread H, debug and release) and `config` constants with `if constexpr` at
