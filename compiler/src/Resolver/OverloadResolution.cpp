@@ -598,8 +598,6 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       return NotViable;
     return param->kind == TyKind::LRef ? (r >= 4 ? 5 : std::max(r, 3)) : r;
   }
-  if (isInitializerList(a) && !isInitializerList(types.stripRef(param)))
-    return 2; // an InitializerList object converts to anything else through its elements, which the code generator checks
   if (a->isBraceList())
   {
     // `{"ab", text}` for an InitializerList<StringView>: as its elements convert, the worst of

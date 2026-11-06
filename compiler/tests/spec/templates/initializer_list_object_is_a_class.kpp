@@ -1,0 +1,30 @@
+// spec: an InitializerList object is a class like any other: it converts to what has a constructor taking it, and to nothing else; only a braced list converts through its elements (overload ranking treated the object as the list, so isConvertible said true of a StringView, and a call chose such an overload); as C++ has std::initializer_list
+class P { };
+struct Takes { Takes(InitializerList<int> l) : n(int(l.size())) {} int n; };
+struct Implicit { implicit Implicit(InitializerList<int> l) : n(int(l.size())) {} int n; };
+int count(InitializerList<int> l) { return int(l.size()); }
+int pick(StringView) { return 1; }
+int pick(InitializerList<int>) { return 2; }
+int pick2(StringView) { return 1; }
+int pick2(...) { return 3; }
+int main()
+{
+  println(isConvertible<const InitializerList<P*>&, StringView>);
+  println(isConvertible<const InitializerList<int>&, StringView>);
+  println(isConvertible<InitializerList<int>, int>);
+  println(isConvertible<InitializerList<int>, Vector<int>>);
+  println(isConvertible<InitializerList<int>, Vector<char>>);
+  println(isConvertible<InitializerList<int>, Implicit>);
+  println(isConvertible<InitializerList<int>, InitializerList<int>>);
+  InitializerList<int> l = {1, 2, 3};
+  println(count(l), " ", count({1, 2}), " ", pick(l), " ", pick2(l));
+  auto both = {4, 5};
+  println(count(both));
+  Vector<int> v = l;
+  Vector<int> w(both);
+  Implicit i = l;
+  println(v.size(), " ", w.size(), " ", i.n);
+  Takes t(l);
+  println(t.n);
+  return 0;
+}
