@@ -1172,8 +1172,8 @@ auto codegen::Emitter::instantiationIn(const Ty* cls, Decl* owner, Node* at, int
   if (def == classDef(owner, at))
     return c;
   TemplateArgs args = global.classArgsOf(c);
-  for (const ClassDecl::Base& b : def->bases)
-    if (const Ty* bt = global.typeOfAstIn(b.type, def, args); bt && isClass(bt) && !types.isDependent(bt))
+  for (const Ty* bt : basesOf(def, args, at))
+    if (bt && isClass(bt) && !types.isDependent(bt))
       if (const Ty* found = instantiationIn(bt, owner, at, depth + 1))
         return found;
   return nullptr;

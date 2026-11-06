@@ -34,10 +34,9 @@ auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out
   if (!def)
     unsupported(at, "members(T) of a class without a definition");
   TemplateArgs classArgs = global.classArgsOf(cls);
-  for (const ClassDecl::Base& b : def->bases)
+  for (const Ty* written : basesOf(def, classArgs, at))
   {
-    const Ty* bt = global.typeOfAstIn(b.type, def, classArgs);
-    bt = bt ? types.unqualified(types.stripRef(bt)) : nullptr;
+    const Ty* bt = written ? types.unqualified(types.stripRef(written)) : nullptr;
     if (!isClass(bt))
       unsupported(at, "members(T) with a base class of unknown type");
     collectMembers(canonicalClass(bt, at), out, at, depth + 1);

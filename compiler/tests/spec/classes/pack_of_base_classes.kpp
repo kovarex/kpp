@@ -1,0 +1,34 @@
+// spec: a pack of base classes (`template<class... Ts> struct Mix : Ts...`) is a base per element of the pack, in order: its data members and member functions reached through the class, a conversion to one base, an aggregate initialized from a value per base (`Plain<Name, Size> p{{5}, {1.5}}`), and its size (`24`); clang prints the same
+// found by thread A's C++ feature survey (2026-11-06): codegen refused the layout ("a pack of base classes"). The visitor idiom's `using Ts::operator()...;` needs the checker to look members up through a using-declaration whose qualifier is a template parameter, which it cannot yet (`using X::operator();` fails too)
+struct Name
+{
+  int id = 1;
+  int tag() const { return id * 10; }
+};
+
+struct Size
+{
+  double w = 2.5;
+  double area() const { return w * w; }
+};
+
+template<class... Ts>
+struct Mix : Ts...
+{
+  int own = 7;
+};
+
+template<class... Ts>
+struct Plain : Ts...
+{
+};
+
+int main()
+{
+  Mix<Name, Size> m;
+  m.id = 4;
+  Plain<Name, Size> p{{5}, {1.5}};
+  Name& asName = m;
+  println(m.id, " ", m.w, " ", m.own, " ", m.tag(), " ", m.area(), " ", asName.id, " | ", p.id, " ", p.w, " ", sizeof(Mix<Name, Size>));
+  return 0;
+}

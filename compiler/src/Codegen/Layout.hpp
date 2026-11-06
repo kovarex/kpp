@@ -51,6 +51,9 @@
     bool declaredOnly(const Ty* t);
 
     ClassDecl* classDef(Decl* decl, Node* at);
+    // A class's bases as written, their types under the class's arguments: a pack of bases
+    // (`struct overloaded : Ts...`) one per element of its pack, in order (null for a type unknown).
+    std::vector<const Ty*> basesOf(ClassDecl* c, const TemplateArgs& args, Node* at);
 
     // The instantiation type with the definition as its decl (forward declarations map here).
     const Ty* canonicalClass(const Ty* t, Node* at);

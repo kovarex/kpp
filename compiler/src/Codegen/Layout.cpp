@@ -429,6 +429,26 @@ auto codegen::Emitter::draftHeld(const Ty* t) -> const Ty*
   return nullptr;
 }
 
+auto codegen::Emitter::basesOf(ClassDecl* c, const TemplateArgs& args, Node* at) -> std::vector<const Ty*>
+{
+  std::vector<const Ty*> out;
+  for (const ClassDecl::Base& b : c->bases)
+  {
+    const Ty* bt = global.typeOfAstIn(b.type, c, args);
+    if (!b.isPack)
+    {
+      out.push_back(bt);
+      continue;
+    }
+    // `struct overloaded : Ts...` (the visitor idiom): a base per element of the pack, in order.
+    if (!bt || bt->kind != TyKind::Pack)
+      unsupported(at, "a pack of base classes whose pack is not known here (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
+    for (const Ty* element : bt->args)
+      out.push_back(element);
+  }
+  return out;
+}
+
 auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, std::string& typeLine) -> void
 {
   ClassDecl* c = static_cast<ClassDecl*>(key->decl);
@@ -530,11 +550,12 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   info.name = irTypeName("%struct.", key);
   // Bases first (resolved before deciding on the vtable pointer).
   std::vector<const Ty*> baseKeys;
-  for (const ClassDecl::Base& b : c->bases)
+  for (const Ty* bt : basesOf(c, args, at))
   {
-    if (b.isPack)
-      layoutError("a pack of base classes (`: Ts...`)");
-    const Ty* bt = global.typeOfAstIn(b.type, c, args);
+    // (a closure as a base, the overload-set idiom's `struct Overload : Ts...` of lambdas: decided
+    // 2026-10-31 to stay an error until something needs it, spec templates/lambda_as_base_class_is_not_supported_yet)
+    if (isLambda(bt))
+      layoutError("a lambda's closure as a base class (" + types.toString(bt, &symbols) + ")");
     if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
       layoutError("a base class whose type is unknown (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
     if (const Ty* draft = draftHeld(bt))
@@ -1357,13 +1378,10 @@ auto codegen::Emitter::findFieldByName(const Ty* classTy, uint32_t nameSymbol, N
         return found;
   }
   // Search base classes.
-  for (const ClassDecl::Base& b : c->bases)
-  {
-    const Ty* bt = global.typeOfAstIn(b.type, c, args);
+  for (const Ty* bt : basesOf(c, args, at))
     if (bt && bt->kind == TyKind::Class)
       if (Decl* found = findFieldByName(bt, nameSymbol, at, depth + 1))
         return found;
-  }
   if (absent)
     fail(at, "'" + sym(nameSymbol) + "' does not exist in " + types.toString(classTy, &symbols) +
                  ": its `when` condition does not hold there (design.md 19)");
