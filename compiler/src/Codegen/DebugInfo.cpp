@@ -544,7 +544,10 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   auto declare = [&](size_t i)
   {
     const DebugVariable& v = debugVariables[i];
-    return "    #dbg_declare(ptr " + v.address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(" + (v.indirect ? "DW_OP_deref" : "") + "), " +
+    std::string expression = v.indirect ? "DW_OP_deref" : "";
+    if (v.offset)
+      expression += (expression.empty() ? "" : ", ") + std::string("DW_OP_plus_uconst, ") + std::to_string(v.offset);
+    return "    #dbg_declare(ptr " + v.address + ", " + debugId(variablesBase + uint32_t(i)) + ", !DIExpression(" + expression + "), " +
            debugId(idFor({v.line ? v.line : declLine, v.block})) + ")\n";
   };
   std::vector<size_t> defined, pending;

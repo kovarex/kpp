@@ -43,6 +43,7 @@
       bool artificial = false;
       bool defined = false; // its address is an instruction's in the body (a lambda's capture: its field), declared after it
       bool indirect = false; // its address holds the variable's address (a class parameter passed by pointer): DW_OP_deref
+      uint64_t offset = 0;   // the variable is that many bytes into what the address gives (a structured binding's member)
     };
     struct DebugBlock
     {

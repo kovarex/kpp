@@ -82,6 +82,10 @@
     // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
     // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).
     void declareTupleBindings(VariableDecl* v);
+    // --debug-info: a structured binding of a class's member or an array's element, which is no
+    // local of its own (its uses read the hidden object's member): a variable at that member's
+    // offset in the hidden object, as clang describes one. Not a bit-field's or a reference member's.
+    void debugAggregateBindings(VariableDecl* v);
 
     void declareLocal(VariableDecl* v);
 

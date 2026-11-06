@@ -86,6 +86,10 @@ int inspect(const game::Point& point, int scale, game::Mode mode, StringView lab
   sum = scaled(1) + game::counter - game::Shape::made;
   Vector<int> values;
   values.push_back(sum);
+  auto& [px, py] = point; // (bindings: the members of the object they name)
+  game::Point copied = point;
+  auto [cx, cy] = copied;
+  sum += px + py - cx - cy;
   for (int each : values) // (the loop variable: a local of its block)
     sum += each - each;
   int (game::Square::*areaOf)() const = &game::Square::area;

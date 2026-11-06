@@ -334,8 +334,83 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   return name;
 }
 
+auto codegen::Emitter::debugAggregateBindings(VariableDecl* v) -> void
+{
+  if (!sh.fullDebugInfo || v->structuredBindings.empty())
+    return;
+  auto it = locals.find(v);
+  if (it == locals.end())
+    return;
+  const Local hidden = it->second;
+  const Ty* object = types.unqualified(types.stripRef(hidden.ty));
+  bool through = hidden.isRef || hidden.ty->isReference(); // (`auto& [a, b] = x`: the slot holds the object's address)
+  // A variable `offset` bytes into the hidden object. Through a reference, at a nonzero offset, a
+  // slot of its own holds the member's address (CodeView describes a dereference, not one then an
+  // offset: LLVM drops such a variable).
+  bool constObject = types.stripRef(hidden.ty)->isConst; // (a const object's members are const: `auto& [x, y] = constPoint`)
+  auto declare = [&](const std::string& name, NameExpr* b, const Ty* t, uint64_t offset)
+  {
+    if (constObject && !t->isConst)
+      t = types.qualified(t, true, t->isVolatile);
+    if (through && offset)
+    {
+      std::string object = newTemp(), member = newTemp(), slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca ptr\n";
+      fn += "  " + object + " = load ptr, ptr " + hidden.addr + "\n";
+      fn += "  " + member + " = getelementptr inbounds i8, ptr " + object + ", i64 " + std::to_string(offset) + "\n";
+      fn += "  store ptr " + member + ", ptr " + slot + "\n";
+      debugVariable(name, b, slot, t, 0, false, false, true);
+      return;
+    }
+    debugVariable(name, b, hidden.addr, t, 0, false, false, through);
+    if (!debugVariables.empty() && debugVariables.back().name == name)
+      debugVariables.back().offset = offset;
+  };
+  for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+  {
+    auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
+    Decl* own = b->resolved;
+    if ((own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding) || b->name.empty())
+      continue; // (a tuple's binding is a local of its own: declareTupleBindings)
+    std::string name = sym(b->name.last().symbol);
+    if (object->kind == TyKind::Array)
+    {
+      declare(name, b, object->inner, uint64_t(i) * sizeOf(object->inner, v));
+      continue;
+    }
+    if (!isClass(object))
+      return;
+    // (the class with the members, as bindingAddress takes it: the object's, or its one base with members)
+    const Ty* owner = object;
+    uint64_t base = 0;
+    for (int depth = 0; depth < 16 && structFor(owner, v).fieldDecls.empty(); ++depth)
+    {
+      const Ty* withMembers = nullptr;
+      for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, v).bases))
+        if (const Ty* bt = structFor(owner, v).fieldTypes[baseIndex]; !structFor(bt, v).fieldDecls.empty() || !structFor(bt, v).bases.empty())
+          withMembers = bt;
+      if (!withMembers)
+        break;
+      std::optional<uint64_t> at = baseOffsetIn(owner, withMembers, v);
+      if (!at)
+        return;
+      base += *at;
+      owner = withMembers;
+    }
+    Decl* member = bindingMember(owner, i, v);
+    if (!member || bitfieldIn(structFor(owner, v), member))
+      continue;
+    const Ty* mt = fieldTypeIn(owner, member, v);
+    std::optional<uint64_t> offset = memberOffset(owner, member, v);
+    if (!mt || mt->isReference() || !offset)
+      continue;
+    declare(name, b, mt, base + *offset);
+  }
+}
+
 auto codegen::Emitter::declareTupleBindings(VariableDecl* v) -> void
 {
+  debugAggregateBindings(v);
   for (Expr* b : v->structuredBindings)
     if (Decl* own = static_cast<NameExpr*>(b)->resolved; own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
     {

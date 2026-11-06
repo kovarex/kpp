@@ -14,6 +14,11 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   local mask game::Mask
   local scaled inspect::__lambda_f9e4fd6c_0
   local values Vector<int32>
+  local px const int&
+  local py const int&
+  local copied game::Point
+  local cx int
+  local cy int
   local each int
   local areaOf int game::Square::() game::Squar...
   local cell Cell<Cell<int32> >
