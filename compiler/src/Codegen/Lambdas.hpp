@@ -15,7 +15,16 @@
     // useTypes, when given, gets the type of each used local's first name expression.
     // keptBranches: an `if constexpr` its instance decided names only what the kept branch names
     // (not in a generic lambda, whose one closure serves every call's instance of the body).
-    void captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false);
+    // bindingUses, when given, gets each structured binding the body names (its hidden object, its
+    // name and the type of its first use), once, in the order first written.
+    struct BindingUse
+    {
+      Decl* object;
+      uint32_t name;
+      const Ty* type;
+    };
+    void captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false,
+                      std::vector<BindingUse>* bindingUses = nullptr);
 
     // A lambda's captures from its AST alone, in a fixed order: its capture list, then what a
     // default capture picks up in the order first written, then `this`. The same list wherever the
@@ -23,6 +32,9 @@
     // instantiation's own locals: a capture's position, not its declaration, matches them up).
     // A parameter pack of the function around the lambda is captured element by element, a slot
     // (a field of the closure) each, in order.
+    // A structured binding is captured on its own, as C++20 captures it ([x, &y] of `auto [x, y] =
+    // p`: x's value, y's place), its slot holding that binding alone: decl its hidden object, binding
+    // its name.
     struct CaptureSlot
     {
       Decl* decl = nullptr; // the captured variable (null for `this`)
@@ -30,6 +42,8 @@
       Expr* init = nullptr; // an init-capture's initializer
       int element = -1;     // decl a parameter pack: the element this slot holds
       const Ty* elementType = nullptr; // and that element's type (references stripped)
+      uint32_t binding = UINT32_MAX;   // decl a structured binding's hidden object: the binding's name
+      const Ty* bindingType = nullptr; // and the binding's type, as the body names it
     };
     std::vector<CaptureSlot> captureList(LambdaExpr* l, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr);
 
@@ -40,6 +54,11 @@
 
     // Whether d is the hidden object of a structured binding declaration that names symbol.
     static bool bindsName(Decl* d, uint32_t symbol);
+
+    // The address of what structured binding `name` of hidden object v names in the function being
+    // emitted: the closure's field where a lambda captured it (bindingCaptures, the field's address by
+    // copy, the place it holds by reference), else the part of v's object; bits gets a bit-field's.
+    std::string bindingPlace(VariableDecl* v, uint32_t name, Node* at, const BitfieldInfo** bits = nullptr);
 
     // An explicit capture the body does not use (`[guard]` kept alive): the one local of that name
     // declared before the lambda in the function around it; with several, which one is in scope

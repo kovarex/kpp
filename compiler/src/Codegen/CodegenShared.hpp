@@ -89,6 +89,7 @@ namespace codegen
     std::vector<bool> byRef;
     std::vector<Expr*> inits;          // init-captures: the initializer (null for other captures)
     std::vector<const Ty*> fieldTypes; // pointee type for references and `this`
+    std::vector<uint32_t> bindings;    // a structured binding's name (captured is its hidden object), UINT32_MAX for any other capture
     std::string functionName;
     bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
     std::string failure;  // why laying it out failed where it is written, if it did

@@ -16,11 +16,12 @@ auto codegen::Emitter::functionLocal(const Decl* d) -> bool
                (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::FunctionDecl));
 }
 
-auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes, int depth, bool keptBranches) -> void
+auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes, int depth, bool keptBranches,
+                                    std::vector<BindingUse>* bindingUses) -> void
 {
   if (!n || depth > 96)
     return;
-  auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches); };
+  auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches, bindingUses); };
   auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
   switch (n->kind)
   {
@@ -36,6 +37,15 @@ auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, s
           used.push_back(d);
           if (useTypes)
             (*useTypes)[d] = static_cast<NameExpr*>(n)->ty;
+        }
+        // A structured binding (its hidden object has no name of its own: every name of it is a
+        // binding's): which one, for a capture of it alone.
+        auto* name = static_cast<NameExpr*>(n);
+        if (bindingUses && !inner.count(d) && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty() && !name->name.empty())
+        {
+          uint32_t symbol = name->name.last().symbol;
+          if (std::none_of(bindingUses->begin(), bindingUses->end(), [&](const BindingUse& b) { return b.object == d && b.name == symbol; }))
+            bindingUses->push_back({d, symbol, name->ty});
         }
       }
       else if ((d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && global.owningClass(d) && !(d->flags & DF_Static))
@@ -164,9 +174,30 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
       inner.insert(cap.decl);
   std::vector<Decl*> used;
   bool usesThis = false;
-  captureNames(l->body, inner, used, usesThis, useTypes, 0, l->templateParams.empty());
+  std::vector<BindingUse> bindingUses;
+  captureNames(l->body, inner, used, usesThis, useTypes, 0, l->templateParams.empty(), &bindingUses);
   std::vector<CaptureSlot> out;
   bool thisCaptured = false;
+  // A structured binding is captured on its own, as C++20 captures it: `[x, &y]` of `auto [x, y] =
+  // p` holds x's value and y's place, never the object they are parts of in the first one's way
+  // (y was read from x's copy: 34 where C++ gives 39, until 2026-11-06, thread A's survey). Its
+  // type as the body names it, else as its declaration does (a capture the body does not use).
+  auto bindingObject = [](Decl* d) { return d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty(); };
+  auto bindingTypeOf = [&](Decl* d, uint32_t name) -> const Ty*
+  {
+    for (const BindingUse& b : bindingUses)
+      if (b.object == d && b.name == name && b.type && b.type->isKnown())
+        return b.type;
+    for (Expr* b : static_cast<VariableDecl*>(d)->structuredBindings)
+      if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == name)
+        return b->ty;
+    return nullptr;
+  };
+  auto captureBinding = [&](Decl* d, uint32_t name, bool byRef)
+  {
+    if (std::none_of(out.begin(), out.end(), [&](const CaptureSlot& s) { return s.decl == d && s.binding == name; }))
+      out.push_back({d, byRef, nullptr, -1, nullptr, name, bindingTypeOf(d, name)});
+  };
   for (const LambdaCapture& cap : l->captures)
   {
     if (cap.init)
@@ -209,17 +240,28 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
         d = d ? d : u;
     if (!d)
       d = unusedCapture(l, cap.symbol);
-    // `[mixingConnection]` of a structured binding: the object it names a part of, captured
-    // the same way (the body reaches the part through it, as outside the lambda); once for
-    // several of its bindings.
+    if (bindingObject(d))
+    {
+      captureBinding(d, cap.symbol, cap.byRef); // `[mixingConnection]` of a structured binding
+      continue;
+    }
     if (std::none_of(out.begin(), out.end(), [&](const CaptureSlot& s) { return s.decl == d && !s.init; }))
       out.push_back({d, cap.byRef, nullptr});
   }
   if (l->defaultCapture != 0)
   {
     for (Decl* d : used)
+    {
+      if (bindingObject(d))
+      {
+        for (const BindingUse& b : bindingUses)
+          if (b.object == d)
+            captureBinding(d, b.name, l->defaultCapture == 2);
+        continue;
+      }
       if (std::none_of(out.begin(), out.end(), [&](const CaptureSlot& s) { return s.decl == d; }))
         out.push_back({d, l->defaultCapture == 2, nullptr});
+    }
     thisCaptured = thisCaptured || usesThis;
   }
   if (thisCaptured)
@@ -273,6 +315,30 @@ auto codegen::Emitter::genericLambdaRetypedPerElement(LambdaExpr* l) -> bool
     if (hasPack(d))
       return true;
   return containsForConstexpr(l->body);
+}
+
+auto codegen::Emitter::bindingPlace(VariableDecl* v, uint32_t name, Node* at, const BitfieldInfo** bits) -> std::string
+{
+  if (bits)
+    *bits = nullptr;
+  if (auto it = bindingCaptures.find({v, name}); it != bindingCaptures.end())
+  {
+    if (!it->second.isRef)
+      return it->second.addr;
+    std::string r = newTemp();
+    fn += "  " + r + " = load ptr, ptr " + it->second.addr + "\n";
+    return r;
+  }
+  Expr* declared = nullptr;
+  for (Expr* b : v->structuredBindings)
+    if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == name)
+      declared = b;
+  std::string out;
+  if (!declared || !bindingAddress(v, declared, out))
+    unsupported(at, "a capture of the structured binding " + sym(name) + " where the object it is a part of is not known");
+  if (bits && lvalueBitfield.first == declared)
+    *bits = lvalueBitfield.second;
+  return out;
 }
 
 auto codegen::Emitter::bindsName(Decl* d, uint32_t symbol) -> bool
@@ -402,6 +468,15 @@ auto codegen::Emitter::layOutClosure(const Ty* t, Node* at) -> ClosureInfo&
     info.captured.push_back(s.decl);
     info.byRef.push_back(s.byRef);
     info.inits.push_back(s.init);
+    info.bindings.push_back(s.binding);
+    if (s.binding != UINT32_MAX)
+    {
+      // A structured binding: its own type (what it names; by reference the field points at it).
+      if (!s.bindingType || !s.bindingType->isKnown() || types.isDependent(s.bindingType))
+        unsupported(l, "a capture of the structured binding " + sym(s.binding) + " whose type the code generator could not work out");
+      info.fieldTypes.push_back(types.stripRef(s.bindingType));
+      continue;
+    }
     // `this`: a pointer field; the class it points to is the writer's (enclosingClass).
     // An element of a parameter pack: its own type (`Ts&... ts`: the object an element refers to).
     info.fieldTypes.push_back(s.element >= 0 ? s.elementType : s.decl ? captureType(s.decl, s.init, useTypes, l) : types.pointer(types.voidType()));
@@ -628,6 +703,33 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
     {
       initializeFrom(field, info.fieldTypes[i], slots[i].init, l); // `[x = expr]`
       parts.built(field, info.fieldTypes[i]);
+      continue;
+    }
+    if (slots[i].binding != UINT32_MAX)
+    {
+      // A structured binding captured on its own: by reference the place it names, by copy its
+      // value (a bit-field's read from its bits).
+      const BitfieldInfo* bits = nullptr;
+      std::string place = bindingPlace(static_cast<VariableDecl*>(d), slots[i].binding, l, &bits);
+      const Ty* ft = info.fieldTypes[i];
+      if (info.byRef[i])
+      {
+        if (bits)
+          fail(l, "the structured binding " + sym(slots[i].binding) + " of a bit-field captured by reference: a bit-field cannot be ([expr.prim.lambda.capture] 12)");
+        fn += "  store ptr " + place + ", ptr " + field + "\n";
+      }
+      else if (bits)
+        store(loadBitfield(place, *bits, ft, l), field, ft, l);
+      else if (isAggregate(ft))
+      {
+        if (isClass(ft))
+          copyConstruct(field, place, ft, l);
+        else
+          copyClosure(field, place, ft, l, false);
+        parts.built(field, ft);
+      }
+      else
+        store(load(place, ft, l), field, ft, l);
       continue;
     }
     Local* found = nullptr;
@@ -863,6 +965,13 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
         elements[slots[i].element] = {field, capturedTy, info.byRef[i]};
         if (std::string name = debugName(d); !name.empty())
           debugVariable(name + "#" + std::to_string(slots[i].element), d, field, capturedTy, 0, false, true);
+        continue;
+      }
+      if (slots[i].binding != UINT32_MAX)
+      {
+        // A structured binding captured on its own: what the body's names of it read (bindingPlace).
+        bindingCaptures[{d, slots[i].binding}] = {field, capturedTy, info.byRef[i]};
+        debugVariable(sym(slots[i].binding), d, field, capturedTy, 0, false, true);
         continue;
       }
       locals[d] = {field, capturedTy, info.byRef[i]};

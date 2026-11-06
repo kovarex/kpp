@@ -1,0 +1,67 @@
+// spec: a lambda captures each structured binding on its own, as C++20 does: by copy the binding's value, by reference its place, whatever another binding of the same object is captured as (`[x, &y]`, `[=, &y]`, `[&, x]`), only the bindings named (`[k]` copies no other part of the object: no copy constructor of the other member runs), of an array, through a reference declaration (`auto& [rx, ry] = p`), in a nested lambda, a mutable one's copy apart from the binding, and a bit-field's value; clang prints the same
+// found by thread A's survey of C++ features against clang (2026-11-06): the closure captured the object the bindings are parts of, once, in the first capture's way, so `[x, &y]` read y from x's copy (34 where C++ gives 39), and a copy of one binding copied the whole object
+struct P
+{
+  int a;
+  int b;
+};
+
+int copies = 0;
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) {}
+  Noisy(const Noisy& o) : id(o.id) { ++copies; }
+};
+struct WithNoisy
+{
+  Noisy n;
+  int k;
+};
+
+struct Bits
+{
+  unsigned a : 3;
+  unsigned b : 5;
+};
+
+int main()
+{
+  auto [x, y] = P{3, 4};
+  auto f = [x, &y] { return x * 10 + y; };
+  y = 9;
+  println(f());
+  auto g = [=, &y] { return x * 100 + y; };
+  y = 5;
+  println(g());
+  auto h = [&, x] { return x * 1000 + y; };
+  y = 6;
+  println(h());
+  auto [n, k] = WithNoisy{Noisy(7), 8};
+  copies = 0;
+  auto onlyK = [k] { return k; };
+  println(onlyK(), " ", copies);
+  auto both = [n, k] { return n.id * 10 + k; };
+  println(both(), " ", copies);
+  int arr[2] = {1, 2};
+  auto [a0, a1] = arr;
+  auto fa = [a0, &a1] { return a0 * 10 + a1; };
+  a1 = 7;
+  println(fa());
+  P p{1, 2};
+  auto& [rx, ry] = p;
+  auto fr = [rx, &ry] { return rx * 10 + ry; };
+  p.a = 50;
+  p.b = 60;
+  println(fr());
+  auto outer = [&] { return [x] { return x; }() + y; };
+  println(outer());
+  auto m = [x]() mutable { x += 1; return x; };
+  int m1 = m();
+  int m2 = m();
+  println(m1, " ", m2, " ", x);
+  auto [ba, bb] = Bits{5, 17};
+  auto fb = [ba, bb] { return ba * 100 + bb; };
+  println(int(fb()));
+  return 0;
+}

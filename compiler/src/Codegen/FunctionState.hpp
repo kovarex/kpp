@@ -146,6 +146,11 @@
     // written in (the function's locals are other IR names: a lambda that read them printed its
     // own parameters, templates/lambda_uses_parameter_pack_of_its_function).
     std::unordered_map<Decl*, std::vector<Local>> packLocals;
+    // In a lambda's call operator, the structured bindings its closure captured, each on its own
+    // (CaptureSlot::binding): the field per hidden object and binding name, by copy holding the
+    // value, by reference the place (isRef). A use of the binding reads it (bindingPlace), never the
+    // hidden object, which the closure does not hold.
+    std::map<std::pair<Decl*, uint32_t>, Local> bindingCaptures;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     // Each open scope's id (pushScope), and the goto labels' places: the scopes' ids and their

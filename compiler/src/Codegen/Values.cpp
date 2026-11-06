@@ -717,6 +717,10 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         break; // a builtin trait (`isSame<int, int>`, left unresolved, typed bool) bound to a reference: its value goes to a temporary (below)
       if (!d)
         unsupported(e, "an unresolved name (" + sym(n->name.last().symbol) + ")", !(n->name.parts.size() == 1 && global.undeclaredReported(sym(n->name.last().symbol))));
+      // A structured binding a lambda captured on its own (its closure holds that binding, not the
+      // object it is a part of): its field.
+      if (d->kind == NodeKind::VariableDecl && !bindingCaptures.empty() && !n->name.empty() && bindingCaptures.count({d, n->name.last().symbol}))
+        return bindingPlace(static_cast<VariableDecl*>(d), n->name.last().symbol, e);
       if (d->kind == NodeKind::VariableDecl)
         if (std::string bound; bindingAddress(static_cast<VariableDecl*>(d), e, bound))
           return bound;

@@ -1,0 +1,76 @@
+// spec: structured bindings captured on their own (language/lambda_captures_each_structured_binding) in a function template's instance, by a generic lambda, from a range-for's bindings (by copy and by reference, each element's), of a reference member (the copy is the value it refers to), and a class-type binding copied into the closure, copied with it and destroyed with it (`live` counts the objects); clang prints the same
+// found by thread B with A's report on captured bindings (2026-11-06)
+struct P
+{
+  int a;
+  int b;
+};
+
+int live = 0;
+struct Tracked
+{
+  int id;
+  Tracked(int i) : id(i) { ++live; }
+  Tracked(const Tracked& o) : id(o.id) { ++live; }
+  ~Tracked() { --live; }
+};
+struct Holder
+{
+  Tracked t;
+  int n;
+};
+
+struct Ref
+{
+  int& r;
+  int v;
+};
+
+template<class T>
+int fromTemplate(T value)
+{
+  auto [first, second] = value;
+  auto f = [first, &second](int k) { return first * k + second; };
+  second = 100;
+  return f(2);
+}
+
+int main()
+{
+  println(fromTemplate(P{3, 4}));
+  auto [x, y] = P{5, 6};
+  auto generic = [x, &y](auto k) { return x * k + y; };
+  y = 7;
+  println(generic(2), " ", int(generic(3.0)));
+  P items[3] = {{1, 2}, {3, 4}, {5, 6}};
+  int sum = 0;
+  for (auto& [a, b] : items)
+  {
+    auto add = [a, &b, &sum] { b += 10; sum += a + b; };
+    add();
+  }
+  println(sum, " ", items[0].b, " ", items[1].b, " ", items[2].b);
+  int target = 1;
+  auto [r, v] = Ref{target, 2};
+  auto fr = [r, &v] { return r * 10 + v; };
+  target = 9;
+  v = 3;
+  println(fr());
+  {
+    auto [t, n] = Holder{Tracked(4), 5};
+    println("live ", live);
+    {
+      auto keep = [t, n] { return t.id * 10 + n; };
+      println("live ", live, " ", keep());
+      auto copy = keep;
+      println("live ", live, " ", copy());
+    }
+    println("live ", live);
+  }
+  println("live ", live);
+  auto all = [=] { return x + y; };
+  auto allRef = [&] { return x * y; };
+  y = 8;
+  println(all(), " ", allRef());
+  return 0;
+}

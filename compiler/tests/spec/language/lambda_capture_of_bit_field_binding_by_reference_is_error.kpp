@@ -1,0 +1,15 @@
+// spec: a structured binding of a bit-field captured by reference is an error, as in C++ ([expr.prim.lambda.capture] 12: a bit-field has no address); by copy it is its value (language/lambda_captures_each_structured_binding)
+// found by thread B with A's report on captured bindings (2026-11-06), once each binding is captured on its own
+// error: lambda_capture_of_bit_field_binding_by_reference_is_error.kpp:13: error: the structured binding a of a bit-field captured by reference: a bit-field cannot be ([expr.prim.lambda.capture] 12)
+struct Bits
+{
+  unsigned a : 3;
+  unsigned b : 5;
+};
+
+int main()
+{
+  auto [a, b] = Bits{5, 17};
+  auto f = [&a] { return a; };
+  return int(f());
+}
