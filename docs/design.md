@@ -539,6 +539,18 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
   empty base none unless the class says `__declspec(empty_bases)`, so a class with two empty bases
   (`struct T : Empty, Empty2 { char c; };`) is 1 byte in kpp and 2 with MSVC (found comparing with
   clang, 2026-11-06). kpp shares classes with C alone, which has no bases.
+- A base's padding holds nothing of a class derived from it, on every target: the derived class's own
+  parts start after the base's whole size. MSVC lays them into the padding an alignas base's alignment
+  adds (`struct alignas(16) B16 { char x; }; struct S1 : B16 { int y; };` is 16 bytes with y at 4, in
+  kpp 32 with y at 16), and Itanium (Linux, FreeBSD) into a non-POD base's tail padding (bit fields
+  of a class derived from `struct BaseB { int x = 1; unsigned k : 2; }` start in BaseB's last bytes:
+  8 bytes with g++, 12 in kpp), as for a polymorphic base (the targets table). So a copy of a base
+  subobject, its size in bytes, never touches the derived class's members. Found comparing with clang
+  and g++ (thread B's batteries, 2026-11-06); the same reason as the empty bases above.
+- On Windows a class with a vtable pointer of its own lays its bases and members out from their
+  largest alignment after it, as MSVC does: `class Over { virtual ~Over(); char c; alignas(16)
+  double d; }` has c at 16 and d at 32 (48 bytes), where Itanium's layout (the other targets) puts c
+  right after the pointer, at 8 (2026-11-06, F's battery f9; spec classes/msvc_parts_after_own_vtable_pointer).
 - A bit field's value promotes by its width, as C++'s [conv.prom] 5 has it, on every target
   (kovarex 2026-11-05: "follow the standard here"; MSVC keeps the declared type): an operand of
   arithmetic, a comparison or `?:` that designates a bit field of an integer type is an int when
