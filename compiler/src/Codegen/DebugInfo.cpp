@@ -337,6 +337,22 @@ auto codegen::Emitter::staticConstant(VariableDecl* v, const Ty* t, const Templa
 
 auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args) -> std::string
 {
+  // (A class whose layout or vtable fails here is no member function the debugger gets: not the
+  // build's error, which only debug information asked for.)
+  size_t errorsBefore = errors.size();
+  try
+  {
+    return debugMethodText(cls, c, m, index, args);
+  }
+  catch (Unsupported&)
+  {
+    errors.resize(errorsBefore);
+    return {};
+  }
+}
+
+auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args) -> std::string
+{
   if (!cls || !c || !m->templateParams.empty() || (m->flags & (DF_Constructor | DF_Destructor | DF_Friend)) || m->builtin || m->name.parts.size() != 1 ||
       m->name.last().special || m->name.last().symbol == UINT32_MAX)
     return {};
@@ -397,12 +413,22 @@ auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m,
       return placeholder;
     it->second.generation = sh.debugGeneration;
   }
-  std::string classType = debugType(cls);
-  std::string list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
-  if (!isStatic)
-    list += ", " + debugId(3);
-  for (const Ty* a : ft->args)
-    list += ", " + (a && a->isKnown() && !types.isDependent(a) ? debugType(a) : std::string("null"));
+  std::string classType, list;
+  try
+  {
+    classType = debugType(cls);
+    list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
+    if (!isStatic)
+      list += ", " + debugId(3);
+    for (const Ty* a : ft->args)
+      list += ", " + (a && a->isKnown() && !types.isDependent(a) ? debugType(a) : std::string("null"));
+  }
+  catch (Unsupported&)
+  {
+    auto lock = sharedLock();
+    sh.debugTypes[key].generation = UINT32_MAX; // (not made: debugMethod leaves the function out)
+    throw;
+  }
   std::string access = m->access == Access::Public ? " | DIFlagPublic" : m->access == Access::Protected ? " | DIFlagProtected" :
                        m->access == Access::Private ? " | DIFlagPrivate" : "";
   std::string text = debugId(0) + " = !DISubprogram(name: " + metadataString(sym(m->name.last().symbol)) + ", scope: " + classType +

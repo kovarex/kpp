@@ -642,7 +642,8 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
       }
       for (std::string_view unit : *units)
       {
-        if (fromOwn && errors && Emitter::localLine(unit))
+        // (a private vtable in a comdat named after its MSVC symbol, Layout.cpp, is a copy: the linker keeps one)
+        if (fromOwn && errors && Emitter::localLine(unit) && unit.find(", comdat($\"??_7") == std::string_view::npos)
           *errors += "codegen: module " + std::to_string(k) + "'s program piece names " + key + ", private to its instance piece (step 4's pieces)\n";
         lines.push_back(unit);
         uses(unit);

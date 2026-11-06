@@ -49,7 +49,7 @@ if ($compilers.Count -eq 0 -or $others.Count -gt 0) { "FAIL debug info: the obje
 # other module declaring them), run, and its PDB as llvm-pdbutil dumps it, summed up: inspect's
 # parameters, locals and nested block with their types; each class's size, vtable pointer, bases and
 # members (type, offset); the enum's underlying type and enumerators; kpp's integer typedefs (S_UDT
-# int32, which a natvis rule's $T1 parses). Both builds must give debuginfo\values.expected.
+# int32, which a natvis rule's $T1 parses); the vtables' symbols. Both builds must give debuginfo\values.expected.
 $script:records = @{}
 # A type as a record names it: llvm-pdbutil's name for it, or the record's (a class's, a pointer's to
 # its referent's, a bit field's type and bits).
@@ -167,6 +167,10 @@ function Summary([string]$pdb)
   foreach ($variable in ($variables | Sort-Object)) { $out.Add($variable) }
   $udts = @($globals | ForEach-Object { if ($_ -cmatch 'S_UDT \[size = \d+\] `(u?int(8|16|32|64))`') { $Matches[1] } } | Sort-Object -CaseSensitive -Unique)
   $out.Add("typedefs $($udts -join ' ')")
+  # The vtables' MSVC symbols at their address points (Layout.cpp), by which Visual Studio shows an
+  # object's dynamic type (a Shape& as [Square]); one per class, whichever modules have its table.
+  $tables = @(& $pdbutil dump -publics $pdb | ForEach-Object { if ($_ -cmatch 'S_PUB32 \[size = \d+\] `(\?\?_7\w+@game@@6B\w*@)`') { $Matches[1] } } | Sort-Object -CaseSensitive)
+  $out.Add("vftables $($tables -join ' ')")
   return $out
 }
 $expectedValues = @(Get-Content (Join-Path $PSScriptRoot 'debuginfo\values.expected'))

@@ -90,6 +90,7 @@
     // a constructor, a destructor, an operator, a friend, one of unknown type. index: its place among
     // c's members (its key with the class).
     std::string debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args);
+    std::string debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args);
     // A static constexpr data member's value as its member node's extraData (`, extraData: i8 16`;
     // CodeView's S_CONSTANT Class::NAME, which a watch and a natvis rule read: `flags & FILTER_WHITELIST`),
     // for an integer, character or enumeration whose initializer the evaluator folds without running

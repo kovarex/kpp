@@ -1059,13 +1059,85 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
       entries += ", ptr " + target;
     }
     std::string tableType = "[" + std::to_string(table.slots.size() + 3) + " x ptr]";
-    text += "$" + table.name.substr(1) + " = comdat any\n" + table.name + " = linkonce_odr constant " + tableType + " [" + entries + "], comdat\n";
+    // On Windows, the name MSVC gives the table at its address point (`??_7Square@@6B@`, one of
+    // several `??_7Square@@6BShape@@@`, "const Square::`vftable'{for `Shape'}"): Visual Studio reads
+    // an object's dynamic type from the symbol its vtable pointer points at (a Shape& shows
+    // [Square]). Not for a class MSVC would name with template arguments or a local one (msvcClassName).
+    // As clang's: the table private in a comdat named after that symbol, which is an alias at its
+    // address point and the vtable pointer's value (an object's constructor stores it), so that the
+    // linker keeps one copy by the comdat's key and nothing names the private copies it drops. (A
+    // second external name in the comdat, the table's own, was defined twice: LNK2005.)
+    std::string symbol;
+    if (sh.target.windows() && sh.fullDebugInfo) // (a debug build's, which the debugger reads: ThinLTO left an imported table's alias undefined)
+    {
+      std::string self = msvcClassName(key);
+      const Ty* holder = table.path.empty() && info.primaryBase ? info.primaryBase : key; // (the primary table is its primary base's)
+      for (uint32_t index : table.path)
+        holder = structFor(holder, at).fieldTypes[index];
+      std::string forBase = tables.size() == 1 ? std::string() : msvcClassName(holder);
+      symbol = self.empty() || (tables.size() > 1 && forBase.empty()) ? std::string() : "??_7" + self + "6B" + forBase + "@";
+    }
     table.vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + table.name + ", i64 0, i64 3)";
+    if (!symbol.empty() && msvcTableNames.insert(symbol).second)
+    {
+      text += "$\"" + symbol + "\" = comdat any\n" + table.name + " = private unnamed_addr constant " + tableType + " [" + entries + "], comdat($\"" + symbol +
+              "\")\n@\"" + symbol + "\" = unnamed_addr alias i8, " + table.vptrValue + "\n";
+      table.vptrValue = "@\"" + symbol + "\"";
+    }
+    else
+      text += "$" + table.name.substr(1) + " = comdat any\n" + table.name + " = linkonce_odr constant " + tableType + " [" + entries + "], comdat\n";
   }
+  msvcTableNames.clear();
   info.vtables = std::move(tables);
   info.vtableName = info.vtables[0].name;
   info.vptrValue = info.vtables[0].vptrValue;
   info.vtableText = text + thunks;
+}
+
+auto codegen::Emitter::msvcClassName(const Ty* cls) -> std::string
+{
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || cls->decl->kind != NodeKind::ClassDecl || !cls->args.empty())
+    return {};
+  auto* c = static_cast<ClassDecl*>(cls->decl);
+  if (c->name.parts.empty() || c->lambda || !filePrivatePrefix(c).empty() || (c->flags & DF_Specialization) || !c->templateParams.empty() ||
+      c->name.last().hasTemplateArgs)
+    return {}; // (a file's private class: two files may have one of a name, design.md 15; a specialization's
+    // name has its arguments)
+  std::vector<uint32_t> parts; // innermost first
+  for (size_t i = c->name.parts.size(); i-- > 0;)
+    parts.push_back(c->name.parts[i].symbol);
+  for (Decl* p = c->parent; p; p = p->parent)
+    if (p->kind == NodeKind::NamespaceDecl)
+    {
+      auto* n = static_cast<NamespaceDecl*>(p);
+      if (n->name == UINT32_MAX || n->isInline)
+        return {}; // (an anonymous namespace: MSVC's name has a hash; an inline one's name is in MSVC's)
+      if (n->nested.empty())
+        parts.push_back(n->name);
+      for (size_t i = n->nested.parts.size(); i-- > 0;) // (`namespace a::b`: its parts, a first, the name)
+        parts.push_back(n->nested.parts[i].symbol);
+    }
+    else if (p->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(p)->templateParams.empty() && !static_cast<ClassDecl*>(p)->name.parts.empty())
+      parts.push_back(static_cast<ClassDecl*>(p)->name.last().symbol);
+    else
+      return {}; // (a class template's member, a local class)
+  // Not std's classes nor type_info: the C runtime defines the tables of its own of those names
+  // (`??_7exception@std@@6B@`, `??_7type_info@@6B@`, linked in with it), and the linker would keep
+  // one table of the two for both, of another layout.
+  if (sym(parts.back()) == "std" || (parts.size() == 1 && sym(parts[0]) == "type_info"))
+    return {};
+  std::string out;
+  for (uint32_t symbol : parts)
+  {
+    if (symbol == UINT32_MAX)
+      return {};
+    std::string name = sym(symbol);
+    for (char ch : name)
+      if (!(isalnum((unsigned char)ch) || ch == '_'))
+        return {};
+    out += name + "@";
+  }
+  return out + "@";
 }
 
 auto codegen::Emitter::resultClassOf(FunctionDecl* f, const Ty* owner, bool& pointer) -> const Ty*

@@ -86,6 +86,16 @@ declaration by the identifier. A home lists its classes in its compile unit's re
 CodeView writer emits a type only when something in its module names it). A class the program only
 points to, never laid out, has its declaration alone.
 
+A polymorphic object shows its dynamic type (a `Shape&` as `{Square}`, with a `[Square]` member;
+2026-11-06): Visual Studio reads it from the symbol the object's vtable pointer points at, the name
+MSVC gives a vtable (`??_7Square@game@@6B@`, "const game::Square::`vftable'", and
+`??_7Cube@@6BShape@@@` for a secondary one), so a debug build for Windows names each table so at its
+address point, as clang does: the table private in a comdat keyed by that name, an alias (Layout.cpp,
+emitVtables). The linker keeps one table per class however many modules have it. A class MSVC would
+name otherwise has none: one with template arguments, a local, anonymous or file-private one, one in
+an anonymous or inline namespace or in a class template, and std's classes and `type_info`, whose
+names the C runtime's own tables have. tests\debuginfo.ps1 checks the symbols of values.kpp's two.
+
 ## What it costs
 
 The converted game (the d0495 snapshot's conversion), full builds as run.cmd builds it (64 modules,

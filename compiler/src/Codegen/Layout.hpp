@@ -150,6 +150,10 @@
     // (`LambdaIDConnector::make::InnerResolver@73` for every Callback): their vtables were one
     // linkonce_odr vtable, which the linker kept for all, so every InnerResolver ran one callback.
     std::string classIrName(const Ty* key, const StructInfo& info);
+    // A class's name as MSVC mangles it (`Square@game@@`), for its vtables' symbols; empty for one with
+    // template arguments, a local or anonymous one, or one in a class template or anonymous namespace.
+    std::string msvcClassName(const Ty* cls);
+    std::set<std::string> msvcTableNames; // (a class's tables' MSVC names, each once)
 
     void emitVtables(const Ty* key, StructInfo& info, Node* at);
 
