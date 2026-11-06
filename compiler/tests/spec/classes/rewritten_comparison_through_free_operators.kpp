@@ -1,0 +1,28 @@
+// spec: a free operator<=> or operator== behind a rewritten comparison at run time, function templates among them, the operands either way round (`2 < o`, `2 <=> m`), clang's output
+extern "C" import "stdio.h";
+struct W { double v; };
+auto operator<=>(const W& a, const W& b) { return a.v <=> b.v; }
+bool operator==(const W& a, const W& b) { return a.v == b.v; }
+template <typename T> struct O { T v; };
+template <typename T> auto operator<=>(const O<T>& a, const O<T>& b) { return a.v <=> b.v; }
+template <typename T> bool operator==(const O<T>& a, const O<T>& b) { return a.v == b.v; }
+template <typename T> auto operator<=>(const O<T>& a, const T& b) { return a.v <=> b; }
+template <typename T> bool operator==(const O<T>& a, const T& b) { return a.v == b; }
+struct M { int v; };
+auto operator<=>(const M& a, int b) { return a.v <=> b; }
+bool operator==(const M& a, int b) { return a.v == b; }
+struct F { int v; friend auto operator<=>(const F& a, const F& b) { return a.v <=> b.v; } friend bool operator==(const F&, const F&) = default; };
+template <typename T> struct FT { T v; friend auto operator<=>(const FT& a, const FT& b) { return a.v <=> b.v; } friend bool operator==(const FT& a, const FT& b) { return a.v == b.v; } };
+int main()
+{
+  double z = 0.0;
+  printf("%d %d %d %d\n", W{1.0} < W{2.0}, W{1.0} >= W{2.0}, W{3.0} > W{2.0}, W{1.0} != W{2.0});
+  printf("%d %d %d %d\n", O<int>{1} < O<int>{2}, O<int>{1} >= O<int>{2}, O<int>{3} > O<int>{2}, O<int>{1} != O<int>{2});
+  printf("%d %d\n", O<double>{z / z} <= O<double>{1.0}, O<double>{z / z} > O<double>{1.0});
+  printf("%d %d %d %d\n", O<int>{1} < 2, 2 < O<int>{1}, 3 >= O<int>{3}, 3 != O<int>{3});
+  printf("%d %d %d %d %d\n", M{1} < 2, 2 < M{1}, 3 >= M{3}, 3 != M{3}, 3 == M{3});
+  printf("%d %d %d\n", F{1} < F{2}, F{1} != F{2}, F{1} == F{1});
+  printf("%d %d %d\n", FT<int>{1} < FT<int>{2}, FT<int>{1} != FT<int>{2}, FT<int>{4} >= FT<int>{4});
+  printf("%d %d\n", (int)((O<int>{1} <=> O<int>{2}) < 0), (int)((2 <=> M{1}) > 0));
+  return 0;
+}

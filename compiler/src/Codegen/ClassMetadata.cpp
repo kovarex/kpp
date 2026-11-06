@@ -934,6 +934,11 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
         withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(fieldAddr, ft, one, at); }); // `f(f)`: the closure's bytes, not its address
       else if (size_t values = expandedCount(init->args, at); values == 0)
         storeZero(ft, fieldAddr, at); // `value()`, `value(forward<Args>(args)...)` with Args empty: value-initialized
+      else if (ft->kind == TyKind::Array && init->braced)
+      {
+        storeZero(ft, fieldAddr, at); // (what the values leave out)
+        initializeArrayElements(fieldAddr, ft, init->args, at); // `v{m...}`: its elements
+      }
       else if (values == 1)
         forEachExpanded(init->args, at, [&](Expr* one)
         {

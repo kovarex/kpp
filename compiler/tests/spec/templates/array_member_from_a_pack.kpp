@@ -1,0 +1,24 @@
+// spec: an array member whose bound counts a pack takes that pack, in a default member initializer (`int v[sizeof...(M)] = {M...}`) and in a constructor (`v{m...}`), what the values leave out zero, clang's output (E: "codegen does not support this member initializer")
+extern "C" import "stdio.h";
+template <int... M> struct S { int v[sizeof...(M) > 0 ? sizeof...(M) : 1] = {M...}; int total() const { int t = 0; for (int x : v) t += x; return t; } };
+template <int... M> struct T2 { int v[sizeof...(M)] = {M...}; int total() const { int t = 0; for (int x : v) t += x; return t; } };
+template <typename... M> struct U { int v[sizeof...(M) > 0 ? sizeof...(M) : 1]; U(M... m) : v{m...} {} int total() const { int t = 0; for (int x : v) t += x; return t; } };
+template <typename... M> struct Wd { long long v[4]; Wd(M... m) : v{m...} {} long long total() const { long long t = 0; for (long long x : v) t += x; return t; } };
+template <int... M> struct D { double v[sizeof...(M) + 1] = {1.5, M...}; double total() const { double t = 0; for (double x : v) t += x; return t; } };
+struct Nm { int v; Nm(int x) : v(x) {} };
+template <typename... M> struct Cl { Nm v[sizeof...(M)]; Cl(M... m) : v{m...} {} int total() const { int t = 0; for (const Nm& x : v) t += x.v; return t; } };
+int main()
+{
+  S<1, 2, 3> s;
+  S<> e;
+  T2<4, 5> t;
+  U<int, int> u(7, 8);
+  U<> z;
+  U<int> one(9);
+  Wd<int, int> w(1, 2);
+  D<1, 2> d;
+  Cl<int, int> c(3, 4);
+  printf("%d %d %d %d %d %d\n", s.total(), e.total(), t.total(), u.total(), one.total(), (int)sizeof(s));
+  printf("%d %g %d\n", (int)w.total(), d.total(), c.total());
+  return 0;
+}

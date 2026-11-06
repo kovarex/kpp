@@ -2659,11 +2659,35 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     {
       const ConstValue& a = reversed ? r : l;
       const ConstValue& b = reversed ? l : r;
-      if (!a.isObject() || !a.type || types.unqualified(types.stripRef(a.type))->kind != TyKind::Class)
-        continue;
+      P mirrored = op == P::Less ? P::Greater : op == P::Greater ? P::Less : op == P::LessEq ? P::GreaterEq : P::LessEq;
       Subst subst;
-      FunctionDecl* f = constClassOperator(a.type, P::Spaceship, {constOperandType(b, reversed ? lo : ro)}, subst, depth, true);
-      if (!f || constDefaulted(f) || !constDefinition(f))
+      bool ofClass = a.isObject() && a.type && types.unqualified(types.stripRef(a.type))->kind == TyKind::Class;
+      FunctionDecl* f = ofClass ? constClassOperator(a.type, P::Spaceship, {constOperandType(b, reversed ? lo : ro)}, subst, depth, true) : nullptr;
+      if (!f)
+      {
+        // A free operator<=>, a function template's under what the operands deduce.
+        FunctionDecl* free = constFreeFunction(opSymbols[uint32_t(P::Spaceship)], {constOperandType(a, reversed ? ro : lo), constOperandType(b, reversed ? lo : ro)}, ctx.scope, true);
+        if (!free || constDefaulted(free) || !constDefinition(free))
+          continue;
+        Subst deduced;
+        if (!free->templateParams.empty())
+        {
+          CallExpr call{};
+          call.kind = NodeKind::CallExpr;
+          call.token = node->token;
+          Expr* operands[2] = {reversed ? node->rhs : node->lhs, reversed ? node->lhs : node->rhs};
+          call.args = Span<Expr*>{operands, 2};
+          LocalStack own;
+          std::vector<uint8_t> categories{(reversed ? ro : lo) ? (reversed ? ro : lo)->category : uint8_t(0), (reversed ? lo : ro) ? (reversed ? lo : ro)->category : uint8_t(0)};
+          if (!constBindTemplate(free, {}, &call, {a, b}, ctx, depth, deduced, own, &categories))
+            return std::nullopt;
+        }
+        std::optional<ConstValue> ordering = constCallOn(free, deduced, {a, b}, nullptr, depth + 1);
+        if (!ordering)
+          return std::nullopt;
+        return constBinaryValues(reversed ? mirrored : op, *ordering, zero, ctx, depth + 1);
+      }
+      if (constDefaulted(f) || !constDefinition(f))
         continue;
       if (!f->templateParams.empty())
       {
@@ -2681,7 +2705,6 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
       std::optional<ConstValue> ordering = constCallOn(f, subst, {b}, &self, depth + 1);
       if (!ordering)
         return std::nullopt;
-      P mirrored = op == P::Less ? P::Greater : op == P::Greater ? P::Less : op == P::LessEq ? P::GreaterEq : P::LessEq;
       return constBinaryValues(reversed ? mirrored : op, *ordering, zero, ctx, depth + 1);
     }
     // (a defaulted <=>: the member-by-member order, as below; never the class's own operator<)

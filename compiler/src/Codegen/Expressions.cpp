@@ -213,6 +213,23 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
         if (t && t->kind == TyKind::Value && t->inner)
           t = t->inner;
+        // (`{M...}` in a default member initializer: typed once as the pack, one element bound now)
+        if (t && t->kind == TyKind::Pack && currentArgs)
+        {
+          for (auto& [p, bound] : currentArgs->pairs)
+            if (p == d && bound && bound->kind == TyKind::Value && bound->inner)
+              t = bound->inner;
+          const std::vector<Decl*>& element = currentArgs->elementPacks;
+          if (t->kind == TyKind::Pack && std::find(element.begin(), element.end(), d) != element.end() && currentArgs->elementIndex < t->args.size())
+          {
+            const Ty* one = t->args[currentArgs->elementIndex];
+            if (one && one->kind == TyKind::Value && one->inner)
+            {
+              t = one->inner;
+              v = one->value;
+            }
+          }
+        }
         if (!v || !t || !t->isKnown())
           unsupported(e, "a template parameter whose value is not known here");
         if (t->kind == TyKind::Pointer && *v == 0)
@@ -2605,6 +2622,25 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
     }
     return std::nullopt;
   };
+  // A free operator of the two operands, in this order, a function template's under what they deduce.
+  auto freeCall = [&](P which, Expr* first, Expr* second) -> std::optional<Value>
+  {
+    const Ty* fa = argumentType(first, first->ty, types);
+    const Ty* sa = argumentType(second, second->ty, types);
+    FunctionDecl* f = global.findFreeOperator(uint32_t(which), fa, sa, currentFunction);
+    if (!f)
+      return std::nullopt;
+    const Ty* classTy = friendClass(f, {fa, sa}, b);
+    TemplateArgs fnArgs = classTy ? global.classArgsOf(classTy) : TemplateArgs{};
+    if (!f->templateParams.empty())
+    {
+      global.deduceArgs(f, {fa, sa}, fnArgs);
+      if (fnArgs.pairs.size() < f->templateParams.size())
+        unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
+    }
+    Expr* args[2] = {first, second};
+    return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
+  };
   auto call = [&](P which) -> std::optional<Value>
   {
     std::string name = operatorName(which);
@@ -2612,12 +2648,8 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
     if (isClass(lt) && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
       return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
     if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
-      if (FunctionDecl* f = global.findFreeOperator(uint32_t(which), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction); f && f->templateParams.empty())
-      {
-        const Ty* classTy = friendClass(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, b);
-        Expr* args[2] = {b->lhs, b->rhs};
-        return callRvalue(callFunction(f, classTy ? global.classArgsOf(classTy) : TemplateArgs{}, classTy, "", "", Span<Expr*>{args, 2}, b), b);
-      }
+      if (std::optional<Value> free = freeCall(which, b->lhs, b->rhs))
+        return free;
     return std::nullopt;
   };
   auto threeWayDefaulted = [&]()
@@ -2639,16 +2671,17 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
   {
     // (Also with a class on the left whose own <=> does not take the right operand: C++20's
     // reversed candidate, `current > latest` with Optional's `operator<=>(const U&)`.)
-    if (!rt || !isClass(rt))
-      return std::nullopt;
+    P swapped = cmp == P::Less ? P::Greater : cmp == P::Greater ? P::Less : cmp == P::LessEq ? P::GreaterEq : P::LessEq;
     Expr* lhsExpr = b->lhs;
     Span<Expr*> left{&lhsExpr, 1};
     const Ty* foundIn = nullptr;
-    if (!findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
-      return std::nullopt;
-    Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
-    P swapped = cmp == P::Less ? P::Greater : cmp == P::Greater ? P::Less : cmp == P::LessEq ? P::GreaterEq : P::LessEq;
-    return orderHolds(swapped, orderOf(ordering, b), b);
+    if (rt && isClass(rt) && findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+      return orderHolds(swapped, orderOf(callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b), b), b);
+    // `2 < o` through a free operator<=>(const O&, int).
+    if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+      if (std::optional<Value> ordering = freeCall(P::Spaceship, b->rhs, b->lhs))
+        return orderHolds(swapped, orderOf(*ordering, b), b);
+    return std::nullopt;
   };
   // C++20: a class whose operator<=> is defaulted has a defaulted operator==(const T&) too, which
   // takes a value of another type through T's converting constructor (`alertType ==
@@ -2734,9 +2767,14 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
       Expr* lhsExpr = b->lhs;
       Span<Expr*> left{&lhsExpr, 1};
       const Ty* foundIn = nullptr;
-      if (!findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+      std::optional<Value> reversedCall;
+      if (findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+        reversedCall = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
+      else if (b->lhs->ty && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+        reversedCall = freeCall(P::Spaceship, b->rhs, b->lhs); // `2 <=> m` through a free operator<=>(const M&, int)
+      if (!reversedCall)
         return std::nullopt;
-      Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
+      Value ordering = *reversedCall;
       // (unordered, 2, stays unordered: a NaN's is no less the other way round)
       std::string turned = newTemp(), unordered = newTemp(), negated = newTemp();
       std::string forward = orderOf(ordering, b).text;
