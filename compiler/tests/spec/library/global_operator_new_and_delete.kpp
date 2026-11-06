@@ -1,5 +1,6 @@
 // spec: the library's global allocation functions are called by name, `::operator new(n)` and `operator new[](n)` a block of n bytes and `::operator delete(p)` (sized or not) giving it back, a block malloc cannot give a BadAlloc ([new.delete.single], [new.delete.array])
 // factorio: A's find (`::operator new(n)` did not resolve); clang's output
+void* kept = nullptr;
 int main()
 {
   int* numbers = static_cast<int*>(::operator new(4 * sizeof(int)));
@@ -13,7 +14,8 @@ int main()
   operator delete(sized, 8);
   try
   {
-    ::operator new(~usize(0) - 4096);
+    kept = ::operator new(~usize(0) - 4096); // (kept: an optimizer removes a malloc whose block does not escape)
+    println("allocated");
   }
   catch (const BadAlloc&)
   {

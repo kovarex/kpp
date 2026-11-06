@@ -17,6 +17,11 @@ the converted game. The four listed until 2026-10-29 pass now (language/brace_ar
 templates/forwarding_reference_to_function, language/array_new_and_delete with
 library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
 
+**`::operator new` in an optimized build** (core/Sizes.kpp, 2026-11-06): it is malloc, which an
+optimizer may remove when the block does not escape, and its BadAlloc with it: `::operator new(huge)`
+whose block nothing keeps returns where C++ (which never elides a call of operator new by name)
+throws bad_alloc (library/global_operator_new_and_delete keeps the block).
+
 **The terminate handler** (core/Error.kpp, 2026-11-04): an exception that ends the program (nobody
 catches it, or it leaves a noexcept function) prints its type and message on stderr first, and only
 then calls the handler setTerminate installed, where C++'s terminate calls the handler alone (its
