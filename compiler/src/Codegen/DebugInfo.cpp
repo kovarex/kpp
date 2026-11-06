@@ -740,7 +740,9 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
         FunctionDecl* declared = global.declarationOf(currentFunction);
         if (!declared)
           declared = currentFunction;
-        if (ClassDecl* c = cls->decl ? classDef(cls->decl, nullptr) : nullptr)
+        // (a class's: an enumeration's member function, `Direction::isVertical()` of a real enum,
+        // has no class declaration to name, and its type no class layout to ask for)
+        if (ClassDecl* c = isClass(cls) && cls->decl ? classDef(cls->decl, nullptr) : nullptr)
           for (size_t i = 0; i < c->members.size(); ++i)
             if (c->members[i] == declared)
               if (std::string method = debugMethod(cls, c, declared, i, global.classArgsOf(canonicalClass(cls, nullptr))); !method.empty())
