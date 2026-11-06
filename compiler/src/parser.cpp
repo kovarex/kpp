@@ -411,10 +411,38 @@ namespace
         }
         else if (at(Kw::alignas_) && at(P::LParen, 1))
         {
-          // `alignas(16)`: kept for the class declared next (ignored elsewhere for now).
+          // `alignas(16)`: kept for the class declared next (ignored elsewhere for now). A type that
+          // starts with a keyword (`alignas(double)`, `alignas(unsigned char)`) is C++'s
+          // alignas(alignof(type)) ([dcl.align] 3): an alignof node. A name stays an expression
+          // (`alignas(N)` and `alignas(T)` read alike), whose type codegen tells (alignmentValue).
+          uint32_t start = pos;
           advance();
           advance();
-          pendingAlignment = parseExpression();
+          bool typeFirst = false;
+          if (at(TokenKind::Keyword))
+            switch (Kw(tok().id))
+            {
+              case Kw::bool_: case Kw::char_: case Kw::char8_t_: case Kw::char16_t_: case Kw::char32_t_: case Kw::wchar_t_:
+              case Kw::short_: case Kw::int_: case Kw::long_: case Kw::signed_: case Kw::unsigned_: case Kw::float_:
+              case Kw::double_: case Kw::void_: case Kw::const_: case Kw::volatile_: case Kw::struct_: case Kw::class_:
+              case Kw::enum_: case Kw::union_: case Kw::decltype_: case Kw::typename_:
+                typeFirst = true;
+                break;
+              default:
+                break;
+            }
+          Type* alignedAs = typeFirst ? parseType() : nullptr;
+          if (alignedAs && at(P::LBracket))
+            alignedAs = parseArraySuffixes(alignedAs);
+          if (alignedAs)
+          {
+            SizeofExpr* s = node<SizeofExpr>(start);
+            s->sizeofKind = Kw::alignof_;
+            s->type = alignedAs;
+            pendingAlignment = s;
+          }
+          else
+            pendingAlignment = parseExpression();
           expect(P::RParen, "expected ')' after alignas");
         }
         else if (atIdent() && spelling() == "__declspec" && at(P::LParen, 1) && atIdent(2) && spelling(2) == "align" && at(P::LParen, 3))

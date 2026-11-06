@@ -115,6 +115,37 @@ auto codegen::Emitter::declaredAlignment(const Ty* t, Node* at) -> uint64_t
 
 auto codegen::Emitter::alignmentValue(Expr* alignment, Decl* owner, const TemplateArgs& args, const std::string& what, Node* at) -> uint64_t
 {
+  // `alignas(T)` naming a type (a template's type parameter, a class, an alias): its alignment, as
+  // C++'s alignas(alignof(T)) ([dcl.align] 3). The parser cannot tell such a name from a constant's
+  // (`alignas(N)`), so the declaration it resolves to does.
+  Expr* named = alignment;
+  while (named && named->kind == NodeKind::ParenExpr)
+    named = static_cast<ParenExpr*>(named)->inner;
+  if (Decl* d = named && named->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(named)->name.last().hasTemplateArgs
+                  ? static_cast<NameExpr*>(named)->resolved
+                  : nullptr)
+  {
+    const Ty* type = nullptr;
+    if (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType) // (`alignas(N)` of a value parameter: its value, below)
+    {
+      for (auto& [p, t] : args.pairs)
+        if (p == d)
+          type = t;
+      if (!type && currentArgs)
+        for (auto& [p, t] : currentArgs->pairs)
+          if (p == d)
+            type = t;
+    }
+    else if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
+             (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)))
+      type = global.typeOfDecl(d);
+    if (type && type->kind != TyKind::Pack && (d->kind != NodeKind::TemplateParamDecl || type->isKnown()))
+    {
+      if (!type->isKnown() || types.isDependent(type))
+        unsupported(at, "the alignment of " + what + ", alignas of a type not known here");
+      return alignOf(type, at);
+    }
+  }
   ArgsScope scope(*this, &args);
   ConstContextScope context(*this, owner);
   ParsedFile* saved = currentFile;

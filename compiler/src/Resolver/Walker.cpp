@@ -6035,6 +6035,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkTypeNamesNoVariable(v->type, v->token);
       checkArrayBounds(v);
       walkExpr(v->bitfield);
+      walkExpr(v->alignment); // (`alignas(T)`: its name resolved, a type's or a constant's, for codegen's alignmentValue)
       Scope* saved = scope;
       if (v->name.parts.size() > 1)
         scope = semanticScopeFor(v->name);

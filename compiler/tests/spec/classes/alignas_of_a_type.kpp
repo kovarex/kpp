@@ -1,0 +1,51 @@
+// spec: alignas(type) is alignas(alignof(type)) ([dcl.align] 3): a local buffer `alignas(U) unsigned char buf[sizeof(U)]` in a function template takes U's alignment (an object placed into it with placement new), `alignas(double)`, `alignas(Wide)` (a class declared alignas(32)) and `alignas(unsigned long long)` on members and locals, beside `alignas(Eight)` of a constant and `alignas(N)` of a value parameter; clang prints the same
+// found by thread A's C++ feature survey (2026-11-06): `alignas(T)` was "not a constant power of two" (the name read as a constant), and `alignas(double)` no expression at all
+struct alignas(32) Wide
+{
+  int v = 3;
+};
+
+struct T
+{
+  int v;
+  T() : v(7) {}
+  ~T() { println("dtor"); }
+};
+
+constexpr int Eight = 8;
+
+struct Members
+{
+  char c;
+  alignas(double) char d;
+  alignas(Wide) char w;
+  alignas(Eight) char e;
+};
+
+template<class U>
+int placed()
+{
+  alignas(U) unsigned char buf[sizeof(U)];
+  U* u = new (buf) U;
+  int v = u->v * 10 + int(((uintptr_t)buf % alignof(U)) == 0);
+  u->~U();
+  return v;
+}
+
+template<int N>
+int aligned()
+{
+  alignas(N) char x = 0;
+  return int(((uintptr_t)&x % N) == 0) + x;
+}
+
+int main()
+{
+  alignas(Wide) char local = 1;
+  alignas(unsigned long long) char other = 2;
+  int t = placed<T>();
+  int w = placed<Wide>();
+  println(t, " ", w, " ", aligned<64>(), " ", ((uintptr_t)&local % 32) == 0, " ", ((uintptr_t)&other % 8) == 0, " ", local + other);
+  println(alignof(Members), " ", sizeof(Members), " ", offsetof(Members, d), " ", offsetof(Members, w), " ", offsetof(Members, e));
+  return 0;
+}
