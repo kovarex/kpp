@@ -640,7 +640,9 @@ jobs:
       # and the job hit its 45, run 42171827019, and gave 50 KB/s for two more runs, which hit the step's
       # 20, 42206507772 and 42208289662. So the .deb files are kept by actions/cache and a hit installs
       # them with no mirror. Any that no longer install, the image having moved on, go the mirror's
-      # way, and that run's files are saved under its own key, the newest being the one restored.)
+      # way, and that run's files are saved under its own key, the newest being the one restored.
+      # dpkg, not apt-get: given the files, apt-get fetched all 16 from the mirror again on image
+      # 20261101.360 and timed out, run 42273619572.)
       - name: Packages cache
         uses: actions/cache/restore@v4
         with:
@@ -653,7 +655,7 @@ jobs:
         run: |
           apt="-q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Keep-Downloaded-Packages=true"
           mkdir -p ~/debs
-          if ls ~/debs/*.deb >/dev/null 2>&1 && timeout 300 sudo apt-get install -y $apt ~/debs/*.deb; then
+          if ls ~/debs/*.deb >/dev/null 2>&1 && timeout 300 sudo dpkg -i ~/debs/*.deb; then
             echo "installed from the cache: $(ls ~/debs | wc -l) packages"
           else
             for attempt in 1 2 3; do
