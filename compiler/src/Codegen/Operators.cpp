@@ -451,6 +451,22 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
     l = convert(l, mt, at);
     r = convert(r, mt, at);
     bool function = mt->inner && mt->inner->kind == TyKind::Function;
+    if (function && memberFunctionPointerAdjusts(mt, at))
+    {
+      // Equal: the same function and adjustment, or both null whatever their adjustments.
+      auto [lf, la] = memberFunctionParts(l.text);
+      auto [rf, ra] = memberFunctionParts(r.text);
+      std::string sameFunction = newTemp(), sameAdjustment = newTemp(), isNull = newTemp(), either = newTemp(), equal = newTemp();
+      fn += "  " + sameFunction + " = icmp eq ptr " + lf + ", " + rf + "\n";
+      fn += "  " + sameAdjustment + " = icmp eq i32 " + la + ", " + ra + "\n";
+      fn += "  " + isNull + " = icmp eq ptr " + lf + ", null\n";
+      fn += "  " + either + " = or i1 " + isNull + ", " + sameAdjustment + "\n";
+      fn += "  " + equal + " = and i1 " + sameFunction + ", " + either + "\n";
+      if (op == P::EqEq)
+        return {equal, types.boolType()};
+      fn += "  " + res + " = xor i1 " + equal + ", true\n";
+      return {res, types.boolType()};
+    }
     fn += "  " + res + " = icmp " + (op == P::EqEq ? "eq " : "ne ") + (function ? "ptr " : "i64 ") + l.text + ", " + r.text + "\n";
     return {res, types.boolType()};
   }
@@ -885,6 +901,15 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         if (isClass(objectTy) && isClass(memberOf) && classKey(objectTy) != classKey(memberOf))
           baseAddress(objectTy, memberOf, o.text, object, c);
         Value fp = rvalue(b->rhs);
+        if (memberFunctionPointerAdjusts(mp, c))
+        {
+          // `this` moved by the pointer's adjustment (a base's function at an offset in the class).
+          auto [function, adjustment] = memberFunctionParts(fp.text);
+          std::string wide = newTemp(), moved = newTemp();
+          fn += "  " + wide + " = sext i32 " + adjustment + " to i64\n";
+          fn += "  " + moved + " = getelementptr i8, ptr " + object + ", i64 " + wide + "\n";
+          return callIndirect(function, mp->inner, moved, c->args, sret, c);
+        }
         return callIndirect(fp.text, mp->inner, object, c->args, sret, c);
       }
     }

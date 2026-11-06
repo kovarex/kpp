@@ -150,13 +150,81 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   {
     if (fk == TyKind::Int && !explicitCast)
       zeroIsNoPointer(at);
-    return {to->inner && to->inner->kind == TyKind::Function ? "null" : "-1", to};
+    return {to->inner && to->inner->kind == TyKind::Function ? (memberFunctionPointerAdjusts(to, at) ? "zeroinitializer" : "null") : "-1", to};
   }
   if (fk == TyKind::MemberPointer && tk == TyKind::Bool)
   {
     bool function = from->inner && from->inner->kind == TyKind::Function;
-    fn += "  " + result() + " = icmp ne " + (function ? "ptr " + v.text + ", null" : "i64 " + v.text + ", -1") + "\n";
+    std::string tested = function && memberFunctionPointerAdjusts(from, at) ? memberFunctionParts(v.text).first : v.text; // (null: its function is)
+    fn += "  " + result() + " = icmp ne " + (function ? "ptr " + tested + ", null" : "i64 " + tested + ", -1") + "\n";
     return {r, to};
+  }
+  // A pointer to a member function of one class as one of another, a base's as a derived class's
+  // (implicitly) or the other way (static_cast): the function stays, the adjustment of `this` grows
+  // by the base's offset in the derived class, or shrinks by it (memberFunctionPointerAdjusts). One of
+  // the single model (no adjustment) that would need one: a constant gets a thunk moving `this`, a
+  // value read at run time must need none (else the program stops: C++ calls only on an object of
+  // the derived class, which the value no longer knows). Null stays null.
+  if (fk == TyKind::MemberPointer && tk == TyKind::MemberPointer && from->inner && from->inner->kind == TyKind::Function && !from->args.empty() &&
+      !to->args.empty() && isClass(from->args[0]) && isClass(to->args[0]) && classKey(from->args[0]) != classKey(to->args[0]) &&
+      !types.isDependent(from->args[0]) && !types.isDependent(to->args[0]))
+  {
+    const Ty* fromClass = withCurrentArgs(from->args[0]);
+    const Ty* toClass = withCurrentArgs(to->args[0]);
+    int64_t delta = 0;
+    if (std::optional<uint64_t> down = baseOffsetIn(toClass, fromClass, at))
+      delta = int64_t(*down); // a base's member as one of the derived class
+    else if (std::optional<uint64_t> up = baseOffsetIn(fromClass, toClass, at))
+    {
+      if (!explicitCast && !(currentFile && currentFile->isImported))
+        fail(at, "a pointer to a member of " + types.toString(fromClass, &symbols) + " does not convert to one of " + types.toString(toClass, &symbols) +
+                     " without a cast: only a base's member pointer converts to a derived class's");
+      delta = -int64_t(*up);
+    }
+    else if (!(currentFile && currentFile->isImported))
+      unsupported(at, "a cast of a pointer to a member function of " + types.toString(fromClass, &symbols) + " to one of " + types.toString(toClass, &symbols) +
+                          ", an unrelated class");
+    bool fromAdjusts = memberFunctionPointerAdjusts(from, at), toAdjusts = memberFunctionPointerAdjusts(to, at);
+    if (!fromAdjusts && !toAdjusts)
+    {
+      if (delta == 0)
+        return {v.text, to};
+      // (both of the single model with a base at an offset: memberFunctionPointerAdjusts disagrees
+      // with the layout, which is a bug of the compiler's, not the program's)
+      unsupported(at, "a pointer to a member function of " + types.toString(fromClass, &symbols) + " as one of " + types.toString(toClass, &symbols) +
+                          ", whose base moves by " + std::to_string(delta) + " bytes where neither carries an adjustment");
+    }
+    auto [function, adjustment] = fromAdjusts ? memberFunctionParts(v.text) : std::pair<std::string, std::string>{v.text, "0"};
+    bool constant = (function == "null" || (!function.empty() && function[0] == '@')) && adjustment.find_first_not_of("-0123456789") == std::string::npos;
+    if (constant)
+    {
+      int64_t moved = function == "null" ? 0 : std::stoll(adjustment) + delta;
+      if (toAdjusts)
+        return {memberFunctionValue(function, std::to_string(moved)), to};
+      if (moved == 0 || function == "null")
+        return {function, to};
+      // A constant of the single model that needs `this` moved: a thunk moving it.
+      std::string name = function[1] == '"' ? function.substr(2, function.size() - 3) : function.substr(1);
+      return {sharedThunk("@\"pmf.adjust." + std::to_string(moved) + "." + name + "\"", methodSignature(from->inner, at),
+                          "inttoptr (i64 " + std::to_string(moved) + " to ptr)", function, -1), to};
+    }
+    std::string isNull = newTemp(), sum = newTemp(), kept = newTemp();
+    fn += "  " + isNull + " = icmp eq ptr " + function + ", null\n";
+    fn += "  " + sum + " = add i32 " + adjustment + ", " + std::to_string(delta) + "\n";
+    fn += "  " + kept + " = select i1 " + isNull + ", i32 0, i32 " + sum + "\n";
+    if (toAdjusts)
+      return {memberFunctionValue(function, kept), to};
+    // To the single model at run time: only a value that needs no adjustment there is one.
+    if (declaredNames.claim("@llvm.trap"))
+      decls += "declare void @llvm.trap()\n";
+    std::string bad = newTemp(), okL = newLabel("pmf.ok"), badL = newLabel("pmf.unrepresentable");
+    fn += "  " + bad + " = icmp ne i32 " + kept + ", 0\n";
+    fn += "  br i1 " + bad + ", label %" + badL + ", label %" + okL + "\n";
+    startBlock(badL);
+    fn += "  call void @llvm.trap()\n  unreachable\n";
+    blockTerminated = true;
+    startBlock(okL);
+    return {function, to};
   }
   // `int (Both::*)() const = &Named::getId`: a pointer to a member of a base, as one of a class
   // derived from it. A data member's offset grows by the base's place; a member function gets a

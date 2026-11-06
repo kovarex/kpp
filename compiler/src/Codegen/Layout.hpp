@@ -28,6 +28,24 @@
     // class's alignas adds on top of its fields' it only gets from padding fields and `align`.
     uint64_t llvmAlignOf(const Ty* t, Node* at);
 
+    // A pointer to a member function of class cls carries the bytes to add to `this` (`{ ptr, i32 }`,
+    // MSVC's multiple inheritance model, 16 bytes) when some base subobject anywhere in cls's
+    // hierarchy is at a non-zero offset, so that one of a base there converts to cls's and back,
+    // read at run time too; else it is the function alone (`ptr`, the single model, 8 bytes).
+    // Decided from the declarations as structFor lays classes out (its own vtable pointer, the
+    // polymorphic bases, then the others; an empty base takes no bytes), never from a layout, which
+    // may hold a pointer to a member function of the class itself (a base's `void (Derived::*)()`).
+    bool hasBaseAtOffset(const Ty* cls, Node* at, int depth = 0);
+    bool declaredPolymorphic(const Ty* cls, Node* at, int depth = 0);
+    bool declaredEmpty(const Ty* cls, Node* at, int depth = 0);
+    std::unordered_map<const Ty*, bool> baseAtOffsetCache, polymorphicCache, emptyCache;
+    // Whether mp, a pointer to a member function, is of the multiple model (hasBaseAtOffset).
+    bool memberFunctionPointerAdjusts(const Ty* mp, Node* at);
+    // A member function pointer value of the multiple model: its function and adjustment (constants
+    // read from a constant, else extracted), and one made of them (a constant from constants).
+    std::pair<std::string, std::string> memberFunctionParts(const std::string& value);
+    std::string memberFunctionValue(const std::string& function, const std::string& adjustment);
+
     // `, align N` for an object of type t (and an alignas(N) of the variable itself, or 0) whose
     // alignment is more than LLVM gives its type: an alloca's, a global's.
     std::string alignSuffix(const Ty* t, uint64_t declared, Node* at);

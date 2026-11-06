@@ -1,0 +1,46 @@
+// spec: a pointer to a member function of a class whose base's base is at an offset (C after A in B, B at the start of D) carries the adjustment too: `&C::f` and one read at run time as `int (D::*)()` call C's f on D's C part and compare equal (`9 9 1`); a class holding a pointer to its own member function (`void (D::*callback)()`) is laid out and calls it (`14`); the pointers are 8 bytes for C's (MSVC's single inheritance model) and 16 for D's (its multiple model) (`8 16`); clang (for Windows) and MSVC print the same
+// found by thread B (2026-11-06), with classes/member_function_pointer_of_base_at_offset_read_at_run_time: a base at an offset anywhere in the hierarchy, not only among the class's own bases
+class A
+{
+public:
+  int a = 1;
+};
+
+class C
+{
+public:
+  int f() { return this->c; }
+  int c = 7;
+};
+
+class B : public A, public C
+{
+public:
+  int b = 2;
+};
+
+class D : public B
+{
+public:
+  void hit() { this->d += 10; }
+  int d = 4;
+  void (D::*callback)() = nullptr;
+};
+
+using CFn = int (C::*)();
+using DFn = int (D::*)();
+
+CFn which() { return &C::f; }
+
+int main()
+{
+  D x;
+  x.c = 9;
+  DFn constant = &C::f;
+  DFn runtime = which();
+  x.callback = &D::hit;
+  (x.*x.callback)();
+  println((x.*constant)(), " ", (x.*runtime)(), " ", int(constant == runtime), " ", x.d);
+  println(int(sizeof(CFn)), " ", int(sizeof(DFn)));
+  return 0;
+}

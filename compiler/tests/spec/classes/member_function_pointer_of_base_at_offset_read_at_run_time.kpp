@@ -1,0 +1,47 @@
+// spec: a pointer to a member function of a base the class has at an offset (Second in Both, after First), read at run time and converted to the derived class's, calls the function with `this` moved to that base, a virtual one the object's override (`5 103`), and a null one stays null; cast back (static_cast) it calls on the base and equals the base's own (`5 1`); the derived class's own override cast to the base's calls on the object (`103`); converted pointers compare as their functions (`1 0`); clang and MSVC print the same
+// found by thread B (2026-11-06): "not supported yet", a member function pointer carried no adjustment of `this`
+class First
+{
+public:
+  virtual ~First() = default;
+  int first() { return this->a; }
+  int a = 1;
+};
+
+class Second
+{
+public:
+  virtual ~Second() = default;
+  int get() { return this->b; }
+  virtual int twice() { return 2 * this->b; }
+  int b = 2;
+};
+
+class Both : public First, public Second
+{
+public:
+  int twice() override { return 20 * this->b + this->c; }
+  int c = 3;
+};
+
+using SecondFn = int (Second::*)();
+using BothFn = int (Both::*)();
+
+SecondFn pick(int which) { return which == 0 ? &Second::get : which == 1 ? &Second::twice : nullptr; }
+
+int main()
+{
+  Both both;
+  both.b = 5;
+  BothFn f = pick(0);
+  BothFn g = pick(1);
+  BothFn none = pick(2);
+  println((both.*f)(), " ", (both.*g)(), " ", int(none == nullptr));
+  SecondFn back = static_cast<SecondFn>(f);
+  Second& s = both;
+  println((s.*back)(), " ", int(back == &Second::get));
+  SecondFn own = static_cast<SecondFn>(&Both::twice);
+  println((s.*own)());
+  println(int(f == BothFn(&Second::get)), " ", int(f == g));
+  return 0;
+}

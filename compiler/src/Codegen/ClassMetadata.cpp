@@ -2682,7 +2682,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
   {
     // (The same for a member pointer, whose null is no zero: -1 for a data member, as MSVC has it.)
     if (!zeroIsNoPointer(init))
-      store({t->inner && t->inner->kind == TyKind::Function ? "null" : "-1", t}, addr, t, at);
+      store({t->inner && t->inner->kind == TyKind::Function ? (memberFunctionPointerAdjusts(t, at) ? "zeroinitializer" : "null") : "-1", t}, addr, t, at);
     return;
   }
   if (isLambda(t))

@@ -237,6 +237,16 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
     }
     case TyKind::Function:
       return one("!DISubroutineType(types: !{})");
+    case TyKind::MemberPointer:
+      // A pointer to a member function: its class and representation (MSVC's single or multiple
+      // inheritance model, memberFunctionPointerAdjusts), which give a debugger its size.
+      if (t->inner && t->inner->kind == TyKind::Function && !t->args.empty() && isClass(t->args[0]) && !types.isDependent(t->args[0]))
+      {
+        bool adjusts = memberFunctionPointerAdjusts(t, nullptr);
+        return one(std::string("!DIDerivedType(tag: DW_TAG_ptr_to_member_type, baseType: ") + debugType(t->inner) + ", size: " + (adjusts ? "128" : "64") +
+                   ", flags: " + (adjusts ? "DIFlagMultipleInheritance" : "DIFlagSingleInheritance") + ", extraData: " + debugType(t->args[0]) + ")");
+      }
+      break;
     default:
       break;
   }

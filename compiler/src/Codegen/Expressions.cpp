@@ -1304,6 +1304,27 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       for (auto& [structName, index] : path)
         moved = moved || index != 0;
       int slot = f->templateParams.empty() ? slotOf(owner, f, u) : -1;
+      if (memberFunctionPointerAdjusts(mp, u))
+      {
+        // The multiple model: the function as its own class's (a virtual one through that class's
+        // thunk reading the object's vtable), `this` moved to that class by the adjustment.
+        if (!f->templateParams.empty() && moved)
+          unsupported(u, "the address of a member function template of a base at another place in the object");
+        std::string function;
+        if (slot >= 0)
+          function = memberFunctionThunk(owner, owner, {}, f, slot, u);
+        else
+        {
+          TemplateArgs fargs = global.classArgsOf(owner);
+          if (!f->templateParams.empty())
+            addressedTemplateArgs(f, n, u, fargs);
+          function = useFunction(f, fargs, owner, u);
+        }
+        std::optional<uint64_t> offset = owner == key ? std::optional<uint64_t>(0) : baseOffsetIn(key, owner, u);
+        if (!offset)
+          unsupported(u, "a pointer to a member function of " + types.toString(owner, &symbols) + " as one of " + types.toString(key, &symbols));
+        return {memberFunctionValue(function, std::to_string(*offset)), mp};
+      }
       if (slot < 0 && !moved)
       {
         // `&Bindable::debugChildren<Binder<T>>`: a member template's instance, its own

@@ -10,8 +10,9 @@ auto codegen::Emitter::sizeOf(const Ty* t, Node* at) -> uint64_t
     case TyKind::Bool: return 1;
     case TyKind::Char: case TyKind::Int: case TyKind::Float: return t->bits / 8;
     case TyKind::Nullptr: case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Function:
-    case TyKind::MemberPointer:
       return 8;
+    case TyKind::MemberPointer:
+      return memberFunctionPointerAdjusts(t, at) ? 16 : 8; // (a data member's offset, a function, or { function, adjustment })
     case TyKind::Lambda:
     {
       // The closure struct's own size: its fields where LLVM puts them (a reference capture is
@@ -88,6 +89,7 @@ auto codegen::Emitter::alignOf(const Ty* t, Node* at) -> uint64_t
   switch (t->kind)
   {
     case TyKind::Array: return alignOf(t->inner, at);
+    case TyKind::MemberPointer: return 8;
     case TyKind::Vector: return t->count * sizeOf(t->inner, at); // SSE vectors are 16-byte aligned
     case TyKind::Class: return classSizeAndAlign(t, at).second;
     case TyKind::Lambda:
@@ -1057,6 +1059,118 @@ auto codegen::Emitter::resultClassOf(FunctionDecl* f, const Ty* owner, bool& poi
   }
   object = object ? types.unqualified(object) : nullptr;
   return object && isClass(object) && !types.isDependent(object) ? object : nullptr;
+}
+
+auto codegen::Emitter::declaredPolymorphic(const Ty* cls, Node* at, int depth) -> bool
+{
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+    return false;
+  const Ty* key = canonicalClass(cls, at);
+  if (auto found = polymorphicCache.find(key); found != polymorphicCache.end())
+    return found->second;
+  bool result = false;
+  if (ClassDecl* c = classDef(key->decl, at))
+  {
+    for (Decl* m : c->members) // (structFor's own vtable pointer)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)) && !(m->flags & (DF_Static | DF_Constructor)) &&
+          m->templateParams.empty())
+        result = true;
+    if (!result)
+      for (const Ty* b : basesOf(c, global.classArgsOf(key), at))
+        result = result || declaredPolymorphic(b, at, depth + 1);
+  }
+  polymorphicCache[key] = result;
+  return result;
+}
+
+auto codegen::Emitter::declaredEmpty(const Ty* cls, Node* at, int depth) -> bool
+{
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+    return false;
+  const Ty* key = canonicalClass(cls, at);
+  if (auto found = emptyCache.find(key); found != emptyCache.end())
+    return found->second;
+  bool result = !declaredPolymorphic(key, at, depth);
+  if (ClassDecl* c = classDef(key->decl, at); c && result)
+  {
+    for (Decl* m : c->members)
+      if ((m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef))) ||
+          (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition))
+        result = false; // (a data member, or an anonymous struct's or union's)
+    if (result)
+      for (const Ty* b : basesOf(c, global.classArgsOf(key), at))
+        result = result && declaredEmpty(b, at, depth + 1);
+  }
+  else if (!c)
+    result = false;
+  emptyCache[key] = result;
+  return result;
+}
+
+auto codegen::Emitter::hasBaseAtOffset(const Ty* cls, Node* at, int depth) -> bool
+{
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+    return false;
+  const Ty* key = canonicalClass(cls, at);
+  if (auto found = baseAtOffsetCache.find(key); found != baseAtOffsetCache.end())
+    return found->second;
+  bool result = false;
+  if (ClassDecl* c = classDef(key->decl, at))
+  {
+    std::vector<const Ty*> bases = basesOf(c, global.classArgsOf(key), at);
+    bool anyPolymorphic = false;
+    for (const Ty* b : bases)
+      anyPolymorphic = anyPolymorphic || declaredPolymorphic(b, at, depth + 1);
+    // Something at offset 0 that takes bytes: the class's own vtable pointer, then each base in
+    // structFor's order that is not empty; a base after one is at a non-zero offset.
+    bool taken = !anyPolymorphic && declaredPolymorphic(key, at, depth);
+    for (bool polymorphicPass : {true, false})
+      for (const Ty* b : bases)
+        if (b && declaredPolymorphic(b, at, depth + 1) == polymorphicPass)
+        {
+          if (taken || hasBaseAtOffset(b, at, depth + 1))
+            result = true;
+          if (!declaredEmpty(b, at, depth + 1))
+            taken = true;
+        }
+  }
+  baseAtOffsetCache[key] = result;
+  return result;
+}
+
+auto codegen::Emitter::memberFunctionPointerAdjusts(const Ty* mp, Node* at) -> bool
+{
+  if (!mp || mp->kind != TyKind::MemberPointer || !mp->inner || mp->inner->kind != TyKind::Function || mp->args.empty())
+    return false;
+  const Ty* cls = mp->args[0];
+  if (cls && types.isDependent(cls))
+    cls = withCurrentArgs(cls);
+  return cls && isClass(cls) && !types.isDependent(cls) && hasBaseAtOffset(cls, at);
+}
+
+auto codegen::Emitter::memberFunctionParts(const std::string& value) -> std::pair<std::string, std::string>
+{
+  if (value == "zeroinitializer")
+    return {"null", "0"};
+  // `{ ptr @"f(int32, int32)", i32 16 }`: the function's name may hold commas, the adjustment not.
+  if (value.rfind("{ ptr ", 0) == 0)
+    if (size_t comma = value.rfind(", i32 "); comma != std::string::npos && value.size() > 2 && value.compare(value.size() - 2, 2, " }") == 0)
+      return {value.substr(6, comma - 6), value.substr(comma + 6, value.size() - 2 - comma - 6)};
+  std::string function = newTemp(), adjustment = newTemp();
+  fn += "  " + function + " = extractvalue { ptr, i32 } " + value + ", 0\n";
+  fn += "  " + adjustment + " = extractvalue { ptr, i32 } " + value + ", 1\n";
+  return {function, adjustment};
+}
+
+auto codegen::Emitter::memberFunctionValue(const std::string& function, const std::string& adjustment) -> std::string
+{
+  auto constantNumber = [](const std::string& s) { return !s.empty() && s.find_first_not_of("-0123456789") == std::string::npos; };
+  if ((function == "null" || (!function.empty() && function[0] == '@')) && constantNumber(adjustment))
+    return function == "null" && adjustment == "0" ? std::string("zeroinitializer") : "{ ptr " + function + ", i32 " + adjustment + " }";
+  std::string first = newTemp(), whole = newTemp();
+  fn += "  " + first + " = insertvalue { ptr, i32 } poison, ptr " + function + ", 0\n";
+  fn += "  " + whole + " = insertvalue { ptr, i32 } " + first + ", i32 " + adjustment + ", 1\n";
+  return whole;
 }
 
 auto codegen::Emitter::baseOffsetIn(const Ty* derived, const Ty* base, Node* at) -> std::optional<uint64_t>
