@@ -328,8 +328,9 @@ replacements, in the order of how much code they remove:
    returns, is `[[nodiscard]]` (a cast to void says it is meant), and a call of a `[[deprecated]]`
    function, with its reason. A warning is no error. On by default, unlike the other warnings'
    flags (`--access-warnings`, `--return-copy-warnings`), since the program's author asked for
-   them by writing the attribute: an open question for kovarex. Spec
-   language/nodiscard_and_deprecated_warn.
+   them by writing the attribute (decided 2026-11-06, kovarex: "yes"). In a template instance's
+   body a warning counts once codegen emits the instance, as C++ warns in the instances it makes.
+   Spec language/nodiscard_and_deprecated_warn.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 
@@ -4064,10 +4065,6 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   converted UnitTest++ as native tests.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
-
-- **`[[nodiscard]]` and `[[deprecated]]` warnings on by default** (section 7, item 8, 2026-11-06): they
-  warn without a flag, as C++ compilers do, where kpp's other warnings are flags; or a flag of
-  their own, or errors.
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
