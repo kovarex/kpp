@@ -1,0 +1,31 @@
+// spec: the size of a pointer to a member function is the same at compile time (a template argument, a constexpr local, a static_assert) and at run time: 16 for a class with a base at an offset (C after A and B: MSVC's multiple inheritance model, the function and the adjustment of `this`), 8 for one without (A); clang prints `16 16 16 8`
+// found by thread B (2026-11-06) after e2a4d5c2: the resolver's sizeof said 8 for C's pointers, which the code generator makes 16 bytes, so `Size<sizeof(Pmf)>::value` printed 8 (a silent wrong answer); both read GlobalScope::hasBaseAtOffset now
+struct A
+{
+  int a = 1;
+  int fa() { return this->a; }
+};
+struct B
+{
+  int b = 2;
+  int fb() { return this->b; }
+};
+struct C : A, B
+{
+  int c = 3;
+};
+template<int N>
+struct Size
+{
+  static constexpr int value = N;
+};
+using Pmf = int (C::*)();
+static_assert(sizeof(Pmf) == 16);
+static_assert(sizeof(int (A::*)()) == 8);
+int main()
+{
+  constexpr int atCompileTime = sizeof(Pmf);
+  int atRunTime = sizeof(Pmf);
+  println(Size<sizeof(Pmf)>::value, " ", atCompileTime, " ", atRunTime, " ", Size<sizeof(int (A::*)())>::value);
+  return 0;
+}

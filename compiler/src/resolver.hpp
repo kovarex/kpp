@@ -507,6 +507,13 @@ public:
   // with the code generator's arithmetic mode, enumeration storage and layouts (hooks). Null when
   // e is no constant.
   std::optional<ConstValue> evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks);
+  // Whether some base subobject anywhere in class cls's hierarchy is at a non-zero offset: a pointer
+  // to its member functions then carries an adjustment of `this` (16 bytes, MSVC's multiple
+  // inheritance model), else it is the function alone (8). Decided from the declarations as the
+  // code generator lays classes out (its own vtable pointer, the polymorphic bases, then the others;
+  // an empty base takes no bytes), so that sizeof agrees at compile time and at run time, and never
+  // from a layout, which may hold such a pointer to the class itself.
+  bool hasBaseAtOffset(const Ty* cls);
   // The value init gives an object of type t when it initializes one (a global's or static
   // member's initializer: `Flags f = {A, B};`, `Array<int, 3> a = {1, 2, 3}`, `Box b = Box(1, 2);`):
   // a brace list's elements, a constructor's arguments, a conversion; no init (`constexpr P p;`):

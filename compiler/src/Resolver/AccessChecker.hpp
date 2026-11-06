@@ -177,6 +177,13 @@
   std::optional<int64_t> constDeclaredAlign(ClassDecl* cls, Expr* alignment, const Subst* sp, int depth);
 
   std::optional<int64_t> constSizeOf(const Ty* t, int depth);
+  // GlobalScope::hasBaseAtOffset, and the declaration-based facts it rests on (structFor's: a class
+  // with a virtual function of its own or a polymorphic base is polymorphic; one with no data member,
+  // not polymorphic, and only empty bases is empty).
+  bool classHasBaseAtOffset(const Ty* cls, int depth);
+  bool classDeclaredPolymorphic(const Ty* cls, int depth);
+  bool classDeclaredEmpty(const Ty* cls, int depth);
+  std::vector<const Ty*> classBasesOf(const Ty* cls, ClassDecl*& def, int depth);
 
   std::optional<int64_t> constAlignOf(const Ty* t, int depth);
 

@@ -36,9 +36,7 @@
     // polymorphic bases, then the others; an empty base takes no bytes), never from a layout, which
     // may hold a pointer to a member function of the class itself (a base's `void (Derived::*)()`).
     bool hasBaseAtOffset(const Ty* cls, Node* at, int depth = 0);
-    bool declaredPolymorphic(const Ty* cls, Node* at, int depth = 0);
-    bool declaredEmpty(const Ty* cls, Node* at, int depth = 0);
-    std::unordered_map<const Ty*, bool> baseAtOffsetCache, polymorphicCache, emptyCache;
+    std::unordered_map<const Ty*, bool> baseAtOffsetCache;
     // Whether mp, a pointer to a member function, is of the multiple model (hasBaseAtOffset).
     bool memberFunctionPointerAdjusts(const Ty* mp, Node* at);
     // A member function pointer value of the multiple model: its function and adjustment (constants

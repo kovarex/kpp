@@ -1088,79 +1088,14 @@ auto codegen::Emitter::resultClassOf(FunctionDecl* f, const Ty* owner, bool& poi
   return object && isClass(object) && !types.isDependent(object) ? object : nullptr;
 }
 
-auto codegen::Emitter::declaredPolymorphic(const Ty* cls, Node* at, int depth) -> bool
+auto codegen::Emitter::hasBaseAtOffset(const Ty* cls, Node* at, int) -> bool
 {
-  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
-    return false;
-  const Ty* key = canonicalClass(cls, at);
-  if (auto found = polymorphicCache.find(key); found != polymorphicCache.end())
-    return found->second;
-  bool result = false;
-  if (ClassDecl* c = classDef(key->decl, at))
-  {
-    for (Decl* m : c->members) // (structFor's own vtable pointer)
-      if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)) && !(m->flags & (DF_Static | DF_Constructor)) &&
-          m->templateParams.empty())
-        result = true;
-    if (!result)
-      for (const Ty* b : basesOf(c, global.classArgsOf(key), at))
-        result = result || declaredPolymorphic(b, at, depth + 1);
-  }
-  polymorphicCache[key] = result;
-  return result;
-}
-
-auto codegen::Emitter::declaredEmpty(const Ty* cls, Node* at, int depth) -> bool
-{
-  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
-    return false;
-  const Ty* key = canonicalClass(cls, at);
-  if (auto found = emptyCache.find(key); found != emptyCache.end())
-    return found->second;
-  bool result = !declaredPolymorphic(key, at, depth);
-  if (ClassDecl* c = classDef(key->decl, at); c && result)
-  {
-    for (Decl* m : c->members)
-      if ((m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef))) ||
-          (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition))
-        result = false; // (a data member, or an anonymous struct's or union's)
-    if (result)
-      for (const Ty* b : basesOf(c, global.classArgsOf(key), at))
-        result = result && declaredEmpty(b, at, depth + 1);
-  }
-  else if (!c)
-    result = false;
-  emptyCache[key] = result;
-  return result;
-}
-
-auto codegen::Emitter::hasBaseAtOffset(const Ty* cls, Node* at, int depth) -> bool
-{
-  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || types.isDependent(cls))
     return false;
   const Ty* key = canonicalClass(cls, at);
   if (auto found = baseAtOffsetCache.find(key); found != baseAtOffsetCache.end())
     return found->second;
-  bool result = false;
-  if (ClassDecl* c = classDef(key->decl, at))
-  {
-    std::vector<const Ty*> bases = basesOf(c, global.classArgsOf(key), at);
-    bool anyPolymorphic = false;
-    for (const Ty* b : bases)
-      anyPolymorphic = anyPolymorphic || declaredPolymorphic(b, at, depth + 1);
-    // Something at offset 0 that takes bytes: the class's own vtable pointer, then each base in
-    // structFor's order that is not empty; a base after one is at a non-zero offset.
-    bool taken = !anyPolymorphic && declaredPolymorphic(key, at, depth);
-    for (bool polymorphicPass : {true, false})
-      for (const Ty* b : bases)
-        if (b && declaredPolymorphic(b, at, depth + 1) == polymorphicPass)
-        {
-          if (taken || hasBaseAtOffset(b, at, depth + 1))
-            result = true;
-          if (!declaredEmpty(b, at, depth + 1))
-            taken = true;
-        }
-  }
+  bool result = global.hasBaseAtOffset(key); // (the resolver's, which sizeof at compile time reads too)
   baseAtOffsetCache[key] = result;
   return result;
 }

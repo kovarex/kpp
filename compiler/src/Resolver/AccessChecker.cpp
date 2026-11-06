@@ -636,6 +636,97 @@ auto GlobalScope::Impl::constDeclaredAlign(ClassDecl* cls, Expr* alignment, cons
   return v->i;
 }
 
+auto GlobalScope::Impl::classBasesOf(const Ty* cls, ClassDecl*& def, int depth) -> std::vector<const Ty*>
+{
+  std::vector<const Ty*> out;
+  def = nullptr;
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+    return out;
+  Decl* d = cls->decl;
+  if (!d->ownScope)
+  {
+    Entry e{d, nullptr};
+    if (Scope* s = scopeOfEntry(e, 0))
+      d = s->owner;
+  }
+  if (!d || d->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(d)->isDefinition)
+    return out;
+  def = static_cast<ClassDecl*>(d);
+  Subst subst = substFor(cls);
+  const Subst* sp = subst.empty() ? nullptr : &subst;
+  for (const ClassDecl::Base& b : def->bases)
+  {
+    DeclContext dc;
+    declContextFor(def, dc);
+    TypeContext ctx2{dc.scope, &dc.params, sp, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+    const Ty* bt = convertType(b.type, ctx2, depth + 1);
+    if (bt && bt->kind == TyKind::Pack)
+      for (const Ty* element : bt->args)
+        out.push_back(element);
+    else
+      out.push_back(bt);
+  }
+  return out;
+}
+
+auto GlobalScope::Impl::classDeclaredPolymorphic(const Ty* cls, int depth) -> bool
+{
+  ClassDecl* def = nullptr;
+  std::vector<const Ty*> bases = classBasesOf(cls, def, depth);
+  if (!def)
+    return false;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)) && !(m->flags & (DF_Static | DF_Constructor)) &&
+        m->templateParams.empty())
+      return true;
+  for (const Ty* b : bases)
+    if (classDeclaredPolymorphic(b, depth + 1))
+      return true;
+  return false;
+}
+
+auto GlobalScope::Impl::classDeclaredEmpty(const Ty* cls, int depth) -> bool
+{
+  ClassDecl* def = nullptr;
+  std::vector<const Ty*> bases = classBasesOf(cls, def, depth);
+  if (!def || classDeclaredPolymorphic(cls, depth))
+    return false;
+  for (Decl* m : membersRead(def))
+    if ((m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend))) ||
+        (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() && static_cast<ClassDecl*>(m)->isDefinition))
+      return false; // (a data member, or an anonymous struct's or union's)
+  for (const Ty* b : bases)
+    if (!classDeclaredEmpty(b, depth + 1))
+      return false;
+  return true;
+}
+
+auto GlobalScope::Impl::classHasBaseAtOffset(const Ty* cls, int depth) -> bool
+{
+  ClassDecl* def = nullptr;
+  std::vector<const Ty*> bases = classBasesOf(cls, def, depth);
+  if (!def)
+    return false;
+  bool anyPolymorphic = false;
+  for (const Ty* b : bases)
+    anyPolymorphic = anyPolymorphic || classDeclaredPolymorphic(b, depth + 1);
+  // Something at offset 0 that takes bytes (the class's own vtable pointer, then each base in the
+  // layout's order that is not empty): a base after it is at a non-zero offset.
+  bool taken = !anyPolymorphic && classDeclaredPolymorphic(cls, depth);
+  for (bool polymorphicPass : {true, false})
+    for (const Ty* b : bases)
+      if (b && classDeclaredPolymorphic(b, depth + 1) == polymorphicPass)
+      {
+        if (taken || classHasBaseAtOffset(b, depth + 1))
+          return true;
+        if (!classDeclaredEmpty(b, depth + 1))
+          taken = true;
+      }
+  return false;
+}
+
+bool GlobalScope::hasBaseAtOffset(const Ty* cls) { return impl->classHasBaseAtOffset(cls, 0); }
+
 auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int64_t>
 {
   if (!t || depth > 24)
@@ -654,8 +745,12 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
     case TyKind::Char: case TyKind::Int: case TyKind::Float:
       return t->bits / 8;
     case TyKind::Nullptr: case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef:
-    case TyKind::Function: case TyKind::MemberPointer:
+    case TyKind::Function:
       return 8;
+    case TyKind::MemberPointer:
+      // A data member's offset; a member function, with the adjustment of `this` where its class has
+      // a base at an offset (hasBaseAtOffset, the code generator's model).
+      return t->inner && t->inner->kind == TyKind::Function && !t->args.empty() && classHasBaseAtOffset(t->args[0], depth + 1) ? 16 : 8;
     case TyKind::Array:
     {
       auto inner = constSizeOf(t->inner, depth + 1);
