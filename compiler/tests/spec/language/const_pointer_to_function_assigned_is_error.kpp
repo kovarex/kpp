@@ -1,0 +1,10 @@
+// spec: a const pointer to a function cannot be assigned, as C++ has it
+// error: const_pointer_to_function_assigned_is_error.kpp:8: error: assignment to a const
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+int main()
+{
+  int (*const fixed)(int) = twice;
+  fixed = thrice;
+  return fixed(1);
+}

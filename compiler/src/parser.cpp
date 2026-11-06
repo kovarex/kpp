@@ -2502,7 +2502,7 @@ namespace
       }
       // Function pointer / reference-to-array: ( * name )(params) or ( & name )[N]
       if (at(P::LParen) && (((at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) &&
-                             (atIdent(2) || at(Kw::const_, 2) || at(P::Star, 2) || atIdent(1) && false)) ||
+                             (atIdent(2) || at(Kw::const_, 2) || at(Kw::volatile_, 2) || at(P::Star, 2) || atIdent(1) && false)) ||
                             (atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))))
       {
         advance();
@@ -2551,6 +2551,16 @@ namespace
             PointerType* p = node<PointerType>(pos);
             p->pointee = f;
             d.type = p;
+            // `int (*const fixed)(int)`: the pointer is const (inner is the const pointer to the result).
+            if (inner && inner->kind == NodeKind::ConstType && static_cast<ConstType*>(inner)->inner &&
+                static_cast<ConstType*>(inner)->inner->kind == NodeKind::PointerType)
+            {
+              ConstType* c = node<ConstType>(pos);
+              c->inner = p;
+              c->isConst = static_cast<ConstType*>(inner)->isConst;
+              c->isVolatile = static_cast<ConstType*>(inner)->isVolatile;
+              d.type = c;
+            }
           }
         }
         else if (at(P::LBracket) && inner != d.type)
@@ -4540,15 +4550,23 @@ namespace
     // template name's), so that `(*name)[N]` and `(&name)[N]`, a pointer to or reference to an array,
     // declare (`int (*rowPtr)[3] = grid + 1;`); not after a plain name, which may be a function's:
     // `row(*p)[0] = v;` is a call (a parser without the names' kinds cannot tell `Cell (*p)[2]`).
+    // A pointer's cv-qualifiers before the name are the declarator's too (`int (*const fixed)(int)`,
+    // a const pointer to a function; an expression has no `* const`).
     bool parenthesisedDeclaratorAhead(int ahead, bool unambiguous = false) const
     {
-      if (!at(P::LParen, ahead) || !(at(P::Star, ahead + 1) || at(P::Amp, ahead + 1)) || !atIdent(ahead + 2))
+      if (!at(P::LParen, ahead) || !(at(P::Star, ahead + 1) || at(P::Amp, ahead + 1)))
         return false;
-      if (at(P::RParen, ahead + 3))
-        return at(P::LParen, ahead + 4) || (unambiguous && at(P::LBracket, ahead + 4));
-      if (!at(P::Star, ahead + 1) || !at(P::LBracket, ahead + 3))
+      int name = ahead + 2;
+      bool qualified = false;
+      while (at(P::Star, ahead + 1) && (at(Kw::const_, name) || at(Kw::volatile_, name)))
+        ++name, qualified = true;
+      if (!atIdent(name))
         return false;
-      int i = ahead + 3;
+      if (at(P::RParen, name + 1))
+        return at(P::LParen, name + 2) || ((unambiguous || qualified) && at(P::LBracket, name + 2));
+      if (!at(P::Star, ahead + 1) || !at(P::LBracket, name + 1))
+        return false;
+      int i = name + 1;
       for (int depth = 0;; ++i)
       {
         if (at(TokenKind::End, i))
