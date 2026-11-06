@@ -59,15 +59,23 @@ struct InPlaceType {};
 struct PiecewiseConstruct_t {};
 const PiecewiseConstruct_t piecewiseConstruct;
 
-// Bit rotation (C++20 std::rotr).
+// Bit rotation (C++20 std::rotr): by count modulo the width, a negative count rotating left. A
+// count of 0 or a multiple of the width is the value; neither shift is ever by the width or more
+// (rotr(x, 0) shifted left by 32, which an optimized build makes anything: 0x12345678 gave 0x0b6baa20).
 u32 rotr(u32 value, i32 count)
 {
-  return (value >> count) | (value << (32 - count));
+  i32 r = count % 32;
+  if (r < 0)
+    r += 32;
+  return r == 0 ? value : (value >> r) | (value << (32 - r));
 }
 
 u64 rotr(u64 value, i32 count)
 {
-  return (value >> count) | (value << (64 - count));
+  i32 r = count % 64;
+  if (r < 0)
+    r += 64;
+  return r == 0 ? value : (value >> r) | (value << (64 - r));
 }
 
 // The greatest common divisor of |a| and |b| (std::gcd), 0 when both are 0, and their least common
