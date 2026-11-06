@@ -1,0 +1,26 @@
+// spec: `int (&r)(int)` is a reference to the function: it chooses from an overload set as a pointer does, binds a noexcept function, gives a pointer, matches `R (&)(A)` and a parameter of that type
+// found by thread A's comparison with clang (2026-11-06): named, it was parsed as a pointer to the function
+int twice(int x) { return x * 2; }
+double twice(double x) { return x * 2.5; }
+int plain(int x) { return x + 1; }
+int quiet(int x) noexcept { return x + 2; }
+int (&global)(int) = plain;
+template<class T> struct Kind { static constexpr int value = 0; };
+template<class R, class A> struct Kind<R (&)(A)> { static constexpr int value = 1; };
+template<class R, class A> struct Kind<R (*)(A)> { static constexpr int value = 2; };
+int takes(int (&f)(int)) { return f(3); }
+int takes(double (&f)(double)) { return int(f(4.0)); }
+struct Holder { int (&f)(int); };
+int main()
+{
+  int (&i)(int) = twice;
+  double (&d)(double) = twice;
+  int (&q)(int) = quiet;
+  int (&&rr)(int) = plain;
+  int (*fromRef)(int) = i;
+  Holder h{plain};
+  println(i(1), " ", d(2.0), " ", q(3), " ", rr(4), " ", global(5), " ", fromRef(6), " ", h.f(7));
+  println(&global == &plain, " ", Kind<decltype(i)>::value, " ", Kind<decltype(fromRef)>::value);
+  println(takes(i), " ", takes(d), " ", takes(plain));
+  return 0;
+}

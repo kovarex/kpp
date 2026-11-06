@@ -1,0 +1,19 @@
+// spec: default arguments add up over a function's declarations, a free function's and a member's on its definition ([dcl.fct.default] 4)
+// found by thread A's comparison with clang (2026-11-06): "a call that did not resolve"
+int f(int a, int b, int c = 3);
+int f(int a, int b = 2, int c);
+int f(int a = 1, int b, int c);
+int f(int a, int b, int c) { return a * 100 + b * 10 + c; }
+void g(int a, int b = 5);
+void g(int a = 4, int b) { println(a, " ", b); }
+struct S { void m(int a, int b = 2); };
+void S::m(int a = 1, int b) { println(a, " ", b); }
+int main()
+{
+  println(f(), " ", f(7), " ", f(7, 8), " ", f(7, 8, 9));
+  g();
+  g(1);
+  S s;
+  s.m();
+  return 0;
+}

@@ -1,0 +1,13 @@
+// spec: `<::` is `<` and `::` unless a `:` or `>` follows, so that `V<::G>` is a template-id ([lex.pptoken] 3.2); `%` and `:` beside other tokens stay what they are
+// found by thread A's comparison with clang (2026-11-06)
+template<class T> struct V { T x; };
+struct G { };
+template<class T> struct W { static constexpr int n = sizeof(T); };
+int main()
+{
+  V<::G> a;
+  int b[2] = {1, 2};
+  int c = 1;
+  println(b[c]%2, " ", sizeof(a), " ", W<::G>::n, " ", 7%(c+1), " ", c ?b[0]:b[1]);
+  return 0;
+}

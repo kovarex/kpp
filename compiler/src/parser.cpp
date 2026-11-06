@@ -30,6 +30,8 @@ namespace
     Expr* requiresClause = nullptr;
     Span<Expr*> structuredBindings;
     Span<Expr*> objectArgs; // FunctionDecl::objectArgs
+    bool ofType = false; // the parameters of a function type, no function: `= 0` after them is an initializer
+    bool isPack = false; // `T (*...name)(int)`, `int (&...arrays)[N]`
   };
 
   class Parser
@@ -1245,99 +1247,14 @@ namespace
           m->pointee = nullptr;
           type = m;
         }
-        else if (at(P::LParen) && (at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) && at(P::RParen, 2) && at(P::LBracket, 3))
+        else if (at(P::LParen) && abstractDeclaratorAhead())
         {
-          // Abstract reference or pointer to an array: `T (&)[N]`, `T (&&)[N]`, `T (*)[N]` (a
-          // parameter without a name). The bound belongs to the element type, which the reference
-          // or pointer then wraps, as in a named declarator's `T (&name)[N]`.
-          uint32_t start = pos;
-          advance(); // (
-          P which = at(P::Star) ? P::Star : at(P::Amp) ? P::Amp : P::AndAnd;
-          advance();
-          advance(); // )
-          Type* arrayed = parseArraySuffixes(type);
-          if (which == P::Star)
-          {
-            PointerType* p = node<PointerType>(start);
-            p->pointee = arrayed;
-            type = p;
-          }
-          else if (which == P::Amp)
-          {
-            LRefType* r = node<LRefType>(start);
-            r->referenced = arrayed;
-            type = r;
-          }
-          else
-          {
-            RRefType* r = node<RRefType>(start);
-            r->referenced = arrayed;
-            type = r;
-          }
-        }
-        else if (at(P::LParen) && (at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) && at(P::RParen, 2) && at(P::LParen, 3))
-        {
-          // Abstract pointer or reference to function: R (*)(Args), R (&)(Args)
-          uint32_t start = pos;
-          bool lref = at(P::Amp, 1), rref = at(P::AndAnd, 1);
-          advance();
-          advance();
-          advance();
+          // `T (*)(Args)`, `T (&)[N]`, `T (C::*)(Args)`, `T (**)(Args)`, `T (*(*)(Args))[N]`: the
+          // declarator of a type with no name, as a named one's (parseParenthesizedDeclarator).
           Declarator d;
-          parseFunctionSuffix(d);
-          FunctionType* f = node<FunctionType>(start);
-          f->result = type;
-          f->params = d.params;
-          f->isVariadic = (d.flags & DF_Variadic) != 0;
-          f->isNoexcept = (d.flags & DF_Noexcept) != 0;
-          f->noexceptCondition = d.noexceptCondition;
-          f->isVolatile = (d.flags & DF_Volatile) != 0;
-          f->isConst = (d.flags & DF_Const) != 0;
-          f->refQualifier = uint8_t(d.refQualifier);
-          if (lref)
-          {
-            LRefType* r = node<LRefType>(start);
-            r->referenced = f;
-            type = r;
-          }
-          else if (rref)
-          {
-            RRefType* r = node<RRefType>(start);
-            r->referenced = f;
-            type = r;
-          }
-          else
-          {
-            PointerType* p = node<PointerType>(start);
-            p->pointee = f;
-            type = p;
-          }
-        }
-        else if (at(P::LParen) && atIdent(1) && memberFunctionPointerAhead())
-        {
-          uint32_t start = pos;
-          advance();
-          NamedType* cls = node<NamedType>(pos);
-          parseQualifiedName(cls->name, true, false);
-          advance(); // ::
-          advance(); // *
-          expect(P::RParen, "expected ')'");
-          Declarator d;
-          parseFunctionSuffix(d);
-          FunctionType* f = node<FunctionType>(start);
-          f->result = type;
-          f->params = d.params;
-          f->isConst = (d.flags & DF_Const) != 0;
-          f->isVariadic = (d.flags & DF_Variadic) != 0;
-          f->isNoexcept = (d.flags & DF_Noexcept) != 0;
-          f->noexceptCondition = d.noexceptCondition;
-          f->isVolatile = (d.flags & DF_Volatile) != 0;
-          f->isConst = (d.flags & DF_Const) != 0;
-          f->refQualifier = uint8_t(d.refQualifier);
-          MemberPointerType* m = node<MemberPointerType>(start);
-          m->classType = cls;
-          m->pointee = f;
-          type = m;
+          d.type = type;
+          parseParenthesizedDeclarator(d, Scope::Local);
+          type = d.type;
         }
         else if (atIdent() && memberPointerAhead())
         {
@@ -1370,13 +1287,6 @@ namespace
           return false;
       }
       return false;
-    }
-
-    // Lookahead for `( Name::Name::* ) (` without allocating.
-    bool memberFunctionPointerAhead() const
-    {
-      int after = memberPointerAhead(1);
-      return after && at(P::RParen, after) && at(P::LParen, after + 1);
     }
 
     // Lookahead for `Name::Name::*` without allocating.
@@ -2609,6 +2519,91 @@ namespace
       return t && t->kind == NodeKind::AutoType;
     }
 
+    // A declarator in parentheses, at its `(`: `(*name)`, `(&name)`, `(C::*name)`, `(**name)`, `(*&name)`,
+    // `(*(*name)(int))`, `(*(name))`, `(*name[2])`, `(*name(bool))`, or the same with no name. What the
+    // parentheses hold wraps what follows them: d.type comes in as the type before them, the type written
+    // inside is built on it, and that base is then replaced by the base with the suffixes after the
+    // parentheses, a function's parameters or an array's bounds (`int (**f)(int)` is a pointer to a
+    // pointer to the function, `int (*const a[2])[3]` an array of const pointers to arrays, and
+    // `int (*(*f)(int))(char)` nests: the inner call of this handles `(*f)(int)` on `int*`).
+    void parseParenthesizedDeclarator(Declarator& d, Scope scope)
+    {
+      Type* base = d.type;
+      advance();
+      Type* inner = parseTypeSuffixes(base);
+      if (accept(P::Ellipsis))
+        d.isPack = true;
+      if (at(P::LParen))
+      {
+        d.type = inner;
+        parseParenthesizedDeclarator(d, scope);
+        inner = d.type;
+        d.type = base;
+      }
+      else
+      {
+        if (atIdent(0) && (at(P::ColonColon, 1) || memberPointerAhead(0) > 0))
+        {
+          // Pointer to member `( C::* name )`, or a qualified name, `int (*S::table)(int)`.
+          QualifiedName q;
+          parseQualifiedName(q, true, false);
+          if (accept(P::Star))
+          {
+            MemberPointerType* m = node<MemberPointerType>(pos);
+            NamedType* cls = node<NamedType>(pos);
+            cls->name = q;
+            m->classType = cls;
+            m->pointee = inner;
+            inner = parseTypeSuffixes(m);
+          }
+          else
+            d.name = q;
+        }
+        if (d.name.empty() && (atIdent() || at(P::ColonColon)))
+          parseQualifiedName(d.name, true);
+        // `int (*choose(bool up))(int)`: a function's own parameters inside the parentheses, the
+        // ones after them its result's (a pointer to a function); was "expected ')' in declarator".
+        if (at(P::LParen) && !d.name.empty())
+        {
+          d.isFunction = true;
+          parseFunctionSuffix(d);
+        }
+        // Array suffix inside the parens.
+        inner = parseArraySuffixes(inner);
+      }
+      if (!expect(P::RParen, "expected ')' in declarator"))
+        return;
+      if (at(P::LParen) && inner == base)
+      {
+        // `int ((name))(int)`: nothing inside the parentheses but the name.
+        if (!d.isFunction && !d.name.empty() && looksLikeParameterList(scope))
+        {
+          d.isFunction = true;
+          parseFunctionSuffix(d);
+        }
+        return;
+      }
+      if (at(P::LParen))
+      {
+        Declarator suffix;
+        suffix.type = base;
+        suffix.ofType = true;
+        parseFunctionSuffix(suffix);
+        if (suffix.trailingReturn)
+          suffix.type = suffix.trailingReturn; // `auto (*f)(int) -> int`
+        functionTypeOfDeclarator(suffix, pos);
+        d.type = rebase(inner, base, suffix.type);
+      }
+      else if (at(P::LBracket))
+      {
+        // `const T (&array)[N]`, `int (*rows)[4]`: the bound belongs to the element type, which
+        // the reference or pointer inside the parentheses then wraps (not an array of them).
+        d.type = rebase(inner, base, parseArraySuffixes(base));
+      }
+      else
+        d.type = inner;
+    }
+
     void parseDeclarator(Declarator& d, Scope scope)
     {
       d.type = parseTypeSuffixes(d.type);
@@ -2634,94 +2629,11 @@ namespace
       }
       // Function pointer / reference-to-array: ( * name )(params) or ( & name )[N]
       if (at(P::LParen) && (((at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) &&
-                             (atIdent(2) || at(Kw::const_, 2) || at(Kw::volatile_, 2) || at(P::Star, 2) || atIdent(1) && false)) ||
-                            memberPointerAhead(1) > 0))
+                             (atIdent(2) || at(P::ColonColon, 2) || at(Kw::const_, 2) || at(Kw::volatile_, 2) || at(P::Star, 2) ||
+                              at(P::Amp, 2) || at(P::AndAnd, 2) || at(P::LParen, 2) || at(P::Ellipsis, 2))) ||
+                            memberPointerAhead(1) > 0 || (at(P::LParen, 1) && parenthesisedDeclaratorAhead(0, true))))
       {
-        advance();
-        Type* inner = parseTypeSuffixes(d.type);
-        if (atIdent(0) && (at(P::ColonColon, 1) || memberPointerAhead(0) > 0))
-        {
-          // Pointer to member: ( C::* name )
-          QualifiedName q;
-          parseQualifiedName(q, true, false);
-          if (accept(P::Star))
-          {
-            MemberPointerType* m = node<MemberPointerType>(pos);
-            NamedType* cls = node<NamedType>(pos);
-            cls->name = q;
-            m->classType = cls;
-            m->pointee = inner;
-            inner = m;
-          }
-          inner = parseTypeSuffixes(inner);
-        }
-        if (atIdent())
-          parseQualifiedName(d.name, true);
-        // `int (*choose(bool up))(int)`: a function's own parameters inside the parentheses, the
-        // ones after them its result's (a pointer to a function); was "expected ')' in declarator".
-        if (at(P::LParen) && !d.name.empty())
-        {
-          d.isFunction = true;
-          parseFunctionSuffix(d);
-        }
-        // Array suffix inside the parens.
-        inner = parseArraySuffixes(inner);
-        if (!expect(P::RParen, "expected ')' in declarator"))
-          return;
-        if (at(P::LParen))
-        {
-          // Pointer to function: the declared type is a pointer to FunctionType.
-          FunctionType* f = node<FunctionType>(pos);
-          f->result = d.type;
-          Declarator tmp;
-          parseFunctionSuffix(tmp);
-          f->params = tmp.params;
-          f->isVariadic = (tmp.flags & DF_Variadic) != 0;
-          f->isConst = (tmp.flags & DF_Const) != 0;
-          f->isNoexcept = (tmp.flags & DF_Noexcept) != 0;
-          f->noexceptCondition = tmp.noexceptCondition;
-          f->isVolatile = (tmp.flags & DF_Volatile) != 0;
-          f->isConst = (tmp.flags & DF_Const) != 0;
-          f->refQualifier = uint8_t(tmp.refQualifier);
-          if (inner && inner->kind == NodeKind::MemberPointerType)
-          {
-            // Pointer to member function: `R (C::*name)(params)`.
-            static_cast<MemberPointerType*>(inner)->pointee = f;
-            d.type = inner;
-          }
-          else if (inner && inner->kind == NodeKind::ArrayType)
-          {
-            // `int (*table[2])()`: an array of pointers to the function type (the array was dropped:
-            // table was one pointer, and `= { one, two }` no initializer of it).
-            d.type = rebase(inner, d.type, f);
-          }
-          else
-          {
-            PointerType* p = node<PointerType>(pos);
-            p->pointee = f;
-            d.type = p;
-            // `int (*const fixed)(int)`: the pointer is const (inner is the const pointer to the result).
-            if (inner && inner->kind == NodeKind::ConstType && static_cast<ConstType*>(inner)->inner &&
-                static_cast<ConstType*>(inner)->inner->kind == NodeKind::PointerType)
-            {
-              ConstType* c = node<ConstType>(pos);
-              c->inner = p;
-              c->isConst = static_cast<ConstType*>(inner)->isConst;
-              c->isVolatile = static_cast<ConstType*>(inner)->isVolatile;
-              d.type = c;
-            }
-          }
-        }
-        else if (at(P::LBracket) && inner != d.type)
-        {
-          // `const T (&array)[N]`, `int (*rows)[4]`: the bound belongs to the element type, which
-          // the reference or pointer inside the parentheses then wraps (not an array of them).
-          Type* arrayed = parseArraySuffixes(d.type);
-          d.type = rebase(inner, d.type, arrayed);
-        }
-        else
-          d.type = inner;
-        d.type = parseArraySuffixes(d.type);
+        parseParenthesizedDeclarator(d, scope);
         return;
       }
       // Structured binding: auto [a, b] = ..., also auto& [a, b] and const auto& [a, b]
@@ -2929,16 +2841,10 @@ namespace
           expression = true;
         else if (at(P::LParen))
         {
-          int i = 1;
-          if (int after = memberPointerAhead(1))
-            i = after; // `R (C::*name)(...)`, `R (game::C::*name)(...)`
-          else
-            while (at(P::Star, i) || at(P::Amp, i) || at(P::AndAnd, i) || at(Kw::const_, i))
-              ++i;
-          if (atIdent(i))
-            ++i;
-          bool declarator = i > 1 && at(P::RParen, i) && (at(P::LParen, i + 1) || at(P::LBracket, i + 1));
-          expression = !declarator;
+          // `R (*name)(...)`, `R (C::*name)(...)`, `R (game::C::*name)(...)`
+          ParenthesizedDeclarator found;
+          int end = scanParenthesizedDeclarator(0, found);
+          expression = !(end && found.pointer && (at(P::LParen, end) || at(P::LBracket, end)));
         }
         else
           expression = !(atIdent() || at(P::Star) || at(P::Amp) || at(P::AndAnd) || at(P::Comma) || at(P::RParen) ||
@@ -3027,7 +2933,7 @@ namespace
           advance();
           d.requiresClause = parseRequiresClause();
         }
-        else if (at(P::Assign))
+        else if (at(P::Assign) && !d.ofType)
         {
           if (at(TokenKind::Number, 1)) { advance(); advance(); d.flags |= DF_Pure; }
           else if (at(Kw::default_, 1)) { advance(); advance(); d.flags |= DF_Default; }
@@ -3076,6 +2982,7 @@ namespace
       d.type = p->type;
       parseDeclarator(d, Scope::Local);
       p->type = d.type;
+      p->isPack = p->isPack || d.isPack;
       if (!d.name.empty())
         p->name = d.name.last().symbol;
       if (d.isFunction)
@@ -3123,8 +3030,16 @@ namespace
       f->name = d.name;
       f->params = d.params;
       f->objectArgs = d.objectArgs;
+      bool defaulted = false, split = false;
       for (Decl* p : d.params)
+      {
         p->parent = f; // Parameters belong to the function (its template parameters are in scope for them).
+        auto* param = static_cast<ParamDecl*>(p);
+        split = split || (defaulted && !param->defaultValue && !param->isPack) || (param->defaultValue && d.name.parts.size() > 1);
+        defaulted = defaulted || param->defaultValue;
+      }
+      if (split)
+        out.splitDefaults.push_back(f);
       f->flags |= flags | d.flags;
       f->trailingReturn = d.trailingReturn;
       f->requiresClause = d.requiresClause ? d.requiresClause : templ.requiresClause;
@@ -5139,31 +5054,96 @@ namespace
     // `row(*p)[0] = v;` is a call (a parser without the names' kinds cannot tell `Cell (*p)[2]`).
     // A pointer's cv-qualifiers before the name are the declarator's too (`int (*const fixed)(int)`,
     // a const pointer to a function; an expression has no `* const`).
+    // Several pointers (`(**name)(int)`, `(*&name)(int)`) and nested parentheses are declarators too,
+    // the latter after an unambiguous type only (`row(*(p))(1);` is a call).
     bool parenthesisedDeclaratorAhead(int ahead, bool unambiguous = false) const
     {
-      if (!at(P::LParen, ahead) || !(at(P::Star, ahead + 1) || at(P::Amp, ahead + 1)))
+      if (!at(P::LParen, ahead))
         return false;
-      int name = ahead + 2;
-      bool qualified = false;
-      while (at(P::Star, ahead + 1) && (at(Kw::const_, name) || at(Kw::volatile_, name)))
-        ++name, qualified = true;
-      if (!atIdent(name))
+      ParenthesizedDeclarator found;
+      int end = scanParenthesizedDeclarator(ahead, found);
+      if (!end || !found.pointer || !found.named || (found.nested && !unambiguous))
         return false;
-      if (at(P::RParen, name + 1))
-        return at(P::LParen, name + 2) || ((unambiguous || qualified) && (at(P::LBracket, name + 2) || at(P::Assign, name + 2))); // (`int (*p) = &x;`)
-      if (!at(P::Star, ahead + 1) || !at(P::LBracket, name + 1))
-        return false;
-      int i = name + 1;
+      if (found.subscripted)
+        return !found.reference && (at(P::LParen, end) || at(P::LBracket, end));
+      return at(P::LParen, end) || ((unambiguous || found.qualified) && (at(P::LBracket, end) || at(P::Assign, end))); // (`int (*p) = &x;`)
+    }
+
+    // At `(`: `(*)`, `(&)`, `(**)`, `(*const)`, `(*[2])`, `(C::*)`, `(*(*)(int))`, a declarator with no
+    // name, which no expression reads like.
+    bool abstractDeclaratorAhead() const
+    {
+      ParenthesizedDeclarator found;
+      return scanParenthesizedDeclarator(0, found) && found.pointer && !found.named;
+    }
+
+    struct ParenthesizedDeclarator
+    {
+      bool pointer = false;     // a `*`, `&`, `&&` or `C::*` inside
+      bool reference = false;   // an `&` or `&&` inside
+      bool qualified = false;   // `*const`
+      bool named = false;
+      bool subscripted = false; // `(*name[2])`
+      bool nested = false;      // `(*(*name))`
+    };
+
+    // At the `(` of token `i`: the index after its `)`, if what it holds reads like a declarator, or 0.
+    // Only a nested declarator takes a function's parameters inside the parentheses (`(*(*name)(int))`):
+    // `(*name(int))` declares a function, which a body does not (design.md 22).
+    int scanParenthesizedDeclarator(int i, ParenthesizedDeclarator& found) const
+    {
+      ++i;
+      for (;;)
+      {
+        if (at(P::Star, i))
+          found.pointer = true, ++i;
+        else if (at(P::Amp, i) || at(P::AndAnd, i))
+          found.pointer = found.reference = true, ++i;
+        else if (found.pointer && (at(Kw::const_, i) || at(Kw::volatile_, i)))
+          found.qualified = true, ++i;
+        else if (found.pointer && at(P::Ellipsis, i))
+          ++i;
+        else if (int after = memberPointerAhead(i))
+          found.pointer = true, i = after;
+        else
+          break;
+      }
+      if (at(P::LParen, i))
+      {
+        i = scanParenthesizedDeclarator(i, found);
+        if (!i)
+          return 0;
+        found.nested = true;
+        while (at(P::LParen, i) || at(P::LBracket, i))
+          if (!(i = afterBalanced(i)))
+            return 0;
+      }
+      else
+      {
+        if (atIdent(i))
+          found.named = true, ++i;
+        while (at(P::LBracket, i))
+        {
+          found.subscripted = true;
+          if (!(i = afterBalanced(i)))
+            return 0;
+        }
+      }
+      return at(P::RParen, i) ? i + 1 : 0;
+    }
+
+    // At the `(` or `[` of token `i`: the index after the one that closes it, or 0 at the file's end.
+    int afterBalanced(int i) const
+    {
       for (int depth = 0;; ++i)
       {
         if (at(TokenKind::End, i))
-          return false;
-        if (at(P::LBracket, i))
+          return 0;
+        if (at(P::LParen, i) || at(P::LBracket, i))
           ++depth;
-        else if (at(P::RBracket, i) && --depth == 0)
-          break;
+        else if ((at(P::RParen, i) || at(P::RBracket, i)) && --depth == 0)
+          return i + 1;
       }
-      return at(P::RParen, i + 1) && (at(P::LParen, i + 2) || at(P::LBracket, i + 2));
     }
 
     bool looksLikeDeclaration()
@@ -6649,6 +6629,7 @@ namespace
         case NodeKind::ConstType: { auto* c = static_cast<ConstType*>(t); c->inner = rebase(c->inner, base, newBase); return t; }
         case NodeKind::ArrayType: { auto* a = static_cast<ArrayType*>(t); a->element = rebase(a->element, base, newBase); return t; }
         case NodeKind::MemberPointerType: { auto* m = static_cast<MemberPointerType*>(t); m->pointee = rebase(m->pointee, base, newBase); return t; }
+        case NodeKind::FunctionType: { auto* f = static_cast<FunctionType*>(t); f->result = rebase(f->result, base, newBase); return t; }
         default: return t;
       }
     }
@@ -7118,7 +7099,7 @@ namespace
     auto directiveName = [&](const Token& t, bool& isIfZero)
     {
       std::string_view s = text.substr(t.offset, t.length);
-      size_t i = 1;
+      size_t i = s[0] == '%' ? 2 : 1; // (`%:if`)
       while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
         ++i;
       size_t start = i;

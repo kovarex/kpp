@@ -1,0 +1,9 @@
+// spec: a redeclaration of a function template adds no default argument, as in C++ ([dcl.fct.default] 4): an instance's defaults are written in its declaration's template parameters
+// error: default_argument_added_to_a_template_is_error.kpp:5: error: a redeclaration of the template f adds a default argument: give them all on its first declaration
+// found by thread A (2026-11-06)
+template<class T> T f(T a, T b = T(2));
+template<class T> T f(T a = T(1), T b) { return a * 10 + b; }
+int main()
+{
+  return f<int>(3);
+}

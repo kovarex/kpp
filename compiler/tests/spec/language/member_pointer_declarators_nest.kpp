@@ -1,0 +1,17 @@
+// spec: `int (C::*const p)(int) const` is a const pointer to member, `int (C::**p)(int) const`, `int (C::*&r)(int) const` and `int (C::*(*p))(int) const` what they say
+// found by thread A's comparison with clang (2026-11-06): a const one was a pointer to a function, the others parse errors
+struct C { int v; int get(int x) const { return v + x; } int add(int x) { return v += x; } };
+int (C::*const pinned)(int) const = &C::get;
+int main()
+{
+  C c{3};
+  int (C::*m)(int) const = &C::get;
+  int (C::**pm)(int) const = &m;
+  int (C::*&rm)(int) const = m;
+  int (C::*(*pm2))(int) const = &m;
+  println((c.*m)(1), " ", (c.*(*pm))(2), " ", (c.*rm)(3), " ", (c.*(*pm2))(4), " ", (c.*pinned)(5));
+  int C::*d = &C::v;
+  int C::**pd = &d;
+  println(c.*(*pd));
+  return 0;
+}

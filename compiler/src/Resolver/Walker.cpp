@@ -386,6 +386,8 @@ auto GlobalScope::Impl::Walker::checkTemporaryBound(uint32_t token, const std::s
     return; // (a const object's: checkConstDropped's error)
   if (types.stripRef(given)->kind == TyKind::Void)
     return; // (`return c.bump();` of a void call: no value at all, codegen's error)
+  if (declared->inner->kind == TyKind::Function && types.stripRef(given)->kind == TyKind::Function)
+    return; // (a function is an lvalue; which one and its noexcept: scalarReferenceTarget)
   if (impl.conversionRank(given, declared) < Impl::NotViable)
     return; // (a class whose conversion operator gives an lvalue of the type, a function)
   reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a value (" +
@@ -2988,6 +2990,8 @@ auto GlobalScope::Impl::Walker::bindTemplateAddresses(Expr* e, const Ty* target,
   if (!e || !target || depth > 8)
     return;
   const Ty* t = types.unqualified(types.stripRef(target));
+  if (t->kind == TyKind::Function)
+    t = types.pointer(t); // `int (&r)(double) = twice;` chooses as a pointer does
   if (e->kind != NodeKind::BraceInitExpr)
   {
     bindTemplateAddress(e, t);
@@ -6370,7 +6374,8 @@ auto GlobalScope::Impl::Walker::checkTypeNamesNoVariable(Node* base, uint32_t to
 auto GlobalScope::Impl::Walker::walkParam(ParamDecl* p) -> void
 {
   walkType(p->type);
-  walkExpr(p->defaultValue);
+  if (!p->inheritedDefault)
+    walkExpr(p->defaultValue);
   locals.push(p->name, p);
 }
 

@@ -1,0 +1,44 @@
+// spec: a declarator with no name takes the forms a named one does: `int (**)(int)`, `int (*const *)(int)`, `int (*&)(int)`, `int (*(*)(bool))(int)`, `int (*[2])(int)`, `int (**)[3]`, in parameters, aliases, typedefs, sizeof, casts and template arguments
+// found by thread A's comparison with clang (2026-11-06): parse errors
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+int (*pick(bool t))(int) { return t ? twice : thrice; }
+int which(int (*)(int)) { return 1; }
+int which(int (**)(int)) { return 2; }
+int which(int (*const *)(int)) { return 3; }
+int byRef(int (*&)(int)) { return 4; }
+int nest(int (*(*)(bool))(int)) { return 5; }
+int arrays(int (*)[3]) { return 6; }
+int arrays(int (**)[3]) { return 7; }
+int arrays(int (*(*)[2])(int)) { return 8; }
+template<class T> struct Size { static constexpr int value = sizeof(T); };
+using F2 = int (**)(int);
+using F3 = int (*(*)(bool))(int);
+using F4 = int (*[2])(int);
+typedef int (**F5)(int);
+typedef int (*(*F6)(bool))(int);
+int main()
+{
+  int (*p)(int) = twice;
+  F2 q = &p;
+  println((*q)(2), " ", which(q), " ", which(p));
+  int (*const c)(int) = twice;
+  println(which(&c));
+  println(byRef(p), " ", nest(pick));
+  F3 r = pick;
+  println(r(false)(2));
+  F4 t = {twice, thrice};
+  println(t[1](2), " ", sizeof(F4) / sizeof(void*));
+  F5 u = q;
+  F6 v = r;
+  println((*u)(3), " ", v(true)(3));
+  println(sizeof(int (**)(int)) == sizeof(void*), " ", sizeof(int (*[3])(int)) / sizeof(void*), " ", Size<int (*[4])(int)>::value / sizeof(void*));
+  void* erased = (void*)q;
+  println((*(int (**)(int))erased)(7));
+  println((*static_cast<int (**)(int)>(erased))(8));
+  int a[3] = {1, 2, 3};
+  int (*pa)[3] = &a;
+  int (*two[2])(int) = {twice, thrice};
+  println(arrays(pa), " ", arrays(&pa), " ", arrays(&two));
+  return 0;
+}

@@ -1,0 +1,18 @@
+// spec: a function pointer takes `= nullptr`, `(f)`, `{f}`, `= {f}`, a second declarator after a first, and a trailing result (`auto (*t)(int) -> int`)
+// found by thread A's comparison with clang (2026-11-06): the trailing result was dropped, the pointer's type unknown
+int twice(int x) { return x * 2; }
+struct S { int (*m)(int) = nullptr; int (*n)(int) = twice; int (*o)(int) = nullptr; };
+int (*g0)(int) = nullptr;
+int main()
+{
+  int (*a)(int) = nullptr;
+  int (*b)(int)(twice);
+  int (*c)(int){twice};
+  int (*d)(int) = {twice};
+  int (*e)(int) = nullptr, (*f)(int) = twice;
+  S s;
+  println(a == nullptr, " ", b(1), " ", c(2), " ", d(3), " ", e == nullptr, " ", f(4), " ", s.m == nullptr, " ", s.n(5), " ", g0 == nullptr);
+  auto (*t)(int) -> int = twice;
+  println(t(6));
+  return 0;
+}

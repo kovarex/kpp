@@ -313,6 +313,8 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
       unsupported(t, "throwing a value of unknown type");
     if (ty->kind == TyKind::Array)
       ty = types.pointer(ty->inner);
+    else if (ty->kind == TyKind::Function)
+      ty = types.pointer(ty); // `throw f;`: a pointer to the function ([except.throw] 3), which handlers of the pointer take
     ensureMalloc();
     std::string obj = newTemp();
     emitCall(obj + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(ty, t)) + ")", false);

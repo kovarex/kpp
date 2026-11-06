@@ -481,6 +481,7 @@ public:
   // The in-class declaration of an out-of-line member definition (`static` and `virtual` are
   // written there and copied onto the definition); null when there is none.
   FunctionDecl* declarationOf(FunctionDecl* def);
+  void mergeDefaultArguments(FunctionDecl* f); // finishIndex: every declaration of f in its file gets all of its default arguments
   std::string qualifiedName(Decl* d);            // `ns::Class::name`
   // The name a type name declared nowhere was written with, for the placeholder class the resolver
   // gives it (a draft, ATTR_Draft) so that checking goes on; "?" for any other declaration.

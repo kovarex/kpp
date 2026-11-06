@@ -1,0 +1,18 @@
+// spec: what reads like a parenthesised declarator after a function's name stays a call: `make(*(p))(1);`, `make(**pp)[0];`, `make(*p)[0];`
+// found by thread A's comparison with clang (2026-11-06)
+struct R { int operator()(int x) const { return x + 1; } int operator[](int x) const { return x + 2; } };
+R make(int v) { println("make ", v); return R(); }
+R& ref(int& v) { static R r; println("ref ", v); return r; }
+int main()
+{
+  int a = 3;
+  int* p = &a;
+  int** pp = &p;
+  println(make(*p)(1));
+  make(*(p))(1);
+  make(**pp)[0];
+  make(*p)[0];
+  int (*(*q)) = pp;
+  println(**q);
+  return 0;
+}

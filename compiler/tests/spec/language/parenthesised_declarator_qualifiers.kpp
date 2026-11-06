@@ -1,0 +1,15 @@
+// spec: `int (*const p)`, `int (*const *q)`, `int (*const volatile v)`, `int *(*r)`, `const int (*(*s))`, `int (&w)` in a body are declarations
+// found by thread A's comparison with clang (2026-11-06): "unexpected keyword in expression"
+int twice(int x) { return x * 2; }
+int main()
+{
+  int x = 5;
+  int (*const p) = &x;
+  int (*const *q) = &p;
+  int (*const volatile v) = &x;
+  int *(*r) = (int**)q;
+  const int (*(*s)) = (const int**)q;
+  int (&w) = x;
+  println(*p, " ", **q, " ", *v, " ", **r, " ", **s, " ", w);
+  return 0;
+}

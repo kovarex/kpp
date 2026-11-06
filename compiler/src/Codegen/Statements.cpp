@@ -407,7 +407,7 @@ auto codegen::Emitter::staticReferenceTarget(VariableDecl* v, const std::string&
   bool named = isLvalueExpression(init) || (init->ty && init->ty->isReference());
   if (!isClass(target) && !(isLambda(target) && given && isClass(given)))
   {
-    if (named || (given && isClass(given)))
+    if (named || (given && isClass(given)) || target->kind == TyKind::Function)
       return scalarReferenceTarget(t, init, at, temporary);
     std::string made = temporary(target);
     initializeFrom(made, target, init, at);

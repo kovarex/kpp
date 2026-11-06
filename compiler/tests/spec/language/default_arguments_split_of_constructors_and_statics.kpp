@@ -1,0 +1,14 @@
+// spec: default arguments split over a constructor's, a static member's and a namespace's function's declarations, of any expression: a call, a string
+// found by thread A's comparison with clang (2026-11-06): "a call that did not resolve"
+struct S { S(int z, int a, const char* s = "two"); int a; const char* s; };
+S::S(int z, int a = 7, const char* s) : a(a + z), s(s) { }
+int base() { return 40; }
+int g(int a, int b = base() + 2);
+int g(int a = base(), int b) { return a + b; }
+const char* h(const char* a, const char* b = "bee");
+const char* h(const char* a = "ay", const char* b) { println(a[0], " ", b[0]); return a; }
+namespace n { int k(int a, int b = 2); int k(int a = 1, int b) { return a * 10 + b; } }
+struct T { static int s(int a, int b = 3); int lam(int a, int b = 5); };
+int T::s(int a = 2, int b) { return a * 10 + b; }
+int T::lam(int a = 4, int b) { return a * 10 + b; }
+int main() { S x(1); println(x.a, " ", x.s[0], " ", S(1, 2).s[1], " ", g(), " ", g(1), " ", n::k(), " ", T::s(), " ", T().lam()); h(); h("x"); return 0; }

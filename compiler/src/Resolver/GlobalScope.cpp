@@ -100,6 +100,11 @@ void GlobalScope::indexFile(ParsedFile& file)
     std::lock_guard lock(impl->deferredMutex);
     impl->castFiles.push_back(&file);
   }
+  if (!file.splitDefaults.empty())
+  {
+    std::lock_guard lock(impl->deferredMutex);
+    impl->splitDefaultFiles.push_back(&file);
+  }
 }
 
 void GlobalScope::finishIndex()
@@ -311,6 +316,70 @@ void GlobalScope::finishIndex()
     if (!declared)
       impl->reportCheckerError(f->file, f->token,
                                "the out-of-line definition of " + qualifiedName(f) + " matches no declaration in " + qualifiedName(cls));
+  }
+  std::stable_sort(impl->splitDefaultFiles.begin(), impl->splitDefaultFiles.end(), [](ParsedFile* a, ParsedFile* b) { return a->index < b->index; });
+  for (ParsedFile* file : impl->splitDefaultFiles)
+  {
+    FileOfLookups ofFile(file);
+    Impl::TokenScope tokenScope(file->tokens, file->text);
+    for (FunctionDecl* f : file->splitDefaults)
+      mergeDefaultArguments(f);
+  }
+  impl->splitDefaultFiles.clear();
+}
+
+// `int f(int a, int b = 2); int f(int a = 1, int b) { ... }`: C++ adds a declaration's default arguments
+// to the ones before it. Here every declaration of the function, in the one file (a default's tokens are
+// read in its function's), has them all; symbols are order-independent, so a call before the declaration
+// that adds one sees it too (and C++ rejects that call). Until 2026-11-06 no declaration took `f()`.
+void GlobalScope::mergeDefaultArguments(FunctionDecl* f)
+{
+  Decl* definition = definitionOf(f);
+  std::vector<FunctionDecl*> declarations;
+  auto add = [&](Decl* d)
+  {
+    if (d->kind != NodeKind::FunctionDecl || d->file != f->file || static_cast<FunctionDecl*>(d)->params.size() != f->params.size())
+      return;
+    if (definitionOf(d) == definition && std::find(declarations.begin(), declarations.end(), d) == declarations.end())
+      declarations.push_back(static_cast<FunctionDecl*>(d));
+  };
+  add(f);
+  add(definition);
+  const uint32_t special = DF_Constructor | DF_Destructor | DF_Conversion;
+  uint32_t symbol = impl->functionSymbol(f->name);
+  if (Decl* cls = impl->owningClassOf(f); cls && cls->kind == NodeKind::ClassDecl)
+  {
+    for (Decl* m : static_cast<ClassDecl*>(cls)->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & special) == (f->flags & special) &&
+          ((f->flags & special) || impl->functionSymbol(static_cast<FunctionDecl*>(m)->name) == symbol))
+        add(m);
+  }
+  else if (f->name.parts.size() == 1)
+  {
+    if (const std::vector<Entry>* entries = impl->lexicalScopeOf(f)->find(symbol))
+      for (const Entry& e : *entries)
+        add(e.decl);
+  }
+  // (As in C++ ([dcl.fct.default] 4): an instance's defaults are its declaration's, in terms of that
+  // declaration's template parameters.)
+  if (declarations.size() > 1 && (!f->templateParams.empty() || isTemplateContext(f)))
+  {
+    impl->reportCheckerError(f->file, f->token, "a redeclaration of the template " + qualifiedName(f) +
+                                                    " adds a default argument: give them all on its first declaration");
+    return;
+  }
+  for (size_t i = 0; i < f->params.size(); ++i)
+  {
+    Expr* value = nullptr;
+    for (FunctionDecl* d : declarations)
+      if (auto* p = static_cast<ParamDecl*>(d->params[i]); !value && p->defaultValue)
+        value = p->defaultValue;
+    for (FunctionDecl* d : declarations)
+      if (auto* p = static_cast<ParamDecl*>(d->params[i]); value && !p->defaultValue)
+      {
+        p->defaultValue = value;
+        p->inheritedDefault = true;
+      }
   }
 }
 

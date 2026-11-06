@@ -1,0 +1,16 @@
+// spec: an out-of-line definition's name inside the parentheses: `int (*S::fp)(int) = f;`, `int (*S::tab[2])(int)`, `int (&S::arr)[2]`, `int (**S::pp)(int)`, `int (*n::g)(int)`
+// found by thread A's comparison with clang (2026-11-06): "expected ')' in declarator" or the name dropped
+int twice(int x) { return x * 2; }
+struct S { static int (*fp)(int); static int (*tab[2])(int); static int (&arr)[2]; static int (**pp)(int); };
+int block[2] = {4, 5};
+int (*S::fp)(int) = twice;
+int (*S::tab[2])(int) = {twice, twice};
+int (&S::arr)[2] = block;
+int (**S::pp)(int) = &S::fp;
+namespace n { extern int (*g)(int); }
+int (*n::g)(int) = twice;
+int main()
+{
+  println(S::fp(1), " ", S::tab[1](2), " ", S::arr[1], " ", (*S::pp)(3), " ", n::g(4));
+  return 0;
+}

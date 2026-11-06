@@ -108,7 +108,8 @@ struct EnumDecl : Decl
   Span<Decl*> members; // kpp: methods inside enums.
   bool isKpp = false;  // kpp enum (values in their own brace block): count, values, str(), exhaustive switch.
 };
-struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; };
+// inheritedDefault: defaultValue is another declaration's of the function, which walks it (mergeDefaultArguments).
+struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; bool inheritedDefault = false; };
 struct FunctionDecl : Decl
 {
   struct CtorInit { QualifiedName member; Span<Expr*> args; bool braced; bool isPack; };

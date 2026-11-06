@@ -1,0 +1,21 @@
+// spec: `int (*&r)(int)`, `int (*const& r)(int)`, `int (*&&r)(int)`, `int (&&r)(int)` declare what they say in a body
+// found by thread A's comparison with clang (2026-11-06): "a type where a value is expected"
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+int main()
+{
+  int (*p)(int) = thrice;
+  int (*&r)(int) = p;
+  println(r(2));
+  r = twice;
+  println(p(2));
+  int (*const& cr)(int) = p;
+  println(cr(4));
+  int (*const c)(int) = thrice;
+  println(c(4));
+  int (*&&rr)(int) = thrice;
+  println(rr(5));
+  int (&&fr)(int) = twice;
+  println(fr(5));
+  return 0;
+}

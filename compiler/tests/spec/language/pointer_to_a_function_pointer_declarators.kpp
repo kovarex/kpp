@@ -1,0 +1,37 @@
+// spec: `int (**q)(int)` and `int (*(*q))(int)` are a pointer to a pointer to the function, as a variable, a member and a parameter; overloads tell them from `int (*)(int)`
+// found by thread A's comparison with clang (2026-11-06): `int (**q)(int)` was one pointer to the function at namespace scope, a compile error only where its value was used; `(*(*q))` a parse error
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+int which(int (*)(int)) { return 1; }
+int which(int (**)(int)) { return 2; }
+int which(int (***)(int)) { return 3; }
+int (*g)(int) = twice;
+int (**gg)(int) = &g;
+struct S { int (**m)(int); int (*(*n))(int); };
+void call(int (**a)(int)) { println((*a)(4)); }
+void call2(int (*(*a))(int)) { println((*a)(5)); }
+int main()
+{
+  int (*p)(int) = thrice;
+  int (*(*pp))(int) = &p;
+  println((*pp)(5));
+  *pp = twice;
+  println(p(5));
+  int (**qq)(int) = &p;
+  println((*qq)(6));
+  int (***q3)(int) = &qq;
+  println((**q3)(6));
+  int (*(*&rq))(int) = pp;
+  println((*rq)(7));
+  int (**&rq2)(int) = qq;
+  println((*rq2)(8));
+  println((*gg)(3));
+  S s;
+  s.m = &p;
+  s.n = &g;
+  println((*s.m)(5), " ", (*s.n)(6));
+  call(&p);
+  call2(&g);
+  println(which(p), " ", which(pp), " ", which(qq), " ", which(q3), " ", which(gg));
+  return 0;
+}

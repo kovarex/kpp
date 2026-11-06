@@ -1,0 +1,8 @@
+// spec: `int (*p)(int) = 0;` is refused as any pointer's is (design.md 4), never an initializer the function suffix took for a pure specifier
+// error: function_pointer_given_literal_zero_is_error.kpp:6: error: the literal 0 is no pointer: write nullptr (design.md 4)
+// found by thread A (2026-11-06): the `= 0` was read as `= 0` of a pure virtual function and dropped, in a body and in a class
+int main()
+{
+  int (*p)(int) = 0;
+  return p == nullptr ? 0 : 1;
+}

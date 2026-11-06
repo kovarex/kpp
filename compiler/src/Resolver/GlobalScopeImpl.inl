@@ -34,6 +34,7 @@
   std::vector<std::pair<DeductionGuideDecl*, Scope*>> deferredGuides; // Deduction guides, attached to their class templates by finishIndex.
   std::vector<std::pair<FunctionDecl*, Scope*>> objectCandidates; // `T five(a, m);`: an object when a and m are variables (finishIndex).
   std::vector<ParsedFile*> castFiles; // files with `(name) op x` candidates (ParsedFile::castCandidates), for finishIndex
+  std::vector<ParsedFile*> splitDefaultFiles; // files with ParsedFile::splitDefaults, for finishIndex
   std::vector<std::pair<FunctionDecl*, FunctionDecl*>> externCRedeclarations; // (extern "C" declaration, a later one): sortEntries, decided by finishIndex
   std::unordered_map<uint32_t, std::vector<FunctionDecl*>> cFunctions; // C functions by name, in every namespace: sortEntries, compared by finishIndex
 

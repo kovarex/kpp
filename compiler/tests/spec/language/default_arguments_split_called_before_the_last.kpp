@@ -1,0 +1,8 @@
+// spec: a call between two declarations of a function that split its default arguments
+// found by thread A's comparison with clang (2026-11-06): "a call that did not resolve"
+int f(int a, int b = 2);
+int early() { return f(1); }
+int f(int a = 7, int b);
+int late() { return f(); }
+int f(int a, int b) { return a * 10 + b; }
+int main() { println(early(), " ", late()); return 0; }

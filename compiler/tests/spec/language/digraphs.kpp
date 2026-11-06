@@ -1,0 +1,20 @@
+// spec: `<:` `:>` `<%` `%>` are `[` `]` `{` `}`, in a lambda's capture too, and `%:` starts a directive ([lex.digraph])
+// found by thread A's comparison with clang (2026-11-06): "expected declaration"
+%:if 0
+struct Gone;
+%:else
+struct Kept <% int v = 2; %>;
+%:endif
+struct S <% int a<:2:>; %>;
+template<class T> struct V <% T x; %>;
+int main()
+<%
+  S s;
+  s.a<:0:> = 3;
+  s.a<:1:> = 4;
+  auto f = <:&s:>(int i) <% return s.a<:i:>; %>;
+  int (*row)<:2:> = &s.a;
+  V<S> v;
+  println(s.a<:0:> + s.a<:1:>, " ", f(1), " ", (*row)<:0:>, " ", sizeof(v), " ", Kept().v);
+  return 0;
+%>

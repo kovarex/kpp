@@ -1,0 +1,16 @@
+// spec: a handler's declarator may be a reference to a function pointer (`catch (void (*&got)() noexcept)`), and `throw f;` throws a pointer to the function, as [except.throw] 3 decays it, which handlers of the pointer take; g++'s output (clang's MSVC runtime has no noexcept conversion)
+// found by thread B: a parse error, though it worked through an alias; `throw f;` threw the function type, which no handler took
+void one() noexcept { println("one"); }
+void two() { println("two"); }
+using Plain = void (*)();
+int main()
+{
+  try { throw one; } catch (void (*&got)() noexcept) { got(); }
+  try { throw two; } catch (void (*const& got)()) { got(); }
+  try { throw two; } catch (void (*got)()) { got(); }
+  try { throw one; } catch (void (*const& got)() noexcept) { got(); }
+  try { throw one; } catch (void (*got)()) { got(); }
+  try { throw one; } catch (void (*const& got)()) { got(); }
+  try { throw &two; } catch (void (*const& got)()) { got(); }
+  return 0;
+}

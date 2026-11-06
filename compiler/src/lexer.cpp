@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -374,8 +375,30 @@ namespace
         push(TokenKind::Identifier, start, symbols.intern(spelling));
     }
 
+    // The digraph at p ([lex.digraph]), which is the token it stands for: `<:` `:>` `<%` `%>`. `<::` is
+    // `<` and `::` unless a `:` or `>` follows ([lex.pptoken] 3.2), so that `Box<::Item>` is a template-id.
+    // (`%:` is a `#`, and starts a directive: run.)
+    std::optional<P> digraph() const
+    {
+      if (p[0] == '<' && p[1] == ':' && (p[2] != ':' || p[3] == ':' || p[3] == '>'))
+        return P::LBracket;
+      if (p[0] == ':' && p[1] == '>')
+        return P::RBracket;
+      if (p[0] == '<' && p[1] == '%')
+        return P::LBrace;
+      if (p[0] == '%' && p[1] == '>')
+        return P::RBrace;
+      return std::nullopt;
+    }
+
     void lexPunctuator(const char* start)
     {
+      if (std::optional<P> token = digraph())
+      {
+        p += 2;
+        push(TokenKind::Punctuator, start, uint32_t(*token));
+        return;
+      }
       for (uint32_t id : punctuatorIndex().byFirst[uint8_t(*p)])
       {
         std::string_view s = punctuators[id];
@@ -404,7 +427,7 @@ namespace
         unsigned char c = uint8_t(*p);
         if (c == 0 && p >= end)
           break;
-        if (c == '#' && lineStart)
+        if ((c == '#' || (c == '%' && p[1] == ':')) && lineStart)
         {
           lexDirective(start);
           continue;

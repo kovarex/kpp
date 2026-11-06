@@ -1,0 +1,9 @@
+// spec: a non-const lvalue reference to a pointer binds no array or function: their pointer is a temporary ([dcl.init.ref] 5)
+// error: reference_to_a_pointer_given_an_array_is_error.kpp:7: error: the reference of type int32*& given a value of type int32[2]: its pointer is a temporary, which only a const or an rvalue reference binds
+// found by thread A (2026-11-06): the reference bound the array itself
+int main()
+{
+  int values[2] = {1, 2};
+  int*& p = values;
+  return *p;
+}

@@ -2034,11 +2034,23 @@ name lookup" (kovarex, 2026-11-04).
   in a body). A function's parameter whose type names a variable is an error, so `Box box(four);`
   at namespace scope is "'four' is a variable, not a type", never an object. This replaces kpp v0's
   rule 2 below.
+- **Parenthesised declarators** (2026-11-06). A statement's `T (*name)(...)`, with any run of `*`,
+  `&`, `&&`, `C::*` and cv-qualifiers before the name, declares after any type; so a call of a call,
+  `f(*p)(x);` and `f(**p)(x);`, reads as a declaration and is a compile error when f is no type
+  (a grammar without lookup cannot tell them). Nested parentheses (`(*(*name))(...)`) and a
+  following `[` or `=` declare only after a type no expression starts with, a keyword's, a qualified
+  or a template name's: `f(*(p))(x);`, `row(*p)[0] = v;` are calls.
 
 Specs: language/statement_type_star_name_is_declaration, statement_variable_star_name_is_error,
 functional_cast_statement_is_expression, chained_comparison_is_error,
 template_arguments_by_the_token_after, most_vexing_parse_by_scope,
-namespace_scope_parentheses_declare_a_function.
+namespace_scope_parentheses_declare_a_function, call_of_a_call_stays_a_call.
+
+Default arguments add up over a function's declarations in one file, as in C++ ([dcl.fct.default] 4),
+with a difference that order independence makes: each declaration has them all, so a call before the
+declaration that adds one sees it (C++ rejects that call). A redeclaration of a template adds none,
+as in C++. Declarations in two files do not add up: a call that needs both is a compile error. Spec
+language/default_arguments_split_over_declarations.
 
 ### 23. Named return elision is guaranteed (decided 2026-11-04)
 kovarex, 2026-11-04: "OK, guaranteed." C++ allows a compiler to build a returned local in the

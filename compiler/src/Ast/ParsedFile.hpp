@@ -48,6 +48,9 @@ struct ParsedFile
   // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
   // name is a type, rewritten as one by the resolver's finishIndex.
   std::vector<std::pair<BinaryExpr*, Decl*>> castCandidates;
+  // Declarations that hold only some of a function's default arguments: a default before a parameter
+  // without one, or any on an out-of-line definition (GlobalScope::mergeDefaultArguments).
+  std::vector<FunctionDecl*> splitDefaults;
   // `template struct Registry<int>;`: the class an explicit instantiation names, with the
   // declaration it is written in. It declares nothing; the class's static data members are built
   // at startup (GlobalScope::explicitInstantiationsOf).

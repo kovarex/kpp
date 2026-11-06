@@ -1553,6 +1553,8 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
           return "ptr " + callConversion(op, argTy, owner, lvalue(arg), at, &opArgs, true).text;
       }
     }
+    if (argTy && argTy->kind == TyKind::Function && types.unqualified(referenced)->kind == TyKind::Function)
+      return "ptr " + convert(rvalue(arg), types.pointer(types.unqualified(referenced)), at).text; // (`void (&)()` given a noexcept one)
     // A `T&` given another type's object (an int for a `double&`), or a bit-field: no object of T to
     // bind (C++ rejects it). Until 2026-11-05 its address was passed: a double written into an int.
     if (!takesTemporary && argTy && argTy->isKnown() && types.unqualified(referenced)->isKnown() && !types.isDependent(referenced) &&
@@ -1808,6 +1810,20 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
       return *bound;
     if (scalar(want) && (refTy->kind == TyKind::RRef || referenced->isConst))
       return temporary();
+  }
+  // `int (&r)(double) = twice;`: the function a pointer to it would be given. A reference to a noexcept
+  // function binds only a noexcept one, as such a pointer takes only one.
+  if (have && want->kind == TyKind::Function && have->kind == TyKind::Function)
+    return convert(rvalue(value), types.pointer(want), at).text;
+  // `int* const& p = array;`, `int (*const& f)(int) = g;`: the array or function decays, and a
+  // temporary holds the pointer. (Until 2026-11-06 the reference bound the array or the function
+  // itself, and a read through it took their first bytes for the pointer.)
+  if (have && want->kind == TyKind::Pointer && (have->kind == TyKind::Array || have->kind == TyKind::Function))
+  {
+    if (refTy->kind == TyKind::LRef && !referenced->isConst)
+      fail(at, "the reference of type " + types.toString(refTy, &symbols) + " given a value of type " + types.toString(have, &symbols) +
+                   ": its pointer is a temporary, which only a const or an rvalue reference binds");
+    return temporary();
   }
   if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
     return lvalue(value);

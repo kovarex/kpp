@@ -1,0 +1,17 @@
+// spec: `int (*(*p)(bool))(int)` is a pointer to a function that gives a pointer to a function, and `int (*(*f(int))(bool))(int)` a function that gives that
+// found by thread A's comparison with clang (2026-11-06): parse errors
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+int (*pick(bool t))(int) { return t ? twice : thrice; }
+int (*(*chooser)(bool))(int) = pick;
+int (*(*chooser2(int))(bool))(int) { return pick; }
+int main()
+{
+  println(chooser(true)(4), " ", chooser(false)(4));
+  println(chooser2(1)(false)(5));
+  int (*(*local)(bool))(int) = pick;
+  println(local(true)(6));
+  int (*(**lp)(bool))(int) = &local;
+  println((*lp)(false)(6));
+  return 0;
+}
