@@ -4760,6 +4760,14 @@ namespace
     {
       pendingAttributes = 0;
       pendingAlignment = nullptr;
+      // `[[fallthrough]];`: C++'s spelling of `fallthrough;`.
+      if (at(P::LBracket) && at(P::LBracket, 1) && atIdent(kwFallthrough, 2) && at(P::RBracket, 3) && at(P::RBracket, 4) && at(P::Semi, 5))
+      {
+        uint32_t start = pos;
+        for (int i = 0; i < 6; ++i)
+          advance();
+        return node<FallthroughStmt>(start);
+      }
       skipAttributes();
       if (pendingAttributes & ATTR_NoUniqueAddress)
         error("[[no_unique_address]] is for a data member that is no bit field");

@@ -4418,6 +4418,14 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   funclets' UnwindHelp on Windows). Specs language/destructor_*, language/noexcept_*destructor*,
   templates/destructor_*.
 
+- **No implicit fallthrough, in three steps** (C's plan, 2026-11-06; readme's Planned; the rules wait for kovarex, thread
+  D's survey in the coordinator's notes). Step 1, built: a case that can reach the next label without saying so is an
+  error, `switch` keeping C++'s meaning (Walker::checkCaseEnds, by the statements alone: `break`, `return`,
+  `continue`, `goto`, `throw`, `fallthrough;`, a block or both branches of an `if` ending so), and `[[fallthrough]];`
+  is the statement `fallthrough;` is. So what every case does is written before the meaning changes. Step 2: the implicit
+  break, the game's IR byte-identical across it, the evaluator flipped by the specs. Step 3, optional: the converter drops
+  the `break;` that ends a case. Specs language/switch_case_running_on_is_error, switch_case_ends_written.
+
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted
   constructors by their parts and default member initializers, a by-value parameter's copy or conversion, a

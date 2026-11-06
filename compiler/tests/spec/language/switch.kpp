@@ -25,7 +25,7 @@ int main()
     switch (i)
     {
       case 1: acc += 10; break;
-      case 2: acc += 100; // falls through
+      case 2: acc += 100; fallthrough;
       case 3: acc += 1000; break;
     }
   println(out, acc);

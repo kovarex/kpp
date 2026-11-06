@@ -848,6 +848,7 @@
 
     // That f, not noexcept, overrides no noexcept function (an error).
     void checkOverrideNoexcept(FunctionDecl* f);
+    void checkCaseEnds(Stmt* body);
     void checkDestructorNoexcept(ClassDecl* c);
     void checkDestructorRedeclared(FunctionDecl* f);
     // Whether e can throw, for the noexcept operator ([expr.unary.noexcept]): a call of a function

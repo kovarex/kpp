@@ -3844,6 +3844,67 @@ auto GlobalScope::Impl::Walker::checkDestructorRedeclared(FunctionDecl* f) -> vo
       impl.reportCheckerError(file, f->token, "this destructor says otherwise of noexcept than its declaration at " + Impl::locationOf(d->file, d->token));
 }
 
+auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
+{
+  // The first step of no implicit fallthrough (design.md): what a case runs on into the next by is written, so
+  // that the flip to an implicit break changes the meaning of nothing. Whether its end is reached, by the
+  // statements alone, as the converter says it when it writes `fallthrough;`.
+  if (activeSubst || probing || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt)
+    return;
+  std::function<bool(Stmt*)> closes = [&](Stmt* s)
+  {
+    if (!s)
+      return false;
+    switch (s->kind)
+    {
+      case NodeKind::ReturnStmt: case NodeKind::BreakStmt: case NodeKind::ContinueStmt: case NodeKind::GotoStmt: case NodeKind::FallthroughStmt:
+        return true;
+      case NodeKind::ExprStmt:
+        return static_cast<ExprStmt*>(s)->expr && static_cast<ExprStmt*>(s)->expr->kind == NodeKind::ThrowExpr;
+      case NodeKind::BlockStmt:
+      {
+        auto* b = static_cast<BlockStmt*>(s);
+        return !b->stmts.empty() && closes(b->stmts[b->stmts.size() - 1]);
+      }
+      case NodeKind::IfStmt:
+        return static_cast<IfStmt*>(s)->else_ && closes(static_cast<IfStmt*>(s)->then) && closes(static_cast<IfStmt*>(s)->else_);
+      default:
+        return false;
+    }
+  };
+  auto reportAt = [&](uint32_t token)
+  {
+    impl.reportCheckerError(file, token, "the case before this one runs on into it: end that case with `fallthrough;` to say so, or with `break;` (design.md, \"No implicit fallthrough\")");
+  };
+  Stmt* last = nullptr; // the last statement since a label
+  std::function<void(Span<Stmt*>)> section = [&](Span<Stmt*> stmts)
+  {
+    for (Stmt* s : stmts)
+    {
+      if (!s || s->kind == NodeKind::EmptyStmt)
+        continue;
+      if (s->kind == NodeKind::CaseStmt || s->kind == NodeKind::DefaultStmt)
+      {
+        if (last && !closes(last))
+          reportAt(s->token);
+        last = nullptr;
+      }
+      else if (s->kind == NodeKind::ForConstexprStmt)
+      {
+        // `for constexpr (...) case T::kind: ...`: each element's statements are written once.
+        Stmt* each = static_cast<ForConstexprStmt*>(s)->body;
+        if (each && each->kind == NodeKind::BlockStmt)
+          section(static_cast<BlockStmt*>(each)->stmts);
+        else if (each)
+          last = each->kind == NodeKind::CaseStmt || each->kind == NodeKind::DefaultStmt ? nullptr : each;
+      }
+      else
+        last = s;
+    }
+  };
+  section(static_cast<BlockStmt*>(body)->stmts);
+}
+
 auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
 {
   checkOverrideNoexcept(f);
@@ -8088,6 +8149,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
     case NodeKind::SwitchStmt:
     {
       auto* w = static_cast<SwitchStmt*>(s);
+      checkCaseEnds(w->body);
       size_t mark = locals.mark();
       walkStmt(w->init);
       walkNode(w->cond);
