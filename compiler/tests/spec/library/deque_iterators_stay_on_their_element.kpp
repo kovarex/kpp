@@ -1,0 +1,69 @@
+// spec: a Deque iterator stays on its element through removals at the ends (pop_front, pop_back, an erase of the first or last elements), and end() through removals at the front, as std::deque's; through swap, move construction and move assignment it follows the element into the other deque, and compares equal to that deque's iterators; the output is what libstdc++ and MSVC's STL print
+// factorio: found comparing Deque with deque.md's table: an iterator held an index, so after pop_front it silently read the next element
+extern "C" int printf(const char* format, ...);
+void show(const char* what, int value) { printf("%s %d\n", what, value); }
+
+int main()
+{
+  Deque<int> d;
+  for (int i = 0; i < 100; ++i)
+    d.push_back(i);
+  auto it = d.begin() + 40;
+  auto last = d.end() - 1;
+  auto end = d.end();
+  d.pop_front();
+  show("after pop_front", *it);
+  show("same element", (int)(&*it == &d[39]));
+  show("distance from begin", (int)(it - d.begin()));
+  show("end kept", (int)(end == d.end()));
+  for (int i = 0; i < 39; ++i)
+    d.pop_front();
+  show("after 40 pop_front", *it);
+  show("is the first", (int)(it == d.begin()));
+  show("last", *last);
+  d.pop_back();
+  show("after pop_back", *it);
+  auto second = it + 1;
+  d.erase(d.begin());
+  show("after erase of the first", *second);
+  show("second is begin", (int)(second == d.begin()));
+  d.erase(d.end() - 1);
+  show("after erase of the last", *second);
+  auto third = second + 10;
+  d.erase(d.begin(), d.begin() + 5);
+  show("after erase of the front", *third);
+  int walked = 0;
+  for (auto at = third; at != d.end(); ++at)
+    walked += *at;
+  show("walked to the end", walked);
+
+  Deque<int> a = {1, 2, 3};
+  Deque<int> b = {7, 8, 9, 10};
+  auto inA = a.begin() + 1;
+  auto inB = b.begin() + 2;
+  a.swap(b);
+  show("swap keeps a's", *inA);
+  show("swap keeps b's", *inB);
+  show("now in the other", (int)(inA == b.begin() + 1));
+  show("and the other", (int)(inB == a.begin() + 2));
+  Deque<int> moved(move(a));
+  show("move construction keeps", *inB);
+  show("in the new one", (int)(inB == moved.begin() + 2));
+  Deque<int> assigned;
+  assigned = move(moved);
+  show("move assignment keeps", *inB);
+  show("in the new one", (int)(inB == assigned.begin() + 2));
+
+  Deque<String> s;
+  for (int i = 0; i < 40; ++i)
+    s.push_back(String(50, (char)('a' + i % 26)));
+  const Deque<String>& constant = s;
+  auto constantIt = constant.begin() + 30;
+  Deque<String>::const_iterator converted = s.begin() + 31;
+  s.pop_front();
+  printf("%c %c %d\n", (*constantIt)[0], (*converted)[0], (int)(converted - constantIt));
+  auto reversed = s.rbegin() + 2;
+  s.pop_front();
+  printf("%c\n", (*reversed)[0]);
+  return 0;
+}

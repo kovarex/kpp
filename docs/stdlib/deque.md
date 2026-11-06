@@ -16,18 +16,23 @@ stored in fixed-size blocks; adding at either end never moves the existing eleme
 Complexity: `operator[]`, `front`, `back`, push and pop at either end: O(1). Insert or erase at
 position i: O(min(i, size() - i)); erasing n elements at i: O(n + min(i, size() - i - n)).
 
-Members: `Deque()`, `Deque({...})`, `Deque(first, last)` (the elements of a range of input
-iterators, in order), copy, move, `= {...}` (replaces the contents with the listed elements); `size()`, `empty()`; `operator[](i)`, `at(i)`
+Iterators stay on their element through removals at the ends (std::deque's rule) and through `swap`
+and moves, which hand the elements over.
+
+Members: `Deque()`, `Deque({...})`, `Deque(count)`, `Deque(count, value)`, `Deque(first, last)` (the
+elements of a range of input iterators, in order), copy, move, `= {...}` (replaces the contents with the listed elements); `size()`, `empty()`; `operator[](i)`, `at(i)`
 (throws OutOfRange), `front()`, `back()`; `begin()`, `end()` (random access iterators);
 `rbegin()`, `rend()`, `swap(other)`;
 `push_back`, `push_front`, `emplace_back`, `emplace_front`, `pop_back`, `pop_front` (not empty);
-`assign(first, last)`, `assign(count, value)`, `assign({...})` (replace the contents; the range
-must not be this deque's); `insert(position, value)`, `insert(position, count, value)`, `insert(position, {...})` (the listed
-elements in order; O(count + size())),
+`assign(first, last)`, `assign(count, value)`, `assign({...})` (replace the contents, assigning over
+the elements there are, as copy assignment and `= {...}` do; the range must not be this deque's); `insert(position, value)`, `insert(position, count, value)`, `insert(position, first, last)` (input
+iterators not into this deque), `insert(position, {...})` (the listed elements in order; the shorter
+side moves by the count, by move construction and move assignment, as std::deque's; at either end
+nothing moves, so pointers and references stay; O(count + min(i, size() - i))),
 `emplace(position, args...)` (the element made
 from args, then as insert) and `erase(position)` returning the position of the inserted element /
 the element after the erased one; `erase(first, last)`, removing the elements in [first, last) and
-returning the position of the element after them; `resize(n)`, `clear()`; `shrink_to_fit()` (does
+returning the position of the element after them; `resize(n)`, `resize(n, value)`, `clear()`; `shrink_to_fit()` (does
 nothing: a block is freed when removals empty it, and elements never move); `==` and `<=>`
 (common.md).
 

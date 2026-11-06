@@ -34,6 +34,10 @@ public:
       this->push_back(item);
   }
 
+  // count value-initialized elements, or count copies of value.
+  explicit Deque(ContainerSize count) { this->resize(count); }
+  Deque(ContainerSize count, const T& value) { this->resize(count, value); }
+
   // The elements of [first, last), input iterators of any kind, in order.
   template<typename InputIt> requires (!isIntegral<InputIt>)
   Deque(InputIt first, InputIt last)
@@ -61,11 +65,7 @@ public:
   Deque<T>& operator=(const Deque<T>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      for (ContainerSize i = 0; i < other.length; ++i)
-        this->push_back(other[i]);
-    }
+      this->assign(other.begin(), other.end());
     return *this;
   }
 
@@ -89,27 +89,33 @@ public:
   // `d = {a, b, c}`: the listed elements, replacing the contents.
   Deque<T>& operator=(InitializerList<T> items)
   {
-    this->clear();
-    for (const T& item : items)
-      this->push_back(item);
+    this->assign(items.begin(), items.end());
     return *this;
   }
 
   // Replace the contents: with the elements of [first, last) (ResearchQueue's
   // `queue.assign(other.queue.begin(), other.queue.end())`), count copies of value, or the listed
-  // elements. The range must not be this deque's.
+  // elements: assigned over the elements there are, as std's, the others added or removed at the
+  // back. The range must not be this deque's.
   template<typename InputIt> requires (!isIntegral<InputIt>)
   void assign(InputIt first, InputIt last)
   {
-    this->clear();
+    ContainerSize index = 0;
+    if constexpr (requires { (*this)[0] = *first; })
+      for (; index < this->length && first != last; ++index, ++first)
+        (*this)[index] = *first;
+    this->truncate(index);
     for (; first != last; ++first)
       this->push_back(*first);
   }
 
   void assign(ContainerSize count, const T& value)
   {
-    this->clear();
-    for (ContainerSize i = 0; i < count; ++i)
+    ContainerSize common = count < this->length ? count : this->length;
+    for (ContainerSize i = 0; i < common; ++i)
+      (*this)[i] = value;
+    this->truncate(common);
+    for (ContainerSize i = common; i < count; ++i)
       this->push_back(value);
   }
 
@@ -132,7 +138,9 @@ public:
     return shift;
   }
 
-  T* slotAt(ContainerSize position) const { return this->map[position >> Deque::blockShift()] + (position & (Deque::blockSize() - 1)); }
+  // The slot at a position in the map's space.
+  static T* slotIn(T** map, ContainerSize position) { return map[position >> Deque::blockShift()] + (position & (Deque::blockSize() - 1)); }
+  T* slotAt(ContainerSize position) const { return Deque::slotIn(this->map, position); }
 
   ContainerSize size() const { return this->length; }
   bool empty() const { return this->length == 0; }
@@ -159,10 +167,10 @@ public:
   T& back() { return *this->slotAt(this->start + this->length - 1); }
   const T& front() const { return *this->slotAt(this->start); }
   const T& back() const { return *this->slotAt(this->start + this->length - 1); }
-  iterator begin() { return iterator(this, 0); }
-  iterator end() { return iterator(this, this->length); }
-  const_iterator begin() const { return const_iterator((Deque<T>*)this, 0); }
-  const_iterator end() const { return const_iterator((Deque<T>*)this, this->length); }
+  iterator begin() { return this->iteratorAt(0); }
+  iterator end() { return this->iteratorAt(this->length); }
+  const_iterator begin() const { return const_iterator(this->map, this->start); }
+  const_iterator end() const { return const_iterator(this->map, this->start + this->length); }
   const_iterator cbegin() const { return this->begin(); }
   const_iterator cend() const { return this->end(); }
   const_reverse_iterator crbegin() const { return this->rbegin(); }
@@ -230,66 +238,103 @@ public:
   // returns the position of the new element.
   DequeIterator<T> insert(ContainerSize index, const T& value)
   {
-    T copy(value); // value may be an element, which the shifting changes
-    return this->insert(index, move(copy));
+    // At the ends nothing moves, so value may be an element; in the middle it is copied out first.
+    if (index == 0)
+      this->emplace_front(value);
+    else if (index == this->length)
+      this->emplace_back(value);
+    else
+      this->insertBetween(index, T(value));
+    return this->iteratorAt(index);
   }
 
   DequeIterator<T> insert(ContainerSize index, T&& value)
   {
     if (index == 0)
       this->emplace_front(move(value));
-    else if (index < this->length / 2)
+    else if (index == this->length)
+      this->emplace_back(move(value));
+    else
     {
-      this->emplace_front(move((*this)[0]));
-      for (ContainerSize i = 1; i < index; ++i)
-        (*this)[i] = move((*this)[i + 1]);
-      (*this)[index] = move(value);
+      T held(move(value)); // it may be an element, as std's take it
+      this->insertBetween(index, move(held));
+    }
+    return this->iteratorAt(index);
+  }
+
+  // count copies of value before index, the shorter side moved by count; returns the position of
+  // the first one.
+  DequeIterator<T> insert(ContainerSize index, ContainerSize count, const T& value)
+  {
+    if (index == 0 || index == this->length)
+    {
+      // Nothing moves, so value may be an element.
+      this->openSlots(index, count);
+      for (ContainerSize i = index; i < index + count; ++i)
+        new (this->slotAt(this->start + i)) T(value);
+      return this->iteratorAt(index);
+    }
+    T copy(value); // value may be an element
+    Pair<ContainerSize, ContainerSize> moved = this->openSlots(index, count);
+    for (ContainerSize i = index; i < index + count; ++i)
+      if (i >= moved.first && i < moved.second)
+        (*this)[i] = copy;
+      else
+        new (this->slotAt(this->start + i)) T(copy);
+    return this->iteratorAt(index);
+  }
+
+  DequeIterator<T> insert(const_iterator position, ContainerSize count, const T& value) { return this->insert(this->indexOf(position), count, value); }
+
+  // The elements of [first, last), input iterators of any kind that do not point into this deque,
+  // before position, in order; returns the position of the first one, or position for an empty
+  // range.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  DequeIterator<T> insert(const_iterator position, InputIt first, InputIt last)
+  {
+    ContainerSize index = this->indexOf(position);
+    if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
+    {
+      ContainerSize count = checkedSize(distance(first, last), "deque too long");
+      Pair<ContainerSize, ContainerSize> moved = this->openSlots(index, count);
+      for (ContainerSize i = index; i < index + count; ++i, ++first)
+      {
+        if (i < moved.first || i >= moved.second)
+          new (this->slotAt(this->start + i)) T(*first);
+        else if constexpr (requires { (*this)[0] = *first; })
+          (*this)[i] = *first;
+        else
+          (*this)[i] = T(*first); // a conversion that is only explicit
+      }
     }
     else
     {
-      if (index == this->length)
-      {
-        this->emplace_back(move(value));
-        return DequeIterator<T>(this, index);
-      }
-      this->emplace_back(move((*this)[this->length - 1]));
-      for (ContainerSize i = this->length - 2; i > index; --i)
-        (*this)[i] = move((*this)[i - 1]);
-      (*this)[index] = move(value);
+      for (ContainerSize at = index; first != last; ++first)
+        this->insert(at++, T(*first));
     }
-    return DequeIterator<T>(this, index);
+    return this->iteratorAt(index);
   }
 
-  // count copies of value before index (appended, then rotated into place: O(count + size()));
-  // returns the position of the first one.
-  DequeIterator<T> insert(ContainerSize index, ContainerSize count, const T& value)
-  {
-    T copy(value); // value may be an element
-    ContainerSize old = this->length;
-    for (ContainerSize i = 0; i < count; ++i)
-      this->push_back(copy);
-    rotate(this->begin() + index, this->begin() + old, this->end());
-    return DequeIterator<T>(this, index);
-  }
+  // The listed elements before position, in order; returns the position of the first one, or
+  // position for an empty list.
+  DequeIterator<T> insert(const_iterator position, InitializerList<T> items) { return this->insert(position, items.begin(), items.end()); }
 
-  DequeIterator<T> insert(const_iterator position, ContainerSize count, const T& value) { return this->insert(position.index, count, value); }
+  DequeIterator<T> insert(const_iterator position, const T& value) { return this->insert(this->indexOf(position), value); }
+  DequeIterator<T> insert(const_iterator position, T&& value) { return this->insert(this->indexOf(position), move(value)); }
 
-  // The listed elements before position, in order (appended, then rotated into place); returns
-  // the position of the first one, or position for an empty list.
-  DequeIterator<T> insert(const_iterator position, InitializerList<T> items)
-  {
-    ContainerSize index = position.index, old = this->length;
-    for (const T& item : items)
-      this->push_back(item);
-    rotate(this->begin() + index, this->begin() + old, this->end());
-    return DequeIterator<T>(this, index);
-  }
-
-  DequeIterator<T> insert(const_iterator position, const T& value) { return this->insert(position.index, value); }
-  DequeIterator<T> insert(const_iterator position, T&& value) { return this->insert(position.index, move(value)); }
   // An element made from args, inserted before position as insert does (std::deque::emplace).
   template<typename... Args>
-  DequeIterator<T> emplace(const_iterator position, Args&&... args) { return this->insert(position.index, T(forward<Args>(args)...)); }
+  DequeIterator<T> emplace(const_iterator position, Args&&... args)
+  {
+    ContainerSize index = this->indexOf(position);
+    if (index == 0)
+      this->emplace_front(forward<Args>(args)...);
+    else if (index == this->length)
+      this->emplace_back(forward<Args>(args)...);
+    else
+      this->insertBetween(index, T(forward<Args>(args)...));
+    return this->iteratorAt(index);
+  }
 
   // Removes the element at index, moving the shorter side by one; returns the position of the
   // element after it.
@@ -307,19 +352,19 @@ public:
         (*this)[i] = move((*this)[i + 1]);
       this->pop_back();
     }
-    return DequeIterator<T>(this, index);
+    return this->iteratorAt(index);
   }
 
-  DequeIterator<T> erase(const_iterator position) { return this->erase(position.index); }
+  DequeIterator<T> erase(const_iterator position) { return this->erase(this->indexOf(position)); }
 
   // Removes the elements in [first, last), moving the shorter side of the rest by their count;
   // returns the position of the element after them.
   DequeIterator<T> erase(const_iterator first, const_iterator last)
   {
-    ContainerSize from = first.index;
-    if (last.index <= from) // (before the subtraction, which would wrap)
-      return DequeIterator<T>(this, from);
-    ContainerSize count = last.index - from;
+    ContainerSize from = this->indexOf(first);
+    if (last.position <= first.position) // (before the subtraction, which would wrap)
+      return this->iteratorAt(from);
+    ContainerSize count = last.position - first.position;
     if (from < this->length - (from + count))
     {
       for (ContainerSize i = from; i-- > 0;) // from - 1 down to 0
@@ -334,13 +379,20 @@ public:
       for (ContainerSize k = 0; k < count; ++k)
         this->pop_back();
     }
-    return DequeIterator<T>(this, from);
+    return this->iteratorAt(from);
+  }
+
+  // New elements are copies of value.
+  void resize(ContainerSize newLength, const T& value)
+  {
+    this->truncate(newLength);
+    while (this->length < newLength)
+      this->emplace_back(value);
   }
 
   void resize(ContainerSize newLength)
   {
-    while (this->length > newLength)
-      this->pop_back();
+    this->truncate(newLength);
     while (this->length < newLength)
       this->emplace_back();
   }
@@ -378,6 +430,93 @@ private:
     this->ensureBlock((this->start - 1) >> Deque::blockShift());
     return this->slotAt(this->start - 1);
   }
+
+  // value, which is not an element, before index, neither end: the shorter side moves by one.
+  void insertBetween(ContainerSize index, T&& value)
+  {
+    if (index < this->length / 2)
+    {
+      this->emplace_front(move((*this)[0]));
+      for (ContainerSize i = 1; i < index; ++i)
+        (*this)[i] = move((*this)[i + 1]);
+    }
+    else
+    {
+      this->emplace_back(move((*this)[this->length - 1]));
+      for (ContainerSize i = this->length - 2; i > index; --i)
+        (*this)[i] = move((*this)[i - 1]);
+    }
+    (*this)[index] = move(value);
+  }
+
+  // Removes the elements from newLength on.
+  void truncate(ContainerSize newLength)
+  {
+    while (this->length > newLength)
+      this->pop_back();
+  }
+
+  // Makes room for count elements at index, moving the shorter side by count, as std's: the elements
+  // that land outside the old range by move construction, the others by move assignment. Nothing
+  // moves at either end, so what refers to the elements stays. Returns the indices [first, second)
+  // of the new slots that hold moved-from elements, to be assigned; the others are unconstructed.
+  Pair<ContainerSize, ContainerSize> openSlots(ContainerSize index, ContainerSize count)
+  {
+    if (count == 0)
+      return Pair<ContainerSize, ContainerSize>(index, index);
+    ContainerSize newLength = sizeSum(this->length, count, "deque too long");
+    ContainerSize following = this->length - index;
+    if (index < following)
+    {
+      this->reserveFront(count);
+      ContainerSize newStart = this->start - count;
+      ContainerSize constructed = index < count ? index : count;
+      for (ContainerSize i = 0; i < constructed; ++i)
+        new (this->slotAt(newStart + i)) T(move(*this->slotAt(this->start + i)));
+      for (ContainerSize i = constructed; i < index; ++i)
+        *this->slotAt(newStart + i) = move(*this->slotAt(this->start + i));
+      this->start = newStart;
+      this->length = newLength;
+      return Pair<ContainerSize, ContainerSize>(index > count ? index : count, index + count);
+    }
+    this->reserveBack(count);
+    ContainerSize constructed = following < count ? following : count;
+    ContainerSize firstConstructed = this->length - constructed;
+    for (ContainerSize i = this->length; i-- > firstConstructed;)
+      new (this->slotAt(this->start + i + count)) T(move(*this->slotAt(this->start + i)));
+    for (ContainerSize i = firstConstructed; i-- > index;)
+      *this->slotAt(this->start + i + count) = move(*this->slotAt(this->start + i));
+    ContainerSize oldLength = this->length;
+    this->length = newLength;
+    return Pair<ContainerSize, ContainerSize>(index, index + count < oldLength ? index + count : oldLength);
+  }
+
+  // Blocks for count more elements after the last one (count > 0).
+  void reserveBack(ContainerSize count)
+  {
+    ContainerSize last = (this->start + this->length + count - 1) >> Deque::blockShift();
+    if (last >= this->mapLength)
+      this->remap(this->start >> Deque::blockShift(), last);
+    ContainerSize end = this->start + this->length + count - 1;
+    for (ContainerSize block = (this->start + this->length) >> Deque::blockShift(); block <= end >> Deque::blockShift(); ++block)
+      this->ensureBlock(block);
+  }
+
+  // Blocks for count more elements before the first one (count > 0).
+  void reserveFront(ContainerSize count)
+  {
+    if (this->start < count)
+    {
+      i64 first = ((i64)this->start - (i64)count) >> Deque::blockShift();
+      i64 last = this->length > 0 ? (this->start + this->length - 1) >> Deque::blockShift() : 0;
+      this->remap(first, last);
+    }
+    for (ContainerSize block = (this->start - count) >> Deque::blockShift(); block <= (this->start - 1) >> Deque::blockShift(); ++block)
+      this->ensureBlock(block);
+  }
+
+  DequeIterator<T> iteratorAt(ContainerSize index) { return DequeIterator<T>(this->map, this->start + index); }
+  ContainerSize indexOf(const_iterator position) const { return position.position - this->start; }
 
   void ensureBlock(ContainerSize block)
   {
@@ -446,7 +585,10 @@ protected: // a derived class may see the blocks (tests/run/deque.kpp)
   ContainerSize length = 0;
 };
 
-// A position in a Deque: its element index. Random access.
+// A position in a Deque: the map of its blocks and the position in the map's space, the element's
+// own (Deque: start + index), not its index: it stays on its element through removals at the ends,
+// which change start, and through swap and moves, which hand the map over; adding to the deque can
+// replace the map, and invalidates iterators, as std's. Random access.
 // DequeIterator<const T> is the const_iterator: the same position, its element const. An iterator
 // converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename T>
@@ -460,75 +602,75 @@ public:
   using iterator_category = RandomAccessIteratorTag;
 
   DequeIterator() {}
-  DequeIterator(Deque<RemoveConst<T>>* deque, ContainerSize index) : deque(deque), index(index) {}
+  DequeIterator(RemoveConst<T>** blocks, ContainerSize position) : blocks(blocks), position(position) {}
   template<typename F> requires (isSame<F, RemoveConst<T>> && !isSame<F, T>)
-  implicit DequeIterator(const DequeIterator<F>& other) : deque(other.deque), index(other.index) {}
+  implicit DequeIterator(const DequeIterator<F>& other) : blocks(other.blocks), position(other.position) {}
   template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
-  explicit DequeIterator(const DequeIterator<F>& other) : deque(other.deque), index(other.index) {}
+  explicit DequeIterator(const DequeIterator<F>& other) : blocks(other.blocks), position(other.position) {}
 
-  T& operator*() const { return (*this->deque)[this->index]; }
-  T* operator->() const { return &(*this->deque)[this->index]; }
-  T& operator[](i64 offset) const { return (*this->deque)[ContainerSize(this->index + offset)]; }
-  bool operator==(const DequeIterator<T>& other) const { return this->index == other.index; }
+  T& operator*() const { return *Deque<RemoveConst<T>>::slotIn(this->blocks, this->position); }
+  T* operator->() const { return Deque<RemoveConst<T>>::slotIn(this->blocks, this->position); }
+  T& operator[](i64 offset) const { return *Deque<RemoveConst<T>>::slotIn(this->blocks, ContainerSize(this->position + offset)); }
+  bool operator==(const DequeIterator<T>& other) const { return this->position == other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator==(const DequeIterator<F>& other) const { return this->index == other.index; }
-  bool operator!=(const DequeIterator<T>& other) const { return this->index != other.index; }
+  bool operator==(const DequeIterator<F>& other) const { return this->position == other.position; }
+  bool operator!=(const DequeIterator<T>& other) const { return this->position != other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator!=(const DequeIterator<F>& other) const { return this->index != other.index; }
-  bool operator<(const DequeIterator<T>& other) const { return this->index < other.index; }
+  bool operator!=(const DequeIterator<F>& other) const { return this->position != other.position; }
+  bool operator<(const DequeIterator<T>& other) const { return this->position < other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator<(const DequeIterator<F>& other) const { return this->index < other.index; }
-  bool operator>(const DequeIterator<T>& other) const { return this->index > other.index; }
+  bool operator<(const DequeIterator<F>& other) const { return this->position < other.position; }
+  bool operator>(const DequeIterator<T>& other) const { return this->position > other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator>(const DequeIterator<F>& other) const { return this->index > other.index; }
-  bool operator<=(const DequeIterator<T>& other) const { return this->index <= other.index; }
+  bool operator>(const DequeIterator<F>& other) const { return this->position > other.position; }
+  bool operator<=(const DequeIterator<T>& other) const { return this->position <= other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator<=(const DequeIterator<F>& other) const { return this->index <= other.index; }
-  bool operator>=(const DequeIterator<T>& other) const { return this->index >= other.index; }
+  bool operator<=(const DequeIterator<F>& other) const { return this->position <= other.position; }
+  bool operator>=(const DequeIterator<T>& other) const { return this->position >= other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator>=(const DequeIterator<F>& other) const { return this->index >= other.index; }
+  bool operator>=(const DequeIterator<F>& other) const { return this->position >= other.position; }
 
   DequeIterator<T>& operator++()
   {
-    ++this->index;
+    ++this->position;
     return *this;
   }
 
   DequeIterator<T> operator++(i32)
   {
     DequeIterator<T> before = *this;
-    ++this->index;
+    ++this->position;
     return before;
   }
 
   DequeIterator<T>& operator--()
   {
-    --this->index;
+    --this->position;
     return *this;
   }
 
   DequeIterator<T> operator--(i32)
   {
     DequeIterator<T> before = *this;
-    --this->index;
+    --this->position;
     return before;
   }
 
-  DequeIterator<T> operator+(i64 offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index + offset)); }
-  DequeIterator<T> operator-(i64 offset) const { return DequeIterator<T>(this->deque, ContainerSize(this->index - offset)); }
-  i64 operator-(const DequeIterator<T>& other) const { return i64(this->index) - i64(other.index); }
+  DequeIterator<T> operator+(i64 offset) const { return DequeIterator<T>(this->blocks, ContainerSize(this->position + offset)); }
+  DequeIterator<T> operator-(i64 offset) const { return DequeIterator<T>(this->blocks, ContainerSize(this->position - offset)); }
+  i64 operator-(const DequeIterator<T>& other) const { return i64(this->position) - i64(other.position); }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  i64 operator-(const DequeIterator<F>& other) const { return i64(this->index) - i64(other.index); }
+  i64 operator-(const DequeIterator<F>& other) const { return i64(this->position) - i64(other.position); }
 
   DequeIterator<T>& operator+=(i64 offset)
   {
-    this->index += offset;
+    this->position += offset;
     return *this;
   }
 
   DequeIterator<T>& operator-=(i64 offset)
   {
-    this->index -= offset;
+    this->position -= offset;
     return *this;
   }
 
@@ -536,8 +678,8 @@ private:
   template<typename F> friend class DequeIterator;
   template<typename U> friend class Deque;
 
-  Deque<RemoveConst<T>>* deque = nullptr;
-  ContainerSize index = 0;
+  RemoveConst<T>** blocks = nullptr;
+  ContainerSize position = 0;
 };
 
 // First in, first out: push at the back, pop at the front.

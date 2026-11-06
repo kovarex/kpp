@@ -1,0 +1,33 @@
+erase in the front half: new 0 copy 0 move 0 copy= 0 move= 2 destroy 1 | 0 1 3 4 5 6 7
+erase in the back half: new 0 copy 0 move 0 copy= 0 move= 1 destroy 1 | 0 1 3 4 5 7
+erase range: new 0 copy 0 move 0 copy= 0 move= 1 destroy 2 | 0 4 5 7
+insert copy front half: new 0 copy 1 move 1 copy= 0 move= 2 destroy 1 | 0 1 50 2 3 4 5 6 7
+insert copy back half: new 0 copy 1 move 1 copy= 0 move= 2 destroy 1 | 0 1 50 2 3 4 5 50 6 7
+insert copy at the front: new 0 copy 1 move 0 copy= 0 move= 0 destroy 0 | 50 0 1 50 2 3 4 5 50 6 7
+insert copy at the back: new 0 copy 1 move 0 copy= 0 move= 0 destroy 0 | 50 0 1 50 2 3 4 5 50 6 7 50
+insert move: new 1 copy 0 move 2 copy= 0 move= 3 destroy 2 | 50 0 1 60 50 2 3 4 5 50 6 7 50
+emplace: new 1 copy 0 move 1 copy= 0 move= 3 destroy 1 | 50 0 1 70 60 50 2 3 4 5 50 6 7 50
+emplace at the front: new 1 copy 0 move 0 copy= 0 move= 0 destroy 0 | 71 50 0 1 70 60 50 2 3 4 5 50 6 7 50
+emplace at the back: new 1 copy 0 move 0 copy= 0 move= 0 destroy 0 | 71 50 0 1 70 60 50 2 3 4 5 50 6 7 50 72
+insert count at the front: new 0 copy 2 move 0 copy= 0 move= 0 destroy 0 | 80 80 0 1 2 3 4 5 6 7
+insert count at the back: new 0 copy 2 move 0 copy= 0 move= 0 destroy 0 | 80 80 0 1 2 3 4 5 6 7 80 80
+insert count front half: new 0 copy 1 move 2 copy= 2 move= 0 destroy 1 | 80 80 80 80 0 1 2 3 4 5 6 7 80 80
+insert count back half: new 0 copy 1 move 2 copy= 2 move= 0 destroy 1 | 80 80 80 80 0 1 2 3 4 5 6 7 80 80 80 80
+insert count, more than go before: new 0 copy 5 move 1 copy= 1 move= 0 destroy 1 | 80 80 80 80 80 80 80 80 80 0 1 2 3 4 5 6 7 80 80 80 80
+insert count, more than go after: new 0 copy 5 move 1 copy= 1 move= 0 destroy 1 | 80 80 80 80 80 80 80 80 80 0 1 2 3 4 5 6 7 80 80 80 80 80 80 80 80 80
+insert range: new 0 copy 1 move 1 copy= 1 move= 0 destroy 0 | 0 0 1 1 2 3 4 5
+insert list: new 2 copy 1 move 1 copy= 1 move= 0 destroy 2 | 0 90 91 0 1 1 2 3 4 5
+= fewer: new 0 copy 0 move 0 copy= 2 move= 0 destroy 2 | 0 1
+= more: new 0 copy 4 move 0 copy= 2 move= 0 destroy 0 | 0 1 2 3 4 5
+assign count: new 1 copy 0 move 0 copy= 3 move= 0 destroy 4 | 7 7 7
+assign range: new 0 copy 0 move 0 copy= 2 move= 0 destroy 1 | 0 1
+assign list: new 3 copy 1 move 0 copy= 2 move= 0 destroy 3 | 1 2 3
+= list: new 1 copy 0 move 0 copy= 1 move= 0 destroy 3 | 4
+resize with value: new 1 copy 2 move 0 copy= 0 move= 0 destroy 1 | 4 5 5
+resize down: new 1 copy 0 move 0 copy= 0 move= 0 destroy 3 | 4
+references after insert count at the front: 1 1
+references after insert count at the back: 6 1
+references after insert range at the front: 1 1
+references after insert range at the back: 6 1
+references after insert list at the front: 1 1
+ 3 4 8 9 7 7 1 2 3 4 5 6 7 7 8 9

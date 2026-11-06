@@ -1,0 +1,155 @@
+// spec: a Deque does the element work std::deque does: an insert or an erase moves the shorter side, by move construction into new room and move assignment over elements; insert of a count, a range or a list at either end moves nothing, so pointers and references stay; emplace at the ends builds in place; copy assignment and assign assign over the elements there are; the counts are what libstdc++ prints for the same program
+// factorio: K, comparing against std: inserts of several elements appended and rotated, which moved every element and broke references at the front; = and assign destroyed and rebuilt
+extern "C" int printf(const char* format, ...);
+int constructed = 0;
+int copied = 0;
+int moved = 0;
+int copyAssigned = 0;
+int moveAssigned = 0;
+int destroyed = 0;
+
+struct Counted
+{
+  int value;
+  Counted(int v) : value(v) { ++constructed; }
+  Counted(const Counted& other) : value(other.value) { ++copied; }
+  Counted(Counted&& other) noexcept : value(other.value) { other.value = -1; ++moved; }
+  Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
+  Counted& operator=(Counted&& other) noexcept { value = other.value; other.value = -1; ++moveAssigned; return *this; }
+  ~Counted() { ++destroyed; }
+};
+
+void reset()
+{
+  constructed = 0;
+  copied = 0;
+  moved = 0;
+  copyAssigned = 0;
+  moveAssigned = 0;
+  destroyed = 0;
+}
+
+void report(const char* what, const Deque<Counted>& v)
+{
+  printf("%s: new %d copy %d move %d copy= %d move= %d destroy %d |", what, constructed, copied, moved, copyAssigned, moveAssigned, destroyed);
+  for (const Counted& x : v)
+    printf(" %d", x.value);
+  printf("\n");
+  reset();
+}
+
+Deque<Counted> make(int n)
+{
+  Deque<Counted> v;
+  for (int i = 0; i < n; ++i)
+    v.emplace_back(i);
+  reset();
+  return v;
+}
+
+int main()
+{
+  {
+    Deque<Counted> v = make(8);
+    v.erase(v.begin() + 2);
+    report("erase in the front half", v);
+    v.erase(v.end() - 2);
+    report("erase in the back half", v);
+    v.erase(v.begin() + 1, v.begin() + 3);
+    report("erase range", v);
+  }
+  reset();
+  {
+    Deque<Counted> v = make(8);
+    Counted x(50);
+    reset();
+    v.insert(v.begin() + 2, x);
+    report("insert copy front half", v);
+    v.insert(v.end() - 2, x);
+    report("insert copy back half", v);
+    v.insert(v.begin(), x);
+    report("insert copy at the front", v);
+    v.insert(v.end(), x);
+    report("insert copy at the back", v);
+    v.insert(v.begin() + 3, Counted(60));
+    report("insert move", v);
+    v.emplace(v.begin() + 3, 70);
+    report("emplace", v);
+    v.emplace(v.begin(), 71);
+    report("emplace at the front", v);
+    v.emplace(v.end(), 72);
+    report("emplace at the back", v);
+  }
+  reset();
+  {
+    Deque<Counted> v = make(8);
+    Counted x(80);
+    reset();
+    v.insert(v.begin(), 2, x);
+    report("insert count at the front", v);
+    v.insert(v.end(), 2, x);
+    report("insert count at the back", v);
+    v.insert(v.begin() + 2, 2, x);
+    report("insert count front half", v);
+    v.insert(v.end() - 2, 2, x);
+    report("insert count back half", v);
+    v.insert(v.begin() + 1, 5, x);
+    report("insert count, more than go before", v);
+    v.insert(v.end() - 1, 5, x);
+    report("insert count, more than go after", v);
+  }
+  reset();
+  {
+    Deque<Counted> v = make(6);
+    Deque<Counted> other = make(2);
+    reset();
+    v.insert(v.begin() + 1, other.begin(), other.end());
+    report("insert range", v);
+    v.insert(v.begin() + 1, {Counted(90), Counted(91)});
+    report("insert list", v);
+  }
+  reset();
+  {
+    Deque<Counted> v = make(4);
+    Deque<Counted> w = make(2);
+    reset();
+    v = w;
+    report("= fewer", v);
+    Deque<Counted> u = make(6);
+    reset();
+    v = u;
+    report("= more", v);
+    v.assign(3, Counted(7));
+    report("assign count", v);
+    v.assign(u.begin(), u.begin() + 2);
+    report("assign range", v);
+    v.assign({Counted(1), Counted(2), Counted(3)});
+    report("assign list", v);
+    v = {Counted(4)};
+    report("= list", v);
+    v.resize(3, Counted(5));
+    report("resize with value", v);
+    v.resize(1, Counted(6));
+    report("resize down", v);
+  }
+  {
+    Deque<int> d = {1, 2, 3, 4, 5, 6};
+    int* first = &d[0];
+    int* last = &d[5];
+    int extra[] = {8, 9};
+    d.insert(d.begin(), 2, 7);
+    printf("references after insert count at the front: %d %d\n", *first, (int)(first == &d[2]));
+    d.insert(d.end(), 2, 7);
+    printf("references after insert count at the back: %d %d\n", *last, (int)(last == &d[7]));
+    d.insert(d.begin(), extra, extra + 2);
+    printf("references after insert range at the front: %d %d\n", *first, (int)(first == &d[4]));
+    d.insert(d.end(), extra, extra + 2);
+    printf("references after insert range at the back: %d %d\n", *last, (int)(last == &d[9]));
+    d.insert(d.begin(), {3, 4});
+    printf("references after insert list at the front: %d %d\n", *first, (int)(first == &d[6]));
+    for (int x : d)
+      printf(" %d", x);
+    printf("\n");
+  }
+  return 0;
+}

@@ -1,0 +1,23 @@
+after pop_front 40
+same element 1
+distance from begin 39
+end kept 1
+after 40 pop_front 40
+is the first 1
+last 99
+after pop_back 40
+after erase of the first 41
+second is begin 1
+after erase of the last 41
+after erase of the front 51
+walked to the end 3478
+swap keeps a's 2
+swap keeps b's 9
+now in the other 1
+and the other 1
+move construction keeps 9
+in the new one 1
+move assignment keeps 9
+in the new one 1
+e f 1
+l
