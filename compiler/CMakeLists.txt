@@ -3,6 +3,9 @@ project(kpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# -std=c++20, not gnu++20: GNU's dialect defines `linux` and `unix` as macros (1), and the converter
+# has variables of those names (the Linux build on ubuntu, 2026-11-06).
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if (NOT CMAKE_BUILD_TYPE)
@@ -104,6 +107,11 @@ if (MSVC)
   endif()
   target_compile_definitions(kppc PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_options(kppc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
+else()
+  # A POSIX host (design.md, "Targets and hosts", 5): clang or g++ with libstdc++, POSIX threads; the
+  # main thread's stack is the system's (8 MB on Linux, as /STACK gives it on Windows).
+  find_package(Threads REQUIRED)
+  target_link_libraries(kppc PRIVATE Threads::Threads)
 endif()
 
 # LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names the

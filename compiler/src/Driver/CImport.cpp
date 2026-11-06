@@ -714,7 +714,8 @@ std::string clangToolchain(const std::string& clang, const std::string& includeA
       continue; // the cc1 line is longer than a chunk
     std::string s = std::move(line);
     line.clear();
-    if (s.rfind("clang version", 0) == 0)
+    // ("clang version 19.1.5", or a distribution's: "Ubuntu clang version 18.1.3 (1ubuntu1)")
+    if (s.find("clang version") != std::string::npos && s.find("-cc1") == std::string::npos)
       out += s;
     else if (s.find("-cc1") != std::string::npos)
     {

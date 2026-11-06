@@ -1,0 +1,77 @@
+# kpp on a Linux host (docs/design.md, "Targets and hosts", 5): kppc built on ubuntu with CMake,
+# clang, lld and Ninja, then hello world built and run with `kppc --run`, and the spec's snippets built
+# and run natively (run_spec.py on Linux: its target the host's, no WSL, no sysroot). Its own workflow
+# while the Linux host is new: a failure here says so on the push without holding back the release
+# (ci.yml's publish).
+name: linux host
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: linux-host-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux_host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # Upstream SDL 3.4.18's headers for the two interop snippets that import SDL3/SDL.h, as ci.yml's
+      # spec job has them: kpp.net's mirror, else SDL's release, checked by SHA-256.
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+    steps:
+      # The whole history: kpp's version counts the commits since VERSION last changed.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Clang 19, as the bundled toolchain's (kppc's IR names LLVM 19's intrinsics: clang 18, Ubuntu
+      # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kppc takes
+      # it through KPP_CLANG, and clang-19's ld.lld is beside it.
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang-19 lld-19 ninja-build cmake
+          echo "KPP_CLANG=/usr/bin/clang-19" >> "$GITHUB_ENV"
+          clang-19 --version | head -n 1
+          /usr/lib/llvm-19/bin/ld.lld --version
+          echo "CPUs: $(nproc)"
+
+      - name: SDL3 headers
+        run: |
+          dir="$RUNNER_TEMP/sdl"
+          mkdir -p "$dir"
+          fetch() { curl -fsSL --retry 3 -o "$dir/$SDL_NAME" "$1" && echo "$SDL_SHA256  $dir/$SDL_NAME" | sha256sum -c -; }
+          fetch "https://kpp.net/registry/mirror/$SDL_SHA256/$SDL_NAME" || fetch "$SDL_FALLBACK"
+          unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
+          test -f "$dir/SDL3-3.4.18/include/SDL3/SDL.h"
+          echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
+
+      - name: Build kppc
+        run: |
+          cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release
+          cmake --build compiler/build
+          compiler/build/kppc --version
+
+      # The program's output, its arguments and its exit code through kppc --run.
+      - name: hello world
+        run: |
+          mkdir -p /tmp/hello
+          printf 'int main(int argc, char** argv)\n{\n  println("hello from linux ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
+          set +e
+          out=$(compiler/build/kppc --run /tmp/hello/hello.kpp a b)
+          code=$?
+          set -e
+          echo "$out (exit $code)"
+          [ "$out" = "hello from linux 3" ] && [ $code -eq 3 ]
+
+      - name: spec on a Linux host
+        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"

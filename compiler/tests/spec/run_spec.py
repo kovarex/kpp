@@ -93,7 +93,10 @@ COMPILER = os.path.dirname(os.path.dirname(HERE))
 # worktree, its debug, release and target runs at once included.
 os.environ.setdefault("KPP_OBJECT_CACHE", os.path.join(COMPILER, "build", "object-cache"))
 ROOT = os.path.dirname(COMPILER)
-KPPC = os.path.join(COMPILER, "build", "kppc.exe")
+# A Linux host runs its own build of kppc, and its snippets natively (NATIVE, main): no WSL, no sysroot.
+HOST_WINDOWS = sys.platform == "win32"
+NATIVE = False
+KPPC = os.path.join(COMPILER, "build", "kppc.exe" if HOST_WINDOWS else "kppc")
 # The game's SDL3 headers, for the interop snippets that import them (skipped when the Factorio
 # checkout is not on this machine; the snippet then shows as failing to find the header). CI sets
 # KPP_SDL_INCLUDE to upstream SDL 3.4.18's include directory (.github/workflows/ci.yml).
@@ -105,7 +108,7 @@ OUT = os.path.join(COMPILER, "build", "spec")
 SNIPPETS = HERE
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
 # The clang kppc itself uses (main.cpp's clangPath), for the snippets' own C sources.
-CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe")
+CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe" if HOST_WINDOWS else "clang")
 # --target: the target the snippets are built for (None: this machine's, Windows), the clang flags
 # for their C sources, and how a program runs (under WSL for linux).
 TARGET = None
@@ -172,7 +175,7 @@ def program_env(exe):
     return env
 
 def run_program(exe, arguments=()):
-    if TARGET == "linux":
+    if TARGET == "linux" and not NATIVE:
         drive, rest = os.path.splitdrive(os.path.abspath(exe))
         return ["wsl.exe", "-e", "/mnt/" + drive[0].lower() + rest.replace("\\", "/"), *arguments]
     return [exe, *arguments]
@@ -262,7 +265,7 @@ def build_and_run(path, area, name, work):
     target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
     # (windows-gnu is Windows: a snippet about Windows is about it too, and its programs run here)
     on_target = (target or TARGET) == TARGET or (TARGET == "windows-gnu" and target == "windows")
-    if TARGET and (not on_target or (TARGET != "windows-gnu" and (info["run"] is not None or info["test"] is not None))):
+    if TARGET and (not on_target or (TARGET != "windows-gnu" and not NATIVE and (info["run"] is not None or info["test"] is not None))):
         result["status"] = "skip"; return result
     if not TARGET and target not in (None, "windows"):
         result["status"] = "skip"; return result
@@ -531,7 +534,12 @@ def main():
     # --filter takes a part of one (gate.cmd builds the snippets a change adds or edits for FreeBSD).
     ap.add_argument("--only", default="")
     args = ap.parse_args()
-    global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS
+    global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS, NATIVE
+    # On a Linux host the snippets are built for it and run here: kppc's default target is the host's.
+    if not HOST_WINDOWS and args.target in (None, "linux"):
+        TARGET, NATIVE = "linux", True
+        args.target = None
+        args.no_doc = True # (spec-status.md is Windows' run's)
     if args.out:
         OUT = os.path.abspath(args.out)
     if args.snippets:
