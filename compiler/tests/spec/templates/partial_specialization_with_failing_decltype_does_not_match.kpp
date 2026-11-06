@@ -1,0 +1,16 @@
+// spec: a partial specialization whose arguments write a decltype that does not form under the arguments deduced does not match ([temp.class.spec.match] 2, C++'s substitution failure): in the detection idiom, `HasSize<T, void_t<decltype(static_cast<T*>(nullptr)->size())>>` is chosen for a class with size() and not for one without or for int, though void_t makes its pattern void whatever T is; `HasValue<T, void_t<decltype(T::value)>>` alike (clang gives the same)
+// found by thread A's survey of C++ features (2026-11-06, kpp against clang 19): HasSize<B>::value was true for a B without size(), the alias having dropped the decltype from the pattern, a silent wrong answer
+template<class...> using void_t = void;
+template<class T, class = void> struct HasSize { static constexpr bool value = false; };
+template<class T> struct HasSize<T, void_t<decltype(static_cast<T*>(nullptr)->size())>> { static constexpr bool value = true; };
+struct A { int size() const { return 1; } };
+struct B {};
+template<class T, class = void> struct HasValue { static constexpr int kind = 0; };
+template<class T> struct HasValue<T, void_t<decltype(T::value)>> { static constexpr int kind = 1; };
+struct V { static constexpr int value = 3; };
+
+int main()
+{
+  println(HasSize<A>::value, " ", HasSize<B>::value, " ", HasSize<int>::value, " ", HasValue<V>::kind, " ", HasValue<B>::kind);
+  return 0;
+}
