@@ -4609,6 +4609,12 @@ auto GlobalScope::Impl::constClosure(LambdaExpr* l, const Ty* type, const TypeCo
     }
     parts.push_back(*part);
   }
+  // A lambda written in a template, made where the instance's arguments are in effect: its type
+  // under them (its parameters' and result's, `N<int>*` for `N<T>*`), which a call from elsewhere
+  // takes (constCallClosure: stableSort calling the comparator, where they are not in scope).
+  if (ctx.subst && !ctx.subst->empty())
+    if (const Ty* typed = substitute(t, *ctx.subst); typed && typed->kind == TyKind::Lambda)
+      t = typed;
   return ConstValue::object(t, std::move(parts));
 }
 
@@ -4709,6 +4715,14 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     else
       env.push_back(constBinding(captures[i].symbol, part, part.type)); // (a temporary closure's: its changes end with it)
   }
+  // The closure's type as the walk typed it where the lambda is (an instance's: its parameters'
+  // and result's types under that instance's arguments, `N<int>*` for a written `N<T>*`), which a
+  // lambda written in a template takes where its own written types stay dependent: here, called
+  // from anywhere (stableSort's comparator), the enclosing instance's arguments are not in
+  // scope (D, 2026-11-06: `[](N<T>* x, N<T>* y) {...}` given an N<int>* was no constant, and so
+  // List<T>::sort at compile time).
+  const Ty* closureTy = closure.type ? types.unqualified(types.stripRef(closure.type)) : nullptr;
+  bool typedClosure = run == l && closureTy && closureTy->kind == TyKind::Lambda && closureTy->args.size() == l->params.size();
   for (size_t i = 0; i < run->params.size(); ++i)
   {
     auto* p = static_cast<ParamDecl*>(run->params[i]);
@@ -4716,6 +4730,9 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
       return std::nullopt;
     // (A generic lambda's parameter: of the type its instance has, `auto a` given 2 an int.)
     const Ty* type = run != l ? instanceTy->args[i] : p->type ? convertType(p->type, fctx, 1) : nullptr;
+    if (typedClosure && (!type || !type->isKnown() || types.isDependent(type) || mentionsUnknown(type)) && closureTy->args[i] && closureTy->args[i]->isKnown() &&
+        !types.isDependent(closureTy->args[i]))
+      type = closureTy->args[i];
     if (type && containsAuto(type))
       return std::nullopt;
     if (type && type->isReference() && i < places.size() && places[i] && places[i]->type && type->inner &&
@@ -4735,13 +4752,23 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
     std::optional<ConstValue> v = i < values.size() ? constConvertTo(values[i], type, 1)
                                 : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, 1) : std::nullopt;
     if (!v)
+    {
+      // (a refusal says why: List<int>::sort's comparator was no constant without a word, thread I)
+      if (constWhy().empty())
+        constWhy() = "a lambda's parameter " + std::string(p->name == UINT32_MAX ? std::string_view("?") : symbols.name(p->name)) + " of type " +
+                     (type ? types.toString(type, &symbols) : std::string("?")) +
+                     (i < values.size() && values[i].type ? " given a " + types.toString(values[i].type, &symbols) : std::string(" without its argument"));
       return std::nullopt;
+    }
     env.push_back(constBinding(p->name, *v, type));
     if (type && type->isReference())
       env.back().writable = false; // a copy of what the argument names
   }
   // (A generic lambda's result: the one its instance deduced.)
   const Ty* returns = run != l ? instanceTy->inner : l->returnType ? convertType(l->returnType, fctx, 1) : nullptr;
+  if (typedClosure && returns && (!returns->isKnown() || types.isDependent(returns) || mentionsUnknown(returns)) && closureTy->inner && closureTy->inner->isKnown() &&
+      !types.isDependent(closureTy->inner))
+    returns = closureTy->inner;
   if (returns && containsAuto(returns))
     returns = nullptr;
   fctx.returnType = returns;
@@ -4793,7 +4820,14 @@ auto GlobalScope::Impl::constCallLambda(LambdaExpr* l, CallExpr* c, const TypeCo
     std::optional<ConstValue> v = i < values.size() ? constConvertTo(values[i], type, 1)
                                 : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, 1) : std::nullopt;
     if (!v)
+    {
+      // (a refusal says why: List<int>::sort's comparator was no constant without a word, thread I)
+      if (constWhy().empty())
+        constWhy() = "a lambda's parameter " + std::string(p->name == UINT32_MAX ? std::string_view("?") : symbols.name(p->name)) + " of type " +
+                     (type ? types.toString(type, &symbols) : std::string("?")) +
+                     (i < values.size() && values[i].type ? " given a " + types.toString(values[i].type, &symbols) : std::string(" without its argument"));
       return std::nullopt;
+    }
     env.push_back(constBinding(p->name, *v, type));
     if (type && type->isReference())
       env.back().writable = false; // a copy of what the argument names

@@ -1,0 +1,48 @@
+// spec: at compile time a lambda written in a template takes its parameters' types under the instance's arguments, wherever it is called: `[](N<T>* x, N<T>* y) {...}` stored in an `auto` local and called there, or given to stableSort and called by it (List<T>::sort's comparator), takes an N<int>* where T is int; List<int>'s sort(), and sort with a comparator, at compile time as at run time
+// found by thread I's List battery (2026-11-06): `List<int> l = {5, 1, 4}; l.sort(); return l.front();` was no constant, without a reason: the lambda's written `N<T>*` was converted without the instance's arguments, an N<unknown>* that no argument converts to
+struct Links { Links* prev = nullptr; };
+template<class T> struct N : Links { T v; };
+
+template<class T> constexpr int smaller(N<T>* a, N<T>* b)
+{
+  auto less = [](N<T>* x, N<T>* y) { return x->v < y->v; };
+  return less(a, b) ? a->v : b->v;
+}
+
+template<class T> constexpr T firstSorted(Vector<N<T>*>& v)
+{
+  stableSort(v.begin(), v.end(), [](N<T>* x, N<T>* y) { return x->v < y->v; });
+  return v[0]->v;
+}
+
+constexpr int sorted() { List<int> l = {5, 1, 4}; l.sort(); return l.front() * 100 + l.back(); }
+
+constexpr int sortedDown()
+{
+  List<int> l = {5, 1, 4};
+  l.sort([](const int& a, const int& b) { return a > b; });
+  return l.front() * 100 + l.back();
+}
+
+constexpr int pick()
+{
+  N<int>* a = new N<int>();
+  a->v = 7;
+  N<int>* b = new N<int>();
+  b->v = 3;
+  Vector<N<int>*> v = {a, b};
+  int r = smaller(a, b) * 10 + firstSorted(v);
+  delete a;
+  delete b;
+  return r;
+}
+
+constexpr int s = sorted();
+constexpr int d = sortedDown();
+constexpr int p = pick();
+
+int main()
+{
+  println(s, " ", d, " ", p, " ", sorted(), " ", sortedDown(), " ", pick());
+  return 0;
+}
