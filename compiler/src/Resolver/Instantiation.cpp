@@ -456,11 +456,11 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
   if (!p || p->isType || !p->valueType)
     return types.unknown();
   const Ty* pt = types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1));
-  const Ty* wanted = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
+  const Ty* wanted = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
   // `template<auto F>` given one function: a pointer to it, noexcept as it is.
   if (pt && pt->kind == TyKind::Auto && l.decl && l.decl->kind == NodeKind::FunctionDecl && (!l.overloads || l.overloads->size() <= 1) && l.decl->templateParams.empty())
     if (const Ty* t = declaredTypeOf(l.decl, nullptr, depth + 1); t && t->kind == TyKind::Function)
-      return types.functionValue(types.pointer(types.withNoexcept(t, isNoexcept(static_cast<FunctionDecl*>(l.decl), nullptr) == std::optional<bool>(true))), l.decl);
+      return types.functionValue(types.pointer(namedFunctionType(l.decl, t, nullptr)), l.decl);
   if (!wanted || wanted->kind != TyKind::Function)
     return types.unknown();
   std::vector<Decl*> candidates;
@@ -471,9 +471,8 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
   if (candidates.empty())
     candidates.push_back(l.decl);
   for (Decl* f : candidates)
-    if (const Ty* t = declaredTypeOf(f, nullptr, depth + 1);
-        t == wanted || (t && types.withNoexcept(t, f->kind == NodeKind::FunctionDecl && isNoexcept(static_cast<FunctionDecl*>(f), nullptr) == std::optional<bool>(true)) == wanted))
-      return types.functionValue(types.pointer(wanted), f);
+    if (const Ty* t = namedFunctionType(f, declaredTypeOf(f, nullptr, depth + 1), nullptr); t == wanted || losesNoexcept(t, wanted))
+      return types.functionValue(pt->kind == TyKind::MemberPointer ? pt : types.pointer(wanted), f);
   return types.unknown();
 }
 
@@ -1784,7 +1783,10 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
             noexceptParam = l.decl;
         }
       }
-      return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic, false, isNoexcept, noexceptParam);
+      uint8_t memberQualifiers = (f->isConst ? TypeTable::MemberConst : 0) | (f->isVolatile ? TypeTable::MemberVolatile : 0) |
+                                 (f->refQualifier == uint8_t(FunctionDecl::RefQualifier::LValue) ? TypeTable::MemberLValue : 0) |
+                                 (f->refQualifier == uint8_t(FunctionDecl::RefQualifier::RValue) ? TypeTable::MemberRValue : 0);
+      return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic, false, isNoexcept, noexceptParam, memberQualifiers);
     }
     case NodeKind::AutoType: return static_cast<AutoType*>(t)->isDecltypeAuto ? types.decltypeAutoType() : types.autoType();
     case NodeKind::DecltypeType:
@@ -2003,7 +2005,7 @@ auto GlobalScope::Impl::withCConvention(const Ty* t, bool nested, int depth) -> 
       bool c = t->isCConvention() || byValue(result) || std::any_of(params.begin(), params.end(), byValue);
       if (!changed && c == t->isCConvention())
         return t;
-      return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, t->variadic, c, t->isNoexcept(), t->decl);
+      return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, t->variadic, c, t->isNoexcept(), t->decl, t->memberQualifiers());
     }
     default:
       return t;
@@ -3447,7 +3449,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
         }
         else if (n && n->kind == TyKind::Param)
           noexceptParam = n->decl;
-        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention(), isNoexcept, noexceptParam);
+        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention(), isNoexcept, noexceptParam, t->memberQualifiers());
       }
       if (t->kind == TyKind::Lambda)
         return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);

@@ -1,0 +1,15 @@
+// spec: a pointer to a member function converts to no other const, volatile or ref qualifier, either way, as clang refuses
+// error: member_function_pointer_qualifiers_do_not_convert_are_errors.kpp:12: error: a pointer to a member function (int32() const C::*) does not convert to
+// error: member_function_pointer_qualifiers_do_not_convert_are_errors.kpp:13: error: a pointer to a member function (int32() C::*) does not convert to
+// error: member_function_pointer_qualifiers_do_not_convert_are_errors.kpp:14: error: a pointer to a member function (int32() & C::*) does not convert to
+class C
+{
+public:
+  int a() { return 1; }
+  int b() const { return 2; }
+  int c() & { return 3; }
+};
+void e1() { int (C::*p)() = &C::b; }
+void e2() { int (C::*p)() const = &C::a; }
+void e3() { int (C::*p)() = &C::c; }
+int main() { return 0; }

@@ -337,27 +337,34 @@ const Ty* TypeTable::vectorType(const Ty* element, uint32_t count)
   return intern(t);
 }
 
-const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention, bool isNoexcept, Decl* noexceptParam)
+const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention, bool isNoexcept, Decl* noexceptParam, uint8_t memberQualifiers)
 {
   Ty t{TyKind::Function};
   t.inner = result;
   t.args = params;
   t.variadic = variadic;
-  t.count = (cConvention ? 1 : 0) | (isNoexcept ? 2 : 0);
+  t.count = (cConvention ? 1 : 0) | (isNoexcept ? 2 : 0) | (uint32_t(memberQualifiers) << 2);
   t.decl = noexceptParam;
   return intern(t);
 }
 
 const Ty* TypeTable::functionLike(const Ty* like, const Ty* result, Span<const Ty*> params)
 {
-  return function(result, params, like->variadic, like->isCConvention(), like->isNoexcept(), like->decl);
+  return function(result, params, like->variadic, like->isCConvention(), like->isNoexcept(), like->decl, like->memberQualifiers());
 }
 
 const Ty* TypeTable::withNoexcept(const Ty* t, bool isNoexcept)
 {
   if (!t || t->kind != TyKind::Function || (t->isNoexcept() == isNoexcept && !t->decl))
     return t;
-  return function(t->inner, t->args, t->variadic, t->isCConvention(), isNoexcept);
+  return function(t->inner, t->args, t->variadic, t->isCConvention(), isNoexcept, nullptr, t->memberQualifiers());
+}
+
+const Ty* TypeTable::withMemberQualifiers(const Ty* t, uint8_t memberQualifiers)
+{
+  if (!t || t->kind != TyKind::Function || t->memberQualifiers() == memberQualifiers)
+    return t;
+  return function(t->inner, t->args, t->variadic, t->isCConvention(), t->isNoexcept(), t->decl, memberQualifiers);
 }
 
 const Ty* TypeTable::classType(Decl* decl, Span<const Ty*> args)
@@ -730,6 +737,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       for (size_t i = 0; i < t->args.size(); ++i)
         s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
       s += t->variadic ? ", ...)" : ")";
+      if (uint8_t q = t->memberQualifiers())
+        s += std::string(q & MemberConst ? " const" : "") + (q & MemberVolatile ? " volatile" : "") + (q & MemberLValue ? " &" : "") + (q & MemberRValue ? " &&" : "");
       if (t->kind == TyKind::Function && t->decl)
         s += " noexcept(" + declName(t->decl) + ")";
       else if (t->isNoexcept())

@@ -527,6 +527,18 @@ auto GlobalScope::Impl::unqualifiedDeep(const Ty* t) -> const Ty*
   return types.unqualified(t);
 }
 
+auto GlobalScope::Impl::namedFunctionType(Decl* d, const Ty* t, const Subst* subst) -> const Ty*
+{
+  if (!t || t->kind != TyKind::Function || !d || d->kind != NodeKind::FunctionDecl)
+    return t;
+  auto* f = static_cast<FunctionDecl*>(d);
+  uint8_t qualifiers = ((f->flags & DF_Const) ? TypeTable::MemberConst : 0) | ((f->flags & DF_Volatile) ? TypeTable::MemberVolatile : 0) |
+                       (f->refQualifier == FunctionDecl::RefQualifier::LValue ? TypeTable::MemberLValue : 0) |
+                       (f->refQualifier == FunctionDecl::RefQualifier::RValue ? TypeTable::MemberRValue : 0);
+  t = types.withMemberQualifiers(t, qualifiers);
+  return (f->flags & DF_Noexcept) && isNoexcept(f, subst) == std::optional<bool>(true) ? types.withNoexcept(t, true) : t;
+}
+
 auto GlobalScope::Impl::overriddenNoexcept(const Ty* t, FunctionDecl* f, const std::string& key, int depth) -> FunctionDecl*
 {
   if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > 16)

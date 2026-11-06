@@ -24,6 +24,11 @@
 
   static constexpr int NotViable = 1000;
 
+  // The type of function d's name: t, its declared type under subst, noexcept as d is there and
+  // with a member function's qualifiers (declaredTypeOf's signature has neither: calls, overrides and
+  // redeclarations compare that).
+  const Ty* namedFunctionType(Decl* d, const Ty* t, const Subst* subst);
+
   // A noexcept virtual function of t's bases that f, of overrideKey key, overrides; null when none is.
   FunctionDecl* overriddenNoexcept(const Ty* t, FunctionDecl* f, const std::string& key, int depth);
 

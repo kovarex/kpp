@@ -865,6 +865,9 @@ namespace
             f->isConst = (d.flags & DF_Const) != 0;
             f->isNoexcept = (d.flags & DF_Noexcept) != 0;
             f->noexceptCondition = d.noexceptCondition;
+            f->isVolatile = (d.flags & DF_Volatile) != 0;
+            f->isConst = (d.flags & DF_Const) != 0;
+            f->refQualifier = uint8_t(d.refQualifier);
             f->isVariadic = (d.flags & DF_Variadic) != 0;
             // `Frac<gcd(P1::num, P2::num)>`: also read as a call, which the resolver takes when the
             // parameter is a constant (the parser cannot tell a function from a type).
@@ -1265,6 +1268,9 @@ namespace
           f->isVariadic = (d.flags & DF_Variadic) != 0;
           f->isNoexcept = (d.flags & DF_Noexcept) != 0;
           f->noexceptCondition = d.noexceptCondition;
+          f->isVolatile = (d.flags & DF_Volatile) != 0;
+          f->isConst = (d.flags & DF_Const) != 0;
+          f->refQualifier = uint8_t(d.refQualifier);
           if (lref)
           {
             LRefType* r = node<LRefType>(start);
@@ -1302,6 +1308,9 @@ namespace
           f->isVariadic = (d.flags & DF_Variadic) != 0;
           f->isNoexcept = (d.flags & DF_Noexcept) != 0;
           f->noexceptCondition = d.noexceptCondition;
+          f->isVolatile = (d.flags & DF_Volatile) != 0;
+          f->isConst = (d.flags & DF_Const) != 0;
+          f->refQualifier = uint8_t(d.refQualifier);
           MemberPointerType* m = node<MemberPointerType>(start);
           m->classType = cls;
           m->pointee = f;
@@ -2654,6 +2663,9 @@ namespace
           f->isConst = (tmp.flags & DF_Const) != 0;
           f->isNoexcept = (tmp.flags & DF_Noexcept) != 0;
           f->noexceptCondition = tmp.noexceptCondition;
+          f->isVolatile = (tmp.flags & DF_Volatile) != 0;
+          f->isConst = (tmp.flags & DF_Const) != 0;
+          f->refQualifier = uint8_t(tmp.refQualifier);
           if (inner && inner->kind == NodeKind::MemberPointerType)
           {
             // Pointer to member function: `R (C::*name)(params)`.
@@ -3077,6 +3089,9 @@ namespace
       f->isVariadic = (d.flags & DF_Variadic) != 0;
       f->isNoexcept = (d.flags & DF_Noexcept) != 0;
       f->noexceptCondition = d.noexceptCondition;
+      f->isVolatile = (d.flags & DF_Volatile) != 0;
+      f->isConst = (d.flags & DF_Const) != 0;
+      f->refQualifier = uint8_t(d.refQualifier);
       d.type = f;
       d.flags &= ~DF_Variadic;
       d.isFunction = false;
@@ -3468,6 +3483,9 @@ namespace
         f->isConst = (d.flags & DF_Const) != 0;
         f->isNoexcept = (d.flags & DF_Noexcept) != 0;
         f->noexceptCondition = d.noexceptCondition;
+        f->isVolatile = (d.flags & DF_Volatile) != 0;
+        f->isConst = (d.flags & DF_Const) != 0;
+        f->refQualifier = uint8_t(d.refQualifier);
         f->isVariadic = (d.flags & DF_Variadic) != 0;
         return f;
       }

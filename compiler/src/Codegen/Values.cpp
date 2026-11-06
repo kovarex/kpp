@@ -185,9 +185,13 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   const Ty* fromClass = fk == TyKind::MemberPointer && from->inner && from->inner->kind == TyKind::Function && !from->args.empty() && isClass(from->args[0])
                           ? withCurrentArgs(from->args[0]) : nullptr;
   const Ty* toClass = tk == TyKind::MemberPointer && !to->args.empty() && isClass(to->args[0]) ? withCurrentArgs(to->args[0]) : nullptr;
-  if (fromClass && tk == TyKind::MemberPointer && !explicitCast && to->inner && to->inner->isNoexcept() && !from->inner->isNoexcept() && !types.isDependent(from) &&
-      !types.isDependent(to) && !(currentFile && currentFile->isImported))
-    fail(at, "a pointer to a member function (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast: noexcept goes, it does not come");
+  if (fromClass && tk == TyKind::MemberPointer && !explicitCast && to->inner && !types.isDependent(from) && !types.isDependent(to) && !(currentFile && currentFile->isImported))
+  {
+    if (to->inner->isNoexcept() && !from->inner->isNoexcept())
+      fail(at, "a pointer to a member function (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast: noexcept goes, it does not come");
+    if (to->inner->memberQualifiers() != from->inner->memberQualifiers())
+      fail(at, "a pointer to a member function (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast: their const, volatile and & differ");
+  }
   if (fromClass && toClass && types.isDependent(fromClass) && !types.isDependent(toClass))
     return {v.text, to};
   if (fromClass && toClass && !types.isDependent(fromClass) && !types.isDependent(toClass) && classKey(fromClass) != classKey(toClass))

@@ -67,11 +67,18 @@ public:
   // noexcept: part of the type (C++17): `void() noexcept` is another type than `void()`, printed so, which
   // keeps two instances and overloads apart in LLVM's names. noexceptParam: the `N` of a pattern's
   // `noexcept(N)`, dependent until N is bound.
-  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention = false, bool isNoexcept = false, Decl* noexceptParam = nullptr);
+  // memberQualifiers: `void() const`, `void() &&` and the like, what a pointer to a member function's
+  // type says of the function (MemberConst and the others below): `R (K::*)()` and `R (K::*)() const`
+  // are two types, and neither converts to the other.
+  enum : uint8_t { MemberConst = 1, MemberVolatile = 2, MemberLValue = 4, MemberRValue = 8 };
+  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention = false, bool isNoexcept = false, Decl* noexceptParam = nullptr,
+                     uint8_t memberQualifiers = 0);
   // Another function type with what `like` says besides its result and parameters.
   const Ty* functionLike(const Ty* like, const Ty* result, Span<const Ty*> params);
   // Function type t, noexcept or not: `void()` and `void() noexcept` from each other.
   const Ty* withNoexcept(const Ty* t, bool isNoexcept);
+  // Function type t with these member qualifiers.
+  const Ty* withMemberQualifiers(const Ty* t, uint8_t memberQualifiers);
   const Ty* classType(Decl* decl, Span<const Ty*> args);
   // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but
   // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other

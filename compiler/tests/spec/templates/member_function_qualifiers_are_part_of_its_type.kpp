@@ -1,0 +1,61 @@
+// spec: `R (K::*)()` and its `const`, `volatile`, `&`, `&&` forms are types of their own: partial specializations, overloads, instances and a pointer's target tell them apart, as `&C::get` picks the const or the other overload by the pointer's type, clang's output (all were one type, so every specialization but the first went unused, without a word)
+extern "C" import "stdio.h";
+template <typename T> struct Tr { static constexpr int value = 0; };
+template <typename R, typename K> struct Tr<R (K::*)()> { static constexpr int value = 1; };
+template <typename R, typename K> struct Tr<R (K::*)() const> { static constexpr int value = 2; };
+template <typename R, typename K> struct Tr<R (K::*)() &> { static constexpr int value = 3; };
+template <typename R, typename K> struct Tr<R (K::*)() &&> { static constexpr int value = 4; };
+template <typename R, typename K> struct Tr<R (K::*)() const &> { static constexpr int value = 5; };
+template <typename R, typename K> struct Tr<R (K::*)() volatile> { static constexpr int value = 6; };
+template <typename R, typename K> struct Tr<R (K::*)() const noexcept> { static constexpr int value = 7; };
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+struct C
+{
+  int v = 5;
+  int a() { return 1; }
+  int b() const { return 2; }
+  int c() & { return 3; }
+  int d() && { return 4; }
+  int e() const & { return 5; }
+  int f() volatile { return 6; }
+  int g() const noexcept { return 7; }
+  int get() { return 10; }
+  int get() const { return 20; }
+  static int s() { return 30; }
+};
+template <typename R, typename K> int callConst(R (K::*m)() const, const K& k) { return (k.*m)(); }
+template <typename R, typename K> int callPlain(R (K::*m)(), K& k) { return (k.*m)(); }
+// overloaded on const of the pointer's type
+int which(int (C::*)()) { return 1; }
+int which(int (C::*)() const) { return 2; }
+template <int (C::*M)() const> int fixed(const C& c) { return (c.*M)(); }
+template <int (C::*M)()> int fixedPlain(C& c) { return (c.*M)(); }
+template <typename T> int counter() { static int n = 0; return ++n; }
+using Fn = int() const;
+int main()
+{
+  C o;
+  const C k;
+  printf("%d %d %d %d %d %d %d\n", Tr<decltype(&C::a)>::value, Tr<decltype(&C::b)>::value, Tr<decltype(&C::c)>::value, Tr<decltype(&C::d)>::value, Tr<decltype(&C::e)>::value, Tr<decltype(&C::f)>::value, Tr<decltype(&C::g)>::value);
+  int (C::*m1)() = &C::get;
+  int (C::*m2)() const = &C::get;
+  printf("%d %d %d\n", (o.*m1)(), (o.*m2)(), (k.*m2)());
+  printf("%d %d %d %d\n", callConst(&C::b, k), callPlain(&C::a, o), callConst<int, C>(&C::get, k), callPlain<int, C>(&C::get, o));
+  printf("%d %d %d\n", which(&C::a), which(&C::b), (int)Same<decltype(m1), decltype(m2)>::value);
+  printf("%d %d %d\n", fixed<&C::get>(k), fixedPlain<&C::get>(o), fixed<&C::b>(o));
+  int n1 = counter<int (C::*)()>();
+  int n2 = counter<int (C::*)() const>();
+  int n3 = counter<int (C::*)() &>();
+  int n4 = counter<int (C::*)()>();
+  printf("%d %d %d %d\n", n1, n2, n3, n4);
+  printf("%d %d\n", (int)Same<int (C::*)() const, Fn C::*>::value, (int)Same<decltype(&C::s), int (*)()>::value);
+  int (C::*amp)() & = &C::c;
+  int (C::*rref)() && = &C::d;
+  printf("%d %d\n", (o.*amp)(), (C{}.*rref)());
+  int (C::*cn)() const = &C::g;
+  printf("%d\n", (o.*cn)());
+  int C::*data = &C::v;
+  printf("%d\n", o.*data);
+  return 0;
+}

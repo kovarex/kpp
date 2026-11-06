@@ -1397,14 +1397,6 @@ auto GlobalScope::Impl::Walker::bindingType(VariableDecl* v, uint32_t symbol) ->
   return unknown(Why::Unsupported);
 }
 
-auto GlobalScope::Impl::Walker::namedFunctionType(Decl* d, const Ty* t, const Subst* subst) -> const Ty*
-{
-  if (!t || t->kind != TyKind::Function || !d || d->kind != NodeKind::FunctionDecl || !(d->flags & DF_Noexcept))
-    return t;
-  std::optional<bool> isNoexcept = impl.isNoexcept(static_cast<FunctionDecl*>(d), subst);
-  return isNoexcept && *isNoexcept ? types.withNoexcept(t, true) : t;
-}
-
 auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePart& lastPart, Expr* e) -> const Ty*
 {
   Decl* d = l.decl;
@@ -1473,10 +1465,10 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
             for (const Subst::Pair& p : activeSubst->pairs)
               if (!s.find(p.param))
                 s.pairs.push_back(p); // the enclosing instance's (a member of a class template)
-          return namedFunctionType(f, impl.declaredTypeOf(f, &s, 0), &s);
+          return impl.namedFunctionType(f, impl.declaredTypeOf(f, &s, 0), &s);
         }
       }
-      return namedFunctionType(f, impl.declaredTypeOf(d, activeSubst, 0), activeSubst);
+      return impl.namedFunctionType(f, impl.declaredTypeOf(d, activeSubst, 0), activeSubst);
     }
     case NodeKind::ClassDecl:
     case NodeKind::EnumDecl:
@@ -1613,7 +1605,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     // base takes that base instantiation's arguments.
     if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))
       if (Subst s = impl.memberSubst(q, l.foundIn, 0); !s.pairs.empty())
-        return memberThroughThis(l, namedFunctionType(l.decl, impl.declaredTypeOf(l.decl, &s, 0), &s));
+        return memberThroughThis(l, impl.namedFunctionType(l.decl, impl.declaredTypeOf(l.decl, &s, 0), &s));
     // `Fast::Enum::True` with an enum declared in a class template: that instance's enumerator.
     if (q->kind == TyKind::Enum)
       if (Subst s = impl.substFor(q); !s.pairs.empty())
@@ -2861,7 +2853,7 @@ auto GlobalScope::Impl::Walker::setHasFunctionOf(const OverloadSetArgument& set,
   Subst qs = set.name->name.parts.size() > 1 ? impl.qualifierSubst(set.name->name, ctx(), 0, set.set.foundIn) : Subst{};
   for (const Entry& e : *set.set.overloads)
     if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty())
-      if (const Ty* t = namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
+      if (const Ty* t = impl.namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
           t == target || impl.losesNoexcept(t, target))
         return true;
   return false;
@@ -3081,7 +3073,7 @@ auto GlobalScope::Impl::Walker::bindOverloadSet(const OverloadSetArgument& s, co
   {
     if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty())
       continue;
-    const Ty* ot = namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
+    const Ty* ot = impl.namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
     if (ot != target && !impl.losesNoexcept(ot, target))
       continue;
     several = several || chosen;
@@ -4636,7 +4628,15 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       n->resolved = f;
       const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
       record(n, fnTy);
-      bindOverloadSets(sets, fnTy);
+      if (!sets.empty() && !f->templateParams.empty() && n->name.last().hasTemplateArgs)
+      {
+        // `call<int, C>(&C::get, k)`: the parameter's type under the arguments written picks the function.
+        Subst written = classSubst ? *classSubst : Subst{};
+        bindExplicitArgs(f, n->name.last(), Span<Expr*>{}, written, false);
+        bindOverloadSets(sets, impl.declaredTypeOf(f, &written, 0));
+      }
+      else
+        bindOverloadSets(sets, fnTy);
       if (fnTy && fnTy->kind == TyKind::Function)
         for (size_t i = 0; i < c->args.size() && i < fnTy->args.size(); ++i)
           noteZeroNull(c->args[i], fnTy->args[i]); // `count(0)` for a Node*

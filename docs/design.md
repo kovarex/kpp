@@ -4207,6 +4207,14 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   thrown noexcept pointer yet (spec language/noexcept_pointer_thrown_is_caught_as_a_plain_pointer,
   pending for B). Specs language/noexcept_*, clang's output.
 
+- **A member function's qualifiers are part of its pointer's type** (D, 2026-11-06, as C++: a silent
+  wrong answer fixed). `R (K::*)()`, `R (K::*)() const`, `volatile`, `&` and `&&` are five types
+  (TypeTable::function's memberQualifiers, printed in the type); they were one, so a second partial
+  specialization or overload on them was never chosen. As with noexcept, declaredTypeOf stays the
+  signature and a function's name carries them (namedFunctionType); no conversion joins them. A
+  pointer to a member function is a template argument too (`template<int (A::*M)()>`), by what
+  `&A::f` is, a thunk for a virtual one. Specs templates/member_function_*.
+
 - **Wube's utility code in kpp (parked)** (kovarex, 2026-11-06): once Factorio is officially in kpp, so
   that the game's code changes along with the stdlib, Wube's handwritten utility code moves, not a
   fresh implementation: PropertyTree and a generic versioned Serialiser/Deserialiser into the stdlib,

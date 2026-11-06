@@ -174,6 +174,22 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         if (currentArgs)
           for (auto& [p, bound] : currentArgs->pairs)
           {
+            if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::FunctionDecl && bound->inner &&
+                types.unqualified(types.stripRef(bound->inner))->kind == TyKind::MemberPointer)
+            {
+              // `template<int (A::*M)()>` given &A::f: what `&A::f` is here, a thunk for a virtual one.
+              NameExpr name{};
+              name.kind = NodeKind::NameExpr;
+              name.token = e->token;
+              name.resolved = bound->decl;
+              UnaryExpr address{};
+              address.kind = NodeKind::UnaryExpr;
+              address.token = e->token;
+              address.op = uint32_t(P::Amp);
+              address.operand = &name;
+              address.ty = types.unqualified(types.stripRef(bound->inner));
+              return unary(&address);
+            }
             if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::FunctionDecl)
             {
               refuseCAddress(static_cast<FunctionDecl*>(bound->decl), e);
