@@ -90,11 +90,13 @@ namespace filesystem
       }
       return 0;
     }
+
     ContainerSize rootDirectoryEnd() const
     {
       ContainerSize i = this->rootNameEnd();
       return i < this->text.size() && path::isSeparator(this->text[i]) ? i + 1 : i;
     }
+
     ContainerSize relativeStart() const
     {
       ContainerSize i = this->rootNameEnd();
@@ -102,6 +104,7 @@ namespace filesystem
         ++i;
       return i;
     }
+
     ContainerSize filenameStart() const
     {
       ContainerSize start = this->relativeStart();
@@ -132,41 +135,50 @@ namespace filesystem
       this->text.append(p.text.c_str() + otherRootName, p.text.size() - otherRootName);
       return *this;
     }
+
     path& append(const path& p) { return *this /= p; }
+
     // Concatenation without a separator.
     path& operator+=(const path& p)
     {
       this->text.append(p.text);
       return *this;
     }
+
     path& operator+=(const WString& s)
     {
       this->text.append(s);
       return *this;
     }
+
     path& operator+=(const wchar_t* s)
     {
       this->text.append(s);
       return *this;
     }
+
     path& operator+=(wchar_t c)
     {
       this->text.push_back(c);
       return *this;
     }
+
     path& operator+=(const String& s)
     {
       this->text.append(widenUtf8(s.data(), s.size()));
       return *this;
     }
+
     path& operator+=(const char* s)
     {
       this->text.append(widenUtf8(s, checkedSize(strlen(s), "string too long")));
       return *this;
     }
+
     path& concat(const path& p) { return *this += p; }
 
     void clear() { this->text.clear(); }
+
     // `/` as `\` on Windows; nothing elsewhere, where `/` is the one separator.
     path& make_preferred()
     {
@@ -176,16 +188,19 @@ namespace filesystem
             c = L'\\';
       return *this;
     }
+
     path& remove_filename()
     {
       this->text.resize(this->filenameStart());
       return *this;
     }
+
     path& replace_filename(const path& replacement)
     {
       this->remove_filename();
       return *this /= replacement;
     }
+
     path& replace_extension(const path& replacement)
     {
       this->text.resize(this->text.size() - this->extension().text.size());
@@ -197,6 +212,7 @@ namespace filesystem
       }
       return *this;
     }
+
     path& replace_extension() { return this->replace_extension(path()); }
     void swap(path& other) { ::swap(this->text, other.text); }
 
@@ -209,6 +225,7 @@ namespace filesystem
     String string() const { return narrowUtf16(this->text.c_str(), this->text.size()); }
     WString wstring() const { return this->text; }
     String u8string() const { return this->string(); }
+
     // The generic forms are the target's C++ library's: on Windows (MSVC's STL) every `\` becomes `/`
     // and runs stay; elsewhere (libstdc++) a run of `/` is one.
     WString generic_wstring() const
@@ -230,11 +247,13 @@ namespace filesystem
       }
       return generic;
     }
+
     String generic_string() const
     {
       WString generic = this->generic_wstring();
       return narrowUtf16(generic.c_str(), generic.size());
     }
+
     String generic_u8string() const { return this->generic_string(); }
 
     // Element by element: the root names as text, then a root directory before none, then the
@@ -244,13 +263,16 @@ namespace filesystem
     i32 compare(const wchar_t* other) const { return this->compare(path(other)); }
 
     path root_name() const { return path(this->text.substr(0, this->rootNameEnd())); }
+
     path root_directory() const
     {
       ContainerSize a = this->rootNameEnd();
       return path(this->text.substr(a, this->rootDirectoryEnd() - a));
     }
+
     path root_path() const { return path(this->text.substr(0, this->rootDirectoryEnd())); }
     path relative_path() const { return path(this->text.substr(this->relativeStart())); }
+
     // The path without its last element (itself when it has no relative path), trailing
     // separators before that element removed.
     path parent_path() const
@@ -265,7 +287,9 @@ namespace filesystem
         return this->root_path();
       return path(this->text.substr(0, end));
     }
+
     path filename() const { return path(this->text.substr(this->filenameStart())); }
+
     // The filename without its extension; the extension is from its last `.`, unless that is its
     // first character or the filename is `.` or `..`.
     path stem() const
@@ -274,12 +298,14 @@ namespace filesystem
       ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? name : name.substr(0, dot));
     }
+
     path extension() const
     {
       WString name = this->text.substr(this->filenameStart());
       ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? WString() : name.substr(dot));
     }
+
     static ContainerSize extensionDot(const WString& name)
     {
       if (name == L"." || name == L"..")
@@ -304,6 +330,7 @@ namespace filesystem
 
     path lexically_normal() const;
     path lexically_relative(const path& base) const;
+
     path lexically_proximate(const path& base) const
     {
       path relative = this->lexically_relative(base);

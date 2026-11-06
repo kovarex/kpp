@@ -100,7 +100,7 @@ def code_of(lines):
                     s[k] = ' '
                 i += m.end()
                 continue
-            if c == '"' or (c == "'" and not (i > 0 and line[i - 1].isalnum())):  # (1'000 digit separators)
+            if c == '"' or (c == "'" and not re.search(r'\b\d\w*$', line[:i])):  # (1'000 digit separators; L'x' a literal)
                 q = c
                 j = i + 1
                 while j < n and line[j] != q:
@@ -144,27 +144,46 @@ def check(path, text):
             found.append((i + 1, 'keyword-space'))
         if re.match(r'\s*(?:implicit\s+|explicit\s+)?([A-Z]\w*)\(\)\s*\{\}', c):
             found.append((i + 1, 'empty-constructor'))
-    # Blocks: each `{` with its `}`, the kind of block (a container of declarations, or code).
-    opens = []   # stack of (line, kind)
-    blocks = []  # (open line, close line, enclosing kind, own kind, head line)
+    # Blocks: each `{` with its `}` and the kind of block: a container of declarations, code, or an
+    # expression's braces (a lambda's body or a brace initialisation inside a declaration, which are
+    # no definitions of their own). A statement starts after the last `;`, `{` or `}` (an
+    # expression's braces aside) outside parentheses: what a `{` opens is read from there.
+    opens = []   # stack of (line, kind, head line, column, parentheses open at it, the statement's start before it)
+    blocks = []  # (open line, close line, enclosing kind, own kind, head line, column)
+    paren = 0
+    stmt = (0, 0)  # where the current statement starts: (line, column)
     for i, c in enumerate(code):
+        if re.match(r'\s*(public|private|protected)\s*:\s*$', c):
+            stmt = (i + 1, 0)
+            continue
         for j, ch in enumerate(c):
-            if ch == '{':
-                head = head_of(lines, code, i, j)
+            relative = paren - (opens[-1][4] if opens else 0)
+            if ch in '([':
+                paren += 1
+            elif ch in ')]':
+                paren = max(0, paren - 1)
+            elif ch == ';' and relative == 0:
+                stmt = (i, j + 1)
+            elif ch == '{':
                 enclosing = opens[-1][1] if opens else 'declarations'
-                # What this `{` opens: the code before it back to the last `;`, `{` or `}` (not a class
-                # written whole on the line before a function's head: `class X { ... }; void X::f()`).
-                text_head = ' '.join([code[k] for k in range(head, i)] + [c[:j]])
-                text_head = re.split(r'[;{}]', text_head)[-1]
-                own = 'declarations' if re.search(r'\b(class|struct|union|enum|namespace)\b|\bextern\s*$', text_head) else 'code'
-                if enclosing == 'code':
+                text_head = ' '.join([code[stmt[0]][stmt[1]:]] + [code[k] for k in range(stmt[0] + 1, i)] + [c[:j]]) if stmt[0] < i else c[stmt[1]:j]
+                own = brace_kind(text_head, relative)
+                if enclosing != 'declarations' and own == 'declarations':
                     own = 'code'
-                opens.append((i, own, head, j))
+                head = stmt[0]
+                while head < i and (code[head][stmt[1] if head == stmt[0] else 0:].strip() == ''):
+                    head += 1  # (the first line with code: past empty lines and comments)
+                if head == stmt[0] and code[head][:stmt[1]].strip():
+                    head = -1  # (it starts on a line after other code, `};  when (...) enum class Type`: no line of its own)
+                opens.append((i, own, head, j, paren, stmt))
+                stmt = (i, j + 1)
             elif ch == '}':
                 if opens:
-                    oi, own, head, oj = opens.pop()
+                    oi, own, head, oj, _, before = opens.pop()
                     enclosing = opens[-1][1] if opens else 'declarations'
                     blocks.append((oi, i, enclosing, own, head, oj))
+                    # (An expression's braces are part of the statement around them, which goes on.)
+                    stmt = before if own == 'expression' else (i, j + 1)
     for (oi, ci, enclosing, own, head, oj) in blocks:
         if oi == ci:
             continue
@@ -181,24 +200,51 @@ def check(path, text):
                 and not re.match(r'\s*(?:u8|u|U|L)?R"', lines[oi][oj + 1:]):
             found.append((oi + 1, 'egyptian-brace'))
         # An expanded definition among declarations: an empty line around it.
-        if enclosing != 'declarations':
+        if enclosing != 'declarations' or own == 'expression':
             continue
         top = head
         while top > 0 and lines[top - 1].strip().startswith('//'):
             top -= 1
-        if top > 0:
+        if top > 0:  # (head -1: no line of its own)
             prev = code[top - 1].strip()
             if lines[top - 1].strip() != '' and not prev.endswith('{') and not re.match(r'(public|private|protected)\s*:$', prev):
                 found.append((top + 1, 'expanded-before'))
         if ci + 1 < len(lines):
             nxt = code[ci + 1].strip()
-            if lines[ci + 1].strip() != '' and not nxt.startswith('}') and not code[ci].rstrip().endswith(','):
+            # (Not when code goes on after its `}` on that line: `};  when (...) enum class Type`.)
+            if lines[ci + 1].strip() != '' and not nxt.startswith('}') and re.match(r'\s*\}\s*;?\s*$', code[ci]):
                 found.append((ci + 1, 'expanded-after'))
     # Nothing inside a string or a comment that spans lines: its lines are its text.
     found = {(n, rule) for (n, rule) in found if rule == 'line-length' or rule == 'tab' or not inside[min(n, len(lines)) - 1]}
     # One missing empty line between two expanded definitions is one finding.
     found -= {(n + 1, 'expanded-before') for (n, rule) in found if rule == 'expanded-after'}
     return sorted(found), lines, final
+
+
+def brace_kind(head, parentheses):
+    """What a `{` opens, from the code of its statement before it (head) and the parentheses open
+    at it since the enclosing block's `{`: 'declarations' (a class, struct, union, enum, namespace,
+    extern "C"), 'expression' (inside parentheses, after `=`, `,`, `return`, `(` or a name: a lambda's
+    body, a brace initialisation) or 'code' (a function's body, a statement's block)."""
+    if parentheses > 0:
+        return 'expression'
+    t = head
+    while re.search(r'<[^<>]*>', t):  # (template arguments and parameters: `template<class T>`)
+        t = re.sub(r'<[^<>]*>', ' ', t)
+    t = t.strip()
+    if re.search(r'\b(class|struct|union|enum|namespace)\b|\bextern\s*$', t):
+        return 'declarations'
+    flat = t
+    while re.search(r'\([^()]*\)|\{[^{}]*\}|\[[^\[\]]*\]', flat):  # (parameters with defaults, captures, braces)
+        flat = re.sub(r'\([^()]*\)|\{[^{}]*\}|\[[^\[\]]*\]', ' ', flat)
+    if re.search(r'(?<![=!<>])=(?!=)', flat) and 'operator' not in flat and not re.search(r'=\s*0\s*$', flat):  # (`f() = 0 {`)
+        return 'expression'
+    if re.search(r'(,|\(|\breturn|\])$', t):
+        return 'expression'
+    if re.search(r'\w$', t) and '->' not in t and \
+            not re.search(r'\b(const|override|noexcept|final|mutable|volatile|try|else|do)$', t) and not re.match(r'^[\w:~]+$', t):
+        return 'expression'  # `Pair{a, b}` (not a bare name: `else`, a label-less block)
+    return 'code'
 
 
 def head_of(lines, code, i, j):
