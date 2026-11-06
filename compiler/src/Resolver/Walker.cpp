@@ -6880,14 +6880,20 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           deducedLocal = local; // kept with the local by walkLocalDecl, for this walk's uses of it
         }
       }
-      if (v->init && !probesSharedNodes() && impl.isUndeducedClassTemplate(declared))
+      // (`NP p;` has no initializer. A template's own walk leaves it to its instances: the name there may
+      // be the class's own, which means the instance.)
+      bool defaultInitialized = !v->init && !(v->flags & (DF_Extern | DF_Typedef)) && !inGenericTemplate() &&
+                                !(v->parent && v->parent->kind == NodeKind::ClassDecl && !(v->flags & DF_Static));
+      if ((v->init || defaultInitialized) && !probesSharedNodes() && impl.isUndeducedClassTemplate(declared))
       {
         // `ScopedSetter guard(x, true)`: the class's arguments from a constructor (CTAD);
         // `Array names = {a, b}`: from an aggregate's members; `Duration budget =
         // Milliseconds(5)`: from the initializer's value, one argument.
         Span<Expr*> args;
         bool copyInit = false;
-        if (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
+        if (!v->init)
+          ;
+        else if (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
           args = static_cast<FunctionalCastExpr*>(v->init)->args; // the parser's `T x(args)`
         else if (v->init->kind == NodeKind::BraceInitExpr)
           args = static_cast<BraceInitExpr*>(v->init)->args;
@@ -6895,9 +6901,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           copyInit = initTy && initTy->isKnown();
         std::vector<const Ty*> argTypes = copyInit ? std::vector<const Ty*>{argumentType(v->init, initTy, types)} : argTypesOf(args);
         // `T x = ...` and `T x = {...}` copy-initialise: an explicit deduction guide is none for them.
-        bool direct = (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type) || v->bracedInit;
+        bool direct = !v->init || (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type) || v->bracedInit;
         const Ty* deduced = impl.deduceClassArgs(declared, argTypes, !direct);
-        if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
+        if (!deduced && v->init && v->init->kind == NodeKind::BraceInitExpr)
           deduced = impl.deduceAggregateArgs(declared, argTypes);
         // `constexpr Array names = {...}` is const, and `const Box b{1};` is a const Box<int> as
         // `const Box<int>` is: the declaration's qualifiers stay (until 2026-11-06 a const one
@@ -6907,7 +6913,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         if (deduced)
         {
           v->cachedType.store(deduced, std::memory_order_release);
-          if (v->init->kind == NodeKind::FunctionalCastExpr)
+          if (v->init && v->init->kind == NodeKind::FunctionalCastExpr)
             record(v->init, deduced);
           declared = deduced;
           deducedLocal = deduced; // the uses in this walk (a template instance's body asks under its substitution)
@@ -7976,8 +7982,18 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       if (array)
         t = t->inner;
       else if (impl.isUndeducedClassTemplate(t))
-        if (const Ty* deduced = impl.deduceClassArgs(t, argTypesOf(n->args)))
-          t = deduced; // `new DeleteHelper(old.release())`: the class's arguments from a constructor (CTAD)
+      {
+        // `new DeleteHelper(old.release())`: the class's arguments from a constructor (CTAD); `new Pair{a, b}`:
+        // from what the braces hold, or an aggregate's members.
+        Span<Expr*> args = n->args;
+        if (n->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+          args = static_cast<BraceInitExpr*>(args[0])->args;
+        std::vector<const Ty*> argTypes = argTypesOf(args);
+        if (const Ty* deduced = impl.deduceClassArgs(t, argTypes))
+          t = deduced;
+        else if (const Ty* aggregate = n->braced ? impl.deduceAggregateArgs(t, argTypes) : nullptr)
+          t = aggregate;
+      }
       if (!n->braced && !n->args.empty())
         bindOverloadSetsOfConstruction(t, n->args);
       if (impl.holdsText(t) && !inGenericTemplate())

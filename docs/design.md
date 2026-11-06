@@ -3071,7 +3071,11 @@ The smallest language that is still kpp, as the target of the first code generat
   the constructors by its conversions and wins a tie; an explicit guide is no candidate for
   copy-initialisation (`T x = ...`). Why: guides are part of C++'s deduction, and dropping one
   (as the parser did) deduces other arguments than the code says, silently. Spec:
-  templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...`) is a base per
+  templates/deduction_guide_target. With nothing to deduce from (`NP p;`, `NP()`, `new NP`) a pack is
+  empty and a parameter takes its default, a class of no constructor having the guide of `C()`
+  (2026-11-06, templates/class_arguments_with_no_initializer); a template's own walk leaves `NP p;` to
+  its instances, as the name inside the class is the injected one, in a specialization that
+  specialization (templates/class_name_inside_a_specialization). A pack of base classes (`struct Overload : Ts...`) is a base per
   element of its pack (2026-11-06, classes/pack_of_base_classes; an error from 2026-10-31 until
   something needed it, thread A's C++ feature survey), and a lambda's closure is such a base too,
   its captures its subobject (classes/lambda_closure_as_base), converting to it as to any base

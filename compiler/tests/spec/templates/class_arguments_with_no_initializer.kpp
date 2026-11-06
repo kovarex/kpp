@@ -1,0 +1,73 @@
+// spec: a class template's arguments deduced with nothing to deduce them from ([over.match.class.deduct]): `NP p;`, `NP()`, `new NP`: a pack is empty, a parameter takes its default, a class of no constructor has the guide of `C()`; in a template the name inside the class stays the injected one; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename... T> struct NP { static constexpr int count = sizeof...(T); NP() {} };
+template <typename... T> struct NoCtor { static constexpr int count = sizeof...(T); };
+template <typename T = int> struct Def { T v{}; int size() const { return sizeof(T); } };
+template <typename T = char, typename U = double> struct Two { int size() const { return sizeof(T) + sizeof(U); } };
+template <typename T = int> struct DefCtor { int s; DefCtor() : s(sizeof(T)) {} };
+template <typename T, typename... R> struct First { int n; First(T t = T(), R... r) : n(sizeof...(R)) {} };
+template <typename T = short> struct Inner
+{
+  T v{};
+  int own() { Inner self; return sizeof(self.v); }
+  static int make() { Inner other; return sizeof(other.v); }
+};
+template <typename... T> struct Packed
+{
+  int own() { Packed self; return self.count(); }
+  int count() const { return sizeof...(T); }
+};
+template <typename T> struct Spec { int kind() { return 0; } };
+template <typename T> struct Spec<T*> { int kind() { Spec self; return sizeof(self) >= 1 ? 1 : 2; } };
+NP global;
+Def<> explicitDefault;
+Two globalTwo;
+static NP staticGlobal;
+template <typename U> int inTemplate() { NP p; Def d; return p.count + d.size() + sizeof(U); }
+int main()
+{
+  NP p;
+  printf("%d\n", p.count);
+  Def d;
+  printf("%d\n", d.size());
+  Two t;
+  printf("%d\n", t.size());
+  static NP s;
+  printf("%d\n", s.count);
+  const NP c;
+  printf("%d\n", c.count);
+  DefCtor dc;
+  printf("%d\n", dc.s);
+  NoCtor nc;
+  printf("%d\n", nc.count);
+  auto a = NP();
+  printf("%d\n", a.count);
+  auto b = NP{};
+  printf("%d\n", b.count);
+  auto e = Def();
+  printf("%d\n", e.size());
+  auto f = Two{};
+  printf("%d\n", f.size());
+  auto g = NoCtor();
+  printf("%d\n", g.count);
+  auto* h = new NP;
+  printf("%d\n", h->count);
+  delete h;
+  auto* i = new Def();
+  printf("%d\n", i->size());
+  delete i;
+  auto* j = new Two{};
+  printf("%d\n", j->size());
+  delete j;
+  printf("%d\n", global.count);
+  printf("%d\n", globalTwo.size());
+  printf("%d\n", staticGlobal.count);
+  printf("%d\n", inTemplate<char>());
+  Inner<int> in;
+  printf("%d %d\n", in.own(), Inner<double>::make());
+  Packed<int, char> pk;
+  printf("%d\n", pk.own());
+  Spec<int*> sp;
+  printf("%d\n", sp.kind());
+  return 0;
+}

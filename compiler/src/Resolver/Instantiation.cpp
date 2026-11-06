@@ -1103,10 +1103,45 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
       return a;
   std::vector<int> guideRanks;
   const Ty* fromGuide = deduceFromGuides(cls, argTypes, copyInit, guideRanks);
+  // The class's arguments from what d deduced: what it does not say takes its default, a pack is empty.
+  auto argumentsFrom = [&](Subst& d, std::vector<const Ty*>& args)
+  {
+    LocalStack own; // the parameters by name, for defaults that name earlier ones
+    for (Decl* p : cls->templateParams)
+      own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    bool all = true;
+    for (Decl* p : cls->templateParams)
+    {
+      const Ty* t = d.find(p);
+      if (!t && static_cast<TemplateParamDecl*>(p)->isPack)
+      {
+        t = types.pack({}); // (`NP p;` of `template<typename... T> struct NP`)
+        d.pairs.push_back({p, t});
+      }
+      if (!t && static_cast<TemplateParamDecl*>(p)->defaultArg)
+      {
+        // `Tuple(mask, gap, id)` of `template<A, B = Nothing, C = Nothing, D = Nothing>`: what the
+        // constructor does not deduce takes its default.
+        TypeContext dctx{lexicalScopeOf(cls), &own, &d, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+        t = templateArgument(static_cast<TemplateParamDecl*>(p)->defaultArg, p, dctx, 0);
+        if (t && t->isKnown())
+          d.pairs.push_back({p, t});
+        else
+          t = nullptr;
+      }
+      if (!t)
+        all = false;
+      else if (!spliceIfPack(t, args)) // `Box(M&... values)`: Box<int, double>, its elements
+        args.push_back(t);
+    }
+    return all;
+  };
+  bool hasConstructor = false;
   for (Decl* m : membersRead(cls))
   {
     if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
       continue;
+    hasConstructor = true;
     auto* ctor = static_cast<FunctionDecl*>(m);
     size_t required = 0;
     bool pack = false;
@@ -1137,30 +1172,7 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
     if (undeduced)
       continue;
     std::vector<const Ty*> args;
-    bool all = true;
-    LocalStack own; // the parameters by name, for defaults that name earlier ones
-    for (Decl* p : cls->templateParams)
-      own.push(static_cast<TemplateParamDecl*>(p)->name, p);
-    for (Decl* p : cls->templateParams)
-    {
-      const Ty* t = d.find(p);
-      if (!t && static_cast<TemplateParamDecl*>(p)->defaultArg)
-      {
-        // `Tuple(mask, gap, id)` of `template<A, B = Nothing, C = Nothing, D = Nothing>`: what the
-        // constructor does not deduce takes its default.
-        TypeContext dctx{lexicalScopeOf(cls), &own, &d, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
-        t = templateArgument(static_cast<TemplateParamDecl*>(p)->defaultArg, p, dctx, 0);
-        if (t && t->isKnown())
-          d.pairs.push_back({p, t});
-        else
-          t = nullptr;
-      }
-      if (!t)
-        all = false;
-      else if (!spliceIfPack(t, args)) // `Box(M&... values)`: Box<int, double>, its elements
-        args.push_back(t);
-    }
-    if (!all)
+    if (!argumentsFrom(d, args))
       continue;
     bool ok = true;
     std::vector<int> ranks;
@@ -1173,6 +1185,14 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
     if (ok)
       // (The arguments may pick a specialization: `W w(&a)` is W<int*>, an instance of W<T*> if there is one.)
       return fromGuide && !strictlyBetter(ranks, guideRanks) ? fromGuide : resolveSpecialization(types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())}), 0);
+  }
+  // A class of no constructor has the guide of `C()` ([over.match.class.deduct] 1.2).
+  if (!fromGuide && !hasConstructor && argTypes.empty())
+  {
+    Subst d;
+    std::vector<const Ty*> args;
+    if (argumentsFrom(d, args))
+      return resolveSpecialization(types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())}), 0);
   }
   return fromGuide;
 }
@@ -1371,6 +1391,17 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
       bool emptyPack = lastPart.hasTemplateArgs && params.size() == enclosing + 1 && static_cast<TemplateParamDecl*>(params[enclosing])->isPack;
       if (args.size() == enclosing && params.size() > enclosing && !emptyPack)
       {
+        // In a specialization of the template its name, unwritten arguments, is that specialization's
+        // (`Spec self;` in a member of `Spec<T*>`, where lookup finds the primary: a specialization's
+        // own scope holds no name of its own, as `Spec<int>` there means the template).
+        if (!lastPart.hasTemplateArgs)
+          for (Scope* s = ctx.scope; s; s = s->parent)
+            if (s->owner && s->owner->kind == NodeKind::ClassDecl && (s->owner->flags & DF_Specialization) && !static_cast<ClassDecl*>(s->owner)->name.empty() &&
+                static_cast<ClassDecl*>(s->owner)->name.last().symbol == lastPart.symbol && lexicalScopeOf(s->owner) == lexicalScopeOf(def))
+            {
+              const Ty* self = selfType(s->owner);
+              return self && ctx.subst ? substitute(self, *ctx.subst) : self;
+            }
         // Injected class name inside its own template, or a dependent mention: keep parameters.
         args.clear();
         for (Decl* p : params)
