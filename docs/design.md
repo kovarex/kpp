@@ -1822,8 +1822,8 @@ nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
   installer and package.
 - Any host builds any target (kovarex, 2026-11-02): the bundled lld links every format, and each
   target's headers and libraries are laid out side by side (Windows from MinGW-w64, Linux, FreeBSD's
-  base, macOS later), so `--target` works from Windows, Linux or macOS alike; tests still run on the
-  target.
+  base, macOS later), so `--target` works from Windows and Linux alike (macOS as a host is under
+  consideration, 2026-11-06, "Targets and hosts"); tests still run on the target.
 - Less Microsoft-specific tooling is preferred (kovarex: "I personally prefer needing less microsoft
   related stuff than more"): the destination leans to the GNU dialect on Windows too (the Itanium
   exception model and DWARF, which Linux and macOS need anyway), reached in steps; the game keeps an
@@ -4178,9 +4178,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   bullseye's signed index); a hello world and an uncaught exception linked with it need no glibc
   symbol newer than GLIBC_2.14.
 - **Q7:** (open, 2026-11-06) building macOS targets on Windows and Linux needs Apple's SDK headers and
-  stubs off a Mac, and this section's reading of 2026-10-31 (not checked again since) is that the SDK's
-  licence ties its use to Apple hardware. Whether a release may bring a macOS sysroot, as it brings
-  FreeBSD's, or each user supplies one, is to be decided before that work starts.
+  stubs off a Mac. That the SDK's licence ties its use to Apple hardware is this section's reading of
+  2026-10-31, unchecked. Whether a release may bring a macOS sysroot, as it brings FreeBSD's, or each
+  user supplies one, is to be decided before that work starts.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -4210,8 +4210,6 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   tests) are settled by 8.7.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac.
-
-- **The localisation library's stage** ("Roadmap"): kovarex has not placed it yet.
 
 - **How a build is described** ([build.md](build.md), "Questions for kovarex"): debug information in
   release builds, and whether the repository's `kppc.exe` takes the released name `kpp`. Settled:
@@ -4280,11 +4278,11 @@ ones under "Targets and hosts".
 - **Stage 2:** starts once kpp is a branch in Factorio: PropertyTree, kpp.net and other things.
 
 The readme's "Planned" lists what is in each. Placed by this decision:
-- Named arguments are stage 2's.
+- Named arguments, `both_const` and `class_const` (their details not decided yet) and the localisation
+  library are stage 2's.
 - macOS as a host is under consideration, not decided; macOS as a target stays in stage 1, built on
   Windows and Linux ("Targets and hosts"). Linux as a host is done (2026-11-06).
 - The library registry is under consideration, not decided, and not for stage 1.
-- The localisation library is not placed yet (Open questions).
 
 The work so far, in order:
 

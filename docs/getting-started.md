@@ -5,8 +5,9 @@ and building a project. The decided language rules are in [design.md](design.md)
 
 ## Install
 
-kpp runs on 64-bit Windows 10 and 11, and builds programs for Linux and FreeBSD too (`--target`);
-other hosts are [planned](../readme.md#planned). A release brings FreeBSD 14.3's headers and libraries
+kpp runs on 64-bit Windows 10 and 11 and on x86-64 Linux (with the system's clang 19 and lld), and
+builds programs for Linux and FreeBSD too (`--target`); macOS as a host is
+[under consideration](../readme.md#under-consideration-not-decided). The Windows release brings FreeBSD 14.3's headers and libraries
 (the installer's FreeBSD component, chosen by default), so `kpp --target freebsd` works as installed;
 for Linux, give `--sysroot`. It also brings the official libraries (`libraries\`: json, http,
 httpclient, mariadb and the rest), which a project's `project.use("json")` finds there.
