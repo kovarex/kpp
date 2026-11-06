@@ -1809,6 +1809,18 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
       return r;
     }
     r.why = Why::Member;
+    // `v.index()`, `v.get<1>()` on a typed union (E's report): std::variant's members, which it has
+    // not; it is asked with `v == U::Name` or v.tag() and read with `v[Name]` (design.md 8.5).
+    if (countMissing && !probing && typedUnionOf(types.unqualified(t)))
+    {
+      std::string_view called = symbols.name(symbol);
+      if (called == "index" || called == "get" || called == "getIf" || called == "holdsAlternative" || called == "emplace" || called == "valueless_by_exception")
+      {
+        std::string u = types.toString(types.unqualified(t), &impl.symbols);
+        reportCheck(token, std::string(called) + " is no member of the typed union " + u + ": a `union enum` is asked with `v == " + u +
+                               "::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)");
+      }
+    }
     if (countMissing)
     {
       ++stats.membersNotFound;
@@ -4382,6 +4394,21 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         // itself and says so when it cannot.
         checkConstObjectOverloads(d, l.overloads, argTypes, classSubst, implicitObject, &n->name.last(), c->args, c->token); // `touch(1)` in a const member function
         c->templateArgCount = 0;
+        // `holdsAlternative<int>(v)`, `get<int>(v)` on a typed union (E's report): std::variant's
+        // functions take none; it is asked with `v == U::Name` and read with `v[Name]` (design.md 8.5).
+        // (It was codegen's "a call that did not resolve".)
+        for (const Ty* a : argTypes)
+          if (const Ty* u = a ? types.unqualified(types.stripRef(a)) : nullptr; u && typedUnionOf(u) && !probing)
+          {
+            std::string_view called = symbols.name(n->name.last().symbol);
+            if (called == "holdsAlternative" || called == "get" || called == "getIf" || called == "visit" || called == "variantSize" || called == "index")
+            {
+              std::string t = types.toString(u, &impl.symbols);
+              reportCheck(c->token, std::string(called) + " takes no typed union (" + t + "): a `union enum` is asked with `v == " + t +
+                                        "::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)");
+              break;
+            }
+          }
         if (!onlyPlainCandidate(d, l.overloads))
           n->resolved = nullptr;
         else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
