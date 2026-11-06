@@ -126,5 +126,5 @@ ConditionVariable's `waitFor(lock, d)`; they wait at least d, rounded up to whol
 std::common_type's except for two reps of one type narrower than int (two `short` reps give an
 `int` count); `d * n` and `d / n` keep the rep for an integer n where C++ takes the common type of
 the rep and n's type; the calendar is CivilTime and the functions above instead of C++20's
-`year_month_day` family and `std::format` of time points; no `file_clock`, `utc_clock` or time zones, and
-no `round` or `abs` of durations.
+`year_month_day` family and `std::format` of time points; no `utc_clock` or time zones (FileClock
+is `file_clock`).
