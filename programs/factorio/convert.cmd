@@ -19,9 +19,10 @@ rem mismatches made explicit (tests\convert_formats\formats.cpp), whose conversi
 rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rules.c, pending), whose
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
-rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
-rem errors 0, smoke tests 16/16, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
-rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
+rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, release
+rem errors 0, final errors 0, tests errors 0, smoke tests 16/16, C rules pending)` and 0; or `convert:
+rem FAILED: STEP` (the first step that failed; the run stops there) or `convert: FAILED: headline 3,
+rem release errors 0, ...` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
@@ -210,6 +211,20 @@ rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk
 for /f %%n in ('type kpp\full-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set HEADLINE=%%n
 if not "%FULLRC%"=="0" if not "%FULLRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %FULLRC%)& set HEADLINE=not valid ^(kppc exit %FULLRC%^)
 findstr /c:"importing C headers failed" kpp\full-errors.txt >nul && (echo NOT A VALID COUNT: importing the C headers failed, see kpp\full-errors.txt& set HEADLINE=not valid, importing the C headers failed)
+rem The same build in release and in final, which the headline's debug build does not see: 2026-11-06, a
+rem class with a debug-only operator= met Vector's assignments, the game built in neither, and every gate
+rem passed. --check reports every error a build reports and writes nothing, about 20 s each. Gates as
+rem the headline is (0): every stderr line.
+echo == release and final checks: the headline's build with --check (errors in kpp\release-errors.txt, kpp\final-errors.txt)
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --zero-null-warnings --check --release kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > kpp\release-check.txt 2> kpp\release-errors.txt
+set RELEASERC=%errorlevel%
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --zero-null-warnings --check --release --config finalRelease=true kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > kpp\final-check.txt 2> kpp\final-errors.txt
+set FINALRC=%errorlevel%
+for /f %%n in ('type kpp\release-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set RELEASEERRORS=%%n
+for /f %%n in ('type kpp\final-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set FINALERRORS=%%n
+if not "%RELEASERC%"=="0" if "%RELEASEERRORS%"=="0" set RELEASEERRORS=not valid ^(kppc exit %RELEASERC%^)
+if not "%FINALRC%"=="0" if "%FINALERRORS%"=="0" set FINALERRORS=not valid ^(kppc exit %FINALRC%^)
+echo release errors %RELEASEERRORS%, final errors %FINALERRORS%
 rem The tests' count, a gate as the headline is (0): the same errors in the whole conversion
 rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each is a function that
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
@@ -362,14 +377,17 @@ rem The converted files read as the program's own: no first line naming the sour
 rem declaration of a class the program defines (tests\converted-text.ps1).
 set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
-rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/16, C rules %CRULES%
+rem The one line that says whether everything passed: the headline, the release and final checks and
+rem the tests' count are gates (0).
+set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/16, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
+if not "%RELEASEERRORS%"=="0" goto :countsfailed
+if not "%FINALERRORS%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)
 exit /b 0
 :countsfailed
-echo convert: FAILED: headline %HEADLINE%, tests errors %TESTSERRORS% (%SUMMARY%)
+echo convert: FAILED: %SUMMARY%
 exit /b 1
 :libraryUses
 rem (LIBUSE: the --convert-library options of the scoped libraries C library %1 uses,
