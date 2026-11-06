@@ -5,6 +5,9 @@
 
     // The pack parameter an expression refers to (the first one found), or null.
     Decl* packIn(Node* n, int depth = 0);
+    // Every pack parameter an expression refers to, in order, each once: `a * 10 + b` of `A... a`
+    // and `B... b` expands both together, element i of each.
+    void packsIn(Node* n, std::vector<Decl*>& out, int depth = 0);
 
     // The template parameter packs a pack parameter's declared type names, in order: `Args&&... args`
     // names Args; `auto PrototypeT::*... members` names PrototypeT and the pack invented for the
@@ -83,23 +86,36 @@
         }
       if (!param)
         unsupported(at, "a pack expansion that does not name a parameter pack");
-      std::vector<Decl*> packs = templatePacksOf(param);
+      // Every parameter pack the pattern names expands with it, element i of each together
+      // (`(a * 10 + b) + ...`): of one length, as C++ requires ([temp.variadic] 7).
+      std::vector<Decl*> params;
+      packsIn(pattern, params);
+      std::vector<Decl*> packs;
+      for (Decl* p : params)
+        for (Decl* tp : templatePacksOf(p))
+          if (std::find(packs.begin(), packs.end(), tp) == packs.end())
+            packs.push_back(tp);
       if (packs.empty() || !currentArgs)
         unsupported(at, "a pack expansion outside an instantiation");
-      std::vector<Local> elements = packLocals[param];
-      boundPacks(packs, elements.size(), at); // (each as long as the parameter pack)
+      size_t count = packLocals[param].size();
+      for (Decl* p : params)
+        if (packLocals[p].size() != count)
+          unsupported(at, "a pack expansion over parameter packs of different lengths");
+      boundPacks(packs, count, at); // (each as long as the parameter pack)
       TemplateArgs original = *currentArgs;
-      for (size_t i = 0; i < elements.size(); ++i)
+      for (size_t i = 0; i < count; ++i)
       {
         // The pattern's mentions of the packs name element i; the rest of the body keeps them whole.
         TemplateArgs elementArgs = original;
         elementArgs.elementPacks = packs;
         elementArgs.elementIndex = uint32_t(i);
         retypeForElement(elementArgs, true);
-        locals[param] = elements[i];
+        for (Decl* p : params)
+          locals[p] = packLocals[p][i];
         body(i);
       }
-      locals.erase(param);
+      for (Decl* p : params)
+        locals.erase(p);
       retypeForElement(original);
     }
 

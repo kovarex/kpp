@@ -816,26 +816,50 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
       if (std::string name = debugName(d); !name.empty())
         debugVariable(name, d, field, capturedTy, 0, false, true);
     }
-    for (size_t i = 0; i < l->params.size() && i < callTy->args.size(); ++i)
+    // The call operator's parameters, one slot each; a parameter pack (`auto... xs`) takes the
+    // slots the parameters after it leave, each one of its elements (packLocals: what the body's
+    // expansions and sizeof... read). It took one slot, as a parameter of its own.
+    size_t slot = 0;
+    for (size_t i = 0; i < l->params.size(); ++i)
     {
-      const Ty* pt = callTy->args[i];
       auto* pd = l->params[i]->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(l->params[i]) : nullptr;
-      if (isAggregate(pt))
+      size_t count = 1;
+      if (pd && pd->isPack)
       {
-        locals[l->params[i]] = {paramNames[i], pt, false};
-        if (needsDestruction(pt, l))
-          scopes.back().push_back({paramNames[i], pt});
-        if (pd && pd->name != UINT32_MAX)
-          debugVariable(sym(pd->name), pd, paramNames[i], pt, uint32_t(i + 1));
-        continue;
+        size_t after = l->params.size() - i - 1;
+        count = callTy->args.size() - slot >= after ? callTy->args.size() - slot - after : 0;
+        packLocals[pd] = {}; // (`g()` of `[](auto... xs)`: none)
       }
-      bool isRef = pt->isReference();
-      std::string ps = "%v" + std::to_string(temp++);
-      allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : llType(pt, l)) + "\n";
-      fn += "  store " + (isRef ? std::string("ptr") : llType(pt, l)) + " " + paramNames[i] + ", ptr " + ps + "\n";
-      locals[l->params[i]] = {ps, pt, isRef};
-      if (pd && pd->name != UINT32_MAX)
-        debugVariable(sym(pd->name), pd, ps, pt, uint32_t(i + 1));
+      else if (slot >= callTy->args.size())
+        break;
+      for (size_t k = 0; k < count; ++k, ++slot)
+      {
+        const Ty* pt = callTy->args[slot];
+        Local local;
+        std::string name = pd && pd->name != UINT32_MAX ? sym(pd->name) + (pd->isPack ? "#" + std::to_string(k) : std::string()) : std::string();
+        if (isAggregate(pt))
+        {
+          local = {paramNames[slot], pt, false};
+          if (needsDestruction(pt, l))
+            scopes.back().push_back({paramNames[slot], pt});
+          if (!name.empty())
+            debugVariable(name, pd, paramNames[slot], pt, uint32_t(slot + 1));
+        }
+        else
+        {
+          bool isRef = pt->isReference();
+          std::string ps = "%v" + std::to_string(temp++);
+          allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : llType(pt, l)) + "\n";
+          fn += "  store " + (isRef ? std::string("ptr") : llType(pt, l)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
+          local = {ps, pt, isRef};
+          if (!name.empty())
+            debugVariable(name, pd, ps, pt, uint32_t(slot + 1));
+        }
+        if (pd && pd->isPack)
+          packLocals[pd].push_back(local);
+        else
+          locals[l->params[i]] = local;
+      }
     }
     namedReturn = builtInResult(global.namedReturnVariable(l->body, currentReturn, nullptr, currentArgs), l);
     statement(l->body);

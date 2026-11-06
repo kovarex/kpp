@@ -7439,6 +7439,16 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       if (f->op == uint32_t(P::Comma))
         return record(e, types.voidType());
       const Ty* pattern = l ? l : r;
+      const Ty* init = l && r ? (l->kind == TyKind::Pack ? r : l) : nullptr;
+      if (pattern && pattern->kind == TyKind::Pack && pattern->args.empty())
+      {
+        // An empty pack: a binary fold is its initial value (`(xs + ... + 0)` of `[](auto... xs)`
+        // called with none: an int, which was void), a unary && or || true or false.
+        if (init && init->kind != TyKind::Pack)
+          return record(e, init);
+        if (f->op == uint32_t(P::AndAnd) || f->op == uint32_t(P::OrOr))
+          return record(e, types.boolType());
+      }
       if (pattern && pattern->kind == TyKind::Pack)
         pattern = pattern->args.empty() ? types.voidType() : pattern->args[0];
       return record(e, pattern ? pattern : types.unknown());

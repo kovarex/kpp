@@ -502,6 +502,15 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
           param = static_cast<NamedType*>(s->type)->resolved;
         if (!param && s->operand)
           param = packIn(s->operand);
+        if (!param && s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->name.parts.size() == 1)
+        {
+          // `sizeof...(xs)` of a generic lambda's `auto... xs`, parsed as a type name the walk did
+          // not bind: the pack parameter of that name being emitted.
+          uint32_t symbol = static_cast<NamedType*>(s->type)->name.parts[0].symbol;
+          for (auto& [d, elements] : packLocals)
+            if (d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == symbol)
+              param = d;
+        }
         if (param && param->kind == NodeKind::TemplateParamDecl && currentArgs)
           for (auto& [p, t] : currentArgs->pairs)
             if (p == param && t && t->kind == TyKind::Pack)

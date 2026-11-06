@@ -1,0 +1,15 @@
+// spec: a generic lambda's parameter pack (`[](auto... xs)`, `[&](int first, auto&&... rest)`) is a pack of the call operator's arguments, one element each, none for a call without them: folded, counted by sizeof..., expanded into a call, after a parameter of its own. Before, it took one argument as a parameter of its own ("a fold expression that expands no parameter pack"). clang prints the same
+// found comparing kpp with clang (thread I's battery i9)
+int sum3(int a, int b, int c) { return a * 100 + b * 10 + c; }
+int main()
+{
+  auto fold = [](auto... xs) { return (xs + ... + 0); };
+  auto count = [](auto... xs) { return int(sizeof...(xs)); };
+  int base = 5;
+  auto after = [&](int first, auto&&... rest) { return first * base + (rest * ... * 1); };
+  auto forward = [](auto... xs) { return sum3(xs...); };
+  auto each = [](auto... xs) { int s = 0; ((s = s * 10 + xs), ...); return s; };
+  println(fold(), " ", fold(1, 2, 3), " ", fold(1.5, 2.25), " ", count(), " ", count(1, 'a', 2.0));
+  println(after(3), " ", after(3, 4, 5), " ", forward(1, 2, 3), " ", each(1, short(2), 4, 8));
+  return 0;
+}

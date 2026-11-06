@@ -1,0 +1,20 @@
+// spec: a pack expansion whose pattern names two function parameter packs expands both together, element i of each ([temp.variadic] 7): `((a * 10 + b) + ...)` with `A... a` and `B... b`, a call `f(a, b)...`, and two packs of one template's parameters; the packs are as long as each other. Before, only the first pack was bound and the second stayed whole ("taking the address of b"). clang prints the same
+// found comparing kpp with clang (thread I's battery i9)
+template<typename... A> struct Outer
+{
+  template<typename... B> static int pairs(A... a, B... b) { return ((a * 10 + b) + ...); }
+};
+int combine(int x, double y) { return x * 100 + int(y * 10); }
+template<typename... A> int zip(A... a) { return Outer<A...>::template pairs<A...>(a..., a...); }
+template<typename... X, typename... Y> int calls(X... x) { return (combine(x, 0.5) + ... + 0); }
+template<typename... X> int both(X... x)
+{
+  int s = 0;
+  ((s = s * 1000 + combine(x, x * 0.25)), ...);
+  return s;
+}
+int main()
+{
+  println(Outer<int, int, int>::pairs<int, int, int>(1, 2, 3, 4, 5, 6), " ", zip(1, 2), " ", zip(7), " ", calls(1, 2, 3), " ", both(1, 2));
+  return 0;
+}

@@ -5,51 +5,55 @@
 
 auto codegen::Emitter::packIn(Node* n, int depth) -> Decl*
 {
+  std::vector<Decl*> all;
+  packsIn(n, all, depth);
+  return all.empty() ? nullptr : all[0];
+}
+
+auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> void
+{
   if (!n || depth > 32)
-    return nullptr;
+    return;
   switch (n->kind)
   {
     case NodeKind::NameExpr:
     {
       Decl* d = static_cast<NameExpr*>(n)->resolved;
-      return d && packLocals.count(d) ? d : nullptr;
+      if (d && packLocals.count(d) && std::find(out.begin(), out.end(), d) == out.end())
+        out.push_back(d);
+      return;
     }
-    case NodeKind::ParenExpr: return packIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
-    case NodeKind::UnaryExpr: return packIn(static_cast<UnaryExpr*>(n)->operand, depth + 1);
-    case NodeKind::CastExpr: return packIn(static_cast<CastExpr*>(n)->operand, depth + 1);
-    case NodeKind::NamedCastExpr: return packIn(static_cast<NamedCastExpr*>(n)->operand, depth + 1);
-    case NodeKind::MemberExpr: return packIn(static_cast<MemberExpr*>(n)->base, depth + 1);
+    case NodeKind::ParenExpr: packsIn(static_cast<ParenExpr*>(n)->inner, out, depth + 1); return;
+    case NodeKind::UnaryExpr: packsIn(static_cast<UnaryExpr*>(n)->operand, out, depth + 1); return;
+    case NodeKind::CastExpr: packsIn(static_cast<CastExpr*>(n)->operand, out, depth + 1); return;
+    case NodeKind::NamedCastExpr: packsIn(static_cast<NamedCastExpr*>(n)->operand, out, depth + 1); return;
+    case NodeKind::MemberExpr: packsIn(static_cast<MemberExpr*>(n)->base, out, depth + 1); return;
     case NodeKind::BinaryExpr:
-      if (Decl* d = packIn(static_cast<BinaryExpr*>(n)->lhs, depth + 1))
-        return d;
-      return packIn(static_cast<BinaryExpr*>(n)->rhs, depth + 1);
+      packsIn(static_cast<BinaryExpr*>(n)->lhs, out, depth + 1);
+      packsIn(static_cast<BinaryExpr*>(n)->rhs, out, depth + 1);
+      return;
     case NodeKind::CallExpr:
     {
       auto* c = static_cast<CallExpr*>(n);
-      if (Decl* d = packIn(c->callee, depth + 1))
-        return d;
+      packsIn(c->callee, out, depth + 1);
       for (Expr* a : c->args)
-        if (Decl* d = packIn(a, depth + 1))
-          return d;
-      return nullptr;
+        packsIn(a, out, depth + 1);
+      return;
     }
     case NodeKind::IndexExpr:
     {
       auto* i = static_cast<IndexExpr*>(n);
-      if (Decl* d = packIn(i->base, depth + 1))
-        return d;
+      packsIn(i->base, out, depth + 1);
       for (Expr* a : i->args)
-        if (Decl* d = packIn(a, depth + 1))
-          return d;
-      return nullptr;
+        packsIn(a, out, depth + 1);
+      return;
     }
     case NodeKind::FunctionalCastExpr:
       for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
-        if (Decl* d = packIn(a, depth + 1))
-          return d;
-      return nullptr;
+        packsIn(a, out, depth + 1);
+      return;
     default:
-      return nullptr;
+      return;
   }
 }
 
