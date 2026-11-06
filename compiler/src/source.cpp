@@ -594,6 +594,64 @@ namespace
   // A POSIX host's own clang, on PATH (Linux's, FreeBSD's, macOS's), when kpp has none of its own and
   // KPP_CLANG names none; empty on Windows, whose clang is the bundled one or Visual Studio's.
   std::string systemClang() { return host::platformName() == std::string("windows") ? std::string() : host::findOnPath("clang").string(); }
+
+  // The oldest clang kppc's IR compiles with: it names LLVM 19's intrinsics (llvm.eh.typeid.for.p0,
+  // which clang 18 takes for a function and leaves undefined at the link), as the bundled toolchain's
+  // clang 19.1.5 has them.
+  constexpr int oldestClang = 19;
+
+  // The major version a clang says it is (`clang --version`: "clang version 19.1.5", a distribution's
+  // "Ubuntu clang version 18.1.3 (1ubuntu1)"), 0 when it says none. Asked once per clang: kept in the
+  // temp directory by its path, size and time of writing (asked again only when it changed), and for
+  // the process.
+  int clangMajorVersion(const std::string& clang)
+  {
+    static std::mutex mutex;
+    static std::unordered_map<std::string, int> known;
+    std::error_code ec;
+    uintmax_t size = std::filesystem::file_size(clang, ec);
+    if (ec)
+      return 0;
+    auto time = std::filesystem::last_write_time(clang, ec);
+    if (ec)
+      return 0;
+    std::string key = clang + "\n" + std::to_string(size) + "\n" + std::to_string(time.time_since_epoch().count());
+    {
+      std::lock_guard lock(mutex);
+      if (auto it = known.find(key); it != known.end())
+        return it->second;
+    }
+    uint64_t hash = 1469598103934665603ull;
+    for (unsigned char c : key)
+      hash = (hash ^ c) * 1099511628211ull;
+    char hex[32];
+    snprintf(hex, sizeof hex, "%016llx", (unsigned long long)hash);
+    std::filesystem::path cached = std::filesystem::temp_directory_path(ec) / "kpp-clang-versions" / (std::string(hex) + ".txt");
+    int major = 0;
+    std::string text;
+    if (readFile(cached, text) && !text.empty())
+      major = atoi(text.c_str());
+    else if (FILE* pipe = host::openPipe("\"" + clang + "\" --version 2>&1", "r"))
+    {
+      char line[1024];
+      while (fgets(line, sizeof line, pipe))
+        if (const char* at = strstr(line, "clang version "); at && !major)
+          major = atoi(at + strlen("clang version "));
+      host::closePipe(pipe);
+      if (major)
+      {
+        std::filesystem::create_directories(cached.parent_path(), ec);
+        if (FILE* f = fopen(cached.string().c_str(), "wb"))
+        {
+          fprintf(f, "%d\n", major);
+          fclose(f);
+        }
+      }
+    }
+    std::lock_guard lock(mutex);
+    known[key] = major;
+    return major;
+  }
 }
 
 std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain)
@@ -657,6 +715,14 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
   else if (visualStudioClang().empty())
     return "this kpp has no toolchain of its own (" + bundledClang(compiler).parent_path().string() + "), and building with Visual Studio's " +
            visualStudioMissing();
+  // A clang older than kppc's IR needs (a distribution's clang 18, an older Visual Studio's): said
+  // before anything compiles, never an undefined llvm.eh.typeid.for.p0 at the link (thread E's Linux
+  // host, 2026-11-06). The bundled one is kpp's own.
+  if (!chosenBundled)
+    if (std::string clang = clangPath(); !clang.empty())
+      if (int major = clangMajorVersion(clang); major && major < oldestClang)
+        return clang + " is clang " + std::to_string(major) + ", and kppc's IR needs clang " + std::to_string(oldestClang) +
+               " or later (LLVM " + std::to_string(oldestClang) + "'s intrinsics): name one with KPP_CLANG";
   return "";
 }
 

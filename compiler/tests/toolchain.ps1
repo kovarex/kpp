@@ -32,6 +32,20 @@ function Run([string]$exe, [string[]]$arguments)
   return [pscustomobject]@{ exit = $p.ExitCode; text = (($out + $errTask.Result) -replace "`r", '') }
 }
 
+# A clang older than kppc's IR needs (KPP_CLANG naming one that says it is clang 18, as Ubuntu 24.04's
+# default is): kppc stops before anything compiles and says which, never an undefined
+# llvm.eh.typeid.for.p0 at the link (thread E's Linux host, 2026-11-06).
+$oldClang = Join-Path $work 'clang18.cmd'
+Set-Content -Encoding ascii $oldClang "@echo off`r`necho Ubuntu clang version 18.1.3 (1ubuntu1)`r`necho Target: x86_64-pc-linux-gnu"
+Set-Content -Encoding ascii "$work\old.kpp" "int main() { return 0; }"
+$env:KPP_CLANG = $oldClang
+try
+{
+  $r = Run $Kppc @('--exe', "$work\old.exe", "$work\old.kpp")
+  if ($r.exit -ne 2 -or $r.text -notmatch [regex]::Escape($oldClang) + ' is clang 18, and kppc''s IR needs clang 19 or later' -or (Test-Path "$work\old.exe")) { Fail "a clang 18 named by KPP_CLANG was not refused: exit $($r.exit), $($r.text)" }
+}
+finally { Remove-Item Env:KPP_CLANG -ErrorAction SilentlyContinue }
+
 $inst = (& "$PSScriptRoot\..\..\tools\sysroot\llvm-mingw.ps1" | Select-Object -Last 1)
 foreach ($d in 'stdlib', 'projectlib') { if (Test-Path "$inst\$d") { cmd /c rd /s /q "$inst\$d" } }
 Copy-Item $Kppc "$inst\kpp.exe" -Force
