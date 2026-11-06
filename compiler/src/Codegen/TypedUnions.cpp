@@ -174,6 +174,52 @@ auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::str
   fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
 }
 
+auto codegen::Emitter::copyOverAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, Node* at) -> void
+{
+  // As std::variant's copy assignment: an alternative whose copy can throw and whose move cannot
+  // is copied before dst's goes, so that a throw leaves dst as it was, and moved from that copy.
+  auto copiedFirst = [&](size_t i)
+  {
+    const Ty* altTy = alternativeType(c, t, i, at);
+    return isClass(altTy) && global.constructsWithoutThrowing(altTy, true) && !global.constructsWithoutThrowing(altTy, false);
+  };
+  bool any = false;
+  for (size_t i = 0; i < c->alternatives.size(); ++i)
+    any = any || copiedFirst(i);
+  if (!any)
+  {
+    destroyAlternative(c, t, dst, at);
+    copyAlternative(c, t, dst, src, false, at);
+    return;
+  }
+  size_t temps = statementTemps.size();
+  std::string copy = newObjectSlot(t, at); // (a union holding none, unless src's alternative is one of those)
+  setTag(c, t, copy, c->alternatives.size(), at);
+  if (needsDestruction(t, at))
+    statementTemps.push_back({copy, t});
+  forHeldAlternative(c, t, src, at, copiedFirst, [&](size_t i)
+  {
+    copyConstruct(alternativeAddress(c, t, copy, i, at), alternativeAddress(c, t, src, i, at), alternativeType(c, t, i, at), at);
+    setTag(c, t, copy, i, at);
+  });
+  destroyAlternative(c, t, dst, at);
+  std::string tag = loadTag(c, t, src, at);
+  setTag(c, t, dst, c->alternatives.size(), at);
+  forHeldAlternative(c, t, src, at, [&](size_t) { return true; }, [&](size_t i)
+  {
+    const Ty* altTy = alternativeType(c, t, i, at);
+    std::string from = alternativeAddress(c, t, src, i, at), to = alternativeAddress(c, t, dst, i, at);
+    if (copiedFirst(i))
+      moveConstruct(to, alternativeAddress(c, t, copy, i, at), altTy, at);
+    else if (isClass(altTy))
+      copyConstruct(to, from, altTy, at);
+    else
+      copyBytes(to, from, altTy, at);
+  });
+  fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
+  destroyTempsFrom(temps);
+}
+
 auto codegen::Emitter::assignAlternative(BinaryExpr* b) -> Value
 {
   auto* i = static_cast<IndexExpr*>(b->lhs);

@@ -1,0 +1,73 @@
+// spec: `a = b` of two unions holding different alternatives, as std::variant: an alternative whose copy can throw and whose move cannot is copied before a's goes, so a throw leaves a as it was, then moved; one whose move can throw, or whose copy cannot, is copied in place, and a throw leaves a holding none (design.md 8.5); g++'s and clang's std::variant print the same
+// found by thread B (2026-11-06) comparing the assignments with std::variant
+class Safe
+{
+public:
+  Safe(int value) : value(value) {}
+  Safe(const Safe& other) : value(other.value)
+  {
+    println("copied ", value);
+    if (value < 0)
+      throw 1;
+  }
+  Safe(Safe&& other) noexcept : value(other.value) { println("moved ", value); }
+  int value;
+};
+
+class Risky
+{
+public:
+  Risky(int value) : value(value) {}
+  Risky(const Risky& other) : value(other.value)
+  {
+    println("copied ", value);
+    if (value < 0)
+      throw 2;
+  }
+  int value;
+};
+
+union enum U : u8
+{
+  { {int, Number}, {Safe, First}, {Risky, Second} }
+};
+
+int main()
+{
+  U a = 1;
+  U safe = Safe(5);
+  println("-- through a copy");
+  a = safe;
+  println(a[U::First].value);
+
+  U b = 2;
+  U bad = Safe(-5);
+  println("-- the copy throws, the union stays");
+  try
+  {
+    b = bad;
+  }
+  catch (int e)
+  {
+    println("caught ", e, " ", b == U::Number);
+  }
+
+  U c = 3;
+  U risky = Risky(6);
+  println("-- straight to the place");
+  c = risky;
+  println(c[U::Second].value);
+
+  U d = 4;
+  U worse = Risky(-6);
+  println("-- the copy throws, the union holds none");
+  try
+  {
+    d = worse;
+  }
+  catch (int e)
+  {
+    println("caught ", e, " ", d.tag() == U::Tag::count);
+  }
+  return 0;
+}

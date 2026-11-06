@@ -61,6 +61,8 @@
     void destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
     // Copies (or moves) the alternative src holds into dst, tag included.
     void copyAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
+    // dst holds another alternative than src: its copy assignment (design.md 8.5).
+    void copyOverAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, Node* at);
     // Whether an alternative of this type is a class with an operator= to call.
     bool alternativeAssignable(const Ty* altTy, Node* at);
     // dst and src hold one alternative: src's assigned to dst's, by its operator=.

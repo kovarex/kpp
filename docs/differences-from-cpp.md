@@ -484,7 +484,8 @@ enum class Direction : u8
 - **C++:** `std::variant`, a template read through `std::get` and `std::visit`.
 - **kpp:** `union enum` is an enum whose values each carry a type: built from a value, read with
   `p[Name]` (a release_assert on another tag), switched on exhaustively. Several tags may share a type.
-  Comparison and the valueless state are `std::variant`'s.
+  Comparison, assignment and the valueless state are `std::variant`'s; its `emplace` is the union's
+  destructor and placement new from a tag.
 - **Why:** the game's `InputAction` and `EditorAction` have this shape, without the templates.
 - **See:** [design 8.5][d8]; specs `kpp/typed_unions_switch_copy`, `kpp/typed_union_comparisons`.
 

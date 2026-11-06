@@ -2600,8 +2600,13 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
     assignHeldAlternative(c, t, dst, src, move, at);
     emitBranch(doneL);
     startBlock(otherL);
-    destroyAlternative(c, t, dst, at);
-    copyAlternative(c, t, dst, src, move, at);
+    if (move)
+    {
+      destroyAlternative(c, t, dst, at);
+      copyAlternative(c, t, dst, src, true, at);
+    }
+    else
+      copyOverAlternative(c, t, dst, src, at);
     emitBranch(doneL);
     startBlock(doneL);
     return;

@@ -1,0 +1,13 @@
+-- through a copy
+copied 5
+moved 5
+5
+-- the copy throws, the union stays
+copied -5
+caught 1 true
+-- straight to the place
+copied 6
+6
+-- the copy throws, the union holds none
+copied -6
+caught 2 true

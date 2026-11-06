@@ -538,8 +538,11 @@ kpp/typed_union_new_alternative_reads_the_held_one, kpp/typed_union_value_reads_
 kpp/typed_union_value_of_another_type, kpp/typed_union_alternative_built_in_place,
 kpp/typed_union_assigned_class_that_cannot_move_is_error).
 
-A union whose new alternative's construction throws once the held one has gone (`u[C] = x` by the
-rule above, a copy or move assignment whose copy throws) holds none, as std::variant's
+`a = b` of two unions is std::variant's too: the same alternative by its operator=, another by the
+rule above, for b's alternative as a value to copy or move.
+
+A union whose new alternative's construction throws once the held one has gone (`u[C] = x` or `a =
+b` by the rules above) holds none, as std::variant's
 valueless_by_exception: its tag is `Tag::count` until an alternative is built, it is destroyed as
 holding nothing, a copy of it is valueless too, it equals only a valueless union and orders before
 every other, and `switch` on it aborts as on any invalid enum value. `u = u` keeps u. (2026-11-06,
