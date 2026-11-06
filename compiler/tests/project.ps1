@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'measure', 'paths', 'readonly', 'linkinputs'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -689,6 +689,48 @@ if (Run 'outside')
   $env:KPP_CLANG, $env:KPP_VSWHERE = $saved
   if (-not $output.StartsWith("$built`n") -or $output -notmatch '(?m)^stdlib: .*\(missing\)$' -or
       $output -notmatch '(?m)^toolchain: none: this kpp has no toolchain of its own' -or $output -notmatch '(?m)^libraries: .*\(none\)$') { Fail "an installation's kpp --version:`n$output" }
+}
+
+# `kpp --run` in a project: a path ending in .kpp right after --run, with no target or configuration
+# named before it, is a one-file program, run as outside a project (it ran the project with the file
+# as an argument: the same command, another program, 2026-11-06), and one that is not there is an
+# error. Every other argument goes to the project's program: a file or directory of another kind, a
+# .kpp after the first argument, and any .kpp once a name has chosen the cell.
+if (Run 'runfile')
+{
+  $project = Join-Path $work 'runfile'
+  New-Item -ItemType Directory -Force "$project\src", "$project\sub", "$project\data" | Out-Null
+  Push-Location $project
+  try
+  {
+    $body = '(int argc, char** argv) { print("NAME"); for (int i = 1; i < argc; ++i) print(" ", StringView(argv[i])); println(); return CODE; }'
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n}"
+    Set-Content 'src\main.kpp' ('int main' + $body.Replace('NAME', 'project').Replace('CODE', '0'))
+    Set-Content 'hello.kpp' ('int main' + $body.Replace('NAME', 'file').Replace('CODE', '7'))
+    Set-Content 'input.txt' 'data'
+    foreach ($case in @(@('.', @('--run', 'hello.kpp', 'a', 'b'), 'file a b', 7),
+                        @('.', @('--release', '--run', 'hello.kpp', 'a'), 'file a', 7),
+                        @('sub', @('--run', '..\hello.kpp', 'a', 'b'), 'file a b', 7),
+                        @('.', @('--run', 'input.txt', 'x'), 'project input.txt x', 0),
+                        @('.', @('--run', 'data', 'x'), 'project data x', 0),
+                        @('.', @('--run', 'nothing.txt'), 'project nothing.txt', 0),
+                        @('.', @('--run', 'a', 'hello.kpp'), 'project a hello.kpp', 0),
+                        @('.', @('app', '--run', 'hello.kpp', 'a'), 'project hello.kpp a', 0),
+                        @('.', @('debug', '--run', 'hello.kpp'), 'project hello.kpp', 0),
+                        @('.', @('--run'), 'project', 0)))
+    {
+      Push-Location $case[0]
+      $output = @(Kpp (@('--no-server') + $case[1]))
+      Pop-Location
+      if ($code -ne $case[3] -or $output[-1] -ne $case[2]) { Fail "kpp $($case[1] -join ' ') in $($case[0]) of a project: exit $code, not $($case[3]), and not '$($case[2])' last`n$($output -join "`n")" }
+    }
+    # (through a compile server, as a command line without --no-server builds; StopTestServers ends it)
+    $output = @(Kpp @('--run', 'hello.kpp', 'a', 'b'))
+    if ($code -ne 7 -or $output[-1] -ne 'file a b') { Fail "kpp --run hello.kpp a b through a compile server: exit $code`n$($output -join "`n")" }
+    $output = (Kpp @('--no-server', '--run', 'missing.kpp', 'a')) -join "`n"
+    if ($code -ne 2 -or $output -notmatch 'missing\.kpp not found') { Fail "kpp --run missing.kpp in a project: exit $code`n$output" }
+  }
+  finally { Pop-Location }
 }
 
 # A library in a directory this user cannot write (2026-11-05: an installed kpp's libraries, under

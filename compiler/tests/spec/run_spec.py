@@ -30,6 +30,8 @@ A <name>.files directory next to a snippet holds more kpp files of its program, 
 for what only several files show (a name private to its file); they are no snippets themselves.
 A <name>.library.NAME directory is a library of the snippet's program, scoped by NAME (`--library-root
 NAME DIR`, design.md 16), and a <name>.unscoped.NAME directory an unscoped one (`--unscoped-library-root`).
+A <name>.project directory is a project (a build.kpp and its sources), copied into the snippet's build
+directory: a `// run:` snippet then runs from that copy, for what a command does inside a project.
 
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info] [--shard I/N]
 
@@ -281,7 +283,7 @@ def build_and_run(path, area, name, work):
             result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
         libs = ["--lib", obj]
     if info["run"] is not None or info["test"] is not None:
-        return finish(run_command(path, info, modules + libs, expected_path, result))
+        return finish(run_command(path, info, modules + libs, expected_path, result, work))
     if is_steps(path):
         if TARGET:
             result["status"] = "skip"; return result
@@ -356,17 +358,22 @@ def library_roots(path):
 
 def is_companion(directory):
     """Whether a directory is (in) a snippet's companion: its .files, or one of its libraries."""
-    return any(re.search(r"\.(files|library\.\w+|unscoped\.\w+)$", part) for part in os.path.relpath(directory, SNIPPETS).split(os.sep))
+    return any(re.search(r"\.(files|project|library\.\w+|unscoped\.\w+)$", part) for part in os.path.relpath(directory, SNIPPETS).split(os.sep))
 
 
-def run_command(path, info, libs, expected_path, result):
+def run_command(path, info, libs, expected_path, result, work):
     """A `// run:` snippet: `kppc --run` builds and runs it in one step; its exit code is the program's.
+    With a <name>.project directory it runs from a copy of that project.
     A `// test:` snippet: `kppc --test` builds its tests and runs them, from the snippet's directory."""
     extra = EXTRA + shlex.split(info["kppc"])
     if info["test"] is not None:
         command, cwd = [KPPC, *extra, *libs, "--no-server", "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
     else:
         command, cwd = [KPPC, *extra, *libs, "--no-server", "--run", path, *shlex.split(info["run"])], None
+        project = os.path.splitext(path)[0] + ".project"
+        if os.path.isdir(project):
+            cwd = os.path.join(work, "project")
+            shutil.copytree(project, cwd)
     try:
         r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=360)
     except subprocess.TimeoutExpired:

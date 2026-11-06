@@ -229,11 +229,17 @@ void build(Project& project)
 `compiler/src/Project/` (project.cpp until 2026-11-05) and `projectlib/Project.kpp` (2026-10-31); `tests/project.ps1` in
 run_tests.cmd.
 - **The commands.** In a directory with build.kpp, or below one, `kpp` takes executables' names,
-  never sources:
+  not sources:
   - `kpp [targets] [configurations]` builds those cells, every target when none is named, debug
     when no configuration is;
   - `kpp NAME --run ARGS` builds and runs one; one built for another platform (`--target freebsd`,
     linux) is an error before the build, as `kppc --run`'s: build it without `--run`;
+  - `kpp --run FILE.kpp ARGS`, with no target or configuration named before `--run`, is the one
+    exception to names: it runs that file with ARGS, as outside a project, and a FILE.kpp that is not
+    there is an error (2026-11-06: it built and ran the project, with the file among its arguments,
+    so one command ran another program depending on the directory). Any other first argument
+    (`kpp --run input.txt`, a directory) goes to the project's program, and `kpp NAME --run FILE.kpp`
+    gives it a .kpp file;
   - `--generate-visual-studio-files` and `--generate-vs-code-files` write one solution for all
     executables, whose builds run `kpp NAME CONFIGURATION --msvc-diagnostics`, so an edit of build.kpp
     needs no new project files;
@@ -624,7 +630,8 @@ factorio/
   with what the registry serves.
 - **The IDE's package tree** shows *Program*, *Libraries* (own, and forks marked as such),
   *Registry* (read-only) and *Standard Library*.
-- **One-file programs** stay one command: `kpp --run hello.kpp` needs no directory.
+- **One-file programs** stay one command: `kpp --run hello.kpp` needs no directory, and means the
+  same in a project's directory.
 
 ### Targets and configurations (decided 2026-11-01)
 

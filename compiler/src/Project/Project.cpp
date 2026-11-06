@@ -48,7 +48,9 @@ int runProject(int argc, char** argv, CompileFunction compile)
   if (root.empty())
     return -1;
   // A project's command line names targets and configurations, never sources: an argument that is
-  // an existing file or directory makes it a plain build of those sources.
+  // an existing file or directory makes it a plain build of those sources. So does a .kpp file right
+  // after --run while no target or configuration is named: `kpp --run hello.kpp a b` runs the file, as
+  // outside a project (or says it is not there), and only `kpp app --run hello.kpp` gives it to app.
   Request request;
   request.options = options;
   bool runner = false; // after --test's `--`: the test runner's arguments
@@ -66,7 +68,11 @@ int runProject(int argc, char** argv, CompileFunction compile)
     else if (arg == "--debug" || arg == "--release")
       request.configurations.push_back(arg.substr(2));
     else if (arg == "--run")
+    {
+      if (i + 1 < argc && request.names.empty() && !options && std::string_view(argv[i + 1]).ends_with(".kpp"))
+        return -1;
       request.run = true;
+    }
     else if (arg == "--generate-visual-studio-files")
       request.visualStudio = true;
     else if (arg == "--generate-vs-code-files")

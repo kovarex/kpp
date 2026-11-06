@@ -3272,8 +3272,12 @@ rounds each, the 10-line program and the small test of (b), 2026-10-30 on a quie
 | `--test`, nothing changed | 0.018 s (0.018-0.019) | 0.178 s (0.173-0.181) |
 
 Spec snippet: `kpp/run_command`.
-**Q1**: should `kppc file.kpp args` with no output option mean `--run`, or a file starting with
-`#!` run as a script? Proposed: no; one explicit spelling.
+**Q1, decided (kovarex, 2026-11-06): no implicit run.** `kpp --run hello.kpp` is the form for a
+snippet, `kpp new` and plain `kpp` for a real program, and no build.kpp is generated for a single
+file. A bare file would clash with several sources (`kpp a.kpp b.kpp` keeps compiling both), and a
+file starting with `#!` run as a script is not planned. `kpp hello.kpp` stays the front end's
+statistics pass. `kpp --run hello.kpp a b` means the same in a project's directory (docs/build.md,
+"The commands").
 
 ### (b) Native tests: the rest of 8.6
 - **Declaration** as 8.6: `test name { ... }` at namespace scope or in a class. The name is a
@@ -4189,8 +4193,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   is fully mature with all features implemented.** No editor work until then; ide.md's decisions 3 to
   8 that depend on the editor are parked with it.
 
-- **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`. Q2
-  (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native tests) are settled by 8.7.
+- **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run` (decided
+  2026-11-06: none). Q2 (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native
+  tests) are settled by 8.7.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
 

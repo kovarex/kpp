@@ -1,0 +1,9 @@
+// spec: `kpp --run file.kpp args...` inside a project runs the file with the arguments, never the project's program
+// run: alpha "two words"
+// exit: 2
+int main(int argc, char** argv)
+{
+  for (int i = 1; i < argc; ++i)
+    println("argument ", i, ": ", StringView(argv[i]));
+  return argc - 1;
+}

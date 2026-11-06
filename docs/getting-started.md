@@ -35,7 +35,8 @@ kpp hello --run
 command again; the compile server keeps the program in memory, so a rebuild compiles only what
 changed.
 
-A single file needs no project: `kpp --run hello.kpp`.
+A single file needs no project: `kpp --run hello.kpp`. A real program is a project: `kpp new`, then
+plain `kpp`.
 
 ## Building a project
 
