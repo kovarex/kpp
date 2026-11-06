@@ -831,6 +831,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         ensureMalloc();
         r = newTemp();
         emitCall(r + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(t, e)) + ")", false);
+        checkAllocation(r, e);
       }
       if (isClass(t) && (n->placement.empty() || n->deallocator))
       {
@@ -1236,6 +1237,35 @@ auto codegen::Emitter::ensureMalloc() -> void
     decls += "declare void @free(ptr)\n";
 }
 
+auto codegen::Emitter::allocationFailure(Node* at, const std::string& stop) -> void
+{
+  // The library's throwBadAlloc (its names are reserved: no program function takes its place).
+  FunctionDecl* thrower = global.findFreeFunction("throwBadAlloc", {}, nullptr); // (from the global scope)
+  if (thrower && thrower->file && thrower->file->isLibrary && thrower->params.empty())
+  {
+    emitCall("", "void " + useFunction(thrower, {}, nullptr, at) + "()", true);
+    fn += "  unreachable\n";
+    return;
+  }
+  auto [line, column] = lineColumnOf(at->token);
+  emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+                   std::to_string(column) + ", ptr " + cStringConstant(stop) + ")", false);
+  fn += "  unreachable\n";
+  usesAssert = true;
+}
+
+auto codegen::Emitter::checkAllocation(const std::string& block, Node* at) -> void
+{
+  // (C++'s operator new throws std::bad_alloc when it cannot have the block, [basic.stc.dynamic.allocation]
+  // 3; until 2026-11-06 the object was built at the null pointer malloc gave.)
+  std::string isNull = newTemp(), okL = newLabel("new.ok"), failL = newLabel("new.fail");
+  fn += "  " + isNull + " = icmp eq ptr " + block + ", null\n";
+  fn += "  br i1 " + isNull + ", label %" + failL + ", label %" + okL + "\n";
+  startBlock(failL);
+  allocationFailure(at, "new could not have the block it needs: malloc gave none");
+  startBlock(okL);
+}
+
 auto codegen::Emitter::arrayCookie(const Ty* t, Node* at, bool sizedDelete) -> uint64_t
 {
   if (!needsDestruction(t, at) && !sizedDelete)
@@ -1281,11 +1311,15 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
   std::string count = convert(rvalue(sizeExpr), types.sizeType(), n).text;
   std::string stride = "ptrtoint (ptr getelementptr (" + llType(t, n) + ", ptr null, i32 1) to i64)"; // LLVM's own element size
   uint64_t cookie = arrayCookie(t, n, n->allocator && n->sizedDeallocation);
+  // A constant count whose block's size would not fit (C++'s ill-formed new-expression, [expr.new]
+  // 9), never a size that wrapped: `new int[0x4000000000000001]` asked for 4 bytes.
+  if (known && uint64_t(*known) > (uint64_t(INT64_MAX) - cookie) / std::max<uint64_t>(sizeOf(t, n), 1))
+    fail(n, "new[] of " + std::to_string(*known) + " elements of " + types.toString(t, &symbols) + ": more bytes than a block can have");
   if (!known)
   {
     // A count that is negative (a huge size_t), too large for the block's size to be computed, or
-    // below the list's length: C++ throws bad_array_new_length; kpp stops with a message, as for
-    // a failed dynamic_cast to a reference, where the size would wrap and the block be too small.
+    // below the list's length: C++ throws bad_array_new_length, a bad_alloc, and kpp BadAlloc
+    // (allocationFailure), never a size that wrapped and a block too small.
     uint64_t element = std::max<uint64_t>(sizeOf(t, n), 1);
     std::string bad = newTemp();
     fn += "  " + bad + " = icmp ugt i64 " + count + ", " + std::to_string((uint64_t(INT64_MAX) - cookie) / element) + "\n";
@@ -1299,13 +1333,7 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     std::string okL = newLabel("newarray.ok"), failL = newLabel("newarray.fail");
     fn += "  br i1 " + bad + ", label %" + failL + ", label %" + okL + "\n";
     startBlock(failL);
-    auto [line, column] = lineColumnOf(n->token);
-    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
-                     std::to_string(column) + ", ptr " +
-                     cStringConstant(list.empty() ? "new[]'s count is negative or too large" : "new[]'s count is negative, too large or below its initializer list's length") +
-                     ")", false);
-    fn += "  unreachable\n";
-    usesAssert = true;
+    allocationFailure(n, list.empty() ? "new[]'s count is negative or too large" : "new[]'s count is negative, too large or below its initializer list's length");
     startBlock(okL);
   }
   ensureMalloc();
@@ -1332,6 +1360,7 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
   {
     block = newTemp();
     emitCall(block + " = ", "ptr @malloc(i64 " + total + ")", false);
+    checkAllocation(block, n);
   }
   std::string base = block;
   if (cookie)

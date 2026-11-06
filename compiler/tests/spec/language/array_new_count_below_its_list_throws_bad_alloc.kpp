@@ -1,0 +1,30 @@
+// spec: new[] of a count known only at run time that is below its initializer list's length, or negative, throws BadAlloc, as C++ throws bad_array_new_length (a bad_alloc), never writing past its block or building anything; a count that fits builds the list and zeroes the rest (`3 4 5 0`); clang prints the same
+// found by thread B (2026-11-05), comparing with clang: `new int[n]{1, 2, 3}` with n = 2 wrote the third element past its block; from then until 2026-11-06 kpp stopped there with a message (language/new_failure_throws_bad_alloc)
+int elements = 2;
+
+int main()
+{
+  try
+  {
+    int* p = new int[elements]{1, 2, 3};
+    println("not reached ", p[2]);
+  }
+  catch (const BadAlloc&)
+  {
+    println("below the list: bad allocation");
+  }
+  try
+  {
+    int n = -elements;
+    int* p = new int[n];
+    println("not reached either ", p == nullptr ? 1 : 0);
+  }
+  catch (const BadAlloc&)
+  {
+    println("negative: bad allocation");
+  }
+  int* p = new int[elements + 2]{3, 4, 5};
+  println(p[0], " ", p[1], " ", p[2], " ", p[3]);
+  delete[] p;
+  return 0;
+}

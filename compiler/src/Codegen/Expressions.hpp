@@ -55,6 +55,12 @@
     // one ([expr.delete] 10; as clang's sized deallocation).
     std::string globalFreeCall(const std::string& block, const std::string& size, bool array, Node* at);
     void ensureMalloc();
+    // A new-expression that cannot have its block, as C++'s throws std::bad_alloc (or its
+    // bad_array_new_length, [expr.new] 8): BadAlloc thrown (the library's throwBadAlloc), and
+    // without the library the program stopped saying `stop`. Ends the current block.
+    void allocationFailure(Node* at, const std::string& stop);
+    // A block malloc gave a new-expression: allocationFailure when it is null, never an object built there.
+    void checkAllocation(const std::string& block, Node* at);
 
     // The bytes before the elements of `new T[n]`: a cookie whose last 8 hold n, when T needs
     // destroying (as MSVC's runtime lays it out), so that delete[] destroys all n; 16 for an element

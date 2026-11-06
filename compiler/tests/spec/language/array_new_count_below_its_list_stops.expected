@@ -1,6 +1,0 @@
-array_new_count_below_its_list_stops.kpp:9:12: assertion failed: new[]'s count is negative, too large or below its initializer list's length
-failed: array_new_count_below_its_list_stops.kpp > below the list
-array_new_count_below_its_list_stops.kpp:16:12: assertion failed: new[]'s count is negative or too large
-failed: array_new_count_below_its_list_stops.kpp > negative
-3 4 5 0
-3 tests, 2 failed
