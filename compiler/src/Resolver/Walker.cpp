@@ -5588,7 +5588,20 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       }
       if (c->callee->kind == NodeKind::MemberExpr)
         any = canThrow(static_cast<MemberExpr*>(c->callee)->base, unsupported) || any;
-      std::optional<bool> noexcept_ = impl.isNoexcept(static_cast<FunctionDecl*>(callee), activeSubst);
+      // A function template's condition under the call's own template arguments (c<int>() of
+      // `template<class T> void c() noexcept(sizeof(T) == 4)`: T int), beside the walk's.
+      auto* fd = static_cast<FunctionDecl*>(callee);
+      Subst withCall;
+      const Subst* subst = activeSubst;
+      if (!fd->templateParams.empty() && c->templateArgCount == fd->templateParams.size())
+      {
+        if (activeSubst)
+          withCall = *activeSubst;
+        for (size_t i = 0; i < c->templateArgCount; ++i)
+          withCall.pairs.push_back({fd->templateParams[i], c->templateArgs[i]});
+        subst = &withCall;
+      }
+      std::optional<bool> noexcept_ = impl.isNoexcept(fd, subst);
       if (!noexcept_)
       {
         unsupported = "a call of a function whose noexcept condition is no constant here";

@@ -1,0 +1,13 @@
+// spec: the noexcept operator decides a call of a function template by the template's noexcept condition under the call's own template arguments ([expr.unary.noexcept], [except.spec] 13): with `template<class T> void c() noexcept(sizeof(T) == 4)`, noexcept(c<int>()) is true and noexcept(c<double>()) false, deduced arguments alike (noexcept(d(1)), noexcept(d(1.0))); clang prints the same
+// found by thread A's survey of C++ features (2026-11-06, kpp against clang 19): "the noexcept operator does not decide a call of a function whose noexcept condition is no constant here", the condition evaluated without the call's arguments
+void a() noexcept {}
+void b() noexcept(false) {}
+template<class T> void c() noexcept(sizeof(T) == 4) {}
+template<class T> void d(T) noexcept(sizeof(T) == 4) {}
+
+int main()
+{
+  println(noexcept(a()), " ", noexcept(b()), " ", noexcept(c<int>()), " ", noexcept(c<double>()), " ",
+          noexcept(d(1)), " ", noexcept(d(1.0)));
+  return 0;
+}
