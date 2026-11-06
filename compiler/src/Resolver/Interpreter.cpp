@@ -3919,6 +3919,24 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
     ctor = chooseConstructor(t, all, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
     chosenTypes = all;
   }
+  // (Nor by them, with no argument as written: by the categories constArguments gave, every
+  // argument's, an lvalue's type a reference, as the written arguments' are above: `R(a...)`
+  // of a pack of int& given to `R(int& x)`; D, 2026-11-06: by the values' types an int rvalue,
+  // which no `int&` takes, and Tuple<int, int&>(a, b) was no constant.)
+  if ((ambiguous || !ctor) && !typedWritten && categories && categories->size() == args.size())
+  {
+    std::vector<const Ty*> all = argTypes;
+    for (size_t i = 0; i < all.size(); ++i)
+      if (const Ty* at = all[i] ? types.unqualified(types.stripRef(all[i])) : nullptr; at && (*categories)[i] != 0)
+      {
+        bool readOnly = places && i < places->size() && (*places)[i] && !(*places)[i]->writable();
+        const Ty* object = readOnly ? types.qualified(at, true, false) : at;
+        all[i] = (*categories)[i] == 1 ? types.lref(object) : types.rref(object);
+      }
+    ambiguous = false;
+    ctor = chooseConstructor(t, all, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
+    chosenTypes = all;
+  }
   if (!ctor || ambiguous || (ctor->flags & DF_Delete))
     return std::nullopt; // (a deleted one: no constant; codegen's call of it is an error)
   if (!inheritedFrom)
@@ -5055,14 +5073,23 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
             return sliced;
           return category == 2 ? std::nullopt : constCopyConstruct(tu, *sliced, std::nullopt, false, depth + 1);
         }
-        return constConstruct(tu, {*v}, false, depth + 1);
+        // The constructor given the argument where it is, as a call's argument is (`: R(a)` of a
+        // `D(int& a)`, R's `int& x` referring to what a refers to; D, 2026-11-06: given the value
+        // alone, a reference parameter had nothing to refer to, and every such constructor was no
+        // constant, Tuple<int, int&>'s among them).
+        Expr* source = nullptr;
+        std::vector<std::optional<ConstPlace>> places{constPure(init.args[0]) ? constPlaceOf(init.args[0], fctx, depth + 1) : std::nullopt};
+        std::vector<uint8_t> categories{constCategory(init.args[0], source)};
+        return constConstruct(tu, {*v}, false, depth + 1, &init.args, nullptr, &places, &categories);
       }
       return constInitialize(target, init.args[0], fctx, depth + 1);
     }
     std::vector<ConstValue> values;
-    if (!constArguments(init.args, fctx, depth, values))
+    std::vector<std::optional<ConstPlace>> places;
+    std::vector<uint8_t> categories;
+    if (!constArguments(init.args, fctx, depth, values, &places, &categories))
       return std::nullopt;
-    return constConstruct(target, values, false, depth + 1);
+    return constConstruct(target, values, false, depth + 1, &init.args, nullptr, &places, &categories);
   };
   for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
     if (!absentMemberInit(layout->decl, init) && std::find(written.begin(), written.end(), &init) == written.end())

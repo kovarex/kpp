@@ -1,0 +1,36 @@
+// spec: at compile time a base or member initializer gives a constructor its argument where it is, as a call does: `struct D : R { constexpr D(int& a) : R(a) {} }` with `R(int& x) : r(x)` refers to the caller's int (a write through the base's reference member reaches it), a member `m(a)` alike, a constructor of two references (`: P(a, b)`), and a pack forwarded to one (`R(a...)` of `D(A&... a)`, chosen by the arguments' categories); `Tuple<int&, int&>(a, b)` with `get<0>(t) = 7`; the same values at run time
+// found by thread I's Tuple battery (2026-11-06): each was no constant ("the constexpr variable g is no constant"): given the value alone, a reference parameter had nothing to refer to, and a pack's lvalue, typed by its value an rvalue, chose no `int&` constructor
+struct R { int& r; constexpr R(int& x) : r(x) {} };
+struct D : R { constexpr D(int& a) : R(a) {} };
+struct M { R m; constexpr M(int& a) : m(a) {} };
+struct P { int& x; int& y; constexpr P(int& a, int& b) : x(a), y(b) {} };
+struct Q : P { constexpr Q(int& a, int& b) : P(a, b) {} };
+template<class... A> struct V : R { constexpr V(A&... a) : R(a...) {} };
+
+constexpr int throughBase() { int a = 1; D d(a); d.r = 7; return a; }
+constexpr int throughMember() { int a = 2; M m(a); m.m.r += 5; return a; }
+constexpr int throughTwo() { int a = 1; int b = 2; Q q(a, b); q.x = 30; q.y = 40; return a + b; }
+constexpr int throughPack() { int a = 3; V<int> v(a); v.r *= 3; return a; }
+
+constexpr int throughTuple()
+{
+  int a = 1;
+  int b = 2;
+  Tuple<int&, int&> t(a, b);
+  get<0>(t) = 7;
+  get<1>(t) += 1;
+  return a * 10 + b;
+}
+
+constexpr int base = throughBase();
+constexpr int member = throughMember();
+constexpr int two = throughTwo();
+constexpr int pack = throughPack();
+constexpr int tuple = throughTuple();
+
+int main()
+{
+  println(base, " ", member, " ", two, " ", pack, " ", tuple);
+  println(throughBase(), " ", throughMember(), " ", throughTwo(), " ", throughPack(), " ", throughTuple());
+  return 0;
+}
