@@ -77,8 +77,8 @@ const Ty* stringLiteralArray(const Expr* e, const Ty* t, TypeTable& types)
   if (l->literalKind != TokenKind::String || !pf || !pf->tokens || l->token >= pf->tokens->size())
     return nullptr;
   const Ty* element = types.unqualified(t->inner);
-  if (element->kind != TyKind::Char || element->bits != 8)
-    return nullptr; // u"", U"", L"": not decoded here
+  if (element->kind != TyKind::Char || (element->bits != 8 && element->bits != 16 && element->bits != 32))
+    return nullptr;
   std::string bytes;
   for (size_t i = l->token; i < pf->tokens->size() && (*pf->tokens)[i].getKind() == TokenKind::String; ++i)
   {
@@ -87,10 +87,26 @@ const Ty* stringLiteralArray(const Expr* e, const Ty* t, TypeTable& types)
     size_t quote = spelled.rfind('"');
     if (quote != std::string_view::npos && quote + 1 < spelled.size())
       spelled = spelled.substr(0, quote + 1); // (`"..."sv`: the chars the quotes hold)
+    // (a wide one, L"", u"", U"": its text read as UTF-8, its prefix aside, then counted in its units)
+    if (element->bits != 8 && !spelled.empty() && (spelled[0] == 'L' || spelled[0] == 'u' || spelled[0] == 'U'))
+      spelled = spelled.substr(1);
     if (!decodeNarrowString(spelled, bytes))
       return nullptr;
   }
-  return types.array(t->inner, uint32_t(bytes.size() + 1));
+  if (element->bits == 8)
+    return types.array(t->inner, uint32_t(bytes.size() + 1));
+  // `const wchar_t w[] = L"abc"`: as many elements as the text has code units (a surrogate pair in
+  // UTF-16) and the null; until 2026-11-06 a wide one gave no bound ("no constant the compiler
+  // could evaluate").
+  uint32_t units = 0;
+  for (size_t i = 0; i < bytes.size();)
+  {
+    unsigned char c = bytes[i];
+    size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+    units += element->bits == 16 && n == 4 ? 2 : 1;
+    i += n;
+  }
+  return types.array(t->inner, units + 1);
 }
 
 std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCause)

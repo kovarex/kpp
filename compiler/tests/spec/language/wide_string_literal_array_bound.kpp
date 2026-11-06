@@ -1,0 +1,12 @@
+// spec: an array of wide characters whose bound is its string literal's, `const wchar_t w[] = L"abc"`, u"" and U"" too, a global and a local, and a wide literal passed to a `const wchar_t (&)[3]` parameter (which read garbage before): as many elements as the text has code units and the null (a surrogate pair in UTF-16); until 2026-11-06 no bound ("an array whose length is no constant the compiler could evaluate")
+const wchar_t w[] = L"abc";
+int second(const wchar_t (&a)[3]) { return a[1]; }
+int main()
+{
+  const char16_t u[] = u"hi";
+  const char32_t U[] = U"xyz!";
+  const wchar_t local[] = L"de";
+  println(sizeof(w) / sizeof(wchar_t), " ", sizeof(u) / sizeof(char16_t), " ", sizeof(U) / sizeof(char32_t), " ", sizeof(local) / sizeof(wchar_t), " ", int(w[2]), " ", int(U[3]));
+  println(second(L"ef"));
+  return 0;
+}

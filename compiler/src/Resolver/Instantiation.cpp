@@ -2074,6 +2074,8 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
       {
         if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(literal), ctx))
           t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
+        else if (const Ty* wide = stringLiteralArray(literal, types.pointer(t->inner), types))
+          t = types.array(t->inner, wide->count); // `const wchar_t w[] = L"abc"`: its code units and the null
       }
       else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
       {
