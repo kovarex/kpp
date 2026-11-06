@@ -1,0 +1,19 @@
+// spec: user-defined literals (C++'s [lex.ext]): `1.5_km` calls operator""_km with the number as long double, `21_x` with it as unsigned long long (two operators of one suffix, one per kind, chosen by the literal's kind), `'a'_c` with the char, `"text"_len` with the string and its length; at compile time too (static_assert), and a namespace's operators reached by using namespace; until 2026-11-06 `codegen does not support this literal`
+namespace units
+{
+  constexpr long double operator""_km(long double v) { return v * 1000; }
+  constexpr unsigned long long operator""_km(unsigned long long v) { return v * 1000; }
+}
+using namespace units;
+constexpr int operator""_twice(unsigned long long v) { return int(v) * 2; }
+constexpr int operator""_code(char c) { return c + 0; }
+constexpr unsigned long long operator""_len(const char* text, unsigned long long length) { return text[0] == 'h' ? length : 0; }
+static_assert(21_twice == 42);
+static_assert("hello"_len == 5);
+int main()
+{
+  double half = (double)0.5_km;
+  unsigned long long two = 2_km;
+  println(half, " ", two, " ", 7_twice, " ", 'a'_code, " ", "hey"_len, " ", 1e3_km > 999999.0);
+  return 0;
+}

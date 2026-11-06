@@ -309,9 +309,11 @@ namespace
         if (c == quote)
           break;
       }
-      // User-defined literal suffix.
-      while (isIdentChar(uint8_t(*p)))
-        ++p;
+      // A literal's suffix; a program's own (`"text"_s`, `'x'_c`: '_' first) is a token of its own, as
+      // after a number.
+      if (*p != '_')
+        while (isIdentChar(uint8_t(*p)))
+          ++p;
       push(quote == '"' ? TokenKind::String : TokenKind::Char, start);
       result.tokens.back().spliced = spliced;
     }
@@ -329,6 +331,14 @@ namespace
         else
           break;
       }
+      // A program's literal suffix (C++'s ud-suffix, `1.5_km`, `21_x2`, which starts with '_'; no
+      // number has one): a token of its own, the identifier the parser makes a call of operator""_km.
+      for (const char* q = start + 1; q < p; ++q)
+        if (*q == '_')
+        {
+          p = q;
+          break;
+        }
       push(TokenKind::Number, start);
     }
 

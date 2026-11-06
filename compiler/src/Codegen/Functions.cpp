@@ -132,6 +132,9 @@ auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& 
   for (size_t i = 0; ft && i < ft->args.size(); ++i)
     params += (i ? ", " : "") + irString(ft->args[i]);
   // A const method is a different function from its non-const overload.
+  // (a literal operator's name, `operator""_km`, has quotes, which an LLVM name escapes)
+  for (size_t at = 0; (at = q.find('"', at)) != std::string::npos; at += 3)
+    q.replace(at, 1, "\\22");
   return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + "\"";
 }
 

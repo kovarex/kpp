@@ -644,11 +644,17 @@ namespace
       }
       if (at(TokenKind::String))
       {
-        // operator"" _suffix
+        // A literal operator, `operator"" _km` or `operator""_km`: a function named `operator""_km`
+        // (a name of its own per suffix, which a literal with that suffix calls: userLiteral).
         advance();
         if (atIdent())
+        {
+          part.special = 0;
+          part.symbol = symbols.intern("operator\"\"" + std::string(spelling()));
           advance();
-        part.opToken = 0;
+        }
+        else
+          part.opToken = 0;
         return true;
       }
       // Conversion operator: operator Type
@@ -3036,6 +3042,91 @@ namespace
       else if (!expect(P::Semi, "expected ';' or function body"))
         return;
       pushDecl(f);
+    }
+
+    // At a literal's own suffix (`1.5_km`): an identifier starting with '_' right after the literal
+    // token before it, no space between (the lexer splits it off).
+    bool userSuffixAhead() const
+    {
+      if (!atIdent() || pos == 0 || spelling().empty() || spelling()[0] != '_')
+        return false;
+      const Token& before = toks[pos - 1];
+      return (before.getKind() == TokenKind::Number || before.getKind() == TokenKind::String || before.getKind() == TokenKind::Char) &&
+             before.offset + before.length == tok().offset;
+    }
+
+    // A user-defined literal, `1.5_km`, `'x'_c`, `"text"_s`: the call of the literal operator
+    // operator""_km with the literal (C++'s [lex.ext]: a number as itself, a string with its length
+    // after it, sizeof(s) / sizeof(*s) - 1 written with no literal of its own). Without a suffix, l.
+    Expr* userLiteral(LiteralExpr* l, uint32_t start)
+    {
+      if (!userSuffixAhead())
+        return l;
+      uint32_t suffix = pos;
+      NameExpr* callee = node<NameExpr>(suffix);
+      NamePart part;
+      part.symbol = symbols.intern("operator\"\"" + std::string(spelling()));
+      callee->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      advance();
+      CallExpr* call = node<CallExpr>(start);
+      call->callee = callee;
+      std::vector<Expr*> args{l};
+      if (l->literalKind == TokenKind::Number)
+      {
+        // An integer as unsigned long long, a floating literal as long double (the operator's
+        // parameter C++ chooses by the literal's kind, never by overload ranking of its type).
+        std::string_view text = spelling(toks[start]);
+        bool hex = text.size() > 1 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+        bool floating = text.find('.') != std::string_view::npos ||
+                        (hex ? text.find_first_of("pP") != std::string_view::npos : text.find_first_of("eE") != std::string_view::npos);
+        BuiltinType* t = node<BuiltinType>(start);
+        t->keyword = floating ? Kw::double_ : Kw::int_;
+        t->longCount = floating ? 1 : 2;
+        t->isUnsigned = !floating;
+        CastExpr* asParameter = node<CastExpr>(start);
+        asParameter->type = t;
+        asParameter->operand = l;
+        args[0] = asParameter;
+      }
+      if (l->literalKind == TokenKind::String)
+      {
+        auto literal = [&]
+        {
+          LiteralExpr* s = node<LiteralExpr>(start);
+          s->literalKind = TokenKind::String;
+          s->keyword = Kw::Count;
+          return s;
+        };
+        auto size = [&](bool element)
+        {
+          SizeofExpr* z = node<SizeofExpr>(start);
+          z->sizeofKind = Kw::sizeof_;
+          if (element)
+          {
+            UnaryExpr* first = node<UnaryExpr>(start);
+            first->operand = literal();
+            first->op = uint32_t(P::Star);
+            first->isKeyword = false;
+            first->postfix = false;
+            z->operand = first;
+          }
+          else
+            z->operand = literal();
+          return z;
+        };
+        auto binary = [&](P op, Expr* a, Expr* b)
+        {
+          BinaryExpr* e = node<BinaryExpr>(start);
+          e->lhs = a;
+          e->rhs = b;
+          e->op = uint32_t(op);
+          e->isKeyword = false;
+          return e;
+        };
+        args.push_back(binary(P::Minus, binary(P::Slash, size(false), size(true)), binary(P::Slash, size(true), size(true))));
+      }
+      call->args = makeSpanOf(args);
+      return call;
     }
 
     // A try statement's (or function-try-block's) handlers: `catch (T name) { ... }`, `catch (...)`.
@@ -5610,14 +5701,14 @@ namespace
           l->literalKind = tok().getKind();
           l->keyword = Kw::Count;
           advance();
-          return l;
+          return userLiteral(l, start);
         }
         case TokenKind::String:
         {
           LiteralExpr* l = node<LiteralExpr>(start);
           l->literalKind = TokenKind::String;
           l->keyword = Kw::Count;
-          while (at(TokenKind::String) || (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1)))
+          while (at(TokenKind::String) || (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1) && !userSuffixAhead()))
           {
             // In kpp only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's
             // macro pasting (valid in the C++ the converter reads), whose pieces the literal would lose.
@@ -5625,7 +5716,7 @@ namespace
               error("a name next to a string literal (only string literals concatenate)");
             advance();
           }
-          return l;
+          return userLiteral(l, start);
         }
         case TokenKind::Keyword:
           switch (Kw(tok().id))
