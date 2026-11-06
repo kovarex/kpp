@@ -1,6 +1,7 @@
-// kpp standard library: Vector<T>. A growable array. When elements shift for an insert, they are
-// relocated (move constructor, then destructor); an erase move-assigns them, as std's; when the buffer grows, as in
-// std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
+// kpp standard library: Vector<T>. A growable array. Elements that shift for an insert or an erase
+// are move-assigned, as std's (those an insert moves past the end are move constructed), and a T
+// without move assignment is relocated (move constructor, then destructor); when the buffer grows, as
+// in std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
 // is copied. Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
 class Vector
@@ -71,8 +72,7 @@ public:
   {
     if (this == &other)
       return *this;
-    this->clear();
-    this->appendCopies(other.items, other.length);
+    this->assignCopies(other.items, other.length);
     return *this;
   }
 
@@ -181,28 +181,26 @@ public:
     this->truncate(count);
   }
 
-  void assign(const T* first, const T* last)
-  {
-    this->clear();
-    this->appendCopies(first, checkedSize(last - first, "vector too long"));
-  }
+  void assign(const T* first, const T* last) { this->assignCopies(first, checkedSize(last - first, "vector too long")); }
 
   // The elements of [first, last), input iterators of any kind (ResearchQueue's
   // `queue.assign(other.queue.begin(), other.queue.end())`); they must not point into this vector.
   template<typename InputIt> requires (!isIntegral<InputIt>)
   void assign(InputIt first, InputIt last)
   {
-    this->clear();
+    if constexpr (requires { this->items[0] = *first; })
+    {
+      ContainerSize index = 0;
+      for (; index < this->length && first != last; ++index, ++first)
+        this->items[index] = *first;
+      this->truncate(index);
+    }
+    else
+      this->clear();
     this->insert(this->items + this->length, first, last);
   }
 
-  void assign(InitializerList<T> list)
-  {
-    this->clear();
-    this->reserve(list.size());
-    for (const T& item : list)
-      this->push_back(item);
-  }
+  void assign(InitializerList<T> list) { this->assignCopies(list.begin(), list.size()); }
 
   // Room for `needed` elements, exactly; LengthError past maxContainerSize.
   void reserve(ContainerSize needed)
@@ -323,9 +321,14 @@ public:
   {
     T copy(value);
     ContainerSize index = ContainerSize(position - this->items);
-    this->openSlots(index, count);
+    ContainerSize moved = this->openSlots(index, count);
     for (ContainerSize i = 0; i < count; ++i)
-      new (this->items + index + i) T(copy);
+      if (i >= moved)
+        new (this->items + index + i) T(copy);
+      else if constexpr (isCopyAssignable<T>)
+        this->items[index + i] = copy;
+      else if constexpr (isMoveAssignable<T>)
+        this->items[index + i] = T(copy);
     return this->items + index;
   }
 
@@ -359,10 +362,15 @@ public:
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
       ContainerSize count = checkedSize(distance(first, last), "vector too long");
-      this->openSlots(index, count);
+      ContainerSize moved = this->openSlots(index, count);
       for (ContainerSize i = 0; i < count; ++i)
       {
-        new (this->items + index + i) T(*first);
+        if (i >= moved)
+          new (this->items + index + i) T(*first);
+        else if constexpr (requires { this->items[0] = *first; })
+          this->items[index + i] = *first;
+        else if constexpr (isMoveAssignable<T>)
+          this->items[index + i] = T(*first); // a conversion that is only explicit
         ++first;
       }
     }
@@ -382,26 +390,24 @@ public:
   template<typename I> requires (isIntegral<I>)
   void insert(I index, const T& value)
   {
+    if (ContainerSize(index) == this->length)
+    {
+      this->push_back(value);
+      return;
+    }
     T copy(value); // value may be an element, which the opening moves
-    this->openSlots(index, 1);
-    new (this->items + index) T(move(copy));
+    this->fillSlot(index, this->openSlots(index, 1), move(copy));
   }
 
   template<typename I> requires (isIntegral<I>)
   void insert(I index, T&& value)
   {
-    this->openSlots(index, 1);
-    new (this->items + index) T(move(value));
-  }
-
-  // Makes room for count elements at index: the elements from there on move up. The new slots
-  // are left unconstructed.
-  void openSlots(ContainerSize index, ContainerSize count)
-  {
-    // Only at the end the strong guarantee.
-    this->ensureRoom(sizeSum(this->length, count, "vector too long"), index == this->length);
-    relocateBackward(this->items + index + count, this->items + index, this->length - index);
-    this->length += count;
+    if (ContainerSize(index) == this->length)
+    {
+      this->push_back(move(value));
+      return;
+    }
+    this->fillSlot(index, this->openSlots(index, 1), move(value));
   }
 
   bool contains(const T& value) const
@@ -426,9 +432,7 @@ public:
   template<typename I> requires (isIntegral<I>)
   void erase(I index)
   {
-    this->items[index].~T();
-    relocate(this->items + index, this->items + index + 1, this->length - index - 1);
-    --this->length;
+    this->erase(this->items + index, this->items + index + 1);
   }
 
   // Removes [first, last), given as pointers into the vector (begin()/end() and what find functions
@@ -466,6 +470,60 @@ private:
     for (ContainerSize i = newLength; i < this->length; ++i)
       this->items[i].~T();
     this->length = newLength;
+  }
+
+  // Makes room for count elements at index: the elements from there on move up, as std's insert
+  // does it: into the room past the end by move construction, the others by move assignment, from
+  // the last one back (relocated when T has no move assignment); into a new block when the vector
+  // is full, each element moved once. Returns how many of the count slots, from index on, hold
+  // moved-from elements, to be assigned; the slots after them are unconstructed.
+  ContainerSize openSlots(ContainerSize index, ContainerSize count)
+  {
+    ContainerSize needed = sizeSum(this->length, count, "vector too long");
+    ContainerSize following = this->length - index;
+    if (needed > this->allocated)
+    {
+      if (following == 0)
+        this->ensureRoom(needed); // only at the end the strong guarantee
+      else
+      {
+        ContainerSize newCapacity = this->capacityFor(needed);
+        T* block = allocateArray<T>(newCapacity);
+        relocate(block, this->items, index);
+        relocate(block + index + count, this->items + index, following);
+        free(this->items);
+        this->items = block;
+        this->allocated = newCapacity;
+      }
+      this->length = needed;
+      return 0;
+    }
+    if constexpr (isMoveAssignable<T>)
+    {
+      ContainerSize constructed = following < count ? following : count;
+      ContainerSize firstConstructed = this->length - constructed;
+      for (ContainerSize i = this->length; i-- > firstConstructed;)
+        new (this->items + i + count) T(move(this->items[i]));
+      for (ContainerSize i = firstConstructed; i-- > index;)
+        this->items[i + count] = move(this->items[i]);
+      this->length = needed;
+      return constructed;
+    }
+    else
+    {
+      relocateBackward(this->items + index + count, this->items + index, following);
+      this->length = needed;
+      return 0;
+    }
+  }
+
+  // Puts value in the slot at index, of the kind openSlots said (moved: it holds an element).
+  void fillSlot(ContainerSize index, ContainerSize moved, T&& value)
+  {
+    if (moved == 0)
+      new (this->items + index) T(move(value));
+    else if constexpr (isMoveAssignable<T>)
+      this->items[index] = move(value);
   }
 
   // Moves the elements into a new block for newCapacity elements.
@@ -518,6 +576,26 @@ private:
     if (grown)
       this->adoptBlock(grown, this->capacityFor((u64)this->length + 1));
     ++this->length;
+  }
+
+  // The count elements from source (not this vector's) in place of the elements: copy-assigned
+  // over the ones there are, the others copy constructed, as std's when they fit.
+  void assignCopies(const T* source, ContainerSize count)
+  {
+    if constexpr (isCopyAssignable<T>)
+    {
+      if (count <= this->allocated)
+      {
+        ContainerSize common = count < this->length ? count : this->length;
+        for (ContainerSize i = 0; i < common; ++i)
+          this->items[i] = source[i];
+        this->truncate(common);
+        this->appendCopies(source + common, count - common);
+        return;
+      }
+    }
+    this->clear();
+    this->appendCopies(source, count);
   }
 
   // Copy-constructs count elements from source after the last one (exact growth: the copy and

@@ -1,0 +1,182 @@
+// spec: a Vector does the element work std::vector does: an erase move-assigns the elements after the erased ones down, erase(index) as well; an insert or an emplace before the end moves the last elements past the end by move construction and assigns the others up and then the new values; at the end it appends; when the vector is full each element moves once into the new block; copy assignment and assign copy-assign over the elements there are; a T without move assignment is relocated. The expected counts are what libstdc++ prints for the same program; MSVC's STL differs in emplace-through-insert, a range insert and resize
+// factorio: I and K, comparing against std: insert relocated (a move and a destruction per element), = destroyed and copied, erase(index) relocated
+extern "C" int printf(const char* format, ...);
+int constructed = 0;
+int copied = 0;
+int moved = 0;
+int copyAssigned = 0;
+int moveAssigned = 0;
+int destroyed = 0;
+
+struct Counted
+{
+  int value;
+  Counted(int v) : value(v) { ++constructed; }
+  Counted(const Counted& other) : value(other.value) { ++copied; }
+  Counted(Counted&& other) noexcept : value(other.value) { other.value = -1; ++moved; }
+  Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
+  Counted& operator=(Counted&& other) noexcept { value = other.value; other.value = -1; ++moveAssigned; return *this; }
+  ~Counted() { ++destroyed; }
+};
+
+struct Fixed
+{
+  const int value;
+  Fixed(int v) : value(v) {}
+};
+
+void reset()
+{
+  constructed = 0;
+  copied = 0;
+  moved = 0;
+  copyAssigned = 0;
+  moveAssigned = 0;
+  destroyed = 0;
+}
+
+void report(const char* what, const Vector<Counted>& v)
+{
+  printf("%s: new %d copy %d move %d copy= %d move= %d destroy %d |", what, constructed, copied, moved, copyAssigned, moveAssigned, destroyed);
+  for (const Counted& x : v)
+    printf(" %d", x.value);
+  printf("\n");
+  reset();
+}
+
+Vector<Counted> make(int n, int room)
+{
+  Vector<Counted> v;
+  v.reserve(room);
+  for (int i = 0; i < n; ++i)
+    v.emplace_back(i);
+  reset();
+  return v;
+}
+
+int main()
+{
+  {
+    Vector<Counted> v = make(6, 6);
+    v.erase(v.begin() + 1);
+    report("erase one", v);
+    v.erase(v.begin() + 1, v.begin() + 3);
+    report("erase range", v);
+    v.erase(v.end() - 1);
+    report("erase last", v);
+    v.erase(v.begin(), v.begin());
+    report("erase empty range", v);
+    v.erase(v.begin(), v.end());
+    report("erase all", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(5, 10);
+    Counted x(50);
+    reset();
+    v.insert(v.begin() + 2, x);
+    report("insert copy", v);
+    v.insert(v.begin() + 2, Counted(60));
+    report("insert move", v);
+    v.insert(v.end(), x);
+    report("insert at end", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(5, 10);
+    v.emplace(v.begin() + 1, 70);
+    report("emplace", v);
+    v.emplace(v.end(), 71);
+    report("emplace at end", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(5, 12);
+    Counted x(80);
+    reset();
+    v.insert(v.begin() + 3, 3, x);
+    report("insert count, more than follow", v);
+    v.insert(v.begin() + 1, 2, x);
+    report("insert count, fewer than follow", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(5, 12);
+    Vector<Counted> other = make(3, 3);
+    reset();
+    v.insert(v.begin() + 1, other.begin(), other.end());
+    report("insert range", v);
+  }
+  reset();
+  {
+    Vector<Counted> g = make(4, 4);
+    g.insert(g.begin() + 1, Counted(5));
+    printf("grown ");
+    report("insert move", g);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(3, 3);
+    v.push_back(Counted(9));
+    report("push_back grows", v);
+    v.resize(2, Counted(1));
+    report("resize down", v);
+    v.resize(4, Counted(2));
+    report("resize up", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(4, 8);
+    Vector<Counted> w = make(2, 2);
+    reset();
+    v = w;
+    report("assign fewer", v);
+    Vector<Counted> u = make(6, 6);
+    reset();
+    v = u;
+    report("assign more within room", v);
+    v.assign(3, Counted(7));
+    report("assign count", v);
+    Vector<Counted> source = make(2, 2);
+    reset();
+    v.assign(source.begin(), source.end());
+    report("assign pointers", v);
+    List<int> numbers = {4, 5, 6, 7};
+    v.assign(numbers.begin(), numbers.end());
+    report("assign converted range", v);
+    v.assign({Counted(1), Counted(2)});
+    report("assign list", v);
+    v = {Counted(3)};
+    report("= list", v);
+    Vector<Counted> big = make(20, 20);
+    reset();
+    v = big;
+    report("assign past the capacity", v);
+  }
+  reset();
+  {
+    Vector<Counted> v = make(5, 5);
+    v.erase(1);
+    report("erase index", v);
+    v.erase(3);
+    report("erase last index", v);
+    v.insert(1, Counted(8));
+    report("insert index", v);
+  }
+  reset();
+  {
+    // No move assignment (std::vector could not do these): relocated.
+    Vector<Fixed> f;
+    f.reserve(8);
+    for (int i = 0; i < 4; ++i)
+      f.emplace_back(i);
+    f.insert(f.begin() + 1, Fixed(7));
+    f.insert(f.begin(), 2, Fixed(8));
+    f.erase(f.begin() + 3);
+    f.erase(0);
+    for (const Fixed& x : f)
+      printf(" %d", x.value);
+    printf("\n");
+  }
+  return 0;
+}

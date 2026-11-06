@@ -63,8 +63,10 @@ Adding and removing:
   the new element is built before the old ones are relocated.
 - `pop_back()`: removes the last element. Precondition: not empty.
 - `insert(position, value)`: inserts before position (a pointer into the vector, const or not, or
-  `end()`); returns a pointer to the new element. The elements from position on are relocated one
-  place up. O(size() - position + 1). `value` may be an element of this vector.
+  `end()`); returns a pointer to the new element. The elements from position on move one place up:
+  the last by move construction, the others by move assignment, and the value is assigned into its
+  place, as std::vector does (a T without move assignment is relocated); a full vector moves each
+  element once into its new block. O(size() - position + 1). `value` may be an element of this vector.
 - `insert(position, first, last)`: inserts the elements of [first, last), input iterators of any
   kind: copies, or moves through a MoveIterator. A range of this vector's own elements is copied
   out first and inserted as it was (*difference from C++*, where it is a precondition that the
@@ -81,13 +83,15 @@ Adding and removing:
   element after the removed ones (now at the removed position). A T without move assignment (which
   std::vector cannot erase) is relocated down instead.
 - `clear()`: destroys all elements; the capacity stays.
+- Copy assignment, `assign(first, last)` and `assign(list)` copy-assign over the elements there are
+  when the new ones fit the capacity, construct the others after them and destroy the ones left over.
 - `swap(other)`: exchanges the contents, O(1).
 
 Comparison: `==` and `<=>` (common.md): equal with equal elements in order, ordered
 lexicographically.
 
 kpp additions (not in C++): `insert(index, value)`, `erase(index)` taking an index of any integer
-type (so that a literal 0 is the index, not a null position),
+type (so that a literal 0 is the index, not a null position), with the positions' element work,
 `contains(value)` (linear search with `==`). A Vector converts to `Span<T>` of its elements.
 
 *Difference from C++*: there is no packed `Vector<bool>`; a Vector of bools stores one bool per
