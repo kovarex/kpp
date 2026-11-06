@@ -631,6 +631,31 @@ public:
       this->reallocate(needed);
   }
 
+  // Gives back the room beyond the text (std::string's shrink_to_fit): a text that fits the small
+  // storage moves into it, a longer one into a block of its size; a String already that tight
+  // stays as it is. At compile time the heap form is kept (see the top).
+  void shrink_to_fit()
+  {
+    if (!this->isLarge())
+      return;
+    ContainerSize length = this->heapLength;
+    if (length == this->heapCapacity)
+      return;
+    if !consteval
+    {
+      if (length <= String::smallCapacity)
+      {
+        char* block = this->heapChars; // (the small storage overlays the heap fields)
+        memcpy(this->smallChars, block, length);
+        this->smallChars[length] = 0;
+        this->smallChars[String::markIndex] = (char)length;
+        free(block);
+        return;
+      }
+    }
+    this->reallocate(length);
+  }
+
   // Replaces the contents with count bytes (which may be part of this string); returns the string.
   String& assign(const char* bytes, ContainerSize count)
   {

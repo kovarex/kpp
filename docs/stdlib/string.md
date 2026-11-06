@@ -11,7 +11,7 @@ String object itself without allocating; longer ones in a heap block.
 
 Iterators are `char*`. Pointers and references into a String (including `c_str()` and `data()`)
 are invalidated by every operation that changes the String (assignment, append, insert, erase,
-resize, reserve, clear, push_back, pop_back, swap, being moved from) and by its destruction; they
+resize, reserve, shrink_to_fit, clear, push_back, pop_back, swap, being moved from) and by its destruction; they
 stay valid across calls of const functions. *Note*: moving a String may leave its characters in
 place in the source object (short strings), so pointers into a moved-from String do not follow
 the move.
@@ -61,7 +61,9 @@ forms that take a position return a position:
   `replace(first, last, text)` with pointers, `replace(index, count, other, index2, n)` (up to n bytes
   of other from index2; OutOfRange when index2 > other.size()).
 - `resize(n)`, `resize(n, c)`: cut to n bytes, or append zero bytes / copies of c.
-- `reserve(n)`: afterwards `capacity() >= n`; `clear()`: empty, capacity stays; `pop_back()`.
+- `reserve(n)`: afterwards `capacity() >= n`; `shrink_to_fit()`: the capacity down to the size (a short
+  text moves into the String itself, as an empty String holds one), the text unchanged; `clear()`:
+  empty, capacity stays; `pop_back()`.
 - `assign(text, count)`, `assign(first, last)` (the bytes of a pointer range), `assign(text)`,
   `assign(other)`, `assign(count, c)`, `assign(other, index, count)` (up to count bytes of other from
   index; OutOfRange when index > other.size()): replace the contents (text may point into this String).

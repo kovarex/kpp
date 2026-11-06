@@ -1,0 +1,39 @@
+// spec: String::shrink_to_fit() (std::string's) gives back the room beyond the text: afterwards the capacity is at least the size and no more than the String's own small storage or the size, whichever is more, and the text is unchanged; a short text moves into the String itself, a long one into a block of its size, an empty or already tight String stays as it is; also at compile time (`1 1 abc 1 1 500 1 0 1 1 7`)
+// factorio: E's String battery against std::string (st2, 2026-11-06): String had no shrink_to_fit (a member access that did not resolve)
+extern "C" import "stdio.h";
+constexpr i32 shrunkAtCompileTime()
+{
+  String s("seven!!");
+  s.reserve(100);
+  s.shrink_to_fit();
+  return s.capacity() >= s.size() ? (i32)s.size() : -1;
+}
+int main()
+{
+  String small;
+  small.reserve(1000);
+  small.append("abc");
+  small.shrink_to_fit();
+  String probe;
+  printf("%d %d %s", (int)(small.capacity() >= 3), (int)(small.capacity() <= probe.capacity()), small.c_str());
+  String large(500, 'x');
+  large.reserve(5000);
+  large.shrink_to_fit();
+  bool same = true;
+  for (char c : large)
+    same = same && c == 'x';
+  printf(" %d %d %d", (int)(large.capacity() >= 500), (int)(large.capacity() < 5000), (int)large.size());
+  printf(" %d", (int)same);
+  String empty;
+  ContainerSize before = empty.capacity();
+  empty.shrink_to_fit();
+  printf(" %d", (int)(empty.capacity() != before));
+  String tight(300, 'y');
+  tight.shrink_to_fit();
+  const char* data = tight.data();
+  tight.shrink_to_fit();
+  printf(" %d %d", (int)(tight.data() == data), (int)(tight.size() == 300 && tight[299] == 'y'));
+  constexpr i32 atCompileTime = shrunkAtCompileTime();
+  printf(" %d\n", atCompileTime);
+  return 0;
+}
