@@ -9,6 +9,7 @@ namespace platform
     unsigned long low;
     unsigned long high;
   };
+
   // WIN32_FILE_ATTRIBUTE_DATA
   struct Win32AttributeData
   {
@@ -19,6 +20,7 @@ namespace platform
     unsigned long sizeHigh;
     unsigned long sizeLow;
   };
+
   // BY_HANDLE_FILE_INFORMATION
   struct Win32HandleInformation
   {
@@ -33,6 +35,7 @@ namespace platform
     unsigned long indexHigh;
     unsigned long indexLow;
   };
+
   // WIN32_FIND_DATAW
   struct Win32FindData
   {
@@ -47,6 +50,7 @@ namespace platform
     wchar_t name[260];
     wchar_t alternateName[14];
   };
+
   const unsigned long invalidAttributes = 0xFFFFFFFF;
   // INVALID_HANDLE_VALUE, the pointer of all ones (written through a 64-bit integer: `(void*)-1`
   // zero-extends -1 today, language/negative_integer_to_pointer).
@@ -66,6 +70,7 @@ namespace platform
     win32::MultiByteToWideChar(65001, 0, text, length, result.data(), count);
     return result;
   }
+
   String narrowWide(const wchar_t* text, i32 length)
   {
     if (length <= 0)
@@ -175,6 +180,7 @@ namespace platform
     win32::CloseHandle(file);
     return ok;
   }
+
   // Whether a and b name the same file or directory, links followed; false (and ec) when either
   // does not resolve.
   bool sameFile(const filesystem::path& a, const filesystem::path& b, bool& same, ErrorCode& ec)
@@ -194,11 +200,13 @@ namespace platform
   public:
     DirectoryReader() {}
     DirectoryReader(const DirectoryReader&) = delete;
+
     ~DirectoryReader()
     {
       if (this->find != invalidHandle)
         win32::FindClose(this->find);
     }
+
     // False on an error (ec), or when the directory is there but empty (no ec).
     bool open(const filesystem::path& p, ErrorCode& ec)
     {
@@ -225,6 +233,7 @@ namespace platform
       this->pending = true;
       return true;
     }
+
     // The next entry's name and what the listing says of it; false at the end (or on an error, ec).
     bool next(WString& name, filesystem::FileInfo& info, ErrorCode& ec)
     {
@@ -328,6 +337,7 @@ namespace platform
     ec.clear();
     return filesystem::path(systemPath(win32::GetCurrentDirectoryW));
   }
+
   void setCurrentPath(const filesystem::path& p, ErrorCode& ec)
   {
     if (win32::SetCurrentDirectoryW(p.c_str()))
@@ -335,6 +345,7 @@ namespace platform
     else
       ec = lastFileError();
   }
+
   filesystem::path tempDirectoryPath(ErrorCode& ec)
   {
     ec.clear();

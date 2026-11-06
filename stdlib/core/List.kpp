@@ -58,22 +58,26 @@ public:
   bool operator!=(const ListIterator<T>& other) const { return this->node != other.node; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
   bool operator!=(const ListIterator<F>& other) const { return this->node != other.node; }
+
   ListIterator<T>& operator++()
   {
     this->node = this->node->next;
     return *this;
   }
+
   ListIterator<T> operator++(i32)
   {
     ListIterator<T> before = *this;
     this->node = this->node->next;
     return before;
   }
+
   ListIterator<T>& operator--()
   {
     this->node = this->node->prev;
     return *this;
   }
+
   ListIterator<T> operator--(i32)
   {
     ListIterator<T> before = *this;
@@ -105,12 +109,14 @@ public:
   using const_pointer = const T*;
 
   List() { this->becomeEmpty(); }
+
   implicit List(InitializerList<T> items)
   {
     this->becomeEmpty();
     for (const T& item : items)
       this->push_back(item);
   }
+
   // `= {...}`: the listed elements, replacing the contents.
   List<T>& operator=(InitializerList<T> items)
   {
@@ -119,18 +125,22 @@ public:
       this->push_back(item);
     return *this;
   }
+
   List(const List<T>& other)
   {
     this->becomeEmpty();
     for (const T& value : other)
       this->push_back(value);
   }
+
   List(List<T>&& other)
   {
     this->becomeEmpty();
     this->take(other);
   }
+
   ~List() { this->clear(); }
+
   List<T>& operator=(const List<T>& other)
   {
     if (this != &other)
@@ -141,6 +151,7 @@ public:
     }
     return *this;
   }
+
   List<T>& operator=(List<T>&& other) noexcept
   {
     if (this != &other)
@@ -173,6 +184,7 @@ public:
   // Equal with the same elements in the same order, ordered lexicographically (common.md).
   bool operator==(const List<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const List<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
+
   void swap(List<T>& other)
   {
     List<T> held(move(other));
@@ -194,6 +206,7 @@ public:
   // Inserts before position; returns the new element's position.
   ListIterator<T> insert(const_iterator position, const T& value) { return this->emplace(position, value); }
   ListIterator<T> insert(const_iterator position, T&& value) { return this->emplace(position, move(value)); }
+
   template<typename... Args>
   ListIterator<T> emplace(const_iterator position, Args&&... args)
   {
@@ -201,6 +214,7 @@ public:
     new (&node->value) T(forward<Args>(args)...);
     return this->linkNode(iterator(position), node);
   }
+
   // Removes the element at position; returns the position after it.
   ListIterator<T> erase(const_iterator position)
   {
@@ -210,12 +224,14 @@ public:
     --this->length;
     return ListIterator<T>(next);
   }
+
   ListIterator<T> erase(const_iterator first, const_iterator last)
   {
     while (first != last)
       first = this->erase(first);
     return iterator(last);
   }
+
   void clear()
   {
     ListLinks* node = this->sentinel.next;
@@ -234,6 +250,7 @@ public:
     while (!other.empty())
       this->splice(position, other, other.begin());
   }
+
   // Moves the node at it from other before position.
   void splice(const_iterator position, List<T>& other, const_iterator it)
   {
@@ -256,6 +273,7 @@ public:
     T copy(value); // value may be an element of this list
     return this->removeIf([&](const T& element) { return element == copy; });
   }
+
   template<typename F>
   ContainerSize removeIf(F predicate)
   {
@@ -270,6 +288,7 @@ public:
         ++it;
     return removed;
   }
+
   // Removes each element equal to the one before it; returns how many.
   ContainerSize unique()
   {
@@ -290,6 +309,7 @@ public:
       }
     return removed;
   }
+
   void reverse()
   {
     ListLinks* node = &this->sentinel;
@@ -301,11 +321,13 @@ public:
       node = next;
     } while (node != &this->sentinel);
   }
+
   // Stable sort that relinks the nodes; elements do not move.
   void sort()
   {
     this->sort([](const T& a, const T& b) { return a < b; });
   }
+
   template<typename F>
   void sort(F less)
   {
@@ -322,6 +344,7 @@ public:
       listLinkBefore(&this->sentinel, node);
     this->length = length;
   }
+
   // Moves other's nodes into this list; both sorted ascending, the result too, with this list's
   // elements first among equivalent ones.
   void merge(List<T>& other)
@@ -346,23 +369,27 @@ private:
       throwLengthError("list too long");
     return (ListNode<T>*)allocateBytes(sizeof(ListNode<T>));
   }
+
   ListIterator<T> linkNode(ListIterator<T> position, ListNode<T>* node)
   {
     listLinkBefore(position.node, node);
     ++this->length;
     return ListIterator<T>(node);
   }
+
   void becomeEmpty()
   {
     this->sentinel.prev = &this->sentinel;
     this->sentinel.next = &this->sentinel;
     this->length = 0;
   }
+
   void destroyNode(ListLinks* node)
   {
     ((ListNode<T>*)node)->value.~T();
     free(node);
   }
+
   // Takes other's nodes; they have to link to this sentinel instead.
   void take(List<T>& other)
   {

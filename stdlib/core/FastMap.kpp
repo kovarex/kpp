@@ -88,12 +88,14 @@ public:
     // Otherwise that was the last entry, and (last leaf, count) is end().
     return *this;
   }
+
   BTreeIterator<E> operator++(i32)
   {
     BTreeIterator<E> before = *this;
     ++*this;
     return before;
   }
+
   BTreeIterator<E>& operator--()
   {
     if (!this->node->leaf)
@@ -118,6 +120,7 @@ public:
     this->index = climb->parentIndex - 1;
     return *this;
   }
+
   BTreeIterator<E> operator--(i32)
   {
     BTreeIterator<E> before = *this;
@@ -143,13 +146,16 @@ public:
   ContainerSize size() const { return this->count; }
   BTree() {}
   BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
+
   BTree(BTree<E, K, KeyOf>&& other) : root(other.root), rightmost(other.rightmost), count(other.count)
   {
     other.root = nullptr;
     other.rightmost = nullptr;
     other.count = 0;
   }
+
   ~BTree() { this->clear(); }
+
   BTree<E, K, KeyOf>& operator=(const BTree<E, K, KeyOf>& other)
   {
     if (this != &other)
@@ -159,6 +165,7 @@ public:
     }
     return *this;
   }
+
   BTree<E, K, KeyOf>& operator=(BTree<E, K, KeyOf>&& other) noexcept
   {
     if (this == &other)
@@ -182,6 +189,7 @@ public:
       node = bTreeChildren(node)[0];
     return BTreeIterator<E>(node, 0);
   }
+
   BTreeIterator<E> end() const { return BTreeIterator<E>(this->rightmost, this->rightmost ? this->rightmost->count : 0); }
 
   BTreeIterator<E> find(const K& key) const
@@ -198,6 +206,7 @@ public:
     }
     return this->end();
   }
+
   // The first entry whose key is not less than key. Each node on the way down narrows the range,
   // so the deepest candidate is the answer.
   BTreeIterator<E> lowerBound(const K& key) const
@@ -215,6 +224,7 @@ public:
     }
     return result;
   }
+
   // The first entry whose key is greater than key.
   BTreeIterator<E> upperBound(const K& key) const
   {
@@ -309,6 +319,7 @@ public:
 private:
   // The key of entry i of node.
   static const K& keyAt(const BTreeNode<E>* node, i32 i) { return KeyOf::of(node->entries[i]); }
+
   // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
   // unpredictable branches over 15 entries (map.lookup 99 -> 57 ms for int keys); other keys
   // binary, since each comparison costs more.
@@ -332,6 +343,7 @@ private:
     }
     return low;
   }
+
   static i32 upperIndex(const BTreeNode<E>* node, const K& key)
   {
     if constexpr (sizeof(K) <= 8)
@@ -362,12 +374,14 @@ private:
     node->leaf = leaf;
     return node;
   }
+
   void setChild(BTreeNode<E>* node, i32 index, BTreeNode<E>* child)
   {
     bTreeChildren(node)[index] = child;
     child->parent = node;
     child->parentIndex = index;
   }
+
   // Moves children [from, from + count) of source to target from index at.
   void moveChildren(BTreeNode<E>* target, i32 at, BTreeNode<E>* source, i32 from, i32 count)
   {
@@ -425,6 +439,7 @@ private:
     this->merge(node, i - 1);
     return i - 1;
   }
+
   // Entry k of node moves down to the front of child k + 1; the last entry of child k takes its place.
   void rotateRight(BTreeNode<E>* node, i32 k)
   {
@@ -441,6 +456,7 @@ private:
     --left->count;
     ++right->count;
   }
+
   // Entry k of node moves down to the end of child k; the first entry of child k + 1 takes its place.
   void rotateLeft(BTreeNode<E>* node, i32 k)
   {
@@ -457,6 +473,7 @@ private:
     ++left->count;
     --right->count;
   }
+
   // Merges child k + 1 of node and entry k into child k (both children at the minimum).
   void merge(BTreeNode<E>* node, i32 k)
   {
@@ -507,6 +524,7 @@ private:
     --node->count;
     --this->count;
   }
+
   // Moves the last entry of the subtree under node (which has more than the minimum) into the
   // unconstructed target.
   void takeLast(BTreeNode<E>* node, E* target)
@@ -516,6 +534,7 @@ private:
     relocate(target, node->entries + node->count - 1, 1);
     --node->count;
   }
+
   void takeFirst(BTreeNode<E>* node, E* target)
   {
     while (!node->leaf)
@@ -524,6 +543,7 @@ private:
     relocate(node->entries, node->entries + 1, node->count - 1);
     --node->count;
   }
+
   // An emptied root gives way to its only child, or the tree becomes empty.
   void shrinkRoot()
   {
@@ -553,6 +573,7 @@ private:
       node->entries[i].~E();
     free(node);
   }
+
   BTreeNode<E>* clone(const BTreeNode<E>* source)
   {
     BTreeNode<E>* node = this->newNode(source->leaf);
@@ -566,6 +587,7 @@ private:
       this->rightmost = node; // leaves are cloned left to right: the last one is the rightmost
     return node;
   }
+
   void copyFrom(const BTree<E, K, KeyOf>& other)
   {
     if (other.root)
@@ -610,11 +632,13 @@ public:
   using mapped_type = V;
 
   FastMap() {}
+
   implicit FastMap(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+
   // `= {...}`: the listed entries, replacing the contents.
   FastMap<K, V>& operator=(InitializerList<Pair<K, V>> items)
   {
@@ -658,6 +682,7 @@ public:
       return at->second;
     return this->tree.insertNew(Pair<K, V>(key, V()))->second;
   }
+
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
   {
@@ -666,6 +691,7 @@ public:
       throwOutOfRange("FastMap::at: key not found");
     return at->second;
   }
+
   const V& at(const K& key) const
   {
     BTreeIterator<Pair<K, V>> at = this->tree.find(key);
@@ -673,8 +699,10 @@ public:
       throwOutOfRange("FastMap::at: key not found");
     return at->second;
   }
+
   // The entry with the key and whether it was added (an existing value is kept).
   Pair<BTreeIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry) { return this->insert(Pair<K, V>(entry)); }
+
   Pair<BTreeIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)
   {
     BTreeIterator<Pair<K, V>> at = this->tree.find(entry.first);
@@ -682,8 +710,10 @@ public:
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
     return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(move(entry)), true);
   }
+
   template<typename... Args>
   Pair<BTreeIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
+
   template<typename... Args>
   Pair<BTreeIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
   {
@@ -692,6 +722,7 @@ public:
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
     return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, RemoveConst<V>(forward<Args>(args)...))), true);
   }
+
   // An rvalue key is moved into the new entry, not copied (only a K rvalue itself, as Map's).
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   Pair<BTreeIterator<Pair<K, V>>, bool> try_emplace(KK&& key, Args&&... args)
@@ -701,18 +732,22 @@ public:
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
     return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(move(key), RemoveConst<V>(forward<Args>(args)...))), true);
   }
+
   // With a position hint, which is not needed: the entry's position, new or found.
   template<typename... Args>
   iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
+
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }
+
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
+
   // The number of entries removed (0 or 1). The key is copied first: it may be one of this
   // map's, which erasing moves.
   ContainerSize erase(const K& key)
@@ -720,6 +755,7 @@ public:
     K copy(key);
     return this->tree.erase(copy) ? 1 : 0;
   }
+
   // Removes the entry at position; returns the position of the entry after it.
   iterator erase(const_iterator position)
   {
@@ -727,6 +763,7 @@ public:
     this->tree.erase(key);
     return this->tree.lowerBound(key);
   }
+
   reverse_iterator rbegin() { return reverse_iterator(this->tree.end()); }
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
   reverse_iterator rend() { return reverse_iterator(this->tree.begin()); }
@@ -736,12 +773,14 @@ public:
   iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)).first; }
+
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Moves the entries of other whose keys are not here into this container; the rest stay in
   // other.
   void merge(FastMap<K, V>& other)
@@ -756,15 +795,18 @@ public:
     }
     other = move(rest);
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const FastMap<K, V>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const FastMap<K, V>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
+
   void swap(FastMap<K, V>& other)
   {
     FastMap<K, V> held(move(other));
     other = move(*this);
     *this = move(held);
   }
+
   void clear() { this->tree.clear(); }
 
 private:
@@ -790,11 +832,13 @@ public:
   using key_type = T;
 
   FastSet() {}
+
   implicit FastSet(InitializerList<T> items)
   {
     for (const T& value : items)
       this->insert(value);
   }
+
   // `= {...}`: the listed values, replacing the contents.
   FastSet<T>& operator=(InitializerList<T> items)
   {
@@ -824,6 +868,7 @@ public:
 
   // The entry with the value and whether it was added.
   Pair<iterator, bool> insert(const T& value) { return this->insert(T(value)); }
+
   Pair<iterator, bool> insert(T&& value)
   {
     BTreeIterator<T> at = this->tree.find(value);
@@ -831,20 +876,24 @@ public:
       return Pair<BTreeIterator<T>, bool>(at, false);
     return Pair<BTreeIterator<T>, bool>(this->tree.insertNew(move(value)), true);
   }
+
   template<typename... Args>
   Pair<iterator, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+
   // The number of values removed (0 or 1).
   ContainerSize erase(const T& value)
   {
     T copy(value);
     return this->tree.erase(copy) ? 1 : 0;
   }
+
   iterator erase(const_iterator position)
   {
     T value(*position);
     this->tree.erase(value);
     return this->tree.lowerBound(value);
   }
+
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this->tree.begin()); }
   // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
@@ -852,12 +901,14 @@ public:
   iterator insert(const_iterator hint, T&& entry) { return this->insert(move(entry)).first; }
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
+
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Moves the entries of other whose keys are not here into this container; the rest stay in
   // other.
   void merge(FastSet<T>& other)
@@ -872,15 +923,18 @@ public:
     }
     other = move(rest);
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const FastSet<T>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const FastSet<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
+
   void swap(FastSet<T>& other)
   {
     FastSet<T> held(move(other));
     other = move(*this);
     *this = move(held);
   }
+
   void clear() { this->tree.clear(); }
 
 private:

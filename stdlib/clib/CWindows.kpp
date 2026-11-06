@@ -20,6 +20,7 @@ extern "C" short _dclass(double value);
 extern "C" short _fdclass(float value);
 extern "C" int __fpclassify(double value);
 extern "C" int __fpclassifyf(float value);
+
 int fpclassify(double value)
 {
   if constexpr (config::mingw)
@@ -27,6 +28,7 @@ int fpclassify(double value)
   else
     return _dclass(value);
 }
+
 int fpclassify(float value)
 {
   if constexpr (config::mingw)
@@ -34,5 +36,6 @@ int fpclassify(float value)
   else
     return _fdclass(value);
 }
+
 template<typename T> requires isIntegral<T>
 int fpclassify(T value) { return fpclassify(double(value)); }

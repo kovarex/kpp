@@ -35,11 +35,13 @@ public:
   implicit String(StringView text) { this->initialize(text.data(), text.size()); }
   String(const char* text, ContainerSize count) { this->initialize(text, count); }
   String(const char* first, const char* last) { this->initialize(first, checkedSize(last - first, "string too long")); }
+
   String(ContainerSize count, char c)
   {
     this->becomeEmpty();
     this->append(count, c);
   }
+
   String(const String& other)
   {
     if (other.isLarge())
@@ -47,6 +49,7 @@ public:
     else
       memcpy(this->smallChars, other.smallChars, sizeof(String));
   }
+
   String(String&& other) noexcept
   {
     if consteval
@@ -60,6 +63,7 @@ public:
     memcpy(this->smallChars, other.smallChars, sizeof(String));
     other.becomeEmpty();
   }
+
   ~String()
   {
     if (this->isLarge())
@@ -72,6 +76,7 @@ public:
       this->assign(other.data(), other.size());
     return *this;
   }
+
   String& operator=(String&& other) noexcept
   {
     if (this == &other)
@@ -103,6 +108,7 @@ public:
     }
     return (u8)this->smallChars[String::markIndex] == String::largeMark;
   }
+
   ContainerSize size() const { return this->isLarge() ? this->heapLength : ContainerSize((u8)this->smallChars[String::markIndex]); }
   ContainerSize length() const { return this->size(); }
   // Characters that fit without allocating.
@@ -114,6 +120,7 @@ public:
   char* data() { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char* data() const { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char& operator[](ContainerSize index) const { return this->data()[index]; } // a reference, as std::string's: `&s[i]` of a const String
+
   // Throws OutOfRange for an index outside [0, size()).
   char& at(ContainerSize index)
   {
@@ -121,12 +128,14 @@ public:
       throwOutOfRange("String::at: index out of range");
     return this->data()[index];
   }
+
   const char& at(ContainerSize index) const
   {
     if (index >= this->size())
       throwOutOfRange("String::at: index out of range");
     return this->data()[index];
   }
+
   char& operator[](ContainerSize index) { return this->data()[index]; }
   char* begin() { return this->data(); }
   char* end() { return this->data() + this->size(); }
@@ -147,12 +156,14 @@ public:
   const char& front() const { return this->data()[0]; }
 
   void push_back(char c) { this->append(c); }
+
   void pop_back()
   {
     ContainerSize length = this->size();
     if (length > 0)
       this->setLength(length - 1);
   }
+
   void resize(ContainerSize newLength, char fill)
   {
     ContainerSize length = this->size();
@@ -163,7 +174,9 @@ public:
     }
     this->setLength(newLength);
   }
+
   void resize(ContainerSize newLength) { this->resize(newLength, 0); }
+
   // Removes count bytes at index (to the end when count is npos or reaches past it); throws
   // OutOfRange when index is past the end. Returns the string.
   // The index takes any integer type, so that a literal 0 is the index, not a null position (with a
@@ -183,8 +196,10 @@ public:
     this->setLength(length - count);
     return *this;
   }
+
   template<typename I> requires (isIntegral<I>)
   String& erase(I index) { return this->erase(index, npos); }
+
   // The range [first, last) of this string's characters (begin()/end() and what find functions
   // return); returns where the character after them is now.
   char* erase(char* first, char* last)
@@ -193,12 +208,14 @@ public:
     this->erase(index, ContainerSize(last - first));
     return this->data() + index;
   }
+
   char* erase(char* at)
   {
     ContainerSize index = ContainerSize(at - this->data());
     this->erase(index, 1);
     return this->data() + index;
   }
+
   String& insert(ContainerSize index, const char* text, ContainerSize count)
   {
     if (index > this->size())
@@ -222,7 +239,9 @@ public:
     }
     return this->insertUnaliased(index, text, count);
   }
+
   String& insert(ContainerSize index, const char* text) { return this->insert(index, text, checkedSize(strlen(text), "string too long")); }
+
   // Inserts [first, last) before the character position points at.
   char* insert(char* position, const char* first, const char* last)
   {
@@ -230,7 +249,9 @@ public:
     this->insert(index, first, checkedSize(last - first, "string too long"));
     return this->data() + index;
   }
+
   String& insert(ContainerSize index, const String& text) { return this->insert(index, text.data(), text.size()); }
+
   // c before the character position points at; returns the new character's position.
   char* insert(char* position, char c)
   {
@@ -238,6 +259,7 @@ public:
     this->insert(index, 1, c);
     return this->data() + index;
   }
+
   // Inserts count copies of c at index.
   String& insert(ContainerSize index, ContainerSize count, char c)
   {
@@ -253,13 +275,16 @@ public:
     this->setLength(length + count);
     return *this;
   }
+
   // Replaces count bytes at index with text; returns the string.
   // The text may be part of this string (std::string::replace): it is the text as it was before the call.
   String& replace(ContainerSize index, ContainerSize count, const char* text)
   {
     return this->replace(index, count, text, checkedSize(strlen(text), "string too long"));
   }
+
   String& replace(ContainerSize index, ContainerSize count, const String& text) { return this->replace(index, count, text.data(), text.size()); }
+
   // count2 copies of c (std's replace(pos, n, count, c)).
   String& replace(ContainerSize index, ContainerSize count, ContainerSize count2, char c)
   {
@@ -267,9 +292,11 @@ public:
     this->erase(index, count);
     return this->insert(index, count2, c);
   }
+
   // [first, last), positions in this string, replaced with text.
   String& replace(const char* first, const char* last, const char* text) { return this->replace(ContainerSize(first - this->data()), ContainerSize(last - first), text); }
   String& replace(const char* first, const char* last, const String& text) { return this->replace(ContainerSize(first - this->data()), ContainerSize(last - first), text); }
+
   // Up to count2 bytes of text from index2; OutOfRange when index2 > text.size().
   String& replace(ContainerSize index, ContainerSize count, const String& text, ContainerSize index2, ContainerSize count2)
   {
@@ -278,6 +305,7 @@ public:
     ContainerSize available = text.size() - index2;
     return this->replace(index, count, text.data() + index2, count2 < available ? count2 : available);
   }
+
   String& replace(ContainerSize index, ContainerSize count, const char* text, ContainerSize textLength)
   {
     this->checkReplacement(index, count, textLength);
@@ -306,11 +334,13 @@ public:
     usize count = strlen(needle);
     return count > (usize)maxContainerSize ? npos : this->findBytes(needle, (ContainerSize)count, from);
   }
+
   ContainerSize find(const char* needle) const { return this->find(needle, 0); }
   // The count bytes at needle (std's find(s, pos, n)).
   ContainerSize find(const char* needle, ContainerSize from, ContainerSize count) const { return this->findBytes(needle, count, from); }
   ContainerSize find(const String& needle) const { return this->findBytes(needle.data(), needle.size(), 0); }
   ContainerSize find(const String& needle, ContainerSize from) const { return this->findBytes(needle.data(), needle.size(), from); }
+
   ContainerSize find(char c, ContainerSize from) const
   {
     ContainerSize length = this->size();
@@ -320,7 +350,9 @@ public:
     const char* at = (const char*)memchr(chars + from, c, length - from);
     return at ? ContainerSize(at - chars) : npos;
   }
+
   ContainerSize find(char c) const { return this->find(c, 0); }
+
   // memchr finds candidates for the first byte, memcmp checks the rest.
   ContainerSize findBytes(const char* needle, ContainerSize count, ContainerSize from) const
   {
@@ -343,6 +375,7 @@ public:
     }
     return npos;
   }
+
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos. The
   // index counts down to 0 and stops there (a size cannot go below it).
   ContainerSize rfind(char c, ContainerSize from) const
@@ -359,7 +392,9 @@ public:
         return npos;
     }
   }
+
   ContainerSize rfind(char c) const { return this->rfind(c, npos); }
+
   ContainerSize rfindBytes(const char* needle, ContainerSize count, ContainerSize from) const
   {
     ContainerSize length = this->size();
@@ -374,14 +409,17 @@ public:
         return npos;
     }
   }
+
   ContainerSize rfind(const char* needle, ContainerSize from) const
   {
     usize count = strlen(needle);
     return count > (usize)maxContainerSize ? npos : this->rfindBytes(needle, (ContainerSize)count, from);
   }
+
   ContainerSize rfind(const char* needle) const { return this->rfind(needle, npos); }
   ContainerSize rfind(const String& needle, ContainerSize from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
   ContainerSize rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), npos); }
+
   // The last byte at or before `from` (the whole string without it) that is in set, or npos.
   ContainerSize find_last_of(const char* set, ContainerSize from = npos) const
   {
@@ -391,8 +429,10 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_last_of(const String& set, ContainerSize from = npos) const { return this->find_last_of(set.c_str(), from); }
   ContainerSize find_last_of(char c, ContainerSize from = npos) const { return this->rfind(c, from); }
+
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
   u64 copy(char* dest, u64 count, u64 pos = 0) const
   {
@@ -405,6 +445,7 @@ public:
     memcpy(dest, this->data() + pos, count);
     return count;
   }
+
   // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
   // as operator<).
   i32 compare(const String& other) const
@@ -415,7 +456,9 @@ public:
       return c;
     return length < otherLength ? -1 : length > otherLength ? 1 : 0;
   }
+
   i32 compare(const char* other) const { return this->compare(String(other)); }
+
   // The substring [pos, pos + count) (count clamped to what there is) compared with other, as
   // C++'s compare(pos, count, str); OutOfRange when pos > size().
   i32 compare(ContainerSize pos, ContainerSize count, const String& other) const
@@ -425,9 +468,11 @@ public:
     ContainerSize available = this->size() - pos;
     return String(this->data() + pos, count < available ? count : available).compare(other);
   }
+
   i32 compare(ContainerSize pos, ContainerSize count, const char* other) const { return this->compare(pos, count, String(other)); }
   // With the count2 bytes at other (std's compare(pos, n, s, n2)).
   i32 compare(ContainerSize pos, ContainerSize count, const char* other, ContainerSize count2) const { return this->compare(pos, count, String(other, count2)); }
+
   // With up to count2 bytes of other from pos2; OutOfRange when pos2 > other.size().
   i32 compare(ContainerSize pos, ContainerSize count, const String& other, ContainerSize pos2, ContainerSize count2) const
   {
@@ -436,12 +481,14 @@ public:
     ContainerSize available = other.size() - pos2;
     return this->compare(pos, count, String(other.data() + pos2, count2 < available ? count2 : available));
   }
+
   void swap(String& other)
   {
     String held(move(other));
     other = move(*this);
     *this = move(held);
   }
+
   static bool oneOf(char c, const char* set)
   {
     for (usize i = 0; set[i] != 0; ++i)
@@ -449,8 +496,10 @@ public:
         return true;
     return false;
   }
+
   ContainerSize find_first_of(char c) const { return this->find(c); }
   ContainerSize find_first_of(char c, ContainerSize from) const { return this->find(c, from); }
+
   ContainerSize find_first_of(StringView set, ContainerSize from) const
   {
     const char* chars = this->data();
@@ -461,10 +510,12 @@ public:
           return i;
     return npos;
   }
+
   ContainerSize find_first_of(StringView set) const { return this->find_first_of(set, 0); }
   ContainerSize find_first_of(const String& set) const { return this->find_first_of(set.c_str()); }
   ContainerSize find_first_not_of(const String& set, ContainerSize from = 0) const { return this->find_first_not_of(set.c_str(), from); }
   ContainerSize find_last_not_of(const String& set, ContainerSize from = npos) const { return this->find_last_not_of(set.c_str(), from); }
+
   ContainerSize find_first_of(const char* set) const
   {
     const char* chars = this->data();
@@ -474,6 +525,7 @@ public:
         return i;
     return npos;
   }
+
   // (from the byte at `from` on: SystemUtil's `find_first_not_of(" \t", prefix.size())`)
   ContainerSize find_first_not_of(const char* set, ContainerSize from = 0) const
   {
@@ -484,6 +536,7 @@ public:
         return i;
     return npos;
   }
+
   // The first (last) byte other than c (LocaleStringReplacer's `find_first_not_of('0')`).
   ContainerSize find_first_not_of(char c, ContainerSize from = 0) const
   {
@@ -494,6 +547,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_last_not_of(char c, ContainerSize from = npos) const
   {
     const char* chars = this->data();
@@ -502,6 +556,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_last_not_of(const char* set, ContainerSize from = npos) const
   {
     const char* chars = this->data();
@@ -510,18 +565,22 @@ public:
         return i;
     return npos;
   }
+
   // Where a backward search from `from` starts: one past the last index it looks at.
   ContainerSize lastFrom(ContainerSize from) const { return from < this->size() ? from + 1 : this->size(); }
+
   bool startsWith(const String& prefix) const
   {
     ContainerSize count = prefix.size();
     return count <= this->size() && memcmp(this->data(), prefix.data(), count) == 0;
   }
+
   bool endsWith(const String& suffix) const
   {
     ContainerSize count = suffix.size(), length = this->size();
     return count <= length && memcmp(this->data() + length - count, suffix.data(), count) == 0;
   }
+
   // C++20's starts_with and ends_with: of a text (a String, a StringView, a literal) or of a char.
   bool starts_with(StringView prefix) const { return StringView(*this).startsWith(prefix); }
   bool starts_with(char c) const { return !this->empty() && this->front() == c; }
@@ -533,17 +592,20 @@ public:
     ContainerSize length = this->size();
     return length == other.size() && memcmp(this->data(), other.data(), length) == 0;
   }
+
   bool operator==(const char* other) const
   {
     ContainerSize length = this->size();
     return strlen(other) == (usize)length && memcmp(this->data(), other, length) == 0;
   }
+
   bool operator<(const String& other) const
   {
     ContainerSize length = this->size(), otherLength = other.size();
     i32 c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
     return c != 0 ? c < 0 : length < otherLength;
   }
+
   // Byte-wise as <: gives >, <= and >= with a String or a const char* (and `"x" < s` below).
   strong_ordering operator<=>(const String& other) const { return strong_ordering(signOf(this->compare(other))); }
   strong_ordering operator<=>(const char* other) const { return strong_ordering(signOf(this->compare(other))); }
@@ -576,11 +638,13 @@ public:
     this->adopt(block, count, count);
     return *this;
   }
+
   // The other forms of std::string's assign: the bytes of [first, last) (TCPSocket's
   // `result.assign(buffer, buffer + received)`), a C string, another String, count copies of c.
   String& assign(const char* first, const char* last) { return this->assign(first, checkedSize(last - first, "string too long")); }
   String& assign(const char* text) { return this->assign(text, checkedSize(strlen(text), "string too long")); }
   String& assign(const String& other) { return this->assign(other.data(), other.size()); }
+
   // Up to count bytes of other from index; OutOfRange when index > other.size().
   String& assign(const String& other, ContainerSize index, ContainerSize count)
   {
@@ -591,6 +655,7 @@ public:
       return *this = other.substr(index, count < available ? count : available);
     return this->assign(other.data() + index, count < available ? count : available);
   }
+
   String& assign(ContainerSize count, char c)
   {
     this->clear();
@@ -613,10 +678,12 @@ public:
     this->setLength(length + count);
     return *this;
   }
+
   String& append(const char* text) { return this->append(text, checkedSize(strlen(text), "string too long")); }
   // The bytes of [first, last) (cxxopts' `s.append(begin, end)`).
   String& append(const char* first, const char* last) { return this->append(first, checkedSize(last - first, "string too long")); }
   String& append(const String& other) { return this->append(other.data(), other.size()); }
+
   // Appends count copies of c.
   String& append(ContainerSize count, char c)
   {
@@ -628,6 +695,7 @@ public:
     this->setLength(length + count);
     return *this;
   }
+
   // Appends count characters of other from index (fewer when other ends before, npos for all).
   String& append(const String& other, ContainerSize index, ContainerSize count)
   {
@@ -638,6 +706,7 @@ public:
       count = otherLength - index;
     return this->append(other.data() + index, count);
   }
+
   String& append(char c)
   {
     if (this->isLarge())
@@ -675,6 +744,7 @@ public:
     result.append(other);
     return result;
   }
+
   String operator+(const char* text) const
   {
     String result;
@@ -696,6 +766,7 @@ public:
     ContainerSize available = length - start;
     return String(this->data() + start, count < available ? count : available);
   }
+
   String substr(ContainerSize start) const { return this->substr(start, npos); }
   // Empties the string; the capacity stays.
   void clear() { this->setLength(0); }
@@ -713,6 +784,7 @@ private:
     this->setLength(length + count);
     return *this;
   }
+
   void becomeEmpty()
   {
     if consteval
@@ -723,6 +795,7 @@ private:
     this->smallChars[0] = 0;
     this->smallChars[String::markIndex] = 0;
   }
+
   // Construction from count bytes.
   void initialize(const char* bytes, ContainerSize count)
   {
@@ -760,6 +833,7 @@ private:
     this->heapCapacity = count;
     this->smallChars[String::markIndex] = (char)String::largeMark;
   }
+
   // Sets the length and writes the terminating zero after it.
   void setLength(ContainerSize length)
   {
@@ -774,6 +848,7 @@ private:
       this->smallChars[String::markIndex] = (char)length;
     }
   }
+
   // Takes block (holding length characters and their terminator, room for capacity) as the storage.
   void adopt(char* block, ContainerSize length, ContainerSize capacity)
   {
@@ -787,6 +862,7 @@ private:
       this->smallChars[String::markIndex] = (char)String::largeMark; // (no mark at compile time: see the top)
     }
   }
+
   // Moves the characters into a heap block with room for newCapacity. Out of line, like every
   // growth path, so that the fast paths around it stay small enough to inline.
   [[noinline]] void reallocate(ContainerSize newCapacity)
@@ -796,6 +872,7 @@ private:
     memcpy(block, this->data(), length + 1);
     this->adopt(block, length, newCapacity);
   }
+
   // Geometric growth: appending n characters one by one costs O(n) in total. At most
   // maxContainerSize (core/Sizes.kpp).
   void ensureRoom(ContainerSize needed)
@@ -804,6 +881,7 @@ private:
     if (needed > capacity)
       this->reallocate(grownCapacity(capacity, needed, 0, "string too long"));
   }
+
   // replace's size, checked before it erases: LengthError leaves the string as it was.
   void checkReplacement(ContainerSize index, ContainerSize count, ContainerSize textLength) const
   {
@@ -813,6 +891,7 @@ private:
     ContainerSize removed = count > length - index ? length - index : count;
     sizeSum(length - removed, textLength, "string too long");
   }
+
   // append() when the characters do not fit: bytes may point into this string, so the old block
   // is released only after they are copied.
   [[noinline]] void appendGrowing(const char* bytes, ContainerSize count)
@@ -835,6 +914,7 @@ private:
       ContainerSize heapLength;
       ContainerSize heapCapacity; // characters that fit, not counting the terminating zero
     };
+
     char smallChars[String::objectBytes]; // [markIndex] is the length of a small string, or largeMark
   };
 };

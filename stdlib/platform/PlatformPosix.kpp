@@ -159,6 +159,7 @@ namespace platform
     void notifyAll() { posix::pthread_cond_broadcast(this->cond()); }
     // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
     void wait(Lock& lock) { posix::pthread_cond_wait(this->cond(), lock.mutex()); }
+
     // The same for at most d: false when the time ran out first. The deadline is on the realtime
     // clock, the condition's: a change of the system time ends the wait early or late, and the
     // caller's loop on its own clock waits for the rest.
@@ -198,10 +199,12 @@ namespace platform
     *id = (unsigned long)thread;
     return (void*)thread;
   }
+
   // Waits until the thread has finished.
   void joinThread(void* handle) { posix::pthread_join(threadOf(handle), nullptr); }
   // Lets the thread run on its own.
   void detachThread(void* handle) { posix::pthread_detach(threadOf(handle)); }
+
   // The calling thread's id: its pthread_t, never 0.
   unsigned long currentThreadId()
   {
@@ -210,6 +213,7 @@ namespace platform
     memcpy(&id, &self, sizeof(self));
     return (unsigned long)id;
   }
+
   // The processors online (sysconf's _SC_NPROCESSORS_ONLN).
   u32 processorCount()
   {

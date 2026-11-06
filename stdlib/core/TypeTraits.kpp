@@ -69,6 +69,7 @@ struct IntegralConstant
   constexpr operator T() const { return V; }
   constexpr T operator()() const { return V; }
 };
+
 using TrueType = IntegralConstant<bool, true>;
 using FalseType = IntegralConstant<bool, false>;
 template<bool B>

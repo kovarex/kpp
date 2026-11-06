@@ -17,6 +17,7 @@ struct IteratorTraits
   using reference = typename It::reference;
   using iterator_category = typename It::iterator_category;
 };
+
 template<typename T>
 struct IteratorTraits<T*>
 {
@@ -45,38 +46,45 @@ public:
 
   IteratorTraits<It>::value_type&& operator*() const { return move(*this->current); }
   IteratorTraits<It>::value_type&& operator[](i64 n) const { return move(this->current[n]); }
+
   MoveIterator<It>& operator++()
   {
     ++this->current;
     return *this;
   }
+
   MoveIterator<It> operator++(i32)
   {
     MoveIterator<It> tmp = *this;
     ++this->current;
     return tmp;
   }
+
   MoveIterator<It>& operator--()
   {
     --this->current;
     return *this;
   }
+
   MoveIterator<It> operator--(i32)
   {
     MoveIterator<It> tmp = *this;
     --this->current;
     return tmp;
   }
+
   MoveIterator<It>& operator+=(i64 n)
   {
     this->current += n;
     return *this;
   }
+
   MoveIterator<It>& operator-=(i64 n)
   {
     this->current -= n;
     return *this;
   }
+
   MoveIterator<It> operator+(i64 n) const { return MoveIterator<It>(this->current + n); }
   MoveIterator<It> operator-(i64 n) const { return MoveIterator<It>(this->current - n); }
   i64 operator-(const MoveIterator<It>& other) const { return this->current - other.current; }
@@ -115,11 +123,13 @@ public:
     this->container->push_back(value);
     return *this;
   }
+
   BackInsertIterator<Container>& operator=(typename Container::value_type&& value)
   {
     this->container->push_back(move(value));
     return *this;
   }
+
   BackInsertIterator<Container>& operator*() { return *this; }
   BackInsertIterator<Container>& operator++() { return *this; }
 
@@ -149,6 +159,7 @@ public:
     ++this->position;
     return *this;
   }
+
   InsertIterator<Container>& operator*() { return *this; }
   InsertIterator<Container>& operator++() { return *this; }
 

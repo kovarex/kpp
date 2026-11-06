@@ -185,6 +185,7 @@ public:
   using iterator_category = ForwardIteratorTag;
 
   Utf8CodePointIterator() {}
+
   Utf8CodePointIterator(StringView text, ContainerSize at) : text(text), at(at)
   {
     if (at < text.size())
@@ -194,18 +195,21 @@ public:
   u32 operator*() const { return this->decoded.codePoint; }
   ContainerSize position() const { return this->at; }
   bool valid() const { return this->decoded.valid; }
+
   Utf8CodePointIterator& operator++()
   {
     this->at += this->decoded.length;
     this->decoded = this->at < this->text.size() ? utf8Decode(this->text, this->at) : Utf8Decoded();
     return *this;
   }
+
   Utf8CodePointIterator operator++(i32)
   {
     Utf8CodePointIterator before = *this;
     ++*this;
     return before;
   }
+
   bool operator==(const Utf8CodePointIterator& other) const { return this->at == other.at; }
   bool operator!=(const Utf8CodePointIterator& other) const { return this->at != other.at; }
 

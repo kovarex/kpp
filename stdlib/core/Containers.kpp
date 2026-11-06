@@ -21,6 +21,7 @@ struct Array
   bool empty() const { return N == 0; }
   T& operator[](ContainerSize index) { return this->items[index]; }
   const T& operator[](ContainerSize index) const { return this->items[index]; }
+
   // Throws OutOfRange for an index outside [0, N).
   T& at(ContainerSize index)
   {
@@ -28,12 +29,14 @@ struct Array
       throwOutOfRange("Array::at: index out of range");
     return this->items[index];
   }
+
   const T& at(ContainerSize index) const
   {
     if (index >= N)
       throwOutOfRange("Array::at: index out of range");
     return this->items[index];
   }
+
   T* data() { return this->items; }
   const T* data() const { return this->items; }
   T* begin() { return this->items; }
@@ -52,11 +55,13 @@ struct Array
   T& back() { return this->items[N - 1]; }
   const T& front() const { return this->items[0]; }
   const T& back() const { return this->items[N - 1]; }
+
   void fill(const T& value)
   {
     for (ContainerSize i = 0; i < N; ++i)
       this->items[i] = value;
   }
+
   bool operator==(const Array<T, N>& other) const
   {
     for (ContainerSize i = 0; i < N; ++i)
@@ -64,6 +69,7 @@ struct Array
         return false;
     return true;
   }
+
   // Ordered lexicographically by the elements (common.md): gives <, >, <= and >=.
   strong_ordering operator<=>(const Array<T, N>& other) const { return lexicographicalCompareThreeWay(this->items, this->items + N, other.items, other.items + N); }
 };
@@ -88,16 +94,19 @@ struct Array<T, 0>
   bool empty() const { return true; }
   T& operator[](ContainerSize index) { return *this->data(); }
   const T& operator[](ContainerSize index) const { return *this->data(); }
+
   T& at(ContainerSize index)
   {
     throwOutOfRange("Array::at: index out of range");
     return *this->data();
   }
+
   const T& at(ContainerSize index) const
   {
     throwOutOfRange("Array::at: index out of range");
     return *this->data();
   }
+
   T* data() { return nullptr; }
   const T* data() const { return nullptr; }
   T* begin() { return nullptr; }

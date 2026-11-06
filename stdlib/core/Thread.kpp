@@ -40,6 +40,7 @@ struct ThreadArguments
   template<typename F, typename... Taken>
   void invokeWith(F& function, Taken&&... taken) { invoke(move(function), forward<Taken>(taken)...); }
 };
+
 template<typename T, typename... Rest>
 struct ThreadArguments<T, Rest...>
 {
@@ -58,6 +59,7 @@ struct ThreadCall
   F function;
   ThreadArguments<Args...> arguments;
   ThreadCall(F function, Args... arguments) : function(move(function)), arguments(move(arguments)...) {}
+
   // (noexcept: an exception leaving the thread's function ends the program through the terminate
   // handler, from the search, as C++'s std::thread does)
   static platform::ThreadResult start(void* parameter) noexcept
@@ -84,9 +86,11 @@ public:
     explicit Id(unsigned long value) : value(value) {}
     strong_ordering operator<=>(const Id& other) const = default;
   };
+
   using id = Id;
 
   Thread() {}
+
   // Runs invoke(function, arguments...) on a new thread, with copies of them made here (decayed: a
   // function is its pointer, a reference argument a copy of the value; ref() passes a reference).
   // A pointer to a member function takes the object, or a pointer to it, first. Throws SystemError
@@ -104,13 +108,17 @@ public:
     }
     this->threadId = Id(id);
   }
+
   Thread(const Thread&) = delete;
+
   Thread(Thread&& other) noexcept : handle(other.handle), threadId(other.threadId)
   {
     other.handle = nullptr;
     other.threadId = Id();
   }
+
   Thread& operator=(const Thread&) = delete;
+
   // A Thread still joinable here ends the program (std::thread calls std::terminate).
   Thread& operator=(Thread&& other) noexcept
   {
@@ -121,10 +129,12 @@ public:
     other.threadId = Id();
     return *this;
   }
+
   // A Thread still joinable here ends the program (std::thread calls std::terminate).
   ~Thread() { release_assert(!this->joinable()); }
 
   bool joinable() const { return this->handle != nullptr; }
+
   // Waits until the thread has finished; then the Thread is not joinable. Throws SystemError:
   // invalid_argument when it is not joinable, resource_deadlock_would_occur when it is the
   // calling thread.
@@ -138,6 +148,7 @@ public:
     this->handle = nullptr;
     this->threadId = Id();
   }
+
   // Lets the thread run on its own; the Thread is not joinable any more. Throws SystemError
   // (invalid_argument) when it is not joinable.
   void detach()
@@ -148,11 +159,13 @@ public:
     this->handle = nullptr;
     this->threadId = Id();
   }
+
   void swap(Thread& other)
   {
     ::swap(this->handle, other.handle);
     ::swap(this->threadId, other.threadId);
   }
+
   // The thread's Id, or Id() when not joinable.
   Id getId() const { return this->threadId; }
   Id get_id() const { return this->threadId; }
@@ -180,6 +193,7 @@ namespace thisThread
   Thread::Id get_id() { return getId(); }
   // Lets another thread run (std::this_thread::yield).
   void yield() { platform::yield(); }
+
   // Blocks until t has passed on t's clock (std::this_thread::sleep_until): at least until then,
   // waking up early as Windows' timer or a signal may only to sleep again.
   template<typename Clock, typename Dur>
@@ -188,6 +202,7 @@ namespace thisThread
     for (auto now = Clock::now(); now < t; now = Clock::now())
       platform::sleepFor(t - now);
   }
+
   template<typename Clock, typename Dur>
   void sleep_until(const TimePoint<Clock, Dur>& t) { sleepUntil(t); }
   // Blocks for at least d, on the steady clock (std::this_thread::sleep_for); a d of zero or less
@@ -237,6 +252,7 @@ public:
     this->owner.store(self);
     this->depth = 1;
   }
+
   bool tryLock()
   {
     unsigned long self = platform::currentThreadId();
@@ -251,7 +267,9 @@ public:
     this->depth = 1;
     return true;
   }
+
   bool try_lock() { return this->tryLock(); }
+
   void unlock()
   {
     if (--this->depth == 0)
@@ -314,6 +332,7 @@ public:
 private:
   M& mutex;
 };
+
 template<typename M>
 using ScopedLock = LockGuard<M>;
 
@@ -332,11 +351,13 @@ public:
   UniqueLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   UniqueLock(const UniqueLock<M>&) = delete;
   UniqueLock<M>& operator=(const UniqueLock<M>&) = delete;
+
   UniqueLock(UniqueLock<M>&& other) noexcept : mutex_(other.mutex_), owns(other.owns)
   {
     other.mutex_ = nullptr;
     other.owns = false;
   }
+
   UniqueLock<M>& operator=(UniqueLock<M>&& other) noexcept
   {
     if (this != &other)
@@ -350,6 +371,7 @@ public:
     }
     return *this;
   }
+
   ~UniqueLock()
   {
     if (this->owns)
@@ -362,13 +384,16 @@ public:
     this->mutex_->lock();
     this->owns = true;
   }
+
   bool tryLock()
   {
     this->checkLockable("UniqueLock::try_lock");
     this->owns = this->mutex_->try_lock();
     return this->owns;
   }
+
   bool try_lock() { return this->tryLock(); }
+
   void unlock()
   {
     if (!this->owns)
@@ -376,6 +401,7 @@ public:
     this->mutex_->unlock();
     this->owns = false;
   }
+
   // Lets go of the mutex without unlocking it, and returns it.
   M* release()
   {
@@ -384,11 +410,13 @@ public:
     this->owns = false;
     return mutex;
   }
+
   void swap(UniqueLock<M>& other)
   {
     ::swap(this->mutex_, other.mutex_);
     ::swap(this->owns, other.owns);
   }
+
   M* mutex() const { return this->mutex_; }
   bool ownsLock() const { return this->owns; }
   bool owns_lock() const { return this->owns; }
@@ -420,11 +448,13 @@ public:
   SharedLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   SharedLock(const SharedLock<M>&) = delete;
   SharedLock<M>& operator=(const SharedLock<M>&) = delete;
+
   SharedLock(SharedLock<M>&& other) noexcept : mutex_(other.mutex_), owns(other.owns)
   {
     other.mutex_ = nullptr;
     other.owns = false;
   }
+
   SharedLock<M>& operator=(SharedLock<M>&& other) noexcept
   {
     if (this != &other)
@@ -438,6 +468,7 @@ public:
     }
     return *this;
   }
+
   ~SharedLock()
   {
     if (this->owns)
@@ -450,13 +481,16 @@ public:
     this->mutex_->lockShared();
     this->owns = true;
   }
+
   bool tryLock()
   {
     this->checkLockable("SharedLock::try_lock");
     this->owns = this->mutex_->tryLockShared();
     return this->owns;
   }
+
   bool try_lock() { return this->tryLock(); }
+
   void unlock()
   {
     if (!this->owns)
@@ -464,6 +498,7 @@ public:
     this->mutex_->unlockShared();
     this->owns = false;
   }
+
   M* release()
   {
     M* mutex = this->mutex_;
@@ -471,11 +506,13 @@ public:
     this->owns = false;
     return mutex;
   }
+
   void swap(SharedLock<M>& other)
   {
     ::swap(this->mutex_, other.mutex_);
     ::swap(this->owns, other.owns);
   }
+
   M* mutex() const { return this->mutex_; }
   bool ownsLock() const { return this->owns; }
   bool owns_lock() const { return this->owns; }
@@ -515,6 +552,7 @@ public:
 
   // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
   void wait(UniqueLock<Mutex>& lock) { this->condition.wait(lock.mutex()->lock_); }
+
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
@@ -535,6 +573,7 @@ public:
       // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
     }
   }
+
   // Waits until ready() or until t has passed; returns ready() at the end.
   template<typename Clock, typename Dur, typename Predicate>
   bool waitUntil(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready)
@@ -544,8 +583,10 @@ public:
         return ready();
     return true;
   }
+
   template<typename Rep, typename Period>
   CvStatus waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitUntil(lock, SteadyClock::now() + d); }
+
   template<typename Rep, typename Period, typename Predicate>
   bool waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready)
   {
@@ -597,12 +638,14 @@ struct Atomic
     memcpy(&w, &v, sizeof(T));
     return w;
   }
+
   static T valueOf(Word w)
   {
     T v;
     memcpy(&v, &w, sizeof(T));
     return v;
   }
+
   Word* word() const { return (Word*)&this->value; }
 
   T load() const noexcept
@@ -616,6 +659,7 @@ struct Atomic
     else
       return Atomic::valueOf(kpp_atomic_load8((const u8*)this->word()));
   }
+
   void store(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
@@ -628,6 +672,7 @@ struct Atomic
     else
       kpp_atomic_store8((u8*)this->word(), w);
   }
+
   T exchange(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
@@ -640,6 +685,7 @@ struct Atomic
     else
       return Atomic::valueOf(kpp_atomic_exchange8((u8*)this->word(), w));
   }
+
   // True when the value had expected's bits and now has desired's; otherwise false, and expected
   // receives the current value.
   bool compareExchange(T& expected, T desired) noexcept
@@ -660,6 +706,7 @@ struct Atomic
     expected = Atomic::valueOf(seen);
     return false;
   }
+
   bool compare_exchange_strong(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
   bool compare_exchange_weak(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
 
@@ -687,7 +734,9 @@ struct Atomic
         return Atomic::valueOf(kpp_atomic_add8((u8*)this->word(), w));
     }
   }
+
   T fetch_add(T delta) noexcept { return this->fetchAdd(delta); }
+
   T fetchSub(T delta) noexcept
   {
     if constexpr (isFloatingPoint<T>)
@@ -695,15 +744,18 @@ struct Atomic
     else
       return this->fetchAdd((T)(0 - delta));
   }
+
   T fetch_sub(T delta) noexcept { return this->fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
   operator T() const { return this->load(); }
+
   Atomic<T>& operator=(T v)
   {
     this->store(v);
     return *this;
   }
+
   T operator++() { return this->fetchAdd(1) + 1; }
   T operator++(i32) { return this->fetchAdd(1); }
   T operator--() { return this->fetchSub(1) - 1; }
@@ -726,6 +778,7 @@ struct Atomic
       slot.condition.wait(slot.lock);
     slot.lock.unlock();
   }
+
   // Wakes the waiters on this Atomic. notifyOne wakes all of the slot's waiters too (each checks
   // its own value again and sleeps on), which C++'s "at least one" allows.
   void notifyOne() { atomicNotify(this); }
@@ -741,8 +794,10 @@ struct AtomicWaitSlot
   platform::Lock lock;
   platform::Condition condition;
 };
+
 AtomicWaitSlot atomicWaitSlots[64];
 AtomicWaitSlot& atomicWaitSlot(const void* address) { return atomicWaitSlots[((u64)address >> 3) % 64]; }
+
 void atomicNotify(const void* address)
 {
   AtomicWaitSlot& slot = atomicWaitSlot(address);

@@ -43,21 +43,25 @@ namespace filesystem
       this->text = source;
       return *this;
     }
+
     path& operator=(const wchar_t* source)
     {
       this->text = WString(source);
       return *this;
     }
+
     path& operator=(const String& source)
     {
       this->text = widenUtf8(source.data(), source.size());
       return *this;
     }
+
     path& operator=(const char* source)
     {
       this->text = widenUtf8(source, checkedSize(strlen(source), "string too long"));
       return *this;
     }
+
     path& assign(const path& source)
     {
       this->text = source.text;
@@ -344,6 +348,7 @@ namespace filesystem
     using iterator_category = BidirectionalIteratorTag;
 
     pathIterator() {}
+
     pathIterator(const path* owner, ContainerSize position, ContainerSize length) : owner(owner), position(position), length(length)
     {
       if (owner && position <= owner->text.size())
@@ -375,6 +380,7 @@ namespace filesystem
         return separators < n ? pathIterator(owner, n, 0) : pathIterator(owner, n + 1, 0);
       return pathIterator::filenameAt(owner, i);
     }
+
     static pathIterator filenameAt(const path* owner, ContainerSize start)
     {
       const WString& t = owner->text;
@@ -385,6 +391,7 @@ namespace filesystem
         ++end;
       return pathIterator(owner, start, end - start);
     }
+
     static pathIterator first(const path* owner)
     {
       if (owner->text.empty())
@@ -399,17 +406,20 @@ namespace filesystem
 
     const path& operator*() const { return this->element; }
     const path* operator->() const { return &this->element; }
+
     pathIterator& operator++()
     {
       *this = pathIterator::after(this->owner, this->position, this->length);
       return *this;
     }
+
     pathIterator operator++(i32)
     {
       pathIterator before = *this;
       ++*this;
       return before;
     }
+
     // The element before: found from the front.
     pathIterator& operator--()
     {
@@ -419,12 +429,14 @@ namespace filesystem
       *this = previous;
       return *this;
     }
+
     pathIterator operator--(i32)
     {
       pathIterator before = *this;
       --*this;
       return before;
     }
+
     bool operator==(const pathIterator& other) const { return this->owner == other.owner && this->position == other.position; }
 
   private:
@@ -596,6 +608,7 @@ namespace filesystem
     mask = 07777,
     unknown = 0xFFFF,
   };
+
   perms operator|(perms a, perms b) { return perms((u32)a | (u32)b); }
   perms operator&(perms a, perms b) { return perms((u32)a & (u32)b); }
   perms operator^(perms a, perms b) { return perms((u32)a ^ (u32)b); }
@@ -611,6 +624,7 @@ namespace filesystem
     remove = 4,
     nofollow = 8,
   };
+
   perm_options operator|(perm_options a, perm_options b) { return perm_options((u32)a | (u32)b); }
   perm_options operator&(perm_options a, perm_options b) { return perm_options((u32)a & (u32)b); }
 
@@ -628,6 +642,7 @@ namespace filesystem
     create_hard_links = 0x4000,
     inRecursiveCopy = 0x10000, // kpp: copy's own mark for the entries of a directory it copies
   };
+
   copy_options operator|(copy_options a, copy_options b) { return copy_options((u32)a | (u32)b); }
   copy_options operator&(copy_options a, copy_options b) { return copy_options((u32)a & (u32)b); }
 
@@ -683,15 +698,18 @@ namespace filesystem
     path path2Value;
 
     filesystem_error(const String& what, ErrorCode code) : SystemError(code, what) {}
+
     filesystem_error(const String& what, const path& path1, ErrorCode code) : SystemError(code, what), path1Value(path1)
     {
       this->message = what + ": " + code.message() + " [" + path1.string() + "]";
     }
+
     filesystem_error(const String& what, const path& path1, const path& path2, ErrorCode code)
       : SystemError(code, what), path1Value(path1), path2Value(path2)
     {
       this->message = what + ": " + code.message() + " [" + path1.string() + "] [" + path2.string() + "]";
     }
+
     const path& path1() const { return this->path1Value; }
     const path& path2() const { return this->path2Value; }
   };
@@ -722,6 +740,7 @@ namespace filesystem
       return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
     return file_status(info.type, info.permissions);
   }
+
   file_status status(const path& p)
   {
     ErrorCode ec;
@@ -730,6 +749,7 @@ namespace filesystem
       throw filesystem_error(String("status"), p, ec);
     return s;
   }
+
   // What p itself is: a link (on Windows a reparse point, a symbolic link or a junction) is a
   // symlink.
   file_status symlink_status(const path& p, ErrorCode& ec)
@@ -739,6 +759,7 @@ namespace filesystem
       return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
     return file_status(info.type, info.permissions);
   }
+
   file_status symlink_status(const path& p)
   {
     ErrorCode ec;
@@ -755,6 +776,7 @@ namespace filesystem
       ec.clear();
     return exists(s);
   }
+
   bool exists(const path& p) { return exists(status(p)); }
   bool is_directory(const path& p, ErrorCode& ec) { return is_directory(status(p, ec)); }
   bool is_directory(const path& p) { return is_directory(status(p)); }
@@ -778,6 +800,7 @@ namespace filesystem
     }
     return info.size;
   }
+
   u64 file_size(const path& p)
   {
     ErrorCode ec;
@@ -796,6 +819,7 @@ namespace filesystem
       return false;
     return same;
   }
+
   bool equivalent(const path& a, const path& b)
   {
     ErrorCode ec;
@@ -816,12 +840,15 @@ namespace filesystem
 
     const filesystem::path& path() const { return this->pathValue; }
     implicit operator const filesystem::path&() const { return this->pathValue; }
+
     void assign(const filesystem::path& p)
     {
       this->pathValue = p;
       this->listed = false;
     }
+
     void refresh() { this->listed = false; }
+
     // The listing's status, links followed (a link is asked anew).
     file_status status(ErrorCode& ec) const
     {
@@ -832,6 +859,7 @@ namespace filesystem
       }
       return filesystem::status(this->pathValue, ec);
     }
+
     file_status status() const
     {
       ErrorCode ec;
@@ -840,6 +868,7 @@ namespace filesystem
         throw filesystem_error(String("directory_entry::status"), this->pathValue, ec);
       return s;
     }
+
     file_status symlink_status(ErrorCode& ec) const
     {
       if (this->listed)
@@ -849,15 +878,18 @@ namespace filesystem
       }
       return filesystem::symlink_status(this->pathValue, ec);
     }
+
     file_status symlink_status() const
     {
       ErrorCode ec;
       return this->symlink_status(ec);
     }
+
     bool exists() const { return filesystem::exists(this->status()); }
     bool is_directory() const { return filesystem::is_directory(this->status()); }
     bool is_regular_file() const { return filesystem::is_regular_file(this->status()); }
     bool is_symlink() const { return filesystem::is_symlink(this->symlink_status()); }
+
     u64 file_size(ErrorCode& ec) const
     {
       if (this->listed && this->info.sizeKnown)
@@ -867,6 +899,7 @@ namespace filesystem
       }
       return filesystem::file_size(this->pathValue, ec);
     }
+
     u64 file_size() const
     {
       ErrorCode ec;
@@ -875,6 +908,7 @@ namespace filesystem
         throw filesystem_error(String("directory_entry::file_size"), this->pathValue, ec);
       return s;
     }
+
     bool operator==(const directory_entry& other) const { return this->pathValue == other.pathValue; }
     bool operator!=(const directory_entry& other) const { return this->pathValue != other.pathValue; }
     bool operator<(const directory_entry& other) const { return this->pathValue < other.pathValue; }
@@ -911,6 +945,7 @@ namespace filesystem
     using iterator_category = InputIteratorTag;
 
     directory_iterator() {}
+
     explicit directory_iterator(const path& p)
     {
       ErrorCode ec;
@@ -918,7 +953,9 @@ namespace filesystem
       if (ec)
         throw filesystem_error(String("directory_iterator"), p, ec);
     }
+
     directory_iterator(const path& p, ErrorCode& ec) { this->open(p, ec); }
+
     directory_iterator(const path& p, directory_options options)
     {
       ErrorCode ec;
@@ -926,6 +963,7 @@ namespace filesystem
       if (ec)
         throw filesystem_error(String("directory_iterator"), p, ec);
     }
+
     directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this->open(p, ec); }
 
     void open(const path& p, ErrorCode& ec)
@@ -938,6 +976,7 @@ namespace filesystem
       this->listing = state;
       this->advance(ec);
     }
+
     // The next entry; the end when there is none (or on an error, which ec reports).
     void advance(ErrorCode& ec)
     {
@@ -954,11 +993,13 @@ namespace filesystem
       state.entry.pathValue = state.directory / path(name);
       state.entry.listed = true;
     }
+
     directory_iterator& increment(ErrorCode& ec)
     {
       this->advance(ec);
       return *this;
     }
+
     directory_iterator& operator++()
     {
       ErrorCode ec;
@@ -967,6 +1008,7 @@ namespace filesystem
         throw filesystem_error(String("directory_iterator::operator++"), ec);
       return *this;
     }
+
     const directory_entry& operator*() const { return this->listing->entry; }
     const directory_entry* operator->() const { return &this->listing->entry; }
     bool operator==(const directory_iterator& other) const = default;
@@ -975,6 +1017,7 @@ namespace filesystem
   private:
     SharedPtr<DirectoryListing> listing;
   };
+
   directory_iterator begin(directory_iterator it) { return it; }
   directory_iterator end(const directory_iterator& it) { return directory_iterator(); }
 
@@ -989,6 +1032,7 @@ namespace filesystem
       return path();
     return platform::absolutePath(p, ec);
   }
+
   path absolute(const path& p)
   {
     ErrorCode ec;
@@ -1001,6 +1045,7 @@ namespace filesystem
   // The absolute path of what p names with every link resolved; p must exist (on Windows the
   // system's `\\?\` prefix is removed, `\\?\UNC\` becoming `\\`).
   path canonical(const path& p, ErrorCode& ec) { return platform::canonicalPath(p, ec); }
+
   path canonical(const path& p)
   {
     ErrorCode ec;
@@ -1044,6 +1089,7 @@ namespace filesystem
       result /= tail;
     return result.lexically_normal();
   }
+
   path weakly_canonical(const path& p)
   {
     ErrorCode ec;
@@ -1054,12 +1100,15 @@ namespace filesystem
   }
 
   path current_path(ErrorCode& ec) { return platform::currentPath(ec); }
+
   path current_path()
   {
     ErrorCode ec;
     return current_path(ec);
   }
+
   void current_path(const path& p, ErrorCode& ec) { platform::setCurrentPath(p, ec); }
+
   void current_path(const path& p)
   {
     ErrorCode ec;
@@ -1067,9 +1116,11 @@ namespace filesystem
     if (ec)
       throw filesystem_error(String("current_path"), p, ec);
   }
+
   // The directory for temporary files: GetTempPath's on Windows; elsewhere TMPDIR (or TMP, TEMP,
   // TEMPDIR), else /tmp.
   path temp_directory_path(ErrorCode& ec) { return platform::tempDirectoryPath(ec); }
+
   path temp_directory_path()
   {
     ErrorCode ec;
@@ -1087,6 +1138,7 @@ namespace filesystem
     }
     return result;
   }
+
   space_info space(const path& p)
   {
     ErrorCode ec;
@@ -1112,6 +1164,7 @@ namespace filesystem
     ec = failure;
     return false;
   }
+
   bool create_directory(const path& p)
   {
     ErrorCode ec;
@@ -1120,6 +1173,7 @@ namespace filesystem
       throw filesystem_error(String("create_directory"), p, ec);
     return created;
   }
+
   // Creates p and every missing directory above it; true when it created any.
   bool create_directories(const path& p, ErrorCode& ec)
   {
@@ -1148,6 +1202,7 @@ namespace filesystem
     }
     return create_directory(p, ec);
   }
+
   bool create_directories(const path& p)
   {
     ErrorCode ec;
@@ -1170,6 +1225,7 @@ namespace filesystem
     }
     return platform::removePath(p, info.directory, ec);
   }
+
   bool remove(const path& p)
   {
     ErrorCode ec;
@@ -1178,6 +1234,7 @@ namespace filesystem
       throw filesystem_error(String("remove"), p, ec);
     return removed;
   }
+
   // Removes p and, for a directory (not a link to one), everything in it; the count removed, or
   // -1 on an error.
   u64 remove_all(const path& p, ErrorCode& ec)
@@ -1210,6 +1267,7 @@ namespace filesystem
       ++count;
     return ec ? (u64)-1 : count;
   }
+
   u64 remove_all(const path& p)
   {
     ErrorCode ec;
@@ -1221,6 +1279,7 @@ namespace filesystem
 
   // Moves from to to, replacing a file there (not across volumes, which is errc::cross_device_link).
   void rename(const path& from, const path& to, ErrorCode& ec) { platform::renamePath(from, to, ec); }
+
   void rename(const path& from, const path& to)
   {
     ErrorCode ec;
@@ -1262,7 +1321,9 @@ namespace filesystem
     }
     return platform::copyFileContents(from, to, ec);
   }
+
   bool copy_file(const path& from, const path& to, ErrorCode& ec) { return copy_file(from, to, copy_options::none, ec); }
+
   bool copy_file(const path& from, const path& to, copy_options options)
   {
     ErrorCode ec;
@@ -1271,6 +1332,7 @@ namespace filesystem
       throw filesystem_error(String("copy_file"), from, to, ec);
     return copied;
   }
+
   bool copy_file(const path& from, const path& to) { return copy_file(from, to, copy_options::none); }
 
   // std's copy: a file is copied as copy_file does (into to when to is a directory); a directory,
@@ -1326,7 +1388,9 @@ namespace filesystem
       }
     }
   }
+
   void copy(const path& from, const path& to, ErrorCode& ec) { copy(from, to, copy_options::none, ec); }
+
   void copy(const path& from, const path& to, copy_options options)
   {
     ErrorCode ec;
@@ -1334,12 +1398,14 @@ namespace filesystem
     if (ec)
       throw filesystem_error(String("copy"), from, to, ec);
   }
+
   void copy(const path& from, const path& to) { copy(from, to, copy_options::none); }
 
   // Sets p's permissions (replace, add or remove the bits given). Windows keeps only whether it is
   // read-only, which it is when the result has no write bit; elsewhere chmod.
   void permissions(const path& p, perms permissions, perm_options options, ErrorCode& ec) { platform::changePermissions(p, permissions, options, ec); }
   void permissions(const path& p, perms permissions, ErrorCode& ec) { filesystem::permissions(p, permissions, perm_options::replace, ec); }
+
   void permissions(const path& p, perms permissions, perm_options options)
   {
     ErrorCode ec;
@@ -1347,6 +1413,7 @@ namespace filesystem
     if (ec)
       throw filesystem_error(String("permissions"), p, ec);
   }
+
   void permissions(const path& p, perms permissions) { filesystem::permissions(p, permissions, perm_options::replace); }
 
   // Whether p is an empty file or a directory without entries.
@@ -1363,6 +1430,7 @@ namespace filesystem
     u64 size = file_size(p, ec);
     return !ec && size == 0;
   }
+
   bool is_empty(const path& p)
   {
     ErrorCode ec;

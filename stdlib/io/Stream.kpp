@@ -9,6 +9,7 @@ public:
   explicit InFileStream(const String& filename) { this->open(filename.c_str()); }
   InFileStream(const InFileStream&) = delete;
   InFileStream(InFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+
   ~InFileStream()
   {
     if (this->handle)
@@ -19,6 +20,7 @@ public:
   void open(const String& filename) { this->open(filename.c_str()); }
   bool is_open() const { return this->handle != nullptr; }
   bool isOpen() const { return this->handle != nullptr; }
+
   void close()
   {
     if (this->handle)
@@ -34,6 +36,7 @@ public:
   bool operator!() const { return !this->good(); }
 
   i32 get() { return this->handle ? fgetc(this->handle) : -1; }
+
   // Skips up to count bytes, through the first delimiter met (std::istream::ignore; the tests'
   // ForkLogic skips an XML declaration with `in.ignore(Limits<StreamSize>::max(), '>')`).
   InFileStream& ignore(i64 count = 1, i32 delimiter = -1)
@@ -46,18 +49,21 @@ public:
     }
     return *this;
   }
+
   InFileStream& read(char* buffer, ContainerSize count)
   {
     if (this->handle)
       fread(buffer, 1, count, this->handle);
     return *this;
   }
+
   InFileStream& seekg(long pos)
   {
     if (this->handle)
       fseek(this->handle, pos, 0);
     return *this;
   }
+
   long tellg()
   {
     return this->handle ? ftell(this->handle) : -1;
@@ -76,6 +82,7 @@ class OutStream
 public:
   virtual ~OutStream() {}
   virtual void writeBytes(const char* data, ContainerSize count) = 0;
+
   // count bytes from data, as they are (std::ostream::write; TestBitmapUtil dumps a pointer's bytes).
   OutStream& write(const char* data, ContainerSize count)
   {
@@ -97,46 +104,54 @@ OutStream& operator<<(OutStream& s, const char* text)
   }
   return s;
 }
+
 OutStream& operator<<(OutStream& s, const String& text)
 {
   s.writeBytes(text.data(), text.size());
   return s;
 }
+
 OutStream& operator<<(OutStream& s, char c)
 {
   s.writeBytes(&c, 1);
   return s;
 }
+
 OutStream& operator<<(OutStream& s, i32 value)
 {
   char text[16];
   s.writeBytes(text, snprintf(text, sizeof(text), "%d", value));
   return s;
 }
+
 OutStream& operator<<(OutStream& s, u32 value)
 {
   char text[16];
   s.writeBytes(text, snprintf(text, sizeof(text), "%u", value));
   return s;
 }
+
 OutStream& operator<<(OutStream& s, i64 value)
 {
   char text[24];
   s.writeBytes(text, snprintf(text, sizeof(text), "%lld", value));
   return s;
 }
+
 OutStream& operator<<(OutStream& s, u64 value)
 {
   char text[24];
   s.writeBytes(text, snprintf(text, sizeof(text), "%llu", value));
   return s;
 }
+
 OutStream& operator<<(OutStream& s, double value)
 {
   char text[32];
   s.writeBytes(text, snprintf(text, sizeof(text), "%g", value));
   return s;
 }
+
 OutStream& operator<<(OutStream& s, EndlTag)
 {
   s.writeBytes("\n", 1);
@@ -155,6 +170,7 @@ public:
   explicit OutFileStream(const String& filename) { this->open(filename.c_str()); }
   OutFileStream(const OutFileStream&) = delete;
   OutFileStream(OutFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+
   ~OutFileStream()
   {
     if (this->handle)
@@ -165,6 +181,7 @@ public:
   void open(const String& filename) { this->open(filename.c_str()); }
   bool is_open() const { return this->handle != nullptr; }
   bool isOpen() const { return this->handle != nullptr; }
+
   void close()
   {
     if (this->handle)
@@ -183,6 +200,7 @@ public:
       fwrite(data, 1, count, this->handle);
     return *this;
   }
+
   void flush()
   {
     if (this->handle)
@@ -204,36 +222,43 @@ StderrStream& operator<<(StderrStream& s, const char* text)
   fputs(text, s.handle());
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, const String& text)
 {
   fputs(text.c_str(), s.handle());
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, i32 value)
 {
   fprintf(s.handle(), "%d", value);
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, i64 value)
 {
   fprintf(s.handle(), "%lld", value);
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, u32 value)
 {
   fprintf(s.handle(), "%u", value);
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, double value)
 {
   fprintf(s.handle(), "%g", value);
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, char c)
 {
   fputc(c, s.handle());
   return s;
 }
+
 StderrStream& operator<<(StderrStream& s, const void* ptr)
 {
   fprintf(s.handle(), "%p", ptr);
@@ -257,12 +282,14 @@ OutFileStream& operator<<(OutFileStream& s, const char* text)
     fputs(text, s.handle);
   return s;
 }
+
 OutFileStream& operator<<(OutFileStream& s, const String& text)
 {
   if (s.handle)
     fputs(text.c_str(), s.handle);
   return s;
 }
+
 OutFileStream& operator<<(OutFileStream& s, EndlTag)
 {
   if (s.handle)

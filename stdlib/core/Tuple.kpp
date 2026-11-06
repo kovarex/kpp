@@ -56,6 +56,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
   Tuple() {}
   // Every element copied from its value.
   implicit Tuple(const H& head, const T&... tail) : Leaf(head), Rest(tail...) {}
+
   // Every element constructed from its argument, which is forwarded: moved from an rvalue
   // (`Tuple<String, UniquePtr<Sprite>>("name", move(sprite))`).
   template<typename UH, typename... UT>
@@ -63,17 +64,20 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
   implicit Tuple(UH&& head, UT&&... tail) : Leaf(forward<UH>(head)), Rest(forward<UT>(tail)...)
   {
   }
+
   // From a Tuple of as many elements of other types, each constructed from the other's: copied,
   // or moved from an rvalue Tuple.
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   implicit Tuple(const Tuple<UH, UT...>& other) : Leaf(other.template get<0>()), Rest(static_cast<const typename TupleRest<UT...>::Type&>(other))
   {
   }
+
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   implicit Tuple(Tuple<UH, UT...>&& other)
     : Leaf(other.template getRvalue<0>()), Rest(static_cast<typename TupleRest<UT...>::Type&&>(other))
   {
   }
+
   // From a Pair, for two elements: first and second.
   template<typename U1, typename U2> requires (sizeof...(T) == 1)
   implicit Tuple(const Pair<U1, U2>& pair) : Leaf(pair.first), Rest(pair.second) {}
@@ -93,6 +97,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     else
       return static_cast<Rest&>(*this).template get<I - 1>();
   }
+
   template<i32 I>
   decltype(auto) get() const
   {
@@ -101,6 +106,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     else
       return static_cast<const Rest&>(*this).template get<I - 1>();
   }
+
   template<i32 I>
   decltype(auto) getRvalue()
   {
@@ -118,12 +124,14 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     static_cast<Rest&>(*this) = static_cast<const Rest&>(other);
     return *this;
   }
+
   Tuple<H, T...>& operator=(Tuple<H, T...>&& other)
   {
     static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
     static_cast<Rest&>(*this) = static_cast<Rest&&>(other);
     return *this;
   }
+
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   Tuple<H, T...>& operator=(const Tuple<UH, UT...>& other)
   {
@@ -131,6 +139,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     static_cast<Rest&>(*this) = static_cast<const typename TupleRest<UT...>::Type&>(other);
     return *this;
   }
+
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   Tuple<H, T...>& operator=(Tuple<UH, UT...>&& other)
   {
@@ -138,6 +147,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     static_cast<Rest&>(*this) = static_cast<typename TupleRest<UT...>::Type&&>(other);
     return *this;
   }
+
   // `tie(speed, force) = pair`: first to the first element, second to the second.
   template<typename U1, typename U2> requires (sizeof...(T) == 1)
   Tuple<H, T...>& operator=(const Pair<U1, U2>& pair)
@@ -146,6 +156,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     static_cast<Rest&>(*this).template get<0>() = pair.second;
     return *this;
   }
+
   template<typename U1, typename U2> requires (sizeof...(T) == 1)
   Tuple<H, T...>& operator=(Pair<U1, U2>&& pair)
   {
@@ -159,6 +170,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
   {
     return this->template get<0>() == other.template get<0>() && static_cast<const Rest&>(*this) == static_cast<const Rest&>(other);
   }
+
   strong_ordering operator<=>(const Tuple<H, T...>& other) const
   {
     strong_ordering order = synthThreeWay(this->template get<0>(), other.template get<0>());
@@ -187,11 +199,13 @@ decltype(auto) get(Tuple<Types...>& t)
 {
   return t.template get<I>();
 }
+
 template<i32 I, typename... Types> requires (I >= 0 && I < i32(sizeof...(Types)))
 decltype(auto) get(const Tuple<Types...>& t)
 {
   return t.template get<I>();
 }
+
 template<i32 I, typename... Types> requires (I >= 0 && I < i32(sizeof...(Types)))
 decltype(auto) get(Tuple<Types...>&& t)
 {
@@ -245,6 +259,7 @@ auto& get(Pair<A, B>& p)
   else
     return p.second;
 }
+
 template<i32 I, typename A, typename B> requires (I == 0 || I == 1)
 const auto& get(const Pair<A, B>& p)
 {
@@ -261,6 +276,7 @@ struct IndexSequence
 {
   static constexpr i32 size() { return i32(sizeof...(I)); }
 };
+
 template<i32 N, typename S>
 struct IndexSequenceOf {};
 template<i32 N, i32... I>

@@ -55,6 +55,7 @@ usize hashOf(double value)
   memcpy(&bits, &value, 8);
   return hashBits(bits);
 }
+
 usize hashOf(float value) { return hashOf((double)value); }
 
 // Enumerations hash by their value.

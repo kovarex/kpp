@@ -74,6 +74,7 @@ namespace platform
     i32 length = win32::WideCharToMultiByte(65001, 0, buffer, (i32)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
     return String(narrow, length);
   }
+
   // The condition (an Errc's value) a system error means, or 0.
   i32 errcOfSystemError(i32 value) { return errcOfWindowsError(value); }
 
@@ -102,6 +103,7 @@ namespace platform
 
     void* srw = nullptr;
   };
+
   using SharedLock = Lock;
 
   // A condition variable that waits with a Lock: a CONDITION_VARIABLE, one pointer, zero when
@@ -117,6 +119,7 @@ namespace platform
     void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this->condition)); }
     // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
     void wait(Lock& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), 0xFFFFFFFFu, 0); }
+
     // The same for at most d (whole milliseconds, rounded up): false when the time ran out first.
     template<typename Rep, typename Period>
     bool waitFor(Lock& lock, const Duration<Rep, Period>& d)
@@ -136,12 +139,14 @@ namespace platform
   // Starts start(parameter) on a new thread: its handle, null when the system cannot start one, and
   // its id in *id.
   void* startThread(ThreadFunction start, void* parameter, unsigned long* id) { return win32::CreateThread(nullptr, 0, start, parameter, 0, id); }
+
   // Waits until the thread has finished, and releases its handle.
   void joinThread(void* handle)
   {
     win32::WaitForSingleObject(handle, 0xFFFFFFFFu);
     win32::CloseHandle(handle);
   }
+
   // Lets the thread run on its own: its handle is released.
   void detachThread(void* handle) { win32::CloseHandle(handle); }
   // The calling thread's id: never 0.

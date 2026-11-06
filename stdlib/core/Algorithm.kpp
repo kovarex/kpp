@@ -44,12 +44,14 @@ void advance(It& it, i64 n)
         --it;
   }
 }
+
 template<typename It>
 It next(It it, i64 n = 1)
 {
   advance(it, n);
   return it;
 }
+
 template<typename It>
 It prev(It it, i64 n = 1)
 {
@@ -158,6 +160,7 @@ It maxElement(It first, It last)
       best = first;
   return best;
 }
+
 template<typename It, typename F>
 It maxElement(It first, It last, F less)
 {
@@ -182,6 +185,7 @@ It minElement(It first, It last)
       best = first;
   return best;
 }
+
 template<typename It, typename F>
 It minElement(It first, It last, F less)
 {
@@ -204,6 +208,7 @@ T max(InitializerList<T> values)
       best = values[i];
   return best;
 }
+
 template<typename T>
 T min(InitializerList<T> values)
 {
@@ -222,6 +227,7 @@ T accumulate(It first, It last, T init)
     init = move(init) + *first;
   return init;
 }
+
 template<typename It, typename T, typename F>
 T accumulate(It first, It last, T init, F op)
 {
@@ -240,6 +246,7 @@ OutIt transform(InIt first, InIt last, OutIt out, F f)
     *out = f(*first);
   return out;
 }
+
 // Writes f(x, y) for the elements x of [first1, last1) and y of the range from first2, in pairs.
 template<typename InIt1, typename InIt2, typename OutIt, typename F>
 OutIt transform(InIt1 first1, InIt1 last1, InIt2 first2, OutIt out, F f)
@@ -271,6 +278,7 @@ void replace(It first, It last, const V& oldValue, const V& newValue)
     if (*first == oldValue)
       *first = newValue;
 }
+
 template<typename It, typename F, typename V>
 void replaceIf(It first, It last, F predicate, const V& newValue)
 {
@@ -296,6 +304,7 @@ It remove(It first, It last, const V& value)
     }
   return out;
 }
+
 // The same for the elements that do not satisfy predicate.
 template<typename It, typename F>
 It removeIf(It first, It last, F predicate)
@@ -312,6 +321,7 @@ It removeIf(It first, It last, F predicate)
     }
   return out;
 }
+
 // Erases the elements of container that predicate holds for and returns how many (std::erase_if):
 // a map's or set's (it has a key_type; the predicate takes the entry) and a List's one by one, the
 // iterators of the others staying valid; a sequence's (Vector, Deque, String) by removeIf and one
@@ -352,6 +362,7 @@ It unique(It first, It last)
     }
   return ++out;
 }
+
 template<typename It, typename F>
 It unique(It first, It last, F same)
 {
@@ -405,6 +416,7 @@ It lowerBound(It first, It last, const V& value, F less)
   }
   return first;
 }
+
 template<typename It, typename V>
 It lowerBound(It first, It last, const V& value)
 {
@@ -431,6 +443,7 @@ It upperBound(It first, It last, const V& value, F less)
   }
   return first;
 }
+
 template<typename It, typename V>
 It upperBound(It first, It last, const V& value)
 {
@@ -444,6 +457,7 @@ bool binarySearch(It first, It last, const V& value, F less)
   first = lowerBound(first, last, value, less);
   return first != last && !less(value, *first);
 }
+
 template<typename It, typename V>
 bool binarySearch(It first, It last, const V& value) { return binarySearch(first, last, value, Less<>()); }
 
@@ -453,6 +467,7 @@ Pair<It, It> equalRange(It first, It last, const V& value, F less)
 {
   return Pair<It, It>(lowerBound(first, last, value, less), upperBound(first, last, value, less));
 }
+
 template<typename It, typename V>
 Pair<It, It> equalRange(It first, It last, const V& value) { return equalRange(first, last, value, Less<>()); }
 
@@ -696,12 +711,14 @@ public:
   implicit ReverseIterator(const ReverseIterator<U>& other) : current(other.current) {}
 
   It base() const { return this->current; }
+
   reference operator*() const
   {
     It before = this->current;
     --before;
     return *before;
   }
+
   pointer operator->() const
   {
     if constexpr (isPointer<It>)
@@ -709,6 +726,7 @@ public:
     else
       return &**this;
   }
+
   reference operator[](difference_type n) const { return *(*this + n); }
 
   ReverseIterator<It>& operator++()
@@ -716,33 +734,39 @@ public:
     --this->current;
     return *this;
   }
+
   ReverseIterator<It> operator++(i32)
   {
     ReverseIterator<It> before = *this;
     --this->current;
     return before;
   }
+
   ReverseIterator<It>& operator--()
   {
     ++this->current;
     return *this;
   }
+
   ReverseIterator<It> operator--(i32)
   {
     ReverseIterator<It> before = *this;
     ++this->current;
     return before;
   }
+
   ReverseIterator<It>& operator+=(difference_type n)
   {
     this->current -= n;
     return *this;
   }
+
   ReverseIterator<It>& operator-=(difference_type n)
   {
     this->current += n;
     return *this;
   }
+
   ReverseIterator<It> operator+(difference_type n) const { return ReverseIterator<It>(this->current - n); }
   ReverseIterator<It> operator-(difference_type n) const { return ReverseIterator<It>(this->current + n); }
   difference_type operator-(const ReverseIterator<It>& other) const { return other.current - this->current; }
@@ -789,6 +813,7 @@ struct Less
 {
   bool operator()(const T& a, const T& b) const { return a < b; }
 };
+
 template<>
 struct Less<void>
 {
@@ -796,11 +821,13 @@ struct Less<void>
   template<typename A, typename B>
   bool operator()(const A& a, const B& b) const { return a < b; }
 };
+
 template<typename T = void>
 struct Greater
 {
   bool operator()(const T& a, const T& b) const { return b < a; }
 };
+
 template<>
 struct Greater<void>
 {
@@ -808,11 +835,13 @@ struct Greater<void>
   template<typename A, typename B>
   bool operator()(const A& a, const B& b) const { return b < a; }
 };
+
 template<typename T = void>
 struct EqualTo
 {
   bool operator()(const T& a, const T& b) const { return a == b; }
 };
+
 template<>
 struct EqualTo<void>
 {

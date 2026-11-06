@@ -8,26 +8,35 @@
 // are for the code it does not parse, the tests' bodies, which UnitTest++'s macros make
 // (`CHECK_EQUAL(get<SegmentedUnitAI::Attacking>(ai.getState()).target.get(), belt)`).
 template<typename T, typename V> requires requires (const V& v) { v.template holds<T>(); }
+
 bool holdsAlternative(const V& variant)
 {
   return variant.template holds<T>();
 }
+
 template<typename T, typename V> requires requires (V& v) { v.template holds<T>(); }
+
 T& get(V& variant)
 {
   return variant.template get<T>();
 }
+
 template<typename T, typename V> requires requires (const V& v) { v.template holds<T>(); }
+
 const T& get(const V& variant)
 {
   return variant.template get<T>();
 }
+
 template<typename T, typename V> requires requires (V& v) { v.template holds<T>(); }
+
 T* getIf(V* variant)
 {
   return variant ? variant->template getIf<T>() : nullptr;
 }
+
 template<typename T, typename V> requires requires (const V& v) { v.template holds<T>(); }
+
 const T* getIf(const V* variant)
 {
   return variant ? variant->template getIf<T>() : nullptr;

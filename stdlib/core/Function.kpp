@@ -23,6 +23,7 @@ struct FunctionImpl
 
   FunctionImpl() {}
   implicit FunctionImpl(nullptr_t) {}
+
   // From a callable, never from what cannot be called with Args (a number, a pointer to an object
   // such as a string literal, a String), so that another overload takes those, as std::function's
   // constructor needs a callable: `use("text")` with use(const String&) and use(Function<void()>)
@@ -42,14 +43,17 @@ struct FunctionImpl
     this->destroy = &FunctionImpl<R, Args...>::destroyAs<F>;
     this->clone = FunctionImpl<R, Args...>::cloneFor<F>();
   }
+
   FunctionImpl(const FunctionImpl<R, Args...>& other)
     : target(other.target ? other.clone(other.target) : nullptr), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
   {}
+
   FunctionImpl(FunctionImpl<R, Args...>&& other) noexcept
     : target(other.target), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
   {
     other.target = nullptr;
   }
+
   ~FunctionImpl()
   {
     if (this->target)
@@ -68,6 +72,7 @@ struct FunctionImpl
     this->clone = other.clone;
     return *this;
   }
+
   FunctionImpl<R, Args...>& operator=(FunctionImpl<R, Args...>&& other) noexcept
   {
     if (this == &other)
@@ -81,6 +86,7 @@ struct FunctionImpl
     other.target = nullptr;
     return *this;
   }
+
   FunctionImpl<R, Args...>& operator=(nullptr_t)
   {
     this->reset();
@@ -116,6 +122,7 @@ struct FunctionImpl
   static void destroyAs(void* target) noexcept { delete (F*)target; }
   template<typename F>
   static void* cloneAs(void* target) { return new F(*(F*)target); }
+
   // A callable that cannot be copied (a lambda with a move-only capture, which async hands over) is
   // held all the same and never copied: copying a Function that holds one throws BadFunctionCall (std::function
   // takes copyable callables only).
@@ -127,6 +134,7 @@ struct FunctionImpl
     else
       return &FunctionImpl<R, Args...>::cannotClone;
   }
+
   static void* cannotClone(void*) { throw BadFunctionCall(); }
 };
 

@@ -60,6 +60,7 @@ public:
 
   static u64 min() { return 0; }
   static u64 max() { return ~0ull; }
+
   void discard(u64 count)
   {
     for (u64 i = 0; i < count; ++i)

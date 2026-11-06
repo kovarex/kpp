@@ -19,12 +19,14 @@ public:
   ~UniqueArray() { delete[] this->pointer; }
 
   UniqueArray<T>& operator=(const UniqueArray<T>& other) = delete;
+
   UniqueArray<T>& operator=(UniqueArray<T>&& other) noexcept
   {
     if (this != &other)
       this->reset(other.release());
     return *this;
   }
+
   UniqueArray<T>& operator=(nullptr_t)
   {
     this->reset();
@@ -45,8 +47,10 @@ public:
     this->pointer = nullptr;
     return array;
   }
+
   // Destroys the elements and frees the array; then the UniqueArray is empty.
   void reset() { this->reset(nullptr); }
+
   // Takes over array (made by `new T[n]`, or null), then destroys the array it had, as std's
   // reset does; resetting to the array it holds does nothing.
   void reset(T* array)
@@ -57,6 +61,7 @@ public:
     this->pointer = array;
     delete[] old;
   }
+
   void swap(UniqueArray<T>& other) { ::swap(this->pointer, other.pointer); }
 
 private:

@@ -19,6 +19,7 @@ struct ViewedRange
   explicit ViewedRange(const Range& range) : range((Range*)&range) {}
   Range& get() const { return *this->range; }
 };
+
 template<typename Range>
 struct ViewedRange<Range, true>
 {
@@ -66,38 +67,45 @@ public:
 
   const T& operator*() const { return this->value; }
   T operator[](i64 n) const { return (T)(this->value + n); }
+
   IotaIterator<T>& operator++()
   {
     ++this->value;
     return *this;
   }
+
   IotaIterator<T> operator++(i32)
   {
     IotaIterator<T> before = *this;
     ++this->value;
     return before;
   }
+
   IotaIterator<T>& operator--()
   {
     --this->value;
     return *this;
   }
+
   IotaIterator<T> operator--(i32)
   {
     IotaIterator<T> before = *this;
     --this->value;
     return before;
   }
+
   IotaIterator<T>& operator+=(i64 n)
   {
     this->value = (T)(this->value + n);
     return *this;
   }
+
   IotaIterator<T>& operator-=(i64 n)
   {
     this->value = (T)(this->value - n);
     return *this;
   }
+
   IotaIterator<T> operator+(i64 n) const { return IotaIterator<T>((T)(this->value + n)); }
   IotaIterator<T> operator-(i64 n) const { return IotaIterator<T>((T)(this->value - n)); }
   i64 operator-(const IotaIterator<T>& other) const { return (i64)this->value - (i64)other.value; }
@@ -150,21 +158,25 @@ public:
 
   // f of the element, with the reference f returns.
   decltype(auto) operator*() const { return (*this->f)(*this->position); }
+
   TransformIterator<It, F>& operator++()
   {
     ++this->position;
     return *this;
   }
+
   TransformIterator<It, F>& operator--()
   {
     --this->position;
     return *this;
   }
+
   TransformIterator<It, F>& operator+=(i64 n)
   {
     advance(this->position, n);
     return *this;
   }
+
   i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
   bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
   bool operator!=(const TransformIterator<It, F>& other) const { return this->position != other.position; }
@@ -189,6 +201,7 @@ public:
   // view_interface gives them (TerritoryManager's `&getAllTerritories().front()`); the range is
   // not empty, and back() takes a bidirectional one.
   decltype(auto) front() const { return *this->begin(); }
+
   decltype(auto) back() const
   {
     auto last = this->end();
@@ -210,6 +223,7 @@ struct TransformAdaptor
 {
   F f;
 };
+
 template<typename F>
 TransformAdaptor<F> transformView(F f) { return TransformAdaptor<F>{f}; }
 template<typename Range, typename F>
@@ -236,16 +250,19 @@ public:
     --before;
     return *before;
   }
+
   ReverseViewIterator<It>& operator++()
   {
     --this->position;
     return *this;
   }
+
   ReverseViewIterator<It>& operator--()
   {
     ++this->position;
     return *this;
   }
+
   bool operator==(const ReverseViewIterator<It>& other) const { return this->position == other.position; }
   bool operator!=(const ReverseViewIterator<It>& other) const { return this->position != other.position; }
 

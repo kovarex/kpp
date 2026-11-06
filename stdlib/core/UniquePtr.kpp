@@ -33,6 +33,7 @@ public:
   // be virtual when the types differ.
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
   implicit UniquePtr(UniquePtr<U, E>&& other) noexcept : held(other.release()) {}
+
   ~UniquePtr()
   {
     if (this->held)
@@ -40,11 +41,13 @@ public:
   }
 
   UniquePtr<T, D>& operator=(const UniquePtr<T, D>& other) = delete;
+
   UniquePtr<T, D>& operator=(nullptr_t)
   {
     this->reset(nullptr);
     return *this;
   }
+
   UniquePtr<T, D>& operator=(UniquePtr<T, D>&& other) noexcept
   {
     if (this != &other)
@@ -54,6 +57,7 @@ public:
     }
     return *this;
   }
+
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
   UniquePtr<T, D>& operator=(UniquePtr<U, E>&& other) noexcept
   {
@@ -86,7 +90,9 @@ public:
     if (old)
       D()(old);
   }
+
   void reset() { this->reset(nullptr); }
+
   // Gives the object up without the deleter seeing it.
   T* release()
   {
@@ -94,6 +100,7 @@ public:
     this->held = nullptr;
     return result;
   }
+
   void swap(UniquePtr<T, D>& other)
   {
     T* tmp = this->held;

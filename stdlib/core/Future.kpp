@@ -6,7 +6,6 @@ enum class FutureStatus { ready, timeout, deferred };
 // How async runs its callable (std::launch): on a new thread now, or on the first get() or wait().
 enum class Launch { async = 1, deferred = 2 };
 
-
 template<typename T>
 struct SharedState
 {
@@ -160,6 +159,7 @@ public:
   Future(const Future<T>&) = delete;
   Future(Future<T>&& other) noexcept : state(move(other.state)) {}
   Future<T>& operator=(const Future<T>&) = delete;
+
   Future<T>& operator=(Future<T>&& other) noexcept
   {
     this->state = move(other.state);
@@ -198,6 +198,7 @@ public:
   Future(const Future<void>&) = delete;
   Future(Future<void>&& other) noexcept : state(move(other.state)) {}
   Future<void>& operator=(const Future<void>&) = delete;
+
   Future<void>& operator=(Future<void>&& other) noexcept
   {
     this->state = move(other.state);
@@ -205,11 +206,13 @@ public:
   }
 
   bool valid() const { return (bool)this->state; }
+
   void get()
   {
     SharedPtr<SharedState<void>> held = move(this->state); // released, as Future<T>::get does
     held->get();
   }
+
   void wait() const { this->state->wait(); }
   template<typename Rep, typename Period>
   FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
@@ -246,6 +249,7 @@ public:
   Promise(const Promise<T>&) = delete;
   Promise(Promise<T>&& other) noexcept : state(move(other.state)) {}
   Promise<T>& operator=(const Promise<T>&) = delete;
+
   Promise<T>& operator=(Promise<T>&& other) noexcept
   {
     this->state = move(other.state);
@@ -274,6 +278,7 @@ public:
   Promise(const Promise<void>&) = delete;
   Promise(Promise<void>&& other) noexcept : state(move(other.state)) {}
   Promise<void>& operator=(const Promise<void>&) = delete;
+
   Promise<void>& operator=(Promise<void>&& other) noexcept
   {
     this->state = move(other.state);

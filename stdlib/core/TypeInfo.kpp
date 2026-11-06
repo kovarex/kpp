@@ -9,10 +9,12 @@ struct TypeInfo
   explicit TypeInfo(const char* typeName) : typeName(typeName) {}
 
   const char* name() const { return this->typeName; }
+
   bool operator==(const TypeInfo& other) const
   {
     usize n = strlen(this->typeName);
     return n == strlen(other.typeName) && memcmp(this->typeName, other.typeName, n) == 0;
   }
+
   usize hashCode() const { return hashOf(StringView(this->typeName)); }
 };

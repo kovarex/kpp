@@ -346,22 +346,26 @@ public:
   bool operator!=(const RbIterator<E>& other) const { return this->node != other.node; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
   bool operator!=(const RbIterator<F>& other) const { return this->node != other.node; }
+
   RbIterator<E>& operator++()
   {
     this->node = rbNext(this->node);
     return *this;
   }
+
   RbIterator<E> operator++(i32)
   {
     RbIterator<E> before = *this;
     this->node = rbNext(this->node);
     return before;
   }
+
   RbIterator<E>& operator--()
   {
     this->node = rbPrevious(this->node);
     return *this;
   }
+
   RbIterator<E> operator--(i32)
   {
     RbIterator<E> before = *this;
@@ -391,17 +395,21 @@ public:
   const Compare& keyCompare() const { return this->compare; }
   RbTree() { this->becomeEmpty(); }
   explicit RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
+
   RbTree(const RbTree<E, K, KeyOf, Compare>& other) : compare(other.compare)
   {
     this->becomeEmpty();
     this->copyFrom(other);
   }
+
   RbTree(RbTree<E, K, KeyOf, Compare>&& other) : compare(other.compare)
   {
     this->becomeEmpty();
     this->take(other);
   }
+
   ~RbTree() { this->clear(); }
+
   RbTree<E, K, KeyOf, Compare>& operator=(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (this != &other)
@@ -412,6 +420,7 @@ public:
     }
     return *this;
   }
+
   RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other) noexcept
   {
     if (this != &other)
@@ -455,6 +464,7 @@ public:
       return RbIterator<E>(result);
     }
   }
+
   // The first entry whose key is greater than key.
   template<typename Key>
   RbIterator<E> upperBound(const Key& key) const
@@ -481,6 +491,7 @@ public:
       return RbIterator<E>(result);
     }
   }
+
   // An entry with key (the first of equivalent ones), or end().
   template<typename Key>
   RbIterator<E> find(const Key& key) const
@@ -498,6 +509,7 @@ public:
       return at;
     }
   }
+
   template<typename Key>
   ContainerSize countOf(const Key& key) const
   {
@@ -517,6 +529,7 @@ public:
 
   // Adds entry after any entries with an equal key and returns where it went.
   RbIterator<E> insertEqual(E&& entry) { return this->emplaceEqual(move(entry)); }
+
   // The same with the entry constructed in its node from the arguments.
   template<typename... Args>
   RbIterator<E> emplaceEqual(Args&&... args)
@@ -560,6 +573,7 @@ public:
       node = asLeft ? node->left : node->right;
     }
   }
+
   // Where a node with key goes when it belongs right before hint (any position, end() included):
   // false when it does not (or, for unique keys, when an equivalent key is a neighbour), and the
   // caller searches from the root instead. Inserting at a right hint is O(1) amortized.
@@ -586,6 +600,7 @@ public:
     asLeft = true;
     return true;
   }
+
   template<typename... Args>
   RbNode<E>* newNode(Args&&... args)
   {
@@ -595,12 +610,14 @@ public:
     new (&node->entry) E(forward<Args>(args)...);
     return node;
   }
+
   RbIterator<E> link(RbNode<E>* node, RbNodeBase* parent, bool asLeft)
   {
     rbInsertAndRebalance(asLeft, node, parent, this->header);
     ++this->count;
     return RbIterator<E>(node);
   }
+
   // Takes the node at position out of the tree, entry and all.
   RbNode<E>* unlink(RbIterator<E> position)
   {
@@ -608,6 +625,7 @@ public:
     --this->count;
     return (RbNode<E>*)position.node;
   }
+
   void swap(RbTree<E, K, KeyOf, Compare>& other)
   {
     RbTree<E, K, KeyOf, Compare> held(move(other));
@@ -624,6 +642,7 @@ public:
     --this->count;
     return RbIterator<E>(next);
   }
+
   RbIterator<E> erase(RbIterator<E> first, RbIterator<E> last)
   {
     while (first != last)
@@ -649,11 +668,13 @@ private:
     this->header.right = &this->header;
     this->header.red = true;
   }
+
   void destroyNode(RbNodeBase* node)
   {
     ((RbNode<E>*)node)->entry.~E();
     free(node);
   }
+
   void destroySubtree(RbNodeBase* node)
   {
     while (node)
@@ -665,6 +686,7 @@ private:
       node = left;
     }
   }
+
   RbNodeBase* clone(const RbNodeBase* source, RbNodeBase* parent)
   {
     RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
@@ -675,6 +697,7 @@ private:
     node->right = source->right ? this->clone(source->right, node) : nullptr;
     return node;
   }
+
   void copyFrom(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (!other.header.parent)
@@ -684,6 +707,7 @@ private:
     this->header.right = rbMaximum(this->header.parent);
     this->count = other.count;
   }
+
   // Takes other's nodes; the root has to point at this header instead.
   void take(RbTree<E, K, KeyOf, Compare>& other)
   {
@@ -722,6 +746,7 @@ public:
   MapNodeHandle(MapNodeHandle<K, V>&& other) noexcept : node(other.node) { other.node = nullptr; }
   MapNodeHandle(const MapNodeHandle<K, V>& other) = delete;
   ~MapNodeHandle() { this->reset(); }
+
   MapNodeHandle<K, V>& operator=(MapNodeHandle<K, V>&& other) noexcept
   {
     if (this != &other)
@@ -737,6 +762,7 @@ public:
   explicit operator bool() const { return this->node != nullptr; }
   K& key() const { return this->node->entry.first; }
   V& mapped() const { return this->node->entry.second; }
+
   void reset()
   {
     if (this->node)
@@ -761,6 +787,7 @@ public:
   SetNodeHandle(SetNodeHandle<T>&& other) noexcept : node(other.node) { other.node = nullptr; }
   SetNodeHandle(const SetNodeHandle<T>& other) = delete;
   ~SetNodeHandle() { this->reset(); }
+
   SetNodeHandle<T>& operator=(SetNodeHandle<T>&& other) noexcept
   {
     if (this != &other)
@@ -775,6 +802,7 @@ public:
   bool empty() const { return this->node == nullptr; }
   explicit operator bool() const { return this->node != nullptr; }
   T& value() const { return this->node->entry; }
+
   void reset()
   {
     if (this->node)
@@ -833,12 +861,14 @@ public:
 
   Map() {}
   explicit Map(const Compare& compare) : tree(compare) {}
+
   // `Map<char, Kind> table = {{'+', Kind::Plus}, {'-', Kind::Minus}};`
   implicit Map(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+
   // `= {...}`: the listed entries, replacing the contents (later duplicates as in the
   // list constructor).
   Map<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
@@ -848,6 +878,7 @@ public:
       this->insert(item);
     return *this;
   }
+
   // The entries of [first, last), as insert(entry) one by one.
   template<typename It>
   Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
@@ -906,10 +937,12 @@ public:
   Pair<iterator, iterator> equal_range(const K& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
   template<typename Key>
   Pair<iterator, iterator> equal_range(const Key& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+
   Pair<const_iterator, const_iterator> equal_range(const K& key) const
   {
     return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key));
   }
+
   template<typename Key>
   Pair<const_iterator, const_iterator> equal_range(const Key& key) const
   {
@@ -924,6 +957,7 @@ public:
       return at->second;
     return this->tree.emplaceEqual(inPlaceSecond, key)->second;
   }
+
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
   {
@@ -932,6 +966,7 @@ public:
       throwOutOfRange("Map::at: key not found");
     return at->second;
   }
+
   const V& at(const K& key) const
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
@@ -939,6 +974,7 @@ public:
       throwOutOfRange("Map::at: key not found");
     return at->second;
   }
+
   // std::map::insert: the entry with the key and whether it was added (an existing value is kept).
   Pair<RbIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry)
   {
@@ -947,6 +983,7 @@ public:
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(Pair<K, V>(entry)), true);
   }
+
   Pair<RbIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(entry.first);
@@ -954,9 +991,11 @@ public:
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(move(entry)), true);
   }
+
   // std::map::emplace: the entry built from the arguments, unless its key is there already.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
+
   // std::map::try_emplace: builds the value from the arguments, in its node, only when the key is new.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
@@ -966,6 +1005,7 @@ public:
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
   }
+
   // An rvalue key is moved into the new entry, not copied (the map deserialiser's
   // `target.try_emplace(move(index), input)`). Only a K rvalue itself: a key of another type is
   // converted by the const K& overload.
@@ -977,6 +1017,7 @@ public:
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, move(key), forward<Args>(args)...), true);
   }
+
   // With a position hint (ScriptRendering's `objectMapping.try_emplace(objectMapping.end(), id,
   // move(item))`): the hint is not needed; the entry's position, new or found.
   template<typename... Args>
@@ -984,13 +1025,16 @@ public:
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
+
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }
+
   // kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
+
   // The number of entries removed (0 or 1).
   ContainerSize erase(const K& key)
   {
@@ -1000,6 +1044,7 @@ public:
     this->tree.erase(at);
     return 1;
   }
+
   iterator erase(const_iterator position) { return this->tree.erase(iterator(position)); }
   iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(iterator(first), iterator(last)); }
   reverse_iterator rbegin() { return reverse_iterator(this->tree.end()); }
@@ -1009,6 +1054,7 @@ public:
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+
   iterator insert(const_iterator hint, Pair<K, V>&& entry)
   {
     RbNodeBase* parent;
@@ -1017,8 +1063,10 @@ public:
       return this->insert(move(entry)).first;
     return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
   }
+
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
@@ -1026,15 +1074,18 @@ public:
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this->tree.unlink(iterator(position))); }
+
   MapNodeHandle<K, V> extract(const K& key)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
@@ -1042,6 +1093,7 @@ public:
       return MapNodeHandle<K, V>();
     return MapNodeHandle<K, V>(this->tree.unlink(at));
   }
+
   NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> insert(MapNodeHandle<K, V>&& handle)
   {
     NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> result;
@@ -1065,6 +1117,7 @@ public:
     result.inserted = true;
     return result;
   }
+
   // Moves the entries of other whose keys are not here into this container, node and all (no
   // copies; pointers and references to them now refer into this one). The rest stay in other.
   template<typename OtherCompare>
@@ -1085,6 +1138,7 @@ public:
       it = next;
     }
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const Map<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const Map<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
@@ -1116,11 +1170,13 @@ public:
 
   Set() {}
   explicit Set(const Compare& compare) : tree(compare) {}
+
   implicit Set(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
       this->insert(value);
   }
+
   // `= {...}`: the listed values, replacing the contents (later duplicates as in the
   // list constructor).
   Set<T, Compare>& operator=(InitializerList<T> items)
@@ -1130,6 +1186,7 @@ public:
       this->insert(item);
     return *this;
   }
+
   // The values of [first, last), as insert(value) one by one.
   template<typename It>
   Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
@@ -1179,6 +1236,7 @@ public:
       return Pair<RbIterator<T>, bool>(at, false);
     return Pair<RbIterator<T>, bool>(this->tree.insertEqual(T(value)), true);
   }
+
   Pair<iterator, bool> insert(T&& value)
   {
     RbIterator<T> at = this->tree.find(value);
@@ -1186,8 +1244,10 @@ public:
       return Pair<RbIterator<T>, bool>(at, false);
     return Pair<RbIterator<T>, bool>(this->tree.insertEqual(move(value)), true);
   }
+
   template<typename... Args>
   Pair<iterator, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
+
   // The number of values removed (0 or 1).
   ContainerSize erase(const T& value)
   {
@@ -1197,6 +1257,7 @@ public:
     this->tree.erase(at);
     return 1;
   }
+
   iterator erase(const_iterator position) { return this->tree.erase(RbIterator<T>(position)); }
   iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
@@ -1204,6 +1265,7 @@ public:
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   iterator insert(const_iterator hint, const T& entry) { return this->insert(hint, T(entry)); }
+
   iterator insert(const_iterator hint, T&& entry)
   {
     RbNodeBase* parent;
@@ -1212,8 +1274,10 @@ public:
       return this->insert(move(entry)).first;
     return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
   }
+
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
@@ -1221,15 +1285,18 @@ public:
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<T> items)
   {
     for (const T& item : items)
       this->insert(item);
   }
+
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
+
   SetNodeHandle<T> extract(const T& key)
   {
     RbIterator<T> at = this->tree.find(key);
@@ -1237,6 +1304,7 @@ public:
       return SetNodeHandle<T>();
     return SetNodeHandle<T>(this->tree.unlink(at));
   }
+
   NodeInsertReturn<iterator, SetNodeHandle<T>> insert(SetNodeHandle<T>&& handle)
   {
     NodeInsertReturn<iterator, SetNodeHandle<T>> result;
@@ -1260,6 +1328,7 @@ public:
     result.inserted = true;
     return result;
   }
+
   // Moves the entries of other whose keys are not here into this container, node and all (no
   // copies; pointers and references to them now refer into this one). The rest stay in other.
   template<typename OtherCompare>
@@ -1280,6 +1349,7 @@ public:
       it = next;
     }
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const Set<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const Set<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
@@ -1312,11 +1382,13 @@ public:
 
   MultiMap() {}
   explicit MultiMap(const Compare& compare) : tree(compare) {}
+
   implicit MultiMap(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+
   // `= {...}`: the listed entries, replacing the contents.
   MultiMap<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
   {
@@ -1325,6 +1397,7 @@ public:
       this->insert(item);
     return *this;
   }
+
   template<typename It>
   MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
@@ -1389,6 +1462,7 @@ public:
   template<typename... Args>
   RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
   RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this->tree.insertEqual(Pair<K, V>(key, value)); }
+
   // Removes every entry with key; returns how many.
   ContainerSize erase(const K& key)
   {
@@ -1402,6 +1476,7 @@ public:
     }
     return removed;
   }
+
   iterator erase(const_iterator position) { return this->tree.erase(iterator(position)); }
   iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(iterator(first), iterator(last)); }
   reverse_iterator rbegin() { return reverse_iterator(this->tree.end()); }
@@ -1411,6 +1486,7 @@ public:
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+
   iterator insert(const_iterator hint, Pair<K, V>&& entry)
   {
     RbNodeBase* parent;
@@ -1419,8 +1495,10 @@ public:
       return this->insert(move(entry));
     return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
   }
+
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
@@ -1428,15 +1506,18 @@ public:
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this->tree.unlink(iterator(position))); }
+
   MapNodeHandle<K, V> extract(const K& key)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
@@ -1444,6 +1525,7 @@ public:
       return MapNodeHandle<K, V>();
     return MapNodeHandle<K, V>(this->tree.unlink(at));
   }
+
   // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
   // empty handle.
   RbIterator<Pair<K, V>> insert(MapNodeHandle<K, V>&& handle)
@@ -1457,6 +1539,7 @@ public:
     handle.node = nullptr;
     return at;
   }
+
   // Moves all entries of other into this container, node and all.
   template<typename OtherCompare>
   void merge(MultiMap<K, V, OtherCompare>& other)
@@ -1470,6 +1553,7 @@ public:
       this->tree.link(node, parent, asLeft);
     }
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const MultiMap<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const MultiMap<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
@@ -1501,11 +1585,13 @@ public:
 
   MultiSet() {}
   explicit MultiSet(const Compare& compare) : tree(compare) {}
+
   implicit MultiSet(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
       this->insert(value);
   }
+
   // `= {...}`: the listed values, replacing the contents.
   MultiSet<T, Compare>& operator=(InitializerList<T> items)
   {
@@ -1514,6 +1600,7 @@ public:
       this->insert(item);
     return *this;
   }
+
   template<typename It>
   MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
@@ -1557,6 +1644,7 @@ public:
   iterator insert(T&& value) { return this->tree.insertEqual(move(value)); }
   template<typename... Args>
   iterator emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
+
   // Removes every value equal to value; returns how many.
   ContainerSize erase(const T& value)
   {
@@ -1570,6 +1658,7 @@ public:
     }
     return removed;
   }
+
   iterator erase(const_iterator position) { return this->tree.erase(RbIterator<T>(position)); }
   iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
@@ -1577,6 +1666,7 @@ public:
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   iterator insert(const_iterator hint, const T& entry) { return this->insert(hint, T(entry)); }
+
   iterator insert(const_iterator hint, T&& entry)
   {
     RbNodeBase* parent;
@@ -1585,8 +1675,10 @@ public:
       return this->insert(move(entry));
     return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
   }
+
   template<typename... Args>
   iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
@@ -1594,15 +1686,18 @@ public:
     for (; first != last; ++first)
       this->insert(*first);
   }
+
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<T> items)
   {
     for (const T& item : items)
       this->insert(item);
   }
+
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
+
   SetNodeHandle<T> extract(const T& key)
   {
     RbIterator<T> at = this->tree.find(key);
@@ -1610,6 +1705,7 @@ public:
       return SetNodeHandle<T>();
     return SetNodeHandle<T>(this->tree.unlink(at));
   }
+
   // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
   // empty handle.
   iterator insert(SetNodeHandle<T>&& handle)
@@ -1623,6 +1719,7 @@ public:
     handle.node = nullptr;
     return at;
   }
+
   // Moves all entries of other into this container, node and all.
   template<typename OtherCompare>
   void merge(MultiSet<T, OtherCompare>& other)
@@ -1636,6 +1733,7 @@ public:
       this->tree.link(node, parent, asLeft);
     }
   }
+
   // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
   bool operator==(const MultiSet<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const MultiSet<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }

@@ -31,6 +31,7 @@ union OptionalStorage
   T value;
   OptionalStorage() {}
 };
+
 template<typename T>
 union OptionalOwningStorage
 {
@@ -53,6 +54,7 @@ struct OptionalTrivialValue
   OptionalStorage<T> storage;
   bool present = false;
 };
+
 template<typename T>
 struct OptionalCopiedValue
 {
@@ -60,28 +62,33 @@ struct OptionalCopiedValue
   bool present = false;
 
   OptionalCopiedValue() {}
+
   OptionalCopiedValue(const OptionalCopiedValue<T>& other) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(other.storage.value);
   }
+
   // The value moved over; the source keeps its state (present, with a moved-from value).
   OptionalCopiedValue(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(move(other.storage.value));
   }
+
   OptionalCopiedValue<T>& operator=(const OptionalCopiedValue<T>& other)
   {
     optionalAssign<T>(*this, other.present, other.storage.value);
     return *this;
   }
+
   OptionalCopiedValue<T>& operator=(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     optionalAssign<T>(*this, other.present, move(other.storage.value));
     return *this;
   }
 };
+
 template<typename T>
 struct OptionalOwnedValue
 {
@@ -89,32 +96,38 @@ struct OptionalOwnedValue
   bool present = false;
 
   OptionalOwnedValue() {}
+
   OptionalOwnedValue(const OptionalOwnedValue<T>& other) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(other.storage.value);
   }
+
   OptionalOwnedValue(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(move(other.storage.value));
   }
+
   ~OptionalOwnedValue()
   {
     if (this->present)
       this->storage.value.~T();
   }
+
   OptionalOwnedValue<T>& operator=(const OptionalOwnedValue<T>& other)
   {
     optionalAssign<T>(*this, other.present, other.storage.value);
     return *this;
   }
+
   OptionalOwnedValue<T>& operator=(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     optionalAssign<T>(*this, other.present, move(other.storage.value));
     return *this;
   }
 };
+
 template<typename T>
 using OptionalValue = Conditional<isTriviallyCopyable<T>, OptionalTrivialValue<T>,
                                   Conditional<isTriviallyDestructible<T>, OptionalCopiedValue<T>, OptionalOwnedValue<T>>>;
@@ -149,16 +162,19 @@ struct Optional : OptionalValue<T>
 
   Optional() {}
   implicit Optional(NullOpt) {}
+
   implicit Optional(const T& v)
   {
     new (this->slot()) T(v);
     this->present = true;
   }
+
   implicit Optional(T&& v)
   {
     new (this->slot()) T(move(v));
     this->present = true;
   }
+
   // From a value of another type a T is built from (std::optional's converting constructor),
   // explicit when only an explicit constructor of T takes it:
   // `Optional<ActionData::SetupBlueprintData>(*parameters)` from a SetupBlueprintParameters.
@@ -170,6 +186,7 @@ struct Optional : OptionalValue<T>
     new (this->slot()) T(forward<U>(v));
     this->present = true;
   }
+
   // From an Optional of another type whose value converts (std::optional's converting
   // constructor), empty from empty: an Optional<const Territory*> from an Optional<Territory*>.
   template<typename U> requires(!isSame<U, T> && isConvertible<const U&, T>)
@@ -181,6 +198,7 @@ struct Optional : OptionalValue<T>
       this->present = true;
     }
   }
+
   // The value built from the arguments, in place (std::optional's in_place_t constructor).
   template<typename... Args>
   explicit Optional(InPlaceTag, Args&&... args)
@@ -194,6 +212,7 @@ struct Optional : OptionalValue<T>
     this->reset();
     return *this;
   }
+
   Optional<T>& operator=(const T& v)
   {
     if (this->present)
@@ -205,6 +224,7 @@ struct Optional : OptionalValue<T>
     }
     return *this;
   }
+
   Optional<T>& operator=(T&& v)
   {
     if (this->present)
@@ -222,19 +242,23 @@ struct Optional : OptionalValue<T>
   // before every value.
   template<typename U>
   bool operator==(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>) { return this->present && *this->slot() == v; }
+
   template<typename U>
   strong_ordering operator<=>(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>)
   {
     return this->present ? synthThreeWay(*this->slot(), v) : strong_ordering::less;
   }
+
   bool operator==(const Optional<T>& other) const
   {
     if (this->present != other.present)
       return false;
     return !this->present || *this->slot() == *other.slot();
   }
+
   bool operator==(NullOpt) const { return !this->present; }
   bool operator!=(NullOpt) const { return this->present; }
+
   // An absent optional orders before every present one.
   bool operator<(const Optional<T>& other) const
   {
@@ -242,6 +266,7 @@ struct Optional : OptionalValue<T>
       return false;
     return !this->present || *this->slot() < *other.slot();
   }
+
   strong_ordering operator<=>(const Optional<T>& other) const
   {
     if (this->present && other.present)
@@ -253,18 +278,21 @@ struct Optional : OptionalValue<T>
   bool has_value() const { return this->present; }
   explicit operator bool() const { return this->present; }
   bool operator!() const { return !this->present; }
+
   T& value()
   {
     if (!this->present)
       throw BadOptionalAccess();
     return *this->slot();
   }
+
   const T& value() const
   {
     if (!this->present)
       throw BadOptionalAccess();
     return *this->slot();
   }
+
   // The value, unchecked: on an empty Optional the program is wrong.
   T& operator*() { return *this->slot(); }
   const T& operator*() const { return *this->slot(); }
@@ -274,12 +302,14 @@ struct Optional : OptionalValue<T>
   // TerritoryManager's `territory.value_or(nullptr)`).
   template<typename U>
   T value_or(U&& fallback) const { return this->present ? *this->slot() : T(forward<U>(fallback)); }
+
   T valueOr(const T& fallback) const
   {
     if (this->present)
       return *this->slot();
     return fallback;
   }
+
   // Builds the value in place from the arguments (std::optional's emplace): the old value is
   // destroyed first, and nothing is assigned.
   template<typename... Args>
@@ -290,6 +320,7 @@ struct Optional : OptionalValue<T>
     this->present = true;
     return *this->slot();
   }
+
   // Gives the value up: it is destroyed at once.
   void reset()
   {
@@ -299,6 +330,7 @@ struct Optional : OptionalValue<T>
       this->slot()->~T();
     }
   }
+
   void swap(Optional<T>& other)
   {
     Optional<T> held = move(*this);

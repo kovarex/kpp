@@ -19,18 +19,21 @@ public:
   using iterator_category = InputIteratorTag;
 
   IstreambufIterator() {}
+
   explicit IstreambufIterator(InFileStream& s) : stream(&s)
   {
     this->current = s.get();
   }
 
   Char operator*() const { return (Char)this->current; }
+
   IstreambufIterator& operator++()
   {
     if (this->stream)
       this->current = this->stream->get();
     return *this;
   }
+
   bool operator==(const IstreambufIterator& other) const
   {
     bool thisEnd = this->current == -1;

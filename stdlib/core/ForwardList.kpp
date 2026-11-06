@@ -30,11 +30,13 @@ public:
   T* operator->() const { return &((ForwardNode<T>*)this->node)->value; }
   bool operator==(const ForwardIterator<T>& other) const = default;
   bool operator!=(const ForwardIterator<T>& other) const { return this->node != other.node; }
+
   ForwardIterator<T>& operator++()
   {
     this->node = this->node->next;
     return *this;
   }
+
   ForwardIterator<T> operator++(i32)
   {
     ForwardIterator<T> before = *this;
@@ -64,12 +66,14 @@ public:
   using const_pointer = const T*;
 
   ForwardList() {}
+
   implicit ForwardList(InitializerList<T> items)
   {
     ForwardIterator<T> last = this->before_begin();
     for (const T& item : items)
       last = this->insert_after(last, item);
   }
+
   // `= {...}`: the listed elements, replacing the contents.
   ForwardList<T>& operator=(InitializerList<T> items)
   {
@@ -79,13 +83,17 @@ public:
       last = this->insert_after(last, item);
     return *this;
   }
+
   ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
+
   ForwardList(ForwardList<T>&& other) noexcept
   {
     this->beforeHead.next = other.beforeHead.next;
     other.beforeHead.next = nullptr;
   }
+
   ~ForwardList() { this->clear(); }
+
   ForwardList<T>& operator=(const ForwardList<T>& other)
   {
     if (this != &other)
@@ -95,6 +103,7 @@ public:
     }
     return *this;
   }
+
   ForwardList<T>& operator=(ForwardList<T>&& other) noexcept
   {
     if (this != &other)
@@ -126,6 +135,7 @@ public:
   // Inserts after position; returns the new element's position.
   ForwardIterator<T> insert_after(ForwardIterator<T> position, const T& value) { return this->emplace_after(position, value); }
   ForwardIterator<T> insert_after(ForwardIterator<T> position, T&& value) { return this->emplace_after(position, move(value)); }
+
   template<typename... Args>
   ForwardIterator<T> emplace_after(ForwardIterator<T> position, Args&&... args)
   {
@@ -135,6 +145,7 @@ public:
     position.node->next = node;
     return ForwardIterator<T>(node);
   }
+
   // Removes the element after position; returns the position after the removed one.
   ForwardIterator<T> erase_after(ForwardIterator<T> position)
   {
@@ -143,6 +154,7 @@ public:
     this->destroyNode(removed);
     return ForwardIterator<T>(position.node->next);
   }
+
   // Removes the elements strictly between first and last; returns last.
   ForwardIterator<T> erase_after(ForwardIterator<T> first, ForwardIterator<T> last)
   {
@@ -157,6 +169,7 @@ public:
     T copy(value); // value may be an element
     return this->removeIf([&](const T& element) { return element == copy; });
   }
+
   // Removes every element for which predicate is true (std's remove_if); returns how many.
   template<typename F>
   ContainerSize removeIf(F predicate)
@@ -175,11 +188,13 @@ public:
     }
     return removed;
   }
+
   // Stable sort that relinks the nodes; elements do not move (as List's).
   void sort()
   {
     this->sort([](const T& a, const T& b) { return a < b; });
   }
+
   template<typename F>
   void sort(F less)
   {
@@ -197,6 +212,7 @@ public:
     }
     previous->next = nullptr;
   }
+
   void reverse()
   {
     ForwardLinks* reversed = nullptr;
@@ -210,6 +226,7 @@ public:
     }
     this->beforeHead.next = reversed;
   }
+
   void clear()
   {
     while (this->beforeHead.next)
@@ -222,6 +239,7 @@ private:
     ((ForwardNode<T>*)node)->value.~T();
     free(node);
   }
+
   void copyFrom(const ForwardList<T>& other)
   {
     ForwardIterator<T> last = this->before_begin();

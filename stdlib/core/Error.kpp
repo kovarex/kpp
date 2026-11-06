@@ -35,6 +35,7 @@ struct ErrorCategory
   bool operator!=(const ErrorCategory& other) const { return this->system != other.system; }
   const char* name() const { return this->system ? "system" : "generic"; }
 };
+
 ErrorCategory genericCategory() { return ErrorCategory{false}; }
 ErrorCategory systemCategory() { return ErrorCategory{true}; }
 
@@ -103,16 +104,19 @@ public:
   i32 value() const { return this->value_; }
   ErrorCategory category() const { return this->category_; }
   explicit operator bool() const { return this->value_ != 0; }
+
   void clear()
   {
     this->value_ = 0;
     this->category_ = systemCategory();
   }
+
   void assign(i32 value, ErrorCategory category)
   {
     this->value_ = value;
     this->category_ = category;
   }
+
   // The text the system has for the value: platform::systemErrorMessage's for a system error (Windows'
   // FormatMessage), strerror's for errno.
   String message() const
@@ -121,7 +125,9 @@ public:
       return String(strerror(this->value_));
     return platform::systemErrorMessage(this->value_);
   }
+
   bool operator==(const ErrorCode& other) const = default;
+
   bool operator==(Errc condition) const
   {
     if (this->value_ == 0)
@@ -158,6 +164,7 @@ public:
   virtual ~ExceptionHolderBase() {}
   virtual void rethrow() const = 0;
 };
+
 template<typename E>
 class ExceptionHolder : public ExceptionHolderBase
 {

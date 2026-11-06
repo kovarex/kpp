@@ -46,6 +46,7 @@ namespace platform
     }
     return result;
   }
+
   String narrowWide(const wchar_t* text, i32 length)
   {
     String result;
@@ -56,6 +57,7 @@ namespace platform
     }
     return result;
   }
+
   String utf8Of(const filesystem::path& p) { return narrowWide(p.c_str(), (i32)p.native().size()); }
 
   // The calling thread's errno, of the system category (a system error is an errno value here).
@@ -77,6 +79,7 @@ namespace platform
       memcpy(&value, (const char*)this->words + offset, 8);
       return value;
     }
+
     // st_mode: 32 bits in glibc, 16 in FreeBSD, at the same offset; its bits fit in 16.
     u32 mode() const
     {
@@ -149,11 +152,13 @@ namespace platform
   public:
     DirectoryReader() {}
     DirectoryReader(const DirectoryReader&) = delete;
+
     ~DirectoryReader()
     {
       if (this->directory)
         posix::closedir(this->directory);
     }
+
     // False on an error (ec); a directory without entries opens, and next() ends at once.
     bool open(const filesystem::path& p, ErrorCode& ec)
     {
@@ -167,6 +172,7 @@ namespace platform
       ec.clear();
       return true;
     }
+
     // The next entry's name and what it is (lstat); false at the end (or on an error, ec).
     bool next(WString& name, filesystem::FileInfo& info, ErrorCode& ec)
     {
@@ -210,6 +216,7 @@ namespace platform
     free(buffer);
     return result;
   }
+
   void setCurrentPath(const filesystem::path& p, ErrorCode& ec)
   {
     if (posix::chdir(utf8Of(p).c_str()) == 0)

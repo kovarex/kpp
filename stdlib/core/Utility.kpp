@@ -45,6 +45,7 @@ void relocate(T* destination, T* source, i64 count)
     source[i].~T();
   }
 }
+
 template<typename T>
 void relocateBackward(T* destination, T* source, i64 count)
 {
@@ -54,6 +55,7 @@ void relocateBackward(T* destination, T* source, i64 count)
     source[i].~T();
   }
 }
+
 // As relocate, for a container's growth into a new block (std::vector's reallocation): each object
 // is moved only when its move constructor cannot throw or it cannot be copied, otherwise copied
 // (std::move_if_noexcept), so that a throw leaves the old block whole: Factorio's
@@ -119,6 +121,7 @@ struct Pair
   Pair(A&& first, B&& second) : first(move(first)), second(move(second)) {}
   Pair(const A& first, B&& second) : first(first), second(move(second)) {}
   Pair(A&& first, const B& second) : first(move(first)), second(second) {}
+
   // From two values the members are constructed from, as std::pair's converting constructor:
   // explicit when one of them converts to its member only explicitly
   // (`Pair<SharedStringKey, bool> emptyItem{StringView(), false}` with an explicit
@@ -129,6 +132,7 @@ struct Pair
     : first(forward<U1>(first)), second(forward<U2>(second))
   {
   }
+
   // From a Pair of other types whose members these are constructed from (std::pair's converting
   // constructors), with the same explicitness rule: `map.emplace(Pair<uint32, Sound*>(...))` into
   // a Map<uint32, UniquePointer<Sound>> (ProcessionAudioCatalogue). The other's members are copied,
@@ -139,18 +143,21 @@ struct Pair
     : first(other.first), second(other.second)
   {
   }
+
   template<typename U1, typename U2>
   explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(Pair<U1, U2>&& other)
     requires(isConstructible<A, U1> && isConstructible<B, U2>)
     : first(forward<U1>(other.first)), second(forward<U2>(other.second))
   {
   }
+
   // first from first, second constructed from the arguments (with none, value-initialized), and
   // neither copied nor moved afterwards: how Map and HashMap build the entries of operator[] and
   // try_emplace, so that their values need not be movable (std::pair's piecewise constructor with
   // the key alone in the first tuple).
   template<typename U1, typename... Args>
   Pair(InPlaceSecond, U1&& first, Args&&... args) : first(forward<U1>(first)), second(forward<Args>(args)...) {}
+
   // Each member constructed from the elements of its tuple, in place (std::pair's piecewise
   // constructor): `emplace_back(piecewiseConstruct, Tuple{entity}, Tuple{target})`, or with
   // forwardAsTuple(...) for references to the arguments.
@@ -159,6 +166,7 @@ struct Pair
     : Pair(firstArgs, secondArgs, MakeIndexSequence<i32(sizeof...(Args1))>(), MakeIndexSequence<i32(sizeof...(Args2))>())
   {
   }
+
   template<typename... Args1, typename... Args2, i32... I1, i32... I2>
   Pair(Tuple<Args1...>& firstArgs, Tuple<Args2...>& secondArgs, IndexSequence<I1...>, IndexSequence<I2...>)
     : first(get<I1>(move(firstArgs))...), second(get<I2>(move(secondArgs))...)
@@ -166,6 +174,7 @@ struct Pair
   }
 
   bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }
+
   bool operator<(const Pair<A, B>& other) const
   {
     if (this->first < other.first)
@@ -174,6 +183,7 @@ struct Pair
       return false;
     return this->second < other.second;
   }
+
   // first decides, then second (each by <=>, or by < where it has none): gives >, <= and >=.
   strong_ordering operator<=>(const Pair<A, B>& other) const
   {
@@ -226,6 +236,7 @@ struct strong_ordering
   constexpr bool operator<=(i32 zero) const { return this->value <= zero; }
   constexpr bool operator>=(i32 zero) const { return this->value >= zero && this->value != 2; }
 };
+
 using weak_ordering = strong_ordering;
 using partial_ordering = strong_ordering;
 
@@ -288,6 +299,7 @@ struct Limits
     else
       return T();
   }
+
   // The least value of an integer type; the least positive normal value of a floating-point one.
   static constexpr T min()
   {
@@ -303,6 +315,7 @@ struct Limits
     else
       return T();
   }
+
   // The least value (for floating point, -max()).
   static constexpr T lowest()
   {
@@ -311,6 +324,7 @@ struct Limits
     else
       return Limits::min();
   }
+
   // The difference between 1 and the next greater value.
   static constexpr T epsilon()
   {
@@ -324,6 +338,7 @@ struct Limits
     else
       return T();
   }
+
   static constexpr T round_error()
   {
     if constexpr (isFloatingPoint<T>)
@@ -331,6 +346,7 @@ struct Limits
     else
       return T();
   }
+
   // The least positive (subnormal) value.
   static constexpr T denorm_min()
   {
@@ -344,6 +360,7 @@ struct Limits
     else
       return T();
   }
+
   // Positive infinity and a quiet NaN of a floating-point type (zero for the others). Not usable
   // in constant expressions.
   static T infinity()
@@ -356,6 +373,7 @@ struct Limits
     else
       return T();
   }
+
   // The positive quiet NaN, as MSVC's (and clang's __builtin_nan): its bits, not 0.0 / 0.0, which the
   // processor answers with its default NaN, the negative one, where an optimiser folds it to the
   // positive (a debug build's save then differed from the release build's and the C++ build's:
@@ -379,6 +397,7 @@ struct Limits
     else
       return T();
   }
+
   static T signaling_NaN()
   {
     if constexpr (sizeof(T) == 4 && isFloatingPoint<T>)
@@ -412,24 +431,28 @@ public:
   virtual ~Exception() {}
   virtual const char* what() const noexcept { return this->message.c_str(); }
 };
+
 class RuntimeError : public Exception
 {
 public:
   RuntimeError() {}
   explicit RuntimeError(const String& message) : Exception(message) {}
 };
+
 class LogicError : public Exception
 {
 public:
   LogicError() {}
   explicit LogicError(const String& message) : Exception(message) {}
 };
+
 class OutOfRange : public LogicError
 {
 public:
   OutOfRange() {}
   explicit OutOfRange(const String& message) : LogicError(message) {}
 };
+
 // What the checked accessors (at(), substr()) throw for an index or key that is not there. Out of
 // line, so that the check costs the callers only a compare and a branch.
 [[noinline]] void throwOutOfRange(const char* what) { throw OutOfRange(String(what)); }

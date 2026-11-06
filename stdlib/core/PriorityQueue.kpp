@@ -16,6 +16,7 @@ public:
   PriorityQueue() {}
   explicit PriorityQueue(const Compare& compare) : compare(compare) {}
   PriorityQueue(const Compare& compare, const Container& elements) : heap(elements), compare(compare) { this->makeHeap(); }
+
   // The elements of [first, last).
   template<typename It>
   PriorityQueue(It first, It last, const Compare& compare = Compare()) : compare(compare)
@@ -34,11 +35,13 @@ public:
     this->heap.push_back(value);
     this->siftUp(this->heap.size() - 1);
   }
+
   void push(T&& value)
   {
     this->heap.push_back(move(value));
     this->siftUp(this->heap.size() - 1);
   }
+
   template<typename... Args>
   void emplace(Args&&... args)
   {
@@ -57,11 +60,13 @@ public:
     if (!this->heap.empty())
       this->siftDown(0);
   }
+
   void swap(PriorityQueue<T, Container, Compare>& other)
   {
     ::swap(this->heap, other.heap);
     ::swap(this->compare, other.compare);
   }
+
   // kpp addition: removes every element.
   void clear() { this->heap.clear(); }
 
@@ -71,6 +76,7 @@ private:
     for (ContainerSize i = this->heap.size() / 2; i-- > 0;) // size / 2 - 1 down to 0
       this->siftDown(i);
   }
+
   void siftUp(ContainerSize i)
   {
     while (i > 0)
@@ -82,6 +88,7 @@ private:
       i = parent;
     }
   }
+
   void siftDown(ContainerSize i)
   {
     ContainerSize n = this->heap.size();

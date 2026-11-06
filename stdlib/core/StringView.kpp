@@ -50,7 +50,9 @@ public:
       count = this->byteCount - start;
     return StringView(this->chars + start, count);
   }
+
   StringView substr(ContainerSize start) const { return this->substr(start, npos); }
+
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
   u64 copy(char* dest, u64 count, u64 pos = 0) const
   {
@@ -70,6 +72,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find(StringView needle) const
   {
     if (needle.byteCount == 0)
@@ -79,6 +82,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize rfind(char c) const
   {
     for (ContainerSize i = this->byteCount; i-- > 0;)
@@ -86,6 +90,7 @@ public:
         return i;
     return npos;
   }
+
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos, as
   // String's (DebugTools.cpp's `line.rfind("ghostShimmerConfig.tint", 0) == 0`, a prefix test).
   ContainerSize rfind(char c, ContainerSize from) const
@@ -100,6 +105,7 @@ public:
         return npos;
     }
   }
+
   ContainerSize rfind(StringView needle, ContainerSize from) const
   {
     if (needle.byteCount > this->byteCount)
@@ -112,15 +118,19 @@ public:
         return npos;
     }
   }
+
   ContainerSize rfind(StringView needle) const { return this->rfind(needle, npos); }
+
   bool startsWith(StringView prefix) const
   {
     return prefix.byteCount <= this->byteCount && memcmp(this->chars, prefix.chars, prefix.byteCount) == 0;
   }
+
   bool endsWith(StringView suffix) const
   {
     return suffix.byteCount <= this->byteCount && memcmp(this->chars + this->byteCount - suffix.byteCount, suffix.chars, suffix.byteCount) == 0;
   }
+
   void removePrefix(ContainerSize count) { this->chars += count; this->byteCount -= count; }
   void remove_prefix(ContainerSize count) { this->removePrefix(count); }
   void remove_suffix(ContainerSize count) { this->byteCount -= count; }
@@ -132,6 +142,7 @@ public:
   bool ends_with(char c) const { return this->byteCount > 0 && this->chars[this->byteCount - 1] == c; }
   ContainerSize find_first_of(char c) const { return this->find(c); }
   ContainerSize find_first_of(char c, ContainerSize from) const { return this->find(c, from); }
+
   ContainerSize find_first_of(StringView set, ContainerSize from) const
   {
     if (from > this->byteCount)
@@ -139,6 +150,7 @@ public:
     ContainerSize i = this->substr(from).find_first_of(set);
     return i == npos ? npos : i + from;
   }
+
   ContainerSize find(char c, ContainerSize from) const
   {
     for (ContainerSize i = from; i < this->byteCount; ++i)
@@ -146,6 +158,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_first_of(StringView set) const
   {
     for (ContainerSize i = 0; i < this->byteCount; ++i)
@@ -154,6 +167,7 @@ public:
           return i;
     return npos;
   }
+
   ContainerSize find(StringView needle, ContainerSize from) const
   {
     if (from > this->byteCount)
@@ -162,6 +176,7 @@ public:
     ContainerSize i = rest.find(needle);
     return i == npos ? npos : i + from;
   }
+
   ContainerSize find_first_of(const char* set) const
   {
     for (ContainerSize i = 0; i < this->byteCount; ++i)
@@ -170,6 +185,7 @@ public:
           return i;
     return npos;
   }
+
   ContainerSize find_first_not_of(char c) const
   {
     for (ContainerSize i = 0; i < this->byteCount; ++i)
@@ -177,6 +193,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_first_not_of(const char* set) const
   {
     for (ContainerSize i = 0; i < this->byteCount; ++i)
@@ -190,6 +207,7 @@ public:
     }
     return npos;
   }
+
   ContainerSize find_first_not_of(StringView set, ContainerSize from) const
   {
     for (ContainerSize i = from; i < this->byteCount; ++i)
@@ -197,7 +215,9 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_first_not_of(char c, ContainerSize from) const { return this->find_first_not_of(StringView(&c, 1), from); }
+
   // The last byte at or before `from` (the whole view without it) that is (not) in set, or npos.
   ContainerSize find_last_of(StringView set, ContainerSize from = npos) const
   {
@@ -206,7 +226,9 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_last_of(char c, ContainerSize from = npos) const { return this->rfind(c, from); }
+
   ContainerSize find_last_not_of(StringView set, ContainerSize from = npos) const
   {
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
@@ -214,6 +236,7 @@ public:
         return i;
     return npos;
   }
+
   ContainerSize find_last_not_of(char c, ContainerSize from = npos) const { return this->find_last_not_of(StringView(&c, 1), from); }
   void removeSuffix(ContainerSize count) { this->byteCount -= count; }
 
@@ -231,12 +254,14 @@ public:
   {
     return this->byteCount == other.byteCount && (this->byteCount == 0 || memcmp(this->chars, other.chars, this->byteCount) == 0);
   }
+
   bool operator<(StringView other) const
   {
     ContainerSize common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
     i32 c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
     return c != 0 ? c < 0 : this->byteCount < other.byteCount;
   }
+
   // Byte-wise as <: gives >, <= and >=.
   strong_ordering operator<=>(StringView other) const
   {
@@ -258,6 +283,7 @@ private:
         return true;
     return false;
   }
+
   // Where a backward search from `from` starts: one past the last index it looks at.
   ContainerSize lastFrom(ContainerSize from) const { return from < this->byteCount ? from + 1 : this->byteCount; }
 
@@ -266,6 +292,7 @@ private:
 };
 
 String toString(StringView text) { return text.toString(); }
+
 usize hashOf(StringView text)
 {
   usize h = 14695981039346656037ull;

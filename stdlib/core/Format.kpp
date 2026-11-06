@@ -89,6 +89,7 @@ String toString(float value) { return floatingText(value, 9, true); }
 String toString(bool value) { return String(value ? "true" : "false"); }
 String toString(const String& text) { return text; }
 String toString(const char* text) { return String(text); }
+
 String toString(char c)
 {
   String result;
@@ -143,6 +144,7 @@ String& operator<<(String& out, Text text)
   text.appendTo(out);
   return out;
 }
+
 // The same on a temporary String, which it returns: `String(name) << '_'` (C++'s `std::string(name) +=
 // '_'`, TileGraphicsSet's layer prefixes).
 String operator<<(String&& out, Text text)
@@ -211,6 +213,7 @@ struct FormatString
         throw LogicError("format: a } without its {");
     }
   }
+
   consteval void checkPieces(ContainerSize pieces) const
   {
     if (pieces != this->holes)

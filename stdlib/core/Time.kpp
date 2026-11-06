@@ -14,6 +14,7 @@ struct Ratio
   static constexpr i64 num = (D < 0 ? -N : N) / gcd(N, D);
   static constexpr i64 den = (D < 0 ? -D : D) / gcd(N, D);
 };
+
 using Nano = Ratio<1, 1000000000>;
 using Micro = Ratio<1, 1000000>;
 using Milli = Ratio<1, 1000>;
@@ -49,28 +50,34 @@ public:
     ++this->ticks;
     return *this;
   }
+
   Duration<Rep, Period>& operator--()
   {
     --this->ticks;
     return *this;
   }
+
   Duration<Rep, Period> operator++(i32) { return Duration<Rep, Period>(this->ticks++); }
   Duration<Rep, Period> operator--(i32) { return Duration<Rep, Period>(this->ticks--); }
+
   Duration<Rep, Period>& operator+=(const Duration<Rep, Period>& other)
   {
     this->ticks += other.ticks;
     return *this;
   }
+
   Duration<Rep, Period>& operator-=(const Duration<Rep, Period>& other)
   {
     this->ticks -= other.ticks;
     return *this;
   }
+
   Duration<Rep, Period>& operator*=(const Rep& factor)
   {
     this->ticks *= factor;
     return *this;
   }
+
   Duration<Rep, Period>& operator/=(const Rep& divisor)
   {
     this->ticks /= divisor;
@@ -79,6 +86,7 @@ public:
 
   Duration<Rep, Period> operator+() const { return *this; }
   Duration<Rep, Period> operator-() const { return Duration<Rep, Period>(-this->ticks); }
+
   // The sum, difference and remainder of two durations of any types are in their common duration
   // (inCommonDuration: Milliseconds + Seconds is Milliseconds), as is the quotient of two, a count.
   template<typename Rep2, typename Period2>
@@ -88,6 +96,7 @@ public:
     sum.ticks += inCommonDuration(other, *this).count();
     return sum;
   }
+
   template<typename Rep2, typename Period2>
   auto operator-(const Duration<Rep2, Period2>& other) const
   {
@@ -95,6 +104,7 @@ public:
     difference.ticks -= inCommonDuration(other, *this).count();
     return difference;
   }
+
   template<typename Rep2, typename Period2>
   auto operator%(const Duration<Rep2, Period2>& other) const
   {
@@ -102,12 +112,14 @@ public:
     rest.ticks %= inCommonDuration(other, *this).count();
     return rest;
   }
+
   // How many times other fits in this duration.
   template<typename Rep2, typename Period2>
   auto operator/(const Duration<Rep2, Period2>& other) const
   {
     return inCommonDuration(*this, other).count() / inCommonDuration(other, *this).count();
   }
+
   // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
   // (Members, one per scalar type: C++ takes any rep, in the common type of the two.)
   Duration<Rep, Period> operator*(i32 factor) const { return Duration<Rep, Period>(this->ticks * factor); }
@@ -169,6 +181,7 @@ To durationCast(const Duration<Rep, Period>& d)
 {
   return convertDuration(d, (const To*)nullptr);
 }
+
 // Rounded down, up, and to the nearest (ties to even) instead of toward zero.
 template<typename To, typename Rep, typename Period>
 To floor(const Duration<Rep, Period>& d)
@@ -178,6 +191,7 @@ To floor(const Duration<Rep, Period>& d)
     t -= To(1);
   return t;
 }
+
 template<typename To, typename Rep, typename Period>
 To ceil(const Duration<Rep, Period>& d)
 {
@@ -219,6 +233,7 @@ i32 compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
   auto y = inCommonDuration(b, a);
   return x.count() < y.count() ? -1 : y.count() < x.count() ? 1 : 0;
 }
+
 // --- TimePoint and the clocks ---
 
 // A point in time of Clock: a Duration since the clock's epoch.
@@ -246,11 +261,13 @@ public:
     this->sinceEpoch += d;
     return *this;
   }
+
   TimePoint<Clock, Dur>& operator-=(const Dur& d)
   {
     this->sinceEpoch -= d;
     return *this;
   }
+
   // A time point plus or minus a duration, and the difference of two time points of the clock, are
   // in the common duration of the two (a SteadyClock time point plus Milliseconds counts in
   // nanoseconds; a Seconds one plus Milliseconds in milliseconds). The operators are members, so
@@ -261,12 +278,14 @@ public:
     auto sinceEpoch = this->sinceEpoch + d;
     return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
   }
+
   template<typename R, typename P>
   auto operator-(const Duration<R, P>& d) const
   {
     auto sinceEpoch = this->sinceEpoch - d;
     return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
   }
+
   template<typename Dur2>
   auto operator-(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch - other.sinceEpoch; }
   // Comparisons with a time point of the clock in any duration.
@@ -306,6 +325,7 @@ struct SteadyClock
 
   static TimePoint<SteadyClock> now() { return TimePoint<SteadyClock>(Nanoseconds(platform::steadyNanoseconds())); }
 };
+
 using HighResolutionClock = SteadyClock;
 
 // The wall clock (std::chrono::system_clock): UTC since 1970-01-01, in 100 ns ticks; it can jump
@@ -319,12 +339,14 @@ struct SystemClock
   static constexpr bool is_steady = false;
 
   static TimePoint<SystemClock> now() { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(platform::systemTicks())); }
+
   // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.
   static i64 to_time_t(const TimePoint<SystemClock>& t)
   {
     i64 ticks = t.time_since_epoch().count();
     return ticks >= 0 ? ticks / 10000000 : -((-ticks + 9999999) / 10000000);
   }
+
   static TimePoint<SystemClock> from_time_t(i64 seconds) { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000)); }
 };
 

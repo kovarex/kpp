@@ -13,6 +13,7 @@ It adjacentFind(It first, It last)
       return first;
   return last;
 }
+
 template<typename It, typename F>
 It adjacentFind(It first, It last, F same)
 {
@@ -33,6 +34,7 @@ OutIt copy(InIt first, InIt last, OutIt out)
     *out = *first;
   return out;
 }
+
 // Copies the elements that satisfy predicate.
 template<typename InIt, typename OutIt, typename F>
 OutIt copyIf(InIt first, InIt last, OutIt out, F predicate)
@@ -45,6 +47,7 @@ OutIt copyIf(InIt first, InIt last, OutIt out, F predicate)
     }
   return out;
 }
+
 template<typename InIt, typename OutIt>
 OutIt copyN(InIt first, i64 count, OutIt out)
 {
@@ -52,6 +55,7 @@ OutIt copyN(InIt first, i64 count, OutIt out)
     *out = *first;
   return out;
 }
+
 // Copies [first, last) to the range that ends at outLast, from the last element back (so the two
 // ranges may overlap when outLast is after last); returns the start of the copies.
 template<typename It1, typename It2>
@@ -61,6 +65,7 @@ It2 copyBackward(It1 first, It1 last, It2 outLast)
     *--outLast = *--last;
   return outLast;
 }
+
 // Moves [first, last) to the range starting at out (std::move with three arguments).
 template<typename InIt, typename OutIt>
 OutIt move(InIt first, InIt last, OutIt out)
@@ -69,6 +74,7 @@ OutIt move(InIt first, InIt last, OutIt out)
     *out = move(*first);
   return out;
 }
+
 template<typename It1, typename It2>
 It2 moveBackward(It1 first, It1 last, It2 outLast)
 {
@@ -87,6 +93,7 @@ bool equal(It1 first1, It1 last1, It2 first2)
       return false;
   return true;
 }
+
 template<typename It1, typename It2, typename F>
 bool equal(It1 first1, It1 last1, It2 first2, F same)
 {
@@ -95,6 +102,7 @@ bool equal(It1 first1, It1 last1, It2 first2, F same)
       return false;
   return true;
 }
+
 template<typename It1, typename It2>
 bool equal(It1 first1, It1 last1, It2 first2, It2 last2)
 {
@@ -111,6 +119,7 @@ It fillN(It first, i64 count, const V& value)
     *first = value;
   return first;
 }
+
 template<typename It, typename F>
 It generateN(It first, i64 count, F generator)
 {
@@ -131,6 +140,7 @@ It isSortedUntil(It first, It last, F less)
       return next;
   return last;
 }
+
 template<typename It>
 It isSortedUntil(It first, It last) { return isSortedUntil(first, last, Less<>()); }
 template<typename It, typename F>
@@ -151,11 +161,13 @@ bool lexicographicalCompare(It1 first1, It1 last1, It2 first2, It2 last2, F less
   }
   return first1 == last1 && first2 != last2;
 }
+
 template<typename It1, typename It2>
 bool lexicographicalCompare(It1 first1, It1 last1, It2 first2, It2 last2)
 {
   return lexicographicalCompare(first1, last1, first2, last2, Less<>());
 }
+
 // [first1, last1) against [first2, last2) element by element (std::lexicographical_compare_three_way):
 // the first pair that differs decides, by synthThreeWay; a range that is a proper prefix of the
 // other orders before it.
@@ -193,6 +205,7 @@ OutIt merge(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
   }
   return copy(first2, last2, out);
 }
+
 template<typename It1, typename It2, typename OutIt>
 OutIt merge(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return merge(first1, last1, first2, last2, out, Less<>()); }
 
@@ -227,6 +240,7 @@ bool nextPermutation(It first, It last, F less)
     }
   }
 }
+
 template<typename It>
 bool nextPermutation(It first, It last) { return nextPermutation(first, last, Less<>()); }
 
@@ -258,6 +272,7 @@ void nthElement(It first, It nth, It last, F less)
   }
   insertionSort(first, last, less);
 }
+
 template<typename It>
 void nthElement(It first, It nth, It last)
 {
@@ -333,6 +348,7 @@ OutIt setDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F l
   }
   return out;
 }
+
 template<typename It1, typename It2, typename OutIt>
 OutIt setDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return setDifference(first1, last1, first2, last2, out, Less<>()); }
 
@@ -357,6 +373,7 @@ OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F
   }
   return out;
 }
+
 template<typename It1, typename It2, typename OutIt>
 OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return setIntersection(first1, last1, first2, last2, out, Less<>()); }
 
