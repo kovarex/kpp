@@ -2921,7 +2921,14 @@ namespace
       p->type = parseType();
       if (!p->type)
       {
-        error("expected parameter type");
+        // `constexpr Pair<int, int> t(100, 200);` at namespace or class scope: a function there
+        // (design.md 22), whose parameter list holds a value: say how a variable is written.
+        if (isKpp() && (at(TokenKind::Number) || at(TokenKind::String) || at(TokenKind::Char) || at(Kw::true_) || at(Kw::false_) ||
+                        at(Kw::nullptr_) || at(P::Minus) || at(P::Amp) || at(P::LBrace)))
+          error("expected parameter type: at namespace and class scope `T name(...)` declares a function; write a variable `T name{...}` or "
+                "`T name = T(...)` (design.md 22)");
+        else
+          error("expected parameter type");
         return nullptr;
       }
       if (accept(P::Ellipsis))

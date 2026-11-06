@@ -1,0 +1,12 @@
+// spec: at namespace scope `T name(100, 200)` declares a function (design.md 22), so a value in its parentheses is an error that says how a variable is written (`T name{...}` or `T name = T(...)`), where it said only "expected parameter type"
+// error: namespace_object_with_parentheses_is_error.kpp:8: error: expected parameter type: at namespace and class scope `T name(...)` declares a function; write a variable `T name{...}` or `T name = T(...)` (design.md 22)
+template<class A, class B> struct Duo
+{
+  A a;
+  B b;
+};
+constexpr Duo<int, int> t(100, 200);
+int main()
+{
+  return 0;
+}
