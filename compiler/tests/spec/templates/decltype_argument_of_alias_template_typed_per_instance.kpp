@@ -1,0 +1,24 @@
+// spec: a decltype written as a class template's argument inside an alias template, `typename Cond<..., decltype(true ? declv<M>() : declv<N>())>::Type`, is typed under each instance's arguments: M = u32 and N = i32 meet at u32, a prvalue (the usual arithmetic conversions), so a function returning the alias adds 4 and 6 to the u32 10, as clang has it
+// found by the library's gcd and lcm of any two integer types (b90c50f3): lcm(u32, int) in the converted game's Blueprint was "codegen does not support the type T (a template parameter)": the decltype, which a qualified name's lookup converts with no tokens, kept the generic walk's M&& (master's headline 2, 2026-11-06)
+template<bool B, typename T, typename F> struct Cond { using Type = T; };
+template<typename T, typename F> struct Cond<false, T, F> { using Type = F; };
+template<typename T> T&& declv();
+template<typename A, typename B> struct Same { static constexpr bool value = false; };
+template<typename A> struct Same<A, A> { static constexpr bool value = true; };
+
+template<typename M, typename N>
+using Common = typename Cond<Same<M, N>::value, M, decltype(true ? declv<M>() : declv<N>())>::Type;
+
+template<typename M, typename N> Common<M, N> add(M m, N n) { return m + n; }
+
+static_assert(Same<Common<u32, i32>, u32>::value && Same<Common<u32, u32>, u32>::value && Same<Common<i64, u8>, i64>::value);
+
+int main()
+{
+  u32 a = 4;
+  i32 b = 6;
+  u8 c = 200;
+  i64 d = -1;
+  println(add(a, b), " ", add(a, a), " ", add(d, c));
+  return 0;
+}

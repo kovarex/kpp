@@ -347,7 +347,7 @@ namespace
       T* n = arena.make<T>();
       n->kind = nodeKindOf<T>();
       n->token = token;
-      if constexpr (std::is_same_v<T, LiteralExpr>)
+      if constexpr (std::is_same_v<T, LiteralExpr> || std::is_same_v<T, DecltypeType>)
         n->file = &out;
       ++out.nodeCount;
       return n;

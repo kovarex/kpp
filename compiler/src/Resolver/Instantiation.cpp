@@ -1787,9 +1787,19 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       // anew with them. So is one that names a parameter they bind, whatever its generic type:
       // `decltype(check<T>(nullptr))` took the generic walk to the overload it could still judge
       // (`FalseType check(...)`, the other's return type depending on T).
-      if ((ctx.function || ctx.tokens) && ctx.subst && !ctx.subst->empty() && d->expr &&
-          (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *ctx.subst)))
-        if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown() && !types.isDependent(typed))
+      // (In a context with no tokens, a qualified name's template arguments as a lookup converts them,
+      // `typename Conditional<isSame<M, N>, M, decltype(true ? declval<M>() : declval<N>())>::Type` in
+      // an alias template: its own file's, so that it is typed anew there too; it kept the generic
+      // walk's M&&, so lcm(u32, int) returned a type naming a template parameter, D 2026-11-06.)
+      TypeContext own = ctx;
+      if (!own.function && !own.tokens && d->file && d->file->tokens)
+      {
+        own.tokens = d->file->tokens;
+        own.text = d->file->text;
+      }
+      if ((own.function || own.tokens) && own.subst && !own.subst->empty() && d->expr &&
+          (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *own.subst)))
+        if (const Ty* typed = typeOfSignatureExpression(d->expr, own); typed && typed->isKnown() && !types.isDependent(typed))
           return decltypeOfExpr(typed);
       return generic;
     }
