@@ -105,5 +105,10 @@ struct RequiresExpr : Expr
   Span<Expr*> nested;
   bool satisfied = false;
 };
-struct ParenExpr : Expr { Expr* inner; };
+// holds: the left operand of `a ?: b` or `a?->b`, which the parser writes as a ConditionalExpr of this
+// parenthesis: `(a) ? held : b` and `(a) ? held->b : default`. Evaluated once, as the condition, and
+// each HeldExpr then is its value. (A parenthesis, so that whatever walks an expression walks it.)
+struct ParenExpr : Expr { Expr* inner; bool holds = false; };
+struct HeldExpr : Expr { ParenExpr* holder; };
+struct DefaultValueExpr : Expr {}; // `a?->b` when a is not set: the default value of the type b has
 struct ErrorExpr : Expr {};

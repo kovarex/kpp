@@ -51,14 +51,13 @@ int later(Late& late) { return late.x; }
 struct Late { int x = 0; };
 ```
 
-### No preprocessor (built, with one gap)
+### No preprocessor (built)
 
 - **C++:** `#include`, `#define` and `#if` run before the language.
 - **kpp:** there are no macros. Constants, `config::` values, `if constexpr`, `when`, `assert` and
   `for constexpr` do their work (next section). The converter turns a C++ program's macros into these.
 - **Why:** 22,647 macro expansions in Factorio fell into eleven cases, none needing text substitution.
-- **Gap:** kppc skips a `#` line in kpp source today instead of refusing it, so `#include` does nothing
-  and the code between `#ifdef` and `#endif` is compiled. Pending spec
+- **Rule:** a `#` line in kpp source, `%:` too, is a compile error, each one reported. Spec
   `language/preprocessor_directive_is_error`.
 - **See:** [design 7][d7]; [macro-survey.md](macro-survey.md).
 
@@ -500,14 +499,14 @@ p[Property::Text] = String("hello");
 
 ## Expressions
 
-### `?->` and `?:` (this stage, rules open)
+### `?->` and `?:` (built, rules awaiting kovarex)
 
 - **C++:** neither (`?:` is a GNU extension).
 - **kpp:** `a?->b?->foo()` calls `foo` only when `a` and `a->b` are set, and otherwise gives the last
-  member's default value. `a ?: b` is `a ? a : b` with `a` evaluated once. *Open:* whether a null skips
-  the rest of the chain, whether the result is always a value, what may stand left of `?->`, and how
-  `?:` types. Both parse today, and code generation refuses them.
-- **See:** [design 6][d6]; the readme's Planned.
+  member's default value. `a ?: b` is `a ? a : b` with `a` evaluated once. As built, not yet confirmed:
+  a `?->` skips the rest of the postfix chain, its result is always a value, a pointer or a class with
+  `operator->` and a bool conversion may stand left of it, and `?:` types as `a ? a : b`.
+- **See:** design 23a.
 
 ### Three-way comparison has one result type (built)
 

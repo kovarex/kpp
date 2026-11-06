@@ -399,6 +399,12 @@ namespace
         push(TokenKind::Punctuator, start, uint32_t(*token));
         return;
       }
+      if (p[0] == '?' && p[1] == ':' && p[2] == ':')
+      {
+        ++p; // `c ?::x : y`: a conditional, not an Elvis
+        push(TokenKind::Punctuator, start, uint32_t(P::Question));
+        return;
+      }
       for (uint32_t id : punctuatorIndex().byFirst[uint8_t(*p)])
       {
         std::string_view s = punctuators[id];

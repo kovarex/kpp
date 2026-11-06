@@ -1,0 +1,32 @@
+// spec: left of `?->` a class with operator-> and a bool conversion is set when its bool says so: T^, Optional, one of the program's; a temporary lives to the end of the full expression
+class Item
+{
+public:
+  int v = 3;
+  int get() const { return this->v; }
+};
+class Handle
+{
+public:
+  Item* item;
+  Handle(Item* i) : item(i) {}
+  ~Handle() { println("handle gone"); }
+  Item* operator->() const { return this->item; }
+  explicit operator bool() const { return this->item != nullptr; }
+};
+Handle make(Item* i)
+{
+  return Handle(i);
+}
+int main()
+{
+  Item item;
+  Item^ owned = makeUnique<Item>();
+  Item^ empty;
+  Optional<Item> some = Item();
+  Optional<Item> nothing;
+  println(owned?->get(), " ", empty?->get(), " ", some?->v, " ", nothing?->v);
+  println(make(&item)?->get());
+  println(make(nullptr)?->get());
+  return 0;
+}

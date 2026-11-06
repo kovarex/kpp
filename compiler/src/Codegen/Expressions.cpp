@@ -331,7 +331,28 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       }
       return {p, e->ty};
     }
-    case NodeKind::ParenExpr: return rvalue(static_cast<ParenExpr*>(e)->inner);
+    case NodeKind::ParenExpr:
+      return static_cast<ParenExpr*>(e)->holds ? holdValue(static_cast<ParenExpr*>(e)) : rvalue(static_cast<ParenExpr*>(e)->inner);
+    case NodeKind::HeldExpr:
+    {
+      const HeldValue& held = heldValues.at(static_cast<HeldExpr*>(e)->holder);
+      return held.address.empty() ? held.value : load(held.address, held.value.ty, e);
+    }
+    case NodeKind::DefaultValueExpr:
+    {
+      const Ty* t = types.stripRef(e->ty);
+      if (!t || !t->isKnown())
+        unsupported(e, "the default value of an unknown type");
+      if (t->kind == TyKind::Void)
+        return {"", t};
+      std::string slot = newObjectSlot(t, e);
+      initializeFrom(slot, t, e, e);
+      if (!isClass(t))
+        return load(slot, t, e);
+      if (needsDestruction(t, e))
+        statementTemps.push_back({slot, t});
+      return {slot, t};
+    }
     case NodeKind::MemberExpr:
     {
       auto* m = static_cast<MemberExpr*>(e);

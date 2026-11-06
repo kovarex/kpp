@@ -4,6 +4,35 @@
 
 namespace
 {
+  // ParenExpr::holds's value while the ConditionalExpr it is the condition of evaluates (this thread's;
+  // a recursive call's own, the caller's back after it).
+  thread_local std::unordered_map<const ParenExpr*, ConstValue> heldConstants;
+
+  struct HeldConstant
+  {
+    HeldConstant(const Expr* cond, const ConstValue& value)
+    {
+      if (cond->kind != NodeKind::ParenExpr || !static_cast<const ParenExpr*>(cond)->holds)
+        return;
+      holder = static_cast<const ParenExpr*>(cond);
+      if (auto it = heldConstants.find(holder); it != heldConstants.end())
+        saved = it->second;
+      heldConstants.insert_or_assign(holder, value);
+    }
+    ~HeldConstant()
+    {
+      if (holder && saved)
+        heldConstants.insert_or_assign(holder, *saved);
+      else if (holder)
+        heldConstants.erase(holder);
+    }
+    HeldConstant(const HeldConstant&) = delete;
+    HeldConstant& operator=(const HeldConstant&) = delete;
+
+    const ParenExpr* holder = nullptr;
+    std::optional<ConstValue> saved;
+  };
+
   // KPP_VERIFY_DECISIONS=1: the interpreter's own choice of an operator function too, compared with the
   // one the checker recorded (design.md 24), as codegen's are (Emitter::verifyDecisions).
   bool verifyInterpreterDecisions()
@@ -734,6 +763,17 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
       }
       return ConstValue::integer(static_cast<RequiresExpr*>(e)->satisfied, types.boolType()); // set where the expression was typed
+    case NodeKind::HeldExpr:
+      if (auto it = heldConstants.find(static_cast<HeldExpr*>(e)->holder); it != heldConstants.end())
+        return it->second;
+      return std::nullopt;
+    case NodeKind::DefaultValueExpr:
+    {
+      const Ty* t = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+      if (t && (t->isArithmetic() || t->kind == TyKind::Enum))
+        return constArith().convert(ConstValue::integer(0, types.intType()), t);
+      return std::nullopt; // (a class's or a pointer's: no constant here)
+    }
     case NodeKind::ConditionalExpr:
     {
       // `isSigned<T> ? count - 1 : count`: only the branch taken has to be a constant. Its value
@@ -746,6 +786,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return std::nullopt;
       if (!c->then)
         return *holds ? cond : constValue(c->else_, ctx, depth + 1); // `a ?: b`
+      // (`a ?: b`, `a?->b`: a evaluated once, its HeldExprs that value, in a recursive call this one's.)
+      HeldConstant held(c->cond, *cond);
       std::optional<ConstValue> v = constValue(*holds ? c->then : c->else_, ctx, depth + 1);
       auto scalar = [this](const Ty* t) {
         t = t ? types.unqualified(types.stripRef(t)) : nullptr;

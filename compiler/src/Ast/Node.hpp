@@ -41,7 +41,7 @@ struct Span
   X(NameExpr) X(LiteralExpr) X(ThisExpr) X(CallExpr) X(IndexExpr) X(MemberExpr) X(UnaryExpr) \
   X(BinaryExpr) X(ConditionalExpr) X(CastExpr) X(NamedCastExpr) X(SizeofExpr) X(CallerExpr) X(NameofExpr) X(NoexceptExpr) X(NewExpr) \
   X(DeleteExpr) X(LambdaExpr) X(BraceInitExpr) X(ThrowExpr) X(FunctionalCastExpr) X(TypeidExpr) \
-  X(FoldExpr) X(RequiresExpr) X(ErrorExpr) X(ParenExpr)
+  X(FoldExpr) X(RequiresExpr) X(ErrorExpr) X(ParenExpr) X(HeldExpr) X(DefaultValueExpr)
 
 enum class NodeKind : uint8_t
 {

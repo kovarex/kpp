@@ -1,0 +1,40 @@
+// spec: `a?->b?->foo()` calls foo only when a and a->b are set, and gives its result's default value when one is not; a is evaluated once
+class Leaf
+{
+public:
+  int value = 7;
+  int twice() { return this->value * 2; }
+  void touch() { println("touched"); }
+};
+class Node
+{
+public:
+  Leaf* leaf = nullptr;
+  Node* next = nullptr;
+  Leaf* get() { return this->leaf; }
+};
+int evaluated = 0;
+Node* once(Node* n)
+{
+  ++evaluated;
+  return n;
+}
+int main()
+{
+  Leaf leaf;
+  Node full;
+  full.leaf = &leaf;
+  Node empty;
+  Node* none = nullptr;
+  Node* set = &full;
+  println(none?->leaf?->twice(), " ", set?->leaf?->twice(), " ", empty.leaf?->value, " ", set?->leaf?->value);
+  println(none?->leaf == nullptr, " ", set?->leaf == &leaf);
+  println(set?->get()?->value, " ", none?->get()?->value);
+  none?->leaf?->touch();
+  set?->leaf?->touch();
+  println(once(set)?->leaf?->value, " ", evaluated);
+  println(once(none)?->leaf?->value, " ", evaluated);
+  int total = set?->leaf?->value + 1;
+  println(total);
+  return 0;
+}

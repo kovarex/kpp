@@ -1,0 +1,25 @@
+// spec: `?->` in a template (each instance its own result type) and in a lambda, which captures what the chain names
+template<class T> class Box
+{
+public:
+  T value{};
+  T read() const { return this->value; }
+};
+template<class T> T readOf(Box<T>* box)
+{
+  return box?->read();
+}
+int main()
+{
+  Box<int> a;
+  a.value = 4;
+  Box<double> b;
+  b.value = 1.5;
+  Box<int>* none = nullptr;
+  Box<int>* set = &a;
+  println(readOf(&a), " ", readOf(&b), " ", readOf<int>(nullptr));
+  auto look = [&]() { return set?->value; };
+  auto miss = [none]() { return none?->value; };
+  println(look(), " ", miss());
+  return 0;
+}

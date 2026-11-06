@@ -1,0 +1,70 @@
+// spec: `?->` and `?:` in conditions, operands, arguments, an initializer's capture, a loop, a template's body (a void result too), sizeof, and constants; a static member and an enumerator's result; a temporary to the end of the full expression
+// checked by hand against the rule (design.md 23a); clang has no `?->`
+class Leaf
+{
+public:
+  int value = 7;
+  int items[3] = {1, 2, 3};
+  static constexpr int fixed = 11;
+  enum class Kind { Small, Big };
+  Kind kind = Kind::Big;
+  bool ok() const { return this->value > 0; }
+  int add(int x) const { return this->value + x; }
+  const int& ref() const { return this->value; }
+  Leaf* me() { return this; }
+};
+class Tag
+{
+public:
+  int id = 1;
+  ~Tag() { println("tag gone"); }
+  Tag& self() { return *this; }
+  int get() { return this->id; }
+};
+Tag makeTag() { return Tag(); }
+template<class T> auto call(T* p) { return p?->ok(); }
+template<class T> void poke(T* p) { p?->me(); }
+template<class T> T pick(T a, T b) { return a ?: b; }
+constexpr int choose(int a) { return a ?: 3; }
+static_assert(choose(0) == 3);
+static_assert(choose(4) == 4);
+int main()
+{
+  Leaf leaf;
+  Leaf* set = &leaf;
+  Leaf* none = nullptr;
+  Leaf*& alias = set;
+  if (set?->ok())
+    println("ok");
+  if (!none?->ok())
+    println("not ok");
+  println(alias?->value);
+  println(none?->fixed, " ", set?->fixed);
+  println(none?->kind == Leaf::Kind::Small, " ", set?->kind == Leaf::Kind::Big);
+  println(none?->items == nullptr, " ", set?->items != nullptr);
+  auto copy = set?->value;
+  copy = 9;
+  println(copy, " ", leaf.value);
+  println(sizeof(set?->value), " ", sizeof(set?->kind));
+  int fromRef = set?->ref();
+  println(fromRef);
+  println(set?->add(none?->value), " ", none?->add(set?->value));
+  println(set?->me()?->me()?->value);
+  println(makeTag().self().get(), " ", (&leaf)?->value);
+  println(call(set), " ", call(none));
+  poke(none);
+  println(pick(0, 4), " ", pick(5, 4));
+  println(choose(0), " ", choose(4));
+  auto f = [p = set]() { return p?->value; };
+  println(f());
+  int total = 0;
+  for (Leaf* p : {set, none, set})
+    total += p?->value ?: 100;
+  println(total);
+  println(set?->value + none?->value * 2);
+  bool both = set?->ok() && none?->ok();
+  println(both);
+  int picked = set ? set?->value : 0;
+  println(picked);
+  return 0;
+}

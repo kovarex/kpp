@@ -615,6 +615,40 @@ auto codegen::Emitter::commonArithmetic(const Ty* a, const Ty* b) -> const Ty*
   return types.usualArithmetic(promoted(a), promoted(b));
 }
 
+// `a` of `a ?: b` and `a?->b`, evaluated here, once, for the conditional that holds it: an lvalue of a
+// scalar type stays one (`(a ?: b) = 3`), any other value is kept. A class's value is its address.
+auto codegen::Emitter::holdValue(ParenExpr* p) -> Value
+{
+  HeldValue held;
+  const Ty* t = p->inner->ty ? types.unqualified(types.stripRef(p->inner->ty)) : nullptr;
+  bool scalar = t && (t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || t->kind == TyKind::Float ||
+                      t->kind == TyKind::Enum || t->kind == TyKind::Pointer);
+  if (scalar && isLvalueExpression(p->inner) && !bindsBitField(p->inner))
+  {
+    held.address = lvalue(p->inner);
+    held.value = load(held.address, t, p);
+  }
+  else
+  {
+    held.value = rvalue(p->inner);
+    held.value.isTemporary = false; // (the statement's, once, whatever the branches do with it)
+  }
+  heldValues[p] = held;
+  return held.value;
+}
+
+auto codegen::Emitter::heldAddress(ParenExpr* p, Node* at) -> std::string
+{
+  const HeldValue& held = heldValues.at(p);
+  if (!held.address.empty())
+    return held.address;
+  if (isClass(types.stripRef(held.value.ty)))
+    return held.value.text;
+  std::string slot = newObjectSlot(held.value.ty, at);
+  store(held.value, slot, held.value.ty, at);
+  return slot;
+}
+
 auto codegen::Emitter::load(const std::string& addr, const Ty* ty, Node* at) -> Value
 {
   ty = types.stripRef(ty);
@@ -887,7 +921,14 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       fn += "  " + r + " = getelementptr inbounds " + llType(base.ty->inner, e) + ", ptr " + base.text + ", i64 " + index.text + "\n";
       return r;
     }
-    case NodeKind::ParenExpr: return lvalue(static_cast<ParenExpr*>(e)->inner);
+    case NodeKind::ParenExpr:
+      if (auto* p = static_cast<ParenExpr*>(e); p->holds)
+      {
+        holdValue(p);
+        return heldAddress(p, e);
+      }
+      return lvalue(static_cast<ParenExpr*>(e)->inner);
+    case NodeKind::HeldExpr: return heldAddress(static_cast<HeldExpr*>(e)->holder, e);
     case NodeKind::CastExpr:
     {
       // `(T&&)value` in forward, `(Base&)derived`: a cast to a reference names the operand

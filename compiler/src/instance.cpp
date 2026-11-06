@@ -636,9 +636,19 @@ Expr* InstanceCopier::expr(const Expr* e)
     {
       auto* c = raw(static_cast<const ParenExpr*>(e));
       c->inner = expr(c->inner);
+      if (c->holds)
+        holders[static_cast<const ParenExpr*>(e)] = c;
       out = c;
       break;
     }
+    case NodeKind::HeldExpr:
+    {
+      auto* c = raw(static_cast<const HeldExpr*>(e));
+      c->holder = holders.at(c->holder); // (its condition, copied first)
+      out = c;
+      break;
+    }
+    case NodeKind::DefaultValueExpr: out = raw(static_cast<const DefaultValueExpr*>(e)); break;
     default: return const_cast<Expr*>(e);
   }
   out->ty = nullptr; // typed again, for this instantiation

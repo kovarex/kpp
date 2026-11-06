@@ -96,6 +96,8 @@ inline bool isLvalueExpression(const Expr* e)
     }
     case NodeKind::ParenExpr:
       return isLvalueExpression(static_cast<const ParenExpr*>(e)->inner);
+    case NodeKind::HeldExpr:
+      return isLvalueExpression(static_cast<const HeldExpr*>(e)->holder->inner);
     case NodeKind::ConditionalExpr:
     {
       // `c ? shift.second : shift.first`: two lvalues of one type make an lvalue (C++), a call

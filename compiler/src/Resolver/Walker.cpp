@@ -6169,6 +6169,7 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
   switch (e->kind)
   {
     case NodeKind::LiteralExpr: case NodeKind::NameExpr: case NodeKind::ThisExpr: case NodeKind::SizeofExpr:
+    case NodeKind::HeldExpr: case NodeKind::DefaultValueExpr:
     case NodeKind::NameofExpr: case NodeKind::NoexceptExpr:
       return false;
     case NodeKind::ParenExpr: return canThrow(static_cast<ParenExpr*>(e)->inner, unsupported);
@@ -7749,6 +7750,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
     }
     case NodeKind::LiteralExpr: return record(e, typeOfLiteral(static_cast<LiteralExpr*>(e)));
     case NodeKind::ThisExpr: return record(e, thisType ? thisType : unknown(Why::Unsupported));
+    case NodeKind::HeldExpr: return record(e, static_cast<HeldExpr*>(e)->holder->ty);
     case NodeKind::CallExpr: return record(e, typeOfCall(static_cast<CallExpr*>(e)));
     case NodeKind::IndexExpr:
     {
@@ -7848,6 +7850,15 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       auto* c = static_cast<ConditionalExpr*>(e);
       const Ty* cond = walkExpr(c->cond);
       const Ty* then = walkExpr(c->then);
+      if (c->else_ && c->else_->kind == NodeKind::DefaultValueExpr)
+      {
+        // `a?->b`: a value of b's type, whatever b is (a reference gives a copy).
+        const Ty* value = then ? types.unqualified(types.stripRef(then)) : nullptr;
+        if (value && value->kind == TyKind::Array && value->inner)
+          value = types.pointer(value->inner);
+        record(c->else_, value);
+        return record(e, value);
+      }
       const Ty* other = walkExpr(c->else_);
       if (!c->then)
         return record(e, cond); // Elvis

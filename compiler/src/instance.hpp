@@ -72,6 +72,7 @@ public:
 private:
   Arena& arena;
   std::unordered_map<Decl*, Decl*> decls; // declaration inside the copied part -> its copy
+  std::unordered_map<const ParenExpr*, ParenExpr*> holders; // ParenExpr::holds -> its copy, for the copied HeldExprs
   const Decl* root = nullptr;             // the function being copied
   size_t nodes = 0;
 };

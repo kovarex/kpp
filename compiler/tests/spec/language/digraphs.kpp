@@ -1,10 +1,6 @@
-// spec: `<:` `:>` `<%` `%>` are `[` `]` `{` `}`, in a lambda's capture too, and `%:` starts a directive ([lex.digraph])
+// spec: `<:` `:>` `<%` `%>` are `[` `]` `{` `}`, in a lambda's capture too ([lex.digraph]); `%:` is a `#`, and a directive an error: language/preprocessor_directive_is_error
 // found by thread A's comparison with clang (2026-11-06): "expected declaration"
-%:if 0
-struct Gone;
-%:else
 struct Kept <% int v = 2; %>;
-%:endif
 struct S <% int a<:2:>; %>;
 template<class T> struct V <% T x; %>;
 int main()

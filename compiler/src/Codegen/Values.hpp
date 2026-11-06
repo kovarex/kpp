@@ -91,6 +91,17 @@
 
     const Ty* commonArithmetic(const Ty* a, const Ty* b);
 
+    // The left operand of `a ?: b` and `a?->b` (ParenExpr::holds), kept for its HeldExprs: its value, and
+    // its address when it is a scalar lvalue.
+    struct HeldValue
+    {
+      Value value;
+      std::string address;
+    };
+    std::unordered_map<const ParenExpr*, HeldValue> heldValues;
+    Value holdValue(ParenExpr* p);
+    std::string heldAddress(ParenExpr* p, Node* at);
+
     Value load(const std::string& addr, const Ty* ty, Node* at);
 
     void store(Value v, const std::string& addr, const Ty* ty, Node* at);

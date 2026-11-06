@@ -63,6 +63,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   falling out of the switch.
 - **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
   through its `appendTo`, and a pointer prints only through `address(p)`.
+- **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
+  `a->b` are set, and as an expression gives the last member's default value when one is not;
+  `a ?: b` is `a ? a : b` with `a` evaluated once.
 
 ### Less boilerplate
 
@@ -232,9 +235,6 @@ Decided, and not built yet:
 - **Required `override`** on every function that overrides a virtual one.
 - **`this` is a reference**: `this[7]`, `!this`, `this.x`. (Inside an enum's methods `this` already
   is the value.)
-- **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
-  `a->b` are set, and as an expression gives the last member's default value when one is not;
-  `a ?: b` is `a ? a : b` with `a` evaluated once.
 - **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
   hosts").
 - **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio

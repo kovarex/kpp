@@ -1,0 +1,26 @@
+// spec: `?->`'s result is a value, so nothing assigns to it; a result with no default constructor has no default value
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:17: error: the left operand of an assignment is no lvalue
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:21: error: `?->` gives a default value when its object is not set, and Plain has no default constructor
+class Plain
+{
+public:
+  Plain(int v) {}
+};
+class A
+{
+public:
+  int x = 0;
+  Plain plain = Plain(1);
+};
+void write(A* a)
+{
+  a?->x = 3;
+}
+Plain read(A* a)
+{
+  return a?->plain;
+}
+int main()
+{
+  return 0;
+}

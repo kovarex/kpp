@@ -302,6 +302,14 @@ namespace
              !static_cast<const ClassDecl*>(currentParent)->isTypedUnion;
     }
 
+    // At co_return, co_await, co_yield: kpp has no coroutines, and a statement that only reads like one
+    // would be a silent wrong answer. (The C++ the converter reads keeps its reading.)
+    void refuseCoroutine()
+    {
+      if (isKpp() && !at(Kw::return_))
+        error("coroutines are not supported");
+    }
+
     void error(const char* message)
     {
       allErrors.push_back({pos, message});
@@ -4848,6 +4856,7 @@ namespace
           case Kw::return_:
           case Kw::co_return_:
           {
+            refuseCoroutine();
             advance();
             ReturnStmt* s = node<ReturnStmt>(start);
             if (!at(P::Semi))
@@ -5637,7 +5646,10 @@ namespace
         return t;
       }
       if (at(Kw::co_yield_))
+      {
+        refuseCoroutine();
         advance();
+      }
       Expr* lhs = parseLogicalOr();
       if (at(TokenKind::Punctuator))
       {
@@ -5671,6 +5683,12 @@ namespace
           ConditionalExpr* c = node<ConditionalExpr>(opTok);
           c->cond = lhs;
           c->then = nullptr;
+          if (isKpp())
+          {
+            HeldExpr* held = holdOperand(lhs, opTok);
+            c->cond = held->holder;
+            c->then = held;
+          }
           c->else_ = parseAssignmentImpl(true, allowBrace);
           return c;
         }
@@ -5967,6 +5985,7 @@ namespace
             return d;
           }
           case Kw::co_await_:
+            refuseCoroutine();
             advance();
             return parseUnary();
           case Kw::static_cast_: case Kw::dynamic_cast_: case Kw::reinterpret_cast_: case Kw::const_cast_:
@@ -6855,7 +6874,36 @@ namespace
       return l;
     }
 
+    // The chain's `?->`s nest: everything after one runs only when it was set, and gives that value,
+    // else the result's default. `a?->b->c?->d` is `(a) ? ((held->b->c) ? held->d : default) : default`.
     Expr* parsePostfix(Expr* e)
+    {
+      size_t mark = safeHolders.size();
+      e = parsePostfixChain(e);
+      for (size_t i = safeHolders.size(); i-- > mark;)
+      {
+        ConditionalExpr* c = node<ConditionalExpr>(safeHolders[i]->token);
+        c->cond = safeHolders[i];
+        c->then = e;
+        c->else_ = node<DefaultValueExpr>(safeHolders[i]->token);
+        e = c;
+      }
+      safeHolders.resize(mark);
+      return e;
+    }
+
+    // `a` of `a ?: b` and `a?->b`, evaluated once, and what stands for its value.
+    HeldExpr* holdOperand(Expr* operand, uint32_t token)
+    {
+      ParenExpr* holder = node<ParenExpr>(token);
+      holder->inner = operand;
+      holder->holds = true;
+      HeldExpr* held = node<HeldExpr>(token);
+      held->holder = holder;
+      return held;
+    }
+
+    Expr* parsePostfixChain(Expr* e)
     {
       for (;;)
       {
@@ -6886,6 +6934,13 @@ namespace
         {
           P op = P(tok().id);
           advance();
+          if (op == P::SafeArrow && isKpp())
+          {
+            HeldExpr* held = holdOperand(e, start);
+            safeHolders.push_back(held->holder);
+            e = held;
+            op = P::Arrow;
+          }
           MemberExpr* m = node<MemberExpr>(start);
           m->base = e;
           m->op = op;
@@ -6970,6 +7025,7 @@ namespace
     bool externC = false; // Inside extern "C".
     Dialect dialect = Dialect::Cpp; // what the file is written in (parser.hpp)
     bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
+    std::vector<ParenExpr*> safeHolders; // the `?->`s of the postfix chains being parsed (parsePostfix)
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
     std::unordered_set<uint32_t> cTypedefNames; // in C: the typedef names declared so far (what `(Name)` casts to)
@@ -7049,6 +7105,8 @@ namespace
   template<> constexpr NodeKind Parser::nodeKindOf<NameExpr>() { return NodeKind::NameExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<LiteralExpr>() { return NodeKind::LiteralExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<ThisExpr>() { return NodeKind::ThisExpr; }
+  template<> constexpr NodeKind Parser::nodeKindOf<HeldExpr>() { return NodeKind::HeldExpr; }
+  template<> constexpr NodeKind Parser::nodeKindOf<DefaultValueExpr>() { return NodeKind::DefaultValueExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<CallExpr>() { return NodeKind::CallExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<IndexExpr>() { return NodeKind::IndexExpr; }
   template<> constexpr NodeKind Parser::nodeKindOf<MemberExpr>() { return NodeKind::MemberExpr; }
@@ -7173,7 +7231,8 @@ namespace
 void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, Dialect dialect,
                const ConfigValues* config)
 {
-  filterDirectives(tokens, text);
+  if (dialect != Dialect::KppSource)
+    filterDirectives(tokens, text);
   {
     // Calling conventions and pointer-size modifiers mean nothing here (one convention on x64),
     // and they appear in positions the declarator grammar does not expect, as in
@@ -7250,6 +7309,16 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   out.tokens = &tokens;
   out.text = text;
   out.arena.reserve(tokens.size() * 40 + 4096); // Measured: about 30 bytes of AST per token.
+  // kpp has no preprocessor (design.md 7): a directive is an error, at its own line, never a line skipped
+  // (`#include` did nothing and the lines between `#ifdef NOPE` and `#endif` compiled, until 2026-11-06).
+  // Each moves behind the End token, where no parse reaches it and the message still finds it.
+  if (dialect == Dialect::KppSource)
+  {
+    auto directive = [](const Token& t) { return t.getKind() == TokenKind::Directive; };
+    auto first = std::stable_partition(tokens.begin(), tokens.end(), [&](const Token& t) { return !directive(t); });
+    for (size_t i = size_t(first - tokens.begin()); i < tokens.size(); ++i)
+      out.diagnostics.push_back({uint32_t(i), "kpp has no preprocessor (design.md 7): an import, a `when` or `if constexpr` says what this line would"});
+  }
   Parser parser(tokens, text, symbols, out);
   parser.externC = dialect == Dialect::C;
   parser.dialect = dialect;

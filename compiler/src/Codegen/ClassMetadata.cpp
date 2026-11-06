@@ -2729,6 +2729,8 @@ auto codegen::Emitter::conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, No
 {
   if (!c->then || !c->else_)
     return false;
+  if (c->else_->kind == NodeKind::DefaultValueExpr)
+    return true; // (`T a = p?->member;`: the copy of the member, or the default, is the object)
   for (Expr* branch : {c->then, c->else_})
   {
     const Ty* bt = branch->ty ? withCurrentArgs(branch->ty) : nullptr;
@@ -2742,6 +2744,17 @@ auto codegen::Emitter::conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, No
 auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at) -> void
 {
   t = types.stripRef(t);
+  if (init && init->kind == NodeKind::DefaultValueExpr)
+  {
+    // `a?->b` when a is not set: `T()`, zeroed and then constructed.
+    if (isClass(t))
+      if (ClassDecl* c = classDef(t->decl, at); hasUserConstructors(c) && !findConstructor(t, {}, at) && !inheritedConstructorBase(c))
+        fail(at, "`?->` gives a default value when its object is not set, and " + qualifiedName(c) + " has no default constructor");
+    storeZero(t, addr, at);
+    if (isClass(t))
+      constructInto(addr, t, {}, at);
+    return;
+  }
   // `[callback{::move(callback)}]`, `int x{5}`: one value in braces initialises what is not a
   // class as the value itself would.
   if (init && init->kind == NodeKind::BraceInitExpr && !isClass(t) && t->kind != TyKind::Array)

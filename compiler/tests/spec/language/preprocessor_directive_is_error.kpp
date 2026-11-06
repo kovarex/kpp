@@ -1,12 +1,14 @@
 // spec: kpp has no preprocessor (design.md 7): a directive in kpp source is an error, never skipped. Found writing
 // docs/differences-from-cpp.md (2026-11-06): the lexer's Directive token is dropped, so `#include` does nothing, any
 // `#word` is accepted, and the lines between `#ifdef NOPE` and `#endif` are compiled: this program returned 1.
-// pending: a `#` line in kpp source is skipped without a word (imported C and the converter's input need their own reading)
-// error: kpp has no preprocessor
-// error: kpp has no preprocessor
-// error: kpp has no preprocessor
+// error: preprocessor_directive_is_error.kpp:9: error: kpp has no preprocessor
+// error: preprocessor_directive_is_error.kpp:10: error: kpp has no preprocessor
+// error: preprocessor_directive_is_error.kpp:11: error: kpp has no preprocessor
+// error: preprocessor_directive_is_error.kpp:14: error: kpp has no preprocessor
+// error: preprocessor_directive_is_error.kpp:16: error: kpp has no preprocessor
 #include "no_such_file.h"
 #frobnicate 12
+%:define DIGRAPH 1
 int main()
 {
 #ifdef NOPE

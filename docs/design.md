@@ -310,7 +310,9 @@ libraries uses it. Spec language/lambda_capture_of_this_by_copy_is_error.
 
 ### 7. No preprocessor; what replaces macros (decided 2026-10-23)
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
-into eleven cases and none of them needs textual substitution, so kpp has no preprocessor. The
+into eleven cases and none of them needs textual substitution, so kpp has no preprocessor. A `#` or
+`%:` line in kpp source is a compile error, each one reported (until 2026-11-06 it was skipped, so that
+`#ifdef NOPE` compiled its body); the C and C++ a conversion or an import reads keep theirs. The
 replacements, in the order of how much code they remove:
 1. Tests and `check` in the compiler: `test name { ... }` declarations the compiler collects
    and the standard runner selects; `check(expr)` reports the text, the location and the operand
@@ -2111,6 +2113,25 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   then no constant, as C++'s constant evaluation rejects a pointer to an ended object, never an
   answer other than the program's, where that address is the result's.
 
+### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06, Q1 to Q4 awaiting kovarex)
+The readme's rule, with thread A's recommended answers to what it left open; kovarex has not confirmed
+them yet (the questions: C:\kpp-sandbox\handoff\A-stage1-language-questions.md).
+- **`a?->b`** runs what follows only when a is set, and otherwise gives the default value of the result's
+  type. Everything after a `?->` in the postfix chain belongs to it: members, calls with their arguments,
+  subscripts (`a?->b->c`, `a?->f(g())`: g is not called when a is not set). Parentheses end the chain.
+- **The result is always a value**, of the unqualified type, never an lvalue: `a?->x = 3;` is an error,
+  and a function giving `T&` gives a T, copied. `void` is fine as a statement. A class with no default
+  constructor is an error at the `?->`.
+- **Left of `?->`**: a pointer, or a class with `operator->` and a bool conversion (`T^`, Optional).
+- **`a ?: b`** is `a ? a : b` with a evaluated once, typed as that conditional is, so an lvalue when both
+  are lvalues of one type. `c ?::x : y` is C++'s conditional.
+- **How it is built.** The parser writes them as ConditionalExpr: `(a) ? held : b` and `(a) ? held->b : default`,
+  where the parenthesis (ParenExpr::holds) evaluates a once and HeldExpr is its value, so that whatever
+  walks an expression walks them with no case of its own; a chain's `?->`s nest. Both are constants when
+  their operands are. kpp's own sources only: the converter's C++ and C keep the nodes they had.
+
+Specs: language/safe_navigation*, language/elvis.
+
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
 capital letters, like LinkHelper.cpp", and refactorings that are clear wins are pushed without asking.
@@ -3212,7 +3233,8 @@ The smallest language that is still kpp, as the target of the first code generat
 - **C interop.** `extern "C"` declarations of functions and structs; those are the only
   externally linked names (nothing is mangled across kpp code, since everything is one program).
 - **Not in v0:** exceptions, RTTI, virtual inheritance, `both_const`/`class_const`, typed
-  unions (plain C unions exist, for interop), `accumulate`, coroutines.
+  unions (plain C unions exist, for interop), `accumulate`, coroutines (`co_return`, `co_yield` and
+  `co_await` are compile errors in kpp source: until 2026-11-06 they parsed as `return` and as nothing).
 
 **Backend plan.** The compiler writes textual LLVM IR for the whole program and runs the
 bundled clang on it (`clang -O2 program.ll`). This needs no LLVM development libraries on the
