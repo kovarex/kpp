@@ -1,0 +1,93 @@
+v[24]:hello world, hello there
+part[5]:world
+fromString[10]:owned text
+sizes 24 24 0 0
+empty 0 1 1
+null data 1
+data 1
+index h o
+front back w d
+front address 1
+back address 1
+index address 1
+at r
+at past the end throws
+begin end 1 5
+cbegin cend 5
+rbegin d w
+crbegin d
+max_size 1
+npos 1
+remove_prefix[18]:world, hello there
+remove_suffix[5]:world
+remove all[0]:
+swapped a[12]:second thing
+swapped b[5]:first
+substr pos[18]:world, hello there
+substr pos count[5]:world
+substr count past[4]:here
+substr at the end[0]:
+substr default[24]:hello world, hello there
+substr past the end throws
+copy 5 hello
+copy pos 5 world
+copy short 4
+copy past the end throws
+find 0 13 -1
+find char 4 7 -1
+find count 13 0
+find view 6
+find string 6
+find empty 0 5 24 -1
+find past -1 -1
+find on empty 0 -1
+rfind 13 0 0
+rfind char 17 7 -1
+rfind count 13
+rfind empty 24 3 24
+rfind on empty 0 -1
+find_first_of 6 7 -1
+find_first_of char 6 9
+find_first_of count 6
+find_first_of empty -1 -1
+find_first_of past -1
+find_last_of 6 4 -1
+find_last_of char 6 3
+find_last_of count 16
+find_last_of empty -1 -1
+find_first_not_of 4 5 -1
+find_first_not_of char 1 4
+find_first_not_of count 1
+find_first_not_of empty 0 -1
+find_first_not_of past -1
+find_last_not_of 18 1 -1
+find_last_not_of char 22 1
+find_last_not_of count 22
+find_last_not_of empty 23 -1
+compare 0 -1 1
+compare view -1 1
+compare sub 0 0
+compare sub sub 0
+compare sub count -1
+compare empty 0 -1 1
+compare bytes 1
+compare past the end throws
+starts_with 1 1 0 1
+starts_with view 0
+ends_with 1 1 0 1
+ends_with view 0
+contains 1 1 0
+== 1 1 1 0
+!= 0 1
+< 1 0 1 1
+> <= >= 1 1 0
+<=> 1 1
+byte order 1
+embedded zero 3 2 0
+embedded zero find 1
+hash 1
+to string apple apple!
+map find 1
+sorted[5]:apple
+sorted[3]:fig
+sorted[4]:pear

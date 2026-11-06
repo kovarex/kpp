@@ -96,8 +96,7 @@ the n bytes at text, `compare(pos, count, other, pos2, n)` with up to n bytes of
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
 bytes), a proper prefix before the longer string; `<=>` orders the same way and gives `>`, `<=`
 and `>=` (common.md). Comparison with a `const char*` treats it as its zero-terminated text, on
-either side. A StringView compares the same way, and has `compare(other)`, `find_last_of`,
-`find_last_not_of` and `find_first_not_of` (a set or a char, from a position) as String has.
+either side. A StringView compares the same way.
 
 Hashing: `hashOf(string)` depends on every byte.
 
@@ -138,3 +137,27 @@ Members, as String's of the same name but in units of wchar_t:
 `toWString(number)` (std::to_wstring) writes a number as String's toString does. Conversions
 between WString and UTF-8 Strings are not part of WString (StringUtil's widen and narrow in the
 game, and Filesystem's path).
+
+## StringView
+
+std::string_view's interface: a borrowed slice of bytes (`data()`, `size()`), not owning them and not
+zero-terminated, valid while what it was made from is. From nothing (no bytes: `data()` is null), a
+`const char*` (its zero-terminated text; a null pointer gives an empty view), `(text, count)` or a
+String; `String(view)` copies it. Member types as common.md's, with `iterator` and `const_iterator`
+`const char*`; `npos`, the largest size.
+
+- `size()`, `length()`, `empty()`, `max_size()`, `data()`; `[i]`, `front()`, `back()` (references to the
+  bytes; not on an empty view); `at(i)` (OutOfRange outside [0, size())); `begin()`, `end()`, `cbegin()`,
+  `cend()`, `rbegin()`, `rend()`, `crbegin()`, `crend()`.
+- `remove_prefix(n)`, `remove_suffix(n)` (n at most size()), kpp's `removePrefix`, `removeSuffix`;
+  `swap(other)`.
+- `substr(start = 0, count = npos)`, a view of up to count bytes; OutOfRange when start > size().
+  `copy(dest, count, pos = 0)` as String's.
+- `find(x, from = 0)`, `rfind(x, from = npos)`, `find_first_of`, `find_last_of`, `find_first_not_of`,
+  `find_last_not_of`, each of a view, a char, or `(text, from, count)`, the count bytes at text: the
+  position, or npos. A forward search starts at from, and finds nothing past the end, an empty needle at
+  from up to size(); a backward one looks at from and before it. The `_of` forms take a set of bytes.
+- `contains(x)`, `starts_with(x)`, `ends_with(x)` of a view or a char; kpp's `startsWith`, `endsWith`.
+- `compare(other)`, `compare(pos, count, other)`, `compare(pos, count, other, otherPos, otherCount =
+  npos)`, `compare(pos, count, text, otherCount)`: as String's.
+- `==`, `<=>` and what they give, as String's; `hashOf(view)` is the hash of a String of the same text.
