@@ -183,19 +183,7 @@ constexpr T byteswap(T value)
 // a signed one has its magnitude. (static_cast, not `T(x)`: a functional cast through a dependent
 // alias does not fold at compile time yet, and Ratio needs these folded.)
 template<typename M, typename N>
-struct GcdTypeOf
-{
-  using Type = decltype(M() + N());
-};
-
-template<typename M>
-struct GcdTypeOf<M, M>
-{
-  using Type = M;
-};
-
-template<typename M, typename N>
-using GcdType = typename GcdTypeOf<M, N>::Type;
+using GcdType = typename Conditional<isSame<M, N>, M, decltype(true ? declval<M>() : declval<N>())>::Type;
 
 template<typename U>
 constexpr U gcdUnsigned(U a, U b) { return b == 0 ? a : gcdUnsigned(b, static_cast<U>(a % b)); }
@@ -220,8 +208,8 @@ constexpr GcdType<M, N> lcm(M m, N n)
 {
   if (m == 0 || n == 0)
     return 0;
-  MakeUnsigned<GcdType<M, N>> a = unsignedMagnitude(static_cast<GcdType<M, N>>(m));
-  MakeUnsigned<GcdType<M, N>> b = unsignedMagnitude(static_cast<GcdType<M, N>>(n));
+  auto a = unsignedMagnitude(static_cast<GcdType<M, N>>(m));
+  auto b = unsignedMagnitude(static_cast<GcdType<M, N>>(n));
   return static_cast<GcdType<M, N>>(a / gcdUnsigned(a, b) * b);
 }
 
