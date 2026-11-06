@@ -674,6 +674,8 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       const Ty* t = types.stripRef(e->ty);
       if (t && t->kind == TyKind::Array && t->inner)
         t = types.pointer(t->inner); // two arrays of one type: as a value, the chosen one decays (as load's)
+      if (!t || !t->isKnown())
+        return conditionalOfBranches(c);
       Value cond = convert(rvalue(c->cond), types.boolType(), e);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
@@ -890,6 +892,60 @@ auto codegen::Emitter::bitfieldNamed(Expr* e) -> const BitfieldInfo*
   if (d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield)
     unsupported(e, "a bit-field whose place in its class is not known"); // never its whole storage unit
   return nullptr;
+}
+
+auto codegen::Emitter::conditionalOfBranches(ConditionalExpr* c) -> Value
+{
+  Value cond = convert(rvalue(c->cond), types.boolType(), c);
+  std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
+  fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
+  size_t temps = statementTemps.size();
+  // Each branch's value kept in a slot of its own type, the two met where they join, converted
+  // there to their common type: which branch ran picks one (no conversion has side effects).
+  auto branch = [&](Expr* x, const std::string& label, std::string& slot, std::string& end) -> Value
+  {
+    startBlock(label);
+    Value v = bitfieldOperand(x, rvalue(x));
+    keepOperandTemps(temps);
+    const Ty* vt = v.ty ? types.unqualified(types.stripRef(v.ty)) : nullptr;
+    if (!vt || !vt->isKnown() || isClass(vt) || vt->kind == TyKind::Array)
+      unsupported(c, "a conditional whose type the checker could not tell, with a branch of " + (vt ? types.toString(vt, &symbols) : std::string("unknown type")));
+    if (vt->kind != TyKind::Void)
+    {
+      slot = "%condbranch" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca " + llType(vt, c) + "\n";
+      fn += "  store " + llType(vt, c) + " " + v.text + ", ptr " + slot + "\n";
+    }
+    end = currentBlock;
+    emitBranch(jL);
+    return {v.text, vt};
+  };
+  std::string slotA, slotB, aEnd, bEnd;
+  Value a = branch(c->then, tL, slotA, aEnd);
+  Value b = branch(c->else_, eL, slotB, bEnd);
+  startBlock(jL);
+  if (a.ty->kind == TyKind::Void || b.ty->kind == TyKind::Void)
+    return {"", types.voidType()};
+  auto arithmeticOrEnum = [](const Ty* t) { return t->isArithmetic() || (t->kind == TyKind::Enum && !static_cast<EnumDecl*>(t->decl)->isClass); };
+  const Ty* ct = nullptr;
+  if (a.ty == b.ty)
+    ct = a.ty;
+  else if (arithmeticOrEnum(a.ty) && arithmeticOrEnum(b.ty))
+    ct = commonArithmetic(a.ty, b.ty); // ([expr.cond] 7.2, the usual arithmetic conversions)
+  else if (a.ty->kind == TyKind::Nullptr && b.ty->kind == TyKind::Pointer)
+    ct = b.ty;
+  else if (b.ty->kind == TyKind::Nullptr && a.ty->kind == TyKind::Pointer)
+    ct = a.ty;
+  else if (a.ty->kind == TyKind::Pointer && b.ty->kind == TyKind::Pointer)
+    ct = impliedPointerConversion(b.ty, a.ty, c) ? a.ty : impliedPointerConversion(a.ty, b.ty, c) ? b.ty : nullptr;
+  if (!ct)
+    unsupported(c, "a conditional of " + types.toString(a.ty, &symbols) + " and " + types.toString(b.ty, &symbols) + " whose type the checker could not tell");
+  std::string took = newTemp();
+  fn += "  " + took + " = phi i1 [ true, %" + aEnd + " ], [ false, %" + bEnd + " ]\n";
+  Value ca = convert(load(slotA, a.ty, c), ct, c), cb = convert(load(slotB, b.ty, c), ct, c);
+  std::string r = newTemp();
+  fn += "  " + r + " = select i1 " + took + ", " + llType(ct, c) + " " + ca.text + ", " + llType(ct, c) + " " + cb.text + "\n";
+  return {r, ct};
 }
 
 auto codegen::Emitter::bitfieldOperand(Expr* e, Value v) -> Value

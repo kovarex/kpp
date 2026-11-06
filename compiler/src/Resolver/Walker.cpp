@@ -7042,10 +7042,14 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         return record(e, cond); // Elvis
       const Ty* a = types.stripRef(then);
       const Ty* b = types.stripRef(other);
+      // A branch of unknown type (`self(self, n - 1)` through a generic lambda's `auto&& self`): no
+      // guess from the other branch unless that is a class (the one the unknown converts to); a
+      // scalar one beside it would be wrong for a wider type (`n <= 1 ? 1 : ...` typed int cut a long
+      // long), and codegen takes the type both branches have as each instance emits them.
       if (!a || !b || !a->isKnown())
-        return record(e, b && b->isKnown() ? other : types.unknown());
+        return record(e, b && b->isKnown() && b->kind == TyKind::Class ? other : types.unknown());
       if (!b->isKnown())
-        return record(e, then);
+        return record(e, a->kind == TyKind::Class ? then : types.unknown());
       // `target ? &target[i] : 0`: a literal 0 beside a pointer would be that pointer (design.md 4).
       noteZeroNull(c->else_, a->kind == TyKind::Array ? types.decay(a) : a);
       noteZeroNull(c->then, b->kind == TyKind::Array ? types.decay(b) : b);

@@ -33,6 +33,11 @@
     // (lvalueBitfield); any other v as it is. `u3 - 2` with an `unsigned u3 : 3` is the int -1. The
     // checker types the operators by the same rule (GlobalScope's bitFieldPromotion).
     Value bitfieldOperand(Expr* e, Value v);
+    // A conditional whose type the checker could not tell (a branch it could not type, as a
+    // recursive generic lambda's `self(self, n - 1)` in its generic body): its type is the one C++
+    // gives the branches as this instance emits them, the same type, their usual arithmetic
+    // conversions or the pointer one converts to; a class branch is an error, never a guess.
+    Value conditionalOfBranches(ConditionalExpr* c);
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
     void ensureMalloc();

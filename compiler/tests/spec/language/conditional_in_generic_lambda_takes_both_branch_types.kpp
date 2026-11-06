@@ -1,0 +1,15 @@
+// spec: a conditional one of whose branches the checker cannot type in a generic body (a recursive generic lambda's `self(self, n - 1)`, a long long or a double) has the type C++'s usual arithmetic conversions give both branches: `n <= 1 ? 1 : n * self(self, n - 1)` is a long long (20! whole), so is `n <= 1 ? 1 : self(self, n - 1)` stored in a local, and `n == 0 ? 1 : self(self, n - 1) / 2` a double (0.125, not 0); clang prints the same
+// found by thread B (2026-11-06, comparing kpp with clang): the checker typed the conditional by its other branch (int), and codegen converted the long long result to it (20! came out -2102132736)
+int main()
+{
+  auto fact = [](auto&& self, int n) -> long long { return n <= 1 ? 1 : n * self(self, n - 1); };
+  auto viaLocal = [](auto&& self, int n) -> long long
+  {
+    long long r = n <= 1 ? 1 : self(self, n - 1);
+    return n <= 1 ? r : n * r;
+  };
+  auto mixed = [](auto&& self, int n) -> double { return n == 0 ? 1 : self(self, n - 1) / 2; };
+  auto flip = [](auto&& self, int n) -> double { return n == 0 ? 0.75 : (n % 2 ? 1 : self(self, n - 1)) * 2; };
+  println(fact(fact, 20), " ", viaLocal(viaLocal, 20), " ", mixed(mixed, 3), " ", flip(flip, 2));
+  return 0;
+}
