@@ -2071,6 +2071,29 @@ auto codegen::Emitter::loadBitfield(const std::string& addr, const BitfieldInfo&
   fn += "  " + unit + " = load " + unitLl + ", ptr " + addr + (bits.bytes ? ", align 1" : "") + "\n";
   const Ty* valueTy = types.unqualified(memberTy);
   bool isSigned = (valueTy->kind == TyKind::Int || valueTy->kind == TyKind::Char) && !valueTy->isUnsigned;
+  if (valueTy->kind == TyKind::Enum && valueTy->decl)
+  {
+    // An enumeration's field is as signed as its underlying type: a fixed one's (`enum class Color :
+    // signed char` stored -2 and read 6 back, zero-extended), else the target's choice: int on
+    // Windows (MSVC sign-extends every such field), and on the others int only when an enumerator
+    // is negative, unsigned otherwise (the Itanium ABI's, as GCC and clang read them).
+    Decl* def = global.definitionOf(valueTy->decl);
+    auto* e = static_cast<EnumDecl*>(def ? def : valueTy->decl);
+    if (e->underlying)
+    {
+      const Ty* u = types.unqualified(enumUnderlying(e));
+      isSigned = (u->kind == TyKind::Int || u->kind == TyKind::Char) && !u->isUnsigned;
+    }
+    else if (sh.target.windows())
+      isSigned = true;
+    else
+    {
+      isSigned = false;
+      for (Decl* en : e->enumerators)
+        if (en && en->kind == NodeKind::EnumeratorDecl && enumeratorValue(static_cast<EnumeratorDecl*>(en)) < 0)
+          isSigned = true;
+    }
+  }
   if (isSigned)
   {
     std::string left = newTemp();

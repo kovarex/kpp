@@ -1,0 +1,36 @@
+// spec: a bit-field of an enumeration reads as signed as the enumeration's underlying type: a fixed one's (`enum class Color : signed char`, `enum class Big : long long`: -2 and -3 read back), else the target's choice: int on Windows (MSVC sign-extends: 3 in a 2-bit field of `enum { u0, u1, u2, u3 }` reads -1), elsewhere int only when an enumerator is negative and unsigned otherwise (the Itanium ABI's: 3 reads 3); at run time and at compile time alike. Before, every enumeration's field was zero-extended (-2 read back as 6, and `v.c == Color::red` was false): a silent wrong answer. clang (MSVC target) and g++ print the same
+// found comparing kpp with clang and g++ (thread I's battery n3)
+extern "C" int printf(const char* format, ...);
+enum class Color : signed char { red = -2, green = 1 };
+enum class Big : long long { neg = -3, pos = 2 };
+enum Plain { minus = -1, zero = 0, plus = 1 };
+enum class Small : unsigned char { x = 5 };
+enum Unsigned4 { u0, u1, u2, u3 };
+struct S
+{
+  Color c : 3;
+  Big g : 4;
+  Plain p : 2;
+  Small s : 3;
+  Unsigned4 u : 2;
+};
+constexpr int atCompileTime()
+{
+  S s{};
+  s.c = Color::red;
+  s.u = u3;
+  return (int)s.c * 10 + (int)s.u;
+}
+constexpr int compileTime = atCompileTime();
+int main()
+{
+  S v{};
+  v.c = Color::red;
+  v.g = Big::neg;
+  v.p = minus;
+  v.s = Small::x;
+  v.u = u3;
+  printf("%d %d %d %d %d\n", (int)v.c, (int)v.g, (int)v.p, (int)v.s, (int)v.u);
+  printf("%d %d %d %d %d\n", (int)(v.c == Color::red), (int)(v.p == minus), (int)(v.u == u3), compileTime, atCompileTime());
+  return 0;
+}

@@ -2825,9 +2825,18 @@ auto GlobalScope::Impl::constFitBits(ConstValue v, const Ty* fieldType, unsigned
   if (v.kind != ConstValue::Kind::Int || bits == 0 || bits >= 64)
     return v;
   const Ty* t = fieldType ? types.unqualified(types.stripRef(fieldType)) : nullptr;
+  std::optional<bool> enumSigned;
+  if (t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(t->decl)->underlying)
+  {
+    // An enumeration without a fixed underlying type: int on Windows (MSVC sign-extends its
+    // fields), elsewhere int only when an enumerator is negative, unsigned otherwise (the Itanium
+    // ABI's), as the code generator's loadBitfield reads the field.
+    std::optional<std::pair<int64_t, int64_t>> range = enumValueRange(t);
+    enumSigned = types.longBits() == 32 || (range && range->first < 0);
+  }
   if (t && t->kind == TyKind::Enum)
     t = constArith().underlying ? constArith().underlying(t) : nullptr;
-  bool isSigned = !t || ((t->kind == TyKind::Int || t->kind == TyKind::Char) && !t->isUnsigned);
+  bool isSigned = enumSigned ? *enumSigned : !t || ((t->kind == TyKind::Int || t->kind == TyKind::Char) && !t->isUnsigned);
   uint64_t mask = (uint64_t(1) << bits) - 1, u = uint64_t(v.i) & mask;
   v.i = isSigned && (u >> (bits - 1)) ? int64_t(u | ~mask) : int64_t(u);
   return v;
