@@ -1,0 +1,23 @@
+// spec: `decltype(s)::g()` calls the static function g, through a nested class too, and `decltype(s)::T(6)` still makes a T
+// found by thread A's comparison with clang (2026-11-06): read as a functional cast to a type g, a value of unknown type
+extern "C" int printf(const char* format, ...);
+struct S
+{
+  static int g() { return 5; }
+  using T = int;
+  struct N
+  {
+    static int f() { return 4; }
+    int v = 1;
+  };
+};
+int main()
+{
+  S s;
+  int a = decltype(s)::g();
+  int b = decltype(s)::N::f();
+  int c = decltype(s)::T(6);
+  int d = decltype(s)::N().v;
+  printf("%d %d %d %d\n", a, b, c, d);
+  return 0;
+}

@@ -1490,7 +1490,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           return trait;
       // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
       // A = int finds the member in the specialisation those arguments pick.
-      Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      Lookup l = lookupTypeName(n, ctx.scope, ctx.locals, depth + 1, ctx.subst);
       // `using ThrowOnError = NamedBool<class ThrowOnError>;` (SpriteBank): an elaborated `class X`
       // names a class, never a type alias of the name (C++ looks it up before the alias is declared,
       // and an alias it found would be ill-formed). Found, the alias was its own argument: an endless

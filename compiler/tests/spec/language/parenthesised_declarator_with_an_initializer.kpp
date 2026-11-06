@@ -1,0 +1,11 @@
+// spec: a declarator in parentheses takes an initializer: `int (x) = 3;`, `int (*p) = &x;`, a keyword type's, where no expression can start that way
+// found by thread A's comparison with clang (2026-11-06)
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  int (x) = 3;
+  int (*p) = &x;
+  *p = 4;
+  printf("%d\n", x);
+  return 0;
+}

@@ -1,0 +1,10 @@
+// spec: a member function named without a call is no value: the error says so, in place of codegen's "does not support a member access"
+// found by thread A's survey of member access errors (2026-11-06)
+// error: member_function_as_a_value_is_error.kpp:8: error: 'get' of Plain is a member function, not a value: call it
+struct Plain { int get() { return 1; } };
+int main()
+{
+  Plain a;
+  a.get = 1;
+  return 0;
+}

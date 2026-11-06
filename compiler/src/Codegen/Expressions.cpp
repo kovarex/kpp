@@ -303,7 +303,11 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
     {
       auto* m = static_cast<MemberExpr*>(e);
       if (m->resolved && m->resolved->kind == NodeKind::EnumeratorDecl)
+      {
+        if (m->base->kind != NodeKind::NameExpr)
+          rvalue(m->base); // `make().E` calls make, as `make().staticMember` does
         return {std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(m->resolved))), e->ty};
+      }
       if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
       {
         // A reflection descriptor: m.name is the member's name, m.offset its offset in the class;

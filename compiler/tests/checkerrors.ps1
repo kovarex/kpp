@@ -4,7 +4,7 @@
 # no session across some errors, so while many persisted every check generated the whole program again
 # (the game: 17-22 s a check with 264 errors, 6-9 s with 1,602, its front end 0.4 s). Through a compile
 # server whose kept session follows the edit, codegen runs as before and its own errors show beside the
-# front end's (a member that does not exist is codegen's). run_tests.cmd runs it.
+# front end's (a member function used as a value is codegen's). run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\checkerrors'
@@ -22,11 +22,11 @@ $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
 $Kppc = (Resolve-Path $Kppc).Path
 
 # Two files, two modules (a session keeps its texts only then).
-[IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; };`nint area(const Shape& s) { return s.width * s.height; }`n")
+[IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; int size() const { return width; } };`nint area(const Shape& s) { return s.width * s.height; }`n")
 $main = "int main()`n{`n  Shape square;`n  square.width = 3;`n  square.height = 3;`n  return area(square) == 9 ? 0 : 1;`n}`n"
 $frontEnd = $main.Replace('  square.height = 3;', '  sqaure.height = 3;') # the checker's: 'sqaure' is not declared
-$codegens = $main.Replace('  square.width = 3;', '  square.widht = 3;')   # codegen's: no member widht
-$both = $frontEnd.Replace('  square.width = 3;', '  square.widht = 3;')
+$codegens = $main.Replace('  square.width = 3;', '  square.size = 3;')   # codegen's: a member function is no value
+$both = $frontEnd.Replace('  square.width = 3;', '  square.size = 3;')
 function Write-Main([string]$text) { [IO.File]::WriteAllText("$work\src\main.kpp", $text) }
 
 $arguments = @('--quiet', '--check', '--std', $std, "$work\src")
@@ -40,7 +40,7 @@ function Check([string]$label, [string]$client, [int]$exit, [bool]$checkers, [bo
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   $text = [IO.File]::ReadAllText("$work\out.txt") + [IO.File]::ReadAllText("$work\err.txt")
-  $got = @($code, $text.Contains("'sqaure' is not declared"), $text.Contains('did not resolve to a field'), $text.Contains('no code generated'))
+  $got = @($code, $text.Contains("'sqaure' is not declared"), $text.Contains('is a member function, not a value'), $text.Contains('no code generated'))
   $want = @($exit, $checkers, $codegen, $noCode)
   if ("$got" -ne "$want")
   {

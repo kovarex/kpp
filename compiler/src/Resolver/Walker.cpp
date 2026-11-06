@@ -1128,7 +1128,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
 {
   if (t->name.empty())
     return;
-  Lookup l = impl.lookupQualified(t->name, scope, &locals, 0, activeSubst);
+  Lookup l = impl.lookupTypeName(t, scope, &locals, 0, activeSubst);
   reportAmbiguity(l, t->name, t->token);
   if (l.found == Found::Local && l.decl && l.decl->when && t->name.parts.size() == 1)
   {
@@ -1946,6 +1946,12 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
       ++stats.membersNotFound;
       ++stats.missingMembers[symbol];
       stats.missingMembersFirst.emplace(symbol, ResolveStats::Where{stats.fileIndex, token});
+      // (`a.operator=(b)` names the implicit assignment, which no class declares)
+      if (!probing && !Impl::mentionsUnknown(t) && symbols.name(symbol) != "operator=")
+      {
+        bool afterOperator = token + 1 < tokens.size() && (tokens[token].is(P::Dot) || tokens[token].is(P::Arrow)); // (the error marks the name)
+        reportCheck(afterOperator ? token + 1 : token, types.toString(types.unqualified(t), &impl.symbols) + " has no member '" + std::string(symbols.name(symbol)) + "'");
+      }
     }
     return r;
   }

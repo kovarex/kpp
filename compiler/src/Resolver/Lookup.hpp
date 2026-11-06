@@ -61,6 +61,9 @@
   static Lookup absentStop(const Lookup& l);
 
   Lookup lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly = false);
+  // The type a NamedType names: an elaborated `struct stat s` passes over a variable or a function
+  // of the name, as C++ does ([basic.lookup.elab]).
+  Lookup lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst);
 
   // The nearest namespace enclosing both a and b (the global one at worst).
   static Scope* enclosingBoth(Scope* a, Scope* b);

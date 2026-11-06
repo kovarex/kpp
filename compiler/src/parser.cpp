@@ -2561,7 +2561,7 @@ namespace
       // C headers parenthesise function names to suppress macro expansion:
       //   int (lua_gettop) (lua_State *L);
       // Strip the wrapping parens so the name is parsed normally.
-      if (isC() && at(P::LParen) && atIdent(1) && at(P::RParen, 2))
+      if ((isC() || at(P::Assign, 3)) && at(P::LParen) && atIdent(1) && at(P::RParen, 2)) // (and `int (x) = 3;`)
       {
         advance();           // skip '('
         parseQualifiedName(d.name, true); // consume the function name
@@ -5056,7 +5056,7 @@ namespace
       if (!atIdent(name))
         return false;
       if (at(P::RParen, name + 1))
-        return at(P::LParen, name + 2) || ((unambiguous || qualified) && at(P::LBracket, name + 2));
+        return at(P::LParen, name + 2) || ((unambiguous || qualified) && (at(P::LBracket, name + 2) || at(P::Assign, name + 2))); // (`int (*p) = &x;`)
       if (!at(P::Star, ahead + 1) || !at(P::LBracket, name + 1))
         return false;
       int i = name + 1;
@@ -5090,6 +5090,8 @@ namespace
               return true; // `int (Calc::*op)(int)`, `int (game::Calc::*op)(int)`: a pointer to a member
             if (isBuiltinTypeKeyword(Kw(tok().id)) && parenthesisedDeclaratorAhead(1, true))
               return true; // `void (*callback)();`, `int (*op)(int) = twice;`: a function pointer declarator
+            if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && atIdent(2) && at(P::RParen, 3) && at(P::Assign, 4))
+              return true; // `int (x) = 3;`: a cast's result is assigned to by no one
             return isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1);
         }
       }
@@ -6394,6 +6396,13 @@ namespace
       {
         error("expected type");
         return node<ErrorExpr>(start);
+      }
+      // `decltype(s)::g()`: the name may be a function's, which only lookup tells, as `S::g()`.
+      if (at(P::LParen) && t->kind == NodeKind::NamedType && static_cast<NamedType*>(t)->name.typeQualifier)
+      {
+        NameExpr* n = node<NameExpr>(start);
+        n->name = static_cast<NamedType*>(t)->name;
+        return n;
       }
       if (at(P::LParen) || at(P::LBrace))
       {

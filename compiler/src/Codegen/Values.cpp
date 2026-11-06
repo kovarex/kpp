@@ -781,6 +781,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
     {
       auto* m = static_cast<MemberExpr*>(e);
       Decl* d = m->resolved;
+      if (d && d->kind == NodeKind::EnumeratorDecl)
+        break; // `s.E` bound to a reference: its value goes to a temporary (below)
       std::string object;
       const Ty* baseTy;
       if (m->op == P::Arrow)
@@ -805,7 +807,12 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       if ((!d || d->kind != NodeKind::VariableDecl) && !m->member.empty())
         d = findFieldByName(baseTy, m->member.last().symbol, e);
       if (!d || d->kind != NodeKind::VariableDecl)
-        unsupported(e, "a member access that did not resolve to a field", !followsUndeclared(baseTy));
+      {
+        std::string name = m->member.empty() ? std::string() : std::string(symbols.name(m->member.last().symbol));
+        if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
+          fail(e, "'" + name + "' of " + types.toString(baseTy, &symbols) + " is a member function, not a value: call it", !followsUndeclared(baseTy));
+        fail(e, "'" + name + "' of " + types.toString(baseTy, &symbols) + " is no data member", !followsUndeclared(baseTy) && !holdsCheckerError(e, 1));
+      }
       if (d->flags & DF_Static)
         return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
       if (const Ty* qualifier = memberQualifier(m, e))

@@ -71,7 +71,7 @@ auto codegen::Emitter::fail(Node* at, const std::string& message, bool shown) ->
   throw Unsupported{};
 }
 
-auto codegen::Emitter::holdsCheckerError(Node* at) -> bool
+auto codegen::Emitter::holdsCheckerError(Node* at, uint32_t tokensAfter) -> bool
 {
   if (!at || at->kind < NodeKind::NameExpr || at->kind > NodeKind::ParenExpr || !currentFile || !global.checkerErrorIn(checkerChecked))
     return false;
@@ -81,7 +81,7 @@ auto codegen::Emitter::holdsCheckerError(Node* at) -> bool
     first = std::min(first, n->token);
     last = std::max(last, n->token);
   });
-  return global.checkerErrorWithin(currentFile, first, last);
+  return global.checkerErrorWithin(currentFile, first, last + tokensAfter);
 }
 
 auto codegen::Emitter::followsUndeclared(const Ty* t) -> bool

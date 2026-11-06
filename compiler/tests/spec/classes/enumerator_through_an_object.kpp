@@ -1,0 +1,30 @@
+// spec: an enumerator named through an object (`s.E`, `p->E`) is its value, also bound to a const reference, and the object expression is evaluated (`make().E` calls make, as `make().count` does)
+// found by thread A's comparison with clang (2026-11-06): bound to a reference it was codegen's "did not resolve to a field"
+extern "C" int printf(const char* format, ...);
+int made = 0;
+struct S
+{
+  enum { E = 4 };
+  static int count;
+};
+int S::count = 2;
+S make()
+{
+  made++;
+  return S{};
+}
+int value(const int& x)
+{
+  return x;
+}
+int main()
+{
+  S s;
+  S* p = &s;
+  printf("%d %d\n", value(s.E), value(p->E));
+  int e = make().E;
+  printf("%d %d\n", e, made);
+  int c = make().count;
+  printf("%d %d\n", c, made);
+  return 0;
+}

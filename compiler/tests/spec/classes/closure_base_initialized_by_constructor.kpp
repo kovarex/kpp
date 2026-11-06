@@ -1,0 +1,35 @@
+// spec: a constructor's initializer of a base that is a lambda's closure type (`F(f)` with F the template parameter) copies the closure's captures, by value and by reference, from a by-value and a const reference parameter, with the base not first, and a copy of the derived object keeps them
+// found by thread A's comparison with clang (2026-11-06): the initializer was dropped silently, the captures left unset (0 or garbage)
+extern "C" int printf(const char* format, ...);
+struct First
+{
+  int tag = 7;
+};
+template<class F> struct ByValue : F
+{
+  ByValue(F f) : F(f) {}
+  int twice() { return (*this)() * 2; }
+};
+template<class F> struct ByReference : First, F
+{
+  ByReference(const F& f) : F(f) {}
+};
+int main()
+{
+  int k = 4;
+  int total = 10;
+  auto value = [k]() { return k; };
+  auto reference = [&total]() { total += 1; return total; };
+  ByValue<decltype(value)> a(value);
+  printf("%d\n", a.twice());
+  printf("%d\n", a());
+  ByReference<decltype(value)> b(value);
+  printf("%d\n", b.tag);
+  printf("%d\n", b());
+  ByReference<decltype(reference)> c(reference);
+  int called = c();
+  printf("%d %d\n", called, total);
+  ByValue<decltype(value)> d = a;
+  printf("%d\n", d());
+  return 0;
+}

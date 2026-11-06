@@ -34,7 +34,8 @@
     // its first to its last (its subtree's), in the file being emitted. Only an expression (a call,
     // an argument, a conversion): a failure on a declaration (a local array whose length the checker
     // found no constant) is the code generator's own consequence, and stays shown.
-    bool holdsCheckerError(Node* at);
+    // tokensAfter: tokens past its last that are its own too (a member's name, after the `.`).
+    bool holdsCheckerError(Node* at, uint32_t tokensAfter = 0);
     // A construct the code generator cannot translate yet.
     [[noreturn]] void unsupported(Node* at, const std::string& what, bool shown = true) { fail(at, "codegen does not support " + what + " yet", shown); }
     // Whether t (through references and pointers) is an undeclared type's placeholder class the

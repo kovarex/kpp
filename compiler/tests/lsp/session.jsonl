@@ -43,7 +43,7 @@
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":24},"contentChanges":[{"range":{"start":{"line":9,"character":0},"end":{"line":9,"character":16}},"text":"  totalA"}]}}
 {"jsonrpc":"2.0","id":35,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":8},"context":{"triggerKind":1}}}
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":25},"contentChanges":[{"text":"int main()\n{\n  Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}]}}
-// A member misspelt (codegen's error: the line), then a name misspelt (the resolver's: line and column).
+// A member misspelt (the checker's error), then a name misspelt (the resolver's).
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":4,"character":9},"end":{"line":4,"character":14}},"text":"widht"}]}}
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":3},"contentChanges":[{"range":{"start":{"line":5,"character":2},"end":{"line":5,"character":8}},"text":"sqaure"}]}}
 // Both fixed in one change, a type error added on a new line, then the whole text replaced (no range).

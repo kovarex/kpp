@@ -425,6 +425,13 @@ auto GlobalScope::Impl::absentStop(const Lookup& l) -> Lookup
   return out;
 }
 
+auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst) -> Lookup
+{
+  if (t->elaborated && t->name.parts.size() == 1 && !t->name.global && !t->name.parts[0].hasTemplateArgs)
+    return lookupUnqualified(t->name.parts[0].symbol, context, locals, depth, true);
+  return lookupQualified(t->name, context, locals, depth, subst);
+}
+
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup
 {
   Lookup out;

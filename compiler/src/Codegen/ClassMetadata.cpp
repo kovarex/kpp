@@ -637,7 +637,7 @@ auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorIni
   // Looked up from inside the class: from the constructor when it is the one being emitted.
   Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
   const Ty* nt = global.typeOfAstIn(&named, context, global.classArgsOf(cls));
-  return nt && isClass(nt) && !types.isDependent(nt) ? canonicalClass(nt, at) : nullptr;
+  return nt && (isClass(nt) || isLambda(nt)) && !types.isDependent(nt) ? canonicalClass(nt, at) : nullptr; // (a closure: `F(f)` with the base F a lambda's type)
 }
 
 auto codegen::Emitter::initializerNamesOther(const Ty* t, const FunctionDecl::CtorInit& init, const Ty* cls, Node* at) -> bool
@@ -829,7 +829,9 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
       init = nullptr; // `Holder<0, H>(a)` met first for the base Holder<1, T>: by the type each names
     if (!init)
       init = initializerNamingBase(t, bt, inits, at);
-    if (init)
+    if (init && isLambda(bt) && init->args.size() == 1)
+      withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(baseAddr, bt, one, at); }); // `F(f)`: the closure's values, as a member's
+    else if (init)
       constructInto(baseAddr, bt, init->args, at);
     else if (hasUserConstructors(static_cast<ClassDecl*>(baseDef)))
       defaultConstruct(baseAddr, bt, at);

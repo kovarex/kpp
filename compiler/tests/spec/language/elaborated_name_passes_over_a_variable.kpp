@@ -1,0 +1,21 @@
+// spec: `struct Q` names the class Q past a local variable or a parameter of the name ([basic.lookup.elab]); sizeof(struct Q) is the class's size and not the variable's
+// found by thread A's comparison with clang (2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct Q
+{
+  int v = 1;
+};
+int take(int Q)
+{
+  struct Q inner;
+  return Q + inner.v;
+}
+int main()
+{
+  Q a;
+  double Q = 2;
+  struct Q b;
+  printf("%d %d %d\n", a.v + b.v, int(sizeof(struct Q)), int(sizeof(Q)));
+  printf("%d\n", take(5));
+  return 0;
+}
