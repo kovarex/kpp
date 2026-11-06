@@ -1,0 +1,38 @@
+// spec: an array captured by copy is copied element by element ([expr.prim.lambda.capture] 15): its own values in the closure, its size, mutable, two dimensions, a default capture, elements that are classes copied and destroyed (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+class T
+{
+public:
+  int v;
+  T(int x) : v(x) { printf("ctor %d\n", v); }
+  T(const T& o) : v(o.v + 10) { printf("copy %d\n", v); }
+  ~T() { printf("dtor %d\n", v); }
+};
+int main()
+{
+  int a[3] = {1, 2, 3};
+  auto f = [a]() { return a[0] + a[1] + a[2]; };
+  a[0] = 100;
+  printf("%d %d\n", f(), (int)sizeof(f));
+  auto m = [a]() mutable { a[1] = 50; return a[0] + a[1]; };
+  printf("%d %d\n", m(), a[1]);
+  int b[2][2] = {{1, 2}, {3, 4}};
+  auto g = [b] { return b[1][0]; };
+  b[1][0] = 9;
+  printf("%d\n", g());
+  auto all = [=] { return a[2] + b[0][1]; };
+  printf("%d\n", all());
+  auto copied = f;
+  printf("%d\n", copied());
+  int big[20] = {};
+  big[19] = 7;
+  auto h = [big] { return big[19]; };
+  big[19] = 8;
+  printf("%d\n", h());
+  {
+    T ts[2] = {T(1), T(2)};
+    auto u = [ts] { return ts[1].v; };
+    printf("%d\n", u());
+  }
+  return 0;
+}

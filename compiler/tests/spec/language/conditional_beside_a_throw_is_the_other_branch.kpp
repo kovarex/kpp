@@ -1,0 +1,26 @@
+// spec: a conditional with one branch a throw-expression is the other branch, its type and value category ([expr.cond] 2): an lvalue assigned to, bound to a reference, addressed, a class object (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+class Box { public: int n = 3; };
+int g = 5;
+Box box;
+int& pick(bool c, int& x) { return c ? throw 1 : x; }
+int main()
+{
+  int a = 1;
+  (true ? a : throw 2) = 7;
+  printf("%d\n", a);
+  (false ? throw 2 : a) = 8;
+  printf("%d\n", a);
+  int& r = pick(false, g);
+  r = 9;
+  printf("%d\n", g);
+  int* p = &(false ? throw 3 : g);
+  printf("%d\n", *p);
+  (true ? box : throw 4).n = 6;
+  printf("%d\n", box.n);
+  ++(true ? a : throw 5);
+  printf("%d\n", a);
+  try { pick(true, g); } catch (int e) { printf("caught %d\n", e); }
+  try { (a == 0 ? a : throw 6) = 1; } catch (int e) { printf("caught %d, %d\n", e, a); }
+  return 0;
+}

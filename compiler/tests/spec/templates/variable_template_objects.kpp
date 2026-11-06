@@ -1,0 +1,24 @@
+// spec: a variable template that is not const is an object for each arguments: read, written, indexed, its size, one object wherever it is named (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+template<int N> char buffer[N];
+template<class T> T value = T(3);
+template<class T> const T constant = T(4);
+template<int N> constexpr int squared = N * N;
+template<class T> int bump() { return ++value<T>; }
+int main()
+{
+  printf("%d\n", (int)sizeof(buffer<5>));
+  printf("%d %d\n", (int)sizeof(value<long long>), (int)sizeof(value<char>));
+  printf("%d %d\n", (int)sizeof(constant<short>), (int)sizeof(squared<3>));
+  printf("%d\n", squared<3>);
+  value<int> = 9;
+  printf("%d %d\n", value<int>, (int)value<double>);
+  buffer<5>[1] = 'x';
+  printf("%c\n", buffer<5>[1]);
+  printf("%d\n", bump<int>());
+  printf("%d\n", value<int>);
+  int* p = &value<int>;
+  *p = 20;
+  printf("%d\n", bump<int>());
+  return 0;
+}

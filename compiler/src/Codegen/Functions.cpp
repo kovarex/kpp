@@ -138,7 +138,7 @@ auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& 
   // (a literal operator's name, `operator""_km`, has quotes, which an LLVM name escapes)
   for (size_t at = 0; (at = q.find('"', at)) != std::string::npos; at += 3)
     q.replace(at, 1, "\\22");
-  return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") +
+  return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + ((f->flags & DF_Volatile) && !(f->flags & DF_Static) ? " volatile" : "") +
          (f->refQualifier == FunctionDecl::RefQualifier::RValue && !(f->flags & DF_Static) ? " &&" : "") + "\"";
 }
 
@@ -206,7 +206,7 @@ auto codegen::Emitter::displayFunctionName(FunctionDecl* f, const TemplateArgs& 
   std::string params;
   for (size_t i = 0; ft && i < ft->args.size(); ++i)
     params += (i ? ", " : "") + spell(ft->args[i]);
-  return q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") +
+  return q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + ((f->flags & DF_Volatile) && !(f->flags & DF_Static) ? " volatile" : "") +
          (f->refQualifier == FunctionDecl::RefQualifier::RValue && !(f->flags & DF_Static) ? " &&" : "");
 }
 

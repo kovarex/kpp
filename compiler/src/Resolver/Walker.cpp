@@ -567,7 +567,8 @@ auto GlobalScope::Impl::Walker::checkTestDeclaration(FunctionDecl* f) -> void
       return;
     auto* declared = static_cast<FunctionDecl*>(d);
     // (a class template's member: the body has the class's parameters, definitionOf's comparison)
-    bool member = home->kind == ScopeKind::Class && f->refQualifier == declared->refQualifier && impl.typeAs(f, declared) == impl.matchedType(declared);
+    bool member = home->kind == ScopeKind::Class && f->refQualifier == declared->refQualifier && (f->flags & (DF_Const | DF_Volatile)) == (declared->flags & (DF_Const | DF_Volatile)) &&
+                  impl.typeAs(f, declared) == impl.matchedType(declared);
     if (declared->body || (!member && !impl.sameFunction(f, declared)))
       return;
     std::string name = impl.namePartText(f->name.last());
@@ -1034,7 +1035,7 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
       };
       for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
         if (candidate->body && impl.functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) &&
-            candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & DF_Const) == (f->flags & DF_Const) &&
+            candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & (DF_Const | DF_Volatile)) == (f->flags & (DF_Const | DF_Volatile)) &&
             candidate->refQualifier == f->refQualifier)
           if (const Ty* ct = impl.typeAs(candidate, f); ct == ft || (ft && ft->kind == TyKind::Function && impl.containsAuto(ft->inner) && sameParameters(ct, ft)))
           {
@@ -1782,7 +1783,7 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
   // types name no template parameter.
   auto hidden = [&](FunctionDecl* base)
   {
-    const uint32_t quals = DF_Const | DF_RefQual | DF_Static | DF_Variadic;
+    const uint32_t quals = DF_Const | DF_Volatile | DF_RefQual | DF_Static | DF_Variadic;
     if (!base->templateParams.empty())
       return false;
     const Ty* bt = impl.declaredTypeOf(base, nullptr, 0);
@@ -2205,7 +2206,11 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
   if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) &&
       !r.type->isReference() && r.type->isKnown() && !Impl::isConstObject(r.type))
     if (const Ty* obj = types.stripRef(object); obj && obj->isConst)
-      return types.qualified(r.type, true, r.type->isVolatile);
+      return types.qualified(r.type, true, r.type->isVolatile || obj->isVolatile);
+  // (of a volatile one volatile, the same way, and read and written as one)
+  if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) && !r.type->isReference() && r.type->isKnown())
+    if (const Ty* obj = types.stripRef(object); obj && obj->isVolatile)
+      return types.qualified(r.type, r.type->isConst, true);
   return r.type ? r.type : types.unknown();
 }
 
@@ -4986,6 +4991,20 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
   }
   if (t->kind == TyKind::Class)
   {
+    // `fn(4)` with a conversion of fn to a pointer to a function: that function's result.
+    auto surrogateCall = [&]() -> const Ty*
+    {
+      bool ambiguous = false;
+      const Ty* through = impl.surrogateFunction(t, argTypesOf(c->args), ambiguous);
+      if (!through)
+        return nullptr;
+      if (ambiguous)
+        reportCheck(c->token, "the call of an object of " + types.toString(types.unqualified(t), &impl.symbols) + " is ambiguous between the functions its conversions give");
+      const Ty* callee = types.unqualified(types.stripRef(through));
+      callee = callee->kind == TyKind::Pointer ? types.unqualified(callee->inner) : callee;
+      checkReferenceBindings(calleeName(), {}, callee->args, c->args);
+      return callee->inner;
+    };
     MemberResult r = memberOf(t, impl.opSymbols[uint32_t(P::LParen)], nullptr, c->token, false);
     if (r.decl && r.decl->kind == NodeKind::FunctionDecl)
     {
@@ -5013,15 +5032,30 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
           return callResultOfValue(call->closure, c, written);
         return returnTypeOfCall(f, &r.subst, c->args, nullptr);
       }
+      if (const Ty* through = surrogateCall())
+        return through;
       if (onlyPlainCandidate(r.decl, r.overloads)) // `sink(d)` with a `void operator()(Base&& x)`, as for a name
         checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args, calleeName());
       return unknown(Why::Overload);
     }
+    if (const Ty* through = surrogateCall())
+      return through;
     return r.why == Why::Member ? unknown(Why::Member) : types.unknown();
   }
   if (t->kind == TyKind::Param)
     return t;
   return unknown(Why::Unsupported);
+}
+
+auto GlobalScope::Impl::Walker::reversedSubscript(const Ty* b, const Ty* base) -> bool
+{
+  if (b->kind == TyKind::Int || b->kind == TyKind::Char || b->kind == TyKind::Bool)
+    return true;
+  if (b->kind == TyKind::Enum)
+    return !static_cast<EnumDecl*>(b->decl)->isClass;
+  if (b->kind != TyKind::Class || typedUnionOf(b) || memberOf(b, impl.opSymbols[uint32_t(P::LBracket)], nullptr, 0, false).decl)
+    return false;
+  return impl.conversionRank(base, types.intType(64)) < Impl::NotViable; // (`oi[arr]`, through its conversion to an integer)
 }
 
 auto GlobalScope::Impl::Walker::promote(const Ty* t) -> const Ty*
@@ -5999,7 +6033,7 @@ auto GlobalScope::Impl::Walker::typeOfLiteral(LiteralExpr* l) -> const Ty*
       if (s.starts_with("u")) return types.charType(16, true);
       if (s.starts_with("U")) return types.charType(32, true);
       if (s.starts_with("L")) return types.wcharType();
-      return types.charType(8, false);
+      return multiCharacterLiteral(s) ? types.intType(32) : types.charType(8, false);
     }
     case TokenKind::String:
     {
@@ -7800,6 +7834,19 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       const Ty* b = types.stripRef(base);
       if (!b || !b->isKnown())
         return record(e, types.unknown());
+      // `2[a]`, `oi[arr]`: the built-in subscript takes the pointer on either side ([expr.sub] 1). The
+      // node keeps one shape for all who read it (in a template's own walk it stays as written).
+      if (const Ty* pointer = firstIndex && i->args.size() == 1 ? types.unqualified(types.stripRef(firstIndex)) : nullptr;
+          pointer && (pointer->kind == TyKind::Pointer || pointer->kind == TyKind::Array) && reversedSubscript(b, base))
+      {
+        later.judged = true;
+        if (ownsNodes())
+        {
+          std::swap(i->base, i->args[0]);
+          i->indexFirst = !i->indexFirst;
+        }
+        return record(e, types.lref(pointer->inner));
+      }
       if (b->kind == TyKind::Pointer || b->kind == TyKind::Array)
       {
         later.judged = true;
@@ -7887,14 +7934,8 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         return record(e, a->kind == TyKind::Class ? then : types.unknown());
       // `c ? throw x : value`: a throw-expression's branch leaves, and the conditional is the other
       // branch, its type and value category ([expr.cond] 2); both throw: void.
-      auto throws = [](Expr* x)
-      {
-        while (x && x->kind == NodeKind::ParenExpr)
-          x = static_cast<ParenExpr*>(x)->inner;
-        return x && x->kind == NodeKind::ThrowExpr;
-      };
-      if (throws(c->then) != throws(c->else_))
-        return record(e, throws(c->then) ? other : then);
+      if (Expr* beside = branchBesideThrow(c))
+        return record(e, beside == c->then ? then : other);
       // `target ? &target[i] : 0`: a literal 0 beside a pointer would be that pointer (design.md 4).
       noteZeroNull(c->else_, a->kind == TyKind::Array ? types.decay(a) : a);
       noteZeroNull(c->then, b->kind == TyKind::Array ? types.decay(b) : b);

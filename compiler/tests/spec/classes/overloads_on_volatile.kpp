@@ -1,0 +1,41 @@
+// spec: volatile takes part in overloading as const does: member functions on their object, pointers and references, the less qualified the better (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+class S
+{
+public:
+  int v = 1;
+  int get() { return 1; }
+  int get() const { return 2; }
+  int get() volatile { return 3; }
+  int get() const volatile { return 4; }
+  int only() volatile { return 5; }
+  int outOfLine() volatile;
+  int outOfLine();
+  int outOfLine() const;
+};
+int S::outOfLine() volatile { return 6; }
+int S::outOfLine() { return 7; }
+int S::outOfLine() const { return 8; }
+int f(int*) { return 1; }
+int f(volatile int*) { return 2; }
+int g(const int*) { return 1; }
+int g(const volatile int*) { return 2; }
+int h(const int&) { return 1; }
+int h(const volatile int&) { return 2; }
+int main()
+{
+  S s;
+  const S cs;
+  volatile S vs;
+  const volatile S cvs;
+  printf("%d %d %d %d\n", s.get(), cs.get(), vs.get(), cvs.get());
+  printf("%d %d\n", s.only(), vs.only());
+  printf("%d %d %d\n", vs.outOfLine(), s.outOfLine(), cs.outOfLine());
+  int i = 0;
+  volatile int vi = 0;
+  const int ci = 0;
+  printf("%d %d\n", f(&i), f(&vi));
+  printf("%d %d %d\n", g(&i), g(&vi), g(&ci));
+  printf("%d %d %d\n", h(i), h(vi), h(ci));
+  return 0;
+}

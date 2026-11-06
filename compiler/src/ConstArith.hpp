@@ -3,6 +3,9 @@
 
 // The arithmetic of one evaluation. Every operation answers nullopt when its result is no
 // constant, with the reason in *why (the first one is kept: what stopped the evaluation).
+// Whether a character literal's spelling holds several characters (`'ab'`), and their bytes.
+bool multiCharacterLiteral(std::string_view spelling, std::vector<uint8_t>* bytes = nullptr);
+
 struct ConstArith
 {
   // A number or character literal as written (digit separators, suffixes, floats, hex floats,

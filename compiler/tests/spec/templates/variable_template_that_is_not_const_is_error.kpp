@@ -1,8 +1,0 @@
-// spec: a variable template that is not a const value (a mutable one, one per argument list) is not supported yet: reading or assigning it is a compile error, never its initializer read as its value nor one object shared by every argument list
-// error: variable_template_that_is_not_const_is_error.kpp:6: error: codegen does not support a variable template that is not a const value (counter) yet (in main())
-template<typename T> int counter = 0;
-int main()
-{
-  counter<int> = 5;
-  return counter<int>;
-}

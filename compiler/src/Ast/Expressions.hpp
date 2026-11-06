@@ -19,7 +19,7 @@ struct CallExpr : Expr
   const Ty* templateArgs[8] = {};
   uint8_t templateArgCount = 0;
 };
-struct IndexExpr : Expr { Expr* base; Span<Expr*> args; };
+struct IndexExpr : Expr { Expr* base; Span<Expr*> args; bool indexFirst = false; }; // indexFirst: written `2[a]`, the walk swapped them: args[0] is evaluated first.
 // dynamicMember: `object.[m]`, the member a reflection descriptor names (design.md 8.3); member is then empty.
 struct MemberExpr : Expr { Expr* base; QualifiedName member; P op; Decl* resolved = nullptr; Expr* dynamicMember = nullptr; };
 // What the checker decided an operator calls (design.md 24: decisions are made once), written by the

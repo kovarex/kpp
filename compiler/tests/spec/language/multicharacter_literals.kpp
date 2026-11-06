@@ -1,0 +1,21 @@
+// spec: a character literal of several characters is an int, its first character the highest byte (clang and g++): a constant, an enumerator, a case label, with escapes (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+enum { Tag = 'ABCD' };
+const int inConstant = 'ab' + 1;
+int main()
+{
+  printf("%d\n", 'ab');
+  printf("%d\n", 'abc');
+  printf("%d\n", 'abcd');
+  printf("%d\n", (int)Tag);
+  printf("%d\n", (int)sizeof('ab'));
+  printf("%d\n", (int)sizeof('a'));
+  printf("%d\n", '\x01\x02');
+  printf("%d\n", 'a\n');
+  printf("%d\n", '\377\377\377\377');
+  printf("%d\n", '\\\'');
+  printf("%d\n", 'ab' == 0x6162);
+  printf("%d\n", inConstant);
+  switch (0x41424344) { case 'ABCD': printf("hit\n"); break; default: printf("miss\n"); }
+  return 0;
+}

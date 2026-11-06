@@ -663,7 +663,7 @@ auto codegen::Emitter::load(const std::string& addr, const Ty* ty, Node* at) -> 
   if (isAggregate(ty))
     return {addr, types.unqualified(ty)};
   std::string r = newTemp();
-  fn += "  " + r + " = load " + llType(ty, at) + ", ptr " + addr + "\n";
+  fn += "  " + r + " = load " + (ty->isVolatile ? "volatile " : "") + llType(ty, at) + ", ptr " + addr + "\n"; // (kept, in its place, by any optimizer: [intro.abstract] 6)
   return {r, types.unqualified(ty)};
 }
 
@@ -692,7 +692,7 @@ auto codegen::Emitter::store(Value v, const std::string& addr, const Ty* ty, Nod
     return;
   }
   Value c = convert(v, ty, at);
-  fn += "  store " + llType(ty, at) + " " + c.text + ", ptr " + addr + "\n";
+  fn += std::string("  store ") + (ty->isVolatile ? "volatile " : "") + llType(ty, at) + " " + c.text + ", ptr " + addr + "\n";
 }
 
 auto codegen::Emitter::thisPointer(Node* at) -> std::string
@@ -727,14 +727,48 @@ auto codegen::Emitter::isConstValue(VariableDecl* v) -> bool
   return t && !t->isReference() && t->isConst;
 }
 
+auto codegen::Emitter::variableTemplateConstant(Expr* e, const Ty* t) -> std::optional<Value>
+{
+  // A variable template's value for these arguments, a constant (`pi_v<double>` a floating one), of
+  // the type the use has; while that is still the template's (`T`), of the type the evaluator gave
+  // the value, the declared one for these arguments.
+  auto usable = [this](const Ty* x) { return x && x->isKnown() && !types.isDependent(x) ? types.unqualified(types.stripRef(x)) : nullptr; };
+  const Ty* vt = usable(e->ty) ? usable(e->ty) : usable(t);
+  std::optional<ConstValue> c = foldAs(foldConst(e), vt);
+  if (!c || !c->isScalar())
+    return std::nullopt;
+  const Ty* ct = vt ? vt : usable(c->type);
+  if (c->isFloat() || (ct && ct->kind == TyKind::Float))
+  {
+    const Ty* ft = ct && ct->kind == TyKind::Float ? ct : types.floatType(64);
+    return Value{floatConstant(c->isFloat() ? c->f : double(c->i), ft->bits), ft};
+  }
+  return Value{ct && ct->kind == TyKind::Bool ? (c->i ? "true" : "false") : std::to_string(c->i), ct ? ct : types.intType()};
+}
+
 auto codegen::Emitter::variableTemplateObject(NameExpr* n, VariableDecl* v, Node* at) -> std::string
 {
-  if (!isConstValue(v))
-    unsupported(at, "a variable template that is not a const value (" + qualifiedName(v) + ")");
   std::string spelled;
   for (const auto& pair : variableTemplateArgs(n, v, at).pairs)
     spelled += (spelled.empty() ? "" : ", ") + irString(pair.second);
   std::string name = "@\"" + qualifiedName(v) + "<" + spelled + ">\"";
+  if (!isConstValue(v))
+  {
+    // `template<class T> T value = T(3);`: one object for each arguments, whichever module names it
+    // first, from a constant initializer. One built at startup is refused, never left zero.
+    const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(n->ty)));
+    if (!t || !t->isKnown() || types.isDependent(t))
+      unsupported(at, "a variable template whose type the checker could not tell (" + qualifiedName(v) + ")");
+    std::optional<Value> value = v->init ? variableTemplateConstant(n, t) : std::nullopt;
+    if ((v->init && !value) || (!v->init && isClass(t)))
+      unsupported(at, "a variable template built at startup (" + qualifiedName(v) + ")");
+    if (declaredNames.claim(name))
+    {
+      decls += "$" + name.substr(1) + " = comdat any\n";
+      decls += name + " = linkonce_odr global " + llType(t, at) + " " + (value ? value->text : "zeroinitializer") + ", comdat\n";
+    }
+    return name;
+  }
   Value value = rvalue(n);
   if (declaredNames.claim(name))
   {
@@ -909,12 +943,13 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       auto* i = static_cast<IndexExpr*>(e);
       if (i->args.size() != 1)
         unsupported(e, "multi-argument indexing");
+      Value written = i->indexFirst ? convert(rvalue(i->args[0]), types.intType(64), e) : Value{}; // (`2[a]`: from the left)
       Value base = withCheckedConst(rvalue(i->base), i->base);
       if (ClassDecl* c = typedUnionOf(base.ty, e))
         return alternativeLvalue(c, base, i, e, true); // p[Integer]: the alternative, if held
       if (isClass(base.ty))
         return resultAddress(operatorCall(base, operatorName(P::LBracket), i->args, e, true), e);
-      Value index = convert(rvalue(i->args[0]), types.intType(64), e);
+      Value index = i->indexFirst ? written : convert(rvalue(i->args[0]), types.intType(64), e);
       if (base.ty->kind != TyKind::Pointer)
         unsupported(e, "indexing a non-pointer");
       std::string r = newTemp();
@@ -980,6 +1015,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
     case NodeKind::ConditionalExpr:
     {
       auto* c = static_cast<ConditionalExpr*>(e);
+      if (Expr* beside = enterBranchBesideThrow(c))
+        return lvalue(beside); // (`(c ? throw x : a) = 1`)
       const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
       const Ty* thenObject = c->then && t ? conditionalObject(c->then, t, e) : nullptr;
       const Ty* elseObject = thenObject ? conditionalObject(c->else_, t, e) : nullptr;

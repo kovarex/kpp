@@ -149,6 +149,7 @@
   // The conversion function of class a (or of a base, whose arguments subst gets) to exactly the
   // type target, as a conversion-function-id names it: `commands.operator AllowedCommands::Enum()`.
   FunctionDecl* conversionFunctionTo(const Ty* a, const Ty* target, Subst& subst, int baseDepth = 0);
+  const Ty* surrogateFunction(const Ty* object, const std::vector<const Ty*>& args, bool& ambiguous);
 
   struct Candidate
   {

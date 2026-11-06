@@ -927,7 +927,12 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         Subst qualifier;
         if (s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->name.parts.size() > 1 && named->parent)
           qualifier = qualifierSubst(static_cast<NamedType*>(s->type)->name, ctx, depth + 1, named->parent->ownScope);
-        t = declaredTypeOf(named, qualifier.pairs.empty() ? ctx.subst : &qualifier, depth + 1);
+        // `sizeof(buffer<5>)`: a variable template's for these arguments.
+        if (named->kind == NodeKind::VariableDecl && !named->templateParams.empty() && s->type && s->type->kind == NodeKind::NamedType &&
+            static_cast<NamedType*>(s->type)->name.last().hasTemplateArgs)
+          t = variableTemplateType(static_cast<VariableDecl*>(named), static_cast<NamedType*>(s->type)->name.last(), ctx);
+        else
+          t = declaredTypeOf(named, qualifier.pairs.empty() ? ctx.subst : &qualifier, depth + 1);
       }
       else if (s->type)
         t = convertType(s->type, ctx, depth + 1);
@@ -2872,7 +2877,7 @@ auto GlobalScope::Impl::constOverrider(FunctionDecl* f, const Ty* t, int depth) 
       continue;
     auto* g = static_cast<FunctionDecl*>(m);
     if (g->name.empty() || g->name.last().symbol != f->name.last().symbol || g->params.size() != f->params.size() || (g->flags & DF_Static) ||
-        ((g->flags & DF_Const) != (f->flags & DF_Const)) || g->refQualifier != f->refQualifier)
+        ((g->flags & (DF_Const | DF_Volatile)) != (f->flags & (DF_Const | DF_Volatile))) || g->refQualifier != f->refQualifier)
       continue;
     bool same = true;
     for (size_t i = 0; i < g->params.size() && same; ++i)

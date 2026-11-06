@@ -1,0 +1,9 @@
+// spec: a variable template that is not const and whose initializer is no constant would be built at startup, which is not supported yet: reading or assigning it is a compile error, never its object left zero
+// error: variable_template_built_at_startup_is_error.kpp:7: error: codegen does not support a variable template built at startup (counter) yet (in main())
+extern "C" int rand();
+template<typename T> int counter = rand();
+int main()
+{
+  counter<int> = 5;
+  return counter<int>;
+}

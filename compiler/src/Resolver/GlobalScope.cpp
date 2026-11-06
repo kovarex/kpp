@@ -1271,13 +1271,13 @@ Decl* GlobalScope::definitionOf(Decl* d)
       // the parameters and the method's constness decide.
       auto matches = [&](FunctionDecl* candidate)
       {
-        if (candidate->refQualifier != f->refQualifier)
-          return false; // (`int Box::out() &` and `int Box::out() &&`: two functions)
+        if (candidate->refQualifier != f->refQualifier || (candidate->flags & (DF_Const | DF_Volatile)) != (f->flags & (DF_Const | DF_Volatile)))
+          return false; // (`int Box::out() &` and `int Box::out() &&`: two functions, as with const and volatile)
         const Ty* ct = impl->typeAs(candidate, f);
         if (ct == ft)
           return true;
         if (!ft || !ct || ft->kind != TyKind::Function || ct->kind != TyKind::Function || !impl->containsAuto(ft->inner) ||
-            (candidate->flags & DF_Const) != (f->flags & DF_Const) || ct->args.size() != ft->args.size() || ct->variadic != ft->variadic)
+            ct->args.size() != ft->args.size() || ct->variadic != ft->variadic)
           return false;
         for (size_t i = 0; i < ct->args.size(); ++i)
           if (ct->args[i] != ft->args[i])
@@ -1547,6 +1547,13 @@ std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl*
 }
 
 // t null: the value of e as an expression (evaluate).
+const Ty* GlobalScope::surrogateFunction(const Ty* object, const std::vector<const Ty*>& args)
+{
+  bool ambiguous = false;
+  const Ty* t = impl->surrogateFunction(object, args, ambiguous);
+  return ambiguous ? nullptr : t;
+}
+
 const Ty* GlobalScope::underlyingOf(const Ty* enumeration)
 {
   ParsedFile* file = enumeration->decl ? enumeration->decl->file : nullptr;

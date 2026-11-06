@@ -949,7 +949,18 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
   if (isLambda(fnValue.ty))
     return callClosure(fnValue, c->args, sret, c);
   if (isClass(fnValue.ty))
-    return operatorCall(fnValue, "operator()", c->args, c, true, sret); // a functor: object(args)
+  {
+    Value called = operatorCall(fnValue, "operator()", c->args, c, false, sret); // a functor: object(args)
+    if (called.ty)
+      return called;
+    // A conversion to a pointer or a reference to a function: `fn(4)`.
+    const Ty* through = global.surrogateFunction(callee->ty ? withCurrentArgs(callee->ty) : fnValue.ty, argTypesOf(c->args));
+    if (!through)
+      missingOperator(c, fnValue.ty, "operator()");
+    Value target = convert(fnValue, through, c);
+    const Ty* ft = types.unqualified(types.stripRef(through));
+    return callIndirect(target.text, ft->kind == TyKind::Pointer ? types.unqualified(ft->inner) : ft, "", c->args, sret, c);
+  }
   const Ty* ft = fnValue.ty->kind == TyKind::Pointer ? fnValue.ty->inner : fnValue.ty;
   if (!ft || ft->kind != TyKind::Function)
     unsupported(c, "a call that did not resolve to a function (the callee has type " + types.toString(fnValue.ty, &symbols) + ")");

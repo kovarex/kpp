@@ -1,0 +1,39 @@
+// spec: an object no call operator of which takes the arguments is called through a conversion to a pointer or a reference to a function ([over.call.object] 2): const objects, bases, instances, several conversions chosen by the arguments, a call operator before them (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+typedef int (*Fn)(int);
+typedef double (*Dn)(double);
+int twice(int x) { return x * 2; }
+int thrice(int x) { return x * 3; }
+double half(double x) { return x / 2; }
+class S { public: int k; operator Fn() const { return k ? twice : thrice; } };
+class Derived : public S { public: int extra = 0; };
+class R { public: using F = int(int); operator F*() { return twice; } };
+class Q { public: using F = int(int); operator F&() const { return thrice; } };
+template<class T> class Conv { public: using P = T (*)(T); operator P() const { return [](T v) { return v + 1; }; } };
+class Two { public: operator Fn() { return twice; } int operator()(long) { return 100; } };
+class Both { public: operator Fn() { return twice; } operator Dn() { return half; } };
+int main()
+{
+  S fn{1};
+  printf("%d\n", fn(4));
+  S other{0};
+  printf("%d\n", other(4));
+  const S c{1};
+  printf("%d\n", c(5));
+  Derived d;
+  d.k = 1;
+  printf("%d\n", d(6));
+  R r;
+  printf("%d\n", r(6));
+  const Q q;
+  printf("%d\n", q(6));
+  Conv<int> v;
+  printf("%d\n", v(1));
+  Conv<double> w;
+  printf("%g\n", w(1.5));
+  Two t;
+  printf("%d\n", t(4l));
+  Both b;
+  printf("%d %g\n", b(4), b(4.0));
+  return 0;
+}

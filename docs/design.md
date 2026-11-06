@@ -160,9 +160,9 @@ builds win less unless machine code is cached per function.
 - Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
   the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
   constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,
-  and a reference binds a temporary. A variable template that is not a const value is a compile
-  error until it gets its own storage per argument list (one global named by the template alone
-  read `hasBegin<Vector<int>>` as false).
+  and a reference binds a temporary. One that is not a const value has its own object per argument
+  list (2026-11-06; one global named by the template alone read `hasBegin<Vector<int>>` as false);
+  one whose initializer is no constant, built at startup, is a compile error so far.
 - Instantiation depth (implementation limit, 2026-10-28, open to change by kovarex): a function
   instantiation requested through a chain of more than 64 instantiations, each asked for by the
   previous one's body, is an error naming the last two. Without a limit, a template that
@@ -1011,6 +1011,32 @@ no candidate for a const object ([over.match.funcs] 4-5): calling one, or the cl
 operator, on a const object is an error. Specs: language/const_value_assigned,
 language/const_value_incremented, language/volatile_is_not_const,
 classes/non_const_method_on_const_object_is_error.
+
+Volatile (2026-11-06). A read or a write of a volatile scalar is `load volatile` or `store volatile`:
+through its name, a pointer, a reference, an element, a member of a volatile object, whose members are
+volatile as a const object's are const. Before this nothing reached the IR and an optimized build moved
+such reads out of loops (silent wrong answer, spec language/volatile_access_is_kept_by_the_optimizer).
+Open: `this` is not volatile in a volatile member function, so a member read there is a plain read
+(pending language/volatile_member_function_reads_its_members_as_volatile); a volatile class copied
+whole, and a volatile bit field, are plain accesses. Volatile overloads as const does (classes/overloads_on_volatile): it
+is part of a member function's identity, its name in the IR and its out-of-line match, a `volatile`
+object takes volatile members only, and a qualification more is the worse conversion. An out-of-line
+pair that differed only in const or volatile took the first definition found.
+
+Smaller rules of C++ (2026-11-06), each with its spec and clang's and g++'s output:
+`c ? throw x : a` is `a`, its value category too (language/conditional_beside_a_throw_is_the_other_branch).
+An object no call operator of which takes the arguments is called through a conversion to a pointer or
+a reference to a function, chosen by the arguments among its conversions (GlobalScope::surrogateFunction,
+classes/object_called_through_a_conversion_to_a_function); a call operator that takes them is used
+first, where C++ can call the two ambiguous (`t(4)` with `operator()(long)` and a conversion to `int (*)(int)`:
+kpp calls the operator). An array captured by copy is copied element by element
+(language/lambda_captures_an_array_by_copy). A variable template that is not const is one object for
+each arguments, linkonce, from a constant initializer; one built at startup is a compile error
+(templates/variable_template_objects). The built-in subscript takes the pointer on either side: the
+walk swaps `2[a]` into `a[2]`, IndexExpr::indexFirst keeps the left operand first
+(expressions/subscript_takes_the_pointer_on_either_side). A character literal of two to four characters
+is an int (language/multicharacter_literals). `_mm_srli_si128` and `_mm_slli_si128` take the
+instruction's byte as their count, zero from 16 on (interop/sse_byte_shift_past_the_register).
 
 ### 12. The build description: build.kpp (decided 2026-10-31)
 A project's builds are described in `build.kpp` at its root: kpp, run by the compile-time

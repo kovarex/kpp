@@ -291,6 +291,14 @@ Container::value_type first(const Container& container) { return container[0]; }
 - **See:** [design 13][d13]; specs `language/kpp_number_names_are_types_to_the_parser`,
   `language/c_type_names_outside_extern_c_warn`, `language/integer_types_are_distinct`.
 
+### A character literal holds at most four characters (built)
+
+- **C++:** `'abcde'` is conditionally supported; clang and g++ warn and keep the last four.
+- **kpp:** two to four characters are an `int` as there (`'ABCD'`, the first the highest byte). More is
+  an error.
+- **Why:** an int cannot hold them; dropping characters would be a silent wrong answer.
+- **See:** [design 11][d11]; spec `language/multicharacter_literals`.
+
 ### The literal 0 is no pointer (built)
 
 - **C++:** `0` and `NULL` are null pointer constants.
@@ -753,6 +761,7 @@ inheritance, `dynamic_cast` and `typeid`, destruction of globals at exit, and `f
 [d7]: design.md#7-no-preprocessor-what-replaces-macros-decided-2026-10-23
 [d8]: design.md#8-compile-time-iteration-reflection-enums-typed-unions-tests-decided-2026-10-24
 [d9]: design.md#9-exceptions-and-rtti-decided-2026-10-24
+[d11]: design.md#11-evaluation-order-c17s-rules-decided-2026-10-30
 [d12]: design.md#12-the-build-description-buildkpp-decided-2026-10-31
 [d13]: design.md#13-integer-types-and-sizes-decided-2026-11-01
 [d14]: design.md#14-text-output-arguments-in-sequence-text-appendto-and--decided-2026-11-01

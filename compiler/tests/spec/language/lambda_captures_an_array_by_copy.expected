@@ -1,0 +1,15 @@
+6 12
+150 2
+3
+5
+6
+7
+ctor 1
+ctor 2
+copy 11
+copy 12
+12
+dtor 12
+dtor 11
+dtor 2
+dtor 1

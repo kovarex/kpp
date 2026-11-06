@@ -1,0 +1,60 @@
+// spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop ends when the other thread's write is seen; a read moved out of the loop leaves it at once, its count at the limit
+// kppc: --release
+extern "C" int printf(const char* format, ...);
+class Box
+{
+public:
+  int n = 0;
+  int other = 0;
+};
+class HasVolatile
+{
+public:
+  volatile int n = 0;
+};
+volatile int named = 0;
+volatile int pointed = 0;
+volatile int referred = 0;
+volatile Box box;
+volatile int elements[3];
+HasVolatile holder;
+const long long limit = 1000000000000000ll;
+int main()
+{
+  volatile int* pointer = &pointed;
+  volatile int& reference = referred;
+  Thread writer([]() {
+    named = 1;
+    pointed = 1;
+    referred = 1;
+    box.n = 1;
+    elements[2] = 1;
+    holder.n = 1;
+  });
+  long long i = 0;
+  while (i < limit && named == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  i = 0;
+  while (i < limit && *pointer == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  i = 0;
+  while (i < limit && reference == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  i = 0;
+  while (i < limit && box.n == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  i = 0;
+  while (i < limit && elements[2] == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  i = 0;
+  while (i < limit && holder.n == 0)
+    ++i;
+  printf("%d\n", (int)(i < limit));
+  writer.join();
+  return 0;
+}

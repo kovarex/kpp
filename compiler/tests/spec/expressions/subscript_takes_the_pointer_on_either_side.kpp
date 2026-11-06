@@ -1,0 +1,30 @@
+// spec: the built-in subscript takes the pointer on either side ([expr.sub] 1): `2[a]`, an lvalue, a string literal, a class that converts to an integer, an unscoped enumeration, the left operand evaluated first (clang's and g++'s output)
+extern "C" int printf(const char* format, ...);
+class OI { public: int v; operator int() const { return v; } };
+enum E { two = 2 };
+int order = 0;
+int first() { order = order * 10 + 1; return 1; }
+int* second(int* p) { order = order * 10 + 2; return p; }
+template<class I, class A> int at(I i, A a) { return i[a]; }
+int main()
+{
+  int a[4] = {10, 20, 30, 40};
+  printf("%d\n", 2[a]);
+  int* p = a + 1;
+  printf("%d\n", 1[p]);
+  OI oi{3};
+  printf("%d\n", oi[a]);
+  printf("%d\n", a[oi]);
+  3[a] = 7;
+  printf("%d\n", a[3]);
+  printf("%c\n", 1["abc"]);
+  long long big = 2;
+  printf("%d\n", big[a]);
+  printf("%d\n", two[a]);
+  printf("%d\n", first()[second(a)]);
+  printf("%d\n", order);
+  order = 0;
+  second(a)[first()] = 5;
+  printf("%d %d\n", order, at(1, a));
+  return 0;
+}

@@ -38,6 +38,19 @@ struct TemplateArgs
 // decrement, an assignment (`a = b`, `x += 1`), a comma whose right operand is one ([expr.pre.incr]
 // 1, [expr.ass] 1, [expr.comma] 1; until 2026-11-05 values: `bump(++x)` with `bump(int&)` was
 // refused). Calls and operators that yield references carry the reference in their type.
+// The branch that goes on of `c ? throw x : y` (y; of `c ? y : throw x` too): the conditional is that
+// branch, its type and value category ([expr.cond] 2). Null when neither or both throw.
+inline Expr* branchBesideThrow(const ConditionalExpr* c)
+{
+  auto throws = [](const Expr* x)
+  {
+    while (x && x->kind == NodeKind::ParenExpr)
+      x = static_cast<const ParenExpr*>(x)->inner;
+    return x && x->kind == NodeKind::ThrowExpr;
+  };
+  return !c->then || throws(c->then) == throws(c->else_) ? nullptr : throws(c->then) ? c->else_ : c->then;
+}
+
 inline bool isLvalueExpression(const Expr* e)
 {
   if (!e)
@@ -104,6 +117,8 @@ inline bool isLvalueExpression(const Expr* e)
       // returning a reference one of them (`c ? map.unsafeRandom : map.getTriggersRandomGenerator()`).
       auto* c = static_cast<const ConditionalExpr*>(e);
       auto lvalue = [](const Expr* x) { return isLvalueExpression(x) || x->ty->kind == TyKind::LRef; };
+      if (const Expr* other = branchBesideThrow(c))
+        return other->ty && lvalue(other); // (`c ? throw x : a`)
       if (!c->then || !c->else_ || !c->then->ty || !c->else_->ty || !lvalue(c->then) || !lvalue(c->else_))
         return false;
       const Ty* a = c->then->ty->isReference() ? c->then->ty->inner : c->then->ty;
@@ -553,6 +568,9 @@ public:
   // when the interpreter cannot evaluate it yet; cleared by clearConstantReason.
   static std::string constantReason();
   static void clearConstantReason();
+  // What an object no call operator of which takes these arguments is called through
+  // (Impl::surrogateFunction): a conversion's pointer or reference to a function, or null.
+  const Ty* surrogateFunction(const Ty* object, const std::vector<const Ty*>& args);
   // The underlying type of an enumeration type, under an instance's arguments (`enum : T`): the
   // fixed one, or one int cannot hold off Windows; null when it is int, unknown while dependent.
   const Ty* underlyingOf(const Ty* enumeration);

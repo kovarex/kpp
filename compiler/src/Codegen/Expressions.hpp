@@ -38,6 +38,7 @@
     // gives the branches as this instance emits them, the same type, their usual arithmetic
     // conversions or the pointer one converts to; a class branch is an error, never a guess.
     Value conditionalOfBranches(ConditionalExpr* c);
+    Expr* enterBranchBesideThrow(ConditionalExpr* c); // (emits the condition and the throw; null, nothing emitted, when no branch alone throws)
 
     bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
     int programAllocates = -1; // GlobalScope::programAllocationFunctions, asked once (-1: not yet)

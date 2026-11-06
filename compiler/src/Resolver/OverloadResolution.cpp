@@ -639,9 +639,9 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
     if (types.unqualified(a) == types.unqualified(pt))
     {
-      if (lvalueToRvalueRef || (!pt->isConst && a->isConst))
+      if (lvalueToRvalueRef || (!pt->isConst && a->isConst) || (!pt->isVolatile && a->isVolatile))
         return NotViable;
-      return pt->isConst && !a->isConst ? 1 : 0;
+      return (pt->isConst && !a->isConst) || (pt->isVolatile && !a->isVolatile) ? 1 : 0;
     }
     if (a->kind == TyKind::Class && pt->kind == TyKind::Class && isBaseClass(pt, a))
       return lvalueToRvalueRef || (!pt->isConst && a->isConst) ? NotViable : 3;
@@ -758,7 +758,11 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         const Ty* ai = a->inner;
         const Ty* pi = p->inner;
         if (types.unqualified(ai) == types.unqualified(pi))
-          return pi->isConst == ai->isConst ? 0 : (pi->isConst ? 1 : NotViable);
+        {
+          if ((ai->isConst && !pi->isConst) || (ai->isVolatile && !pi->isVolatile))
+            return NotViable;
+          return pi->isConst == ai->isConst && pi->isVolatile == ai->isVolatile ? 0 : 1;
+        }
         if (losesNoexcept(types.unqualified(ai), types.unqualified(pi)))
           return 1; // the function pointer conversion, an exact match worse than the identity ([conv.fctptr])
         if (pi->kind == TyKind::Void)
@@ -1258,6 +1262,70 @@ auto GlobalScope::Impl::conversionFunctionTo(const Ty* a, const Ty* target, Subs
         if (FunctionDecl* f = conversionFunctionTo(b, target, subst, baseDepth + 1))
           return f;
   return nullptr;
+}
+
+// [over.call.object] 2: an object no call operator of which takes the arguments is called through
+// what a conversion function of it gives, a pointer or a reference to a function: the type (as the
+// conversion gives it) of the one whose parameters take them best; null for none. A surrogate never
+// beats a call operator that takes them (the object's conversion is the worse), so these are asked after.
+auto GlobalScope::Impl::surrogateFunction(const Ty* object, const std::vector<const Ty*>& args, bool& ambiguous) -> const Ty*
+{
+  ambiguous = false;
+  bool constObject = isConstObject(types.stripRef(object));
+  std::vector<const Ty*> given;
+  std::function<void(const Ty*, int)> collect = [&](const Ty* cls, int depth)
+  {
+    Scope* s = cls && cls->kind == TyKind::Class && depth <= 8 ? classScopeOf(cls) : nullptr;
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+      return;
+    Subst subst = substFor(cls);
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !m->templateParams.empty() ||
+          isExplicit(static_cast<FunctionDecl*>(m), &subst) || (constObject && !(m->flags & DF_Const)))
+        continue;
+      const Ty* ft = declaredTypeOf(m, &subst, 0);
+      const Ty* t = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
+      if (!t || !t->isKnown() || types.isDependent(t))
+        continue;
+      const Ty* callee = types.unqualified(types.stripRef(t));
+      if (callee->kind == TyKind::Pointer)
+        callee = types.unqualified(callee->inner);
+      if (callee->kind == TyKind::Function && std::find(given.begin(), given.end(), t) == given.end())
+        given.push_back(t);
+    }
+    ClassDecl* def = classDefinition(cls);
+    std::vector<const Ty*> bases;
+    if (def && directBases(cls, def, bases))
+      for (const Ty* b : bases)
+        collect(b, depth + 1);
+  };
+  collect(types.unqualified(types.stripRef(object)), 0);
+  const Ty* best = nullptr;
+  std::vector<int> bestRanks;
+  for (const Ty* t : given)
+  {
+    const Ty* callee = types.unqualified(types.stripRef(t));
+    callee = callee->kind == TyKind::Pointer ? types.unqualified(callee->inner) : callee;
+    if (args.size() < callee->args.size() || (args.size() > callee->args.size() && !callee->variadic))
+      continue;
+    std::vector<int> ranks;
+    for (size_t i = 0; i < callee->args.size(); ++i)
+      ranks.push_back(args[i] ? conversionRank(args[i], callee->args[i]) : 0);
+    if (std::any_of(ranks.begin(), ranks.end(), [](int r) { return r >= NotViable; }))
+      continue;
+    bool better = !best, worse = false;
+    for (size_t i = 0; best && i < ranks.size() && i < bestRanks.size(); ++i)
+    {
+      better = better || ranks[i] < bestRanks[i];
+      worse = worse || ranks[i] > bestRanks[i];
+    }
+    if (better && !worse)
+      best = t, bestRanks = ranks, ambiguous = false;
+    else if (better == worse)
+      ambiguous = true;
+  }
+  return best;
 }
 
 auto GlobalScope::Impl::pushEnclosingTemplateParams(Decl* d, LocalStack& own) -> void
@@ -2003,7 +2071,7 @@ auto GlobalScope::Impl::equivalentParameters(FunctionDecl* a, FunctionDecl* b, c
   for (size_t i = 0; i < ta->args.size(); ++i)
     if (!ta->args[i] || !tb->args[i] || (s.empty() ? tb->args[i] : substitute(tb->args[i], s)) != ta->args[i])
       return false;
-  return (a->flags & (DF_Const | DF_RefQual)) == (b->flags & (DF_Const | DF_RefQual)) && a->refQualifier == b->refQualifier;
+  return (a->flags & (DF_Const | DF_Volatile | DF_RefQual)) == (b->flags & (DF_Const | DF_Volatile | DF_RefQual)) && a->refQualifier == b->refQualifier;
 }
 
 auto GlobalScope::Impl::deductionsAgree(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, const Subst& deduced, size_t given) -> bool
@@ -2307,7 +2375,7 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // A C function's static is its linkage, which a later extern declaration takes from a visible
   // static one (C11 6.2.2p4): MSVC 14.44's time.h defines time static inline, CTime.kpp declares
   // it extern "C", one function.
-  uint32_t compared = isCFunction(a) && isCFunction(b) ? DF_Const | DF_RefQual : DF_Const | DF_RefQual | DF_Static;
+  uint32_t compared = isCFunction(a) && isCFunction(b) ? DF_Const | DF_Volatile | DF_RefQual : DF_Const | DF_Volatile | DF_RefQual | DF_Static;
   if (a->params.size() != b->params.size() || a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
       a->templateParams.size() != b->templateParams.size() || (a->flags & compared) != (b->flags & compared) || a->refQualifier != b->refQualifier)
     return false;
@@ -2370,6 +2438,7 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     argsConcrete = argsConcrete && at && at->isKnown() && !types.isDependent(at);
   std::vector<Candidate> viable;
   bool objectConst = objectTy && types.stripRef(objectTy)->isConst;
+  bool objectVolatile = objectTy && types.stripRef(objectTy)->isVolatile;
   // The object's value category where the caller gives it, an lvalue as T&, an rvalue as T&& (a
   // member call's object, argumentType's): a ref-qualified member function takes only the objects
   // its implicit object parameter binds ([over.match.funcs] 4, 5): `f() &&` no lvalue, a non-const
@@ -2404,9 +2473,10 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     bool constMethod = (f->flags & DF_Const) != 0;
     if (objectTy && !(f->flags & DF_Static) && !single)
     {
-      if (objectConst && !constMethod)
+      bool volatileMethod = (f->flags & DF_Volatile) != 0;
+      if ((objectConst && !constMethod) || (objectVolatile && !volatileMethod))
         continue;
-      c.thisRank = (!objectConst && constMethod) ? 1 : 0;
+      c.thisRank = ((!objectConst && constMethod) ? 1 : 0) + ((!objectVolatile && volatileMethod) ? 1 : 0); // (the fewer it adds the better; const against volatile ties)
       if (objectLvalue && f->refQualifier == FunctionDecl::RefQualifier::RValue)
         continue;
       if (objectRvalue && f->refQualifier == FunctionDecl::RefQualifier::LValue && (!constMethod || (f->flags & DF_Volatile)))
@@ -2663,7 +2733,7 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
       // tie-breakers: `pick(spider)` with a Spider* takes pick(Entity*) over pick(const Entity*)
       // (the same conversion and a qualification more), and pick(Unit*) over pick(Entity*) for
       // Unit deriving from Entity (the conversion to the nearer base).
-      if (a.ranks[i] == b.ranks[i] && (a.ranks[i] == 2 || a.ranks[i] == 3) && i < a.params.size() && i < b.params.size() &&
+      if (a.ranks[i] == b.ranks[i] && a.ranks[i] >= 1 && a.ranks[i] <= 3 && i < a.params.size() && i < b.params.size() &&
           a.params[i] && b.params[i] && !nullArgument)
       {
         const Ty* pa = types.unqualified(types.stripRef(a.params[i]));

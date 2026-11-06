@@ -244,6 +244,56 @@ std::optional<ConstValue> ConstArith::fitted(__int128 exact, IntType it, const c
 
 // --- literals ---
 
+bool multiCharacterLiteral(std::string_view spelling, std::vector<uint8_t>* bytes)
+{
+  // Only an ordinary literal: a prefixed one holds one character, a suffix is the program's own.
+  if (spelling.size() < 4 || spelling.front() != '\'' || spelling.back() != '\'')
+    return false;
+  std::string_view body = spelling.substr(1, spelling.size() - 2);
+  size_t count = 0;
+  for (size_t i = 0; i < body.size(); ++count)
+  {
+    uint8_t value = uint8_t(body[i++]);
+    if (value == '\\')
+    {
+      if (i >= body.size())
+        return false;
+      char e = body[i++];
+      static const char names[] = "n\nt\tr\ra\ab\bf\fv\v\\\\''\"\"??";
+      if (e == 'x')
+      {
+        size_t start = i;
+        unsigned digits = 0;
+        for (; i < body.size() && isxdigit(uint8_t(body[i])); ++i)
+          digits = digits * 16 + unsigned(isdigit(uint8_t(body[i])) ? body[i] - '0' : (body[i] | 32) - 'a' + 10);
+        if (i == start)
+          return false;
+        value = uint8_t(digits);
+      }
+      else if (e >= '0' && e <= '7')
+      {
+        unsigned digits = unsigned(e - '0');
+        for (int more = 0; more < 2 && i < body.size() && body[i] >= '0' && body[i] <= '7'; ++more)
+          digits = digits * 8 + unsigned(body[i++] - '0');
+        value = uint8_t(digits);
+      }
+      else
+      {
+        const char* found = nullptr;
+        for (const char* n = names; *n; n += 2)
+          if (*n == e)
+            found = n;
+        if (!found)
+          return false; // (`\u`: a code point, no byte of a narrow literal)
+        value = uint8_t(found[1]);
+      }
+    }
+    if (bytes)
+      bytes->push_back(value);
+  }
+  return count > 1;
+}
+
 std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view spelling)
 {
   if (kind == TokenKind::Char)
@@ -258,6 +308,17 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
     int64_t v = 0;
     if (body.empty())
       return fail("an empty character literal");
+    // `'ABCD'`: an int, its first character the highest byte (clang's and g++'s; conditionally
+    // supported, [lex.ccon] 2). More than an int holds is refused, where they keep the last four.
+    if (std::vector<uint8_t> bytes; multiCharacterLiteral(spelling, &bytes))
+    {
+      if (bytes.size() > 4)
+        return fail("a character literal of more than four characters (" + std::string(spelling) + ")");
+      uint32_t packed = 0;
+      for (uint8_t b : bytes)
+        packed = packed << 8 | b;
+      return ConstValue::integer(int32_t(packed), types.intType(32));
+    }
     if (body[0] != '\\')
     {
       // One character of the (UTF-8) source: in a wide literal its code point (`L'é'`), in a narrow

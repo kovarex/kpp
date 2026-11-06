@@ -123,6 +123,7 @@
     // false). Only a const one: a mutable instance would need its own storage, built at startup.
     bool isConstValue(VariableDecl* v);
     std::string variableTemplateObject(NameExpr* n, VariableDecl* v, Node* at);
+    std::optional<Value> variableTemplateConstant(Expr* e, const Ty* t);
 
     std::string lvalue(Expr* e);
     std::string prefixTarget; // The address the last built-in `++`/`--` wrote: lvalue's for a prefix one.

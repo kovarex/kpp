@@ -281,25 +281,10 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       if (d && d->kind == NodeKind::VariableDecl && !locals.count(d))
       {
         const Ty* t = types.stripRef(declType(d));
-        if (!d->templateParams.empty())
+        if (!d->templateParams.empty() && isConstValue(static_cast<VariableDecl*>(d))) // (another is an object, read as one: variableTemplateObject)
         {
-          if (!isConstValue(static_cast<VariableDecl*>(d)))
-            unsupported(e, "a variable template that is not a const value (" + qualifiedName(d) + ")");
-          // A variable template: its value for these arguments, a constant (`pi_v<double>` a
-          // floating one), of the type the use has; while that is still the template's (`T`),
-          // of the type the evaluator gave the value, the declared one for these arguments.
-          auto usable = [this](const Ty* x) { return x && x->isKnown() && !types.isDependent(x) ? types.unqualified(types.stripRef(x)) : nullptr; };
-          const Ty* vt = usable(e->ty) ? usable(e->ty) : usable(t);
-          if (std::optional<ConstValue> c = foldAs(foldConst(e), vt); c && c->isScalar())
-          {
-            const Ty* ct = vt ? vt : usable(c->type);
-            if (c->isFloat() || (ct && ct->kind == TyKind::Float))
-            {
-              const Ty* ft = ct && ct->kind == TyKind::Float ? ct : types.floatType(64);
-              return {floatConstant(c->isFloat() ? c->f : double(c->i), ft->bits), ft};
-            }
-            return {ct && ct->kind == TyKind::Bool ? (c->i ? "true" : "false") : std::to_string(c->i), ct ? ct : types.intType()};
-          }
+          if (std::optional<Value> value = variableTemplateConstant(e, t))
+            return *value;
           if (getenv("KPP_DEBUG_VT"))
             fprintf(stderr, "DEBUG vt file=%s ctx=%s args=%d constContext=%s\n", currentFile ? currentFile->path.c_str() : "null",
                     typingContext() ? nodeKindName(typingContext()->kind) : "null", currentArgs ? int(currentArgs->pairs.size()) : -1,
@@ -416,6 +401,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
     case NodeKind::IndexExpr:
     {
       auto* i = static_cast<IndexExpr*>(e);
+      Value written = i->indexFirst ? convert(rvalue(i->args[0]), types.intType(64), e) : Value{}; // (`2[a]`: from the left)
       Value base = withCheckedConst(rvalue(i->base), i->base);
       if (ClassDecl* c = typedUnionOf(base.ty, e))
       {
@@ -425,7 +411,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       }
       if (isClass(base.ty))
         return callRvalue(operatorCall(base, operatorName(P::LBracket), i->args, e, true), e);
-      Value index = convert(rvalue(i->args[0]), types.intType(64), e);
+      Value index = i->indexFirst ? written : convert(rvalue(i->args[0]), types.intType(64), e);
       if (base.ty->kind != TyKind::Pointer)
         unsupported(e, "indexing a non-pointer");
       std::string r = newTemp();
@@ -802,30 +788,15 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         t = types.pointer(t->inner); // two arrays of one type: as a value, the chosen one decays (as load's)
       if (!t || !t->isKnown())
         return conditionalOfBranches(c);
+      if (t && t->kind != TyKind::Void)
+        if (Expr* beside = enterBranchBesideThrow(c))
+        {
+          Value v = rvalue(beside);
+          return isClass(t) || v.ty == t ? v : convert(v, t, e);
+        }
       Value cond = convert(rvalue(c->cond), types.boolType(), e);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
-      // `x > 0 ? x : throw x`: a branch that is a throw-expression leaves, and the result is the
-      // other branch's, of its type (C++'s [expr.cond] 2). Until 2026-11-06 an error (a conversion
-      // from void). The throw's block ends unreachable; this one goes on in the other's.
-      auto throws = [](Expr* x)
-      {
-        while (x && x->kind == NodeKind::ParenExpr)
-          x = static_cast<ParenExpr*>(x)->inner;
-        return x && x->kind == NodeKind::ThrowExpr;
-      };
-      if (t && t->kind != TyKind::Void && throws(c->then) != throws(c->else_))
-      {
-        bool thenThrows = throws(c->then);
-        size_t temps = statementTemps.size();
-        startBlock(thenThrows ? tL : eL);
-        rvalue(thenThrows ? c->then : c->else_);
-        statementTemps.resize(temps); // (what the throw's operand made is not made on the way on)
-        fn += "  unreachable\n";
-        startBlock(thenThrows ? eL : tL);
-        Value v = rvalue(thenThrows ? c->else_ : c->then);
-        return isClass(t) || v.ty == t ? v : convert(v, t, e);
-      }
       const Ty* thenObject = isClass(t) ? conditionalObject(c->then, t, e) : nullptr;
       const Ty* elseObject = isClass(t) ? conditionalObject(c->else_, t, e) : nullptr;
       if (thenObject && elseObject)
@@ -1232,6 +1203,26 @@ auto codegen::Emitter::bitfieldNamed(Expr* e) -> const BitfieldInfo*
   if (d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield)
     unsupported(e, "a bit-field whose place in its class is not known"); // never its whole storage unit
   return nullptr;
+}
+
+auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
+{
+  // `x > 0 ? x : throw x`: a branch that is a throw-expression leaves, and the result is the other
+  // branch's (C++'s [expr.cond] 2). The throw's block ends unreachable; the code goes on in the other's.
+  Expr* beside = branchBesideThrow(c);
+  if (!beside)
+    return nullptr;
+  Value cond = convert(rvalue(c->cond), types.boolType(), c);
+  std::string on = newLabel("cond.on"), leaves = newLabel("cond.throw");
+  bool thenThrows = beside == c->else_;
+  fn += "  br i1 " + cond.text + ", label %" + (thenThrows ? leaves : on) + ", label %" + (thenThrows ? on : leaves) + "\n";
+  size_t temps = statementTemps.size();
+  startBlock(leaves);
+  rvalue(thenThrows ? c->then : c->else_);
+  statementTemps.resize(temps); // (what the throw's operand made is not made on the way on)
+  fn += "  unreachable\n";
+  startBlock(on);
+  return beside;
 }
 
 auto codegen::Emitter::conditionalOfBranches(ConditionalExpr* c) -> Value

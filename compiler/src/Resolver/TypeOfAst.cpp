@@ -649,6 +649,8 @@ auto GlobalScope::Impl::overrideKey(FunctionDecl* f, const Ty* cls) -> std::stri
     k += types.toString(ft->inner, &symbols);
   if (f->flags & DF_Const)
     k += " const";
+  if (f->flags & DF_Volatile)
+    k += " volatile";
   return f->refQualifier == FunctionDecl::RefQualifier::None ? k : k + (f->refQualifier == FunctionDecl::RefQualifier::LValue ? " &" : " &&");
 }
 

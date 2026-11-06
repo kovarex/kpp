@@ -604,8 +604,8 @@ auto codegen::Emitter::sseBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Val
   {
     std::string a = sseArg(c->args[0], v16i8, c);
     auto imm = sseImmediate(c->args[1]);
-    if (!imm || *imm < 0 || *imm > 16) return std::nullopt;
-    int shift = int(*imm);
+    if (!imm) return std::nullopt;
+    int shift = int(*imm & 0xFF); // (the instruction's byte; from 16 on all zero, as clang's)
     // Build shuffle mask: shift bytes right, fill with zeros
     std::string mask = "<16 x i32> <";
     for (int i = 0; i < 16; ++i)
@@ -786,7 +786,7 @@ auto codegen::Emitter::sseMore(const std::string& name, CallExpr* c) -> std::opt
   if (name == "_mm_slli_si128" || name == "_mm_bslli_si128")
   {
     need(2);
-    int64_t shift = constArg(1);
+    int64_t shift = constArg(1) & 0xFF; // (the instruction's byte; from 16 on all zero, as clang's)
     std::string mask = "<16 x i32> <";
     for (int i = 0; i < 16; ++i)
       mask += (i ? ", i32 " : "i32 ") + std::to_string(i - shift >= 0 && shift <= 15 ? 16 + (i - shift) : 0); // zero vector first, then the bytes moved up

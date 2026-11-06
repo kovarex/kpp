@@ -1,0 +1,24 @@
+// spec: in a volatile member function `this` points at a volatile object, so a member is read each time, in an optimized build too. Its loop ends when the other thread's write is seen; a read moved out of the loop runs to the limit
+// pending: `this` is not volatile there (its accesses are plain ones); language/volatile_access_is_kept_by_the_optimizer has every other access
+// kppc: --release
+extern "C" int printf(const char* format, ...);
+class Flag
+{
+public:
+  int n = 0;
+  bool seen() volatile
+  {
+    long long i = 0;
+    while (i < 2000000000ll && n == 0)
+      ++i;
+    return i < 2000000000ll;
+  }
+};
+volatile Flag flag;
+int main()
+{
+  Thread writer([]() { flag.n = 1; });
+  printf("%d\n", (int)flag.seen());
+  writer.join();
+  return 0;
+}

@@ -728,6 +728,11 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
           copyClosure(field, place, ft, l, false);
         parts.built(field, ft);
       }
+      else if (ft->kind == TyKind::Array)
+      {
+        transferArray(field, place, ft, l, false, false);
+        parts.built(field, ft);
+      }
       else
         store(load(place, ft, l), field, ft, l);
       continue;
@@ -762,6 +767,11 @@ auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Va
         copyConstruct(field, addr, info.fieldTypes[i], l);
       else
         copyClosure(field, addr, info.fieldTypes[i], l, false); // `[f]` of a closure
+      parts.built(field, info.fieldTypes[i]);
+    }
+    else if (info.fieldTypes[i]->kind == TyKind::Array)
+    {
+      transferArray(field, addr, info.fieldTypes[i], l, false, false); // `[a]` of an array: a copy, element by element ([expr.prim.lambda.capture] 15)
       parts.built(field, info.fieldTypes[i]);
     }
     else
