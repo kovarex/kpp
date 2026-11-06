@@ -59,6 +59,20 @@ if ($changed.Count)
   }
   $bsd = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target freebsd --no-doc --only $($changed -join ',')" $bsdLog
 }
+# And with --debug-info: the whole spec when the change touches the code that writes debug information
+# (a file or a line naming it: DebugInfo, DIBuilder, CodeView, DW_), else the snippets it adds or edits.
+# 7e7749c3 (2026-11-06) declared member functions in the debug information and every enumeration with
+# one failed to build with --debug-info; only CI's --debug-info shards saw it.
+$ErrorActionPreference = 'Continue'
+$sourceDiff = (@(& git diff origin/master -- 'src' 2>$null) | Where-Object { $_ -match '^[-+]' -and $_ -notmatch '^(---|\+\+\+) ' }) -join "`n"
+$sourceFiles = @(& git diff --name-only origin/master -- 'src' 2>$null)
+$ErrorActionPreference = 'Stop'
+$touchesDebugInfo = ($sourceFiles -match 'DebugInfo').Count -gt 0 -or $sourceDiff -match 'DebugInfo|debugInfo|DIBuilder|CodeView|DW_'
+$dbg = $null
+$dbgLog = Join-Path $out 'spec-debug-info.log'
+$dbgWhat = if ($touchesDebugInfo) { 'the whole spec, the change touching debug information' } elseif ($changed.Count) { "$($changed.Count) snippets" } else { $null }
+if ($touchesDebugInfo) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc" $dbgLog }
+elseif ($changed.Count) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc --only $($changed -join ',')" $dbgLog }
 $rt.WaitForExit()
 Get-Content $rtLog
 $spec.WaitForExit()
@@ -78,9 +92,20 @@ if ($bsd)
   $bsdOk = $bsd.ExitCode -eq 0 -and $bsdLast -match 'ALL PASSED'
   $bsdLast
 }
+$dbgLast = "spec debug-info: no snippet added or edited, no debug information touched"
+$dbgOk = $true
+if ($dbg)
+{
+  $dbg.WaitForExit()
+  $dbgLines = @(Get-Content $dbgLog -ErrorAction SilentlyContinue)
+  $dbgLines | Where-Object { $_ -match '^FAIL' }
+  $dbgLast = (@($dbgLines | Where-Object { $_ })[-1]) -replace '^spec: ', "spec debug-info ($dbgWhat): "
+  $dbgOk = $dbg.ExitCode -eq 0 -and $dbgLast -match 'ALL PASSED'
+  $dbgLast
+}
 $seconds = [int]((Get-Date) - $started).TotalSeconds
-$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED' -and $bsdOk
+$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED' -and $bsdOk -and $dbgOk
 $kind = if ($Full) { 'full' } else { 'quick' }
-if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $bsdLast ; $seconds s)"; exit 0 }
-"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $bsdLast; $seconds s)"
+if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $bsdLast ; $dbgLast ; $seconds s)"; exit 0 }
+"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $bsdLast; $dbgLast; $seconds s)"
 exit 1
