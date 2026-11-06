@@ -1,0 +1,10 @@
+// spec: a literal 0 still calls the overload C++ prefers when that is a pointer one, its pointer conversion the better (a standard conversion against a user-defined one), and is then the error a literal 0 for a pointer is (design.md 4): `show(0)` with show(const char*) and show(Big), Big made from a u64, is "the literal 0 is no pointer", where the converter writes nullptr, never show(Big(0)); only of overloads C++ finds alike does the pointer one drop out (language/literal_zero_never_chooses_a_pointer_overload)
+// error: literal_zero_for_a_better_pointer_overload_is_error.kpp:9: error: the literal 0 is no pointer
+struct Big { u64 v; Big(u64 x) : v(x) {} };
+int show(const char*) { return 1; }
+int show(Big) { return 2; }
+
+int main()
+{
+  return show(0);
+}

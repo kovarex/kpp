@@ -2345,6 +2345,7 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
           r = 3;
         else if (target->kind == TyKind::Class)
           r = std::max(conversionRank(types.nullptrType(), pt), 4);
+        c.zeroAsPointer = c.zeroAsPointer || r < NotViable;
       }
       if (r >= NotViable)
         ok = false;
@@ -2611,6 +2612,18 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
   for (const Candidate* c : tied)
     if (std::none_of(distinct.begin(), distinct.end(), [&](const Candidate* d) { return sameFunction(c->f, d->f); }))
       distinct.push_back(c);
+  // A literal 0 is no pointer in kpp (design.md 4): of candidates C++ finds alike, one that would
+  // take it as a pointer is none while another remains (`take(0)` with take(u64) and take(const
+  // char*) is take(u64), the two conversions alike in C++, the call ambiguous). One that C++
+  // prefers, its pointer conversion the better, stays the choice, and the walk reports its 0 (so
+  // the converter writes nullptr there), as imported C's 0 stays C's null pointer.
+  auto zeroAsPointer = [](const Candidate* c) { return c->zeroAsPointer; };
+  if (distinct.size() > 1 && std::any_of(distinct.begin(), distinct.end(), zeroAsPointer) &&
+      !std::all_of(distinct.begin(), distinct.end(), zeroAsPointer))
+  {
+    tied.erase(std::remove_if(tied.begin(), tied.end(), zeroAsPointer), tied.end());
+    distinct.erase(std::remove_if(distinct.begin(), distinct.end(), zeroAsPointer), distinct.end());
+  }
   ambiguous = distinct.size() > 1;
   if (ambiguous && tiedOut)
     for (const Candidate* c : distinct)

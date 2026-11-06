@@ -147,6 +147,7 @@
     std::vector<bool> refs; // per rank: the parameter is a reference
     std::vector<const Ty*> params; // per rank: the parameter's type (null for a variadic tail)
     bool emptyText = false; // its Text parameter takes no pieces (design.md 14)
+    bool zeroAsPointer = false; // it takes a literal 0 as a pointer, which kpp's own sources never do (design.md 4)
   };
 
   // The template parameters of d and of the templates around it, as locals of a context in d.

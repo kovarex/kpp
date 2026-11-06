@@ -1,0 +1,1 @@
+take(u64) put(u64, u64) <ab take(const char*)

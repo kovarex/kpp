@@ -1,0 +1,19 @@
+// spec: a literal 0 is no pointer in kpp (design.md 4), so an overload that would take it as one is no candidate while another takes the call: `take(0)` with take(u64) and take(const char*) is take(u64), where C++ finds the two conversions alike and the call ambiguous; a member function alike (`b.put(0, 0)`, and String's `s.replace(0, 0, "<")` beside its iterator overload); with the pointer overload alone the 0 stays the error it is (language/zero_literal_as_pointer_is_error)
+// found by thread I's String battery (2026-11-06): `s.replace(0, 0, "<")` was ambiguous between String::replace(ContainerSize, ContainerSize, const char*) and replace(const char*, const char*, const char*)
+const char* take(u64) { return "take(u64)"; }
+const char* take(const char*) { return "take(const char*)"; }
+
+struct Box
+{
+  const char* put(u64, u64) { return "put(u64, u64)"; }
+  const char* put(const int*, const int*) { return "put(const int*, const int*)"; }
+};
+
+int main()
+{
+  Box b;
+  String s = "ab";
+  s.replace(0, 0, "<");
+  println(StringView(take(0)), " ", StringView(b.put(0, 0)), " ", s, " ", StringView(take(nullptr)));
+  return 0;
+}

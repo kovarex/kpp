@@ -2731,8 +2731,16 @@ The smallest language that is still kpp, as the target of the first code generat
   the 0 itself: "the literal 0 is no pointer: write nullptr (design.md 4)" (an initializer, an
   assignment, a comparison either way round, an argument, a return, a template's return; a constant
   that is 0 too, "an integer 0 is no pointer"). `take(0)` with `take(int)` and `take(Entity*)` is
-  take(int). Imported C keeps C's rule (its 0 and NULL are null pointers). Specs
-  language/literal_zero_null_pointer, language/zero_literal_as_pointer_is_error.
+  take(int). So of overloads C++ finds alike, one that would take a literal 0 as a pointer is no
+  candidate while another remains (2026-11-06, following from this rule): `take(0)` with take(u64)
+  and take(const char*) is take(u64), where C++ finds the two conversions alike and the call
+  ambiguous (String's `s.replace(0, 0, "<")` beside its iterator overload, constructors alike).
+  One that C++ prefers, its pointer conversion the better (`show(0)` with show(const char*) and
+  show(Big), Big made from a u64), stays the choice, and its 0 is the error above (where the
+  converter writes nullptr), never another overload's call. Imported C keeps C's rule (its 0 and
+  NULL are null pointers). Specs language/literal_zero_null_pointer,
+  language/zero_literal_as_pointer_is_error, language/literal_zero_never_chooses_a_pointer_overload,
+  language/literal_zero_for_a_better_pointer_overload_is_error.
 - **A pointer converts without a cast only as in C++** (2026-10-31): to the same type with added
   qualifiers (at every level as [conv.qual] allows: `T* const*` to `const T* const*`), to `void*`
   from an object pointer, from a derived class to its base; a function or array to a pointer to it.
