@@ -1,0 +1,5 @@
+failed: Crashing.Dies (it crashed: exit code 3)
+test_jobs_crash_fails_its_test.kpp:8:15: check failed: false: after the crash
+failed: Crashing.Rest
+failed: Crashing.Dies2 (it crashed: exit code 4)
+5 tests, 3 failed

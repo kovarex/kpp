@@ -9,3 +9,8 @@
 // reports their checks.
 constexpr const char* testRunnerPath = "<tests>.kpp";
 std::string testRunnerSource();
+// What --jobs needs of the system, one file for each kind (a file's `requires` leaves out the other).
+constexpr const char* testRunnerWindowsPath = "<tests-windows>.kpp";
+constexpr const char* testRunnerPosixPath = "<tests-posix>.kpp";
+std::string testRunnerWindowsSource();
+std::string testRunnerPosixSource();

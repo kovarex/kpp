@@ -1,0 +1,15 @@
+// spec: under --jobs a process that dies fails the test it was in, as a crash in the report, and another process runs the rest of its suite
+// test: --jobs 2
+// exit: 1
+suite Crashing
+{
+  test Before { }
+  test Dies { exit(3); }
+  test Rest { check(false, "after the crash"); }
+  test Dies2 { exit(4); }
+}
+
+suite Other
+{
+  test Fine { }
+}

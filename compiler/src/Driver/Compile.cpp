@@ -565,6 +565,14 @@ int compile(int argc, char** argv)
       runner.text = testRunnerSource();
       totalBytes += runner.text.size();
       files.push_back(std::move(runner));
+      for (auto [path, text] : {std::pair(testRunnerWindowsPath, testRunnerWindowsSource()), std::pair(testRunnerPosixPath, testRunnerPosixSource())})
+      {
+        SourceFile platform;
+        platform.path = path;
+        platform.text = std::move(text);
+        totalBytes += platform.text.size();
+        files.push_back(std::move(platform));
+      }
     }
   }
   // What names each file's lambdas' closures: its name under its root (the files the driver adds,

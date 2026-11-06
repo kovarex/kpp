@@ -598,7 +598,7 @@ The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2
 the names, suites with depends and tags, fixtures, `generate`, the order, the errors across files
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
-The mixed-sign rule and a call's values are done too. Not yet: `--jobs`. The parser
+The mixed-sign rule, a call's values and `--jobs` are done too. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
 ```
@@ -3392,17 +3392,26 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   they cost nothing.
 - **The runner** (its arguments after `--`, or on the test executable): `--filter TEXT` (a
   substring of the full name, `*` matching anything; repeatable), `--list` (the tests, no run),
-  `--report FILE` (below), `--jobs N` (below). One line per failure and `failed: <full name>`
+  `--report FILE` (below), `--jobs N` (below; the test executable starts its processes). One line per failure and `failed: <full name>`
   after a failed test, then a summary: `12 tests, 1 failed`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
   build failed. **Q2 is settled by 8.7** (2026-11-06): `--filter` replaces 8.6's `--run-test <name or
   file>`; it matches the full name, and `--suite`, `--skip-suite` and `--tag` select beside it.
 - **Isolation and parallelism.** **Q3 is settled by 8.7** (2026-11-06; test-suites.md (d), and its
   question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in one
   process, one after another (the fastest; a crash ends the run and is reported as that test's);
-  `--jobs N` (not built yet) schedules whole suites over N processes of the same executable, a suite
+  `--jobs N` schedules whole suites over N processes of the same executable, a suite
   starting after its dependencies have finished, and a crash fails only its test (the process is
   started again for the rest of its share), which is what `suites.py` does by hand for the converted
-  UnitTest++. No threads inside one process: tests may use globals.
+  UnitTest++. No threads inside one process: tests may use globals. How: the N workers start once,
+  since a program's `testsSetup` may take seconds; the first process runs `testsSetup` too (the
+  generators need it), selects as without `--jobs`, runs no test, and gives each idle worker the
+  first suite that is ready, over a pipe. The workers send back what each test said, and the first
+  process says it in the order of the suites, `failed:` lines, report and summary, so the output is
+  the same whichever finished first (what a test prints itself goes straight to the shared stdout).
+  A crash is `failed: S.t (it crashed: exit code 3)`, `"status":"crash"` in the report; a process that
+  ends between tests with a suite in hand has nothing to blame, and the rest of the suite goes on.
+  `testWorker()` is the worker's number from 1, 0 in the first process and without `--jobs`, for what
+  processes must not share, such as a directory a hook writes to.
 - **The converted UnitTest++.** Q4 is answered (kovarex, 2026-11-06): the converter (thread C)
   turns `SUITE`, `TEST`, the fixtures, `DEPENDENCY`, the generators and the check macros into
   native suites, tests and `require`, and the game's tests run under the native runner with its
@@ -3454,8 +3463,7 @@ human output.
    (`compiler/src/tests.cpp`), as it adds `<config>`: its `main`, `kpp_check_failed`, a
    `kpp_assert_failed` that fails the running test, and the comparison templates. The standard
    library is untouched.
-5. Not yet: `--jobs N` (the processes are kppc's, so the test executable stays simple), seconds
-   in the report, a compile error for two tests of one name, leaving the standard library's
+5. Not yet: a compile error for two tests of one name, leaving the standard library's
    tests out of a program's run (it has none yet).
 
 Latency of a small test (one `test` with a loop and two checks, `kppc --test fib.kpp`, six rounds

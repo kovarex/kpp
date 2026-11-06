@@ -1,0 +1,24 @@
+// spec: --jobs N runs the suites over N processes and says their tests in the order of the suites, whichever finished first; failures after a failed dependency read as without it
+// test: --jobs 3
+// exit: 1
+suite First
+{
+  test Slow
+  {
+    thisThread::sleepFor(Milliseconds(200));
+    check(1 == 2, "first");
+  }
+  test Second { check(testWorker() > 0); }
+}
+
+suite Other
+{
+  test Fast { check(2 == 3, "other"); }
+}
+
+suite Third depends First
+{
+  test After { check(false, "third"); }
+}
+
+test Outside { check(3 == 4, "outside"); }

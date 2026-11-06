@@ -1,0 +1,13 @@
+// spec: with --jobs --exit-on-failure starts no further suite: the rest count as not run
+// test: --jobs 1 --exit-on-failure
+// exit: 1
+suite First
+{
+  test Fails { check(false); }
+  test Finishes { }
+}
+
+suite Second
+{
+  test Skipped { }
+}

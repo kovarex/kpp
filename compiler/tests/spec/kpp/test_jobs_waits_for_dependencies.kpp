@@ -1,0 +1,19 @@
+// spec: under --jobs a suite starts when its dependencies have finished, also through a suite left out
+// test: --jobs 2 --skip-suite Between
+// exit: 0
+auto started = SteadyClock::now();
+
+suite Base
+{
+  test Waits { thisThread::sleepFor(Milliseconds(300)); }
+}
+
+suite Between depends Base
+{
+  test Skipped { }
+}
+
+suite Last depends Between
+{
+  test Ran { check(SteadyClock::now() - started >= Milliseconds(250)); }
+}
