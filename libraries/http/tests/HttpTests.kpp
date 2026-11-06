@@ -2,7 +2,7 @@
 // checks that keep a value from writing headers of its own, and the built-in server on the
 // loopback (a thread serves, the test is the browser).
 
-test "cookies"
+test cookies
 {
   Vector<HttpHeader> cookies = httpParseCookies("gorating_id=abc123; theme=\"dark\";  empty=; =skipped; flag");
   check(cookies.size() == 3);
@@ -42,7 +42,7 @@ bool httpThrows(void (*f)())
   return false;
 }
 
-test "values that would write headers of their own"
+test valuesThatWouldWriteHeadersOfTheirOwn
 {
   check(httpThrows([]() { HttpResponse r; r.setHeader("Location", "/x\r\nSet-Cookie: a=b"); }));
   check(httpThrows([]() { HttpResponse r; r.setHeader("Bad Name", "x"); }));
@@ -51,7 +51,7 @@ test "values that would write headers of their own"
   check(httpThrows([]() { HttpResponse r; r.redirect("/a\nb"); }));
 }
 
-test "responses"
+test responses
 {
   HttpResponse response;
   response.redirect("/player?id=5&message=Saved+it");
@@ -76,7 +76,7 @@ HttpRequest httpFormRequest(StringView contentType, StringView body)
   return request;
 }
 
-test "forms"
+test forms
 {
   HttpRequest request = httpFormRequest("application/x-www-form-urlencoded", "username=kovarex&password=a%26b+c&empty=");
   check(request.path == "/report_action" && *request.parameter("redirect") == "/player");
@@ -146,7 +146,7 @@ String httpTestFetch(i32 port, StringView request)
   return stream.readAll();
 }
 
-test "the built-in server"
+test theBuiltInServer
 {
   HttpTestServer server;
   server.listener = net::TcpListener::listen("127.0.0.1", 0);

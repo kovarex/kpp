@@ -6,7 +6,7 @@ struct Guard
   ~Guard() { println("guard destroyed"); }
 };
 
-test "require"
+test require
 {
   Guard guard;
   int x = 1;
@@ -14,14 +14,14 @@ test "require"
   println("not reached");
 }
 
-test "assert"
+test assert
 {
   int x = 1;
   release_assert(x == 2);
   println("not reached either");
 }
 
-test "after"
+test after
 {
   println("still running");
 }

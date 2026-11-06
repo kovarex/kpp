@@ -26,7 +26,7 @@ bool bcryptThrows(StringView password, StringView hash)
   return false;
 }
 
-test "crypt_blowfish's vectors"
+test cryptBlowfishSVectors
 {
   check(bcryptVerify("U*U", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   check(bcryptVerify("U*U*", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.VGOzA784oUp/Z0DY336zx7pLYAy0lwK"));
@@ -41,7 +41,7 @@ test "crypt_blowfish's vectors"
   check(bcryptVerify("U*U", "$2y$05$CCCCCCCCCCCCCCCCCCCCC/E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
 }
 
-test "PHP's hashes"
+test phpHashes
 {
   for (i32 i = 0; i < bcryptPhpVectorCount; ++i)
   {
@@ -59,7 +59,7 @@ test "PHP's hashes"
   }
 }
 
-test "the 72-byte limit"
+test the72ByteLimit
 {
   String salt = "0123456789abcdef";
   String a(72, 'a');
@@ -70,7 +70,7 @@ test "the 72-byte limit"
   check(bcryptHash(a, 4, salt) != bcryptHash(c, 4, salt));
 }
 
-test "errors"
+test errors
 {
   String salt = "0123456789abcdef";
   check(bcryptThrows("x", ""));
@@ -90,7 +90,7 @@ test "errors"
   check(bcryptCost("$2y$10$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW") == 10);
 }
 
-test "PHP's default cost"
+test phpSDefaultCost
 {
   // PHP 8.3: crypt("gorating", "$2y$10$abcdefghijklmnopqrstuu"), as password_hash() writes at cost 10.
   check(bcryptVerify("gorating", "$2y$10$abcdefghijklmnopqrstuu3kmhZHmQpLdSS8HTNKGJgR7U1ufMYXy"));

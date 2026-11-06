@@ -8,7 +8,7 @@ String mariaDbEnvironment(const char* name)
   return value == nullptr ? String() : String(StringView(value));
 }
 
-test "a real server"
+test aRealServer
 {
   String port = mariaDbEnvironment("MARIADB_TEST_PORT");
   if (port.empty())

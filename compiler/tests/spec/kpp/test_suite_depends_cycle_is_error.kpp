@@ -1,5 +1,4 @@
 // spec: suites that depend on each other in a cycle are an error that lists the cycle
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // kppc: --tests
 // error: the suites depend on each other in a cycle: A -> C -> B -> A
 suite A depends C { test One { check(true); } }

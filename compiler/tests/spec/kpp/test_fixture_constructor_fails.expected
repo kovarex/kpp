@@ -1,7 +1,7 @@
-test_fixture_constructor_fails.kpp:19:3: test failed: creating fixture Refuses: no map
+test_fixture_constructor_fails.kpp:18:3: test failed: creating fixture Refuses: no map
 failed: Fixtures.Building
 body ran
-test_fixture_constructor_fails.kpp:20:3: test failed: tearing down fixture Leaks: an entity leaked
+test_fixture_constructor_fails.kpp:19:3: test failed: tearing down fixture Leaks: an entity leaked
 failed: Fixtures.Destroying
 after
 3 tests, 2 failed

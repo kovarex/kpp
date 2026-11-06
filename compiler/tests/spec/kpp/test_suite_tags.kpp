@@ -1,5 +1,4 @@
 // spec: tags select suites: without --tag the untagged suites run, with --tag t the suites tagged t (Factorio's SUITE_MODPACKS)
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test: --tag vanilla
 // exit: 0
 suite Common

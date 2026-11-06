@@ -915,11 +915,11 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       auto [line, column] = lineColumnOf(a->token);
       if (a->testKind)
       {
-        // check and require in a test (design.md 8.6): the test runner records the failure; a
-        // require's call throws to end the test (compiler/src/tests.cpp).
+        // check, require and fail in a test (design.md 8.6, 8.7): the test runner records the
+        // failure; a require's or a fail's call throws to end the test (compiler/src/tests.cpp).
         emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ", i32 " +
-                         std::to_string(a->testKind) + ")", a->testKind == 2);
+                         std::to_string(a->testKind) + ")", a->testKind >= 2);
         emitBranch(okL);
         startBlock(okL);
         break;

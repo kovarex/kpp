@@ -1,5 +1,4 @@
 // spec: test Name : Fixture(arguments): the body is a member of a class derived from the fixture, built before the body and destroyed after it, also when the body fails
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test:
 // exit: 1
 class Counter

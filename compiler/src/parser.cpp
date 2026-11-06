@@ -65,6 +65,15 @@ namespace
       kwClassConst = symbols.intern("class_const");
       kwAccumulate = symbols.intern("accumulate");
       kwTest = symbols.intern("test");
+      kwTestSuite = symbols.intern("suite");
+      kwDepends = symbols.intern("depends");
+      kwTags = symbols.intern("tags");
+      kwGenerate = symbols.intern("generate");
+      kwFail = symbols.intern("fail");
+      kwRequireThrows = symbols.intern("requireThrows");
+      kwCheckThrows = symbols.intern("checkThrows");
+      kwKppText = symbols.intern("__kpp_text");
+      kwTextSlot = symbols.intern("__kpp_text_slot");
       kwCheck = symbols.intern("check");
       kwRequire = symbols.intern("require");
       kwMain = symbols.intern("main");
@@ -1955,9 +1964,27 @@ namespace
         parseWhen(scope);
         return;
       }
-      if (isKpp() && atIdent(kwTest) && at(TokenKind::String, 1) && at(P::LBrace, 2) && (scope == Scope::Namespace || scope == Scope::Class))
+      if (isKpp() && atIdent(kwTest) && (scope == Scope::Namespace || scope == Scope::Class) &&
+          (at(TokenKind::String, 1) || (atIdent(1) && (at(P::LBrace, 2) || at(P::Colon, 2)))))
       {
-        parseTest(scope, start);
+        parseTest(scope);
+        return;
+      }
+      if (isKpp() && atIdent(kwTest) && (scope == Scope::Namespace || scope == Scope::Class) &&
+          (at(TokenKind::Keyword, 1) || (atIdent(1) && (atIdent(2) || at(P::Star, 2) || at(P::Amp, 2) || at(P::ColonColon, 2) || at(P::Less, 2)))))
+      {
+        parseTestDeclaration(scope);
+        return;
+      }
+      if (isKpp() && atIdent(kwGenerate) && atIdent(1) && at(P::LBrace, 2) && scope == Scope::Namespace && (currentSuite || !testsEnabled()))
+      {
+        parseGenerate();
+        return;
+      }
+      if (isKpp() && atIdent(kwTestSuite) && atIdent(1) && scope == Scope::Namespace &&
+          (at(P::LBrace, 2) || atIdent(kwDepends, 2) || atIdent(kwTags, 2)))
+      {
+        parseSuite();
         return;
       }
       if (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1) && !at(P::Less, 1) &&
@@ -3786,71 +3813,355 @@ namespace
       return c;
     }
 
-    // `test "name" { ... }` (design.md 8.6), at namespace scope or in a class. Without --tests
-    // (config::tests) it is skipped. With it, the body is a function `void __kpp_test_<file>_<n>()`
-    // (static in a class) and a variable registers it with the test runner (compiler/src/tests.cpp):
-    // `int __kpp_test_registered_<file>_<n> = __kppRegisterTest(&__kpp_test_<file>_<n>, "name");`,
-    // whose caller location is the test's.
-    void parseTest(Scope scope, uint32_t start)
+    // The suffix that names a file's next test-related declaration: the hash of its path and a count.
+    std::string testSuffix()
     {
-      advance();
-      uint32_t nameToken = pos;
-      noSplice();
-      advance();
-      if (!testsEnabled())
-      {
-        skipBalanced();
-        return;
-      }
-      if (scope == Scope::Class && currentParent && currentParent->isTemplate)
-        error("a test in a class template (a test belongs to one class)");
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : out.path)
         h = (h ^ c) * 1099511628211ull;
       char suffix[40];
       snprintf(suffix, sizeof suffix, "%016llx_%u", (unsigned long long)h, testCount++);
-      std::string name = std::string("__kpp_test_") + suffix;
+      return suffix;
+    }
 
-      FunctionDecl* f = decl<FunctionDecl>(start);
-      BuiltinType* voidType = node<BuiltinType>(start);
-      voidType->keyword = Kw::void_;
-      f->returnType = voidType;
-      NamePart part;
-      part.symbol = symbols.intern(name);
-      f->name.parts = makeSpanOf(std::vector<NamePart>{part});
-      if (scope == Scope::Class)
-        f->flags |= DF_Static;
-      Decl* savedParent = currentParent;
-      currentParent = f;
+    // The tokens of source, which the parser writes (identifiers, keywords and punctuators), each
+    // located at token `like`. Each `__kpp_text_slot` becomes the next of texts: after `__kpp_text`,
+    // parsePrimary reads it as its spelling as a string literal (a NameofExpr of a text).
+    std::vector<Token> synthesize(const std::string& source, uint32_t like, const std::vector<std::string>& texts = {})
+    {
+      LexResult lexed = lex(source, symbols);
+      std::vector<Token> result;
+      size_t next = 0;
+      for (Token t : lexed.tokens)
+      {
+        if (t.getKind() == TokenKind::End)
+          break;
+        if (t.getKind() == TokenKind::Identifier && t.id == kwTextSlot && next < texts.size())
+          t.id = symbols.intern(texts[next++]);
+        t.offset = toks[like].offset;
+        t.length = toks[like].length;
+        t.spliced = 0;
+        result.push_back(t);
+      }
+      return result;
+    }
+
+    // The index of the token that closes the bracket at open (the end token when none does).
+    uint32_t closingToken(uint32_t open) const
+    {
+      P o = P(toks[open].id);
+      P c = o == P::LParen ? P::RParen : o == P::LBracket ? P::RBracket : P::RBrace;
+      int level = 0;
+      for (uint32_t i = open; i < toks.size(); ++i)
+      {
+        if (toks[i].getKind() == TokenKind::End)
+          return i;
+        if (toks[i].is(o))
+          ++level;
+        else if (toks[i].is(c) && --level == 0)
+          return i;
+      }
+      return uint32_t(toks.size() - 1);
+    }
+
+    // The source text of tokens [from, to).
+    std::string tokensText(uint32_t from, uint32_t to) const
+    {
+      if (from >= to)
+        return std::string();
+      return std::string(text + toks[from].offset, toks[to - 1].offset + toks[to - 1].length - toks[from].offset);
+    }
+
+    // Replaces tokens [from, open) by head and puts tail after the token closing the brace at open:
+    // the parser then reads what they spell, the body between them as written. The body's '{' is
+    // a test's (testBodies): check, require and fail are statements in it.
+    void spliceAround(uint32_t from, uint32_t open, const std::vector<Token>& head, const std::vector<Token>& tail)
+    {
+      uint32_t close = closingToken(open);
+      toks.erase(toks.begin() + from, toks.begin() + open);
+      toks.insert(toks.begin() + from, head.begin(), head.end());
+      uint32_t newOpen = from + uint32_t(head.size());
+      uint32_t newClose = close - (open - from) + uint32_t(head.size());
+      toks.insert(toks.begin() + newClose + 1, tail.begin(), tail.end());
+      testBodies.insert(newOpen);
+      pos = from;
+    }
+
+    // `test Name { ... }` and `test Name : Fixture(arguments) { ... }` (design.md 8.6, 8.7), at
+    // namespace scope (in a suite or not) or in a class (no fixture there). Without --tests
+    // (config::tests) it is skipped. With it the parser writes, in tokens it then reads:
+    //   void __kpp_test_S() { body }
+    //   int __kpp_test_registered_S = __kppRegisterTest(&__kpp_test_S, "Name", "Suite");
+    // (static in a class), whose caller location (the registration's) is the test's. With a fixture
+    // the body is a member of a class derived from it, which the test function builds and runs:
+    //   class __kpp_fixture_S : public Fixture { public: __kpp_fixture_S() : Fixture(arguments) {}
+    //     void __kpp_body() { body } };
+    //   void __kpp_test_S() { __kppRunFixture<__kpp_fixture_S>("Fixture"); }
+    void parseTest(Scope scope)
+    {
+      uint32_t from = pos;
+      if (at(TokenKind::String, 1))
+      {
+        error("a test's name is an identifier, not a string (design.md 8.7)");
+        advance();
+        advance();
+        if (at(P::LBrace))
+          skipBalanced();
+        return;
+      }
+      uint32_t nameToken = pos + 1;
+      std::string name(symbols.name(toks[nameToken].id));
+      uint32_t i = nameToken + 1, fixtureFrom = 0, fixtureTo = 0, argumentsFrom = 0, argumentsTo = 0;
+      if (toks[i].is(P::Colon))
+      {
+        fixtureFrom = ++i;
+        while (i < toks.size() && !toks[i].is(P::LBrace) && !toks[i].is(P::LParen) && toks[i].getKind() != TokenKind::End)
+          ++i;
+        fixtureTo = i;
+        if (toks[i].is(P::LParen))
+        {
+          uint32_t close = closingToken(i);
+          argumentsFrom = i + 1;
+          argumentsTo = close;
+          i = close + 1;
+        }
+      }
+      if (!toks[i].is(P::LBrace) || (fixtureFrom && fixtureFrom == fixtureTo))
+      {
+        pos = i;
+        error(fixtureFrom ? "expected a fixture's class and then the test's '{'" : "expected '{' to begin the test");
+        recover();
+        return;
+      }
+      if (!testsEnabled())
+      {
+        pos = i;
+        skipBalanced();
+        return;
+      }
+      if (scope == Scope::Class && currentParent && currentParent->isTemplate)
+        error("a test in a class template (a test belongs to one class)");
+      if (scope == Scope::Class && fixtureFrom)
+        error("a test in a class takes no fixture (it sees the class's members)");
+      if (currentSuite)
+        currentSuite->tests.push_back({toks[nameToken].id, nameToken});
+      std::string suffix = testSuffix();
+      std::string isStatic = scope == Scope::Class ? "static " : "";
+      std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
+      std::string registration = isStatic + "int __kpp_test_registered_" + suffix + " = __kppRegisterTest(&__kpp_test_" + suffix +
+                                 ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);";
+      std::vector<Token> head, tail;
+      if (!fixtureFrom)
+      {
+        head = synthesize(isStatic + "void __kpp_test_" + suffix + "()", from);
+        tail = synthesize(registration, from, {name, suite});
+      }
+      else
+      {
+        std::string cls = "__kpp_fixture_" + suffix;
+        auto append = [&](std::vector<Token> more) { head.insert(head.end(), more.begin(), more.end()); };
+        auto copy = [&](uint32_t a, uint32_t b) { head.insert(head.end(), toks.begin() + a, toks.begin() + b); };
+        append(synthesize("class " + cls + " : public", from));
+        copy(fixtureFrom, fixtureTo);
+        append(synthesize("{ public: " + cls + "() :", from));
+        copy(fixtureFrom, fixtureTo);
+        append(synthesize("(", from));
+        if (argumentsFrom)
+          copy(argumentsFrom, argumentsTo);
+        append(synthesize(") {} void __kpp_body()", from));
+        tail = synthesize("}; void __kpp_test_" + suffix + "() { __kppRunFixture<" + cls + ">(__kpp_text __kpp_text_slot); } " + registration, from,
+                          {tokensText(fixtureFrom, fixtureTo), name, suite});
+      }
+      spliceAround(from, i, head, tail);
+    }
+
+    // The arguments of fail(...) or of a check's message, up to (not past) its ')'.
+    std::vector<Expr*> parseTestArguments()
+    {
+      std::vector<Expr*> arguments;
+      if (at(P::RParen))
+        return arguments;
+      do
+        arguments.push_back(parseAssignment());
+      while (accept(P::Comma));
+      return arguments;
+    }
+
+    // `requireThrows<T>(expr)` or `checkThrows<T>(expr)` in a test (design.md 8.7), at pos: rewritten
+    // as tokens the parser then reads, `__kppRequireThrows<T>([&]() { (void)(expr); }, "text")`, the
+    // runner's, which evaluate expr inside a try (the call located at the original's first token).
+    void spliceThrows()
+    {
+      uint32_t from = pos;
+      bool require = atIdent(kwRequireThrows);
+      uint32_t i = from + 1;
+      int angles = 0;
+      for (; i < toks.size() && toks[i].getKind() != TokenKind::End; ++i)
+      {
+        if (toks[i].is(P::Less))
+          ++angles;
+        else if (toks[i].is(P::Greater) && --angles == 0)
+          break;
+        else if (toks[i].is(P::Shr) && (angles -= 2) <= 0)
+          break;
+        else if (toks[i].is(P::LParen) || toks[i].is(P::LBracket))
+          i = closingToken(i);
+      }
+      uint32_t typeEnd = i;
+      if (!toks[typeEnd + 1].is(P::LParen) || toks[typeEnd].is(P::Shr))
+        return; // not the form (the parser reports what it reads)
+      uint32_t open = typeEnd + 1, close = closingToken(open);
+      std::vector<Token> written = synthesize(require ? "__kppRequireThrows<" : "__kppCheckThrows<", from);
+      written.insert(written.end(), toks.begin() + from + 2, toks.begin() + typeEnd);
+      std::vector<Token> middle = synthesize(">([&]() { (void)(", from);
+      written.insert(written.end(), middle.begin(), middle.end());
+      written.insert(written.end(), toks.begin() + open + 1, toks.begin() + close);
+      std::vector<Token> end = synthesize("); }, __kpp_text __kpp_text_slot)", from, {tokensText(from, close + 1)});
+      written.insert(written.end(), end.begin(), end.end());
+      toks.erase(toks.begin() + from, toks.begin() + close + 1);
+      toks.insert(toks.begin() + from, written.begin(), written.end());
+    }
+
+    // `test` before a declaration (design.md 8.7): a function or class compiled only in a --tests
+    // build, in which check, require and fail are statements.
+    void parseTestDeclaration(Scope scope)
+    {
+      advance();
+      if (!testsEnabled())
+      {
+        while (!at(TokenKind::End))
+        {
+          if (at(P::LBrace))
+          {
+            skipBalanced();
+            accept(P::Semi);
+            return;
+          }
+          if (accept(P::Semi))
+            return;
+          if (at(P::LParen) || at(P::LBracket))
+            skipBalanced();
+          else
+            advance();
+        }
+        return;
+      }
       bool savedInTest = inTest;
       inTest = true;
-      f->body = parseBlock();
+      parseDeclaration(scope);
       inTest = savedInTest;
-      currentParent = savedParent;
-      ++out.functionBodies;
-      pushDecl(f);
+    }
 
-      VariableDecl* v = decl<VariableDecl>(start);
-      BuiltinType* intType = node<BuiltinType>(start);
-      intType->keyword = Kw::int_;
-      v->type = intType;
-      NamePart varPart;
-      varPart.symbol = symbols.intern(std::string("__kpp_test_registered_") + suffix);
-      v->name.parts = makeSpanOf(std::vector<NamePart>{varPart});
-      if (scope == Scope::Class)
-        v->flags |= DF_Static;
-      NameExpr* function = node<NameExpr>(start);
-      function->name.parts = f->name.parts;
-      UnaryExpr* address = node<UnaryExpr>(start);
-      address->operand = function;
-      address->op = uint32_t(P::Amp);
-      address->isKeyword = false;
-      address->postfix = false;
-      LiteralExpr* text = node<LiteralExpr>(nameToken);
-      text->literalKind = TokenKind::String;
-      text->keyword = Kw::Count;
-      v->init = syntheticCall(start, "__kppRegisterTest", {address, text});
-      pushDecl(v);
+    // `generate Name { ... }` in a suite (design.md 8.7): Factorio's TEST_GENERATOR. Without --tests it
+    // is skipped. With it the parser writes, in tokens it then reads:
+    //   class __kpp_generator_S : public __KppGenerator { public: void __kpp_generate() { body } };
+    //   void __kpp_generate_S() { __kpp_generator_S generator; generator.__kpp_generate(); }
+    //   int __kpp_generator_registered_S = __kppRegisterGenerator(&__kpp_generate_S, "Name", "Suite");
+    // The runner calls it when it starts; the body's addTest (__KppGenerator's) adds the tests.
+    void parseGenerate()
+    {
+      uint32_t from = pos;
+      std::string name(symbols.name(tok(1).id));
+      uint32_t open = pos + 2;
+      if (!testsEnabled())
+      {
+        pos = open;
+        skipBalanced();
+        return;
+      }
+      if (!currentSuite)
+        error("generate adds tests to a suite: it is written in one");
+      std::string suffix = testSuffix();
+      std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
+      std::vector<Token> head = synthesize("class __kpp_generator_" + suffix + " : public __KppGenerator { public: void __kpp_generate()", from);
+      std::vector<Token> tail = synthesize("}; void __kpp_generate_" + suffix + "() { __kpp_generator_" + suffix + " generator; generator.__kpp_generate(); } " +
+                                             "int __kpp_generator_registered_" + suffix + " = __kppRegisterGenerator(&__kpp_generate_" + suffix +
+                                             ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);",
+                                           from, {name, suite});
+      spliceAround(from, open, head, tail);
+    }
+
+    // `suite Name [depends A, B] [tags t, u] { declarations }` (design.md 8.7) at namespace scope.
+    // Without --tests it is skipped. With it, its declarations are those of a namespace
+    // `__kpp_suite_Name` (a name no program writes: the suite's name hides nothing), the first a
+    // registration the parser writes: `int __kpp_suite_registered_S = __kppRegisterSuite("Name",
+    // "A,B", "t,u");`. The names are recorded (ParsedFile::testSuites) for driver::checkTestSuites.
+    void parseSuite()
+    {
+      uint32_t start = pos;
+      advance();
+      uint32_t nameToken = pos;
+      uint32_t name = tok().id;
+      advance();
+      ParsedFile::TestSuite suite;
+      suite.name = name;
+      suite.token = nameToken;
+      std::string depends, tags;
+      if (atIdent(kwDepends))
+        do
+        {
+          advance();
+          if (!atIdent())
+          {
+            error("expected a suite's name after depends");
+            break;
+          }
+          suite.depends.push_back({tok().id, pos});
+          depends += (depends.empty() ? "" : ",") + std::string(symbols.name(tok().id));
+          advance();
+        } while (at(P::Comma));
+      if (atIdent(kwTags))
+        do
+        {
+          advance();
+          if (!atIdent())
+          {
+            error("expected a tag after tags");
+            break;
+          }
+          tags += (tags.empty() ? "" : ",") + std::string(symbols.name(tok().id));
+          advance();
+        } while (at(P::Comma));
+      if (!at(P::LBrace))
+      {
+        error("expected '{' to begin the suite");
+        recover();
+        return;
+      }
+      if (!testsEnabled())
+      {
+        skipBalanced();
+        return;
+      }
+      if (currentSuite)
+        error("a suite inside a suite");
+      std::vector<Token> registration =
+        synthesize("int __kpp_suite_registered_" + testSuffix() +
+                     " = __kppRegisterSuite(__kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);",
+                   nameToken, {std::string(symbols.name(name)), depends, tags});
+      toks.insert(toks.begin() + pos + 1, registration.begin(), registration.end());
+      advance();
+      NamespaceDecl* ns = decl<NamespaceDecl>(start);
+      NamePart part;
+      part.symbol = symbols.intern("__kpp_suite_" + std::string(symbols.name(name)));
+      ns->nested.parts = makeSpanOf(std::vector<NamePart>{part});
+      ns->name = part.symbol;
+      Decl* savedParent = currentParent;
+      Access savedAccess = currentAccess;
+      currentParent = ns;
+      currentAccess = Access::Default;
+      ParsedFile::TestSuite* savedSuite = currentSuite;
+      currentSuite = &suite;
+      size_t mark = scratch.size();
+      while (!at(P::RBrace) && !at(TokenKind::End))
+        parseDeclaration(Scope::Namespace);
+      ns->decls = makeSpan<Decl*>(mark);
+      currentSuite = savedSuite;
+      currentParent = savedParent;
+      currentAccess = savedAccess;
+      expect(P::RBrace, "expected '}' to close the suite");
+      pushDecl(ns);
+      out.testSuites.push_back(std::move(suite));
     }
 
     // The operator== a class declares implicitly when it defaults operator<=> and declares no
@@ -4358,6 +4669,17 @@ namespace
     {
       uint32_t start = pos;
       BlockStmt* b = node<BlockStmt>(start);
+      // A test's body, which spliceAround wrote a function around: check and require are statements.
+      bool savedInTest = inTest;
+      if (!testBodies.empty() && testBodies.erase(pos) > 0)
+        inTest = true;
+      Stmt* block = parseBlockAfter(b);
+      inTest = savedInTest;
+      return block;
+    }
+
+    Stmt* parseBlockAfter(BlockStmt* b)
+    {
       if (!expect(P::LBrace, "expected '{'"))
         return b;
       size_t mark = scratch.size();
@@ -4581,19 +4903,35 @@ namespace
         advance();
         return node<FallthroughStmt>(start);
       }
+      if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+        spliceThrows(); // then an expression statement, below
+      if (inTest && atIdent(kwFail) && at(P::LParen, 1))
+      {
+        // fail(arguments...); in a test (design.md 8.7): fails and ends it, the arguments its
+        // message (the runner's __kppMessage, false); kpp_check_failed's kind 3.
+        AssertStmt* s = node<AssertStmt>(start);
+        s->testKind = 3;
+        advance();
+        advance();
+        s->startToken = s->endToken = pos;
+        s->cond = syntheticCall(start, "__kppMessage", parseTestArguments());
+        expect(P::RParen, "expected ')' after fail's arguments");
+        expect(P::Semi, "expected ';' after fail");
+        return s;
+      }
       if (inTest && (atIdent(kwCheck) || atIdent(kwRequire)) && at(P::LParen, 1))
       {
         // check(cond); and require(cond); in a test (design.md 8.6): a comparison is evaluated by
         // the runner's __kppEqual (NotEqual, Less...), which keeps the operands for the message.
+        // `check(cond, arguments...)` (8.7): `cond || __kppMessage(arguments...)`, the message made
+        // only when cond fails.
         AssertStmt* s = node<AssertStmt>(start);
         s->testKind = atIdent(kwCheck) ? 1 : 2;
         advance();
         advance();
         s->startToken = pos;
-        s->cond = parseExpression();
+        s->cond = parseAssignment();
         s->endToken = pos;
-        expect(P::RParen, "expected ')' after the checked expression");
-        expect(P::Semi, "expected ';' after check or require");
         if (s->cond->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(s->cond)->isKeyword)
         {
           auto* b = static_cast<BinaryExpr*>(s->cond);
@@ -4603,6 +4941,17 @@ namespace
           if (compare)
             s->cond = syntheticCall(b->token, compare, {b->lhs, b->rhs});
         }
+        if (accept(P::Comma))
+        {
+          BinaryExpr* either = node<BinaryExpr>(s->cond->token);
+          either->lhs = s->cond;
+          either->rhs = syntheticCall(s->cond->token, "__kppMessage", parseTestArguments());
+          either->op = uint32_t(P::OrOr);
+          either->isKeyword = false;
+          s->cond = either;
+        }
+        expect(P::RParen, "expected ')' after the checked expression");
+        expect(P::Semi, "expected ';' after check or require");
         return s;
       }
       if ((atIdent(kwAssert) || atIdent(kwReleaseAssert)) && at(P::LParen, 1))
@@ -5894,6 +6243,18 @@ namespace
           return n;
         }
       }
+      if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+        spliceThrows();
+      if (atIdent(kwKppText) && atIdent(1))
+      {
+        // `__kpp_text X`, which only the parser writes (synthesize): X's spelling as a string literal.
+        NameofExpr* n = node<NameofExpr>(start);
+        n->operand = nullptr;
+        n->text = tok(1).id;
+        advance();
+        advance();
+        return n;
+      }
       if (atIdent(kwNameof) && at(P::LParen, 1))
       {
         NameofExpr* n = node<NameofExpr>(start);
@@ -6448,8 +6809,10 @@ namespace
       }
     }
   public:
-    uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool;
+    uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool, kwTestSuite, kwDepends, kwTags, kwKppText, kwTextSlot, kwGenerate, kwFail, kwRequireThrows, kwCheckThrows;
     bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
+    std::unordered_set<uint32_t> testBodies; // The '{' of the bodies spliceAround wrote around (a test's).
+    ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,

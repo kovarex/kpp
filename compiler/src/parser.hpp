@@ -19,7 +19,7 @@ struct ConfigValue
 using ConfigValues = std::map<std::string, ConfigValue>;
 
 // What a file is written in, which the parser is told (never guesses):
-// - KppSource: a .kpp file: no C macro idioms; `config` declarations and `test "name" { ... }` (`T^`
+// - KppSource: a .kpp file: no C macro idioms; `config` declarations and `test name { ... }` (`T^`
 //   and `when` are taken in C++ too).
 // - Cpp: C++ as the converter reads it, and a C++ code base parsed as a corpus (the front end's
 //   benchmark): its macro idioms are recognised.

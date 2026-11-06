@@ -1,7 +1,7 @@
 // The url library against RFC 3986's examples (section 5.4, every normal and abnormal one) and
 // Python's urllib.parse for encoding.
 
-test "RFC 3986 5.4: resolving references"
+test rfc398654ResolvingReferences
 {
   const char* base = "http://a/b/c/d;p?q";
   const char* cases[][2] = {
@@ -30,7 +30,7 @@ test "RFC 3986 5.4: resolving references"
   check(failed == 0);
 }
 
-test "components"
+test components
 {
   Url url = parseUrl("https://user:pw@kpp.net:8443/registry/json/0.1.0?format=json&x#readme");
   check(url.scheme == "https");
@@ -73,7 +73,7 @@ String urlErrorOf(StringView text)
   }
 }
 
-test "what is not a URL"
+test whatIsNotAUrl
 {
   check(urlErrorOf("http://a/b c") == "10: a character that may not stand in a URL's path (percent-encode it)");
   check(urlErrorOf("http://a/%zz") == "9: a '%' without two hex digits after it");
@@ -98,7 +98,7 @@ test "what is not a URL"
   check(threw);
 }
 
-test "percent-encoding, against Python"
+test percentEncodingAgainstPython
 {
   String all;
   for (i32 i = 0; i < 256; ++i)
@@ -123,7 +123,7 @@ test "percent-encoding, against Python"
   check(threw);
 }
 
-test "query strings, against Python"
+test queryStringsAgainstPython
 {
   Vector<UrlQueryParameter> parameters;
   parameters.push_back(UrlQueryParameter{"a b", "x&y=z"});
@@ -146,7 +146,7 @@ test "query strings, against Python"
   check(findUrlQueryParameter(loose, "missing") == nullptr);
 }
 
-test "dot segments and merging without a '/'"
+test dotSegmentsAndMergingWithoutA
 {
   check(urlRemoveDotSegments("a/../b") == "/b");
   check(urlRemoveDotSegments("a/b/../../c") == "/c");

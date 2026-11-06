@@ -25,7 +25,7 @@ String base64ErrorOf(StringView text, bool url = false)
   }
 }
 
-test "RFC 4648 test vectors"
+test rfc4648TestVectors
 {
   const char* plain[] = {"", "f", "fo", "foo", "foob", "fooba", "foobar"};
   const char* encoded[] = {"", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"};
@@ -41,7 +41,7 @@ test "RFC 4648 test vectors"
   }
 }
 
-test "every byte, against Python"
+test everyByteAgainstPython
 {
   String bytes = base64Pattern(40);
   check(base64Encode(bytes) == "ByZFZIOiweD/Hj1ce5q52PcWNVRzkrHQ7w4tTGuKqcjnBiVEY4KhwA==");
@@ -60,7 +60,7 @@ test "every byte, against Python"
   }
 }
 
-test "strict decoding"
+test strictDecoding
 {
   check(base64ErrorOf("Zg") == "2: base64 whose length is not a multiple of 4 (missing or extra '=')");
   check(base64ErrorOf("Zg=") == "3: base64 whose length is not a multiple of 4 (missing or extra '=')");

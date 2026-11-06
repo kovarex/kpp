@@ -1,7 +1,7 @@
 // net over the loopback: a listener and a connection in one thread (the kernel's buffers hold
 // what is written before the other side reads it).
 
-test "a connection both ways"
+test aConnectionBothWays
 {
   TcpListener listener = TcpListener::listen("127.0.0.1", 0);
   i32 port = listener.port();
@@ -21,7 +21,7 @@ test "a connection both ways"
   check(!client.isOpen());
 }
 
-test "a timeout"
+test aTimeout
 {
   TcpListener listener = TcpListener::listen("127.0.0.1", 0);
   TcpStream client = TcpStream::connect("localhost", listener.port());
@@ -40,7 +40,7 @@ test "a timeout"
   check(timedOut);
 }
 
-test "errors"
+test errors
 {
   // A port nobody listens on: take one, then close it.
   i32 port = 0;

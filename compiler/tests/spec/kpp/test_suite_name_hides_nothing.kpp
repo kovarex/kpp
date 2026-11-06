@@ -1,5 +1,4 @@
 // spec: suite names are a name context of their own: suite Beacon beside class Beacon hides nothing, and a suite's helpers are its own
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test:
 // exit: 0
 class Beacon

@@ -2,7 +2,7 @@
 // generate_spec.py): markdownToHtml writes each one's HTML exactly. run.cmd copies this file next to
 // the generated one and runs both.
 
-test "CommonMark spec examples"
+test commonMarkSpecExamples
 {
   int failed = 0;
   for (const CommonMarkExample& e : commonMarkExamples)
@@ -17,7 +17,7 @@ test "CommonMark spec examples"
   check(failed == 0);
 }
 
-test "GFM spec table examples"
+test gfmSpecTableExamples
 {
   MarkdownOptions options;
   options.tables = true;
@@ -34,7 +34,7 @@ test "GFM spec table examples"
   check(failed == 0);
 }
 
-test "the CommonMark examples pass with tables on"
+test theCommonMarkExamplesPassWithTablesOn
 {
   MarkdownOptions options;
   options.tables = true;

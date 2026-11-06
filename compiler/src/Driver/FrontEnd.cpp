@@ -74,6 +74,80 @@ size_t checkConfigEnumerations(Build& build)
   return errors;
 }
 
+size_t checkTestSuites(Build& build)
+{
+  struct Place
+  {
+    size_t file;
+    uint32_t token;
+  };
+  std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
+  SymbolTable& symbols = *build.symbols;
+  size_t errors = 0;
+  auto where = [&](const Place& p)
+  {
+    const std::string& text = build.files[p.file].text;
+    const Token& t = build.lexed[p.file].tokens[std::min<size_t>(p.token, build.lexed[p.file].tokens.size() - 1)];
+    return sourceLocation(build.files[p.file].path.string(), lineOf(text, t.offset), columnOf(text, t.offset));
+  };
+  auto report = [&](const Place& p, const std::string& message)
+  {
+    fprintf(stderr, "%s: error: %s\n", where(p).c_str(), message.c_str());
+    ++errors;
+  };
+  // Each suite by name, in file order; its dependencies' names.
+  std::map<std::string, std::pair<Place, const ParsedFile::TestSuite*>> suites;
+  for (size_t f = 0; f < parsed.size(); ++f)
+    if (parsed[f] && !parsed[f]->isImported)
+      for (const ParsedFile::TestSuite& s : parsed[f]->testSuites)
+      {
+        std::string name(symbols.name(s.name));
+        auto [it, added] = suites.try_emplace(name, Place{f, s.token}, &s);
+        if (!added)
+          report({f, s.token}, "suite '" + name + "' is declared twice (first at " + where(it->second.first) + "); a suite is one block in one file");
+        std::map<uint32_t, uint32_t> tests;
+        for (auto [test, token] : s.tests)
+          if (auto [t, fresh] = tests.try_emplace(test, token); !fresh)
+            report({f, token}, "test '" + std::string(symbols.name(test)) + "' is declared twice in suite '" + name + "' (first at " +
+                                 where({f, t->second}) + ")");
+      }
+  for (size_t f = 0; f < parsed.size(); ++f)
+    if (parsed[f] && !parsed[f]->isImported)
+      for (const ParsedFile::TestSuite& s : parsed[f]->testSuites)
+        for (auto [dependency, token] : s.depends)
+          if (!suites.count(std::string(symbols.name(dependency))))
+            report({f, token}, "no suite named '" + std::string(symbols.name(dependency)) + "' (named in depends; suite names are case-sensitive)");
+  // A cycle: a walk along the dependencies from each suite in name order, the first one it closes.
+  std::map<std::string, int> state; // 1 on the walk's path, 2 done
+  std::vector<std::string> path;
+  std::function<bool(const std::string&)> walk = [&](const std::string& name) -> bool
+  {
+    auto it = suites.find(name);
+    if (it == suites.end() || state[name] == 2)
+      return false;
+    if (state[name] == 1)
+    {
+      std::string cycle;
+      for (size_t i = std::find(path.begin(), path.end(), name) - path.begin(); i < path.size(); ++i)
+        cycle += path[i] + " -> ";
+      report(it->second.first, "the suites depend on each other in a cycle: " + cycle + name);
+      return true;
+    }
+    state[name] = 1;
+    path.push_back(name);
+    for (auto [dependency, token] : it->second.second->depends)
+      if (walk(std::string(symbols.name(dependency))))
+        return true;
+    path.pop_back();
+    state[name] = 2;
+    return false;
+  };
+  for (const auto& [name, suite] : suites)
+    if (walk(name))
+      break;
+  return errors;
+}
+
 uint32_t lineOf(const std::string& text, uint32_t offset)
 {
   uint32_t line = 1;
@@ -274,6 +348,7 @@ void reportParse(Build& build, double parseTime)
         fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset), columnOf(files[i].text, t.offset)).c_str(), d.message,
                 int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
       }
+  build.parseErrors += checkTestSuites(build);
   if (options.cTypeWarnings)
     warnCTypeNames(files, lexed, parsed);
   // --convert reads C++, whose macro uses the parser does not expand (the converter expands them

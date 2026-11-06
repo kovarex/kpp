@@ -1,5 +1,4 @@
 // spec: a suite is one block in one file: declaring it a second time is an error
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // kppc: --tests
 // error: suite 'Belts' is declared twice
 suite Belts

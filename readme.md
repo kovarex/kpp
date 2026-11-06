@@ -174,7 +174,7 @@ what is decided but not built yet is under [Planned](#planned).
   ```cpp
   int square(int x) { return x * x; }
 
-  test "square"
+  test square
   {
     check(square(3) == 9);
     check(square(-2) == 4);

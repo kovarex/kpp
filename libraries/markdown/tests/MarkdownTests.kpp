@@ -1,7 +1,7 @@
 // The markdown library's own tests, one or two per construct. The full check against the CommonMark
 // and GFM specs' examples is conformance\run.cmd (README.md, "Conformance").
 
-test "paragraphs and headings"
+test paragraphsAndHeadings
 {
   check(markdownToHtml("Hello\nworld.\n\nAgain.") == "<p>Hello\nworld.</p>\n<p>Again.</p>\n");
   check(markdownToHtml("# One\n### Three ###\n####### seven") == "<h1>One</h1>\n<h3>Three</h3>\n<p>####### seven</p>\n");
@@ -9,7 +9,7 @@ test "paragraphs and headings"
   check(markdownToHtml("a\n\n***\n\nb") == "<p>a</p>\n<hr />\n<p>b</p>\n");
 }
 
-test "code"
+test code
 {
   check(markdownToHtml("```kpp ignored words\nint x = a < b;\n```") == "<pre><code class=\"language-kpp\">int x = a &lt; b;\n</code></pre>\n");
   check(markdownToHtml("    indented\n\n    still\n\n") == "<pre><code>indented\n\nstill\n</code></pre>\n");
@@ -17,14 +17,14 @@ test "code"
   check(markdownToHtml("~~~\nunclosed") == "<pre><code>unclosed\n</code></pre>\n");
 }
 
-test "emphasis"
+test emphasis
 {
   check(markdownToHtml("*a* _b_ **c** __d__ ***e***") == "<p><em>a</em> <em>b</em> <strong>c</strong> <strong>d</strong> <em><strong>e</strong></em></p>\n");
   check(markdownToHtml("snake_case_name and 2*3*4") == "<p>snake_case_name and 2<em>3</em>4</p>\n");
   check(markdownToHtml("*not closed") == "<p>*not closed</p>\n");
 }
 
-test "links and images"
+test linksAndImages
 {
   check(markdownToHtml("[kpp](https://kpp.net \"home\") <https://kpp.net/a> <me@kpp.net>") ==
         "<p><a href=\"https://kpp.net\" title=\"home\">kpp</a> <a href=\"https://kpp.net/a\">https://kpp.net/a</a> "
@@ -35,14 +35,14 @@ test "links and images"
   check(markdownToHtml("[missing]") == "<p>[missing]</p>\n");
 }
 
-test "lists and quotes"
+test listsAndQuotes
 {
   check(markdownToHtml("- a\n- b\n  - c\n") == "<ul>\n<li>a</li>\n<li>b\n<ul>\n<li>c</li>\n</ul>\n</li>\n</ul>\n");
   check(markdownToHtml("3. x\n\n4. y\n") == "<ol start=\"3\">\n<li>\n<p>x</p>\n</li>\n<li>\n<p>y</p>\n</li>\n</ol>\n");
   check(markdownToHtml("> quoted\nlazy\n\n> - item") == "<blockquote>\n<p>quoted\nlazy</p>\n</blockquote>\n<blockquote>\n<ul>\n<li>item</li>\n</ul>\n</blockquote>\n");
 }
 
-test "HTML, entities, escapes and breaks"
+test htmlEntitiesEscapesAndBreaks
 {
   check(markdownToHtml("<div>\n*raw*\n</div>\n\n*md*") == "<div>\n*raw*\n</div>\n<p><em>md</em></p>\n");
   check(markdownToHtml("a <span class=\"x\">b</span>") == "<p>a <span class=\"x\">b</span></p>\n");
@@ -50,7 +50,7 @@ test "HTML, entities, escapes and breaks"
   check(markdownToHtml("hard  \nbreak\\\nand soft\nbreak") == "<p>hard<br />\nbreak<br />\nand soft\nbreak</p>\n");
 }
 
-test "tables"
+test tables
 {
   MarkdownOptions options;
   options.tables = true;
@@ -62,7 +62,7 @@ test "tables"
   check(markdownToHtml("| a |\n| - |\n| b |\n") == "<p>| a |\n| - |\n| b |</p>\n");
 }
 
-test "heading ids"
+test headingIds
 {
   MarkdownOptions options;
   options.headingIds = true;
@@ -72,14 +72,14 @@ test "heading ids"
         "<h2 id=\"a-b-c-1\">A b c</h2>\n");
 }
 
-test "line endings and odd bytes"
+test lineEndingsAndOddBytes
 {
   check(markdownToHtml("a\r\nb\rc\n\r\n# d") == "<p>a\nb\nc</p>\n<h1>d</h1>\n");
   check(markdownToHtml("") == "");
   check(markdownToHtml(StringView("a\0b", 3)) == "<p>a\xEF\xBF\xBD" "b</p>\n");
 }
 
-test "rewriting links"
+test rewritingLinks
 {
   MarkdownOptions options;
   options.rewriteLink = [](const String& destination) -> String

@@ -1,5 +1,4 @@
 // spec: after a failure the run goes on, dependents included (Factorio's default); a failure after a failed dependency says so, and the summary names the root failures
-// pending: suites, fixtures and the checks of design.md 8.7 are not implemented yet
 // test:
 // exit: 1
 suite Belts

@@ -8,7 +8,7 @@ class Counter
 public:
   int value() const { return count; }
 
-  test "bump counts"
+  test bumpCounts
   {
     Counter c;
     c.bump();
@@ -21,5 +21,5 @@ public:
 namespace geometry
 {
   int area(int w, int h) { return w * h; }
-  test "area" { check(area(2, 3) == 6); }
+  test area { check(area(2, 3) == 6); }
 }
