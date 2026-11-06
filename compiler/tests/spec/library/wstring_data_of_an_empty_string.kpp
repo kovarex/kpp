@@ -1,0 +1,10 @@
+// spec: data() of an empty WString points at its terminator, as std::wstring's and String's do, const or not
+// pending: the non-const data() returns the null chars of a WString that never held anything: reading it crashes (battery un1 against std::wstring)
+int main()
+{
+  WString empty;
+  const WString& same = empty;
+  println((int)same.data()[0]);
+  println((int)empty.data()[0]);
+  return 0;
+}

@@ -1,0 +1,9 @@
+// spec: WString's find(text, from, count) takes the position before the count, as std::wstring's and String's do
+// pending: WString::find(needle, count, from) has the two the other way round: a silent wrong answer (battery un1 against std::wstring)
+int main()
+{
+  WString text = L"abcabcabc";
+  println(text.find(L"bcz", 3, 2));
+  println(text.find(L"cab", 1, 1));
+  return 0;
+}

@@ -1,0 +1,50 @@
+// spec: uninitializedCopy, uninitializedMove, uninitializedDefaultConstruct and uninitializedValueConstruct destroy the objects they built when a construction throws ([specialized.algorithms])
+// pending: their loops have no cleanup: the objects built before the throw are never destroyed (battery un1 against std::uninitialized_copy and its family)
+struct Tracked
+{
+  static int live, ticks, throwAt;
+  static void tick()
+  {
+    if (++ticks == throwAt)
+      throw 42;
+  }
+  int value = 0;
+  Tracked() { tick(); live++; }
+  Tracked(const Tracked& other) : value(other.value) { tick(); live++; }
+  Tracked(Tracked&& other) : value(other.value) { tick(); live++; }
+  ~Tracked() { live--; }
+};
+int Tracked::live = 0;
+int Tracked::ticks = 0;
+int Tracked::throwAt = 0;
+
+long long storage[16];
+
+template<typename F>
+void throwing(StringView name, F call)
+{
+  int before = Tracked::live;
+  Tracked::ticks = 0;
+  Tracked::throwAt = 3;
+  try
+  {
+    call();
+    println(name, " did not throw");
+  }
+  catch (int)
+  {
+    println(name, " left ", Tracked::live - before);
+  }
+  Tracked::throwAt = 0;
+}
+
+int main()
+{
+  Tracked source[4];
+  Tracked* room = (Tracked*)storage;
+  throwing("copy", [&] { uninitializedCopy(source, source + 4, room); });
+  throwing("move", [&] { uninitializedMove(source, source + 4, room); });
+  throwing("default", [&] { uninitializedDefaultConstruct(room, room + 4); });
+  throwing("value", [&] { uninitializedValueConstruct(room, room + 4); });
+  return 0;
+}
