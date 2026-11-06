@@ -79,6 +79,14 @@ std's `<numeric>` under kpp's names, each as std's, run in order:
 - `midpoint(a, b)`: of integers without overflow, rounded towards a; of floating point values without
   overflow; of two pointers into one array. `lerp(a, b, t)`: exact at t 0 and 1, monotonic, a for a == b.
 
+## Bits
+
+C++20's `<bit>` under kpp's names, each as std's, for the unsigned integer types (no signed type,
+bool or char, as in C++), all folding at compile time: `rotl(x, count)`, `rotr(x, count)` (count
+modulo the width, a negative one rotating the other way), `popcount(x)`, `countlZero(x)`,
+`countlOne(x)`, `countrZero(x)`, `countrOne(x)`, `bitWidth(x)`, `bitCeil(x)`, `bitFloor(x)`,
+`hasSingleBit(x)`; `byteswap(x)` of any integer type; `bitCast<To>(from)` between types of one size.
+
 ## Writing
 
 The output position `out` is any iterator that can be written through and stepped, an output
