@@ -1,0 +1,54 @@
+// spec: when constructing a typed union's new alternative throws, that alternative was never constructed and its destructor never runs, and the alternative held before it is destroyed once (std::variant: valueless_by_exception, nothing destroyed again); here every Counted constructed is destroyed exactly once (`0 0`)
+// factorio: E's comparison battery against std::variant (ov2, 2026-11-06): after `z[T::C] = -1` threw in Counted's constructor, z still said it held a Counted and destroyed it at its end; after a union copy assignment whose copy threw, x's old Counted was destroyed in the assignment and again at x's end: 2 Counteds built, 4 destroyed
+// pending: the tag is set before the alternative is constructed, and nothing resets it when the construction throws (the coordinator assigns)
+extern "C" import "stdio.h";
+int alive = 0;
+struct Counted
+{
+  int v;
+  Counted(int x) : v(x)
+  {
+    if (x < 0)
+      throw 7;
+    ++alive;
+  }
+  Counted(const Counted& o) : v(o.v)
+  {
+    if (o.v == 13)
+      throw 13;
+    ++alive;
+  }
+  Counted(Counted&& o) : v(o.v) { ++alive; }
+  ~Counted() { --alive; }
+};
+union enum T : u8
+{
+  { {int, Int}, {Counted, C} }
+};
+int main()
+{
+  {
+    T z = 2;
+    try
+    {
+      z[T::C] = -1;
+    }
+    catch (int)
+    {
+    }
+  }
+  int afterInPlace = alive;
+  {
+    T x = Counted(1);
+    T y = Counted(13);
+    try
+    {
+      x = y;
+    }
+    catch (int)
+    {
+    }
+  }
+  printf("%d %d\n", afterInPlace, alive);
+  return 0;
+}
