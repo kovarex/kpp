@@ -785,6 +785,9 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
           else if (p->kind == NodeKind::ClassDecl)
             path = ownName(p) + "::" + path;
         s += "&" + path;
+        // (a member of a class template's instance: the declaration is every instance's)
+        if (t->inner && t->inner->kind == TyKind::MemberPointer && !t->inner->args.empty() && t->inner->args[0] && !t->inner->args[0]->args.empty())
+          s += " of " + toString(t->inner->args[0], symbols, qualified);
       }
       else
         s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);

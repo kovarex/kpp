@@ -163,13 +163,36 @@ namespace
       int i = ahead;
       if (!atIdent(i))
         return 0;
-      while (atIdent(i) && at(P::ColonColon, i + 1))
+      for (;;)
       {
-        if (at(P::Star, i + 2))
-          return i + 3;
-        i += 2;
+        if (!atIdent(i))
+          return 0;
+        ++i;
+        // `Holder<T>::*`: a class template's arguments on the way.
+        if (at(P::Less, i))
+        {
+          int depth = 0;
+          do
+          {
+            if (at(P::Less, i))
+              ++depth;
+            else if (at(P::Greater, i))
+              --depth;
+            else if (at(P::Shr, i))
+              depth -= 2;
+            else if (at(P::Semi, i) || at(P::LBrace, i) || at(P::RParen, i) || at(TokenKind::End, i))
+              return 0;
+            ++i;
+          } while (depth > 0);
+          if (depth < 0)
+            return 0;
+        }
+        if (!at(P::ColonColon, i))
+          return 0;
+        if (at(P::Star, i + 1))
+          return i + 2;
+        ++i;
       }
-      return 0;
     }
     std::string_view spelling(const Token& t) const { return std::string_view(text + t.offset, t.length); }
     std::string_view spelling(int ahead = 0) const { return spelling(tok(ahead)); }
@@ -1290,7 +1313,7 @@ namespace
             type = p;
           }
         }
-        else if (at(P::LParen) && atIdent(1) && at(P::ColonColon, 2) && memberFunctionPointerAhead())
+        else if (at(P::LParen) && atIdent(1) && memberFunctionPointerAhead())
         {
           uint32_t start = pos;
           advance();
@@ -1352,14 +1375,8 @@ namespace
     // Lookahead for `( Name::Name::* ) (` without allocating.
     bool memberFunctionPointerAhead() const
     {
-      int i = 1;
-      while (atIdent(i) && at(P::ColonColon, i + 1))
-      {
-        if (at(P::Star, i + 2))
-          return at(P::RParen, i + 3) && at(P::LParen, i + 4);
-        i += 2;
-      }
-      return false;
+      int after = memberPointerAhead(1);
+      return after && at(P::RParen, after) && at(P::LParen, after + 1);
     }
 
     // Lookahead for `Name::Name::*` without allocating.
@@ -2622,7 +2639,7 @@ namespace
       {
         advance();
         Type* inner = parseTypeSuffixes(d.type);
-        if (atIdent(0) && at(P::ColonColon, 1))
+        if (atIdent(0) && (at(P::ColonColon, 1) || memberPointerAhead(0) > 0))
         {
           // Pointer to member: ( C::* name )
           QualifiedName q;

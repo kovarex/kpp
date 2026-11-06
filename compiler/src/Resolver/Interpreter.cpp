@@ -2690,6 +2690,9 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
       Subst subst;
       bool ofClass = a.isObject() && a.type && types.unqualified(types.stripRef(a.type))->kind == TyKind::Class;
       FunctionDecl* f = ofClass ? constClassOperator(a.type, P::Spaceship, {constOperandType(b, reversed ? lo : ro)}, subst, depth, true) : nullptr;
+      // (a template beside a function that ties with it, its constraint not asked here: the function)
+      if (!f && ofClass)
+        f = constClassOperator(a.type, P::Spaceship, {constOperandType(b, reversed ? lo : ro)}, subst, depth);
       if (!f)
       {
         // A free operator<=>, a function template's under what the operands deduce.
@@ -2729,7 +2732,13 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
           return std::nullopt;
       }
       std::optional<ConstValue> self = a;
-      std::optional<ConstValue> ordering = constCallOn(f, subst, {b}, &self, depth + 1);
+      // (the operands' places, as a direct call has them: Optional's slot() reads through `this`)
+      const ConstOperand* ao = reversed ? ro : lo;
+      const ConstOperand* bo = reversed ? lo : ro;
+      std::vector<std::optional<ConstPlace>> places{bo ? bo->place : std::optional<ConstPlace>()};
+      std::vector<uint8_t> categories{bo ? bo->category : uint8_t(0)};
+      std::optional<ConstValue> ordering = ao && bo ? constCallOn(f, subst, {b}, &self, depth + 1, ao->place ? &*ao->place : nullptr, &places, &categories)
+                                                    : constCallOn(f, subst, {b}, &self, depth + 1);
       if (!ordering)
         return std::nullopt;
       return constBinaryValues(reversed ? mirrored : op, *ordering, zero, ctx, depth + 1);

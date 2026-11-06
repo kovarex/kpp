@@ -533,15 +533,61 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   {
     // `BinaryOperation<Mul, &Functions::mul>`: the address of a function.
     Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+    // The class a member's qualifier names, of a class template's member: the declaration is every
+    // instance's. Null when the member's class is no template, unknown when it says none.
+    auto instanceNamed = [&]() -> const Ty*
+    {
+      if (!l.decl || !l.decl->parent || l.decl->parent->kind != NodeKind::ClassDecl || effectiveParams(l.decl->parent).empty())
+        return nullptr;
+      const QualifiedName& written = static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name;
+      if (written.parts.size() < 2)
+        return types.unknown();
+      NamedType qualifier{};
+      qualifier.kind = NodeKind::NamedType;
+      qualifier.token = arg->token;
+      qualifier.name = written;
+      qualifier.name.parts.count -= 1;
+      const Ty* instance = convertType(&qualifier, ctx, depth + 1);
+      return instance && instance->kind == TyKind::Class && instance->isKnown() && !types.isDependent(instance) ? instance : types.unknown();
+    };
+    if (l.decl && l.decl->kind == NodeKind::FunctionDecl && !(l.decl->flags & DF_Static))
+      if (const Ty* instance = instanceNamed())
+      {
+        // `&Holder<int>::get`: of the name's functions under this instance, the one of the parameter's
+        // type; the only one where that type depends on what is not bound here.
+        if (!instance->isKnown())
+          return types.unknown();
+        auto* p = param && param->kind == NodeKind::TemplateParamDecl ? static_cast<TemplateParamDecl*>(param) : nullptr;
+        const Ty* of = p && !p->isType && p->valueType ? types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1)) : nullptr;
+        const Ty* wanted = of && of->kind == TyKind::MemberPointer && !types.isDependent(of) && !mentionsUnknown(of) ? of->inner : nullptr;
+        Subst s = substFor(instance);
+        std::vector<Decl*> candidates;
+        if (l.overloads)
+          for (const Entry& e : *l.overloads)
+            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty())
+              candidates.push_back(e.decl);
+        if (candidates.empty())
+          candidates.push_back(l.decl);
+        if (!wanted && candidates.size() != 1)
+          return types.unknown();
+        for (Decl* f : candidates)
+          if (const Ty* t = namedFunctionType(f, declaredTypeOf(f, &s, depth + 1), &s); !wanted || t == wanted || losesNoexcept(t, wanted))
+            return types.functionValue(types.memberPointer(wanted ? wanted : t, instance), f);
+        return types.unknown();
+      }
     if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
       return functionArgument(l, param, depth);
     // `readField<&Pos::x>` for `template<int Pos::*Field>`: a data member of a class, the pointer
     // to it a value of the member pointer type that holds the member's declaration, as a function's
     // value holds the function (D, 2026-11-06: no argument was made, and the instance could not be
-    // emitted). Not one of a class template's members, whose instance the declaration does not say.
+    // emitted). Of a class template's member the qualifier says the instance (`&Holder<int>::a`),
+    // which the value's type holds, so that two instances are two arguments.
     if (l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)) && l.decl->parent &&
-        l.decl->parent->kind == NodeKind::ClassDecl && effectiveParams(l.decl->parent).empty())
+        l.decl->parent->kind == NodeKind::ClassDecl)
     {
+      const Ty* instance = instanceNamed();
+      if (instance && !instance->isKnown())
+        return types.unknown();
       const Ty* of = nullptr;
       if (param && param->kind == NodeKind::TemplateParamDecl)
         if (auto* p = static_cast<TemplateParamDecl*>(param); !p->isType && p->valueType)
@@ -549,9 +595,12 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       const Ty* u = of ? types.unqualified(types.stripRef(of)) : nullptr;
       if (!u || u->kind != TyKind::MemberPointer || types.isDependent(u) || mentionsUnknown(u)) // (`int C::*F` beside `class C`: the field's own)
       {
-        const Ty* member = declaredTypeOf(l.decl, nullptr, depth + 1);
-        u = member && member->isKnown() ? types.memberPointer(member, selfType(l.decl->parent)) : nullptr;
+        Subst of = instance ? substFor(instance) : Subst{};
+        const Ty* member = declaredTypeOf(l.decl, of.pairs.empty() ? nullptr : &of, depth + 1);
+        u = member && member->isKnown() ? types.memberPointer(member, instance ? instance : selfType(l.decl->parent)) : nullptr;
       }
+      else if (instance && (u->args.empty() || !u->args[0] || u->args[0] != instance))
+        return types.unknown(); // (of another class: a conversion no argument has here)
       return u && u->isKnown() && !types.isDependent(u) ? types.functionValue(u, l.decl) : types.unknown();
     }
     v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);

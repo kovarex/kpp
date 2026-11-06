@@ -1,0 +1,27 @@
+// spec: a member of a class template as a template argument, `&Holder<int>::a` and `&Holder<int>::get`, for a parameter of its type, one that depends on another argument and `auto`: the instance in the qualifier is part of the argument, so that two instances are two arguments and never one instantiation, clang's output
+extern "C" import "stdio.h";
+template <typename T> struct Holder { T a; T b; T get() const { return a; } };
+template <typename T> struct Holder<T*> { int pad; T* a; };
+template <int Holder<int>::*F> int readI(const Holder<int>& h) { return h.*F; }
+template <double Holder<double>::*F> double readD(const Holder<double>& h) { return h.*F; }
+template <int* Holder<int*>::*F> int readP(const Holder<int*>& h) { return *(h.*F); }
+template <auto F, typename T> auto readAuto(const T& h) { return h.*F; }
+template <typename T, T Holder<T>::*F> T readT(const Holder<T>& h) { return h.*F; }
+template <typename T, T (Holder<T>::*F)() const> T callT(const Holder<T>& h) { return (h.*F)(); }
+template <auto F> int instance() { static int n = 0; return ++n; }
+int main()
+{
+  Holder<int> h{1, 2};
+  Holder<double> d{1.5, 2.5};
+  int x = 7;
+  Holder<int*> p{0, &x};
+  printf("%d %d %g %g %d\n", readI<&Holder<int>::a>(h), readI<&Holder<int>::b>(h), readD<&Holder<double>::a>(d), readD<&Holder<double>::b>(d), readP<&Holder<int*>::a>(p));
+  printf("%d %g\n", readAuto<&Holder<int>::b>(h), readAuto<&Holder<double>::b>(d));
+  printf("%d %g %d %g\n", readT<int, &Holder<int>::a>(h), readT<double, &Holder<double>::b>(d), callT<int, &Holder<int>::get>(h), callT<double, &Holder<double>::get>(d));
+  int a1 = instance<&Holder<int>::a>();
+  int a2 = instance<&Holder<double>::a>();
+  int a3 = instance<&Holder<int>::a>();
+  int a4 = instance<&Holder<int>::b>();
+  printf("%d %d %d %d\n", a1, a2, a3, a4);
+  return 0;
+}
