@@ -1,0 +1,26 @@
+// spec: an exception that leaves async's function is stored in its Future and thrown again by get() (std::async, [futures.async] 4: the result or the exception goes to the shared state), on the thread that calls get, not the end of the program (`5 6`)
+// factorio: E's concurrency battery against C++ (cc1, 2026-11-06): the program ended with "exception of type int32 thrown through a noexcept function", on Windows and Linux
+// pending: runInto calls the function without catching what it throws, on the thread async started (or in get() for Launch::deferred) (C)
+extern "C" import "stdio.h";
+int main()
+{
+  Future<int> failing = async([]() -> int { throw 5; });
+  Future<int> later = async(Launch::deferred, []() -> int { throw 6; });
+  try
+  {
+    failing.get();
+  }
+  catch (int code)
+  {
+    printf("%d ", code);
+  }
+  try
+  {
+    later.get();
+  }
+  catch (int code)
+  {
+    printf("%d\n", code);
+  }
+  return 0;
+}
