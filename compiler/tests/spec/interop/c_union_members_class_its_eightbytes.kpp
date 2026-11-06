@@ -1,0 +1,43 @@
+// spec: off Windows a union passes in registers as its members class it: a float where every other member has padding makes that eightbyte SSE, a union being no integers to C (the union's storage is integers to the layout, so kpp passed the whole of it in integer registers, and the arguments after it shifted). Windows passes by size and always did. Found on Linux only
+// found by thread J's C ABI fuzzer (2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct Triple { int i; float f[2]; };
+union Mixed { Triple t; short s; unsigned long long u; };
+union Floats { float f; double d; };
+union Sse2 { float f[4]; double d[2]; };
+union Forced { float f[2]; int i; };
+struct Wrapped { Mixed m; };
+extern "C" float cUpperFloat(Mixed m, double d);
+extern "C" Mixed cMakeMixed(float upper);
+extern "C" double cFloats(Floats a, Sse2 b);
+extern "C" Sse2 cMakeSse2(double x);
+extern "C" int cForced(Forced a, float b);
+extern "C" float cWrapped(Wrapped w, float x);
+extern "C" float cCallsKpp();
+extern "C" float kppUpperFloat(Mixed m, double d) { return m.t.f[1] + (float)d; }
+int main()
+{
+  Mixed m;
+  m.u = 3;
+  m.t.f[1] = 1.5f;
+  printf("%.1f\n", (double)cUpperFloat(m, 2.0));
+  Mixed n = cMakeMixed(4.5f);
+  printf("%d %.1f\n", (int)n.u, (double)n.t.f[1]);
+  Floats f;
+  f.d = 1.5;
+  Sse2 s;
+  s.d[0] = 1;
+  s.d[1] = 2;
+  printf("%.1f\n", cFloats(f, s));
+  Sse2 t = cMakeSse2(3);
+  printf("%.1f %.1f\n", t.d[0], t.d[1]);
+  Forced g;
+  g.f[1] = 0;
+  g.i = 5;
+  printf("%d\n", cForced(g, 2.0f));
+  Wrapped w;
+  w.m = m;
+  printf("%.1f\n", (double)cWrapped(w, 1.0f));
+  printf("%.1f\n", (double)cCallsKpp());
+  return 0;
+}

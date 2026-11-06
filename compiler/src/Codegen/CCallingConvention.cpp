@@ -23,13 +23,24 @@ auto codegen::Emitter::cScalars(const Ty* t, uint64_t base, std::vector<std::pai
   classSizeAndAlign(t, at); // laid out, the fields' sizes known
   std::vector<const Ty*> fields;
   std::vector<bool> zeroSize;
-  bool packed, isUnion;
+  std::vector<Decl*> unionMembers;
+  bool packed;
   {
     auto lock = sharedLock();
     StructInfo& info = structFor(t, at);
     if (info.polymorphic)
       unsupported(at, "a class with virtual functions (" + irString(t) + ") passed by value to or from a C function");
-    fields = info.fieldTypes, zeroSize = info.zeroSize, packed = info.packed, isUnion = info.isUnion;
+    fields = info.fieldTypes, zeroSize = info.zeroSize, packed = info.packed;
+    if (info.isUnion)
+      unionMembers = info.fieldDecls;
+  }
+  // A union's storage is integers to the layout; to C it is its members, all at its start: one
+  // with a float where every other leaves padding gives that eightbyte the SSE class.
+  if (!unionMembers.empty())
+  {
+    for (Decl* m : unionMembers)
+      cScalars(unionMemberType(t, m, at), base, out, at);
+    return;
   }
   uint64_t offset = 0;
   for (size_t i = 0; i < fields.size(); ++i)
@@ -37,7 +48,7 @@ auto codegen::Emitter::cScalars(const Ty* t, uint64_t base, std::vector<std::pai
     if (i < zeroSize.size() && zeroSize[i])
       continue; // an empty base: no storage
     uint64_t a = packed ? 1 : alignOf(fields[i], at);
-    offset = isUnion ? 0 : (offset + a - 1) / a * a;
+    offset = (offset + a - 1) / a * a;
     cScalars(fields[i], base + offset, out, at);
     offset += sizeOf(fields[i], at);
   }
