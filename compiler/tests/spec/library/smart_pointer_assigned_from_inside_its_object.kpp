@@ -1,6 +1,5 @@
 // spec: assigning a UniquePtr, SharedPtr or WeakPtr-locked SharedPtr from a pointer that lives inside the object it gives up (walking a list: `head = move(head->next)`, `head = head->next`) takes the new value before the old object is destroyed, as std's do (unique_ptr: reset(r.release()); shared_ptr: a copy swapped in, then the old owner released) (`2 2 3, 2 2 3 1, 1 3 1, 1 4 1`)
 // factorio: E's comparison battery against C++ (sp1, 2026-11-06): UniquePtr's `head = move(head->next)` deleted all three nodes (the old head deleted its next, still set) and then wrote into the freed node; SharedPtr's `head = head->next` released the old head first and then read the freed node's next: null, then a crash on Linux
-// pending: UniquePtr's move assignment resets to other.held before clearing other, and SharedPtr's copy and move assignment release this owner before taking other's pointer and control (C)
 extern "C" import "stdio.h";
 int alive = 0;
 struct UNode

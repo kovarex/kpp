@@ -131,29 +131,17 @@ public:
     return result;
   }
 
+  // other may live inside the object this owns (`head = head->next`): it is copied or moved into a
+  // temporary first and swapped in, as std's shared_ptr does, and the old owner is released last.
   SharedPtr<T>& operator=(const SharedPtr<T>& other)
   {
-    if (this != &other)
-    {
-      if (other.control)
-        other.control->strong.fetchAdd(1);
-      this->release();
-      this->pointer = other.pointer;
-      this->control = other.control;
-    }
+    SharedPtr<T>(other).swap(*this);
     return *this;
   }
 
   SharedPtr<T>& operator=(SharedPtr<T>&& other) noexcept
   {
-    if (this != &other)
-    {
-      this->release();
-      this->pointer = other.pointer;
-      this->control = other.control;
-      other.pointer = nullptr;
-      other.control = nullptr;
-    }
+    SharedPtr<T>(move(other)).swap(*this);
     return *this;
   }
 
@@ -164,26 +152,27 @@ public:
   }
 
   // Gives up this owner: the last one deletes the object.
+  // Empty before the object goes: this SharedPtr may be inside it.
   void release() noexcept
   {
-    if (!this->control)
-      return;
-    if (this->control->strong.fetchSub(1) == 1)
-    {
-      this->control->destroy(this->control->object);
-      sharedReleaseWeak(this->control);
-    }
+    SharedControl* owners = this->control;
     this->pointer = nullptr;
     this->control = nullptr;
+    if (owners && owners->strong.fetchSub(1) == 1)
+    {
+      owners->destroy(owners->object);
+      sharedReleaseWeak(owners);
+    }
   }
 
   void reset() { this->release(); }
 
   void reset(T* newPointer)
   {
-    this->release();
+    SharedPtr<T> taking;
     if (newPointer)
-      this->own(newPointer);
+      taking.own(newPointer);
+    taking.swap(*this);
   }
 
   void swap(SharedPtr<T>& other)
@@ -269,48 +258,43 @@ public:
 
   ~WeakPtr() { this->release(); }
 
+  // As SharedPtr's: into a temporary, swapped in, the old one released last.
   WeakPtr<T>& operator=(const WeakPtr<T>& other)
   {
-    if (this != &other)
-    {
-      if (other.control)
-        other.control->weak.fetchAdd(1);
-      this->release();
-      this->pointer = other.pointer;
-      this->control = other.control;
-    }
+    WeakPtr<T>(other).swap(*this);
     return *this;
   }
 
   WeakPtr<T>& operator=(WeakPtr<T>&& other) noexcept
   {
-    if (this != &other)
-    {
-      this->release();
-      this->pointer = other.pointer;
-      this->control = other.control;
-      other.pointer = nullptr;
-      other.control = nullptr;
-    }
+    WeakPtr<T>(move(other)).swap(*this);
     return *this;
   }
 
   WeakPtr<T>& operator=(const SharedPtr<T>& shared)
   {
-    if (shared.control)
-      shared.control->weak.fetchAdd(1);
-    this->release();
-    this->pointer = shared.pointer;
-    this->control = shared.control;
+    WeakPtr<T>(shared).swap(*this);
     return *this;
   }
 
+  void swap(WeakPtr<T>& other)
+  {
+    T* p = this->pointer;
+    SharedControl* c = this->control;
+    this->pointer = other.pointer;
+    this->control = other.control;
+    other.pointer = p;
+    other.control = c;
+  }
+
+  // Empty before the control block may go: this WeakPtr may be inside the object.
   void release() noexcept
   {
-    if (this->control)
-      sharedReleaseWeak(this->control);
+    SharedControl* owners = this->control;
     this->pointer = nullptr;
     this->control = nullptr;
+    if (owners)
+      sharedReleaseWeak(owners);
   }
 
   void reset() { this->release(); }

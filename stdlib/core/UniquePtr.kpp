@@ -50,11 +50,10 @@ public:
 
   UniquePtr<T, D>& operator=(UniquePtr<T, D>&& other) noexcept
   {
+    // other may live inside the object this owns (`head = move(head->next)`): taken first, as
+    // std's reset(r.release()), so the old object is deleted only after.
     if (this != &other)
-    {
-      this->reset(other.held);
-      other.held = nullptr;
-    }
+      this->reset(other.release());
     return *this;
   }
 
