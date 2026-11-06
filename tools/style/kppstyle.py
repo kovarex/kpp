@@ -9,6 +9,7 @@ PATH is a .kpp file or a directory searched for them. The exit code is 1 when so
 import argparse, os, re, sys
 
 MAX_LINE = 130
+BACKSLASH = chr(92)
 RULES = {
     'line-length': 'longer than %d characters' % MAX_LINE,
     'tab': 'a tab',
@@ -30,15 +31,35 @@ def code_of(lines):
     """Each line with its comments and string and character literals blanked (raw strings too),
     so that braces and keywords are found in code alone."""
     out = []
-    inside = []  # per line: it starts inside a raw string or a block comment
+    inside = []  # per line: it starts inside a string or a comment that spans lines
     in_block = False
     raw_end = None  # the end of a raw string spanning lines: )delim"
+    quote = None  # the quote of a literal continued by a backslash at the end of the line before
+    spliced_comment = False  # a // comment continued so
+    spliced = False  # the line before ends with a backslash: this one is its continuation
     for line in lines:
-        inside.append(in_block or raw_end is not None)
+        inside.append(in_block or raw_end is not None or quote is not None or spliced_comment or spliced)
+        spliced = line.endswith(BACKSLASH)
         s = list(line)
         i = 0
         n = len(s)
+        if spliced_comment:
+            spliced_comment = line.endswith(BACKSLASH)
+            out.append(' ' * n)
+            continue
         while i < n:
+            if quote is not None:
+                j = i
+                while j < n and line[j] != quote:
+                    j += 2 if line[j] == BACKSLASH else 1
+                for k in range(i, min(j + 1, n)):
+                    s[k] = ' '
+                if j >= n and not line.endswith(BACKSLASH):
+                    quote = None  # (unterminated: C++ refuses it; the line ends it here)
+                elif j < n:
+                    quote = None
+                i = j + 1
+                continue
             if raw_end is not None:
                 j = line.find(raw_end, i)
                 if j < 0:
@@ -67,6 +88,7 @@ def code_of(lines):
             if line.startswith('//', i):
                 for k in range(i, n):
                     s[k] = ' '
+                spliced_comment = line.endswith(BACKSLASH)
                 break
             if line.startswith('/*', i):
                 in_block = True
@@ -85,6 +107,8 @@ def code_of(lines):
                     j += 2 if line[j] == '\\' else 1
                 for k in range(i, min(j + 1, n)):
                     s[k] = ' '
+                if j >= n and line.endswith(BACKSLASH):
+                    quote = q  # the literal goes on on the next line
                 i = j + 1
                 continue
             i += 1
@@ -128,9 +152,11 @@ def check(path, text):
             if ch == '{':
                 head = head_of(lines, code, i, j)
                 enclosing = opens[-1][1] if opens else 'declarations'
-                text_head = ' '.join(code[k] for k in range(head, i + 1))
-                own = 'declarations' if re.search(r'\b(class|struct|union|enum|namespace)\b|extern\s*$', text_head.split('{')[0]) or \
-                    re.search(r'extern\s*"C"', ' '.join(lines[k] for k in range(head, i + 1))) else 'code'
+                # What this `{` opens: the code before it back to the last `;`, `{` or `}` (not a class
+                # written whole on the line before a function's head: `class X { ... }; void X::f()`).
+                text_head = ' '.join([code[k] for k in range(head, i)] + [c[:j]])
+                text_head = re.split(r'[;{}]', text_head)[-1]
+                own = 'declarations' if re.search(r'\b(class|struct|union|enum|namespace)\b|\bextern\s*$', text_head) else 'code'
                 if enclosing == 'code':
                     own = 'code'
                 opens.append((i, own, head, j))
@@ -252,7 +278,7 @@ def main():
     checked = 0
     for path in files_under(args.paths, args.tracked):
         checked += 1
-        with open(path, encoding='utf-8', newline='') as f:
+        with open(path, encoding='utf-8', errors='surrogateescape', newline='') as f:  # (bytes that are no UTF-8 kept as they are)
             raw = f.read()
         crlf = '\r\n' in raw
         text = raw.replace('\r\n', '\n')
@@ -267,7 +293,7 @@ def main():
                 lines = fix(lines, fixable)
                 text = '\n'.join(lines) + '\n'
                 findings, lines, final = check(path, text)
-            with open(path, 'w', encoding='utf-8', newline='') as f:
+            with open(path, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
                 f.write(text.replace('\n', '\r\n') if crlf else text)
             if args.rule:
                 findings = [f for f in findings if f[1] in args.rule]
