@@ -1309,7 +1309,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   - **llvm-mingw** (build\llvm-mingw, for run_tests and the package), keyed on
     tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it.
   - **The SDL3 zip and headers**, keyed on `SDL_SHA256`.
-  - **Debian 11's Linux sysroot** (compileruild\sysroots\linux-x86_64, for targets.ps1), keyed on
+  - **Debian 11's Linux sysroot** (compiler\build\sysroots\linux-x86_64, for targets.ps1), keyed on
     tools/sysroot/linux.ps1, which pins its packages' SHA-256.
   - **linux_host's apt packages** (the 16 .deb files of clang 19, lld, ninja and cmake): a hit installs
     them with no Ubuntu mirror. Files that no longer install go to the mirror, and that run saves its

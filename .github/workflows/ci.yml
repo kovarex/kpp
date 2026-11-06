@@ -155,7 +155,7 @@ jobs:
           path: build/llvm-mingw
           key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
 
-      # Debian 11's sysroot for tests	argets.ps1 (part 1), kept under the script's hash (which pins
+      # Debian 11's sysroot for tests\targets.ps1 (part 1), kept under the script's hash (which pins
       # every package's SHA-256; the sysroot's stamp names them): a cache hit downloads nothing from
       # Debian's mirrors.
       - name: Linux sysroot cache
