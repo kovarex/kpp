@@ -23,6 +23,29 @@ using Deci = Ratio<1, 10>;
 using Kilo = Ratio<1000, 1>;
 using Mega = Ratio<1000000, 1>;
 
+// Arithmetic and comparison of ratios at compile time (std::ratio_add, ratio_subtract,
+// ratio_multiply, ratio_divide, ratio_equal, ratio_less, ...): each result in lowest terms.
+template<typename R1, typename R2>
+using RatioAdd = Ratio<R1::num * R2::den + R2::num * R1::den, R1::den * R2::den>;
+template<typename R1, typename R2>
+using RatioSubtract = Ratio<R1::num * R2::den - R2::num * R1::den, R1::den * R2::den>;
+template<typename R1, typename R2>
+using RatioMultiply = Ratio<R1::num * R2::num, R1::den * R2::den>;
+template<typename R1, typename R2>
+using RatioDivide = Ratio<R1::num * R2::den, R1::den * R2::num>;
+template<typename R1, typename R2>
+constexpr bool ratioEqual = R1::num == R2::num && R1::den == R2::den;
+template<typename R1, typename R2>
+constexpr bool ratioNotEqual = !ratioEqual<R1, R2>;
+template<typename R1, typename R2>
+constexpr bool ratioLess = R1::num * R2::den < R2::num * R1::den;
+template<typename R1, typename R2>
+constexpr bool ratioLessEqual = !ratioLess<R2, R1>;
+template<typename R1, typename R2>
+constexpr bool ratioGreater = ratioLess<R2, R1>;
+template<typename R1, typename R2>
+constexpr bool ratioGreaterEqual = !ratioLess<R1, R2>;
+
 // --- Duration ---
 
 template<typename Rep, typename Period = Ratio<1>>
@@ -174,6 +197,24 @@ using Seconds = Duration<i64>;
 using Minutes = Duration<i64, Ratio<60>>;
 using Hours = Duration<i64, Ratio<3600>>;
 using Days = Duration<i64, Ratio<86400>>;
+// The calendar's lengths (std::chrono::weeks, months, years): a week of 7 days, an average
+// Gregorian year of 365.2425 days, a twelfth of it as a month.
+using Weeks = Duration<i64, Ratio<604800>>;
+using Years = Duration<i64, Ratio<31556952>>;
+using Months = Duration<i64, Ratio<2629746>>;
+
+// Whether a duration of this rep may be converted to and from implicitly with a loss: a
+// floating-point one (std::chrono::treat_as_floating_point).
+template<typename Rep>
+constexpr bool treatAsFloatingPoint = isFloatingPoint<Rep>;
+
+// d without its sign (std::chrono::abs), for a signed rep.
+template<typename Rep, typename Period>
+  requires isSigned<Rep> || isFloatingPoint<Rep>
+Duration<Rep, Period> abs(const Duration<Rep, Period>& d)
+{
+  return d.count() < Rep(0) ? Duration<Rep, Period>(-d.count()) : d;
+}
 
 // d in To's period (std::chrono::duration_cast): truncated toward zero for an integer To.
 template<typename To, typename Rep, typename Period>
@@ -366,6 +407,50 @@ struct SystemClock
   }
 
   static TimePoint<SystemClock> from_time_t(i64 seconds) { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000)); }
+};
+
+// A duration taken apart into hours, minutes, seconds and what is left below a second
+// (std::chrono::hh_mm_ss), each of its absolute value; is_negative() tells the sign. Precision is
+// the duration's own period, or seconds when that is coarser.
+template<typename D>
+class HoursMinutesSeconds
+{
+public:
+  using precision = Duration<typename D::rep, typename D::period>;
+
+  constexpr HoursMinutesSeconds() : HoursMinutesSeconds(D()) {}
+
+  constexpr explicit HoursMinutesSeconds(D d)
+  {
+    this->negative = d.count() < typename D::rep(0);
+    D whole = this->negative ? D(-d.count()) : d;
+    this->h = durationCast<Hours>(whole);
+    whole -= durationCast<D>(this->h);
+    this->m = durationCast<Minutes>(whole);
+    whole -= durationCast<D>(this->m);
+    this->s = durationCast<Seconds>(whole);
+    whole -= durationCast<D>(this->s);
+    this->rest = whole;
+  }
+
+  constexpr bool is_negative() const { return this->negative; }
+  constexpr Hours hours() const { return this->h; }
+  constexpr Minutes minutes() const { return this->m; }
+  constexpr Seconds seconds() const { return this->s; }
+  constexpr D subseconds() const { return this->rest; }
+
+  constexpr D to_duration() const
+  {
+    D whole = durationCast<D>(this->h) + durationCast<D>(this->m) + durationCast<D>(this->s) + this->rest;
+    return this->negative ? D(-whole.count()) : whole;
+  }
+
+private:
+  bool negative = false;
+  Hours h;
+  Minutes m;
+  Seconds s;
+  D rest;
 };
 
 // The file system's clock (std::chrono::file_clock), what a file's last write time is in

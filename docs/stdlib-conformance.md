@@ -140,6 +140,12 @@ there; operator[] and try_emplace construct it in place as specified. Map, Set, 
 MultiSet build it in the node since 2026-10-29 (BuildingRenderer's `std::map<RailWithDirection,
 RailNode>`, whose MinHeap base deletes its copy).
 
+Not in the library (time.md has what replaces each): the C++20 calendar and time zones of
+`<chrono>` (year_month_day, weekday, the other calendar types and their `/` syntax, time_zone,
+zoned_time, utc_clock, tai_clock, gps_clock, clock_cast): kpp's calendar is CivilTime with
+toCivilTime and fromCivilTime, in UTC, without leap seconds; FileClock converts with to_sys and
+from_sys. The duration literals (`10ms`, `2h`): a duration is written `Milliseconds(10)`.
+
 Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five fixed patterns are
 hand-written matchers in the conversion's overrides (docs/path-to-factorio.md, "cxxopts"); a
 library Regex comes with a second user.

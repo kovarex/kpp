@@ -9,6 +9,10 @@ What std::chrono converts to: `std::chrono::milliseconds` is `Milliseconds`, `st
 lowest terms with a positive denominator (`Ratio<2, -4>` has num -1 and den 2). `Nano`, `Micro`,
 `Milli`, `Centi`, `Deci`, `Kilo`, `Mega` are the usual ones.
 
+Ratios combine at compile time: `RatioAdd<R1, R2>`, `RatioSubtract`, `RatioMultiply`,
+`RatioDivide` (each a Ratio in lowest terms) and `ratioEqual<R1, R2>`, `ratioNotEqual`,
+`ratioLess`, `ratioLessEqual`, `ratioGreater`, `ratioGreaterEqual` (std::ratio_add ... ratio_greater_equal_v).
+
 ## Duration<Rep, Period>
 
 A count of ticks of type Rep (an integer or floating-point type), each tick Period seconds long (a
@@ -36,6 +40,13 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   `Duration<double, Period>`. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count (`d++` and `d--` return the old duration).
 - `==`, `!=`, `<`, `<=`, `>`, `>=` compare durations of any two types in their common duration,
   by the time they stand for (`Minutes(1) == Seconds(60)`).
+- `abs(d)`: d without its sign (a signed or floating-point rep). `treatAsFloatingPoint<Rep>`:
+  whether Rep is floating point (std::chrono::treat_as_floating_point_v).
+- `Weeks` (7 days), `Years` (365.2425 days, Ratio<31556952>) and `Months` (a twelfth of that,
+  Ratio<2629746>), as std's weeks, years and months.
+- `HoursMinutesSeconds<D>(d)` (std::chrono::hh_mm_ss): d's absolute value taken apart:
+  `hours()`, `minutes()`, `seconds()`, `subseconds()` (a D below a second), `is_negative()`,
+  `to_duration()` (d again).
 
 ## TimePoint<Clock, Dur>
 
