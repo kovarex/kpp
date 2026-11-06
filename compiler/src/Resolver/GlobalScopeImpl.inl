@@ -603,7 +603,7 @@
         auto* decl = static_cast<FunctionDecl*>(e.decl);
         if (decl->body)
           continue;
-        if (typeAs(def, decl) == matchedType(decl))
+        if (decl->refQualifier == def->refQualifier && typeAs(def, decl) == matchedType(decl)) // (`f() &` and `f() &&`: two)
         {
           uint32_t taken = decl->flags & (DF_Static | DF_Virtual);
           if ((def->flags & taken) != taken)

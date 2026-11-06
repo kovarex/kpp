@@ -23,6 +23,7 @@ namespace
     bool isFunction = false;
     Span<Decl*> params;
     uint32_t flags = 0;
+    FunctionDecl::RefQualifier refQualifier = FunctionDecl::RefQualifier::None; // `f() &`, `f() &&`
     Expr* noexceptCondition = nullptr; // noexcept(expr)
     Type* trailingReturn = nullptr;
     Expr* bitfield = nullptr;
@@ -2824,7 +2825,16 @@ namespace
         skipAttributes();
         if (accept(Kw::const_)) d.flags |= DF_Const;
         else if (accept(Kw::volatile_)) d.flags |= DF_Volatile;
-        else if (accept(P::Amp) || accept(P::AndAnd)) d.flags |= DF_RefQual;
+        else if (accept(P::Amp))
+        {
+          d.flags |= DF_RefQual;
+          d.refQualifier = FunctionDecl::RefQualifier::LValue;
+        }
+        else if (accept(P::AndAnd))
+        {
+          d.flags |= DF_RefQual;
+          d.refQualifier = FunctionDecl::RefQualifier::RValue;
+        }
         else if (at(Kw::noexcept_))
         {
           advance();
@@ -2951,6 +2961,7 @@ namespace
       f->explicitCondition = pendingExplicitCondition;
       pendingExplicitCondition = nullptr;
       f->noexceptCondition = d.noexceptCondition;
+      f->refQualifier = d.refQualifier;
       f->attributes = pendingAttributes;
       pendingAttributes = 0;
       f->templateParams = templ.params;

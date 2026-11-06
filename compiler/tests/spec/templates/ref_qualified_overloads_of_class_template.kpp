@@ -1,0 +1,23 @@
+// spec: a class template's member functions qualified & and && are two overloads in each instance, an lvalue object calling the first, an rvalue the second, at run time and at compile time (a consteval function's calls), as clang has it: `1 2` and `12`
+// found by thread B's battery 47 (2026-11-06), with classes/ref_qualified_overloads_choose_by_value_category
+template<typename T>
+class Holder
+{
+public:
+  constexpr Holder(T v) : value(v) {}
+  constexpr int which() & { return 1; }
+  constexpr int which() && { return 2; }
+  T value;
+};
+consteval int both()
+{
+  Holder<int> h(1);
+  return h.which() * 10 + Holder<int>(2).which();
+}
+int main()
+{
+  Holder<int> h(3);
+  println(h.which(), " ", Holder<int>(4).which());
+  println(both());
+  return 0;
+}

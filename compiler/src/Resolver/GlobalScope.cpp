@@ -1161,6 +1161,8 @@ Decl* GlobalScope::definitionOf(Decl* d)
       // the parameters and the method's constness decide.
       auto matches = [&](FunctionDecl* candidate)
       {
+        if (candidate->refQualifier != f->refQualifier)
+          return false; // (`int Box::out() &` and `int Box::out() &&`: two functions)
         const Ty* ct = impl->typeAs(candidate, f);
         if (ct == ft)
           return true;

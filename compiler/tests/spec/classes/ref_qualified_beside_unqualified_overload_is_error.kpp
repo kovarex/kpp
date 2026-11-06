@@ -1,0 +1,15 @@
+// spec: two member functions of one name and parameter list where one has a ref qualifier and the other none are an error ([over.load] 2.3: either all of them have one or none does), as clang has it; `f() &` beside `f() &&` is two overloads
+// found by thread B's battery 47 (2026-11-06)
+// error: ref_qualified_beside_unqualified_overload_is_error.kpp:8: error: the member function get has a ref qualifier and another overload of the same parameters has none
+class Box
+{
+public:
+  int get() & { return 1; }
+  int get() { return 2; }
+};
+int main()
+{
+  Box b;
+  println(b.get());
+  return 0;
+}

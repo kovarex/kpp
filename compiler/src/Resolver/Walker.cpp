@@ -397,6 +397,46 @@ auto GlobalScope::Impl::Walker::checkConstObjectCall(FunctionDecl* f, const Ty* 
                          " is not const, and its object is a " + types.toString(types.stripRef(objectTy), &impl.symbols));
 }
 
+auto GlobalScope::Impl::Walker::checkRefQualifierMix(FunctionDecl* f) -> void
+{
+  if (activeSubst || probing || !file || file->isImported || !f->parent || f->parent->kind != NodeKind::ClassDecl || f->name.empty() || (f->flags & DF_Static))
+    return;
+  const Ty* ft = nullptr;
+  for (Decl* m : static_cast<ClassDecl*>(f->parent)->members)
+  {
+    if (m == f)
+      return; // (reported at the later one)
+    if (m->kind != NodeKind::FunctionDecl)
+      continue;
+    auto* g = static_cast<FunctionDecl*>(m);
+    if ((g->refQualifier == FunctionDecl::RefQualifier::None) == (f->refQualifier == FunctionDecl::RefQualifier::None) || g->name.empty() ||
+        g->name.last().symbol != f->name.last().symbol || g->params.size() != f->params.size() || g->templateParams.size() != f->templateParams.size() ||
+        (g->flags & (DF_Const | DF_Static)) != (f->flags & DF_Const) || !f->templateParams.empty())
+      continue;
+    if (!ft)
+      ft = impl.declaredTypeOf(f, nullptr, 0);
+    const Ty* gt = impl.declaredTypeOf(g, nullptr, 0);
+    if (!ft || !gt || ft->kind != TyKind::Function || gt->kind != TyKind::Function || ft->args.size() != gt->args.size() || ft->variadic != gt->variadic ||
+        !std::equal(ft->args.begin(), ft->args.end(), gt->args.begin()))
+      continue;
+    impl.reportCheckerError(file, f->token, "the member function " + impl.namePartText(f->name.last()) +
+                                              " has a ref qualifier and another overload of the same parameters has none");
+    return;
+  }
+}
+
+auto GlobalScope::Impl::Walker::checkRefQualifiedCall(FunctionDecl* f, const Ty* objectTy, uint32_t token) -> void
+{
+  if (!f || !objectTy || (f->flags & DF_Static) || f->refQualifier == FunctionDecl::RefQualifier::None)
+    return;
+  bool rvalueOnly = f->refQualifier == FunctionDecl::RefQualifier::RValue;
+  if (rvalueOnly ? objectTy->kind != TyKind::LRef : objectTy->kind != TyKind::RRef || ((f->flags & DF_Const) && !(f->flags & DF_Volatile)))
+    return;
+  uint32_t symbol = impl.functionSymbol(f->name);
+  reportCheck(token, "the member function " + std::string(symbol == UINT32_MAX ? "?" : impl.symbols.name(symbol)) + " is declared " +
+                       (rvalueOnly ? "&& (for an rvalue object), and its object is an lvalue" : "& (for an lvalue object), and its object is an rvalue"));
+}
+
 auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
                                                          const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token) -> void
 {
@@ -811,7 +851,8 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
       };
       for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
         if (candidate->body && impl.functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) &&
-            candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & DF_Const) == (f->flags & DF_Const))
+            candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & DF_Const) == (f->flags & DF_Const) &&
+            candidate->refQualifier == f->refQualifier)
           if (const Ty* ct = impl.typeAs(candidate, f); ct == ft || (ft && ft->kind == TyKind::Function && impl.containsAuto(ft->inner) && sameParameters(ct, ft)))
           {
             def = candidate;
@@ -1530,7 +1571,7 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
     for (size_t i = 0; i < ownCount; ++i)
     {
       auto* own = static_cast<FunctionDecl*>((*merged)[i].decl);
-      if (!own->templateParams.empty() || (own->flags & quals) != (base->flags & quals) || own->params.size() != base->params.size())
+      if (!own->templateParams.empty() || (own->flags & quals) != (base->flags & quals) || own->refQualifier != base->refQualifier || own->params.size() != base->params.size())
         continue;
       const Ty* ot = impl.declaredTypeOf(own, nullptr, 0);
       if (!ot || ot->kind != TyKind::Function || ot->args.size() != bt->args.size())
@@ -4060,7 +4101,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       if (thisType && thisType->kind == TyKind::Pointer && thisType->inner && l.foundIn && l.foundIn->kind == ScopeKind::Class)
         if (Scope* self = impl.classScopeOf(types.unqualified(thisType->inner)); self && reachesClassScope(self, l.foundIn, 0))
           implicitObject = thisType->inner;
-      FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject, ambiguous, &n->name.last(), c->args, &tied);
+      // (*this is an lvalue: a member qualified && is no candidate, `f() &` is.)
+      FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject ? types.lref(implicitObject) : nullptr, ambiguous, &n->name.last(), c->args, &tied);
       if (f && !ambiguous)
       {
         checkConstObjectCall(f, implicitObject, c->token);
@@ -4230,10 +4272,16 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     {
       std::vector<FunctionDecl*> tied;
       std::vector<const Ty*> argTypes = argTypesOf(c->args);
-      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, object, ambiguous, &last, c->args, &tied);
+      // The object with its value category (argumentType's: an lvalue T&, an xvalue T&&, a prvalue
+      // as T&& too), which a ref-qualified member function's candidacy depends on.
+      const Ty* category = m->op == P::Arrow || m->op == P::SafeArrow ? types.lref(types.stripRef(object)) : argumentType(m->base, base, types);
+      if (category && !category->isReference())
+        category = types.rref(category);
+      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, category, ambiguous, &last, c->args, &tied);
       if (f && !ambiguous)
       {
         checkConstObjectCall(f, object, m->token);
+        checkRefQualifiedCall(f, category, m->token);
         checkExplicitArguments(f, impl.declaredTypeOf(f, &r.subst, 0), c->args);
       }
       if (!f)
@@ -5936,6 +5984,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkExpr(f->requiresClause);
       walkExpr(f->condition);
       checkDefinedOnce(f);
+      checkRefQualifierMix(f);
       checkTextSignature(f);
       checkOverride(f);
       Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);

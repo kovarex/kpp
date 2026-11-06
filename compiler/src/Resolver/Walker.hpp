@@ -174,6 +174,13 @@
     // (their specialisations and instances have bodies of their own) nor a `conditional(...)` one
     // (alternatives of which one exists).
     void checkDefinedOnce(FunctionDecl* f);
+    // A ref-qualified member function called on an object its implicit object parameter does not
+    // bind ([over.match.funcs] 4): `f() &&` on an lvalue, a non-const `f() &` on an rvalue, is an
+    // error at the call, as in C++. objectTy: the object with its value category (T& or T&&).
+    void checkRefQualifiedCall(FunctionDecl* f, const Ty* objectTy, uint32_t token);
+    // Overloads of one name and parameter list of which some have a ref qualifier and some none
+    // are an error ([over.load] 2.3), reported at the later declaration.
+    void checkRefQualifierMix(FunctionDecl* f);
 
     // An object's array bound (a variable's, a data member's) that is no constant, or is negative,
     // is an error at the bound, as in C++ ([dcl.array] 1), never an array of no elements. Checked

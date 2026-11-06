@@ -1,0 +1,16 @@
+// spec: a member function qualified `&&` takes only an rvalue object ([over.match.funcs] 4: its implicit object parameter is an rvalue reference, which an lvalue does not bind), so calling it on a variable is an error, as clang has it; on a temporary or `move(b)` it is called
+// found by thread B's battery 47 (2026-11-06): the qualifier was taken for `&`'s, and the call compiled
+// error: rvalue_qualified_member_on_lvalue_is_error.kpp:14: error: the member function take is declared && (for an rvalue object), and its object is an lvalue
+class Box
+{
+public:
+  int take() && { return 2; }
+};
+int main()
+{
+  Box b;
+  println(Box().take());
+  println(move(b).take());
+  println(b.take());
+  return 0;
+}

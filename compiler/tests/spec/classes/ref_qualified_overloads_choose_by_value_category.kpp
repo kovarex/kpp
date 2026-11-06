@@ -1,0 +1,25 @@
+// spec: a member function's ref qualifier tells overloads of one parameter list apart ([over.match.funcs] 4, [over.ics.rank] 3.2.3): `which() &` serves an lvalue object (a variable, `*p`, `p->`), `which() &&` an rvalue one (a temporary, a call's result, `move(b)`); beside `peek() &&`, `peek() const&` serves the const and the non-const lvalue; defined out of the class too (`int Box::out() & {...}`); clang prints the same
+// found by thread B's battery 47 (2026-11-06): one flag held both qualifiers, so the second overload was "defined twice"
+class Box
+{
+public:
+  int which() & { return 1; }
+  int which() && { return 2; }
+  int peek() const& { return 3; }
+  int peek() && { return 4; }
+  int out() &;
+  int out() &&;
+};
+int Box::out() & { return 5; }
+int Box::out() && { return 6; }
+Box make() { return Box(); }
+int main()
+{
+  Box b;
+  const Box c;
+  Box* p = &b;
+  println(b.which(), " ", Box().which(), " ", move(b).which(), " ", p->which(), " ", make().which());
+  println(b.peek(), " ", c.peek(), " ", Box().peek());
+  println(b.out(), " ", Box().out());
+  return 0;
+}

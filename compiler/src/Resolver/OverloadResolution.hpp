@@ -143,6 +143,7 @@
     FunctionDecl* f;
     std::vector<int> ranks;
     int thisRank; // 0 exact constness, 1 const method on a non-const object, NotViable if const object/non-const method
+    int refRank = 0; // an rvalue object: 0 for a member qualified &&, 1 for one qualified & ([over.ics.rank] 3.2.3)
     std::vector<bool> refs; // per rank: the parameter is a reference
     std::vector<const Ty*> params; // per rank: the parameter's type (null for a variadic tail)
     bool emptyText = false; // its Text parameter takes no pieces (design.md 14)

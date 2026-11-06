@@ -633,7 +633,9 @@ auto GlobalScope::Impl::overrideKey(FunctionDecl* f, const Ty* cls) -> std::stri
   k += ")";
   if (n.special == 3 && ft && ft->kind == TyKind::Function && ft->inner)
     k += types.toString(ft->inner, &symbols);
-  return (f->flags & DF_Const) ? k + " const" : k;
+  if (f->flags & DF_Const)
+    k += " const";
+  return f->refQualifier == FunctionDecl::RefQualifier::None ? k : k + (f->refQualifier == FunctionDecl::RefQualifier::LValue ? " &" : " &&");
 }
 
 auto GlobalScope::Impl::polymorphicClass(const Ty* t, int depth) -> std::optional<bool>

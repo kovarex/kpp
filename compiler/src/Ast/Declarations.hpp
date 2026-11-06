@@ -126,6 +126,11 @@ struct FunctionDecl : Decl
   // type's instance mark is, which the names of its local classes carry (TypeTable.cpp), so that two
   // instances' InnerSetupHelper are two names in every run.
   uint64_t instanceMark = 0;
+  // A member function's ref qualifier (DF_RefQual says it has one): RefQualifier::LValue `f() &`,
+  // which an lvalue object calls, RValue `f() &&`, which an rvalue one does ([over.match.funcs] 4).
+  // Two overloads of one parameter list differing in it are two functions.
+  enum class RefQualifier : uint8_t { None, LValue, RValue };
+  RefQualifier refQualifier = RefQualifier::None;
 };
 struct VariableDecl : Decl
 {

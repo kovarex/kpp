@@ -2573,7 +2573,7 @@ auto GlobalScope::Impl::constOverrider(FunctionDecl* f, const Ty* t, int depth) 
       continue;
     auto* g = static_cast<FunctionDecl*>(m);
     if (g->name.empty() || g->name.last().symbol != f->name.last().symbol || g->params.size() != f->params.size() || (g->flags & DF_Static) ||
-        ((g->flags & DF_Const) != (f->flags & DF_Const)))
+        ((g->flags & DF_Const) != (f->flags & DF_Const)) || g->refQualifier != f->refQualifier)
       continue;
     bool same = true;
     for (size_t i = 0; i < g->params.size() && same; ++i)

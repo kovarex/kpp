@@ -131,11 +131,13 @@ auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& 
   std::string params;
   for (size_t i = 0; ft && i < ft->args.size(); ++i)
     params += (i ? ", " : "") + irString(ft->args[i]);
-  // A const method is a different function from its non-const overload.
+  // A const method is a different function from its non-const overload, and one qualified && from
+  // its overload qualified & (`which() &` beside `which() &&`; & and none never meet: [over.load] 2.3).
   // (a literal operator's name, `operator""_km`, has quotes, which an LLVM name escapes)
   for (size_t at = 0; (at = q.find('"', at)) != std::string::npos; at += 3)
     q.replace(at, 1, "\\22");
-  return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + "\"";
+  return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") +
+         (f->refQualifier == FunctionDecl::RefQualifier::RValue && !(f->flags & DF_Static) ? " &&" : "") + "\"";
 }
 
 auto codegen::Emitter::displayFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy) -> std::string
@@ -202,7 +204,8 @@ auto codegen::Emitter::displayFunctionName(FunctionDecl* f, const TemplateArgs& 
   std::string params;
   for (size_t i = 0; ft && i < ft->args.size(); ++i)
     params += (i ? ", " : "") + spell(ft->args[i]);
-  return q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "");
+  return q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") +
+         (f->refQualifier == FunctionDecl::RefQualifier::RValue && !(f->flags & DF_Static) ? " &&" : "");
 }
 
 auto codegen::Emitter::lambdaSignatureOf(const Ty* callTy, Node* at) -> Signature

@@ -1871,7 +1871,7 @@ auto GlobalScope::Impl::equivalentParameters(FunctionDecl* a, FunctionDecl* b, c
   for (size_t i = 0; i < ta->args.size(); ++i)
     if (!ta->args[i] || !tb->args[i] || (s.empty() ? tb->args[i] : substitute(tb->args[i], s)) != ta->args[i])
       return false;
-  return (a->flags & (DF_Const | DF_RefQual)) == (b->flags & (DF_Const | DF_RefQual));
+  return (a->flags & (DF_Const | DF_RefQual)) == (b->flags & (DF_Const | DF_RefQual)) && a->refQualifier == b->refQualifier;
 }
 
 auto GlobalScope::Impl::deductionsAgree(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, const Subst& deduced, size_t given) -> bool
@@ -2129,7 +2129,7 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // it extern "C", one function.
   uint32_t compared = isCFunction(a) && isCFunction(b) ? DF_Const | DF_RefQual : DF_Const | DF_RefQual | DF_Static;
   if (a->params.size() != b->params.size() || a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
-      a->templateParams.size() != b->templateParams.size() || (a->flags & compared) != (b->flags & compared))
+      a->templateParams.size() != b->templateParams.size() || (a->flags & compared) != (b->flags & compared) || a->refQualifier != b->refQualifier)
     return false;
   // A function declared `extern "C"` and then defined without it is one C function (C++
   // [dcl.link] 5: the later declaration takes the earlier one's linkage), as Lua's
@@ -2190,6 +2190,11 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     argsConcrete = argsConcrete && at && at->isKnown() && !types.isDependent(at);
   std::vector<Candidate> viable;
   bool objectConst = objectTy && types.stripRef(objectTy)->isConst;
+  // The object's value category where the caller gives it, an lvalue as T&, an rvalue as T&& (a
+  // member call's object, argumentType's): a ref-qualified member function takes only the objects
+  // its implicit object parameter binds ([over.match.funcs] 4, 5): `f() &&` no lvalue, a non-const
+  // `f() &` no rvalue. A plain T: not known, every one is a candidate as before.
+  bool objectLvalue = objectTy && objectTy->kind == TyKind::LRef, objectRvalue = objectTy && objectTy->kind == TyKind::RRef;
   bool single = candidates.size() == 1; // One candidate: arity decides, no ranking needed.
   for (FunctionDecl* f : candidates)
   {
@@ -2222,6 +2227,12 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
       if (objectConst && !constMethod)
         continue;
       c.thisRank = (!objectConst && constMethod) ? 1 : 0;
+      if (objectLvalue && f->refQualifier == FunctionDecl::RefQualifier::RValue)
+        continue;
+      if (objectRvalue && f->refQualifier == FunctionDecl::RefQualifier::LValue && (!constMethod || (f->flags & DF_Volatile)))
+        continue;
+      if (objectRvalue && f->refQualifier == FunctionDecl::RefQualifier::LValue)
+        c.refRank = 1;
     }
     const Ty* ft = declaredTypeOf(f, classSubst, 0);
     Subst deduced = classSubst ? *classSubst : Subst{};
@@ -2528,9 +2539,12 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
           return false;
       }
     }
-    if (a.thisRank > b.thisRank)
+    // The implicit object parameters: an rvalue object binding `&&` over `const&` ([over.ics.rank]
+    // 3.2.3), then their constness (3.2.6).
+    int aObject = a.refRank != b.refRank ? a.refRank : a.thisRank, bObject = a.refRank != b.refRank ? b.refRank : b.thisRank;
+    if (aObject > bObject)
       return false;
-    if (a.thisRank < b.thisRank)
+    if (aObject < bObject)
       someBetter = true;
     // The arguments match alike, and one candidate's Text parameter takes none of them (design.md
     // 14): the other wins, before the template tie-breakers, as it would if the Text took a piece

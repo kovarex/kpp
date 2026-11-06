@@ -1,0 +1,17 @@
+// spec: a non-const member function qualified `&` takes only an lvalue object ([over.match.funcs] 4: a non-const lvalue reference binds no rvalue), so calling it on a temporary is an error, as clang has it; a `const&` one takes a temporary too, and one with no ref qualifier takes either
+// found by thread B's battery 47 (2026-11-06): the qualifier was taken for none
+// error: lvalue_qualified_member_on_rvalue_is_error.kpp:15: error: the member function get is declared & (for an lvalue object), and its object is an rvalue
+class Box
+{
+public:
+  int get() & { return 1; }
+  int look() const& { return 2; }
+  int plain() { return 3; }
+};
+int main()
+{
+  Box b;
+  println(b.get(), " ", Box().look(), " ", Box().plain());
+  println(Box().get());
+  return 0;
+}
