@@ -1,0 +1,21 @@
+// spec: a non-type template parameter of a class type (C++20 [temp.param] 6, a structural type): its argument a constant of the class, a named constexpr object or a brace list `scaled<Fixed{3, 14}>()`, the parameter an object of that value in the template; two arguments of equal members are one instance
+// pending: a brace list there does not parse (`expected expression`), and a named constant's instance is not emitted ("codegen does not support emitting the function template scaled without its argument F yet")
+// factorio: thread J's constexpr battery against clang (2026-11-06); clang's output
+struct Fixed
+{
+  int whole;
+  int fraction;
+};
+template<Fixed F>
+int scaled() { return F.whole * 100 + F.fraction; }
+template<Fixed F>
+struct Tagged
+{
+  static int count() { return F.whole + F.fraction; }
+};
+constexpr Fixed twoTen{2, 10};
+int main()
+{
+  println(scaled<Fixed{3, 14}>(), " ", scaled<twoTen>(), " ", Tagged<Fixed{2, 10}>::count());
+  return 0;
+}
