@@ -8220,6 +8220,28 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
         constWhy() = "a reference to the result of a call that refers to no object the evaluation holds";
       return ConstFlow::Failed; // it ran: never twice
     }
+    // `long&& r = i;` or `const double& d = i;` with i an int: a temporary of the reference's own
+    // type, converted from i, which r's writes never reach ([dcl.init.ref] 5.4.2); never i's place
+    // (r = 5 changed i, 55 where C++ gives 15; a constexpr local's constant showed it, 2026-11-06).
+    // A class bound to its base stays the object's place.
+    if (at && at->type && type->inner)
+    {
+      auto scalar = [](const Ty* t)
+      {
+        return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Float || t->kind == TyKind::Bool || t->kind == TyKind::Enum;
+      };
+      const Ty* want = types.unqualified(types.stripRef(type->inner));
+      const Ty* have = types.unqualified(types.stripRef(at->type));
+      if (want != have && scalar(want) && scalar(have))
+      {
+        std::optional<ConstValue> read = constRead(*at);
+        std::optional<ConstValue> value = read ? constConvertTo(read, want, depth + 1) : std::nullopt;
+        if (!value)
+          return ConstFlow::Failed;
+        env.push_back(constBinding(symbol, *value, want));
+        return named(env.size() - 1);
+      }
+    }
     if (at)
     {
       ConstBinding alias{symbol, ConstValue::unset(type)};
