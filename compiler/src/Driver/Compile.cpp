@@ -231,6 +231,8 @@ int compile(int argc, char** argv)
       setConvertFinal();
     else if (arg == "--convert-marks")
       setConvertMarks();
+    else if (arg == "--convert-native-tests")
+      setConvertNativeTests();
     else if (arg == "--convert-platform" && i + 1 < argc)
     {
       if (!setConvertPlatform(argv[++i]))

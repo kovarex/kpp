@@ -1196,6 +1196,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       text += '\n';
     }
     text = resolveInlineBodies(std::move(text), total);
+    text = withSuiteHeadersResolved(std::move(text), total);
     if (ov)
     {
       // The hand-written part: appended, its definitions replaced the converted ones above.

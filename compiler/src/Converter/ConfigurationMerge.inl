@@ -17,6 +17,11 @@ void setConvertMarks()
   convertMarks = true;
 }
 
+void setConvertNativeTests()
+{
+  convertNativeTests = true;
+}
+
 bool setConvertPlatform(const std::string& platform)
 {
   if (platform != "windows" && platform != "linux" && platform != "freebsd")
