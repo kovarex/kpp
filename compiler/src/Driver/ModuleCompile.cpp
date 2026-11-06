@@ -151,7 +151,9 @@ void reportAccessWarnings(Build& build)
 std::string directLinkCommand(const std::string& clang, const std::string& responsePath, const std::string& response, const std::string& exe)
 {
   Sha256 key;
-  key.add("kpp direct link 1\n");
+  // (2: the command is kept without cmd's outer quotes, which host::shell adds since 5bf9a63c; a
+  // kept one of 1 has them and was run quoted twice, '""C:\Program' is not recognized)
+  key.add("kpp direct link 2\n");
   key.add(objectcache::stamp(clang));
   for (const char* name : {"PATH", "LIB", "LIBPATH", "INCLUDE", "VCINSTALLDIR", "VCToolsInstallDir", "VSINSTALLDIR", "VisualStudioVersion",
                            "WindowsSdkDir", "WindowsSDKVersion", "UniversalCRTSdkDir", "UCRTVersion", "Platform"})
