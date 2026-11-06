@@ -3205,6 +3205,8 @@ namespace
         // its handlers rethrow at their end, as C++ has it. A destructor's is not done yet.
         uint32_t tryStart = pos;
         accept(Kw::try_);
+        if (inTest)
+          f->testCode = 1; // (no frame: a line less, never a wrong one)
         if (f->flags & DF_Destructor)
           error("a function-try-block of a destructor is not supported yet");
         Decl* savedParent = currentParent;

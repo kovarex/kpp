@@ -850,6 +850,37 @@ auto codegen::Emitter::noteTestCall(FunctionDecl* f, const TemplateArgs& args, N
                    std::to_string(column) + ")", false);
 }
 
+// What runs between a noted call and the frame that takes it (design.md 8.7), so that a noted site
+// never reaches another function's frame. A constructor's member initializers run first and may
+// throw: its site waits in a slot of its own until they are done.
+auto codegen::Emitter::holdTestCall(const FunctionDecl* f) -> std::string
+{
+  if (f->testCode != 2)
+    return {};
+  std::string held = newTemp();
+  allocas += "  " + held + " = alloca { ptr, i32, i32 }\n";
+  emitCall("", "void @kpp_test_hold(ptr " + held + ")", false);
+  return held;
+}
+
+auto codegen::Emitter::releaseTestCall(const std::string& held) -> void
+{
+  if (!held.empty())
+    emitCall("", "void @kpp_test_release(ptr " + held + ")", false);
+}
+
+// A virtual call goes by the function it names: the overrider it reaches may open no frame.
+auto codegen::Emitter::forgetTestCall(FunctionDecl* f) -> void
+{
+  if (f->testCode == 2 || (f->flags & (DF_Static | DF_Constructor)) || !currentClassTy || !isClass(currentClassTy))
+    return;
+  const StructInfo& info = structFor(currentClassTy, f);
+  if (info.vtables.empty() || std::none_of(info.vtables[0].slots.begin(), info.vtables[0].slots.end(), [](const VtableSlot& s) { return s.overridesTest; }))
+    return;
+  if (int slot = slotOf(currentClassTy, f, f); slot >= 0 && info.vtables[0].slots[slot].overridesTest)
+    emitCall("", "void @kpp_test_forget()", false);
+}
+
 auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
                                     const std::string& indirect, const std::vector<std::string>& leading, std::vector<std::string>* emitted) -> Value
 {

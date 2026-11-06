@@ -371,6 +371,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
           locals[pd] = local;
       }
     }
+    forgetTestCall(f);
     if ((f->flags & DF_Default) && !f->body)
     {
       // `= default`: the memberwise body; the source object, if any, is the parameter after this.
@@ -400,8 +401,10 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     // (a constructor's function-try-block runs them inside its try: tryBody)
     if ((f->flags & DF_Constructor) && !constructorTryOf(f))
     {
+      std::string held = holdTestCall(f);
       initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f, true);
       destroyTemps();
+      releaseTestCall(held);
     }
     bool destructor = (f->flags & DF_Destructor) && isClass(currentClassTy);
     if (destructor)

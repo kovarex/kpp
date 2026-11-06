@@ -549,7 +549,7 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
 // does a build without tests skip it, and only then may it use the check statements.
 auto GlobalScope::Impl::Walker::checkTestDeclaration(FunctionDecl* f) -> void
 {
-  if (!f->body || activeSubst || probing || !file || file->isImported || !f->templateParams.empty() || f->name.empty() || inGenericTemplate())
+  if (!f->body || activeSubst || probing || !file || file->isImported || f->name.empty())
     return;
   RecordInto none(nullptr); // (as checkDefinedOnce)
   uint32_t symbol = impl.functionSymbol(f->name);
@@ -562,7 +562,9 @@ auto GlobalScope::Impl::Walker::checkTestDeclaration(FunctionDecl* f) -> void
     if (!d || d == f || d->kind != NodeKind::FunctionDecl)
       return;
     auto* declared = static_cast<FunctionDecl*>(d);
-    if (declared->body || !impl.sameFunction(f, declared))
+    // (a class template's member: the body has the class's parameters, definitionOf's comparison)
+    bool member = home->kind == ScopeKind::Class && f->refQualifier == declared->refQualifier && impl.typeAs(f, declared) == impl.matchedType(declared);
+    if (declared->body || (!member && !impl.sameFunction(f, declared)))
       return;
     std::string name = impl.namePartText(f->name.last());
     if (f->testCode && !declared->testCode)

@@ -1,0 +1,12 @@
+// spec: a member template of a test class defined outside it writes test
+// kppc: --tests
+// error: of a test class is defined outside it: write test
+test class Checker
+{
+public:
+  template<typename T> void all(T value);
+};
+
+template<typename T> void Checker::all(T value) { }
+
+int main() { return 0; }

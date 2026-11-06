@@ -103,6 +103,23 @@ extern "C" void kpp_test_call(const char* file, int line, int column)
   __kppCallSite.column = column;
 }
 
+// (Emitter::holdTestCall, forgetTestCall: a noted site reaches its own call's frame or none.)
+extern "C" void kpp_test_hold(__KppCallSite* held)
+{
+  *held = __kppCallSite;
+  __kppCallSite.file = nullptr;
+}
+
+extern "C" void kpp_test_release(const __KppCallSite* held)
+{
+  __kppCallSite = *held;
+}
+
+extern "C" void kpp_test_forget()
+{
+  __kppCallSite.file = nullptr;
+}
+
 struct __KppTestState
 {
   Vector<__KppTest> tests;

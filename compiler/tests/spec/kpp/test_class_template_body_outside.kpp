@@ -1,0 +1,40 @@
+// spec: members of a test class template and member templates defined outside it with test use the check statements and are test functions
+// test:
+// exit: 1
+test template<typename T> class Checker
+{
+public:
+  void all(T value);
+  template<typename U> void each(U value);
+};
+
+test template<typename T> void Checker<T>::all(T value)
+{
+  check(value >= 0, "all ", value);
+}
+
+test template<typename T> template<typename U> void Checker<T>::each(U value)
+{
+  check(value >= 0, "each ", value);
+}
+
+test template<typename T> void first(T value);
+test template<typename T> void first(T value)
+{
+  check(value >= 0, "first ", value);
+}
+
+test template<typename T> void second(T value);
+template<typename T> void second(T value) { }
+
+suite Outside
+{
+  test Uses
+  {
+    Checker<int> checker;
+    checker.all(-1);
+    checker.each(-2);
+    first(-3);
+    second(-4);
+  }
+}

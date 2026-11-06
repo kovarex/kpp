@@ -1,0 +1,79 @@
+// spec: a noted call that opens no frame leaves nothing behind: a virtual call reaching an overrider that is no test function, a constructor whose member initializer throws; a call through a pointer after either adds no line, and a constructor keeps its line past its member initializers
+// test:
+// exit: 1
+test void requirePositive(int value)
+{
+  check(value >= 0, "value ", value);
+}
+
+class Base
+{
+public:
+  test virtual void run() { }
+};
+
+class Derived : public Base
+{
+public:
+  void (*call)(int) = nullptr;
+  void run() override { call(-1); }
+};
+
+class Implicit : public Derived
+{
+public:
+  void run() { call(-2); } // (no override keyword, and its base's is no test function)
+};
+
+int thrower()
+{
+  throw 1;
+  return 0;
+}
+
+test class Throwing
+{
+public:
+  int value;
+  Throwing() : value(thrower()) { }
+};
+
+test class Initialized
+{
+public:
+  int value;
+  Initialized(int v) : value(checked(v)) { check(v != 2, "in the body"); }
+  int checked(int v) { check(v != 1, "in the initializer"); return v; }
+};
+
+suite Stale
+{
+  test Virtual
+  {
+    Derived d;
+    d.call = &requirePositive;
+    Base* b = &d;
+    b->run();
+  }
+  test VirtualWithoutTheKeyword
+  {
+    Implicit d;
+    d.call = &requirePositive;
+    Base* b = &d;
+    b->run();
+  }
+  test ConstructorThrows
+  {
+    try
+    {
+      Throwing t;
+    }
+    catch (int)
+    {
+    }
+    void (*call)(int) = &requirePositive;
+    call(-3);
+  }
+  test ConstructorBodyKeepsItsLine { Initialized i(2); }
+  test MemberInitializerKeepsItsCall { Initialized i(1); }
+}

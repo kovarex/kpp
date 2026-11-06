@@ -48,6 +48,7 @@ namespace codegen
     FunctionDecl* function = nullptr; // null: pure virtual, or (key "~") the owner's implicit destructor
     const Ty* owner = nullptr;
     std::vector<uint32_t> ownerPath;
+    bool overridesTest = false; // over a test function, whose call notes its site (Emitter::forgetTestCall)
   };
   // One vtable pointer in the objects of a class, and the table it points at (design.md section 9).
   struct Vtable

@@ -1094,6 +1094,10 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
       declaresDestructor = declaresDestructor || (f->flags & DF_Destructor);
       VtableSlot own{methodKey(f), f, key, {}};
       bool overrides = false;
+      for (const Vtable& t : tables)
+        for (const VtableSlot& s : t.slots)
+          if (s.key == own.key)
+            own.overridesTest = own.overridesTest || s.overridesTest || (s.function && s.function->testCode);
       for (Vtable& t : tables)
         for (VtableSlot& s : t.slots)
           if (s.key == own.key)

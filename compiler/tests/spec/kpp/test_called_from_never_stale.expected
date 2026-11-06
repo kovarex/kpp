@@ -1,0 +1,13 @@
+test_called_from_never_stale.kpp:6:3: check failed: value >= 0 (-1 >= 0): value -1
+failed: Stale.Virtual
+test_called_from_never_stale.kpp:6:3: check failed: value >= 0 (-2 >= 0): value -2
+failed: Stale.VirtualWithoutTheKeyword
+test_called_from_never_stale.kpp:6:3: check failed: value >= 0 (-3 >= 0): value -3
+failed: Stale.ConstructorThrows
+test_called_from_never_stale.kpp:45:44: check failed: v != 2 (2 != 2): in the body
+test_called_from_never_stale.kpp:77:38: called from here
+failed: Stale.ConstructorBodyKeepsItsLine
+test_called_from_never_stale.kpp:46:24: check failed: v != 1 (1 != 1): in the initializer
+test_called_from_never_stale.kpp:45:30: called from here
+failed: Stale.MemberInitializerKeepsItsCall
+5 tests, 5 failed
