@@ -6142,6 +6142,14 @@ auto GlobalScope::Impl::constNew(NewExpr* n, const TypeContext& ctx, int depth) 
 {
   if (!n->type || n->placement.size() > 1)
     return std::nullopt;
+  if (n->allocator)
+  {
+    // A class's own operator new is no constant expression's ([expr.const] 5.19: only the global
+    // allocation functions are).
+    if (constWhy().empty())
+      constWhy() = "a new that calls its class's own operator new is not evaluated at compile time";
+    return std::nullopt;
+  }
   Type* written = n->type;
   Expr* count = nullptr;
   if (written->kind == NodeKind::ArrayType && n->placement.empty())
@@ -6220,6 +6228,8 @@ auto GlobalScope::Impl::constDelete(DeleteExpr* d, const TypeContext& ctx, int d
       constWhy() = why;
     return std::nullopt;
   };
+  if (d->deallocator)
+    return fail("a delete that calls its class's own operator delete is not evaluated at compile time");
   auto it = p->isAddress() && p->target->storage ? constStorage().find(p->target->storage) : constStorage().end();
   if (it == constStorage().end() || it->second.env != &constHeap())
     return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory new did not allocate");

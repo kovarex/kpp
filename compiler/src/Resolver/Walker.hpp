@@ -379,6 +379,19 @@
     // `call is ambiguous`; behind Impl::ambiguousCallsAreErrors.
     void reportAmbiguousCall(CallExpr* c, const NamePart& name, const std::vector<const Ty*>& argTypes, const std::vector<FunctionDecl*>& tied, const Subst* classSubst);
 
+    // A new-expression's allocation function (C++ [expr.new] 9-12, 24): the class's own operator new
+    // for (size, the placement arguments...) when the class has one and the expression is not
+    // `::new`, recorded on n with the operator delete that gives the memory back when its constructor
+    // throws (usualDeallocation's, or the placement one whose parameters after the first are the
+    // operator new's). t is the class allocated. An operator new that takes no such arguments is an
+    // error, as in C++.
+    void chooseAllocation(NewExpr* n, const Ty* t);
+
+    // The operator delete a delete-expression of a class t object calls ([expr.delete] 10): the class's
+    // own `operator delete(void*)`, else its `operator delete(void*, size_t)` (sized). Null when the
+    // class (or a base) declares none (declared false) or only other forms (declared true).
+    FunctionDecl* usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared);
+
     FunctionDecl* pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart = nullptr, Span<Expr*> callArgs = {}, std::vector<FunctionDecl*>* tied = nullptr);
 
     // Argument types of a call; a pack expansion `args...` contributes one type per element.

@@ -59,6 +59,8 @@ auto codegen::Emitter::destroyObject(const Object& o) -> void
   }
   if (o.exception)
     fn += "  call void @kpp_eh_end(ptr " + o.addr + ")" + bundle() + "\n";
+  else if (o.freeMemory && !o.freeCall.empty())
+    fn += "  call " + o.freeCall + bundle() + "\n";
   else if (o.freeMemory)
   {
     ensureMalloc();

@@ -634,13 +634,19 @@ namespace
       }
       if (at(Kw::new_) || at(Kw::delete_))
       {
-        part.opToken = uint32_t(P::Count) + tok().id; // Keyword operators live above the punctuator ids.
+        // An allocation or deallocation function, `operator new`, `operator delete[]`: a function
+        // named by its spelling (one name of its own each, found by lookup as any function's is:
+        // `::operator new(n)`, a class's own that a new-expression calls).
+        std::string spelled = at(Kw::new_) ? "operator new" : "operator delete";
         advance();
         if (at(P::LBracket) && at(P::RBracket, 1))
         {
+          spelled += "[]";
           advance();
           advance();
         }
+        part.special = 0;
+        part.symbol = symbols.intern(spelled);
         return true;
       }
       if (at(TokenKind::String))
@@ -3996,6 +4002,16 @@ namespace
           f->params = Span<Decl*>{f->params.data + 1, 1};
         }
       }
+      // A class's own allocation and deallocation functions are static members whether or not they
+      // say so ([class.free] 1, 4): `void* operator new(size_t)` takes no object.
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::FunctionDecl && !(m->flags & DF_Friend))
+        {
+          auto* f = static_cast<FunctionDecl*>(m);
+          std::string_view name = f->name.last().special == 0 ? symbols.name(f->name.last().symbol) : std::string_view();
+          if (name == "operator new" || name == "operator delete" || name == "operator new[]" || name == "operator delete[]")
+            f->flags |= DF_Static;
+        }
       if (keyword == Kw::struct_ && !isC())
         for (Decl* m : c->members)
           if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)) && !(m->flags & DF_Friend))

@@ -19,6 +19,14 @@ What stays signed is what can be negative: a difference of positions (`differenc
 / sizeof(T)), and a count past it throws length_error; here the limit is maxContainerSize for every
 element type, and a count of elements whose bytes no allocation can hold throws BadAlloc.
 
+## Allocation functions
+
+`::operator new(n)` and `operator new[](n)` give a block of n bytes (at least one), and throw
+BadAlloc when it cannot be had; `::operator delete(p)` and `operator delete[](p)`, with or without
+the size after p, give it back, nothing for null. *Difference from C++*: a program does not replace
+them (an error), and a new-expression does not call them (it allocates with malloc, or with the
+class's own operator new; design.md, "Allocation functions").
+
 ## Element requirements
 
 An element type needs a destructor and a move constructor; operations that copy elements (copying

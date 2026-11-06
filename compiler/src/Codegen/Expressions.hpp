@@ -94,6 +94,12 @@
     // block freed; nothing for null. Without one, the block freed.
     void arrayDelete(const std::string& p, const Ty* t, Node* at);
 
+    // The call (for emitCall: "void @f(ptr %b, i64 8)") of a class's own operator delete f, which
+    // the type checker chose for an object of class t (DeleteExpr::deallocator, NewExpr::deallocator),
+    // on the block at block: with t's size after it when sized, then extra (a placement form's
+    // arguments, as its operator new took them).
+    std::string deallocationCall(FunctionDecl* f, bool sized, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at);
+
     Value unary(UnaryExpr* u);
 
     // Whether `a && b` or `a || b` calls an operator function (a member of the left operand's class

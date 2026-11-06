@@ -1,0 +1,7 @@
+box new 4
+box new 8
+1 2.5
+box delete 4
+box delete 8
+box new 1
+box delete 1

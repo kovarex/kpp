@@ -1,0 +1,12 @@
+// spec: a delete-expression of a class whose operator delete members include no usual one, operator delete(void*) or operator delete(void*, size_t), is an error, as in C++ ([expr.delete] 10)
+// error: delete_without_a_usual_class_operator_delete.kpp:10: error: the delete of a OnlyPlacementDelete finds its class's operator delete, and none of them is the usual one, operator delete(void*) or operator delete(void*, size_t)
+// factorio: the class operator new work; clang: no suitable member 'operator delete' in 'OnlyPlacementDelete'
+struct OnlyPlacementDelete
+{
+  void operator delete(void*, int) {}
+};
+int main()
+{
+  OnlyPlacementDelete* o = new OnlyPlacementDelete; delete o;
+  return 0;
+}

@@ -1,0 +1,10 @@
+thrower new
+thrower delete
+caught 5
+arena new 4
+7 4
+arena new 4
+arena delete 8
+caught -1
+tagged new 3
+caught 1

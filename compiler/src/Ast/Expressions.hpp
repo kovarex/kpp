@@ -41,8 +41,25 @@ struct NameofExpr : Expr { Expr* operand; }; // nameof(x): the last name of x as
 // walk's answer (GlobalScope::canThrow): 1 true, 0 false, -1 not decided (a template's own walk).
 struct NoexceptExpr : Expr { Expr* operand; int8_t value = -1; };
 // parenthesized: `new T[n]()`, value-initialized (scalars zero), unlike `new T[n]`.
-struct NewExpr : Expr { Type* type; Span<Expr*> placement; Span<Expr*> args; bool braced = false; bool global = false; bool parenthesized = false; };
-struct DeleteExpr : Expr { Expr* operand; bool isArray; bool global; };
+// allocator, deallocator: the class's own operator new the type checker chose (Walker::chooseAllocation),
+// called with the size and the placement arguments, and the operator delete that gives the memory
+// back when the constructor throws (null: the library's free, or nothing for a placement form
+// without its operator delete); null allocator: malloc, or the placement at an address.
+// sizedDeallocation: the deallocator takes the size after the pointer.
+struct NewExpr : Expr
+{
+  Type* type;
+  Span<Expr*> placement;
+  Span<Expr*> args;
+  bool braced = false;
+  bool global = false;
+  bool parenthesized = false;
+  bool sizedDeallocation = false;
+  FunctionDecl* allocator = nullptr;
+  FunctionDecl* deallocator = nullptr;
+};
+// deallocator: the class's own operator delete the type checker chose (null: free).
+struct DeleteExpr : Expr { Expr* operand; bool isArray; bool global; bool sizedDeallocation = false; FunctionDecl* deallocator = nullptr; };
 struct LambdaCapture
 {
   uint32_t symbol = UINT32_MAX; // Captured variable (UINT32_MAX for `this`).

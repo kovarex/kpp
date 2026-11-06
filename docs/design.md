@@ -632,9 +632,27 @@ meant:
   their left operand first; a call evaluates the callee (and a member call's object) before its
   arguments ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8). Overloaded operators
   follow the built-in operator's order.
-- `new` allocates before it evaluates the initializer's arguments ([expr.new] 19). (A class's own
-  operator new or operator delete is not supported yet, and declaring one is an error:
-  classes/class_operator_new_is_not_supported_yet.)
+- `new` allocates before it evaluates the initializer's arguments ([expr.new] 19).
+
+Allocation functions (2026-11-06). `new T` of a class with its own operator new (a member, or a
+base's) calls it with the size and the placement arguments, `new (args) T` choosing among the
+class's by overload resolution, and a delete-expression calls the class's operator delete after the
+destructor: its `operator delete(void*)`, else `operator delete(void*, size_t)` with the class's
+size, never for a null pointer. When the constructor throws, the memory goes back through the
+class's usual operator delete for `new T`, and for a placement form through the one whose
+parameters after the first are its operator new's, or none. They are static members whether or not
+they say so; the type checker chooses them and records them on the node (NewExpr::allocator,
+deallocator; DeleteExpr::deallocator; design.md 24). A class's operator new hides the global ones
+(`new (p) T` it does not take is an error), and `::new` and `::delete` pass the class's by. The
+library declares the global ones, `::operator new(n)`, `operator new[](n)`, `::operator delete(p)`
+(sized or not: stdlib/core/Sizes.kpp), malloc and free with BadAlloc; a new-expression of a class
+without its own allocates with malloc itself. Not supported yet, and an error where declared: a
+class's operator new[] and operator delete[], a polymorphic class's operator delete (C++ calls the
+deleted object's class's through a virtual destructor), a program's own global allocation
+functions, and an operator new that is a template. Specs: classes/class_operator_new_and_delete_are_called,
+classes/class_operator_delete_when_the_constructor_throws, classes/class_template_operator_new_and_delete,
+library/global_operator_new_and_delete, and the errors classes/placement_new_without_the_class_operator_new,
+classes/delete_without_a_usual_class_operator_delete, classes/class_operator_new_array_is_not_supported_yet.
 - Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
   of `+`), and so does kpp: code must not depend on it.
 

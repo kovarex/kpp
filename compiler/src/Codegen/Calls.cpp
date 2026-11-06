@@ -809,7 +809,8 @@ auto codegen::Emitter::inlinedConstructor(FunctionDecl* f, const TemplateArgs& a
   return Value{"", types.voidType(), false};
 }
 
-auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect) -> Value
+auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
+                                    const std::string& indirect, const std::vector<std::string>& leading, std::vector<std::string>* emitted) -> Value
 {
   if ((f->flags & DF_Delete) && global.definitionOf(f, args) == f) // a deleted template's explicit specialisation is no deleted function
     unsupported(at, "a call to the deleted function " + qualifiedName(f));
@@ -824,7 +825,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     return defaultedCall(f, classTy, thisArg, callArgs, at);
   if (!conditionHolds(f))
     return {"", types.voidType(), false}; // conditional(false): no call, arguments not evaluated
-  if (indirect.empty() && sh.inlineTrivial)
+  if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted)
   {
     if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
       return *v;
@@ -873,6 +874,11 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   // function's structs by value lowered after (lowerCArguments).
   std::vector<std::pair<const Ty*, std::string>> argList;
   size_t position = slot;
+  for (const std::string& text : leading)
+  {
+    argList.push_back({position < s.paramTys.size() ? s.paramTys[position] : nullptr, text});
+    ++position;
+  }
   for (Expr* arg : callArgs)
   {
     if (isPackExpansion(arg))
@@ -889,6 +895,8 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     }
     const Ty* pt = position < s.paramTys.size() ? s.paramTys[position] : nullptr;
     std::string text = argumentText(pt, arg, at);
+    if (emitted)
+      emitted->push_back(text);
     argList.push_back({pt ? pt : arg->ty ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr, std::move(text)});
     ++position;
   }

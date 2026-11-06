@@ -1,0 +1,13 @@
+// spec: a class's own operator new hides the global ones: a placement new no operator new of the class takes is an error, as in C++ ([expr.new] 12, 20), and `::new` allocates with the global ones
+// error: placement_new_without_the_class_operator_new.kpp:11: error: the new of a OnlyPlain: none of its class's operator new takes (uint64, char*) (`::new` allocates with the global one)
+// factorio: the class operator new work; clang: no matching function for call to 'operator new'
+struct OnlyPlain
+{
+  void* operator new(size_t size) { return malloc(size); }
+};
+int main()
+{
+  char buffer[16];
+  OnlyPlain* a = new (&buffer[0]) OnlyPlain;
+  return 0;
+}

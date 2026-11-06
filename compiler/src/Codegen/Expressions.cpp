@@ -785,7 +785,17 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         return {arrayNew(n, t, static_cast<ArrayType*>(n->type)->size), e->ty};
       }
       std::string r;
-      if (n->placement.size() == 1)
+      std::vector<std::string> placed; // the placement arguments as a class's operator new took them
+      if (n->allocator)
+      {
+        // The class's own operator new, with the size and the placement arguments (the type
+        // checker's choice, Walker::chooseAllocation).
+        const Ty* in = declaringClass(t, n->allocator, e);
+        if (!in)
+          unsupported(e, "the operator new chosen for a class that does not declare it");
+        r = callFunction(n->allocator, global.classArgsOf(in), in, "", "", n->placement, e, "", {"i64 " + std::to_string(sizeOf(t, e))}, &placed).text;
+      }
+      else if (n->placement.size() == 1)
       {
         Value place = rvalue(n->placement[0]); // any object's place, a const one too (design.md 11)
         r = convert(place, types.pointer(types.voidType()), e, place.ty && place.ty->kind == TyKind::Pointer).text;
@@ -798,13 +808,17 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         r = newTemp();
         emitCall(r + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(t, e)) + ")", false);
       }
-      if (isClass(t) && n->placement.empty())
+      if (isClass(t) && (n->placement.empty() || n->deallocator))
       {
         // A constructor that throws gives the memory back, as C++'s new does: freed while the
-        // constructor runs if an exception leaves it, and only then.
+        // constructor runs if an exception leaves it, and only then; by the class's operator
+        // delete when the type checker found one for its operator new ([expr.new] 26), and by
+        // none for a placement form without one.
         Object allocation{r, t};
         allocation.unwindOnly = true;
         allocation.freeMemory = true;
+        if (n->deallocator)
+          allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation, t, r, placed, e);
         statementTemps.push_back(allocation);
         size_t at = statementTemps.size() - 1;
         constructInto(r, t, n->args, e);
@@ -888,7 +902,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
           fn += "  " + block + " = getelementptr i8, ptr " + p.text + ", i64 " + back + "\n";
         }
         destroy(p.text, p.ty->inner, e, true);
-        emitCall("", "void @free(ptr " + block + ")", false);
+        emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation, p.ty->inner, block, {}, e) : "void @free(ptr " + block + ")", false);
         emitBranch(endL);
         startBlock(endL);
         return {"", types.voidType()};
@@ -907,12 +921,38 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         startBlock(endL);
         return {"", types.voidType()};
       }
+      if (d->deallocator && isClass(p.ty->inner))
+      {
+        // The class's own operator delete, not called for a null pointer (as clang has it).
+        std::string isNull = newTemp(), objectL = newLabel("delete.object"), endL = newLabel("delete.end");
+        fn += "  " + isNull + " = icmp eq ptr " + p.text + ", null\n";
+        fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
+        blockTerminated = true;
+        startBlock(objectL);
+        emitCall("", deallocationCall(d->deallocator, d->sizedDeallocation, p.ty->inner, p.text, {}, e), false);
+        emitBranch(endL);
+        startBlock(endL);
+        return {"", types.voidType()};
+      }
       emitCall("", "void @free(ptr " + p.text + ")", false); // free(null) does nothing
       return {"", types.voidType()};
     }
     default:
       unsupported(e, std::string("the expression kind ") + nodeKindName(e->kind));
   }
+}
+
+auto codegen::Emitter::deallocationCall(FunctionDecl* f, bool sized, const Ty* t, const std::string& block, const std::vector<std::string>& extra, Node* at) -> std::string
+{
+  const Ty* in = declaringClass(t, f, at);
+  if (!in)
+    unsupported(at, "the operator delete chosen for a class that does not declare it");
+  std::string text = "void " + useFunction(f, global.classArgsOf(in), in, at) + "(ptr " + block;
+  if (sized)
+    text += ", i64 " + std::to_string(sizeOf(t, at));
+  for (const std::string& x : extra)
+    text += ", " + x;
+  return text + ")";
 }
 
 auto codegen::Emitter::bitfieldNamed(Expr* e) -> const BitfieldInfo*

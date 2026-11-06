@@ -845,6 +845,9 @@
   std::atomic<size_t> entries{0};
   uint32_t symStd, symValue;
   uint32_t opSymbols[size_t(P::Count)]; // "operator+" etc., so operators can be looked up by name.
+  // The allocation and deallocation functions' names ("operator new", "operator delete[]"): a
+  // new-expression and a delete-expression look up the class's own (Walker::chooseAllocation).
+  uint32_t symOperatorNew, symOperatorDelete, symOperatorNewArray, symOperatorDeleteArray;
   uint32_t symBegin, symEnd, symFirst, symSecond;
   uint32_t symTupleSize, symGet;
   // The numbers 0 to 63 spelled in a file of their own: the explicit template argument of the
@@ -885,6 +888,10 @@
     indexFile.path = "<structured binding index>";
     for (uint32_t i = 0; i < uint32_t(P::Count); ++i)
       opSymbols[i] = symbols.intern("operator" + std::string(punctuatorSpelling(P(i))));
+    symOperatorNew = symbols.intern("operator new");
+    symOperatorDelete = symbols.intern("operator delete");
+    symOperatorNewArray = symbols.intern("operator new[]");
+    symOperatorDeleteArray = symbols.intern("operator delete[]");
     auto add = [&](const char* name, const Ty* t) { builtinNames.push_back({symbols.intern(name), t}); };
     add("int8_t", types.intType(8));
     add("i8", types.intType(8));

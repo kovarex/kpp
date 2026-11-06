@@ -199,7 +199,11 @@
     // (docs/compile-speed.md, step 3). Null for any other call.
     std::optional<Value> inlinedConstructor(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at);
 
-    Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect = "");
+    // leading: arguments already emitted, typed ("i64 16"), before callArgs (a class's operator new
+    // takes the size before the placement arguments); emitted: when given, receives the typed text of
+    // each argument of callArgs (what a placement operator delete is called with again).
+    Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
+                       const std::string& indirect = "", const std::vector<std::string>& leading = {}, std::vector<std::string>* emitted = nullptr);
 
     // A member declared `= default`: the memberwise constructor, destructor, assignment or
     // comparison the compiler writes for it, on the object at thisArg.
