@@ -209,6 +209,13 @@ what is decided but not built yet is under [Planned](#planned).
 
 ## Planned
 
+The work comes in two stages. This one makes Factorio a proper example with the full features: all
+the language features and good compile times, so that kpp can be integrated into Factorio's code to
+showcase its strong points. The next starts once kpp is a branch in Factorio, with PropertyTree,
+kpp.net and other things.
+
+### This stage
+
 Decided, and not built yet:
 
 - **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is
@@ -228,8 +235,7 @@ Decided, and not built yet:
 - **One definition for const and non-const**: `both_const` writes a getter once for both
   constnesses (`both_const B* getB() both_const`), `class_const` a class once for both (an iterator
   and its const iterator). The exact rules are not written down yet.
-- **Named arguments**, passing only the defaults you change, by name; the syntax is not chosen yet.
-- **Linux and macOS as hosts, macOS as a target** ([design.md](docs/design.md), "Targets and
+- **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
   hosts").
 - **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio
   (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves to
@@ -237,11 +243,16 @@ Decided, and not built yet:
 - **Streaming code generation**: LLVM inside the compiler, each thread handing its functions
   straight to the back end instead of writing IR text for clang to read again; estimated at a few
   seconds off a clean debug build of the game ([docs/codegen-speed.md](docs/codegen-speed.md)).
-- **The library registry on kpp.net**: `kpp add zlib`, versions locked by content hash, library
-  options listed when you add one ([docs/library-registry.md](docs/library-registry.md)).
+
+### Later
+
+- **Named arguments**, passing only the defaults you change, by name; the syntax is not chosen yet.
+
+### Not in a stage yet
+
 - **A localisation library**, with its own tools, for text whose word order changes per language.
 
-Under consideration, not decided:
+### Under consideration, not decided
 
 - **kpp's own IDE** on top of the language server ([docs/ide.md](docs/ide.md)).
 - **Access levels between `private` and public**, for example a member visible to its own
@@ -251,6 +262,11 @@ Under consideration, not decided:
 - **`accumulate`**: a virtual function that runs every level of the hierarchy without calling
   `super::`. Reflection already writes save and load once for every class.
 - **Code coverage** in the compiler.
+- **macOS as a host.** Building every target, macOS included, on Windows and Linux is enough for
+  this stage.
+- **The library registry on kpp.net**: `kpp add zlib`, versions locked by content hash, library
+  options listed when you add one ([docs/library-registry.md](docs/library-registry.md)). Not for
+  this stage.
 
 ## Status
 

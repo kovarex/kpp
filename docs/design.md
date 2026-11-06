@@ -3382,10 +3382,16 @@ on NearlyFreeSpeech.NET, which runs FreeBSD. That decision has two axes:
 
 - **Targets:** what kppc emits and links for. The minimum is Windows x64 (the default), Linux x86-64
   and arm64, macOS arm64 (Apple Silicon) and x86-64, and FreeBSD x86-64 for kpp.net.
-- **Hosts:** where kppc itself (C++20) builds and runs. That is Windows, Linux and macOS.
+- **Hosts:** where kppc itself (C++20) builds and runs. That is Windows and Linux (done 2026-11-06,
+  stage 5 below); macOS as a host is under consideration (below).
 
 On both axes Windows stays the default, with its output unchanged: the game, the tests, and the IR
 byte for byte unless a difference is shown to be a fix.
+
+**This stage (kovarex, 2026-11-06; "Roadmap" has the stages):** macOS as a host moves to under
+consideration, not decided. Building every target, macOS included, on Windows and Linux is enough
+for this stage, so macOS as a target stays planned. What this section says of a Mac host (section 5,
+`xcrun`, kppc hosted on macOS) waits for that decision.
 
 **Order (proposed):**
 1. Linux x86-64: the most tooling, CI runners, and the closest to FreeBSD. It is also testable on
@@ -3662,10 +3668,11 @@ The semantics of section 9 hold on every target:
       - an enum with an enumerator whose value it could not read is not declared, none of its
         enumerators.
     - Before this, FreeBSD 14.3's ucontext_t imported as 360 bytes, not 880 (2026-11-03).
-- **macOS targets.** Built on a Mac: Xcode's command-line tools' clang, ld64 and the SDK. Apple's
-  SDK licence ties its use to Apple hardware, so cross-linking for macOS from Windows or Linux is
-  not proposed, though ld64.lld exists. A Mac host, or CI's macOS runners, builds and tests the
-  macOS targets.
+- **macOS targets.** Built on Windows and Linux in this stage (kovarex, 2026-11-06), as "any host
+  builds any target" has it (2026-11-02): ld64.lld and the SDK's headers and stubs. The proposal of
+  2026-10-31 built them on a Mac instead (Xcode's command-line tools' clang, ld64 and the SDK), because
+  Apple's SDK licence ties its use to Apple hardware: that is Q7 below. Running them still takes a
+  Mac or CI's macOS runners (Q5).
 - **Windows target from another host:** lld-link and the Windows SDK's import libraries and UCRT
   headers. That is not needed for the minimum: Windows builds on Windows.
 - **Finding the toolchain:**
@@ -3767,8 +3774,9 @@ All of this goes through the coordinator.
    bundle run on FreeBSD. kpp.net's server can be built from here on.
 7. **AArch64:** the AAPCS64 and Apple C lowerings, Linux arm64 (CI or qemu), and the memory
    ordering audit.
-8. **macOS arm64, then x86-64:** Mach-O (no COMDATs, ld64, ad-hoc signing, compact unwind),
-   kppc hosted on macOS, and CI macOS jobs.
+8. **macOS arm64, then x86-64:** Mach-O (no COMDATs, ld64.lld, ad-hoc signing, compact unwind), built
+   on Windows and Linux, and CI macOS jobs that run the result. kppc hosted on macOS is not part of
+   it (under consideration, 2026-11-06).
 
 ### Stage 1 as built (2026-11-01)
 
@@ -4169,6 +4177,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   (tools/sysroot/linux.ps1, as freebsd.ps1 is: pinned packages checked by their SHA-256, from
   bullseye's signed index); a hello world and an uncaught exception linked with it need no glibc
   symbol newer than GLIBC_2.14.
+- **Q7:** (open, 2026-11-06) building macOS targets on Windows and Linux needs Apple's SDK headers and
+  stubs off a Mac, and this section's reading of 2026-10-31 (not checked again since) is that the SDK's
+  licence ties its use to Apple hardware. Whether a release may bring a macOS sysroot, as it brings
+  FreeBSD's, or each user supplies one, is to be decided before that work starts.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -4197,7 +4209,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   2026-11-06: none). Q2 (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native
   tests) are settled by 8.7.
 
-- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac.
+
+- **The localisation library's stage** ("Roadmap"): kovarex has not placed it yet.
 
 - **How a build is described** ([build.md](build.md), "Questions for kovarex"): debug information in
   release builds, and whether the repository's `kppc.exe` takes the released name `kpp`. Settled:
@@ -4257,6 +4271,23 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   or integer), which pieces come next.
 
 ## Roadmap
+
+**Stages (kovarex, 2026-11-06).** These are the project's two stages, not the target work's numbered
+ones under "Targets and hosts".
+- **Stage 1, now:** everything planned that makes Factorio a proper example with the full features,
+  meaning all the language features and good compile times, so that kpp can be integrated into
+  Factorio's code to showcase its strong points.
+- **Stage 2:** starts once kpp is a branch in Factorio: PropertyTree, kpp.net and other things.
+
+The readme's "Planned" lists what is in each. Placed by this decision:
+- Named arguments are stage 2's.
+- macOS as a host is under consideration, not decided; macOS as a target stays in stage 1, built on
+  Windows and Linux ("Targets and hosts"). Linux as a host is done (2026-11-06).
+- The library registry is under consideration, not decided, and not for stage 1.
+- The localisation library is not placed yet (Open questions).
+
+The work so far, in order:
+
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
    lexer + parser + order-independent name resolution, benchmarked on Factorio. Whole front end
    in 0.32 s for 1.33 M lines on 32 threads. No code generation.
