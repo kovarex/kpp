@@ -1,0 +1,48 @@
+// spec: callOnce(flag, f, args...) / call_once (std::call_once) calls f(args...) once per OnceFlag (std::once_flag) however many threads call it at once, and every call returns after that one call has finished; a call that throws does not count: the exception reaches its caller and the next call runs f again; the arguments are forwarded (`1 1 | 2 7 | 1 1`)
+// factorio: E's threads battery against std (th1, 2026-11-06): call_once and once_flag did not exist; the coordinator asked for them
+extern "C" import "stdio.h";
+int main()
+{
+  OnceFlag flag;
+  Atomic<int> calls(0);
+  Atomic<int> sawDone(0);
+  int value = 0;
+  Vector<Thread> threads;
+  for (int t = 0; t < 8; ++t)
+    threads.push_back(Thread([&]() {
+      callOnce(flag, [&]() {
+        thisThread::sleep_for(Milliseconds(20));
+        value = 42;
+        calls.fetch_add(1);
+      });
+      if (value == 42)
+        sawDone.fetch_add(1);
+    }));
+  for (Thread& t : threads)
+    t.join();
+  printf("%d %d |", calls.load(), (int)(sawDone.load() == 8));
+  OnceFlag retried;
+  int attempts = 0;
+  for (int i = 0; i < 3; ++i)
+  {
+    try
+    {
+      call_once(retried, [&](int add) {
+        ++attempts;
+        if (attempts == 1)
+          throw 1;
+        value = add;
+      }, 7);
+    }
+    catch (int)
+    {
+    }
+  }
+  printf(" %d %d |", attempts, value);
+  OnceFlag third;
+  int ran = 0;
+  call_once(third, [&]() { ++ran; });
+  call_once(third, [&]() { ran += 10; });
+  printf(" %d %d\n", ran, (int)(ran == 1));
+  return 0;
+}

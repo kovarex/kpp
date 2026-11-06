@@ -1,0 +1,45 @@
+// spec: kpp's file streams have no text mode, on every platform (kovarex, 2026-11-06: CRLF is to be eliminated): an OutFileStream writes "\n" as the one byte 0a, also on Windows, where std::ofstream's text mode writes 0d 0a; an InFileStream reads the bytes as they are; getline with the newline as delimiter drops a '\r' right before it, so a CRLF file's lines come without it, and a '\r' anywhere else (the last line's without a newline, another delimiter's line) stays (`0a | [one] [two] [] [three\r] | [a\r] [b]`)
+// factorio: E's file stream battery against std (io1, 2026-11-06): on Windows getline kept the '\r' of "one\r\n" where std::ifstream's text mode removes it, and OutFileStream wrote 0a where std::ofstream writes 0d 0a; kovarex decided binary everywhere and getline dropping the '\r'
+extern "C" import "stdio.h";
+void showLine(const String& line)
+{
+  printf(" [");
+  for (char c : line)
+    printf(c == '\r' ? "\\r" : "%c", c);
+  printf("]");
+}
+int main()
+{
+  {
+    OutFileStream out("file_streams_have_no_text_mode.out");
+    out << "\n";
+  }
+  FILE* f = fopen("file_streams_have_no_text_mode.out", "rb");
+  int c;
+  while ((c = fgetc(f)) != EOF)
+    printf("%02x", c);
+  fclose(f);
+  printf(" |");
+  f = fopen("file_streams_have_no_text_mode.out", "wb");
+  fwrite("one\r\ntwo\r\n\r\nthree\r", 1, 18, f);
+  fclose(f);
+  {
+    InFileStream in("file_streams_have_no_text_mode.out");
+    String line;
+    while (getline(in, line))
+      showLine(line);
+  }
+  printf(" |");
+  f = fopen("file_streams_have_no_text_mode.out", "wb");
+  fwrite("a\r,b", 1, 4, f);
+  fclose(f);
+  {
+    InFileStream in("file_streams_have_no_text_mode.out");
+    String line;
+    while (getline(in, line, ','))
+      showLine(line);
+  }
+  printf("\n");
+  remove("file_streams_have_no_text_mode.out");
+  return 0;
+}

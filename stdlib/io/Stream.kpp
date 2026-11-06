@@ -302,7 +302,9 @@ OutFileStream& operator<<(OutFileStream& s, EndlTag)
 
 StderrStream cerr;
 
-// getline: reads from an InFileStream until a delimiter.
+// getline: reads from an InFileStream until a delimiter. Files are bytes on every platform (no
+// text mode, kovarex 2026-11-06), so a line that ends with "\r\n" would keep its '\r': with the
+// newline as delimiter, a '\r' right before it is dropped (kovarex 2026-11-06), on every platform.
 bool getline(InFileStream& stream, String& line, char delimiter = '\n')
 {
   line = String();
@@ -314,7 +316,11 @@ bool getline(InFileStream& stream, String& line, char delimiter = '\n')
   {
     read = true;
     if ((char)c == delimiter)
+    {
+      if (delimiter == '\n' && !line.empty() && line.back() == '\r')
+        line.pop_back();
       break;
+    }
     line.append((char)c);
   }
   return read;

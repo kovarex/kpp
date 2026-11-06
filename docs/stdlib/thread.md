@@ -78,9 +78,18 @@ The tags `deferLock`, `tryToLock` and `adoptLock` (types `DeferLock`, `TryToLock
 std::defer_lock, std::try_to_lock, std::adopt_lock) tell a lock how to take its mutex: not now, by
 a try, or as already held by the calling thread.
 
-- `LockGuard<M>` (std::lock_guard; `ScopedLock<M>`, std::scoped_lock of one mutex): locks the mutex
-  in its constructor, `LockGuard(m, adoptLock)` takes over one the thread holds; unlocks it in its
-  destructor. Not copyable or movable.
+- `LockGuard<M>` (std::lock_guard): locks the mutex in its constructor, `LockGuard(m, adoptLock)`
+  takes over one the thread holds; unlocks it in its destructor. Not copyable or movable.
+- `ScopedLock<M...>` (std::scoped_lock): locks all the mutexes given, without deadlock whatever order
+  other threads take them in (it waits for one and tries the others; when one is taken it lets go
+  of all and waits for that one first), and unlocks them at its end; `ScopedLock(adoptLock, m...)`
+  takes over mutexes the thread holds. `ScopedLock lock(a, b)` deduces the types (from one mutex not
+  yet: templates/deduction_guide_pack_of_one_picks_partial_specialization). Of one mutex it is
+  a lock guard (M needs no try_lock); of none it holds nothing. Not copyable or movable.
+- `OnceFlag` (std::once_flag) and `callOnce(flag, f, args...)` / `call_once` (std::call_once): of the
+  calls made with one flag, at once or one after another, one calls `f(args...)` and each returns
+  after that call has finished; a call of f that throws does not count (the exception reaches its
+  caller, and the next call runs f again).
 - `UniqueLock<M>` (std::unique_lock): a movable owner of a mutex's lock, which it may or may not
   own at a time; its destructor unlocks only an owned lock.
   - `UniqueLock()`: no mutex. `explicit UniqueLock(m)`: locks m. `UniqueLock(m, deferLock)`: does
@@ -115,6 +124,6 @@ the forms with a predicate loop until it is true. Not copyable or movable.
 
 `CvStatus` (std::cv_status): `no_timeout`, `timeout`.
 
-*Differences from C++*: none in behaviour. Not provided: a ScopedLock of several mutexes and the
-deadlock-avoiding `lock(m1, m2, ...)`, timed mutexes, and a condition variable for other locks
+*Differences from C++*: none in behaviour. Not provided: the free deadlock-avoiding `lock(m1, m2,
+...)` (ScopedLock does it), timed mutexes, and a condition variable for other locks
 (std::condition_variable_any).

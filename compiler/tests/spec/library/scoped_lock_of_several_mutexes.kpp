@@ -1,0 +1,68 @@
+// spec: ScopedLock<M...> (std::scoped_lock) locks every mutex given without deadlock, whatever order other threads lock them in (std::lock's algorithm: it locks one and tries the rest, backing off and starting from the one it could not get), and unlocks them all at its end; ScopedLock(adoptLock, m...) takes over mutexes the thread holds; ScopedLock<M> of one mutex is a lock guard (`ScopedLock<Mutex> lock(m)`; deducing it from one mutex is templates/deduction_guide_pack_of_one_picks_partial_specialization, pending); ScopedLock<> holds nothing (`1 1 1 1 40000 1`)
+// factorio: E's threads battery against std (th1, 2026-11-06): ScopedLock was LockGuard<M>, so `ScopedLock lock(a, b)` did not compile; the coordinator asked for std's; the game's FontStashFactorio holds `ScopedLock<Mutex> lock(this->mutex)`
+extern "C" import "stdio.h";
+int main()
+{
+  Mutex a, b, c;
+  RecursiveMutex r;
+  {
+    ScopedLock<Mutex, Mutex, RecursiveMutex> three(a, b, r);
+    (void)three;
+  }
+  {
+    ScopedLock lock(a, b);
+    bool aFree = true, bFree = true;
+    Thread probe([&]() {
+      aFree = a.try_lock();
+      bFree = b.try_lock();
+    });
+    probe.join();
+    printf("%d", (int)(!aFree && !bFree));
+  }
+  bool bothFree = a.try_lock() && b.try_lock();
+  a.unlock();
+  b.unlock();
+  printf(" %d", (int)bothFree);
+  a.lock();
+  b.lock();
+  {
+    ScopedLock adopted(adoptLock, a, b);
+    (void)adopted;
+  }
+  bool freedAfterAdopt = a.try_lock();
+  a.unlock();
+  printf(" %d", (int)freedAfterAdopt);
+  {
+    ScopedLock<Mutex> one(c);
+    ScopedLock<> nothing;
+    (void)one;
+    (void)nothing;
+  }
+  bool cFree = c.try_lock();
+  c.unlock();
+  printf(" %d", (int)cFree);
+  int counter = 0;
+  Thread forward([&]() {
+    for (int i = 0; i < 20000; ++i)
+    {
+      ScopedLock lock(a, b, c);
+      ++counter;
+    }
+  });
+  Thread backward([&]() {
+    for (int i = 0; i < 20000; ++i)
+    {
+      ScopedLock lock(c, b, a);
+      ++counter;
+    }
+  });
+  forward.join();
+  backward.join();
+  printf(" %d", counter);
+  bool allFree = a.try_lock() && b.try_lock() && c.try_lock();
+  printf(" %d\n", (int)allFree);
+  a.unlock();
+  b.unlock();
+  c.unlock();
+  return 0;
+}

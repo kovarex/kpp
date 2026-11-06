@@ -333,8 +333,140 @@ private:
   M& mutex;
 };
 
+// One mutex of a ScopedLock's, its type erased: what the deadlock-avoiding lock walks over.
+struct ScopedLockMutex
+{
+  void* mutex;
+  void (*lock)(void*);
+  bool (*tryLock)(void*);
+  void (*unlock)(void*);
+};
+
 template<typename M>
-using ScopedLock = LockGuard<M>;
+ScopedLockMutex scopedLockMutexOf(M& mutex)
+{
+  return ScopedLockMutex{&mutex, [](void* m) { ((M*)m)->lock(); }, [](void* m) { return ((M*)m)->try_lock(); },
+                         [](void* m) { ((M*)m)->unlock(); }};
+}
+
+// Locks all count mutexes without deadlock, as std::lock does: it waits for one and tries the
+// others; when one is taken, it lets go of what it holds and waits for that one first next time.
+void lockWithoutDeadlock(ScopedLockMutex* mutexes, ContainerSize count)
+{
+  if (count == 0)
+    return;
+  ContainerSize first = 0;
+  while (true)
+  {
+    mutexes[first].lock(mutexes[first].mutex);
+    ContainerSize failed = count;
+    for (ContainerSize i = 1; i < count; ++i)
+    {
+      ContainerSize at = (first + i) % count;
+      if (!mutexes[at].tryLock(mutexes[at].mutex))
+      {
+        failed = at;
+        for (ContainerSize j = 0; j < i; ++j)
+        {
+          ContainerSize held = (first + j) % count;
+          mutexes[held].unlock(mutexes[held].mutex);
+        }
+        break;
+      }
+    }
+    if (failed == count)
+      return;
+    first = failed;
+    thisThread::yield();
+  }
+}
+
+// Holds several mutexes locked for its scope (std::scoped_lock): they are locked together without
+// deadlock, whatever order other threads take them in, and unlocked at its end.
+// `ScopedLock(adoptLock, m...)` takes over mutexes the calling thread holds.
+template<typename... M>
+class ScopedLock
+{
+public:
+  explicit ScopedLock(M&... mutexes)
+  {
+    this->take(mutexes...);
+    lockWithoutDeadlock(this->held, sizeof...(M));
+  }
+
+  ScopedLock(AdoptLock, M&... mutexes) { this->take(mutexes...); }
+  ScopedLock(const ScopedLock&) = delete;
+  ScopedLock& operator=(const ScopedLock&) = delete;
+
+  ~ScopedLock()
+  {
+    for (ContainerSize i = 0; i < sizeof...(M); ++i)
+      this->held[i].unlock(this->held[i].mutex);
+  }
+
+private:
+  void take(M&... mutexes)
+  {
+    ContainerSize i = 0;
+    ((this->held[i++] = scopedLockMutexOf(mutexes)), ...);
+  }
+
+  ScopedLockMutex held[sizeof...(M) > 0 ? sizeof...(M) : 1]; // (one unused for no mutex: std::scoped_lock<> holds nothing)
+};
+
+// `ScopedLock lock(a, b)`: the mutexes' types (std::scoped_lock's deduction guides).
+template<typename... M>
+ScopedLock(M&...) -> ScopedLock<M...>;
+template<typename... M>
+ScopedLock(AdoptLock, M&...) -> ScopedLock<M...>;
+
+// Of one mutex: a lock guard (M needs no try_lock).
+template<typename M>
+class ScopedLock<M>
+{
+public:
+  using mutex_type = M;
+  explicit ScopedLock(M& mutex) : mutex(mutex) { mutex.lock(); }
+  ScopedLock(AdoptLock, M& mutex) : mutex(mutex) {}
+  ScopedLock(const ScopedLock<M>&) = delete;
+  ScopedLock<M>& operator=(const ScopedLock<M>&) = delete;
+  ~ScopedLock() { this->mutex.unlock(); }
+
+private:
+  M& mutex;
+};
+
+// A flag for callOnce (std::once_flag): not yet called, or called once to the end.
+class OnceFlag
+{
+public:
+  OnceFlag() {}
+  OnceFlag(const OnceFlag&) = delete;
+  OnceFlag& operator=(const OnceFlag&) = delete;
+
+private:
+  template<typename F, typename... Args> friend void callOnce(OnceFlag& flag, F&& f, Args&&... args);
+  Atomic<i32> done;
+  Mutex mutex;
+};
+
+// Calls f(args...) once for a flag (std::call_once): of the calls made with one flag, at once or
+// one after another, one calls f, and each returns after that call has finished. A call of f that
+// throws does not count: the exception reaches its caller, and the next callOnce calls f again.
+template<typename F, typename... Args>
+void callOnce(OnceFlag& flag, F&& f, Args&&... args)
+{
+  if (flag.done.load() != 0)
+    return;
+  LockGuard<Mutex> guard(flag.mutex);
+  if (flag.done.load() != 0)
+    return;
+  invoke(forward<F>(f), forward<Args>(args)...);
+  flag.done.store(1);
+}
+
+template<typename F, typename... Args>
+void call_once(OnceFlag& flag, F&& f, Args&&... args) { callOnce(flag, forward<F>(f), forward<Args>(args)...); }
 
 // A movable owner of a mutex's lock (std::unique_lock): it may own the lock or not, and unlocks
 // at its end only what it owns. lock() and unlock() throw SystemError: operation_not_permitted

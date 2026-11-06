@@ -4081,6 +4081,12 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   every declaration of the name, as all of kpp's lookup does; a converted C++ program that relies on
   the earlier overload is written with it explicitly (a cast of the argument, or a qualified name).
 
+- **No text mode** (a known deviation, **decided 2026-11-06, kovarex: CRLF is to be eliminated**).
+  kpp's file streams are binary on every platform: `"\n"` is written as LF on Windows too
+  (std::ofstream's text mode writes CRLF there) and nothing is translated when reading. getline
+  with the newline as delimiter drops a `\r` right before it, on every platform, so CRLF files
+  still read as lines. Spec library/file_streams_have_no_text_mode; stdlib/io/README.md.
+
 - **noexcept in the function type** (a known deviation, logged 2026-11-05, D; not implemented until
   kovarex wants it). C++17 made noexcept part of a function's type: `void (*)() noexcept` and
   `void (*)()` are two types, a pointer to a noexcept function converts to a plain one and never the
