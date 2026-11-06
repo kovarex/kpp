@@ -1,0 +1,3 @@
+test_suite_helper_uses_require.kpp:8:5: check failed: value > 0 (-2 > 0): value -2
+failed: Helpers.Negative
+2 tests, 1 failed

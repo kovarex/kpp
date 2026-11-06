@@ -4153,8 +4153,12 @@ namespace
       ParsedFile::TestSuite* savedSuite = currentSuite;
       currentSuite = &suite;
       size_t mark = scratch.size();
+      // Everything declared in a suite is test code (design.md 8.7): check and require are statements.
+      bool savedInTest = inTest;
+      inTest = true;
       while (!at(P::RBrace) && !at(TokenKind::End))
         parseDeclaration(Scope::Namespace);
+      inTest = savedInTest;
       ns->decls = makeSpan<Decl*>(mark);
       currentSuite = savedSuite;
       currentParent = savedParent;

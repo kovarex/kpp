@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1528 pass, 6 pending, 0 failing, 0 fixed** (1534 snippets, 499.1 s).
+**1537 pass, 6 pending, 0 failing, 0 fixed** (1543 snippets, 309.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1385,12 +1385,16 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/server_body_edit_beside_false_when.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error | pass |  |  |
 | `kpp/server_kept_error_moves_with_its_line.kpp` | a compile server's build after an edit above an error the edit leaves alone reports that error at its new line, as a build from scratch does (typed checker errors keep their place, not their text: design.md 24) | pass |  |  |
 | `kpp/server_removed_function_takes_its_error.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a function with an error added and then removed takes its error with it (E's repro, 2026-11-04: the error stayed until the server ended); a body fixed in place too | pass |  |  |
+| `kpp/test_before_each.kpp` | the runner calls testBeforeEach() before each test; a failure that ends it fails the test and leaves its body out, and testAfterEach still runs | pass |  |  |
 | `kpp/test_build_error.kpp` | kppc --test runs nothing when the build printed an error, whatever its exit code (a test the parser could not read would silently not run) | pass |  |  |
 | `kpp/test_check_char_pointers_is_error.kpp` | inside check and require, == or != of two char pointers (or a char pointer and a string literal) is an error: it would compare addresses, where Factorio's CHECK_EQUAL compared the text | pass |  |  |
+| `kpp/test_check_hidden_name_is_error.kpp` | a check in test code with a declaration of that name visible is an error: check(a, b) would silently read a call as a check with a message | pass |  |  |
 | `kpp/test_check_message.kpp` | check(expr, arguments...) and require(expr, arguments...) print the arguments after the failure, as println prints them (Factorio's CHECK_*_SIGNED) | pass |  |  |
 | `kpp/test_check_values.kpp` | a failing check prints its location, its text and a comparison's operand values, and the test goes on | pass |  |  |
+| `kpp/test_current_name.kpp` | currentTestName() is the running test's full name, also in the hooks around it, and empty outside a test | pass |  |  |
 | `kpp/test_dependents_annotated.kpp` | after a failure the run goes on, dependents included (Factorio's default); a failure after a failed dependency says so, and the summary names the root failures | pass |  |  |
 | `kpp/test_duplicate_name_in_suite_is_error.kpp` | two tests of one name in one suite are an error | pass |  |  |
+| `kpp/test_ended_public.kpp` | TestEnded is what a failed require throws: a destructor catches it so that a failure there does not leave it; the failure stays the test's | pass |  |  |
 | `kpp/test_exception.kpp` | an exception that leaves a test fails that test; one derived from Exception shows its message | pass |  |  |
 | `kpp/test_exit_on_failure_before_dependents.kpp` | --exit-on-failure stops after the first failed test has finished; dependencies run first, so a failing dependency stops the run before its dependents | pass |  |  |
 | `kpp/test_fail.kpp` | fail(arguments...) fails the test and ends it (Factorio's CHECK_FAILED) | pass |  |  |
@@ -1405,12 +1409,17 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/test_report.kpp` | the runner's --report FILE (- for stdout) writes one JSON object per test (a suite's with its suite) and a summary, for editors and test explorers; the text in it is escaped | pass |  |  |
 | `kpp/test_require.kpp` | require ends the test when it fails, a failing release_assert (an assert in a debug build) inside a test fails that test, and the run goes on; check and require are never compiled out | pass |  |  |
 | `kpp/test_require_throws.kpp` | requireThrows<T>(expr) evaluates expr inside a try, is the caught T and ends the test unless one is thrown; checkThrows<T>(expr) is an Optional<T> and goes on | pass |  |  |
+| `kpp/test_run_by_name.kpp` | runTest(name) runs a registered test in place, fixture included, by Suite.Test or a unique Test: true when it passed, its failures neither printed nor the caller's | pass |  |  |
+| `kpp/test_run_by_name_unknown.kpp` | runTest of an unknown name, of an ambiguous one or of the running test fails and ends the caller | pass |  |  |
+| `kpp/test_run_captured.kpp` | runCaptured(body) runs a function inside the running test: true when it passed, its failures neither printed nor the caller's, an exception a failure | pass |  |  |
+| `kpp/test_run_hook.kpp` | the program's testRun(run) wraps each test's fixture and body; it may catch the program's exception and call run again, which builds a new fixture; a failed require's TestEnded passes through | pass |  |  |
 | `kpp/test_runner.kpp` | `kppc --test file.kpp` builds the file's `test name { }` declarations with a runner in place of main and runs them all | pass |  |  |
 | `kpp/test_same_name_in_two_suites.kpp` | a test's name is scoped to its suite: two suites may each have a test Empty, and the full name Suite.Test tells them apart | pass |  |  |
 | `kpp/test_suite_declaration_order.kpp` | the tests of a suite run in the order they are declared in it (kovarex, 2026-11-06) | pass |  |  |
 | `kpp/test_suite_declared_twice_is_error.kpp` | a suite is one block in one file: declaring it a second time is an error | pass |  |  |
 | `kpp/test_suite_depends_cycle_is_error.kpp` | suites that depend on each other in a cycle are an error that lists the cycle | pass |  |  |
 | `kpp/test_suite_depends_unknown_is_error.kpp` | depends must name a suite of the program (names are case-sensitive) | pass |  |  |
+| `kpp/test_suite_helper_uses_require.kpp` | everything declared in a suite is test code: a helper there may use require and check, and a failing require ends the test that called it | pass |  |  |
 | `kpp/test_suite_name_hides_nothing.kpp` | suite names are a name context of their own: suite Beacon beside class Beacon hides nothing, and a suite's helpers are its own | pass |  |  |
 | `kpp/test_suite_order.kpp` | suites run in dependency order (each after every suite it depends on; of the suites ready, the first by name), then the tests outside suites | pass |  |  |
 | `kpp/test_suite_tags.kpp` | tags select suites: without --tag the untagged suites run, with --tag t the suites tagged t (Factorio's SUITE_MODPACKS) | pass |  |  |

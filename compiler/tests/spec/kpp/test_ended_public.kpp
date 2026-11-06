@@ -1,0 +1,23 @@
+// spec: TestEnded is what a failed require throws: a destructor catches it so that a failure there does not leave it; the failure stays the test's
+// test:
+// exit: 1
+suite Clearing
+{
+  class Scenario
+  {
+  public:
+    ~Scenario()
+    {
+      try
+      {
+        require(false, "in clear");
+      }
+      catch (const TestEnded&)
+      {
+        println("caught");
+      }
+    }
+  };
+
+  test Clears { Scenario scenario; }
+}

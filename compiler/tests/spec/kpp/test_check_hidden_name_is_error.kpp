@@ -1,0 +1,10 @@
+// spec: a check in test code with a declaration of that name visible is an error: check(a, b) would silently read a call as a check with a message
+// kppc: --tests
+// error: 'check' in a test is the statement
+test localCheck
+{
+  auto check = [](int a, int b) { return a == b; };
+  check(1, 2);
+}
+
+int main() { return 0; }

@@ -1,0 +1,11 @@
+before 1
+first
+after 1
+before 2
+test_before_each.kpp:10:3: check failed: runs != 2 (2 != 2): second
+after 2
+failed: Hooks.Second
+before 3
+third
+after 3
+3 tests, 1 failed

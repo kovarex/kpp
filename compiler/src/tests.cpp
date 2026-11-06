@@ -41,6 +41,7 @@ struct __KppTest
   Function<void()> body; // a generated test's (run null)
   const char* suite;
   CallerLocation where;
+  String name; // the last part of fullName
   String fullName;
   int order = 0; // its suite's place in the run (the tests outside suites last)
 };
@@ -73,6 +74,7 @@ struct __KppTestState
   Vector<__KppTestFailure> failures; // the running test's
   const __KppTest* current = nullptr;
   bool running = false;
+  int captured = 0; // inside runTest or runCaptured: failures are collected, not printed
   bool hasValues = false;
   String left;
   String right;
@@ -88,7 +90,9 @@ __KppTestState& __kppTestState()
   return state;
 }
 
-struct __KppTestEnded {};
+// What a failed require throws to end the test (design.md 8.7). A program catches it where a failure
+// must not leave a destructor.
+struct TestEnded {};
 
 // The comma-separated names of text.
 Vector<String> __kppNames(const char* text)
@@ -127,6 +131,7 @@ int __kppRegisterTest(void (*run)(), const char* name, const char* suite, Caller
     test.fullName.append(".");
   }
   test.fullName.append(name);
+  test.name = String(name);
   __kppTestState().tests.push_back(test);
   return 0;
 }
@@ -156,6 +161,7 @@ public:
     test.body = body;
     test.suite = generator.suite;
     test.where = generator.where;
+    test.name = name;
     test.fullName = toString(StringView(generator.suite), ".", StringView(generator.name), ".", name);
     state.tests.push_back(test);
   }
@@ -256,7 +262,8 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
     shown << " (" << state.note << ")";
   if (state.hasMessage)
     shown << ": " << state.message;
-  println(shown);
+  if (state.captured == 0)
+    println(shown);
   state.hasValues = false;
   state.note = String();
   state.hasMessage = false;
@@ -277,7 +284,7 @@ template<typename T, typename F> T __kppRequireThrows(F body, const char* text, 
   }
   __kppTestState().note = String("nothing was thrown");
   __kppFail(here.file_name(), int(here.line()), int(here.column()), "require", text, "check failed");
-  throw __KppTestEnded();
+  throw TestEnded();
 }
 
 // checkThrows<T>(expr): the T that evaluating expr throws, or none and a failure (the test goes on).
@@ -336,19 +343,19 @@ template<typename T> void __kppRunFixture(const char* name)
   {
     fixture = new T();
   }
-  catch (const __KppTestEnded&)
+  catch (const TestEnded&)
   {
     throw;
   }
   catch (const Exception& e)
   {
     __kppTestFailed(toString("creating fixture ", StringView(name), __kppWhat(e)));
-    throw __KppTestEnded();
+    throw TestEnded();
   }
   catch (...)
   {
     __kppTestFailed(toString("creating fixture ", StringView(name)));
-    throw __KppTestEnded();
+    throw TestEnded();
   }
   try
   {
@@ -369,7 +376,7 @@ extern "C" void kpp_check_failed(const char* file, int line, int column, const c
   else
     __kppFail(file, line, column, kind == 2 ? "require" : "check", text, "check failed");
   if (kind >= 2)
-    throw __KppTestEnded();
+    throw TestEnded();
 }
 
 // The hooks a program may define (design.md 8.7). The program's own, a function, is the better
@@ -378,11 +385,130 @@ template<typename T = void> void testsSetup(const Vector<String>& arguments)
 {
   __kppTestState().noSetup = true;
 }
+template<typename T = void> void testBeforeEach()
+{
+}
+template<typename T = void> void testRun(Function<void()> run)
+{
+  run();
+}
 template<typename T = void> void testAfterEach()
 {
 }
 template<typename T = void> void testsTeardown()
 {
+}
+
+// One step of a test: true when it ran to its end; an exception that leaves it fails the test.
+bool __kppGuarded(const Function<void()>& step, const char* what)
+{
+  try
+  {
+    step();
+    return true;
+  }
+  catch (const TestEnded&)
+  {
+  }
+  catch (const Exception& e)
+  {
+    __kppTestFailed(toString("an exception left ", StringView(what), __kppWhat(e)));
+  }
+  catch (...)
+  {
+    __kppTestFailed(toString("an exception left ", StringView(what)));
+  }
+  return false;
+}
+
+// A test's fixture and body, through the program's testRun.
+void __kppRunWhole(const __KppTest* test)
+{
+  Function<void()> whole = [test]()
+  {
+    if (test->run)
+      test->run();
+    else
+      test->body();
+  };
+  __kppGuarded([&whole]() { testRun(whole); }, "the test");
+}
+
+// The running test's full name, empty outside a test (design.md 8.7).
+StringView currentTestName()
+{
+  __KppTestState& state = __kppTestState();
+  return state.running ? StringView(state.current->fullName) : StringView();
+}
+
+// Runs step with its failures collected instead of the running test's: true when it had none.
+bool __kppCaptured(const Function<void()>& step)
+{
+  __KppTestState& state = __kppTestState();
+  Vector<__KppTestFailure> outer = state.failures;
+  state.failures.clear();
+  ++state.captured;
+  step();
+  --state.captured;
+  bool passed = state.failures.empty();
+  state.failures = outer;
+  return passed;
+}
+
+// Ends the running test with a failure at here; outside a test there is none to fail.
+void __kppMisused(CallerLocation here, const String& text)
+{
+  __KppTestState& state = __kppTestState();
+  if (!state.running)
+  {
+    println(StringView(here.file_name()), ":", here.line(), ":", here.column(), ": ", text);
+    abort();
+  }
+  __kppMessage(text);
+  __kppFail(here.file_name(), int(here.line()), int(here.column()), "fail", "", "failed");
+  throw TestEnded();
+}
+
+// Runs body inside the running test, its failures captured (design.md 8.7): true when it had none.
+bool runCaptured(Function<void()> body, CallerLocation here = caller)
+{
+  if (!__kppTestState().running)
+    __kppMisused(here, String("runCaptured outside a test"));
+  return __kppCaptured([&body]() { __kppGuarded(body, "the test"); });
+}
+
+// Runs a registered test in place, fixture included, its failures captured (design.md 8.7): true
+// when it had none. name is Suite.Test, or Test when one test has that name.
+bool runTest(StringView name, CallerLocation here = caller)
+{
+  __KppTestState& state = __kppTestState();
+  if (!state.running)
+    __kppMisused(here, String("runTest outside a test"));
+  const __KppTest* found = nullptr;
+  int matches = 0;
+  for (const __KppTest& test : state.tests)
+    if (StringView(test.fullName) == name)
+    {
+      found = &test;
+      matches = 1;
+      break;
+    }
+    else if (StringView(test.name) == name)
+    {
+      found = &test;
+      ++matches;
+    }
+  if (matches == 0)
+    __kppMisused(here, toString("runTest: no test is called ", name));
+  if (matches > 1)
+    __kppMisused(here, toString("runTest: ", matches, " tests are called ", name, ": write Suite.Test"));
+  if (found == state.current)
+    __kppMisused(here, toString("runTest: ", name, " is the running test"));
+  const __KppTest* outer = state.current;
+  state.current = found;
+  bool passed = __kppCaptured([found]() { __kppRunWhole(found); });
+  state.current = outer;
+  return passed;
 }
 
 extern "C" void kpp_assert_failed(const char* file, int line, int column, const char* text)
@@ -393,7 +519,7 @@ extern "C" void kpp_assert_failed(const char* file, int line, int column, const 
     abort();
   }
   __kppFail(file, line, column, "assert", text, "assertion failed");
-  throw __KppTestEnded();
+  throw TestEnded();
 }
 
 // Whether text contains the pattern, whose `*` match anything.
@@ -698,36 +824,11 @@ int main(int argc, char** argv)
     state.failures.clear();
     state.current = test;
     state.running = true;
-    try
-    {
-      if (test->run)
-        test->run();
-      else
-        test->body();
-    }
-    catch (const __KppTestEnded&)
-    {
-    }
-    catch (const Exception& e)
-    {
-      __kppTestFailed(toString("an exception left the test", __kppWhat(e)));
-    }
-    catch (...)
-    {
-      __kppTestFailed(String("an exception left the test"));
-    }
-    // The program's testAfterEach (its per-test checks): a failure in it is the test's.
-    try
-    {
-      testAfterEach();
-    }
-    catch (const __KppTestEnded&)
-    {
-    }
-    catch (const Exception& e)
-    {
-      __kppTestFailed(toString("an exception left testAfterEach", __kppWhat(e)));
-    }
+    // The program's testBeforeEach and testAfterEach: a failure in them is the test's, and one that
+    // ends testBeforeEach leaves the test out.
+    if (__kppGuarded([]() { testBeforeEach(); }, "testBeforeEach"))
+      __kppRunWhole(test);
+    __kppGuarded([]() { testAfterEach(); }, "testAfterEach");
     state.running = false;
     bool passed = state.failures.empty();
     if (!passed)

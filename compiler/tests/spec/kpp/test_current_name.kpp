@@ -1,0 +1,11 @@
+// spec: currentTestName() is the running test's full name, also in the hooks around it, and empty outside a test
+// test:
+// exit: 0
+void testsSetup(const Vector<String>& arguments) { println("setup [", currentTestName(), "]"); }
+void testBeforeEach() { println("before ", currentTestName()); }
+void testsTeardown() { println("teardown [", currentTestName(), "]"); }
+
+suite Names
+{
+  test One { println("in ", currentTestName()); }
+}

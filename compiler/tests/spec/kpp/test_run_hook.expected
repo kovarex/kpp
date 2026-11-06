@@ -1,0 +1,10 @@
+built
+destroyed
+rerun
+built
+second run
+test_run_hook.kpp:36:5: check failed: false: reported
+destroyed
+failed: Rerun.Desyncs
+plain
+2 tests, 1 failed

@@ -1,0 +1,15 @@
+// spec: runTest of an unknown name, of an ambiguous one or of the running test fails and ends the caller
+// test:
+// exit: 1
+suite A
+{
+  test Same { }
+  test Unknown { runTest("Nothing"); println("not reached"); }
+  test Ambiguous { runTest("Same"); println("not reached"); }
+  test Itself { runTest("A.Itself"); println("not reached"); }
+}
+
+suite B
+{
+  test Same { }
+}

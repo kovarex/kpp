@@ -1,0 +1,20 @@
+// spec: the runner calls testBeforeEach() before each test; a failure that ends it fails the test and leaves its body out, and testAfterEach still runs
+// test:
+// exit: 1
+int runs = 0;
+
+test void testBeforeEach()
+{
+  ++runs;
+  println("before ", runs);
+  require(runs != 2, "second");
+}
+
+void testAfterEach() { println("after ", runs); }
+
+suite Hooks
+{
+  test First { println("first"); }
+  test Second { println("not reached"); }
+  test Third { println("third"); }
+}

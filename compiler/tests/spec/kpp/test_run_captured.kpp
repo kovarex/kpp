@@ -1,0 +1,16 @@
+// spec: runCaptured(body) runs a function inside the running test: true when it passed, its failures neither printed nor the caller's, an exception a failure
+// test:
+// exit: 0
+suite Meta
+{
+  test Inner
+  {
+    bool passed = runCaptured([]() { check(1 == 1); });
+    require(passed);
+    bool failed = runCaptured([]() { require(1 == 2); println("not reached"); });
+    require(!failed);
+    bool threw = runCaptured([]() { throw RuntimeError("inner"); });
+    require(!threw);
+    println("outer goes on");
+  }
+}

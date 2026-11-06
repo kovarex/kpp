@@ -7177,6 +7177,14 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).
       if (auto* a = static_cast<AssertStmt*>(s); a->release || a->testKind || impl.debug)
         walkExpr(a->cond);
+      // `check(a, b)` in a test is the statement (design.md 8.7), never a call of a visible `check`:
+      // a call read as a check and a message would be a silent wrong answer.
+      if (auto* a = static_cast<AssertStmt*>(s); a->testKind && file && !file->isImported && !probing)
+      {
+        const char* name = a->testKind == 1 ? "check" : a->testKind == 2 ? "require" : "fail";
+        if (impl.lookupUnqualified(impl.symbols.intern(name), scope, &locals, 0).found != Found::No)
+          impl.reportCheckerError(file, a->token, "'" + std::string(name) + "' in a test is the statement, and a declaration of that name is visible here: rename the declaration (design.md 8.7)");
+      }
       break;
     case NodeKind::DeclStmt:
       for (Decl* d : static_cast<DeclStmt*>(s)->decls)

@@ -1,0 +1,40 @@
+// spec: the program's testRun(run) wraps each test's fixture and body; it may catch the program's exception and call run again, which builds a new fixture; a failed require's TestEnded passes through
+// test:
+// exit: 1
+struct Desync {};
+
+class Fixture
+{
+public:
+  Fixture() { println("built"); }
+  ~Fixture() { println("destroyed"); }
+};
+
+bool reporting = false;
+
+void testRun(Function<void()> run)
+{
+  try
+  {
+    run();
+  }
+  catch (const Desync&)
+  {
+    println("rerun");
+    reporting = true;
+    run();
+  }
+}
+
+suite Rerun
+{
+  test Desyncs : Fixture
+  {
+    if (!reporting)
+      throw Desync();
+    println("second run");
+    require(false, "reported");
+  }
+
+  test Plain { println("plain"); }
+}

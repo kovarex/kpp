@@ -1,0 +1,32 @@
+// spec: runTest(name) runs a registered test in place, fixture included, by Suite.Test or a unique Test: true when it passed, its failures neither printed nor the caller's
+// test: --filter Outer.*
+// exit: 0
+class Counter
+{
+public:
+  Counter() { println("built"); }
+  ~Counter() { println("destroyed"); }
+};
+
+suite Inner
+{
+  test Passes : Counter { println("passes, in ", currentTestName()); }
+  test Fails
+  {
+    check(1 == 2);
+    println("after the check");
+    require(false);
+    println("not reached");
+  }
+}
+
+suite Outer
+{
+  test Runs
+  {
+    require(runTest("Inner.Passes"));
+    require(runTest("Passes"));
+    require(!runTest("Fails"));
+    println("back in ", currentTestName());
+  }
+}

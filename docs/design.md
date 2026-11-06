@@ -614,7 +614,28 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   unknown argument is an error, exit code 2), `void testAfterEach()` after each test (a failure in it
   fails that test), and `void testsTeardown()` after the last. The converted game keeps its options
   (`--config`, CRC mode, heavy mode, graphics) and its per-test checks (leaked entities) there.
-Spec snippets (pending): kpp/test_suite_order, kpp/test_suite_declaration_order,
+  `void testBeforeEach()` comes before each test; a failure that ends it leaves the test's body out
+  (the game's `crcDumper.open`). `void testRun(Function<void()> run)` wraps a test: `run` builds the
+  fixture, runs the body and destroys the fixture, and the hook may call it again (the game's
+  rerun on `LatencyTestDesyncError`, for the desync report). Without the hook the runner calls `run`
+  once. A failure's `TestEnded` passes through the hook; a hook that catches everything must let it go.
+- **What a test build adds for the program.** `StringView currentTestName()` is the running test's
+  full name, empty outside a test. `bool runTest(StringView name)` runs a registered test in place,
+  through `testRun` and without `testBeforeEach` and `testAfterEach` (as the game's `Test::Run`),
+  and `bool runCaptured(Function<void()> body)` runs a function the same way (the game's
+  MetaTestRunner builds its inner test on the spot). Both return true when it passed; its failures
+  are not printed and do not fail the caller, which writes `require(runTest(name))` if they should.
+  `name` is `Suite.Test`, or `Test` when one test has that name (exact, case-sensitive); an unknown or
+  ambiguous name, or the running test itself, fails and ends the caller. `TestEnded` is what a
+  failed `require` throws, for a destructor that must not let it out (the game's TestScenario::clear).
+- **A name that the statements hide.** In test code `check`, `require` and `fail` are statements, so
+  `check(a, b)` is a check with a message. When a declaration of that name is visible there (a local
+  lambda, a member, a fixture's member, a function of an enclosing namespace) the statement is a
+  compile error, "rename the declaration": the call would otherwise silently be read as a check.
+  Elsewhere they stay ordinary names, and a test may call one qualified (`math::check(1)`).
+Spec snippets: kpp/test_suite_helper_uses_require, kpp/test_before_each, kpp/test_current_name,
+kpp/test_run_by_name, kpp/test_run_by_name_unknown, kpp/test_run_captured, kpp/test_run_hook,
+kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_suite_order, kpp/test_suite_declaration_order,
 kpp/test_same_name_in_two_suites, kpp/test_suite_declared_twice_is_error,
 kpp/test_duplicate_name_in_suite_is_error, kpp/test_suite_depends_unknown_is_error,
 kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/test_suite_tags,

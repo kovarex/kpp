@@ -1,0 +1,18 @@
+// spec: everything declared in a suite is test code: a helper there may use require and check, and a failing require ends the test that called it
+// test:
+// exit: 1
+suite Helpers
+{
+  void requirePositive(int value)
+  {
+    require(value > 0, "value ", value);
+  }
+
+  test Negative
+  {
+    requirePositive(-2);
+    println("not reached");
+  }
+
+  test Positive { requirePositive(2); }
+}
