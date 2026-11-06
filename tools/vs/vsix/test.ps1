@@ -12,6 +12,8 @@
 # (docs/editors.md, "Inactive code") as LINES ("8-10 25-26"); with -Solution and -InactiveRelease, in
 # Release too. Each is shot (NAME-inactive-*.png), where the faded code shows.
 # The extension's semantic tokens of -File (its colors) must be in the log, at least one token.
+# -ImplementationFrom FILE:LINE:COLUMN with -Implementation FILE:LINE: Edit.GoToImplementation there must
+# land at FILE:LINE (one implementation: an override, a derived class).
 # -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
@@ -40,7 +42,9 @@ param(
   [string]$CompleteExpect,
   [string]$InactiveFile,
   [string]$InactiveDebug,
-  [string]$InactiveRelease
+  [string]$InactiveRelease,
+  [string]$ImplementationFrom,
+  [string]$Implementation
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
@@ -277,6 +281,7 @@ try
 {
   Go 'Edit.GoToDefinition' $Definition "${File}:${Line}:${Column}"
   Go 'Edit.GoToDeclaration' $Declaration $DeclarationFrom
+  if ($ImplementationFrom) { Go 'Edit.GoToImplementation' $Implementation $ImplementationFrom }
 
   # Hover: Edit.QuickInfo, its popup's text.
   if ($HoverAt)

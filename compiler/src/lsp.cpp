@@ -23,6 +23,7 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <type_traits>
 #include <vector>
 #include "host.hpp"
@@ -594,6 +595,8 @@ namespace
       std::unordered_map<const Decl*, std::vector<std::pair<const ParsedFile*, uint32_t>>> references; // by canonical declaration
       std::vector<Symbol> symbols;
       bool symbolsKnown = false;
+      bool derivedKnown = false;
+      std::unordered_map<const Decl*, std::vector<ClassDecl*>> derived; // direct derived classes, by the base's canonical declaration
     };
 
 
@@ -1489,6 +1492,222 @@ namespace
           if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
             continue;
           result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
+        }
+      });
+      return result;
+    }
+
+    // Every class definition's direct bases, as derived classes by the base's canonical declaration
+    // (a base's NamedType as the resolver resolved it; an alias or a dependent base is left out).
+    void knowDerived(const KeptProgram& program)
+    {
+      if (cache.derivedKnown)
+        return;
+      std::function<void(Span<Decl*>)> walk = [&](Span<Decl*> decls)
+      {
+        for (Decl* d : decls)
+          if (d->kind == NodeKind::NamespaceDecl)
+            walk(static_cast<NamespaceDecl*>(d)->decls);
+          else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition)
+          {
+            auto* c = static_cast<ClassDecl*>(d);
+            for (const ClassDecl::Base& b : c->bases)
+            {
+              Type* t = b.type;
+              if (t && t->kind == NodeKind::NamedType)
+                if (Decl* base = static_cast<NamedType*>(t)->resolved; base && base->kind == NodeKind::ClassDecl)
+                  cache.derived[canonical(*program.global, base)].push_back(c);
+            }
+            walk(c->members);
+          }
+      };
+      for (ParsedFile* f : program.files)
+        walk(f->decls);
+      cache.derivedKnown = true;
+    }
+
+    // implementation: a class's derived classes (all of them, through every level); a member
+    // function's overrides in them (a function of its name and number of parameters), at their
+    // definitions; anything else's definition.
+    Json implementation(const Json& params)
+    {
+      Json result = Json::array();
+      onProgram([&](const KeptProgram& program)
+      {
+        const Occurrence* o = occurrenceAt(program, params);
+        if (!o)
+          return;
+        Decl* d = canonical(*program.global, o->decl);
+        Decl* cls = d->kind == NodeKind::ClassDecl ? d : d->kind == NodeKind::FunctionDecl && d->parent && d->parent->kind == NodeKind::ClassDecl ? d->parent : nullptr;
+        if (!cls)
+        {
+          Decl* defined = program.global->definitionOf(d);
+          if (Json at = locationOf(defined ? defined : d); at.kind != Json::Null)
+            result.push(std::move(at));
+          return;
+        }
+        knowDerived(program);
+        std::vector<ClassDecl*> derived;
+        std::unordered_set<const Decl*> seen{canonical(*program.global, cls)};
+        std::vector<const Decl*> pending{canonical(*program.global, cls)};
+        while (!pending.empty())
+        {
+          const Decl* c = pending.back();
+          pending.pop_back();
+          if (auto found = cache.derived.find(c); found != cache.derived.end())
+            for (ClassDecl* x : found->second)
+              if (seen.insert(x).second)
+              {
+                derived.push_back(x);
+                pending.push_back(x);
+              }
+        }
+        std::sort(derived.begin(), derived.end(), [](const ClassDecl* x, const ClassDecl* y)
+                  { return std::make_pair(x->file ? x->file->index : 0, x->token) < std::make_pair(y->file ? y->file->index : 0, y->token); });
+        if (d->kind == NodeKind::ClassDecl)
+        {
+          for (ClassDecl* x : derived)
+            if (Json at = locationOf(x); at.kind != Json::Null)
+              result.push(std::move(at));
+          return;
+        }
+        auto* f = static_cast<FunctionDecl*>(d);
+        if (f->name.parts.empty())
+          return;
+        uint32_t symbol = f->name.last().symbol;
+        for (ClassDecl* x : derived)
+          for (Decl* m : x->members)
+            if (m->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(m)->name.parts.empty() &&
+                static_cast<FunctionDecl*>(m)->name.last().symbol == symbol && static_cast<FunctionDecl*>(m)->params.size() == f->params.size())
+            {
+              Decl* defined = program.global->definitionOf(m);
+              if (Json at = locationOf(defined ? defined : m); at.kind != Json::Null)
+                result.push(std::move(at));
+            }
+      });
+      return result;
+    }
+
+    // typeDefinition: the class or enum of the name's type (pointers, references, const and a T^'s
+    // UniquePtr taken off): an expression's type, a variable's or parameter's declared one, a
+    // function's result.
+    Json typeDefinition(const Json& params)
+    {
+      Json result;
+      onProgram([&](const KeptProgram& program)
+      {
+        const Occurrence* o = occurrenceAt(program, params);
+        if (!o)
+          return;
+        Decl* target = nullptr;
+        if (!o->declaration && (o->node->kind == NodeKind::NameExpr || o->node->kind == NodeKind::MemberExpr))
+          for (const Ty* t = static_cast<Expr*>(o->node)->ty; t && !target;)
+          {
+            if (t->kind == TyKind::Pointer || t->kind == TyKind::LRef || t->kind == TyKind::RRef)
+              t = t->inner;
+            else if ((t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+            {
+              std::string shown = program.global->types().toString(t, program.symbols);
+              if (!shown.empty() && shown.back() == '^' && !t->args.empty())
+                t = t->args[0]; // a T^: T
+              else
+                target = t->decl;
+            }
+            else
+              break;
+          }
+        if (!target)
+        {
+          Decl* d = o->decl;
+          Type* written = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->type
+                        : d->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(d)->type
+                        : d->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(d)->returnType : nullptr;
+          for (int depth = 0; written && !target && depth < 8; ++depth)
+            if (written->kind == NodeKind::PointerType)
+              written = static_cast<PointerType*>(written)->pointee;
+            else if (written->kind == NodeKind::LRefType)
+              written = static_cast<LRefType*>(written)->referenced;
+            else if (written->kind == NodeKind::RRefType)
+              written = static_cast<RRefType*>(written)->referenced;
+            else if (written->kind == NodeKind::ConstType)
+              written = static_cast<ConstType*>(written)->inner;
+            else if (written->kind == NodeKind::NamedType)
+            {
+              Decl* named = static_cast<NamedType*>(written)->resolved;
+              if (named && (named->kind == NodeKind::ClassDecl || named->kind == NodeKind::EnumDecl || named->kind == NodeKind::UsingAliasDecl))
+                target = named;
+              break;
+            }
+            else
+              break;
+        }
+        if (target)
+          result = locationOf(canonical(*program.global, target));
+      });
+      return result;
+    }
+
+    // documentHighlight: the name's occurrences in its file (its declarations as writes).
+    Json documentHighlight(const Json& params)
+    {
+      Json result = Json::array();
+      onProgram([&](const KeptProgram& program)
+      {
+        const ParsedFile* f = nullptr;
+        const Occurrence* o = occurrenceAt(program, params, &f);
+        if (!o)
+          return;
+        Decl* d = canonical(*program.global, o->decl);
+        for (const Occurrence& x : occurrencesOf(f))
+          if (x.decl == o->decl || canonical(*program.global, x.decl) == d)
+            result.push(Json::object().set("range", tokenRange(f, x.token)).set("kind", x.declaration ? 3 : 2));
+      });
+      return result;
+    }
+
+    // foldingRange: each pair of braces over more than one line, from the line of `{` to the line
+    // before `}`, and each run of two or more lines of // comments.
+    Json foldingRanges(const Json& params)
+    {
+      Json result = Json::array();
+      onProgram([&](const KeptProgram& program)
+      {
+        ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
+        if (!f || !f->tokens)
+          return;
+        const LineStarts& starts = startsOf(f);
+        std::vector<size_t> open;
+        for (const Token& t : *f->tokens)
+          if (t.is(P::LBrace))
+            open.push_back(starts.index(t.offset));
+          else if (t.is(P::RBrace) && !open.empty())
+          {
+            size_t from = open.back(), to = starts.index(t.offset);
+            open.pop_back();
+            if (to > from + 1)
+              result.push(Json::object().set("startLine", from).set("endLine", to - 1));
+          }
+        std::string_view text = f->text;
+        size_t runStart = 0, runLength = 0;
+        for (size_t line = 0; line <= starts.size(); ++line)
+        {
+          bool comment = false;
+          if (line < starts.size())
+          {
+            size_t at = starts[line], end = line + 1 < starts.size() ? starts[line + 1] : text.size();
+            while (at < end && (text[at] == ' ' || text[at] == '\t'))
+              ++at;
+            comment = text.substr(at, 2) == "//";
+          }
+          if (comment)
+          {
+            if (!runLength++)
+              runStart = line;
+            continue;
+          }
+          if (runLength >= 2)
+            result.push(Json::object().set("startLine", runStart).set("endLine", runStart + runLength - 1).set("kind", "comment"));
+          runLength = 0;
         }
       });
       return result;
@@ -2512,7 +2731,11 @@ namespace
         .set("declarationProvider", true)
         .set("referencesProvider", true)
         .set("documentSymbolProvider", true)
-        .set("workspaceSymbolProvider", true);
+        .set("workspaceSymbolProvider", true)
+        .set("implementationProvider", true)
+        .set("typeDefinitionProvider", true)
+        .set("documentHighlightProvider", true)
+        .set("foldingRangeProvider", true);
       return c;
     }
 
@@ -2668,6 +2891,14 @@ namespace
         respond(id, documentSymbols(params));
       else if (method == "workspace/symbol")
         respond(id, workspaceSymbols(params));
+      else if (method == "textDocument/implementation")
+        respond(id, implementation(params));
+      else if (method == "textDocument/typeDefinition")
+        respond(id, typeDefinition(params));
+      else if (method == "textDocument/documentHighlight")
+        respond(id, documentHighlight(params));
+      else if (method == "textDocument/foldingRange")
+        respond(id, foldingRanges(params));
       else if (request)
         respondError(id, -32601, "kppc --lsp does not support " + method);
       return true;

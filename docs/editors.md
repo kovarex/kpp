@@ -74,6 +74,14 @@ Status (2026-11-03):
     in a declaration's `when (...)` condition, which the resolver resolves where the parser
     decided it too (A's 5ed6e1f0). A config constant has no definition in the sources (the
     configuration writes it): hover says who set it;
+  - go to implementation (`textDocument/implementation`): on a class, its derived classes through
+    every level; on a member function, its overrides in them (a function of its name and number of
+    parameters, at its definition); on anything else, its definition;
+  - go to type definition: the class or enum of a name's type, pointers, references and a `T^`'s
+    UniquePtr taken off;
+  - the occurrences of a name in its file (`textDocument/documentHighlight`, its declaration as a
+    write);
+  - folding ranges: braces over more than one line, runs of two or more `//` comment lines;
   - completion, triggered by `.`, `>` and `:`;
   - rename, with prepareRename.
 - **Positions** are UTF-16 columns, the protocol's default.

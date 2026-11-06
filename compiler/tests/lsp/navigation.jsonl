@@ -1,0 +1,20 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\hierarchy: go to implementation (a class's
+// derived classes, a virtual function's overrides), go to type definition, the occurrences of a name
+// in its file (documentHighlight) and the folding ranges.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// Shape's derived classes, Square and Cube; Shape::area's overrides, Square's and Cube's.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/implementation","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":1,"character":8}}}
+{"jsonrpc":"2.0","id":3,"method":"textDocument/implementation","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":5,"character":15}}}
+// Square's derived class Cube; Square::area's override in it; main's implementation is its definition.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/implementation","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":8,"character":8}}}
+{"jsonrpc":"2.0","id":5,"method":"textDocument/implementation","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":11,"character":7}}}
+{"jsonrpc":"2.0","id":6,"method":"textDocument/implementation","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":26,"character":5}}}
+// The type of `shape` (Shape& as declared, at its use) and of `cube` (at its declaration): their classes.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/typeDefinition","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":30,"character":11}}}
+{"jsonrpc":"2.0","id":8,"method":"textDocument/typeDefinition","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":28,"character":8}}}
+// side's occurrences: its declaration and four uses.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/documentHighlight","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":12,"character":7}}}
+{"jsonrpc":"2.0","id":10,"method":"textDocument/foldingRange","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+{"jsonrpc":"2.0","id":11,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

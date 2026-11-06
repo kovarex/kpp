@@ -1,0 +1,33 @@
+// The language server's navigation test (tests/lsp.ps1, navigation.jsonl): a class hierarchy.
+class Shape
+{
+public:
+  virtual ~Shape() = default;
+  virtual i32 area() const { return 0; }
+};
+
+class Square : public Shape
+{
+public:
+  i32 area() const override { return this->side * this->side; }
+  i32 side = 2;
+};
+
+// A cube's surface: six squares.
+// (Two lines of comments fold.)
+class Cube : public Square
+{
+public:
+  i32 area() const override
+  {
+    return 6 * this->side * this->side;
+  }
+};
+
+i32 main()
+{
+  Cube cube;
+  Shape& shape = cube;
+  println(shape.area());
+  return 0;
+}
