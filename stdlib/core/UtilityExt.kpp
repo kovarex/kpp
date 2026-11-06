@@ -81,8 +81,39 @@ u64 rotr(u64 value, i32 count)
 // The greatest common divisor of |a| and |b| (std::gcd), 0 when both are 0, and their least common
 // multiple (std::lcm), 0 when either is 0. Each is one return expression, so that it folds at
 // compile time as well (a Ratio's terms, the common period of two durations).
-constexpr i64 gcd(i64 a, i64 b) { return b == 0 ? (a < 0 ? -a : a) : gcd(b, a % b); }
-constexpr i64 lcm(i64 a, i64 b) { return a == 0 || b == 0 ? 0 : (a < 0 ? -a : a) / gcd(a, b) * (b < 0 ? -b : b); }
+// Any two integer types: the result is their common type (std::common_type: the type itself for two
+// of one type, else the usual arithmetic conversions), computed on the absolute values in its
+// unsigned form, so that every value of an unsigned type is itself and the most negative value of
+// a signed one has its magnitude. (static_cast, not `T(x)`: a functional cast through a dependent
+// alias does not fold at compile time yet, and Ratio needs these folded.)
+template<typename M, typename N>
+using GcdType = typename Conditional<isSame<M, N>, M, decltype(true ? declval<M>() : declval<N>())>::Type;
+
+template<typename U>
+constexpr U gcdUnsigned(U a, U b) { return b == 0 ? a : gcdUnsigned(b, static_cast<U>(a % b)); }
+
+// |value| in T's unsigned form.
+template<typename T>
+constexpr MakeUnsigned<T> unsignedMagnitude(T value)
+{
+  return value < 0 ? static_cast<MakeUnsigned<T>>(static_cast<MakeUnsigned<T>>(0) - static_cast<MakeUnsigned<T>>(value)) : static_cast<MakeUnsigned<T>>(value);
+}
+
+template<typename M, typename N> requires (isIntegral<M> && isIntegral<N> && !isSame<M, bool> && !isSame<N, bool>)
+constexpr GcdType<M, N> gcd(M m, N n)
+{
+  return static_cast<GcdType<M, N>>(gcdUnsigned(unsignedMagnitude(static_cast<GcdType<M, N>>(m)), unsignedMagnitude(static_cast<GcdType<M, N>>(n))));
+}
+
+template<typename M, typename N> requires (isIntegral<M> && isIntegral<N> && !isSame<M, bool> && !isSame<N, bool>)
+constexpr GcdType<M, N> lcm(M m, N n)
+{
+  if (m == 0 || n == 0)
+    return 0;
+  auto a = unsignedMagnitude(static_cast<GcdType<M, N>>(m));
+  auto b = unsignedMagnitude(static_cast<GcdType<M, N>>(n));
+  return static_cast<GcdType<M, N>>(a / gcdUnsigned(a, b) * b);
+}
 
 // make_unique_for_overwrite: allocates uninitialized storage.
 template<typename T>
