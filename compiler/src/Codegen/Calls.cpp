@@ -1,6 +1,7 @@
 // struct Emitter's members: instantiation requests, the functions a call uses, inlining and calls;
 // their declarations in Calls.hpp, part of the struct's body in Codegen/Emitter.hpp. A translation
 // unit of its own since 2026-11-05 (codegen.cpp split, stage 2), moved without a change.
+#include <set>
 #include "Emitter.hpp"
 
 auto codegen::Emitter::noteRequest(const std::string& name) -> void
@@ -344,10 +345,13 @@ auto codegen::Emitter::enumIntrinsic(int which, CallExpr* c) -> Value
     emittingShared = true;
     std::string cases, blocks;
     int i = 0;
+    std::set<std::string> seen; // (of enumerators of one value, the first names it)
     for (Decl* d : en->enumerators)
       if (d->kind == NodeKind::EnumeratorDecl)
       {
         auto* x = static_cast<EnumeratorDecl*>(d);
+        if (!seen.insert(std::to_string(enumeratorValue(x))).second)
+          continue;
         std::string l = "e" + std::to_string(i++);
         cases += "    " + k + " " + std::to_string(enumeratorValue(x)) + ", label %" + l + "\n";
         blocks += l + ":\n  ret ptr " + cStringConstant(sym(x->name)) + "\n";
@@ -368,10 +372,13 @@ auto codegen::Emitter::emitEnumStr(FunctionDecl* f, const std::string& name) -> 
   auto* e = static_cast<EnumDecl*>(f->parent);
   std::string k = llType(enumUnderlying(e), f), cases, blocks;
   int i = 0;
+  std::set<std::string> seen; // (of enumerators of one value, the first names it)
   for (Decl* d : e->enumerators)
     if (d->kind == NodeKind::EnumeratorDecl)
     {
       auto* en = static_cast<EnumeratorDecl*>(d);
+      if (!seen.insert(std::to_string(enumeratorValue(en))).second)
+        continue;
       std::string l = "e" + std::to_string(i++);
       cases += "    " + k + " " + std::to_string(enumeratorValue(en)) + ", label %" + l + "\n";
       blocks += l + ":\n  ret ptr " + cStringConstant(sym(en->name)) + "\n";
