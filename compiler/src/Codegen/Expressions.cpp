@@ -688,6 +688,27 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       Value cond = convert(rvalue(c->cond), types.boolType(), e);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
+      // `x > 0 ? x : throw x`: a branch that is a throw-expression leaves, and the result is the
+      // other branch's, of its type (C++'s [expr.cond] 2). Until 2026-11-06 an error (a conversion
+      // from void). The throw's block ends unreachable; this one goes on in the other's.
+      auto throws = [](Expr* x)
+      {
+        while (x && x->kind == NodeKind::ParenExpr)
+          x = static_cast<ParenExpr*>(x)->inner;
+        return x && x->kind == NodeKind::ThrowExpr;
+      };
+      if (t && t->kind != TyKind::Void && throws(c->then) != throws(c->else_))
+      {
+        bool thenThrows = throws(c->then);
+        size_t temps = statementTemps.size();
+        startBlock(thenThrows ? tL : eL);
+        rvalue(thenThrows ? c->then : c->else_);
+        statementTemps.resize(temps); // (what the throw's operand made is not made on the way on)
+        fn += "  unreachable\n";
+        startBlock(thenThrows ? eL : tL);
+        Value v = rvalue(thenThrows ? c->else_ : c->then);
+        return isClass(t) || v.ty == t ? v : convert(v, t, e);
+      }
       const Ty* thenObject = isClass(t) ? conditionalObject(c->then, t, e) : nullptr;
       const Ty* elseObject = isClass(t) ? conditionalObject(c->else_, t, e) : nullptr;
       if (thenObject && elseObject)

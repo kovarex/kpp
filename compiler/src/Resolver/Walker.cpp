@@ -7051,6 +7051,16 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         return record(e, b && b->isKnown() && b->kind == TyKind::Class ? other : types.unknown());
       if (!b->isKnown())
         return record(e, a->kind == TyKind::Class ? then : types.unknown());
+      // `c ? throw x : value`: a throw-expression's branch leaves, and the conditional is the other
+      // branch, its type and value category ([expr.cond] 2); both throw: void.
+      auto throws = [](Expr* x)
+      {
+        while (x && x->kind == NodeKind::ParenExpr)
+          x = static_cast<ParenExpr*>(x)->inner;
+        return x && x->kind == NodeKind::ThrowExpr;
+      };
+      if (throws(c->then) != throws(c->else_))
+        return record(e, throws(c->then) ? other : then);
       // `target ? &target[i] : 0`: a literal 0 beside a pointer would be that pointer (design.md 4).
       noteZeroNull(c->else_, a->kind == TyKind::Array ? types.decay(a) : a);
       noteZeroNull(c->then, b->kind == TyKind::Array ? types.decay(b) : b);

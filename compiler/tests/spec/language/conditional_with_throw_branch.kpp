@@ -1,0 +1,23 @@
+// spec: a conditional with a throw-expression as one branch (C++'s [expr.cond]/2): `x > 0 ? x : throw x` is the other branch, of its type, in a return and an initializer, the throw in either branch, of a class type too; a void one stays void; until 2026-11-06 a conversion from void was an error
+struct Name
+{
+  int id;
+  ~Name() { println("name ", id, " gone"); }
+};
+int positive(int x) { return x > 0 ? x : throw x; }
+int doubled(int x) { int r = x < 0 ? throw 1.5 : x * 2; return r; }
+Name named(int id) { return id ? Name{id} : throw id; }
+void check(bool bad) { bad ? throw 3 : println("check fine"); }
+int main()
+{
+  try
+  {
+    println(positive(2), " ", doubled(4), " ", named(7).id);
+    check(false);
+    positive(-1);
+  }
+  catch (int e) { println("caught ", e); }
+  try { doubled(-1); } catch (double d) { println("caught ", d); }
+  try { named(0); } catch (int e) { println("caught name ", e); }
+  return 0;
+}
