@@ -4114,6 +4114,13 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   stay noexcept. Making it part of the type touches type identity, deduction, overloads on it and
   IR names; the converted game declares no noexcept function pointer type.
 
+- **Wube's utility code in kpp (parked)** (kovarex, 2026-11-06): once Factorio is officially in kpp, so
+  that the game's code changes along with the stdlib, Wube's handwritten utility code moves, not a
+  fresh implementation: PropertyTree and a generic versioned Serialiser/Deserialiser into the stdlib,
+  decoupled from Factorio. No code or design write-up before then. Open until then: the licence label
+  of the moved code, stdlib or libraries/ for each piece, PropertyTree's node size, JSON numbers (double
+  or integer), which pieces come next.
+
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
    lexer + parser + order-independent name resolution, benchmarked on Factorio. Whole front end
