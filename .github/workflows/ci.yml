@@ -618,10 +618,18 @@ jobs:
       # Clang 19, as the bundled toolchain's (kppc's IR names LLVM 19's intrinsics: clang 18, Ubuntu
       # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kppc takes
       # it through KPP_CLANG, and clang-19's ld.lld is beside it.
+      # (apt with time limits, tried 3 times: on 2026-11-06 an Ubuntu mirror held apt-get for 40 minutes
+      # and the job hit its 45, run 42171827019)
       - name: Tools
+        timeout-minutes: 20
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q clang-19 lld-19 ninja-build cmake
+          apt="-q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          for attempt in 1 2 3; do
+            if timeout 300 sudo apt-get update $apt && timeout 600 sudo apt-get install -y $apt clang-19 lld-19 ninja-build cmake; then break; fi
+            [ "$attempt" -lt 3 ] || { echo "apt-get failed 3 times"; exit 1; }
+            echo "apt-get attempt $attempt failed; again in 30 s"
+            sleep 30
+          done
           echo "KPP_CLANG=/usr/bin/clang-19" >> "$GITHUB_ENV"
           clang-19 --version | head -n 1
           /usr/lib/llvm-19/bin/ld.lld --version
