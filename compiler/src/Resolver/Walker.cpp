@@ -1529,7 +1529,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   // `using Colors::shade;` in a namespace: the name is the variable it names (functions stay the
   // using-declaration's overload set, which a call takes through withNamespaceUsings).
   if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum && !l.ambiguousWith && l.foundIn &&
-      l.foundIn->kind == ScopeKind::Namespace)
+      (l.foundIn->kind == ScopeKind::Namespace || l.foundIn->kind == ScopeKind::Class)) // (`using A::x;` in a class: A's field)
   {
     Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, impl.lexicalScopeOf(l.decl), nullptr, 0);
     if (target.decl && target.decl->kind == NodeKind::VariableDecl)
@@ -1718,9 +1718,17 @@ auto GlobalScope::Impl::Walker::memberOfInstantiatedBases(const Ty* t, Scope* cl
 
 auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t, Scope* cls, Subst& baseArgs) -> std::shared_ptr<std::vector<Entry>>
 {
+  auto isUsing = [](Decl* d) { return d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum; };
+  if (!l.overloads && isUsing(l.decl) && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+  {
+    // The using-declaration alone of its name: an overload set of one.
+    std::vector<Entry> alone{Entry{l.decl, nullptr}};
+    Lookup one = l;
+    one.overloads = &alone;
+    return withUsingOverloads(one, t, cls, baseArgs);
+  }
   if (!l.overloads || l.overloads->empty() || !l.foundIn || l.foundIn->kind != ScopeKind::Class)
     return nullptr;
-  auto isUsing = [](Decl* d) { return d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum; };
   // A using-declaration whose qualifier is a template parameter of the class (`using X::operator();`,
   // `using Ts::operator()...;`): the members of the instance's argument, or of each element of
   // its pack, which a lookup of the qualified name without the instance's arguments did not reach.
@@ -1740,17 +1748,7 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
       }
     return false;
   };
-  bool hasUsing = false, hasOwn = false, viaParameter = false;
-  size_t usings = 0;
-  for (const Entry& e : *l.overloads)
-  {
-    hasUsing = hasUsing || isUsing(e.decl);
-    usings += isUsing(e.decl);
-    hasOwn = hasOwn || (e.decl && e.decl->kind == NodeKind::FunctionDecl);
-    std::vector<const Ty*> ignored;
-    viaParameter = viaParameter || (isUsing(e.decl) && parameterTypes(static_cast<UsingNameDecl*>(e.decl), ignored));
-  }
-  if (!hasUsing || !(hasOwn || usings >= 2 || viaParameter))
+  if (std::none_of(l.overloads->begin(), l.overloads->end(), [&](const Entry& e) { return isUsing(e.decl); }))
     return nullptr;
   auto merged = std::make_shared<std::vector<Entry>>();
   for (const Entry& e : *l.overloads)
@@ -1808,9 +1806,13 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
     }
     Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, l.foundIn, nullptr, 0);
     if (target.overloads)
+    {
       for (const Entry& te : *target.overloads)
         if (te.decl && te.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(te.decl)))
           merged->push_back(te);
+    }
+    else if (target.decl && target.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(target.decl)))
+      merged->push_back(Entry{target.decl, nullptr});
     if (t && cls && target.foundIn && target.foundIn != l.foundIn && target.foundIn->kind == ScopeKind::Class)
       if (const Ty* base = instantiationOfBase(t, cls, target.foundIn, 0))
         for (const Subst::Pair& p : impl.substFor(base).pairs)
@@ -2444,8 +2446,10 @@ auto GlobalScope::Impl::Walker::pickOverload(Decl* primary, const std::vector<En
   {
     if (!takesCallSets(f, s))
       return false;
-    if (!namePart || !namePart->hasTemplateArgs || namePart->templateArgs.empty())
+    if (!namePart || !namePart->hasTemplateArgs)
       return true;
+    if (namePart->templateArgs.empty()) // `f<>(1)`: a template, its arguments all deduced; never a plain f
+      return !f->templateParams.empty() || (f->flags & DF_Constructor);
     size_t n = f->templateParams.size();
     size_t before = s.pairs.size();
     size_t given = bindExplicitArgs(f, *namePart, callArgs, s);

@@ -1,0 +1,17 @@
+// spec: sizeof of a static array member named through an instance is that instance's size, its bound written from the template's arguments in the class and in the definition
+// found by thread A's comparison with clang (2026-11-06): 0, silently
+extern "C" int printf(const char* format, ...);
+template<class T> struct S
+{
+  enum { n = sizeof(T) };
+  static int a[n];
+  static int b[sizeof(T)];
+};
+template<class T> int S<T>::a[S<T>::n];
+template<class T> int S<T>::b[sizeof(T)];
+int main()
+{
+  S<char>::a[0] = 5;
+  printf("%d %d %d %d %d\n", int(sizeof(S<char>::a)), int(sizeof(S<int>::a)), int(sizeof(S<char>::b)), int(sizeof(S<int>::b)), S<char>::a[0]);
+  return 0;
+}

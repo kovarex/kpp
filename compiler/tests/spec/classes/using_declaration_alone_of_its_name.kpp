@@ -1,0 +1,27 @@
+// spec: a class's `using A::f;` and `using A::x;`, nothing else of the names in the class, are A's function and field to an unqualified use in the class and in classes derived from it, through a private base too
+// found by thread A's comparison with clang (2026-11-06): codegen's "taking the address of f"
+extern "C" int printf(const char* format, ...);
+class A
+{
+public:
+  int f() { return 1; }
+  int x = 2;
+};
+class B : private A
+{
+public:
+  using A::f;
+  using A::x;
+  int inside() { return f() + x; }
+};
+class C : public B
+{
+public:
+  int derived() { return f() * 10 + x; }
+};
+int main()
+{
+  C c;
+  printf("%d %d %d %d\n", c.inside(), c.derived(), c.f(), c.x);
+  return 0;
+}

@@ -797,7 +797,7 @@ namespace
         // In expression context, `a < b > c` style ambiguities are resolved towards comparison
         // unless the continuation only makes sense for a template-id.
         // (`Binary{make<E, Args...>}`, `c ? f<A> : g<B>`: no comparison ends before `}` or `:`.)
-        bool plausible = at(P::LParen) || at(P::ColonColon) || at(P::LBrace) || at(P::RParen) || at(P::Comma) ||
+        bool plausible = at(P::LParen) || at(P::LBracket) || at(P::ColonColon) || at(P::LBrace) || at(P::RParen) || at(P::Comma) ||
                          at(P::Greater) || at(P::Semi) || at(P::RBracket) || at(P::Dot) || at(P::Arrow) ||
                          at(P::Ellipsis) || at(P::Shr) || at(P::RBrace) || at(P::Colon) || at(TokenKind::End);
         bool binaryOnly = at(P::EqEq) || at(P::NotEq) || at(P::AndAnd) || at(P::OrOr) || at(P::Question) ||
@@ -6465,6 +6465,8 @@ namespace
       NameExpr* n = node<NameExpr>(start);
       if (t->kind == NodeKind::NamedType)
         n->name = static_cast<NamedType*>(t)->name;
+      else if (isKpp())
+        error("a type where a value is expected: `T x(...)` in a body is a variable, a body declares no function (design.md 22)");
       return n;
     }
 

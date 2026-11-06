@@ -1,0 +1,67 @@
+// spec: an enumerator of a class template whose value depends on the template's arguments is its instance's, at run time and at compile time: named through the instance (`S<3>::V`, `S<3>::E::A`), inside a member, through a nested class, a base, an object, in a case label, an array bound, a constant template argument, a static_assert; local to a function template too
+// found by thread A's comparison with clang (2026-11-06): every such enumerator was 0 at run time (or the first instance's), silently, and no constant at compile time
+extern "C" int printf(const char* format, ...);
+template<int N> struct S
+{
+  enum { V = N * 2, W = V + 1 };
+  enum class E { A = N, B };
+  static int inside() { return V; }
+  static int scoped() { return (int)E::A; }
+  static int pick(E e)
+  {
+    switch (e)
+    {
+      case E::A: return 1;
+      case E::B: return 2;
+    }
+    return 0;
+  }
+  static int label(int v)
+  {
+    switch (v)
+    {
+      case V: return 1;
+      case W: return 2;
+      default: return 3;
+    }
+  }
+};
+template<class T> struct Z
+{
+  enum { Size = sizeof(T) };
+  struct In
+  {
+    enum { Twice = Size * 2 };
+    int get() { return Twice; }
+  };
+};
+template<int N> struct Derived : S<N>
+{
+  int get() { return (int)S<N>::V; }
+};
+struct Plain : S<7> {};
+template<int N> struct Constant { static constexpr int value = N; };
+template<int N> int local()
+{
+  enum { V = N * 3 };
+  return V;
+}
+constexpr int fromInstance = S<3>::V;
+constexpr int fromScoped = (int)S<4>::E::B;
+static_assert(S<5>::W == 11);
+int main()
+{
+  printf("%d %d %d %d\n", (int)S<3>::V, (int)S<4>::V, (int)S<3>::W, (int)S<4>::W);
+  printf("%d %d %d %d\n", (int)S<3>::E::A, (int)S<4>::E::A, S<3>::scoped(), S<4>::scoped());
+  printf("%d %d\n", S<3>::inside(), S<4>::inside());
+  printf("%d %d %d %d\n", S<3>::pick(S<3>::E::B), S<4>::pick(S<4>::E::A), S<5>::label(10), S<5>::label(11));
+  Z<double>::In in;
+  printf("%d %d %d %d\n", (int)Z<char>::Size, (int)Z<double>::Size, (int)Z<int>::In::Twice, in.get());
+  Derived<9> d;
+  S<6> object;
+  printf("%d %d %d %d\n", d.get(), (int)Plain::V, (int)Derived<2>::W, (int)object.V);
+  int bound[S<3>::V];
+  printf("%d %d %d %d\n", fromInstance, fromScoped, int(sizeof(bound)), Constant<S<2>::V>::value);
+  printf("%d %d\n", local<1>(), local<2>());
+  return 0;
+}

@@ -608,7 +608,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       if (d && !isConstant(d))
         return std::nullopt;
       Scope* foundIn = d && d->parent ? d->parent->ownScope : nullptr;
-      const Ty* object = m->base && (!d || d->kind == NodeKind::VariableDecl) ? constObjectType(m->base, ctx, m->op == P::Arrow) : nullptr;
+      const Ty* object = m->base && (!d || d->kind == NodeKind::VariableDecl || d->kind == NodeKind::EnumeratorDecl) ? constObjectType(m->base, ctx, m->op == P::Arrow) : nullptr;
       if (!d && object)
         if (Scope* s = classScopeOf(object))
         {
@@ -624,6 +624,9 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       if (d->kind == NodeKind::VariableDecl && object)
         if (Subst s = memberSubst(object, foundIn, depth + 1); !s.pairs.empty())
           return memberConstant(d, ctx, s);
+      if (d->kind == NodeKind::EnumeratorDecl && object)
+        if (Subst s = memberSubst(object, foundIn, depth + 1); !s.pairs.empty())
+          return constValueOfDecl(d, ctx, depth + 1, &s); // `s.V`, an enumerator of the object's instance
       return constValueOfDecl(d, ctx, depth + 1);
     }
     case NodeKind::CallExpr: return constCall(static_cast<CallExpr*>(e), ctx, depth);
@@ -848,7 +851,13 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       }
       if (named && (((named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && !(named->flags & DF_Typedef)) ||
                     named->kind == NodeKind::EnumeratorDecl))
-        t = declaredTypeOf(named, ctx.subst, depth + 1);
+      {
+        // `sizeof(S<char>::a)`: a member of the instance the name goes through (its bound is that instance's).
+        Subst qualifier;
+        if (s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->name.parts.size() > 1 && named->parent)
+          qualifier = qualifierSubst(static_cast<NamedType*>(s->type)->name, ctx, depth + 1, named->parent->ownScope);
+        t = declaredTypeOf(named, qualifier.pairs.empty() ? ctx.subst : &qualifier, depth + 1);
+      }
       else if (s->type)
         t = convertType(s->type, ctx, depth + 1);
       Expr* operand = s->operand;
@@ -1131,6 +1140,10 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
   if (n->name.parts.size() > 1 && l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::EnumeratorDecl))
     if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
       return memberConstant(l.decl, ctx, qs);
+  // `S<3>::V`, `S<3>::E::A`: an enumerator of a class template's, under that instance's arguments.
+  if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::EnumeratorDecl)
+    if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
+      return constValueOfDecl(l.decl, ctx, 0, &qs);
   // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`, a function's
   // local where the code generator asks without the function's locals): the declaration the
   // type checker bound where the name is written.
@@ -3640,6 +3653,26 @@ auto GlobalScope::Impl::constCharArrayFromLiteral(const Ty* t, Expr* init, const
 
 auto GlobalScope::Impl::constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
+  // `{sizeof(T)..., 0}`: a pack's elements each initialize one element of the array.
+  if (std::any_of(values.begin(), values.end(), [](Expr* v) { return constIsExpansion(v); }))
+  {
+    const Ty* array = types.unqualified(types.stripRef(t));
+    std::vector<ConstValue> given;
+    if (array->kind != TyKind::Array || !constArguments(values, ctx, depth, given) || (array->count && given.size() > array->count))
+      return std::nullopt;
+    size_t count = array->count ? array->count : given.size();
+    if (!constMayMake(count))
+      return std::nullopt;
+    std::vector<ConstValue> elements;
+    for (size_t i = 0; i < count; ++i)
+    {
+      std::optional<ConstValue> e = i < given.size() ? constConverted(given[i], array->inner) : constEmpty(types.unqualified(array->inner), true, depth + 1);
+      if (!e)
+        return std::nullopt;
+      elements.push_back(*e);
+    }
+    return ConstValue::object(array->count ? array : types.array(array->inner, uint32_t(count)), std::move(elements));
+  }
   size_t next = 0;
   std::optional<ConstValue> v = constElided(t, values, next, ctx, depth);
   if (v && next < values.size())

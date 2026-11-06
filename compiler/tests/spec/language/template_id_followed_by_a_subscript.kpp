@@ -1,0 +1,9 @@
+// spec: `name<3>[1]` is a template-id subscripted: no comparison has a `[` after its `>` (a lambda is no operand anyone compares)
+// found by thread A's comparison with clang (2026-11-06): "expected a capture"
+extern "C" int printf(const char* format, ...);
+template<int N> constexpr const char* text = "abc";
+int main()
+{
+  printf("%d\n", int(sizeof(text<3>[1])));
+  return 0;
+}

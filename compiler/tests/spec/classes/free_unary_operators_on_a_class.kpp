@@ -1,0 +1,26 @@
+// spec: `*g`, `++g`, `g++`, `--g` on a class with free operator functions call those, in a namespace too (found by argument-dependent lookup); postfix passes the int
+// found by thread A's comparison with clang (2026-11-06): the checker chose them and codegen looked for members alone ("G has no operator++")
+extern "C" int printf(const char* format, ...);
+namespace n
+{
+  struct S { int v; };
+  S& operator++(S& a) { a.v++; return a; }
+  S operator++(S& a, int) { S old = a; a.v += 10; return old; }
+  S& operator--(S& a) { a.v--; return a; }
+}
+struct G { int v; };
+G& operator++(G& a) { a.v++; return a; }
+G operator++(G& a, int) { G old = a; a.v += 10; return old; }
+int operator*(const G& a) { return a.v * 2; }
+int main()
+{
+  n::S c{1};
+  ++c;
+  c++;
+  --c;
+  G g{1};
+  ++g;
+  G h = g++;
+  printf("%d %d %d %d\n", c.v, g.v, h.v, *g);
+  return 0;
+}

@@ -1679,6 +1679,12 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
   }
   if (op == P::Star)
   {
+    // `*g` with a free operator*(const G&), the one the checker chose.
+    if (FunctionDecl* chosen = isClass(types.stripRef(u->operand->ty)) && !u->calleeMember ? recordedOperator(u) : nullptr)
+    {
+      Expr* operand = u->operand;
+      return callChosenOperator(u, chosen, false, Span<Expr*>{&operand, 1});
+    }
     Value p = rvalue(u->operand);
     if (isClass(p.ty))
     {
@@ -1698,7 +1704,9 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
   if (op == P::PlusPlus || op == P::MinusMinus)
   {
     const Ty* ot = types.stripRef(u->operand->ty);
-    if (isClass(ot))
+    // `++g`, `g++` with free operators, the ones the checker chose: as an enumeration's, below.
+    bool freeOnClass = isClass(ot) && !u->calleeMember && recordedOperator(u);
+    if (isClass(ot) && !freeOnClass)
     {
       Value o = rvalue(u->operand);
       std::string opName = operatorName(op);
@@ -1753,10 +1761,10 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     // `++direction`, `direction++` with an operator function declared for the enumeration: the one
     // the checker chose (Walker::enumUnaryOperator), never the built-in increment, which C++ does
     // not even have for an enumeration (language/enum_operand_calls_user_defined_operator).
-    if (ot && ot->kind == TyKind::Enum)
+    if (ot && (ot->kind == TyKind::Enum || freeOnClass))
     {
       FunctionDecl* chosen = verifyDecisions() ? nullptr : recordedOperator(u);
-      if (verifyDecisions())
+      if (verifyDecisions() && !freeOnClass)
       {
         chosen = global.findFreeOperator(uint32_t(op), argumentType(u->operand, u->operand->ty, types), u->postfix ? types.intType(32) : nullptr, currentFunction);
         verifyOperatorCall(u, chosen ? OperatorCall::Function : OperatorCall::Builtin, chosen, false);
