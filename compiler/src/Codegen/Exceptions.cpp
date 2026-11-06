@@ -38,6 +38,14 @@ auto codegen::Emitter::emitCall(const std::string& prefix, const std::string& ca
     return;
   }
   markEH();
+  // And one before it: a call that may throw and has nothing to clean up is a plain call, and when
+  // it comes right before this invoke, its return address is where this one's scope entry begins,
+  // so a throw from it ran this invoke's cleanups: a member whose constructor threw was destroyed
+  // when the constructor's body then called a function that may throw (E's battery, 2026-11-06,
+  // classes/member_whose_constructor_throws_is_not_destroyed). However the blocks are laid out, a
+  // call before an invoke now returns to this nop, outside the entry.
+  if (sh.target.windows())
+    fn += "  call void asm sideeffect \"nop\", \"\"() #0" + bundle() + "\n";
   std::string cont = newLabel("invoke.cont");
   fn += "  " + prefix + "invoke " + callee + bundle() + " to label %" + cont + " unwind label %" + dest + "\n";
   startBlock(cont);
