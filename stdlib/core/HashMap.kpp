@@ -372,6 +372,24 @@ public:
       this->rehash(needed);
   }
 
+  // std's rehash(n): a table of at least n slots and room for the entries (at 3/4 of the slots),
+  // a power of two; it may shrink the table (n of 0 fits it to the entries). An empty table that
+  // was never allocated stays so for an n of 0.
+  void rehashFor(ContainerSize n)
+  {
+    if (this->capacity == 0 && n == 0)
+      return;
+    ContainerSize needed = 16;
+    while (needed < n || needed - needed / 4 < this->count)
+    {
+      if (needed > maxContainerSize / 2)
+        throwLengthError("unordered_map/set too long");
+      needed *= 2;
+    }
+    if (needed != this->capacity)
+      this->rehash(needed);
+  }
+
   void clear()
   {
     for (ContainerSize i = 0; i < this->capacity; ++i)
@@ -780,6 +798,8 @@ public:
   void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
+  // std's rehash(n): at least n slots and room for the entries; it may shrink the table.
+  void rehash(ContainerSize n) { this->table.rehashFor(n); }
   Hasher hash_function() const { return this->table.hashFunction(); }
   KeyEqual key_eq() const { return this->table.keyEqual(); }
 
@@ -937,6 +957,8 @@ public:
   void swap(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
+  // std's rehash(n): at least n slots and room for the entries; it may shrink the table.
+  void rehash(ContainerSize n) { this->table.rehashFor(n); }
   Hasher hash_function() const { return this->table.hashFunction(); }
   KeyEqual key_eq() const { return this->table.keyEqual(); }
 

@@ -21,7 +21,7 @@ produced by the converter.
 | the same without growing | none | none |
 | erase | the erased entries' | the erased entries' |
 | clear, assignment | all | all |
-| reserve(n) that grows the table | all, except for dereferencing | none |
+| reserve(n) that grows the table, rehash(n) that changes it | all, except for dereferencing | none (FastHashMap and FastHashSet: all) |
 
 An iterator from before the table grew still reaches its entry (`*it`, `it->second`), as
 std::unordered_map's do, whose iterators are its nodes, and as code relies on: `auto [it, created]
@@ -70,6 +70,9 @@ O(n), amortized O(1) per insert.
   this map), in the fast tables they are moved. The rest stay in other.
 - `swap(other)`: exchanges the contents in O(1).
 - `clear()`, `reserve(n)`.
+- `rehash(n)` (std's): rebuilds the table for at least n buckets and at least what the entries need
+  at the table's limit; it may shrink the table (`rehash(0)` fits it to the entries). Every entry
+  stays; HashMap's and HashSet's keep their addresses, the fast tables' move.
 - kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
   value is kept), `forEach(f)` calling f(key, value) for every entry.
 
@@ -77,6 +80,6 @@ The hash a key's slot and tag come from is the hasher's result, mixed once more 
 is the library's `Hash<K>` (whose `hashOf` overloads mix already), so a hasher written for C++ that
 returns a key's bits nearly unchanged spreads the keys as well as `hashOf` does.
 
-*Differences from C++*: there is no bucket interface (bucket_count, load_factor, rehash), no
+*Differences from C++*: there is no bucket interface (bucket_count, load_factor) beside rehash, no
 heterogeneous lookup through a transparent hasher, and no allocator parameter; HashMap's fifth
 template parameter is `bool stable` (false is FastHashMap), where C++ has the allocator.

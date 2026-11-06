@@ -1,0 +1,41 @@
+// spec: HashMap::rehash(n) and HashSet::rehash(n) (std::unordered_map's and unordered_set's) rebuild the table for at least n buckets and at least what the entries need, growing or shrinking it (rehash(0) fits the table to the entries); every entry stays, found by its key, and HashMap's entries keep their addresses (they live in nodes); a FastHashMap's entries stay too (`1000 1 1 1000 1 1 0 1 | 500 1 1 | 3 1`)
+// factorio: E's associative container battery against std (ac1, 2026-11-06): rehash was private; the coordinator asked for std's rehash
+extern "C" import "stdio.h";
+int main()
+{
+  HashMap<int, int> h;
+  for (int i = 0; i < 1000; ++i)
+    h[i] = i * 2;
+  int* kept = &h[500];
+  h.rehash(100000);
+  bool all = true;
+  for (int i = 0; i < 1000; ++i)
+    all = all && h.contains(i) && h[i] == i * 2;
+  printf("%d %d %d", (int)h.size(), (int)all, (int)(kept == &h[500]));
+  h.rehash(0);
+  all = true;
+  for (int i = 0; i < 1000; ++i)
+    all = all && h.contains(i) && h[i] == i * 2;
+  printf(" %d %d %d", (int)h.size(), (int)all, (int)(kept == &h[500]));
+  HashMap<int, int> empty;
+  empty.rehash(0);
+  empty.rehash(64);
+  printf(" %d %d |", (int)empty.size(), (int)empty.empty());
+  FastHashMap<int, int> fast;
+  for (int i = 0; i < 500; ++i)
+    fast[i] = i;
+  fast.rehash(4096);
+  fast.rehash(1);
+  all = true;
+  for (int i = 0; i < 500; ++i)
+    all = all && fast.contains(i) && fast[i] == i;
+  printf(" %d %d %d |", (int)fast.size(), (int)all, (int)fast.contains(500) + 1);
+  HashSet<String> words;
+  words.insert(String("a"));
+  words.insert(String("b"));
+  words.insert(String("c"));
+  words.rehash(1000);
+  words.rehash(0);
+  printf(" %d %d\n", (int)words.size(), (int)(words.contains(String("a")) && words.contains(String("b")) && words.contains(String("c"))));
+  return 0;
+}

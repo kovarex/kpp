@@ -1,0 +1,45 @@
+// spec: Map::insert_or_assign(key, value) (std::map's) inserts the entry when the key is new and assigns the value to the existing entry otherwise, returning the entry and whether it was inserted; the value is forwarded (an rvalue moved, assigned by move assignment over an existing one), an rvalue key moved into a new entry and left alone when the key is there; insert_or_assign(hint, key, value) returns the entry (`1 10 0 11 2 | 1 moved 1 kept 1 0 assigned 1 | 2 22`)
+// factorio: E's associative container battery against std (ac1, 2026-11-06): Map had no insert_or_assign (HashMap had); the coordinator asked for it
+extern "C" import "stdio.h";
+struct Value
+{
+  int v = 0;
+  int assignedByMove = 0;
+  Value() {}
+  Value(int x) : v(x) {}
+  Value(const Value& o) : v(o.v) {}
+  Value(Value&& o) : v(o.v) { o.v = -1; }
+  Value& operator=(const Value& o)
+  {
+    v = o.v;
+    return *this;
+  }
+  Value& operator=(Value&& o)
+  {
+    v = o.v;
+    o.v = -1;
+    ++assignedByMove;
+    return *this;
+  }
+};
+int main()
+{
+  Map<int, int> m;
+  auto r = m.insert_or_assign(1, 10);
+  printf("%d %d", (int)r.second, r.first->second);
+  r = m.insert_or_assign(1, 11);
+  printf(" %d %d %d |", (int)r.second, m[1], (int)m.size() + 1);
+  Map<String, Value> named;
+  String key("k");
+  Value first(5);
+  auto n = named.insert_or_assign(move(key), move(first));
+  printf(" %d moved %d", (int)n.second, (int)(first.v == -1));
+  String again("k");
+  Value second(6);
+  n = named.insert_or_assign(move(again), move(second));
+  printf(" kept %d", (int)(again == "k"));
+  printf(" %d assigned %d |", (int)n.second, n.first->second.assignedByMove);
+  auto at = m.insert_or_assign(m.end(), 2, 22);
+  printf(" %d %d\n", at->first, at->second);
+  return 0;
+}

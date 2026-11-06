@@ -1043,6 +1043,40 @@ public:
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }
 
+  // std::map::insert_or_assign: inserts the entry when the key is new (the value built from value,
+  // forwarded, in the new node), assigns value to the existing entry's otherwise; returns the entry
+  // and whether it was inserted. An rvalue key is moved into a new entry only.
+  template<typename M>
+  Pair<RbIterator<Pair<K, V>>, bool> insert_or_assign(const K& key, M&& value)
+  {
+    Pair<RbIterator<Pair<K, V>>, bool> result = this->try_emplace(key, forward<M>(value));
+    if (!result.second)
+      result.first->second = forward<M>(value); // (try_emplace left value alone: the key was there)
+    return result;
+  }
+
+  template<typename KK, typename M> requires (isSame<KK, K>)
+  Pair<RbIterator<Pair<K, V>>, bool> insert_or_assign(KK&& key, M&& value)
+  {
+    Pair<RbIterator<Pair<K, V>>, bool> result = this->try_emplace(move(key), forward<M>(value));
+    if (!result.second)
+      result.first->second = forward<M>(value);
+    return result;
+  }
+
+  // With a position hint, not needed: the entry's position, new or found.
+  template<typename M>
+  iterator insert_or_assign(const_iterator hint, const K& key, M&& value)
+  {
+    return this->insert_or_assign(key, forward<M>(value)).first;
+  }
+
+  template<typename KK, typename M> requires (isSame<KK, K>)
+  iterator insert_or_assign(const_iterator hint, KK&& key, M&& value)
+  {
+    return this->insert_or_assign(move(key), forward<M>(value)).first;
+  }
+
   // kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
 

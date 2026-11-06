@@ -65,6 +65,10 @@ O(n). `count` in a multi container: O(log n + number found).
   into the new entry, a const one copied; a key of another type (a LowercaseString, a StringView)
   is converted to K by the copying overload, never moved from. `try_emplace(hint, key, args...)`: the same, returning
   the entry's position (new or found); the hint is not used, O(log n).
+- `insert_or_assign(key, value)`: when key is absent, inserts an entry of key and a value constructed
+  from value (forwarded) in the new node; when present, assigns value (forwarded) to the entry's.
+  Returns `Pair<iterator, bool>`, true when it inserted. An rvalue key is moved into a new entry only.
+  `insert_or_assign(hint, key, value)`: the same, returning the entry's position. Map only.
 - `erase(key)`: removes the entry (in a multi container all entries) with an equivalent key;
   returns how many were removed. `key` may refer to an entry of this container.
 - `erase(position)`: removes that entry, returns an iterator to the next one. `erase(first,
