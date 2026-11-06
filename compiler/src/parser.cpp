@@ -4664,11 +4664,13 @@ namespace
         return parseForConstexpr(start);
       if (!expect(P::LParen, "expected '(' after for"))
         return nullptr;
-      // Range-for: `for (decl : range)`. Detect by scanning for ':' before ';' at depth 0.
+      // Range-for: `for (decl : range)`, or with an init-statement (C++20) `for (init; decl : range)`.
+      // Detect by scanning for ':' at depth 0 before a second ';'.
       {
         int level = 0;
         int ternary = 0;
         bool isRange = false;
+        int semis = 0;
         for (uint32_t i = pos; i < toks.size(); ++i)
         {
           const Token& t = toks[i];
@@ -4678,7 +4680,12 @@ namespace
             if (level == 0) break;
             --level;
           }
-          else if (level == 0 && t.is(P::Semi)) break;
+          else if (level == 0 && t.is(P::Semi))
+          {
+            if (++semis == 2)
+              break;
+            ternary = 0;
+          }
           else if (level == 0 && t.is(P::Question)) ++ternary;
           else if (level == 0 && t.is(P::Colon))
           {
@@ -4686,6 +4693,23 @@ namespace
             else { isRange = true; break; }
           }
           else if (t.getKind() == TokenKind::End) break;
+        }
+        // `for (init; decl : range)`: the init-statement and the loop in a block of their own, the
+        // init's names scoped to the loop as C++ has them.
+        BlockStmt* withInit = nullptr;
+        Stmt* initStmt = nullptr;
+        if (isRange && semis == 1)
+        {
+          withInit = node<BlockStmt>(start);
+          if (looksLikeDeclaration())
+            initStmt = parseDeclStmt();
+          else
+          {
+            ExprStmt* e = node<ExprStmt>(pos);
+            e->expr = parseExpression();
+            expect(P::Semi, "expected ';' in for");
+            initStmt = e;
+          }
         }
         if (isRange)
         {
@@ -4712,6 +4736,11 @@ namespace
           s->range = at(P::LBrace) ? parseBraceInit() : parseExpression();
           expect(P::RParen, "expected ')'");
           s->body = parseStatement();
+          if (withInit)
+          {
+            withInit->stmts = makeSpanOf(std::vector<Stmt*>{initStmt, s});
+            return withInit;
+          }
           return s;
         }
       }

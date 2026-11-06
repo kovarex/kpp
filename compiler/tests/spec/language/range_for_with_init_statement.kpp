@@ -1,0 +1,27 @@
+// spec: a range-for with an init-statement (C++20), `for (int k = 2; int v : {1, 2, 3})`, `for (auto list = make(); int v : list)`, `for (count = 0; auto& c : cells)` with an expression: the init runs once before the loop and its names are the loop's (an object it declares is destroyed after the loop); a plain for and a for whose condition holds `?:` stay as they were
+struct Cells
+{
+  int values[3] = { 4, 5, 6 };
+  ~Cells() { println("cells gone"); }
+  int* begin() { return values; }
+  int* end() { return values + 3; }
+};
+int main()
+{
+  int total = 0;
+  for (int k = 2; int v : {1, 2, 3})
+    total += v * k;
+  int count = 9;
+  for (Cells cells; int& c : cells)
+  {
+    c += 1;
+    total += c;
+  }
+  for (count = 0; int v : {7, 8})
+    count += v;
+  int odd = 0;
+  for (int i = 0; i < 4 ? true : false; ++i)
+    odd += i;
+  println(total, " ", count, " ", odd);
+  return 0;
+}
