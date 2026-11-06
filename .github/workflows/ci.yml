@@ -658,6 +658,23 @@ jobs:
       # kpp on a project with C libraries (tests/targets/clibrary: a C file, a C++ file, a define per
       # platform, Linux's own library with a sysroot include directory), built natively with clang 19
       # and llvm-ar beside it, in debug and in release (ThinLTO): `42 linux 10`.
+      # The compile server on Linux (a Unix socket per key, server.cpp): a build through it, the same
+      # again (replayed: its log says so), an edit (built again, the program prints the new text),
+      # --stop-server (no server left).
+      - name: the compile server
+        run: |
+          mkdir -p /tmp/served && cd /tmp/served
+          kppc="$GITHUB_WORKSPACE/compiler/build/kppc"
+          for text in one one two; do
+            printf 'int main()\n{\n  println("%s");\n  return 0;\n}\n' "$text" > main.kpp
+            "$kppc" --server --exe app main.kpp
+            [ "$(./app)" = "$text" ]
+          done
+          grep -q "no input changed, the previous build's output sent again" /tmp/kppc-server-$(id -u)/*.log
+          grep -q "incremental:" /tmp/kppc-server-$(id -u)/*.log
+          "$kppc" --stop-server --exe app main.kpp | grep -q "compile server stopped"
+          if pgrep -f "kppc --serve"; then echo "a compile server is still running"; exit 1; fi
+
       - name: a project with C libraries
         run: |
           cp -r compiler/tests/targets/clibrary /tmp/clibrary

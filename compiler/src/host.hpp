@@ -17,9 +17,10 @@ namespace host
   // (design.md, "Targets and hosts", 1: the host's own platform).
   const char* platformName();
 
-  // Whether kppc has its compile server on this host (server.cpp: Windows' named pipes so far). A
-  // build that would go through it builds in its own process instead (kpp, --run).
-#ifdef _WIN32
+  // Whether kppc has its compile server on this host (server.cpp: Windows' named pipes, Linux's and
+  // FreeBSD's Unix sockets). A build that would go through it builds in its own process instead
+  // (kpp, --run).
+#if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__)
   constexpr bool compileServer = true;
 #else
   constexpr bool compileServer = false;

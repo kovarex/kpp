@@ -1,68 +1,33 @@
 #include "server.hpp"
 #include "source.hpp"
 
-#ifndef _WIN32
-// The compile server on POSIX hosts: not yet (design.md, "Targets and hosts", 5: a Unix domain
-// socket in place of the named pipe, thread A's). host::compileServer is false there, so kpp and
-// kppc --run build in their own process; asking for the server is an error that says so, never a
-// build that silently runs elsewhere.
-#include <cstdio>
-#include <unistd.h>
+#include "host.hpp"
 
-int runClient(int, char**, CompileFunction)
-{
-  fprintf(stderr, "kppc: the compile server (--server) is Windows-only so far; build without it (--no-server)\n");
-  return 2;
-}
-
-int runServer(const char*, const char*, const char*, CompileFunction)
-{
-  fprintf(stderr, "kppc: the compile server is Windows-only so far\n");
-  return 2;
-}
-
-int stopServer(int, char**) { return 0; } // (no compile server runs on this host)
-bool stopServerQuietly(int, char**) { return true; }
-int stopAllServers() { return 0; }
-std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>&) { return {}; }
-
-void buildDone(int exitCode)
-{
-  fflush(stdout);
-  fflush(stderr);
-  _exit(exitCode);
-}
-
-bool servingBuild() { return false; }
-
-int buildInThisProcess(CompileFunction, std::vector<std::string>, std::string&, std::string& err, std::vector<std::string>*)
-{
-  err = "kppc: a build captured in this process (the language server's) is Windows-only so far\n";
-  return 1;
-}
-
-bool replayBuild(uint64_t, const std::vector<std::string>&, const std::function<std::vector<std::string>()>&, bool, int&) { return false; }
-bool leftAsKept(const std::string&) { return false; }
-bool replayDisabled() { return false; }
-
-std::string environmentBlock()
-{
-  extern char** environ;
-  std::string out;
-  for (char** e = environ; e && *e; ++e)
-    out.append(*e).push_back('\0');
-  return out;
-}
-
-void logBuildNote(const std::string&) {}
-void noteIncrementalBuild() {}
-#else
-
+// The compile server on Windows (a named pipe per key) and on POSIX hosts (a Unix domain socket per
+// key, design.md "Targets and hosts" 5): one protocol, one session, each OS's primitives beside each
+// other below, Windows' as they were.
+#ifdef _WIN32
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 #include <fcntl.h>
 #include <io.h>
+#else
+#include <cerrno>
+#include <condition_variable>
+#include <ctime>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/file.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -94,11 +59,26 @@ namespace
   const uint8_t stdoutFrame = 1, stderrFrame = 2, exitFrame = 3, processFrame = 4;
   const int64_t idleSeconds = 3600;
 
+  // A channel to a server or to a client: Windows' pipe HANDLE, POSIX's socket descriptor.
+#ifdef _WIN32
+  using Channel = HANDLE;
+  const Channel noChannel = INVALID_HANDLE_VALUE;
+#else
+  using Channel = int;
+  const Channel noChannel = -1;
+#endif
+
   std::string serverDirectory()
   {
+#ifdef _WIN32
     char temp[MAX_PATH * 4];
     DWORD n = GetTempPathA(DWORD(sizeof temp), temp);
     return std::string(temp, n) + "kppc-server\\";
+#else
+    // (the user's own, not others': its sockets take requests to build and to run what a build runs)
+    std::error_code ec;
+    return (std::filesystem::temp_directory_path(ec) / ("kppc-server-" + std::to_string(getuid()))).string() + "/";
+#endif
   }
 
   std::string logPath(const std::string& key) { return serverDirectory() + key + ".log"; }
@@ -119,6 +99,7 @@ namespace
     va_start(args, format);
     vsnprintf(text, sizeof text, format, args);
     va_end(args);
+#ifdef _WIN32
     SYSTEMTIME t;
     GetLocalTime(&t);
     if (FILE* f = fopen(serverLog.c_str(), "ab"))
@@ -127,8 +108,21 @@ namespace
               GetCurrentProcessId(), text);
       fclose(f);
     }
+#else
+    timespec now{};
+    clock_gettime(CLOCK_REALTIME, &now);
+    tm t{};
+    localtime_r(&now.tv_sec, &t);
+    if (FILE* f = fopen(serverLog.c_str(), "ab"))
+    {
+      fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d.%03d [%d] %s\n", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec,
+              int(now.tv_nsec / 1000000), host::processId(), text);
+      fclose(f);
+    }
+#endif
   }
 
+#ifdef _WIN32
   // The stack of a crash, a frame a line: the module and offset (resolvable with the module's map or
   // PDB later) and the function's name when the module has symbols.
   void logStack(CONTEXT* context)
@@ -162,6 +156,7 @@ namespace
       logLine("  %s+0x%llx %s", base ? base + 1 : module, (unsigned long long)(address - DWORD64(handle)), named ? symbol->Name : "");
     }
   }
+#endif
 
   // The last line of a log, for a client whose server ended.
   std::string lastLogLine(const std::string& path)
@@ -183,6 +178,7 @@ namespace
     return start == std::string::npos ? text : text.substr(start + 1);
   }
 
+#ifdef _WIN32
   bool writeAll(HANDLE h, const void* data, size_t size)
   {
     const char* p = static_cast<const char*>(data);
@@ -211,14 +207,54 @@ namespace
     return true;
   }
 
+  void closeChannel(Channel c) { CloseHandle(c); }
+  int lastError() { return int(GetLastError()); }
+#else
+  // (MSG_NOSIGNAL: a client gone is a failed write, not SIGPIPE's end of the server)
+  bool writeAll(int fd, const void* data, size_t size)
+  {
+    const char* p = static_cast<const char*>(data);
+    while (size)
+    {
+      ssize_t n = send(fd, p, std::min<size_t>(size, 1 << 20), MSG_NOSIGNAL);
+      if (n < 0 && errno == EINTR)
+        continue;
+      if (n <= 0)
+        return false;
+      p += n;
+      size -= size_t(n);
+    }
+    return true;
+  }
+
+  bool readAll(int fd, void* data, size_t size)
+  {
+    char* p = static_cast<char*>(data);
+    while (size)
+    {
+      ssize_t n = read(fd, p, std::min<size_t>(size, 1 << 20));
+      if (n < 0 && errno == EINTR)
+        continue;
+      if (n <= 0)
+        return false;
+      p += n;
+      size -= size_t(n);
+    }
+    return true;
+  }
+
+  void closeChannel(Channel c) { close(c); }
+  int lastError() { return errno; }
+#endif
+
   void putU32(std::string& out, uint32_t v) { out.append(reinterpret_cast<const char*>(&v), 4); }
   void putString(std::string& out, const std::string& s)
   {
     putU32(out, uint32_t(s.size()));
     out += s;
   }
-  bool readU32(HANDLE h, uint32_t& v) { return readAll(h, &v, 4); }
-  bool readString(HANDLE h, std::string& s)
+  bool readU32(Channel h, uint32_t& v) { return readAll(h, &v, 4); }
+  bool readString(Channel h, std::string& s)
   {
     uint32_t n = 0;
     if (!readU32(h, n) || n > (1u << 28))
@@ -227,6 +263,7 @@ namespace
     return n == 0 || readAll(h, s.data(), n);
   }
 
+#ifdef _WIN32
   std::string modulePath()
   {
     char path[MAX_PATH * 4];
@@ -240,6 +277,15 @@ namespace
     DWORD n = GetCurrentDirectoryA(DWORD(sizeof path), path);
     return std::string(path, n);
   }
+#else
+  std::string modulePath() { return host::executablePath().string(); }
+
+  std::string currentDirectory()
+  {
+    std::error_code ec;
+    return std::filesystem::current_path(ec).string();
+  }
+#endif
 
   // The key of a server: the kppc binary (path, size and time: a rebuilt kppc is another server),
   // the working directory and the arguments. A server only ever builds its own key's arguments,
@@ -252,18 +298,25 @@ namespace
   // kppc from the one before, a changed output of a kept build from the one it left.
   std::string stampOf(const std::string& path)
   {
+#ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA a{};
     if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &a))
       return "missing";
     return std::to_string(a.nFileSizeLow) + " " + std::to_string(a.nFileSizeHigh) + " " + std::to_string(a.ftLastWriteTime.dwLowDateTime) + " " +
            std::to_string(a.ftLastWriteTime.dwHighDateTime);
+#else
+    struct stat a{};
+    if (stat(path.c_str(), &a) != 0)
+      return "missing";
+    return std::to_string(a.st_size) + " " + std::to_string(a.st_mtim.tv_sec) + " " + std::to_string(a.st_mtim.tv_nsec);
+#endif
   }
 
   std::string serverKey(const std::string& exe, const std::string& cwd, const std::vector<std::string>& args)
   {
     std::string text = "kppc server 1\n" + exe + "\n" + stampOf(exe) + "\n";
-    for (char c : cwd)
-      text += char(tolower(static_cast<unsigned char>(c)));
+    for (char c : cwd) // (Windows' file names ignore case; POSIX's do not: two directories there)
+      text += host::pathsIgnoreCase ? char(tolower(static_cast<unsigned char>(c))) : c;
     for (const std::string& arg : args)
       if (arg != "--verify-incremental" && arg != "--msvc-diagnostics" && arg != "--packages") // a check of the server's build; the client's form; a listing
         text += std::string(1, '\0') + arg;
@@ -275,6 +328,7 @@ namespace
     return hex;
   }
 
+#ifdef _WIN32
   std::string pipeName(const std::string& key) { return "\\\\.\\pipe\\kppc-server-" + key; }
 
   // Connects to the server's pipe, waiting while another client is being served.
@@ -382,6 +436,115 @@ namespace
     CloseHandle(pi.hProcess);
     return true;
   }
+#else
+  // KEY.sock: the server's socket. KEY.lock: held (flock, exclusive) by the key's server for as long
+  // as it runs: the one server of a key, as Windows' first pipe instance is, and how a stop or a prune
+  // tells a running server's files from an ended one's. KEY.starting: held by the client that starts
+  // the server until it answers, so that a stop that comes meanwhile waits for it (stopKey).
+  std::string pipeName(const std::string& key) { return serverDirectory() + key + ".sock"; }
+  std::string lockPath(const std::string& key) { return serverDirectory() + key + ".lock"; }
+  std::string startingPath(const std::string& key) { return serverDirectory() + key + ".starting"; }
+
+  // Whether someone holds path's lock (a server running, a client starting one).
+  bool lockHeld(const std::string& path)
+  {
+    int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+      return false;
+    bool held = flock(fd, LOCK_EX | LOCK_NB) != 0 && errno == EWOULDBLOCK;
+    close(fd);
+    return held;
+  }
+
+  // Connects to the server's socket. A busy server accepts the next client when its build is done:
+  // connect() is queued till then (listen's backlog), as Windows' WaitNamedPipe waits.
+  int connectPipe(const std::string& name, int waitMs)
+  {
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    if (name.size() >= sizeof address.sun_path)
+      return -1;
+    memcpy(address.sun_path, name.c_str(), name.size() + 1);
+    auto start = std::chrono::steady_clock::now();
+    for (;;)
+    {
+      int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+      if (fd < 0)
+        return -1;
+      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0)
+        return fd;
+      close(fd);
+      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(waitMs))
+        return -1;
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+  }
+
+  // What a prune removes (Windows' pruneServerDirectory): a key's files more than ten minutes old whose
+  // server has ended (its KEY.lock held by no one), and what a verify left (verify.PID.*); keep's stay.
+  void pruneServerDirectory(const std::string& dir, const std::string& keep)
+  {
+    std::error_code ec;
+    auto now = std::filesystem::file_time_type::clock::now();
+    std::vector<std::filesystem::path> gone;
+    for (std::filesystem::directory_iterator i(dir, ec), end; !ec && i != end; i.increment(ec))
+    {
+      std::string name = i->path().filename().string(), stem = name.substr(0, name.find('.'));
+      std::error_code e2;
+      if (stem == keep || now - i->last_write_time(e2) < std::chrono::minutes(10) || e2)
+        continue;
+      if (stem != "verify" && lockHeld(lockPath(stem)))
+        continue;
+      gone.push_back(i->path());
+    }
+    for (const std::filesystem::path& path : gone)
+      std::filesystem::remove(path, ec);
+  }
+
+  // Starts a server for the key: kppc itself, in a session of its own (no copy: a running executable
+  // can be replaced on POSIX), its streams the null device. The client holds KEY.starting meanwhile.
+  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
+  {
+    std::string dir = serverDirectory();
+    mkdir(dir.c_str(), 0700);
+    pruneServerDirectory(dir, key);
+    std::vector<std::string> argv{exe, "--serve", key, exe, stampOf(exe)};
+    std::vector<char*> args;
+    for (std::string& a : argv)
+      args.push_back(a.data());
+    args.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    for (int fd = 0; fd < 3; ++fd)
+      posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0);
+    posix_spawn_file_actions_addchdir_np(&actions, cwd.c_str());
+    posix_spawnattr_t attributes;
+    posix_spawnattr_init(&attributes);
+    posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSID);
+    pid_t pid = 0;
+    int error = posix_spawn(&pid, exe.c_str(), &actions, &attributes, args.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    posix_spawnattr_destroy(&attributes);
+    if (error != 0)
+      return false;
+    // (reaped by a thread of its own: the client may live on, and the server's end is no zombie)
+    std::thread([pid] { int status = 0; waitpid(pid, &status, 0); }).detach();
+    return true;
+  }
+
+  // Waits up to ms for process pid to end (another process's: polled); true when it has.
+  bool waitForEnd(pid_t pid, int ms)
+  {
+    auto start = std::chrono::steady_clock::now();
+    while (kill(pid, 0) == 0 || errno != ESRCH)
+    {
+      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(ms))
+        return false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return true;
+  }
+#endif
 
   std::string requestHeader(uint32_t kind)
   {
@@ -394,15 +557,32 @@ namespace
   // redirected into pipes whose contents two threads forward as frames.
   struct Session
   {
+#ifdef _WIN32
     ~Session() { CloseHandle(answeredEvent); }
 
     HANDLE client = INVALID_HANDLE_VALUE;
     std::mutex writeLock;
     HANDLE outRead = nullptr, errRead = nullptr;
+#else
+    int client = -1;
+    std::mutex writeLock;
+    int outRead = -1, errRead = -1;
+    // answer()'s signal and the build thread's end, which runBuild waits for, whichever comes first;
+    // shared with the thread, which may end after this session (a build's freeing goes on).
+    struct Done
+    {
+      std::mutex mutex;
+      std::condition_variable signal;
+      bool answered = false;
+    };
+    std::shared_ptr<Done> done = std::make_shared<Done>();
+#endif
     std::thread outForward, errForward;
     bool answered = false;
     bool clientLost = false; // a write to the client failed: it went away (the build goes on, unseen)
+#ifdef _WIN32
     HANDLE answeredEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr); // set by answer()
+#endif
     int exitCode = 0;
     std::string captured[2];     // what the build printed (stdout, stderr), kept for a replay (step 3a)
     bool muted = false;          // --verify-incremental's own build: captured, not sent
@@ -441,10 +621,11 @@ namespace
     if (writeAll(s.client, head, 5) && (size == 0 || writeAll(s.client, data, size)))
       return true;
     s.clientLost = true;
-    logLine("build %zu: the client went away (write failed, error %lu)", builds, GetLastError());
+    logLine("build %zu: the client went away (write failed, error %lu)", builds, (unsigned long)lastError());
     return false;
   }
 
+#ifdef _WIN32
   void forward(Session& s, HANDLE from, uint8_t type)
   {
     char buffer[1 << 16];
@@ -453,6 +634,18 @@ namespace
       DWORD n = 0;
       if (!ReadFile(from, buffer, DWORD(sizeof buffer), &n, nullptr) || n == 0)
         return;
+#else
+  void forward(Session& s, int from, uint8_t type)
+  {
+    char buffer[1 << 16];
+    for (;;)
+    {
+      ssize_t n = read(from, buffer, sizeof buffer);
+      if (n < 0 && errno == EINTR)
+        continue;
+      if (n <= 0)
+        return;
+#endif
       {
         std::lock_guard lock(s.writeLock);
         s.captured[type == stderrFrame].append(buffer, n);
@@ -466,6 +659,7 @@ namespace
   // Points stdout at descriptor out and stderr at err: the streams' own descriptors, descriptors 1
   // and 2 (which the CRT hands to the processes system() starts) and the process's standard
   // handles (which those processes inherit).
+#ifdef _WIN32
   void pointStreams(int out, int err)
   {
     int outFd = _fileno(stdout), errFd = _fileno(stderr);
@@ -478,11 +672,38 @@ namespace
     SetStdHandle(STD_OUTPUT_HANDLE, HANDLE(_get_osfhandle(outFd)));
     SetStdHandle(STD_ERROR_HANDLE, HANDLE(_get_osfhandle(errFd)));
   }
+  int openNull() { return _open("NUL", _O_WRONLY | _O_BINARY); }
+#else
+  // (descriptors 1 and 2: stdout's and stderr's, and what the processes system() starts inherit)
+  void pointStreams(int out, int err)
+  {
+    dup2(out, 1);
+    dup2(err, 2);
+  }
+  int openNull() { return open("/dev/null", O_WRONLY | O_CLOEXEC); }
+#endif
 
   // Points the process's stdout and stderr (the CRT's descriptors 1 and 2 and the handles child
   // processes inherit, clang's included) at new pipes, and starts forwarding them.
   bool redirectOutput(Session& s)
   {
+#ifndef _WIN32
+    int outPipe[2], errPipe[2];
+    if (pipe2(outPipe, O_CLOEXEC) != 0)
+      return false;
+    if (pipe2(errPipe, O_CLOEXEC) != 0)
+    {
+      close(outPipe[0]), close(outPipe[1]);
+      return false;
+    }
+    s.outRead = outPipe[0], s.errRead = errPipe[0];
+    pointStreams(outPipe[1], errPipe[1]); // (dup2's copies are inherited; the pipes' own ends are not)
+    close(outPipe[1]);
+    close(errPipe[1]);
+    s.outForward = std::thread(forward, std::ref(s), s.outRead, stdoutFrame);
+    s.errForward = std::thread(forward, std::ref(s), s.errRead, stderrFrame);
+    return true;
+#else
     SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
     HANDLE outWrite = nullptr, errWrite = nullptr;
     if (!CreatePipe(&s.outRead, &outWrite, &inherit, 1 << 16) || !CreatePipe(&s.errRead, &errWrite, &inherit, 1 << 16))
@@ -497,6 +718,7 @@ namespace
     s.outForward = std::thread(forward, std::ref(s), s.outRead, stdoutFrame);
     s.errForward = std::thread(forward, std::ref(s), s.errRead, stderrFrame);
     return true;
+#endif
   }
 
   // The previous build of this server's arguments, for a request whose inputs are as they were
@@ -535,16 +757,25 @@ namespace
     s.drained = true;
     fflush(stdout);
     fflush(stderr);
-    int nul = _open("NUL", _O_WRONLY | _O_BINARY);
+    int nul = openNull();
     pointStreams(nul, nul);
+#ifdef _WIN32
     _close(nul);
+#else
+    close(nul);
+#endif
     // The pipes' last write ends are closed now (clang's closed with clang): the forwarders end.
     if (s.outForward.joinable())
       s.outForward.join();
     if (s.errForward.joinable())
       s.errForward.join();
+#ifdef _WIN32
     CloseHandle(s.outRead);
     CloseHandle(s.errRead);
+#else
+    close(s.outRead);
+    close(s.errRead);
+#endif
   }
 
   // Sends the build's exit code once everything it printed is through, and lets the client go.
@@ -557,6 +788,7 @@ namespace
     if (s.keep)
       keepBuild(s, exitCode);
     sendFrame(s, exitFrame, &exitCode, 4);
+#ifdef _WIN32
     if (!s.local)
     {
       FlushFileBuffers(s.client);
@@ -564,10 +796,54 @@ namespace
     }
     s.exitCode = exitCode;
     SetEvent(s.answeredEvent);
+#else
+    if (!s.local)
+      shutdown(s.client, SHUT_RDWR); // (the client has its exit code; the socket closes once served)
+    std::lock_guard lock(s.done->mutex);
+    s.exitCode = exitCode;
+    s.done->answered = true;
+    s.done->signal.notify_all();
+#endif
   }
 
   // The client's environment for the build (TMP, which holds the C import cache, LIB and INCLUDE
   // for clang's link, KPP_CLANG...): what the server has and the client has not is removed.
+#ifndef _WIN32
+  // POSIX: the block is NAME=VALUE entries, each ended by a zero byte (clientEnvironment).
+  void applyEnvironment(const std::string& block)
+  {
+    std::vector<std::string> wanted;
+    for (size_t at = 0, end; at < block.size() && (end = block.find('\0', at)) != std::string::npos; at = end + 1)
+      if (end > at && block[at] != '=')
+        wanted.push_back(block.substr(at, end - at));
+    std::vector<std::string> present;
+    for (char** e = environ; e && *e; ++e)
+      present.push_back(std::string(*e).substr(0, std::string(*e).find('=')));
+    for (const std::string& name : present)
+    {
+      bool kept = false;
+      for (const std::string& w : wanted)
+        kept = kept || w.compare(0, w.find('='), name) == 0;
+      if (!kept)
+        unsetenv(name.c_str());
+    }
+    for (const std::string& entry : wanted)
+    {
+      size_t eq = entry.find('=');
+      if (eq != std::string::npos)
+        setenv(entry.substr(0, eq).c_str(), entry.c_str() + eq + 1, 1);
+    }
+  }
+
+  // This process's environment as a request carries it.
+  std::string clientEnvironment()
+  {
+    std::string out;
+    for (char** e = environ; e && *e; ++e)
+      out.append(*e).push_back('\0');
+    return out;
+  }
+#else
   void applyEnvironment(const std::string& block)
   {
     std::vector<std::wstring> wanted;
@@ -612,6 +888,21 @@ namespace
     }
   }
 
+  std::string clientEnvironment()
+  {
+    std::string environment;
+    if (wchar_t* block = GetEnvironmentStringsW())
+    {
+      const wchar_t* q = block;
+      while (*q)
+        q += wcslen(q) + 1;
+      environment.assign(reinterpret_cast<const char*>(block), (q - block + 1) * sizeof(wchar_t));
+      FreeEnvironmentStringsW(block);
+    }
+    return environment;
+  }
+#endif
+
   struct BuildJob
   {
     CompileFunction compile;
@@ -625,6 +916,61 @@ namespace
   // When the build has answered its client (buildDone), what is left is freeing what it built
   // (about 10 s on the full game): the next request is served meanwhile, the thread finishing on
   // its own. Whoever of the two lets go of the job last deletes it.
+#ifndef _WIN32
+  // POSIX: a pthread of an 8 MB stack; the build's end and answer() each signal the session.
+  int runBuild(CompileFunction compile, std::vector<std::string> args, Session& s)
+  {
+    struct Run
+    {
+      BuildJob* job;
+      std::shared_ptr<Session::Done> done;
+      std::shared_ptr<bool> finished; // (this run's own: --verify-incremental runs a second build in the session)
+    };
+    BuildJob* job = new BuildJob{compile, std::move(args)};
+    auto finished = std::make_shared<bool>(false);
+    auto* run = new Run{job, s.done, finished};
+    pthread_attr_t attributes;
+    pthread_attr_init(&attributes);
+    pthread_attr_setstacksize(&attributes, size_t(8) << 20);
+    pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    pthread_t thread;
+    int error = pthread_create(&thread, &attributes, [](void* p) -> void*
+    {
+      Run* r = static_cast<Run*>(p);
+      BuildJob* j = r->job;
+      std::vector<char*> argv;
+      for (std::string& a : j->args)
+        argv.push_back(a.data());
+      argv.push_back(nullptr);
+      j->result = j->compile(int(argv.size() - 1), argv.data());
+      {
+        std::lock_guard lock(r->done->mutex);
+        *r->finished = true;
+        r->done->signal.notify_all();
+      }
+      if (j->released.exchange(true))
+        delete j;
+      delete r;
+      return nullptr;
+    }, run);
+    pthread_attr_destroy(&attributes);
+    if (error != 0)
+    {
+      delete run;
+      delete job;
+      return 1;
+    }
+    int result;
+    {
+      std::unique_lock lock(s.done->mutex);
+      s.done->signal.wait(lock, [&] { return *finished || (!s.verifying && s.done->answered); });
+      result = *finished ? job->result : s.exitCode;
+    }
+    if (job->released.exchange(true))
+      delete job;
+    return result;
+  }
+#else
   int runBuild(CompileFunction compile, std::vector<std::string> args, Session& s)
   {
     BuildJob* job = new BuildJob{compile, std::move(args)};
@@ -653,6 +999,7 @@ namespace
       delete job;
     return result;
   }
+#endif
 
   // What a build printed, without what differs from run to run by design (timings and rates, wait
   // counts, the interned types' count, whether the C import came from its cache, how many objects the
@@ -736,14 +1083,23 @@ namespace
     fflush(stdout);
     fflush(stderr);
     // (Named by the server's process: other servers verify at the same time, in other threads' builds.)
-    std::string own = serverDirectory() + "verify." + std::to_string(GetCurrentProcessId());
+    std::string own = serverDirectory() + "verify." + std::to_string(host::processId());
     std::string outPath = own + ".out", errPath = own + ".err";
+#ifdef _WIN32
     int savedOut = _dup(_fileno(stdout)), savedErr = _dup(_fileno(stderr));
     int out = _open(outPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     int err = _open(errPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     pointStreams(out, err);
     _close(out);
     _close(err);
+#else
+    int savedOut = fcntl(1, F_DUPFD_CLOEXEC, 3), savedErr = fcntl(2, F_DUPFD_CLOEXEC, 3);
+    int out = open(outPath.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
+    int err = open(errPath.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
+    pointStreams(out, err);
+    close(out);
+    close(err);
+#endif
     replayOff = true;
     s.verifying = true;
     int fresh = runBuild(compile, std::move(args), s);
@@ -752,8 +1108,13 @@ namespace
     fflush(stdout);
     fflush(stderr);
     pointStreams(savedOut, savedErr);
+#ifdef _WIN32
     _close(savedOut);
     _close(savedErr);
+#else
+    close(savedOut);
+    close(savedErr);
+#endif
     auto slurp = [](const std::string& path)
     {
       std::string text;
@@ -769,8 +1130,8 @@ namespace
     std::string problem;
     std::string keptOut = normalized(printedOut), freshOut = normalized(slurp(outPath));
     std::string keptErr = normalized(printedErr), freshErr = normalized(slurp(errPath));
-    DeleteFileA(outPath.c_str()); // (read: 868 pairs were left in the server directory)
-    DeleteFileA(errPath.c_str());
+    remove(outPath.c_str()); // (read: 868 pairs were left in the server directory)
+    remove(errPath.c_str());
     std::string after = writtenContents(outputs);
     if (fresh != builtExit)
       problem = "exit code " + std::to_string(builtExit) + " kept, " + std::to_string(fresh) + " from scratch";
@@ -789,7 +1150,7 @@ namespace
   }
 
   // Serves one client. Returns false when the client asked the server to stop.
-  bool serveClient(HANDLE client, CompileFunction compile)
+  bool serveClient(Channel client, CompileFunction compile)
   {
     Session s;
     s.client = client;
@@ -800,14 +1161,16 @@ namespace
       logLine("a client sent no request");
       return true;
     }
-    DWORD self = GetCurrentProcessId();
+    uint32_t self = uint32_t(host::processId());
     sendFrame(s, processFrame, &self, 4); // so that a client that loses the server can wait for it to end
     if (kind == stopRequest)
     {
       logLine("stopped by a client");
       int zero = 0;
       sendFrame(s, exitFrame, &zero, 4);
+#ifdef _WIN32
       FlushFileBuffers(client);
+#endif
       return false;
     }
     std::string exe, cwd, environment;
@@ -829,7 +1192,19 @@ namespace
     }
     logLine("build %zu: %u arguments, in %s, the last %s", ++builds, argc, cwd.c_str(), args.back().c_str());
     applyEnvironment(environment);
+#ifdef _WIN32
     SetCurrentDirectoryA(cwd.c_str());
+#else
+    if (chdir(cwd.c_str()) != 0) // (never a build in another directory)
+    {
+      logLine("build %zu: cannot enter %s", builds, cwd.c_str());
+      std::string message = "kppc server: cannot enter " + cwd + ": " + strerror(errno) + "\n";
+      sendFrame(s, stderrFrame, message.data(), uint32_t(message.size()));
+      int one = 1;
+      sendFrame(s, exitFrame, &one, 4);
+      return true;
+    }
+#endif
     if (!redirectOutput(s))
     {
       const char* message = "kppc server: cannot redirect the build's output\n";
@@ -916,6 +1291,7 @@ void logBuildNote(const std::string& note)
 // Visual Studio was ever a replay: each one with nothing changed checked and linked again, about 0.5 s
 // instead of 0.08 s (thread K on PC-OBYVAK, 2026-11-05). Every other variable counts (TMP, PATH, LIB,
 // INCLUDE, KPP_*...): one left out wrongly would make a replay of a build that differs.
+#ifdef _WIN32
 static bool readByNoBuild(const wchar_t* entry)
 {
   auto startsWith = [&](const wchar_t* prefix) { return _wcsnicmp(entry, prefix, wcslen(prefix)) == 0; };
@@ -934,6 +1310,9 @@ std::string environmentBlock()
   }
   return out;
 }
+#else
+std::string environmentBlock() { return clientEnvironment(); } // (every variable counts)
+#endif
 
 bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, const std::function<std::vector<std::string>()>& left,
                  bool headersUnchanged, int& exitCode)
@@ -999,23 +1378,35 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::string exe = modulePath(), cwd = currentDirectory();
   std::vector<std::string> args = argumentsOf(argc, argv);
   std::string key = serverKey(exe, cwd, args), name = pipeName(key);
-  HANDLE pipe = connectPipe(name, 0);
-  if (pipe == INVALID_HANDLE_VALUE)
+  Channel pipe = connectPipe(name, 0);
+  if (pipe == noChannel)
   {
     // KEY.args before the server starts: a stop of its project that comes meanwhile finds it (and
     // waits for its pipe, stopKey); it goes again when no server could be started.
     std::string record = cwd + '\0';
     for (const std::string& a : args)
       record += a + '\0';
+#ifdef _WIN32
     CreateDirectoryA(serverDirectory().c_str(), nullptr);
+#else
+    mkdir(serverDirectory().c_str(), 0700);
+    // KEY.starting, held until the server answers: a stop meanwhile waits for it (stopKey).
+    int starting = open(startingPath(key).c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    if (starting >= 0)
+      flock(starting, LOCK_EX);
+#endif
     if (FILE* f = fopen(argumentsPath(key).c_str(), "wb"))
       fwrite(record.data(), 1, record.size(), f), fclose(f);
     if (startServer(exe, key, cwd))
       pipe = connectPipe(name, 20000);
     else
-      DeleteFileA(argumentsPath(key).c_str());
+      remove(argumentsPath(key).c_str());
+#ifndef _WIN32
+    if (starting >= 0)
+      close(starting);
+#endif
   }
-  if (pipe == INVALID_HANDLE_VALUE)
+  if (pipe == noChannel)
   {
     fprintf(stderr, "kppc: no compile server could be reached; building in this process\n");
     return compile(argc, argv);
@@ -1026,17 +1417,8 @@ int runClient(int argc, char** argv, CompileFunction compile)
   putU32(request, uint32_t(args.size()));
   for (const std::string& a : args)
     putString(request, a);
-  std::string environment;
-  if (wchar_t* block = GetEnvironmentStringsW())
-  {
-    const wchar_t* q = block;
-    while (*q)
-      q += wcslen(q) + 1;
-    environment.assign(reinterpret_cast<const char*>(block), (q - block + 1) * sizeof(wchar_t));
-    FreeEnvironmentStringsW(block);
-  }
-  putString(request, environment);
-  DWORD serverProcess = 0;
+  putString(request, clientEnvironment());
+  uint32_t serverProcess = 0;
   // The server marks each diagnostic's place (source.hpp, markDiagnosticLocations): written here in
   // this client's form. A mark that a frame cuts is held until its end comes.
   bool msvc = std::find(args.begin(), args.end(), "--msvc-diagnostics") != args.end();
@@ -1074,7 +1456,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
       {
         int code = 0;
         memcpy(&code, data.data(), 4);
-        CloseHandle(pipe);
+        closeChannel(pipe);
         print(0, nullptr, 0, true);
         print(1, nullptr, 0, true);
         return code;
@@ -1089,11 +1471,12 @@ int runClient(int argc, char** argv, CompileFunction compile)
   }
   print(0, nullptr, 0, true); // (what came before the server went)
   print(1, nullptr, 0, true);
-  DWORD readError = GetLastError();
-  CloseHandle(pipe);
+  unsigned long readError = (unsigned long)lastError();
+  closeChannel(pipe);
   // The server is gone or going: before building here, wait until it has ended (its job ends
   // the clang and link it started with it), so that nothing of its build still writes the outputs;
   // one that does not end is ended.
+#ifdef _WIN32
   if (serverProcess)
     if (HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, serverProcess))
     {
@@ -1104,12 +1487,105 @@ int runClient(int argc, char** argv, CompileFunction compile)
       }
       CloseHandle(process);
     }
+#else
+  if (serverProcess && !waitForEnd(pid_t(serverProcess), 30000))
+  {
+    kill(pid_t(serverProcess), SIGKILL);
+    waitForEnd(pid_t(serverProcess), 30000);
+  }
+#endif
   std::string why = lastLogLine(logPath(key));
   fprintf(stderr, "kppc: the compile server ended without finishing the build (read error %lu; its log, %s, ends: %s); building in this process\n",
           readError, logPath(key).c_str(), why.empty() ? "(nothing)" : why.c_str());
   return compile(argc, argv);
 }
 
+#ifndef _WIN32
+// POSIX: KEY.lock held for the server's life makes it the key's one server; the socket bound after
+// it (a stale one from a server that crashed is removed first: the lock says no one serves it).
+int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
+{
+  std::string dir = serverDirectory();
+  mkdir(dir.c_str(), 0700);
+  int lock = open(lockPath(key).c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (lock < 0 || flock(lock, LOCK_EX | LOCK_NB) != 0)
+    return 1; // another server has the key
+  std::string name = pipeName(key);
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  if (name.size() >= sizeof address.sun_path)
+    return 1;
+  memcpy(address.sun_path, name.c_str(), name.size() + 1);
+  unlink(name.c_str());
+  int listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (listener < 0 || bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0 || listen(listener, 64) != 0)
+    return 1;
+  serverLog = logPath(key);
+  logLine("started");
+  markDiagnosticLocations(); // each client prints them in its own form
+  // Why it ended, for the client that loses it (no stack: the signal's name and the build).
+  for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
+    signal(sig, [](int sig)
+    {
+      logLine("crashed in build %zu: signal %d (%s)", builds, sig, strsignal(sig));
+      signal(sig, SIG_DFL);
+      raise(sig);
+    });
+  signal(SIGPIPE, SIG_IGN); // (a client gone is a failed write)
+  setvbuf(stdout, nullptr, _IONBF, 0);
+  lastActivity = nowSeconds();
+  static std::mutex idleMutex; // the checks and the start of a client's service exclude each other
+  // Between builds: exits once idle for an hour, or once the kppc it was started from has changed.
+  std::thread([origin = std::string(origin), stamp = std::string(stamp), name]
+  {
+    for (;;)
+    {
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      std::lock_guard lock(idleMutex);
+      if (busy)
+        continue;
+      if (stampOf(origin) != stamp)
+      {
+        logLine("the kppc it was started from (%s) changed: exiting", origin.c_str());
+        unlink(name.c_str());
+        _exit(0);
+      }
+      if (nowSeconds() - lastActivity > idleSeconds)
+      {
+        logLine("idle for an hour: exiting");
+        unlink(name.c_str());
+        _exit(0);
+      }
+    }
+  }).detach();
+  for (;;)
+  {
+    int client = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+    if (client < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      logLine("accept failed (error %d): exiting", errno);
+      _exit(1);
+    }
+    {
+      std::lock_guard lock(idleMutex);
+      busy = true;
+    }
+    bool goOn = serveClient(client, compile);
+    close(client);
+    lastActivity = nowSeconds();
+    busy = false;
+    // Stopped: it ends at once (its socket's name first: the next build of the key starts another).
+    if (!goOn)
+    {
+      logLine("exiting");
+      unlink(name.c_str());
+      _exit(0);
+    }
+  }
+}
+#else
 int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
 {
   std::string name = pipeName(key);
@@ -1189,16 +1665,18 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   }
 }
 
+#endif
 namespace
 {
   // Stops the server of key if one runs (its KEY.args goes with it); false when none does.
   bool stopKey(const std::string& key)
   {
-    HANDLE pipe = connectPipe(pipeName(key), 0);
+    Channel pipe = connectPipe(pipeName(key), 0);
     // A server still starting (its client wrote KEY.args before starting it, runClient) has no pipe
     // yet: its copy of kppc, KEY.exe, is in use (running, or held by the client that starts it), so
     // that it cannot be opened for deletion. It is waited for as its client waits, never left
     // running unseen (thread H, 2026-11-05: a stop could miss a server that came up a moment later).
+#ifdef _WIN32
     if (pipe == INVALID_HANDLE_VALUE)
     {
       HANDLE copy = CreateFileA((serverDirectory() + key + ".exe").c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -1207,24 +1685,34 @@ namespace
       else if (GetLastError() == ERROR_SHARING_VIOLATION)
         pipe = connectPipe(pipeName(key), 20000);
     }
-    DeleteFileA(argumentsPath(key).c_str());
-    if (pipe == INVALID_HANDLE_VALUE)
+#else
+    // (POSIX: its KEY.lock held, or KEY.starting by the client that starts it)
+    if (pipe == noChannel && (lockHeld(lockPath(key)) || lockHeld(startingPath(key))))
+      pipe = connectPipe(pipeName(key), 20000);
+#endif
+    remove(argumentsPath(key).c_str());
+    if (pipe == noChannel)
       return false;
     std::string request = requestHeader(stopRequest);
     writeAll(pipe, request.data(), request.size());
     // Its process id, then the exit code: read up to the exit code, so that the server's last write
     // finds the client still there. Then it waits for the process to end: stopped means gone, and a
     // build right after starts a server of its own.
-    DWORD server = 0;
+    uint32_t server = 0;
     for (char frame[9]; readAll(pipe, frame, 9) && frame[0] != char(exitFrame);)
       if (frame[0] == char(processFrame))
         memcpy(&server, frame + 5, 4);
-    CloseHandle(pipe);
+    closeChannel(pipe);
+#ifdef _WIN32
     if (HANDLE process = server ? OpenProcess(SYNCHRONIZE, FALSE, server) : nullptr)
     {
       WaitForSingleObject(process, 60000);
       CloseHandle(process);
     }
+#else
+    if (server)
+      waitForEnd(pid_t(server), 60000);
+#endif
     return true;
   }
 }
@@ -1245,6 +1733,7 @@ int stopAllServers()
   // Every server runs from its copy, KEY.exe (startServer), whatever kppc started it and whether its
   // KEY.args is there or not.
   std::vector<std::string> keys;
+#ifdef _WIN32
   WIN32_FIND_DATAA found;
   HANDLE search = FindFirstFileA((serverDirectory() + "*.exe").c_str(), &found);
   if (search != INVALID_HANDLE_VALUE)
@@ -1257,6 +1746,16 @@ int stopAllServers()
     } while (FindNextFileA(search, &found));
     FindClose(search);
   }
+#else
+  // (POSIX: every server holds its KEY.lock)
+  std::error_code ec;
+  for (std::filesystem::directory_iterator i(serverDirectory(), ec), end; !ec && i != end; i.increment(ec))
+  {
+    std::string name = i->path().filename().string();
+    if (name.size() == 21 && name.compare(16, 5, ".lock") == 0 && lockHeld(i->path().string()))
+      keys.push_back(name.substr(0, 16));
+  }
+#endif
   size_t stopped = 0;
   for (const std::string& key : keys)
     stopped += stopKey(key);
@@ -1270,15 +1769,25 @@ int stopAllServers()
 std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>& whose)
 {
   std::vector<std::vector<std::string>> stopped;
+  std::vector<std::string> keys;
+#ifdef _WIN32
   WIN32_FIND_DATAA found;
   HANDLE search = FindFirstFileA((serverDirectory() + "*.args").c_str(), &found);
   if (search == INVALID_HANDLE_VALUE)
     return stopped;
-  std::vector<std::string> keys;
   do
     keys.push_back(std::string(found.cFileName, strlen(found.cFileName) - 5));
   while (FindNextFileA(search, &found));
   FindClose(search);
+#else
+  std::error_code ec;
+  for (std::filesystem::directory_iterator i(serverDirectory(), ec), end; !ec && i != end; i.increment(ec))
+  {
+    std::string name = i->path().filename().string();
+    if (name.size() > 5 && name.compare(name.size() - 5, 5, ".args") == 0)
+      keys.push_back(name.substr(0, name.size() - 5));
+  }
+#endif
   for (const std::string& key : keys)
   {
     std::string record;
@@ -1300,4 +1809,3 @@ std::vector<std::vector<std::string>> stopServers(const std::function<bool(const
   }
   return stopped;
 }
-#endif
