@@ -46,9 +46,14 @@ function Check([string]$label, [int]$expectExit)
 }
 function Write-Main([string]$text) { [IO.File]::WriteAllText("$work\src\main.kpp", $text) }
 
-$failed = 0
-try
+# One measurement: a server started anew, the first build, then the eight checks; their median and
+# the first build's time.
+function Measure-EditCost()
 {
+  $ErrorActionPreference = 'Continue'
+  & $Kppc --stop-server @arguments > $null 2> $null
+  $ErrorActionPreference = 'Stop'
+  Write-Main $main
   $first = Check 'the first build' 0
   $checks = @()
   for ($round = 0; $round -lt 2; $round++)
@@ -63,10 +68,24 @@ try
     $checks += Check 'the clean edit undone' 0
   }
   $sorted = @($checks | Sort-Object)
-  $median = ($sorted[3] + $sorted[4]) / 2
-  $shown = ($checks | ForEach-Object { $_.ToString('0.00') }) -join ' '
-  if ($median -ge 0.75 * $first) { "FAIL editcost: the checks after an edit take $($median.ToString('0.00')) s (median of $shown), the first build $($first.ToString('0.00')) s: 3/4 of it at most"; $failed++ }
-  else { "ok   editcost: the checks after an edit take $($median.ToString('0.00')) s (median of $shown), the first build $($first.ToString('0.00')) s" }
+  return [pscustomobject]@{ First = $first; Median = ($sorted[3] + $sorted[4]) / 2; Shown = ($checks | ForEach-Object { $_.ToString('0.00') }) -join ' ' }
+}
+
+$failed = 0
+try
+{
+  # Measured again when the first measurement fails: one first build against eight checks is at the
+  # mercy of other work on the machine (a gate of another thread starting between them failed it,
+  # 2026-11-06), while the slowness this check is for repeats (1.1 to 1.25 times the first build in
+  # every measurement); it fails only when both measurements do.
+  $m = Measure-EditCost
+  if ($m.Median -ge 0.75 * $m.First)
+  {
+    "editcost: the checks took $($m.Median.ToString('0.00')) s (median of $($m.Shown)), the first build $($m.First.ToString('0.00')) s: measured again"
+    $m = Measure-EditCost
+  }
+  if ($m.Median -ge 0.75 * $m.First) { "FAIL editcost: the checks after an edit take $($m.Median.ToString('0.00')) s (median of $($m.Shown)), the first build $($m.First.ToString('0.00')) s: 3/4 of it at most"; $failed++ }
+  else { "ok   editcost: the checks after an edit take $($m.Median.ToString('0.00')) s (median of $($m.Shown)), the first build $($m.First.ToString('0.00')) s" }
 }
 finally
 {
