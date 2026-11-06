@@ -117,12 +117,32 @@ public:
       this->push_back(item);
   }
 
+  // count value-initialized elements, or count copies of value.
+  explicit List(ContainerSize count)
+  {
+    this->becomeEmpty();
+    this->resize(count);
+  }
+
+  List(ContainerSize count, const T& value)
+  {
+    this->becomeEmpty();
+    this->resize(count, value);
+  }
+
+  // The elements of [first, last), input iterators of any kind, in order.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  List(InputIt first, InputIt last)
+  {
+    this->becomeEmpty();
+    for (; first != last; ++first)
+      this->push_back(*first);
+  }
+
   // `= {...}`: the listed elements, replacing the contents.
   List<T>& operator=(InitializerList<T> items)
   {
-    this->clear();
-    for (const T& item : items)
-      this->push_back(item);
+    this->assign(items.begin(), items.end());
     return *this;
   }
 
@@ -144,11 +164,7 @@ public:
   List<T>& operator=(const List<T>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      for (const T& value : other)
-        this->push_back(value);
-    }
+      this->assign(other.begin(), other.end());
     return *this;
   }
 
@@ -160,6 +176,48 @@ public:
       this->take(other);
     }
     return *this;
+  }
+
+  // Replace the contents: assigned over the elements there are, as std's, the others added or
+  // erased at the back. The range must not be this list's.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  void assign(InputIt first, InputIt last)
+  {
+    ListIterator<T> it = this->begin();
+    if constexpr (requires { *it = *first; })
+      for (; it != this->end() && first != last; ++it, ++first)
+        *it = *first;
+    this->erase(it, this->end());
+    for (; first != last; ++first)
+      this->push_back(*first);
+  }
+
+  void assign(ContainerSize count, const T& value)
+  {
+    ListIterator<T> it = this->begin();
+    for (; it != this->end() && count > 0; ++it, --count)
+      *it = value;
+    this->erase(it, this->end());
+    this->insert(this->end(), count, value);
+  }
+
+  void assign(InitializerList<T> items) { this->assign(items.begin(), items.end()); }
+
+  void resize(ContainerSize newLength)
+  {
+    while (this->length > newLength)
+      this->pop_back();
+    while (this->length < newLength)
+      this->emplace_back();
+  }
+
+  // New elements are copies of value.
+  void resize(ContainerSize newLength, const T& value)
+  {
+    while (this->length > newLength)
+      this->pop_back();
+    if (this->length < newLength)
+      this->insert(this->end(), newLength - this->length, value);
   }
 
   ContainerSize size() const { return this->length; }
@@ -212,12 +270,26 @@ public:
   {
     if (count == 0)
       return iterator(position);
-    T copy(value); // value may be an element
-    ListIterator<T> first = this->emplace(position, copy);
+    ListIterator<T> first = this->emplace(position, value); // (value may be an element: none moves)
     for (ContainerSize i = 1; i < count; ++i)
-      this->emplace(position, copy);
+      this->emplace(position, value);
     return first;
   }
+
+  // The elements of [first, last), input iterators of any kind, before position, in order; returns
+  // the first one's position, or position for none.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  ListIterator<T> insert(const_iterator position, InputIt first, InputIt last)
+  {
+    if (first == last)
+      return iterator(position);
+    ListIterator<T> result = this->emplace(position, *first);
+    for (++first; first != last; ++first)
+      this->emplace(position, *first);
+    return result;
+  }
+
+  ListIterator<T> insert(const_iterator position, InitializerList<T> items) { return this->insert(position, items.begin(), items.end()); }
 
   template<typename... Args>
   ListIterator<T> emplace(const_iterator position, Args&&... args)
@@ -256,12 +328,24 @@ public:
     this->becomeEmpty();
   }
 
-  // Moves all of other's nodes before position, without copying (other ends up empty).
+  // Moves all of other's nodes before position, without copying (other ends up empty); O(1).
   void splice(const_iterator position, List<T>& other)
   {
-    while (!other.empty())
-      this->splice(position, other, other.begin());
+    if (!other.empty())
+      this->moveNodes(position, other, other.begin(), other.end(), other.length);
   }
+
+  void splice(const_iterator position, List<T>&& other) { this->splice(position, other); }
+
+  // Moves the nodes of [first, last) from other before position, which is not among them; O(1)
+  // within this list, otherwise O(their number).
+  void splice(const_iterator position, List<T>& other, const_iterator first, const_iterator last)
+  {
+    if (first != last)
+      this->moveNodes(position, other, first, last, this == &other ? 0 : ContainerSize(distance(first, last)));
+  }
+
+  void splice(const_iterator position, List<T>&& other, const_iterator first, const_iterator last) { this->splice(position, other, first, last); }
 
   // Moves the node at it from other before position.
   void splice(const_iterator position, List<T>& other, const_iterator it)
@@ -311,15 +395,19 @@ public:
     return removed;
   }
 
-  // Removes each element equal to the one before it; returns how many.
-  ContainerSize unique()
+  // Removes each element equal to (by == or same(previous, element)) the kept one before it; returns
+  // how many.
+  ContainerSize unique() { return this->unique(EqualTo<>()); }
+
+  template<typename F>
+  ContainerSize unique(F same)
   {
     ContainerSize removed = 0;
     if (this->length < 2)
       return 0;
     ListIterator<T> previous = this->begin();
     for (ListIterator<T> it = ++this->begin(); it != this->end();)
-      if (*it == *previous)
+      if (same(*previous, *it))
       {
         it = this->erase(it);
         ++removed;
@@ -369,7 +457,14 @@ public:
 
   // Moves other's nodes into this list; both sorted ascending, the result too, with this list's
   // elements first among equivalent ones.
-  void merge(List<T>& other)
+  void merge(List<T>& other) { this->merge(other, Less<>()); }
+  void merge(List<T>&& other) { this->merge(other, Less<>()); }
+
+  template<typename F>
+  void merge(List<T>&& other, F less) { this->merge(other, less); }
+
+  template<typename F>
+  void merge(List<T>& other, F less)
   {
     if (this == &other)
       return;
@@ -377,7 +472,7 @@ public:
     while (!other.empty())
     {
       ListIterator<T> next = other.begin();
-      while (it != this->end() && !(*next < *it))
+      while (it != this->end() && !less(*next, *it))
         ++it;
       this->splice(it, other, next);
     }
@@ -385,6 +480,24 @@ public:
 
 private:
   // Its length is a size (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
+  // Relinks [first, last), count nodes of other (0 when other is this list), before position.
+  void moveNodes(const_iterator position, List<T>& other, const_iterator first, const_iterator last, ContainerSize count)
+  {
+    if (count > maxContainerSize - this->length)
+      throwLengthError("list too long");
+    ListLinks* head = first.node;
+    ListLinks* tail = last.node->prev;
+    ListLinks* before = position.node;
+    head->prev->next = last.node;
+    last.node->prev = head->prev;
+    head->prev = before->prev;
+    tail->next = before;
+    before->prev->next = head;
+    before->prev = tail;
+    other.length -= count;
+    this->length += count;
+  }
+
   ListNode<T>* allocateNode()
   {
     if (this->length == maxContainerSize)

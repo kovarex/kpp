@@ -1,0 +1,121 @@
+// spec: List is std::list: List(count), List(count, value), List(first, last), assign, resize, insert of a range and a list, splice of a whole list in O(1), of a range, within the list and from an rvalue, merge and unique with a predicate, and assignment over the elements there are; the output is what libstdc++ and MSVC's STL print for the same program
+// factorio: K's ranking of the gaps (2026-11-06): these forms did not exist, and splice of a list moved its nodes one at a time
+extern "C" int printf(const char* format, ...);
+int copied = 0;
+int copyAssigned = 0;
+int destroyed = 0;
+
+struct Counted
+{
+  int value;
+  Counted(int v) : value(v) {}
+  Counted(const Counted& other) : value(other.value) { ++copied; }
+  Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
+  ~Counted() { ++destroyed; }
+};
+
+void reportCounts(const char* what, const List<Counted>& l)
+{
+  printf("%s: copy %d copy= %d destroy %d |", what, copied, copyAssigned, destroyed);
+  for (const Counted& x : l)
+    printf(" %d", x.value);
+  printf("\n");
+  copied = 0;
+  copyAssigned = 0;
+  destroyed = 0;
+}
+
+void show(const char* what, const List<int>& l)
+{
+  printf("%s[%d]:", what, (int)l.size());
+  for (int x : l)
+    printf(" %d", x);
+  printf("\n");
+}
+
+bool descending(int a, int b) { return a > b; }
+bool sameParity(int a, int b) { return a % 2 == b % 2; }
+
+int main()
+{
+  List<int> counted(3);
+  show("count", counted);
+  List<int> filled(3, 7);
+  show("count value", filled);
+  Vector<int> source = {1, 2, 3};
+  List<int> ranged(source.begin(), source.end());
+  show("range", ranged);
+  ranged.assign(2, 9);
+  show("assign count", ranged);
+  ranged.assign(source.begin(), source.end());
+  show("assign range", ranged);
+  ranged.assign({4, 5});
+  show("assign list", ranged);
+  ranged.resize(4);
+  show("resize up", ranged);
+  ranged.resize(5, 8);
+  show("resize up value", ranged);
+  ranged.resize(1);
+  show("resize down", ranged);
+  auto at = ranged.insert(ranged.end(), source.begin(), source.end());
+  show("insert range", ranged);
+  printf("first inserted %d\n", *at);
+  auto none = ranged.insert(ranged.begin(), source.begin(), source.begin());
+  printf("insert nothing %d\n", (int)(none == ranged.begin()));
+  auto listed = ranged.insert(ranged.begin(), {6, 7});
+  show("insert list", ranged);
+  printf("first listed %d\n", *listed);
+
+  List<int> a = {1, 2, 3};
+  List<int> b = {7, 8, 9};
+  auto kept = a.begin();
+  ++kept;
+  auto taken = b.begin();
+  a.splice(kept, b);
+  show("splice all", a);
+  show("spliced from", b);
+  printf("iterators stay %d %d\n", *kept, *taken);
+  List<int> c = {10, 11, 12, 13};
+  auto from = c.begin();
+  ++from;
+  auto to = from;
+  ++to;
+  ++to;
+  a.splice(a.end(), c, from, to);
+  show("splice range", a);
+  show("spliced range from", c);
+  a.splice(a.begin(), a, kept, a.end());
+  show("splice within", a);
+  a.splice(a.begin(), List<int>({20, 21}));
+  show("splice rvalue", a);
+  a.splice(a.begin(), c, c.begin(), c.begin());
+  show("splice empty range", a);
+
+  List<int> d = {9, 5, 1};
+  List<int> e = {8, 5, 2};
+  d.merge(e, descending);
+  show("merge less", d);
+  printf("merged from %d\n", (int)e.size());
+  List<int> f = {1, 2};
+  f.merge(List<int>({0, 3}));
+  show("merge rvalue", f);
+  List<int> u = {1, 3, 2, 4, 6, 5};
+  printf("unique removed %d\n", (int)u.unique(sameParity));
+  show("unique same", u);
+
+  List<Counted> x = {1, 2, 3, 4};
+  List<Counted> y = {5, 6};
+  List<Counted> z = {7, 8, 9, 10, 11, 12};
+  copied = 0;
+  copyAssigned = 0;
+  destroyed = 0;
+  x = y;
+  reportCounts("= fewer", x);
+  x = z;
+  reportCounts("= more", x);
+  x.assign(z.begin(), z.begin());
+  reportCounts("assign nothing", x);
+  x.assign(3, Counted(1));
+  reportCounts("assign count", x);
+  return 0;
+}

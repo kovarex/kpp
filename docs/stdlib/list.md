@@ -11,16 +11,20 @@ iterator, and never moves or invalidates other elements.
 | erase, pop | the erased elements' only |
 | clear, assignment | all except end |
 
-Members: `List()`, `List({...})`, copy, move, `= {...}` (replaces the contents with the listed
-elements); `size()` (O(1)), `empty()`, `front()`, `back()`;
+Members: `List()`, `List({...})`, `List(count)`, `List(count, value)`, `List(first, last)` (input
+iterators), copy, move, `= {...}` (replaces the contents with the listed elements);
+`assign(first, last)`, `assign(count, value)`, `assign({...})` (replace the contents, assigning over
+the elements there are, as copy assignment and `= {...}` do); `resize(n)`, `resize(n, value)`;
+`size()` (O(1)), `empty()`, `front()`, `back()`;
 `begin()`, `end()` (bidirectional), `rbegin()`, `rend()`, `swap(other)`; `push_back`, `push_front`, `emplace_back`, `emplace_front`,
 `pop_back`, `pop_front`; `insert(position, value)` (before position, returns the new element's
-position), `insert(position, count, value)` (count copies, returns the first one's position, or
-position for none), `emplace(position, args...)`, `erase(position)` (returns the next position),
-`erase(first, last)`; `splice(position, other)` and `splice(position, other, it)` (move nodes
-from other without copying, O(1) for one element); `remove(value)`, `removeIf(predicate)`;
-`reverse()`; `sort()`, `sort(less)` (stable, O(n log n), moves nodes, not elements); `unique()`;
-`merge(other)` of two sorted lists (stable); `clear()`; `==` and `<=>` (common.md).
+position), `insert(position, count, value)`, `insert(position, first, last)`, `insert(position, {...})`
+(returning the first one's position, or position for none), `emplace(position, args...)`, `erase(position)` (returns the next position),
+`erase(first, last)`; `splice(position, other)`, `splice(position, other, it)` and `splice(position,
+other, first, last)` (move nodes from other without copying: O(1), a range of another list O(its
+length); other may be an rvalue); `remove(value)`, `removeIf(predicate)`;
+`reverse()`; `sort()`, `sort(less)` (stable, O(n log n), moves nodes, not elements); `unique()`,
+`unique(same)`; `merge(other)`, `merge(other, less)` of two sorted lists (stable; other may be an rvalue); `clear()`; `==` and `<=>` (common.md).
 
 ## ForwardList (singly linked)
 
