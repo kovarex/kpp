@@ -10,6 +10,8 @@
 #include <thread>
 #include <unordered_map>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "host.hpp"
 #ifdef _WIN32
 #include <windows.h>
