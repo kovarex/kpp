@@ -1,0 +1,13 @@
+// spec: Span::subspan(offset, count) with count dynamicExtent (std::span's default argument, dynamic_extent) views the rest from offset, as subspan(offset) does ([span.sub]: the count is size() - offset then), never dynamicExtent elements (`8 2 9 | 0`)
+// factorio: E's container battery against std::span (dl1, 2026-11-06): s.subspan(2, dynamicExtent) of 10 ints had size 2^64 - 1 and iterating it read past the array into the stack until it crashed, on Windows and Linux
+// pending: subspan(offset, count) makes Span(items + offset, count) without treating dynamicExtent as the rest (C)
+extern "C" import "stdio.h";
+int main()
+{
+  int raw[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  Span<int> s(raw, 10);
+  Span<int> rest = s.subspan(2, dynamicExtent);
+  Span<int> none = s.subspan(10, dynamicExtent);
+  printf("%d %d %d | %d\n", (int)rest.size(), rest.front(), rest.back(), (int)none.size());
+  return 0;
+}
