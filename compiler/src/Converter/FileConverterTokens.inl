@@ -3260,9 +3260,11 @@
             static const std::map<std::string_view, std::string> chronoNames = {
               {"nanoseconds", "Nanoseconds"}, {"microseconds", "Microseconds"}, {"milliseconds", "Milliseconds"},
               {"seconds", "Seconds"}, {"minutes", "Minutes"}, {"hours", "Hours"}, {"days", "Days"},
+              {"weeks", "Weeks"}, {"months", "Months"}, {"years", "Years"},
               {"duration", "Duration"}, {"time_point", "TimePoint"}, {"steady_clock", "SteadyClock"},
-              {"system_clock", "SystemClock"}, {"high_resolution_clock", "HighResolutionClock"},
-              {"duration_cast", "durationCast"}, {"time_point_cast", "timePointCast"}, {"floor", "floor"}, {"ceil", "ceil"}};
+              {"system_clock", "SystemClock"}, {"high_resolution_clock", "HighResolutionClock"}, {"file_clock", "FileClock"},
+              {"hh_mm_ss", "HoursMinutesSeconds"}, {"duration_cast", "durationCast"}, {"time_point_cast", "timePointCast"},
+              {"floor", "floor"}, {"ceil", "ceil"}, {"round", "round"}, {"abs", "abs"}};
             auto c = chronoNames.find(spelling(i + 4));
             if (c != chronoNames.end())
             {

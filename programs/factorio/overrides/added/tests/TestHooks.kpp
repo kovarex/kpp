@@ -14,13 +14,22 @@ void testsSetup(const Vector<String>& arguments)
     ::exit(result);
 }
 
-// The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares.
+// The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares. A
+// generated test is Suite/Generator_name, and two tests' names are no identifiers (docs/test-suites.md).
 private String testNameAsUnitTest()
 {
   String name = String(currentTestName());
   usize dot = name.find('.');
-  if (dot != String::npos)
-    name[dot] = '/';
+  if (dot == String::npos)
+    return name;
+  name[dot] = '/';
+  usize generated = name.find('.', dot + 1);
+  if (generated != String::npos)
+    name[generated] = '_';
+  if (name == "DragBuilding/UndergroundPipe2x2SmartFixing")
+    return "DragBuilding/2x2UndergroundPipeSmartFixing";
+  if (name == "ZipPackage/ZipFile4GBWriteRead")
+    return "ZipPackage/4GBZipFileWriteRead";
   return name;
 }
 
