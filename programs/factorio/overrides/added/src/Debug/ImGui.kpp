@@ -120,6 +120,7 @@ public:
   const value_type& front() const { assert(this->Size > 0); return this->Data[0]; }
   value_type& back() { assert(this->Size > 0); return this->Data[this->Size - 1]; }
   const value_type& back() const { assert(this->Size > 0); return this->Data[this->Size - 1]; }
+
   void swap(ImVector<T>& rhs)
   {
     int rhs_size = rhs.Size; rhs.Size = this->Size; this->Size = rhs_size;
@@ -130,6 +131,7 @@ public:
   int _grow_capacity(int size) const { int new_capacity = this->Capacity ? (this->Capacity + this->Capacity / 2) : 8; return new_capacity > size ? new_capacity : size; }
 
   void resize(int new_size) { if (new_size > this->Capacity) this->reserve(this->_grow_capacity(new_size)); this->Size = new_size; }
+
   void resize(int new_size, const T& v)
   {
     if (new_size > this->Capacity)
@@ -139,6 +141,7 @@ public:
         this->Data[n] = v;
     this->Size = new_size;
   }
+
   void reserve(int new_capacity)
   {
     if (new_capacity <= this->Capacity)
@@ -163,6 +166,7 @@ public:
     this->Size--;
     return this->Data + off;
   }
+
   iterator insert(const_iterator it, const value_type& v)
   {
     assert(it >= this->Data && it <= this->Data + this->Size);
@@ -175,6 +179,7 @@ public:
     this->Size++;
     return this->Data + off;
   }
+
   bool contains(const value_type& v) const
   {
     const T* data = this->Data;
@@ -192,11 +197,13 @@ struct ImColor
   ImVec4 Value;
 
   ImColor() { this->Value.x = this->Value.y = this->Value.z = this->Value.w = 0.0f; }
+
   ImColor(int r, int g, int b, int a = 255)
   {
     float sc = 1.0f / 255.0f;
     this->Value.x = (float)r * sc; this->Value.y = (float)g * sc; this->Value.z = (float)b * sc; this->Value.w = (float)a * sc;
   }
+
   implicit ImColor(ImU32 rgba)
   {
     float sc = 1.0f / 255.0f;
@@ -205,6 +212,7 @@ struct ImColor
     this->Value.z = (float)((rgba >> IM_COL32_B_SHIFT) & 0xFF) * sc;
     this->Value.w = (float)((rgba >> IM_COL32_A_SHIFT) & 0xFF) * sc;
   }
+
   ImColor(float r, float g, float b, float a = 1.0f) { this->Value.x = r; this->Value.y = g; this->Value.z = b; this->Value.w = a; }
   implicit ImColor(const ImVec4& col) { this->Value = col; }
   implicit operator ImU32() const { return ImGui::ColorConvertFloat4ToU32(this->Value); }
@@ -816,6 +824,7 @@ struct ImFontAtlas
     void AddRanges(const ImWchar* ranges) { kppImFontAtlas_GlyphRangesBuilder_AddRanges(this, ranges); }
     void BuildRanges(ImVector<ImWchar>* out_ranges) { kppImFontAtlas_GlyphRangesBuilder_BuildRanges(this, out_ranges); }
   };
+
   struct CustomRect
   {
     unsigned int ID;
@@ -829,6 +838,7 @@ struct ImFontAtlas
     CustomRect() { kppImFontAtlas_CustomRect_construct(this); }
     bool IsPacked() const { return kppImFontAtlas_CustomRect_IsPacked(this); }
   };
+
   ImTextureID TexID;
   int TexDesiredWidth;
   int TexGlyphPadding;

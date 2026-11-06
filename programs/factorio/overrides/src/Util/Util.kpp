@@ -11,6 +11,7 @@ namespace Util
       if (variant == a.tag)
         return visitor(variant[a]);
   }
+
   template<typename U, typename Visitor> requires (isTypedUnion<U>)
   decltype(auto) visitVariant(U& variant, Visitor&& visitor)
   {

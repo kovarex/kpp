@@ -13,8 +13,10 @@ i32 WEXITSTATUS(i32 status)
     return status >> 8;
   return (status & 0xff00) >> 8;
 }
+
 i32 WTERMSIG(i32 status) { return status & 0x7f; }
 bool WIFEXITED(i32 status) { return WTERMSIG(status) == 0; }
+
 bool WIFSIGNALED(i32 status)
 {
   if constexpr (config::platform == Platform::FreeBSD)

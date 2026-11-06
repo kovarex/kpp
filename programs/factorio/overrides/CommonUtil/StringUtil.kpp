@@ -23,6 +23,7 @@ namespace StringUtil
 
   String narrow(const WString& str) { return narrow(str.c_str(), str.size()); }
   String narrow(wchar_t str) { return narrow(&str, 1); }
+
   String narrow(const wchar_t* str)
   {
     int length = 0;
@@ -30,6 +31,7 @@ namespace StringUtil
       ++length;
     return narrow(str, length);
   }
+
   String narrow(const char* str) { return str; }
 
   void trim_right(String& s)

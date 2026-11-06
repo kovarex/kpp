@@ -21,6 +21,7 @@ public:
   {
     return new SmokeFont();
   }
+
   agui::Font* loadEmptyFont() override { return new SmokeFont(); }
 };
 

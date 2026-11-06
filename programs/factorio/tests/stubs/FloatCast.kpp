@@ -4,6 +4,7 @@ void FloatCastCheckFailed(float value, const char* targetType, float converted)
 {
   Logging::logAndAbortOrThrow("FloatCast.kpp", 5, LogLevel::Error, "float_cast failed");
 }
+
 void FloatCastCheckFailed(double value, const char* targetType, double converted)
 {
   Logging::logAndAbortOrThrow("FloatCast.kpp", 9, LogLevel::Error, "float_cast failed");

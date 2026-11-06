@@ -49,6 +49,7 @@ public:
     POSIX = 2,
     Quiet = 3,
   };
+
   enum Anchor
   {
     UNANCHORED = 0,
@@ -101,6 +102,7 @@ public:
   static bool FullMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, ANCHOR_BOTH, args...); }
   template<typename... Args>
   static bool PartialMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, UNANCHORED, args...); }
+
   // The start of *input matches and the submatches parse (Consume); then *input begins after the
   // match. Otherwise false and *input is unchanged.
   template<typename... Args>
@@ -131,27 +133,33 @@ public:
       return false;
     return RE2::parseAll(groups + 1, args...);
   }
+
   static bool parseAll(const re2::StringPiece* groups) { return true; }
+
   template<typename T, typename... Rest>
   static bool parseAll(const re2::StringPiece* groups, T first, Rest... rest)
   {
     return RE2::parse(groups[0], first) && RE2::parseAll(groups + 1, rest...);
   }
+
   template<typename T>
   static bool parseInto(StringView text, void* target) { return RE2::parse(text, (T*)target); }
 
   // A nullptr target skips its group (RE2's Arg(nullptr)): ForkTask's `nullptr, nullptr, &time`.
   static bool parse(StringView text, nullptr_t) { return true; }
+
   static bool parse(StringView text, re2::StringPiece* out)
   {
     *out = re2::StringPiece(text);
     return true;
   }
+
   static bool parse(StringView text, String* out)
   {
     *out = String(text.data(), text.size());
     return true;
   }
+
   static bool parse(StringView text, char* out)
   {
     if (text.size() != 1)
@@ -159,6 +167,7 @@ public:
     *out = text[0];
     return true;
   }
+
   static bool parse(StringView text, uint8_t* out)
   {
     if (text.size() != 1)
@@ -166,6 +175,7 @@ public:
     *out = (uint8_t)text[0];
     return true;
   }
+
   static bool parse(StringView text, int16_t* out) { return kppRe2ParseShort(text.data(), (size_t)text.size(), out) != 0; }
   static bool parse(StringView text, uint16_t* out) { return kppRe2ParseUnsignedShort(text.data(), (size_t)text.size(), out) != 0; }
   static bool parse(StringView text, int32_t* out) { return kppRe2ParseInt(text.data(), (size_t)text.size(), out) != 0; }

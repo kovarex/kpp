@@ -13,12 +13,14 @@ extern "C" unsigned char* zlib_compress_stb_adapter(unsigned char* data, int dat
   void* outData = malloc(requiredSize);
 
   int code = compress2((unsigned char*)outData, &requiredSize, data, (unsigned long)data_len, quality);
+
   if (code != 0)
   {
     free(outData);
     *out_len = 0;
     return nullptr;
   }
+
   *out_len = (int)requiredSize;
 
   return (unsigned char*)outData;

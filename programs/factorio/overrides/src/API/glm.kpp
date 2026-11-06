@@ -158,6 +158,7 @@ namespace glm
     vec4 value[4];
 
     mat4() {}
+
     explicit mat4(float s)
     {
       this->value[0] = vec4(s, 0, 0, 0);
@@ -165,6 +166,7 @@ namespace glm
       this->value[2] = vec4(0, 0, s, 0);
       this->value[3] = vec4(0, 0, 0, s);
     }
+
     mat4(const vec4& c0, const vec4& c1, const vec4& c2, const vec4& c3)
     {
       this->value[0] = c0;
@@ -177,6 +179,7 @@ namespace glm
     const vec4& operator[](length_t i) const { return this->value[i]; }
 
     mat4 operator*(float s) const { return mat4(this->value[0] * s, this->value[1] * s, this->value[2] * s, this->value[3] * s); }
+
     mat4& operator*=(float s)
     {
       this->value[0] *= s;
@@ -185,8 +188,10 @@ namespace glm
       this->value[3] *= s;
       return *this;
     }
+
     // *this = *this * m (LightningDrawEngine's `viewProjection *= renderParameters.getViewMatrix();`).
     mat4& operator*=(const mat4& m) { return (*this = *this * m); }
+
     // The matrix product, as glm sums it: each column of the result is the columns of this one
     // weighted by the other's column, added in column order.
     mat4 operator*(const mat4& m2) const
@@ -206,6 +211,7 @@ namespace glm
       Result.value[3] = SrcA0 * SrcB3[0] + SrcA1 * SrcB3[1] + SrcA2 * SrcB3[2] + SrcA3 * SrcB3[3];
       return Result;
     }
+
     // The matrix times a column vector, as glm adds it: (c0 v0 + c1 v1) + (c2 v2 + c3 v3).
     vec4 operator*(const vec4& v) const
     {
@@ -221,10 +227,12 @@ namespace glm
       const vec4 Add1 = Mul2 + Mul3;
       return Add0 + Add1;
     }
+
     bool operator==(const mat4& m) const
     {
       return this->value[0] == m.value[0] && this->value[1] == m.value[1] && this->value[2] == m.value[2] && this->value[3] == m.value[3];
     }
+
     bool operator!=(const mat4& m) const { return !(*this == m); }
   };
 
@@ -310,16 +318,19 @@ namespace glm
     vec2 tmp(a * b);
     return tmp.x + tmp.y;
   }
+
   float dot(const vec3& a, const vec3& b)
   {
     vec3 tmp(a * b);
     return tmp.x + tmp.y + tmp.z;
   }
+
   float dot(const vec4& a, const vec4& b)
   {
     vec4 tmp(a * b);
     return (tmp.x + tmp.y) + (tmp.z + tmp.w);
   }
+
   float length(const vec2& v) { return ::sqrtf(dot(v, v)); }
   float length(const vec3& v) { return ::sqrtf(dot(v, v)); }
   // v * inversesqrt(dot(v, v)).
@@ -336,6 +347,7 @@ namespace glm
     Result.value[3] = m.value[0] * v[0] + m.value[1] * v[1] + m.value[2] * v[2] + m.value[3];
     return Result;
   }
+
   // m with its first three columns scaled by v's components: m * scale(v).
   mat4 scale(const mat4& m, const vec3& v)
   {
@@ -346,6 +358,7 @@ namespace glm
     Result.value[3] = m.value[3];
     return Result;
   }
+
   // m times the rotation by angle radians about the axis v (normalized here).
   mat4 rotate(const mat4& m, float angle, const vec3& v)
   {
@@ -371,6 +384,7 @@ namespace glm
     Result.value[3] = m.value[3];
     return Result;
   }
+
   mat4 translate(const vec3& v) { return translate(mat4(1.0f), v); }
   mat4 scale(const vec3& v) { return scale(mat4(1.0f), v); }
   mat4 rotate(float angle, const vec3& v) { return rotate(mat4(1.0f), angle, v); }

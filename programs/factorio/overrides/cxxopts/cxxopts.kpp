@@ -35,6 +35,7 @@ namespace cxxopts
     int length(int index = 0) const { return index < this->groups.size() ? this->groups[index].length() : 0; }
     sub_match<It> operator[](int index) const { return index < this->groups.size() ? this->groups[index] : sub_match<It>(); }
   };
+
   using smatch = match_results<const char*>;
 
   bool isAlnum(char c) { return isalnum((unsigned char)c) != 0; }
@@ -211,6 +212,7 @@ namespace cxxopts
       return matchSpecifier(text, end, result);
     throw LogicError(String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
   }
+
   bool regex_match(const String& text, match_results<const char*>& result, const basic_regex<char>& pattern)
   {
     return regex_match(text.c_str(), result, pattern);

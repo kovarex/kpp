@@ -12,6 +12,7 @@ private:
   static T loadSTDVariantIndirect(DeserialiserType& input)
   {
     const uint32_t alternativeIndex = loadContainerSize(input);
+
     for constexpr (auto a : alternatives(T))
       if (alternativeIndex == uint32_t(int(a.tag)))
       {
@@ -22,6 +23,7 @@ private:
         else
           return T(a.tag, input.template load<a.type>());
       }
+
     throw DeserialiserException(ssprintf("Invalid alternative index (%ul) loaded from input file for variant (with size %ul)",
                                          alternativeIndex,
                                          uint32_t(int(T::Tag::count))));
@@ -31,6 +33,7 @@ private:
   static void loadSTDVariant(DeserialiserType& input, U& target)
   {
     const uint32_t alternativeIndex = loadContainerSize(input);
+
     for constexpr (auto a : alternatives(U))
       if (alternativeIndex == uint32_t(int(a.tag)))
       {
@@ -43,6 +46,7 @@ private:
         }
         return;
       }
+
     throw DeserialiserException(ssprintf("Invalid alternative index (%ul) loaded from input file for variant (with size %ul)",
                                          alternativeIndex,
                                          uint32_t(int(U::Tag::count))));

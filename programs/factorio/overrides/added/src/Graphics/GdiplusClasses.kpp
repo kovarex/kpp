@@ -59,6 +59,7 @@ namespace Gdiplus
     DebugEventLevelFatal,
     DebugEventLevelWarning
   };
+
   typedef void (*DebugEventProc)(DebugEventLevel level, CHAR* message);
   typedef Status (*NotificationHookProc)(ULONG_PTR* token);
   typedef void (*NotificationUnhookProc)(ULONG_PTR token);
@@ -210,16 +211,19 @@ namespace Gdiplus
       this->SetStatus(GdipGetImageWidth(this->nativeImage, &width));
       return width;
     }
+
     UINT GetHeight()
     {
       UINT height = 0;
       this->SetStatus(GdipGetImageHeight(this->nativeImage, &height));
       return height;
     }
+
     Status Save(IStream* stream, const CLSID* clsidEncoder, const EncoderParameters* encoderParams = nullptr)
     {
       return this->SetStatus(GdipSaveImageToStream(this->nativeImage, stream, clsidEncoder, encoderParams));
     }
+
     Status GetLastStatus() const
     {
       Status lastStatus = this->lastResult;
@@ -230,6 +234,7 @@ namespace Gdiplus
   protected:
     Image() {}
     void SetNativeImage(GpImage* image) { this->nativeImage = image; }
+
     Status SetStatus(Status status) const
     {
       if (status != Ok)
@@ -250,6 +255,7 @@ namespace Gdiplus
       this->lastResult = GdipCreateBitmapFromScan0(width, height, 0, format, nullptr, &bitmap);
       this->SetNativeImage(bitmap);
     }
+
     Bitmap(IStream* stream, BOOL useEmbeddedColorManagement = FALSE)
     {
       GpImage* bitmap = nullptr;
@@ -267,6 +273,7 @@ namespace Gdiplus
     {
       return this->SetStatus(GdipBitmapLockBits(this->nativeImage, rect, flags, format, lockedBitmapData));
     }
+
     Status UnlockBits(BitmapData* lockedBitmapData) { return this->SetStatus(GdipBitmapUnlockBits(this->nativeImage, lockedBitmapData)); }
   };
 }

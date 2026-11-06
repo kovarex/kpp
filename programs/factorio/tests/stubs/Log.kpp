@@ -2,6 +2,7 @@
 // LOG_ENUM_AND_ABORT into Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, ...)
 // (LogLevel is the converted Util/LogLevel.kpp); here it prints the message and ends the program.
 extern "C" void abort();
+
 class Logging
 {
 public:
@@ -11,11 +12,13 @@ public:
     println("abort at ", StringView(file), ":", line, ": ", toString(text));
     abort();
   }
+
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const String& message)
   {
     println("abort at ", StringView(file), ":", line, ": ", message);
     abort();
   }
+
   template<typename EnumType>
   static void logEnumAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, EnumType value)
   {

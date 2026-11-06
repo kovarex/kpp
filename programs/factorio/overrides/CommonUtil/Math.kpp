@@ -12,8 +12,10 @@ namespace Math
     high = (uint32_t)(bits >> 32);
     low = (uint32_t)bits;
   }
+
   template<typename H>
   void getHighWord(H& high, double d) { high = (uint32_t)(bitCast<uint64_t>(d) >> 32); }
+
   template<typename H>
   void setHighWord(double& d, H high)
   {
@@ -21,6 +23,7 @@ namespace Math
     bits = ((uint64_t)(uint32_t)high << 32) | (bits & 0xffffffffu);
     d = bitCast<double>(bits);
   }
+
   template<typename L>
   void setLowWord(double& d, L low)
   {

@@ -9,6 +9,7 @@ extern "C" import "string.h";
 static void print2(const char* name, glm::vec2 v) { printf("%s %a %a\n", name, v.x, v.y); }
 static void print3(const char* name, glm::vec3 v) { printf("%s %a %a %a\n", name, v.x, v.y, v.z); }
 static void print4(const char* name, glm::vec4 v) { printf("%s %a %a %a %a\n", name, v.x, v.y, v.z, v.w); }
+
 static void printMatrix(const char* name, const glm::mat4& m)
 {
   float values[16];
@@ -23,18 +24,22 @@ static float smoothFloor(float a, float tightness)
 {
   return float(a - 0.5 - glm::atan((-tightness * glm::sin(6.28318 * a)) / (1 - tightness * glm::cos(6.28318 * a))) / 3.14159);
 }
+
 static glm::vec2 smoothFloor(glm::vec2 a, float tightness)
 {
   return a - glm::vec2(0.5) - glm::atan((-tightness * glm::sin(glm::vec2(6.28318) * a)) / (glm::vec2(1) - tightness * glm::cos(glm::vec2(6.28318) * a))) / glm::vec2(3.14159);
 }
+
 static glm::vec3 permute(glm::vec3 x0, glm::vec3 p)
 {
   const glm::vec3 x1 = glm::mod(x0 * p.y, p.x);
   return floor(glm::mod((x1 + p.z) * x0, p.x));
 }
+
 static float taylorInvSqrt(float r) { return float(0.83666002653408 + 0.7 * 0.85373472095314 - 0.85373472095314 * r); }
 static glm::vec2 simplexProject(glm::vec2 coord_xy) { return coord_xy + glm::dot(coord_xy, glm::vec2(0.366025403784438597)); }
 static glm::vec2 simplexUnproject(glm::vec2 coord_uv) { return coord_uv - glm::dot(coord_uv, glm::vec2(0.211324865405187134)); }
+
 static glm::vec3 lessThanV3(glm::vec3 const& x, glm::vec3 const& y)
 {
   glm::vec3 result;
@@ -42,6 +47,7 @@ static glm::vec3 lessThanV3(glm::vec3 const& x, glm::vec3 const& y)
     result[i] = x[i] < y[i];
   return result;
 }
+
 static float simplexNoise2(glm::vec2 v)
 {
   const glm::vec3 noiseParamXYZ = glm::vec3(289.0, 34.0, 1.0);

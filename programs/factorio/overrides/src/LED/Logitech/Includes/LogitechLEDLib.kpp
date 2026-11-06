@@ -11,12 +11,15 @@ extern "C" void kppLogiLedShutdown();
 bool LogiLedInitWithName(const char name[]) { return kppLogiLedInitWithName(name); }
 bool LogiLedSetTargetDevice(int targetDevice) { return kppLogiLedSetTargetDevice(targetDevice); }
 bool LogiLedSetLightingFromBitmap(unsigned char bitmap[]) { return kppLogiLedSetLightingFromBitmap(bitmap); }
+
 bool LogiLedSetLightingForKeyWithKeyName(LogiLed::KeyName keyName, int redPercentage, int greenPercentage, int bluePercentage)
 {
   return kppLogiLedSetLightingForKeyWithKeyName(int(keyName), redPercentage, greenPercentage, bluePercentage);
 }
+
 bool LogiLedSetLightingForTargetZone(LogiLed::DeviceType deviceType, int zone, int redPercentage, int greenPercentage, int bluePercentage)
 {
   return kppLogiLedSetLightingForTargetZone(int(deviceType), zone, redPercentage, greenPercentage, bluePercentage);
 }
+
 void LogiLedShutdown() { kppLogiLedShutdown(); }

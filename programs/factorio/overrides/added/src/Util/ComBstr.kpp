@@ -28,11 +28,13 @@ class _bstr_t
 {
 public:
   _bstr_t() {}
+
   implicit _bstr_t(const wchar_t* text) : value(text ? SysAllocString(text) : nullptr)
   {
     if (text && !this->value)
       throw _com_error(E_OUTOFMEMORY);
   }
+
   implicit _bstr_t(const char* text)
   {
     if (!text)
@@ -45,6 +47,7 @@ public:
       throw _com_error(E_OUTOFMEMORY);
     MultiByteToWideChar(CP_ACP, 0, text, -1, this->value, length);
   }
+
   _bstr_t(const _bstr_t& other) : value(_bstr_t::copyOf(other.value)) {}
   _bstr_t(_bstr_t&& other) : value(other.value) { other.value = nullptr; }
   ~_bstr_t() { SysFreeString(this->value); }
@@ -59,6 +62,7 @@ public:
     }
     return *this;
   }
+
   _bstr_t& operator=(_bstr_t&& other)
   {
     if (this != &other)

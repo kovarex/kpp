@@ -1,4 +1,5 @@
 requires config::platform == Platform::Windows; // (Windows' alone: the game's Windows code uses it)
+
 // ATL's CComPtr<T> (atlbase.h), which the DirectX backend keeps its COM objects in: a pointer to a
 // COM interface that AddRefs what it takes or copies and Releases what it lets go. As ATL's:
 // operator& gives the address of the (null) pointer for a function that writes one, and the
@@ -11,17 +12,21 @@ public:
 
   CComPtr() {}
   implicit CComPtr(nullptr_t) {}
+
   implicit CComPtr(T* pointer) : p(pointer)
   {
     if (this->p)
       this->p->AddRef();
   }
+
   CComPtr(const CComPtr<T>& other) : p(other.p)
   {
     if (this->p)
       this->p->AddRef();
   }
+
   CComPtr(CComPtr<T>&& other) : p(other.p) { other.p = nullptr; }
+
   ~CComPtr()
   {
     if (this->p)
@@ -38,7 +43,9 @@ public:
       old->Release();
     return *this;
   }
+
   CComPtr<T>& operator=(const CComPtr<T>& other) { return *this = other.p; }
+
   CComPtr<T>& operator=(CComPtr<T>&& other)
   {
     // The pointers compared, as ATL's does: `&other` is the class's own operator&, which asserts
@@ -53,6 +60,7 @@ public:
     }
     return *this;
   }
+
   CComPtr<T>& operator=(nullptr_t)
   {
     this->Release();
@@ -62,12 +70,14 @@ public:
   implicit operator T*() const { return this->p; }
   T* operator->() const { return this->p; }
   T& operator*() const { return *this->p; }
+
   // Where a function that hands out an interface writes it; ATL asserts the pointer is null.
   T** operator&()
   {
     release_assert(this->p == nullptr);
     return &this->p;
   }
+
   bool operator!() const { return this->p == nullptr; }
   bool operator==(T* other) const { return this->p == other; }
   bool operator!=(T* other) const { return this->p != other; }
@@ -82,6 +92,7 @@ public:
       old->Release();
     }
   }
+
   // Takes pointer over without AddRef (releasing the one held), or gives the one held up.
   void Attach(T* pointer)
   {
@@ -89,12 +100,14 @@ public:
       this->p->Release();
     this->p = pointer;
   }
+
   T* Detach()
   {
     T* old = this->p;
     this->p = nullptr;
     return old;
   }
+
   // *target becomes the interface, AddRef'ed.
   HRESULT CopyTo(T** target) const
   {

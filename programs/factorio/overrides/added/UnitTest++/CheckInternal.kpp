@@ -68,6 +68,7 @@ namespace UnitTest
 
     template<typename F>
     implicit CheckCondition(const F& f) : condition(&f), evaluate(&CheckCondition::evaluateAs<F>) {}
+
     template<typename F>
     static bool evaluateAs(const void* f, MemoryOutStream& stream)
     {
@@ -83,6 +84,7 @@ namespace UnitTest
 
     template<typename F>
     implicit CheckId(const F& f) : id(&f), write(&CheckId::writeAs<F>) {}
+
     template<typename F>
     static void writeAs(const void* f, MemoryOutStream& stream)
     {
