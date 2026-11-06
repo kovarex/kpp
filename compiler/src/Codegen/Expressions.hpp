@@ -59,6 +59,9 @@
     // bad_array_new_length, [expr.new] 8): BadAlloc thrown (the library's throwBadAlloc), and
     // without the library the program stopped saying `stop`. Ends the current block.
     void allocationFailure(Node* at, const std::string& stop);
+    // Calls the library's function of that name, which throws (with no library the program stops
+    // there, saying `stop`); nothing runs after it.
+    void throwFromLibrary(const char* name, Node* at, const std::string& stop);
     // A block malloc gave a new-expression: allocationFailure when it is null, never an object built there.
     void checkAllocation(const std::string& block, Node* at);
     // `(a <=> b) cmp 0` of an order (an i8: -1, 0, 1, or 2 for unordered, a NaN's, which only != holds),

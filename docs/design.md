@@ -684,6 +684,11 @@ kpp/test_check_char_pointers_is_error.
   `b.Right::get()`) goes through its own path, and a conversion to the repeated base itself is an
   error, ambiguous (2026-10-31, classes/repeated_base_conversion_is_ambiguous; the game has four
   such classes, Unit and SpiderUnit with Targetable twice, Loader and InfinityPipe with Freezable).
+  `dynamic_cast` follows [expr.dynamic.cast] 8 and a handler [except.handle] 3: a base there twice or
+  not public is no target (a descriptor says which base is public; a class with every base public
+  and none twice takes the first hit, the fast path nearly every class is on). A failed cast to a
+  reference throws BadCast, `typeid(*p)` of a null p BadTypeid (classes/dynamic_cast_public_unambiguous_subobject,
+  classes/handler_takes_public_unambiguous_base, classes/failed_reference_cast_and_typeid_of_null_throw).
 - The vtable is MSVC's and COM's (2026-10-29): the object's first word points at the first
   virtual function's slot, the slots follow in declaration order (an override takes its base's
   slot), `this` is the first argument and a class result goes through a hidden pointer after it.
@@ -2824,7 +2829,7 @@ function runs on the object that pointer points at (language/consteval_member_ca
 `dynamic_cast` reads the complete object a base part belongs to: a pointer becomes one to it, or
 to its part of the class asked for (a derived class's object, a cross-cast to a second base), else
 the null pointer; a reference the same where it is, and no constant where it has no such part
-(C++ throws bad_cast) (language/consteval_dynamic_cast).
+(at run time it throws BadCast) (language/consteval_dynamic_cast).
 
 *A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
 global, static member or local, whose initializer the interpreter cannot evaluate is an error

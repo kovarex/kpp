@@ -550,14 +550,12 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
   if (pointer)
     return Value{r, e->ty, false};
   // `dynamic_cast<const T&>(x)`: the T object itself (its members are called on it); an x that
-  // is no T is a wrong program (C++ throws bad_cast), stopped here rather than read through null.
-  if (declaredNames.claim("@llvm.trap"))
-    decls += "declare void @llvm.trap()\n";
+  // is no T throws BadCast.
   std::string bad = newTemp(), okL = newLabel("dyncast.ok"), badL = newLabel("dyncast.bad");
   fn += "  " + bad + " = icmp eq ptr " + r + ", null\n";
   fn += "  br i1 " + bad + ", label %" + badL + ", label %" + okL + "\n";
   startBlock(badL);
-  fn += "  call void @llvm.trap()\n  unreachable\n";
+  throwFromLibrary("throwBadCast", e, "dynamic_cast to a reference of an object that is none");
   blockTerminated = true;
   startBlock(okL);
   return Value{r, target, false};

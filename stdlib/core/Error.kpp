@@ -7,6 +7,23 @@ public:
   BadAlloc() : Exception(String("bad allocation")) {}
 };
 
+// What a dynamic_cast to a reference and `typeid(*p)` of a null p throw, as std::bad_cast and
+// std::bad_typeid. The compiler calls these two functions.
+class BadCast : public Exception
+{
+public:
+  BadCast() : Exception(String("bad dynamic_cast")) {}
+};
+
+class BadTypeid : public Exception
+{
+public:
+  BadTypeid() : Exception(String("typeid of a null pointer")) {}
+};
+
+[[noreturn]] [[noinline]] void throwBadCast() { throw BadCast(); }
+[[noreturn]] [[noinline]] void throwBadTypeid() { throw BadTypeid(); }
+
 class LengthError : public LogicError
 {
 public:

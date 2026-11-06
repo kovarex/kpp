@@ -408,7 +408,25 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         else if (named && named->kind == NodeKind::EnumDecl)
           staticTy = types.enumType(named);
         else if (isClass(xt) && structFor(xt, e).polymorphic)
-          namePtr = descriptorName(loadSlot(lvalue(x), -1)); // the dynamic type: slot -1 of the object's vtable
+        {
+          // The dynamic type: slot -1 of the object's vtable. `typeid(*p)` of a null p throws
+          // bad_typeid ([expr.typeid] 3).
+          std::string object = lvalue(x);
+          Expr* inner = x;
+          while (inner->kind == NodeKind::ParenExpr)
+            inner = static_cast<ParenExpr*>(inner)->inner;
+          if (inner->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(inner)->isKeyword && P(static_cast<UnaryExpr*>(inner)->op) == P::Star)
+          {
+            std::string isNull = newTemp(), nullL = newLabel("typeid.null"), okL = newLabel("typeid.ok");
+            fn += "  " + isNull + " = icmp eq ptr " + object + ", null\n";
+            fn += "  br i1 " + isNull + ", label %" + nullL + ", label %" + okL + "\n";
+            startBlock(nullL);
+            throwFromLibrary("throwBadTypeid", e, "typeid of the object a null pointer points to");
+            blockTerminated = true;
+            startBlock(okL);
+          }
+          namePtr = descriptorName(loadSlot(object, -1));
+        }
         else
           staticTy = xt;
       }
@@ -1245,8 +1263,13 @@ auto codegen::Emitter::ensureMalloc() -> void
 
 auto codegen::Emitter::allocationFailure(Node* at, const std::string& stop) -> void
 {
-  // The library's throwBadAlloc (its names are reserved: no program function takes its place).
-  FunctionDecl* thrower = global.findFreeFunction("throwBadAlloc", {}, nullptr); // (from the global scope)
+  throwFromLibrary("throwBadAlloc", at, stop);
+}
+
+auto codegen::Emitter::throwFromLibrary(const char* name, Node* at, const std::string& stop) -> void
+{
+  // The library's function (its names are reserved: no program function takes its place).
+  FunctionDecl* thrower = global.findFreeFunction(name, {}, nullptr); // (from the global scope)
   if (thrower && thrower->file && thrower->file->isLibrary && thrower->params.empty())
   {
     emitCall("", "void " + useFunction(thrower, {}, nullptr, at) + "()", true);

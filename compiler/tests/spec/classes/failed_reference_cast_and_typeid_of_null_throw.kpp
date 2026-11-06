@@ -53,7 +53,7 @@ int main()
   Base& reference = derived;
   Base* something = &derived;
   printf("%d %d\n", typeid(reference) == typeid(Derived), typeid(*something) == typeid(Derived));
-  // the cast runs its operand once
+  // inside a handler
   try
   {
     throw 1;
