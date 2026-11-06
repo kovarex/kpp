@@ -2733,15 +2733,27 @@ auto GlobalScope::Impl::memberOperatorExact(FunctionDecl* f, const Subst& subst,
 auto GlobalScope::Impl::freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst,
                                                          const Ty* lhs, const Ty* rhs, size_t arity) -> bool
 {
-  if (arity != 2 || !free || !free->templateParams.empty())
-    return false;
+  return compareFreeWithMember(free, freeSubst, member, memberSubst, lhs, rhs, arity) == 1;
+}
+
+auto GlobalScope::Impl::compareFreeWithMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst,
+                                                       const Ty* lhs, const Ty* rhs, size_t arity) -> int
+{
+  if (arity != 2 || !free || !free->templateParams.empty() || !member || !member->templateParams.empty())
+    return 2;
   std::vector<int> mine = memberOperatorRanks(member, memberSubst, rhs, arity);
   if (mine.size() != 2)
-    return false;
+    return 2;
   const Ty* ft = declaredTypeOf(free, freeSubst.empty() ? nullptr : &freeSubst, 0);
   if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2)
-    return false;
+    return 2;
   int first = std::max(1, conversionRank(lhs, ft->args[0])) - 1;
   int second = std::max(1, conversionRank(rhs, ft->args[1])) - 1;
-  return first <= mine[0] && second <= mine[1] && (first < mine[0] || second < mine[1]);
+  if (first >= NotViable - 1 || second >= NotViable - 1)
+    return -1; // (the free one does not take them)
+  if (first <= mine[0] && second <= mine[1] && (first < mine[0] || second < mine[1]))
+    return 1;
+  if (mine[0] <= first && mine[1] <= second && (mine[0] < first || mine[1] < second))
+    return -1;
+  return 0;
 }

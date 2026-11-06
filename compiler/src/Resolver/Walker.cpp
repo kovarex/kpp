@@ -2913,7 +2913,7 @@ auto GlobalScope::Impl::Walker::bindOverloadSets(const std::vector<OverloadSetAr
       bindOverloadSet(s, fnTy->args[s.index]);
 }
 
-auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to, uint32_t token) -> void
+auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly) -> void
 {
   if (probing || activeSubst || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) ||
       types.isDependent(to))
@@ -2926,8 +2926,19 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
     return;
   // The one rule codegen converts by (design.md 24, chooseConversion): an error exactly where it
   // finds no operator.
-  if (impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr, false))
+  bool ambiguous = false;
+  if (impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr, false, &ambiguous))
     return; // (an explicit operator bool converts a condition, never an argument or a copy-initialization)
+  if (ambiguous)
+  {
+    // Two conversion operators equally good (`operator int` and `operator double` to a long): C++'s
+    // ambiguous conversion, here rather than codegen's "a class where a scalar is expected".
+    impl.reportCheckerError(file, token, "the conversion of " + types.toString(f, &symbols) + " to " + types.toString(t, &symbols) +
+                                           " is ambiguous: more than one of its conversion operators converts to it equally well");
+    return;
+  }
+  if (ambiguousOnly)
+    return;
   impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
                                          ": it has no implicit conversion operator to a scalar");
 }
@@ -3349,7 +3360,7 @@ auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty
     }
 }
 
-auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
+auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, bool ambiguousOnly) -> void
 {
   if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy))
     return;
@@ -3358,7 +3369,7 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
     return;
   for (size_t i = 0; i < args.size() && i < fnTy->args.size(); ++i)
     if (args[i] && args[i]->kind != NodeKind::BraceInitExpr && argTypes[i] && argTypes[i]->kind != TyKind::Pack)
-      checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token);
+      checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly);
 }
 
 auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee) -> void
@@ -4361,6 +4372,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       {
         checkConstObjectCall(f, implicitObject, c->token);
         checkExplicitArguments(f, impl.declaredTypeOf(f, classSubst, 0), c->args); // `lane(7)` with `explicit Strict(int)`
+        checkScalarArguments(f, impl.declaredTypeOf(f, classSubst, 0), c->args, true); // `g(a)` for a long, a converting two ways
       }
       if (!f)
       {
@@ -4537,6 +4549,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         checkConstObjectCall(f, object, m->token);
         checkRefQualifiedCall(f, category, m->token);
         checkExplicitArguments(f, impl.declaredTypeOf(f, &r.subst, 0), c->args);
+        checkScalarArguments(f, impl.declaredTypeOf(f, &r.subst, 0), c->args, true);
       }
       if (!f)
       {
@@ -4906,11 +4919,21 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
     // than C++'s; classes/operator_member_and_free_ranked_together).
     Subst freeSubst;
     if (FunctionDecl* free = impl.memberOperatorExact(member, memberSubst, rhs, arity) ? nullptr : findFree(true, freeSubst))
-      if (impl.freeOperatorBeatsMember(free, freeSubst, member, memberSubst, lhs, rhs, arity))
+    {
+      int better = impl.compareFreeWithMember(free, freeSubst, member, memberSubst, lhs, rhs, arity);
+      if (better == 1)
       {
         subst = freeSubst;
         return free;
       }
+      // Neither takes the operands better: ambiguous, as in C++ (`m + 1` with M::operator+(long)
+      // beside operator+(const M&, unsigned); the member was taken).
+      if (better == 0 && !probing)
+        reportHere(token, "the operator " + std::string(op < P::Count ? punctuatorSpelling(op) : "?") + " on " +
+                            types.toString(types.unqualified(types.stripRef(lhs)), &symbols) + " and " +
+                            types.toString(types.unqualified(types.stripRef(rhs)), &symbols) + " is ambiguous: the class's member operator" +
+                            std::string(op < P::Count ? punctuatorSpelling(op) : "?") + " and a free one take the operands equally well");
+    }
     subst = memberSubst;
     isMember = true;
     return member;

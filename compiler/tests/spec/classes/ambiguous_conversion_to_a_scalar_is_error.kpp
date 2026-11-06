@@ -1,0 +1,27 @@
+// spec: an argument or initializer of a class that two of its conversion operators convert to the scalar parameter type equally well (`operator int` and `operator double` for a long, `operator int*` and `operator char*` for a void*) is an ambiguous conversion, a compile error at the use as in C++ ([over.best.ics] 10, [over.match.conv]), not codegen's "a class where a scalar is expected"
+// error: ambiguous_conversion_to_a_scalar_is_error.kpp:22: error: the conversion of A to long is ambiguous: more than one of its conversion operators converts to it equally well
+// error: ambiguous_conversion_to_a_scalar_is_error.kpp:23: error: the conversion of A to long is ambiguous: more than one of its conversion operators converts to it equally well
+// error: ambiguous_conversion_to_a_scalar_is_error.kpp:24: error: the conversion of C to void* is ambiguous: more than one of its conversion operators converts to it equally well
+// factorio: thread J's overload battery against clang (2026-11-06): only codegen refused them; clang: conversion from 'A' to 'long' is ambiguous
+struct A
+{
+  operator int() const { return 1; }
+  operator double() const { return 2; }
+};
+struct C
+{
+  operator int*() const { return nullptr; }
+  operator char*() const { return nullptr; }
+};
+int takeLong(long v) { return (int)v; }
+int takePointer(void* p) { return p ? 1 : 0; }
+int main()
+{
+  A a;
+  C c;
+  int fromVariable = takeLong(a);
+  int fromTemporary = takeLong(A{});
+  int fromPointer = takePointer(c);
+  println(fromVariable + fromTemporary + fromPointer);
+  return 0;
+}

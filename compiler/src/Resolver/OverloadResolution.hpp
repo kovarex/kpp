@@ -392,6 +392,11 @@
   // template, nor a unary operator (a member is kept there).
   bool freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst, const Ty* lhs,
                                const Ty* rhs, size_t arity);
+  // How free operator free and member operator member compare on lhs and rhs ([over.match.best]):
+  // 1 the free one is better, -1 the member, 0 neither (the same ranks, or each better for one
+  // operand: ambiguous, as C++ has it), 2 not ranked (a template, a unary operator, a type not known).
+  int compareFreeWithMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst, const Ty* lhs,
+                            const Ty* rhs, size_t arity);
 
   // Whether the free operator f takes the enumeration operands of `lhs op rhs` as they are, so that
   // it is the user's operator for that enum (`Flags operator|(Flags, Flags)`) rather than one

@@ -1,5 +1,5 @@
 // spec: an argument whose class converts to the parameter by two equally good operators keeps the overload viable (C++ [over.best.ics]: an ambiguous conversion sequence is a user-defined one), and the call that chooses it is an error, never a silent choice of another overload
-// error: ambiguous_conversion_keeps_overload_viable.kpp:13: error: codegen does not support passing a class (X) where a scalar is expected yet (in main())
+// error: ambiguous_conversion_keeps_overload_viable.kpp:13: error: the conversion of X to int32 is ambiguous: more than one of its conversion operators converts to it equally well
 // factorio: D's review of 1514538a (overload ranking by the one conversion rule, design.md 24)
 struct X
 {

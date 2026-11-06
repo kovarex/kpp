@@ -1,0 +1,17 @@
+// spec: a class's member operator and a free operator that take the operands equally well (the same conversions, or each better for one operand) make the expression ambiguous, a compile error as in C++ ([over.match.oper] 3, [over.match.best]), never the member taken
+// error: operator_member_and_free_equally_good_is_ambiguous.kpp:14: error: the operator + on M and int32 is ambiguous: the class's member operator+ and a free one take the operands equally well
+// factorio: thread J's overload battery against clang (2026-11-06): kpp called the member; clang: use of overloaded operator '+' is ambiguous
+struct M
+{
+  int v;
+  int operator+(long) const { return 1; }
+};
+int operator+(const M&, unsigned) { return 2; }
+int main()
+{
+  M m{0};
+  int sum = m + 1L;
+  int bad = m + 1;
+  println(sum, " ", bad);
+  return 0;
+}

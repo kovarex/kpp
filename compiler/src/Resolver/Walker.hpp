@@ -535,7 +535,9 @@
     // a pointer to function. Only in code walked where it is written, not in a template's instance: there the walk's
     // candidate need not be the code generator's callee (a CRTP base's `triggered(x)`, which the derived class's
     // overload answers), and the code generator reports what it cannot convert, as before.
-    void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token);
+    // ambiguousOnly: an ambiguous conversion alone is the error (the chosen function's argument, which an
+    // ambiguous conversion kept viable, C++ [over.best.ics] 10).
+    void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly = false);
     // A construction of class t from args (a call of the class, a functional cast, `new T(args)`, a
     // variable's direct initialization) that no constructor takes, or takes ambiguously: an error, by
     // the rule codegen and the interpreter follow (chooseConstructor; design.md 24). Only in code
@@ -546,7 +548,7 @@
     // Each argument of a call of f (fnTy: its type), the single plain candidate whose parameters the arguments do not
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not
     // for a function template's call, nor one with an expansion among its arguments.
-    void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
+    void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, bool ambiguousOnly = false);
     // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
     // callee if given (`sink(d)` of a class's operator()).
     void checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee = {});
