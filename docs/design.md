@@ -542,7 +542,7 @@ the names, suites with depends and tags, fixtures, `generate`, the order, the er
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
 The mixed-sign rule is done too. Not yet (their snippets pending): a call's values, test functions;
-`--jobs` and `--report`'s `"seconds"`. The parser
+and `--jobs`. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
 ```

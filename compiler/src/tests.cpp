@@ -633,14 +633,14 @@ String __kppJson(const String& text)
   return result;
 }
 
-String __kppJsonTest(const __KppTest& test, const char* status, const Vector<__KppTestFailure>& failures)
+String __kppJsonTest(const __KppTest& test, const char* status, const Vector<__KppTestFailure>& failures, double seconds = 0)
 {
   String line;
   line << "{\"test\":" << __kppJson(test.fullName);
   if (test.suite[0] != 0)
     line << ",\"suite\":" << __kppJson(String(test.suite));
   line << ",\"file\":" << __kppJson(String(test.where.file_name())) << ",\"line\":" << int(test.where.line()) << ",\"status\":\""
-       << StringView(status) << "\",\"failures\":[";
+       << StringView(status) << "\",\"seconds\":" << seconds << ",\"failures\":[";
   for (int i = 0; i < int(failures.size()); ++i)
   {
     const __KppTestFailure& f = failures[i];
@@ -1026,7 +1026,8 @@ int main(int argc, char** argv)
       __kppRunWhole(test);
     __kppGuarded([]() { testAfterEach(); }, "testAfterEach");
     state.running = false;
-    if (__kppNanoseconds() - started > slowSeconds * 1000000000u)
+    u64 took = __kppNanoseconds() - started;
+    if (took > slowSeconds * 1000000000u)
       println("slow test: ", test->fullName, " ran longer than ", slowSeconds, " s");
     bool passed = state.failures.empty();
     if (!passed)
@@ -1053,7 +1054,7 @@ int main(int argc, char** argv)
         println("failed: ", test->fullName, " (after failures in: ", names, ")");
       }
     }
-    writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures));
+    writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
   }
   testsTeardown();
   writeReport(toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, "}}\n"));

@@ -215,6 +215,8 @@ def header(path):
 
 
 def normalise(text):
+    # (a test's time in --report varies: that it is a number is what a snippet can say)
+    text = re.sub(r'"seconds":-?[0-9][0-9.eE+-]*', '"seconds":0', text)
     return "\n".join(l.rstrip() for l in text.replace("\r\n", "\n").split("\n")).strip("\n")
 
 
