@@ -32,3 +32,14 @@ Members:
 *Differences from C++*: the count is a ContainerSize (common.md); a Span of a fixed extent stores its count like any
 other (two words where C++ makes it one); the subspan, first and last that take their counts as
 template arguments are not provided.
+
+# Array<T, N>
+
+std::array: N elements of T in place, an aggregate (`Array<int, 3> a = {1, 2, 3}`, the rest
+value-initialized as a C array's; `Array a = {1, 2, 3}` deduces both). `size()`, `max_size()`, `empty()`;
+`[i]`, `at(i)` (OutOfRange outside [0, N)), `front()`, `back()`, `data()`; `begin()`, `end()` (pointers),
+`cbegin()`, `cend()`, `rbegin()`, `rend()`, `crbegin()`, `crend()`; `fill(value)`, `swap(other)`, `swap(a,
+b)`; `==`, `<=>` and what they give, by the elements in order. Tuple-like (tuple.md). `Array<T, 0>` has no
+storage: `begin() == end()`, `at` always throws, `[]`, `front()` and `back()` must not be called.
+`toArray(cArray)`, `toArray({a, b, c})` (std::to_array): an Array of the elements, copied, or moved from an
+rvalue array.

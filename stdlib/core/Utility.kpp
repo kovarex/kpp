@@ -119,14 +119,16 @@ struct Pair
   A first;
   B second;
 
-  Pair() {}
+  // Both value-initialized, as std::pair's: a Pair<int, double>() is (0, 0).
+  Pair() : first(), second() {}
   Pair(const A& first, const B& second) : first(first), second(second) {}
   // Rvalues are moved in, as std::pair's forwarding constructor does: Pair<K, UniquePtr<T>>(key,
   // makeUnique<T>()) works. (Plain overloads rather than a template, which would also claim to
   // build a Pair from any two arguments in constructibility checks.)
-  Pair(A&& first, B&& second) : first(move(first)), second(move(second)) {}
-  Pair(const A& first, B&& second) : first(first), second(move(second)) {}
-  Pair(A&& first, const B& second) : first(move(first)), second(second) {}
+  // (With a reference member these forms are the one above: a Pair<int&, int&> has that one.)
+  Pair(A&& first, B&& second) requires(!isReference<A> && !isReference<B>) : first(move(first)), second(move(second)) {}
+  Pair(const A& first, B&& second) requires(!isReference<B>) : first(first), second(move(second)) {}
+  Pair(A&& first, const B& second) requires(!isReference<A>) : first(move(first)), second(second) {}
 
   // From two values the members are constructed from, as std::pair's converting constructor:
   // explicit when one of them converts to its member only explicitly
@@ -177,6 +179,30 @@ struct Pair
   Pair(Tuple<Args1...>& firstArgs, Tuple<Args2...>& secondArgs, IndexSequence<I1...>, IndexSequence<I2...>)
     : first(get<I1>(move(firstArgs))...), second(get<I2>(move(secondArgs))...)
   {
+  }
+
+  // From a Pair of other types, member by member (std::pair's converting assignments); through
+  // reference members to what they refer to.
+  template<typename U1, typename U2>
+  Pair<A, B>& operator=(const Pair<U1, U2>& other)
+  {
+    this->first = other.first;
+    this->second = other.second;
+    return *this;
+  }
+
+  template<typename U1, typename U2>
+  Pair<A, B>& operator=(Pair<U1, U2>&& other)
+  {
+    this->first = forward<U1>(other.first);
+    this->second = forward<U2>(other.second);
+    return *this;
+  }
+
+  void swap(Pair<A, B>& other)
+  {
+    ::swap(this->first, other.first);
+    ::swap(this->second, other.second);
   }
 
   bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }

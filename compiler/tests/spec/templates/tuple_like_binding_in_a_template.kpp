@@ -1,0 +1,20 @@
+// spec: a structured binding of a tuple-like value works in a function template, as outside one: the names read and write through get<i> of the hidden object (`7`)
+// pending: at the instance the names are taken for locals used outside their function: "it, a local of inTemplate, is used outside its function". D; K makes Pair tuple-like once it passes: NoiseExpressionStorage::getOrCreate binds try_emplace's Pair in a template
+extern "C" int printf(const char* format, ...);
+Tuple<int*, bool> lookUp(int* where) { return Tuple<int*, bool>(where, true); }
+
+template<typename T, typename... Args>
+int inTemplate(int* where, Args&&... args)
+{
+  auto [it, created] = lookUp(where);
+  if (created)
+    *it = T(forward<Args>(args)...);
+  return *it;
+}
+
+int main()
+{
+  int x = 0;
+  printf("%d\n", inTemplate<int>(&x, 7));
+  return 0;
+}

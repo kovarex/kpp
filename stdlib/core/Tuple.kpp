@@ -249,8 +249,9 @@ const T& get(const Array<T, N>& a) { return a[I]; }
 template<i32 I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 T&& get(Array<T, N>&& a) { return move(a[I]); }
 
-// Pair's members by index (std::get on a pair). Pair is not tuple-like (no TupleSize): a binding
-// takes first and second directly.
+// Pair's members by index or by type (std::get on a pair). Pair is not tuple-like (no TupleSize): a
+// binding takes first and second directly, until a tuple-like binding works everywhere one of a Pair
+// does (templates/tuple_like_binding_in_a_template, language/tuple_like_binding_in_a_range_for_in_a_lambda).
 template<i32 I, typename A, typename B> requires (I == 0 || I == 1)
 auto& get(Pair<A, B>& p)
 {
@@ -267,6 +268,43 @@ const auto& get(const Pair<A, B>& p)
     return p.first;
   else
     return p.second;
+}
+
+template<i32 I, typename A, typename B> requires (I == 0 || I == 1)
+auto&& get(Pair<A, B>&& p)
+{
+  if constexpr (I == 0)
+    return forward<A>(p.first);
+  else
+    return forward<B>(p.second);
+}
+
+// The member of type T, of the two different types.
+template<typename T, typename A, typename B> requires (isSame<T, A> != isSame<T, B>)
+T& get(Pair<A, B>& p)
+{
+  if constexpr (isSame<T, A>)
+    return p.first;
+  else
+    return p.second;
+}
+
+template<typename T, typename A, typename B> requires (isSame<T, A> != isSame<T, B>)
+const T& get(const Pair<A, B>& p)
+{
+  if constexpr (isSame<T, A>)
+    return p.first;
+  else
+    return p.second;
+}
+
+template<typename T, typename A, typename B> requires (isSame<T, A> != isSame<T, B>)
+T&& get(Pair<A, B>&& p)
+{
+  if constexpr (isSame<T, A>)
+    return forward<A>(p.first);
+  else
+    return forward<B>(p.second);
 }
 
 // A sequence of int constants as a type (std::integer_sequence of int): `IndexSequence<0, 1, 2>`;

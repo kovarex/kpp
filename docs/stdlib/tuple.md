@@ -59,8 +59,22 @@ member), whatever E's data members are. A program may make its own class tuple-l
 specializing TupleSize for it and giving it a get.
 
 Pair is not tuple-like (TupleSize is not specialized for it): a binding of a Pair takes its members
-first and second directly. `get<0>(pair)` and `get<1>(pair)` give first and second.
-Difference from C++ (std::pair is tuple-like); the bindings are the same either way.
+first and second directly. Difference from C++ (std::pair is tuple-like); the bindings are the same
+either way.
+
+## Pair
+
+`Pair<A, B>` is std::pair: the public members `first` and `second`. `Pair()` value-initializes both;
+`Pair(a, b)` copies or moves each in, and converts from any two values its members can be constructed
+from, implicitly when both convert implicitly; `Pair(other)` and `=` from a Pair of other types, member
+by member, moving from an rvalue. A reference member assigns what it refers to; assigning one
+`Pair<int&, int&>` from another of the same type does not compile (*difference from C++*, as long as
+the assignment would make every Pair's non-trivial). `swap(other)`, `swap(a, b)`; `==`, `<=>` and what
+they give, first deciding, then second. `makePair(a, b)` stores decayed values, and a ReferenceWrapper's
+reference. `Pair(a, b)` deduces both types from the values taken by value.
+
+`get<0>(pair)` and `get<1>(pair)` give first and second, moved from an rvalue Pair; `get<T>(pair)` the
+member of type T, for a Pair of two different types.
 
 `Pair(piecewiseConstruct, Tuple<A...> firstArgs, Tuple<B...> secondArgs)`: first constructed from
 the elements of firstArgs and second from those of secondArgs, each in place (never copied or

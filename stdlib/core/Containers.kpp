@@ -18,6 +18,7 @@ struct Array
   using const_pointer = const T*;
 
   ContainerSize size() const { return N; }
+  ContainerSize max_size() const { return N; }
   bool empty() const { return N == 0; }
   T& operator[](ContainerSize index) { return this->items[index]; }
   const T& operator[](ContainerSize index) const { return this->items[index]; }
@@ -102,6 +103,7 @@ struct Array<T, 0>
   using const_pointer = const T*;
 
   ContainerSize size() const { return 0; }
+  ContainerSize max_size() const { return 0; }
   bool empty() const { return true; }
   T& operator[](ContainerSize index) { return *this->data(); }
   const T& operator[](ContainerSize index) const { return *this->data(); }
@@ -143,6 +145,25 @@ struct Array<T, 0>
 };
 
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).
+// The Array of a C array's elements, copied, or moved from an rvalue (std::to_array): `toArray({1, 2, 3})`.
+template<typename T, ContainerSize N>
+Array<RemoveConst<T>, N> toArray(T (&source)[N])
+{
+  Array<RemoveConst<T>, N> result;
+  for (ContainerSize i = 0; i < N; ++i)
+    result[i] = source[i];
+  return result;
+}
+
+template<typename T, ContainerSize N>
+Array<T, N> toArray(T (&&source)[N])
+{
+  Array<T, N> result;
+  for (ContainerSize i = 0; i < N; ++i)
+    result[i] = move(source[i]);
+  return result;
+}
+
 constexpr ContainerSize dynamicExtent = ContainerSize(-1);
 
 // A view of contiguous elements (what std::span converts to): a pointer and a count, over an

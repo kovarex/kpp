@@ -1,0 +1,158 @@
+// spec: Pair is std::pair and Array std::array: value-initialized by default, reference members, converting construction and assignment, swap, get by index and by type, comparisons, move-only members; Array's members, Array<T, 0>, toArray; the output is what libstdc++ and MSVC's STL print for the same program
+// factorio: unspecified until K's battery pa1: a Pair() left its numbers unset, Pair<int&, int&> did not construct, Pair::swap, get<T>, TupleSize<Pair>, Array::max_size and toArray did not exist
+extern "C" int printf(const char* format, ...);
+extern "C" import "string.h";
+struct Moved
+{
+  int value;
+  Moved(int v) : value(v) {}
+  Moved(const Moved& other) : value(other.value) { printf("copy\n"); }
+  Moved(Moved&& other) noexcept : value(other.value) { other.value = -1; printf("move\n"); }
+  Moved& operator=(const Moved& other) { value = other.value; printf("copy=\n"); return *this; }
+  Moved& operator=(Moved&& other) noexcept { value = other.value; other.value = -1; printf("move=\n"); return *this; }
+};
+
+struct Base
+{
+  int x = 1;
+};
+
+struct Derived : Base
+{
+};
+
+int main()
+{
+  char scribble[sizeof(Pair<int, double>)];
+  memset(scribble, 0x55, sizeof(scribble));
+  Pair<int, double>* p = new (scribble) Pair<int, double>();
+  printf("default %d %g\n", p->first, p->second);
+  Pair<int, double> q(1, 2.5);
+  printf("values %d %g\n", q.first, q.second);
+  Pair<long long, float> widened(q);
+  printf("converting copy %lld %g\n", widened.first, widened.second);
+  Pair<long long, float> assigned;
+  assigned = q;
+  printf("converting assign %lld %g\n", assigned.first, assigned.second);
+  auto made = makePair(3, 'c');
+  printf("makePair %d %c\n", made.first, made.second);
+  Pair deduced(4, 2.0);
+  printf("deduced %d %g\n", deduced.first, deduced.second);
+  Pair<int, int> braced = {5, 6};
+  printf("braced %d %d\n", braced.first, braced.second);
+  Pair<int, int> a(1, 2);
+  Pair<int, int> b(1, 3);
+  printf("== %d %d\n", (int)(a == a), (int)(a == b));
+  printf("!= %d\n", (int)(a != b));
+  printf("< %d %d\n", (int)(a < b), (int)(b < a));
+  printf("> <= >= %d %d %d\n", (int)(a > b), (int)(a <= b), (int)(a >= b));
+  printf("<=> %d\n", (int)((a <=> b) < 0));
+  a.swap(b);
+  printf("swap %d %d\n", a.second, b.second);
+  swap(a, b);
+  printf("free swap %d %d\n", a.second, b.second);
+  printf("get %d %d\n", get<0>(a), get<1>(a));
+  get<1>(a) = 9;
+  printf("get writes %d\n", a.second);
+  printf("get by type %d\n", get<int>(made));
+  auto [one, two] = a;
+  printf("structured %d %d\n", one, two);
+  auto& [refOne, refTwo] = a;
+  refOne = 7;
+  printf("structured reference %d\n", a.first);
+  int left = 1;
+  int right = 2;
+  Pair<int&, int&> refs(left, right);
+  refs.first = 10;
+  printf("reference members %d\n", left);
+  Pair<int&, int&> other(right, left);
+  refs = Pair<int, int>(20, 30);
+  printf("assign through references %d %d\n", left, right);
+  Pair<String, String> s("first", "second");
+  Pair<String, String> t = move(s);
+  printf("moved %s %s %d\n", t.first.c_str(), t.second.c_str(), (int)s.first.empty());
+  Pair<UniquePtr<int>, int> owner(UniquePtr<int>(new int(5)), 1);
+  Pair<UniquePtr<int>, int> taken = move(owner);
+  printf("move only %d %d\n", *taken.first, (int)(owner.first == nullptr));
+  Moved value(1);
+  Pair<Moved, int> byCopy(value, 1);
+  Pair<Moved, int> byMove(move(value), 1);
+  Pair<Moved, int> again(2, 3);
+  again = byCopy;
+  again = move(byMove);
+  Pair<Base*, int> upcast = Pair<Derived*, int>(nullptr, 2);
+  printf("pointer conversion %d\n", upcast.second);
+
+  Array<int, 4> r = {1, 2, 3, 4};
+  Array<int, 4> z = {};
+  Array<int, 3> partly = {7};
+  printf("sizes %d %d %d\n", (int)r.size(), (int)r.max_size(), (int)r.empty());
+  printf("zeroed %d %d\n", z[0], z[3]);
+  printf("partly %d %d %d\n", partly[0], partly[1], partly[2]);
+  printf("front back %d %d\n", r.front(), r.back());
+  r.front() = 5;
+  r.back() = 8;
+  printf("writes %d %d\n", r[0], r[3]);
+  printf("at %d\n", r.at(1));
+  try
+  {
+    r.at(4);
+    printf("no throw\n");
+  }
+  catch (const OutOfRange&)
+  {
+    printf("at past the end throws\n");
+  }
+  printf("data %d\n", (int)(r.data() == &r[0]));
+  printf("iterators %d %d\n", (int)(r.end() - r.begin()), *r.begin());
+  printf("const iterators %d\n", (int)(r.cend() - r.cbegin()));
+  printf("reverse %d %d\n", *r.rbegin(), *(r.rend() - 1));
+  printf("const reverse %d\n", *r.crbegin());
+  const Array<int, 4>& constant = r;
+  printf("const access %d %d %d %d\n", constant[1], constant.front(), constant.back(), constant.at(2));
+  printf("const data %d\n", *constant.data());
+  int sum = 0;
+  for (int x : r)
+    sum += x;
+  printf("sum %d\n", sum);
+  r.fill(3);
+  printf("fill %d %d\n", r[0], r[3]);
+  Array<int, 4> w = {1, 2, 3, 4};
+  r.swap(w);
+  printf("swap %d %d\n", r[0], w[0]);
+  swap(r, w);
+  printf("free swap %d %d\n", r[0], w[0]);
+  Array<int, 4> c = {3, 3, 3, 4};
+  printf("== %d %d\n", (int)(r == r), (int)(r == c));
+  printf("!= %d\n", (int)(r != c));
+  printf("< %d\n", (int)(r < c));
+  printf("<=> %d\n", (int)((r <=> c) == 0));
+  printf("get %d\n", get<2>(c));
+  get<2>(c) = 6;
+  printf("get writes %d\n", c[2]);
+  printf("tuple_size %d\n", (int)TupleSize<Array<int, 4>>::value);
+  auto [e0, e1, e2, e3] = c;
+  printf("structured %d %d\n", e0, e3);
+  Array<int, 0> nothing;
+  printf("empty %d %d %d\n", (int)nothing.size(), (int)nothing.empty(), (int)(nothing.begin() == nothing.end()));
+  Array<int, 0> nothing2;
+  printf("empty == %d\n", (int)(nothing == nothing2));
+  Array<String, 2> texts = {"a", "b"};
+  Array<String, 2> copied = texts;
+  copied[0] = "c";
+  printf("copy %s %s\n", texts[0].c_str(), copied[0].c_str());
+  Array<String, 2> movedTexts = move(texts);
+  printf("move %s\n", movedTexts[1].c_str());
+  Array deducedArray = {1, 2, 3};
+  printf("deduced %d\n", (int)deducedArray.size());
+  auto fromC = toArray({1, 2, 3});
+  printf("toArray %d\n", (int)fromC.size());
+  int cArray[] = {4, 5};
+  auto fromCArray = toArray(cArray);
+  printf("toArray of an array %d\n", fromCArray[1]);
+  Array<Pair<int, int>, 2> pairs = {{{1, 2}, {3, 4}}};
+  printf("nested %d\n", pairs[1].second);
+  sort(c.begin(), c.end());
+  printf("sort %d %d\n", c[0], c[3]);
+  return 0;
+}
