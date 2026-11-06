@@ -4006,6 +4006,59 @@ namespace
       expect(P::RBrace, "expected '}' to close class");
       skipAttributes();
       pushDecl(c);
+      // An anonymous union (or struct) in a function or a namespace, `union { int a; char b; };`:
+      // an object of it, hidden, and each member's name a reference to that member of it, so that
+      // `a = 65;` writes the union and b reads it, as C++ has the names (until 2026-11-06 they
+      // were undeclared; a class's anonymous union is the class's own members already).
+      if (at(P::Semi) && c->name.empty() && (scope == Scope::Local || scope == Scope::Namespace) && isKpp())
+      {
+        NamePart part;
+        part.symbol = symbols.intern("__anon" + std::to_string(start) + "_" + std::to_string(fileTag()));
+        c->name.parts = makeSpanOf(std::vector<NamePart>{part});
+        NamedType* selfType = node<NamedType>(start);
+        selfType->name = c->name;
+        VariableDecl* object = decl<VariableDecl>(start);
+        object->type = selfType;
+        NamePart objectPart;
+        objectPart.symbol = symbols.intern("__anonobject" + std::to_string(start) + "_" + std::to_string(fileTag()));
+        object->name.parts = makeSpanOf(std::vector<NamePart>{objectPart});
+        object->flags |= flags;
+        pushDecl(object);
+        auto alias = [&](auto& self, ClassDecl* cls) -> void
+        {
+          for (Decl* m : cls->members)
+          {
+            if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty())
+            {
+              self(self, static_cast<ClassDecl*>(m)); // (a nested anonymous struct's members are the union's)
+              continue;
+            }
+            if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
+              continue;
+            auto* field = static_cast<VariableDecl*>(m);
+            if (field->bitfield)
+            {
+              error("a bit-field of an anonymous union outside a class is not supported yet");
+              continue;
+            }
+            NameExpr* base = node<NameExpr>(m->token);
+            base->name = object->name;
+            MemberExpr* access = node<MemberExpr>(m->token);
+            access->base = base;
+            access->member = field->name;
+            access->op = P::Dot;
+            LRefType* ref = node<LRefType>(m->token);
+            ref->referenced = field->type;
+            VariableDecl* name = decl<VariableDecl>(m->token);
+            name->type = ref;
+            name->name = field->name;
+            name->init = access;
+            name->flags |= flags & DF_Static;
+            pushDecl(name);
+          }
+        };
+        alias(alias, c);
+      }
       // Declarators after the body: `struct { ... } x, *y;`
       if (!at(P::Semi))
       {

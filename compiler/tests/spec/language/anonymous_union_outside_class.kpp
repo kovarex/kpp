@@ -1,0 +1,26 @@
+// spec: an anonymous union in a function or a namespace, `union { int a; char b; };`: its members' names are the union's members, one storage (a written, b read), an anonymous struct inside it too, `static union { ... };` at namespace scope; until 2026-11-06 the names were undeclared in a function, and a namespace's were "a member used outside a method"
+static union
+{
+  int whole;
+  unsigned char bytes[4];
+};
+int main()
+{
+  union
+  {
+    int a;
+    char b;
+    struct
+    {
+      short low;
+      short high;
+    };
+  };
+  a = 65;
+  println(a, " ", int(b), " ", &a == (int*)&b);
+  a = 0x00020001;
+  println(low, " ", high);
+  whole = 0x01020304;
+  println(int(bytes[0]), " ", int(bytes[3]));
+  return 0;
+}
