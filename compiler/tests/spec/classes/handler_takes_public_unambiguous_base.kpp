@@ -1,0 +1,68 @@
+// spec: a handler of a base class, or a pointer to one, takes a thrown object only if that base is public and unambiguous ([except.handle] 3): a repeated, private or protected base passes it by (the handler took it, at the first subobject of that class). A base further up takes it, const pointers too. clang and g++ print the same
+// found by thread J's inheritance battery (h12, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class H0 { public: int h = 1; virtual ~H0() {} };
+class H1 : public H0 {};
+class H2 : public H0 {};
+class H3 : public H1, public H2 {};
+class H4 : private H0 {};
+class H5 : protected H0 {};
+class H6 : H0 {};
+class Top { public: int top = 7; virtual ~Top() {} };
+class Mid : public Top { public: int mid = 8; };
+class Pad { public: int pad = 9; virtual ~Pad() {} };
+class Low : public Pad, public Mid { public: int low = 10; };
+int main()
+{
+  try
+  {
+    try { throw H3(); }
+    catch (H0&) { printf("H0\n"); }
+  }
+  catch (H1&) { printf("H1\n"); }
+  try
+  {
+    try { throw H4(); }
+    catch (H0&) { printf("H0\n"); }
+  }
+  catch (...) { printf("all\n"); }
+  try
+  {
+    try { throw H5(); }
+    catch (const H0&) { printf("H0\n"); }
+  }
+  catch (...) { printf("all\n"); }
+  try
+  {
+    try { throw H6(); }
+    catch (H0) { printf("H0\n"); }
+  }
+  catch (H6&) { printf("H6\n"); }
+  H3 repeated;
+  H4 hidden;
+  try
+  {
+    try { throw &repeated; }
+    catch (H0*) { printf("H0*\n"); }
+  }
+  catch (H3*) { printf("H3*\n"); }
+  try
+  {
+    try { throw &hidden; }
+    catch (const H0*) { printf("H0*\n"); }
+  }
+  catch (const H4*) { printf("const H4*\n"); }
+  // what a base two levels up, at an offset, takes
+  Low low;
+  try { throw low; }
+  catch (const Top& t) { printf("%d\n", t.top); }
+  try { throw &low; }
+  catch (Top* t) { printf("%d\n", t->top); }
+  try { throw &low; }
+  catch (const Mid* m) { printf("%d\n", m->mid); }
+  try { throw (const Low*)&low; }
+  catch (const Top* t) { printf("%d\n", t->top); }
+  try { throw &low; }
+  catch (const void* v) { printf("%d\n", v == &low); }
+  return 0;
+}

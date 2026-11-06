@@ -129,19 +129,23 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
 {
   t = types.unqualified(types.stripRef(t));
   auto lock = sharedLock(); // the descriptors emitted, the library's Exception's
-  std::string name, display, list;
+  std::string display = types.toString(t, &symbols), list;
+  std::string name = isClass(t) ? "@kpp.ti." + structFor(t, at).name.substr(8) : "@\"kpp.ti." + display + "\""; // one per scalar type, pointers by pointee
+  if (emittedShared[name])
+    return name;
   size_t count = 0;
+  // The list is all this type converts to (a handler's search goes no further): what an object of
+  // it is an unambiguous public base of ([except.handle] 3), one list for the whole hierarchy.
+  auto convertsTo = [&](const Ty* to, const std::string& offset)
+  { list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(to, at) + ", i64 " + offset + " }"; };
   if (isClass(t))
   {
     const StructInfo& info = structFor(t, at);
-    name = "@kpp.ti." + info.name.substr(8);
-    display = types.toString(t, &symbols);
     std::string structName = info.name;
     std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
     std::vector<const Ty*> fieldTypes = info.fieldTypes;
-    for (auto& [baseDef, index] : bases)
-      list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(fieldTypes[index], at) +
-              ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
+    for (const BaseSubobject& base : handlerBases(t, at))
+      convertsTo(base.cls, base.offset);
     if (display == "Exception" && exceptionTypeinfo.empty())
     {
       exceptionTypeinfo = name;
@@ -158,38 +162,29 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
         }
     }
   }
-  else
+  else if (t->kind == TyKind::Pointer && t->inner && t->inner->kind != TyKind::Function)
   {
-    display = types.toString(t, &symbols);
-    name = "@\"kpp.ti." + display + "\""; // one descriptor per scalar type, pointers by pointee
-    if (t->kind == TyKind::Pointer && t->inner && t->inner->kind != TyKind::Function)
+    // What a thrown pointer converts to ([except.handle] 3.3), in the order searched: its pointee
+    // const, void* (the same address, before any base's), a pointer to each base of a class it
+    // points to, at the base's offset (until 2026-11-05 none: only a handler of its own type took it),
+    // each also as a pointer to const.
+    const Ty* pointee = t->inner;
+    bool isConst = pointee->isConst, isVolatile = pointee->isVolatile;
+    auto andConst = [&](const Ty* to, const std::string& offset)
     {
-      // What a thrown pointer converts to ([except.handle] 3.3), in the order searched: its pointee
-      // const, void* (the same address, before any base's), a pointer to each base of a class it
-      // points to, at the base's offset (until 2026-11-05 none: only a handler of its own type took it).
-      const Ty* pointee = t->inner;
-      bool isConst = pointee->isConst, isVolatile = pointee->isVolatile;
-      auto convertsTo = [&](const Ty* to, const std::string& offset)
-      { list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(to, at) + ", i64 " + offset + " }"; };
       if (!isConst)
-        convertsTo(types.pointer(types.qualified(pointee, true, false)), "0");
-      if (types.unqualified(pointee)->kind != TyKind::Void)
-        convertsTo(types.pointer(types.qualified(types.voidType(), isConst, isVolatile)), "0");
-      const Ty* cls = types.unqualified(pointee);
-      if (isClass(cls) && !declaredOnly(cls))
-      {
-        const StructInfo& info = structFor(cls, at);
-        std::string structName = info.name;
-        std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
-        std::vector<const Ty*> fieldTypes = info.fieldTypes;
-        for (auto& [baseDef, index] : bases)
-          convertsTo(types.pointer(types.qualified(fieldTypes[index], isConst, isVolatile)),
-                     "ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64)");
-      }
-    }
+        convertsTo(types.pointer(types.qualified(to, false, isVolatile)), offset);
+      convertsTo(types.pointer(types.qualified(to, true, isVolatile)), offset);
+    };
+    if (!isConst)
+      convertsTo(types.pointer(types.qualified(pointee, true, isVolatile)), "0");
+    if (types.unqualified(pointee)->kind != TyKind::Void)
+      andConst(types.voidType(), "0");
+    const Ty* cls = types.unqualified(pointee);
+    if (isClass(cls) && !declaredOnly(cls))
+      for (const BaseSubobject& base : handlerBases(cls, at))
+        andConst(base.cls, base.offset);
   }
-  if (emittedShared[name])
-    return name;
   emittedShared[name] = true;
   bool was = emittingShared;
   emittingShared = true;

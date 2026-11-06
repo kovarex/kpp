@@ -764,7 +764,18 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         objectTy = o.ty;
       }
       if (isClass(objectTy))
-        destroy(addr, objectTy, c);
+      {
+        // `p->~Base()` is a virtual call, `p->Base::~Base()` runs that destructor on that part.
+        const Ty* qualifier = memberQualifier(m, c);
+        if (std::string moved; qualifier && qualifier != canonicalClass(objectTy, c))
+        {
+          if (!baseAddress(objectTy, qualifier, addr, moved, c))
+            unsupported(c, "a destructor of " + types.toString(qualifier, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
+          addr = moved;
+          objectTy = qualifier;
+        }
+        destroy(addr, objectTy, c, !qualifier);
+      }
       return {"", types.voidType()};
     }
     if (m->member.parts.size() == 1 && m->member.last().special == 2 && P(m->member.last().opToken) == P::LParen && isLambda(m->ty))

@@ -263,7 +263,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     fn += "  " + finished + " = icmp eq i8 " + seen + ", 2\n";
     fn += "  br i1 " + finished + ", label %" + done + ", label %" + spin + "\n";
     startBlock(spin);
-    fn += "  call void asm sideeffect \"pause\", \"~{memory}\"()\n"; // (another thread builds it, or gave it back: claim again)
+    fn += "  call void asm sideeffect \"pause\", \"~{memory}\"()" + bundle() + "\n"; // (another thread builds it, or gave it back: claim again)
     fn += "  br label %" + claim + "\n";
   }
   startBlock(init);

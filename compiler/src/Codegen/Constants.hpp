@@ -114,6 +114,9 @@
     // descriptor alone.
     static std::string baseSearchFunction(const std::string& name, const std::string& nullDescriptor = "");
 
+    // @kpp.dyncast(object, its static class's descriptor, the target's) and what it calls.
+    static std::string dynamicCastFunctions();
+
     // A floating-point constant in IR: the exact bits, rounded through float for 32-bit values.
     static std::string floatConstant(double value, uint8_t bits);
 

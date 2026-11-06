@@ -1,0 +1,44 @@
+// spec: `p->~Base()` of a class with a virtual destructor destroys the whole object through the vtable, as any virtual call; `p->Base::~Base()` runs Base's alone ([class.dtor]). It ran Base's alone both ways, without a word. clang and g++ print the same
+// found by thread J's inheritance battery (h4, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class Base
+{
+public:
+  virtual ~Base() { printf("~Base\n"); }
+};
+class Pad
+{
+public:
+  int pad = 1;
+  virtual ~Pad() { printf("~Pad\n"); }
+};
+class Middle : public Base
+{
+public:
+  ~Middle() override { printf("~Middle\n"); }
+};
+class Second : public Pad, public Middle
+{
+public:
+  ~Second() override { printf("~Second\n"); }
+};
+template<class T> void destroyAt(T* p) { p->~T(); }
+alignas(16) char place[64];
+int main()
+{
+  Base* one = new (place) Middle;
+  one->~Base();
+  printf("--\n");
+  Base& two = *new (place) Middle;
+  two.~Base();
+  printf("--\n");
+  Base* three = new (place) Middle;
+  three->Base::~Base();
+  printf("--\n");
+  Base* four = new (place) Second;
+  destroyAt(four);
+  printf("--\n");
+  Second* five = new (place) Second;
+  five->Middle::~Middle();
+  return 0;
+}

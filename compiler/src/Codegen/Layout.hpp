@@ -69,7 +69,7 @@
     ClassDecl* classDef(Decl* decl, Node* at);
     // A class's bases as written, their types under the class's arguments: a pack of bases
     // (`struct overloaded : Ts...`) one per element of its pack, in order (null for a type unknown).
-    std::vector<const Ty*> basesOf(ClassDecl* c, const TemplateArgs& args, Node* at);
+    std::vector<const Ty*> basesOf(ClassDecl* c, const TemplateArgs& args, Node* at, std::vector<bool>* isPublic = nullptr);
 
     // The instantiation type with the definition as its decl (forward declarations map here).
     const Ty* canonicalClass(const Ty* t, Node* at);
@@ -204,12 +204,29 @@
     static std::string pathAtNull(const std::vector<std::pair<std::string, uint32_t>>& path);
 
     // The descriptor of a class (what slot -1 of its vtables points at, what dynamic_cast searches):
-    // { name, number of direct bases, [{ base's descriptor, base's offset }] }, for any class (a
-    // polymorphic class's bases need not be polymorphic). Built once, used per module (useDescriptor).
+    // { name, number of direct bases, plain, [{ base's descriptor, base's offset, public }] }, for any
+    // class (a polymorphic class's bases need not be polymorphic); plain: every base subobject below
+    // it is public and of a class of its own, so that the first one found of a class is the answer
+    // (dynamic_cast's fast path). Built once, used per module (useDescriptor).
     // Made without the shared lock: a published layout's descriptor under sh.descriptorsMutex
     // (another emitter may make the same text at once: the first one set stays), the layout this
     // emitter is building (its vtables' descriptor) as its own copy's.
     std::string descriptorFor(const Ty* cls, Node* at);
+
+    // A base subobject of a class: its class, whether it is public all the way down from the class,
+    // and its offset (a constant expression).
+    struct BaseSubobject
+    {
+      const Ty* cls;
+      bool isPublic;
+      std::string offset;
+    };
+
+    // Every base subobject of a class, a class there twice as often.
+    std::vector<BaseSubobject> baseSubobjects(const Ty* cls, Node* at);
+
+    // The bases of a class a handler may take it as ([except.handle] 3): the public, unambiguous ones.
+    std::vector<BaseSubobject> handlerBases(const Ty* cls, Node* at);
 
     // A class's descriptor and its bases' in the module being emitted (each once).
     void useDescriptor(const StructInfo& info);

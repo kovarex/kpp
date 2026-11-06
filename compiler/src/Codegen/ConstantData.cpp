@@ -791,7 +791,7 @@ auto codegen::Emitter::buildThreadLocal(const std::string& name) -> void
       threadLocalCache.emplace(name, init);
   }
   if (!init.empty() && !currentFunctionName.empty() && currentFunctionName != init)
-    fn += "  call void " + init + "()\n";
+    fn += "  call void " + init + "()" + bundle() + "\n";
 }
 
 auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classTy) -> std::string

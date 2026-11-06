@@ -1,0 +1,45 @@
+// spec: what the compiler calls behind a dynamic_cast, a dynamic_cast<void*>, a thread_local's destructor registration and a function's static inside a catch block run there like any call (a Windows catch funclet drops a call that does not name it: `dynamic_cast<N*>(&caught)` crashed in a handler). clang and g++ print the same
+// found by thread J's inheritance battery (h3, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class I { public: int i = 4; virtual ~I() {} };
+class J { public: int j = 5; virtual ~J() {} };
+class N : public I, public J { public: int n = 7; };
+class Noted
+{
+public:
+  int value;
+  Noted(int v) : value(v) { printf("built %d\n", v); }
+  ~Noted() {}
+};
+int counted()
+{
+  static Noted once(1);
+  return ++once.value;
+}
+int perThread()
+{
+  thread_local Noted mine(10);
+  return ++mine.value;
+}
+int main()
+{
+  try
+  {
+    N n;
+    n.n = 70;
+    throw n;
+  }
+  catch (J& j)
+  {
+    N* whole = dynamic_cast<N*>(&j);
+    I* other = dynamic_cast<I*>(&j);
+    void* start = dynamic_cast<void*>(&j);
+    N& byReference = dynamic_cast<N&>(j);
+    printf("%d %d %d %d\n", whole->n, other->i, start == (void*)whole, byReference.n);
+    int first = counted();
+    int second = perThread();
+    printf("%d %d\n", first, second);
+    printf("%d %d\n", typeid(j) == typeid(N), typeid(*other) == typeid(J));
+  }
+  return 0;
+}

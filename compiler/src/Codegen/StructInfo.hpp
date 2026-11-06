@@ -7,6 +7,7 @@ struct StructInfo
   std::vector<const Ty*> fieldTypes;       // In layout order: bases first, then data members.
   std::unordered_map<Decl*, uint32_t> fieldIndex;
   std::vector<std::pair<Decl*, uint32_t>> bases; // base class definition -> field index
+  std::vector<bool> basePublic;            // beside bases: is it a public base?
   std::vector<Decl*> fieldDecls;           // data members in layout order
   // An empty class (no data members, no vtable, only empty bases) is one byte as an object of
   // its own (`{ i8 }`) and none as a base: such a base's field is `[0 x i8]` (C++'s empty-base

@@ -487,22 +487,29 @@ auto codegen::Emitter::draftHeld(const Ty* t) -> const Ty*
   return nullptr;
 }
 
-auto codegen::Emitter::basesOf(ClassDecl* c, const TemplateArgs& args, Node* at) -> std::vector<const Ty*>
+auto codegen::Emitter::basesOf(ClassDecl* c, const TemplateArgs& args, Node* at, std::vector<bool>* isPublic) -> std::vector<const Ty*>
 {
   std::vector<const Ty*> out;
   for (const ClassDecl::Base& b : c->bases)
   {
     const Ty* bt = global.typeOfAstIn(b.type, c, args);
+    bool baseIsPublic = b.access == Access::Public || (b.access == Access::Default && c->keyword != Kw::class_);
     if (!b.isPack)
     {
       out.push_back(bt);
+      if (isPublic)
+        isPublic->push_back(baseIsPublic);
       continue;
     }
     // `struct overloaded : Ts...` (the visitor idiom): a base per element of the pack, in order.
     if (!bt || bt->kind != TyKind::Pack)
       unsupported(at, "a pack of base classes whose pack is not known here (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
     for (const Ty* element : bt->args)
+    {
       out.push_back(element);
+      if (isPublic)
+        isPublic->push_back(baseIsPublic);
+    }
   }
   return out;
 }
@@ -634,7 +641,7 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   info.name = irTypeName("%struct.", key);
   // Bases first (resolved before deciding on the vtable pointer).
   std::vector<const Ty*> baseKeys;
-  for (const Ty* bt : basesOf(c, args, at))
+  for (const Ty* bt : basesOf(c, args, at, &info.basePublic))
   {
     // (a closure as a base, the overload-set idiom's `struct Overload : Ts...` given lambdas: laid
     // out as buildStruct lays a closure out)
@@ -1461,6 +1468,40 @@ auto codegen::Emitter::pathAtNull(const std::vector<std::pair<std::string, uint3
   return offset;
 }
 
+auto codegen::Emitter::baseSubobjects(const Ty* cls, Node* at) -> std::vector<BaseSubobject>
+{
+  std::vector<BaseSubobject> found;
+  std::vector<std::pair<std::string, uint32_t>> path;
+  std::function<void(const Ty*, bool)> walk = [&](const Ty* t, bool isPublic)
+  {
+    const StructInfo& info = structFor(t, at);
+    std::string structName = info.name;
+    std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+    std::vector<bool> basePublic = info.basePublic;
+    std::vector<const Ty*> fieldTypes = info.fieldTypes;
+    for (size_t i = 0; i < bases.size(); ++i)
+    {
+      path.push_back({structName, bases[i].second});
+      const Ty* base = canonicalClass(fieldTypes[bases[i].second], at);
+      bool basePath = isPublic && basePublic[i];
+      found.push_back({base, basePath, "ptrtoint (ptr " + pathAtNull(path) + " to i64)"});
+      walk(base, basePath);
+      path.pop_back();
+    }
+  };
+  walk(canonicalClass(cls, at), true);
+  return found;
+}
+
+auto codegen::Emitter::handlerBases(const Ty* cls, Node* at) -> std::vector<BaseSubobject>
+{
+  std::vector<BaseSubobject> all = baseSubobjects(cls, at), out;
+  for (const BaseSubobject& one : all)
+    if (one.isPublic && std::count_if(all.begin(), all.end(), [&](const BaseSubobject& other) { return other.cls == one.cls; }) == 1)
+      out.push_back(one);
+  return out;
+}
+
 auto codegen::Emitter::descriptorFor(const Ty* cls, Node* at) -> std::string
 {
   StructInfo& info = structFor(cls, at);
@@ -1480,12 +1521,21 @@ auto codegen::Emitter::descriptorFor(const Ty* cls, Node* at) -> std::string
   std::string nameConstant = cStringConstant(types.toString(key, &symbols));
   emittingShared = savedShared;
   std::string structName = info.name, list;
-  for (auto& [baseDef, index] : info.bases)
-    list += (list.empty() ? "" : ", ") + std::string("{ ptr, i64 } { ptr ") + descriptorFor(info.fieldTypes[index], at) +
-            ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
-  std::string arrayType = "[" + std::to_string(info.bases.size()) + " x { ptr, i64 }]";
-  std::string text = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " +
-                     nameConstant + ", i64 " + std::to_string(info.bases.size()) + ", " + arrayType + " " +
+  for (size_t i = 0; i < info.bases.size(); ++i)
+  {
+    uint32_t index = info.bases[i].second;
+    list += (list.empty() ? "" : ", ") + std::string("{ ptr, i64, i64 } { ptr ") + descriptorFor(info.fieldTypes[index], at) +
+            ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64), i64 " +
+            (info.basePublic[i] ? "1" : "0") + " }";
+  }
+  std::vector<BaseSubobject> subobjects = baseSubobjects(key, at);
+  std::unordered_set<const Ty*> distinct;
+  bool plain = true;
+  for (const BaseSubobject& one : subobjects)
+    plain = plain && one.isPublic && distinct.insert(one.cls).second;
+  std::string arrayType = "[" + std::to_string(info.bases.size()) + " x { ptr, i64, i64 }]";
+  std::string text = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, i64, " + arrayType + " } { ptr " +
+                     nameConstant + ", i64 " + std::to_string(info.bases.size()) + ", i64 " + (plain ? "1" : "0") + ", " + arrayType + " " +
                      (info.bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n";
   std::unique_lock lock(sh.descriptorsMutex, std::defer_lock);
   if (!own)

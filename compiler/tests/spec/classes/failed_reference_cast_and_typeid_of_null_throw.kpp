@@ -1,0 +1,73 @@
+// spec: a dynamic_cast to a reference that fails throws BadCast (std::bad_cast), and typeid of what a null pointer points to throws BadTypeid (std::bad_typeid), both Exceptions a handler takes, in a catch block too ([expr.dynamic.cast] 9, [expr.typeid] 3): the first was a trap and the second read through null. clang's output, with std's names
+// found by thread J's inheritance battery (h3, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class Base
+{
+public:
+  int a = 1;
+  virtual ~Base() {}
+};
+class Derived : public Base
+{
+public:
+  int b = 2;
+};
+class Other : public Base
+{
+};
+int castTo(Base& object)
+{
+  try
+  {
+    Derived& d = dynamic_cast<Derived&>(object);
+    return d.b;
+  }
+  catch (const BadCast&)
+  {
+    return -1;
+  }
+}
+int main()
+{
+  Derived derived;
+  Other other;
+  printf("%d %d\n", castTo(derived), castTo(other));
+  Base* nothing = nullptr;
+  try
+  {
+    printf("%d\n", typeid(*nothing) == typeid(Base));
+  }
+  catch (const BadTypeid&)
+  {
+    printf("bad typeid\n");
+  }
+  try
+  {
+    printf("%d\n", typeid((*nothing)) == typeid(Base));
+  }
+  catch (const Exception&)
+  {
+    printf("an exception\n");
+  }
+  // a reference and a named object need no check, a pointer that points somewhere passes it
+  Base& reference = derived;
+  Base* something = &derived;
+  printf("%d %d\n", typeid(reference) == typeid(Derived), typeid(*something) == typeid(Derived));
+  // the cast runs its operand once
+  try
+  {
+    throw 1;
+  }
+  catch (int)
+  {
+    try
+    {
+      dynamic_cast<Other&>(reference);
+    }
+    catch (const Exception&)
+    {
+      printf("inside a handler\n");
+    }
+  }
+  return 0;
+}

@@ -521,7 +521,7 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
                "null:\n  ret ptr null\n}\n";
     }
     std::string r = newTemp();
-    fn += "  " + r + " = call ptr @kpp.mostderived(ptr " + p.text + ")\n";
+    fn += "  " + r + " = call ptr @kpp.mostderived(ptr " + p.text + ")" + bundle() + "\n";
     return Value{r, target, false};
   }
   if (!isClass(tcls))
@@ -536,24 +536,17 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
   std::vector<std::pair<std::string, uint32_t>> path;
   if (classKey(scls) == classKey(tcls) || basePath(scls, tcls, path, e))
     return explicitConvert(o, e->ty, e);
-  std::string descriptor = descriptorFor(tcls, e);
+  std::string descriptor = descriptorFor(tcls, e), source = descriptorFor(scls, e);
   useDescriptor(structFor(tcls, e));
+  useDescriptor(structFor(scls, e));
   auto lock = sharedLock();
   if (!dyncastEmitted)
   {
     dyncastEmitted = true;
-    decls += "$kpp.dyncast = comdat any\n"
-             "define linkonce_odr ptr @kpp.dyncast(ptr %obj, ptr %target) comdat {\n"
-             "entry:\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %fail, label %start\n"
-             "start:\n  %vt = load ptr, ptr %obj\n  %tp = getelementptr inbounds ptr, ptr %vt, i64 -2\n  %top = load ptr, ptr %tp\n"
-             "  %topi = ptrtoint ptr %top to i64\n  %dp = getelementptr inbounds ptr, ptr %vt, i64 -1\n  %d = load ptr, ptr %dp\n"
-             "  %off = call i64 @kpp.basesearch(ptr %d, ptr %target)\n  %found = icmp sge i64 %off, 0\n  br i1 %found, label %ok, label %fail\n"
-             "ok:\n  %delta = sub i64 %off, %topi\n  %r = getelementptr i8, ptr %obj, i64 %delta\n  ret ptr %r\n"
-             "fail:\n  ret ptr null\n}\n" +
-             baseSearchFunction("@kpp.basesearch");
+    decls += dynamicCastFunctions();
   }
   std::string r = newTemp();
-  fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + descriptor + ")\n";
+  fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + source + ", ptr " + descriptor + ")" + bundle() + "\n";
   if (pointer)
     return Value{r, e->ty, false};
   // `dynamic_cast<const T&>(x)`: the T object itself (its members are called on it); an x that
@@ -570,8 +563,68 @@ auto codegen::Emitter::dynamicCast(NamedCastExpr* c, Expr* e) -> std::optional<V
   return Value{r, target, false};
 }
 
+auto codegen::Emitter::dynamicCastFunctions() -> std::string
+{
+  // [expr.dynamic.cast] 8. A descriptor of a class with every base public and none twice (plain,
+  // nearly all) needs a search for the target alone (@kpp.basesearch, first hit). Else
+  // @kpp.dyncast.walk visits every subobject of the whole object and fills %st: { the target
+  // subobject the operand is a public base of, or -1; the number of target subobjects; the last
+  // one's place; whether it is public; whether the operand is a public base of the whole object }.
+  return "$kpp.dyncast = comdat any\n"
+         "define linkonce_odr ptr @kpp.dyncast(ptr %obj, ptr %source, ptr %target) comdat {\n"
+         "entry:\n  %st = alloca [5 x i64]\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %fail, label %start\n"
+         "start:\n  %vt = load ptr, ptr %obj\n  %tp = getelementptr inbounds ptr, ptr %vt, i64 -2\n  %top = load ptr, ptr %tp\n"
+         "  %topi = ptrtoint ptr %top to i64\n  %dp = getelementptr inbounds ptr, ptr %vt, i64 -1\n  %d = load ptr, ptr %dp\n"
+         "  %plainp = getelementptr inbounds i8, ptr %d, i64 16\n  %plain = load i64, ptr %plainp\n  %isPlain = icmp ne i64 %plain, 0\n"
+         "  br i1 %isPlain, label %search, label %walk\n"
+         "search:\n  %off = call i64 @kpp.basesearch(ptr %d, ptr %target)\n  %found = icmp sge i64 %off, 0\n  br i1 %found, label %ok, label %fail\n"
+         "walk:\n  store i64 -1, ptr %st\n  %count = getelementptr inbounds i8, ptr %st, i64 8\n  store i64 0, ptr %count\n"
+         "  %place = getelementptr inbounds i8, ptr %st, i64 16\n  %public = getelementptr inbounds i8, ptr %st, i64 24\n  store i64 0, ptr %public\n"
+         "  %sourcePublic = getelementptr inbounds i8, ptr %st, i64 32\n  store i64 0, ptr %sourcePublic\n"
+         "  %whole = call i1 @kpp.dyncast.walk(ptr %d, i64 0, i1 true, ptr %source, i64 %topi, ptr %target, ptr %st)\n"
+         "  %down = load i64, ptr %st\n  %isDown = icmp sge i64 %down, 0\n  br i1 %isDown, label %ok, label %cross\n"
+         "cross:\n  %n = load i64, ptr %count\n  %one = icmp eq i64 %n, 1\n  %p = load i64, ptr %public\n  %isPublic = icmp ne i64 %p, 0\n"
+         "  %s = load i64, ptr %sourcePublic\n  %fromPublic = icmp ne i64 %s, 0\n  %both = and i1 %isPublic, %fromPublic\n  %may = and i1 %one, %both\n"
+         "  %at = load i64, ptr %place\n  br i1 %may, label %ok, label %fail\n"
+         "ok:\n  %result = phi i64 [ %off, %search ], [ %down, %walk ], [ %at, %cross ]\n  %delta = sub i64 %result, %topi\n"
+         "  %r = getelementptr i8, ptr %obj, i64 %delta\n  ret ptr %r\n"
+         "fail:\n  ret ptr null\n}\n"
+         "$kpp.dyncast.walk = comdat any\n"
+         "define linkonce_odr i1 @kpp.dyncast.walk(ptr %d, i64 %at, i1 %pub, ptr %source, i64 %sourceAt, ptr %target, ptr %st) comdat {\n"
+         "entry:\n  %isClass = icmp eq ptr %d, %source\n  %isPlace = icmp eq i64 %at, %sourceAt\n  %isSource = and i1 %isClass, %isPlace\n"
+         "  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
+         "loop:\n  %i = phi i64 [ 0, %entry ], [ %i1, %body ]\n  %has = phi i1 [ %isSource, %entry ], [ %has1, %body ]\n"
+         "  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %done\n"
+         "body:\n  %skip = mul i64 %i, 24\n  %first = getelementptr inbounds i8, ptr %d, i64 24\n  %e = getelementptr inbounds i8, ptr %first, i64 %skip\n"
+         "  %b = load ptr, ptr %e\n  %op = getelementptr inbounds i8, ptr %e, i64 8\n  %o = load i64, ptr %op\n"
+         "  %fp = getelementptr inbounds i8, ptr %e, i64 16\n  %f = load i64, ptr %fp\n  %isPublic = icmp ne i64 %f, 0\n"
+         "  %sub = add i64 %at, %o\n  %subPublic = and i1 %pub, %isPublic\n"
+         "  %inside = call i1 @kpp.dyncast.walk(ptr %b, i64 %sub, i1 %subPublic, ptr %source, i64 %sourceAt, ptr %target, ptr %st)\n"
+         "  %kept = and i1 %inside, %isPublic\n  %has1 = or i1 %has, %kept\n  %i1 = add i64 %i, 1\n  br label %loop\n"
+         "done:\n  %wholeSource = and i1 %isSource, %pub\n  br i1 %wholeSource, label %noteSource, label %check\n"
+         "noteSource:\n  %sp = getelementptr inbounds i8, ptr %st, i64 32\n  store i64 1, ptr %sp\n  br label %check\n"
+         "check:\n  %isTarget = icmp eq ptr %d, %target\n  br i1 %isTarget, label %noteTarget, label %end\n"
+         "noteTarget:\n  %cp = getelementptr inbounds i8, ptr %st, i64 8\n  %c = load i64, ptr %cp\n  %c1 = add i64 %c, 1\n  store i64 %c1, ptr %cp\n"
+         "  %lp = getelementptr inbounds i8, ptr %st, i64 16\n  store i64 %at, ptr %lp\n  %pp = getelementptr inbounds i8, ptr %st, i64 24\n"
+         "  %pz = zext i1 %pub to i64\n  store i64 %pz, ptr %pp\n  br i1 %has, label %noteDown, label %end\n"
+         "noteDown:\n  store i64 %at, ptr %st\n  br label %end\n"
+         "end:\n  ret i1 %has\n}\n"
+         "$kpp.basesearch = comdat any\n"
+         "define linkonce_odr i64 @kpp.basesearch(ptr %d, ptr %target) comdat {\n"
+         "entry:\n  %same = icmp eq ptr %d, %target\n  br i1 %same, label %yes, label %scan\n"
+         "scan:\n  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
+         "loop:\n  %i = phi i64 [ 0, %scan ], [ %i1, %next ]\n  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %no\n"
+         "body:\n  %at = mul i64 %i, 24\n  %at1 = add i64 %at, 24\n  %e = getelementptr inbounds i8, ptr %d, i64 %at1\n  %b = load ptr, ptr %e\n"
+         "  %op = getelementptr inbounds i8, ptr %e, i64 8\n  %o = load i64, ptr %op\n  %r = call i64 @kpp.basesearch(ptr %b, ptr %target)\n"
+         "  %hit = icmp sge i64 %r, 0\n  br i1 %hit, label %found, label %next\n"
+         "found:\n  %sum = add i64 %r, %o\n  ret i64 %sum\n"
+         "next:\n  %i1 = add i64 %i, 1\n  br label %loop\n"
+         "yes:\n  ret i64 0\nno:\n  ret i64 -1\n}\n";
+}
+
 auto codegen::Emitter::baseSearchFunction(const std::string& name, const std::string& nullDescriptor) -> std::string
 {
+  // What a thrown type's descriptor lists is all it converts to (typeinfoFor): no search below it.
   std::string markers;
   if (!nullDescriptor.empty())
     markers = "entry:\n  %tn = getelementptr inbounds i8, ptr %target, i64 8\n  %tcount = load i64, ptr %tn\n"
@@ -587,9 +640,9 @@ auto codegen::Emitter::baseSearchFunction(const std::string& name, const std::st
          "scan:\n  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
          "loop:\n  %i = phi i64 [ 0, %scan ], [ %i1, %next ]\n  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %no\n"
          "body:\n  %at = mul i64 %i, 16\n  %at1 = add i64 %at, 16\n  %e = getelementptr inbounds i8, ptr %d, i64 %at1\n  %b = load ptr, ptr %e\n"
-         "  %op = getelementptr inbounds i8, ptr %e, i64 8\n  %o = load i64, ptr %op\n  %r = call i64 " + name + "(ptr %b, ptr %target)\n"
-         "  %hit = icmp sge i64 %r, 0\n  br i1 %hit, label %found, label %next\n"
-         "found:\n  %sum = add i64 %r, %o\n  ret i64 %sum\n"
+         "  %op = getelementptr inbounds i8, ptr %e, i64 8\n  %o = load i64, ptr %op\n"
+         "  %hit = icmp eq ptr %b, %target\n  br i1 %hit, label %found, label %next\n"
+         "found:\n  ret i64 %o\n"
          "next:\n  %i1 = add i64 %i, 1\n  br label %loop\n"
          "yes:\n  ret i64 0\nno:\n  ret i64 -1\n}\n";
 }
@@ -1662,7 +1715,7 @@ auto codegen::Emitter::registerThreadExits(const std::string& addr, const Ty* t,
     if (dtor == "null")
       continue;
     usesThreadExit = true;
-    fn += "  call void @kpp_thread_atexit(ptr " + dtor + ", ptr " + objects[i].first + ")\n";
+    fn += "  call void @kpp_thread_atexit(ptr " + dtor + ", ptr " + objects[i].first + ")" + bundle() + "\n";
   }
 }
 

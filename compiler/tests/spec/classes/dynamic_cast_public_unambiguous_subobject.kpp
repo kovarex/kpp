@@ -1,0 +1,105 @@
+// spec: dynamic_cast as [expr.dynamic.cast] 8 has it: to the subobject the operand is a public base of, else to the whole object's one public, unambiguous subobject of the class, else null; a base there twice, or reached through a private or protected base, is no target (it took the first subobject of that class it met, private and repeated ones too, without a word). clang and g++ print the same
+// found by thread J's inheritance battery (h3, h12, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class S { public: int s = 1; virtual ~S() {} };
+class T : public S { public: int t = 2; };
+class L : public T { public: int l = 3; };
+class R : public T { public: int r = 4; };
+class D : public L, public R { public: int d = 5; };
+class X { public: int x = 6; virtual ~X() {} };
+class E : public D, public X { public: int e = 7; };
+template<class Q, class F> int is(F* p) { return dynamic_cast<Q*>(p) != nullptr; }
+void repeatedBase()
+{
+  D d;
+  d.R::t = 40;
+  d.L::t = 30;
+  L* l = &d;
+  R* r = &d;
+  S* sl = static_cast<T*>(l);
+  S* sr = static_cast<T*>(r);
+  // the T above each S is the one the S belongs to
+  printf("%d %d\n", dynamic_cast<T*>(sl)->t, dynamic_cast<T*>(sr)->t);
+  printf("%d %d\n", dynamic_cast<L*>(sl) == l, dynamic_cast<R*>(sr) == r);
+  printf("%d %d\n", dynamic_cast<R*>(sl) == r, dynamic_cast<L*>(sr) == l);
+  printf("%d %d\n", is<D>(sl), is<D>(sr));
+}
+void crossToRepeatedBase()
+{
+  E e;
+  X* x = &e;
+  D* d = &e;
+  printf("%d %d %d %d %d\n", is<D>(x), is<L>(x), is<R>(x), is<T>(x), is<S>(x));
+  printf("%d\n", dynamic_cast<D*>(x) == d);
+}
+class H0 { public: int h = 1; virtual ~H0() {} };
+class H1 { public: int k = 2; virtual ~H1() {} };
+class Hd : public H0, private H1 { public: H1* hidden() { return this; } H0* shown() { return this; } };
+class Hp : protected H0, public H1 { public: H0* hidden() { return this; } };
+class Hc : private H0 { public: H0* base() { return this; } };
+class Hs : H0 { public: H0* base() { return this; } };
+void nonPublicBases()
+{
+  Hd d;
+  H1* p1 = d.hidden();
+  H0* p0 = d.shown();
+  printf("%d %d %d %d\n", is<H0>(p1), is<H1>(p0), is<Hd>(p1), is<Hd>(p0));
+  Hp p;
+  H1* q1 = &p;
+  H0* q0 = p.hidden();
+  printf("%d %d %d %d\n", is<H0>(q1), is<H1>(q0), is<Hp>(q1), is<Hp>(q0));
+  Hc c;
+  Hs s;
+  printf("%d %d\n", is<Hc>(c.base()), is<Hs>(s.base()));
+}
+class P0 { public: int a = 1; virtual ~P0() {} };
+class P1 : public P0 { public: int b = 2; };
+class Pm : private P1 { public: P0* up() { return this; } P1* mid() { return this; } };
+class Pt : public Pm { public: int c = 3; };
+class O1 { public: virtual ~O1() {} };
+class Pn : public Pm, public O1 {};
+void aPrivateBaseOnTheWay()
+{
+  Pm m;
+  P0* a = m.up();
+  P1* b = m.mid();
+  // P1 is private in Pm, P0 public in P1: a P0 may go up to its P1, not to the Pm
+  printf("%d %d %d\n", is<Pm>(a), is<Pm>(b), is<P1>(a));
+  Pt t;
+  P0* c = t.up();
+  P1* d = t.mid();
+  printf("%d %d %d %d\n", is<Pt>(c), is<Pm>(c), is<Pt>(d), is<P1>(c));
+  Pn n;
+  O1* o = &n;
+  P0* e = n.up();
+  printf("%d %d %d %d\n", is<P0>(o), is<P1>(o), is<Pm>(o), is<O1>(e));
+}
+// a base there twice, once privately: ambiguous, a public path does not save it
+class Q0 { public: int v = 1; virtual ~Q0() {} };
+class Q1 : private Q0 {};
+class Q2 : public Q0 {};
+class Q3 : public Q1, public Q2 {};
+class Y0 { public: virtual ~Y0() {} };
+class Q4 : public Q3, public Y0 {};
+void privateAndPublicCopies()
+{
+  Q4 q;
+  Y0* y = &q;
+  printf("%d\n", is<Q0>(y));
+}
+// while a class of a repeated hierarchy is built, it is the whole object
+class C0 { public: C0(); virtual ~C0() {} };
+class C1 : public C0 {};
+class C2 : public C0 {};
+class C3 : public C1, public C2 {};
+C0::C0() { printf("%d %d\n", is<C1>(this), is<C3>(this)); }
+int main()
+{
+  repeatedBase();
+  crossToRepeatedBase();
+  nonPublicBases();
+  aPrivateBaseOnTheWay();
+  privateAndPublicCopies();
+  C3 c;
+  return 0;
+}
