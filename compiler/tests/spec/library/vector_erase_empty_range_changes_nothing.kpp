@@ -1,6 +1,5 @@
 // spec: Vector's erase(first, last) of an empty range (first == last) changes nothing: no element is assigned, moved or destroyed, and it returns first (std::vector::erase, [sequence.reqmts]: "if first == last, no elements are erased"); here an element's self move assignment would show as -1 (`3 0 1 2 3 4 0 [a] [b]`)
 // factorio: E's comparison battery against C++ (ct1, 2026-11-06): erase(v.begin() + 3, v.begin() + 3) on 11 elements move-assigned each of the last 8 onto itself, leaving them moved-from (-1); std::vector (MSVC and libstdc++) assigns nothing
-// pending: Vector::erase's move-assignment loop runs for count 0, assigning items[i] = move(items[i]) from index to the end (C)
 extern "C" import "stdio.h";
 int assigned = 0;
 struct Item

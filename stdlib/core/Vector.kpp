@@ -424,6 +424,8 @@ public:
   T* erase(const T* first, const T* last)
   {
     ContainerSize index = ContainerSize(first - this->items), count = ContainerSize(last - first);
+    if (count == 0)
+      return this->items + index; // an empty range changes nothing (no self-assignment)
     if constexpr (isMoveAssignable<T>)
     {
       // As [vector.modifiers]: the elements after the erased ones are move-assigned down, then the
