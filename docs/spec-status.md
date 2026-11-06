@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1370 pass, 2 pending, 0 failing, 0 fixed** (1372 snippets, 188.0 s).
+**1371 pass, 2 pending, 0 failing, 0 fixed** (1373 snippets, 320.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -292,6 +292,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/goto.kpp` | goto | pass | 8 uses in 6 files |  |
 | `language/goto_destroys_what_it_leaves.kpp` | a goto destroys the objects of the scopes it leaves, the innermost first, and jumping back, those its label's scope built after the label, as C++ does ([stmt.jump] 2): forward out of a block (`~2` before `at out`), back out of a block (each m destroyed before the next is built) and back within one scope past a declaration (`~6` before `M7`); as g++ prints | pass |  |  |
 | `language/goto_past_lambda.kpp` | a goto jumps past a lambda written between it and its label: the lambda's function is emitted in between, and the label is still the block the goto names | pass |  |  |
+| `language/hex_float_literal_digit_f.kpp` | a hexadecimal floating literal's f and F are digits, and only an f, F, l or L at its end is a suffix: 0x1.fp3 is 15.5, 0x1.fffffffffffffp1023 the largest double, 0xABCDEF.1p4 keeps its F, 0x1.8p1f a float; at run time as at compile time. Before, the code generator dropped every f and F of the literal's spelling (0x1.fp3 was 8, the largest double 2^1023, 0x123456789ABCDEF0p0 lost a digit and a factor 16), while a constant read it right: a silent wrong answer. clang prints the same | pass |  |  |
 | `language/homed_globals_survive_optimization.kpp` | a debug build compiled with optimization (`--config debug=true --optimize`, ThinLTO across several modules) keeps every global a module defines for the others: each linkonce_odr global of the shared declarations is defined in one module only (its home) and read from the others, so its one definition is weak_odr, never dropped as unused where it is defined (16 constants, each read by its own instance of a template in whichever module the instance lands) (`120`) | pass |  |  |
 | `language/homed_globals_with_debug_info.kpp` | a debug build with debug info (`--debug-info`, line tables and a PDB) across several modules defines each linkonce_odr global of the shared declarations in one module only (its home) and reads it from the others, as a debug build without debug info does: line tables put no metadata on a global (16 constants, each read by its own instance of a template in whichever module the instance lands) (`120`) | pass |  |  |
 | `language/if_consteval_and_is_constant_evaluated.kpp` | `if consteval { A } else { B }` (C++23) runs A in a compile-time evaluation and B in the program, and `if !consteval` the other way round; isConstantEvaluated() (std::is_constant_evaluated) is true in a compile-time evaluation and false in the program; the emitted code holds only the program's branch (`1 2 1 2 2 1`) | pass | the library's String, which at compile time keeps its heap representation (design.md "isConstantEvaluated"), and C++23 code that uses `if consteval` |  |

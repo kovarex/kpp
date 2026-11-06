@@ -1,0 +1,11 @@
+// spec: a hexadecimal floating literal's f and F are digits, and only an f, F, l or L at its end is a suffix: 0x1.fp3 is 15.5, 0x1.fffffffffffffp1023 the largest double, 0xABCDEF.1p4 keeps its F, 0x1.8p1f a float; at run time as at compile time. Before, the code generator dropped every f and F of the literal's spelling (0x1.fp3 was 8, the largest double 2^1023, 0x123456789ABCDEF0p0 lost a digit and a factor 16), while a constant read it right: a silent wrong answer. clang prints the same
+// found comparing kpp with clang (thread I's battery i14)
+extern "C" int printf(const char* format, ...);
+constexpr double atCompileTime = 0x1.fp3;
+int main()
+{
+  printf("%a %a %a %a\n", 0x1.fp3, 0x1.fffffffffffffp1023, 0xABCDEF.1p4, 0x123456789ABCDEF0p0);
+  printf("%a %a %a %d\n", double(0x1.fffffep127f), double(0x1.8p1f), double(0x1.FFp0F), int(atCompileTime == 0x1.fp3));
+  printf("%g %g %g\n", 2.5f, 1e2F, 0x1p-2);
+  return 0;
+}

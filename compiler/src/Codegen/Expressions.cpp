@@ -134,9 +134,14 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       {
         std::string digits;
         std::string spliced;
+        // The digit separators out and the suffix (f, F, l, L) at the end, as consteval's literal
+        // reads it: a hexadecimal one's f is a digit (0x1.fp3 is 15.5; every f was dropped, 0x1p3,
+        // and 0xABCDEF.1p4 lost a digit).
         for (char c : literalSpelling(l, l->token, spliced))
-          if (c != '\'' && c != 'f' && c != 'F' && c != 'l' && c != 'L')
+          if (c != '\'')
             digits += c;
+        while (!digits.empty() && strchr("fFlL", digits.back()))
+          digits.pop_back();
         double d = strtod(digits.c_str(), nullptr);
         // LLVM wants the exact value: the bits of the double (rounded through float first for f32).
         double exact = t->bits == 32 ? double(float(d)) : d;
