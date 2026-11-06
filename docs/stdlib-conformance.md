@@ -9,14 +9,6 @@ compile, loudly) last. State of 2026-10-29.
 
 ## Behaviour that differs
 
-**Compiler gaps that break library use**: one open since 2026-11-01. `new` and `new T[n]` return
-null when malloc fails, where C++'s new throws bad_alloc, and new T[n] allocates the wrapped
-size when n * sizeof(T) does not fit in a size_t: `new int[2^62 + 1]` gets 4 bytes
-(language/new_failure_throws_bad_alloc, pending, B). That reaches UniqueArray and every `new[]` of
-the converted game. The four listed until 2026-10-29 pass now (language/brace_argument_binds_rvalue,
-templates/forwarding_reference_to_function, language/array_new_and_delete with
-library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
-
 **`::operator new` in an optimized build** (core/Sizes.kpp, 2026-11-06): it is malloc, which an
 optimizer may remove when the block does not escape, and its BadAlloc with it: `::operator new(huge)`
 whose block nothing keeps returns where C++ (which never elides a call of operator new by name)
@@ -102,18 +94,8 @@ The edges are specified in library/size_limits_string, size_limits_vector and si
 stableSort throws BadAlloc when malloc cannot give its buffer. std's stable_sort falls back to
 sorting in place instead; that fallback comes when a use needs it.
 
-Two compiler gaps found on the way:
-- Span writes its extent and the counts it deduces from arrays as `unsigned long long`, not
-  ContainerSize, until templates/constructor_deduces_value_of_alias_type passes (D);
-- a stream deriving from OutStream with the old `writeBytes(const char*, int) override` compiled
-  and called the pure virtual function (classes/override_of_nothing_is_error, D).
-
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
-
-**printf, fprintf, snprintf, sprintf, sscanf**: declared as the UCRT declares them, but the
-specification snippets cannot check their types yet: a written variadic function pointer type loses
-its `...` (language/variadic_function_pointer_type, pending). 2026-10-30.
 
 **throw_with_nested** (core/Error.kpp): throws its argument without the exception being handled
 attached to it: there is no std::nested_exception to attach it to (nor rethrow_if_nested, which no
