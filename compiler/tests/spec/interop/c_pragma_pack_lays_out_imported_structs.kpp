@@ -1,0 +1,15 @@
+// spec: #pragma pack in an imported C header lays its structs out as the C compiler does (push and pop, a bare pack(n), pack() back to the default): the C code they are passed to reads the same offsets
+// pending: the import skips the #pragma lines, so these structs have their natural layout, without a word
+// found by thread F comparing the game's PDB with the C++ build's (2026-11-06): MINIDUMP_EXCEPTION_INFORMATION (the SDK's pack(4)), which CrashHandler gives MiniDumpWriteDump, is 24 bytes where C has 16; jc_voronoi's _jcv_site (pack(1)) 32 where C has 28
+extern "C" import "c_pragma_pack_lays_out_imported_structs.h";
+int main()
+{
+  Four f;
+  One o;
+  Two t;
+  println(sizeof(Four), " ", (char*)&f.pointer - (char*)&f);
+  println(sizeof(One), " ", (char*)&o.d - (char*)&o);
+  println(sizeof(Two), " ", (char*)&t.v - (char*)&t);
+  println(sizeof(Plain));
+  return 0;
+}
