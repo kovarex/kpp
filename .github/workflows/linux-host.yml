@@ -10,9 +10,11 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# A run in progress finishes; a newer push waits, and replaces a waiting one (master's pushes come
+# faster than the run's 6 minutes: with cancel-in-progress no run finished, 2026-11-06).
 concurrency:
   group: linux-host-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
