@@ -1,0 +1,50 @@
+// spec: typeid of two classes of one name, in two namespaces, two classes, two functions or two instances of a function template, are two types ([expr.typeid]): they compared equal, TypeInfo comparing the name alone, without a word. clang and g++ print the same
+// found by thread J's inheritance battery (h13, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+class Base
+{
+public:
+  virtual ~Base() {}
+};
+namespace a { class C : public Base {}; class Plain {}; }
+namespace b { class C : public Base {}; class Plain {}; }
+class Outer { public: class C : public Base {}; };
+class Other { public: class C : public Base {}; };
+Base* first()
+{
+  class Local : public Base {};
+  static Local object;
+  return &object;
+}
+Base* second()
+{
+  class Local : public Base {};
+  static Local object;
+  return &object;
+}
+template<class T> Base* instance()
+{
+  class Local : public Base {};
+  static Local object;
+  return &object;
+}
+int main()
+{
+  a::C ac;
+  b::C bc;
+  Outer::C oc;
+  Other::C pc;
+  Base* all[4] = {&ac, &bc, &oc, &pc};
+  for (Base* x : all)
+  {
+    for (Base* y : all)
+      printf(" %d", typeid(*x) == typeid(*y));
+    printf(" | %d %d\n", typeid(*x) == typeid(a::C), typeid(*x) == typeid(Outer::C));
+  }
+  printf("%d %d\n", typeid(a::Plain) == typeid(b::Plain), typeid(a::Plain) == typeid(a::Plain));
+  a::Plain plain;
+  printf("%d %d\n", typeid(plain) == typeid(a::Plain), typeid(plain) == typeid(b::Plain));
+  printf("%d %d %d\n", typeid(*first()) == typeid(*second()), typeid(*first()) == typeid(*first()), typeid(*instance<int>()) == typeid(*instance<double>()));
+  printf("%d %d %d\n", typeid(int) == typeid(const int), typeid(int*) == typeid(const int*), typeid(a::Plain) == typeid(int));
+  return 0;
+}

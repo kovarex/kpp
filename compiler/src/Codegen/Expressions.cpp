@@ -385,14 +385,17 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
       const Ty* infoTy = e->ty ? types.stripRef(e->ty) : nullptr;
       if (!isClass(infoTy))
         unsupported(e, "typeid without the library's TypeInfo class");
-      std::string namePtr;
+      std::string namePtr, identity = "null";
       const Ty* staticTy = nullptr;
       if (t->operandDecl)
       {
         // typeid(q): the parser read the variable as a type name; the resolver found it.
         const Ty* xt = t->operandType ? types.stripRef(t->operandType) : nullptr;
         if (isClass(xt) && structFor(xt, e).polymorphic)
-          namePtr = descriptorName(loadSlot(addressOfDecl(t->operandDecl, e), -1));
+        {
+          identity = loadSlot(addressOfDecl(t->operandDecl, e), -1);
+          namePtr = descriptorName(identity);
+        }
         else
           staticTy = xt;
       }
@@ -425,7 +428,8 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
             blockTerminated = true;
             startBlock(okL);
           }
-          namePtr = descriptorName(loadSlot(object, -1));
+          identity = loadSlot(object, -1);
+          namePtr = descriptorName(identity);
         }
         else
           staticTy = xt;
@@ -436,12 +440,18 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
           unsupported(e, "typeid of an unknown type (operand: " + std::string(t->operand ? nodeKindName(t->operand->kind) : "none") + ", " +
                              (staticTy ? types.toString(staticTy, &symbols) : std::string("no type")) + ")");
         namePtr = cStringConstant(types.toString(types.unqualified(staticTy), &symbols));
+        if (const Ty* cls = types.unqualified(staticTy); isClass(cls) && !declaredOnly(cls))
+        {
+          identity = descriptorFor(cls, e); // (a class's name does not tell it from another's of the name)
+          useDescriptor(structFor(cls, e));
+        }
       }
       std::string slot = newObjectSlot(infoTy, e);
       const StructInfo& info = structFor(infoTy, e);
-      if (info.fieldDecls.empty())
-        unsupported(e, "a TypeInfo class without its name field");
+      if (info.fieldDecls.size() < 2)
+        unsupported(e, "a TypeInfo class without its name and identity fields");
       fn += "  store ptr " + namePtr + ", ptr " + gep(info.name, slot, fieldIndexOf(info, info.fieldDecls[0])) + "\n";
+      fn += "  store ptr " + identity + ", ptr " + gep(info.name, slot, fieldIndexOf(info, info.fieldDecls[1])) + "\n";
       return {slot, infoTy, true};
     }
     case NodeKind::NoexceptExpr:

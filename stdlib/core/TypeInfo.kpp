@@ -1,9 +1,11 @@
 // kpp standard library: TypeInfo, what `typeid(x)` yields. The compiler fills in the type's name:
 // for an object of a polymorphic class its dynamic type (the name lives in the vtable), otherwise
-// the static type; `typeid(T)` names the type itself. Compared by name.
+// the static type; `typeid(T)` names the type itself. Classes compare by their descriptor (two of
+// one name, in two namespaces or functions, are two types), other types by name.
 struct TypeInfo
 {
   const char* typeName = "";
+  const void* classIdentity = nullptr;
 
   TypeInfo() {}
   explicit TypeInfo(const char* typeName) : typeName(typeName) {}
@@ -12,6 +14,8 @@ struct TypeInfo
 
   bool operator==(const TypeInfo& other) const
   {
+    if (this->classIdentity != nullptr || other.classIdentity != nullptr)
+      return this->classIdentity == other.classIdentity;
     usize n = strlen(this->typeName);
     return n == strlen(other.typeName) && memcmp(this->typeName, other.typeName, n) == 0;
   }
