@@ -123,7 +123,8 @@
     // perThread: a thread_local global, built by each thread at its first use, not at startup: the
     // function checks a thread_local guard, and globalFor calls it before every use (C++'s
     // thread_local wrapper). Destroyed at no thread's exit yet.
-    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread = false, VariableDecl* definition = nullptr);
+    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread = false, VariableDecl* definition = nullptr,
+                               Shared::GlobalBuild build = Shared::GlobalBuild::BuildAndExit);
 
     // The llvm.global_ctors array, all of it in module 0: the globals built at startup in
     // definition order within a file (design.md section 2: a global's initializer may read the ones

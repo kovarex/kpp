@@ -855,7 +855,7 @@ auto codegen::Emitter::runtimeHeaders() -> std::vector<std::string>
 {
   return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
           kppEhFilterAnyHeader, kppEhFilterNoexceptHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
-          kppEhEnterHeader,   kppEhTerminateHeader, kppThreadAtExitHeader, kppCurrentExceptionHeader};
+          kppEhEnterHeader,   kppEhTerminateHeader, kppThreadAtExitHeader, kppAtExitHeader, kppCurrentExceptionHeader};
 }
 
 auto codegen::Emitter::declareFromHeader(const std::string& text) -> std::string
@@ -1729,23 +1729,80 @@ auto codegen::Emitter::stderrStream() -> std::string
   return "  %err = load ptr, ptr " + stream + "\n";
 }
 
-auto codegen::Emitter::registerThreadExits(const std::string& addr, const Ty* t, Node* at) -> void
+auto codegen::Emitter::staticExits(const std::string& addr, const Ty* t, Node* at) -> std::vector<std::pair<std::string, std::string>>
 {
   std::vector<std::pair<std::string, const Ty*>> objects;
   if (needsDestruction(t, at))
     objects.push_back({addr, t});
-  for (size_t i = threadLocalTemporaries.size(); i-- > 0;)
-    objects.push_back(threadLocalTemporaries[i]); // (built before the variable: destroyed after it)
-  threadLocalTemporaries.clear();
+  for (size_t i = staticTemporaries.size(); i-- > 0;)
+    objects.push_back(staticTemporaries[i]); // (built before the variable: destroyed after it)
+  staticTemporaries.clear();
   // Registered in reverse, so that the variable, registered last, is destroyed first.
+  std::vector<std::pair<std::string, std::string>> exits;
   for (size_t i = objects.size(); i-- > 0;)
+    if (std::string dtor = destructorThunk(objects[i].second, at); dtor != "null")
+      exits.push_back({dtor, objects[i].first});
+  return exits;
+}
+
+auto codegen::Emitter::registerThreadExits(const std::string& addr, const Ty* t, Node* at) -> void
+{
+  for (const auto& [dtor, object] : staticExits(addr, t, at))
   {
-    std::string dtor = destructorThunk(objects[i].second, at);
-    if (dtor == "null")
-      continue;
     usesThreadExit = true;
-    fn += "  call void @kpp_thread_atexit(ptr " + dtor + ", ptr " + objects[i].first + ")" + bundle() + "\n";
+    fn += "  call void @kpp_thread_atexit(ptr " + dtor + ", ptr " + object + ")" + bundle() + "\n";
   }
+}
+
+auto codegen::Emitter::registerProgramExits(const std::string& addr, const Ty* t, Node* at) -> void
+{
+  for (const auto& [dtor, object] : staticExits(addr, t, at))
+  {
+    usesProgramExit = true;
+    fn += "  call void @kpp_atexit(ptr " + dtor + ", ptr " + object + ")" + bundle() + "\n";
+  }
+}
+
+auto codegen::Emitter::finishProgramExitRuntime() -> void
+{
+  if (!usesProgramExit || !declaredNames.claim("@kpp_atexit"))
+    return;
+  emittingShared = true;
+  if (!sh.target.windows())
+  {
+    if (declaredNames.claim("@__cxa_atexit"))
+      decls += "declare i32 @__cxa_atexit(ptr, ptr, ptr)\n";
+    if (declaredNames.claim("@__dso_handle"))
+      decls += "@__dso_handle = external hidden global i8\n";
+    shared += sharedComdat("@kpp_atexit") + std::string(kppAtExitHeader) + "\nentry:\n  %r = call i32 @__cxa_atexit(ptr %dtor, ptr %object, ptr @__dso_handle)\n  ret void\n}\n";
+    emittingShared = false;
+    return;
+  }
+  ensureMalloc();
+  if (declaredNames.claim("@atexit"))
+    decls += "declare i32 @atexit(ptr)\n";
+  shared += sharedComdat("@kpp.exit.list") + "@kpp.exit.list = linkonce_odr global ptr null, comdat\n";
+  shared += sharedComdat("@kpp_exit_one") +
+            "define linkonce_odr void @kpp_exit_one() comdat personality ptr " + personality() + " {\nentry:\n  br label %pop\n"
+            "pop:\n  %node = load atomic ptr, ptr @kpp.exit.list acquire, align 8\n  %none = icmp eq ptr %node, null\n  br i1 %none, label %end, label %take\n"
+            "take:\n  %rest = load ptr, ptr %node\n  %pair = cmpxchg ptr @kpp.exit.list, ptr %node, ptr %rest acq_rel acquire, align 8\n"
+            "  %won = extractvalue { ptr, i1 } %pair, 1\n  br i1 %won, label %run, label %pop\n"
+            "run:\n  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  %dtor = load ptr, ptr %dp\n"
+            "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  %object = load ptr, ptr %op\n"
+            "  call void @free(ptr %node)\n  invoke void %dtor(ptr %object)\n    to label %end unwind label %dispatch\n"
+            "end:\n  ret void\n"
+            // (a destructor that throws ends the program, as out of a noexcept function; the C library has no frame that would)
+            "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
+            "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.noexcept]\n  unreachable\n}\n";
+  usesNoexceptFilter = true;
+  shared += sharedComdat("@kpp_atexit") + std::string(kppAtExitHeader) +
+            "\nentry:\n  %node = call ptr @malloc(i64 24)\n  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  store ptr %dtor, ptr %dp\n"
+            "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  store ptr %object, ptr %op\n  br label %push\n"
+            "push:\n  %head = load atomic ptr, ptr @kpp.exit.list acquire, align 8\n  store ptr %head, ptr %node\n"
+            "  %pair = cmpxchg ptr @kpp.exit.list, ptr %head, ptr %node acq_rel acquire, align 8\n"
+            "  %won = extractvalue { ptr, i1 } %pair, 1\n  br i1 %won, label %done, label %push\n"
+            "done:\n  %r = call i32 @atexit(ptr @kpp_exit_one)\n  ret void\n}\n";
+  emittingShared = false;
 }
 
 auto codegen::Emitter::finishThreadExitRuntime() -> void
@@ -1770,6 +1827,32 @@ auto codegen::Emitter::finishThreadExitRuntime() -> void
   // Windows: this thread's list of what to destroy (a node: next, dtor, object), and one fiber-local
   // slot whose callback runs the list when a thread that set the slot ends.
   ensureMalloc();
+  if (sh.target.msvc())
+  {
+    // The Visual C++ runtime's list of a thread's destructors, which exit() runs first of all, as
+    // C++ needs ([basic.start.term] 2), and a thread's end too. A fiber-local slot's callback ran
+    // on the main thread only after the statics were gone.
+    if (declaredNames.claim("@__tlregdtor"))
+      decls += "declare i32 @__tlregdtor(ptr)\n";
+    shared += sharedComdat("@kpp.thread.exits") + "@kpp.thread.exits = linkonce_odr thread_local global ptr null, comdat\n";
+    shared += sharedComdat("@kpp_thread_exit") +
+              "define linkonce_odr void @kpp_thread_exit() comdat {\nentry:\n  br label %next\n"
+              "next:\n  %node = load ptr, ptr @kpp.thread.exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
+              "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr @kpp.thread.exits\n"
+              "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  %dtor = load ptr, ptr %dp\n"
+              "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  %object = load ptr, ptr %op\n"
+              "  call void @free(ptr %node)\n  call void %dtor(ptr %object)\n  br label %next\n"
+              "end:\n  ret void\n}\n";
+    shared += sharedComdat("@kpp_thread_atexit") + std::string(kppThreadAtExitHeader) +
+              "\nentry:\n  %head = load ptr, ptr @kpp.thread.exits\n  %first = icmp eq ptr %head, null\n  br i1 %first, label %register, label %push\n"
+              "register:\n  %r = call i32 @__tlregdtor(ptr @kpp_thread_exit)\n  br label %push\n"
+              "push:\n  %node = call ptr @malloc(i64 24)\n  store ptr %head, ptr %node\n"
+              "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  store ptr %dtor, ptr %dp\n"
+              "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  store ptr %object, ptr %op\n"
+              "  store ptr %node, ptr @kpp.thread.exits\n  ret void\n}\n";
+    emittingShared = false;
+    return;
+  }
   if (declaredNames.claim("@FlsAlloc"))
     decls += "declare dllimport i32 @FlsAlloc(ptr)\n";
   if (declaredNames.claim("@FlsFree"))

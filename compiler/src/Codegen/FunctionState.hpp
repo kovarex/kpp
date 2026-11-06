@@ -176,17 +176,18 @@
     std::vector<std::string> extendedTemporaries;
     // A variable of static storage so initialised (a global, a static local): such a temporary is an
     // object of static storage of its own (staticTemporary: this name's ".temp<n>", thread_local for
-    // one per thread), since the function initialising the variable returns; never destroyed, as
-    // the variable is not.
+    // one per thread), since the function initialising the variable returns; destroyed after the
+    // variable (staticTemporaries).
     std::string extendingStatic;
     // While an operator converts its operands to their common type (arithmetic, compare): an
     // enumeration's value is a number there, which convert's enumeration rule leaves to the operator.
     bool operandConversion = false;
     bool extendingThreadLocal = false;
     uint32_t extendingCount = 0;
-    // The temporaries a thread_local's initializer extended that need destroying (staticTemporary):
-    // destroyed at the thread's exit after the variable (registerThreadExits).
-    std::vector<std::pair<std::string, const Ty*>> threadLocalTemporaries;
+    // The temporaries a static or thread_local variable's initializer extended that need destroying
+    // (staticTemporary): destroyed at the program's or the thread's exit after the variable
+    // (registerProgramExits, registerThreadExits).
+    std::vector<std::pair<std::string, const Ty*>> staticTemporaries;
     std::vector<Loop> loops;
     std::vector<EHFrame> ehFrames;
     std::string ehBlocks;                                     // cleanup pads of the current function

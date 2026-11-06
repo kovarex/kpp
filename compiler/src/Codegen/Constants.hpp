@@ -200,6 +200,7 @@
       "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {";
     static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
     static constexpr const char* kppThreadAtExitHeader = "define linkonce_odr void @kpp_thread_atexit(ptr %dtor, ptr %object) comdat {";
+    static constexpr const char* kppAtExitHeader = "define linkonce_odr void @kpp_atexit(ptr %dtor, ptr %object) comdat {";
     static constexpr const char* kppCurrentExceptionHeader = "define linkonce_odr void @kpp_current_exception(ptr %into) comdat {";
     // (noinline: the C runtime's personality reaches @kpp_eh_offset by a weak reference the optimizer
     // cannot see; inlined into every IR caller, LTO would drop the definition and that call go to null.)
@@ -332,7 +333,20 @@
     // FreeBSD's __cxa_thread_atexit.
     void finishThreadExitRuntime();
     // Registers the destruction of the thread_local object of type t at addr (and of the temporaries
-    // its initializer extended, threadLocalTemporaries, destroyed after it) for its thread's exit;
+    // its initializer extended, staticTemporaries, destroyed after it) for its thread's exit;
     // nothing for a type that needs none.
     void registerThreadExits(const std::string& addr, const Ty* t, Node* at);
+    // kpp_atexit(dtor, object): dtor(object) when the program ends ([basic.start.term]), in the C
+    // library's one order with atexit's functions: the __cxa_atexit of glibc and FreeBSD; on Windows,
+    // which has only atexit, a list of (dtor, object) and one atexit of kpp_exit_one each, which
+    // takes the list's head: atexit's order is the list's.
+    void finishProgramExitRuntime();
+    // Registers the destruction of the object of static storage of type t at addr, and of the
+    // temporaries its initializer extended (staticTemporaries, destroyed after it), for the program's
+    // end; nothing for a type that needs none. Where its construction completed, so that the
+    // objects go in the reverse order ([basic.start.term] 3).
+    void registerProgramExits(const std::string& addr, const Ty* t, Node* at);
+    // What registerThreadExits and registerProgramExits register: (destructor thunk, object), the
+    // first to destroy last.
+    std::vector<std::pair<std::string, std::string>> staticExits(const std::string& addr, const Ty* t, Node* at);
 

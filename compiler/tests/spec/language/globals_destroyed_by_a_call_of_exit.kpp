@@ -1,0 +1,34 @@
+// spec: exit() destroys objects of static storage and the calling thread's thread_locals first of all, never its automatic objects ([basic.start.main], [basic.start.term]); atexit's function is ordered with them, and a static it builds goes next. clang's and g++'s output
+extern "C" int printf(const char* format, ...);
+extern "C" int atexit(void (*f)());
+extern "C" void exit(int code);
+struct Tr
+{
+  const char* n;
+  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
+  ~Tr() { printf("dtor %s\n", n); }
+};
+Tr g1{"g1"};
+Tr& fnStatic() { static Tr t("fn static"); return t; }
+Tr g2{"g2"};
+void deep(int n)
+{
+  Tr local("local not destroyed by exit");
+  fnStatic();
+  if (n == 0)
+  {
+    printf("exit\n");
+    exit(1);
+  }
+  deep(n - 1);
+}
+struct AtExitOrder { ~AtExitOrder() { printf("AtExitOrder\n"); } };
+void handler() { static AtExitOrder o; printf("handler\n"); }
+int main()
+{
+  atexit(handler);
+  thread_local Tr perThread("thread local of main");
+  printf("%s\n", perThread.n);
+  deep(1);
+  return 0;
+}

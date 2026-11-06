@@ -1,0 +1,6 @@
+ctor first
+ctor last
+main
+dtor last
+throwing
+terminate

@@ -1,0 +1,27 @@
+// spec: a destructor of an object of static storage that lets an exception out calls terminate ([except.terminate] 1.8): the objects built before it are not destroyed
+extern "C" int printf(const char* format, ...);
+struct Tr
+{
+  const char* n;
+  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
+  ~Tr() { printf("dtor %s\n", n); }
+};
+struct Throws
+{
+  ~Throws() noexcept(false) { printf("throwing\n"); throw 5; }
+};
+void onTerminate()
+{
+  printf("terminate\n");
+  fflush(nullptr);
+  _Exit(1);
+}
+Tr first{"first"};
+Throws thrower;
+Tr last{"last"};
+int main()
+{
+  setTerminate(onTerminate);
+  printf("main\n");
+  return 0;
+}

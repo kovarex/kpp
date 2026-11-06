@@ -1,0 +1,14 @@
+ctor g1
+ctor g2
+ctor thread local of main
+thread local of main
+ctor local not destroyed by exit
+ctor fn static
+ctor local not destroyed by exit
+exit
+dtor thread local of main
+dtor fn static
+handler
+AtExitOrder
+dtor g2
+dtor g1

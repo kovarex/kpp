@@ -1,4 +1,4 @@
-// spec: a temporary that a reference of static storage binds lives as long as the reference, the whole program ([class.temporary]/6): a global `const T& g = T(1)`, one of a scalar computed at run time, one of a derived class bound to its base, and an aggregate's reference member given a temporary, global or static local; each is an object of static storage of its own, never destroyed (as no global is yet), where until 2026-11-05 it was the initialising function's and was destroyed at its end, the reference dangling
+// spec: a temporary that a reference of static storage binds lives as long as the reference, the whole program ([class.temporary]/6), and is destroyed at its end: a global `const T& g = T(1)`, one of a scalar computed at run time, one of a derived class bound to its base, and an aggregate's reference member given a temporary, global or static local; each is an object of static storage of its own, never destroyed (as no global is yet), where until 2026-11-05 it was the initialising function's and was destroyed at its end, the reference dangling
 class T
 {
 public:

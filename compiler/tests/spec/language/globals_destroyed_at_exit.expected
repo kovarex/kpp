@@ -1,0 +1,72 @@
+ctor g1
+ctor g2
+ctor const global
+ctor fn static
+ctor arr0
+ctor arr1
+ctor arr2
+ctor m00
+ctor m01
+ctor m10
+ctor m11
+ctor mem a
+ctor mem b
+ctor der member
+ctor extended temporary
+ctor extended rvalue
+ctor aggregate temporary
+ctor in namespace
+ctor inline static
+ctor static member
+ctor after atexit h2
+ctor used by later
+ctor last
+main
+ctor fn static 2
+ctor per type
+ctor per type
+ctor local of main
+dtor local of main
+dtor per type
+dtor per type
+atexit h4
+dtor fn static 2
+dtor last
+ctor static built in a destructor
+LateStatic done
+atexit h3
+dtor static built in a destructor
+uses other: used by later
+dtor used by later
+dtor after atexit h2
+atexit h2
+dtor static member
+dtor inline static
+dtor in namespace
+dtor aggregate temporary
+dtor extended rvalue
+dtor extended temporary
+dtor VirtD
+dtor Virt
+dtor Der
+dtor der member
+dtor base of der
+dtor Mem
+dtor mem b
+dtor mem a
+dtor Cd 11
+dtor Cd 10
+dtor m11
+dtor m10
+dtor m01
+dtor m00
+dtor arr2
+dtor arr1
+dtor arr0
+dtor fn static
+dtor Cd 2
+dtor const global
+dtor g2
+dtor Cd 1
+atexit h1
+dtor g1

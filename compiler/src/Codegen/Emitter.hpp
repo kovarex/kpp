@@ -133,6 +133,7 @@ namespace codegen
     bool& debug = sh.debug;
     std::atomic<bool>& usesAssert = sh.usesAssert;
     std::atomic<bool>& usesThreadExit = sh.usesThreadExit;
+    std::atomic<bool>& usesProgramExit = sh.usesProgramExit;
     std::unordered_map<std::string, const Ty*>& irTypeNames = sh.irTypeNames;
     std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
     std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;

@@ -47,7 +47,18 @@ This file records decisions that have been made. When a decision changes, update
   Windows a fiber-local slot's callback, elsewhere the C library's __cxa_thread_atexit; one built
   from constant data is built at first use too, so that its destruction is registered; spec
   language/thread_local_destroyed_at_thread_exit). The main thread's are destroyed as it ends,
-  if the system runs them then; statics stay undestroyed (the open question).
+  before the statics (on MSVC targets through the Visual C++ runtime's __tlregdtor, on ELF the C
+  library's; windows-gnu keeps the fiber-local slot, whose callback runs after them).
+  Objects of static storage are destroyed at the program's end as in C++ (kovarex, 2026-11-06;
+  [basic.start.term]): when main returns or exit() is called, in the reverse order of the completion
+  of their construction, atexit's functions in that one order. Each is registered where its
+  construction completes (kpp_atexit, in the same function as the initialization: __cxa_atexit on
+  ELF, atexit and a list on Windows), a function-local static when its declaration is first passed,
+  an object of constant data that needs destroying at its place in the startup order, and it is
+  never in read-only memory; the temporaries a static's initializer extended go after it. A
+  destructor that lets an exception out ends the program through terminate. quick_exit, _Exit and
+  abort destroy nothing. Specs language/globals_destroyed_at_exit,
+  globals_destroyed_by_a_call_of_exit, destructor_of_a_global_that_throws_terminates.
 - **One multithreaded compiler process** sharing one symbol table, instead of independent
   per-file processes:
   1. Index: parse all files in parallel, build the global symbol tree, record unresolved
@@ -3445,7 +3456,7 @@ byte for byte unless a difference is shown to be a fix.
 | Symbol names | quoted IR names (`@"twice(int32)"`), C names unmangled | the same names are valid in ELF and Mach-O; Mach-O prefixes `_`, which LLVM adds through the data layout's `m:o` | Unchanged in the IR. No `dllimport` off Windows. |
 | COMDAT | `linkonce_odr` with `comdat any` | ELF has COMDATs. Mach-O has none (LLVM rejects them) and coalesces weak definitions instead. | Emitted on Windows and ELF, left out on Mach-O. The shared definitions stay `linkonce_odr` or `weak_odr`. |
 | TLS | `thread_local` globals, lazily built per thread | ELF TLS; Mach-O's TLV descriptors (`__tlv_bootstrap`); both through LLVM | Unchanged. |
-| Global constructors | `llvm.global_ctors` | `.init_array` on ELF, `__mod_init_func` on Mach-O, from the same IR | Unchanged. No target runs global destructors at exit yet. |
+| Global constructors | `llvm.global_ctors` | `.init_array` on ELF, `__mod_init_func` on Mach-O, from the same IR | Unchanged. Destructors at exit: kpp_atexit, on Mach-O `__cxa_atexit` as on ELF. |
 | Entry | `main`, or `wmain` (the game) | `main`, with UTF-8 `argv` | `wmain` is Windows-only. Done 2026-11-06: on Windows a `main` that takes arguments is entered through a generated `wmain`, which makes the C runtime's wide `argv` UTF-8 (WideCharToMultiByte; the narrow one is the ANSI code page's), the link naming `wmainCRTStartup`; an argument holding a lone surrogate, which has no UTF-8 form, ends the program before `main` with a message naming it (as a path holding one throws: kovarex, 2026-11-06). `getenv` is UTF-8 too: on Windows it is the stdlib's, not the C runtime's (FilesWindows.kpp; an import of stdlib.h leaves it to the stdlib, as any library function of the same parameters), reading the wide environment (`_wgetenv`) into a UTF-8 copy kept until the variable changes; a value holding a lone surrogate throws SystemError, as a path does. C code linked in (`--lib`) keeps the C runtime's, and a program's own `extern "C"` declaration of getenv is a link error on Windows (the stdlib's definition takes its symbol, which the C runtime has). `kppc --run` passes the program's arguments on as UTF-8 too. A program with `main` and `wmain` is entered at `main`, as the C++ linkers choose. `main` is C++'s `int main()` or `int main(int argc, char** argv)` (`wmain`'s `wchar_t**`) and nothing else: another form (one parameter, the environment's third, a `void` result) is an error, as is an `extern "C"` main; a namespace's `main` is an ordinary function. |
 | Debug info | CodeView | DWARF (on macOS, `dsymutil` collects it into a .dSYM) | One module flag per target. |
 | Signing | none needed | macOS arm64 runs only signed code | ld64 and ld64.lld sign ad hoc on arm64 by default. A program shipped to others needs a Developer ID signature and notarization (packaging, thread E). |

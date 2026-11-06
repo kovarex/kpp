@@ -1012,15 +1012,24 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   // shared text is sorted, and the definition (an `@` line) has to come after the struct types
   // (`%` lines) a constant initializer names; the comdat line (`$`) would sort first.
   decls += "$" + name.substr(1) + " = comdat any\n";
+  // (A destructor may write: `const Lock lock;`'s, a const object's as any other's.)
+  bool destroyed = !threadLocal && needsDestruction(st, at);
   decls += name + " = linkonce_odr " + (threadLocal ? "thread_local " : "") +
-           (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
+           (t->isConst && !constructed && !destroyed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
            alignSuffix(st, variableAlignment(def, def, at), at) + debugGlobal(name, def, t) + "\n";
   if (constructed)
   {
     Restore<std::optional<Shared::Startup>> startupRestore(startupAt);
-    if (builtFirst && !threadLocal && !startupAt)
+    bool first = builtFirst && !threadLocal && !startupAt;
+    if (first)
       startupAt = Shared::Startup{0, 0, 0, std::string()};
-    emitGlobalConstructor(v, name, st, value, at, threadLocal, def);
+    emitGlobalConstructor(v, name, st, value, at, threadLocal, def, first ? Shared::GlobalBuild::BuildOnly : Shared::GlobalBuild::BuildAndExit);
+    if (first)
+      startupAt.reset();
+    if (first && destroyed)
+      emitGlobalConstructor(v, name, st, value, at, false, def, Shared::GlobalBuild::ExitOnly);
   }
+  else if (destroyed)
+    emitGlobalConstructor(v, name, st, value, at, false, def, Shared::GlobalBuild::ExitOnly); // constant data, destroyed all the same, in its place
   return name;
 }

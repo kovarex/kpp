@@ -147,6 +147,10 @@ namespace codegen
     // (An explicit instantiation's static data member is at the `template class` line, then in
     // its definitions' order: member is the definition's token there, 0 for any other global.)
     struct Startup { uint32_t file; uint32_t token; uint32_t member; std::string function; };
+    // What a global's startup function does: builds it and registers its destruction; builds it alone
+    // (one built before everything else, whose destruction is registered in its place: ExitOnly); or
+    // registers it alone (one of constant data).
+    enum class GlobalBuild { BuildAndExit, BuildOnly, ExitOnly };
     // How each global's constructor (`kpp.init.<name>`) was emitted (Emitter::emitGlobalConstructor's
     // arguments), by its name, and the names by the global: a server's build emits one again when
     // its initializer read an edited function (rebuildLLVM's changedGlobals).
@@ -160,6 +164,7 @@ namespace codegen
       bool perThread;
       VariableDecl* definition;
       std::optional<Startup> startupAt;
+      GlobalBuild build;
     };
     // A definition in a module (a function's, a helper's in its home module) with the names its text
     // uses, found once on the thread that emitted it: module assembly reads these instead of scanning
@@ -329,6 +334,7 @@ namespace codegen
     FinalAnswers<const Ty*, ClosureInfo*> finalClosures; // laid-out closures (closureFor)
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
+    std::atomic<bool> usesProgramExit{false};            // an object of static storage is destroyed at the program's end: kpp_atexit
     std::atomic<bool> usesThreadExit{false};             // a thread_local is destroyed at its thread's exit: kpp_thread_atexit
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
     std::atomic<bool> usesNoexceptFilter{false};         // Windows: a noexcept function's catchpad names kpp.eh.filter.noexcept

@@ -1003,6 +1003,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   emitLevels();
   e.finishAssertRuntime();
   e.finishThreadExitRuntime();
+  e.finishProgramExitRuntime();
   e.finishExceptionRuntime();
   if (sh.stubMissing)
   {
@@ -1948,7 +1949,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         try
         {
           em.startupAt = g.startupAt;
-          em.emitGlobalConstructor(g.v, g.name, g.t, g.init, g.at, g.perThread, g.definition);
+          em.emitGlobalConstructor(g.v, g.name, g.t, g.init, g.at, g.perThread, g.definition, g.build);
           em.startupAt.reset();
         }
         catch (Emitter::Unsupported&)

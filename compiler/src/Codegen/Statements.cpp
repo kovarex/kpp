@@ -188,10 +188,14 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   // (`static int counter = 5;`) was zero until its declaration ran, so a goto or a case label past
   // it read 0 where C++ reads 5. (Not one a lambda or a local class names: its copies elsewhere are
   // zero-initialized and set by the guarded pass, staticLocalElsewhere.)
+  // (One with a destructor has its value from the start too, and the guarded pass below registers
+  // its destruction: `static const Cd c(1);`, destroyed only if its declaration was passed.)
+  bool constantValue = false;
   if (!shared && !isRef && v->init && !(v->flags & DF_ThreadLocal))
     if (std::optional<std::string> init = staticConstant(v, t))
     {
-      bool writable = !isConstValue(v) || hasMutableMember(t, v);
+      bool destroyed = needsDestruction(t, v);
+      bool writable = !isConstValue(v) || hasMutableMember(t, v) || destroyed;
       addOwnedEntry(name + " = internal " + (writable ? "global " : "constant ") + llType(t, v) + " " + *init +
                     alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
       {
@@ -199,7 +203,9 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
         globals[v] = name;
       }
       locals[v] = {name, t, false};
-      return;
+      if (!destroyed)
+        return;
+      constantValue = true;
     }
   // (A reference bound to an object of static storage the same: `static int& r = x;` past a case label.)
   if (!shared && isRef && !(v->flags & DF_ThreadLocal))
@@ -226,7 +232,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   }
   else if (isRef)
     addOwnedEntry(name + storage + "ptr null\n");
-  else
+  else if (!constantValue)
     addOwnedEntry(name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
   addOwnedEntry(guard + storage + "i8 0\n");
   {
@@ -274,7 +280,11 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     giveBack.guardReset = guard;
     statementTemps.push_back(giveBack);
   }
-  if (isRef)
+  std::vector<std::pair<std::string, const Ty*>> outerTemporaries = std::move(staticTemporaries); // (of a static inlined into another's initializer)
+  staticTemporaries.clear();
+  if (constantValue)
+    ; // (its value is there)
+  else if (isRef)
     fn += "  store ptr " + staticReferenceTarget(v, name, t, v->init, v, perThread) + ", ptr " + name + "\n";
   else if (v->init && isClass(t))
     initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
@@ -287,6 +297,9 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   destroyTemps(); // (the claim's cleanup with them: the initializer returned)
   if (perThread && !isRef)
     registerThreadExits(name, t, v); // destroyed when the thread ends ([basic.stc.thread] 2)
+  else if (!perThread)
+    registerProgramExits(name, isRef ? types.voidType() : t, v); // destroyed at the program's end, as a global ([basic.start.term] 3)
+  staticTemporaries = std::move(outerTemporaries);
   fn += "  store atomic i8 " + std::string(perThread ? "1" : "2") + ", ptr " + guard + " release, align 1\n";
   emitBranch(done);
   startBlock(done);
@@ -348,8 +361,8 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   std::string name = extendingStatic.substr(0, extendingStatic.size() - 1) + ".temp" + std::to_string(extendingCount++) + "\"";
   addOwnedEntry(name + (extendingThreadLocal ? " = internal thread_local global " : " = internal global ") + llType(type, at) + " zeroinitializer" +
                 alignSuffix(type, 0, at) + "\n");
-  if (extendingThreadLocal && needsDestruction(type, at))
-    threadLocalTemporaries.push_back({name, type}); // (destroyed at the thread's exit, after the variable)
+  if (needsDestruction(type, at))
+    staticTemporaries.push_back({name, type}); // (destroyed at the program's or the thread's exit, after the variable)
   return name;
 }
 

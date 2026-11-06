@@ -1,0 +1,75 @@
+// spec: objects of static storage are destroyed at the program's end as C++ has it ([basic.start.term]): in the reverse order of the completion of their construction, function-local statics interleaved by when their declaration was passed, atexit's functions in the same order, arrays from the last element, members and bases as ever, a const object, an object of constant data (constexpr constructor), a temporary a reference or an aggregate extended (after the object), a static member, a static built during destruction, an object a later global's destructor still uses. g++'s output, clang's but for where MSVC's model puts an inline variable
+extern "C" int printf(const char* format, ...);
+extern "C" int atexit(void (*f)());
+extern "C" void exit(int code);
+struct Tr
+{
+  const char* n;
+  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
+  ~Tr() { printf("dtor %s\n", n); }
+};
+struct Cd
+{
+  int v;
+  constexpr Cd(int x) : v(x) {}
+  ~Cd() { printf("dtor Cd %d\n", v); }
+};
+struct Base { const char* n; Base(const char* x) : n(x) {} ~Base() { printf("dtor base of %s\n", n); } };
+struct Mem { Tr a; Tr b; Mem() : a("mem a"), b("mem b") {} ~Mem() { printf("dtor Mem\n"); } };
+struct Der : Base { Tr t; Der() : Base("der"), t("der member") {} ~Der() { printf("dtor Der\n"); } };
+class Virt { public: Virt() {} virtual ~Virt() { printf("dtor Virt\n"); } };
+class VirtD : public Virt { public: VirtD() {} ~VirtD() override { printf("dtor VirtD\n"); } };
+void h1() { printf("atexit h1\n"); }
+void h2() { printf("atexit h2\n"); }
+void h3() { printf("atexit h3\n"); }
+void h4() { printf("atexit h4\n"); }
+Tr& fnStatic() { static Tr t("fn static"); return t; }
+Tr& fnStatic2() { static Tr t("fn static 2"); return t; }
+Tr& fnNever() { static Tr t("fn never"); return t; }
+template<class T> Tr& perType() { static Tr t("per type"); return t; }
+struct Registrar { Registrar() { atexit(h1); } };
+Tr g1{"g1"};
+Registrar registrar;
+Cd constant1{1};
+Tr g2{"g2"};
+const Tr constGlobal{"const global"};
+const Cd constant2{2};
+constexpr int plain = 3;
+int touch = (fnStatic(), 1);
+Tr arr[3] = {"arr0", "arr1", "arr2"};
+Tr arr2d[2][2] = {{"m00", "m01"}, {"m10", "m11"}};
+Cd cdArr[2] = {Cd(10), Cd(11)};
+Mem mem;
+Der der;
+VirtD virtD;
+const Tr& extended = Tr("extended temporary");
+Tr&& extended2 = Tr("extended rvalue");
+struct Holder { const Tr& r; int x; };
+Holder holder = {Tr("aggregate temporary"), 1};
+namespace ns { Tr inNs{"in namespace"}; }
+struct Sm { static Tr member; inline static Tr inl{"inline static"}; };
+Tr Sm::member {"static member"};
+Tr viaAtexit = (atexit(h2), Tr("after atexit h2"));
+struct UsesOther
+{
+  Tr& other;
+  UsesOther(Tr& o) : other(o) {}
+  ~UsesOther() { printf("uses other: %s\n", other.n); }
+};
+Tr used{"used by later"};
+UsesOther uses{used};
+struct LateStatic { ~LateStatic() { static Tr t("static built in a destructor"); atexit(h3); printf("LateStatic done\n"); } };
+LateStatic late;
+struct Nontrivial { int a = 5; ~Nontrivial() {} };
+Nontrivial quiet;
+Tr last{"last"};
+int main()
+{
+  printf("main\n");
+  fnStatic2();
+  atexit(h4);
+  perType<int>();
+  perType<char>();
+  Tr local("local of main");
+  return 0;
+}

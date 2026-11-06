@@ -975,7 +975,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
   return slot;
 }
 
-auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread, VariableDecl* definition) -> void
+auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread, VariableDecl* definition,
+                                             Shared::GlobalBuild build) -> void
 {
   FunctionState saved = saveState();
   std::string savedOverride = funcletOverride;
@@ -998,11 +999,11 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   Restore<Decl*> initializerRestore(initializerOf);
   initializerOf = def;
   emittingShared = false;
-  std::string fnName = std::string(perThread ? "@\"kpp.tlsinit." : "@\"kpp.init.") + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
+  std::string fnName = std::string(perThread ? "@\"kpp.tlsinit." : build == Shared::GlobalBuild::ExitOnly ? "@\"kpp.atexit." : "@\"kpp.init.") + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
   std::string guard = name.substr(0, name.size() - 1) + ".tlsguard\"";
   {
     std::lock_guard lock(sh.definitionsMutex);
-    if (sh.globalInits.emplace(fnName, Shared::GlobalInit{v, name, t, init, at, perThread, definition, startupAt}).second)
+    if (sh.globalInits.emplace(fnName, Shared::GlobalInit{v, name, t, init, at, perThread, definition, startupAt, build}).second)
     {
       sh.globalInitsOf[v].push_back(fnName);
       if (def != v)
@@ -1043,7 +1044,8 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   currentRequestedByContext.clear();
   try
   {
-    threadLocalTemporaries.clear();
+    staticTemporaries.clear();
+    bool builds = build != Shared::GlobalBuild::ExitOnly;
     if (perThread)
     {
       {
@@ -1055,22 +1057,24 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
       fn += "  store i1 true, ptr " + guard + "\n";
     }
     pushScope();
-    if (t->isReference() && init)
+    if (builds && t->isReference() && init)
     {
       // (temporaries of static storage, never destroyed: staticReferenceTarget)
       fn += "  store ptr " + staticReferenceTarget(v, name, t, init, at, perThread) + ", ptr " + name + "\n";
     }
-    else if (init && isClass(t))
+    else if (builds && init && isClass(t))
       initializeExtending(name, t, v, init, name, perThread);
-    else if (init)
+    else if (builds && init)
       initializeFrom(name, t, init, at);
-    else if (isClass(t))
+    else if (builds && isClass(t))
       defaultConstruct(name, t, at);
-    else if (t->kind == TyKind::Array)
+    else if (builds && t->kind == TyKind::Array)
       constructArray(name, t, at); // `static Style styles[3];`
     destroyTemps();
     if (perThread)
       registerThreadExits(name, t->isReference() ? types.voidType() : t, at); // destroyed when the thread ends ([basic.stc.thread] 2)
+    else if (build != Shared::GlobalBuild::BuildOnly)
+      registerProgramExits(name, t->isReference() ? types.voidType() : t, at); // destroyed at the program's end ([basic.start.term] 3)
     popScope();
     if (perThread)
       fn += "  br label %tls.done\ntls.done:\n";
