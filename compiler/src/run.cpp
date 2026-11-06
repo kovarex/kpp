@@ -1,7 +1,7 @@
 #include "run.hpp"
+#include "host.hpp"
 #include "target.hpp"
 
-#include <windows.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -30,24 +30,21 @@ namespace
   // its build until its program has ended, and sets its last write time, the time of last use the
   // cleanup orders by. The cleanup deletes a directory only while it holds the lock file alone, so a
   // run waits here while one is being deleted, and then makes it again.
-  HANDLE lockRunDirectory(const std::filesystem::path& dir)
+  host::FileLock lockRunDirectory(const std::filesystem::path& dir)
   {
     for (int attempt = 0; attempt < 400; ++attempt)
     {
       std::error_code ec;
       std::filesystem::create_directories(dir, ec);
-      HANDLE lock = CreateFileW((dir / "lock").c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                                OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-      if (lock != INVALID_HANDLE_VALUE)
+      host::FileLock lock;
+      if (lock.shared(dir / "lock"))
       {
-        FILETIME now;
-        GetSystemTimeAsFileTime(&now);
-        SetFileTime(lock, nullptr, nullptr, &now);
+        lock.touch();
         return lock;
       }
-      Sleep(25);
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
-    return INVALID_HANDLE_VALUE;
+    return host::FileLock();
   }
 
   // Deletes the directories of root beyond the keptRunDirectories most recently used, each while
@@ -85,8 +82,8 @@ namespace
       if (!entry.locked && now - entry.used < std::chrono::hours(1))
         continue;
       std::filesystem::path lockPath = entry.dir / "lock";
-      HANDLE lock = CreateFileW(lockPath.c_str(), DELETE | GENERIC_READ, 0, nullptr, OPEN_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, nullptr);
-      if (lock == INVALID_HANDLE_VALUE)
+      host::FileLock lock;
+      if (!lock.alone(lockPath))
         continue;
       std::vector<std::filesystem::path> contents;
       std::error_code listEc;
@@ -95,31 +92,9 @@ namespace
           contents.push_back(it->path());
       for (const std::filesystem::path& path : contents)
         std::filesystem::remove_all(path, listEc);
-      CloseHandle(lock);
-      RemoveDirectoryW(entry.dir.c_str());
+      lock.release();
+      std::filesystem::remove(entry.dir, listEc); // (RemoveDirectory's: only when empty)
     }
-  }
-
-  // A command line argument as CommandLineToArgvW and the C runtime read it back.
-  std::string quoted(const std::string& arg)
-  {
-    if (!arg.empty() && arg.find_first_of(" \t\n\v\"") == std::string::npos)
-      return arg;
-    std::string out = "\"";
-    size_t backslashes = 0;
-    for (char c : arg)
-    {
-      if (c == '\\')
-      {
-        ++backslashes;
-        continue;
-      }
-      out.append(c == '"' ? backslashes * 2 + 1 : backslashes, '\\');
-      backslashes = 0;
-      out += c;
-    }
-    out.append(backslashes * 2, '\\');
-    return out + "\"";
   }
 
   // Runs the program with the arguments, its standard handles this process's, and returns its exit
@@ -128,69 +103,20 @@ namespace
   // reportedError says whether a line of them had ": error:".
   int runAndWait(const std::string& program, const std::vector<std::string>& args, bool* reportedError = nullptr)
   {
-    std::string command = quoted(program);
-    for (const std::string& a : args)
-      command += " " + quoted(a);
-    STARTUPINFOA si{};
-    si.cb = sizeof si;
-    HANDLE reads[2] = {nullptr, nullptr}, writes[2] = {nullptr, nullptr};
     std::string seen[2];
-    std::thread readers[2];
+    host::Run how;
     if (reportedError)
+      how.seen = [&](int k, const char* data, size_t size) { seen[k].append(data, size); };
+    std::string why;
+    int code = host::run(program, args, how, why);
+    if (code == -1 && !why.empty())
     {
-      si.dwFlags = STARTF_USESTDHANDLES;
-      si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-      HANDLE* outputs[2] = {&si.hStdOutput, &si.hStdError};
-      for (int k = 0; k < 2; ++k)
-      {
-        *outputs[k] = GetStdHandle(k == 0 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
-        if (CreatePipe(&reads[k], &writes[k], nullptr, 1 << 16))
-        {
-          SetHandleInformation(writes[k], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-          *outputs[k] = writes[k];
-        }
-      }
-    }
-    PROCESS_INFORMATION pi{};
-    bool started = CreateProcessA(program.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
-    DWORD startError = GetLastError();
-    for (int k = 0; k < 2; ++k)
-      if (writes[k])
-      {
-        CloseHandle(writes[k]);
-        readers[k] = std::thread([&, k]
-        {
-          char buffer[1 << 14];
-          DWORD n;
-          HANDLE to = GetStdHandle(k == 0 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
-          DWORD written;
-          while (ReadFile(reads[k], buffer, sizeof buffer, &n, nullptr) && n > 0)
-          {
-            seen[k].append(buffer, n);
-            WriteFile(to, buffer, n, &written, nullptr);
-          }
-          CloseHandle(reads[k]);
-        });
-      }
-    for (std::thread& t : readers)
-      if (t.joinable() && !started)
-        t.join();
-    if (!started)
-    {
-      fprintf(stderr, "kppc --run: cannot start %s (error %lu)\n", program.c_str(), startError);
+      fprintf(stderr, "kppc --run: cannot start %s (%s)\n", program.c_str(), why.c_str());
       return -1;
     }
-    CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    for (std::thread& t : readers)
-      if (t.joinable())
-        t.join();
     if (reportedError)
       *reportedError = seen[0].find(": error:") != std::string::npos || seen[1].find(": error:") != std::string::npos;
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    return int(code);
+    return code;
   }
 }
 
@@ -233,7 +159,7 @@ int runProgram(int argc, char** argv, int runIndex)
         return 2;
       }
     }
-  if (!target.windows() && !noRun)
+  if (platformOf(target.os).name != std::string(host::platformName()) && !noRun)
   {
     fprintf(stderr, "kppc %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
             argv[runIndex], target.name.c_str());
@@ -279,8 +205,8 @@ int runProgram(int argc, char** argv, int runIndex)
   auto noServer = std::find(options.begin(), options.end(), "--no-server");
   if (noServer != options.end())
     options.erase(noServer);
-  else if (std::find(options.begin(), options.end(), "--server") == options.end())
-    options.push_back("--server");
+  else if (std::find(options.begin(), options.end(), "--server") == options.end() && host::compileServer)
+    options.push_back("--server"); // (a host without the compile server yet builds in the kppc it starts)
   for (const std::string& o : options)
     mix(o);
   char hex[17];
@@ -292,10 +218,10 @@ int runProgram(int argc, char** argv, int runIndex)
     name += "-tests";
   std::filesystem::path root = std::filesystem::temp_directory_path(ec) / "kpp-run";
   std::filesystem::path dir = root / (name + "-" + hex);
-  HANDLE lock = lockRunDirectory(dir);
-  if (lock == INVALID_HANDLE_VALUE)
+  host::FileLock lock = lockRunDirectory(dir);
+  if (!lock.held())
   {
-    fprintf(stderr, "kppc %s: cannot lock %s (error %lu)\n", argv[runIndex], (dir / "lock").string().c_str(), GetLastError());
+    fprintf(stderr, "kppc %s: cannot lock %s\n", argv[runIndex], (dir / "lock").string().c_str());
     return 1;
   }
   // Once the program has ended (or the build failed): the cache is trimmed, this directory among the
@@ -305,16 +231,14 @@ int runProgram(int argc, char** argv, int runIndex)
     ~Unlock()
     {
       trimRunDirectories(root);
-      CloseHandle(lock);
+      lock.release();
     }
 
-    HANDLE lock;
+    host::FileLock& lock;
     std::filesystem::path root;
   } unlock{lock, root};
   std::string exe = (dir / (name + (target.windows() ? ".exe" : ""))).string(); // (NAME alone for Linux and FreeBSD)
 
-  char kppc[MAX_PATH * 4];
-  DWORD n = GetModuleFileNameA(nullptr, kppc, DWORD(sizeof kppc));
   std::vector<std::string> build = options;
   for (const char* a : {"--quiet", "--exe"})
     build.push_back(a);
@@ -323,7 +247,7 @@ int runProgram(int argc, char** argv, int runIndex)
   // A build that printed an error does not run, whatever its exit code said: a declaration the
   // parser could not read is left out of the program, and a test in it would silently not run.
   bool reportedError = false;
-  int built = runAndWait(std::string(kppc, n), build, &reportedError);
+  int built = runAndWait(host::executablePath().string(), build, &reportedError);
   if (built != 0)
     return built < 0 ? 1 : built;
   if (reportedError)

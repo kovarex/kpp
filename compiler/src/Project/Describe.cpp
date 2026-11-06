@@ -53,7 +53,7 @@ namespace projects
       fprintf(stderr, "error: kpp cannot make %s for %s: %s\n", path.parent_path().string().c_str(), what, ec.message().c_str());
       return false;
     }
-    FILE* file = _wfopen(path.c_str(), L"wb");
+    FILE* file = host::openFile(path, "wb");
     if (!file)
     {
       fprintf(stderr, "error: kpp cannot write %s (%s): %s\n", path.string().c_str(), what, strerror(errno));
@@ -191,13 +191,13 @@ namespace projects
   // What command prints on stdout, and its exit code; its stderr goes where this process's does.
   int runAndRead(const std::string& command, std::string& out)
   {
-    FILE* pipe = _popen(("\"" + command + "\"").c_str(), "rb");
+    FILE* pipe = host::openPipe(command, "rb");
     if (!pipe)
       return -1;
     char buffer[4096];
     for (size_t n; (n = fread(buffer, 1, sizeof(buffer), pipe)) > 0;)
       out.append(buffer, n);
-    return _pclose(pipe);
+    return host::closePipe(pipe);
   }
 
   // kppc on build.kpp, projectlib and the settings: the interpreter runs build() once and

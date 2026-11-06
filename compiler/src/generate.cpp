@@ -1,4 +1,5 @@
 #include "generate.hpp"
+#include "host.hpp"
 #include "source.hpp"
 #include <algorithm>
 #include <cstdio>
@@ -152,7 +153,7 @@ namespace
         out += '\r';
       out += c;
     }
-    FILE* file = _wfopen(path.c_str(), L"wb");
+    FILE* file = host::openFile(path, "wb");
     if (!file)
     {
       fprintf(stderr, "error: cannot write %s\n", path.string().c_str());

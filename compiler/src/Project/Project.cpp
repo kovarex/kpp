@@ -14,6 +14,7 @@ using namespace projects;
 int runProject(int argc, char** argv, CompileFunction compile)
 {
   kppStarted = std::chrono::steady_clock::now();
+  std::error_code currentPathError; // (the project's directory as the current one: it is there, found above)
   if (argc >= 2 && strcmp(argv[1], "new") == 0)
     return newProject(argc >= 3 ? fs::absolute(argv[2]) : fs::current_path());
   bool options = argc >= 2 && strcmp(argv[1], "options") == 0; // kpp options [targets] [configurations]
@@ -27,7 +28,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
       fprintf(stderr, "error: kpp measure times a project's builds, and there is no build.kpp here or above\n");
       return 2;
     }
-    SetCurrentDirectoryW(root.c_str());
+    fs::current_path(root, currentPathError);
     return measureProject(root, argc, argv);
   }
   if (argc == 1 && !options)
@@ -36,7 +37,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
     if (!asking && root.empty())
       return -1;
     if (!root.empty())
-      SetCurrentDirectoryW(root.c_str());
+      fs::current_path(root, currentPathError);
     return menu(root, compile, asking);
   }
   if (root.empty() && options)
@@ -119,7 +120,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
   }
   if (!badOption.empty())
     return optionError(badOption);
-  SetCurrentDirectoryW(root.c_str());
+  fs::current_path(root, currentPathError);
   return act(root, request, compile);
 }
 

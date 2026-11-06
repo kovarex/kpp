@@ -17,7 +17,7 @@ namespace projects
     {
       if (fs::exists(path, ec))
         return;
-      FILE* file = _wfopen(path.c_str(), L"wb");
+      FILE* file = host::openFile(path, "wb");
       if (file)
         fwrite(text.data(), 1, text.size(), file), fclose(file);
       printf("wrote %s\n", path.string().c_str());
@@ -52,24 +52,9 @@ namespace projects
   }
 
   // `kpp` alone in a console: the actions, each with the command that does it.
-  // Whether a person answers on stdin: a console, or the pipe a Cygwin or MSYS terminal gives its
-  // programs (Git Bash's mintty: \msys-<hash>-pty0-from-master, Cygwin's \cygwin-<hash>-pty0-...),
-  // which _isatty does not take for one (kovarex, 2026-11-04: `kpp` alone in Git Bash showed no menu).
-  bool interactiveInput()
-  {
-    if (_isatty(_fileno(stdin)))
-      return true;
-    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    if (in == nullptr || in == INVALID_HANDLE_VALUE || GetFileType(in) != FILE_TYPE_PIPE)
-      return false;
-    std::vector<char> buffer(sizeof(FILE_NAME_INFO) + MAX_PATH * sizeof(wchar_t));
-    FILE_NAME_INFO* info = reinterpret_cast<FILE_NAME_INFO*>(buffer.data());
-    if (!GetFileInformationByHandleEx(in, FileNameInfo, info, DWORD(buffer.size())))
-      return false;
-    std::wstring name(info->FileName, info->FileNameLength / sizeof(wchar_t));
-    bool terminal = name.rfind(L"\\msys-", 0) == 0 || name.rfind(L"\\cygwin-", 0) == 0;
-    return terminal && name.find(L"-pty") != std::wstring::npos && name.find(L"-from-master") != std::wstring::npos;
-  }
+  // Whether a person answers on stdin: host::interactiveInput (a console, or Git Bash's mintty pipe:
+  // kovarex, 2026-11-04, `kpp` alone in Git Bash showed no menu).
+  bool interactiveInput() { return host::interactiveInput(); }
 
   // `kpp` alone in a project: the menu, its answer read from stdin. Without anyone to answer (input
   // from a file or a pipe), the commands it offers, and a word that it asked nothing: never silence.

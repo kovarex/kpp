@@ -15,93 +15,32 @@ namespace projects
     std::lock_guard lock(measuredLock);
     for (const auto& [path, text] : measuredFiles)
       if (readText(path) != text)
-        if (FILE* f = _wfopen(path.c_str(), L"wb"))
+        if (FILE* f = host::openFile(path, "wb"))
           fwrite(text.data(), 1, text.size(), f), fclose(f);
   }
 
-  BOOL WINAPI measureInterrupted(DWORD)
-  {
-    restoreMeasuredFiles();
-    return FALSE; // and the process ends as it would have
-  }
-
-  // The machine as the table's heading names it: the processor, its cores and threads, the memory.
-  std::string machine()
-  {
-    std::string cpu = "an unknown processor";
-    HKEY key;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &key) == ERROR_SUCCESS)
-    {
-      char name[256] = {};
-      DWORD size = sizeof name - 1, type = 0;
-      if (RegQueryValueExA(key, "ProcessorNameString", nullptr, &type, reinterpret_cast<BYTE*>(name), &size) == ERROR_SUCCESS && type == REG_SZ)
-        cpu = name;
-      RegCloseKey(key);
-      while (!cpu.empty() && cpu.back() == ' ')
-        cpu.pop_back();
-    }
-    DWORD length = 0;
-    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &length);
-    std::vector<char> buffer(length);
-    unsigned cores = 0;
-    if (length && GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &length))
-      for (DWORD at = 0; at < length; ++cores)
-        at += reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data() + at)->Size;
-    MEMORYSTATUSEX memory{};
-    memory.dwLength = sizeof memory;
-    GlobalMemoryStatusEx(&memory);
-    char line[512];
-    snprintf(line, sizeof line, "%s, %u cores, %lu threads, %.0f GB", cpu.c_str(), cores, GetActiveProcessorCount(ALL_PROCESSOR_GROUPS),
-             double(memory.ullTotalPhys) / (1024.0 * 1024 * 1024));
-    return line;
-  }
-
-  // How busy the machine is, every core, over the next second, in percent.
-  int machineLoad()
-  {
-    FILETIME idle[2], kernel[2], user[2];
-    GetSystemTimes(&idle[0], &kernel[0], &user[0]);
-    Sleep(1000);
-    GetSystemTimes(&idle[1], &kernel[1], &user[1]);
-    auto ticks = [](const FILETIME& t) { return (uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
-    uint64_t idled = ticks(idle[1]) - ticks(idle[0]), all = ticks(kernel[1]) - ticks(kernel[0]) + ticks(user[1]) - ticks(user[0]); // (kernel time includes idle)
-    return all ? int(100.0 * double(all - idled) / double(all) + 0.5) : 0;
-  }
+  // The machine as the table's heading names it, and how busy it is (host.cpp).
+  std::string machine() { return host::machineDescription(); }
+  int machineLoad() { return host::machineLoad(); }
 
   // Runs a command line in directory, its output appended to log: its exit code, and its wall time
   // from start to exit.
   int timed(const std::string& command, const fs::path& directory, const fs::path& log, double& seconds)
   {
-    SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
-    HANDLE out = CreateFileW(log.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (out == INVALID_HANDLE_VALUE)
+    FILE* heading = host::openFile(log, "ab");
+    if (!heading)
       return -1;
-    std::string heading = "\n> " + command + "\n";
-    DWORD written = 0;
-    WriteFile(out, heading.data(), DWORD(heading.size()), &written, nullptr);
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = si.hStdError = out;
-    PROCESS_INFORMATION pi{};
-    std::wstring line(MultiByteToWideChar(CP_UTF8, 0, command.data(), int(command.size()), nullptr, 0), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, command.data(), int(command.size()), line.data(), int(line.size()));
+    fprintf(heading, "\n> %s\n", command.c_str());
+    fclose(heading);
+    host::Run how;
+    how.directory = directory;
+    how.appendTo = log;
+    std::string why;
     auto start = std::chrono::steady_clock::now();
-    if (!CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, 0, nullptr, directory.c_str(), &si, &pi))
-    {
-      CloseHandle(out);
-      return -1;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    int code = host::runCommandLine(command, how, why);
     seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    CloseHandle(out);
-    return int(code);
+    return code;
   }
-
   fs::file_time_type writtenAt(const fs::path& path)
   {
     std::error_code ec;
@@ -219,7 +158,7 @@ namespace projects
       std::lock_guard lock(measuredLock);
       measuredFiles = files;
     }
-    SetConsoleCtrlHandler(measureInterrupted, TRUE);
+    host::onInterrupt(restoreMeasuredFiles);
     struct PutBack
     {
       ~PutBack() { restoreMeasuredFiles(); }
@@ -296,7 +235,10 @@ namespace projects
     for (int round = 1; round <= rounds; ++round)
     {
       loads.push_back(machineLoad());
-      printf("round %d (the machine %d%% busy before it)\n", round, loads.back());
+      if (loads.back() < 0)
+        printf("round %d (how busy the machine was before it: unknown on this host)\n", round);
+      else
+        printf("round %d (the machine %d%% busy before it)\n", round, loads.back());
       fflush(stdout);
       // The server the edits build through, up to date: not timed.
       if (!build(target, nullptr))
@@ -306,7 +248,7 @@ namespace projects
       {
         std::string edited = files[i].second;
         edited.replace(edited.find(m.edits[i].from), m.edits[i].from.size(), m.edits[i].to);
-        if (FILE* f = _wfopen(files[i].first.c_str(), L"wb"))
+        if (FILE* f = host::openFile(files[i].first, "wb"))
           fwrite(edited.data(), 1, edited.size(), f), fclose(f);
         if (!build(target, &rows[r]))
           return 1;
@@ -341,7 +283,7 @@ namespace projects
     };
     std::string loadText;
     for (int load : loads)
-      loadText += (loadText.empty() ? "" : ", ") + std::to_string(load) + "%";
+      loadText += (loadText.empty() ? "" : ", ") + (load < 0 ? std::string("?") : std::to_string(load) + "%");
     printf("\n%s (%s), %s; %s %s, the machine %s busy before each round; wall time from start to exit, average of %d round%s\n\n",
            version.c_str(), std::string(kppCommit()).substr(0, 8).c_str(), machine().c_str(), target.c_str(), configuration.c_str(),
            loadText.c_str(), rounds, rounds == 1 ? "" : "s");

@@ -387,13 +387,13 @@ namespace projects
       }
       if (!job.archive)
         continue;
-      FILE* file = _wfopen((job.directory / "flags.txt").c_str(), L"wb");
+      FILE* file = host::openFile(job.directory / "flags.txt", "wb");
       if (file)
         fwrite(job.stamp.data(), 1, job.stamp.size(), file), fclose(file);
       std::string response;
       for (const fs::path& object : job.objects)
         response += quoteArg(object.string()) + "\n";
-      FILE* rsp = _wfopen((job.directory / "objects.rsp").c_str(), L"wb");
+      FILE* rsp = host::openFile(job.directory / "objects.rsp", "wb");
       if (rsp)
         fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
       // (llvm-mingw has llvm-ar alone, which lld's GNU driver links as it links llvm-lib's)
