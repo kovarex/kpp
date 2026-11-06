@@ -17,6 +17,6 @@ Members:
   `~Bitset<10>()` has 10 bits set, not 64.
 - `==`, `!=`.
 - `to_ullong()`, `to_ulong()`: the bits as a number; throw OverflowError when a set bit does not
-  fit (64 and 32 bits). `to_string(zero = '0', one = '1')`: the bits as text, bit N - 1 first.
+  fit (64 bits, and the target's unsigned long: 32 bits on Windows, 64 on Linux and FreeBSD). `to_string(zero = '0', one = '1')`: the bits as text, bit N - 1 first.
 
 `OverflowError` is a RuntimeError (what `std::overflow_error` converts to).

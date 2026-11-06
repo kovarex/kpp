@@ -1,0 +1,23 @@
+// spec: UniformIntDistribution over its type's whole range draws from it, as std::uniform_int_distribution does: <u64>(0, ~0) and <i32>(INT_MIN, INT_MAX) took (u64)(high - low) + 1, which is 0 there (and high - low wraps in i32 first), and divided by it, a crash; a narrow range stays in its bounds (`full ranges drawn / in [-3, 3]`)
+int main()
+{
+  DefaultRandomEngine engine(7);
+  UniformIntDistribution<u64> all64(0, ~0ull);
+  UniformIntDistribution<i32> all32(-2147483647 - 1, 2147483647);
+  u64 a = 0;
+  i32 b = 0;
+  for (i32 i = 0; i < 100; ++i)
+  {
+    a |= all64(engine);
+    b |= all32(engine);
+  }
+  println(StringView(a != 0 && b != 0 ? "full ranges drawn" : "zero"), " / in [-3, 3]");
+  UniformIntDistribution<i32> narrow(-3, 3);
+  for (i32 i = 0; i < 1000; ++i)
+  {
+    i32 x = narrow(engine);
+    if (x < -3 || x > 3)
+      println("out of range: ", x);
+  }
+  return 0;
+}

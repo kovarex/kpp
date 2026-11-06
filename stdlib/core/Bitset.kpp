@@ -121,7 +121,7 @@ public:
   unsigned long to_ulong() const
   {
     u64 value = this->to_ullong();
-    if (value > 0xFFFFFFFFull)
+    if (value > (u64)Limits<unsigned long>::max()) // 32 bits on Windows, 64 on Linux and FreeBSD
       throw OverflowError(String("Bitset::to_ulong"));
     return (unsigned long)value;
   }

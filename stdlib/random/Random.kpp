@@ -81,9 +81,11 @@ public:
   template<typename Engine>
   IntType operator()(Engine& engine)
   {
-    u64 range = (u64)(this->high - this->low) + 1;
+    // In u64, where the difference cannot wrap: a range of the type's every value is 2^64 there,
+    // which wraps to 0, and then every raw value is one (the engine gives 64 random bits).
+    u64 range = (u64)this->high - (u64)this->low + 1;
     u64 raw = engine();
-    return this->low + (IntType)(raw % range);
+    return (IntType)((u64)this->low + (range == 0 ? raw : raw % range));
   }
 
   IntType a() const { return this->low; }
