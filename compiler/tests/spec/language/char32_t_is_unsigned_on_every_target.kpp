@@ -1,0 +1,11 @@
+// spec: char32_t is an unsigned 32-bit type of its own on every target, as C++ has it: its greatest value is 2^32 - 1, it is not signed, it is not wchar_t, and in a comparison with an int it promotes to unsigned int (C++ [conv.prom] 2: int cannot hold every value), so its greatest value is greater than 0 (`4294967295 0 0 1 4294967295`)
+// factorio: E's comparison battery against C++ (lm1, 2026-11-06), reduced: char32_t(4294967295) > 0 is false in kpp on every target, true in clang, MSVC and g++
+// pending: char32_t promotes to int, so 2^32 - 1 compares as -1 (D)
+extern "C" import "stdio.h";
+int main()
+{
+  char32_t c = char32_t(4294967295u);
+  printf("%llu %d %d %d %llu\n", (unsigned long long)Limits<char32_t>::max(), (int)Limits<char32_t>::is_signed, (int)isSame<char32_t, wchar_t>, (int)(c > 0),
+         (unsigned long long)c);
+  return 0;
+}
