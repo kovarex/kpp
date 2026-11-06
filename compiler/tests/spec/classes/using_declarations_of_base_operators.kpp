@@ -1,0 +1,34 @@
+// spec: using-declarations that bring two bases' operator() (or each pack element's: `using Ts::operator()...;`, the overloaded visitor's form, here over two functor classes) (or a named function) into a class, `using A::operator(); using B::operator();`, and with the bases template parameters of the class (`using X::operator();`): the call picks among both bases' overloads, as C++ has it; until 2026-11-06 the operator's using-declaration was no entry of the class (the call was "ambiguous: both bases have one"), and codegen, once the checker chose B's, called the first base's (A's operator()(int) for o(3.0), its int read as a double)
+struct A { int operator()(int i) const { return i * 2; } };
+struct B { double operator()(double d) const { return d / 2; } };
+struct Both : A, B
+{
+  using A::operator();
+  using B::operator();
+};
+template<class X, class Y> struct Pair2 : X, Y
+{
+  using X::operator();
+  using Y::operator();
+};
+struct F1 { int f(int i) const { return i + 1; } };
+struct F2 { double f(double d) const { return d * 10; } };
+template<class X, class Y> struct G : X, Y
+{
+  using X::f;
+  using Y::f;
+};
+template<class... Ts> struct Overloaded : Ts...
+{
+  using Ts::operator()...;
+};
+int main()
+{
+  Both o;
+  Pair2<A, B> p;
+  G<F1, F2> g;
+  println(o(4), " ", o(3.0), " ", p(5), " ", p(1.0), " ", g.f(1), " ", g.f(0.5));
+  Overloaded<A, B> visit;
+  println(visit(1), " ", visit(1.5));
+  return 0;
+}

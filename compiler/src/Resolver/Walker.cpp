@@ -1564,16 +1564,39 @@ auto GlobalScope::Impl::Walker::memberOfInstantiatedBases(const Ty* t, Scope* cl
 
 auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t, Scope* cls, Subst& baseArgs) -> std::shared_ptr<std::vector<Entry>>
 {
-  if (!l.overloads || l.overloads->size() < 2 || !l.foundIn || l.foundIn->kind != ScopeKind::Class)
+  if (!l.overloads || l.overloads->empty() || !l.foundIn || l.foundIn->kind != ScopeKind::Class)
     return nullptr;
   auto isUsing = [](Decl* d) { return d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum; };
-  bool hasUsing = false, hasOwn = false;
+  // A using-declaration whose qualifier is a template parameter of the class (`using X::operator();`,
+  // `using Ts::operator()...;`): the members of the instance's argument, or of each element of
+  // its pack, which a lookup of the qualified name without the instance's arguments did not reach.
+  Subst instanceArgs = t ? impl.substFor(t) : Subst{};
+  auto parameterTypes = [&](UsingNameDecl* u, std::vector<const Ty*>& out)
+  {
+    if (u->name.parts.size() != 2 || u->name.parts[0].hasTemplateArgs || u->name.global)
+      return false;
+    for (const Subst::Pair& p : instanceArgs.pairs)
+      if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->name == u->name.parts[0].symbol && p.type)
+      {
+        if (p.type->kind == TyKind::Pack)
+          out.insert(out.end(), p.type->args.begin(), p.type->args.end());
+        else
+          out.push_back(p.type);
+        return true;
+      }
+    return false;
+  };
+  bool hasUsing = false, hasOwn = false, viaParameter = false;
+  size_t usings = 0;
   for (const Entry& e : *l.overloads)
   {
     hasUsing = hasUsing || isUsing(e.decl);
+    usings += isUsing(e.decl);
     hasOwn = hasOwn || (e.decl && e.decl->kind == NodeKind::FunctionDecl);
+    std::vector<const Ty*> ignored;
+    viaParameter = viaParameter || (isUsing(e.decl) && parameterTypes(static_cast<UsingNameDecl*>(e.decl), ignored));
   }
-  if (!hasUsing || !hasOwn)
+  if (!hasUsing || !(hasOwn || usings >= 2 || viaParameter))
     return nullptr;
   auto merged = std::make_shared<std::vector<Entry>>();
   for (const Entry& e : *l.overloads)
@@ -1612,6 +1635,23 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
   {
     if (!isUsing(e.decl))
       continue;
+    std::vector<const Ty*> bases;
+    if (parameterTypes(static_cast<UsingNameDecl*>(e.decl), bases))
+    {
+      uint32_t symbol = impl.functionSymbol(static_cast<UsingNameDecl*>(e.decl)->name);
+      for (const Ty* base : bases)
+      {
+        MemberResult m = memberOf(base, symbol, nullptr, e.decl->token, false);
+        if (m.overloads)
+          for (const Entry& te : *m.overloads)
+            if (te.decl && te.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(te.decl)))
+              merged->push_back(te);
+        for (const Subst::Pair& p : m.subst.pairs)
+          if (!baseArgs.find(p.param))
+            baseArgs.pairs.push_back(p);
+      }
+      continue;
+    }
     Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, l.foundIn, nullptr, 0);
     if (target.overloads)
       for (const Entry& te : *target.overloads)
@@ -1623,6 +1663,8 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
           if (!baseArgs.find(p.param))
             baseArgs.pairs.push_back(p);
   }
+  if (merged->empty())
+    return nullptr; // (nothing the using-declarations name: the lookup's own answer)
   return merged;
 }
 

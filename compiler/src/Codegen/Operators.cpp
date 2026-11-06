@@ -177,14 +177,69 @@ auto codegen::Emitter::findMemberFunction(const Ty* classTy, const std::string& 
       if (q.size() > name.size() + 1 && q.ends_with(name) && q.compare(q.size() - name.size() - 2, 2, "::") == 0)
         candidates.push_back(f);
     }
+    // A using-declaration of the name (`using A::operator(); using B::operator();`, `using
+    // X::operator();` with X a parameter of the class, `using Ts::operator()...;`): the functions
+    // of the bases it names are candidates too, as the checker has them; the first base's alone
+    // called A's operator()(int) for o(3.0) (B's double), its result read as a double.
+    std::unordered_map<FunctionDecl*, const Ty*> usedFrom;
+    TemplateArgs classArgs = global.classArgsOf(cls);
+    for (Decl* m : c->members)
+    {
+      if (m->kind != NodeKind::UsingNameDecl || static_cast<UsingNameDecl*>(m)->isEnum)
+        continue;
+      const QualifiedName& un = static_cast<UsingNameDecl*>(m)->name;
+      if (un.parts.size() != 2 || un.parts[0].hasTemplateArgs)
+        continue;
+      const NamePart& last = un.last();
+      std::string usedName = last.special == 2 && last.opToken < uint32_t(P::Count) ? operatorName(P(last.opToken))
+                             : last.special == 0 ? sym(last.symbol) : std::string();
+      if (usedName.empty() || usedName != name)
+        continue;
+      // The bases it names: one written by its name, or the argument (each element of a pack)
+      // of the class's parameter of that name.
+      std::vector<const Ty*> named;
+      for (const auto& [param, arg] : classArgs.pairs)
+        if (param && param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(param)->name == un.parts[0].symbol && arg)
+        {
+          if (arg->kind == TyKind::Pack)
+            named.insert(named.end(), arg->args.begin(), arg->args.end());
+          else
+            named.push_back(arg);
+        }
+      StructInfo& info = structFor(cls, at);
+      for (auto& [baseDef, index] : info.bases)
+      {
+        const Ty* base = info.fieldTypes[index];
+        bool chosen = false;
+        for (const Ty* n : named)
+          chosen = chosen || (isClass(n) && canonicalClass(n, at) == canonicalClass(base, at));
+        if (named.empty())
+          if (ClassDecl* bd = classDef(base->decl, at); bd && !bd->name.empty() && bd->name.last().symbol == un.parts[0].symbol)
+            chosen = true;
+        if (!chosen)
+          continue;
+        for (Decl* bm : classDef(base->decl, at)->members)
+        {
+          if (bm->kind != NodeKind::FunctionDecl || (!templates && !bm->templateParams.empty()))
+            continue;
+          auto* f = static_cast<FunctionDecl*>(bm);
+          const std::string& q = qualifiedName(f);
+          if (q.size() > name.size() + 1 && q.ends_with(name) && q.compare(q.size() - name.size() - 2, 2, "::") == 0)
+          {
+            candidates.push_back(f);
+            usedFrom[f] = canonicalClass(base, at);
+          }
+        }
+      }
+    }
     if (!candidates.empty())
     {
       const Ty* obj = objectTy ? objectTy : cls;
-      found = global.chooseOverload(candidates, argTypes, global.classArgsOf(cls), obj);
+      found = global.chooseOverload(candidates, argTypes, classArgs, obj);
       if (found)
       {
         if (foundIn)
-          *foundIn = cls;
+          *foundIn = usedFrom.count(found) ? usedFrom[found] : cls;
         return;
       }
     }

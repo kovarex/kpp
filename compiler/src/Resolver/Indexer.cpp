@@ -302,6 +302,17 @@ auto GlobalScope::Impl::indexDecl(Decl* d, Scope* scope) -> void
         scope->add(u->name.last().symbol, u, nullptr);
         ++entries;
       }
+      else if (!u->name.empty() && u->name.last().special == 2)
+      {
+        // `using Base::operator();`, `using Ts::operator()...;`: the operator's entry, as a
+        // member function of the class declares it (it was left out: `o(4)` then found both
+        // bases' operator() and was ambiguous).
+        if (uint32_t symbol = functionSymbol(u->name); symbol != UINT32_MAX)
+        {
+          scope->add(symbol, u, nullptr);
+          ++entries;
+        }
+      }
       break;
     }
     case NodeKind::UsingDirectiveDecl:

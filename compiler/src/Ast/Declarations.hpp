@@ -165,7 +165,8 @@ inline bool absentMemberInit(const ClassDecl* cls, const FunctionDecl::CtorInit&
 }
 struct UsingAliasDecl : Decl { uint32_t name; Type* type; };
 struct UsingDirectiveDecl : Decl { QualifiedName name; };
-struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; };
+// isPack: `using Ts::operator()...;`, the name of each element of the pack Ts.
+struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; bool isPack = false; };
 struct StaticAssertDecl : Decl { Expr* cond; Expr* message = nullptr; };
 struct MacroDecl : Decl { uint32_t name; uint32_t endToken; };
 struct ErrorDecl : Decl { uint32_t endToken; };

@@ -3295,7 +3295,7 @@ namespace
           error("expected name after using");
           return;
         }
-        accept(P::Ellipsis);
+        u->isPack = accept(P::Ellipsis);
         pushDecl(u);
         if (!accept(P::Comma))
           break;
