@@ -159,14 +159,26 @@ public:
 
   // Replaces the contents with count copies of value (which may be an element) / with copies of
   // [first, last) (which must not be elements).
+  // As std::vector's: copy-assigned over the elements there are, copies built after them or the
+  // rest destroyed; value may be an element.
   void assign(ContainerSize count, const T& value)
   {
-    T copy(value);
-    this->clear();
-    this->reserve(count);
-    for (ContainerSize i = 0; i < count; ++i)
-      new (this->items + i) T(copy);
-    this->length = count;
+    if (count > this->allocated)
+    {
+      T copy(value);
+      this->clear();
+      this->reserve(count);
+      for (ContainerSize i = 0; i < count; ++i)
+        new (this->items + i) T(copy);
+      this->length = count;
+      return;
+    }
+    ContainerSize common = count < this->length ? count : this->length;
+    for (ContainerSize i = 0; i < common; ++i)
+      this->items[i] = value;
+    for (; this->length < count; ++this->length)
+      new (this->items + this->length) T(value);
+    this->truncate(count);
   }
 
   void assign(const T* first, const T* last)

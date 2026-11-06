@@ -1,0 +1,8 @@
+hashmap emplace new: 1 built, 0 copied, 1 moved, 0 copy-assigned, 0 move-assigned, 1 destroyed
+hashmap emplace existing: 1 built, 0 copied, 0 moved, 0 copy-assigned, 0 move-assigned, 1 destroyed
+hashmap try_emplace existing: 0 built, 0 copied, 0 moved, 0 copy-assigned, 0 move-assigned, 0 destroyed
+map emplace existing: 1 built, 0 copied, 0 moved, 0 copy-assigned, 0 move-assigned, 1 destroyed
+map try_emplace existing: 0 built, 0 copied, 0 moved, 0 copy-assigned, 0 move-assigned, 0 destroyed
+list remove: 1 built, 0 copied, 0 moved, 0 copy-assigned, 0 move-assigned, 3 destroyed
+vector assign 2 over 4: 0 built, 0 copied, 0 moved, 2 copy-assigned, 0 move-assigned, 2 destroyed
+vector assign 5 over 2: 0 built, 3 copied, 0 moved, 2 copy-assigned, 0 move-assigned, 0 destroyed

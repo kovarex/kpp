@@ -643,6 +643,21 @@ public:
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
 
+  // emplace(key, value): the key looked up first, as std's do, and the entry built in its slot only
+  // when it is new: no entry is built and moved, and none built for an existing key.
+  template<typename KArg, typename VArg> requires (isSame<RemoveCvRef<KArg>, K>)
+  Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(KArg&& key, VArg&& value)
+  {
+    usize hash = this->table.hashKey(key);
+    bool found;
+    ContainerSize slot = this->table.place(key, hash, found);
+    if (slot == hashNoSlot) // growing moves a fast table's entries, which key and value may be
+      return this->insert(Pair<K, V>(forward<KArg>(key), forward<VArg>(value)));
+    if (!found)
+      this->table.emplaceAt(slot, hash, forward<KArg>(key), forward<VArg>(value));
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+  }
+
   // Builds the value from the arguments, in its entry, only when the key is new.
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(const K& key, Args&&... args)

@@ -1,0 +1,68 @@
+// spec: the containers' emplace, remove and assign do the element work std's do, counted by a type that counts its constructions, copies, moves, assignments and destructions (MSVC's STL counts the same for the C++ of this program): HashMap's and Map's emplace(key, value) look the key up first, building the entry in place for a new key (no extra move) and none for an existing one; List::remove(value) copies nothing; Vector::assign(n, x) copy-assigns over the elements there are, then builds or destroys the rest
+extern "C" int printf(const char* format, ...);
+int constructions = 0, copies = 0, moves = 0, copyAssigns = 0, moveAssigns = 0, destructions = 0;
+class Counted
+{
+public:
+  int value;
+  Counted(int v) : value(v) { ++constructions; }
+  Counted(const Counted& o) : value(o.value) { ++copies; }
+  Counted(Counted&& o) noexcept : value(o.value) { ++moves; }
+  Counted& operator=(const Counted& o) { value = o.value; ++copyAssigns; return *this; }
+  Counted& operator=(Counted&& o) noexcept { value = o.value; ++moveAssigns; return *this; }
+  ~Counted() { ++destructions; }
+  bool operator==(const Counted& o) const { return value == o.value; }
+};
+void RESET() { constructions = copies = moves = copyAssigns = moveAssigns = destructions = 0; }
+void REPORT(const char* what)
+{
+  printf("%s: %d built, %d copied, %d moved, %d copy-assigned, %d move-assigned, %d destroyed\n", what, constructions, copies, moves, copyAssigns, moveAssigns, destructions);
+  RESET();
+}
+
+
+int main()
+{
+  {
+    HashMap<int, Counted> h;
+    h.reserve(16);
+    RESET();
+    h.emplace(1, Counted(10));
+    REPORT("hashmap emplace new");
+    h.emplace(1, Counted(20));
+    REPORT("hashmap emplace existing");
+    h.try_emplace(1, 30);
+    REPORT("hashmap try_emplace existing");
+  }
+  {
+    Map<int, Counted> m;
+    m.emplace(1, Counted(10));
+    RESET();
+    m.emplace(1, Counted(20));
+    REPORT("map emplace existing");
+    m.try_emplace(1, 30);
+    REPORT("map try_emplace existing");
+  }
+  {
+    List<Counted> l;
+    l.push_back(Counted(1));
+    l.push_back(Counted(2));
+    l.push_back(Counted(1));
+    RESET();
+    l.remove(Counted(1));
+    REPORT("list remove");
+  }
+  {
+    Vector<Counted> v;
+    v.reserve(8);
+    for (int i = 0; i < 4; ++i)
+      v.emplace_back(i);
+    Counted x(7);
+    RESET();
+    v.assign(2, x);
+    REPORT("vector assign 2 over 4");
+    v.assign(5, x);
+    REPORT("vector assign 5 over 2");
+  }
+  return 0;
+}

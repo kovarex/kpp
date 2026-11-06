@@ -996,6 +996,17 @@ public:
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
 
+  // emplace(key, value...): the key looked up first, as std's do, so an existing key builds no
+  // entry; a new one is built in its node.
+  template<typename KArg, typename... VArgs> requires (isSame<RemoveCvRef<KArg>, K>)
+  Pair<RbIterator<Pair<K, V>>, bool> emplace(KArg&& key, VArgs&&... values)
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at != this->tree.end())
+      return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(forward<KArg>(key), forward<VArgs>(values)...), true);
+  }
+
   // std::map::try_emplace: builds the value from the arguments, in its node, only when the key is new.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)

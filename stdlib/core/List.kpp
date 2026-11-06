@@ -270,8 +270,18 @@ public:
   // Removes every element equal to value / for which predicate is true; returns how many.
   ContainerSize remove(const T& value)
   {
-    T copy(value); // value may be an element of this list
-    return this->removeIf([&](const T& element) { return element == copy; });
+    // value may be an element of this list: the equal nodes move to another list first, and are
+    // destroyed only when it goes, after the last comparison (as std's, which copies nothing).
+    List<T> removed;
+    for (ListIterator<T> it = this->begin(); it != this->end();)
+    {
+      ListIterator<T> next = it;
+      ++next;
+      if (*it == value)
+        removed.splice(removed.end(), *this, it);
+      it = next;
+    }
+    return removed.size();
   }
 
   template<typename F>
