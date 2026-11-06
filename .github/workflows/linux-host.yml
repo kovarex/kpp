@@ -59,7 +59,7 @@ jobs:
 
       - name: Build kppc
         run: |
-          cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release
+          cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
           cmake --build compiler/build
           compiler/build/kppc --version
 
@@ -90,3 +90,15 @@ jobs:
 
       - name: spec on a Linux host
         run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
+
+      # kpp's Linux release (tools/release/package-linux.sh: the tarball, its smoke test outside the
+      # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so
+      # it needs only glibc (2.39, this runner's) and the system's clang 19 and lld.
+      - name: Package
+        run: sh tools/release/package-linux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kpp-linux
+          path: build/release/kpp-*-linux-x86_64.tar.gz
+          if-no-files-found: error
