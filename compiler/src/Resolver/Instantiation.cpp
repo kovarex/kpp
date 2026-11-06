@@ -2735,8 +2735,16 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
         // A function type's return and parameter types are deduced as they are, references kept
         // (`ValueType (Desc::*)() const` given `&Desc::getName` returning `const Name&`).
         deduceArgument(pattern->inner, a->inner, out, depth + 1);
-        for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
+        // `R (*)(A...)`: the pack the parameter types from its place on (none for `short()`).
+        size_t n = pattern->args.size();
+        bool packLast = n > 0 && isPackParam(pattern->args[n - 1]);
+        for (size_t i = 0; i < (packLast ? n - 1 : n) && i < a->args.size(); ++i)
           deduceArgument(pattern->args[i], a->args[i], out, depth + 1);
+        if (packLast && a->kind == TyKind::Function && a->args.size() + 1 >= n && !out.find(pattern->args[n - 1]->decl))
+        {
+          std::vector<const Ty*> rest(a->args.begin() + (n - 1), a->args.end());
+          out.pairs.push_back({pattern->args[n - 1]->decl, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+        }
       }
       break;
     default:

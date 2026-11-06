@@ -1,0 +1,21 @@
+// spec: a function parameter of pointer-to-function type whose parameters end in a pack (`R (*)(A...)`) deduces the pack from the function's parameter types, none for a function without them, given a function, its address or a pointer variable; a member function pointer `R (C::*)(A...)` likewise. Before, the call did not resolve ("codegen does not support a call that did not resolve"). clang prints the same
+// found comparing kpp with clang (thread I's battery i13)
+template<typename R, typename... A> int arity(R (*)(A...)) { return int(sizeof...(A)) * 10 + int(sizeof(R)); }
+template<typename R, typename F, typename... A> int afterFirst(R (*)(F, A...)) { return int(sizeof(F)) * 100 + int(sizeof...(A)); }
+template<typename R, typename... A> R call(R (*f)(A...), A... args) { return f(args...); }
+struct Counter
+{
+  int base = 7;
+  int add(int a, short b) const { return base + a + b; }
+};
+template<typename R, typename C, typename... A> int memberArity(R (C::*)(A...) const) { return int(sizeof...(A)) * 10 + int(sizeof(R)); }
+short two() { return 2; }
+double half(char) { return 0.5; }
+int add3(int a, short b, char c) { return a + b + c; }
+int main()
+{
+  short (*p)() = two;
+  println(arity(add3), " ", arity(two), " ", arity(&half), " ", arity(p), " ", afterFirst(add3), " ", afterFirst(half));
+  println(call(add3, 1, short(2), char(3)), " ", call(two), " ", memberArity(&Counter::add));
+  return 0;
+}
