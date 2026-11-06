@@ -497,8 +497,15 @@ auto codegen::Emitter::hasMutableMember(const Ty* t, Node* at, int depth) -> boo
     return false;
   StructInfo& info = structFor(t, at);
   for (Decl* m : info.fieldDecls)
+  {
     if (m->flags & DF_Mutable)
       return true;
+    // (a storage unit of bit fields: each of its fields, `mutable unsigned b : 5;` after `unsigned a : 3;`)
+    if (m->kind == NodeKind::VariableDecl && bitfieldIn(info, m))
+      for (Decl* f : unitMembers(info, classDef(t->decl, at), m))
+        if (f->flags & DF_Mutable)
+          return true;
+  }
   for (const Ty* ft : std::vector<const Ty*>(info.fieldTypes))
     if (!ft->isReference() && hasMutableMember(ft, at, depth + 1))
       return true;

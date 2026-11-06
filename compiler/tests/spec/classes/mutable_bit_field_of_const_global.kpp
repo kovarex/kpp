@@ -1,0 +1,18 @@
+// spec: a const global whose class has a mutable bit-field that shares a storage unit with an earlier field (`unsigned a : 3; mutable unsigned b : 5;`) is writable storage: the program writes b, directly and from a const member function (`1 8`); clang prints the same
+// found by thread B (2026-11-06, the bit-field storage-unit pitfall): hasMutableMember asked only the unit's first field, so the global went to read-only data and the write crashed
+struct M
+{
+  unsigned a : 3;
+  mutable unsigned b : 5;
+  void touch() const { b = b + 1; }
+};
+
+const M global{1, 2};
+
+int main()
+{
+  global.b = 7;
+  global.touch();
+  println(global.a, " ", global.b);
+  return 0;
+}
