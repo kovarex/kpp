@@ -1,0 +1,21 @@
+// spec: `a <=> b` of two floating-point values is unordered when either is a NaN (C++ [expr.spaceship] 8: std::partial_ordering::unordered), so it is neither less, equal nor greater than 0; what orders by <=> (Pair, Optional, a defaulted <=>) then says neither <= nor >= for a NaN, as std::pair and std::optional do (`0 0 0 0 0 0 0 0 0 0`)
+// factorio: E's comparison battery against C++ (ov1, 2026-11-06): Optional<double>(NaN) <= Optional<double>(1.0) and >= were both true in kpp, false with std::optional; `nan <=> 1.0` == 0 was true
+// pending: the built-in <=> of a NaN gives strong_ordering::equal, not unordered, so every <=, >= built from it holds (the coordinator assigns)
+extern "C" import "stdio.h";
+struct Point
+{
+  double x;
+  auto operator<=>(const Point&) const = default;
+};
+int main()
+{
+  double nan = 0.0 / 0.0 * 1.0;
+  volatile double one = 1.0;
+  auto c = nan <=> one;
+  Pair<double, int> a(nan, 1), b(1.0, 1);
+  Optional<double> n = nan, x = 1.0;
+  Point p{nan}, q{1.0};
+  printf("%d %d %d %d %d %d %d %d %d %d\n", (int)(c < 0), (int)(c > 0), (int)(c == 0), (int)(a <= b), (int)(a >= b), (int)(n <= x), (int)(n >= x),
+         (int)(p <= q), (int)(p >= q), (int)(p == q));
+  return 0;
+}
