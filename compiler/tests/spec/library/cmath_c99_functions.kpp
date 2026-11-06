@@ -1,0 +1,14 @@
+// spec: <cmath>'s C99 functions kpp's library had not (E's <cmath> battery): nearbyint, rint, lrint, llrint, llround, remquo, scalbn, ilogb, logb, fma, fmax, fmin, fdim, exp2, expm1, log1p, erf, erfc, tgamma, lgamma, nexttoward, each the C library's, the float overloads its f functions (a float result), an integer argument taken as a double; and fabs of a float is a float. As MSVC's and glibc's std give, bit for bit (thread I's battery cm2, compared with %a on both; the two C libraries' erfc, tgamma and lgamma differ in the last bits: a .linux.expected)
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  int quotient = 0;
+  double rest = remquo(7.5, 2.0, &quotient);
+  printf("%.17g %.17g %ld %lld %lld %.17g %d\n", nearbyint(2.5), rint(-3.5), lrint(1.5), llrint(2.5), llround(-2.5), rest, quotient);
+  printf("%.17g %d %.17g %.17g %.17g %.17g %.17g\n", scalbn(1.5, 4), ilogb(1000.0), logb(0.1), fma(0.1, 10.0, -1.0), fmax(-0.0, 1.5), fmin(2.0, -3.0), fdim(5.0, 7.5));
+  printf("%.17g %.17g %.17g %.17g %.17g %.17g %.17g\n", exp2(10.5), expm1(1e-10), log1p(1e-10), erf(0.5), erfc(2.0), tgamma(4.5), lgamma(10.0));
+  printf("%.17g %.17g %d %d\n", nexttoward(1.0, 2.0), (double)nexttoward(1.0f, 0.0), (int)sizeof(fabs(-1.5f)), (int)sizeof(erf(0.5f)));
+  printf("%.9g %.9g %.9g %.9g %.9g\n", (double)fma(0.1f, 10.0f, -1.0f), (double)tgamma(4.5f), (double)erf(0.5f), (double)exp2(0.5f), (double)fabs(-2.25f));
+  printf("%.17g %.17g %ld %d\n", tgamma(5), erf(1), lrint(7), ilogb(1024));
+  return 0;
+}

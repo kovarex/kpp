@@ -30,3 +30,120 @@ float tan(float x) { return (float)tan((double)x); }
 float log2(float x) { return (float)log2((double)x); }
 float log10(float x) { return (float)log10((double)x); }
 float hypot(float x, float y) { return (float)hypot((double)x, (double)y); }
+
+// C99's math functions that <cmath> declares, each the C library's own, double and float (the float
+// one its `f` function, as std's float overloads are), and an integer argument taken as a double.
+extern "C" double nearbyint(double x);
+extern "C" double rint(double x);
+extern "C" long lrint(double x);
+extern "C" long long llrint(double x);
+extern "C" long long llround(double x);
+extern "C" double remquo(double x, double y, int* quotient);
+extern "C" double scalbn(double x, int exponent);
+extern "C" int ilogb(double x);
+extern "C" double logb(double x);
+extern "C" double fma(double x, double y, double z);
+extern "C" double fmax(double x, double y);
+extern "C" double fmin(double x, double y);
+extern "C" double fdim(double x, double y);
+extern "C" double exp2(double x);
+extern "C" double expm1(double x);
+extern "C" double log1p(double x);
+extern "C" double erf(double x);
+extern "C" double erfc(double x);
+extern "C" double tgamma(double x);
+extern "C" double lgamma(double x);
+extern "C" float nearbyintf(float x);
+extern "C" float rintf(float x);
+extern "C" long lrintf(float x);
+extern "C" long long llrintf(float x);
+extern "C" long long llroundf(float x);
+extern "C" float remquof(float x, float y, int* quotient);
+extern "C" float scalbnf(float x, int exponent);
+extern "C" int ilogbf(float x);
+extern "C" float logbf(float x);
+extern "C" float fmaf(float x, float y, float z);
+extern "C" float fmaxf(float x, float y);
+extern "C" float fminf(float x, float y);
+extern "C" float fdimf(float x, float y);
+extern "C" float exp2f(float x);
+extern "C" float expm1f(float x);
+extern "C" float log1pf(float x);
+extern "C" float erff(float x);
+extern "C" float erfcf(float x);
+extern "C" float tgammaf(float x);
+extern "C" float lgammaf(float x);
+
+float nearbyint(float x) { return nearbyintf(x); }
+float rint(float x) { return rintf(x); }
+long lrint(float x) { return lrintf(x); }
+long long llrint(float x) { return llrintf(x); }
+long long llround(float x) { return llroundf(x); }
+float remquo(float x, float y, int* quotient) { return remquof(x, y, quotient); }
+float scalbn(float x, int exponent) { return scalbnf(x, exponent); }
+int ilogb(float x) { return ilogbf(x); }
+float logb(float x) { return logbf(x); }
+float fma(float x, float y, float z) { return fmaf(x, y, z); }
+float fmax(float x, float y) { return fmaxf(x, y); }
+float fmin(float x, float y) { return fminf(x, y); }
+float fdim(float x, float y) { return fdimf(x, y); }
+float exp2(float x) { return exp2f(x); }
+float expm1(float x) { return expm1f(x); }
+float log1p(float x) { return log1pf(x); }
+float erf(float x) { return erff(x); }
+float erfc(float x) { return erfcf(x); }
+float tgamma(float x) { return tgammaf(x); }
+float lgamma(float x) { return lgammaf(x); }
+
+template<typename T> requires isIntegral<T>
+double nearbyint(T x) { return nearbyint(double(x)); }
+template<typename T> requires isIntegral<T>
+double rint(T x) { return rint(double(x)); }
+template<typename T> requires isIntegral<T>
+long lrint(T x) { return lrint(double(x)); }
+template<typename T> requires isIntegral<T>
+long long llrint(T x) { return llrint(double(x)); }
+template<typename T> requires isIntegral<T>
+long long llround(T x) { return llround(double(x)); }
+template<typename T> requires isIntegral<T>
+int ilogb(T x) { return ilogb(double(x)); }
+template<typename T> requires isIntegral<T>
+double logb(T x) { return logb(double(x)); }
+template<typename T> requires isIntegral<T>
+double scalbn(T x, int exponent) { return scalbn(double(x), exponent); }
+template<typename T> requires isIntegral<T>
+double exp2(T x) { return exp2(double(x)); }
+template<typename T> requires isIntegral<T>
+double expm1(T x) { return expm1(double(x)); }
+template<typename T> requires isIntegral<T>
+double log1p(T x) { return log1p(double(x)); }
+template<typename T> requires isIntegral<T>
+double erf(T x) { return erf(double(x)); }
+template<typename T> requires isIntegral<T>
+double erfc(T x) { return erfc(double(x)); }
+template<typename T> requires isIntegral<T>
+double tgamma(T x) { return tgamma(double(x)); }
+template<typename T> requires isIntegral<T>
+double lgamma(T x) { return lgamma(double(x)); }
+// Two arguments of different arithmetic types, or integers: taken as doubles.
+template<typename A, typename B>
+  requires isArithmetic<A> && isArithmetic<B> && (!isSame<A, B> || isIntegral<A>)
+double fmax(A x, B y) { return fmax(double(x), double(y)); }
+template<typename A, typename B>
+  requires isArithmetic<A> && isArithmetic<B> && (!isSame<A, B> || isIntegral<A>)
+double fmin(A x, B y) { return fmin(double(x), double(y)); }
+template<typename A, typename B>
+  requires isArithmetic<A> && isArithmetic<B> && (!isSame<A, B> || isIntegral<A>)
+double fdim(A x, B y) { return fdim(double(x), double(y)); }
+
+// nexttoward: the next value after from toward to, a long double, which is a double here (kpp's
+// long double is double on every target, where C's is x87's 80 bits off Windows): nextafter's,
+// and for a float the next float toward to without rounding to through float first.
+double nexttoward(double from, long double to) { return nextafter(from, (double)to); }
+
+float nexttoward(float from, long double to)
+{
+  if ((double)from == (double)to || from != from || to != to)
+    return from != from ? from : (float)to;
+  return nextafterf(from, (double)from < (double)to ? INFINITY : -INFINITY);
+}

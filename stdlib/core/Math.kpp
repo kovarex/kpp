@@ -15,6 +15,11 @@ extern "C" double sin(double value);
 extern "C" double cos(double value);
 extern "C" double atan2(double y, double x);
 extern "C" double fabs(double value);
+// fabs of a float is a float, as std::fabs(float) (fabsf is an inline of the UCRT's math.h, no
+// symbol: through the double, exact); of an integer a double.
+float fabs(float value) { return (float)fabs((double)value); }
+template<typename T> requires isIntegral<T>
+double fabs(T value) { return fabs(double(value)); }
 extern "C" long lround(double value);
 extern "C" double nextafter(double from, double to);
 float sqrt(float value) { return (float)sqrt((double)value); }
