@@ -4047,7 +4047,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **Q5:** (to decide when macOS comes, kovarex 2026-11-01) CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
   10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
   runner.
-- **Q6:** decided 2026-11-04 (kovarex: "the targets are ok as they are"): the oldest systems a
+- **Q6:** decided 2026-11-04 (kovarex: "the targets are ok as they are"; accepted again 2026-11-06): the oldest systems a
   kpp program runs on are Windows 10 x64, FreeBSD 14, glibc 2.31 (Debian 11, Ubuntu 20.04; Steam's
   Linux runtime "sniper" is Debian 11) and, when macOS work starts, macOS 11.0 arm64 and 10.15
   x86-64 (the target table above). Factorio states Windows 10, OS X 10.10 and "Linux (tarball
@@ -4083,9 +4083,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04).
 
-- **How a build is described** ([build.md](build.md)): debug information in release builds, the
-  command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
-  `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
+- **How a build is described** ([build.md](build.md), "Questions for kovarex"): debug information in
+  release builds, and whether the repository's `kppc.exe` takes the released name `kpp`. Settled:
+  project files are generated (kovarex 2026-10-31, 54e30458); `kpp` builds the game's C libraries
+  from source (7074036f) and the scripts link FASTBuild's, rebuilt at Factorio's HEAD on 2026-10-31.
 
 - **Two-phase lookup of a template's non-dependent calls** (a known deviation, logged 2026-11-06, A;
   **decided 2026-11-06, kovarex: kept, as order matters nowhere else in kpp**). C++ binds a call in a template that depends on no parameter where
