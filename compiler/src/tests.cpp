@@ -1736,8 +1736,9 @@ namespace __kppPosix
   extern "C" int fork();
   extern "C" int execvp(const char* file, char* const* arguments);
   extern "C" int waitpid(int process, int* status, int options);
-  extern "C" long read(int file, void* buffer, size_t size);
-  extern "C" long write(int file, const void* buffer, size_t size);
+  // (ssize_t: a program importing unistd.h declares them too, the same way or it is an error)
+  extern "C" i64 read(int file, void* buffer, size_t size);
+  extern "C" i64 write(int file, const void* buffer, size_t size);
   extern "C" int close(int file);
   extern "C" void _exit(int code);
 }
@@ -1797,7 +1798,7 @@ bool __kppWritePipe(i64 pipe, const void* data, int size)
   const char* at = (const char*)data;
   while (size > 0)
   {
-    long written = __kppPosix::write(int(pipe), at, size_t(size));
+    auto written = __kppPosix::write(int(pipe), at, size_t(size));
     if (written <= 0)
       return false;
     at += written;
