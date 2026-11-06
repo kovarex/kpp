@@ -201,7 +201,9 @@
     static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
     static constexpr const char* kppThreadAtExitHeader = "define linkonce_odr void @kpp_thread_atexit(ptr %dtor, ptr %object) comdat {";
     static constexpr const char* kppCurrentExceptionHeader = "define linkonce_odr void @kpp_current_exception(ptr %into) comdat {";
-    static std::string baseSearchHeader(const std::string& name) { return "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {"; }
+    // (noinline: the C runtime's personality reaches @kpp_eh_offset by a weak reference the optimizer
+    // cannot see; inlined into every IR caller, LTO would drop the definition and that call go to null.)
+    static std::string baseSearchHeader(const std::string& name) { return "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) noinline comdat {"; }
     // The runtime's global that function bodies read (a `throw;` outside a handler), written after the
     // levels too: one line, in the shared declarations (homed in a debug build), declared at the barrier.
     static constexpr const char* kppEhCurrentLine = "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat";
