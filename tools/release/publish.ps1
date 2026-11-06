@@ -115,6 +115,22 @@ function PublishForge {
   # branch's now (403 "Resource not accessible by integration"): a run whose commit is older than a
   # workflow change pushed meanwhile cannot publish. The release stays as it was; the next run publishes.
   function Refused($exception, [string]$what) {
+    # The 403 GitHub gives when a workflow change was pushed after this run's commit: that run (the
+    # newer one, which every such push starts) publishes, so this one says so and ends green, not red
+    # (each ci.yml push turned the run before it red, 2026-11-04 to 06). Only when the default
+    # branch's .github/workflows really differ from $Commit's; any other 403 is a failure.
+    if ((Status $exception) -eq 403) {
+      $ErrorActionPreference = 'Continue'
+      & git fetch -q origin HEAD 2>&1 | Out-Null
+      $fetched = $LASTEXITCODE -eq 0
+      & git diff --quiet $Commit FETCH_HEAD -- .github/workflows 2>&1 | Out-Null
+      $differ = $LASTEXITCODE -eq 1
+      $ErrorActionPreference = 'Stop'
+      if ($fetched -and $differ) {
+        Write-Output "forge: $what refused (403): the default branch's .github/workflows changed after $Commit, and GitHub lets the job's token tag only a commit whose workflows match. Not published here: the run of the workflow change publishes."
+        exit 0
+      }
+    }
     if ((Status $exception) -eq 403) { throw "forge: $what refused (403): GitHub lets the job's token tag only a commit whose .github/workflows match the default branch's; a workflow change was pushed after $Commit. The release is unchanged; the next run publishes." }
     throw $exception
   }
