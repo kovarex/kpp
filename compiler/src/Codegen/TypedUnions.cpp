@@ -124,7 +124,11 @@ auto codegen::Emitter::setTag(ClassDecl* c, const Ty* t, const std::string& obj,
 
 auto codegen::Emitter::constructAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* init, Node* at) -> void
 {
-  setTag(c, t, obj, index, at);
+  // Holding none while the alternative is built (valueless: the tag Tag::count, which no switch on
+  // it takes), its own tag once it is: a construction that throws leaves a union nothing destroys
+  // again, as std::variant's valueless_by_exception (until 2026-11-06 the tag came first, and the
+  // union destroyed the alternative never built: E's battery, kpp/typed_union_alternative_that_throws_is_not_destroyed).
+  setTag(c, t, obj, c->alternatives.size(), at);
   const Ty* altTy = alternativeType(c, t, index, at);
   std::string addr = alternativeAddress(c, t, obj, index, at);
   if (init)
@@ -135,6 +139,7 @@ auto codegen::Emitter::constructAlternative(ClassDecl* c, const Ty* t, const std
     constructArray(addr, altTy, at);
   else
     storeZero(altTy, addr, at);
+  setTag(c, t, obj, index, at);
 }
 
 auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at) -> void
@@ -146,8 +151,10 @@ auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::
 
 auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
 {
+  // (dst holds none, valueless, until the copy is built: a copy that throws leaves dst nothing to
+  // destroy, as constructAlternative; a valueless src copies as valueless.)
   std::string tag = loadTag(c, t, src, at);
-  fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
+  setTag(c, t, dst, c->alternatives.size(), at);
   forHeldAlternative(c, t, src, at, [&](size_t) { return true; }, [&](size_t i)
   {
     const Ty* altTy = alternativeType(c, t, i, at);
@@ -164,6 +171,7 @@ auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::str
       copyBytes(to, from, altTy, at);
     }
   });
+  fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
 }
 
 auto codegen::Emitter::assignAlternative(IndexExpr* i, Expr* rhs, Node* at) -> Value
@@ -201,6 +209,7 @@ auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const
   fn += "  br i1 " + same + ", label %" + held + ", label %" + done + "\n";
   blockTerminated = true;
   startBlock(held);
+  fn += "  store i1 true, ptr " + slot + "\n"; // (two valueless unions are equal, as std::variant's)
   forEachHeldAlternative(c, ta, done, at, [&](size_t k) {
     Value e = partsEqual(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
     fn += "  store i1 " + e.text + ", ptr " + slot + "\n";
@@ -218,7 +227,16 @@ auto codegen::Emitter::typedUnionOrder(ClassDecl* c, const std::string& a, const
   allocas += "  " + slot + " = alloca i8\n";
   std::string type = llType(underlying, at);
   std::string less = newTemp(), byTag = newTemp(), same = newTemp();
-  fn += "  " + less + " = icmp ult " + type + " " + ta.text + ", " + tb.text + "\n";
+  // A valueless union (the tag Tag::count, constructAlternative) is less than any other, as
+  // std::variant's valueless_by_exception; else the alternatives' order.
+  std::string none = std::to_string(c->alternatives.size()), aNone = newTemp(), bNone = newTemp(), bSome = newTemp(), tagLess = newTemp(),
+              someLess = newTemp();
+  fn += "  " + aNone + " = icmp eq " + type + " " + ta.text + ", " + none + "\n";
+  fn += "  " + bNone + " = icmp eq " + type + " " + tb.text + ", " + none + "\n";
+  fn += "  " + bSome + " = xor i1 " + bNone + ", true\n";
+  fn += "  " + tagLess + " = icmp ult " + type + " " + ta.text + ", " + tb.text + "\n";
+  fn += "  " + someLess + " = select i1 " + bNone + ", i1 false, i1 " + tagLess + "\n";
+  fn += "  " + less + " = select i1 " + aNone + ", i1 " + bSome + ", i1 " + someLess + "\n";
   fn += "  " + byTag + " = select i1 " + less + ", i8 -1, i8 1\n";
   fn += "  store i8 " + byTag + ", ptr " + slot + "\n";
   std::string held = newLabel("unionorder.held"), done = newLabel("unionorder.done");

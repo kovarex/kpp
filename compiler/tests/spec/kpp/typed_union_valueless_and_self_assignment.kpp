@@ -1,0 +1,43 @@
+// spec: a typed union assigned to itself keeps its value (`a = a` with a String alternative); one whose copy assignment's copy throws holds no alternative (valueless, as std::variant's valueless_by_exception) and destroys none; a valueless union equals only a valueless one and orders before every other (design.md 8.5: comparisons are std::variant's), a copy of it is valueless, and an assignment gives it an alternative again
+// found by thread B with E's typed union report (2026-11-06, kpp/typed_union_alternative_that_throws_is_not_destroyed): `a = a` destroyed a's String, then copied it from the freed text
+struct Noisy
+{
+  String s;
+  Noisy(const char* t) : s(t) {}
+  Noisy(const Noisy& o) : s(o.s)
+  {
+    if (s == "boom")
+      throw 1;
+  }
+  bool operator==(const Noisy& o) const { return s == o.s; }
+  bool operator<(const Noisy& o) const { return s < o.s; }
+};
+union enum U : u8
+{
+  { {int, Int}, {String, Text}, {Noisy, N} }
+};
+
+int main()
+{
+  U a = String("hello, a string long enough for the heap");
+  U& alias = a;
+  a = alias;
+  println(a[U::Text]);
+  U boom(U::N, "boom");
+  U b = 5;
+  try
+  {
+    b = boom;
+  }
+  catch (int)
+  {
+    println("threw");
+  }
+  U c = 7;
+  println(b == c, " ", c == b, " ", b < c, " ", c < b, " ", b == U::Int, " ", int(c.tag()));
+  U d = b;
+  println(b == d, " ", d < c, " ", d <= b);
+  b = 9;
+  println(b[U::Int], " ", b == c, " ", c < b);
+  return 0;
+}

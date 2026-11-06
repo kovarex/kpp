@@ -481,6 +481,14 @@ it so. `VariantAlternative<I, U>` is the type of the I-th alternative (a built-i
 compiler's, as std::variant_alternative_t). Spec snippets: kpp/typed_union_comparisons,
 kpp/typed_union_variant_alternative.
 
+A union whose new alternative's construction throws (`u[C] = x`, a copy or move assignment whose
+copy throws) holds none, as std::variant's valueless_by_exception: its tag is `Tag::count` until an
+alternative is built, it is destroyed as holding nothing, a copy of it is valueless too, it equals
+only a valueless union and orders before every other, and `switch` on it aborts as on any invalid
+enum value. `u = u` keeps u. (2026-11-06, E's battery: the tag was set first, and the never-built
+alternative was destroyed later; specs kpp/typed_union_alternative_that_throws_is_not_destroyed,
+kpp/typed_union_valueless_and_self_assignment.)
+
 **8.6 Tests in the compiler.**
 ```
 test "Direction::isVertical"

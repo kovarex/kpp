@@ -2546,9 +2546,16 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
 {
   if (ClassDecl* c = typedUnionOf(t, at))
   {
-    // The alternative held goes, the source's alternative and tag come.
+    // The alternative held goes, the source's alternative and tag come; nothing for `u = u`, which
+    // copied from the alternative it had destroyed (until 2026-11-06: a String's freed text).
+    std::string same = newTemp(), assignL = newLabel("union.assign"), doneL = newLabel("union.assigned");
+    fn += "  " + same + " = icmp eq ptr " + dst + ", " + src + "\n";
+    fn += "  br i1 " + same + ", label %" + doneL + ", label %" + assignL + "\n";
+    startBlock(assignL);
     destroyAlternative(c, t, dst, at);
     copyAlternative(c, t, dst, src, move, at);
+    emitBranch(doneL);
+    startBlock(doneL);
     return;
   }
   const Ty* foundIn = nullptr;
