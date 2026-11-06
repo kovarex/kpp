@@ -1,0 +1,28 @@
+// spec: at compile time a class is assigned by an operator= template, its parameters deduced from the right operand as a call's are, and a class prvalue's operator= runs on a temporary: `tie(a, b) = pair` assigns a and b through the tie's references, from a Pair, a Pair lvalue and a Tuple, and `box = pair` through a member template; the same at run time (clang gives the same with std::tie)
+// found by thread I's Tuple battery (2026-11-06): each was no constant, as the evaluator took no operator= template and had no place to run one on a prvalue
+template<typename A>
+struct Box
+{
+  A& r;
+
+  Box(A& a) : r(a) {}
+
+  template<typename U>
+  Box<A>& operator=(const Pair<U, U>& p)
+  {
+    this->r = p.first;
+    return *this;
+  }
+};
+
+constexpr int fromPair() { int a = 0; int b = 0; tie(a, b) = Pair<int, int>(3, 4); return a * 10 + b; }
+constexpr int fromLvalue() { int a = 0; int b = 0; Pair<int, int> p(5, 6); tie(a, b) = p; return a * 10 + b; }
+constexpr int fromTuple() { int a = 0; int b = 0; tie(a, b) = Tuple<int, int>(1, 2); return a * 10 + b; }
+constexpr int viaBox() { int a = 0; Box<int> box(a); box = Pair<int, int>(7, 8); return a; }
+static_assert(fromPair() == 34 && fromLvalue() == 56 && fromTuple() == 12 && viaBox() == 7);
+
+int main()
+{
+  println(fromPair(), " ", fromLvalue(), " ", fromTuple(), " ", viaBox());
+  return 0;
+}

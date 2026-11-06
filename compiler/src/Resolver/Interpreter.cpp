@@ -7747,7 +7747,18 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
   std::optional<ConstPlace> rightPlace;
   std::optional<std::optional<ConstValue>> placed = constPlacedOperand(b->rhs, ctx, depth, rightPlace);
   std::optional<ConstValue> r = placed ? *placed : constValue(b->rhs, ctx, depth + 1);
-  std::optional<ConstPlace> place = r ? constPlaceOf(b->lhs, ctx, depth + 1, true) : std::nullopt;
+  std::optional<ConstValue> ranLeft;
+  constCallPlaceRan = false;
+  std::optional<ConstPlace> place = r ? constPlaceOf(b->lhs, ctx, depth + 1, true, &ranLeft) : std::nullopt;
+  // `tie(a, b) = pair`: a class prvalue's operator runs on a temporary of the full expression, through
+  // whose reference members it assigns what they refer to (the left operand evaluated once).
+  if (!place && r && b->lhs->ty && !b->lhs->ty->isReference() && types.unqualified(b->lhs->ty)->kind == TyKind::Class)
+  {
+    if (!ranLeft && !constCallPlaceRan)
+      ranLeft = constValue(b->lhs, ctx, depth + 1);
+    if (ranLeft && ranLeft->isObject() && ranLeft->type)
+      place = constMaterialize(*ranLeft, ranLeft->type);
+  }
   if (!place || !place->writable())
     return std::nullopt;
   std::optional<ConstValue> old = P(b->op) == P::Assign ? std::optional<ConstValue>(ConstValue{}) : constRead(*place);
@@ -7762,7 +7773,7 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
     // `y = x` copies and only `y = move(x)` moves.
     const Ty* rightType = b->rhs->ty && b->rhs->ty->isKnown() && !types.isDependent(b->rhs->ty) ? b->rhs->ty : constTypeOfValue(*r);
     Subst subst;
-    FunctionDecl* f = constClassOperator(target, op, {argumentType(b->rhs, rightType, types)}, subst, depth);
+    FunctionDecl* f = constClassOperator(target, op, {argumentType(b->rhs, rightType, types)}, subst, depth, op == P::Assign);
     if (f && !constDefaulted(f) && constDefinition(f))
     {
       // Run on the object where it is, the right operand referred to where it is: an lvalue's
@@ -7777,6 +7788,19 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
         right = constMaterialize(*r, r->type);
       std::vector<std::optional<ConstPlace>> places{right};
       std::vector<uint8_t> categories{category};
+      if (!f->templateParams.empty())
+      {
+        // `tie(a, b) = pair`: an operator= template (Tuple's from a Pair), its own parameters deduced
+        // from the right operand, as an operator() template's are (it was no candidate here, so a
+        // class assigned only by one was no constant).
+        CallExpr call{};
+        call.kind = NodeKind::CallExpr;
+        call.token = b->token;
+        call.args = Span<Expr*>{&b->rhs, 1};
+        LocalStack own;
+        if (!constBindTemplate(f, {}, &call, {*r}, ctx, depth, subst, own, &categories))
+          return std::nullopt;
+      }
       std::optional<ConstValue> self = constRead(*place);
       if (!self)
         return std::nullopt;
