@@ -1,0 +1,18 @@
+// spec: a function-try-block, `int f() try { ... } catch (int e) { ... }`: its handlers take what the body throws, a member function's and a void one's too, `catch (...)` included, and what no handler takes leaves the function; until 2026-11-05 the handlers were skipped and every exception left the function (a silent wrong answer)
+struct Parser
+{
+  int base = 10;
+  int parse(int x) try { if (x < 0) throw x; return base + x; } catch (int e) { return base - e; }
+};
+int twice(int x) try { if (x > 5) throw 1.5; return x * 2; } catch (double) { return -1; } catch (...) { return -2; }
+void note(int x) try { if (x) throw x; println("no throw"); } catch (int e) { println("caught ", e); }
+int passOn(int x) try { throw x; } catch (double) { return 0; }
+int main()
+{
+  Parser p;
+  note(0);
+  note(4);
+  try { passOn(7); } catch (int e) { println("left ", e); }
+  println(p.parse(3), " ", p.parse(-4), " ", twice(2), " ", twice(9));
+  return 0;
+}

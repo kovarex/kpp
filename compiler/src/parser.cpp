@@ -2977,16 +2977,25 @@ namespace
       }
       if (functionTry || at(Kw::try_))
       {
-        // function-try-block
+        // A function-try-block, `int f() try { ... } catch (int e) { ... }`: the body is the try
+        // statement, its handlers kept (until 2026-11-05 they were skipped, and what they caught
+        // left the function). A constructor's handler would also take what its member initializers
+        // throw, after their subobjects are destroyed, and a constructor's or destructor's
+        // rethrows at its end: not done yet, so an error.
+        uint32_t tryStart = pos;
         accept(Kw::try_);
-        f->body = parseBlock();
-        while (at(Kw::catch_))
-        {
-          advance();
-          if (at(P::LParen))
-            skipBalanced();
-          parseBlock();
-        }
+        if (f->flags & (DF_Constructor | DF_Destructor))
+          error("a function-try-block of a constructor or destructor is not supported yet (its handler would also take what the member initializers throw)");
+        Decl* savedParent = currentParent;
+        currentParent = f;
+        TryStmt* s = node<TryStmt>(tryStart);
+        s->body = parseBlock();
+        s->handlers = parseHandlers();
+        BlockStmt* body = node<BlockStmt>(tryStart);
+        body->stmts = makeSpanOf(std::vector<Stmt*>{s});
+        f->body = body;
+        currentParent = savedParent;
+        ++out.functionBodies;
       }
       else if (at(P::LBrace))
       {
@@ -2999,6 +3008,24 @@ namespace
       else if (!expect(P::Semi, "expected ';' or function body"))
         return;
       pushDecl(f);
+    }
+
+    // A try statement's (or function-try-block's) handlers: `catch (T name) { ... }`, `catch (...)`.
+    Span<TryStmt::Handler> parseHandlers()
+    {
+      std::vector<TryStmt::Handler> handlers;
+      while (at(Kw::catch_))
+      {
+        advance();
+        TryStmt::Handler h{};
+        expect(P::LParen, "expected '(' after catch");
+        if (!accept(P::Ellipsis))
+          h.param = parseParameter();
+        expect(P::RParen, "expected ')'");
+        h.body = parseBlock();
+        handlers.push_back(h);
+      }
+      return makeSpanOf(handlers);
     }
 
     void parseInitializer(VariableDecl* v)
@@ -4219,19 +4246,7 @@ namespace
             advance();
             TryStmt* s = node<TryStmt>(start);
             s->body = parseBlock();
-            std::vector<TryStmt::Handler> handlers;
-            while (at(Kw::catch_))
-            {
-              advance();
-              TryStmt::Handler h{};
-              expect(P::LParen, "expected '(' after catch");
-              if (!accept(P::Ellipsis))
-                h.param = parseParameter();
-              expect(P::RParen, "expected ')'");
-              h.body = parseBlock();
-              handlers.push_back(h);
-            }
-            s->handlers = makeSpanOf(handlers);
+            s->handlers = parseHandlers();
             return s;
           }
           case Kw::asm_:
