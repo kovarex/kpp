@@ -2577,9 +2577,40 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
   if (arg->isBraceList())
   {
     // `{a, b}` deduces only an InitializerList<P> parameter, its P from the elements as from
-    // the arguments of a by-value parameter (P = Box given `{cb, cb}` of const Box lvalues);
-    // for any other parameter, `const T&` included, it is a non-deduced context.
+    // the arguments of a by-value parameter (P = Box given `{cb, cb}` of const Box lvalues),
+    // and an array one, `P[N]` ([temp.deduct.call] 1: `const T (&)[N]` given `{1, 2, 3}` is T int,
+    // N 3; D, 2026-11-06: no call of `count({1, 2, 3})` resolved); for any other parameter,
+    // `const T&` included, it is a non-deduced context.
     const Ty* p = types.unqualified(types.stripRef(pattern));
+    if (p->kind == TyKind::Array)
+    {
+      // P from each element as from a by-value parameter's argument, all of them alike (a list
+      // whose elements deduce two types deduces nothing: no call takes it); N the list's length.
+      const Ty* elements = arg->inner && arg->inner->kind == TyKind::Pack ? arg->inner : nullptr;
+      if (!elements || elements->args.empty())
+        return;
+      Subst first;
+      deduce(p->inner, elements->args[0], first, depth + 1);
+      for (size_t i = 1; i < elements->args.size(); ++i)
+      {
+        Subst each;
+        deduce(p->inner, elements->args[i], each, depth + 1);
+        for (const Subst::Pair& q : each.pairs)
+          if (const Ty* had = first.find(q.param); had && had != q.type)
+            return;
+      }
+      for (const Subst::Pair& q : first.pairs)
+        if (!out.find(q.param))
+          out.pairs.push_back(q);
+      if (p->decl && !out.find(p->decl))
+      {
+        auto* tp = static_cast<TemplateParamDecl*>(p->decl);
+        const Ty* of = tp->valueType ? types.unqualified(convertType(tp->valueType, TypeContext{lexicalScopeOf(tp), nullptr, nullptr}, depth + 1))
+                                     : types.sizeType();
+        out.pairs.push_back({p->decl, types.valueType(of && of->isKnown() ? of : types.sizeType(), int64_t(elements->args.size()))});
+      }
+      return;
+    }
     if (p->kind != TyKind::Class || p->decl != arg->decl)
       return;
     if (p->args.size() == 1 && arg->args.size() == 1)

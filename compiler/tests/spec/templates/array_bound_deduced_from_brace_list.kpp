@@ -1,0 +1,13 @@
+// spec: a brace list deduces an array parameter ([temp.deduct.call] 1): `template<class T, int N> int count(const T (&)[N])` given `{1, 2, 3}` is T int and N 3, each element deducing T as a by-value parameter's argument (`sum({1.5, 2.5})`: T double); a nested list deduces the bound of an array of arrays (`const int (&)[N][2]` given `{{1, 2}, {3, 4}, {5, 6}}`: N 3), and an rvalue reference to an array alike (`T (&&)[N]`); clang gives the same numbers
+// found by thread D (2026-11-06, a battery of deductions from brace lists against clang): no such call resolved ("a call that did not resolve"); only an InitializerList parameter was deduced from a list
+template<class T, int N> int count(const T (&)[N]) { return N; }
+template<class T, int N> T sum(const T (&a)[N]) { T s = 0; for (int i = 0; i < N; ++i) s += a[i]; return s; }
+template<int N> int rows(const int (&)[N][2]) { return N; }
+template<class T, int N> int counted(T (&&)[N]) { return N * 10; }
+
+int main()
+{
+  println(count({1, 2, 3}), " ", sum({4, 5, 6, 7}), " ", sum({1.5, 2.5}), " ",
+          rows({{1, 2}, {3, 4}, {5, 6}}), " ", counted({1, 2}));
+  return 0;
+}
