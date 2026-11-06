@@ -39,3 +39,18 @@ int Widget::renamed(int amount) const
 {
   return this->width + amount;
 }
+
+int Widget::unnamed(int amount, int scale) const
+{
+  return (this->height + amount) * scale;
+}
+
+int Widget::shadowed(int instances) const
+{
+  return instances * 10 + this->width;
+}
+
+int Widget::summed(const std::pair<int, int>& sizes) const
+{
+  return sizes.first + sizes.second + this->width;
+}

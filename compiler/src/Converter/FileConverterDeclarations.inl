@@ -394,7 +394,29 @@
       if (auto it = inlineBodies->declarations.find(f); it != inlineBodies->declarations.end())
       {
         if (toks[f->endToken - 1].is(P::Semi))
+        {
           insert(toks[f->endToken - 1].offset, "/*kpp:inline:" + std::to_string(it->second) + "*/");
+          // (its parameters named as the definition names them, which the body it gets uses;
+          // collectInlineBodies checked each can be)
+          Decl* defDecl = global.definitionOf(f);
+          auto* def = defDecl && defDecl->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defDecl) : nullptr;
+          for (size_t i = 0; def && i < f->params.size() && i < def->params.size(); ++i)
+          {
+            auto* a = static_cast<ParamDecl*>(f->params[i]);
+            auto* b = static_cast<ParamDecl*>(def->params[i]);
+            if (b->name == UINT32_MAX || a->name == b->name)
+              continue;
+            ParamNamePlace place = paramNamePlace(a, symbols);
+            std::string name(symbols.name(b->name));
+            if (place.nameToken != UINT32_MAX)
+              replace(toks[place.nameToken].offset, toks[place.nameToken].length, name);
+            else if (place.insertBefore != UINT32_MAX)
+              insert(endOffset(place.insertBefore - 1), " " + name); // (after the type's last token)
+            else
+              continue;
+            counts.add("parameters named as the definition names them, its body moved into the class");
+          }
+        }
         return;
       }
       auto it = inlineBodies->definitions.find(f);

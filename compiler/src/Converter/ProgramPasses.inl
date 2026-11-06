@@ -372,9 +372,32 @@ static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope&
             why = "parameter types written otherwise";
           else if (aConst && !bConst)
             why = "a parameter const in the declaration, not in the definition";
-          else if (b->name != UINT32_MAX && a->name != b->name)
+          else if (b->name != UINT32_MAX && a->name != b->name && !paramRenameable(a, symbols))
             why = a->name == UINT32_MAX ? "a parameter unnamed in the declaration" : "a parameter named otherwise in the declaration";
         }
+      // (a declaration's parameters renamed as the definition names them: none may be a name its
+      // default arguments use, a member's, which the parameter would hide there)
+      if (!why && f->file && f->file->tokens && f->params.size() == def->params.size())
+      {
+        std::set<std::string_view> renamed;
+        for (size_t i = 0; i < f->params.size(); ++i)
+        {
+          auto* a = static_cast<ParamDecl*>(f->params[i]);
+          auto* b = static_cast<ParamDecl*>(def->params[i]);
+          if (b->name != UINT32_MAX && a->name != b->name)
+            renamed.insert(symbols.name(b->name));
+        }
+        const std::vector<Token>& ftoks = *f->file->tokens;
+        for (size_t i = 0; i < f->params.size() && !renamed.empty() && !why; ++i)
+        {
+          auto* a = static_cast<ParamDecl*>(f->params[i]);
+          if (!a->defaultValue)
+            continue;
+          for (uint32_t k = a->token, e = paramEndToken(a); k < e && k < ftoks.size() && !why; ++k)
+            if (ftoks[k].getKind() == TokenKind::Identifier && renamed.count(f->file->text.substr(ftoks[k].offset, ftoks[k].length)))
+              why = "a parameter named otherwise in the declaration, a name its default arguments use";
+        }
+      }
       if (!why && def->body && def->body->kind != NodeKind::BlockStmt)
         why = "a function-try-block";
       if (!why && def->file && def->file->tokens)
