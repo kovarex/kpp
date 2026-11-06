@@ -591,6 +591,14 @@ auto codegen::Emitter::exceptionMessage(const std::string& format) -> std::strin
          "  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %data)\n  br label %end\n";
 }
 
+auto codegen::Emitter::capturedRelease(const std::string& next) -> std::string
+{
+  if (!declaredNames.contains("@kpp_captured_release"))
+    return "";
+  return "  %captured = icmp eq ptr %dtor, @kpp_captured_release\n  br i1 %captured, label %unref, label %owned\n"
+         "unref:\n  call void @kpp_captured_release(ptr %obj)\n  store ptr null, ptr %out\n  br label %" + next + "\nowned:\n";
+}
+
 auto codegen::Emitter::uncaughtChange(int delta) -> std::string
 {
   if (!declaredNames.contains("@kpp_uncaught_change"))
@@ -682,6 +690,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
               "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %header, label %live\n"
               "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
+              + capturedRelease("header") +
               "  %nodtor = icmp eq ptr %dtor, null\n  br i1 %nodtor, label %release, label %destroy\n"
               "destroy:\n  call void %dtor(ptr %obj)\n  br label %release\n"
               "release:\n  call void @free(ptr %obj)\n  store ptr null, ptr %out\n  br label %header\n"
@@ -692,6 +701,25 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
               "  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n  store ptr null, ptr %out\n"
               "  call void @kpp_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
+    // std::current_exception's capture (the library's currentException, core/Error.kpp): the exception
+    // of the innermost handler running on this thread (kpp.eh.current's record), its object, descriptor
+    // and destructor written to into's three words (zeros when no handler runs). The object passes to
+    // the library's registry of captured exceptions, which counts its references: the record's
+    // destructor slot then names kpp_captured_release, so that the handler's end (kpp_eh_end) drops the
+    // record's reference instead of destroying the object, and a rethrow from an ExceptionPtr throws
+    // it so too. The library's kpp_captured_take(object, descriptor, destructor) registers a newly
+    // captured one with two references (the record's and the caller's) or takes one more.
+    if (declaredNames.contains("@kpp_captured_release") && declaredNames.contains("@kpp_captured_take"))
+    shared += sharedComdat("@kpp_current_exception") + std::string(kppCurrentExceptionHeader) + "\nentry:\n"
+              "  %s1 = getelementptr inbounds i64, ptr %into, i64 1\n  %s2 = getelementptr inbounds i64, ptr %into, i64 2\n"
+              "  store ptr null, ptr %into\n  store ptr null, ptr %s1\n  store ptr null, ptr %s2\n"
+              "  %rec = load ptr, ptr @kpp.eh.current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
+              "some:\n  %obj = load ptr, ptr %rec\n  %gone = icmp eq ptr %obj, null\n  br i1 %gone, label %done, label %take\n"
+              "take:\n  %tp = getelementptr inbounds i8, ptr %rec, i64 8\n  %ti = load ptr, ptr %tp\n"
+              "  %dp = getelementptr inbounds i8, ptr %rec, i64 16\n  %dtor = load ptr, ptr %dp\n"
+              "  call void @kpp_captured_take(ptr %obj, ptr %ti, ptr %dtor)\n  store ptr @kpp_captured_release, ptr %dp\n"
+              "  store ptr %obj, ptr %into\n  store ptr %ti, ptr %s1\n  store ptr @kpp_captured_release, ptr %s2\n  br label %done\n"
+              "done:\n  ret void\n}\n";
   }
   else if (usesExceptions)
   {
@@ -739,6 +767,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
               "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %done, label %live\n"
               "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
+              + capturedRelease("done") +
               "  %nodtor = icmp eq ptr %dtor, null\n  br i1 %nodtor, label %release, label %destroy\n"
               "destroy:\n  call void %dtor(ptr %obj)\n  br label %release\n"
               "release:\n  call void @free(ptr %obj)\n  store ptr null, ptr %out\n  br label %done\n"
@@ -748,6 +777,25 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
               "  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n  store ptr null, ptr %out\n"
               "  call void @kpp_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
+    // std::current_exception's capture (the library's currentException, core/Error.kpp): the exception
+    // of the innermost handler running on this thread (kpp.eh.current's record), its object, descriptor
+    // and destructor written to into's three words (zeros when no handler runs). The object passes to
+    // the library's registry of captured exceptions, which counts its references: the record's
+    // destructor slot then names kpp_captured_release, so that the handler's end (kpp_eh_end) drops the
+    // record's reference instead of destroying the object, and a rethrow from an ExceptionPtr throws
+    // it so too. The library's kpp_captured_take(object, descriptor, destructor) registers a newly
+    // captured one with two references (the record's and the caller's) or takes one more.
+    if (declaredNames.contains("@kpp_captured_release") && declaredNames.contains("@kpp_captured_take"))
+    shared += sharedComdat("@kpp_current_exception") + std::string(kppCurrentExceptionHeader) + "\nentry:\n"
+              "  %s1 = getelementptr inbounds i64, ptr %into, i64 1\n  %s2 = getelementptr inbounds i64, ptr %into, i64 2\n"
+              "  store ptr null, ptr %into\n  store ptr null, ptr %s1\n  store ptr null, ptr %s2\n"
+              "  %rec = load ptr, ptr @kpp.eh.current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
+              "some:\n  %obj = load ptr, ptr %rec\n  %gone = icmp eq ptr %obj, null\n  br i1 %gone, label %done, label %take\n"
+              "take:\n  %tp = getelementptr inbounds i8, ptr %rec, i64 8\n  %ti = load ptr, ptr %tp\n"
+              "  %dp = getelementptr inbounds i8, ptr %rec, i64 16\n  %dtor = load ptr, ptr %dp\n"
+              "  call void @kpp_captured_take(ptr %obj, ptr %ti, ptr %dtor)\n  store ptr @kpp_captured_release, ptr %dp\n"
+              "  store ptr %obj, ptr %into\n  store ptr %ti, ptr %s1\n  store ptr @kpp_captured_release, ptr %s2\n  br label %done\n"
+              "done:\n  ret void\n}\n";
     shared += sharedComdat("@kpp.eh.filter.any") +
               std::string(kppEhFilterAnyHeader) + "\nentry:\n"
               "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"

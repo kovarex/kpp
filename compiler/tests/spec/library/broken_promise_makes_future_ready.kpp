@@ -1,6 +1,5 @@
 // spec: a Promise destroyed before it set a value or an exception makes its Future ready with an error (std::promise's destructor stores future_error(broken_promise), [futures.promise] 9), so waiting returns at once and get() throws, never blocking forever (`ready throws`)
 // factorio: E's concurrency battery against C++ (cc1, 2026-11-06): get() on the Future of a destroyed Promise blocked forever, on Windows and Linux
-// pending: Promise's destructor leaves the shared state unset (C)
 extern "C" import "stdio.h";
 int main()
 {

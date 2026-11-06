@@ -773,7 +773,7 @@ auto codegen::Emitter::runtimeHeaders() -> std::vector<std::string>
 {
   return {kppThrowHeader,     kppEhRethrowHeader,    kppEhPushHeader,       kppEhBeginHeader, kppEhEndHeader,
           kppEhFilterAnyHeader, kppEhFilterNoexceptHeader, kppEhUnhandledHeader, kppAssertFailedHeader, kppMissingHeader, baseSearchHeader("@kpp_eh_offset"),
-          kppEhEnterHeader,   kppEhTerminateHeader, kppThreadAtExitHeader};
+          kppEhEnterHeader,   kppEhTerminateHeader, kppThreadAtExitHeader, kppCurrentExceptionHeader};
 }
 
 auto codegen::Emitter::declareFromHeader(const std::string& text) -> std::string

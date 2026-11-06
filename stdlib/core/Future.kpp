@@ -6,6 +6,17 @@ enum class FutureStatus { ready, timeout, deferred };
 // How async runs its callable (std::launch): on a new thread now, or on the first get() or wait().
 enum class Launch { async = 1, deferred = 2 };
 
+// Why a Future is ready without a value (std::future_errc): its Promise was destroyed first.
+enum class FutureErrc { brokenPromise = 1, futureAlreadyRetrieved = 2, promiseAlreadySatisfied = 3, noState = 4 };
+
+// The error a Future's get() throws when it has none of its own (std::future_error).
+class FutureError : public LogicError
+{
+public:
+  FutureErrc code;
+  explicit FutureError(FutureErrc code) : LogicError(String(code == FutureErrc::brokenPromise ? "broken promise" : "future error")), code(code) {}
+};
+
 template<typename T>
 struct SharedState
 {
@@ -15,6 +26,28 @@ struct SharedState
   ExceptionPtr exception;
   bool ready = false;
   Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
+  // async with Launch::async: the thread that computes the value, joined when the last Future lets
+  // the state go (std::async's future waits as it is destroyed, [futures.async] 5.4), so that a
+  // callable referring to the caller's locals never outlives them. The thread itself holds no
+  // reference to the state.
+  Thread worker;
+
+  ~SharedState()
+  {
+    if (this->worker.joinable())
+      this->worker.join();
+  }
+
+  // The Promise is gone with nothing set: ready with a broken promise ([futures.promise] 9).
+  void abandon()
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    if (this->ready)
+      return;
+    this->exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
+    this->ready = true;
+    this->cv.notifyAll();
+  }
 
   // The deferred function runs once, on the thread that takes it first (under the lock); the
   // threads that call get() or wait() beside it wait for the result it sets. Until 2026-10-30 each
@@ -92,6 +125,23 @@ struct SharedState<void>
   ExceptionPtr exception;
   bool ready = false;
   Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
+  Thread worker;             // (as SharedState<T>'s)
+
+  ~SharedState()
+  {
+    if (this->worker.joinable())
+      this->worker.join();
+  }
+
+  void abandon()
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    if (this->ready)
+      return;
+    this->exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
+    this->ready = true;
+    this->cv.notifyAll();
+  }
 
   // The deferred function runs once, on the thread that takes it first (under the lock); the
   // threads that call get() or wait() beside it wait for the result it sets. Until 2026-10-30 each
@@ -250,8 +300,17 @@ public:
   Promise(Promise<T>&& other) noexcept : state(move(other.state)) {}
   Promise<T>& operator=(const Promise<T>&) = delete;
 
+  // A Promise that set nothing leaves its Future ready with a broken promise, never waiting forever.
+  ~Promise()
+  {
+    if (this->state)
+      this->state->abandon();
+  }
+
   Promise<T>& operator=(Promise<T>&& other) noexcept
   {
+    if (this->state)
+      this->state->abandon();
     this->state = move(other.state);
     return *this;
   }
@@ -279,8 +338,16 @@ public:
   Promise(Promise<void>&& other) noexcept : state(move(other.state)) {}
   Promise<void>& operator=(const Promise<void>&) = delete;
 
+  ~Promise()
+  {
+    if (this->state)
+      this->state->abandon();
+  }
+
   Promise<void>& operator=(Promise<void>&& other) noexcept
   {
+    if (this->state)
+      this->state->abandon();
     this->state = move(other.state);
     return *this;
   }
@@ -295,19 +362,25 @@ private:
   SharedPtr<SharedState<void>> state;
 };
 
-// Calls callable and stores what it returns in state (a void callable just completes it). An
-// exception thrown by callable is not stored: it ends the program (a difference from C++,
-// docs/stdlib-conformance.md).
+// Calls callable and stores what it returns in state (a void callable just completes it), or what
+// it throws, which get() throws again ([futures.async] 4; until 2026-11-06 it ended the program).
 template<typename R, typename F>
 void runInto(SharedState<R>* state, F callable)
 {
-  if constexpr (isVoid<R>)
+  try
   {
-    callable();
-    state->set();
+    if constexpr (isVoid<R>)
+    {
+      callable();
+      state->set();
+    }
+    else
+      state->set(callable());
   }
-  else
-    state->set(callable());
+  catch (...)
+  {
+    state->setException(currentException());
+  }
 }
 
 // async: runs a callable on a new thread (Launch::async) or on the first get() or wait() of its
@@ -323,7 +396,7 @@ auto async(Launch policy, F callable) -> Future<decltype(callable())>
   if (policy == Launch::deferred)
     state->deferred = [raw, callable = move(callable)]() mutable { runInto<R>(raw, move(callable)); };
   else
-    Thread([state, callable = move(callable)]() mutable { runInto<R>(state.get(), move(callable)); }).detach();
+    state->worker = Thread([raw, callable = move(callable)]() mutable { runInto<R>(raw, move(callable)); }); // (joined by the state)
   return Future<R>(state);
 }
 

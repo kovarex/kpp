@@ -260,6 +260,22 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
   }
   if (!declaredNames.claim(name))
     return name;
+  // A C declaration of one of the runtime's functions (the library's `extern "C" void kpp_throw(...)`):
+  // the runtime's headers declare it to every module that calls it and the shared text defines it,
+  // so a declare line of its own would be a second definition where both land in one module.
+  static const std::unordered_set<std::string> runtimeNames = []
+  {
+    std::unordered_set<std::string> names;
+    for (const std::string& header : runtimeHeaders())
+    {
+      std::string runtimeName;
+      sharedDeclarationOf(header, &runtimeName);
+      names.insert(runtimeName);
+    }
+    return names;
+  }();
+  if (global.isExternC(f) && runtimeNames.count(name))
+    return name;
   {
     static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
     if (debugCalls)

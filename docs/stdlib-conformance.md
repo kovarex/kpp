@@ -116,8 +116,8 @@ specification snippets cannot check their types yet: a written variadic function
 its `...` (language/variadic_function_pointer_type, pending). 2026-10-30.
 
 **throw_with_nested** (core/Error.kpp): throws its argument without the exception being handled
-attached to it, since kpp has no std::current_exception to capture that one (nor
-std::nested_exception and rethrow_if_nested, which no converted code uses). Its one user is
+attached to it: there is no std::nested_exception to attach it to (nor rethrow_if_nested, which no
+converted code uses; currentException can capture it since 2026-11-06). Its one user is
 UnitTest++'s Test::HandleDesync, which only needs the RuntimeError it throws. 2026-10-29.
 
 **toString of a floating value is its shortest round-trip text, not `%f`** (docs/stdlib/text.md,

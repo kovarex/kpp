@@ -186,6 +186,7 @@ public:
 private:
   template<typename E> friend ExceptionPtr makeExceptionPtr(const E& exception);
   friend void rethrowException(const ExceptionPtr& pointer);
+  friend ExceptionPtr currentException();
 
   SharedPtr<ExceptionHolderBase> holder;
 };
@@ -196,6 +197,106 @@ ExceptionPtr makeExceptionPtr(const E& exception)
 {
   ExceptionPtr result;
   result.holder = SharedPtr<ExceptionHolderBase>(new ExceptionHolder<E>(exception));
+  return result;
+}
+
+// --- std::current_exception (2026-11-06) ---
+// The exception a handler has caught is captured as it is, of whatever type: the runtime
+// (kpp_current_exception, codegen's exception runtime) hands the object over to these captured
+// exceptions, which count its references (the handler's record, each ExceptionPtr to it, each
+// rethrow of it in flight) and destroy and free it when the last goes. A captured object is thrown
+// again as itself (rethrowException), its record's destructor slot naming kpp_captured_release so
+// that the runtime drops that reference at the handler's end instead of destroying the object.
+extern "C" void kpp_current_exception(void** into);
+extern "C" void kpp_throw(void* object, const void* typeinfo, void (*dtor)(void*));
+extern "C" void free(void* p);
+
+struct CapturedException
+{
+  void* object = nullptr;
+  void* typeinfo = nullptr;
+  void (*dtor)(void*) = nullptr;
+  i64 references = 0;
+};
+
+private Mutex capturedLock;
+private Vector<CapturedException> capturedExceptions;
+
+// The runtime's: object, caught, passes to the captured ones with two references (the handler's
+// record and the capture's), or, captured already (rethrown from an ExceptionPtr), takes one more.
+extern "C" void kpp_captured_take(void* object, void* typeinfo, void (*dtor)(void*))
+{
+  capturedLock.lock();
+  for (CapturedException& c : capturedExceptions)
+    if (c.object == object)
+    {
+      ++c.references;
+      capturedLock.unlock();
+      return;
+    }
+  capturedExceptions.push_back(CapturedException{object, typeinfo, dtor, 2});
+  capturedLock.unlock();
+}
+
+// One reference to a captured object goes; the last destroys and frees it.
+extern "C" void kpp_captured_release(void* object)
+{
+  void (*dtor)(void*) = nullptr;
+  bool last = false;
+  capturedLock.lock();
+  for (u64 i = 0; i < capturedExceptions.size(); ++i)
+    if (capturedExceptions[i].object == object)
+    {
+      if (--capturedExceptions[i].references == 0)
+      {
+        last = true;
+        dtor = capturedExceptions[i].dtor;
+        capturedExceptions[i] = capturedExceptions.back();
+        capturedExceptions.pop_back();
+      }
+      break;
+    }
+  capturedLock.unlock();
+  if (!last)
+    return;
+  if (dtor)
+    dtor(object);
+  free(object);
+}
+
+void retainCapturedException(void* object)
+{
+  capturedLock.lock();
+  for (CapturedException& c : capturedExceptions)
+    if (c.object == object)
+      ++c.references;
+  capturedLock.unlock();
+}
+
+class CapturedExceptionHolder : public ExceptionHolderBase
+{
+public:
+  void* object;
+  void* typeinfo;
+  CapturedExceptionHolder(void* object, void* typeinfo) : object(object), typeinfo(typeinfo) {}
+  ~CapturedExceptionHolder() override { kpp_captured_release(this->object); }
+
+  void rethrow() const override
+  {
+    retainCapturedException(this->object); // (the throw's own reference, which its handler's end drops)
+    kpp_throw(this->object, this->typeinfo, kpp_captured_release);
+  }
+};
+
+// The exception the innermost handler running on this thread has caught (std::current_exception),
+// shared with it: rethrowException throws that very object again. Empty outside a handler.
+ExceptionPtr currentException()
+{
+  void* parts[3] = {nullptr, nullptr, nullptr};
+  kpp_current_exception(parts);
+  ExceptionPtr result;
+  if (parts[0])
+    result.holder = SharedPtr<ExceptionHolderBase>(new CapturedExceptionHolder(parts[0], parts[1]));
   return result;
 }
 
@@ -216,7 +317,7 @@ extern "C" void kpp_uncaught_change(int delta) { uncaughtExceptionCount += delta
 i32 uncaught_exceptions() { return uncaughtExceptionCount; }
 
 // std::throw_with_nested: throws value. C++ also attaches the exception being handled when it is
-// called (a std::nested_exception base); kpp has no current_exception yet, so nothing is attached
+// called (a std::nested_exception base); kpp has no nested_exception yet, so nothing is attached
 // (stdlib-conformance.md). UnitTest++'s Test::HandleDesync throws a RuntimeError this way.
 template<typename T>
 [[noreturn]] void throw_with_nested(T&& value)

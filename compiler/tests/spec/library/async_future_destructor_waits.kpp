@@ -1,6 +1,5 @@
 // spec: the last Future of an async(Launch::async) call waits for the function to finish when it is destroyed (std::async, [futures.async] 5.4: the shared state's release blocks until the thread completes), so a function that refers to locals of the caller's scope never outlives them (`1`)
 // factorio: E's concurrency battery against C++ (cc1, 2026-11-06): leaving the Future's scope returned at once and the function wrote to `finished` after the scope it captured by reference had ended, on Windows and Linux (`0`)
-// pending: async detaches the thread it starts, and a Future's destructor only drops its SharedPtr to the state (C)
 extern "C" import "stdio.h";
 int main()
 {

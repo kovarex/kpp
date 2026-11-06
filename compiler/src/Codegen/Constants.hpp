@@ -193,6 +193,7 @@
       "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {";
     static constexpr const char* kppMissingHeader = "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {";
     static constexpr const char* kppThreadAtExitHeader = "define linkonce_odr void @kpp_thread_atexit(ptr %dtor, ptr %object) comdat {";
+    static constexpr const char* kppCurrentExceptionHeader = "define linkonce_odr void @kpp_current_exception(ptr %into) comdat {";
     static std::string baseSearchHeader(const std::string& name) { return "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {"; }
     // The runtime's global that function bodies read (a `throw;` outside a handler), written after the
     // levels too: one line, in the shared declarations (homed in a debug build), declared at the barrier.

@@ -1,0 +1,42 @@
+// spec: currentException() in a handler captures the exception being handled, of whatever type, and rethrowException throws that same object again, as many times as asked (std::current_exception, std::rethrow_exception, [propagation]): a SharedFuture's get() throws the one stored exception each time, a captured exception outlives its handler while an ExceptionPtr refers to it, and the object is destroyed once, when the last reference goes; outside a handler it is empty
+// factorio: E's concurrency battery (async_exception_reaches_get) needed it: kpp had no current_exception (thread J, 2026-11-06); C++'s semantics
+int made = 0;
+int destroyed = 0;
+
+class Failure
+{
+public:
+  int code;
+  Failure(int c) : code(c) { ++made; }
+  Failure(const Failure& o) : code(o.code) { ++made; }
+  ~Failure() { ++destroyed; }
+};
+
+int main()
+{
+  {
+    SharedFuture<int> shared(async([]() -> int { throw Failure(7); }));
+    for (int i = 0; i < 3; ++i)
+    {
+      try { shared.get(); }
+      catch (const Failure& f) { println("caught ", f.code); }
+    }
+  }
+  ExceptionPtr kept;
+  try { throw Failure(9); }
+  catch (...) { kept = currentException(); }
+  println("outside ", made - destroyed);
+  try { rethrowException(kept); }
+  catch (Failure& f) { println("again ", f.code); }
+  kept = nullptr;
+  ExceptionPtr none = currentException();
+  println(made - destroyed, " ", (bool)none);
+  try { throw 5; }
+  catch (int v)
+  {
+    ExceptionPtr inner = currentException();
+    try { rethrowException(inner); }
+    catch (int w) { println("int ", v, " ", w); }
+  }
+  return 0;
+}

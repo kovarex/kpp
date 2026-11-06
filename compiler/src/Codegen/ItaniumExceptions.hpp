@@ -41,6 +41,9 @@
 
     std::string itaniumUnwindDestination();
 
+    // kpp_eh_end's branch for a captured exception (kpp_current_exception): its reference dropped
+    // through the library's kpp_captured_release, then on to next; "" without the library.
+    std::string capturedRelease(const std::string& next);
     std::string sharedComdat(const std::string& name) { return "$" + name.substr(1) + " = comdat any\n"; }
 
     // The type descriptor matched against catch clauses, as a class descriptor is (descriptorFor):
