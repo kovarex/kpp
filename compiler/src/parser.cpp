@@ -2992,6 +2992,8 @@ namespace
         else if (at(Kw::throw_) && at(P::LParen, 1))
         {
           advance();
+          if (at(P::RParen, 1))
+            d.flags |= DF_Noexcept; // `throw()` is `noexcept(true)` (C++17)
           skipBalanced();
         }
         else if (atIdent(0) && spelling() == "override") { advance(); d.flags |= DF_Override; }

@@ -1,0 +1,23 @@
+// spec: `throw()` on a function is `noexcept(true)`: its type, the noexcept operator, and an overrider of a noexcept function, clang's output
+extern "C" import "stdio.h";
+void plain() {}
+void old() throw() {}
+class Base
+{
+public:
+  virtual int value() const noexcept { return 1; }
+};
+class Derived : public Base
+{
+public:
+  int value() const throw() override { return 2; }
+};
+int main()
+{
+  void (*p)() noexcept = old;
+  p();
+  Derived d;
+  Base& b = d;
+  printf("%d %d %d\n", (int)noexcept(old()), (int)noexcept(plain()), b.value());
+  return 0;
+}
