@@ -1,0 +1,65 @@
+// spec: at compile time, a data member named through a pointer to member is a place a write goes to, as at run time: `c.*pa = 7`, `c.*pa += 5`, `++(c.*pa)`, `p->*pa = 4` with p pointing at a local, through a reference to an element of an array of structs, and a member of a base class; a constexpr variable initialized so is a constant. Before, each such write made the variable "no constant", with no reason given. clang prints the same
+// found comparing kpp with clang (thread I's battery i6)
+struct Cell
+{
+  int a;
+  short b;
+};
+struct Tagged : Cell
+{
+  int tag;
+};
+constexpr int assign()
+{
+  Cell c = {1, 2};
+  int Cell::*pa = &Cell::a;
+  c.*pa = 7;
+  return c.a;
+}
+constexpr int compound()
+{
+  Cell c = {1, 2};
+  int Cell::*pa = &Cell::a;
+  short Cell::*pb = &Cell::b;
+  c.*pa += 5;
+  c.*pb *= 3;
+  ++(c.*pa);
+  (c.*pb)--;
+  return c.a * 10 + c.b;
+}
+constexpr int throughPointer()
+{
+  Cell c = {1, 2};
+  Cell* p = &c;
+  int Cell::*pa = &Cell::a;
+  p->*pa = 4;
+  p->*pa += p->*pa;
+  return c.a;
+}
+constexpr int inArray()
+{
+  Cell cells[3] = {{1, 2}, {3, 4}, {5, 6}};
+  int Cell::*pa = &Cell::a;
+  int s = 0;
+  for (Cell& c : cells)
+  {
+    c.*pa = c.*pa * 10 + c.b;
+    s += c.a;
+  }
+  return s;
+}
+constexpr int inBase()
+{
+  Tagged t{};
+  int Cell::*pa = &Cell::a;
+  t.*pa = 9;
+  t.tag = 1;
+  return t.a * 10 + t.tag;
+}
+constexpr int values[] = {assign(), compound(), throughPointer(), inArray(), inBase()};
+int main()
+{
+  println(values[0], " ", values[1], " ", values[2], " ", values[3], " ", values[4]);
+  println(assign(), " ", compound(), " ", throughPointer(), " ", inArray(), " ", inBase());
+  return 0;
+}

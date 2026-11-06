@@ -6602,6 +6602,34 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     base->bits = constBitsOf(object->type, d);
     return constThroughReference(*base, depth);
   }
+  if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
+      (P(static_cast<BinaryExpr*>(e)->op) == P::DotStar || P(static_cast<BinaryExpr*>(e)->op) == P::ArrowStar))
+  {
+    // `c.*pa`, `p->*pa` with pa a pointer to a data member: that member of the object, a place a
+    // write goes to (`c.*pa = 7`, `++(c.*pa)`; it was only read: constMemberPointerRead).
+    auto* b = static_cast<BinaryExpr*>(e);
+    std::optional<ConstPlace> base;
+    if (P(b->op) == P::DotStar)
+      base = constPlaceOf(b->lhs, ctx, depth + 1, calls);
+    else if (!constFrames().empty() && constPure(b->lhs))
+      if (std::optional<ConstValue> p = constValue(b->lhs, ctx, depth + 1); p && p->isAddress() && p->target->storage)
+        base = constStoragePlace(*p, "a use of", depth); // `p->*pa`, p pointing at an object of the evaluation
+    std::optional<ConstValue> member = base && constPure(b->rhs) ? constValue(b->rhs, ctx, depth + 1) : std::nullopt;
+    if (!member || !member->isMemberPointer() || !member->target->decl || member->target->decl->kind != NodeKind::VariableDecl)
+      return std::nullopt;
+    std::optional<ConstValue> object = constRead(*base);
+    if (!object || !object->isObject())
+      return std::nullopt;
+    Decl* d = member->target->decl;
+    std::optional<std::vector<size_t>> path = constFieldPath(object->type, d, 0);
+    if (!path)
+      return std::nullopt;
+    base->path.insert(base->path.end(), path->begin(), path->end());
+    const ConstClassLayout* layout = constLayoutOf(object->type, 0);
+    base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+    base->bits = constBitsOf(object->type, d);
+    return constThroughReference(*base, depth);
+  }
   if (e->kind == NodeKind::IndexExpr)
   {
     auto* x = static_cast<IndexExpr*>(e);
