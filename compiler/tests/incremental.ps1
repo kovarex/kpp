@@ -23,8 +23,9 @@ $started = Get-Date
 
 function Normalize([string[]]$lines)
 {
-  # (and without the interned types' count: a cache, larger in a server that built earlier versions)
-  $lines | Where-Object { $_ -notmatch '^check:\s+[0-9]+ distinct types' } | ForEach-Object { $_ -replace '[0-9]+\.[0-9]+ s\b', '_ s' -replace '\([0-9.]+ [MG]?B/s[^)]*\)', '(_)' -replace '\([0-9.]+ M lines/s\)', '(_)' -replace '\(([0-9]+) requests, ([0-9]+) waits\)', '(_ requests, _ waits)' }
+  # (and without the interned types' count: a cache, larger in a server that built earlier versions; nor
+  # the AST's memory: a kept file reports the bytes of its parse, and the sum may round the other way)
+  $lines | Where-Object { $_ -notmatch '^check:\s+[0-9]+ distinct types' } | ForEach-Object { $_ -replace '[0-9]+\.[0-9]+ s\b', '_ s' -replace '\([0-9.]+ [MG]?B/s[^)]*\)', '(_)' -replace '\([0-9.]+ M lines/s\)', '(_)' -replace '\(([0-9]+) requests, ([0-9]+) waits\)', '(_ requests, _ waits)' -replace 'AST memory: [0-9.]+ MB', 'AST memory: _ MB' }
 }
 
 function Build([string[]]$arguments, [string]$label)

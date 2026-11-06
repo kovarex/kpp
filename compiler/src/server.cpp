@@ -1038,12 +1038,13 @@ namespace
 
   // What a build printed, without what differs from run to run by design (timings and rates, wait
   // counts, the interned types' count, whether the C import came from its cache, how many objects the
-  // back end made while codegen ran).
+  // back end made while codegen ran, the AST's memory: a kept file reports the bytes of its parse, a
+  // few more or less than a fresh one's, and the sum then rounds the other way).
   std::string normalized(const std::string& text)
   {
     static const std::regex seconds("[0-9]+\\.[0-9]+ s\\b"), rates("\\([0-9.]+ [MG]?B/s[^)]*\\)"), lines("\\([0-9.]+ M lines/s\\)"),
       waits("\\([0-9]+ requests, [0-9]+ waits\\)"), unchanged("[0-9]+ unchanged"), during(", [0-9]+ during codegen"), types("^check: +[0-9]+ distinct types"),
-      cached(" \\(cached\\)$");
+      cached(" \\(cached\\)$"), astMemory("AST memory: [0-9.]+ MB");
     std::string out;
     size_t start = 0;
     while (start < text.size())
@@ -1061,6 +1062,7 @@ namespace
       line = std::regex_replace(line, during, ""); // (step 4's P2; a server's incremental build streams none)
       line = std::regex_replace(line, types, "check:");
       line = std::regex_replace(line, cached, "");
+      line = std::regex_replace(line, astMemory, "AST memory: _ MB");
       out += line + "\n";
     }
     return out;
