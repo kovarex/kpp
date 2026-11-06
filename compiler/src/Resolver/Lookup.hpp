@@ -161,7 +161,9 @@
   // A specialisation written with fewer arguments than its primary has parameters
   // (`is_optional<Optional<T>>` of `template<typename T, typename Enable = void>`): the rest are
   // the primary's defaults, read with the arguments before them, as C++ completes it.
-  void appendDefaultPatterns(Decl* primary, std::vector<const Ty*>& out, int depth);
+  // `enclosing`: a member template's enclosing class's arguments, which a default may name
+  // (`template<typename U, typename W = T>` in Wrapper<T>).
+  void appendDefaultPatterns(Decl* primary, std::vector<const Ty*>& out, int depth, const Subst* enclosing = nullptr);
 
   // Deduces partial specialisation c's parameters from the arguments: `<T, T, R...>` against
   // <B, B, C> makes T = B and R = {C}, against <C, A, B> it does not match. A pack expansion
@@ -184,7 +186,8 @@
   // tied: when no matching partial specialization is more specialized than every other (C++:
   // ambiguous, [temp.spec.partial.match] 1), those no other is more specialized than; the first
   // declared of them is still the result, for the checker to report (checkSpecializationTie).
-  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied = nullptr);
+  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied = nullptr,
+                                const Subst* enclosing = nullptr);
 
   // A name as written, found from context: what lookupWritten finds, a using-declaration of an
   // enumerator taken for that enumerator (usingEnumerator).

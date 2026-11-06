@@ -1282,8 +1282,23 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
         Span<Decl*> params = u->templateParams;
         Subst s;
         std::vector<const Ty*> args;
-        for (size_t i = 0; i < lastPart.templateArgs.size() && i < params.size(); ++i)
+        for (size_t i = 0; i < params.size(); ++i)
         {
+          if (static_cast<TemplateParamDecl*>(params[i])->isPack)
+          {
+            // `template<typename... T> using PlusOne = Count<int, T...>`: the pack is the rest of
+            // the arguments, none for `PlusOne<>`, an argument's pack spliced (`PlusOne<U...>`).
+            // It took the first argument alone: `Same<char, short>` was Count<char>.
+            std::vector<const Ty*> rest;
+            for (size_t k = i; k < lastPart.templateArgs.size(); ++k)
+              if (const Ty* a = templateArgument(lastPart.templateArgs[k], params[i], ctx, depth); !spliceIfPack(a, rest))
+                rest.push_back(a);
+            args.push_back(types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())}));
+            s.pairs.push_back({params[i], args.back()});
+            break;
+          }
+          if (i >= lastPart.templateArgs.size())
+            break;
           args.push_back(templateArgument(lastPart.templateArgs[i], params[i], ctx, depth));
           s.pairs.push_back({params[i], args.back()});
         }

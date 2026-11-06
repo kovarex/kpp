@@ -1,0 +1,17 @@
+// spec: a partial specialisation of a member class template whose primary has a default argument (`template<typename U, typename = void> struct Pick` in Wrapper<T>, specialised as `Pick<V*, void>`) is picked for the arguments it matches once the default completes them, as at namespace scope: Wrapper<int>::Pick<char*>::id is the specialisation's. Before, the default was looked for at the enclosing template's place (a member template's parameters begin with the enclosing class's), none was found, and the primary was taken: a silent wrong answer. clang prints the same
+// found comparing kpp with clang (thread I's battery i8)
+template<typename U, typename = void> struct Pick { static constexpr int id = 1; };
+template<typename V> struct Pick<V*, void> { static constexpr int id = 2; };
+template<typename T> struct Wrapper
+{
+  template<typename U, typename = void> struct Pick2 { static constexpr int id = 1; };
+  template<typename V> struct Pick2<V*, void> { static constexpr int id = 2; };
+  template<typename U, typename W = T> struct Pick3 { static constexpr int id = 1; };
+  template<typename V> struct Pick3<V, V> { static constexpr int id = 3; };
+};
+int main()
+{
+  println(Pick<int>::id, " ", Pick<char*>::id, " ", Wrapper<int>::Pick2<int>::id, " ", Wrapper<int>::Pick2<char*>::id);
+  println(Wrapper<int>::Pick3<int>::id, " ", Wrapper<int>::Pick3<char>::id, " ", Wrapper<char>::Pick3<char>::id);
+  return 0;
+}

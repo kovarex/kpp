@@ -948,9 +948,13 @@ auto GlobalScope::Impl::specializationPatterns(ClassDecl* c, Decl* primary, std:
   return true;
 }
 
-auto GlobalScope::Impl::appendDefaultPatterns(Decl* primary, std::vector<const Ty*>& out, int depth) -> void
+auto GlobalScope::Impl::appendDefaultPatterns(Decl* primary, std::vector<const Ty*>& out, int depth, const Subst* enclosing) -> void
 {
-  Span<Decl*> params = primary ? effectiveParams(primary) : Span<Decl*>{};
+  // (The template's own parameters, as out has its own arguments, parameterFor's: a member
+  // template's effective ones begin with the enclosing class template's, so that `Pick<char*>` of
+  // `template<typename U, typename = void> struct Pick` in Wrapper<T> looked for U's default at
+  // the second place, found none, and never matched `Pick<V*, void>`.)
+  Span<Decl*> params = !primary ? Span<Decl*>{} : !primary->templateParams.empty() ? primary->templateParams : effectiveParams(primary);
   for (size_t i = out.size(); i < params.size(); ++i)
   {
     auto* p = static_cast<TemplateParamDecl*>(params[i]);
@@ -962,6 +966,9 @@ auto GlobalScope::Impl::appendDefaultPatterns(Decl* primary, std::vector<const T
       own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
     for (size_t k = 0; k < i; ++k)
       s.pairs.push_back({params[k], out[k]});
+    if (enclosing)
+      for (const Subst::Pair& p : enclosing->pairs)
+        s.pairs.push_back(p);
     TypeContext dctx{lexicalScopeOf(primary), &own, &s, primary->file ? primary->file->tokens : nullptr,
                      primary->file ? primary->file->text : std::string_view()};
     const Ty* t = templateArgument(p->defaultArg, p, dctx, depth + 1);
@@ -1039,7 +1046,8 @@ auto GlobalScope::Impl::argsDependent(const std::vector<const Ty*>& args) -> boo
   return false;
 }
 
-auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied) -> const Ty*
+auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth, std::vector<ClassDecl*>* tied,
+                                             const Subst* enclosing) -> const Ty*
 {
   if (!l.overloads || written.empty() || depth > 24)
     return nullptr;
@@ -1055,7 +1063,7 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
   }
   Decl* primary = primaryOf(*l.overloads);
   // `Table<char*>::kind` names the arguments it writes; the instance has the defaults too.
-  appendDefaultPatterns(primary, args, depth);
+  appendDefaultPatterns(primary, args, depth, enclosing);
   for (const Ty* a : args)
     if (!a || !a->isKnown() || types.isDependent(a))
       return nullptr;
@@ -1265,7 +1273,8 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
           if (primary->kind == NodeKind::ClassDecl)
             normalizeValueArgs(primary->templateParams, args, primary, depth + 1);
         }
-      if (const Ty* spec = matchSpecialization(entries, args, depth))
+      Subst outer = currentTy && currentTy->kind == TyKind::Class ? substFor(currentTy) : Subst{}; // (Wrapper<int>::Pick3<int>: T is int)
+      if (const Ty* spec = matchSpecialization(entries, args, depth, nullptr, outer.empty() ? nullptr : &outer))
       {
         step.decl = spec->decl;
         step.scope = spec->decl->ownScope;
