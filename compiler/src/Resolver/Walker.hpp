@@ -847,6 +847,8 @@
 
     // That f, not noexcept, overrides no noexcept function (an error).
     void checkOverrideNoexcept(FunctionDecl* f);
+    void checkDestructorNoexcept(ClassDecl* c);
+    void checkDestructorRedeclared(FunctionDecl* f);
     // Whether e can throw, for the noexcept operator ([expr.unary.noexcept]): a call of a function
     // not noexcept (its noexcept condition evaluated under the walk's substitution), a throw, a new
     // that allocates; scalar arithmetic, names, literals and the operators of scalars cannot. What it

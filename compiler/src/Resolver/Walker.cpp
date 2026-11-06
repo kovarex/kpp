@@ -3776,8 +3776,8 @@ auto GlobalScope::Impl::Walker::textStored(const std::string& as) -> std::string
 
 auto GlobalScope::Impl::Walker::checkOverrideNoexcept(FunctionDecl* f) -> void
 {
-  // [except.spec] 8: an overrider allows no exception its overridden function does not, whether
-  // it says override or not. (A destructor's noexcept is mostly implicit: not compared here.)
+  // [except.spec] 4: an overrider allows no exception its overridden function does not, whether
+  // it says override or not. (A destructor's, implicit too: checkDestructorNoexcept.)
   if (probing || retypingElements || !file || file->isImported || (f->flags & (DF_Static | DF_Constructor | DF_Destructor)) || !f->templateParams.empty())
     return;
   Decl* cls = impl.owningClassOf(f);
@@ -3794,9 +3794,51 @@ auto GlobalScope::Impl::Walker::checkOverrideNoexcept(FunctionDecl* f) -> void
     impl.reportCheckerError(file, f->token, "this function overrides the noexcept function at " + impl.locationOf(base->file, base->token) + " and is not noexcept itself");
 }
 
+auto GlobalScope::Impl::Walker::checkDestructorNoexcept(ClassDecl* c) -> void
+{
+  // A class's own, every destructor of it having one exception specification; an instance's is checked
+  // when the instance is laid out, as naming it does not instantiate it (collectVtables).
+  if (probing || retypingElements || !file || file->isImported || !c->isDefinition || c->isClosure || c->isTypedUnion || c->bases.empty() || activeSubst || inGenericTemplate())
+    return;
+  const Ty* self = impl.selfType(c);
+  const Ty* base = self && self->isKnown() && !types.isDependent(self) ? impl.destructorLoosens(self) : nullptr;
+  if (!base)
+    return;
+  uint32_t at = c->token;
+  for (Decl* m : membersRead(c))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))
+      at = m->token;
+  impl.reportCheckerError(file, at, Impl::destructorLoosensText(types.toString(self, &impl.symbols), types.toString(base, &impl.symbols)));
+}
+
+auto GlobalScope::Impl::Walker::checkDestructorRedeclared(FunctionDecl* f) -> void
+{
+  // `S::~S() noexcept(false) {}` of `~S();`: [except.spec] 4, by what each says or, with no specifier, the
+  // implicit one's. A template's are compared by nothing here: clang neither.
+  if (!(f->flags & DF_Destructor) || f->name.parts.size() < 2 || probing || retypingElements || !file || file->isImported || activeSubst || inGenericTemplate())
+    return;
+  Decl* cls = impl.owningClassOf(f);
+  if (!cls || cls->kind != NodeKind::ClassDecl)
+    return;
+  const Ty* self = impl.selfType(cls);
+  if (!self || !self->isKnown() || types.isDependent(self))
+    return;
+  auto says = [&](FunctionDecl* d) -> std::optional<bool>
+  {
+    if (d->flags & DF_Noexcept)
+      return impl.isNoexcept(d, nullptr);
+    std::optional<bool> parts = impl.destructorPartsMayThrow(self);
+    return parts ? std::optional<bool>(!*parts) : std::nullopt;
+  };
+  for (Decl* m : membersRead(static_cast<ClassDecl*>(cls)))
+    if (auto* d = static_cast<FunctionDecl*>(m); m != f && m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && says(d) && says(f) && says(d) != says(f))
+      impl.reportCheckerError(file, f->token, "this destructor says otherwise of noexcept than its declaration at " + Impl::locationOf(d->file, d->token));
+}
+
 auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
 {
   checkOverrideNoexcept(f);
+  checkDestructorRedeclared(f);
   // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
   // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
   if (!(f->flags & DF_Override) || probing || retypingElements || !file || file->isImported)
@@ -6129,6 +6171,20 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       return false;
     case NodeKind::ParenExpr: return canThrow(static_cast<ParenExpr*>(e)->inner, unsupported);
     case NodeKind::ThrowExpr: return true;
+    case NodeKind::DeleteExpr:
+    {
+      // As the destructor says, and a deallocation function that says otherwise itself ([except.spec] 10).
+      auto* d = static_cast<DeleteExpr*>(e);
+      bool any = canThrow(d->operand, unsupported);
+      const Ty* p = d->operand->ty ? types.unqualified(types.stripRef(d->operand->ty)) : nullptr;
+      std::optional<bool> mayThrow = p && p->kind == TyKind::Pointer ? impl.destructorMayThrow(p->inner) : std::nullopt;
+      if (!mayThrow)
+      {
+        unsupported = "a delete of what is no pointer, or of a class holding a closure";
+        return false;
+      }
+      return any || *mayThrow || (d->deallocator && (d->deallocator->flags & DF_Noexcept) && impl.isNoexcept(d->deallocator, activeSubst) != std::optional<bool>(true));
+    }
     case NodeKind::UnaryExpr:
       if (!scalar(static_cast<UnaryExpr*>(e)->operand))
         break; // (an overloaded operator)
@@ -6156,6 +6212,28 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(c->callee)->resolved
                      : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
                                                                             : nullptr;
+      // `x.~X()`, `p->~X()`: as the destructor says, a scalar's none ([except.spec] 8).
+      if (auto* m = c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee) : nullptr; m && !m->member.empty() && m->member.last().special == 1)
+      {
+        bool any = canThrow(m->base, unsupported);
+        const Ty* object = m->base->ty ? types.unqualified(types.stripRef(m->base->ty)) : nullptr;
+        if (object && m->op != P::Dot)
+          object = object->kind == TyKind::Pointer ? types.unqualified(object->inner) : nullptr; // (a class's operator->: said below)
+        if (object && m->member.parts.size() > 1)
+        {
+          // `p->Base::~Base()`: that class's.
+          NamedType qualifier{};
+          qualifier.kind = NodeKind::NamedType;
+          qualifier.token = m->token;
+          qualifier.name = m->member;
+          qualifier.name.parts.count -= 1;
+          object = typeOf(&qualifier);
+        }
+        std::optional<bool> mayThrow = object ? impl.destructorMayThrow(object) : std::nullopt;
+        if (!mayThrow)
+          unsupported = "a call of a destructor of a class holding a closure";
+        return any || mayThrow.value_or(false);
+      }
       // `p()`, `(o.*m)()`, `l()`: noexcept as the pointer's function type, or the closure's call operator, says.
       const Ty* through = c->callee && c->callee->ty ? types.unqualified(types.stripRef(c->callee->ty)) : nullptr;
       if (through && through->kind == TyKind::Pointer)
@@ -6176,12 +6254,18 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
                                                                                                           : "a call through a pointer or a closure";
         return false;
       }
-      if (!scalar(e) && !(e->ty && e->ty->kind == TyKind::Void))
-      {
-        unsupported = "a call returning a class (its construction and destruction)";
-        return false;
-      }
+      // A class by value: built where it is wanted, destroyed at the expression's end.
       bool any = false;
+      if (e->ty && !scalar(e) && e->ty->kind != TyKind::Void && !e->ty->isReference())
+      {
+        std::optional<bool> mayThrow = impl.destructorMayThrow(e->ty);
+        if (!mayThrow)
+        {
+          unsupported = "a call returning a class that holds a closure";
+          return false;
+        }
+        any = *mayThrow;
+      }
       for (Expr* a : c->args)
       {
         if (!scalar(a))
@@ -6556,6 +6640,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           impl.reportCheckerError(file, c->token, "struct " + (c->name.empty() ? std::string("(anonymous)") : impl.namePartText(c->name.last())) +
                                                       " derives from " + (base->name.empty() ? std::string("a") : impl.namePartText(base->name.last()) + ",") +
                                                       " a polymorphic class (a struct is a public value type, design.md \"struct and class\"): make it a class");
+      checkDestructorNoexcept(c);
       if (c->ownScope)
         scope = c->ownScope;
       else if (c->name.parts.size() > 1)

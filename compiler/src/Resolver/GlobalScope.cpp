@@ -1909,6 +1909,16 @@ bool GlobalScope::constructsWithoutThrowing(const Ty* t, bool move)
   return impl->constructibleFromSelf(t, move, Impl::TraitForm::Nothrow).value_or(false);
 }
 
+std::optional<bool> GlobalScope::destructorMayThrow(const Ty* t)
+{
+  return impl->destructorMayThrow(t);
+}
+
+const Ty* GlobalScope::destructorLoosens(const Ty* t)
+{
+  return impl->destructorLoosens(t);
+}
+
 Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)
 {
   if (args.empty() || !v->init || !v->file || !v->file->tokens)

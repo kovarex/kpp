@@ -207,6 +207,23 @@
   // member trivially destructible.
   std::optional<bool> triviallyDestructible(const Ty* t, int depth = 0);
 
+  // A destructor's exception specification ([except.spec] 8): what a noexcept-specifier says, defaulted or
+  // not; with none, implicit or written, it may throw when a base's or a member's may (a union's members
+  // count: destructorPartsMayThrow). Unknown: a closure holding something by value among them, which only
+  // the code generator lays out, or a condition that is no constant. Every class answers once (traitValue).
+  std::optional<bool> destructorMayThrow(const Ty* t);
+  std::optional<bool> destructorMayThrowUncached(const Ty* t);
+  std::optional<bool> destructorPartsMayThrow(const Ty* t);
+  // t's destructor is virtual, declared so or by a base's.
+  bool hasVirtualDestructor(const Ty* t, int depth = 0);
+  // The direct base whose noexcept virtual destructor t's, which may throw, overrides ([except.spec] 4); null
+  // when there is none or it is not known.
+  const Ty* destructorLoosens(const Ty* t);
+  static std::string destructorLoosensText(const std::string& of, const std::string& base)
+  {
+    return "the destructor of " + of + " may throw and overrides the noexcept destructor of " + base;
+  }
+
   // isTriviallyCopyable: trivially destructible, and every copy and move constructor and
   // assignment the class has is trivial, at least one of them existing.
   std::optional<bool> triviallyCopyable(const Ty* t);

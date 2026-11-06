@@ -54,7 +54,15 @@ struct JsonParser
       this->parseObject(out);
     else if (c == '[')
       this->parseArray(out);
-    else if (c == '"')
+    else
+      this->parseLeaf(out, c);
+  }
+
+  // Apart from parseValue, which every level of nesting has on the stack: this one's temporaries are
+  // JsonValues, and a debug build gives each its place in the frame.
+  void parseLeaf(JsonValue& out, char c)
+  {
+    if (c == '"')
     {
       out.type = JsonType::string;
       this->parseString(out.stringValue);

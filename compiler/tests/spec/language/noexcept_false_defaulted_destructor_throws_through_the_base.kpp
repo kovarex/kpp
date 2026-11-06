@@ -1,0 +1,17 @@
+// spec: a virtual destructor defaulted noexcept(false) says a call through it may throw: the delete's try catches a derived class's exception and the frame's objects are destroyed, though nothing of the base's own throws; a class holding one, its own destructor defaulted noexcept, has nothing to destroy and an explicit call of it runs nothing; clang's output
+class V { public: virtual ~V() noexcept(false) = default; };
+class W : public V { public: ~W() noexcept(false) override { println("W"); throw 2; } };
+struct Mark { ~Mark() { println("mark"); } };
+void marked(V* p) { Mark m; delete p; println("not here"); }
+struct Quiet { ~Quiet() noexcept(false) = default; };
+struct Wrapped { Quiet q; ~Wrapped() noexcept = default; };
+int main()
+{
+  try { marked(new W); }
+  catch (int e) { println("caught ", e); }
+  Wrapped* w = (Wrapped*)malloc(sizeof(Wrapped));
+  w->~Wrapped();
+  free(w);
+  println("end");
+  return 0;
+}

@@ -1,0 +1,15 @@
+// spec: every declaration of a destructor says the same of noexcept ([except.spec] 4), one without a specifier what the implicit one would; refused where clang refuses it for a non-MSVC target
+// error: destructor_redeclared_with_other_noexcept_is_error.kpp:7: error: this destructor says otherwise of noexcept than its declaration
+// error: destructor_redeclared_with_other_noexcept_is_error.kpp:9: error: this destructor says otherwise of noexcept than its declaration
+// error: destructor_redeclared_with_other_noexcept_is_error.kpp:12: error: this destructor says otherwise of noexcept than its declaration
+// error: destructor_redeclared_with_other_noexcept_is_error.kpp:14: error: this destructor says otherwise of noexcept than its declaration
+struct A { ~A() noexcept(false); };
+A::~A() {}
+struct B { ~B(); };
+B::~B() noexcept(false) {}
+struct T { ~T() noexcept(false) {} };
+struct C { T t; ~C(); };
+C::~C() noexcept {}
+struct D { T t; ~D() noexcept; };
+D::~D() {}
+int main() { return 0; }

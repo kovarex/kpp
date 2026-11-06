@@ -1142,6 +1142,10 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
     if (virtualDestructor)
       addToPrimary(implicit);
   }
+  // An instance's destructor against its bases' ([except.spec] 4; a class of no template: the checker's).
+  if (!args.empty())
+    if (const Ty* base = global.destructorLoosens(key))
+      fail(c, "the destructor of " + types.toString(key, &symbols) + " may throw and overrides the noexcept destructor of " + types.toString(base, &symbols));
   return tables;
 }
 

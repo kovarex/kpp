@@ -465,6 +465,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   if (name == "isFundamental")
     return one() && (isArithmeticKind(one()) || one()->kind == TyKind::Void || one() == types.nullptrType());
   if (name == "isTriviallyDestructible") return one() ? triviallyDestructible(one()) : std::nullopt;
+  if (name == "destructorMayThrow") return one() ? destructorMayThrowUncached(one()) : std::nullopt; // (no trait of the language: destructorMayThrow's cache)
   if (name == "isTriviallyCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
   if (name == "isTriviallyCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
   if (name == "isTriviallyDefaultConstructible") return one() ? triviallyDefaultConstructible(one()) : std::nullopt;
@@ -585,8 +586,19 @@ auto GlobalScope::Impl::directBases(const Ty* t, ClassDecl* def, std::vector<con
                   def->file ? def->file->text : std::string_view()};
   for (const ClassDecl::Base& b : def->bases)
   {
-    const Ty* bt = b.isPack ? nullptr : convertType(b.type, ctx, 0);
-    if (!bt || !bt->isKnown() || types.isDependent(bt))
+    const Ty* bt = convertType(b.type, ctx, 0);
+    // `struct overloaded : Ts...`: a base per element.
+    if (b.isPack && bt && bt->kind == TyKind::Pack)
+    {
+      for (const Ty* element : bt->args)
+      {
+        if (!element || !element->isKnown() || types.isDependent(element))
+          return false;
+        out.push_back(element);
+      }
+      continue;
+    }
+    if (b.isPack || !bt || !bt->isKnown() || types.isDependent(bt))
       return false;
     out.push_back(bt);
   }
@@ -918,9 +930,11 @@ auto GlobalScope::Impl::membersAllow(const Ty* t, ClassDecl* def, TraitForm form
       return p ? std::optional<bool>(false) : std::nullopt;
   }
   std::vector<const Ty*> parts;
-  if (!directBases(t, def, parts) || !fieldTypes(t, def, parts))
+  if (!directBases(t, def, parts))
     return std::nullopt;
-  size_t baseCount = def->bases.size();
+  size_t baseCount = parts.size();
+  if (!fieldTypes(t, def, parts))
+    return std::nullopt;
   for (size_t i = 0; i < parts.size(); ++i)
   {
     const Ty* m = parts[i];
@@ -984,6 +998,122 @@ auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::op
       return r;
   }
   return true;
+}
+
+auto GlobalScope::Impl::destructorMayThrow(const Ty* t) -> std::optional<bool>
+{
+  // (a class holding itself by value is an error of its own: the walk must only end)
+  static thread_local int depth = 0;
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > 64)
+    return std::nullopt;
+  if (t->isReference())
+    return false;
+  const Ty* u = types.unqualified(t);
+  while (u->kind == TyKind::Array)
+    u = types.unqualified(u->inner);
+  TrivialSubject s = trivialSubject(u);
+  if (!s.cls)
+  {
+    if (s.answer)
+      return false; // (a scalar, a pointer, a closure holding nothing)
+    LambdaExpr* l = u->kind == TyKind::Lambda ? lambdaOf(u) : nullptr;
+    bool byReference = l && l->defaultCapture != 1 && std::all_of(l->captures.begin(), l->captures.end(), [](const LambdaCapture& c) { return c.byRef || c.isThis; });
+    return byReference ? std::optional<bool>(false) : std::nullopt;
+  }
+  ++depth;
+  std::optional<bool> answer = traitValue("destructorMayThrow", {resolveSpecialization(s.cls, 0)});
+  --depth;
+  return answer;
+}
+
+auto GlobalScope::Impl::destructorMayThrowUncached(const Ty* t) -> std::optional<bool>
+{
+  ClassDecl* def = classDefinition(t);
+  if (!def)
+    return std::nullopt;
+  Subst subst = substFor(t);
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (m->flags & DF_Noexcept))
+    {
+      std::optional<bool> declared = isNoexcept(static_cast<FunctionDecl*>(m), subst.pairs.empty() ? nullptr : &subst);
+      return declared ? std::optional<bool>(!*declared) : std::nullopt;
+    }
+  return destructorPartsMayThrow(t);
+}
+
+auto GlobalScope::Impl::destructorPartsMayThrow(const Ty* t) -> std::optional<bool>
+{
+  ClassDecl* def = classDefinition(t);
+  std::vector<const Ty*> parts;
+  if (!def || !directBases(t, def, parts))
+    return std::nullopt;
+  Subst subst = substFor(t);
+  const Subst* sp = subst.pairs.empty() ? nullptr : &subst;
+  DeclContext dc;
+  declContextFor(def, dc);
+  TypeContext ctx{dc.scope, &dc.params, sp, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+  for (Decl* m : membersRead(def))
+  {
+    // An anonymous struct's or union's: a part, as its members are the class's own.
+    if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
+    {
+      const Ty* anonymous = selfType(m);
+      parts.push_back(anonymous && sp ? substitute(anonymous, *sp) : anonymous);
+      continue;
+    }
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+      continue;
+    if (m->when)
+    {
+      // (design.md 19: a false `when`'s member is not there)
+      std::optional<int64_t> holds = m->whenKnown >= 0 ? std::optional<int64_t>(m->whenKnown) : constEval(m->when, ctx, 0);
+      if (!holds)
+        return std::nullopt;
+      if (!*holds)
+        continue;
+    }
+    parts.push_back(declaredTypeOf(m, sp, 0));
+  }
+  if (def->isTypedUnion)
+    for (Decl* a : def->alternatives)
+      parts.push_back(declaredTypeOf(a, sp, 0));
+  bool unknown = false;
+  for (const Ty* part : parts)
+  {
+    std::optional<bool> r = destructorMayThrow(part);
+    if (r && *r)
+      return true;
+    unknown = unknown || !r;
+  }
+  return unknown ? std::nullopt : std::optional<bool>(false);
+}
+
+auto GlobalScope::Impl::hasVirtualDestructor(const Ty* t, int depth) -> bool
+{
+  ClassDecl* def = depth <= 64 ? classDefinition(t) : nullptr;
+  std::vector<const Ty*> bases;
+  if (!def)
+    return false;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (m->flags & (DF_Virtual | DF_Override)))
+      return true;
+  if (directBases(t, def, bases))
+    for (const Ty* b : bases)
+      if (hasVirtualDestructor(b, depth + 1))
+        return true;
+  return false;
+}
+
+auto GlobalScope::Impl::destructorLoosens(const Ty* t) -> const Ty*
+{
+  ClassDecl* def = classDefinition(t);
+  std::vector<const Ty*> bases;
+  if (!def || def->bases.empty() || destructorMayThrow(t) != std::optional<bool>(true) || !directBases(t, def, bases))
+    return nullptr;
+  for (const Ty* b : bases)
+    if (hasVirtualDestructor(b) && destructorMayThrow(b) == std::optional<bool>(false))
+      return b;
+  return nullptr;
 }
 
 auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>

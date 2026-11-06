@@ -1,0 +1,11 @@
+// spec: naming an instance does not make it: D<M>'s destructor would loosen B's, and a pointer to it compiles as in clang
+class B { public: virtual ~B() {} };
+struct M { ~M() noexcept(false) {} };
+template <typename T> class D : public B { public: T m; };
+D<int> fine;
+D<M>* onlyNamed = nullptr;
+int main()
+{
+  println(onlyNamed == nullptr);
+  return 0;
+}

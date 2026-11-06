@@ -449,6 +449,11 @@ public:
   // Whether moving a t (else copying one) cannot throw: isNothrowMoveConstructible<t>'s answer. False
   // where it cannot be told.
   bool constructsWithoutThrowing(const Ty* t, bool move);
+  // Whether t's destructor may throw ([except.spec] 8); unknown with a closure holding something by
+  // value among its parts, which the code generator lays out.
+  std::optional<bool> destructorMayThrow(const Ty* t);
+  // The direct base of t whose noexcept virtual destructor t's, which may throw, overrides; null: none.
+  const Ty* destructorLoosens(const Ty* t);
   // The initializer of v (a data member's default initializer, a static member's or a variable
   // template's) for one instantiation: a copy typed under args once and kept, as instanceBody's
   // copies of function bodies are; v's own initializer when args is empty. Thread-safe.

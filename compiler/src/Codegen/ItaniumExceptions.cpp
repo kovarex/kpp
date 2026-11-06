@@ -39,10 +39,14 @@ auto codegen::Emitter::itaniumTerminatePad() -> std::string
 auto codegen::Emitter::emittingNoexcept() -> bool
 {
   static const TemplateArgs none;
-  if (bodyNow && bodyNow == noexceptLambdaBody)
+  if (noexceptDestructorHelper || (bodyNow && bodyNow == noexceptLambdaBody))
     return true;
-  return currentFunction && bodyNow && bodyNow == currentFunction->body && (currentFunction->flags & DF_Noexcept) &&
-         global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
+  if (!currentFunction || !bodyNow || bodyNow != currentFunction->body)
+    return false;
+  // A destructor is noexcept as its class says, with no specifier too ([except.spec] 8).
+  if ((currentFunction->flags & DF_Destructor) && currentClassTy && isClass(currentClassTy))
+    return !destructionMayThrow(currentClassTy, currentFunction);
+  return (currentFunction->flags & DF_Noexcept) && global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
 }
 
 auto codegen::Emitter::itaniumChain(const std::vector<Object>& objects, size_t from, const std::string& next) -> std::string
@@ -256,6 +260,7 @@ auto codegen::Emitter::destructorThunk(const Ty* t, Node* at) -> std::string
   choicesRecorded = false;
   try
   {
+    noexceptDestructorHelper = isClass(t) && !destructionMayThrow(t, at);
     destroy("%o", t, at);
     fn += "  ret void\n";
     shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat " + (usesEH ? "personality ptr " + personality() + " " : std::string()) +

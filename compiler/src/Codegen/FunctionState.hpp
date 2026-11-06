@@ -131,6 +131,7 @@
     // locals are declared in it, staticLocal).
     Node* bodyNow = nullptr;
     Node* noexceptLambdaBody = nullptr; // bodyNow when it is a noexcept lambda's (emittingNoexcept)
+    bool noexceptDestructorHelper = false; // emitting the helper of a class whose destructor is noexcept (destructorThunk)
     // Named return elision (design.md 23): the local the function's every return returns, built in
     // the caller's result (sretAddr) instead of a slot of its own; null when there is none.
     VariableDecl* namedReturn = nullptr;

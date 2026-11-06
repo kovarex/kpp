@@ -1,0 +1,40 @@
+// spec: a destructor may throw only where it overrides no noexcept one ([except.spec] 4), implicit, written or defaulted, by what its parts make it ([except.spec] 8); each refused where clang refuses it for a non-MSVC target (its MSVC mode warns)
+// error: destructor_loosening_noexcept_is_error.kpp:17: error: the destructor of D1 may throw and overrides the noexcept destructor of B1
+// error: destructor_loosening_noexcept_is_error.kpp:19: error: the destructor of D2 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:21: error: the destructor of D3 may throw and overrides the noexcept destructor of B3
+// error: destructor_loosening_noexcept_is_error.kpp:22: error: the destructor of D4 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:23: error: the destructor of D5 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:24: error: the destructor of D6 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:25: error: the destructor of D7 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:27: error: the destructor of D8 may throw and overrides the noexcept destructor of B2
+// error: destructor_loosening_noexcept_is_error.kpp:30: error: the destructor of D9 may throw and overrides the noexcept destructor of B9
+// error: destructor_loosening_noexcept_is_error.kpp:33: error: the destructor of D10 may throw and overrides the noexcept destructor of B10
+// error: destructor_loosening_noexcept_is_error.kpp:36: error: the destructor of D11 may throw and overrides the noexcept destructor of C11
+// error: destructor_loosening_noexcept_is_error.kpp:37: error: the destructor of D12 may throw and overrides the noexcept destructor of C11
+// error: destructor_loosening_noexcept_is_error.kpp:39: error: the destructor of D13 may throw and overrides the noexcept destructor of B2
+struct M { ~M() noexcept(false) {} };
+class B1 { public: virtual ~B1() noexcept {} };
+class D1 : public B1 { public: ~D1() noexcept(false) {} };
+class B2 { public: virtual ~B2() {} };
+class D2 : public B2 { public: ~D2() noexcept(false) {} };
+class B3 { public: virtual ~B3() = 0; };
+class D3 : public B3 { public: ~D3() noexcept(false) {} };
+class D4 : public B2 { public: M m; };
+class D5 : public B2 { public: M m; ~D5() {} };
+class D6 : public B2 { public: M m; ~D6() noexcept(false) {} };
+class D7 : public B2 { public: M m[3]; };
+class Empty {};
+class D8 : public Empty, public B2 { public: M m; };
+class A9 { public: virtual ~A9() {} };
+class B9 : public A9 {};
+class D9 : public B9 { public: ~D9() noexcept(false) {} };
+class A10 { public: virtual ~A10() noexcept(false) {} };
+class B10 : public A10 { public: ~B10() noexcept {} };
+class D10 : public B10 { public: ~D10() noexcept(false) {} };
+class A11 { public: virtual ~A11() noexcept(false) {} };
+class C11 { public: virtual ~C11() {} };
+class D11 : public A11, public C11 {};
+class D12 : public C11, public A11 {};
+union U { M m; int i; U() {} ~U() {} };
+class D13 : public B2 { public: U u; };
+int main() { return 0; }

@@ -1,0 +1,23 @@
+// spec: as destructor_without_specifier_terminates, the destructor reached through delete and a base's virtual one, an implicit one of a class holding it, and a class deriving from it
+void onTerminate()
+{
+  println("terminate");
+  fflush(nullptr);
+  exit(0);
+}
+class Base { public: virtual ~Base() {} };
+class Derived : public Base { public: ~Derived() override { println("throwing"); throw 1; } };
+void destroy(Base* p) { delete p; }
+int main()
+{
+  setTerminate(onTerminate);
+  try
+  {
+    destroy(new Derived);
+  }
+  catch (int)
+  {
+    println("caught past the destructor");
+  }
+  return 0;
+}

@@ -1,0 +1,15 @@
+// spec: an instance's destructor is compared with its bases' when the instance is made, not when it is named: D<M> is refused where an object of it is made, D<int> compiles, as clang does for a non-MSVC target
+// error: the destructor of D<M> may throw and overrides the noexcept destructor of B
+// error: the destructor of E<false> may throw and overrides the noexcept destructor of B
+class B { public: virtual ~B() {} };
+struct M { ~M() noexcept(false) {} };
+struct P { ~P() noexcept {} };
+template <typename T> class D : public B { public: T m; };
+template <bool N> class E : public B { public: ~E() noexcept(N) {} };
+D<int> fine;
+D<P> alsoFine;
+E<true> alright;
+D<M>* onlyNamed = nullptr;
+D<M> refused;
+E<false> refusedToo;
+int main() { return 0; }

@@ -1,0 +1,20 @@
+// spec: a destructor with no specifier may throw when a base's or a member's may ([except.spec] 8): its own throw passes, an implicit one takes a base's noexcept(false), and the objects of the frame are destroyed; clang's output
+struct Throwing { ~Throwing() noexcept(false) {} };
+struct S { Throwing t; ~S() { println("in"); throw 1; } };
+class V { public: virtual ~V() noexcept(false) { println("V"); throw 2; } };
+class W : public V { };
+struct Mark { ~Mark() { println("mark"); } };
+void marked(V* p) { Mark m; delete p; println("not here"); }
+int main()
+{
+  try { S s; }
+  catch (int e) { println("caught ", e); }
+  try { W w; }
+  catch (int e) { println("caught ", e); }
+  try { V* p = new W; delete p; }
+  catch (int e) { println("caught ", e); }
+  try { marked(new W); }
+  catch (int e) { println("caught ", e); }
+  println("end");
+  return 0;
+}

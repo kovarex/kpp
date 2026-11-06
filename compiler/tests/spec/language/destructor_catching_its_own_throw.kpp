@@ -1,0 +1,20 @@
+// spec: a noexcept destructor ends the program only when an exception leaves it: a try in its body catches what the body throws and what a function it calls throws; clang's output
+struct S
+{
+  int n = 0;
+  ~S()
+  {
+    try { n = 1; throw 5; }
+    catch (int e) { println("caught inside ", e); }
+    println("left");
+  }
+};
+void thrower() { throw 7; }
+struct Q { ~Q() { try { thrower(); } catch (...) { println("any"); } } };
+int main()
+{
+  { S s; }
+  { Q q; }
+  println("end");
+  return 0;
+}

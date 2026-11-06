@@ -1,0 +1,39 @@
+// spec: what [except.spec] 4 allows of destructors: looser where the base's may throw too, tighter anywhere, a virtual one over a non-virtual base's, a redeclaration saying the implicit one's, parts that are no objects of the class (a pointer, a reference, a static member); clang compiles them all
+struct M { ~M() noexcept(false) {} };
+class A1 { public: virtual ~A1() noexcept(false) {} };
+class D1 : public A1 { public: ~D1() noexcept(false) {} };
+class D2 : public A1 { public: ~D2() {} };
+class B3 { public: virtual ~B3() {} };
+class D3 : public B3 { public: M m; ~D3() noexcept {} };
+class B4 { public: virtual ~B4() {} M m; };
+class D4 : public B4 {};
+class D5 : public B4 { public: ~D5() {} };
+class D6 : public B4 { public: ~D6() noexcept {} };
+class D7 : public B3 { public: M* p; M& r; D7(M& m) : r(m) {} };
+class D8 : public B3 { public: static M s; };
+class C9 { public: virtual ~C9() {} };
+class D9 : public A1, public C9 { public: ~D9() noexcept {} };
+class C10 { public: ~C10() {} };
+class D10 : public A1, public C10 {};
+class X { public: ~X() noexcept(false) {} };
+class D11 : public X { public: virtual ~D11() noexcept {} };
+class D12 : public X { public: virtual ~D12() {} };
+class D13 : public D12 { public: ~D13() noexcept {} };
+class D14 : public A1 {};
+class D15 : public D14 { public: ~D15() noexcept(false) {} };
+struct R1 { ~R1(); };
+R1::~R1() noexcept {}
+struct R2 { M m; ~R2(); };
+R2::~R2() noexcept(false) {}
+struct R3 { ~R3() noexcept; };
+R3::~R3() {}
+struct R4 { M m; ~R4() noexcept(false); };
+R4::~R4() {}
+int main()
+{
+  D3 d3;
+  D6 d6;
+  D13 d13;
+  println("compiled");
+  return 0;
+}

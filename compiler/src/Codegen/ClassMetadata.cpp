@@ -467,7 +467,7 @@ auto codegen::Emitter::destructionMayThrow(const Ty* t, Node* at, int depth) -> 
   t = types.stripRef(t);
   if (t->kind == TyKind::Array)
     return destructionMayThrow(t->inner, at, depth + 1);
-  if (depth > 16 || !(isClass(t) || isLambda(t)) || !needsDestruction(t, at))
+  if (!(isClass(t) || isLambda(t)))
     return false;
   if (auto it = throwingDestructionCache.find(t); it != throwingDestructionCache.end())
     return it->second;
@@ -481,9 +481,11 @@ auto codegen::Emitter::destructionMayThrow(const Ty* t, Node* at, int depth) -> 
   {
     noteLayout(t);
     ClassDecl* c = classDef(t->decl, at);
-    FunctionDecl* dtor = c->isTypedUnion ? nullptr : findDestructor(c);
-    if (dtor && (dtor->flags & DF_Noexcept))
-      result = !global.isNoexcept(dtor, global.classArgsOf(canonicalClass(t, at)));
+    // (the resolver's rule, [except.spec] 8; it leaves to this walk a class with a closure among its parts)
+    if (std::optional<bool> known = global.destructorMayThrow(canonicalClass(t, at)))
+      result = *known;
+    else if (depth > 64)
+      fail(at, "the destruction of " + types.toString(t, &symbols) + ", nested too deeply to say whether it may throw");
     else if (c->isTypedUnion)
     {
       for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
@@ -567,6 +569,13 @@ auto codegen::Emitter::destroyMembers(const std::string& addr, const Ty* t, Node
   std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
   if (std::any_of(fieldTypes.begin(), fieldTypes.end(), [&](const Ty* ft) { return !ft->isReference() && destructionMayThrow(ft, at); }))
   {
+    // `~S() noexcept = default;` over a member's that may throw: the program ends there, so the members
+    // go in a noexcept frame of their own, the helper's, as a function of no body has none.
+    if (needsDestruction(t, at) && !destructionMayThrow(t, at) && !emittingNoexcept())
+    {
+      callDestructor(destructorThunk(t, at), addr, false);
+      return;
+    }
     // A member's or base's destructor may throw: they are a scope of their own, built in order
     // (bases, then members), so that one throwing leaves those built before it to be destroyed.
     pushScope();

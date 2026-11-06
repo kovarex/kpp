@@ -877,9 +877,10 @@ kpp/test_check_char_pointers_is_error.
   Uncaught exceptions print `unhandled exception of type T: message`, call the terminate handler
   `setTerminate` installed (one for the program, kpp's own on every target), and abort; the search
   ends the program before anything unwinds, the throw site on the stack (2026-11-04). Rules that follow
-  from this: a destructor is noexcept unless it says otherwise, as in C++, and a `noexcept(false)` one
-  throws to the scope that ran it (spec language/noexcept_false_destructor_throws_to_its_caller);
-  `extern "C"` functions do not throw (calls to them stay
+  from this: a destructor is noexcept unless it or a base's or member's says otherwise, as in C++
+  (see "A destructor's exception specification"), and a `noexcept(false)` one throws to the scope that
+  ran it (spec language/noexcept_false_destructor_throws_to_its_caller); `extern "C"` functions do not
+  throw (calls to them stay
   plain calls); an exception cannot pass through a C callback frame that was not compiled for
   unwinding; a handler of a pointer by value or by const reference takes a thrown pointer that
   converts to it, as C++'s [except.handle] 3.3 and 3.4 have it (2026-11-05, 0b2ed657: a derived
@@ -4294,11 +4295,31 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   conditional of the two is the plain type, `+closure` and a closure's conversion carry its call
   operator's. The noexcept operator reads it through a pointer, a member pointer and a closure. An
   overrider of a noexcept function must be noexcept, keyword `override` or not, and every declaration
-  of a function says the same (destructors are not compared: theirs is mostly implicit). A noexcept
-  lambda's body ends the program as a noexcept function's does: the specifier was read and dropped
-  until now, so its caller's catch took the exception. Open: a handler of `void (*)()` takes no
-  thrown noexcept pointer yet (spec language/noexcept_pointer_thrown_is_caught_as_a_plain_pointer,
-  pending for B). Specs language/noexcept_*, clang's output.
+  of a function says the same. A noexcept lambda's body ends the program as a noexcept function's
+  does: the specifier was read and dropped until now, so its caller's catch took the exception. A
+  handler of `void (*)()` takes a thrown noexcept pointer ([except.handle] 3.3, 1dd08930). Specs
+  language/noexcept_*, clang's output.
+
+- **A destructor's exception specification** (D, 2026-11-06, [except.spec] 8, the rest of kovarex's
+  "full C++17 behaviour"). A noexcept-specifier says, defaulted or not; with none, written or implicit,
+  a destructor may throw exactly when a base's or a member's may, the variant members of a union and
+  of an anonymous union among them, pointers, references and statics not. One answer, the resolver's
+  destructorMayThrow, cached as a trait; a closure's parts are the code generator's, so the checker
+  does not know a class holding a closure by value (its override is not refused, the operator says it
+  does not decide) and Emitter::destructionMayThrow walks such a class itself. Three things read it:
+  the noexcept operator (`x.~X()`, `p->Base::~Base()`, `delete p` with a deallocation function that
+  says otherwise, a call returning a class by value; always false until now, a silent wrong answer);
+  the body, as a noexcept function's (emittingNoexcept): a throw leaving a destructor with no specifier
+  ended up in the first try above it, silently, until now, as a call of one is no invoke; and the
+  override check: a destructor that may throw over a noexcept virtual one is an error, also an implicit
+  one, by a member's noexcept(false) ([except.spec] 4; clang's MSVC mode only warns). A class of no
+  template is checked where it is written, an instance when it is laid out (collectVtables), as naming
+  it does not instantiate it. `S::~S() noexcept(false) {}` of `~S();` says otherwise than its
+  declaration, with no specifier what the implicit one would. `~S() noexcept = default;` over a member's
+  that may throw has no body to be noexcept: its members go in the destructor helper, which is.
+  A debug build's noexcept destructor holding a call that may throw has a frame 8 bytes larger (the
+  funclets' UnwindHelp on Windows). Specs language/destructor_*, language/noexcept_*destructor*,
+  templates/destructor_*.
 
 - **A member function's qualifiers are part of its pointer's type** (D, 2026-11-06, as C++: a silent
   wrong answer fixed). `R (K::*)()`, `R (K::*)() const`, `volatile`, `&` and `&&` are five types
