@@ -1,0 +1,27 @@
+// spec: an aggregate made from a pack, `T{v...}`, takes the elements as a brace list takes its values ([dcl.init.aggr]): its bases first, then its members, each named bit-field on its own (`Bits{1u, 2u}` is a = 1, b = 2, c = 0 over `unsigned a : 3; unsigned b : 5; int c;`), a reference member referring to its element, and the parts left over value-initialized (`Left{1, 2}`: z its default member initializer 7, q Q()'s 42); clang gives the same numbers
+// found by thread B (2026-11-06): each field of the layout took one element, one storage unit of bit-fields one (`Bits{1u, 2u}` gave 1 0 2, three elements were refused), the members left over stayed zero, a base took no element (refused) and a reference member held its element's value (reading it crashed)
+struct Bits { unsigned a : 3; unsigned b : 5; int c; };
+struct Q { int v; Q() : v(42) {} };
+struct Left { int x; int y; int z = 7; Q q; };
+struct Base { int b; };
+struct Der : Base { int d; int e = 9; };
+struct RefHolder { int& r; int v; };
+template<class T, class... A> T make(A... v) { return T{v...}; }
+template<class T, class... A> T makeRef(A&&... v) { return T{forward<A>(v)...}; }
+
+int main()
+{
+  Bits s1 = make<Bits>(1u, 2u);
+  Bits s2 = make<Bits>(1u, 2u, 3);
+  Bits s3 = make<Bits>(9u, 33u, -4);
+  println(s1.a, " ", s1.b, " ", s1.c, " ", s2.a, " ", s2.b, " ", s2.c, " ", s3.a, " ", s3.b, " ", s3.c);
+  Left l = make<Left>(1, 2);
+  Left l1 = make<Left>(1);
+  Der d = make<Der>(Base{5}, 6);
+  println(l.x, " ", l.y, " ", l.z, " ", l.q.v, " ", l1.x, " ", l1.y, " ", l1.z, " ", l1.q.v, " ", d.b, " ", d.d, " ", d.e);
+  int i = 11;
+  RefHolder h = makeRef<RefHolder>(i, 3);
+  i = 12;
+  println(h.r, " ", h.v);
+  return 0;
+}

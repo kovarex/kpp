@@ -1283,16 +1283,49 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     }
     if (!hasUserConstructors(c))
     {
+      // An aggregate: the elements go to its parts as a brace list's values do, the bases first,
+      // then the members, each named bit field on its own (aggregateMembers), a reference member
+      // bound; the parts left over are value-initialized, as from `{}`. Until 2026-11-06 each
+      // field of the layout took one element: `S{v...}` over `unsigned a : 3; unsigned b : 5; int
+      // c;` put 2 into c where C++ puts it into b (one storage unit is one field), a member left
+      // over stayed zero (its default member initializer and constructor never ran), and a
+      // reference member held the value instead of referring to it (B's find).
       const StructInfo& info = structFor(t, at);
+      if (info.isUnion)
+        fail(at, "a pack of " + std::to_string(count) + " values for the union " + qualifiedName(c) + ", which holds one");
+      std::vector<Decl*> members = aggregateMembers(info, c);
+      if (count > info.bases.size() + members.size())
+        unsupported(at, "more constructor arguments than " + qualifiedName(c) + " has fields");
       storeZero(t, addr, at);
-      size_t i = 0;
-      forEachPackElement(pattern, at, [&](size_t)
+      storeVptrs(addr, info);
+      InlineParts parts(*this, at);
+      std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
+      size_t next = 0;
+      auto initializePart = [&](size_t i, Expr* value)
       {
-        if (i >= info.fieldDecls.size())
-          unsupported(at, "more constructor arguments than " + qualifiedName(c) + " has fields");
-        Decl* d = info.fieldDecls[i++];
-        initializeFrom(gep(info.name, addr, fieldIndexOf(info, d)), info.fieldTypes[fieldIndexOf(info, d)], pattern, at);
-      });
+        if (i < info.bases.size())
+        {
+          auto& [baseDef, baseFieldIdx] = info.bases[i];
+          std::string baseAddr = gep(info.name, addr, baseFieldIdx);
+          const Ty* bt = info.fieldTypes[baseFieldIdx];
+          if (value)
+            initializeFrom(baseAddr, bt, value, at);
+          else if (needsConstruction(bt, at))
+            defaultConstruct(baseAddr, bt, at);
+          else
+            return;
+          parts.built(baseAddr, bt);
+          return;
+        }
+        if (i == info.bases.size() && !info.bases.empty())
+          storeVptrs(addr, info); // the bases built pointed it at theirs
+        initializeAggregateMember(addr, t, info, members[i - info.bases.size()], value, zeroedUnits, parts, at);
+      };
+      forEachPackElement(pattern, at, [&](size_t) { initializePart(next++, pattern); });
+      for (; next < info.bases.size() + members.size(); ++next)
+        initializePart(next, nullptr);
+      if (members.empty() && !info.bases.empty())
+        storeVptrs(addr, info);
       return;
     }
   }
@@ -1482,15 +1515,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       }
       storeVptrs(addr, info); // the bases built pointed it at theirs
     }
-    // The members the values go to: the fields, and each bit field of a storage unit on its
-    // own (the unit's first bit field stands for the unit among the fields).
-    std::vector<Decl*> members;
-    for (Decl* d : info.fieldDecls)
-      if (d->kind == NodeKind::VariableDecl && bitfieldIn(info, d))
-        for (Decl* m : unitMembers(info, c, d))
-          members.push_back(m);
-      else
-        members.push_back(d);
+    // The members the values go to (aggregateMembers).
+    std::vector<Decl*> members = aggregateMembers(info, c);
     // Which value goes to which member: in order, or by name for `.x = 1` designators.
     std::vector<Expr*> valueOf(members.size(), nullptr);
     std::vector<std::vector<Expr*>> elided(members.size()); // an array member's values without their braces
@@ -1584,46 +1610,66 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         ++i;
         continue;
       }
-      Expr* value = valueOf[i++];
-      if (d->kind == NodeKind::VariableDecl)
-        if (const BitfieldInfo* bits = bitfieldIn(info, d))
-        {
-          initializeBitfield(addr, t, info, static_cast<VariableDecl*>(d), *bits, value != nullptr, value, zeroedUnits, at);
-          continue;
-        }
-      std::string fieldAddr = info.isUnion ? addr : gep(info.name, addr, fieldIndexOf(info, d));
-      const Ty* ft = info.isUnion ? unionMemberType(t, d, at) : info.fieldTypes[fieldIndexOf(info, d)];
-      const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
-      bool reference = ft->isReference() || (declared && declared->isReference());
-      if (value)
-      {
-        if (reference)
-          bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at); // `Ref r{x}`: the member refers to x
-        else
-        {
-          initializeFrom(fieldAddr, ft, value, at);
-          if (!info.isUnion)
-            parts.built(fieldAddr, ft);
-        }
-        continue;
-      }
-      if (d->kind != NodeKind::VariableDecl)
-        continue;
-      auto* v = static_cast<VariableDecl*>(d);
-      if (v->init && reference)
-        withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, v); });
-      else if (v->init)
-        withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
-      else if (isClass(ft))
-        defaultConstruct(fieldAddr, ft, at);
-      else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
-        constructArray(fieldAddr, ft, at);
-      if (!reference && !info.isUnion)
-        parts.built(fieldAddr, ft);
+      initializeAggregateMember(addr, t, info, d, valueOf[i++], zeroedUnits, parts, at);
     }
     return;
   }
   unsupported(at, "a constructor of " + qualifiedName(c) + " taking " + std::to_string(args.size()) + " arguments");
+}
+
+auto codegen::Emitter::aggregateMembers(const StructInfo& info, ClassDecl* c) -> std::vector<Decl*>
+{
+  std::vector<Decl*> members;
+  for (Decl* d : info.fieldDecls)
+    if (d->kind == NodeKind::VariableDecl && bitfieldIn(info, d))
+    {
+      for (Decl* m : unitMembers(info, c, d))
+        if (!static_cast<VariableDecl*>(m)->name.empty())
+          members.push_back(m);
+    }
+    else
+      members.push_back(d);
+  return members;
+}
+
+auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const Ty* t, const StructInfo& info, Decl* d, Expr* value,
+                                                 std::set<size_t>& zeroedUnits, InlineParts& parts, Node* at) -> void
+{
+  if (d->kind == NodeKind::VariableDecl)
+    if (const BitfieldInfo* bits = bitfieldIn(info, d))
+    {
+      initializeBitfield(addr, t, info, static_cast<VariableDecl*>(d), *bits, value != nullptr, value, zeroedUnits, at);
+      return;
+    }
+  std::string fieldAddr = info.isUnion ? addr : gep(info.name, addr, fieldIndexOf(info, d));
+  const Ty* ft = info.isUnion ? unionMemberType(t, d, at) : info.fieldTypes[fieldIndexOf(info, d)];
+  const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
+  bool reference = ft->isReference() || (declared && declared->isReference());
+  if (value)
+  {
+    if (reference)
+      bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at); // `Ref r{x}`: the member refers to x
+    else
+    {
+      initializeFrom(fieldAddr, ft, value, at);
+      if (!info.isUnion)
+        parts.built(fieldAddr, ft);
+    }
+    return;
+  }
+  if (d->kind != NodeKind::VariableDecl)
+    return;
+  auto* v = static_cast<VariableDecl*>(d);
+  if (v->init && reference)
+    withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, v); });
+  else if (v->init)
+    withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
+  else if (isClass(ft))
+    defaultConstruct(fieldAddr, ft, at);
+  else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
+    constructArray(fieldAddr, ft, at);
+  if (!reference && !info.isUnion)
+    parts.built(fieldAddr, ft);
 }
 
 auto codegen::Emitter::bindingAddress(VariableDecl* v, Node* e, std::string& out) -> bool

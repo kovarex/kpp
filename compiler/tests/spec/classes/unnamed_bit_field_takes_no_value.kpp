@@ -1,0 +1,22 @@
+// spec: an unnamed bit-field is no member and takes no value of a brace list ([class.bit] 2, [dcl.init.aggr] 1): `GapF{1, 2.5f}` over `int a : 3; int : 2; float f;` is a = 1, f = 2.5, and `Gap{1, 2, 3}` over `int a : 3; int : 2; int b : 3; int c;` is a = 1, b = 2, c = 3, one first in its unit too (`GapFirst{3, 4}`), from a pack (`T{v...}`) and at compile time alike (clang gives the same numbers)
+// found by thread D (2026-11-06): codegen gave the unnamed bit-field a value of the list, so 2.5f went into its bits and f stayed 0, and Gap's 2 too (b 3, c 0); the compile-time evaluator had it right
+struct Gap { int a : 3; int : 2; int b : 3; int c; };
+struct GapF { int a : 3; int : 2; float f; };
+struct GapFirst { int : 4; int a : 4; int b; };
+template<class T, class... A> T make(A... v) { return T{v...}; }
+constexpr int sum(Gap g) { return g.a * 100 + g.b * 10 + g.c; }
+constexpr Gap cg{1, 2, 3};
+
+int main()
+{
+  Gap g{1, 2, 3};
+  GapF f{1, 2.5f};
+  GapFirst h{3, 4};
+  Gap m = make<Gap>(1, 2, 3);
+  GapF mf = make<GapF>(1, 2.5f);
+  println(g.a, " ", g.b, " ", g.c, " ", f.a, " ", f.f, " ", h.a, " ", h.b, " ", m.a, " ", m.b, " ", m.c, " ", mf.a, " ", mf.f);
+  constexpr int s = sum(Gap{1, 2, 3});
+  static_assert(sum(Gap{1, 2, 3}) == 123);
+  println(s, " ", sum(cg), " ", sum(g));
+  return 0;
+}

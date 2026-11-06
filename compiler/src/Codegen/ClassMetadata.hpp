@@ -327,6 +327,21 @@
     // The bit fields that share first's storage unit, in declaration order (first among them).
     std::vector<Decl*> unitMembers(const StructInfo& info, ClassDecl* c, Decl* first);
 
+    // The members an aggregate's values go to after its bases, in order: the layout's fields, each
+    // named bit field of a storage unit on its own (the unit's first bit field stands for the unit
+    // among the fields, StructInfo::fieldDecls); an unnamed bit field is no member and takes no value
+    // ([class.bit] 2: `{1, 2.5f}` for `int a : 3; int : 2; float f;` is a and f, where 2.5f went
+    // into the unnamed bits until 2026-11-06).
+    std::vector<Decl*> aggregateMembers(const StructInfo& info, ClassDecl* c);
+
+    // Member d of the aggregate of class t at addr initialized: from value (a brace list's value, a
+    // pack's element), a reference member bound to it; or, with none, value-initialized as from `{}`
+    // (its default member initializer, its default constructor; a bit field's unit zeroed once:
+    // zeroedUnits). Each part made goes to parts. The brace list's and the pack's paths of
+    // constructInto.
+    void initializeAggregateMember(const std::string& addr, const Ty* t, const StructInfo& info, Decl* d, Expr* value,
+                                   std::set<size_t>& zeroedUnits, InlineParts& parts, Node* at);
+
     // A bit field initialised: from value (an aggregate's element, a constructor initializer's
     // argument; `: flag()` is explicit with none, a zero), else from its default member
     // initializer (`bool known : 1 = true;`). It shares its storage unit with its neighbours: the
