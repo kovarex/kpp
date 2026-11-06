@@ -1,0 +1,97 @@
+// spec: the type traits answer as clang's and g++'s libraries do, over every kind of type: a union is no class, an enumeration is not fundamental, a derived class of an abstract one default-constructs, C(C&) is no trivial copy, a destructor of its own is no trivial construction, a private or deleted constructor or destructor is none of the constructible ones, a union member that copies otherwise deletes the union's copy, int&& is no copy, and an aggregate takes its values in parentheses (C++20)
+// found by thread J's trait battery (n17, 2026-11-06): the stdlib's containers choose memcpy or element copies by these
+extern "C" int printf(const char* format, ...);
+enum E { e0 };
+enum class C : short { c0 };
+struct Empty {};
+struct Pod { int a; float b; };
+struct PodArr { int a[3]; char c; };
+struct Nested { Pod p; Empty e; };
+struct DefInit { int a = 1; };
+struct UserCtor { int a; UserCtor() : a(1) {} };
+struct ArgCtor { int a; ArgCtor(int x) : a(x) {} };
+struct ExplicitCtor { int a; explicit ExplicitCtor(int x) : a(x) {} };
+struct UserDtor { int a; ~UserDtor() {} };
+struct DefDtor { int a; ~DefDtor() = default; };
+struct UserCopy { int a; UserCopy() {} UserCopy(const UserCopy& o) : a(o.a) {} };
+struct DefCopy { int a; DefCopy() = default; DefCopy(const DefCopy&) = default; };
+struct UserAssign { int a; UserAssign& operator=(const UserAssign& o) { a = o.a; return *this; } };
+struct UserMove { int a; UserMove() {} UserMove(UserMove&& o) : a(o.a) {} };
+struct NoexMove { int a; NoexMove() {} NoexMove(NoexMove&& o) noexcept : a(o.a) {} NoexMove& operator=(NoexMove&& o) noexcept { a = o.a; return *this; } };
+struct MoveOnly { int a; MoveOnly() = default; MoveOnly(const MoveOnly&) = delete; MoveOnly(MoveOnly&&) = default; MoveOnly& operator=(const MoveOnly&) = delete; MoveOnly& operator=(MoveOnly&&) = default; };
+struct NoCopy { int a; NoCopy() = default; NoCopy(const NoCopy&) = delete; NoCopy& operator=(const NoCopy&) = delete; };
+struct NoDefault { int a; NoDefault() = delete; };
+struct NoDtor { int a; ~NoDtor() = delete; };
+struct ConstMember { const int a = 1; };
+struct RefMember { int& r; };
+struct HoldsMoveOnly { MoveOnly m; };
+struct HoldsNoCopy { NoCopy m; };
+struct HoldsUserDtor { UserDtor m; };
+struct HoldsUserCopy { UserCopy m; };
+struct HoldsArray { UserCopy m[2]; };
+struct DerivedPod : public Pod { int c; };
+struct DerivedUser : public UserDtor { };
+struct DerivedNoCopy : public NoCopy { };
+class Poly { public: virtual void f() {} };
+class PolyDerived : public Poly { };
+class Abstract { public: virtual void f() = 0; };
+class AbstractDerived : public Abstract { };
+class Concrete : public Abstract { public: void f() override {} };
+class VirtualDtor { public: virtual ~VirtualDtor() {} };
+class Final final { public: int a; };
+class PrivateCtor { PrivateCtor() {} public: int a; };
+class PrivateCopy { public: PrivateCopy() {} private: PrivateCopy(const PrivateCopy&); };
+class PrivateDtor { ~PrivateDtor() {} public: int a; };
+class PrivateMember { int a; public: int b; };
+union U { int a; float b; };
+union UCtor { int a; UCtor() : a(0) {} };
+union UNontrivial { UserCopy a; int b; UNontrivial() : b(0) {} };
+struct TemplateCtor { template<class T> TemplateCtor(T) {} };
+struct TemplateCopyish { int a; TemplateCopyish() {} template<class T> TemplateCopyish(const T&) {} };
+struct CopyFromNonConst { CopyFromNonConst() {} CopyFromNonConst(CopyFromNonConst&) {} };
+struct ConvOp { operator int() const { return 1; } };
+struct ExplicitConv { explicit operator int() const { return 1; } };
+struct NoexDefault { int a; NoexDefault() noexcept {} };
+struct AssignOnlyInt { int a; AssignOnlyInt& operator=(int x) { a = x; return *this; } };
+template<class T> struct Tmpl { T t; };
+template<class T> void row(const char* n)
+{
+  printf("%-22s", n);
+  printf(" %d%d%d%d%d%d%d%d", isVoid<T>, isNullPointer<T>, isIntegral<T>, isFloatingPoint<T>, isArray<T>, isPointer<T>, isReference<T>, isEnum<T>);
+  printf(" %d%d%d%d%d%d%d%d", isClass<T>, isFunction<T>, isConst<T>, isArithmetic<T>, isFundamental<T>, isMemberPointer<T>, isMemberObjectPointer<T>, isMemberFunctionPointer<T>);
+  printf(" %d%d%d%d%d", isSigned<T>, isUnsigned<T>, isAbstract<T>, isPolymorphic<T>, isFinal<T>);
+  printf(" %d%d%d%d", isCopyConstructible<T>, isMoveConstructible<T>, isCopyAssignable<T>, isMoveAssignable<T>);
+  printf(" %d%d%d%d%d%d%d", isTriviallyCopyable<T>, isTriviallyDestructible<T>, isTriviallyDefaultConstructible<T>, isTriviallyCopyConstructible<T>, isTriviallyMoveConstructible<T>, isTriviallyCopyAssignable<T>, isTriviallyMoveAssignable<T>);
+  printf(" %d%d %d%d\n", isNothrowMoveConstructible<T>, isNothrowMoveAssignable<T>, isConstructible<T>, isConstructible<T, int>);
+}
+int main()
+{
+  row<int>("int"); row<const int>("const int"); row<int&>("int&"); row<const int&>("const int&"); row<int&&>("int&&"); row<int*>("int*"); row<const int*>("const int*"); row<int* const>("int* const");
+  row<bool>("bool"); row<char>("char"); row<signed char>("schar"); row<unsigned char>("uchar"); row<short>("short"); row<unsigned>("unsigned"); row<long long>("ll"); row<unsigned long long>("ull"); row<float>("float"); row<double>("double");
+  row<char16_t>("char16"); row<char32_t>("char32");
+  row<void>("void"); row<const void>("const void"); row<void*>("void*"); row<decltype(nullptr)>("nullptr");
+  row<int (*)[3]>("int(*)[3]"); row<int (&)[3]>("int(&)[3]");
+  row<int(int)>("fn"); row<int (*)(int)>("fnptr"); row<int (&)(int)>("fnref");
+  row<int Pod::*>("memobj"); row<void (Poly::*)()>("memfn"); row<void (Poly::*)() const>("memfnc");
+  row<E>("E"); row<C>("C");
+  row<Empty>("Empty"); row<Pod>("Pod"); row<PodArr>("PodArr"); row<Nested>("Nested"); row<DefInit>("DefInit"); row<UserCtor>("UserCtor"); row<ArgCtor>("ArgCtor"); row<ExplicitCtor>("ExplicitCtor");
+  row<UserDtor>("UserDtor"); row<DefDtor>("DefDtor"); row<UserCopy>("UserCopy"); row<DefCopy>("DefCopy"); row<UserAssign>("UserAssign"); row<UserMove>("UserMove"); row<NoexMove>("NoexMove");
+  row<MoveOnly>("MoveOnly"); row<NoCopy>("NoCopy"); row<NoDefault>("NoDefault"); row<NoDtor>("NoDtor"); row<ConstMember>("ConstMember"); row<RefMember>("RefMember");
+  row<HoldsMoveOnly>("HoldsMoveOnly"); row<HoldsNoCopy>("HoldsNoCopy"); row<HoldsUserDtor>("HoldsUserDtor"); row<HoldsUserCopy>("HoldsUserCopy"); row<HoldsArray>("HoldsArray");
+  row<DerivedPod>("DerivedPod"); row<DerivedUser>("DerivedUser"); row<DerivedNoCopy>("DerivedNoCopy");
+  row<Poly>("Poly"); row<PolyDerived>("PolyDerived"); row<Abstract>("Abstract"); row<AbstractDerived>("AbstractDerived"); row<Concrete>("Concrete"); row<VirtualDtor>("VirtualDtor"); row<Final>("Final");
+  row<PrivateCtor>("PrivateCtor"); row<PrivateCopy>("PrivateCopy"); row<PrivateDtor>("PrivateDtor"); row<PrivateMember>("PrivateMember");
+  row<U>("U"); row<UCtor>("UCtor"); row<UNontrivial>("UNontrivial");
+  row<TemplateCtor>("TemplateCtor"); row<TemplateCopyish>("TemplateCopyish"); row<CopyFromNonConst>("CopyFromNonConst"); row<ConvOp>("ConvOp"); row<ExplicitConv>("ExplicitConv"); row<NoexDefault>("NoexDefault"); row<AssignOnlyInt>("AssignOnlyInt");
+  row<Tmpl<int>>("Tmpl<int>"); row<Tmpl<UserCopy>>("Tmpl<UserCopy>"); row<Tmpl<MoveOnly>>("Tmpl<MoveOnly>"); row<Tmpl<int&>>("Tmpl<int&>");
+  row<const Pod>("const Pod"); row<const UserCopy>("const UserCopy"); row<const MoveOnly>("const MoveOnly"); row<volatile int>("volatile int"); row<volatile Pod>("volatile Pod");
+  auto l1 = [] {}; int cap = 0; auto l2 = [cap] { return cap; }; auto l3 = [&cap] { return cap; };
+  row<decltype(l1)>("lambda");
+  printf("%d%d%d%d%d%d%d%d %d%d%d%d\n", isConvertible<int, double>, isConvertible<double, int>, isConvertible<int*, void*>, isConvertible<void*, int*>, isConvertible<Poly*, Empty*>, isConvertible<PolyDerived*, Poly*>, isConvertible<Poly*, PolyDerived*>, isConvertible<int, ArgCtor>, isConvertible<int, ExplicitCtor>, isConvertible<ConvOp, int>, isConvertible<ExplicitConv, int>, isConvertible<int, void>);
+  printf("%d%d%d%d%d%d%d\n", isBaseOf<Poly, PolyDerived>, isBaseOf<PolyDerived, Poly>, isBaseOf<Poly, Poly>, isBaseOf<int, int>, isBaseOf<Pod, DerivedPod>, isBaseOf<Abstract, Concrete>, isBaseOf<Empty, Poly>);
+  printf("%d%d%d%d%d%d%d%d\n", isSame<int, int>, isSame<int, const int>, isSame<int, int&>, isSame<unsigned, unsigned int>, isSame<long long, long long int>, isSame<char, signed char>, isSame<int*, int*>, isSame<Tmpl<int>, Tmpl<int>>);
+  printf("%d%d%d%d%d%d\n", isConstructible<ArgCtor, int>, isConstructible<ArgCtor, double>, isConstructible<ExplicitCtor, int>, isConstructible<Pod, int, float>, isConstructible<int, int, int>, isConstructible<ArgCtor, const char*>);
+  auto fn = [](int) { return 1; };
+  printf("%d%d%d%d%d\n", isInvocable<decltype(fn), int>, isInvocable<decltype(fn), const char*>, isInvocable<decltype(fn)>, isInvocableR<int, decltype(fn), int>, isInvocableR<const char*, decltype(fn), int>);
+  return 0;
+}

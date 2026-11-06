@@ -176,6 +176,13 @@
 
   SpecialMembers specialMembersOf(ClassDecl* def);
 
+  // Whether aggregate t takes args in parentheses (`Pod(1, 2.5f)`, [dcl.init] 17.6.2.2), and
+  // false for a class that is no aggregate.
+  bool aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args);
+
+  // Whether code outside class def can destroy one: no deleted, private or protected destructor.
+  bool destructibleOutside(ClassDecl* def);
+
   // A user-declared special member chosen for the trait: deleted is false; a user-provided one
   // is not trivial, and nothrow as declared; a defaulted one is as the implicit one (nullopt:
   // decide by the bases and members).

@@ -376,7 +376,16 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   if (name == "isArray") return one() && one()->kind == TyKind::Array;
   if (name == "isPointer") return one() && one()->kind == TyKind::Pointer;
   if (name == "isEnum") return one() && one()->kind == TyKind::Enum;
-  if (name == "isClass") return one() && one()->kind == TyKind::Class;
+  if (name == "isClass")
+  {
+    // (A union is none, [meta.unary.cat]; a `union enum` is a class of kpp's, a closure a class.)
+    if (one() && one()->kind == TyKind::Lambda)
+      return true;
+    if (!one() || one()->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(types.unqualified(one()));
+    return !def || def->keyword != Kw::union_ || def->isTypedUnion;
+  }
   if (name == "isTypedUnion") // a `union enum` (design.md 8.5)
   {
     const Ty* t = one() ? types.unqualified(one()) : nullptr;
@@ -447,8 +456,10 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
             if (auto* f = static_cast<FunctionDecl*>(bm); f->params.size() != 1 || selfParameter(f->params[0], base) == 0)
               ctors.push_back(f);
       }
-      if (copy || ctors.empty())
-        return copy;
+      if (copy)
+        return true;
+      if (ctors.empty())
+        return destructibleOutside(static_cast<ClassDecl*>(def)) && aggregateTakes(t, static_cast<ClassDecl*>(def), args);
       bool ambiguous = false;
       return chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr;
     }
@@ -465,12 +476,19 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     return from->kind == TyKind::Class && !types.isDependent(from) && convertsByOperator(from, t, 0, 0, true);
   }
   if (name == "isFundamental")
-    return one() && (isArithmeticKind(one()) || one()->kind == TyKind::Void || one() == types.nullptrType());
+    return one() && ((isArithmeticKind(one()) && one()->kind != TyKind::Enum) || one()->kind == TyKind::Void || one() == types.nullptrType());
   if (name == "isTriviallyDestructible") return one() ? triviallyDestructible(one()) : std::nullopt;
   if (name == "destructorMayThrow") return one() ? destructorMayThrowUncached(one()) : std::nullopt; // (no trait of the language: destructorMayThrow's cache)
-  if (name == "isTriviallyCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
+  // (These three define a variable, which is also destroyed: a destructor of its own is no trivial
+  // construction, [meta.unary.prop] is_constructible.)
+  auto endsTrivially = [&](std::optional<bool> constructs) -> std::optional<bool> {
+    if (!constructs || !*constructs)
+      return constructs;
+    return triviallyDestructible(one());
+  };
+  if (name == "isTriviallyCopyConstructible") return one() ? endsTrivially(constructibleFromSelf(one(), false, TraitForm::Trivially)) : std::nullopt;
   if (name == "isTriviallyCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
-  if (name == "isTriviallyDefaultConstructible") return one() ? triviallyDefaultConstructible(one()) : std::nullopt;
+  if (name == "isTriviallyDefaultConstructible") return one() ? endsTrivially(triviallyDefaultConstructible(one())) : std::nullopt;
   if (name == "isSame") return a.size() == 2 && a[0] == a[1];
   if (name == "isBaseOf") return a.size() == 2 && derivesFrom(a[1], a[0]);
   if (name == "isConvertible")
@@ -508,7 +526,11 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   if (name == "isMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Plain) : std::nullopt;
   if (name == "isCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Plain) : std::nullopt;
   if (name == "isNothrowMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
-  if (name == "isTriviallyMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
+  if (name == "isTriviallyMoveConstructible")
+  {
+    std::optional<bool> constructs = one() ? constructibleFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
+    return constructs && *constructs ? triviallyDestructible(one()) : constructs;
+  }
   if (name == "isMoveAssignable") return one() ? assignableFromSelf(one(), true, TraitForm::Plain) : std::nullopt;
   if (name == "isCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Plain) : std::nullopt;
   if (name == "isNothrowMoveAssignable") return one() ? assignableFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
@@ -808,7 +830,9 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
   if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
     return std::nullopt;
   if (t->isReference())
-    return true;
+    return t->kind != TyKind::RRef || move; // (`int&&` binds no const int&)
+  if (t->isVolatile && types.unqualified(t)->kind == TyKind::Class)
+    return false; // (an implicit copy takes a const T&, which binds no volatile object)
   if (t->isConst)
     move = false; // `const T&&` binds to `const T&`: the copy constructor
   const Ty* u = types.unqualified(t);
@@ -858,11 +882,17 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
     std::optional<bool> isAbstract = abstractClass(u, {});
     if (!isAbstract || *isAbstract)
       return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    if (!destructibleOutside(def))
+      return false;
   }
   SpecialMembers s = specialMembersOf(def);
   FunctionDecl* chosen = move && s.moveCtor ? s.moveCtor : s.copyCtor;
   if (chosen)
   {
+    // (A trait asks from outside the class, and a class's implicit one from a derived class:
+    // private is out of reach of both, protected of the first.)
+    if (chosen->access == Access::Private || (depth == 0 && chosen->access == Access::Protected))
+      return false;
     if (std::optional<bool> d = declaredSpecial(chosen, form, u))
       return d;
   }
@@ -874,7 +904,42 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
       return false; // a declared move operation deletes the implicit copy constructor
     move = move && !s.copyAssign && !s.copyAssignNonConst && !s.destructor; // else the implicit copy constructor
   }
-  return membersAllow(u, def, form, [&](const Ty* m, int d) { return constructibleFromSelf(m, move, form, d); }, false, depth);
+  // A union's implicit one copies its bytes, so a member that copies any other way deletes it
+  // ([class.copy.ctor] 10).
+  TraitForm parts = def->keyword == Kw::union_ && !def->isTypedUnion ? TraitForm::Trivially : form;
+  return membersAllow(u, def, form, [&](const Ty* m, int d) { return constructibleFromSelf(m, move, parts, d); }, false, depth);
+}
+
+auto GlobalScope::Impl::aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args) -> bool
+{
+  for (Decl* m : membersRead(def))
+    if (((m->flags & DF_Constructor) || (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))) &&
+        ((m->flags & DF_Constructor) || m->access == Access::Private || m->access == Access::Protected))
+      return false; // no aggregate: it declares a constructor (a deleted one too), or hides a member
+  for (const ClassDecl::Base& b : def->bases)
+    if (b.isVirtual || b.access == Access::Private || b.access == Access::Protected)
+      return false;
+  if (polymorphicClass(t).value_or(true))
+    return false;
+  std::vector<const Ty*> parts;
+  if (!directBases(t, def, parts) || !fieldTypes(t, def, parts))
+    return false;
+  if (def->keyword == Kw::union_ && parts.size() > 1)
+    parts.resize(1); // (a union's first member: the one a list initializes)
+  if (args.size() > parts.size())
+    return false;
+  for (size_t i = 0; i < args.size(); ++i)
+    if (!traitValue("isConvertible", {args[i], parts[i]}).value_or(false))
+      return false;
+  return true;
+}
+
+auto GlobalScope::Impl::destructibleOutside(ClassDecl* def) -> bool
+{
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))
+      return !(m->flags & DF_Delete) && m->access != Access::Private && m->access != Access::Protected;
+  return true;
 }
 
 auto GlobalScope::Impl::assignableFromSelf(const Ty* t, bool move, TraitForm form, int depth) -> std::optional<bool>
@@ -886,8 +951,8 @@ auto GlobalScope::Impl::assignableFromSelf(const Ty* t, bool move, TraitForm for
     t = types.stripRef(t); // `T& = T&`: a copy assignment of T
     move = false;
   }
-  if (t->isConst)
-    return false;
+  if (t->isConst || (t->isVolatile && types.unqualified(t)->kind == TyKind::Class))
+    return false; // (an implicit assignment is no volatile member)
   const Ty* u = types.unqualified(t);
   switch (u->kind)
   {
@@ -1129,10 +1194,28 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
-  std::optional<bool> destructible = triviallyDestructible(s.cls);
-  if (!destructible || !*destructible)
-    return destructible;
-  bool any = false;
+  ClassDecl* def = classDefinition(s.cls);
+  if (!def)
+    return std::nullopt;
+  // Its own members decide, whoever may call them: a private copy constructor, `C(C&)` and
+  // `operator=(C&)` copy as a public one does; a deleted destructor is none of its own.
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (!(m->flags & (DF_Default | DF_Delete)) || (m->flags & (DF_Virtual | DF_Override))))
+      return false;
+  SpecialMembers own = specialMembersOf(def);
+  for (FunctionDecl* f : {own.copyCtor, own.copyCtorNonConst, own.moveCtor, own.copyAssign, own.copyAssignNonConst, own.moveAssign})
+    if (f && !(f->flags & (DF_Default | DF_Delete)))
+      return false;
+  // Then its parts, whose copies it deleted or not (a union's member that copies otherwise).
+  std::vector<const Ty*> parts;
+  if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))
+    return std::nullopt;
+  for (const Ty* part : parts)
+    if (!part->isReference())
+      if (std::optional<bool> whole = triviallyCopyable(part); !whole || !*whole)
+        return whole;
+  // (Every operation deleted leaves the class trivially copyable to clang and g++, as to
+  // their libraries; CWG 1734's "at least one" is theirs to take up.)
   for (int op = 0; op < 4; ++op)
   {
     bool move = op & 1, assign = op & 2;
@@ -1148,9 +1231,8 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
     std::optional<bool> trivial = test(TraitForm::Trivially);
     if (!trivial || !*trivial)
       return trivial;
-    any = true;
   }
-  return any;
+  return true;
 }
 
 auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::optional<bool>
@@ -1169,8 +1251,14 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
   ClassDecl* def = classDefinition(u);
   if (!def)
     return std::nullopt;
-  if (std::optional<bool> isAbstract = abstractClass(u, {}); !isAbstract || *isAbstract)
-    return isAbstract ? std::optional<bool>(false) : std::nullopt;
+  // (As a base, deeper, an abstract class's constructors serve its derived classes.)
+  if (depth == 0)
+  {
+    if (std::optional<bool> isAbstract = abstractClass(u, {}); !isAbstract || *isAbstract)
+      return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    if (!destructibleOutside(def))
+      return false;
+  }
   bool anyConstructor = false;
   for (Decl* m : membersRead(def))
   {
@@ -1183,7 +1271,7 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
       takesNone = takesNone && (static_cast<ParamDecl*>(p)->defaultValue || static_cast<ParamDecl*>(p)->isPack);
     if (!takesNone)
       continue;
-    if (f->flags & DF_Delete)
+    if ((f->flags & DF_Delete) || f->access == Access::Private || (depth == 0 && f->access == Access::Protected))
       return false;
     if (!(f->flags & DF_Default))
       return true; // a user-provided default constructor
