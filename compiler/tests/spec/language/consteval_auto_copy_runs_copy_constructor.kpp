@@ -1,0 +1,52 @@
+// spec: at compile time `auto b = a;` of a class makes b by the class's copy constructor, as `Counted b = a;` does and as at run time: a counting copy constructor counts the copy, from a, from a const reference to it and through a Pair's copy (clang gives the same)
+// found by D's compile-time battery (2026-11-06): b was a copy of a's value with the constructor skipped, 1 at compile time where run time gave 1101, a silent wrong answer (a Pair holding a String was "memory freed twice", its String shared)
+struct Counted
+{
+  int* copies;
+  int v;
+
+  constexpr Counted(int* c, int x) : copies(c), v(x) {}
+  constexpr Counted(const Counted& o) : copies(o.copies), v(o.v + 100) { ++*copies; }
+};
+
+constexpr int viaAuto() { int c = 0; Counted a(&c, 1); auto b = a; return c * 1000 + b.v; }
+constexpr int viaTyped() { int c = 0; Counted a(&c, 1); Counted b = a; return c * 1000 + b.v; }
+
+constexpr int viaAutoRef()
+{
+  int c = 0;
+  Counted a(&c, 1);
+  const auto& r = a;
+  auto b = r;
+  return c * 1000 + b.v;
+}
+
+constexpr int viaPair()
+{
+  int c = 0;
+  Pair<int, Counted> p(1, Counted(&c, 1));
+  int before = c;
+  auto q = p;
+  return (c - before) * 1000 + q.second.v;
+}
+
+constexpr int strings()
+{
+  Pair<int, String> p(1, "ab");
+  auto q = p;
+  q.second << "c";
+  return int(p.second.size()) * 10 + int(q.second.size());
+}
+
+constexpr int a1 = viaAuto();
+constexpr int a2 = viaTyped();
+constexpr int a3 = viaAutoRef();
+constexpr int a4 = viaPair();
+constexpr int a5 = strings();
+
+int main()
+{
+  println(a1, " ", a2, " ", a3, " ", a4, " ", a5, " /");
+  println(viaAuto(), " ", viaTyped(), " ", viaAutoRef(), " ", viaPair(), " ", strings());
+  return 0;
+}

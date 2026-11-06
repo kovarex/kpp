@@ -461,10 +461,21 @@ auto GlobalScope::Impl::constOfDecl(Decl* d, const TypeContext& ctx, int depth, 
 
 auto GlobalScope::Impl::constDeducedType(VariableDecl* v, const Ty* written) -> const Ty*
 {
+  const Ty* cached = v->cachedType.load(std::memory_order_acquire);
+  auto concrete = [&](const Ty* t) { return t && t->isKnown() && !types.isDependent(t) && !mentionsUnknown(t); };
+  // `auto b = a;` of a class: the class the walk deduced (else the initializer's), so that b is made
+  // as `T b = a;` makes it, by T's copy constructor; as `auto` it was a copy of a's value with the
+  // constructor skipped (a counting copy constructor counted 0 at compile time, 1 at run time, D
+  // 2026-11-06). Not a brace list's (`auto x = {1, 2}`), a closure's or a reference's.
+  if (written && !written->isReference() && containsAuto(written) && v->init && v->init->kind != NodeKind::BraceInitExpr)
+  {
+    const Ty* deduced = concrete(cached) ? cached : concrete(v->init->ty) ? types.qualified(types.unqualified(types.stripRef(v->init->ty)), written->isConst, written->isVolatile) : nullptr;
+    if (deduced && !deduced->isReference() && types.unqualified(deduced)->kind == TyKind::Class && !types.unqualified(deduced)->isBraceList())
+      return deduced;
+  }
   if (written && written->isKnown() && !isUndeducedClassTemplate(types.unqualified(types.stripRef(written))))
     return written;
-  const Ty* cached = v->cachedType.load(std::memory_order_acquire);
-  return cached && cached->isKnown() && !types.isDependent(cached) && !mentionsUnknown(cached) ? cached : written;
+  return concrete(cached) ? cached : written;
 }
 
 auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst) -> std::optional<ConstValue>
