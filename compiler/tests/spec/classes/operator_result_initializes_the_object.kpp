@@ -1,0 +1,39 @@
+// spec: `T a = b + c;`, an operator function's prvalue, initializes a itself, as a call does ([dcl.init] 17.6.1, guaranteed elision): kpp built a temporary and moved it, in a variable, an array element, an aggregate's member, a condition, a new-expression and a member initializer. clang and g++ print the same
+// found by thread J's lifetime fuzzer (2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i = 0) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  T(T&& o) : id(o.id + 200) { printf("m%d ", id); }
+  ~T() { printf("-%d ", id); }
+  explicit operator bool() const { return true; }
+  T operator+(const T& o) const { return T(id + o.id); }
+  T operator-() const { return T(-id); }
+  T operator!() const { return T(id * 2); }
+};
+T operator*(const T& a, const T& b) { return T(a.id * b.id); }
+T operator~(const T& a) { return T(~a.id); }
+T make(int i) { return T(i); }
+struct Holder { T a; T b; };
+struct Ctor { T a; Ctor(const T& x) : a(x + make(1)) {} };
+T sum(const T& a, const T& b) { return a + b; }
+int main()
+{
+  T x(1);
+  printf("\nvariable: "); { T a = x + make(2); }
+  printf("\nunary: "); { T a = -x; T b = !x; T c = ~x; }
+  printf("\nfree: "); { T a = x * make(2); }
+  printf("\narray: "); { T a[2] = { x + make(2), x * make(3) }; }
+  printf("\naggregate: "); { Holder h{ x + make(2), -x }; }
+  printf("\nreference: "); { const T& r = x + make(2); }
+  printf("\nnew: "); { T* p = new T(x + make(2)); delete p; }
+  printf("\nmember: "); { Ctor c(x); }
+  printf("\ncondition: "); { if (T a = x + make(2)) { printf("yes "); } }
+  printf("\nreturn: "); { T a = sum(x, x); }
+  printf("\nnested: "); { T y(2); T a = x + y + y; }
+  printf("\nparenthesized: "); { T a = (x + make(2)); }
+  printf("\n");
+  return 0;
+}

@@ -2731,14 +2731,16 @@ auto codegen::Emitter::conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, No
     return false;
   if (c->else_->kind == NodeKind::DefaultValueExpr)
     return true; // (`T a = p?->member;`: the copy of the member, or the default, is the object)
+  bool prvalue = false;
   for (Expr* branch : {c->then, c->else_})
   {
     const Ty* bt = branch->ty ? withCurrentArgs(branch->ty) : nullptr;
-    if (!bt || bt->isReference() || isLvalueExpression(branch) || !isClass(bt) || types.isDependent(bt) ||
-        canonicalClass(types.unqualified(bt), at) != canonicalClass(types.unqualified(t), at))
+    const Ty* object = bt ? types.stripRef(bt) : nullptr;
+    if (!object || !isClass(object) || types.isDependent(object) || canonicalClass(types.unqualified(object), at) != canonicalClass(types.unqualified(t), at))
       return false;
+    prvalue = prvalue || (!bt->isReference() && !isLvalueExpression(branch));
   }
-  return true;
+  return prvalue;
 }
 
 auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at) -> void
@@ -2792,7 +2794,8 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
   if (isClass(t) && init && init->kind == NodeKind::ConditionalExpr && conditionalOfPrvalues(static_cast<ConditionalExpr*>(init), t, at))
   {
     // `T a = c ? T(1) : make(2);`: the chosen branch builds the object itself, no temporary
-    // moved from (guaranteed elision, [expr.cond]/7 and [dcl.init]/17.6.1).
+    // moved from (guaranteed elision, [expr.cond]/7 and [dcl.init]/17.6.1); `c ? make() : b`
+    // copies b into it, the prvalue's conversion of the lvalue branch.
     auto* c = static_cast<ConditionalExpr*>(init);
     Value cond = convert(rvalue(c->cond), types.boolType(), at);
     std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
@@ -2898,7 +2901,26 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       constructInto(addr, t, Span<Expr*>{&one, 1}, at);
       return;
     }
+    // `T a = b + c;` and `T a = -b;`, an operator function's prvalue, builds the object itself, as a
+    // call does (guaranteed elision): no temporary moved from, which a class with a copy or
+    // destructor of its own sees. (Other classes keep the call the inliner can take.)
+    bool operatorInPlace = !evaluated && sameClass && (init->kind == NodeKind::BinaryExpr || init->kind == NodeKind::UnaryExpr) && !init->ty->isReference() &&
+                           !isLvalueExpression(init) && (needsDestruction(t, at) || !assignsBitwise(t, at));
+    const Node* outerOperator = inPlaceOperator;
+    std::string outerSlot = inPlaceSlot;
+    if (operatorInPlace)
+    {
+      inPlaceOperator = init;
+      inPlaceSlot = addr;
+    }
     Value src = evaluated ? *evaluated : rvalue(init);
+    if (operatorInPlace)
+    {
+      inPlaceOperator = outerOperator;
+      inPlaceSlot = outerSlot;
+      if (src.text == addr)
+        return;
+    }
     if (!isClass(src.ty))
       unsupported(at, "initialising a class from a non-class value");
     if (canonicalClass(src.ty, at) != canonicalClass(t, at))

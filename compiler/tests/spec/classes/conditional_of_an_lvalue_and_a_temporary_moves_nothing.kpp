@@ -1,5 +1,4 @@
 // spec: a conditional of an lvalue and a temporary is a prvalue: the chosen operand builds the result object itself, with no move after it ([expr.cond], [class.temporary])
-// pending: the result goes through a temporary, then a move: one move and one destruction too many (found through Optional::value_or, battery ov1 against clang)
 struct Counted
 {
   static int copied, moved, destroyed;

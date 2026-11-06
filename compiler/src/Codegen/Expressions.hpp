@@ -15,6 +15,9 @@
 
     // Value of a call result for use as an rvalue (reference results are loaded).
     Value callRvalue(Value v, Node* at);
+    // Where the operator function called for expression e builds its result: the object it
+    // initializes (inPlaceOperator), else nowhere yet ("": a temporary).
+    std::string operatorResult(const Node* e) const { return e == inPlaceOperator ? inPlaceSlot : ""; }
 
     Value rvalue(Expr* e);
 

@@ -1,0 +1,32 @@
+// spec: `T a = c ? make() : b;` is a prvalue: the taken branch initializes a itself, a prvalue with no move, an lvalue by a copy, an xvalue by a move ([expr.cond] 7, [dcl.init] 17.6.1). kpp built a temporary and moved it. clang and g++ print the same
+// found by thread J's lifetime fuzzer (2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id) { printf("c%d ", id); }
+  T(T&& o) : id(o.id) { printf("m%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+T make(int i) { return T(i); }
+const T& same(const T& t) { return t; }
+T holder(bool c, T& b)
+{
+  return c ? make(1) : b;
+}
+int main()
+{
+  T b(9);
+  for (int c = 0; c < 2; c++)
+  {
+    T x = c ? make(1) : b;
+    T y = c ? b : make(2);
+    T z = c ? static_cast<T&&>(b) : make(3);
+    T w = c ? same(b) : T(4);
+    printf("|\n");
+  }
+  T h = holder(true, b);
+  printf("%d\n", h.id);
+  return 0;
+}

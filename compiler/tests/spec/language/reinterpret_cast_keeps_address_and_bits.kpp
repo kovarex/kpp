@@ -1,0 +1,32 @@
+// spec: reinterpret_cast changes no address and no bits ([expr.reinterpret.cast] 7, 11): to a pointer of a base it moved to the base, as static_cast does, and to a reference, read as a value, it converted the number. C-style and static casts between a class and its base still move. clang and g++ print the same
+// found by thread J's casts battery (n19, 2026-11-06)
+extern "C" int printf(const char* format, ...);
+struct P1 { int x = 10; };
+struct P2 { int y = 20; };
+struct Both : public P1, public P2 { int z = 30; };
+int main()
+{
+  Both d;
+  P2* same = reinterpret_cast<P2*>(&d);
+  P2* moved = static_cast<P2*>(&d);
+  P2* cStyle = (P2*)&d;
+  printf("%d %d %d\n", same->y, moved->y, cStyle->y);
+  P2* up = &d;
+  Both* back = reinterpret_cast<Both*>(up);
+  printf("%d\n", (int)((char*)back - (char*)&d));
+  float f = 1.0f;
+  unsigned u = 0x40000000;
+  printf("%x\n", reinterpret_cast<unsigned&>(f));
+  printf("%.1f\n", reinterpret_cast<float&>(u));
+  unsigned copied = reinterpret_cast<unsigned&>(f);
+  printf("%x\n", copied);
+  reinterpret_cast<unsigned&>(f) = 0x40400000;
+  printf("%.1f\n", f);
+  double d2 = 1.0;
+  long long bits = reinterpret_cast<const long long&>(d2);
+  printf("%llx\n", bits);
+  P1 p1;
+  P2& asOther = reinterpret_cast<P2&>(p1);
+  printf("%d\n", asOther.y);
+  return 0;
+}

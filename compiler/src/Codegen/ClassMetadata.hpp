@@ -446,9 +446,10 @@
 
     // Initialises the object/scalar at addr of type t from an initializer expression,
     // constructing in place where the expression is a temporary.
-    // Whether both branches of conditional c are prvalues of class t itself (`c ? T(1) : make(2)`),
-    // which build the object initialised from c in place: no lvalue (that one is copied) and no other
-    // class (converted).
+    // Whether both branches of conditional c are of class t itself, one at least a prvalue
+    // (`c ? T(1) : make(2)`, `c ? make() : lvalue`): the result is a prvalue, each branch building
+    // the object initialised from c in place. Not two lvalues (one is copied) or another class
+    // (converted).
     bool conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, Node* at);
 
     void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at);

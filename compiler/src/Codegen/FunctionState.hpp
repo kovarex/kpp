@@ -99,6 +99,10 @@
       std::vector<uint32_t> inits; // scopeInits at the goto
       Node* at = nullptr;
     };
+    // The operator expression whose result initializes an object, and that object: its operator
+    // function's result is built there (initializeFrom; operatorResult gives it to the call).
+    const Node* inPlaceOperator = nullptr;
+    std::string inPlaceSlot;
     struct Loop
     {
       std::string breakLabel, continueLabel;

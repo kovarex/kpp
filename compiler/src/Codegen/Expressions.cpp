@@ -541,6 +541,19 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         statementTemps.push_back({addr, t});
         return {addr, t, true};
       }
+      if (c->castKind == Kw::reinterpret_cast_ && e->ty && e->ty->isReference())
+      {
+        // `reinterpret_cast<unsigned&>(f)`: f's bytes read as an unsigned, no conversion of its value.
+        const Ty* t = types.stripRef(e->ty);
+        std::string addr = lvalue(c->operand);
+        return isAggregate(t) ? Value{addr, t} : load(addr, t, e);
+      }
+      if (c->castKind == Kw::reinterpret_cast_ && e->ty && e->ty->kind == TyKind::Pointer)
+      {
+        // The address as it is: `reinterpret_cast<Base*>(derived)` moves to no base.
+        Value v = rvalue(c->operand);
+        return v.ty && v.ty->kind == TyKind::Pointer ? Value{v.text, e->ty} : explicitConvert(v, e->ty, e);
+      }
       return explicitConvert(rvalue(c->operand), e->ty, e);
     }
     case NodeKind::FunctionalCastExpr:
@@ -1902,7 +1915,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
             unsupported(u, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
         }
         Expr* arg = u->operand;
-        return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{&arg, 1}, u), u);
+        return callRvalue(callFunction(f, fnArgs, classTy, "", operatorResult(u), Span<Expr*>{&arg, 1}, u), u);
       }
     }
   }
@@ -1938,7 +1951,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     if (operatorLooked ? noOperator : !findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in))
       scalar = global.scalarConversionOf(v.ty);
     if (!scalar)
-      return callRvalue(operatorCall(withCheckedConst(v, u->operand), operatorName(op), {}, u, true), u);
+      return callRvalue(operatorCall(withCheckedConst(v, u->operand), operatorName(op), {}, u, true, operatorResult(u)), u);
     verifyOperatorCall(u, OperatorCall::Builtin);
     v = convert(v, scalar, u);
   }
@@ -2005,7 +2018,7 @@ auto codegen::Emitter::callChosenOperator(Expr* e, FunctionDecl* f, bool member,
     const Ty* foundIn = isClass(object.ty) ? declaringClass(object.ty, f, e) : nullptr;
     if (!foundIn)
       unsupported(e, "a call of the operator " + qualifiedName(f) + " the checker chose, on an object of a class that does not declare it");
-    return callRvalue(memberCall(object, f, foundIn, Span<Expr*>{operands.begin() + 1, uint32_t(operands.size() - 1)}, e), e);
+    return callRvalue(memberCall(object, f, foundIn, Span<Expr*>{operands.begin() + 1, uint32_t(operands.size() - 1)}, e, operatorResult(e)), e);
   }
   std::vector<const Ty*> argTypes;
   for (Expr* o : operands)
@@ -2018,7 +2031,7 @@ auto codegen::Emitter::callChosenOperator(Expr* e, FunctionDecl* f, bool member,
     if (fnArgs.pairs.size() < f->templateParams.size() + (operands.size() == 1 && classTy ? classTy->args.size() : 0)) // (as unary() and binary() had it)
       unsupported(e, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
   }
-  return callRvalue(callFunction(f, fnArgs, classTy, "", "", operands, e), e);
+  return callRvalue(callFunction(f, fnArgs, classTy, "", operatorResult(e), operands, e), e);
 }
 
 codegen::Emitter::PlaceName::PlaceName(Emitter& emitter, const std::string& at, const Ty* t, uint32_t token) : e(emitter)
@@ -2146,7 +2159,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     {
       verifyOperatorCall(b, OperatorCall::Function, f, false);
       Expr* args[2] = {b->lhs, b->rhs};
-      return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
+      return callRvalue(callFunction(f, {}, nullptr, "", operatorResult(b), Span<Expr*>{args, 2}, b), b);
     }
   // `a == b`, `a < b` of two typed unions of one type with no operator of their own: as
   // std::variant's, by the alternative held, then its values (design.md 8.5).
@@ -2231,7 +2244,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     if (member)
     {
       verifyOperatorCall(b, OperatorCall::Function, member, true);
-      return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
+      return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true, operatorResult(b)), b);
     }
     // A free `operator+(const char*, const String&)` and the like, templates among them
     // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
@@ -2248,7 +2261,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
             unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
         }
         Expr* args[2] = {b->lhs, b->rhs};
-        return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
+        return callRvalue(callFunction(f, fnArgs, classTy, "", operatorResult(b), Span<Expr*>{args, 2}, b), b);
       }
     if (std::optional<Value> rewritten = rewrittenComparison(b, op, lt, rt))
       return *rewritten;
@@ -2399,7 +2412,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     std::string name = operatorName(op);
     Expr* rhsExpr = b->rhs;
     Span<Expr*> one{&rhsExpr, 1};
-    Value result = operatorCall(l, name, one, b, false);
+    Value result = operatorCall(l, name, one, b, false, operatorResult(b));
     if (result.ty)
       return callRvalue(result, b);
     if (std::optional<Value> rewritten = rewrittenComparison(b, op, l.ty, nullptr))
@@ -2634,7 +2647,7 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
             unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
         }
         Expr* args[2] = {b->rhs, b->lhs};
-        return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
+        return callRvalue(callFunction(f, fnArgs, classTy, "", operatorResult(b), Span<Expr*>{args, 2}, b), b);
       }
     }
     return std::nullopt;
@@ -2656,14 +2669,14 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
         unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
     }
     Expr* args[2] = {first, second};
-    return callRvalue(callFunction(f, fnArgs, classTy, "", "", Span<Expr*>{args, 2}, b), b);
+    return callRvalue(callFunction(f, fnArgs, classTy, "", operatorResult(b), Span<Expr*>{args, 2}, b), b);
   };
   auto call = [&](P which) -> std::optional<Value>
   {
     std::string name = operatorName(which);
     const Ty* foundIn = nullptr;
     if (isClass(lt) && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
-      return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
+      return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true, operatorResult(b)), b);
     if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
       if (std::optional<Value> free = freeCall(which, b->lhs, b->rhs))
         return free;
