@@ -53,7 +53,8 @@ Factorio already has (see [Status](#status)).
 ## The language
 
 kpp is C++ with a few rules changed and a few things added. Everything in this section works today;
-what is decided but not built yet is under [Planned](#planned).
+what is decided but not built yet is under [Planned](#planned). Every rule that differs from C++ is in
+[docs/differences-from-cpp.md](docs/differences-from-cpp.md).
 
 ### Safer by default
 

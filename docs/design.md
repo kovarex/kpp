@@ -5,7 +5,9 @@ deepest level of how the compiler works**, so that builds are orders of magnitud
 The original proposal's compilation model is [compilation/index.md](../compilation/index.md); its
 language changes are in [readme.md](../readme.md), "The language", each with its state.
 
-This file records decisions that have been made. When a decision changes, update it here.
+This file records decisions that have been made. When a decision changes, update it here. The rules
+that differ from C++, for a reader who knows it, are in
+[differences-from-cpp.md](differences-from-cpp.md).
 
 ## Decided
 

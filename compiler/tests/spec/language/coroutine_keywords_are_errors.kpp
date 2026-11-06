@@ -1,0 +1,14 @@
+// spec: coroutines are not supported, so their keywords are errors, never another statement. Found writing
+// docs/differences-from-cpp.md (2026-11-06): the parser takes co_return as return and drops co_await, so this
+// program built and returned 1.
+// pending: co_return is parsed as return, co_await as nothing
+// error: coroutines are not supported
+int f()
+{
+  int x = co_await 1;
+  co_return x;
+}
+int main()
+{
+  return f();
+}
