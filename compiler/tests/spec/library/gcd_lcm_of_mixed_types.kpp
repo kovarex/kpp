@@ -1,0 +1,12 @@
+// spec: gcd and lcm of two different integer types (a u32 and an int, as the game's Blueprint::getBuildingModifier calls lcm) give the usual arithmetic conversions' type, as std::common_type does, and build: the alias that named that type through decltype(true ? declval<M>() : declval<N>()) left a template parameter in codegen (`36 6 4 / 24 8`)
+extern "C" int printf(const char* format, ...);
+
+int main()
+{
+  u32 a = 12;
+  int b = 18;
+  u8 c = 8;
+  i64 d = -12;
+  printf("%u %u %d / %lld %lld\n", lcm(a, b), gcd(a, b), (int)sizeof(lcm(a, b)), (long long)lcm(c, d), (long long)gcd(c, d) * 2);
+  return 0;
+}
