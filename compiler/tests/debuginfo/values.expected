@@ -40,6 +40,7 @@ class game::Shape, 16 bytes
   member id int at 8, public
   static member made int, public
   static member SIDES const unsigned, public
+  static member CORNERS const int, public
 class game::Square, 40 bytes
   base game::Shape at 0, public
   member side int at 16, public
@@ -66,6 +67,7 @@ enum game::Mode, unsigned char
 enum game::Mask, unsigned __int64
   None = 0
   All = 18446744073709551615
+constant game::Shape::CORNERS const int = 4
 constant game::Shape::SIDES const unsigned = 4
 global game::counter int
 global game::Shape::made int

@@ -155,7 +155,7 @@ function Summary([string]$pdb)
   $variables = @()
   for ($i = 0; $i -lt $globals.Count; ++$i)
   {
-    if ($globals[$i] -match 'S_CONSTANT \[size = \d+\] `(game::Shape::SIDES)`' -and $globals[$i + 1] -match 'type = (0x[0-9A-F]+(?: \([^)]*\))?), value = (-?\d+)')
+    if ($globals[$i] -match 'S_CONSTANT \[size = \d+\] `(game::Shape::SIDES|game::Shape::CORNERS)`' -and $globals[$i + 1] -match 'type = (0x[0-9A-F]+(?: \([^)]*\))?), value = (-?\d+)')
     {
       $variables += "constant $($globals[$i] -replace '.*`(.*)`.*', '$1') $(TypeName $Matches[1]) = $($Matches[2])"
       continue

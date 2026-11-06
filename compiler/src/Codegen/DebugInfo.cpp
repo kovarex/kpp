@@ -312,7 +312,8 @@ auto codegen::Emitter::laidOutClass(const Ty* ct) -> const StructInfo*
 
 auto codegen::Emitter::staticConstant(VariableDecl* v, const Ty* t, const TemplateArgs& args) -> std::string
 {
-  if (!(v->flags & DF_Constexpr) || !(t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Enum))
+  // (`static constexpr int X = 8;`, and `static const int X = 8;`, which C++ makes a constant expression too)
+  if (!((v->flags & DF_Constexpr) || (t->isConst && v->init)) || !(t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Enum))
     return {};
   VariableDecl* def = variableDefinition(v);
   Expr* init = def ? global.instanceInitializer(def, args) : nullptr;
