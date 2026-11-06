@@ -1318,13 +1318,29 @@ auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int d
       }
       ctx.env->push_back(std::move(element)); // the element, over the pack while the pattern runs
     }
-    std::optional<ConstValue> v = constValue(pattern, ectx, depth + 1);
+    Expr* source = nullptr;
+    uint8_t category = constCategory(pattern, source);
+    // `fwd<U>(a)...`: a call's reference result, run once for its place too, as constArguments runs one
+    // (move and forward name their argument: source).
+    std::optional<ConstPlace> called;
+    std::optional<ConstValue> calledValue;
+    bool referenceCall = places && source && source == pattern && pattern->kind == NodeKind::CallExpr && pattern->ty && pattern->ty->isReference() &&
+                         static_cast<CallExpr*>(pattern)->callee &&
+                         (static_cast<CallExpr*>(pattern)->callee->kind == NodeKind::MemberExpr || static_cast<CallExpr*>(pattern)->callee->kind == NodeKind::NameExpr);
+    if (referenceCall)
+    {
+      constCallPlaceRan = false;
+      called = constPlaceOf(pattern, ectx, depth + 1, true, &calledValue);
+      if (ectx.subst)
+        if (const Ty* result = substitute(pattern->ty, *ectx.subst); result && result->kind == TyKind::LRef)
+          category = 1; // (`U&&` of U = T&)
+    }
+    bool ranForNothing = referenceCall && !called && !calledValue && constCallPlaceRan;
+    std::optional<ConstValue> v = ranForNothing ? std::nullopt : called ? constPartOrUnset(*called) : calledValue ? calledValue : constValue(pattern, ectx, depth + 1);
     if (v && (places || categories))
     {
       // `forward<Args>(args)...`: an rvalue (moved from) unless Args is an lvalue reference;
       // `move(args)...` an rvalue; `args...` an lvalue. Its place: its argument's, if any.
-      Expr* source = nullptr;
-      uint8_t category = constCategory(pattern, source);
       if (category == 2 && pattern->kind == NodeKind::CallExpr && elementType && elementType->kind == TyKind::LRef)
       {
         auto* call = static_cast<CallExpr*>(pattern);
@@ -1333,8 +1349,8 @@ auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int d
           category = 1;
       }
       std::optional<ConstPlace> at;
-      if (category != 0 && constPure(source))
-        if (std::optional<ConstPlace> p = constPlaceOf(source, ectx, depth + 1))
+      if (category != 0 && (called || constPure(source)))
+        if (std::optional<ConstPlace> p = called ? called : constPlaceOf(source, ectx, depth + 1))
           if (ConstPlace resolved = constResolve(*p); resolved.env != ctx.env || resolved.index < mark)
             at = resolved; // (an element's own binding ends with the pattern: no place)
       if (places)
@@ -3551,7 +3567,17 @@ auto GlobalScope::Impl::constCopyInit(Expr* init, const Ty* t, const TypeContext
   if (category == 0 && !moving)
     return std::nullopt; // a prvalue: the object itself
   moving = moving || category == 2;
-  std::optional<ConstValue> v = constValue(source, ctx, depth + 1);
+  // (a call's reference result: run once, for its place too, which a move empties: `return fwd<A>(a);`)
+  std::optional<ConstPlace> called;
+  std::optional<ConstValue> ran;
+  if (source->kind == NodeKind::CallExpr && source->ty && source->ty->isReference())
+  {
+    constCallPlaceRan = false;
+    called = constPlaceOf(source, ctx, depth + 1, true, &ran);
+    if (!called && !ran && constCallPlaceRan)
+      return std::optional<std::optional<ConstValue>>(std::optional<ConstValue>()); // it ran, and gave nothing: never run twice
+  }
+  std::optional<ConstValue> v = called ? constPartOrUnset(*called) : ran ? ran : constValue(source, ctx, depth + 1);
   if (!v || !v->isObject() || !v->type || types.unqualified(types.stripRef(v->type)) != types.unqualified(types.stripRef(t)))
   {
     // Another class: its converting constructor, as before, from this value (`move(x)` and
@@ -3563,7 +3589,7 @@ auto GlobalScope::Impl::constCopyInit(Expr* init, const Ty* t, const TypeContext
       *evaluated = v;
     return std::nullopt;
   }
-  std::optional<ConstPlace> at = constPlaceOf(source, ctx, depth + 1);
+  std::optional<ConstPlace> at = called ? called : constPlaceOf(source, ctx, depth + 1);
   if (category == 2 && !at)
     return std::optional<std::optional<ConstValue>>(std::optional<ConstValue>()); // (moved where it is not known: no constant)
   return std::optional<std::optional<ConstValue>>(constCopyConstruct(t, *v, at, moving, depth + 1, target));
@@ -5260,16 +5286,19 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
         written[nb + i] = &init;
         found = true;
       }
+    size_t sameName = 0, namedBase = 0;
     for (size_t b = 0; b < nb && !found; ++b)
       if (layout->bases[b]->decl && !static_cast<ClassDecl*>(layout->bases[b]->decl)->name.empty() &&
           static_cast<ClassDecl*>(layout->bases[b]->decl)->name.last().symbol == symbol)
-      {
-        written[b] = &init;
-        found = true;
-      }
-    // A base named through an alias (Tuple's `using Leaf = TupleLeaf<...>;` and `: Leaf(head)`): the
-    // type the name gives where the constructor is, under its arguments. (It was no constant: every
-    // Tuple at compile time.)
+        namedBase = sameName++ ? namedBase : b;
+    if (sameName == 1)
+    {
+      written[namedBase] = &init;
+      found = true;
+    }
+    // A base named through an alias (Tuple's `using Leaf = TupleLeaf<...>;` and `: Leaf(head)`), or one of two
+    // instances of a template (`Leaf<A>(a), Leaf<B>(b)`, both of which went to the first, the second built
+    // by its default constructor): the type the name gives where the constructor is, under its arguments.
     if (!found && nb)
     {
       NamedType named{};
@@ -5299,7 +5328,15 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     bool expands = false;
     for (Expr* a : init.args)
       expands = expands || constIsExpansion(a);
-    if (expands)
+    // `Leaf(fwd<U>(a))`: a call's reference result, run once for its place too, which a reference parameter
+    // of the constructor then refers to (given the value alone, a reference member kept a copy, silently:
+    // `get<0>(t) = 3` of a Tuple<int&, int> left a as it was at compile time).
+    Expr* only = init.args.size() == 1 ? init.args[0] : nullptr;
+    while (only && only->kind == NodeKind::ParenExpr)
+      only = static_cast<ParenExpr*>(only)->inner;
+    bool referenceCall = only && only->kind == NodeKind::CallExpr && only->ty && only->ty->isReference() && !init.braced && !target->isReference() &&
+                         types.unqualified(target)->kind == TyKind::Class;
+    if (expands || referenceCall)
     {
       // `value(forward<Args>(args)...)`: the values the expansions give; none value-initializes.
       std::vector<ConstValue> values;
@@ -6877,9 +6914,8 @@ auto GlobalScope::Impl::constCallObject(Expr* object, CallExpr* c, const TypeCon
     std::optional<std::vector<size_t>> path = owner && owner->isObject() ? constFieldPath(owner->type, field, 0) : std::nullopt;
     if (path)
     {
-      const ConstClassLayout* layout = constLayoutOf(owner->type, 0);
       base->path.insert(base->path.end(), path->begin(), path->end());
-      base->type = declaredTypeOf(field, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+      base->type = constPartType(owner->type, *path, path->size(), 0);
       place = base;
     }
   }
@@ -6951,10 +6987,9 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       std::vector<size_t> through = constQualifierPath(holder, static_cast<NameExpr*>(e)->name, ctx, depth);
       if (std::optional<std::vector<size_t>> path = constFieldPath(holder, d, 0))
       {
-        const ConstClassLayout* layout = constLayoutOf(holder, 0);
         self->path.insert(self->path.end(), through.begin(), through.end());
         self->path.insert(self->path.end(), path->begin(), path->end());
-        self->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+        self->type = constPartType(holder, *path, path->size(), 0);
         self->bits = constBitsOf(holder, d);
         return constThroughReference(*self, depth);
       }
@@ -7055,8 +7090,8 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       return std::nullopt;
     base->path.insert(base->path.end(), through.begin(), through.end());
     base->path.insert(base->path.end(), path->begin(), path->end());
-    const ConstClassLayout* layout = constLayoutOf(holder, 0);
-    base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+    // (by the path: an inherited member's type is under its base's arguments, not holder's)
+    base->type = constPartType(holder, *path, path->size(), 0);
     base->bits = constBitsOf(holder, d);
     return constThroughReference(*base, depth);
   }
@@ -7083,8 +7118,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     if (!path)
       return std::nullopt;
     base->path.insert(base->path.end(), path->begin(), path->end());
-    const ConstClassLayout* layout = constLayoutOf(object->type, 0);
-    base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+    base->type = constPartType(object->type, *path, path->size(), 0);
     base->bits = constBitsOf(object->type, d);
     return constThroughReference(*base, depth);
   }
@@ -7594,8 +7628,7 @@ auto GlobalScope::Impl::constMemberRead(MemberExpr* m, const TypeContext& ctx, i
   if (path)
     path->insert(path->begin(), through.begin(), through.end());
   std::optional<ConstValue> part = path ? constPart(*object, *path) : std::nullopt;
-  const ConstClassLayout* layout = part ? constLayoutOf(holder, 0) : nullptr;
-  const Ty* declared = layout ? declaredTypeOf(d, !layout->subst.empty() ? &layout->subst : nullptr, 0) : nullptr;
+  const Ty* declared = part ? constPartType(holder, *path, path->size(), 0) : nullptr;
   if (part && constRefersTo(*part, declared))
     return constReadTarget(*part, depth + 1); // a reference member: what it refers to, as it is now
   return part;
@@ -8481,7 +8514,7 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     // `long&& r = i;` or `const double& d = i;` with i an int: a temporary of the reference's own
     // type, converted from i, which r's writes never reach ([dcl.init.ref] 5.4.2); never i's place
     // (r = 5 changed i, 55 where C++ gives 15; a constexpr local's constant showed it, 2026-11-06).
-    // A class bound to its base stays the object's place.
+    // A class bound to its base is that part of the object's place (below).
     if (at && at->type && type->inner)
     {
       auto scalar = [](const Ty* t)
@@ -8502,12 +8535,16 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     }
     if (at)
     {
+      // (as a parameter does: `Leaf<int>& l = two;` of two bases `Leaf<int>` and `Leaf<char>` means the one)
+      std::optional<std::vector<size_t>> basePart = at->type && type->inner ? constBasePath(at->type, type->inner, 0) : std::nullopt;
       ConstBinding alias{symbol, ConstValue::unset(type)};
-      alias.type = at->type;
+      alias.type = basePart && !basePart->empty() ? types.unqualified(type->inner) : at->type;
       alias.writable = !(type->inner && type->inner->isConst) && !at->readOnly;
       alias.aliasEnv = at->env;
       alias.aliasIndex = at->index;
       alias.aliasPath = at->path;
+      if (basePart)
+        alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
       env.push_back(std::move(alias));
       return named(env.size() - 1);
     }

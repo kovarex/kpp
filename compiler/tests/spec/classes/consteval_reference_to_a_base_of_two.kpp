@@ -1,0 +1,23 @@
+// spec: at compile time a local reference to a base is that base's part of the object, as a parameter's is: `Leaf<char>& l = two;` with two bases of one template found no one `value`; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct Leaf { T value; constexpr Leaf(T v) : value(v) {} };
+struct Plain : Leaf<int> { constexpr Plain(int v) : Leaf<int>(v) {} };
+template <typename A, typename B> struct Two : Leaf<A>, Leaf<B>
+{
+  constexpr Two(A a, B b) : Leaf<A>(a), Leaf<B>(b) {}
+};
+constexpr int a1() { Plain p(1); Leaf<int>& l = p; l.value = 3; return p.value; }
+constexpr int a2() { Two<int, char> t(1, 'x'); Leaf<int>& l = t; l.value = 3; return l.value; }
+constexpr int a3() { Two<int, char> t(1, 'x'); Leaf<char>& l = t; return l.value; }
+constexpr int a4() { int a = 1; Two<int&, char> t(a, 'x'); Leaf<int&>& l = t; return l.value; }
+constexpr int a5() { int a = 1; Two<int&, char> t(a, 'x'); Leaf<int&>& l = t; l.value = 3; return a; }
+constexpr int a6() { int a = 1; Two<int&, char> t(a, 'x'); return static_cast<Leaf<int&>&>(t).value; }
+constexpr int a7() { Two<int, char> t(1, 'x'); return static_cast<Leaf<char>&>(t).value; }
+constexpr int a8() { Two<int, char> t(1, 'x'); Leaf<char>* l = &t; return l->value; }
+constexpr int c1 = a1(), c2 = a2(), c3 = a3(), c4 = a4(), c5 = a5(), c6 = a6(), c7 = a7(), c8 = a8();
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d\n", c1, c2, c3, c4, c5, c6, c7, c8);
+  printf("%d %d %d %d %d %d %d %d\n", a1(), a2(), a3(), a4(), a5(), a6(), a7(), a8());
+  return 0;
+}

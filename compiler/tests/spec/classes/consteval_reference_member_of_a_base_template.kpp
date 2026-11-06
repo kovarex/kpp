@@ -1,0 +1,42 @@
+// spec: at compile time a reference member inherited from a class template's instance reads as a reference: its type is under the base's arguments, not those of the class it was read through (`T value` stayed T, and reading it was no constant); clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> constexpr T&& fwd(T& v) { return static_cast<T&&>(v); }
+template <typename T> struct Leaf
+{
+  T value;
+  template <typename U> constexpr Leaf(U&& v) : value(fwd<U>(v)) {}
+};
+template <typename T> struct LeafPlain
+{
+  T value;
+  constexpr LeafPlain(T v) : value(v) {}
+};
+struct One : Leaf<int&>
+{
+  constexpr One(int& a) : Leaf<int&>(a) {}
+};
+struct OneP : LeafPlain<int&>
+{
+  constexpr OneP(int& a) : LeafPlain<int&>(a) {}
+};
+struct NoBase { int& value; constexpr NoBase(int& a) : value(a) {} };
+struct Base { int& value; constexpr Base(int& a) : value(a) {} };
+struct FromBase : Base { constexpr FromBase(int& a) : Base(a) {} };
+constexpr int a1() { int a = 1; One l(a); return l.value; }
+constexpr int a2() { int a = 1; One l(a); l.value = 3; return a; }
+constexpr int a3() { int a = 1; OneP l(a); return l.value; }
+constexpr int a4() { int a = 1; OneP l(a); l.value = 3; return a; }
+constexpr int a5() { int a = 1; NoBase l(a); return l.value; }
+constexpr int a6() { int a = 1; NoBase l(a); l.value = 3; return a; }
+constexpr int a7() { int a = 1; FromBase l(a); return l.value; }
+constexpr int a8() { int a = 1; FromBase l(a); l.value = 3; return a; }
+constexpr int a9() { int a = 1; Leaf<int&> l(a); return l.value; }
+constexpr int a10() { int a = 1; Leaf<int&> l(a); l.value = 3; return a; }
+constexpr int a11() { int a = 1; LeafPlain<int&> l(a); return l.value; }
+constexpr int c1 = a1(), c2 = a2(), c3 = a3(), c4 = a4(), c5 = a5(), c6 = a6(), c7 = a7(), c8 = a8(), c9 = a9(), c10 = a10(), c11 = a11();
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d %d %d %d\n", c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11);
+  printf("%d %d %d %d %d %d %d %d %d %d %d\n", a1(), a2(), a3(), a4(), a5(), a6(), a7(), a8(), a9(), a10(), a11());
+  return 0;
+}

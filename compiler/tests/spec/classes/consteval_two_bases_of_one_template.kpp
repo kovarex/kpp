@@ -1,0 +1,36 @@
+// spec: at compile time two bases of one template each take their own initializer: `Slot<1>(10), Slot<2>(20)` both went to the first, by name, and the second got its default constructor; clang's output
+extern "C" int printf(const char* format, ...);
+template <int N> struct Slot { int v; constexpr Slot() : v(-1) {} constexpr Slot(int x) : v(x * N) {} };
+struct Both : Slot<1>, Slot<2>
+{
+  constexpr Both() : Slot<1>(10), Slot<2>(20) {}
+  constexpr Both(int a) : Slot<2>(a) {}
+  constexpr int first() const { return Slot<1>::v; }
+  constexpr int second() const { return Slot<2>::v; }
+};
+template <typename T> struct Leaf { T value; constexpr Leaf() : value() {} constexpr Leaf(T v) : value(v) {} };
+template <typename A, typename B> struct Two : Leaf<A>, Leaf<B>
+{
+  constexpr Two(A a, B b) : Leaf<A>(a), Leaf<B>(b) {}
+  constexpr A first() const { return Leaf<A>::value; }
+  constexpr B second() const { return Leaf<B>::value; }
+};
+using SlotOne = Slot<1>;
+struct Aliased : SlotOne, Slot<3>
+{
+  constexpr Aliased() : SlotOne(4), Slot<3>(5) {}
+  constexpr int first() const { return Slot<1>::v; }
+  constexpr int second() const { return Slot<3>::v; }
+};
+constexpr int a1() { Both b; return b.first() * 1000 + b.second(); }
+constexpr int a2() { Both b(7); return b.first() * 1000 + b.second(); }
+constexpr int a3() { Two<int, char> t(3, 'a'); return t.first() * 1000 + t.second(); }
+constexpr int a4() { Two<char, int> t('b', 4); return t.first() * 1000 + t.second(); }
+constexpr int a5() { Aliased a; return a.first() * 1000 + a.second(); }
+constexpr int c1 = a1(), c2 = a2(), c3 = a3(), c4 = a4(), c5 = a5();
+int main()
+{
+  printf("%d %d %d %d %d\n", c1, c2, c3, c4, c5);
+  printf("%d %d %d %d %d\n", a1(), a2(), a3(), a4(), a5());
+  return 0;
+}

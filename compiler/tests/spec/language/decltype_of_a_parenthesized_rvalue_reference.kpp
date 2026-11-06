@@ -1,0 +1,50 @@
+// spec: a name of an rvalue reference is an lvalue: `decltype((x.r))` of an `int&& r` is int&, and `decltype(auto)` of `return (x.r);` gives one (a Tuple<int&&>'s get<0> was an xvalue, which `= 8` refused); clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+struct R { int&& r; };
+struct L { int& r; };
+struct Base { int&& r; };
+struct Derived : Base { };
+int global = 0;
+R held{static_cast<int&&>(global)};
+decltype(auto) paren() { return (held.r); }
+auto& autoRef() { return held.r; }
+decltype(auto) throughCast(Derived& d) { return (static_cast<Base&>(d).r); }
+template <typename T> decltype(auto) generic(T& t) { return (t.r); }
+int main()
+{
+  int a = 1;
+  R x{static_cast<int&&>(a)};
+  L y{a};
+  const R z{static_cast<int&&>(a)};
+  R* p = &x;
+  printf("%d\n", Same<decltype(x.r), int&&>::value);
+  printf("%d\n", Same<decltype((x.r)), int&>::value);
+  printf("%d\n", Same<decltype(y.r), int&>::value);
+  printf("%d\n", Same<decltype((y.r)), int&>::value);
+  printf("%d\n", Same<decltype((z.r)), int&>::value);
+  printf("%d\n", Same<decltype((p->r)), int&>::value);
+  printf("%d\n", Same<decltype((R{static_cast<int&&>(a)}.r)), int&>::value);
+  printf("%d\n", Same<decltype(paren()), int&>::value);
+  printf("%d\n", Same<decltype(autoRef()), int&>::value);
+  Derived d{static_cast<int&&>(a)};
+  printf("%d\n", Same<decltype(throughCast(d)), int&>::value);
+  printf("%d\n", Same<decltype(generic(x)), int&>::value);
+  throughCast(d) = 5;
+  printf("%d\n", a);
+  generic(x) = 6;
+  printf("%d\n", a);
+  paren() = 7;
+  printf("%d\n", global);
+  x.r = 8;
+  printf("%d\n", a);
+  (x.r) += 1;
+  printf("%d\n", a);
+  int&& local = static_cast<int&&>(a);
+  printf("%d\n", Same<decltype(local), int&&>::value);
+  printf("%d\n", Same<decltype((local)), int&>::value);
+  local = 10;
+  printf("%d\n", a);
+  return 0;
+}

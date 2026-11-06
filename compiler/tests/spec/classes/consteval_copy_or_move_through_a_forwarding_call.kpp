@@ -1,0 +1,39 @@
+// spec: at compile time a forwarding call copies from an lvalue and moves from an rvalue, by a function of any name, and `return fwd<A>(a);` of an rvalue moves (it was no constant); clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> constexpr T&& fwd(T& v) { return static_cast<T&&>(v); }
+template <typename T> constexpr T&& fwd(T&& v) { return static_cast<T&&>(v); }
+struct Track
+{
+  int copied = 0, moved = 0;
+  constexpr Track() {}
+  constexpr Track(const Track& o) : copied(o.copied + 1), moved(o.moved) {}
+  constexpr Track(Track&& o) : copied(o.copied), moved(o.moved + 1) { o.moved = 50; }
+};
+template <typename T> struct Leaf
+{
+  T value;
+  template <typename U> constexpr Leaf(U&& v) : value(fwd<U>(v)) {}
+};
+template <typename A> struct One : Leaf<A>
+{
+  template <typename U> constexpr One(U&& a) : Leaf<A>(fwd<U>(a)) {}
+};
+template <typename... A> struct Many : Leaf<A>...
+{
+  template <typename... U> constexpr Many(U&&... a) : Leaf<A>(fwd<U>(a))... {}
+};
+template <typename A> constexpr A passOn(A&& a) { return fwd<A>(a); }
+constexpr int score(const Track& t) { return t.copied * 100 + t.moved; }
+constexpr int m1() { Track t; One<Track> o(t); return score(o.value) * 1000 + t.moved; }
+constexpr int m2() { Track t; One<Track> o(static_cast<Track&&>(t)); return score(o.value) * 1000 + t.moved; }
+constexpr int m3() { Track t; Leaf<Track> o(t); return score(o.value) * 1000 + t.moved; }
+constexpr int m4() { Track t; Leaf<Track> o(static_cast<Track&&>(t)); return score(o.value) * 1000 + t.moved; }
+constexpr int m7() { Track t; Track u = passOn(t); return score(u) * 1000 + t.moved; }
+constexpr int m8() { Track t; Track u = passOn(static_cast<Track&&>(t)); return score(u) * 1000 + t.moved; }
+constexpr int c1 = m1(), c2 = m2(), c3 = m3(), c4 = m4(), c7 = m7(), c8 = m8();
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d\n", c1, c2, c3, c4, 0, 0, c7, c8);
+  printf("%d %d %d %d %d %d %d %d\n", m1(), m2(), m3(), m4(), 0, 0, m7(), m8());
+  return 0;
+}

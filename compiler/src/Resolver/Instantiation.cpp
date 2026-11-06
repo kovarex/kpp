@@ -1877,10 +1877,12 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       // `decltype(++x)` are int&), an xvalue or prvalue its type (references the walk keeps).
       auto decltypeOfExpr = [&](const Ty* typed) -> const Ty* {
         const Expr* e = d->expr;
-        if (d->isAuto || !e || !typed || !typed->isKnown() || typed->isReference() || typed->kind == TyKind::Pack ||
+        if (d->isAuto || !e || !typed || !typed->isKnown() || typed->kind == TyKind::Pack ||
             e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr || typed->kind == TyKind::Void)
           return typed;
-        return isLvalueExpression(e) ? types.lref(typed) : typed;
+        if (typed->kind == TyKind::RRef && isLvalueExpression(e))
+          return types.lref(typed->inner); // (`(x.r)` of an `int&& r`: what a name says is an lvalue)
+        return typed->isReference() || !isLvalueExpression(e) ? typed : types.lref(typed);
       };
       const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty) : types.unknown();
       if (namesTupleBinding(d->expr))

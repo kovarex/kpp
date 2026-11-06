@@ -1,0 +1,44 @@
+// spec: as classes/consteval_reference_argument_through_a_call, through a pack expansion of a function that is not `forward`, a reference among plain elements, an rvalue reference; `Tup<int&, int>`'s first element was a copy, at run time it never was; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> constexpr T&& fwd(T& v) { return static_cast<T&&>(v); }
+template <typename T> constexpr T&& fwd(T&& v) { return static_cast<T&&>(v); }
+template <int I, typename T> struct LeafOf
+{
+  T value;
+  constexpr LeafOf() : value() {}
+  template <typename U> constexpr LeafOf(U&& v) : value(fwd<U>(v)) {}
+};
+struct Nothing {};
+template <typename H, typename... T> struct Tup;
+template <typename... T> struct RestOf { using Type = Tup<T...>; };
+template <> struct RestOf<> { using Type = Nothing; };
+template <typename H, typename... T>
+struct Tup : LeafOf<int(sizeof...(T)), H>, RestOf<T...>::Type
+{
+  using Leaf = LeafOf<int(sizeof...(T)), H>;
+  using Rest = typename RestOf<T...>::Type;
+  constexpr Tup(const H& head, const T&... tail) : Leaf(head), Rest(tail...) {}
+  template <typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T))
+  constexpr Tup(UH&& head, UT&&... tail) : Leaf(fwd<UH>(head)), Rest(fwd<UT>(tail)...) {}
+  constexpr H& first() { return Leaf::value; }
+};
+template <typename H> struct Tup<H> : LeafOf<0, H>
+{
+  using Leaf = LeafOf<0, H>;
+  constexpr Tup(const H& head) : Leaf(head) {}
+  template <typename UH> constexpr Tup(UH&& head) : Leaf(fwd<UH>(head)) {}
+  constexpr H& first() { return Leaf::value; }
+};
+constexpr int m1() { int a = 1; Tup<int&, int> t(a, 2); t.first() = 3; return a; }
+constexpr int m2() { int a = 1; Tup<int, int&> t(2, a); LeafOf<0, int&>& l = t; l.value = 3; return a; }
+constexpr int m3() { int a = 1; Tup<int&&> t(static_cast<int&&>(a)); t.first() = 3; return a; }
+constexpr int m4() { int a = 1, b = 2; Tup<int&, int&> t(a, b); t.first() = 3; return a * 10 + b; }
+constexpr int m5() { int a = 1; const int c = 2; Tup<int&, const int&> t(a, c); t.first() = 3; return a; }
+constexpr int m6() { int a = 1; int b = 2; Tup<int&, int> t(a, b); t.first() = 3; return a; }
+constexpr int c1 = m1(), c2 = m2(), c3 = m3(), c4 = m4(), c5 = m5(), c6 = m6();
+int main()
+{
+  printf("%d %d %d %d %d %d\n", c1, c2, c3, c4, c5, c6);
+  printf("%d %d %d %d %d %d\n", m1(), m2(), m3(), m4(), m5(), m6());
+  return 0;
+}

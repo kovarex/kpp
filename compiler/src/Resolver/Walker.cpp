@@ -81,9 +81,11 @@ auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
 {
   if (Impl::namesTupleBinding(e) && t)
     return types.stripRef(t); // `decltype(auto) x = a;` of a tuple-like binding a: what get gives, no reference
-  if (!e || !t || !t->isKnown() || t->isReference() || e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr)
+  if (!e || !t || !t->isKnown() || e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr)
     return t;
-  return isLvalueExpression(e) ? types.lref(t) : t;
+  if (t->kind == TyKind::RRef && isLvalueExpression(e))
+    return types.lref(t->inner); // (`(x.r)` of an `int&& r`: what a name says is an lvalue)
+  return t->isReference() || !isLvalueExpression(e) ? t : types.lref(t);
 }
 
 auto GlobalScope::Impl::Walker::typedUnionOf(const Ty* t) -> ClassDecl*
