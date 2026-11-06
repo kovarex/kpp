@@ -701,7 +701,7 @@ std::string vaListForSysV(const std::string& text)
 std::string clangToolchain(const std::string& clang, const std::string& includeArgs)
 {
   std::string out;
-  FILE* pipe = _popen(("\"\"" + clang + "\" -x c -E -v" + includeArgs + " NUL -o NUL 2>&1\"").c_str(), "r");
+  FILE* pipe = host::openPipe("\"" + clang + "\" -x c -E -v" + includeArgs + " " + host::nullDevice() + " -o " + host::nullDevice() + " 2>&1", "r");
   if (!pipe)
     return out;
   bool list = false;
@@ -730,7 +730,7 @@ std::string clangToolchain(const std::string& clang, const std::string& includeA
     else if (list)
       out += s;
   }
-  _pclose(pipe);
+  host::closePipe(pipe);
   return out;
 }
 
@@ -926,7 +926,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   {
     // Several compilers may build one import at once (the spec suite's): each works in files of its
     // own and renames the results into place whole.
-    std::string own = std::string(hex) + "." + std::to_string(_getpid());
+    std::string own = std::string(hex) + "." + std::to_string(host::processId());
     std::filesystem::path wrapperPath = cacheDir / (own + ".c");
     std::filesystem::path preprocessed = cacheDir / (own + ".pp");
     std::filesystem::path defines = cacheDir / (own + ".dm");

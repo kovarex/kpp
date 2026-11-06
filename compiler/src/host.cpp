@@ -9,6 +9,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#include <fcntl.h>
 #include <io.h>
 #include <windows.h>
 #else
@@ -183,11 +184,56 @@ namespace host
 
   int processId() { return int(GetCurrentProcessId()); }
 
+  fs::path pathOfUtf8(const std::string& text) { return fs::path(wide(text)); }
+
   FILE* openFile(const fs::path& path, const char* mode) { return _wfopen(path.c_str(), wide(mode).c_str()); }
   // (cmd /c takes the first and the last quote off a command line that starts with one: the whole is
   // quoted, so that one starting with a quoted program path keeps its quotes)
   FILE* openPipe(const std::string& command, const char* mode) { return _popen(("\"" + command + "\"").c_str(), mode); }
   int closePipe(FILE* pipe) { return _pclose(pipe); }
+  const char* nullDevice() { return "NUL"; }
+
+  size_t readStream(Stream stream, char* buffer, size_t size)
+  {
+    DWORD n = 0;
+    return ReadFile(HANDLE(stream), buffer, DWORD(size), &n, nullptr) ? size_t(n) : 0;
+  }
+
+  void writeStream(Stream stream, const char* data, size_t size)
+  {
+    for (size_t done = 0; done < size;)
+    {
+      DWORD n = 0;
+      if (!WriteFile(HANDLE(stream), data + done, DWORD(size - done), &n, nullptr) || n == 0)
+        return;
+      done += n;
+    }
+  }
+
+  Stream createLog(const fs::path& path)
+  {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    return h == INVALID_HANDLE_VALUE ? noStream : Stream(h);
+  }
+
+  void takeStandardStreams(Stream& in, Stream& out, Stream& err)
+  {
+    HANDLE process = GetCurrentProcess(), handles[3] = {};
+    DuplicateHandle(process, GetStdHandle(STD_INPUT_HANDLE), process, &handles[0], 0, FALSE, DUPLICATE_SAME_ACCESS);
+    DuplicateHandle(process, GetStdHandle(STD_OUTPUT_HANDLE), process, &handles[1], 0, FALSE, DUPLICATE_SAME_ACCESS);
+    DuplicateHandle(process, GetStdHandle(STD_ERROR_HANDLE), process, &handles[2], 0, FALSE, DUPLICATE_SAME_ACCESS);
+    in = Stream(handles[0]), out = Stream(handles[1]), err = Stream(handles[2]);
+    fflush(stdout);
+    fflush(stderr);
+    int nul = _open("NUL", _O_RDWR | _O_BINARY);
+    _dup2(nul, 0);
+    _dup2(nul, 1);
+    _dup2(nul, 2);
+    _close(nul);
+    SetStdHandle(STD_INPUT_HANDLE, HANDLE(_get_osfhandle(0)));
+    SetStdHandle(STD_OUTPUT_HANDLE, HANDLE(_get_osfhandle(1)));
+    SetStdHandle(STD_ERROR_HANDLE, HANDLE(_get_osfhandle(2)));
+  }
 
   // A console, or the pipe a Cygwin or MSYS terminal gives its programs (Git Bash's mintty:
   // \msys-<hash>-pty0-from-master, Cygwin's \cygwin-<hash>-pty0-...), which _isatty does not take for
@@ -404,6 +450,8 @@ namespace host
 
   int processId() { return int(getpid()); }
 
+  fs::path pathOfUtf8(const std::string& text) { return fs::path(text); }
+
   FILE* openFile(const fs::path& path, const char* mode) { return fopen(path.c_str(), mode); }
   // (popen takes "r" or "w" alone: a pipe has no text mode to leave)
   FILE* openPipe(const std::string& command, const char* mode) { return popen(command.c_str(), std::string(mode).find('w') != std::string::npos ? "w" : "r"); }
@@ -414,6 +462,54 @@ namespace host
     if (status == -1)
       return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+  }
+
+  const char* nullDevice() { return "/dev/null"; }
+
+  size_t readStream(Stream stream, char* buffer, size_t size)
+  {
+    for (;;)
+    {
+      ssize_t n = read(int(stream), buffer, size);
+      if (n >= 0)
+        return size_t(n);
+      if (errno != EINTR)
+        return 0;
+    }
+  }
+
+  void writeStream(Stream stream, const char* data, size_t size)
+  {
+    for (size_t done = 0; done < size;)
+    {
+      ssize_t n = write(int(stream), data + done, size - done);
+      if (n < 0 && errno == EINTR)
+        continue;
+      if (n <= 0)
+        return;
+      done += size_t(n);
+    }
+  }
+
+  Stream createLog(const fs::path& path)
+  {
+    int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    return fd < 0 ? noStream : Stream(fd);
+  }
+
+  void takeStandardStreams(Stream& in, Stream& out, Stream& err)
+  {
+    fflush(stdout);
+    fflush(stderr);
+    in = Stream(fcntl(0, F_DUPFD_CLOEXEC, 3));
+    out = Stream(fcntl(1, F_DUPFD_CLOEXEC, 3));
+    err = Stream(fcntl(2, F_DUPFD_CLOEXEC, 3));
+    int nul = open("/dev/null", O_RDWR);
+    dup2(nul, 0);
+    dup2(nul, 1);
+    dup2(nul, 2);
+    if (nul > 2)
+      close(nul);
   }
 
   bool interactiveInput() { return isatty(fileno(stdin)); }

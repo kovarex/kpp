@@ -8,7 +8,7 @@ struct Reader
     if (at == size)
     {
       at = size = 0;
-      if (!ReadFile(input, buffer, DWORD(sizeof buffer), &size, nullptr) || size == 0)
+      if ((size = host::readStream(input, buffer, sizeof buffer)) == 0)
         return false;
     }
     c = buffer[at++];
@@ -34,7 +34,7 @@ struct Reader
           return false;
         continue;
       }
-      if (_strnicmp(line.c_str(), "Content-Length:", 15) == 0)
+      if (line.size() >= 15 && std::equal(line.begin(), line.begin() + 15, "content-length:", [](char a, char b) { return std::tolower((unsigned char)a) == b; }))
         length = size_t(strtoull(line.c_str() + 15, nullptr, 10));
     }
     body.resize(length);
@@ -45,5 +45,5 @@ struct Reader
   }
 
   char buffer[1 << 16];
-  DWORD size = 0, at = 0;
+  size_t size = 0, at = 0;
 };

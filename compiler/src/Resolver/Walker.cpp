@@ -2,6 +2,7 @@
 // translation unit of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
 #include "sse_macros.hpp"
+#include <cmath> // std::isnan, isinf, fabs (MSVC's headers brought it in by chance; libstdc++'s do not)
 
 auto GlobalScope::Impl::Walker::probedCast(const Ty* t, const Ty* operand) -> const Ty*
 {

@@ -4,6 +4,7 @@
 // FreeBSD, macOS) do differently, behind one interface, so that the rest of kppc has no #ifdef. The
 // Windows side is what kppc did before, moved here unchanged; host.cpp has both.
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <functional>
@@ -28,6 +29,9 @@ namespace host
   std::filesystem::path executablePath();
   int processId();
 
+  // A path from its UTF-8 text (Windows' paths are UTF-16; POSIX's are the bytes).
+  std::filesystem::path pathOfUtf8(const std::string& text);
+
   // fopen of a path of any characters (Windows: its UTF-16 form; POSIX: its bytes).
   FILE* openFile(const std::filesystem::path& path, const char* mode);
   // A command line run by the shell (cmd.exe, /bin/sh), read or written through a pipe: popen and
@@ -35,6 +39,21 @@ namespace host
   // the command line is quoted whole for cmd /c, which takes those quotes off.
   FILE* openPipe(const std::string& command, const char* mode);
   int closePipe(FILE* pipe);
+
+  // The null device as a shell command line names it: NUL, /dev/null.
+  const char* nullDevice();
+
+  // A stream of bytes the language server talks through (lsp.cpp): a pipe, a file. readStream gives
+  // what came, up to size: 0 at the end of the input or on an error.
+  using Stream = intptr_t;
+  constexpr Stream noStream = -1;
+  size_t readStream(Stream stream, char* buffer, size_t size);
+  void writeStream(Stream stream, const char* data, size_t size);
+  // A file written from its start (--lsp-log), shared for reading; noStream when it cannot be made.
+  Stream createLog(const std::filesystem::path& path);
+  // stdin, stdout and stderr for the caller alone: duplicated into in, out and err, and the
+  // process's own replaced by the null device, so that what a build prints reaches no protocol.
+  void takeStandardStreams(Stream& in, Stream& out, Stream& err);
 
   // Whether a person answers on stdin: a terminal (on Windows also the pipe a Cygwin or MSYS
   // terminal gives its programs, which _isatty does not take for one).

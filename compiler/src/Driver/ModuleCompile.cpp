@@ -103,7 +103,7 @@ void reportAccessWarnings(Build& build)
       std::error_code ec;
       std::filesystem::create_directories(dir, ec);
       std::ostringstream own;
-      own << key << "." << _getpid() << "." << std::this_thread::get_id() << ".part";
+      own << key << "." << host::processId() << "." << std::this_thread::get_id() << ".part";
       std::filesystem::path part = dir / own.str();
       std::filesystem::copy_file(object, part, std::filesystem::copy_options::overwrite_existing, ec);
       if (!ec)
@@ -169,13 +169,13 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
   // The driver's answer: its one job, link.exe's arguments each quoted, a backslash or a quote in
   // one escaped with a backslash.
   std::string said;
-  if (FILE* pipe = _popen(("\"\"" + clang + "\" -### @\"" + responsePath + "\" 2>&1\"").c_str(), "r"))
+  if (FILE* pipe = host::openPipe("\"" + clang + "\" -### @\"" + responsePath + "\" 2>&1", "r"))
   {
     char chunk[65536];
     size_t n;
     while ((n = fread(chunk, 1, sizeof chunk, pipe)) > 0)
       said.append(chunk, n);
-    if (_pclose(pipe) != 0)
+    if (host::closePipe(pipe) != 0)
       return "";
   }
   std::vector<std::string> args;
@@ -740,7 +740,7 @@ void runCodegen(Build& build)
   if (int shared = sharedHits.load())
     during = ", " + std::to_string(shared) + " of them from KPP_OBJECT_CACHE" + during;
   // One build in 16 trims the shared cache to the most recently used 768 MB once it is past 1 GB.
-  if (!objectCacheDir.empty() && (uint64_t(_getpid()) * 2654435761u + uint64_t(Clock::now().time_since_epoch().count())) % 16 == 0)
+  if (!objectCacheDir.empty() && (uint64_t(host::processId()) * 2654435761u + uint64_t(Clock::now().time_since_epoch().count())) % 16 == 0)
     objectcache::trim(objectCacheDir, uintmax_t(1) << 30, uintmax_t(3) << 28);
   if (options.deferLink)
   {

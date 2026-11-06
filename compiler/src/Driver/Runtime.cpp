@@ -64,7 +64,7 @@ std::string madeOnce(const std::string& stem, const std::string& ext, const std:
   std::filesystem::path file = dir / (stem + "-" + hex + ext);
   if (std::filesystem::exists(file, ec))
     return file.string();
-  std::string own = std::to_string(_getpid());
+  std::string own = std::to_string(host::processId());
   std::filesystem::path input = dir / (stem + "-" + own + ".in"), output = dir / (stem + "-" + own + ext);
   if (FILE* f = fopen(input.string().c_str(), "wb"))
   {

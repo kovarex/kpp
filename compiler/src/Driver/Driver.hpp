@@ -40,9 +40,7 @@
 #include <thread>
 #include <sstream>
 #include <vector>
-#ifdef _WIN32
-#include <process.h> // _getpid
-#endif
+#include "host.hpp" // processId, openPipe
 
 namespace driver
 {

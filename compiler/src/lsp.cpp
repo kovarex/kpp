@@ -9,14 +9,13 @@
 #include <chrono>
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <filesystem>
-#include <io.h>
-#include <fcntl.h>
 #include <map>
 #include <mutex>
 #include <regex>
@@ -26,7 +25,7 @@
 #include <unordered_map>
 #include <type_traits>
 #include <vector>
-#include <windows.h>
+#include "host.hpp"
 
 // The Language Server Protocol 3.17 (https://microsoft.github.io/language-server-protocol/): a
 // message is a `Content-Length: N` header, an empty line and N bytes of JSON-RPC 2.0. Positions are
@@ -129,20 +128,12 @@ namespace
 
   // ---------------- transport ----------------
 
-  HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE, logHandle = INVALID_HANDLE_VALUE;
-  HANDLE logFile = INVALID_HANDLE_VALUE; // --lsp-log FILE
+  host::Stream input = host::noStream, output = host::noStream, logHandle = host::noStream;
+  host::Stream logFile = host::noStream; // --lsp-log FILE
   std::mutex outputMutex;
 
-  void writeHandle(HANDLE h, const std::string& bytes)
-  {
-    for (size_t done = 0; done < bytes.size();)
-    {
-      DWORD n = 0;
-      if (!WriteFile(h, bytes.data() + done, DWORD(bytes.size() - done), &n, nullptr) || n == 0)
-        return;
-      done += n;
-    }
-  }
+  void writeHandle(host::Stream h, const std::string& bytes) { host::writeStream(h, bytes.data(), bytes.size()); }
+
 
   // A line for the editor's log of this server (stderr, which editors show).
   void log(const char* format, ...)
@@ -154,7 +145,7 @@ namespace
     va_end(args);
     std::lock_guard lock(outputMutex);
     writeHandle(logHandle, std::string("kppc --lsp: ") + text + "\n");
-    if (logFile != INVALID_HANDLE_VALUE)
+    if (logFile != host::noStream)
       writeHandle(logFile, std::string(text) + "\n");
   }
 
@@ -198,9 +189,7 @@ namespace
       path.erase(0, 1); // /c:/x -> c:/x
     else if (!path.empty() && path[0] != '/')
       path = "//" + path; // file://server/share
-    std::wstring wide(path.size(), L'\0');
-    wide.resize(size_t(MultiByteToWideChar(CP_UTF8, 0, path.data(), int(path.size()), wide.data(), int(wide.size()))));
-    return fs::path(wide).make_preferred();
+    return host::pathOfUtf8(path).make_preferred();
   }
 
   std::string pathToUri(const fs::path& path)
@@ -698,8 +687,10 @@ namespace
       for (const ProjectCell& c : cells)
         if (c.configuration == configuration)
           found = c.configuration;
+      auto sameIgnoringCase = [](const std::string& a, const std::string& b)
+      { return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); }); };
       for (const ProjectCell& c : cells)
-        if (found.empty() && (_stricmp(c.visualStudio.c_str(), configuration.c_str()) == 0 || _stricmp(c.configuration.c_str(), configuration.c_str()) == 0))
+        if (found.empty() && (sameIgnoringCase(c.visualStudio, configuration) || sameIgnoringCase(c.configuration, configuration)))
           found = c.configuration;
       bool targetFound = wanted.target.empty(), pairFound = wanted.target.empty() && !found.empty();
       for (const ProjectCell& c : cells)
@@ -2608,7 +2599,10 @@ namespace
       {
         dirty = true; // files changed on disk by others are read again too
         std::string error;
-        if (_wcsicmp(uriToPath(params["textDocument"]["uri"].text).filename().c_str(), L"build.kpp") == 0 &&
+        std::u8string named = uriToPath(params["textDocument"]["uri"].text).filename().u8string();
+        for (char8_t& c : named)
+          c = c < 0x80 ? char8_t(std::tolower(int(c))) : c;
+        if (named == u8"build.kpp" &&
             !chooseArguments(self, project, error)) // the project described again
         {
           showMessage(1, "kpp: " + error + "; nothing is checked.");
@@ -2732,8 +2726,8 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
       server.checkEachChange = true;
     else if (arg == "--lsp-log" && i + 1 < argc)
     {
-      logFile = CreateFileA(argv[++i], GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-      if (logFile == INVALID_HANDLE_VALUE)
+      logFile = host::createLog(argv[++i]);
+      if (logFile == host::noStream)
         fprintf(stderr, "kppc --lsp: cannot write %s\n", argv[i]);
     }
     else
@@ -2741,20 +2735,8 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
   }
   // The protocol has stdin and stdout to itself: the build's prints go to NUL (and are captured
   // per build: buildInThisProcess), this server's log to the stderr it was started with.
-  HANDLE process = GetCurrentProcess();
-  DuplicateHandle(process, GetStdHandle(STD_INPUT_HANDLE), process, &input, 0, FALSE, DUPLICATE_SAME_ACCESS);
-  DuplicateHandle(process, GetStdHandle(STD_OUTPUT_HANDLE), process, &output, 0, FALSE, DUPLICATE_SAME_ACCESS);
-  DuplicateHandle(process, GetStdHandle(STD_ERROR_HANDLE), process, &logHandle, 0, FALSE, DUPLICATE_SAME_ACCESS);
-  fflush(stdout);
-  fflush(stderr);
-  int nul = _open("NUL", _O_RDWR | _O_BINARY);
-  _dup2(nul, 0);
-  _dup2(nul, 1);
-  _dup2(nul, 2);
-  _close(nul);
-  SetStdHandle(STD_INPUT_HANDLE, HANDLE(_get_osfhandle(0)));
-  SetStdHandle(STD_OUTPUT_HANDLE, HANDLE(_get_osfhandle(1)));
-  SetStdHandle(STD_ERROR_HANDLE, HANDLE(_get_osfhandle(2)));
+  host::takeStandardStreams(input, output, logHandle);
+
 
   std::thread([]
   {
