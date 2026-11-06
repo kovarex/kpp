@@ -425,6 +425,8 @@ namespace
               pendingAttributes |= ATTR_Packed;
             else if (a == "nodiscard")
               pendingAttributes |= ATTR_NoDiscard;
+            else if (a == "no_unique_address")
+              pendingAttributes |= ATTR_NoUniqueAddress;
             else if (a == "deprecated")
             {
               pendingAttributes |= ATTR_Deprecated;
@@ -2418,6 +2420,12 @@ namespace
         }
         v->flags |= flags | d.flags;
         v->bitfield = d.bitfield;
+        if (pendingAttributes & ATTR_NoUniqueAddress)
+        {
+          if (scope != Scope::Class || (v->flags & (DF_Static | DF_Typedef)) || v->bitfield)
+            error("[[no_unique_address]] is for a data member that is no bit field");
+          v->attributes |= ATTR_NoUniqueAddress;
+        }
         v->structuredBindings = d.structuredBindings;
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
@@ -3069,6 +3077,8 @@ namespace
       pendingExplicitCondition = nullptr;
       f->noexceptCondition = d.noexceptCondition;
       f->refQualifier = d.refQualifier;
+      if (pendingAttributes & ATTR_NoUniqueAddress)
+        error("[[no_unique_address]] is for a data member that is no bit field");
       f->attributes = pendingAttributes;
       noteDeprecation(f);
       pendingAttributes = 0;
@@ -4746,6 +4756,8 @@ namespace
       pendingAttributes = 0;
       pendingAlignment = nullptr;
       skipAttributes();
+      if (pendingAttributes & ATTR_NoUniqueAddress)
+        error("[[no_unique_address]] is for a data member that is no bit field");
       uint32_t start = pos;
       if (at(TokenKind::End))
         return nullptr;

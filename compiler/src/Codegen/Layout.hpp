@@ -74,6 +74,11 @@
     // The instantiation type with the definition as its decl (forward declarations map here).
     const Ty* canonicalClass(const Ty* t, Node* at);
 
+    // Whether an object of type t is or holds (as a base or a member, at any depth) a `wanted`.
+    bool holdsClass(const Ty* t, const Ty* wanted, Node* at);
+    // The [[no_unique_address]] members of an instance of c that take no storage (buildStruct).
+    std::unordered_set<Decl*> overlappingMembers(ClassDecl* c, const Ty* key, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys, Node* at);
+
     // The alignment declared on t or on what it holds (__declspec(align), alignas, an SSE vector),
     // which #pragma pack does not lower on MSVC's layout; 1 when none.
     uint64_t requiredAlignment(const Ty* t, Node* at);

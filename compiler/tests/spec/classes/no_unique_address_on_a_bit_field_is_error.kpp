@@ -1,0 +1,4 @@
+// spec: [[no_unique_address]] is for a non-static data member that is no bit field: on a bit field an error, as clang's
+// error: [[no_unique_address]] is for a data member that is no bit field
+struct S { [[no_unique_address]] int x : 3; };
+int main() { return 0; }

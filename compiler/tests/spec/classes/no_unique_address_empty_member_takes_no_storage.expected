@@ -1,0 +1,14 @@
+42 true true
+true true
+1 ab
+7 8
+4 true 5
+Noisy()
+Noisy(const Noisy&)
+Noisy::operator=
+true 48
+~Noisy()
+~Noisy()
+true 48 true
+00 12 34
+2 4

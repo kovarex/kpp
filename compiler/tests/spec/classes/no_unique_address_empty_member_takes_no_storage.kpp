@@ -1,0 +1,98 @@
+// spec: [[no_unique_address]] on a data member of an empty class: it takes no storage, on every target, as an empty base (design.md 9; kovarex 2026-11-06, Itanium's rule where MSVC ignores the attribute), at offset 0 as clang's layout has it. The class holding only such members is empty itself. Its constructor, destructor and member functions run on it, and copying, moving and assigning it writes nothing over the members that share its bytes
+// factorio: not used by the game: std's own allocator and comparator members, kovarex's list of conformance gaps (item 3)
+struct Empty
+{
+  int twice(int x) const { return x * 2; }
+};
+
+struct Noisy
+{
+  Noisy() { println("Noisy()"); }
+  Noisy(const Noisy&) { println("Noisy(const Noisy&)"); }
+  Noisy& operator=(const Noisy&) { println("Noisy::operator="); return *this; }
+  ~Noisy() { println("~Noisy()"); }
+};
+
+struct First { [[no_unique_address]] Empty e; int x; };
+struct Last { int x; [[no_unique_address]] Empty e; };
+struct Middle { char a; [[no_unique_address]] Empty e; char b; };
+struct Alone { [[no_unique_address]] Empty e; };
+struct Two { [[no_unique_address]] Alone a; int x; };
+struct AsBase : Alone { int x; };
+class Virtual
+{
+public:
+  virtual ~Virtual() {}
+  [[no_unique_address]] Empty e;
+  int x = 7;
+};
+struct Other {};
+struct TwoKinds { [[no_unique_address]] Empty e; [[no_unique_address]] Other o; long long x; };
+struct WithNoisy { int x = 0x11223344; [[no_unique_address]] Noisy n; String text = "long enough to be held outside the object itself"; };
+
+template<typename Compare>
+struct Holder
+{
+  [[no_unique_address]] Compare compare;
+  int value;
+};
+
+// Every byte of the copies is checked: a one byte copy of the empty member would write over x.
+struct Copied
+{
+  [[no_unique_address]] Empty e;
+  int x;
+  String s;
+};
+
+struct Aggregate { [[no_unique_address]] Empty e; int x; int y; };
+const Aggregate constant = {{}, 3, 4};
+
+static_assert(sizeof(First) == 4);
+static_assert(sizeof(Last) == 4);
+static_assert(sizeof(Middle) == 2);
+static_assert(sizeof(Alone) == 1);
+static_assert(sizeof(Two) == 4);
+static_assert(sizeof(AsBase) == 4);
+static_assert(sizeof(TwoKinds) == 8);
+static_assert(sizeof(Virtual) == 16);
+static_assert(sizeof(Holder<Empty>) == 4);
+
+int main()
+{
+  First first;
+  first.x = 0x01020304;
+  println(first.e.twice(21), " ", first.x == 0x01020304, " ", (void*)&first.e == (void*)&first);
+  Last last;
+  println((void*)&last.e == (void*)&last, " ", (void*)&last.x == (void*)&last);
+  Middle middle;
+  middle.a = 'a';
+  middle.b = 'b';
+  println(offsetof(Middle, b), " ", middle.a, middle.b);
+  Virtual v;
+  println(v.x, " ", v.e.twice(4));
+  auto compare = [](int a, int b) { return a < b; };
+  Holder<decltype(compare)> holder{compare, 5};
+  println(sizeof(holder), " ", holder.compare(1, 2), " ", holder.value);
+  {
+    WithNoisy a;
+    WithNoisy b = a;
+    a.x = 1;
+    a = b;
+    println(a.x == 0x11223344, " ", a.text.size());
+  }
+  Copied c{{}, 0x55667788, "a text long enough to be held outside the object"};
+  Copied d = c;
+  Copied e = move(c);
+  d.x = 0;
+  d = e;
+  println(d.x == 0x55667788, " ", d.s.size(), " ", e.x == 0x55667788);
+  Aggregate zero = {};
+  Aggregate given{{}, 1, 2};
+  println(zero.x, zero.y, " ", given.x, given.y, " ", constant.x, constant.y);
+  First array[3];
+  for (int i = 0; i < 3; ++i)
+    array[i].x = i;
+  println(array[2].x, " ", (char*)&array[1].e - (char*)&array[0].e);
+  return 0;
+}

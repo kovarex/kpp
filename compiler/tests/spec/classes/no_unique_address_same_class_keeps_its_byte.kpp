@@ -1,0 +1,31 @@
+// spec: two objects of one type have two addresses, so a [[no_unique_address]] member whose class another part of the class holds keeps its byte (a base, another member, inside either); so does a member aligned to more than a byte, and one of a class that is not empty takes all of its size: a class's padding holds nothing of the class around it (design.md 9), so the next member starts after it, where Itanium's layout reuses the tail padding
+struct Empty {};
+struct Derived : Empty { int x; };
+struct alignas(16) Wide {};
+struct Sized { long long a; char b; };
+
+struct SameBase : Empty { [[no_unique_address]] Empty e; int x; };
+struct SameMember { [[no_unique_address]] Empty a; Empty b; };
+struct BothMarked { [[no_unique_address]] Empty a; [[no_unique_address]] Empty b; int x; };
+struct Inside { [[no_unique_address]] Empty a; Derived d; };
+struct Aligned { [[no_unique_address]] Wide w; char c; };
+struct NotEmpty { [[no_unique_address]] Sized s; char c; };
+struct Elements { [[no_unique_address]] Empty a[2]; int x; };
+
+template<typename T> bool differ(const T& a, const T& b) { return (const void*)&a != (const void*)&b; }
+
+int main()
+{
+  SameBase base;
+  println(sizeof(SameBase), " ", differ<Empty>(base, base.e));
+  SameMember member;
+  println(sizeof(SameMember), " ", differ(member.a, member.b));
+  BothMarked both;
+  println(sizeof(BothMarked), " ", differ(both.a, both.b));
+  Inside inside;
+  println(sizeof(Inside), " ", differ<Empty>(inside.a, inside.d));
+  println(sizeof(Aligned), " ", alignof(Aligned));
+  println(sizeof(NotEmpty), " ", offsetof(NotEmpty, c));
+  println(sizeof(Elements));
+  return 0;
+}

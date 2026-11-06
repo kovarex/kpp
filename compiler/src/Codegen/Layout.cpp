@@ -250,13 +250,16 @@ auto codegen::Emitter::alignPadding(StructInfo& info, ClassDecl* c, const Ty* ke
   if (sh.target.msvc() && info.polymorphic && !info.primaryBase && !info.fieldTypes.empty())
   {
     uint64_t largest = 1;
-    for (size_t i = 1; i < info.fieldTypes.size(); ++i)
+    size_t vptrField = 0; // (after any [[no_unique_address]] members, which take none of its bytes)
+    while (info.zeroSize[vptrField])
+      ++vptrField;
+    for (size_t i = vptrField + 1; i < info.fieldTypes.size(); ++i)
       if (!info.zeroSize[i])
       {
         largest = std::max({largest, alignOf(info.fieldTypes[i], at), declaredAt[i]});
         firstAfterVptr = std::min(firstAfterVptr, i);
       }
-    uint64_t pointer = sizeOf(info.fieldTypes[0], at);
+    uint64_t pointer = sizeOf(info.fieldTypes[vptrField], at);
     vptrShift = (pointer + largest - 1) / largest * largest;
     if (vptrShift > pointer && firstAfterVptr < info.fieldTypes.size())
       needed = true;
@@ -661,6 +664,28 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         ownVptr = true;
   info.polymorphic = primary >= 0 || ownVptr;
   info.primaryBase = primary >= 0 ? baseKeys[primary] : nullptr;
+  // [[no_unique_address]] members of an empty class take no storage, as an empty base (design.md 9):
+  // zero-size fields first, so at offset 0, inside the object, where Itanium's layout puts them too.
+  // One whose class another part of this class holds keeps its byte: two objects of one type have
+  // two addresses. So does one aligned to more than a byte, which a field of no size could not align
+  // the class to. Their fields come first, their places in fieldDecls stay the declaration's.
+  std::unordered_set<Decl*> overlapping = overlappingMembers(c, key, args, baseKeys, at);
+  for (Decl* m : c->members)
+    if (overlapping.count(m))
+    {
+      info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
+      info.fieldTypes.push_back(global.typeOfDeclIn(m, args));
+    }
+  const size_t overlappingFields = info.fieldTypes.size();
+  // The class of the first data member that takes storage, or null (an empty base of that class
+  // keeps its byte).
+  auto firstMemberClass = [&]() -> const Ty*
+  {
+    for (Decl* m : info.fieldDecls)
+      if (!overlapping.count(m))
+        return classKey(info.fieldTypes[fieldIndexOf(info, m)]);
+    return nullptr;
+  };
   if (ownVptr)
     info.fieldTypes.push_back(types.pointer(types.voidType()));
   std::vector<uint32_t> baseIndex(baseKeys.size());
@@ -690,9 +715,9 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   // first data member is of its class).
   auto layoutEnd = [&]() -> uint64_t
   {
-    const Ty* firstMember = info.fieldDecls.empty() ? nullptr : classKey(info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])]);
+    const Ty* firstMember = firstMemberClass();
     uint64_t end = 0;
-    for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+    for (size_t i = overlappingFields; i < info.fieldTypes.size(); ++i)
     {
       const Ty* f = info.fieldTypes[i];
       bool base = false;
@@ -768,6 +793,11 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
             static_cast<VariableDecl*>(f)->name.last().symbol == static_cast<VariableDecl*>(m)->name.last().symbol)
           fail(at, "the layout of " + types.toString(key, &symbols) + ": two `when` declarations of the member " + memberName(m) +
                        " exist at once, a clash (design.md 19)");
+    if (overlapping.count(m))
+    {
+      info.fieldDecls.push_back(m); // (its field is among the first)
+      continue;
+    }
     const Ty* ft = global.typeOfDeclIn(m, args);
     if (!ft || !ft->isKnown() || types.isDependent(ft))
       layoutError("the member " + memberName(m) + " has an unknown type");
@@ -905,7 +935,8 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
   // Empty bases take no storage, unless the first member is of the same class (two objects of
   // one type at one address: C++ gives the base a byte then).
   info.zeroSize.assign(info.fieldTypes.size(), false);
-  const Ty* firstMember = info.fieldDecls.empty() ? nullptr : classKey(info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])]);
+  std::fill_n(info.zeroSize.begin(), overlappingFields, true);
+  const Ty* firstMember = firstMemberClass();
   bool allBasesEmpty = true;
   for (auto& [baseDef, index] : info.bases)
   {
@@ -913,7 +944,7 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
     allBasesEmpty = allBasesEmpty && emptyBase;
     info.zeroSize[index] = emptyBase && classKey(info.fieldTypes[index]) != firstMember;
   }
-  info.empty = !info.polymorphic && info.fieldDecls.empty() && allBasesEmpty;
+  info.empty = !info.polymorphic && info.fieldDecls.size() == overlapping.size() && allBasesEmpty;
   info.packed = (c->attributes & ATTR_Packed) != 0;
   uint64_t tailPadding = alignPadding(info, c, key, args, at);
   info.tailPadding = tailPadding;
@@ -962,6 +993,58 @@ auto codegen::Emitter::requiredAlignment(const Ty* t, Node* at) -> uint64_t
   if (t->kind == TyKind::Vector)
     return alignOf(t, at);
   return isClass(t) ? structFor(t, at).requiredAlign : 1;
+}
+
+auto codegen::Emitter::holdsClass(const Ty* t, const Ty* wanted, Node* at) -> bool
+{
+  t = types.unqualified(t);
+  while (t->kind == TyKind::Array)
+    t = types.unqualified(t->inner);
+  if (!isClass(t) && !isLambda(t))
+    return false;
+  const Ty* held = canonicalClass(t, at);
+  if (held == wanted)
+    return true;
+  for (const Ty* field : structFor(held, at).fieldTypes)
+    if (holdsClass(field, wanted, at))
+      return true;
+  return false;
+}
+
+auto codegen::Emitter::overlappingMembers(ClassDecl* c, const Ty* key, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys, Node* at) -> std::unordered_set<Decl*>
+{
+  std::unordered_set<Decl*> overlapping;
+  std::vector<Decl*> members; // the data members of this instance
+  bool any = false;
+  for (Decl* m : c->members)
+    if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+    {
+      members.push_back(m);
+      any = any || (m->attributes & ATTR_NoUniqueAddress);
+    }
+  if (!any)
+    return overlapping;
+  auto known = [&](const Ty* t) { return t && t->isKnown() && !types.isDependent(t); };
+  std::erase_if(members, [&](Decl* m) { return !whenMemberHolds(m, c, args, key, at) || !known(global.typeOfDeclIn(m, args)); });
+  for (Decl* m : members)
+  {
+    const Ty* held = types.unqualified(global.typeOfDeclIn(m, args));
+    if (!(m->attributes & ATTR_NoUniqueAddress) || static_cast<VariableDecl*>(m)->alignment || (!isClass(held) && !isLambda(held)))
+      continue;
+    if (isLambda(held))
+      closureFor(held, at);
+    const Ty* cls = canonicalClass(held, at);
+    if (!structFor(cls, at).empty || alignOf(cls, at) > 1)
+      continue;
+    bool shared = false;
+    for (const Ty* base : baseKeys)
+      shared = shared || holdsClass(base, cls, at);
+    for (Decl* other : members)
+      shared = shared || (other != m && holdsClass(global.typeOfDeclIn(other, args), cls, at));
+    if (!shared)
+      overlapping.insert(m);
+  }
+  return overlapping;
 }
 
 auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys, const std::vector<uint32_t>& baseIndex, int primary, Node* at) -> std::vector<Vtable>

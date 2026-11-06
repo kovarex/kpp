@@ -743,6 +743,18 @@ kpp/test_check_char_pointers_is_error.
   8 bytes with g++, 12 in kpp), as for a polymorphic base (the targets table). So a copy of a base
   subobject, its size in bytes, never touches the derived class's members. Found comparing with clang
   and g++ (thread B's batteries, 2026-11-06); the same reason as the empty bases above.
+- `[[no_unique_address]]` on a data member of an empty class: it takes no storage, on every target
+  as an empty base (MSVC ignores the attribute; kovarex 2026-11-06), at offset 0 as Itanium's layout
+  has it, and a class holding only such members is empty itself. Two objects of one type have two
+  addresses, so a member whose class another part of the class holds (a base, another member, inside
+  either) keeps its byte; so does one aligned to more than a byte. Itanium gives such a member an
+  address inside the class without a byte of its own, so `struct { [[no_unique_address]] Empty a, b;
+  int x; }` is 8 bytes in kpp and 4 with clang, `struct A : Empty { [[no_unique_address]] Empty e;
+  int x; }` too, and with `alignas(16)` on Empty `{ [[no_unique_address]] Wide w; char c; }` is 32
+  and 16: sizes alone, every address differs. On a class that is not empty the attribute changes
+  nothing: a member's padding holds nothing of the class around it, the rule for a base's. Anywhere
+  but on a non-static data member that is no bit field it is an error, as clang's. Specs
+  classes/no_unique_address_*.
 - On Windows a class with a vtable pointer of its own lays its bases and members out from their
   largest alignment after it, as MSVC does: `class Over { virtual ~Over(); char c; alignas(16)
   double d; }` has c at 16 and d at 32 (48 bytes), where Itanium's layout (the other targets) puts c

@@ -27,6 +27,7 @@ constexpr uint8_t ATTR_Specialized = 16; // a class template that has specialisa
 constexpr uint8_t ATTR_InstanceCopy = 32; // an instantiation's own copy of a function (InstanceCopier::function)
 constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members without padding, alignment 1 (C's #pragma pack: ClassDecl::pack)
 constexpr uint16_t ATTR_NoDiscard = 256;  // [[nodiscard]] on a function, class or enumeration: a call's result discarded is a warning (Walker::checkDiscarded)
+constexpr uint16_t ATTR_NoUniqueAddress = 1024; // [[no_unique_address]] on a data member: an empty one takes no storage (Emitter::buildStruct)
 constexpr uint16_t ATTR_Deprecated = 512; // [[deprecated]], [[deprecated("why")]]: a call of the function is a warning (ParsedFile::deprecations has why)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
 constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4; // Decl::builtin: generated enum members
