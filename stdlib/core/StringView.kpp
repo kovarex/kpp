@@ -293,10 +293,6 @@ private:
 
 String toString(StringView text) { return text.toString(); }
 
-usize hashOf(StringView text)
-{
-  usize h = 14695981039346656037ull;
-  for (ContainerSize i = 0; i < text.size(); ++i)
-    h = (h ^ (usize)(u8)text.data()[i]) * 1099511628211ull;
-  return h;
-}
+// String's hash for the same text, as std::hash of a string_view equals that of a string with the
+// same characters (heterogeneous lookup relies on it).
+usize hashOf(StringView text) { return hashBytes(text.data(), text.size()); }

@@ -1,6 +1,5 @@
 // spec: a String and a StringView of the same characters hash equal, through Hash<String> and Hash<StringView> and through hashOf (C++ [basic.string.hash]: hash<string>(s) == hash<string_view>(s)), so a hash computed from a view finds what was hashed as a String; also for the empty text and one past the 8-byte words (`1 1 1 1`)
 // factorio: E's hashing battery against std (hs1, 2026-11-06): Hash<String>()(s) and Hash<StringView>()(view) of "same text" differed, on Windows and Linux; std's are equal
-// pending: hashOf(const String&) is Hash.kpp's hashBytes, hashOf(StringView) a byte-wise FNV-1a in StringView.kpp (C)
 extern "C" import "stdio.h";
 int main()
 {
