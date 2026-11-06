@@ -1,0 +1,34 @@
+// spec: at compile time, a call to a member function whose `decltype(auto)` result is a reference (`return (value);`, `return (static_cast<Leaf&>(*this).value);`) is a place a write goes to, as at run time: `h.get() = 3`, Tuple's `get<0>(t) = 7`, `get<0>(t) += 4`, `int& r = get<0>(t); r += 4`. Before, the interpreter took the declared result type, decltype(auto), for no reference, and the constexpr variable was no constant (with no reason given). the same as at run time
+// found comparing kpp's compile time with its run time (thread I's battery k17)
+struct Leaf
+{
+  int value;
+};
+struct Holder : Leaf
+{
+  decltype(auto) viaDecltype() { return (value); }
+  decltype(auto) viaBase() { return (static_cast<Leaf&>(*this).value); }
+};
+constexpr int members()
+{
+  Holder h{};
+  h.viaDecltype() = 3;
+  h.viaBase() += 4;
+  return h.value;
+}
+constexpr int tuples()
+{
+  Tuple<int, char> t(3, 'a');
+  get<0>(t) = 7;
+  get<0>(t) += 4;
+  int& r = get<0>(t);
+  r *= 2;
+  return get<0>(t) * 1000 + get<1>(t);
+}
+constexpr int fromMembers = members();
+constexpr int fromTuples = tuples();
+int main()
+{
+  println(fromMembers, " ", members(), " ", fromTuples, " ", tuples());
+  return 0;
+}

@@ -2065,7 +2065,7 @@ auto GlobalScope::Impl::constFreeFunction(uint32_t symbol, const std::vector<con
   return choose(merged);
 }
 
-auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::optional<ConstValue>* ran) -> std::optional<ConstPlace>
+auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::optional<ConstValue>* ran, const Ty* callType) -> std::optional<ConstPlace>
 {
   // Run as any call (constRun: parameter packs, defaults, the arguments' places), on the object
   // where it is, its reference result kept as a place.
@@ -2077,6 +2077,11 @@ auto GlobalScope::Impl::constCallPlace(FunctionDecl* f, const Subst& subst, cons
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   const Ty* returns = f->returnType ? convertType(f->returnType, fctx, 1) : nullptr;
+  // `decltype(auto) get() { return (value); }` (Tuple's get): a reference result as the walk deduced
+  // it for this call (it was no place, so `get<0>(t) = 7` and `tie(a, b) = t` were no constants).
+  if (returns == types.decltypeAutoType() && callType && callType->kind == TyKind::LRef && callType->inner &&
+      callType->inner->isKnown() && !types.isDependent(callType->inner))
+    returns = callType;
   if (!returns || returns->kind != TyKind::LRef || !returns->inner)
     return std::nullopt;
   std::optional<ConstValue> object = constRead(self);
@@ -7034,7 +7039,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       }
     if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own, &categories))
       return std::nullopt; // `all.emplace_back().roots`: a member function template's own parameters
-    return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran);
+    return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran, c->ty);
   }
   return std::nullopt;
 }

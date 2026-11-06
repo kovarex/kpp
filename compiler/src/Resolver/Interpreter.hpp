@@ -251,7 +251,8 @@
   // is in the caller's object (a write through it reaches the object); nullopt for a result that
   // is no part of it.
   // ran: set to the call's value when its result is no place the run holds.
-  std::optional<ConstPlace> constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr, std::optional<ConstValue>* ran = nullptr);
+  // callType: the call's type as the walk gave it, which says what a `decltype(auto)` result is.
+  std::optional<ConstPlace> constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth, const std::vector<std::optional<ConstPlace>>* places = nullptr, const std::vector<uint8_t>* categories = nullptr, std::optional<ConstValue>* ran = nullptr, const Ty* callType = nullptr);
 
   // The member function of an object's class named symbol that a call with these arguments runs
   // for a place: one taking that many arguments, the non-const one where the object may be written.
