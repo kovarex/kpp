@@ -21,7 +21,9 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   point, or the other Rep is an integer and the other period is a whole multiple of this one
   (`Nanoseconds ns = Milliseconds(5);`, `Duration<double> s = Milliseconds(1500);` is 1.5).
   Other conversions go through `durationCast<To>(d)`, which truncates toward zero for an integer
-  To; `floor<To>(d)` and `ceil<To>(d)` round down and up instead.
+  To; `floor<To>(d)` and `ceil<To>(d)` round down and up instead, and `round<To>(d)` (an integer
+  To) to the nearest, a tie to the even count; all three exact for any count (compared in the
+  common duration).
 - The *common duration* of two durations is the one both convert to without loss: its rep is the
   type of the sum of the two reps, its period the greatest period that divides both, so the finer
   one when the other is a whole multiple of it (Milliseconds and Seconds: Milliseconds; this is
@@ -57,6 +59,11 @@ Each clock has the members `rep`, `period`, `duration`, `time_point`, `is_steady
   read from the performance counter. `HighResolutionClock` is the same clock.
 - `SystemClock`: the wall clock, UTC, in ticks of 100 ns since 1970-01-01; it jumps when the system
   time is set. `to_time_t(t)`: whole seconds since 1970, rounded down; `from_time_t(s)`: back.
+- `FileClock` (std::chrono::file_clock): the file system's clock, a file's last write time
+  (`filesystem::file_time_type`), in ticks of 100 ns since 1601-01-01 UTC (Windows' FILETIME) on
+  every target. `to_sys(t)` and `from_sys(t)`: the same instant as a SystemClock time point and
+  back. *Difference from C++*: the epoch is implementation-defined there (MSVC's is 1601, as
+  here; libstdc++'s another), and MSVC has no to_sys (clock_cast).
 
 ## Reading a time from text
 

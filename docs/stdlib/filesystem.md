@@ -97,6 +97,12 @@ path). `symlink_status(p)`: the same without following: a reparse point is symli
 without entries. `equivalent(a, b)`: whether a and b name the same file or directory (links
 followed: the same volume and file index); an error when either does not resolve (2026-10-30).
 `space(p)`: `space_info` {capacity, free, available} of the volume of p.
+`last_write_time(p)`: when what p names (links followed) was last written, a `file_time_type`
+(`TimePoint<FileClock>`, time.md); `last_write_time(p, t)` sets it, the access time left as it is
+(on Linux and FreeBSD to 100 ns: FileClock's ticks). `hard_link_count(p)`: how many names (hard
+links) what p names has. `resize_file(p, size)`: the regular file p cut to size bytes, or extended
+with zero bytes. `hash_value(p)`: a hash that equal paths share (`a\b` and `a/b` alike).
+`u8path(text)`: the path of UTF-8 text, what `path(text)` is (deprecated in C++20).
 
 ## Directories
 
@@ -106,10 +112,19 @@ the end, which an iterator becomes after its last entry. `begin(it)` and `end(it
 range. `increment(ec)` advances reporting errors in ec; `operator++` throws. A missing p (or one
 that is not a directory) is an error; an empty directory gives the end at once.
 
+`recursive_directory_iterator(p, options)`: every entry under directory p, depth first: a
+directory's entries come right after it, each directory's in the file system's order. A link to a
+directory is entered only with `directory_options::follow_directory_symlink`; a directory that
+cannot be opened is an error, or skipped with `skip_permission_denied` when access is denied.
+`depth()` (0 for p's own entries), `options()`, `recursion_pending()` and
+`disable_recursion_pending()` (the next increment does not enter the current directory),
+`pop()` (the next entry one level up; the end from the top), `increment(ec)`; copies share the
+position, as directory_iterator's, and `begin` and `end` make it a range.
+
 `directory_entry`: `path()` (and an implicit conversion to `const path&`), and the status the
 listing gave without asking the file system again: `status()`, `symlink_status()`, `exists()`,
-`is_directory()`, `is_regular_file()`, `is_symlink()`, `file_size()` (a link is asked anew,
-followed). `refresh()` forgets the listing's data; `assign(p)` makes it another path's entry.
+`is_directory()`, `is_regular_file()`, `is_symlink()`, `file_size()`, `last_write_time()` (a link
+is asked anew, followed); `hard_link_count()` asks the file system. `refresh()` forgets the listing's data; `assign(p)` makes it another path's entry.
 Compared by path.
 
 ## Changing the file system
@@ -138,13 +153,24 @@ Compared by path.
 - `permissions(p, prms, opts)`: with `perm_options::replace` (also the default), `add` or
   `remove`, computes the new bits from p's current ones; p becomes read-only when they have no
   write bit, writable otherwise (Windows keeps nothing else). nofollow is accepted.
+- `create_hard_link(target, link)`: another name for the existing file target. `create_symlink(target,
+  link)` and `create_directory_symlink(target, link)`: a symbolic link whose text is target (which
+  need not exist; a relative one is read from the link's directory); on Windows a directory's link
+  is made with the second, and making either needs Developer Mode or the privilege to create
+  symbolic links (otherwise the error is the system's ERROR_PRIVILEGE_NOT_HELD). `read_symlink(p)`:
+  the link's text as written (on Windows a reparse point's print name, also a junction's); anything
+  else is an error (errc::invalid_argument on Windows, the system's EINVAL elsewhere).
+  `copy_symlink(from, to)`: a link at to with from's text, a directory link when from leads to a
+  directory.
 - `current_path()`, `current_path(p)`: the current directory, read or set.
   `temp_directory_path()`: the system's directory for temporary files.
 - `absolute(p)`: p against the current directory (GetFullPathName, which also removes `.` and
   `..`); empty for an empty p. `canonical(p)`: the absolute path of what p names with every link
   resolved; p must exist; the system's `\\?\` prefix is removed (`\\?\UNC\` becomes `\\`).
   `weakly_canonical(p)`: canonical of the longest leading part of p that exists, followed by the
-  rest, lexically normal.
+  rest, lexically normal. `relative(p, base)`: `weakly_canonical(p).lexically_relative(
+  weakly_canonical(base))`, base the current directory unless given; `proximate(p, base)`: the
+  same with lexically_proximate.
 
 ## Errors
 
@@ -158,10 +184,7 @@ the reason, as std's does); exists clears ec when the status is known.
 `: `, the error code's message, then the paths in brackets: `remove: Access is denied.
 [C:\x.txt]`. *Difference from C++*: the format of what() is kpp's own.
 
-The following are not provided: `last_write_time` and `file_time_type`,
-`hard_link_count`, `resize_file`, links (`read_symlink`, `create_symlink`, ...),
-`recursive_directory_iterator`, `relative` and `proximate` against the file system (the lexical
-ones are), `hash_value`, and paths' stream operators.
+Paths' stream operators (`<<` and `>>` with C++'s quoting) are not provided.
 
 # ErrorCode, Errc, SystemError
 

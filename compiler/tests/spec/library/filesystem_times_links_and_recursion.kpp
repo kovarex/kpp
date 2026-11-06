@@ -1,0 +1,60 @@
+// spec: the file system's relative and proximate (weakly canonical, then lexically relative or proximate), hash_value (equal paths hash alike), u8path, last_write_time read and set (a year back, read again, through a directory entry too) as file_time_type of FileClock, resize_file (cut and zero-extended), create_hard_link and hard_link_count, and recursive_directory_iterator (depth, disable_recursion_pending, pop), as MSVC's std::filesystem and libstdc++'s give them (thread I's battery fs3, E's list). They were not provided
+int main()
+{
+  using namespace filesystem;
+  path root = temp_directory_path() / "kpp-spec-times-links";
+  remove_all(root);
+  create_directories(root / "a" / "b" / "c");
+  create_directories(root / "d");
+  {
+    OutFileStream out((root / "a" / "one.txt").string());
+    out << "hello";
+  }
+  {
+    OutFileStream out((root / "a" / "b" / "two.txt").string());
+  }
+  path here = current_path();
+  current_path(root);
+  println("relative [", relative(root / "a" / "b", root / "d").generic_string(), "] [", relative("a/b/c").generic_string(), "] [", relative(root / "a", root / "a").generic_string(), "]");
+  println("proximate [", proximate("a/./b/../one.txt", root / "d").generic_string(), "] [", proximate(root / "a", root / "a" / "b").generic_string(), "]");
+  current_path(here);
+  println("hash ", hash_value(path("x/y/z")) == hash_value(path("x//y/z")), " ", hash_value(path("x/y")) == hash_value(path("x/z")));
+  println("u8path [", u8path("caf\xC3\xA9/x").parent_path().string(), "] ", u8path("caf\xC3\xA9").native().size());
+  path one = root / "a" / "one.txt";
+  file_time_type before = last_write_time(one);
+  file_time_type yearBack = before - Seconds(3600 * 24 * 365);
+  last_write_time(one, yearBack);
+  println("time ", last_write_time(one) == yearBack, " ", before - last_write_time(one) == Seconds(3600 * 24 * 365), " ",
+          FileClock::to_sys(before) - SystemClock::now() < Seconds(3600));
+  for (const directory_entry& e : directory_iterator(root / "a"))
+    if (e.path().filename() == path("one.txt"))
+      println("entry ", e.last_write_time() == yearBack);
+  resize_file(one, 2);
+  u64 cut = file_size(one);
+  resize_file(one, 10);
+  println("resize ", cut, " ", file_size(one));
+  create_hard_link(one, root / "d" / "same.txt");
+  println("hard links ", hard_link_count(one), " ", hard_link_count(root / "d" / "same.txt"), " ", equivalent(one, root / "d" / "same.txt"), " ",
+          hard_link_count(root / "a" / "b" / "two.txt"));
+  i32 count = 0, deepest = 0;
+  for (recursive_directory_iterator it(root / "a"), end; it != end; ++it)
+  {
+    ++count;
+    deepest = it.depth() > deepest ? it.depth() : deepest;
+  }
+  i32 shallow = 0;
+  for (recursive_directory_iterator it(root), end; it != end; ++it)
+  {
+    if (it->path().filename() == path("a"))
+      it.disable_recursion_pending();
+    ++shallow;
+  }
+  recursive_directory_iterator it(root / "a");
+  while (it != recursive_directory_iterator() && it.depth() == 0)
+    ++it;
+  i32 depthBeforePop = it.depth();
+  it.pop();
+  println("recursive ", count, " ", deepest, " ", shallow, " ", depthBeforePop, " ", it == recursive_directory_iterator() ? -1 : it.depth());
+  println("removed ", remove_all(root));
+  return 0;
+}

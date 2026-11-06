@@ -1,0 +1,6 @@
+read [a/one.txt] [a]
+status true true 5 true true
+copy [a/one.txt] true
+not a link true
+recursive 6 8
+removed 7

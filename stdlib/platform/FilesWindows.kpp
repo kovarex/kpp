@@ -444,4 +444,134 @@ namespace platform
     }
     ec.clear();
   }
+
+  // A listing's or fileInfo's write time as FileClock ticks: Windows' own FILETIME, 100 ns since 1601.
+  i64 fileClockTicksOf(u64 writeTime) { return (i64)writeTime; }
+
+  // Sets the last write time of p (links followed) to ticks of FileClock: SetFileTime.
+  bool setWriteTime(const filesystem::path& p, i64 ticks, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0x100, 7, nullptr, 3, 0x02000000, nullptr); // FILE_WRITE_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    Win32FileTime time{(unsigned long)((u64)ticks & 0xFFFFFFFFu), (unsigned long)((u64)ticks >> 32)};
+    bool ok = win32::SetFileTime(file, nullptr, nullptr, (const _FILETIME*)(const void*)&time) != 0;
+    if (!ok)
+      ec = lastFileError();
+    win32::CloseHandle(file);
+    if (ok)
+      ec.clear();
+    return ok;
+  }
+
+  // Makes the regular file p size bytes long, cut or zero-filled (the C runtime's _chsize_s on a
+  // descriptor opened for writing); its errors are errno values.
+  bool resizeFile(const filesystem::path& p, u64 size, ErrorCode& ec)
+  {
+    if (size > (u64)0x7FFFFFFFFFFFFFFFll)
+    {
+      ec = make_error_code(Errc::file_too_large);
+      return false;
+    }
+    int descriptor = win32::_wopen(p.c_str(), 0x8002); // _O_RDWR | _O_BINARY
+    if (descriptor < 0)
+    {
+      ec = ErrorCode(*errnoLocation(), genericCategory());
+      return false;
+    }
+    int error = win32::_chsize_s(descriptor, (long long)size);
+    win32::_close(descriptor);
+    if (error != 0)
+    {
+      ec = ErrorCode(error, genericCategory());
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // The number of names of what p names (links followed): BY_HANDLE_FILE_INFORMATION's link count.
+  bool hardLinkCount(const filesystem::path& p, u64& count, ErrorCode& ec)
+  {
+    Win32HandleInformation info;
+    if (!identityOf(p, info, ec))
+      return false;
+    count = info.links;
+    ec.clear();
+    return true;
+  }
+
+  // A new name link for the file target: CreateHardLink.
+  bool createHardLink(const filesystem::path& target, const filesystem::path& link, ErrorCode& ec)
+  {
+    if (!win32::CreateHardLinkW(link.c_str(), target.c_str(), nullptr))
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // A symbolic link at link to target (a directory link when directory): CreateSymbolicLink, which
+  // needs Developer Mode or the privilege to create symbolic links (ERROR_PRIVILEGE_NOT_HELD).
+  bool createSymlink(const filesystem::path& target, const filesystem::path& link, bool directory, ErrorCode& ec)
+  {
+    unsigned long flags = (directory ? 1u : 0u) | 2u; // SYMBOLIC_LINK_FLAG_DIRECTORY, ..._ALLOW_UNPRIVILEGED_CREATE
+    if (!win32::CreateSymbolicLinkW(link.c_str(), target.c_str(), flags))
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // What the symbolic link or junction p leads to, as it was written: the reparse point's print
+  // name (its substitute name without the `\??\` prefix when there is none).
+  bool readSymlink(const filesystem::path& p, filesystem::path& target, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02200000, nullptr); // FILE_READ_ATTRIBUTES, OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    Vector<u8> buffer(16 * 1024);
+    unsigned long returned = 0;
+    bool ok = win32::DeviceIoControl(file, 0x000900A8, nullptr, 0, buffer.data(), (unsigned long)buffer.size(), &returned, nullptr) != 0; // FSCTL_GET_REPARSE_POINT
+    if (!ok)
+      ec = lastFileError();
+    win32::CloseHandle(file);
+    if (!ok)
+      return false;
+    auto read16 = [&](i32 at) -> u32 { return (u32)buffer[at] | ((u32)buffer[at + 1] << 8); };
+    u32 tag = read16(0) | (read16(2) << 16);
+    i32 names = 0;
+    if (tag == 0xA000000Cu) // IO_REPARSE_TAG_SYMLINK: Flags before the names
+      names = 20;
+    else if (tag == 0xA0000003u) // IO_REPARSE_TAG_MOUNT_POINT, a junction
+      names = 16;
+    else
+    {
+      ec = make_error_code(Errc::invalid_argument);
+      return false;
+    }
+    u32 substituteOffset = read16(8), substituteLength = read16(10), printOffset = read16(12), printLength = read16(14);
+    auto text = [&](u32 offset, u32 length) {
+      WString out;
+      for (u32 i = 0; i + 1 < length; i += 2)
+        out.push_back((wchar_t)read16(names + (i32)(offset + i)));
+      return out;
+    };
+    WString name = printLength > 0 ? text(printOffset, printLength) : text(substituteOffset, substituteLength);
+    if (printLength == 0 && name.size() >= 4 && name[0] == L'\\' && name[1] == L'?' && name[2] == L'?' && name[3] == L'\\')
+      name = name.substr(4);
+    target = filesystem::path(name);
+    ec.clear();
+    return true;
+  }
 }

@@ -368,6 +368,31 @@ struct SystemClock
   static TimePoint<SystemClock> from_time_t(i64 seconds) { return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000)); }
 };
 
+// The file system's clock (std::chrono::file_clock), what a file's last write time is in
+// (filesystem::file_time_type): 100 ns ticks since 1601-01-01 UTC, Windows' FILETIME, on every
+// target. to_sys and from_sys convert to and from SystemClock, 11644473600 seconds later.
+struct FileClock
+{
+  using rep = i64;
+  using period = Ratio<1, 10000000>;
+  using duration = Duration<i64, Ratio<1, 10000000>>;
+  using time_point = TimePoint<FileClock>;
+  static constexpr bool is_steady = false;
+  static constexpr i64 ticksTo1970 = 116444736000000000ll;
+
+  static TimePoint<FileClock> now() { return FileClock::from_sys(SystemClock::now()); }
+
+  static TimePoint<SystemClock> to_sys(const TimePoint<FileClock>& t)
+  {
+    return TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(t.time_since_epoch().count() - FileClock::ticksTo1970));
+  }
+
+  static TimePoint<FileClock> from_sys(const TimePoint<SystemClock>& t)
+  {
+    return TimePoint<FileClock>(Duration<i64, Ratio<1, 10000000>>(t.time_since_epoch().count() + FileClock::ticksTo1970));
+  }
+};
+
 // d in whole milliseconds, rounded up, for the Windows waits: 0 for a negative d, and below
 // 0xFFFFFFFF, which would mean forever.
 template<typename Rep, typename Period>

@@ -26,6 +26,11 @@ namespace posix
   extern "C" i32 rmdir(const char* path);
   extern "C" i32 unlink(const char* path);
   extern "C" i32 chmod(const char* path, mode_t mode);
+  extern "C" i32 utimensat(i32 directory, const char* path, const timespec* times, i32 flags);
+  extern "C" i32 truncate(const char* path, long length); // (off_t: C's long in both C libraries)
+  extern "C" i32 link(const char* existing, const char* created);
+  extern "C" i32 symlink(const char* target, const char* created);
+  extern "C" i64 readlink(const char* path, char* buffer, usize size); // (ssize_t: kpp's i64, as the C import makes it)
 }
 
 namespace platform
@@ -392,5 +397,102 @@ namespace platform
       return;
     }
     ec.clear();
+  }
+
+  // A listing's or fileInfo's write time (nanoseconds since 1970) as FileClock ticks, 100 ns since 1601.
+  i64 fileClockTicksOf(u64 writeTime) { return (i64)writeTime / 100 + FileClock::ticksTo1970; }
+
+  // Sets the last write time of p (links followed) to ticks of FileClock: utimensat, the access
+  // time left as it is.
+  bool setWriteTime(const filesystem::path& p, i64 ticks, ErrorCode& ec)
+  {
+    i64 since1970 = ticks - FileClock::ticksTo1970;
+    i64 seconds = since1970 >= 0 ? since1970 / 10000000 : -((-since1970 + 9999999) / 10000000);
+    TimeSpec times[2];
+    times[0].nanoseconds = utimeOmit;
+    times[1].seconds = seconds;
+    times[1].nanoseconds = (since1970 - seconds * 10000000) * 100;
+    if (posix::utimensat(atCurrentDirectory, utf8Of(p).c_str(), (const timespec*)(const void*)times, 0) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // Makes the regular file p size bytes long, cut or zero-filled: truncate.
+  bool resizeFile(const filesystem::path& p, u64 size, ErrorCode& ec)
+  {
+    if (size > (u64)0x7FFFFFFFFFFFFFFFll)
+    {
+      ec = make_error_code(Errc::file_too_large);
+      return false;
+    }
+    if (posix::truncate(utf8Of(p).c_str(), (long)size) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // The number of names of what p names (links followed): st_nlink.
+  bool hardLinkCount(const filesystem::path& p, u64& count, ErrorCode& ec)
+  {
+    StatBuffer buffer;
+    if (!statOf(p, true, buffer, ec))
+      return false;
+    count = buffer.at64(statLinksOffset);
+    return true;
+  }
+
+  // A new name link for the file target: link.
+  bool createHardLink(const filesystem::path& target, const filesystem::path& link, ErrorCode& ec)
+  {
+    if (posix::link(utf8Of(target).c_str(), utf8Of(link).c_str()) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // A symbolic link at link to target: symlink (a directory's link is no different here).
+  bool createSymlink(const filesystem::path& target, const filesystem::path& link, bool directory, ErrorCode& ec)
+  {
+    if (posix::symlink(utf8Of(target).c_str(), utf8Of(link).c_str()) != 0)
+    {
+      ec = lastFileError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+
+  // What the symbolic link p leads to, as it was written: readlink, with a buffer that grows until
+  // the text fits.
+  bool readSymlink(const filesystem::path& p, filesystem::path& target, ErrorCode& ec)
+  {
+    String name = utf8Of(p);
+    for (usize size = 256;; size *= 2)
+    {
+      String buffer;
+      buffer.resize(size);
+      i64 length = posix::readlink(name.c_str(), buffer.data(), size);
+      if (length < 0)
+      {
+        ec = lastFileError();
+        return false;
+      }
+      if ((usize)length < size)
+      {
+        target = filesystem::path(widenUtf8(buffer.data(), (i32)length));
+        ec.clear();
+        return true;
+      }
+    }
   }
 }
