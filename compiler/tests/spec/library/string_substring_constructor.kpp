@@ -1,0 +1,20 @@
+// spec: String(other, pos, count) and String(other, pos), std::string's substring constructors: up to count bytes of other from pos (all the rest without count or when count runs past the end), OutOfRange when pos > other.size(), pos == size() an empty string, as MSVC's STL gives for the same C++ (`cde de abcdef [] / out of range`)
+int main()
+{
+  String s("abcdef");
+  String a(s, 2, 3);
+  String b(s, 3, 2);
+  String c(s, 0, 100);
+  String d(s, 6);
+  print(a, " ", b, " ", c, " [", d, "] / ");
+  try
+  {
+    String e(s, 7);
+    println("constructed ", e);
+  }
+  catch (const OutOfRange&)
+  {
+    println("out of range");
+  }
+  return 0;
+}

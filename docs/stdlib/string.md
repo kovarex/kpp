@@ -30,7 +30,9 @@ own suffixes; until 2026-11-01 it was the largest `int`, then briefly the larges
 ## Members
 
 Construction: `String()` (empty), from a zero-terminated `const char*`, from `(const char*, count)`,
-from a `[first, last)` pair of `const char*`, `(count, c)` (count copies of c), from a StringView.
+from a `[first, last)` pair of `const char*`, `(count, c)` (count copies of c), from a StringView,
+`(other, pos, count)` and `(other, pos)` (up to count bytes of other from pos, all the rest without count;
+OutOfRange when pos > other.size()).
 Copy and move as in common.md.
 
 Access:

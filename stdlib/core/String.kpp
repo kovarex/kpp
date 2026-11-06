@@ -42,6 +42,16 @@ public:
     this->append(count, c);
   }
 
+  // Up to count bytes of other from index (all the rest without count); OutOfRange when index >
+  // other.size() (std::string's substring constructors).
+  String(const String& other, ContainerSize index, ContainerSize count = npos)
+  {
+    if (index > other.size())
+      throwOutOfRange("String: position out of range");
+    ContainerSize available = other.size() - index;
+    this->initialize(other.data() + index, count < available ? count : available);
+  }
+
   String(const String& other)
   {
     if (other.isLarge())
