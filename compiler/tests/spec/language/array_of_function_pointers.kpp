@@ -1,0 +1,13 @@
+// spec: an array of pointers to functions, `int (*table[2])() = { one, two };`, a local and a global, and one assigned element by element: the declarator's array was dropped until 2026-11-06, so table was one pointer (its brace list "no initializer of it", and `t[0] = one` indexed a function pointer, a silent wrong answer)
+int one() { return 1; }
+int two() { return 2; }
+int (*globalTable[2])() = { two, one };
+int main()
+{
+  int (*table[2])() = { one, two };
+  int (*later[3])();
+  later[0] = two;
+  later[2] = one;
+  println(table[0]() + table[1](), " ", globalTable[0](), " ", later[0]() * 10 + later[2](), " ", sizeof(later) / sizeof(later[0]));
+  return 0;
+}

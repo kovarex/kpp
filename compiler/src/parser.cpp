@@ -2546,6 +2546,12 @@ namespace
             static_cast<MemberPointerType*>(inner)->pointee = f;
             d.type = inner;
           }
+          else if (inner && inner->kind == NodeKind::ArrayType)
+          {
+            // `int (*table[2])()`: an array of pointers to the function type (the array was dropped:
+            // table was one pointer, and `= { one, two }` no initializer of it).
+            d.type = rebase(inner, d.type, f);
+          }
           else
           {
             PointerType* p = node<PointerType>(pos);
@@ -5728,6 +5734,23 @@ namespace
       uint32_t start = pos;
       if (atDescriptorType() && (at(P::LParen, 3) || at(P::LBrace, 3)))
         return parseTypeAsExpr(start); // `a.type()`: a value of the descriptor's type
+      // `__func__` (and MSVC's `__FUNCTION__`) in a function body: its name as a string, nameof of
+      // the function (C++'s [dcl.fct.def.general] 8; a constructor's is its class's name).
+      if (atIdent() && (spelling() == "__func__" || spelling() == "__FUNCTION__") && currentParent && currentParent->kind == NodeKind::FunctionDecl)
+      {
+        const NamePart& own = static_cast<FunctionDecl*>(currentParent)->name.last();
+        if (own.special == 0 && own.symbol != UINT32_MAX)
+        {
+          NameofExpr* n = node<NameofExpr>(start);
+          NameExpr* name = node<NameExpr>(start);
+          NamePart part;
+          part.symbol = own.symbol;
+          name->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          n->operand = name;
+          advance();
+          return n;
+        }
+      }
       if (atIdent(kwNameof) && at(P::LParen, 1))
       {
         NameofExpr* n = node<NameofExpr>(start);
@@ -5973,6 +5996,7 @@ namespace
         case NodeKind::LRefType: { auto* r = static_cast<LRefType*>(t); r->referenced = rebase(r->referenced, base, newBase); return t; }
         case NodeKind::RRefType: { auto* r = static_cast<RRefType*>(t); r->referenced = rebase(r->referenced, base, newBase); return t; }
         case NodeKind::ConstType: { auto* c = static_cast<ConstType*>(t); c->inner = rebase(c->inner, base, newBase); return t; }
+        case NodeKind::ArrayType: { auto* a = static_cast<ArrayType*>(t); a->element = rebase(a->element, base, newBase); return t; }
         default: return t;
       }
     }

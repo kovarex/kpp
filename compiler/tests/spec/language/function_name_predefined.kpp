@@ -1,0 +1,7 @@
+// spec: `__func__` (and MSVC's `__FUNCTION__`) in a function body is the function's name as C text, as clang has it: a free function's, an overload's, a member's (defined in or out of its class), a static one's, a constructor's (its class's name), a function template instance's; until 2026-11-06 '__func__' was not declared
+int over(int) { return 1; }
+const char* over() { return __func__; }
+struct S { S() { println(StringView(__func__)); } int f() const; static void g() { println(StringView(__FUNCTION__)); } };
+int S::f() const { println(StringView(__func__)); return 0; }
+template<class T> const char* named(T) { return __func__; }
+int main() { S s; s.f(); S::g(); println(StringView(over()), " ", StringView(__func__), " ", StringView(named(1))); return 0; }
