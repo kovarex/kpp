@@ -527,6 +527,9 @@ def main():
     ap.add_argument("--shard", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--snippets", default="")
+    # --only A,B: just these snippets, each its path under the snippets' directory (area/name.kpp), as
+    # --filter takes a part of one (gate.cmd builds the snippets a change adds or edits for FreeBSD).
+    ap.add_argument("--only", default="")
     args = ap.parse_args()
     global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS
     if args.out:
@@ -587,7 +590,8 @@ def main():
     # Files directly in OUT are an earlier run's: the FreeBSD bundle, or every build's objects from
     # before the builds had a directory each. A whole run also clears the directories it leaves (a
     # snippet since removed or renamed); one with --filter or --shard clears its own snippets' only.
-    whole = not args.filter and not shard
+    only = {s.strip().replace("\\", "/") for s in args.only.split(",") if s.strip()}
+    whole = not args.filter and not shard and not only
     for entry in os.listdir(OUT):
         if os.path.isfile(os.path.join(OUT, entry)):
             os.remove(os.path.join(OUT, entry))
@@ -598,6 +602,8 @@ def main():
             f.write(FREEBSD_RUN_SH)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(SNIPPETS) for f in fn
                    if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), SNIPPETS).replace("\\", "/"))
+    if only:
+        files = [f for f in files if os.path.relpath(f, SNIPPETS).replace("\\", "/") in only]
     if shard:
         files = files[int(shard.group(1)) - 1::int(shard.group(2))]
     start = time.time()
@@ -608,7 +614,7 @@ def main():
     results = [r for r in results if r["status"] != "skip"]
     stale = []
     if TARGET == "freebsd":
-        stale = apply_known_freebsd(results, not args.filter)
+        stale = apply_known_freebsd(results, not args.filter and not only)
     for r in results:
         tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
@@ -620,7 +626,7 @@ def main():
         print(f"FAIL    {entry}  -- freebsd-known-failures.txt names no such snippet")
     print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
-    if not args.no_doc and not args.filter:
+    if not args.no_doc and not args.filter and not only:
         write_doc(results, elapsed)
         print("wrote", os.path.relpath(DOC, ROOT))
     # The one line that says whether everything passed (a pending snippet passing is a failure: its

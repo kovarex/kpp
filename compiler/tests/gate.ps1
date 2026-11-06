@@ -39,6 +39,26 @@ $specLog = Join-Path $out 'spec.log'
 $fullArg = if ($Full) { ' --full' } else { '' }
 $spec = Start-Logged 'tests\spec.cmd' $specLog
 $rt = Start-Logged "tests\run_tests.cmd$fullArg" $rtLog
+# The snippets this change adds or edits (against origin/master, committed or not), built for FreeBSD
+# too (run_spec.py --target freebsd --only: built, not run): a snippet that builds for Windows alone
+# turned master's CI red, which builds every snippet for FreeBSD (2026-11-06, a bit-field compare on
+# the SysV layout). FreeBSD's sysroot is made once per worktree (tools\sysroot\freebsd.ps1, 210 MB).
+$ErrorActionPreference = 'Continue'
+$changed = @(& git diff --name-only --diff-filter=AM origin/master -- 'tests/spec/*.kpp' 2>$null) + @(& git ls-files --others --exclude-standard -- 'tests/spec/*.kpp' 2>$null)
+$ErrorActionPreference = 'Stop'
+$changed = @($changed | Where-Object { $_ } | ForEach-Object { ($_ -replace '^compiler/', '') -replace '^tests/spec/', '' } | Sort-Object -Unique)
+$bsd = $null
+$bsdLog = Join-Path $out 'spec-freebsd.log'
+if ($changed.Count)
+{
+  $sysroot = Join-Path $compiler 'build\sysroots\freebsd-x86_64'
+  if (-not (Test-Path (Join-Path $sysroot 'usr\lib\libc.a')))
+  {
+    $made = Start-Logged "powershell -NoProfile -ExecutionPolicy Bypass -File ..\tools\sysroot\freebsd.ps1" (Join-Path $out 'freebsd-sysroot.log')
+    $made.WaitForExit()
+  }
+  $bsd = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target freebsd --no-doc --only $($changed -join ',')" $bsdLog
+}
 $rt.WaitForExit()
 Get-Content $rtLog
 $spec.WaitForExit()
@@ -47,9 +67,20 @@ $specLines | Where-Object { $_ -match '^(FAIL|FAILED|error)' }
 $rtLast = @(Get-Content $rtLog | Where-Object { $_ })[-1]
 $specLast = @($specLines | Where-Object { $_ })[-1]
 $specLast
+$bsdLast = "spec freebsd: no snippet added or edited"
+$bsdOk = $true
+if ($bsd)
+{
+  $bsd.WaitForExit()
+  $bsdLines = @(Get-Content $bsdLog -ErrorAction SilentlyContinue)
+  $bsdLines | Where-Object { $_ -match '^(FAIL|no FreeBSD)' }
+  $bsdLast = (@($bsdLines | Where-Object { $_ })[-1]) -replace '^spec: ', "spec freebsd ($($changed.Count) snippets): "
+  $bsdOk = $bsd.ExitCode -eq 0 -and $bsdLast -match 'ALL PASSED'
+  $bsdLast
+}
 $seconds = [int]((Get-Date) - $started).TotalSeconds
-$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED'
+$passed = $rt.ExitCode -eq 0 -and $spec.ExitCode -eq 0 -and $rtLast -match '^run_tests: ALL PASSED' -and $specLast -match '^spec: ALL PASSED' -and $bsdOk
 $kind = if ($Full) { 'full' } else { 'quick' }
-if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $seconds s)"; exit 0 }
-"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $seconds s)"
+if ($passed) { "gate: ALL PASSED ($kind`: $($rtLast -replace '^run_tests: ', 'run_tests ') ; $($specLast -replace '^spec: ', 'spec ') ; $bsdLast ; $seconds s)"; exit 0 }
+"gate: FAILED ($kind`: $rtLast, exit $($rt.ExitCode); $specLast, exit $($spec.ExitCode); $bsdLast; $seconds s)"
 exit 1
