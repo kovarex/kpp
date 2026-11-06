@@ -283,6 +283,19 @@ auto GlobalScope::Impl::Walker::reportInInstance(uint32_t token, std::string mes
   impl.instanceNameErrors[bodyOf].push_back(CheckerError{file, token, message});
 }
 
+auto GlobalScope::Impl::Walker::reportWarning(uint32_t token, const std::string& message) -> void
+{
+  if (undecidedBranches > 0)
+    return;
+  if (activeSubst && bodyOf)
+  {
+    std::lock_guard lock(impl.checkerErrorsMutex);
+    impl.instanceWarnings[bodyOf].push_back(CheckerError{file, token, message});
+    return;
+  }
+  impl.reportCheckerWarning(file, token, message);
+}
+
 auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty* object, const char* what, const Expr* operand) -> void
 {
   if (!object || !object->isConst || !object->isKnown())
@@ -572,6 +585,51 @@ auto GlobalScope::Impl::Walker::checkElidedBound(VariableDecl* v, const Ty* decl
                                                 std::to_string(values.size()) + " values, whose braces are elided, but its type was counted with " +
                                                 std::to_string(t->count) + " before they were typed: write its bound");
   }
+}
+
+auto GlobalScope::Impl::Walker::checkDiscarded(Expr* e) -> void
+{
+  if (probing || !file || file->isImported || retypingElements)
+    return;
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner;
+  if (!e || e->kind != NodeKind::CallExpr)
+    return;
+  auto* c = static_cast<CallExpr*>(e);
+  Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(c->callee)->resolved
+                 : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
+                                                                        : nullptr;
+  if (!callee || callee->kind != NodeKind::FunctionDecl)
+    return;
+  auto* f = static_cast<FunctionDecl*>(callee);
+  std::string name = f->name.empty() ? std::string("?") : impl.namePartText(f->name.last());
+  if (f->attributes & ATTR_NoDiscard)
+  {
+    reportWarning(c->token, "the result of '" + name + "', which is [[nodiscard]], is discarded");
+    return;
+  }
+  const Ty* t = c->ty && !c->ty->isReference() ? types.unqualified(c->ty) : nullptr;
+  if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl && (t->decl->attributes & ATTR_NoDiscard))
+    reportWarning(c->token, "the result of '" + name + "', a " + types.toString(t, &symbols) + ", which is [[nodiscard]], is discarded");
+}
+
+auto GlobalScope::Impl::Walker::noteDeprecatedCall(FunctionDecl* f, Node* at) -> void
+{
+  if (!f || !(f->attributes & ATTR_Deprecated) || probing || !file || file->isImported || retypingElements || !at)
+    return;
+  std::string why;
+  if (f->file && f->file->tokens)
+    for (const auto& [d, token] : f->file->deprecations)
+      if (d == f && token < f->file->tokens->size())
+      {
+        const Token& t = (*f->file->tokens)[token];
+        if (size_t(t.offset) + t.length <= f->file->text.size())
+          why = std::string(f->file->text.substr(t.offset, t.length));
+        if (why.size() >= 2 && why.front() == '"' && why.back() == '"')
+          why = why.substr(1, why.size() - 2); // (the literal's text, as C++ compilers quote it)
+      }
+  std::string name = f->name.empty() ? std::string("?") : impl.namePartText(f->name.last());
+  reportWarning(at->token, "'" + name + "' is deprecated" + (why.empty() ? std::string() : ": " + why));
 }
 
 auto GlobalScope::Impl::Walker::inClassWithParameterBase() -> bool
@@ -2486,6 +2544,7 @@ auto GlobalScope::Impl::Walker::recordTemplateArgs(CallExpr* call, FunctionDecl*
 auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* classSubst, const Span<Expr*>& args, const NamePart* namePart, CallExpr* call, const std::vector<const Ty*>* operands) -> const Ty*
 {
   auto argTypes = [&] { return operands ? *operands : argTypesOf(args); };
+  noteDeprecatedCall(f, call);
   if (f->body == nullptr && f->returnType == nullptr && !(f->flags & (DF_Constructor | DF_Destructor | DF_Conversion)))
     return unknown(Why::Unsupported);
   bool autoReturn = false;
@@ -7057,7 +7116,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       locals.pop(mark);
       break;
     }
-    case NodeKind::ExprStmt: walkExpr(static_cast<ExprStmt*>(s)->expr); break;
+    case NodeKind::ExprStmt:
+      walkExpr(static_cast<ExprStmt*>(s)->expr);
+      checkDiscarded(static_cast<ExprStmt*>(s)->expr);
+      break;
     case NodeKind::AssertStmt:
       // Where config::debug is false an assert compiles to nothing (design.md 7): its expression is
       // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).

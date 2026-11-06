@@ -1,0 +1,53 @@
+// spec: a call whose result an expression statement discards is a warning where the function is [[nodiscard]], or the class or enumeration it returns is, and a call of a [[deprecated]] function is a warning with the reason it was given, as C++ compilers warn; a cast to void says the discard is meant, and a result kept or a function without the attribute is no warning; a warning is no error (the program builds and runs); in a template instance's body it is a warning where the instance is made, Box<Probe>::refresh, called, but not in Box<Probe>::touch, which nothing calls, nor in the primary template's body for the argument an explicit specialization takes, instances C++ never makes (clang warns alike)
+// found by thread E's battery of attributes (2026-11-06): kpp kept neither attribute and said nothing where clang warns in all four cases
+// warning: nodiscard_and_deprecated_warn.kpp:41: warning: the result of 'compute', which is [[nodiscard]], is discarded
+// warning: nodiscard_and_deprecated_warn.kpp:42: warning: the result of 'make', a Result, which is [[nodiscard]], is discarded
+// warning: nodiscard_and_deprecated_warn.kpp:43: warning: the result of 'check', a Status, which is [[nodiscard]], is discarded
+// warning: nodiscard_and_deprecated_warn.kpp:44: warning: 'legacy' is deprecated: use compute instead
+// warning: nodiscard_and_deprecated_warn.kpp:45: warning: 'old' is deprecated
+// warning: nodiscard_and_deprecated_warn.kpp:29: warning: the result of 'fetch', which is [[nodiscard]], is discarded
+[[nodiscard]] int compute() { return 42; }
+struct [[nodiscard]] Result { int code; };
+enum class [[nodiscard]] Status { Ok, Failed };
+Result make() { return Result{1}; }
+Status check() { return Status::Ok; }
+[[deprecated("use compute instead")]] int legacy() { return 7; }
+[[deprecated]] void old() {}
+
+struct Probe
+{
+  [[nodiscard]] int fetch() { return 2; }
+};
+
+template<typename T>
+struct Box
+{
+  T t;
+
+  int refresh()
+  {
+    t.fetch();
+    return 1;
+  }
+
+  void touch() { t.fetch(); }
+};
+
+template<typename T> void fetchInto(T& t) { t.fetch(); }
+template<> void fetchInto<Probe>(Probe&) {}
+
+int main()
+{
+  compute();
+  make();
+  check();
+  int v = legacy();
+  old();
+  (void)compute();
+  int kept = compute();
+  Box<Probe> box;
+  Probe probe;
+  fetchInto(probe);
+  println(v, " ", kept, " ", box.refresh());
+  return 0;
+}

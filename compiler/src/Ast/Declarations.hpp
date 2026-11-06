@@ -26,6 +26,8 @@ constexpr uint8_t ATTR_NoInline = 1, ATTR_ForceInline = 2, ATTR_VectorCall = 4, 
 constexpr uint8_t ATTR_Specialized = 16; // a class template that has specialisations (the resolver's finishIndex)
 constexpr uint8_t ATTR_InstanceCopy = 32; // an instantiation's own copy of a function (InstanceCopier::function)
 constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members without padding, alignment 1 (C++'s #pragma pack(push, 1))
+constexpr uint16_t ATTR_NoDiscard = 256;  // [[nodiscard]] on a function, class or enumeration: a call's result discarded is a warning (Walker::checkDiscarded)
+constexpr uint16_t ATTR_Deprecated = 512; // [[deprecated]], [[deprecated("why")]]: a call of the function is a warning (ParsedFile::deprecations has why)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
 constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4; // Decl::builtin: generated enum members
 
@@ -41,7 +43,7 @@ struct Decl : Node
   Decl* parent = nullptr;     // Lexically enclosing declaration, set by the parser.
   Scope* ownScope = nullptr;  // Set by the resolver for namespaces, classes and enums.
   std::atomic<const Ty*> cachedType{nullptr}; // Declared type, filled lazily by the type checker (non-dependent only).
-  uint8_t attributes = 0;     // ATTR_* bits.
+  uint16_t attributes = 0;    // ATTR_* bits (in the padding before endToken: no larger a Decl).
   uint32_t endToken = 0;      // One past the declaration's last token (set when the parser finishes it).
   uint8_t builtin = 0;        // BUILTIN_*: a member the compiler generates (no body/initializer in the AST).
   bool filePrivate = false;   // `private` at file scope (design.md 15): a name its own file alone sees.

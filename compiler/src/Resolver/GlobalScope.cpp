@@ -402,6 +402,24 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
   return out;
 }
 
+std::vector<std::string> GlobalScope::checkerWarnings()
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  std::vector<std::pair<std::pair<std::string, uint32_t>, std::string>> keyed;
+  for (const auto& [w, units] : impl->checkerWarningSet)
+    keyed.push_back({{w.file ? w.file->path : std::string(), w.token}, Impl::locationOf(w.file, w.token) + ": warning: " + w.message});
+  for (const auto& [f, warnings] : impl->instanceWarnings)
+    if (impl->emitted(f))
+      for (const CheckerError& w : warnings)
+        keyed.push_back({{w.file ? w.file->path : std::string(), w.token}, Impl::locationOf(w.file, w.token) + ": warning: " + w.message});
+  std::sort(keyed.begin(), keyed.end());
+  std::vector<std::string> out;
+  for (auto& [key, text] : keyed)
+    if (out.empty() || out.back() != text)
+      out.push_back(std::move(text));
+  return out;
+}
+
 bool GlobalScope::hasCheckerErrors()
 {
   std::lock_guard lock(impl->checkerErrorsMutex);
@@ -2311,6 +2329,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       {
         impl->instanceAssertErrors.erase(r->body);
         impl->instanceNameErrors.erase(r->body);
+        impl->instanceWarnings.erase(r->body);
       }
   }
   std::sort(stale.begin(), stale.end());
@@ -2366,6 +2385,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       std::lock_guard lock(impl->checkerErrorsMutex);
       impl->instanceAssertErrors.erase(r->body);
       impl->instanceNameErrors.erase(r->body);
+      impl->instanceWarnings.erase(r->body);
     }
     const Ty* deducedBefore = r->deducedReturn;
     Impl::InstanceRecord::Recheck& rc = *r->recheck;
@@ -3065,6 +3085,7 @@ void GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
     {
       impl->instanceAssertErrors.erase(r->body);
       impl->instanceNameErrors.erase(r->body);
+      impl->instanceWarnings.erase(r->body);
     }
 }
 

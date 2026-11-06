@@ -7,6 +7,8 @@ namespace driver
 {
 size_t reportCheckerErrors(GlobalScope& global, bool laidOut, size_t instancesChecked)
 {
+  for (const std::string& w : global.checkerWarnings())
+    fprintf(stderr, "%s\n", w.c_str()); // (no error: the build goes on)
   size_t errors = 0;
   for (const std::string& e : global.checkerErrors(instancesChecked))
   {

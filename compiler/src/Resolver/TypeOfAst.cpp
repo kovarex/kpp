@@ -1394,11 +1394,27 @@ auto GlobalScope::Impl::reportCheckerError(const CheckerError& error) -> void
     usesCollector->push_back({USE_ReportedError, &*reportedErrors.insert(error).first});
 }
 
+auto GlobalScope::Impl::reportCheckerWarning(const ParsedFile* file, uint32_t token, const std::string& message) -> void
+{
+  std::lock_guard lock(checkerErrorsMutex);
+  std::vector<const void*>& units = checkerWarningSet[CheckerError{file, token, message}];
+  if (std::find(units.begin(), units.end(), reportingUnit) == units.end())
+    units.push_back(reportingUnit);
+}
+
 auto GlobalScope::Impl::forgetErrorsOf(const std::unordered_set<const void*>& units) -> void
 {
   if (units.empty())
     return;
   std::lock_guard lock(checkerErrorsMutex);
+  for (auto it = checkerWarningSet.begin(); it != checkerWarningSet.end();)
+  {
+    std::erase_if(it->second, [&](const void* u) { return u && units.count(u); });
+    if (it->second.empty())
+      it = checkerWarningSet.erase(it);
+    else
+      ++it;
+  }
   for (auto it = checkerErrorSet.begin(); it != checkerErrorSet.end();)
   {
     std::erase_if(it->second, [&](const void* u) { return u && units.count(u); });

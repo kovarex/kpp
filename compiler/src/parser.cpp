@@ -414,6 +414,13 @@ namespace
               pendingAttributes |= ATTR_VectorCall;
             else if (a == "packed")
               pendingAttributes |= ATTR_Packed;
+            else if (a == "nodiscard")
+              pendingAttributes |= ATTR_NoDiscard;
+            else if (a == "deprecated")
+            {
+              pendingAttributes |= ATTR_Deprecated;
+              pendingDeprecation = at(P::LParen, 1) && at(TokenKind::String, 2) ? pos + 2 : UINT32_MAX; // its reason
+            }
           }
           int level = 2;
           while (level > 0 && !at(TokenKind::End))
@@ -3014,6 +3021,7 @@ namespace
       f->noexceptCondition = d.noexceptCondition;
       f->refQualifier = d.refQualifier;
       f->attributes = pendingAttributes;
+      noteDeprecation(f);
       pendingAttributes = 0;
       f->templateParams = templ.params;
       f->isTemplate = templ.present;
@@ -3907,7 +3915,8 @@ namespace
       c->flags |= flags;
       c->alignment = pendingAlignment;
       pendingAlignment = nullptr;
-      c->attributes |= pendingAttributes & ATTR_Packed; // `struct [[packed]] Tile`, `[[packed]] struct Tile`
+      c->attributes |= pendingAttributes & (ATTR_Packed | ATTR_NoDiscard | ATTR_Deprecated); // `struct [[packed]] Tile`, `[[packed]] struct Tile`
+      noteDeprecation(c);
       c->templateParams = templ.params;
       c->isTemplate = templ.present;
       if (templ.present && templ.params.empty())
@@ -4180,6 +4189,8 @@ namespace
       if (accept(Kw::class_) || accept(Kw::struct_))
         e->isClass = true;
       skipAttributes();
+      e->attributes |= pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated); // `enum class [[nodiscard]] Status`
+      noteDeprecation(e);
       skipMacroSpecifier();
       if (atIdent() || at(P::ColonColon))
       {
@@ -6388,7 +6399,16 @@ namespace
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
-    uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
+    uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.
+    uint32_t pendingDeprecation = UINT32_MAX; // [[deprecated("why")]]: why's token
+
+    // A [[deprecated]] declaration (its attribute pending): recorded with its reason for the warnings.
+    void noteDeprecation(Decl* d)
+    {
+      if (pendingAttributes & ATTR_Deprecated)
+        out.deprecations.push_back({d, pendingDeprecation});
+      pendingDeprecation = UINT32_MAX;
+    }
     bool sawVectorSize = false;      // C: `__attribute__((__vector_size__(N)))` seen since the last declaration (pushDecl).
     bool pendingConst = false;       // `const static int x`: the const read among the specifiers, applied to the type that follows.
     Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.

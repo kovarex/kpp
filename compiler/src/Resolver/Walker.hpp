@@ -121,6 +121,10 @@
     // instance that nothing calls is never instantiated in C++: Array<const char, N>::fill).
     void reportInInstance(uint32_t token, std::string message);
 
+    // A warning at token: in an instance's body one that counts once its function is emitted
+    // (Impl::instanceWarnings), none in an `if constexpr` branch the walk could not decide.
+    void reportWarning(uint32_t token, const std::string& message);
+
     // A built-in assignment (`=`, `+=` and the others on a scalar), increment or decrement of a const
     // object is an error, as in C++ ([expr.ass]/1, [expr.pre.incr]: the operand is a modifiable
     // lvalue): through a `const T&`, a const local or member, a const getter's result. Not in a
@@ -187,6 +191,14 @@
     // where its template parameters are known (not in a template's own walk: in its instances);
     // `int a[] = {1, 2}` has its bound from the list, `new T[n]` a run-time one.
     void checkArrayBounds(VariableDecl* v);
+
+    // An expression statement that discards a call's result where the function, or the class or
+    // enumeration it returns, is [[nodiscard]]: a warning, as C++ compilers give (a cast to void
+    // says it is meant).
+    void checkDiscarded(Expr* e);
+
+    // A call of a [[deprecated]] function: a warning naming it, with the reason it was given.
+    void noteDeprecatedCall(FunctionDecl* f, Node* at);
 
     // An array of unknown bound whose values elide an element's braces: the bound the declaration's
     // type counted, typing the values as a signature's (elementsFromValues), must be the one the

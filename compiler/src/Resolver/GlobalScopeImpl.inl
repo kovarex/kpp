@@ -171,6 +171,9 @@
   // errors are asked for, checkerErrors), with the units that reported it (reportingUnit; null: none,
   // or a build that records no units).
   std::unordered_map<CheckerError, std::vector<const void*>, CheckerError::Hash> checkerErrorSet;
+  // The warnings it reported likewise ([[nodiscard]] discarded, [[deprecated]] called): no error,
+  // forgotten with their units as errors are (forgetErrorsOf), rendered by checkerWarnings.
+  std::unordered_map<CheckerError, std::vector<const void*>, CheckerError::Hash> checkerWarningSet;
   std::unordered_set<CheckerError, CheckerError::Hash> reportedErrors; // what a collected USE_ReportedError points at (never erased)
   struct LayoutAssert                                              // a static_assert on a class's size or alignment
   {
@@ -187,6 +190,10 @@
   // (under checkerErrorsMutex) Names a template instance's function body uses that its arguments'
   // lookup does not find either, by that body: errors once the code generator emits it.
   std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceNameErrors;
+  // (under checkerErrorsMutex) Warnings in template instances' function bodies, by that body: printed
+  // once the code generator emits it, as C++ warns in the instances it makes only (the checker walks
+  // some that C++ never makes: a primary template's body for arguments an explicit specialization takes).
+  std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceWarnings;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
   bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked

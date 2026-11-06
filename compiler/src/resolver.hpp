@@ -226,6 +226,9 @@ public:
   // instances the code generator of this same build checked already (checkInstanceStaticAsserts'
   // result), 0 for all.
   std::vector<std::string> checkerErrors(size_t instancesChecked = 0);
+  // The checker's warnings, `path:line: warning: ...` one each, sorted: a [[nodiscard]] result
+  // discarded, a [[deprecated]] function called (no error: code is generated).
+  std::vector<std::string> checkerWarnings();
   // Whether the checker has reported an error in the program (checkerErrors' own, before any
   // instance codegen emits is checked): kppc --check stops before codegen then, when codegen has no
   // session to follow the edit (main.cpp, reportResolve).

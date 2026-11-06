@@ -257,6 +257,8 @@
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message);
 
   void reportCheckerError(const CheckerError& error);
+  // A warning of the checker's (no error: code is generated), kept by its unit as an error is.
+  void reportCheckerWarning(const ParsedFile* file, uint32_t token, const std::string& message);
 
   // The errors the units given reported (and the layout asserts they met), taken back: the units
   // are walked or checked again and report what they still find. An error another unit reported

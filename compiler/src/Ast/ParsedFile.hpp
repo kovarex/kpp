@@ -24,6 +24,9 @@ struct ParsedFile
   // `when` whose declaration did not parse, and the `if constexpr (...)` and `else` tokens. A compile
   // server's graft assigns the new text's ranges (they index its tokens).
   std::vector<std::pair<uint32_t, uint32_t>> droppedTokens;
+  // Each [[deprecated]] declaration of the file with the token of its reason's string literal
+  // (UINT32_MAX: none written), which a call's warning quotes (Walker::noteDeprecatedCall).
+  std::vector<std::pair<const struct Decl*, uint32_t>> deprecations;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's
