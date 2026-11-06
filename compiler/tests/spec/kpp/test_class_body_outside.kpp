@@ -1,0 +1,22 @@
+// spec: a test class's member defined outside it with test uses the check statements and is a test function
+// test:
+// exit: 1
+test class Checker
+{
+public:
+  void all(int value);
+};
+
+test void Checker::all(int value)
+{
+  require(value >= 0, "value ", value);
+}
+
+suite Outside
+{
+  test Uses
+  {
+    Checker checker;
+    checker.all(-1);
+  }
+}

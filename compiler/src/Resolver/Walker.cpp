@@ -536,6 +536,39 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
   reportCheck(token, "no overload of " + types.toString(o, &impl.symbols) + "::" + std::string(impl.symbols.name(symbol)) + " takes (" + list + ")");
 }
 
+// A function's body against its declarations (design.md 8.7). `test` is decided by the first
+// declaration: a body may not add it. A body outside a test class must repeat it: only with `test`
+// does a build without tests skip it, and only then may it use the check statements.
+auto GlobalScope::Impl::Walker::checkTestDeclaration(FunctionDecl* f) -> void
+{
+  if (!f->body || activeSubst || probing || !file || file->isImported || !f->templateParams.empty() || f->name.empty() || inGenericTemplate())
+    return;
+  RecordInto none(nullptr); // (as checkDefinedOnce)
+  uint32_t symbol = impl.functionSymbol(f->name);
+  Scope* home = impl.homeScope(f);
+  Lookup look;
+  if (symbol == UINT32_MAX || !home || !impl.lookupInScope(home, symbol, look, 0, false))
+    return;
+  auto compare = [&](Decl* d)
+  {
+    if (!d || d == f || d->kind != NodeKind::FunctionDecl)
+      return;
+    auto* declared = static_cast<FunctionDecl*>(d);
+    if (declared->body || !impl.sameFunction(f, declared))
+      return;
+    std::string name = impl.namePartText(f->name.last());
+    if (f->testCode && !declared->testCode)
+      impl.reportCheckerError(file, f->token, "the function " + name + " is test here and its first declaration is not: write test there (design.md 8.7)");
+    else if (!f->testCode && declared->testCode && home->kind == ScopeKind::Class)
+      impl.reportCheckerError(file, f->token, "the member function " + name + " of a test class is defined outside it: write test before its definition (design.md 8.7)");
+  };
+  if (look.overloads)
+    for (const Entry& e : *look.overloads)
+      compare(e.decl);
+  else
+    compare(look.decl);
+}
+
 auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
 {
   // (an instance's own member, `template<> int Converter<double>::kind() const`, is no second
@@ -6518,6 +6551,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkExpr(f->requiresClause);
       walkExpr(f->condition);
       checkDefinedOnce(f);
+      checkTestDeclaration(f);
       checkRefQualifierMix(f);
       checkTextSignature(f);
       checkOverride(f);

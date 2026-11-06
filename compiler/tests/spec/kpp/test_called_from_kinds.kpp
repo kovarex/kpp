@@ -1,0 +1,40 @@
+// spec: a failure names each test function's call: constructors, operators, conversions, virtual and static calls, templates, recursion and calls in a lambda; a destructor and a call through a pointer or a Function add no line, and a caught TestEnded leaves no frame
+// test:
+// exit: 1
+suite Kinds
+{
+  class Value
+  {
+  public:
+    int v = 0;
+    Value(int x) : v(x) { require(x != 1, "ctor"); }
+    ~Value() { check(v != 7, "dtor"); }
+    bool operator==(const Value& o) const { check(v != 2, "operator=="); return v == o.v; }
+    Value operator+(const Value& o) const { check(v != 3, "operator+"); return Value(v + o.v); }
+    explicit operator bool() const { check(v != 4, "conversion"); return true; }
+    int operator()(int a) { check(a != 5, "call operator"); return a; }
+    virtual int virt() { check(v != 6, "virtual"); return v; }
+    static int fixed(int a) { check(a != 8, "static"); return a; }
+    template<typename T> T generic(T a) { check(v != 9, "template member"); return a; }
+  };
+
+  template<typename T> T freeTemplate(T a) { check(a != 10, "free template"); return a; }
+  int recursive(int n) { if (n == 0) { check(false, "bottom"); return 0; } return recursive(n - 1); }
+
+  test Constructor { Value a(1); }
+  test Destructor { Value a(7); }
+  test OperatorEquals { Value a(2); Value b(2); bool same = a == b; }
+  test OperatorPlus { Value a(3); Value b(1 + 1); Value c = a + b; }
+  test Conversion { Value a(4); if (a) { } }
+  test CallOperator { Value a(0); a(5); }
+  test Virtual { Value a(6); a.virt(); }
+  test ThroughPointer { Value a(6); Value* p = &a; p->virt(); }
+  test Static { Value::fixed(8); }
+  test TemplateMember { Value a(9); a.generic(1); }
+  test FreeTemplate { freeTemplate(10); }
+  test Recursive { recursive(2); }
+  test InLambda { auto f = []() { return freeTemplate(10); }; f(); }
+  test FunctionPointer { int (*p)(int) = &recursive; p(0); }
+  test ThroughFunction { Function<int(int)> f = recursive; f(0); }
+  test Caught { try { Value a(1); } catch (const TestEnded&) { } check(false, "after the catch: no frame left"); }
+}

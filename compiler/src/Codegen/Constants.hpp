@@ -128,6 +128,7 @@
 
     // Builds a CallerLocation {file, line, column, function} for the call at `at`, in a fresh slot.
     std::string callerLocation(const Ty* pt, Node* at);
+    void noteTestCall(FunctionDecl* f, const TemplateArgs& args, Node* at);
 
     // conditional(expr) on a function: false means the function and every call to it vanish.
     bool conditionHolds(FunctionDecl* f);

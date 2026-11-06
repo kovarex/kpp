@@ -1,0 +1,12 @@
+// spec: a test class's member defined outside it writes test: a build without tests must skip the body
+// kppc: --tests
+// error: of a test class is defined outside it: write test
+test class Checker
+{
+public:
+  void all();
+};
+
+void Checker::all() { }
+
+int main() { return 0; }

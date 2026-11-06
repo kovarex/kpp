@@ -1,0 +1,4 @@
+test_class_body_outside.kpp:12:3: check failed: value >= 0 (-1 >= 0): value -1
+test_class_body_outside.kpp:20:12: called from here
+failed: Outside.Uses
+1 test, 1 failed

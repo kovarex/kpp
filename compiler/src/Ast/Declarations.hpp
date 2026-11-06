@@ -118,6 +118,9 @@ struct FunctionDecl : Decl
   Span<Decl*> params; // ParamDecl*
   Type* trailingReturn = nullptr;
   Stmt* body = nullptr;
+  // Test code (design.md 8.7): 1 a declaration, a test's own body or what the parser wrote around
+  // it, 2 a test function's body, which starts with a __KppTestFrame.
+  uint8_t testCode = 0;
   Span<CtorInit> ctorInits;
   Expr* requiresClause = nullptr;
   Expr* condition = nullptr; // conditional(expr): calls compile to nothing while expr is false.

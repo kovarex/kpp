@@ -1,0 +1,11 @@
+// spec: a function's first declaration decides whether it is test: a later declaration or its body may not add test
+// kppc: --tests
+// error: is test here and its first declaration is not
+void requirePositive(int value);
+
+test void requirePositive(int value)
+{
+  require(value > 0);
+}
+
+int main() { return 0; }

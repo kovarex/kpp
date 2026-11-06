@@ -1,0 +1,11 @@
+// spec: a later declaration of a test function may omit test; such a body has no frame and no check statements, and a build without tests compiles it as any function
+// test:
+// exit: 0
+test int twice(int value);
+
+int twice(int value) { return 2 * value; }
+
+suite Omitted
+{
+  test Calls { check(twice(2) == 4); }
+}

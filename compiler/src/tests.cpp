@@ -67,6 +67,42 @@ struct __KppGeneratorEntry
   CallerLocation where;
 };
 
+// A test function's call (design.md 8.7), for its "called from" line: the call site kpp_test_call
+// notes, which the frame the callee opens takes. Per thread: a test's helpers may run on others.
+struct __KppCallSite
+{
+  const char* file = nullptr;
+  int line = 0;
+  int column = 0;
+};
+thread_local __KppCallSite __kppCallSite;
+
+class __KppTestFrame
+{
+public:
+  __KppTestFrame() : site(__kppCallSite), outer(__kppInnermostFrame())
+  {
+    __kppCallSite.file = nullptr;
+    __kppInnermostFrame() = this;
+  }
+  ~__KppTestFrame() { __kppInnermostFrame() = this->outer; }
+  __KppCallSite site;
+  __KppTestFrame* outer;
+};
+
+__KppTestFrame*& __kppInnermostFrame()
+{
+  thread_local __KppTestFrame* frame = nullptr;
+  return frame;
+}
+
+extern "C" void kpp_test_call(const char* file, int line, int column)
+{
+  __kppCallSite.file = file;
+  __kppCallSite.line = line;
+  __kppCallSite.column = column;
+}
+
 struct __KppTestState
 {
   Vector<__KppTest> tests;
@@ -314,7 +350,12 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   if (state.hasMessage)
     shown << ": " << state.message;
   if (state.captured == 0)
+  {
+    for (const __KppTestFrame* frame = __kppInnermostFrame(); frame; frame = frame->outer)
+      if (frame->site.file)
+        shown << "\n" << StringView(frame->site.file) << ":" << frame->site.line << ":" << frame->site.column << ": called from here";
     println(shown);
+  }
   state.hasValues = false;
   state.note = String();
   state.hasMessage = false;

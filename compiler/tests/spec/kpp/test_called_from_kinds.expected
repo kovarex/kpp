@@ -1,0 +1,49 @@
+test_called_from_kinds.kpp:10:27: check failed: x != 1 (1 != 1): ctor
+test_called_from_kinds.kpp:24:22: called from here
+failed: Kinds.Constructor
+test_called_from_kinds.kpp:11:16: check failed: v != 7 (7 != 7): dtor
+failed: Kinds.Destructor
+test_called_from_kinds.kpp:12:45: check failed: v != 2 (2 != 2): operator==
+test_called_from_kinds.kpp:26:63: called from here
+failed: Kinds.OperatorEquals
+test_called_from_kinds.kpp:13:45: check failed: v != 3 (3 != 3): operator+
+test_called_from_kinds.kpp:27:63: called from here
+failed: Kinds.OperatorPlus
+test_called_from_kinds.kpp:14:38: check failed: v != 4 (4 != 4): conversion
+test_called_from_kinds.kpp:28:33: called from here
+failed: Kinds.Conversion
+test_called_from_kinds.kpp:15:29: check failed: a != 5 (5 != 5): call operator
+test_called_from_kinds.kpp:29:35: called from here
+failed: Kinds.CallOperator
+test_called_from_kinds.kpp:16:26: check failed: v != 6 (6 != 6): virtual
+test_called_from_kinds.kpp:30:31: called from here
+failed: Kinds.Virtual
+test_called_from_kinds.kpp:16:26: check failed: v != 6 (6 != 6): virtual
+test_called_from_kinds.kpp:31:53: called from here
+failed: Kinds.ThroughPointer
+test_called_from_kinds.kpp:17:31: check failed: a != 8 (8 != 8): static
+test_called_from_kinds.kpp:32:17: called from here
+failed: Kinds.Static
+test_called_from_kinds.kpp:18:43: check failed: v != 9 (9 != 9): template member
+test_called_from_kinds.kpp:33:38: called from here
+failed: Kinds.TemplateMember
+test_called_from_kinds.kpp:21:46: check failed: a != 10 (10 != 10): free template
+test_called_from_kinds.kpp:34:23: called from here
+failed: Kinds.FreeTemplate
+test_called_from_kinds.kpp:22:40: check failed: false: bottom
+test_called_from_kinds.kpp:22:83: called from here
+test_called_from_kinds.kpp:22:83: called from here
+test_called_from_kinds.kpp:35:20: called from here
+failed: Kinds.Recursive
+test_called_from_kinds.kpp:21:46: check failed: a != 10 (10 != 10): free template
+test_called_from_kinds.kpp:36:42: called from here
+failed: Kinds.InLambda
+test_called_from_kinds.kpp:22:40: check failed: false: bottom
+failed: Kinds.FunctionPointer
+test_called_from_kinds.kpp:22:40: check failed: false: bottom
+failed: Kinds.ThroughFunction
+test_called_from_kinds.kpp:10:27: check failed: x != 1 (1 != 1): ctor
+test_called_from_kinds.kpp:39:23: called from here
+test_called_from_kinds.kpp:39:66: check failed: false: after the catch: no frame left
+failed: Kinds.Caught
+16 tests, 16 failed

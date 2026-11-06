@@ -825,6 +825,22 @@ auto codegen::Emitter::inlinedConstructor(FunctionDecl* f, const TemplateArgs& a
   return Value{"", types.voidType(), false};
 }
 
+// A call in test code of a test function (design.md 8.7): the runner keeps this call's location for
+// the frame the callee's body opens, its "called from" line.
+auto codegen::Emitter::noteTestCall(FunctionDecl* f, const TemplateArgs& args, Node* at) -> void
+{
+  Decl* writtenIn = lambdaContext ? lambdaContext->parent : nullptr;
+  const FunctionDecl* caller = writtenIn && writtenIn->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(writtenIn) : currentFunction;
+  if (!caller || !caller->testCode)
+    return;
+  Decl* definition = global.definitionOf(f, args); // (the frame is the body's, which may be out of the class)
+  if (!definition || definition->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(definition)->testCode != 2)
+    return;
+  auto [line, column] = lineColumnOf(at->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(at)->callee->token : at->token);
+  emitCall("", "void @kpp_test_call(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+                   std::to_string(column) + ")", false);
+}
+
 auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg, const std::string& sret, Span<Expr*> callArgs, Node* at,
                                     const std::string& indirect, const std::vector<std::string>& leading, std::vector<std::string>* emitted) -> Value
 {
@@ -996,6 +1012,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       return {resultAddr, ret, sret.empty()};
     }
   }
+  noteTestCall(f, args, at);
   bool mayThrow = !global.isExternC(f); // C functions do not throw kpp exceptions
   if (s.returnType == "void")
   {

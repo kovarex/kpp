@@ -541,7 +541,7 @@ The survey and the converter's mapping: [test-suites.md](test-suites.md). Done 2
 the names, suites with depends and tags, fixtures, `generate`, the order, the errors across files
 (driver::checkTestSuites), the char-pointer error, after a failure, `--exit-on-failure`, `--suite`,
 `--skip-suite`, `--tag`, the hooks, the message arguments, `fail` and `requireThrows`/`checkThrows`.
-The mixed-sign rule is done too. Not yet (their snippets pending): a call's values, test functions;
+The mixed-sign rule is done too. Not yet (its snippet pending): a call's values;
 and `--jobs`. The parser
 writes each test, fixture class and suite registration as tokens it then reads (parseTest,
 parseSuite); the runner (compiler/src/tests.cpp) orders the suites when it starts.
@@ -608,9 +608,18 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   `require` and `fail`. A failure there names the check's location, then one `called from` line per
   test function up to the test (`file:line:column: called from here`): Factorio's
   `_SOURCELOCATION` variants and its own check macros. A lambda inside a test is part of the test.
+  The line is the call's, the place `CallerLocation` gives it, for constructors, operators,
+  conversions and virtual calls too. A destructor has no call site, and a call through a function
+  pointer or a `Function` has none either: they add no line, never a wrong one. How (no parameter, so
+  no signature changes): before a call of a test function in test code, the call site goes to a
+  per-thread variable (`kpp_test_call`), and the body's first statement, a `__KppTestFrame` the parser
+  writes, takes it onto a per-thread list that its destructor leaves. A test function is therefore not
+  inlined, and costs about 10 ns a call; other code pays nothing.
   Which functions are test functions (coordinator, 2026-11-06): every function and class declared
   in a suite is one implicitly; `test class X` makes all its member functions test functions,
-  out-of-class bodies included; and a function's first declaration decides, so later declarations
+  and an out-of-class body writes `test` itself, in another file too: a file's parser cannot know
+  the class, and a build without tests must skip the body. Omitting it is a compile error. A
+  function's first declaration decides, so later declarations
   may repeat or omit `test`, and adding it later is a compile error.
 - **After a failure** (Factorio's behaviour, `tests/TestRunner.cpp:33-60`): the failed test ends,
   the run goes on, dependents included. `--exit-on-failure` (off by default) stops after the first
@@ -662,7 +671,8 @@ kpp/test_run_by_name, kpp/test_run_by_name_unknown, kpp/test_run_captured, kpp/t
 kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_check_hidden_by_dependent_base_is_error,
 kpp/test_check_dependent_base_without_the_name, kpp/test_check_hidden_by_argument_namespace_is_error,
 kpp/test_with_dependencies, kpp/test_from, kpp/test_after, kpp/test_from_unknown_is_error, kpp/test_shuffle,
-kpp/test_slow, kpp/test_suite_order, kpp/test_suite_declaration_order,
+kpp/test_slow, kpp/test_called_from_kinds, kpp/test_declared_test_later_is_error,
+kpp/test_class_body_outside_needs_test_is_error, kpp/test_class_body_outside, kpp/test_function_redeclared_without_test, kpp/test_suite_order, kpp/test_suite_declaration_order,
 kpp/test_same_name_in_two_suites, kpp/test_suite_declared_twice_is_error,
 kpp/test_duplicate_name_in_suite_is_error, kpp/test_suite_depends_unknown_is_error,
 kpp/test_suite_depends_cycle_is_error, kpp/test_suite_name_hides_nothing, kpp/test_suite_tags,

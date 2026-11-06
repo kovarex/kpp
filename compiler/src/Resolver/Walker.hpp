@@ -121,6 +121,7 @@
     // instance that nothing calls is never instantiated in C++: Array<const char, N>::fill).
     void reportInInstance(uint32_t token, std::string message);
     void checkTestStatementName(const AssertStmt* a);
+    void checkTestDeclaration(FunctionDecl* f);
 
     // A warning at token: in an instance's body one that counts once its function is emitted
     // (Impl::instanceWarnings), none in an `if constexpr` branch the walk could not decide.

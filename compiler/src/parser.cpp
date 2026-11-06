@@ -3180,12 +3180,16 @@ namespace
       {
         Decl* savedParent = currentParent;
         currentParent = f;
+        if (inTest || testBodies.count(pos))
+          markTestFunction(f);
         f->body = parseBlock();
         currentParent = savedParent;
         ++out.functionBodies;
       }
       else if (!expect(P::Semi, "expected ';' or function body"))
         return;
+      else if (inTest)
+        f->testCode = 1; // (a declaration: the resolver's checkTestDeclaration compares it with the body)
       pushDecl(f);
     }
 
@@ -3867,6 +3871,20 @@ namespace
         result.push_back(t);
       }
       return result;
+    }
+
+    // f, whose body opens at pos, is test code (design.md 8.7). A test function, which a test may
+    // call, starts with a frame for its "called from" line; a test's own body and what the parser
+    // wrote around it are called by the runner, and the interpreter runs no frame.
+    void markTestFunction(FunctionDecl* f)
+    {
+      f->testCode = 1;
+      std::string_view name = f->name.empty() || f->name.last().symbol == UINT32_MAX ? std::string_view() : symbols.name(f->name.last().symbol); // (an operator has none)
+      if (testBodies.count(pos) || name.substr(0, 5) == "__kpp" || (f->flags & (DF_Constexpr | DF_Consteval)))
+        return;
+      f->testCode = 2;
+      std::vector<Token> frame = synthesize("__KppTestFrame __kpp_frame;", pos);
+      toks.insert(toks.begin() + pos + 1, frame.begin(), frame.end());
     }
 
     // The index of the token that closes the bracket at open (the end token when none does).
