@@ -118,7 +118,11 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };
   auto unsignedOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? enumUnderlying(t->decl)->isUnsigned : t->isUnsigned; };
   if (isLambda(from) && tk == TyKind::Pointer && to->inner && to->inner->kind == TyKind::Function)
+  {
+    if (FunctionDecl* call = to->inner->isNoexcept() ? global.closureCallOperator(types.unqualified(from)) : nullptr; call && !global.isNoexcept(call, {}))
+      fail(at, "a lambda that is not noexcept does not convert to " + types.toString(to, &symbols));
     return {lambdaThunk(from, to->inner, at), to}; // a lambda without captures as a pointer to function
+  }
   if (fk == TyKind::Class && isLambda(to))
   {
     // A class derived from a closure type (the overload-set idiom given lambdas) as that closure:
@@ -181,6 +185,9 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   const Ty* fromClass = fk == TyKind::MemberPointer && from->inner && from->inner->kind == TyKind::Function && !from->args.empty() && isClass(from->args[0])
                           ? withCurrentArgs(from->args[0]) : nullptr;
   const Ty* toClass = tk == TyKind::MemberPointer && !to->args.empty() && isClass(to->args[0]) ? withCurrentArgs(to->args[0]) : nullptr;
+  if (fromClass && tk == TyKind::MemberPointer && !explicitCast && to->inner && to->inner->isNoexcept() && !from->inner->isNoexcept() && !types.isDependent(from) &&
+      !types.isDependent(to) && !(currentFile && currentFile->isImported))
+    fail(at, "a pointer to a member function (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast: noexcept goes, it does not come");
   if (fromClass && toClass && types.isDependent(fromClass) && !types.isDependent(toClass))
     return {v.text, to};
   if (fromClass && toClass && !types.isDependent(fromClass) && !types.isDependent(toClass) && classKey(fromClass) != classKey(toClass))
@@ -474,11 +481,11 @@ auto codegen::Emitter::impliedPointerConversion(const Ty* from, const Ty* to, No
   if (!target || !source || types.isDependent(target) || types.isDependent(source) || !target->isKnown() || !source->isKnown())
     return true; // (nothing known to judge by)
   if (from->kind == TyKind::Function)
-    return types.unqualified(target) == source;
+    return types.unqualified(target) == types.withNoexcept(source, target->isNoexcept() && source->isNoexcept());
   bool keepsQualifiers = (target->isConst || !source->isConst) && (target->isVolatile || !source->isVolatile);
   const Ty* t = types.unqualified(target);
   const Ty* f = types.unqualified(source);
-  if (t == f)
+  if (t == f || (f->isNoexcept() && t == types.withNoexcept(f, false))) // ([conv.fctptr]: never the other way)
     return keepsQualifiers;
   if (from->kind == TyKind::Pointer && qualificationConverts(from, to))
     return true; // `DisplayPanel* const*` as a `const DisplayPanel* const*`

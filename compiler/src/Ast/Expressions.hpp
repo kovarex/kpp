@@ -79,6 +79,8 @@ struct LambdaExpr : Expr
   uint8_t defaultCapture = 0; // 0 none, 1 by copy (=), 2 by reference (&)
   Decl* closure = nullptr;    // Synthetic ClassDecl giving this lambda an identity and a name.
   bool isMutable = false;     // `mutable`: its captures by copy may change (else they are const in its body)
+  bool isNoexcept = false;    // `noexcept`, `noexcept(cond)`: its call operator's (FunctionDecl::noexceptCondition)
+  Expr* noexceptCondition = nullptr;
 };
 // designators: the member named per argument (`.x = 1`), UINT32_MAX for none; empty when no argument has one.
 // text: the arguments a call gives a Text parameter (design.md 14), packed by the type checker, the Text built from them.

@@ -1,0 +1,26 @@
+// spec: a noexcept lambda called through its pointer ends the program
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void onTerminate()
+{
+  printf("terminate\n");
+  fflush(stdout);
+  exit(0);
+}
+void thrower() noexcept { throw 1; }
+struct T { void m() noexcept { throw 2; } };
+int main()
+{
+  setTerminate(onTerminate);
+  try
+  {
+    auto l = []() noexcept { throw 4; };
+    void (*q)() noexcept = l;
+    q();
+  }
+  catch (...)
+  {
+    printf("caught\n");
+  }
+  return 0;
+}

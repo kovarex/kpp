@@ -1,0 +1,26 @@
+// spec: a noexcept member function called through a noexcept member pointer ends the program
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void onTerminate()
+{
+  printf("terminate\n");
+  fflush(stdout);
+  exit(0);
+}
+void thrower() noexcept { throw 1; }
+struct T { void m() noexcept { throw 2; } };
+int main()
+{
+  setTerminate(onTerminate);
+  try
+  {
+    T t;
+    void (T::*m)() noexcept = &T::m;
+    (t.*m)();
+  }
+  catch (...)
+  {
+    printf("caught\n");
+  }
+  return 0;
+}

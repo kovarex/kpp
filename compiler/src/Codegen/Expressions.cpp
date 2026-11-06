@@ -209,7 +209,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         if (f->templateParams.empty() && !global.isTemplateContext(f))
         {
           refuseCAddress(f, e);
-          return {useFunction(f, {}, nullptr, e), types.pointer(declType(d))};
+          return {useFunction(f, {}, nullptr, e), types.pointer(types.withNoexcept(declType(d), global.isNoexcept(f, {})))};
         }
         // `&FunctionImpl<R, Args...>::call<F>`: a member of an instantiation, with explicit arguments.
         TemplateArgs fargs;
@@ -243,7 +243,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         addressedTemplateArgs(f, n, e, fargs);
         std::string name = useFunction(f, fargs, classTy, e);
         ArgsScope scope(*this, &fargs);
-        return {name, types.pointer(declType(f))};
+        return {name, types.pointer(types.withNoexcept(declType(f), global.isNoexcept(f, fargs)))};
       }
       if (d && d->kind == NodeKind::VariableDecl && !locals.count(d))
       {
@@ -1659,7 +1659,12 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
   }
   if (op == P::Amp && u->operand->kind == NodeKind::NameExpr && static_cast<NameExpr*>(u->operand)->resolved &&
       static_cast<NameExpr*>(u->operand)->resolved->kind == NodeKind::FunctionDecl)
-    return {rvalue(u->operand).text, u->ty}; // `&function`: the function itself is the pointer
+  {
+    // `&function`: the function itself is the pointer, noexcept as this instance of it is.
+    Value function = rvalue(u->operand);
+    bool known = function.ty && function.ty->kind == TyKind::Pointer && function.ty->inner && function.ty->inner->kind == TyKind::Function && !types.isDependent(function.ty);
+    return {function.text, known ? function.ty : u->ty};
+  }
   if (op == P::Amp)
   {
     // `&x` of a class with its own operator& (CComPtr's): the call, as the resolver typed it;

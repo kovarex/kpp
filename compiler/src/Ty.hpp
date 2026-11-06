@@ -21,7 +21,8 @@ enum class TyKind : uint8_t
   LRef,    // inner
   RRef,    // inner
   Array,   // inner, count (0 = unknown bound)
-  Function,// inner = result, args = parameters, variadic
+  Function,// inner = result, args = parameters, variadic; count: bit 0 C's calling convention, bit 1 noexcept;
+           // decl = the bool template parameter N of `noexcept(N)`, a pattern (TypeTable::function)
   Class,   // decl = ClassDecl (definition if known), args = template arguments (empty for non-templates);
            // count = 1 marks a brace list argument (TypeTable::braceList)
   Enum,    // decl = EnumDecl
@@ -47,7 +48,8 @@ struct Ty
   bool isBraceList() const { return kind == TyKind::Class && count == 1; }
   bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
   bool isWchar() const { return kind == TyKind::Char && count == 1; } // wchar_t
-  bool isCConvention() const { return kind == TyKind::Function && count == 1; } // TypeTable::function's cConvention
+  bool isCConvention() const { return kind == TyKind::Function && (count & 1); } // TypeTable::function's cConvention
+  bool isNoexcept() const { return kind == TyKind::Function && (count & 2); }    // TypeTable::function's noexcept
   bool isObjectValue() const { return kind == TyKind::Value && count == 1; }     // TypeTable::objectValue
 
   TyKind kind;

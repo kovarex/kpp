@@ -263,9 +263,9 @@ auto GlobalScope::Impl::compositePointer(const Ty* a, const Ty* b) -> const Ty*
   const Ty* pa = types.unqualified(a->inner);
   const Ty* pb = types.unqualified(b->inner);
   const Ty* pointee = nullptr;
-  if (pa == pb || pb->kind == TyKind::Void)
+  if (pa == pb || pb->kind == TyKind::Void || losesNoexcept(pa, pb))
     pointee = pb;
-  else if (pa->kind == TyKind::Void)
+  else if (pa->kind == TyKind::Void || losesNoexcept(pb, pa))
     pointee = pa;
   else if (pa->kind == TyKind::Class && pb->kind == TyKind::Class && pa->decl != pb->decl)
     pointee = derivesFrom(pa, pb) ? pb : derivesFrom(pb, pa) ? pa : nullptr;

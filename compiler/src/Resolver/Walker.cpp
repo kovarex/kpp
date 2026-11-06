@@ -414,6 +414,14 @@ auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from,
   if (probing || !cast || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
       Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
     return;
+  // [expr.static.cast]: a conversion's inverse, and noexcept only goes by a conversion, never comes.
+  auto functionIn = [&](const Ty* t)
+  {
+    t = types.unqualified(types.stripRef(t));
+    return t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer ? types.unqualified(t->inner) : t;
+  };
+  if (c->castKind == Kw::static_cast_ && impl.losesNoexcept(functionIn(to), functionIn(from)))
+    reportCheck(c->token, "a static_cast does not make a function noexcept: " + types.toString(from, &impl.symbols) + " to " + types.toString(to, &impl.symbols));
   // What the operand's const is on: the object a reference cast refers to, what a pointer (or an
   // array, decayed) points at.
   const Ty* source = nullptr;
@@ -597,6 +605,11 @@ auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
     if (!e.decl || e.decl == f || e.decl->kind != NodeKind::FunctionDecl)
       continue;
     auto* g = static_cast<FunctionDecl*>(e.decl);
+    // [except.spec] 4: every declaration of a function says the same (an instance's conditions are
+    // compared where they are known, none of a template's here).
+    if (!g->body && !impl.isCFunction(f) && f->templateParams.empty() && !inGenericTemplate() && impl.sameFunction(f, g) &&
+        impl.isNoexcept(f, activeSubst) && impl.isNoexcept(g, activeSubst) && impl.isNoexcept(f, activeSubst) != impl.isNoexcept(g, activeSubst))
+      impl.reportCheckerError(file, f->token, "the function " + impl.namePartText(f->name.last()) + " says otherwise of noexcept than its declaration at " + Impl::locationOf(g->file, g->token));
     if (g->body && g->templateParams.empty() && !g->condition && !Impl::isFunctionSpecialization(g) && !Impl::isMemberSpecialization(g) &&
         before(g, f) && (!first || before(g, first)) && !impl.replacedAllocation(g) && !impl.replacedAllocation(f) && impl.sameFunction(f, g))
       first = g;
@@ -795,7 +808,7 @@ auto GlobalScope::Impl::Walker::settledCalleeType(Expr* e, const Ty* t) -> const
   // Through the function's one instance, never through what its own file's walk cached: that is
   // there or not by which file was walked first, and the instance then walked or not.
   const Ty* r = instantiateFunction(static_cast<FunctionDecl*>(d), Subst{}, true, nullptr);
-  return r && r->isKnown() && !impl.containsAuto(r) ? types.function(r, t->args, t->variadic, t->isCConvention()) : t;
+  return r && r->isKnown() && !impl.containsAuto(r) ? types.functionLike(t, r, t->args) : t;
 }
 
 auto GlobalScope::Impl::Walker::record(Expr* e, const Ty* t) -> const Ty*
@@ -1384,6 +1397,14 @@ auto GlobalScope::Impl::Walker::bindingType(VariableDecl* v, uint32_t symbol) ->
   return unknown(Why::Unsupported);
 }
 
+auto GlobalScope::Impl::Walker::namedFunctionType(Decl* d, const Ty* t, const Subst* subst) -> const Ty*
+{
+  if (!t || t->kind != TyKind::Function || !d || d->kind != NodeKind::FunctionDecl || !(d->flags & DF_Noexcept))
+    return t;
+  std::optional<bool> isNoexcept = impl.isNoexcept(static_cast<FunctionDecl*>(d), subst);
+  return isNoexcept && *isNoexcept ? types.withNoexcept(t, true) : t;
+}
+
 auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePart& lastPart, Expr* e) -> const Ty*
 {
   Decl* d = l.decl;
@@ -1452,10 +1473,10 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
             for (const Subst::Pair& p : activeSubst->pairs)
               if (!s.find(p.param))
                 s.pairs.push_back(p); // the enclosing instance's (a member of a class template)
-          return impl.declaredTypeOf(f, &s, 0);
+          return namedFunctionType(f, impl.declaredTypeOf(f, &s, 0), &s);
         }
       }
-      return impl.declaredTypeOf(d, activeSubst, 0);
+      return namedFunctionType(f, impl.declaredTypeOf(d, activeSubst, 0), activeSubst);
     }
     case NodeKind::ClassDecl:
     case NodeKind::EnumDecl:
@@ -1592,7 +1613,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     // base takes that base instantiation's arguments.
     if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))
       if (Subst s = impl.memberSubst(q, l.foundIn, 0); !s.pairs.empty())
-        return memberThroughThis(l, impl.declaredTypeOf(l.decl, &s, 0));
+        return memberThroughThis(l, namedFunctionType(l.decl, impl.declaredTypeOf(l.decl, &s, 0), &s));
     // `Fast::Enum::True` with an enum declared in a class template: that instance's enumerator.
     if (q->kind == TyKind::Enum)
       if (Subst s = impl.substFor(q); !s.pairs.empty())
@@ -2839,9 +2860,10 @@ auto GlobalScope::Impl::Walker::setHasFunctionOf(const OverloadSetArgument& set,
 {
   Subst qs = set.name->name.parts.size() > 1 ? impl.qualifierSubst(set.name->name, ctx(), 0, set.set.foundIn) : Subst{};
   for (const Entry& e : *set.set.overloads)
-    if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty() &&
-        impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0) == target)
-      return true;
+    if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty())
+      if (const Ty* t = namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
+          t == target || impl.losesNoexcept(t, target))
+        return true;
   return false;
 }
 
@@ -3059,8 +3081,8 @@ auto GlobalScope::Impl::Walker::bindOverloadSet(const OverloadSetArgument& s, co
   {
     if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty())
       continue;
-    const Ty* ot = impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0);
-    if (ot != target)
+    const Ty* ot = namedFunctionType(e.decl, impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0), qs.empty() ? activeSubst : &qs);
+    if (ot != target && !impl.losesNoexcept(ot, target))
       continue;
     several = several || chosen;
     chosen = static_cast<FunctionDecl*>(e.decl);
@@ -3754,8 +3776,29 @@ auto GlobalScope::Impl::Walker::textStored(const std::string& as) -> std::string
   return "a Text is valid only during the call that gives it, so it cannot be " + as + " (design.md 14)";
 }
 
+auto GlobalScope::Impl::Walker::checkOverrideNoexcept(FunctionDecl* f) -> void
+{
+  // [except.spec] 8: an overrider allows no exception its overridden function does not, whether
+  // it says override or not. (A destructor's noexcept is mostly implicit: not compared here.)
+  if (probing || retypingElements || !file || file->isImported || (f->flags & (DF_Static | DF_Constructor | DF_Destructor)) || !f->templateParams.empty())
+    return;
+  Decl* cls = impl.owningClassOf(f);
+  if (!cls || cls->kind != NodeKind::ClassDecl)
+    return;
+  const Ty* self = impl.selfType(cls);
+  if (activeSubst)
+    self = impl.substitute(self, *activeSubst);
+  else if (inGenericTemplate())
+    return;
+  if (!self || !self->isKnown() || types.isDependent(self) || impl.isNoexcept(f, activeSubst) != std::optional<bool>(false))
+    return;
+  if (FunctionDecl* base = impl.overriddenNoexcept(self, f, impl.overrideKey(f, self), 0))
+    impl.reportCheckerError(file, f->token, "this function overrides the noexcept function at " + impl.locationOf(base->file, base->token) + " and is not noexcept itself");
+}
+
 auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
 {
+  checkOverrideNoexcept(f);
   // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
   // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
   if (!(f->flags & DF_Override) || probing || retypingElements || !file || file->isImported)
@@ -4782,8 +4825,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         if (deducedResult && deducedResult->isKnown() && declared && declared->kind == TyKind::Function)
         {
           std::vector<const Ty*> params(declared->args.begin(), declared->args.end());
-          fnTy = types.function(impl.deducedShape(declared->inner, deducedResult), Span<const Ty*>{params.data(), uint32_t(params.size())},
-                                declared->variadic, declared->isCConvention());
+          fnTy = types.functionLike(declared, impl.deducedShape(declared->inner, deducedResult), Span<const Ty*>{params.data(), uint32_t(params.size())});
         }
       }
       record(m, fnTy);
@@ -5861,7 +5903,15 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
       return unknown(Why::Operator);
     case P::Amp: return types.pointer(s);
     case P::Bang: return types.boolType();
-    case P::Minus: case P::Plus: case P::Tilde: return promote(operandType(u->operand, t));
+    case P::Minus: case P::Plus: case P::Tilde:
+      // `+closure`: the pointer to its function, noexcept as its call operator is.
+      if (op == P::Plus && s->kind == TyKind::Lambda && !Impl::isGenericLambda(s) && s->inner)
+      {
+        ClosureCall* call = impl.closureCall(types.unqualified(s));
+        bool isNoexcept = call && impl.isNoexcept(&call->decl, activeSubst) == std::optional<bool>(true);
+        return types.pointer(types.function(s->inner, s->args, false, false, isNoexcept));
+      }
+      return promote(operandType(u->operand, t));
     case P::PlusPlus: case P::MinusMinus:
       checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);
       // `f()++`, `++(x + 1)`. Not of a pointer: `++v.begin()`, `--this->groups.end()` increment a
@@ -6100,7 +6150,21 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
       Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(c->callee)->resolved
                      : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
                                                                             : nullptr;
-      if (!callee || callee->kind != NodeKind::FunctionDecl || (callee->flags & DF_Constructor))
+      // `p()`, `(o.*m)()`, `l()`: noexcept as the pointer's function type, or the closure's call operator, says.
+      const Ty* through = c->callee && c->callee->ty ? types.unqualified(types.stripRef(c->callee->ty)) : nullptr;
+      if (through && through->kind == TyKind::Pointer)
+        through = types.unqualified(through->inner);
+      if (callee && callee->kind == NodeKind::FunctionDecl)
+        through = nullptr;
+      if (through && through->kind == TyKind::Lambda)
+      {
+        ClosureCall* closure = impl.closureCall(through);
+        std::optional<bool> isNoexcept = closure ? impl.isNoexcept(&closure->decl, activeSubst) : std::nullopt;
+        through = isNoexcept ? types.function(types.voidType(), {}, false, false, *isNoexcept) : nullptr;
+      }
+      if (through && through->kind != TyKind::Function)
+        through = nullptr;
+      if (!through && (!callee || callee->kind != NodeKind::FunctionDecl || (callee->flags & DF_Constructor)))
       {
         unsupported = callee && (callee->kind == NodeKind::ClassDecl || (callee->flags & DF_Constructor)) ? "a construction of a class"
                                                                                                           : "a call through a pointer or a closure";
@@ -6121,6 +6185,8 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
         }
         any = canThrow(a, unsupported) || any;
       }
+      if (through)
+        return any || !through->isNoexcept();
       if (c->callee->kind == NodeKind::MemberExpr)
         any = canThrow(static_cast<MemberExpr*>(c->callee)->base, unsupported) || any;
       // A function template's condition under the call's own template arguments (c<int>() of
@@ -6635,9 +6701,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           // Cache the deduced signature for callers in other files.
           const Ty* fnTy = impl.declaredTypeOf(f, nullptr, 0);
           std::vector<const Ty*> params(fnTy->args.begin(), fnTy->args.end());
-          f->cachedType.store(types.function(impl.deducedShape(fnTy->inner, deduced), Span<const Ty*>{params.data(), uint32_t(params.size())}, fnTy->variadic,
-                                             fnTy->isCConvention()),
-                              std::memory_order_release);
+          f->cachedType.store(types.functionLike(fnTy, impl.deducedShape(fnTy->inner, deduced), Span<const Ty*>{params.data(), uint32_t(params.size())}), std::memory_order_release);
         }
       }
       scope = saved;
@@ -7708,6 +7772,9 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       if (a != b && (a->kind == TyKind::Array || a->kind == TyKind::Pointer) && (b->kind == TyKind::Array || b->kind == TyKind::Pointer))
         if (const Ty* composite = impl.compositePointer(types.decay(a), types.decay(b)))
           return record(e, composite);
+      // Two functions, one noexcept: an lvalue of the other's type, the noexcept one's reference converting.
+      if (a != b && a->kind == TyKind::Function && (impl.losesNoexcept(a, b) || impl.losesNoexcept(b, a)))
+        return record(e, types.lref(types.withNoexcept(a, false)));
       // `cond ? "_" : someString`: the class branch's type; the other converts to it. Unless only
       // the class converts to the other (`c ? modifier : 0.0` with `operator double()`): then the
       // other's type, as C++ tries each way.

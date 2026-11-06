@@ -864,6 +864,7 @@ namespace
             f->params = d.params;
             f->isConst = (d.flags & DF_Const) != 0;
             f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+            f->noexceptCondition = d.noexceptCondition;
             f->isVariadic = (d.flags & DF_Variadic) != 0;
             // `Frac<gcd(P1::num, P2::num)>`: also read as a call, which the resolver takes when the
             // parameter is a constant (the parser cannot tell a function from a type).
@@ -1248,10 +1249,11 @@ namespace
             type = r;
           }
         }
-        else if (at(P::LParen) && at(P::Star, 1) && at(P::RParen, 2) && at(P::LParen, 3))
+        else if (at(P::LParen) && (at(P::Star, 1) || at(P::Amp, 1) || at(P::AndAnd, 1)) && at(P::RParen, 2) && at(P::LParen, 3))
         {
-          // Abstract pointer to function: R (*)(Args)
+          // Abstract pointer or reference to function: R (*)(Args), R (&)(Args)
           uint32_t start = pos;
+          bool lref = at(P::Amp, 1), rref = at(P::AndAnd, 1);
           advance();
           advance();
           advance();
@@ -1261,9 +1263,26 @@ namespace
           f->result = type;
           f->params = d.params;
           f->isVariadic = (d.flags & DF_Variadic) != 0;
-          PointerType* p = node<PointerType>(start);
-          p->pointee = f;
-          type = p;
+          f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+          f->noexceptCondition = d.noexceptCondition;
+          if (lref)
+          {
+            LRefType* r = node<LRefType>(start);
+            r->referenced = f;
+            type = r;
+          }
+          else if (rref)
+          {
+            RRefType* r = node<RRefType>(start);
+            r->referenced = f;
+            type = r;
+          }
+          else
+          {
+            PointerType* p = node<PointerType>(start);
+            p->pointee = f;
+            type = p;
+          }
         }
         else if (at(P::LParen) && atIdent(1) && at(P::ColonColon, 2) && memberFunctionPointerAhead())
         {
@@ -1281,6 +1300,8 @@ namespace
           f->params = d.params;
           f->isConst = (d.flags & DF_Const) != 0;
           f->isVariadic = (d.flags & DF_Variadic) != 0;
+          f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+          f->noexceptCondition = d.noexceptCondition;
           MemberPointerType* m = node<MemberPointerType>(start);
           m->classType = cls;
           m->pointee = f;
@@ -2632,6 +2653,7 @@ namespace
           f->isVariadic = (tmp.flags & DF_Variadic) != 0;
           f->isConst = (tmp.flags & DF_Const) != 0;
           f->isNoexcept = (tmp.flags & DF_Noexcept) != 0;
+          f->noexceptCondition = tmp.noexceptCondition;
           if (inner && inner->kind == NodeKind::MemberPointerType)
           {
             // Pointer to member function: `R (C::*name)(params)`.
@@ -3053,6 +3075,8 @@ namespace
       f->result = d.type;
       f->params = d.params;
       f->isVariadic = (d.flags & DF_Variadic) != 0;
+      f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+      f->noexceptCondition = d.noexceptCondition;
       d.type = f;
       d.flags &= ~DF_Variadic;
       d.isFunction = false;
@@ -3443,6 +3467,7 @@ namespace
         f->params = d.params;
         f->isConst = (d.flags & DF_Const) != 0;
         f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+        f->noexceptCondition = d.noexceptCondition;
         f->isVariadic = (d.flags & DF_Variadic) != 0;
         return f;
       }
@@ -6745,6 +6770,8 @@ namespace
         parseFunctionSuffix(d);
         l->params = d.params;
         l->returnType = d.trailingReturn;
+        l->isNoexcept = (d.flags & DF_Noexcept) != 0;
+        l->noexceptCondition = d.noexceptCondition;
       }
       // `auto` in a parameter makes the lambda generic: each such parameter gets an invented type
       // parameter (as C++ does) and the call operator is deduced at every call. A lambda with
@@ -6774,8 +6801,12 @@ namespace
         if (at(Kw::noexcept_))
         {
           advance();
-          if (at(P::LParen))
-            skipBalanced();
+          l->isNoexcept = true;
+          if (accept(P::LParen))
+          {
+            l->noexceptCondition = parseExpression();
+            expect(P::RParen, "expected ')' after the noexcept condition");
+          }
           continue;
         }
         if (at(P::Arrow))

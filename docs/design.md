@@ -4187,14 +4187,25 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   with the newline as delimiter drops a `\r` right before it, on every platform, so CRLF files
   still read as lines. Spec library/file_streams_have_no_text_mode; stdlib/io/README.md.
 
-- **noexcept in the function type** (a known deviation, logged 2026-11-05, D; not implemented until
-  kovarex wants it). C++17 made noexcept part of a function's type: `void (*)() noexcept` and
-  `void (*)()` are two types, a pointer to a noexcept function converts to a plain one and never the
-  other way, and a template deduces it. kpp's function types carry no noexcept, so the two are one
-  type and `void (*f)() noexcept = plain;` (plain not noexcept) compiles, where clang refuses it
-  (thread A, comparing implicit conversions). A call through such a pointer is then not known to
-  stay noexcept. Making it part of the type touches type identity, deduction, overloads on it and
-  IR names; the converted game declares no noexcept function pointer type.
+- **noexcept in the function type** (decided by kovarex, 2026-11-06: full C++17 behaviour, "the
+  noexcept is there for a reason"; logged as a deviation 2026-11-05). `void() noexcept` and `void()`
+  are two types (TypeTable::function's noexcept, printed in the type, so two instances or overloads
+  never meet in one LLVM name). A function's name has the type it declares, noexcept as the instance
+  says (`noexcept(cond)` under the template's arguments); declaredTypeOf stays the signature without
+  it, which calls, overrides and redeclarations compare. noexcept goes by a conversion, as a
+  qualification does (rank 1, worse than the identity, so overloads on it choose) for a pointer, a
+  member pointer and a reference, and never comes: an assignment, an argument, a return, a
+  static_cast or a non-noexcept closure are errors, a C cast and reinterpret_cast are not. A template
+  deduces it (T as the whole type, `R (*)(A...) noexcept(N)` binds N; a plain `R (*)(A...)` parameter
+  takes a noexcept function, as a call converts it), a partial specialization matches it exactly, a
+  conditional of the two is the plain type, `+closure` and a closure's conversion carry its call
+  operator's. The noexcept operator reads it through a pointer, a member pointer and a closure. An
+  overrider of a noexcept function must be noexcept, keyword `override` or not, and every declaration
+  of a function says the same (destructors are not compared: theirs is mostly implicit). A noexcept
+  lambda's body ends the program as a noexcept function's does: the specifier was read and dropped
+  until now, so its caller's catch took the exception. Open: a handler of `void (*)()` takes no
+  thrown noexcept pointer yet (spec language/noexcept_pointer_thrown_is_caught_as_a_plain_pointer,
+  pending for B). Specs language/noexcept_*, clang's output.
 
 - **Wube's utility code in kpp (parked)** (kovarex, 2026-11-06): once Factorio is officially in kpp, so
   that the game's code changes along with the stdlib, Wube's handwritten utility code moves, not a

@@ -22,7 +22,7 @@ struct ConstType : Type { Type* inner; bool isVolatile = false; bool isConst = t
 struct ArrayType : Type { Type* element; Expr* size; Expr* asIndex = nullptr; };
 // asCall: in a template argument list, the same tokens read as a call (`Frac<gcd(N, M)>`), for
 // the resolver to take when the parameter is a constant.
-struct FunctionType : Type { Type* result; Span<Decl*> params; bool isConst = false, isNoexcept = false, isVariadic = false; Expr* asCall = nullptr; };
+struct FunctionType : Type { Type* result; Span<Decl*> params; bool isConst = false, isNoexcept = false, isVariadic = false; Expr* asCall = nullptr; Expr* noexceptCondition = nullptr; };
 // file: the file it is written in, whose tokens type its expression again under an instance's
 // arguments where the context has none (a qualified name's template arguments, as a lookup reads them).
 struct DecltypeType : Type { Expr* expr; bool isAuto = false; const struct ParsedFile* file = nullptr; };

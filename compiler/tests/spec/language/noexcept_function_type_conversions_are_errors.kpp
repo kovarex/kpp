@@ -1,0 +1,50 @@
+// spec: noexcept comes by no conversion, and an overrider or a redeclaration keeps it, each refused where clang refuses it (an override only under g++: clang's MSVC mode warns)
+// error: noexcept_function_type_conversions_are_errors.kpp:23: error: a pointer (void()*) does not convert to void() noexcept*
+// error: noexcept_function_type_conversions_are_errors.kpp:24: error: a pointer (void()*) does not convert to void() noexcept*
+// error: noexcept_function_type_conversions_are_errors.kpp:25: error: a pointer (void()*) does not convert to void() noexcept*
+// error: noexcept_function_type_conversions_are_errors.kpp:26: error: a pointer (void()*) does not convert to void() noexcept*
+// error: noexcept_function_type_conversions_are_errors.kpp:27: error: a pointer to a member function (int32() C::*) does not convert to int32() noexcept C::*
+// error: noexcept_function_type_conversions_are_errors.kpp:28: error: a static_cast does not make a function noexcept
+// error: noexcept_function_type_conversions_are_errors.kpp:29: error: a pointer (void()*) does not convert to void() noexcept*
+// error: noexcept_function_type_conversions_are_errors.kpp:30: error: codegen does not support a call that did not resolve
+// error: noexcept_function_type_conversions_are_errors.kpp:31: error: codegen does not support emitting the function template byValue without its argument F
+// error: noexcept_function_type_conversions_are_errors.kpp:32: error: a lambda that is not noexcept does not convert
+// error: noexcept_function_type_conversions_are_errors.kpp:44: error: this function overrides the noexcept function
+// error: noexcept_function_type_conversions_are_errors.kpp:45: error: this function overrides the noexcept function
+// error: noexcept_function_type_conversions_are_errors.kpp:49: error: the function decl says otherwise of noexcept
+struct C { int m() { return 1; } };
+void plain() {}
+void nf() noexcept {}
+using NP = void (*)() noexcept;
+using PP = void (*)();
+void g(NP) {}
+template <typename R> void tf(R (*)() noexcept) {}
+template <void (*F)() noexcept> void byValue() {}
+NP get() { return plain; }
+void e1() { void (*a)() noexcept = plain; }
+void e2() { PP p = plain; NP q = nf; q = p; }
+void e3() { void (&r)() noexcept = plain; }
+void e4() { int (C::*c)() noexcept = &C::m; }
+void e5() { NP q = static_cast<NP>(plain); }
+void e6() { g(plain); }
+void e7() { tf(plain); }
+void e8() { byValue<plain>(); }
+void e9() { auto l = []() {}; NP lp = l; }
+void fine() { NP q = (NP)plain; q = reinterpret_cast<NP>(plain); }
+class B
+{
+public:
+  virtual void f() noexcept {}
+  virtual void h() noexcept(true) {}
+  virtual void k() {}
+};
+class D : public B
+{
+public:
+  void f() override {}
+  void h() noexcept(false) override {}
+  void k() noexcept override {}
+};
+void decl() noexcept;
+void decl() {}
+int main() { return 0; }

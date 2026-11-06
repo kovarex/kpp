@@ -1,0 +1,105 @@
+// spec: noexcept is part of a function's type (C++17): `void() noexcept` and `void()` are two types, `decltype`, `&f`, a member pointer, a conditional and a closure's `+` say which, a noexcept function converts to a plain pointer or reference and never the other way, a template deduces it (`R (*)(A...) noexcept(N)`, T as the whole type), partial specializations and overloads tell the two apart and two instances stay two, the noexcept operator reads it through a pointer, clang's output
+extern "C" import "stdio.h";
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+void plain() {}
+void nf() noexcept {}
+int add(int a, int b) noexcept { return a + b; }
+void cond1() noexcept(sizeof(int) == 4) {}
+void cond0() noexcept(sizeof(int) == 3) {}
+template <bool B> void tc() noexcept(B) {}
+struct C
+{
+  int m() { return 1; }
+  int n() noexcept { return 2; }
+  int cn() const noexcept { return 3; }
+};
+using NP = void (*)() noexcept;
+using PP = void (*)();
+using NF = void() noexcept;
+using PF = void();
+// deduction of noexcept
+template <typename R, typename... A, bool N> constexpr bool isN(R (*)(A...) noexcept(N)) { return N; }
+template <typename R, typename Cl, typename... A, bool N> constexpr bool isMN(R (Cl::*)(A...) noexcept(N)) { return N; }
+template <typename R, typename Cl, typename... A, bool N> constexpr bool isCMN(R (Cl::*)(A...) const noexcept(N)) { return N; }
+template <typename R> int plainParam(R (*)()) { return 1; }
+template <typename T> int whole(T) { return Same<T, NP>::value ? 2 : Same<T, PP>::value ? 1 : 0; }
+// partial specializations
+template <typename T> struct Tr { static constexpr int value = 0; };
+template <typename R, typename... A> struct Tr<R (*)(A...)> { static constexpr int value = 1; };
+template <typename R, typename... A> struct Tr<R (*)(A...) noexcept> { static constexpr int value = 2; };
+template <typename R, typename... A> struct Tr<R(A...)> { static constexpr int value = 3; };
+template <typename R, typename... A> struct Tr<R(A...) noexcept> { static constexpr int value = 4; };
+template <typename R, typename K, typename... A> struct Tr<R (K::*)(A...)> { static constexpr int value = 5; };
+template <typename R, typename K, typename... A> struct Tr<R (K::*)(A...) noexcept> { static constexpr int value = 6; };
+// one spec with the bool
+template <typename T> struct Tb { static constexpr int value = -1; };
+template <typename R, bool N> struct Tb<R (*)() noexcept(N)> { static constexpr int value = N ? 1 : 0; };
+// overloads
+int ov(void (*)()) { return 1; }
+int ov(void (*)() noexcept) { return 2; }
+int only(void (*)()) { return 3; }
+// instances are distinct
+template <typename T> int counter() { static int c = 0; return ++c; }
+template <void (*F)()> int byValue() { F(); return 1; }
+template <void (*F)() noexcept> int byNoexceptValue() { F(); return 2; }
+template <auto F> int byAuto() { return Tr<decltype(F)>::value; }
+// through a member and a typedef
+struct H { void (*cb)() noexcept; PP plainCb; };
+void call(void (&r)()) { r(); }
+int main()
+{
+  void (*p)() = nf;
+  NP q = nf;
+  p = q;
+  void (&r)() = nf;
+  void (&nr)() noexcept = nf;
+  p(); q(); r(); nr();
+  printf("%d %d %d %d\n", Same<decltype(nf), void()>::value, Same<decltype(nf), NF>::value, Same<decltype(&nf), NP>::value, Same<decltype(&plain), NP>::value);
+  printf("%d %d %d\n", Same<decltype(q), NP>::value, Same<decltype(p), NP>::value, Same<NF, PF>::value);
+  printf("%d %d %d %d\n", Same<decltype(add), int(int, int) noexcept>::value, Same<decltype(&cond1), NP>::value, Same<decltype(&cond0), NP>::value, Same<decltype(&cond0), PP>::value);
+  printf("%d %d\n", Same<decltype(&tc<true>), NP>::value, Same<decltype(&tc<false>), PP>::value);
+  int (C::*a)() = &C::m;
+  int (C::*b)() = &C::n;
+  int (C::*c)() noexcept = &C::n;
+  b = c;
+  int (C::*d)() const = &C::cn;
+  int (C::*e)() const noexcept = &C::cn;
+  C o;
+  printf("%d %d %d %d %d\n", (o.*a)(), (o.*b)(), (o.*c)(), (o.*d)(), (o.*e)());
+  printf("%d %d %d %d %d\n", isN(plain), isN(nf), isN(add), isN(p), isN(q));
+  printf("%d %d %d\n", isMN(&C::m), isMN(&C::n), isCMN(&C::cn));
+  printf("%d %d %d %d\n", plainParam(nf), plainParam(q), whole(nf), whole(plain));
+  printf("%d %d %d\n", whole(q), whole(p), whole(&nf));
+  printf("%d %d %d %d\n", Tr<PP>::value, Tr<NP>::value, Tr<PF>::value, Tr<NF>::value);
+  printf("%d %d %d\n", Tr<decltype(&C::m)>::value, Tr<decltype(&C::n)>::value, Tr<int>::value);
+  printf("%d %d\n", Tb<PP>::value, Tb<NP>::value);
+  printf("%d %d %d %d %d\n", ov(plain), ov(nf), ov(p), ov(q), only(nf));
+  int c1 = counter<PP>();
+  int c2 = counter<NP>();
+  int c3 = counter<PP>();
+  printf("%d %d %d\n", c1, c2, c3);
+  printf("%d %d %d %d %d\n", byValue<plain>(), byValue<nf>(), byNoexceptValue<nf>(), byAuto<plain>(), byAuto<nf>());
+  printf("%d %d %d %d\n", noexcept(p()), noexcept(q()), noexcept(nr()), noexcept(r()));
+  printf("%d %d\n", noexcept((o.*a)()), noexcept((o.*c)()));
+  H h{nf, nf};
+  h.cb(); h.plainCb();
+  printf("%d %d\n", noexcept(h.cb()), noexcept(h.plainCb()));
+  call(nf);
+  bool t = true;
+  printf("%d %d\n", Same<decltype(t ? nf : plain), void (&)()>::value, Same<decltype(t ? q : p), PP>::value);
+  p = static_cast<PP>(nf);
+  p = (PP)q;
+  auto l = []() noexcept { };
+  auto l2 = []() { };
+  NP lp = l;
+  PP lp2 = l;
+  PP lp3 = l2;
+  auto lp4 = +l;
+  auto lp5 = +l2;
+  printf("%d %d %d\n", Same<decltype(lp4), NP>::value, Same<decltype(lp5), PP>::value, noexcept(l()));
+  lp(); lp2(); lp3();
+  NP cast = reinterpret_cast<NP>(plain);
+  cast();
+  return 0;
+}

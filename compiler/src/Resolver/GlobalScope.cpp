@@ -1442,7 +1442,7 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
   {
     // `template<typename T> auto f(T)`: the return type its body deduced for these arguments.
     if (const Ty* r = impl->deducedReturnOf(static_cast<FunctionDecl*>(d), s))
-      return impl->types.function(r, t->args, t->variadic, t->isCConvention());
+      return impl->types.functionLike(t, r, t->args);
   }
   if (impl->containsAuto(t) && d->kind == NodeKind::VariableDecl)
   {

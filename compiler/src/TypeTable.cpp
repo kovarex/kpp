@@ -337,14 +337,27 @@ const Ty* TypeTable::vectorType(const Ty* element, uint32_t count)
   return intern(t);
 }
 
-const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention)
+const Ty* TypeTable::function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention, bool isNoexcept, Decl* noexceptParam)
 {
   Ty t{TyKind::Function};
   t.inner = result;
   t.args = params;
   t.variadic = variadic;
-  t.count = cConvention ? 1 : 0;
+  t.count = (cConvention ? 1 : 0) | (isNoexcept ? 2 : 0);
+  t.decl = noexceptParam;
   return intern(t);
+}
+
+const Ty* TypeTable::functionLike(const Ty* like, const Ty* result, Span<const Ty*> params)
+{
+  return function(result, params, like->variadic, like->isCConvention(), like->isNoexcept(), like->decl);
+}
+
+const Ty* TypeTable::withNoexcept(const Ty* t, bool isNoexcept)
+{
+  if (!t || t->kind != TyKind::Function || (t->isNoexcept() == isNoexcept && !t->decl))
+    return t;
+  return function(t->inner, t->args, t->variadic, t->isCConvention(), isNoexcept);
 }
 
 const Ty* TypeTable::classType(Decl* decl, Span<const Ty*> args)
@@ -570,6 +583,8 @@ namespace
         return false;
       }
       case TyKind::Function: case TyKind::Class: case TyKind::Enum: case TyKind::Pack: case TyKind::Member:
+        if (t->kind == TyKind::Function && t->decl)
+          return true; // `noexcept(N)`
         if (dependent(t->inner, bound))
           return true;
         for (const Ty* a : t->args)
@@ -715,6 +730,10 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       for (size_t i = 0; i < t->args.size(); ++i)
         s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
       s += t->variadic ? ", ...)" : ")";
+      if (t->kind == TyKind::Function && t->decl)
+        s += " noexcept(" + declName(t->decl) + ")";
+      else if (t->isNoexcept())
+        s += " noexcept";
       break;
     case TyKind::Class:
     case TyKind::Enum:

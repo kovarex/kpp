@@ -457,6 +457,10 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
     return types.unknown();
   const Ty* pt = types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1));
   const Ty* wanted = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
+  // `template<auto F>` given one function: a pointer to it, noexcept as it is.
+  if (pt && pt->kind == TyKind::Auto && l.decl && l.decl->kind == NodeKind::FunctionDecl && (!l.overloads || l.overloads->size() <= 1) && l.decl->templateParams.empty())
+    if (const Ty* t = declaredTypeOf(l.decl, nullptr, depth + 1); t && t->kind == TyKind::Function)
+      return types.functionValue(types.pointer(types.withNoexcept(t, isNoexcept(static_cast<FunctionDecl*>(l.decl), nullptr) == std::optional<bool>(true))), l.decl);
   if (!wanted || wanted->kind != TyKind::Function)
     return types.unknown();
   std::vector<Decl*> candidates;
@@ -467,7 +471,8 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
   if (candidates.empty())
     candidates.push_back(l.decl);
   for (Decl* f : candidates)
-    if (declaredTypeOf(f, nullptr, depth + 1) == wanted)
+    if (const Ty* t = declaredTypeOf(f, nullptr, depth + 1);
+        t == wanted || (t && types.withNoexcept(t, f->kind == NodeKind::FunctionDecl && isNoexcept(static_cast<FunctionDecl*>(f), nullptr) == std::optional<bool>(true)) == wanted))
       return types.functionValue(types.pointer(wanted), f);
   return types.unknown();
 }
@@ -1765,7 +1770,21 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         else
           params.push_back(pt);
       }
-      return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic);
+      // `noexcept(cond)`: as cond says; a template's own `noexcept(N)`, N not bound yet, is a pattern.
+      bool isNoexcept = f->isNoexcept;
+      Decl* noexceptParam = nullptr;
+      if (f->isNoexcept && f->noexceptCondition)
+      {
+        std::optional<int64_t> v = constEval(f->noexceptCondition, ctx);
+        isNoexcept = v && *v != 0;
+        if (!v && f->noexceptCondition->kind == NodeKind::NameExpr)
+        {
+          Lookup l = lookupQualified(static_cast<NameExpr*>(f->noexceptCondition)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+          if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType)
+            noexceptParam = l.decl;
+        }
+      }
+      return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic, false, isNoexcept, noexceptParam);
     }
     case NodeKind::AutoType: return static_cast<AutoType*>(t)->isDecltypeAuto ? types.decltypeAutoType() : types.autoType();
     case NodeKind::DecltypeType:
@@ -1984,7 +2003,7 @@ auto GlobalScope::Impl::withCConvention(const Ty* t, bool nested, int depth) -> 
       bool c = t->isCConvention() || byValue(result) || std::any_of(params.begin(), params.end(), byValue);
       if (!changed && c == t->isCConvention())
         return t;
-      return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, t->variadic, c);
+      return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, t->variadic, c, t->isNoexcept(), t->decl);
     }
     default:
       return t;
@@ -2882,6 +2901,9 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
         // A function type's return and parameter types are deduced as they are, references kept
         // (`ValueType (Desc::*)() const` given `&Desc::getName` returning `const Name&`).
         deduceArgument(pattern->inner, a->inner, out, depth + 1);
+        // `R (*)(A...) noexcept(N)`: N, as the function is.
+        if (pattern->decl && a->kind == TyKind::Function && !out.find(pattern->decl))
+          out.pairs.push_back({pattern->decl, types.valueType(types.boolType(), a->isNoexcept() ? 1 : 0)});
         // `R (*)(A...)`: the pack the parameter types from its place on (none for `short()`).
         size_t n = pattern->args.size();
         bool packLast = n > 0 && isPackParam(pattern->args[n - 1]);
@@ -3415,7 +3437,18 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
       if (t->kind == TyKind::Pack)
         return types.pack(span);
       if (t->kind == TyKind::Function)
-        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention());
+      {
+        bool isNoexcept = t->isNoexcept();
+        Decl* noexceptParam = t->decl; // `noexcept(N)` with N bound: as N says
+        if (const Ty* n = noexceptParam ? s.find(noexceptParam) : nullptr; n && n->kind == TyKind::Value)
+        {
+          isNoexcept = n->value != 0;
+          noexceptParam = nullptr;
+        }
+        else if (n && n->kind == TyKind::Param)
+          noexceptParam = n->decl;
+        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention(), isNoexcept, noexceptParam);
+      }
       if (t->kind == TyKind::Lambda)
         return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);
       if (args.size() == 1 && args[0] && args[0]->kind == TyKind::Function && isLibraryFunction(t->decl, false))

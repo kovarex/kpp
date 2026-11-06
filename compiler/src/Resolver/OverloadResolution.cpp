@@ -527,6 +527,42 @@ auto GlobalScope::Impl::unqualifiedDeep(const Ty* t) -> const Ty*
   return types.unqualified(t);
 }
 
+auto GlobalScope::Impl::overriddenNoexcept(const Ty* t, FunctionDecl* f, const std::string& key, int depth) -> FunctionDecl*
+{
+  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > 16)
+    return nullptr;
+  ClassDecl* def = classDefinition(t);
+  std::vector<const Ty*> bases;
+  if (!def || !directBases(t, def, bases))
+    return nullptr;
+  const NamePart& name = f->name.last();
+  for (const Ty* b : bases)
+  {
+    ClassDecl* bd = b && b->kind == TyKind::Class ? classDefinition(b) : nullptr;
+    if (!bd)
+      continue;
+    for (Decl* m : membersRead(bd))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & (DF_Virtual | DF_Override | DF_Pure)) || (m->flags & (DF_Static | DF_Constructor | DF_Destructor)) || !m->templateParams.empty())
+        continue;
+      auto* g = static_cast<FunctionDecl*>(m);
+      if (g->name.empty() || g->name.last().symbol != name.symbol || g->name.last().special != name.special || overrideKey(g, b) != key)
+        continue;
+      Subst s = substFor(b);
+      if (isNoexcept(g, s.pairs.empty() ? nullptr : &s) == std::optional<bool>(true))
+        return g;
+    }
+    if (FunctionDecl* deeper = overriddenNoexcept(b, f, key, depth + 1))
+      return deeper;
+  }
+  return nullptr;
+}
+
+auto GlobalScope::Impl::losesNoexcept(const Ty* from, const Ty* to) -> bool
+{
+  return from && to && from->isNoexcept() && !to->isNoexcept() && types.withNoexcept(from, false) == to;
+}
+
 auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth) -> int
 {
   if (!arg || !param || !arg->isKnown() || !param->isKnown() || types.isDependent(arg) || types.isDependent(param))
@@ -578,7 +614,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // A function is an lvalue: `const Pred&` with Pred a function type (const has no say on
     // one) binds `Group::ascending` itself.
     if (a->kind == TyKind::Function && pt && pt->kind == TyKind::Function)
-      return types.unqualified(a) == types.unqualified(pt) ? 0 : NotViable;
+      return types.unqualified(a) == types.unqualified(pt) ? 0 : losesNoexcept(types.unqualified(a), types.unqualified(pt)) ? 1 : NotViable;
     bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
     // `frame << agui::horizontalLine` with the helper's `operator HorizontalLine&()`: a class
     // whose conversion operator gives an lvalue of pt's type (of a class derived from pt's class)
@@ -691,9 +727,11 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     case TyKind::MemberPointer:
       if (a->kind == TyKind::MemberPointer && types.unqualified(a->inner) == types.unqualified(p->inner) && a->decl == p->decl)
         return 0;
+      if (a->kind == TyKind::MemberPointer && a->decl == p->decl && losesNoexcept(types.unqualified(a->inner), types.unqualified(p->inner)))
+        return 1;
       // `&LuaControlBehavior::luaReadEntity` for an `int32 (T::*)(lua_State*)` with T derived from
       // it: a pointer to a member of a base converts to one of the derived class.
-      if (a->kind == TyKind::MemberPointer && types.unqualified(a->inner) == types.unqualified(p->inner) && !a->args.empty() &&
+      if (a->kind == TyKind::MemberPointer && (types.unqualified(a->inner) == types.unqualified(p->inner) || losesNoexcept(types.unqualified(a->inner), types.unqualified(p->inner))) && !a->args.empty() &&
           !p->args.empty() && a->args[0] && p->args[0] && a->args[0]->kind == TyKind::Class && p->args[0]->kind == TyKind::Class &&
           isBaseClass(a->args[0], p->args[0]))
         return 3;
@@ -709,6 +747,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         const Ty* pi = p->inner;
         if (types.unqualified(ai) == types.unqualified(pi))
           return pi->isConst == ai->isConst ? 0 : (pi->isConst ? 1 : NotViable);
+        if (losesNoexcept(types.unqualified(ai), types.unqualified(pi)))
+          return 1; // the function pointer conversion, an exact match worse than the identity ([conv.fctptr])
         if (pi->kind == TyKind::Void)
           return (ai->isConst && !pi->isConst) || (ai->isVolatile && !pi->isVolatile) ? NotViable : 3; // (`const char*` is no `void*`)
         if (ai->kind == TyKind::Class && pi->kind == TyKind::Class && isBaseClass(pi, ai))
@@ -716,7 +756,12 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         return NotViable;
       }
       if (a->kind == TyKind::Lambda && p->inner->kind == TyKind::Function)
+      {
+        // (a closure's call operator noexcept or not: its pointer's type, which converts as one does)
+        if (ClosureCall* c = p->inner->isNoexcept() ? closureCall(a) : nullptr; c && isNoexcept(&c->decl, nullptr) != std::optional<bool>(true))
+          return NotViable;
         return 3;
+      }
       break;
     case TyKind::Class:
     {
@@ -2214,7 +2259,8 @@ auto GlobalScope::Impl::closureCall(const Ty* lambdaTy) -> ClosureCall*
   f.file = closure->file;
   f.parent = closure;
   f.access = Access::Public;
-  f.flags = DF_Operator | (l->isMutable ? 0u : uint32_t(DF_Const));
+  f.flags = DF_Operator | (l->isMutable ? 0u : uint32_t(DF_Const)) | (l->isNoexcept ? uint32_t(DF_Noexcept) : 0u);
+  f.noexceptCondition = l->noexceptCondition;
   f.templateParams = l->templateParams;
   f.isTemplate = !l->templateParams.empty();
   f.params = l->params;

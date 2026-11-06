@@ -39,6 +39,8 @@ auto codegen::Emitter::itaniumTerminatePad() -> std::string
 auto codegen::Emitter::emittingNoexcept() -> bool
 {
   static const TemplateArgs none;
+  if (bodyNow && bodyNow == noexceptLambdaBody)
+    return true;
   return currentFunction && bodyNow && bodyNow == currentFunction->body && (currentFunction->flags & DF_Noexcept) &&
          global.isNoexcept(currentFunction, currentArgs ? *currentArgs : none);
 }

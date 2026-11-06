@@ -64,7 +64,14 @@ public:
   // (count = 1), so that no pointer of the one converts to the other, where a call through it would
   // pass the class as the function does not take it. It prints as `extern C int32(S8)` (no quotes: a
   // type's printed form is part of LLVM's quoted names).
-  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention = false);
+  // noexcept: part of the type (C++17): `void() noexcept` is another type than `void()`, printed so, which
+  // keeps two instances and overloads apart in LLVM's names. noexceptParam: the `N` of a pattern's
+  // `noexcept(N)`, dependent until N is bound.
+  const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic, bool cConvention = false, bool isNoexcept = false, Decl* noexceptParam = nullptr);
+  // Another function type with what `like` says besides its result and parameters.
+  const Ty* functionLike(const Ty* like, const Ty* result, Span<const Ty*> params);
+  // Function type t, noexcept or not: `void()` and `void() noexcept` from each other.
+  const Ty* withNoexcept(const Ty* t, bool isNoexcept);
   const Ty* classType(Decl* decl, Span<const Ty*> args);
   // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but
   // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other

@@ -874,6 +874,9 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
     }
   }
   bodyNow = l->body;
+  static const TemplateArgs noArgs;
+  FunctionDecl* callOperator = l->isNoexcept ? global.closureCallOperator(types.unqualified(t)) : nullptr;
+  noexceptLambdaBody = callOperator && global.isNoexcept(callOperator, args ? *args : noArgs) ? l->body : nullptr;
   // The function it is written in is the current function while its body is emitted (not the
   // one that happened to emit it first, a generic lambda's first caller): its operators and free
   // functions are looked up from there, `this` is that function's, and its nodes are that

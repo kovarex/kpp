@@ -845,6 +845,11 @@
     // cast, const_cast included) nothing is visible (design.md 21).
     Decl* constObjectPlaced(Expr* place);
 
+    // That f, not noexcept, overrides no noexcept function (an error).
+    void checkOverrideNoexcept(FunctionDecl* f);
+    // The type of function d's name: t, its declared type under subst, noexcept as d is there
+    // (declaredTypeOf's signature has no noexcept: calls, overrides and redeclarations compare that).
+    const Ty* namedFunctionType(Decl* d, const Ty* t, const Subst* subst);
     // Whether e can throw, for the noexcept operator ([expr.unary.noexcept]): a call of a function
     // not noexcept (its noexcept condition evaluated under the walk's substitution), a throw, a new
     // that allocates; scalar arithmetic, names, literals and the operators of scalars cannot. What it

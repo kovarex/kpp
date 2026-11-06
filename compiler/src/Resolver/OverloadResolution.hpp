@@ -24,6 +24,13 @@
 
   static constexpr int NotViable = 1000;
 
+  // A noexcept virtual function of t's bases that f, of overrideKey key, overrides; null when none is.
+  FunctionDecl* overriddenNoexcept(const Ty* t, FunctionDecl* f, const std::string& key, int depth);
+
+  // Whether function type from is function type to with noexcept on it: the one conversion between
+  // function types (a pointer, a member pointer, a reference; [conv.fctptr]), never the other way.
+  bool losesNoexcept(const Ty* from, const Ty* to);
+
   // Rank of list-initializing an object of type p from a brace list's elements (C++'s
   // [over.ics.list]): a scalar from its one element (from none: value-initialized); a class from
   // one element of its own type (or of a derived one), else by a constructor taking the elements

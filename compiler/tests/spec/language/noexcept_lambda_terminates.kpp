@@ -1,0 +1,25 @@
+// spec: a noexcept lambda an exception leaves ends the program, as a noexcept function (the specifier was read and dropped: the caller's catch took it, without a word)
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void onTerminate()
+{
+  printf("terminate\n");
+  fflush(stdout);
+  exit(0);
+}
+void thrower() noexcept { throw 1; }
+struct T { void m() noexcept { throw 2; } };
+int main()
+{
+  setTerminate(onTerminate);
+  try
+  {
+    auto l = []() noexcept { throw 3; };
+    l();
+  }
+  catch (...)
+  {
+    printf("caught\n");
+  }
+  return 0;
+}

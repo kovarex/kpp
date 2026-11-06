@@ -1,0 +1,49 @@
+// spec: functions, members and closures of noexcept function types at run time: tables, a class template deduced from one, a virtual call through a noexcept member pointer, a conditional noexcept under a template's arguments, clang's output
+extern "C" import "stdio.h";
+// runtime and library use of noexcept function types
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+int plain(int x) { return x + 1; }
+int nf(int x) noexcept { return x + 2; }
+template <typename T> struct Box { T v; Box(T x) : v(x) {} int call(int a) { return v(a); } };
+template <typename F> int apply(F f, int a) { return f(a); }
+template <typename F> int applyRef(F&& f, int a) { return f(a); }
+template <typename F> int applyConst(const F& f, int a) { return f(a); }
+struct S { static int sf(int x) noexcept { return x + 3; } int mf(int x) const noexcept { return x + 4; } };
+class V { public: virtual int vf(int x) noexcept { return x + 5; } virtual ~V() {} };
+class W : public V { public: int vf(int x) noexcept override { return x + 6; } };
+template <bool B> struct Cn { static int f(int x) noexcept(B) { return x; } };
+template <typename T> int nothrowSized(T) noexcept(sizeof(T) == 4) { return sizeof(T); }
+int (*table[])(int) = { plain, nf };
+int (*ntable[])(int) noexcept = { nf, S::sf };
+using Fp = int (*)(int) noexcept;
+Fp pick(bool b) { return b ? nf : S::sf; }
+int main()
+{
+  Box b1(nf);
+  Box b2(plain);
+  printf("%d %d %d\n", b1.call(1), b2.call(1), (int)Same<decltype(b1), Box<int (*)(int) noexcept>>::value);
+  printf("%d %d %d\n", apply(nf, 1), applyRef(nf, 1), applyConst(nf, 1));
+  printf("%d %d %d %d\n", table[0](1), table[1](1), ntable[0](1), ntable[1](1));
+  printf("%d %d\n", pick(true)(1), pick(false)(1));
+  int (V::*vp)(int) noexcept = &V::vf;
+  int (V::*vq)(int) = vp;
+  W w;
+  printf("%d %d\n", (w.*vp)(1), (w.*vq)(1));
+  printf("%d %d\n", (int)Same<decltype(&Cn<true>::f), Fp>::value, (int)Same<decltype(&Cn<false>::f), int (*)(int)>::value);
+  printf("%d %d\n", (int)noexcept(nothrowSized(1)), (int)noexcept(nothrowSized(1.0)));
+  printf("%d %d\n", (int)Same<decltype(&nothrowSized<int>), int (*)(int) noexcept>::value, (int)Same<decltype(&nothrowSized<double>), int (*)(double)>::value);
+  Fp arr[2] = { nf, nf };
+  auto l = [](int x) noexcept { return x + 7; };
+  int (*lf)(int) noexcept = l;
+  printf("%d %d\n", arr[1](1), lf(1));
+  int (&ref)(int) = nf;
+  int (&nref)(int) noexcept = nf;
+  auto cp = nref;
+  printf("%d %d %d\n", ref(1), nref(1), (int)Same<decltype(cp), Fp>::value);
+  void* raw = (void*)nf;
+  Fp back = (Fp)raw;
+  printf("%d %d\n", back(1), (int)(back == nf));
+  printf("%d %d\n", (int)(nf == nf), (int)((int (*)(int))nf == (int (*)(int))back));
+  return 0;
+}

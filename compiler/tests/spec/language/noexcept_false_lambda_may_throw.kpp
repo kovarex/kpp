@@ -1,0 +1,17 @@
+// spec: `noexcept(false)` on a lambda is no noexcept: the catch takes what leaves it, and `noexcept(l())` says so
+extern "C" import "stdio.h";
+int main()
+{
+  auto l = []() noexcept(false) { throw 5; };
+  auto n = []() noexcept(sizeof(int) == 4) {};
+  printf("%d %d\n", (int)noexcept(l()), (int)noexcept(n()));
+  try
+  {
+    l();
+  }
+  catch (int v)
+  {
+    printf("caught %d\n", v);
+  }
+  return 0;
+}

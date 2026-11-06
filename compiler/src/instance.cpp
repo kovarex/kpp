@@ -117,6 +117,7 @@ Type* InstanceCopier::type(const Type* t)
       c->result = type(c->result);
       c->params = declList(c->params);
       c->asCall = expr(c->asCall);
+      c->noexceptCondition = expr(c->noexceptCondition);
       return c;
     }
     case NodeKind::DecltypeType:
@@ -559,6 +560,7 @@ Expr* InstanceCopier::expr(const Expr* e)
       auto* c = raw(static_cast<const LambdaExpr*>(e));
       if (!keepClosures)
         c->templateParams = declList(c->templateParams);
+      c->noexceptCondition = expr(c->noexceptCondition);
       c->params = declList(c->params);
       c->returnType = type(c->returnType);
       c->captures = span(c->captures, [&](LambdaCapture& cap)
@@ -658,6 +660,7 @@ LambdaExpr* InstanceCopier::lambdaInstance(const LambdaExpr* l)
   if (l->closure)
     decls[l->closure] = l->closure;
   auto* c = raw(l);
+  c->noexceptCondition = expr(c->noexceptCondition);
   c->params = declList(c->params);
   c->returnType = type(c->returnType);
   c->body = stmt(c->body);
@@ -714,6 +717,7 @@ void InstanceCopier::fixReferences(Node* root)
         push(static_cast<FunctionType*>(n)->result);
         for (Decl* p : static_cast<FunctionType*>(n)->params)
           push(p);
+        push(static_cast<FunctionType*>(n)->noexceptCondition);
         break;
       case NodeKind::DecltypeType: push(static_cast<DecltypeType*>(n)->expr); break;
       case NodeKind::MemberPointerType: push(static_cast<MemberPointerType*>(n)->classType); push(static_cast<MemberPointerType*>(n)->pointee); break;
