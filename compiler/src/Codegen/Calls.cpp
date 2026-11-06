@@ -1142,10 +1142,20 @@ auto codegen::Emitter::memberwiseEqual(const std::string& a, const std::string& 
 auto codegen::Emitter::bitfieldsOfUnit(const Ty* t, Decl* first, Node* at) -> std::vector<UnitField>
 {
   const StructInfo& info = structFor(t, at);
+  // (each field's declared type, as the layout reads it: the unit's own is no field's, a byte array
+  // off Windows, `uint8[2]`, and on Windows the first field's, an int beside `unsigned b : 4`)
+  TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
   std::vector<UnitField> out;
   for (Decl* m : unitMembers(info, classDef(t->decl, at), first))
-    if (const BitfieldInfo* bits = bitfieldIn(info, m); bits && !static_cast<VariableDecl*>(m)->name.empty())
-      out.push_back({m, bits, types.stripRef(fieldTypeIn(t, m, at))});
+  {
+    const BitfieldInfo* bits = bitfieldIn(info, m);
+    if (!bits || static_cast<VariableDecl*>(m)->name.empty())
+      continue;
+    const Ty* declared = global.typeOfDeclIn(m, classArgs);
+    if (!declared || !declared->isKnown())
+      unsupported(at, "a bit field of unknown type in a defaulted comparison");
+    out.push_back({m, bits, types.unqualified(types.stripRef(declared))});
+  }
   return out;
 }
 
