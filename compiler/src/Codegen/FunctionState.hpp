@@ -160,6 +160,9 @@
     // Per scope (beside scopeIds), its automatic variables declared so far whose initialization a
     // jump into their scope would skip (jumpBypassesInitialization).
     std::vector<uint32_t> scopeInits;
+    // Per scope (beside scopeIds), the closing brace of the block it is (0: no block of the source):
+    // its objects are destroyed at that line (debugScopeEnd).
+    std::vector<uint32_t> scopeEnds;
     uint32_t nextScopeId = 0;
     std::unordered_map<uint32_t, LabelPlace> labelPlaces;
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;

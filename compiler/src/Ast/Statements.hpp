@@ -5,7 +5,11 @@
 // --- Statements ---
 
 struct Stmt : Node {};
-struct BlockStmt : Stmt { Span<Stmt*> stmts; };
+struct BlockStmt : Stmt
+{
+  Span<Stmt*> stmts;
+  uint32_t endToken = 0; // Its closing brace, where its objects are destroyed; 0 in a block the parser made up.
+};
 struct ExprStmt : Stmt { Expr* expr; };
 struct DeclStmt : Stmt { Span<Decl*> decls; };
 struct IfStmt : Stmt

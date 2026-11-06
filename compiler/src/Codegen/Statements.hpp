@@ -95,6 +95,9 @@
     // (Shared::fullDebugInfo) the marker names the lexical block too, `  ;@LINE:BLOCK`.
     void debugLine(Node* at);
 
+    // The same at the line of a token, a block's closing brace.
+    void debugLineAt(uint32_t token);
+
     // --debug-info with variables: a block statement's lexical block (not the function's body, whose
     // variables are the function's own, as clang's), which the variables declared in it belong to; the
     // previous block again when it ends (debugLine names it at the next statement).

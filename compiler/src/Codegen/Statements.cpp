@@ -604,6 +604,12 @@ auto codegen::Emitter::debugLine(Node* at) -> void
       fn += "  ;@" + std::to_string(line) + (debugBlock ? ":" + std::to_string(debugBlock) : std::string()) + "\n";
 }
 
+auto codegen::Emitter::debugLineAt(uint32_t token) -> void
+{
+  Node end{NodeKind::BlockStmt, token};
+  debugLine(&end);
+}
+
 auto codegen::Emitter::openDebugBlock(Node* at) -> uint32_t
 {
   uint32_t outer = debugBlock;
@@ -632,10 +638,16 @@ auto codegen::Emitter::statement(Stmt* s) -> void
   {
     case NodeKind::BlockStmt:
     {
+      auto* block = static_cast<BlockStmt*>(s);
       uint32_t outer = openDebugBlock(s);
       pushScope();
-      for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+      scopeEnds.back() = block->endToken;
+      for (Stmt* inner : block->stmts)
         statement(inner);
+      // A function's end has its closing brace's line whatever there is to destroy, for a breakpoint
+      // there; what comes after the body (a destructor's members and bases, the return) is at it too.
+      if (s == bodyNow && block->endToken && !blockTerminated)
+        debugLineAt(block->endToken);
       popScope();
       debugBlock = outer;
       break;

@@ -24,6 +24,13 @@ with `/DEBUG` already, for the crash report's function names).
   condition and step, a `while`'s and `do`'s condition and a range-`for`'s advance are at their own
   lines, so stepping through a loop comes back to its header. A `switch`'s cases are at their own
   statements' lines.
+- A block's closing brace has a line where something happens there, as in clang's tables (battery
+  f14, 2026-11-06): the destructors of the block's objects, whichever way it is left (the fall
+  through, a `return`, a `break`), and a function's end whatever it destroys, so a breakpoint on a
+  function's `}` stops there and stepping into a destructor comes from the brace. A statement that
+  leaves a block and has no instruction of its own (`continue;`, `return;`, `return 0;`) keeps the
+  first destruction at its own line, for a breakpoint there; clang has a jump or a store at that
+  line, and the `}` too. A `catch` block's end without objects has no line of its own.
 - The entry block's allocas and parameter stores are at the declaration's line (the debugger stops
   there first, then on the first statement).
 - A trivial callee inlined into its caller (docs/compile-speed.md, "Design: inlining trivial
@@ -95,6 +102,11 @@ emitVtables). The linker keeps one table per class however many modules have it.
 name otherwise has none: one with template arguments, a local, anonymous or file-private one, one in
 an anonymous or inline namespace or in a class template, and std's classes and `type_info`, whose
 names the C runtime's own tables have. tests\debuginfo.ps1 checks the symbols of values.kpp's two.
+On the game (factorio-test's debug build, 2026-11-06, Visual Studio 2022 stopped in
+TestScenario::addEntityRaw): `entity` reads `Entity * {Inserter}` with an `[Inserter]` member, the
+same for ElectricEnergyInterface, ElectricPole and ContainerEntity, an entity's `prototype` member
+`const EntityPrototype * {ElectricEnergyInterfacePrototype}`, and through a secondary base
+`(PostTransferNotifiable*)entity` is `PostTransferNotifiable * {Inserter}`.
 Not guarded: a C++ library linked in (built by MSVC or clang) with a polymorphic class of the same
 qualified name as a kpp class has a table of the same symbol, in a comdat too, and the linker keeps
 one of the two for both classes without a word (kind any or exactmatch alike; checked with a

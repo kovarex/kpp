@@ -22,6 +22,34 @@ int classify(int x)
       return 30;
   }
 }
+int notes = 0;
+struct Note
+{
+  int id = 1;
+  ~Note()
+  {
+    int kept = this->id + 1;
+    notes += kept;
+  }
+};
+int scopes(int x)
+{
+  Note outer;
+  for (int i = 0; i < x; ++i)
+  {
+    Note inner;
+    if (i == 1)
+      continue;
+    if (i == 2)
+      return i;
+  }
+  return x + 1;
+}
+void noObjects(int x)
+{
+  int y = x + 1;
+  notes += y;
+}
 int main()
 {
   Counter c;
@@ -45,6 +73,7 @@ int main()
   {
     return x * 2;
   };
+  noObjects(scopes(3));
   int total = twice(c.get()) + classify(1);
   printf("%d\n", total);
   return 0;

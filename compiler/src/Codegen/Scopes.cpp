@@ -115,16 +115,29 @@ auto codegen::Emitter::subStatement(Stmt* s) -> void
   popScope();
 }
 
+auto codegen::Emitter::debugScopeEnd(size_t scope) -> void
+{
+  if (scopes[scope].empty() || !scopeEnds[scope] || !sh.debugInfo)
+    return;
+  size_t lastLine = fn.size() < 2 ? std::string::npos : fn.rfind('\n', fn.size() - 2);
+  if (lastLine == std::string::npos || fn.compare(lastLine + 1, 4, "  ;@") != 0)
+    debugLineAt(scopeEnds[scope]);
+}
+
 auto codegen::Emitter::popScope() -> void
 {
   if (!blockTerminated)
+  {
+    debugScopeEnd(scopes.size() - 1);
     for (size_t i = scopes.back().size(); i-- > 0;)
     {
       Object o = scopes.back()[i];
       scopes.back().resize(i); // (destroyed: a destructor that throws unwinds through those before it)
       destroyOnExit(o);
     }
+  }
   scopes.pop_back();
+  scopeEnds.pop_back();
   if (!scopeIds.empty())
     scopeIds.pop_back();
   if (!scopeInits.empty())
@@ -135,12 +148,15 @@ auto codegen::Emitter::unwindRange(size_t low, size_t high) -> void
 {
   std::vector<std::vector<Object>> open(scopes.begin() + low, scopes.begin() + high);
   for (size_t s = high; s-- > low;)
+  {
+    debugScopeEnd(s);
     for (size_t i = scopes[s].size(); i-- > 0;)
     {
       Object o = scopes[s][i];
       scopes[s].resize(i);
       destroyOnExit(o);
     }
+  }
   std::move(open.begin(), open.end(), scopes.begin() + low);
 }
 

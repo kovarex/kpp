@@ -33,6 +33,7 @@
       scopes.emplace_back();
       scopeIds.push_back(nextScopeId++);
       scopeInits.push_back(0);
+      scopeEnds.push_back(0);
     }
 
     // Whether a jump from a point in the scopes fromIds (with fromInits) to one in toIds (with
@@ -54,6 +55,12 @@
     }
 
     void popScope();
+
+    // --debug-info: what destroys the objects of the scope comes at its block's closing brace, as in
+    // C++ debuggers, by whatever way the scope is left: a `return`'s too, and what follows it. Not
+    // when a statement that leaves it has no instruction yet (`continue;`, `return;`): the first
+    // destruction stays at its line, for a breakpoint there.
+    void debugScopeEnd(size_t scope);
 
     // Destroys the objects of the innermost scopes down to (not including) depth.
     void unwindTo(size_t depth) { unwindRange(depth, scopes.size()); }

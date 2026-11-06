@@ -4690,6 +4690,7 @@ namespace
           scratch.push_back(s);
       }
       b->stmts = makeSpan<Stmt*>(mark);
+      b->endToken = pos;
       expect(P::RBrace, "expected '}'");
       if (inRecovery)
         inRecovery = false; // The block end is a reliable recovery point.
