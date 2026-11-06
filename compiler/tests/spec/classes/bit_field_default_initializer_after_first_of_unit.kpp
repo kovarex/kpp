@@ -1,0 +1,20 @@
+// spec: a default member initializer on a bit-field that is not the first of its storage unit (`unsigned a : 3; unsigned b : 5 = 6;`) initializes it in every object: a global default-initialized and one from a brace list, a local, one from new, one braced locally (`6 6 6 | 1 6 | 2 6`); clang prints the same
+// found by thread B (2026-11-06, the bit-field storage-unit pitfall): needsConstruction asked only the unit's first field for an initializer, so the class looked as if it needed none and the default-initialized global stayed zero (b 0)
+struct T
+{
+  unsigned a : 3;
+  unsigned b : 5 = 6;
+};
+
+T global;
+T braced{1};
+
+int main()
+{
+  T local;
+  T* heap = new T;
+  T b2{2};
+  println(global.b, " ", local.b, " ", heap->b, " | ", braced.a, " ", braced.b, " | ", b2.a, " ", b2.b);
+  delete heap;
+  return 0;
+}

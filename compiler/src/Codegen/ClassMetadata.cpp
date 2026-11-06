@@ -308,8 +308,16 @@ auto codegen::Emitter::needsConstruction(const Ty* t, Node* at, int depth) -> bo
   if (info.polymorphic)
     return true;
   for (Decl* m : info.fieldDecls)
+  {
     if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->init)
       return true;
+    // (a storage unit of bit fields: any of its fields' default initializers, `unsigned b : 5 = 6;`
+    // after `unsigned a : 3;`, which a global left zeroed)
+    if (m->kind == NodeKind::VariableDecl && bitfieldIn(info, m))
+      for (Decl* f : unitMembers(info, classDef(t->decl, at), m))
+        if (f->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(f)->init)
+          return true;
+  }
   for (const Ty* ft : info.fieldTypes)
     if (needsConstruction(ft, at, depth + 1))
       return true;
