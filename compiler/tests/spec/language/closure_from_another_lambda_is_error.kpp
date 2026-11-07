@@ -1,5 +1,6 @@
-// spec: a lambda's closure is never initialised from another lambda's, which C++ rejects (each lambda's closure is a type of its own, with no conversion to another's): `decltype(l1) f = l2;` is an error. kppc took l2's bytes for l1's closure and called l1's body on them: f() gave 2, where l2's body gives 12
-// error: closure_from_another_lambda_is_error.kpp:8: error: a closure initialised from another lambda's closure
+// spec: a lambda's closure is never initialised from another lambda's, which C++ rejects (each lambda's closure is a type of its own, with no conversion to another's, and two lambdas in one `?:` have no common type): `decltype(l1) f = l2;` and `auto f = c ? [a] { ... } : [b] { ... };` are errors. kppc took l2's bytes for l1's closure and called l1's body on them: f() gave 2, where l2's body gives 12
+// error: closure_from_another_lambda_is_error.kpp:9: error: a closure initialised from another lambda's closure
+// error: closure_from_another_lambda_is_error.kpp:14: error: a closure initialised from another lambda's closure
 extern "C" int printf(const char* format, ...);
 int fromDecltype(int a, int b)
 {
@@ -8,8 +9,13 @@ int fromDecltype(int a, int b)
   decltype(l1) f = l2;
   return f();
 }
+int fromConditional(bool c, int a, int b)
+{
+  auto f = c ? [a]() { return a; } : [b]() { return b + 10; };
+  return f();
+}
 int main(int argc, char** argv)
 {
-  printf("%d\n", fromDecltype(1, 2));
+  printf("%d %d\n", fromDecltype(1, 2), fromConditional(argc > 5, 1, 2));
   return 0;
 }

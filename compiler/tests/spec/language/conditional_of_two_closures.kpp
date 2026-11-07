@@ -1,5 +1,4 @@
 // spec: a conditional whose branches are closures of one type (two calls of the function that returns it) is that closure, built in the object it initialises or passed on: `auto f = c ? make(1) : make(2);`, `use(c ? make(3) : make(4))`. clang's and g++'s output
-// pending: codegen writes a phi of the closure's struct with the branches' addresses, which clang rejects (`'%o44' defined with type 'ptr' but expected '%closure...'`; found by thread J, 2026-11-07)
 extern "C" int printf(const char* format, ...);
 struct T
 {

@@ -509,6 +509,30 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
       unsupported(at, "a call that built its closure result somewhere else than the object it initialises");
     return;
   }
+  auto closureOf = [&](Expr* x)
+  {
+    return x && x->ty && withCurrentArgs(types.unqualified(types.stripRef(x->ty))) == withCurrentArgs(types.unqualified(t));
+  };
+  if (auto* c = inner && inner->kind == NodeKind::ConditionalExpr ? static_cast<ConditionalExpr*>(inner) : nullptr;
+      c && c->then && closureOf(c->then) && closureOf(c->else_))
+  {
+    // `auto f = c ? make(1) : make(2);`, `return c ? make(3) : make(4);`: the chosen branch builds
+    // the closure in the object itself (guaranteed elision, [expr.cond] 7 and [dcl.init] 17.6.1), as
+    // initializeFrom does for a class (conditionalOfPrvalues); an lvalue branch is copied into it.
+    Value cond = convert(rvalue(c->cond), types.boolType(), at);
+    std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
+    fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
+    for (int branch = 0; branch < 2; ++branch)
+    {
+      startBlock(branch == 0 ? tL : eL);
+      size_t temps = statementTemps.size();
+      initializeClosure(addr, t, branch == 0 ? c->then : c->else_, at);
+      keepOperandTemps(temps); // (a branch's own temporaries, built only when it ran)
+      emitBranch(jL);
+    }
+    startBlock(jL);
+    return;
+  }
   Value v = rvalue(init);
   if (isClass(v.ty))
   {

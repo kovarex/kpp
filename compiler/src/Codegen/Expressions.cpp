@@ -805,13 +805,17 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         if (Expr* beside = enterBranchBesideThrow(c))
         {
           Value v = rvalue(beside);
-          return isClass(t) || v.ty == t ? v : convert(v, t, e);
+          return isClass(t) || isLambda(t) || v.ty == t ? v : convert(v, t, e);
         }
       Value cond = convert(rvalue(c->cond), types.boolType(), e);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
-      const Ty* thenObject = isClass(t) ? conditionalObject(c->then, t, e) : nullptr;
-      const Ty* elseObject = isClass(t) ? conditionalObject(c->else_, t, e) : nullptr;
+      // A closure is an object as a class is (`c ? make(1) : make(2)` of one lambda's type): until
+      // 2026-11-07 it took the scalars' path below, a phi of the closure's struct given the branches'
+      // addresses, which clang rejected (thread J's lambda generator).
+      bool object = isClass(t) || isLambda(t);
+      const Ty* thenObject = object ? conditionalObject(c->then, t, e) : nullptr;
+      const Ty* elseObject = object ? conditionalObject(c->else_, t, e) : nullptr;
       if (thenObject && elseObject)
       {
         // Both branches name objects (`cond ? a : b` with lvalues or references): the result
@@ -832,7 +836,7 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         fn += "  " + r + " = phi ptr [ " + a + ", %" + aEnd + " ], [ " + b + ", %" + bEnd + " ]\n";
         return {r, t, false};
       }
-      if (isClass(t))
+      if (object)
       {
         // Both branches build the one temporary (a copy of an lvalue, or the value itself).
         std::string slot = newObjectSlot(t, e);

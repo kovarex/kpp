@@ -1,0 +1,40 @@
+// spec: a conditional of closures of one type is an object, as one of classes is: an lvalue branch is copied into what it initialises, two lvalues give an lvalue (a reference binds the chosen closure), a prvalue called at once is a temporary destroyed at the end of the full-expression, and a function returns it built in place. clang's output
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i = 0) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+auto make(int i) { return [u = T(i)]() { return u.id; }; }
+auto pick(bool c) { return c ? make(7) : make(8); }
+int main(int argc, char** argv)
+{
+  bool c = argc > 0;
+  {
+    auto f = make(1);
+    auto g = c ? f : make(2);
+    int a = f();
+    int b = g();
+    printf("| %d %d\n", a, b);
+  }
+  {
+    auto f = make(3);
+    auto h = make(4);
+    auto& r = c ? f : h;
+    int same = &r == &f ? 1 : 0;
+    printf("| %d %d\n", r(), same);
+  }
+  {
+    int v = (c ? make(5) : make(6))();
+    printf("| %d\n", v);
+  }
+  {
+    auto f = pick(!c);
+    printf("| %d\n", f());
+  }
+  printf("end\n");
+  return 0;
+}
