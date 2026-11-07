@@ -243,6 +243,10 @@
     // false (moduleText writes those the module uses). An instance piece's (programNames: what its
     // program piece defines) keep the declarations of those.
     std::string declsFor(unsigned k, bool types = true, const std::unordered_set<std::string_view>* programNames = nullptr);
+    // A line of the shared declarations that declsFor leaves out of module k: a `declare` of what k defines
+    // (not its program piece's, programNames), or of a function used without a definition, whose stub
+    // (--stub-missing) it appends to out instead.
+    bool declarationLeftOut(unsigned k, std::string_view line, const std::unordered_set<std::string_view>* programNames, std::string& out);
 
     // The functions a text has `declare` lines for.
     static void declaredIn(std::string_view text, std::unordered_set<std::string>& out);
@@ -303,10 +307,11 @@
     // of function pointers), and the type definitions with the types each names.
     void prepareModuleTexts();
 
-    // The shared declarations of module k (declsFor) with the homed globals as module k has them:
-    // defined where k is their home, declared where k names them (its texts, as moduleText found
-    // them in seen; its homed globals' initializers; the lines every module keeps), else left out.
-    std::string homedDeclsFor(unsigned k, const std::string& decls, const std::unordered_set<std::string>& seen);
+    // The shared declarations of module k (declsFor's, without the type definitions) with the homed
+    // globals as module k has them: defined where k is their home, declared where k names them (its
+    // texts, as moduleText found them in seen; its homed globals' initializers; the lines every module
+    // keeps), else left out. In one pass over the shared declarations.
+    std::string homedDeclsFor(unsigned k, const std::unordered_set<std::string_view>* programNames, const std::unordered_set<std::string>& seen);
 
     // A release build's placement (Shared::importableModules). ThinLTO imports short functions into
     // their callers' modules, and its cache keeps a module's back end only while every module it

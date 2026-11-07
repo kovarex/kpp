@@ -945,10 +945,35 @@ auto codegen::Emitter::finishStubRuntime() -> void
             "  %f2 = call i32 @fflush(ptr %err)\n  call void @abort()\n  unreachable\n}\n";
 }
 
+auto codegen::Emitter::declarationLeftOut(unsigned k, std::string_view line, const std::unordered_set<std::string_view>* programNames, std::string& out) -> bool
+{
+  if (line.rfind("declare ", 0) != 0)
+    return false;
+  size_t at = line.find('@');
+  if (at == std::string_view::npos)
+    return false;
+  size_t nameEnd = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find('(', at);
+  if (nameEnd == std::string_view::npos)
+    return false;
+  std::string name(line.substr(at, nameEnd - at));
+  const unsigned* in = sh.moduleDefining(name);
+  if (in && *in == k && !(programNames && programNames->count(name)))
+    return true;
+  // --stub-missing: a function of the program used without a definition is defined
+  // here as a stub (in every module: linkonce_odr), from its declaration.
+  if (sh.stubMissing && sh.undefinedUses.count(name) && !definedIn.count(name))
+  {
+    out += stubDefinition(name, std::string(line.substr(8, at - 8)), std::string(line.substr(nameEnd)));
+    return true;
+  }
+  return false;
+}
+
 auto codegen::Emitter::declsFor(unsigned k, bool types, const std::unordered_set<std::string_view>* programNames) -> std::string
 {
   std::string out;
   const std::string& decls = this->decls.text;
+  out.reserve(decls.size()); // (it grew from nothing to nearly all of it in every module, each step a copy)
   size_t pos = 0;
   while (pos < decls.size())
   {
@@ -956,29 +981,7 @@ auto codegen::Emitter::declsFor(unsigned k, bool types, const std::unordered_set
     if (end == std::string::npos)
       end = decls.size();
     std::string_view line(decls.data() + pos, end - pos);
-    bool skip = !types && isTypeLine(line);
-    if (line.rfind("declare ", 0) == 0)
-    {
-      size_t at = line.find('@');
-      if (at != std::string_view::npos)
-      {
-        size_t nameEnd = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find('(', at);
-        if (nameEnd != std::string_view::npos)
-        {
-          std::string name(line.substr(at, nameEnd - at));
-          const unsigned* in = sh.moduleDefining(name);
-          skip = in && *in == k && !(programNames && programNames->count(name));
-          // --stub-missing: a function of the program used without a definition is defined
-          // here as a stub (in every module: linkonce_odr), from its declaration.
-          if (!skip && sh.stubMissing && sh.undefinedUses.count(name) && !definedIn.count(name))
-          {
-            out += stubDefinition(name, std::string(line.substr(8, at - 8)), std::string(line.substr(nameEnd)));
-            skip = true;
-          }
-        }
-      }
-    }
-    if (!skip)
+    if (!(!types && isTypeLine(line)) && !declarationLeftOut(k, line, programNames, out))
     {
       out.append(line);
       out += '\n';
@@ -1148,7 +1151,8 @@ auto codegen::Emitter::prepareModuleTexts() -> void
   }
 }
 
-auto codegen::Emitter::homedDeclsFor(unsigned k, const std::string& decls, const std::unordered_set<std::string>& seen) -> std::string
+auto codegen::Emitter::homedDeclsFor(unsigned k, const std::unordered_set<std::string_view>* programNames, const std::unordered_set<std::string>& seen)
+  -> std::string
 {
   std::unordered_set<std::string_view> needed;
   auto need = [&](std::string_view name)
@@ -1162,6 +1166,7 @@ auto codegen::Emitter::homedDeclsFor(unsigned k, const std::string& decls, const
     need(name);
   for (std::string_view name : sh.namedByShared)
     need(name);
+  const std::string& decls = this->decls.text;
   std::string out;
   out.reserve(decls.size());
   for (size_t pos = 0; pos < decls.size();)
@@ -1171,6 +1176,11 @@ auto codegen::Emitter::homedDeclsFor(unsigned k, const std::string& decls, const
       end = decls.size();
     std::string_view line(decls.data() + pos, end - pos);
     pos = end + 1;
+    // declsFor's lines (no type definitions: moduleText writes those the module uses), read here at once
+    // (a copy of nearly all the shared declarations for each module, grown a step at a time, was the
+    // assembly's largest wait on the heap); a stub declsFor makes goes in as it is.
+    if (isTypeLine(line) || declarationLeftOut(k, line, programNames, out))
+      continue;
     if (!line.empty() && line[0] == '$')
     {
       // `$name = comdat any`: the homed global's comdat only where it is defined
@@ -1577,7 +1587,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
         });
   }
   std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
-  std::string decls = declsFor(k, false, instancePiece ? &programNames : nullptr);
+  std::string decls; // (the shared declarations as k carries them: declsFor's, or homedDeclsFor's below)
   // The module's own declarations, without the lines placed in another module.
   std::string_view ownDecls = moduleDecls[k].text;
   std::string kept;
@@ -1687,8 +1697,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   for (const std::string& name : sh.sharedReferences)
     if (const unsigned* in = sh.moduleDefining(name); in && (*in != k || programNames.count(name)) && !already.count(name) && seen.insert(name).second)
       declare(name);
-  if (sh.homeGlobals)
-    decls = homedDeclsFor(k, decls, seen);
+  decls = sh.homeGlobals ? homedDeclsFor(k, instancePiece ? &programNames : nullptr, seen) : declsFor(k, false, instancePiece ? &programNames : nullptr);
   // The type definitions the module names, and those they name in turn (every module had all of
   // the game's 24 k), in the shared declarations' order.
   std::vector<char> used(sh.typeLines.size(), 0);
