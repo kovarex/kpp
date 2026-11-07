@@ -65,27 +65,43 @@ auto codegen::Emitter::debugTypePlaceholder(uint64_t key) -> std::string
   return text;
 }
 
+auto codegen::Emitter::debugAskedThisGeneration() -> void
+{
+  if (debugAskedGeneration == sh.debugGeneration)
+    return;
+  debugAskedGeneration = sh.debugGeneration;
+  debugTypesAsked.clear();
+  debugObjectPointersAsked.clear();
+  debugFilesAsked.clear();
+}
+
 auto codegen::Emitter::debugType(const Ty* t) -> std::string
 {
+  debugAskedThisGeneration();
+  if (auto asked = debugTypesAsked.find(t); asked != debugTypesAsked.end())
+    return asked->second;
   std::string spelling = irString(t);
   uint64_t key = 14695981039346656037ull;
   for (unsigned char c : spelling)
     key = (key ^ c) * 1099511628211ull;
   std::string placeholder = debugTypePlaceholder(key);
+  bool isClass = (t->kind == TyKind::Class || t->kind == TyKind::Lambda) && !t->isConst && !t->isVolatile;
+  Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
   {
-    auto lock = sharedLock();
-    auto [it, isNew] = sh.debugTypes.try_emplace(key);
+    std::lock_guard lock(shard.mutex);
+    auto [it, isNew] = shard.types.try_emplace(key);
     if (!isNew && it->second.generation == sh.debugGeneration)
-      return placeholder; // (made, or being made: a type that names itself goes through a pointer)
+      return debugTypesAsked[t] = placeholder; // (made, or being made: a type that names itself goes through a pointer)
     it->second.generation = sh.debugGeneration;
+    if (isClass)
+      shard.classesNamed.push_back(key);
   }
   std::string text = debugTypeText(t, spelling);
-  bool isClass = (t->kind == TyKind::Class || t->kind == TyKind::Lambda) && !t->isConst && !t->isVolatile;
-  auto lock = sharedLock();
-  Shared::DebugTypeText& made = sh.debugTypes[key];
+  std::lock_guard lock(shard.mutex);
+  Shared::DebugTypeText& made = shard.types[key];
   made.text = std::move(text);
   made.type = isClass ? t : nullptr;
-  return placeholder;
+  return debugTypesAsked[t] = placeholder;
 }
 
 auto codegen::Emitter::debugSharedNode(const std::string& spelling, const std::function<std::string()>& make) -> std::string
@@ -94,16 +110,17 @@ auto codegen::Emitter::debugSharedNode(const std::string& spelling, const std::f
   for (unsigned char c : spelling)
     key = (key ^ c) * 1099511628211ull;
   std::string placeholder = debugTypePlaceholder(key);
+  Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
   {
-    auto lock = sharedLock();
-    auto [it, isNew] = sh.debugTypes.try_emplace(key);
+    std::lock_guard lock(shard.mutex);
+    auto [it, isNew] = shard.types.try_emplace(key);
     if (!isNew && it->second.generation == sh.debugGeneration)
       return placeholder; // (made, or being made)
     it->second.generation = sh.debugGeneration;
   }
   std::string text = make();
-  auto lock = sharedLock();
-  Shared::DebugTypeText& made = sh.debugTypes[key];
+  std::lock_guard lock(shard.mutex);
+  Shared::DebugTypeText& made = shard.types[key];
   made.text = std::move(text);
   made.type = nullptr;
   return placeholder;
@@ -114,13 +131,19 @@ auto codegen::Emitter::debugFileNode(const ParsedFile* file) -> std::string
   const std::string& node = debugFileOf(file);
   if (!sh.fullDebugInfo)
     return node; // (a build of line tables alone appends no shared nodes)
-  return debugSharedNode("file " + node, [&] { return debugId(0) + " = " + node + "\n"; });
+  debugAskedThisGeneration();
+  if (auto asked = debugFilesAsked.find(file); asked != debugFilesAsked.end())
+    return asked->second;
+  return debugFilesAsked[file] = debugSharedNode("file " + node, [&] { return debugId(0) + " = " + node + "\n"; });
 }
 
 auto codegen::Emitter::debugObjectPointer(const Ty* cls) -> std::string
 {
+  debugAskedThisGeneration();
+  if (auto asked = debugObjectPointersAsked.find(cls); asked != debugObjectPointersAsked.end())
+    return asked->second;
   std::string pointee = debugType(cls);
-  return debugSharedNode("object pointer " + irString(cls), [&]
+  return debugObjectPointersAsked[cls] = debugSharedNode("object pointer " + irString(cls), [&]
   { return debugId(0) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + pointee + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n"; });
 }
 
@@ -476,9 +499,10 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
   for (unsigned char ch : spelling)
     key = (key ^ ch) * 1099511628211ull;
   std::string placeholder = debugTypePlaceholder(key);
+  Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
   {
-    auto lock = sharedLock();
-    auto [it, isNew] = sh.debugTypes.try_emplace(key);
+    std::lock_guard lock(shard.mutex);
+    auto [it, isNew] = shard.types.try_emplace(key);
     if (!isNew && it->second.generation == sh.debugGeneration)
       return placeholder;
     it->second.generation = sh.debugGeneration;
@@ -495,8 +519,8 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
   }
   catch (Unsupported&)
   {
-    auto lock = sharedLock();
-    sh.debugTypes[key].generation = UINT32_MAX; // (not made: debugMethod leaves the function out)
+    std::lock_guard lock(shard.mutex);
+    shard.types[key].generation = UINT32_MAX; // (not made: debugMethod leaves the function out)
     throw;
   }
   std::string access = m->access == Access::Public ? " | DIFlagPublic" : m->access == Access::Protected ? " | DIFlagProtected" :
@@ -509,8 +533,8 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
                      debugId(1) + " = !DISubroutineType(" +
                      debugRefQualifier(m->refQualifier == FunctionDecl::RefQualifier::LValue, m->refQualifier == FunctionDecl::RefQualifier::RValue) +
                      "types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n";
-  auto lock = sharedLock();
-  Shared::DebugTypeText& made = sh.debugTypes[key];
+  std::lock_guard lock(shard.mutex);
+  Shared::DebugTypeText& made = shard.types[key];
   made.text = std::move(text);
   made.type = nullptr;
   return placeholder;
@@ -663,16 +687,23 @@ auto codegen::Emitter::homeDebugClasses() -> void
     // every other type by placeholder), so it is the same whichever emitter makes it and in
     // whatever order, and the types the definitions name are the next level's. The definitions are
     // taken in key order after, as one thread took them, and the first that failed is thrown there.
+    // (The classes this generation named since the last level, each shard's classesNamed: those of every
+    // entry that a scan of them all took.)
     std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes;
+    for (Shared::DebugTypeShard& shard : sh.debugTypeShards)
     {
-      auto lock = sharedLock();
-      for (auto& [key, entry] : sh.debugTypes)
-        if (entry.type && entry.generation == sh.debugGeneration && entry.definitionGeneration != sh.debugGeneration)
-          classes.push_back({key, &entry}); // (an element stays where it is as others are added)
+      std::lock_guard lock(shard.mutex);
+      for (uint64_t key : shard.classesNamed)
+        if (auto it = shard.types.find(key); it != shard.types.end())
+          if (Shared::DebugTypeText& entry = it->second;
+              entry.type && entry.generation == sh.debugGeneration && entry.definitionGeneration != sh.debugGeneration)
+            classes.push_back({key, &entry}); // (an element stays where it is as others are added)
+      shard.classesNamed.clear();
     }
     if (classes.empty())
       break;
     std::sort(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    classes.erase(std::unique(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first == b.first; }), classes.end());
     for (auto& [key, entry] : classes)
       entry->definitionGeneration = sh.debugGeneration;
     struct Made
@@ -695,7 +726,7 @@ auto codegen::Emitter::homeDebugClasses() -> void
           {
             std::string spelling = em.irString(type);
             uint32_t next = 1;
-            em.debugComposite(type, *info, 0, &spelling, made[i].definition, next); // (the types its members name join debugTypes)
+            em.debugComposite(type, *info, 0, &spelling, made[i].definition, next); // (the types its members name join Shared::debugTypeShards)
           }
         }
         catch (...)
@@ -726,13 +757,17 @@ auto codegen::Emitter::homeDebugClasses() -> void
         sh.unassembled[key % sh.moduleCount] = true;
       }
       entry->definition = std::move(made[i].definition);
+      if (entry->definition.empty())
+        sh.debugClassesDefined.erase(key);
+      else
+        sh.debugClassesDefined.insert(key);
     }
   }
   // Every class defined (this generation or kept from an earlier one), in key order.
   std::vector<std::pair<uint64_t, const Shared::DebugTypeText*>> defined;
-  for (const auto& [key, entry] : sh.debugTypes)
-    if (!entry.definition.empty())
-      defined.push_back({key, &entry});
+  defined.reserve(sh.debugClassesDefined.size());
+  for (uint64_t key : sh.debugClassesDefined)
+    defined.push_back({key, sh.findDebugType(key)});
   std::sort(defined.begin(), defined.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
   sh.debugHomes.assign(std::max(1u, sh.moduleCount), {});
   sh.debugClasses.clear();

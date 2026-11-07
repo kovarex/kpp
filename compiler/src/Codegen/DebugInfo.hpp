@@ -24,11 +24,11 @@
     static std::string debugTypePlaceholder(uint64_t key);
 
     // --debug-info with variables: the placeholder of type t's metadata, made the first time any
-    // emitter names the type (Shared::debugTypes). Its key is its IR spelling's hash (irString tells
+    // emitter names the type (Shared::debugTypeShards). Its key is its IR spelling's hash (irString tells
     // every type apart: a class's path, its template's arguments, where a local class is declared).
     std::string debugType(const Ty* t);
 
-    // --debug-info with variables: a node shared like a type's (its placeholder, Shared::debugTypes),
+    // --debug-info with variables: a node shared like a type's (its placeholder, Shared::debugTypeShards),
     // made once a build by its spelling (make gives its text, node 0 the node), each module that names
     // it holding it once (appendDebugTypes).
     std::string debugSharedNode(const std::string& spelling, const std::function<std::string()>& make);
@@ -41,6 +41,17 @@
     // DIFlagObjectPointer), shared: one node for every function of cls (until 2026-11-07 one per
     // member function declaration and definition, 529,000 nodes and 75 MB of the game's debug metadata).
     std::string debugObjectPointer(const Ty* cls);
+    // What this emitter asked for in the build's generation of Shared::debugTypeShards (debugGeneration): each
+    // type's placeholder by its type, each object pointer's by its class, each file node's by its file.
+    // Asked again, the answer is here, without the spelling, its hash or the shared lock that every
+    // emitter's other work takes too: debugType alone was asked millions of times in the game's debug
+    // build (each variable, and each member function's class, result and parameters in homeDebugClasses).
+    // The answers are the same either way: a placeholder depends on the spelling alone, and each is made
+    // once a generation, by whichever emitter asks first.
+    std::unordered_map<const Ty*, std::string> debugTypesAsked, debugObjectPointersAsked;
+    std::unordered_map<const ParsedFile*, std::string> debugFilesAsked;
+    uint32_t debugAskedGeneration = UINT32_MAX;
+    void debugAskedThisGeneration();
 
     // A type's name in the debug information (and so in the .natvis, which takes the classes' from
     // CodegenResult::debugClasses): kppc's (TypeTable::toString, qualified) with closing angle
@@ -113,7 +124,7 @@
 
     // --debug-info with variables, once the emission is done (prepareModuleTexts; a build of one
     // module before it assembles its text): every class a definition or a type named (each one
-    // Shared::debugTypes has: a debug build's program pieces are assembled, and their texts freed,
+    // Shared::debugTypeShards has: a debug build's program pieces are assembled, and their texts freed,
     // before this), and the classes their definitions name, each defined (debugComposite) for its
     // home module alone (Shared::debugHomes, the key's remainder by the module count: where it lands
     // does not depend on who named it first); every other module declares it. Level by level (the

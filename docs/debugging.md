@@ -358,7 +358,7 @@ local is recorded (`Emitter::debugVariable`) and gets a `#dbg_declare` after the
 function's own ids are then 0 its DISubprogram, its blocks from 2, its variables, its locations.
 A variable's type is a placeholder in the function's text, `!T` and 16 hex digits: the hash of the
 type's IR spelling (`Emitter::debugType`), whose metadata text is made once per build into
-Shared::debugTypes, its own ids from 0 as a function's. Two other nodes are shared the same way
+Shared::debugTypeShards, its own ids from 0 as a function's. Two other nodes are shared the same way
 (`Emitter::debugSharedNode`): a file's DIFile, which every definition, block, variable and global
 of the file names (`debugFileNode`), and a class's object pointer type, which all its member
 functions' types name (`debugObjectPointer`). Until 2026-11-07 each definition wrote its file three
@@ -371,7 +371,13 @@ are defined after the emission (`homeDebugClasses`, from prepareModuleTexts: the
 program has is laid out) for their home's instance piece (a debug build's program pieces are
 assembled earlier, so they declare every class): level by level, the classes named and then the ones
 their definitions name, each level's on every emitter at once and taken in key order after (on one
-thread until 2026-11-07, about 2.5 s of the game's clean build with the other cores idle). A compile server's build makes a type's text
+thread until 2026-11-07, about 2.5 s of the game's clean build with the other cores idle). The types
+are in 64 shards by key, each with its own lock, and each shard lists the classes as the build names
+them, which the next level takes; an emitter keeps the placeholders it was given (a type's by its
+type, an object pointer's by its class, a file node's by its file) for the rest of the build. Until
+2026-11-07 every ask built the type's spelling and took the shared lock, and every level scanned all
+the types: homeDebugClasses was 1.3 s of the game's clean build, most of its samples threads
+waiting on that lock. A compile server's build makes a type's text
 again when it first names the type (an edited enum's enumerators), and keeps the texts its kept
 definitions name.
 

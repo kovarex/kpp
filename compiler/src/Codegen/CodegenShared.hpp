@@ -420,7 +420,31 @@ namespace codegen
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
-    std::unordered_map<uint64_t, DebugTypeText> debugTypes;
+    // Those types, in shards by key, each under a lock of its own: under the shared lock, which every
+    // emitter's other work takes too, 32 emitters asking for types and member functions at once spun or
+    // slept on it in 60% of homeDebugClasses' samples in the game's debug build. Each shard also has the
+    // keys of the classes as a generation takes their entries (Emitter::debugType), in the order they
+    // come, which homeDebugClasses takes level by level (it scanned every entry once a level: about 0.1 s
+    // apiece, every core but one idle). Read without the locks once the emission and homeDebugClasses
+    // are done (findDebugType: appendDebugTypes).
+    struct DebugTypeShard
+    {
+      SpinMutex mutex;
+      std::unordered_map<uint64_t, DebugTypeText> types;
+      std::vector<uint64_t> classesNamed;
+    };
+    static constexpr size_t debugTypeShardCount = 64;
+    DebugTypeShard debugTypeShards[debugTypeShardCount];
+    DebugTypeShard& debugTypeShard(uint64_t key) { return debugTypeShards[(key * 0x9E3779B97F4A7C15ull) >> 58]; }
+    const DebugTypeText* findDebugType(uint64_t key) const
+    {
+      const DebugTypeShard& shard = debugTypeShards[(key * 0x9E3779B97F4A7C15ull) >> 58];
+      auto it = shard.types.find(key);
+      return it == shard.types.end() ? nullptr : &it->second;
+    }
+    // The classes that have a definition (homeDebugClasses alone changes one), kept with the entries
+    // across a compile server's builds.
+    std::unordered_set<uint64_t> debugClassesDefined;
     // --debug-info's globals (Emitter::debugGlobal), by their IR names' hash: the metadata of each,
     // which the module whose text defines it gets (appendDebugTypes).
     std::unordered_map<uint64_t, std::string> debugGlobals;
@@ -502,7 +526,6 @@ namespace codegen
   };
   inline DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr)
   {
-    const std::unordered_map<uint64_t, Shared::DebugTypeText>& debugTypes = sh.debugTypes;
     DebugLists lists;
     auto listOf = [&](const std::vector<uint32_t>& ids) -> uint32_t
     {
@@ -564,14 +587,14 @@ namespace codegen
     {
       uint64_t key = work.back();
       work.pop_back();
-      if (auto it = debugTypes.find(key); it != debugTypes.end())
-        collect(textOf(it->second, key));
+      if (const Shared::DebugTypeText* type = sh.findDebugType(key))
+        collect(textOf(*type, key));
     }
     std::unordered_map<uint64_t, uint32_t> ids;
     for (uint64_t key : keys)
-      if (auto it = debugTypes.find(key); it != debugTypes.end() && !textOf(it->second, key).empty())
+      if (const Shared::DebugTypeText* type = sh.findDebugType(key); type && !textOf(*type, key).empty())
       {
-        const std::string& text = textOf(it->second, key);
+        const std::string& text = textOf(*type, key);
         ids[key] = nextDebugId;
         size_t at = out.size();
         out += text;
@@ -590,7 +613,7 @@ namespace codegen
       }
     std::vector<uint32_t> retained;
     for (uint64_t key : keys)
-      if (auto it = ids.find(key); it != ids.end() && defined(key) && !debugTypes.at(key).definition.empty())
+      if (auto it = ids.find(key); it != ids.end() && defined(key) && !sh.findDebugType(key)->definition.empty())
         retained.push_back(it->second);
     lists.retained = listOf(retained);
     lists.globals = listOf(globalList);
