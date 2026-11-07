@@ -69,7 +69,8 @@ the I-th, so each part gets a share of every area. CI runs the parts as parallel
 --release and --debug-info build every snippet with that kppc option too (the release and the
 debug-info configurations, docs/test-matrix.md), into build\\spec-release or build\\spec-debug-info,
 and write no spec-status.md, which is the debug build's. A snippet that prints its own configuration
-has the release build's output in <name>.release.expected.
+has the release build's output in <name>.release.expected, and a target's release output in
+<name>.TARGET.release.expected (<name>.linux.release.expected), which wins over both.
 
 --target linux builds every snippet for Linux x86-64 (docs/design.md, "Targets and hosts") against a
 glibc sysroot (KPP_SYSROOT_LINUX, else build\\sysroots\\linux-x86_64, which tests\\targets.ps1 makes from
@@ -81,7 +82,9 @@ that differs on Linux goes in <name>.linux.expected.
 (KPP_SYSROOT_LINUX_ARM64, else build\\sysroots\\linux-arm64, which tools\\sysroot\\linux.ps1 -Arch arm64
 makes) and runs it under WSL through qemu's user mode (KPP_QEMU_AARCH64: the qemu-aarch64 there, a WSL
 path; default qemu-aarch64-static), into build\\spec-linux-arm64. Skipped as for Linux; output that
-differs goes in <name>.linux-arm64.expected, else <name>.linux.expected.
+differs goes in <name>.linux-arm64.expected, else <name>.linux.expected. On a Linux host on AArch64
+(CI's linux_arm64 job) the snippets are built and run natively as linux-arm64, `// run:` and
+`// test:` ones too.
 
 --target windows-gnu builds every snippet for Windows in the GNU dialect (design.md 17: MinGW-w64's
 headers and import libraries, the bundled toolchain's) with the llvm-mingw clang KPP_CLANG names, into
@@ -96,7 +99,7 @@ FreeBSD (run.sh there compares each program's output with its expected output, w
 <name>.freebsd.expected, else <name>.linux.expected (LP64, a C library that is not the UCRT), else
 <name>.expected). Skipped as for Linux.
 """
-import argparse, os, re, shlex, shutil, subprocess, sys, concurrent.futures, time
+import argparse, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
 # Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
 # snippet built here, spec.cmd's or not, until program pieces rely on it.
@@ -287,9 +290,16 @@ def build_and_run(path, area, name, work):
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
-    for variant in ([TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET] if TARGET else []):
+    variants = [TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET] if TARGET else []
+    for variant in variants:
         if os.path.exists(os.path.splitext(path)[0] + f".{variant}.expected"):
             expected_path = os.path.splitext(path)[0] + f".{variant}.expected"
+    # (a target's release output, <name>.linux.release.expected, over both: CI's Linux release run took
+    # .linux.expected, the debug build's text, for the snippets that print their configuration)
+    if "--release" in EXTRA:
+        for variant in reversed(variants):
+            if os.path.exists(os.path.splitext(path)[0] + f".{variant}.release.expected"):
+                expected_path = os.path.splitext(path)[0] + f".{variant}.release.expected"
             break
     result = {"area": area, "name": name, "info": info, "note": ""}
     target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
@@ -583,9 +593,11 @@ def main():
     ap.add_argument("--only", default="")
     args = ap.parse_args()
     global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS, NATIVE
-    # On a Linux host the snippets are built for it and run here: kppc's default target is the host's.
-    if not HOST_WINDOWS and args.target in (None, "linux"):
-        TARGET, NATIVE = "linux", True
+    # On a Linux host the snippets are built for it and run here: kppc's default target is the host's,
+    # linux-arm64 on AArch64 (CI's linux_arm64 job: its `// arch:` skips and .linux-arm64.expected files).
+    arm64 = platform.machine().lower() in ("aarch64", "arm64")
+    if not HOST_WINDOWS and args.target in (None, "linux", "linux-arm64"):
+        TARGET, NATIVE = ("linux-arm64" if arm64 else "linux"), True
         args.target = None
         args.no_doc = True # (spec-status.md is Windows' run's)
     if args.out:

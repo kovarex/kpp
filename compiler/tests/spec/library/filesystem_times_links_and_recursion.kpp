@@ -54,7 +54,13 @@ int main()
     ++it;
   i32 depthBeforePop = it.depth();
   it.pop();
-  println("recursive ", count, " ", deepest, " ", shallow, " ", depthBeforePop, " ", it == recursive_directory_iterator() ? -1 : it.depth());
+  // (pop gives the entry after b at depth 0, or the end when b is the last of a's entries in the file
+  // system's order: NTFS lists them by name, b before one.txt; ext4 by hash, b last on CI's arm64)
+  path lastOfA;
+  for (const directory_entry& e : directory_iterator(root / "a"))
+    lastOfA = e.path().filename();
+  bool popped = it == recursive_directory_iterator() ? lastOfA == path("b") : it.depth() == 0 && lastOfA != path("b");
+  println("recursive ", count, " ", deepest, " ", shallow, " ", depthBeforePop, " ", popped);
   println("removed ", remove_all(root));
   return 0;
 }
