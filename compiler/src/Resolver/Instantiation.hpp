@@ -160,6 +160,10 @@
   TextPieceKind textPieceOf(const Expr* e, const Ty* given);
   uint32_t enumFromStrSymbol_ = UINT32_MAX;
   Decl* enumFromStrDecl();
+  // The standard library's Optional (its class template), for `a?->b` of a value (design.md 23a); null
+  // without the standard library.
+  uint32_t optionalSymbol_ = UINT32_MAX;
+  Decl* optionalDecl();
   uint32_t strongOrderingSymbol_ = UINT32_MAX;
   Decl* strongOrderingDecl();
   // What `a <=> b` yields: the library's strong_ordering, or int without the library.

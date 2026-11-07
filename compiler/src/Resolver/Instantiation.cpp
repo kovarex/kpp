@@ -963,6 +963,16 @@ auto GlobalScope::Impl::enumFromStrDecl() -> Decl*
   return nullptr;
 }
 
+auto GlobalScope::Impl::optionalDecl() -> Decl*
+{
+  if (optionalSymbol_ == UINT32_MAX)
+    optionalSymbol_ = symbols.intern("Optional");
+  Lookup l;
+  if (lookupInScope(&root, optionalSymbol_, l, 0) && l.decl && l.decl->kind == NodeKind::ClassDecl && !l.decl->templateParams.empty())
+    return l.decl;
+  return nullptr;
+}
+
 auto GlobalScope::Impl::strongOrderingDecl() -> Decl*
 {
   if (strongOrderingSymbol_ == UINT32_MAX)

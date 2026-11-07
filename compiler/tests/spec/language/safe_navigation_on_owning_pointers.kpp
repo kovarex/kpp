@@ -1,9 +1,14 @@
-// spec: left of `?->` a class with operator-> and a bool conversion is set when its bool says so: T^, Optional, one of the program's; a temporary lives to the end of the full expression
+// spec: left of `?->` a class with operator-> and a bool conversion is set when its bool says so: T^, Optional, one of the program's; a temporary lives to the end of the full expression; such a class as the result (SharedPtr) is empty when the object is not set, no Optional of it (design.md 23a)
 class Item
 {
 public:
   int v = 3;
   int get() const { return this->v; }
+};
+class Owner
+{
+public:
+  SharedPtr<Item> shared = makeShared<Item>();
 };
 class Handle
 {
@@ -25,8 +30,14 @@ int main()
   Item^ empty;
   Optional<Item> some = Item();
   Optional<Item> nothing;
-  println(owned?->get(), " ", empty?->get(), " ", some?->v, " ", nothing?->v);
-  println(make(&item)?->get());
-  println(make(nullptr)?->get());
+  println(owned?->get() ?: 0, " ", empty?->get() ?: 0, " ", some?->v ?: 0, " ", nothing?->v ?: 0);
+  println(make(&item)?->get() ?: 0);
+  println(make(nullptr)?->get() ?: 0);
+  Owner owner;
+  Owner* set = &owner;
+  Owner* none = nullptr;
+  SharedPtr<Item> got = set?->shared;
+  SharedPtr<Item> lost = none?->shared;
+  println(bool(got), " ", bool(lost), " ", got->v);
   return 0;
 }

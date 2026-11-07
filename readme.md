@@ -71,7 +71,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
   `a->b` are set. When one is not, a pointer result is null and a bool false, and any other result is an
   `Optional`, which `?:` unwraps: `i32 power = train?->engine->power ?: -1;`. `a ?: b` is `a ? a : b`
-  with `a` evaluated once. (The Optional is being built; today such a result is its type's default.)
+  with `a` evaluated once.
 
 ### Less boilerplate
 

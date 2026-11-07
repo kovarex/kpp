@@ -424,10 +424,15 @@ auto GlobalScope::Impl::Walker::checkAssignable(uint32_t token, const char* what
       isLvalueExpression(operand))
     return;
   const Ty* s = types.unqualified(types.stripRef(type));
-  if (!(s->isArithmetic() || s->kind == TyKind::Enum || s->kind == TyKind::Pointer || s->kind == TyKind::MemberPointer))
+  // `a?->x = 3`: a value whatever its type (design.md 23a), an Optional too, whose operator= would assign to
+  // the temporary and drop it.
+  bool safeNavigation = operand->kind == NodeKind::ConditionalExpr && static_cast<const ConditionalExpr*>(operand)->else_ &&
+                        static_cast<const ConditionalExpr*>(operand)->else_->kind == NodeKind::DefaultValueExpr;
+  if (!safeNavigation && !(s->isArithmetic() || s->kind == TyKind::Enum || s->kind == TyKind::Pointer || s->kind == TyKind::MemberPointer))
     return; // (a class's operator, a function of its own, takes what it takes)
   reportCheck(token, std::string(what) + " is no lvalue (a value of " + types.toString(s, &impl.symbols) +
-                         "): a built-in assignment, increment or decrement changes an object, never a value ([expr.ass] 1, [expr.pre.incr] 1)");
+                         (safeNavigation ? "): `?->` gives a value, never the object it reaches (design.md 23a)"
+                                         : "): a built-in assignment, increment or decrement changes an object, never a value ([expr.ass] 1, [expr.pre.incr] 1)"));
 }
 
 auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from, const Ty* to) -> void
@@ -1709,6 +1714,30 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
       }
   // The fix last, the form an editor's quick fix reads: a static is no value of the object (design.md 23c).
   noteThisWarning(message + ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "`");
+}
+
+auto GlobalScope::Impl::Walker::safeNavigationOptional(const Ty* value, const Expr* at) -> const Ty*
+{
+  if (!value || !value->isKnown() || types.isDependent(value) || Impl::mentionsUnknown(value) || value->kind == TyKind::Void ||
+      value->kind == TyKind::Pointer || value->kind == TyKind::Nullptr || value->kind == TyKind::Bool || value->kind == TyKind::Function)
+    return nullptr;
+  if (value->kind == TyKind::Class)
+  {
+    // A pointer of a class: its default is the empty one (and an Optional stays one Optional).
+    MemberResult arrow = memberOf(value, impl.opSymbols[uint32_t(P::Arrow)], nullptr, 0, false);
+    Subst s;
+    if (arrow.decl && impl.conversionFunctionTo(value, types.boolType(), s))
+      return nullptr;
+  }
+  Decl* optional = impl.optionalDecl();
+  if (!optional)
+  {
+    if (file && !file->isImported && !probing)
+      impl.reportCheckerError(file, at->token, "`?->` of a " + types.toString(value, &symbols) + " gives an Optional, which is the standard library's");
+    return nullptr;
+  }
+  const Ty* args[] = {value};
+  return types.classType(optional, Span<const Ty*>{args, 1});
 }
 
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
@@ -5858,6 +5887,8 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
 {
   const Ty* l = walkExpr(b->lhs);
   const Ty* r = walkExpr(b->rhs);
+  if (!b->isKeyword && isAssignmentOp(P(b->op)) && b->lhs && b->lhs->kind == NodeKind::ConditionalExpr)
+    checkAssignable(b->token, "the left operand of an assignment", b->lhs, l); // (`a?->o = x` of a class too: its operator= would take it)
   if (!b->isKeyword && (P(b->op) == P::Assign || P(b->op) == P::EqEq || P(b->op) == P::NotEq))
   {
     noteZeroNull(b->rhs, l); // `p = 0`, `p == 0`
@@ -8548,16 +8579,37 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       const Ty* then = walkExpr(c->then);
       if (c->else_ && c->else_->kind == NodeKind::DefaultValueExpr)
       {
-        // `a?->b`: a value of b's type, whatever b is (a reference gives a copy).
+        // `a?->b`: a value of b's type (a reference gives a copy). When a is not set, a pointer is null, a
+        // class with operator-> and a bool conversion (UniquePtr, T^) empty and a bool false; any other
+        // result is an Optional of it, empty then (kovarex, 2026-11-07, design.md 23a).
         const Ty* value = then ? types.unqualified(types.stripRef(then)) : nullptr;
         if (value && value->kind == TyKind::Array && value->inner)
           value = types.pointer(value->inner);
+        if (const Ty* optional = safeNavigationOptional(value, c))
+          value = optional;
         record(c->else_, value);
         return record(e, value);
       }
       const Ty* other = walkExpr(c->else_);
       if (!c->then)
         return record(e, cond); // Elvis
+      // `o ?: b` of an Optional o and a b that is no such Optional: o's value, or b (design.md 23a: `t?->engine->power
+      // ?: -1`). The held side becomes `*held`, Optional's operator*, typed as the conditional's other side then.
+      if (c->then->kind == NodeKind::HeldExpr && then && other && ownsNodes())
+        if (const Ty* held = types.unqualified(types.stripRef(then));
+            held->kind == TyKind::Class && held->decl && held->decl == impl.optionalDecl() && !types.isDependent(held) &&
+            types.unqualified(types.stripRef(other)) != held)
+        {
+          auto* value = impl.instanceArena().make<UnaryExpr>();
+          value->kind = NodeKind::UnaryExpr;
+          value->token = c->then->token;
+          value->operand = c->then;
+          value->op = uint32_t(P::Star);
+          value->isKeyword = false;
+          value->postfix = false;
+          c->then = value;
+          then = walkExpr(value);
+        }
       const Ty* a = types.stripRef(then);
       const Ty* b = types.stripRef(other);
       // A branch of unknown type (`self(self, n - 1)` through a generic lambda's `auto&& self`): no

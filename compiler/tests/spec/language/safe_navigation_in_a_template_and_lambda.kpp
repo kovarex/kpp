@@ -1,4 +1,4 @@
-// spec: `?->` in a template (each instance its own result type) and in a lambda, which captures what the chain names
+// spec: `?->` in a template (each instance its own result type, an Optional of it) and in a lambda, which captures what the chain names
 template<class T> class Box
 {
 public:
@@ -6,6 +6,10 @@ public:
   T read() const { return this->value; }
 };
 template<class T> T readOf(Box<T>* box)
+{
+  return box?->read() ?: T();
+}
+template<class T> Optional<T> maybeOf(Box<T>* box)
 {
   return box?->read();
 }
@@ -18,8 +22,9 @@ int main()
   Box<int>* none = nullptr;
   Box<int>* set = &a;
   println(readOf(&a), " ", readOf(&b), " ", readOf<int>(nullptr));
+  println(*maybeOf(&b), " ", bool(maybeOf<double>(nullptr)));
   auto look = [&]() { return set?->value; };
   auto miss = [none]() { return none?->value; };
-  println(look(), " ", miss());
+  println(look() ?: 0, " ", bool(miss()));
   return 0;
 }

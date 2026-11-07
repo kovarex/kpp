@@ -29,9 +29,9 @@ int main()
   o.inner = &in;
   Outer* none = nullptr;
   Outer* set = &o;
-  println(none?->inner->v, " ", set?->inner->v);
-  println(none?->add(argument()), " ", set?->add(argument()));
-  println(none?->items[index()], " ", set?->items[index()]);
-  println(none?->self()->self()->add(1), " ", set?->self()->self()->add(1));
+  println(none?->inner->v ?: 0, " ", set?->inner->v ?: 0);
+  println(none?->add(argument()) ?: 0, " ", set?->add(argument()) ?: 0);
+  println(none?->items[index()] ?: 0, " ", set?->items[index()] ?: 0);
+  println(none?->self()->self()->add(1) ?: 0, " ", set?->self()->self()->add(1) ?: 0);
   return 0;
 }

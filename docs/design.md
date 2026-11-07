@@ -2166,7 +2166,7 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   then no constant, as C++'s constant evaluation rejects a pointer to an ended object, never an
   answer other than the program's, where that address is the result's.
 
-### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06; Q1 to Q4 decided 2026-11-07, Q1's result being built)
+### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06; Q1 to Q4 decided and built 2026-11-07)
 The readme's rule, with what it left open answered by kovarex on 2026-11-07: Q2 to Q4 as built, Q1 in a
 new shape ("the rest should be optional").
 - **`a?->b`** runs what follows only when a is set. Everything after a `?->` in the postfix chain belongs
@@ -2176,8 +2176,8 @@ new shape ("the rest should be optional").
   ("unique ptr and such": UniquePtr, `T^`, SharedPtr), is null; a bool result is false; a void call does
   nothing; any other result makes the whole expression `Optional<T>`, so `i32 s = t?->engine->power;` is a
   compile error and `i32 s = t?->engine->power ?: -1;` works: `?:` on an Optional gives its value or the
-  right side. Classes too: `t?->name` is `Optional<String>`. Not built yet: today the result is the
-  result type's default value.
+  right side. Classes too: `t?->name` is `Optional<String>`; an Optional result stays one Optional (it is
+  a class with operator-> and a bool conversion).
 - **The result is always a value** (Q2), of the unqualified type, never an lvalue: `a?->x = 3;` is an
   error, and a function giving `T&` gives a T, copied (inside the Optional too). `void` is fine as a
   statement. A type that cannot be copied is an error at the `?->`.
@@ -2186,10 +2186,14 @@ new shape ("the rest should be optional").
   are lvalues of one type. `c ?::x : y` is C++'s conditional.
 - **How it is built.** The parser writes them as ConditionalExpr: `(a) ? held : b` and `(a) ? held->b : default`,
   where the parenthesis (ParenExpr::holds) evaluates a once and HeldExpr is its value, so that whatever
-  walks an expression walks them with no case of its own; a chain's `?->`s nest. Both are constants when
+  walks an expression walks them with no case of its own; a chain's `?->`s nest. The walker types a `?->`
+  of a value as `Optional<T>` (Walker::safeNavigationOptional), so the code generator builds the Optional
+  from the taken branch and the default is the empty one; `o ?: b` of an Optional o and a b of another type
+  becomes `(o) ? *held : b`, Optional's operator*. `a?->x = 3` is an error whatever x is, an Optional's
+  operator= too. Both are constants when
   their operands are. kpp's own sources only: the converter's C++ and C keep the nodes they had.
 
-Specs: language/safe_navigation*, language/elvis.
+Specs: language/safe_navigation* (safe_navigation_gives_an_optional for Q1), language/elvis.
 
 ### 23b. Required `override` (an error since 2026-11-07, rules decided 2026-11-07)
 Every function that overrides a virtual one says so. It landed in three steps: a warning under a flag,

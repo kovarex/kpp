@@ -1,4 +1,4 @@
-// spec: `a?->b?->foo()` calls foo only when a and a->b are set, and gives its result's default value when one is not; a is evaluated once
+// spec: `a?->b?->foo()` calls foo only when a and a->b are set; a number's result is an Optional, empty when one is not, which `?:` unwraps; a pointer result is null then; a void call does nothing; a is evaluated once (design.md 23a)
 class Leaf
 {
 public:
@@ -27,14 +27,17 @@ int main()
   Node empty;
   Node* none = nullptr;
   Node* set = &full;
-  println(none?->leaf?->twice(), " ", set?->leaf?->twice(), " ", empty.leaf?->value, " ", set?->leaf?->value);
+  println(none?->leaf?->twice() ?: 0, " ", set?->leaf?->twice() ?: 0, " ", empty.leaf?->value ?: 0, " ", set?->leaf?->value ?: 0);
+  Optional<int> missing = none?->leaf?->value;
+  Optional<int> found = set?->leaf?->value;
+  println(bool(missing), " ", bool(found), " ", *found);
   println(none?->leaf == nullptr, " ", set?->leaf == &leaf);
-  println(set?->get()?->value, " ", none?->get()?->value);
+  println(set?->get()?->value ?: -1, " ", none?->get()?->value ?: -1);
   none?->leaf?->touch();
   set?->leaf?->touch();
-  println(once(set)?->leaf?->value, " ", evaluated);
-  println(once(none)?->leaf?->value, " ", evaluated);
-  int total = set?->leaf?->value + 1;
+  println(once(set)?->leaf?->value ?: 0, " ", evaluated);
+  println(once(none)?->leaf?->value ?: 0, " ", evaluated);
+  int total = (set?->leaf?->value ?: 0) + 1;
   println(total);
   return 0;
 }

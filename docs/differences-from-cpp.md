@@ -550,7 +550,7 @@ p[Property::Text] = String("hello");
 
 ## Expressions
 
-### `?->` and `?:` (built; the result's type decided 2026-11-07, being built)
+### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).
 - **kpp:** `a?->b?->foo()` calls `foo` only when `a` and `a->b` are set: the rest of the postfix chain is
@@ -558,8 +558,7 @@ p[Property::Text] = String("hello");
   with `operator->` and a bool conversion: UniquePtr, `T^`, SharedPtr) is null and a bool result false;
   any other result makes the expression `Optional<T>` (kovarex, 2026-11-07): `i32 s = t?->engine->power;`
   is an error, `i32 s = t?->engine->power ?: -1;` works, as `?:` on an Optional gives its value or the
-  right side. `a ?: b` is `a ? a : b` with `a` evaluated once. Today kppc still gives the result type's
-  default value where an Optional is decided.
+  right side. `a ?: b` is `a ? a : b` with `a` evaluated once.
 - **See:** design 23a.
 
 ### Three-way comparison has one result type (built)

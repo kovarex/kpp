@@ -1,4 +1,4 @@
-// spec: `?->`'s result is a value: a class result is a copy, its default a default-constructed one; a function giving T& gives a T; a pointer's default is nullptr, a bool's false, a float's 0
+// spec: `?->`'s result is a value: a class result is an Optional of a copy, empty and with nothing built when the object is not set; a function giving T& gives an Optional of a copy; a pointer result is nullptr, a bool false, a float an Optional; a String is an Optional<String> (design.md 23a)
 class Tag
 {
 public:
@@ -14,6 +14,7 @@ public:
   int number = 3;
   bool flag = true;
   double ratio = 0.5;
+  String name = "engine";
   Holder* self = nullptr;
   Tag& ref() { return this->tag; }
   int& count() { return this->number; }
@@ -24,12 +25,14 @@ int main()
   Holder* none = nullptr;
   Holder* set = &h;
   {
-    Tag a = none?->tag;
-    println(a.id);
-    Tag b = set?->ref();
-    println(b.id);
+    Optional<Tag> a = none?->tag;
+    println(bool(a));
+    Optional<Tag> b = set?->ref();
+    println(b->id);
   }
-  println(set?->count(), " ", none?->count(), " ", none?->flag, " ", set?->flag, " ", none?->ratio, " ", set?->ratio, " ", none?->self == nullptr);
+  println(set?->count() ?: 0, " ", none?->count() ?: 0, " ", none?->flag, " ", set?->flag, " ", none?->ratio ?: 0.0, " ", set?->ratio ?: 0.0, " ", none?->self == nullptr);
+  Optional<String> name = set?->name;
+  println(*name, " ", none?->name ?: String("none"));
   println("end");
   return 0;
 }

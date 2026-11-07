@@ -338,6 +338,9 @@
     // also in a lambda in it), as memberOf makes a const object's members; a mutable, static or
     // reference member's t as it is.
     const Ty* memberThroughThis(const Lookup& l, const Ty* t);
+    // `a?->b` of a value of type value (design.md 23a): Optional<value>, or null when the result stays value
+    // (a pointer, a class with operator-> and a bool conversion, a bool, void, or not known yet).
+    const Ty* safeNavigationOptional(const Ty* value, const Expr* at);
 
     // --this-warnings (design.md 23c): an unqualified name that finds a data member or a member function
     // of a class, which required `this.` writes `this.x` (a static one `This::x`). One beside a name of its

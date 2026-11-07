@@ -1,24 +1,29 @@
-// spec: `?->`'s result is a value, so nothing assigns to it; a result with no default constructor has no default value
-// error: safe_navigation_gives_no_lvalue_is_error.kpp:17: error: the left operand of an assignment is no lvalue
-// error: safe_navigation_gives_no_lvalue_is_error.kpp:21: error: `?->` gives a default value when its object is not set, and Plain has no default constructor
-class Plain
+// spec: `?->`'s result is a value, so nothing assigns to it, an Optional's operator= neither; a number's result is an Optional, which converts to no number: `?:` gives its value (design.md 23a); a type that cannot be copied has no value to give
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:20: error: the left operand of an assignment is no lvalue
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:21: error: the left operand of an assignment is no lvalue
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:25: error: a class (Optional<int32>) does not convert to int32
+class Engine
 {
 public:
-  Plain(int v) {}
+  int power = 70;
+  String name = "steam";
 };
-class A
+class Train
 {
 public:
+  Engine* engine = nullptr;
   int x = 0;
-  Plain plain = Plain(1);
+  String label;
 };
-void write(A* a)
+void write(Train* t)
 {
-  a?->x = 3;
+  t?->x = 3;
+  t?->label = String("x");
 }
-Plain read(A* a)
+int read(Train* t)
 {
-  return a?->plain;
+  int power = t?->engine->power;
+  return power;
 }
 int main()
 {
