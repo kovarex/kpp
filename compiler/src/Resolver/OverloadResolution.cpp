@@ -2686,6 +2686,40 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
               someBetter = true;
               continue;
             }
+            // Of one rank, the tie-breakers of two standard conversions from one type: a pointer made a bool is the
+            // worse ([over.ics.rank] 4.1), and a pointer to a class made a base's pointer beats one made void*, a
+            // nearer base's a farther's (4.4.2, 4.4.4). `operator int*()` given f(bool) and f(void*) calls f(void*)
+            // (it was ambiguous: thread J's overload battery).
+            if (ra == 3 && (result->kind == TyKind::Pointer || result->kind == TyKind::MemberPointer || result->kind == TyKind::Nullptr))
+            {
+              bool aBool = pa->kind == TyKind::Bool, bBool = pb->kind == TyKind::Bool;
+              if (aBool != bBool)
+              {
+                if (aBool)
+                  return false;
+                someBetter = true;
+                continue;
+              }
+              const Ty* target = result->kind == TyKind::Pointer ? types.unqualified(result->inner) : nullptr;
+              if (target && target->kind == TyKind::Class && pa->kind == TyKind::Pointer && pb->kind == TyKind::Pointer)
+              {
+                const Ty* ua = types.unqualified(pa->inner);
+                const Ty* ub = types.unqualified(pb->inner);
+                int order = ua == ub                                                         ? 0
+                            : ua->kind == TyKind::Class && ub->kind == TyKind::Void          ? 1
+                            : ua->kind == TyKind::Void && ub->kind == TyKind::Class          ? -1
+                            : ua->kind == TyKind::Class && ub->kind == TyKind::Class && isBaseClass(ub, ua) ? 1
+                            : ua->kind == TyKind::Class && ub->kind == TyKind::Class && isBaseClass(ua, ub) ? -1
+                                                                                                           : 0;
+                if (order < 0)
+                  return false;
+                if (order > 0)
+                {
+                  someBetter = true;
+                  continue;
+                }
+              }
+            }
           }
       }
       // Two user-defined conversions to different types (a `const char*` made a StringView by

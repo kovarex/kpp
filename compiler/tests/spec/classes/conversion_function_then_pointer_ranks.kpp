@@ -1,0 +1,33 @@
+// spec: two user-defined conversions through the same conversion function compare by the standard conversion after it, C++'s tie-breakers included ([over.ics.rank] 3.3): of two of one rank the one making a pointer a bool is the worse (4.1), and a pointer to a class made its base's pointer beats one made void* (4.4.2); a class with `operator int*()` given f(bool) and f(void*) calls f(void*) (it was ambiguous: thread J's overload battery). clang's output
+extern "C" int printf(const char* format, ...);
+struct Base
+{
+  int b = 1;
+};
+struct Derived : Base
+{
+  int d = 2;
+};
+struct IntSource
+{
+  int x = 5;
+  operator int*() { return &x; }
+};
+struct DerivedSource
+{
+  Derived d;
+  operator Derived*() { return &d; }
+};
+int f(bool) { return 1; }
+int f(void*) { return 2; }
+int g(Base*) { return 3; }
+int g(void*) { return 4; }
+int h(bool) { return 5; }
+int h(Base*) { return 6; }
+int main()
+{
+  IntSource i;
+  DerivedSource s;
+  printf("%d %d %d\n", f(i), g(s), h(s));
+  return 0;
+}
