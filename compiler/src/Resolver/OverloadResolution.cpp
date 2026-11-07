@@ -2771,14 +2771,16 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
             else if (bWeaker && !aWeaker)
               return false;
           }
-          else if (ua->kind == TyKind::Class && ub->kind == TyKind::Class && aWeaker && bWeaker)
+          else if (ua->kind == TyKind::Class && ub->kind == TyKind::Class)
           {
+            // (whatever the qualifiers: `pick(const D&)` over `pick(B&)` and `pick(D*)` over
+            // `pick(const B* const&)` given a DD, as clang and g++ have it; they were ambiguous)
             if (isBaseClass(ub, ua))
               someBetter = true;
             else if (isBaseClass(ua, ub))
               return false;
           }
-          else if (ua->kind != ub->kind && (ua->kind == TyKind::Void || ub->kind == TyKind::Void) && aWeaker && bWeaker)
+          else if (ua->kind != ub->kind && (ua->kind == TyKind::Void || ub->kind == TyKind::Void))
           {
             // A pointer to a class converted to its base's pointer is better than to void*
             // ([over.ics.rank] 4.4.2): getPrototypeInfoStatic(const PrototypeBase*, ...) over

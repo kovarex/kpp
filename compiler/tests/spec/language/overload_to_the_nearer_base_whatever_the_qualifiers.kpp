@@ -1,0 +1,42 @@
+// spec: of two conversions of a derived class (its pointer, a reference to it) to bases, the one to the nearer base is better, and one to a base better than one to void*, whatever const and volatile each target adds ([over.ics.rank] 4.4): pick(const D*) over pick(B*), pick(D&) over pick(const B&), pick(D*) over pick(const B* const&), pick(const B*) over pick(void*). clang's and g++'s output
+// found by thread J's overload generator (2026-11-07): each call was ambiguous
+extern "C" int printf(const char* format, ...);
+class B
+{
+public:
+  int v = 1;
+};
+class D : public B
+{
+};
+class DD : public D
+{
+};
+int p1(const D* a) { return 1; }
+int p1(B* a) { return 2; }
+int p2(D* a) { return 1; }
+int p2(const B* a) { return 2; }
+int r1(const D& a) { return 1; }
+int r1(B& a) { return 2; }
+int r2(D& a) { return 1; }
+int r2(const B& a) { return 2; }
+int p3(D* a) { return 1; }
+int p3(const B* const& a) { return 2; }
+int v1(const volatile D* a) { return 1; }
+int v1(B* a) { return 2; }
+int w1(const B* a) { return 1; }
+int w1(void* a) { return 2; }
+int w2(B* a) { return 1; }
+int w2(const void* a) { return 2; }
+int same1(const D* a) { return 1; }
+int same1(D* a) { return 2; }
+int main()
+{
+  DD dd;
+  DD* pdd = &dd;
+  D d;
+  D* pd = &d;
+  printf("%d %d %d %d %d %d\n", p1(pdd), p2(pdd), r1(dd), r2(dd), p3(pdd), v1(pdd));
+  printf("%d %d %d\n", w1(pd), w2(pd), same1(pdd));
+  return 0;
+}
