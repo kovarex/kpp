@@ -18,7 +18,8 @@ Rules marked *open* belong to a planned feature whose details are not decided ye
 Not here: bugs and missing C++ features, unless the refusal is deliberate; platform ABI choices that
 match what a C++ compiler does on that target. Where the standard library falls short of its own
 specification is [stdlib-conformance.md](stdlib-conformance.md). A spec named below is a file under
-`compiler/tests/spec/`. A change that adds a difference updates this page.
+`compiler/tests/spec/`. A change that adds or removes a deliberate difference from C++ updates this
+page in the same commit, with its status.
 
 - [Programs and files](#programs-and-files)
 - [Configurations instead of macros](#configurations-instead-of-macros)
@@ -792,8 +793,8 @@ test square
 
 These look like candidates for this page and are not differences: evaluation order (C++17's),
 argument-dependent lookup and hidden friends, class template argument deduction, `noexcept` as part
-of a function's type, substitution failure on a result type, concepts and `requires`, multiple
-inheritance, `dynamic_cast` and `typeid`, destruction of globals at exit, and `friend`.
+of a function's type, concepts and `requires`, multiple inheritance, `dynamic_cast` and `typeid`,
+destruction of globals at exit, and `friend`.
 
 [d2]: design.md#2-compilation-model
 [d3]: design.md#3-simple-templates
