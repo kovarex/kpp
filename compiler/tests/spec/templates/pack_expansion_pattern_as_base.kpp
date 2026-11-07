@@ -1,5 +1,4 @@
 // spec: a base list's pack expansion of a pattern (`struct Many : Leaf<A>...`, [temp.variadic] 5) is a base per element of the pack, and `Leaf<A>(a)...` initializes each; clang's output
-// pending: only a plain pack of bases is laid out (`struct Mix : Ts...`, basesOf): the pattern is refused by the code generator, with one element named in the message
 template <typename T> struct Leaf
 {
   T value;

@@ -7160,8 +7160,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         // silently): an error until it is supported.
         if (b.isVirtual && b.type && !activeSubst && !probing && file && !file->isImported)
         {
-          std::string base = b.type->kind == NodeKind::NamedType && !static_cast<NamedType*>(b.type)->name.empty()
-                               ? impl.namePartText(static_cast<NamedType*>(b.type)->name.last())
+          Type* named = b.type->kind == NodeKind::PackType ? static_cast<PackType*>(b.type)->pattern : b.type;
+          std::string base = named->kind == NodeKind::NamedType && !static_cast<NamedType*>(named)->name.empty()
+                               ? impl.namePartText(static_cast<NamedType*>(named)->name.last())
                                : std::string("?");
           std::string of = c->name.empty() ? std::string("a class") : impl.namePartText(c->name.last());
           impl.reportCheckerError(file, b.type->token, "virtual base classes are not supported (" + base + ", a base of " + of + ")");

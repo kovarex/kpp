@@ -1,0 +1,74 @@
+// spec: bases expanded from a pattern ([temp.variadic] 5) in use: `Leaf<A>(a)...`, `Leaf<A>(A(5))...`, `Leaf<A>{a}...` and closures' `F(f)...` initialize each, constructed in order and destroyed in reverse; `m.Leaf<char>::value`, `Leaf<char>::width()`, a fold over `Leaf<A>::value` and `Leaf<A>::width()` name element k's base; conversions to each base; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct Leaf
+{
+  T value;
+  Leaf(T v) : value(v) { printf("make %d\n", int(v)); }
+  ~Leaf() { printf("drop %d\n", int(value)); }
+  T get() const { return value; }
+  int width() const { return int(sizeof(T)); }
+};
+
+struct Two : Leaf<int>, Leaf<char>
+{
+  Two() : Leaf<int>(3), Leaf<char>('a') {}
+  int both() const { return Leaf<int>::value * 1000 + this->Leaf<char>::value + Leaf<char>::width() * 100; }
+};
+struct Deeper : Two
+{
+  int sum() const { return Leaf<int>::get() + Leaf<char>::get(); }
+};
+
+template <typename... A> struct Many : Leaf<A>...
+{
+  Many(A... a) : Leaf<A>(a)... {}
+  int total() const { return (0 + ... + int(Leaf<A>::value)); }
+  int widths() const { return (0 + ... + Leaf<A>::width()); }
+};
+
+template <typename... A> struct Typed : Leaf<A>...
+{
+  Typed() : Leaf<A>(A(5))... {}
+};
+
+template <typename... A> struct Braced : Leaf<A>...
+{
+  Braced(A... a) : Leaf<A>{a}... {}
+};
+
+template <typename... F> struct Overload : F...
+{
+  Overload(F... f) : F(f)... {}
+  using F::operator()...;
+};
+
+int readChar(const Leaf<char>& c) { return c.value; }
+int readDouble(const Leaf<double>& d) { return int(d.value * 10); }
+
+int main()
+{
+  {
+    Two t;
+    printf("%d %d %d %d\n", int(sizeof(t.Leaf<char>::value)), t.Leaf<char>::value, t.Leaf<char>::get(), t.both());
+    Deeper d;
+    printf("%d %d %d\n", d.Leaf<char>::value, d.Leaf<int>::get(), d.sum());
+  }
+  {
+    Many<int, char, double> m(7, 'b', 2.5);
+    printf("%d %d %d %d\n", m.Leaf<int>::value, m.Leaf<char>::value, int(m.Leaf<double>::value * 2), int(sizeof(m.Leaf<char>::value)));
+    printf("%d %d %d %d\n", m.total(), m.widths(), readChar(m), readDouble(m));
+    Leaf<double>& dl = m;
+    dl.value = 4.0;
+    printf("%d %d\n", int(m.Leaf<double>::get()), m.Leaf<char>::width());
+  }
+  {
+    Typed<int, char> t;
+    printf("%d %d\n", t.Leaf<int>::value, int(t.Leaf<char>::value));
+    Braced<short, long long> b(9, 11);
+    printf("%d %d\n", int(b.Leaf<short>::value), int(b.Leaf<long long>::value));
+  }
+  int base = 100;
+  Overload o([base](int x) { return base + x; }, [](double y) { return int(y * 3); });
+  printf("%d %d\n", o(5), o(1.5));
+  return 0;
+}

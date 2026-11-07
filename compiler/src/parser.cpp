@@ -4340,6 +4340,14 @@ namespace
             return true;
           }
           base.isPack = accept(P::Ellipsis);
+          if (base.isPack)
+          {
+            // `struct Many : Leaf<A>...`, `struct overloaded : Ts...`: the expansion of the pattern, a
+            // base per element ([temp.variadic] 5), as a template argument's `Args...` is.
+            PackType* pack = node<PackType>(base.type->token);
+            pack->pattern = base.type;
+            base.type = pack;
+          }
           bases.push_back(base);
           if (!accept(P::Comma))
             break;

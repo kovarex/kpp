@@ -3168,7 +3168,9 @@ The smallest language that is still kpp, as the target of the first code generat
   its instances, as the name inside the class is the injected one, in a specialization that
   specialization (templates/class_name_inside_a_specialization). A pack of base classes (`struct Overload : Ts...`) is a base per
   element of its pack (2026-11-06, classes/pack_of_base_classes; an error from 2026-10-31 until
-  something needed it, thread A's C++ feature survey), and a lambda's closure is such a base too,
+  something needed it, thread A's C++ feature survey), and so is the expansion of a pattern, `struct
+  Many : Leaf<A>...` ([temp.variadic] 5), whose `Leaf<A>(a)...` (or `Ts(ts)...`) initializes each
+  base from the pattern's element (2026-11-07, templates/pack_expansion_pattern_as_base); a lambda's closure is such a base too,
   its captures its subobject (classes/lambda_closure_as_base), converting to it as to any base
   (classes/conversion_to_closure_base). A closure type's call operator is a member function for
   lookup and overload resolution, as in C++ ([expr.prim.lambda.closure] 4): `using Ts::operator()...;`

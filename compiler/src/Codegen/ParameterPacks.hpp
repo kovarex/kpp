@@ -121,6 +121,63 @@
       retypeForElement(original);
     }
 
+    // Runs body with element k of the packs args name bound, as forEachPackElement's pass k: the
+    // function retyped for that element, a parameter pack's mentions naming its element k. For a
+    // pack expansion whose pattern is no expression: `Leaf<A>(a)...` initializing the base of
+    // element k. Arguments that name no pack run as they are.
+    template<typename F>
+    void withPackElement(Span<Expr*> args, size_t k, Node* at, F&& body)
+    {
+      std::vector<Decl*> params;
+      for (Expr* a : args)
+        packsIn(a, params);
+      Decl* typePack = nullptr;
+      for (Expr* a : args)
+        if (!typePack && params.empty() && currentArgs)
+          typePack = typePackIn(a);
+      if (params.empty() && !typePack)
+      {
+        body();
+        return;
+      }
+      if (!currentArgs)
+        unsupported(at, "a pack expansion outside an instantiation");
+      TemplateArgs original = *currentArgs;
+      TemplateArgs elementArgs = original;
+      elementArgs.elementIndex = uint32_t(k);
+      if (typePack)
+      {
+        // `Leaf<A>(A())...`: the type pack's element k, its arguments in effect (forEachTypePackElement).
+        elementArgs.elementPacks = {typePack};
+        retypeForElement(elementArgs, true);
+        {
+          ArgsScope scope(*this, &elementArgs);
+          body();
+        }
+        retypeForElement(original);
+        return;
+      }
+      std::vector<Decl*> packs;
+      for (Decl* p : params)
+        for (Decl* tp : templatePacksOf(p))
+          if (std::find(packs.begin(), packs.end(), tp) == packs.end())
+            packs.push_back(tp);
+      if (packs.empty())
+        unsupported(at, "a pack expansion outside an instantiation");
+      for (Decl* p : params)
+        if (k >= packLocals[p].size())
+          unsupported(at, "a pack expansion over parameter packs of different lengths");
+      boundPacks(packs, packLocals[params[0]].size(), at); // (each as long as the parameter pack)
+      elementArgs.elementPacks = packs;
+      retypeForElement(elementArgs, true);
+      for (Decl* p : params)
+        locals[p] = packLocals[p][k];
+      body();
+      for (Decl* p : params)
+        locals.erase(p);
+      retypeForElement(original);
+    }
+
     // A template type pack that a pattern names in a type (`(func(Args()), ...)`,
     // `(... || isSame<T, Args>)`, `sizeof(Args)`) and the instantiation binds to a pack, or null.
     Decl* typePackIn(Node* n, int depth = 0);

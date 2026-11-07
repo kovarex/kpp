@@ -302,12 +302,10 @@ auto GlobalScope::Impl::derivesFrom(const Ty* derived, const Ty* base, int depth
   // derives from Color, which the class template alone cannot tell).
   Subst own = derived->args.empty() ? Subst{} : substFor(derived);
   for (const ClassDecl::Base& b : static_cast<ClassDecl*>(def)->bases)
-  {
-    const Ty* bt = convertType(b.type, TypeContext{dc.scope, &dc.params, own.pairs.empty() ? nullptr : &own, def->file ? def->file->tokens : nullptr,
-                                                   def->file ? def->file->text : std::string_view()}, 0);
-    if (bt && derivesFrom(bt, base, depth + 1))
-      return true;
-  }
+    for (const Ty* bt : baseInstances(b.type, TypeContext{dc.scope, &dc.params, own.pairs.empty() ? nullptr : &own, def->file ? def->file->tokens : nullptr,
+                                                          def->file ? def->file->text : std::string_view()}, 0)) // (a pack of bases: each element)
+      if (bt && derivesFrom(bt, base, depth + 1))
+        return true;
   return false;
 }
 

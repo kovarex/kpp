@@ -123,6 +123,8 @@ auto GlobalScope::Impl::scopeOfType(Type* type, Scope* context, const LocalStack
     case NodeKind::PointerType: return scopeOfType(static_cast<PointerType*>(type)->pointee, context, locals, depth + 1);
     case NodeKind::LRefType: return scopeOfType(static_cast<LRefType*>(type)->referenced, context, locals, depth + 1);
     case NodeKind::RRefType: return scopeOfType(static_cast<RRefType*>(type)->referenced, context, locals, depth + 1);
+    // A pack of bases (`struct Many : Leaf<A>...`): the class template its elements are instances of.
+    case NodeKind::PackType: return scopeOfType(static_cast<PackType*>(type)->pattern, context, locals, depth + 1);
     case NodeKind::NamedType:
     {
       const QualifiedName& name = static_cast<NamedType*>(type)->name;

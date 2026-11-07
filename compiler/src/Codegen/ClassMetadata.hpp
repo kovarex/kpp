@@ -120,8 +120,8 @@
 
     // The class a constructor initializer of class t names (`super(v)` with `using super = ...`,
     // `Chain<Tail...>(tail...)`): its name converted as a type in the class under the class's
-    // arguments; null for a member's name or one that names no class there.
-    const Ty* initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at);
+    // arguments (args: under those instead); null for a member's name or one that names no class there.
+    const Ty* initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at, const TemplateArgs* args = nullptr);
 
     // Whether a constructor initializer written with template arguments names another class than
     // cls: `Chain<Tail...>(tail...)` in Chain<Head, Tail...> (its base, an instance of the same
@@ -132,6 +132,11 @@
     // alias, `using super = Conditional<...>; Const(const T& v) : super(v) {}`, or one of several
     // instances of a template); null if none does.
     const FunctionDecl::CtorInit* initializerNamingBase(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, Node* at);
+
+    // The pack expansion of constructor initializers (`Leaf<A>(a)...`, `Ts(ts)...`, [temp.variadic] 5)
+    // whose element names base `baseTy` of class t, and that element (element): the initializer's
+    // name converted with the class's packs bound to each element in turn. Null if none does.
+    const FunctionDecl::CtorInit* packInitializerOf(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, size_t& element, Node* at);
 
     // Runs emit with the default member initializer of v, a member of the class t whose object is
     // at addr: the initializer as typed for t's instantiation, with `this` the object, t the class

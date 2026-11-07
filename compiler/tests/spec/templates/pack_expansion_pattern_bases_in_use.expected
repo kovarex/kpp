@@ -1,0 +1,30 @@
+make 3
+make 97
+1 97 97 3197
+make 3
+make 97
+97 3 100
+drop 97
+drop 3
+drop 97
+drop 3
+make 7
+make 98
+make 2
+7 98 5 1
+107 13 98 25
+4 1
+drop 4
+drop 98
+drop 7
+make 5
+make 5
+5 5
+make 9
+make 11
+9 11
+drop 11
+drop 9
+drop 5
+drop 5
+105 4

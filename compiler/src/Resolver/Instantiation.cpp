@@ -137,12 +137,13 @@ auto GlobalScope::Impl::memberTypeOf(const Ty* t, uint32_t symbol, int depth) ->
   TypeContext ctx{inside->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
   for (Type* b : inside->baseTypes)
   {
-    bool parameter = b->kind == NodeKind::NamedType && static_cast<NamedType*>(b)->name.parts.size() == 1 &&
-                     !static_cast<NamedType*>(b)->name.parts[0].hasTemplateArgs;
+    Type* named = b->kind == NodeKind::PackType ? static_cast<PackType*>(b)->pattern : b; // (a pack of bases: its pattern, `Ts` of `Ts...`)
+    bool parameter = named->kind == NodeKind::NamedType && static_cast<NamedType*>(named)->name.parts.size() == 1 &&
+                     !static_cast<NamedType*>(named)->name.parts[0].hasTemplateArgs;
     // `struct Const : Conditional<isIntegral<T>, Value<T>, T>`: a type trait, the class it picks
     // for these arguments (the lookup above searched the trait's own scope).
-    bool trait = b->kind == NodeKind::NamedType && static_cast<NamedType*>(b)->name.parts.size() == 1 &&
-                 static_cast<NamedType*>(b)->name.parts[0].hasTemplateArgs && isTypeTraitName(static_cast<NamedType*>(b)->name.parts[0].symbol);
+    bool trait = named->kind == NodeKind::NamedType && static_cast<NamedType*>(named)->name.parts.size() == 1 &&
+                 static_cast<NamedType*>(named)->name.parts[0].hasTemplateArgs && isTypeTraitName(static_cast<NamedType*>(named)->name.parts[0].symbol);
     if (!parameter && !trait)
       continue; // a written class's members were found by the lookup above
     for (const Ty* bt : baseInstances(b, ctx, depth + 1))
@@ -1769,6 +1770,8 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
             for (const Subst::Pair& p : ctx.subst->pairs)
               qs.pairs.push_back(p);
           TypeContext c2{ctx.scope, ctx.locals, &qs, ctx.tokens, ctx.text};
+          c2.elementPacks = ctx.elementPacks; // (its written arguments are a pattern's own nodes still)
+          c2.elementIndex = ctx.elementIndex;
           return typeOfTypeDecl(l.decl, l, n->name.last(), c2, depth);
         }
         // `typename Dialog<T>::ResultMapping::value_type` in Dialog's out-of-line member: the
@@ -1788,6 +1791,10 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
             for (const Subst::Pair& p : ctx.subst->pairs)
               bs.pairs.push_back(p);
           TypeContext c2{ctx.scope, ctx.locals, &bs, ctx.tokens, ctx.text};
+          // Its written arguments are a pattern's own nodes still: `Leaf<A>::width()` in a fold over a
+          // pack of bases names element k's base (until 2026-11-07 the whole pack's, Leaf<int, char>).
+          c2.elementPacks = ctx.elementPacks;
+          c2.elementIndex = ctx.elementIndex;
           return typeOfTypeDecl(l.decl, l, n->name.last(), c2, depth);
         }
       }

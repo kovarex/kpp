@@ -3059,13 +3059,13 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
     declContextFor(cls, dc);
     TypeContext bctx{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
     for (const ClassDecl::Base& b : cls->bases)
-    {
-      const Ty* bt = convertType(b.type, bctx, depth + 1);
-      bt = bt ? types.unqualified(bt) : nullptr;
-      if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
-        layout->ok = false;
-      layout->bases.push_back(bt);
-    }
+      for (const Ty* bt : baseInstances(b.type, bctx, depth + 1)) // (a pack of bases: each element)
+      {
+        bt = bt ? types.unqualified(bt) : nullptr;
+        if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
+          layout->ok = false;
+        layout->bases.push_back(bt);
+      }
     for (Decl* m : membersRead(cls))
     {
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))

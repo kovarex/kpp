@@ -235,7 +235,14 @@ auto codegen::Emitter::typePackIn(Node* n, int depth) -> Decl*
     }
     case NodeKind::ParenExpr: return typePackIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
     case NodeKind::UnaryExpr: return typePackIn(static_cast<UnaryExpr*>(n)->operand, depth + 1);
-    case NodeKind::MemberExpr: return typePackIn(static_cast<MemberExpr*>(n)->base, depth + 1);
+    case NodeKind::MemberExpr:
+    {
+      // `this->Leaf<A>::value` of a pack of bases: the member's qualifier names the pack too.
+      auto* m = static_cast<MemberExpr*>(n);
+      if (Decl* d = typePackIn(m->base, depth + 1))
+        return d;
+      return inName(m->member);
+    }
     case NodeKind::IndexExpr:
     {
       auto* i = static_cast<IndexExpr*>(n);

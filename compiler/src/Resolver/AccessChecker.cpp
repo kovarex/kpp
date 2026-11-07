@@ -281,7 +281,8 @@ auto GlobalScope::Impl::polymorphicBaseOf(ClassDecl* c, int depth, bool record) 
     return nullptr;
   for (const ClassDecl::Base& b : c->bases)
   {
-    Decl* d = b.type && b.type->kind == NodeKind::NamedType ? static_cast<NamedType*>(b.type)->resolved : nullptr;
+    Type* named = b.type && b.type->kind == NodeKind::PackType ? static_cast<PackType*>(b.type)->pattern : b.type; // (`Leaf<A>...`: Leaf)
+    Decl* d = named && named->kind == NodeKind::NamedType ? static_cast<NamedType*>(named)->resolved : nullptr;
     if (!d || d->kind != NodeKind::ClassDecl)
       continue;
     if (Scope* s = scopeOfEntry(Entry{d, nullptr}, 0); s && s->owner && s->owner->kind == NodeKind::ClassDecl)
@@ -847,14 +848,16 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
           declContextFor(cls, dc);
           TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
                           cls->file ? cls->file->text : std::string_view()};
-          const Ty* bt = convertType(b.type, ctx2, depth + 1);
-          if (!bt || !bt->isKnown() || types.isDependent(bt))
-            return std::nullopt;
-          auto bs = constSizeOf(bt, depth + 1);
-          auto ba = constAlignOf(bt, depth + 1);
-          if (!bs || !ba) return std::nullopt;
-          size = (size + *ba - 1) / *ba * *ba + *bs;
-          align = std::max(align, *ba);
+          for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+          {
+            if (!bt || !bt->isKnown() || types.isDependent(bt))
+              return std::nullopt;
+            auto bs = constSizeOf(bt, depth + 1);
+            auto ba = constAlignOf(bt, depth + 1);
+            if (!bs || !ba) return std::nullopt;
+            size = (size + *ba - 1) / *ba * *ba + *bs;
+            align = std::max(align, *ba);
+          }
         }
       for (Decl* m : membersRead(cls))
       {
@@ -939,11 +942,13 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
       declContextFor(cls, dc);
       TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
                       cls->file ? cls->file->text : std::string_view()};
-      const Ty* bt = convertType(b.type, ctx2, depth + 1);
-      if (!bt || !bt->isKnown()) return std::nullopt;
-      auto ba = constAlignOf(bt, depth + 1);
-      if (!ba) return std::nullopt;
-      align = std::max(align, *ba);
+      for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+      {
+        if (!bt || !bt->isKnown()) return std::nullopt;
+        auto ba = constAlignOf(bt, depth + 1);
+        if (!ba) return std::nullopt;
+        align = std::max(align, *ba);
+      }
     }
     for (Decl* m : membersRead(cls))
     {
@@ -1011,17 +1016,19 @@ auto GlobalScope::Impl::constFieldOffset(const Ty* t, Decl* m, int depth) -> std
       DeclContext dc;
       declContextFor(cls, dc);
       TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
-      const Ty* bt = convertType(b.type, ctx2, depth + 1);
-      if (!bt || !bt->isKnown() || types.isDependent(bt))
-        return std::nullopt;
-      auto bs = constSizeOf(bt, depth + 1);
-      auto ba = constAlignOf(bt, depth + 1);
-      if (!bs || !ba)
-        return std::nullopt;
-      offset = (offset + *ba - 1) / *ba * *ba;
-      if (std::optional<int64_t> inner = constFieldOffset(bt, m, depth + 1))
-        return offset + *inner;
-      offset += *bs;
+      for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+      {
+        if (!bt || !bt->isKnown() || types.isDependent(bt))
+          return std::nullopt;
+        auto bs = constSizeOf(bt, depth + 1);
+        auto ba = constAlignOf(bt, depth + 1);
+        if (!bs || !ba)
+          return std::nullopt;
+        offset = (offset + *ba - 1) / *ba * *ba;
+        if (std::optional<int64_t> inner = constFieldOffset(bt, m, depth + 1))
+          return offset + *inner;
+        offset += *bs;
+      }
     }
   for (Decl* f : membersRead(cls))
   {

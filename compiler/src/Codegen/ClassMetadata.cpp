@@ -633,7 +633,7 @@ auto codegen::Emitter::defaultConstruct(const std::string& addr, const Ty* t, No
   initializeMembers(addr, t, {}, at);
 }
 
-auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at) -> const Ty*
+auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at, const TemplateArgs* args) -> const Ty*
 {
   if (init.member.empty())
     return nullptr;
@@ -645,7 +645,7 @@ auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorIni
   named.name = init.member;
   // Looked up from inside the class: from the constructor when it is the one being emitted.
   Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
-  const Ty* nt = global.typeOfAstIn(&named, context, global.classArgsOf(cls));
+  const Ty* nt = global.typeOfAstIn(&named, context, args ? *args : global.classArgsOf(cls));
   return nt && (isClass(nt) || isLambda(nt)) && !types.isDependent(nt) ? canonicalClass(nt, at) : nullptr; // (a closure: `F(f)` with the base F a lambda's type)
 }
 
@@ -663,8 +663,35 @@ auto codegen::Emitter::initializerNamingBase(const Ty* t, const Ty* baseTy, Span
 {
   const Ty* base = canonicalClass(baseTy, at);
   for (const FunctionDecl::CtorInit& init : inits)
-    if (initializerClass(t, init, at) == base)
+    if (!init.isPack && initializerClass(t, init, at) == base) // (a pack expansion's elements: packInitializerOf)
       return &init;
+  return nullptr;
+}
+
+auto codegen::Emitter::packInitializerOf(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, size_t& element, Node* at) -> const FunctionDecl::CtorInit*
+{
+  const Ty* base = canonicalClass(baseTy, at);
+  TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+  size_t count = 0;
+  for (auto& [d, bound] : args.pairs)
+    if (bound && bound->kind == TyKind::Pack)
+      count = std::max(count, size_t(bound->args.size()));
+  for (const FunctionDecl::CtorInit& init : inits)
+    if (init.isPack)
+      for (size_t k = 0; k < count; ++k)
+      {
+        // The pattern's element k: each pack of the class bound to its element k (as the resolver
+        // converts a pack expansion's pattern, convertType).
+        TemplateArgs one = args;
+        for (auto& [d, bound] : one.pairs)
+          if (bound && bound->kind == TyKind::Pack && k < bound->args.size())
+            bound = bound->args[k];
+        if (initializerClass(t, init, at, &one) == base)
+        {
+          element = k;
+          return &init;
+        }
+      }
   return nullptr;
 }
 
@@ -835,11 +862,25 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
     std::string baseAddr = gep(info.name, addr, index);
     const QualifiedName& bn = static_cast<ClassDecl*>(baseDef)->name;
     const FunctionDecl::CtorInit* init = bn.empty() ? nullptr : initFor(bn.last().symbol);
-    if (init && initializerNamesOther(t, *init, bt, at))
+    if (init && (init->isPack || initializerNamesOther(t, *init, bt, at)))
       init = nullptr; // `Holder<0, H>(a)` met first for the base Holder<1, T>: by the type each names
     if (!init)
       init = initializerNamingBase(t, bt, inits, at);
-    if (init && isLambda(bt) && init->args.size() == 1)
+    size_t element = 0;
+    const FunctionDecl::CtorInit* packInit = init ? nullptr : packInitializerOf(t, bt, inits, element, at);
+    if (packInit)
+    {
+      // `Many(A... a) : Leaf<A>(a)... {}`: the base of element k from the pattern with element k of
+      // the packs it names (until 2026-11-07 a pack of bases was laid out only for `Ts...`).
+      withPackElement(packInit->args, element, at, [&]
+      {
+        if (isLambda(bt) && packInit->args.size() == 1)
+          initializeFrom(baseAddr, bt, packInit->args[0], at); // `Ts(ts)...` of closures
+        else
+          constructInto(baseAddr, bt, packInit->args, at);
+      });
+    }
+    else if (init && isLambda(bt) && init->args.size() == 1)
       withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(baseAddr, bt, one, at); }); // `F(f)`: the closure's values, as a member's
     else if (init)
       constructInto(baseAddr, bt, init->args, at);
