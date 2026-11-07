@@ -4611,8 +4611,20 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   this machine) and the two ways to give it. Specs kpp/macos_without_sdk_is_explained,
   macos_sdk_too_old_is_explained, macos_sdk_lacks_the_architecture_is_explained,
   macos_not_an_sdk_is_explained (fake SDKs beside them: the spec runner's `{here}`), and
-  macos_sdk_checked_before_the_build: with a good SDK kppc says it writes no Mach-O yet (M2 and M3
-  change that), never a silent build of something else.
+  macos_sdk_checked_before_the_build: with a good SDK the build goes on (M2, below).
+- **M2, Mach-O objects (2026-11-07):** a build for macos or macos-x64 compiles its modules into Mach-O
+  objects and stops at the link with an error that says so (ld64.lld is M3), never another target's
+  link. Mach-O has no COMDATs and LLVM refuses a module that names one: each module's text loses its
+  `$NAME = comdat any` lines and its definitions' `comdat` (ModuleCompile's withoutComdats, outside
+  quotes), and the shared definitions stay linkonce_odr or weak_odr, weak external symbols the linker
+  coalesces by name. The rest comes from the triple through LLVM, checked with llvm-readobj and
+  llvm-nm on objects for both: LC_BUILD_VERSION macOS 11.0 (10.15 for x86-64), thread_locals as TLV
+  descriptors (`__tlv_bootstrap`), `__compact_unwind` and `__eh_frame` with `__gcc_except_tab`, DWARF
+  with --debug-info, ThinLTO bitcode in a release build. Specs kpp/macos_sdk_checked_before_the_build
+  (arm64) and macos_x64_compiles_to_mach_o_objects: a template instance, a vtable, a thread_local, a
+  static local and a throw, with --no-std, since the library has no macOS platform layer yet (M7: a
+  program with it fails on Lock's size and the errno values, each an error). Not checked without an
+  SDK: the C import of Apple's headers (M6) and anything run.
 - **Locks ahead of M7:** a zeroed pthread_mutex_t, pthread_cond_t or pthread_rwlock_t is no lock on
   macOS (its initializers start with a signature: 0x32AAABA7, 0x3CB0B1BB, 0x2DA8B3B4; 64, 48 and
   200 bytes). The library's Lock, Condition and SharedLock now set their first word to the platform

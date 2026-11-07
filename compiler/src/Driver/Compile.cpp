@@ -518,9 +518,6 @@ int compile(int argc, char** argv)
                 options.target.name.c_str(), problem.c_str());
         return 2;
       }
-      fprintf(stderr, "--target %s: kppc writes no Mach-O programs yet (docs/design.md, \"Targets and hosts\", stage 8); the SDK is good\n",
-              options.target.name.c_str());
-      return 2;
     }
     if (options.target.posix() && options.sysroot.empty())
     {

@@ -12,6 +12,78 @@ namespace driver
 // walked as a leaf's: on Windows the walk ended there, and the process died with no crash report, its
 // unhandled-exception filter never reached (E's finding, 2026-11-07). For a module clang compiles (an
 // unoptimized build in kppc keeps every function's tables, none proven unable to throw).
+// text without its COMDATs, for Mach-O (macOS), which has none: LLVM refuses a module that names one
+// there. A shared definition stays linkonce_odr or weak_odr, which the Mach-O linker coalesces by name
+// (design.md, "Targets and hosts", the COMDAT row). Each `$NAME = comdat any` line goes, and in a
+// definition's or a global's line `comdat` and `comdat($NAME)` outside quotes, with the space or comma
+// before it.
+std::string withoutComdats(const std::string& text)
+{
+  std::string out;
+  out.reserve(text.size());
+  size_t from = 0;
+  while (from < text.size())
+  {
+    size_t end = text.find('\n', from);
+    end = end == std::string::npos ? text.size() : end + 1;
+    std::string_view line(text.data() + from, end - from);
+    from = end;
+    std::string_view bare = line.substr(0, line.find_last_not_of("\r\n") + 1);
+    if (bare.starts_with("$") && bare.ends_with(" = comdat any"))
+      continue;
+    if (!bare.starts_with("define ") && !bare.starts_with("@"))
+    {
+      out += line;
+      continue;
+    }
+    bool quoted = false;
+    for (size_t i = 0; i < line.size(); ++i)
+    {
+      char c = line[i];
+      if (c == '"')
+        quoted = !quoted;
+      if (!quoted && line.compare(i, 7, " comdat") == 0 && (i + 7 == line.size() || !(isalnum((unsigned char)line[i + 7]) || line[i + 7] == '_' || line[i + 7] == '.')))
+      {
+        size_t next = i + 7;
+        if (next < line.size() && line[next] == '(') // comdat($NAME): to its parenthesis, a quoted name's included
+        {
+          bool inner = false;
+          for (; next < line.size() && (inner || line[next] != ')'); ++next)
+            if (line[next] == '"')
+              inner = !inner;
+          ++next;
+        }
+        if (!out.empty() && out.back() == ',')
+          out.pop_back(); // (`, comdat`)
+        i = next - 1;
+        continue;
+      }
+      out += c;
+    }
+  }
+  return out;
+}
+
+std::string withUnwindTables(const std::string& text);
+
+// A module's text as its target takes it: every function with unwind tables, and no COMDAT on Mach-O.
+std::string forTarget(const std::string& text, const Target& target)
+{
+  return target.mac() ? withoutComdats(withUnwindTables(text)) : withUnwindTables(text);
+}
+
+// A build for macOS links nothing yet: its modules are compiled into Mach-O objects, and the link, ld64.lld
+// with the SDK's stubs, comes with stage 8's M3. An error that says so, never another target's link.
+static bool refuseMachOLink(const Options& options, const std::string& what)
+{
+  if (!options.target.mac())
+    return false;
+  fprintf(stderr, "error: --target %s: %s; kppc links no Mach-O program yet (docs/design.md, \"Targets and hosts\", stage 8)\n",
+          options.target.name.c_str(), what.c_str());
+  codegenExit = 1;
+  return true;
+}
+
 std::string withUnwindTables(const std::string& text)
 {
   std::string out;
@@ -602,9 +674,16 @@ void runCodegen(Build& build)
   if (cg.modules.empty())
   {
     std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
-    cg.ir = withUnwindTables(cg.ir);
+    cg.ir = forTarget(cg.ir, options.target);
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
+    if (options.target.mac())
+    {
+      // (the module compiled alone, into the object the link would take)
+      int rc = host::shell("\"" + clang + "\" " + level + targetFlags(options) + " -w -c " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + ".o\"");
+      refuseMachOLink(options, rc == 0 ? "its object is " + options.exe + ".o" : "clang did not compile its module (exit " + std::to_string(rc) + ")");
+      return;
+    }
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
                           (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
                           splitDebugInfoCommand(options);
@@ -638,7 +717,7 @@ void runCodegen(Build& build)
     }
     std::string hashText;
     if (!inProcess)
-      cg.modules[k] = withUnwindTables(cg.modules[k]); // (before its hash: an object made without them is made again)
+      cg.modules[k] = forTarget(cg.modules[k], options.target); // (before its hash: an object made without them is made again)
     if (unchangedObject(k, cg.modules[k], level, hashText))
       return;
     if (inProcess)
@@ -754,6 +833,8 @@ void runCodegen(Build& build)
       continue; // a module clang rejected (--keep-going): the link reports what it would have defined
     response += "\"" + slashes(o) + "\"\n";
   }
+  if (refuseMachOLink(options, "its " + std::to_string(objects.size()) + " objects are written"))
+    return;
   response += "-o \"" + slashes(options.exe) + "\"\n";
   if (thinLTO)
   {
