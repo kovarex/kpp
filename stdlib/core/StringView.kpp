@@ -58,7 +58,7 @@ public:
 
   // count bytes from start, fewer when the view ends first; OutOfRange when start > size() (as
   // String's substr).
-  StringView substr(ContainerSize start = 0, ContainerSize count = npos) const
+  StringView substr(ContainerSize start = 0, ContainerSize count = This::npos) const
   {
     if (start > this->byteCount)
       throwOutOfRange("StringView::substr: position out of range");
@@ -87,17 +87,17 @@ public:
     for (ContainerSize i = from; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find(StringView needle, ContainerSize from = 0) const
   {
     if (from > this->byteCount || needle.byteCount > this->byteCount - from)
-      return npos;
+      return This::npos;
     for (ContainerSize i = from; i <= this->byteCount - needle.byteCount; ++i)
       if (StringView::sameBytes(this->chars + i, needle.chars, needle.byteCount))
         return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find(const char* needle, ContainerSize from, ContainerSize count) const
@@ -107,25 +107,25 @@ public:
 
   // The last occurrence starting at or before `from`, as String's (DebugTools.cpp's
   // `line.rfind("ghostShimmerConfig.tint", 0) == 0`, a prefix test).
-  ContainerSize rfind(char c, ContainerSize from = npos) const
+  ContainerSize rfind(char c, ContainerSize from = This::npos) const
   {
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (this->chars[i] == c)
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize rfind(StringView needle, ContainerSize from = npos) const
+  ContainerSize rfind(StringView needle, ContainerSize from = This::npos) const
   {
     if (needle.byteCount > this->byteCount)
-      return npos;
+      return This::npos;
     ContainerSize last = this->byteCount - needle.byteCount;
     for (ContainerSize i = from < last ? from : last;; --i) // down to 0, which ends it
     {
       if (StringView::sameBytes(this->chars + i, needle.chars, needle.byteCount))
         return i;
       if (i == 0)
-        return npos;
+        return This::npos;
     }
   }
 
@@ -134,8 +134,8 @@ public:
     return this->rfind(StringView(needle, count), from);
   }
 
-  bool contains(StringView needle) const { return this->find(needle) != npos; }
-  bool contains(char c) const { return this->find(c) != npos; }
+  bool contains(StringView needle) const { return this->find(needle) != This::npos; }
+  bool contains(char c) const { return this->find(c) != This::npos; }
 
   bool startsWith(StringView prefix) const
   {
@@ -163,7 +163,7 @@ public:
     for (ContainerSize i = from; i < this->byteCount; ++i)
       if (StringView::inSet(this->chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find_first_of(char c, ContainerSize from = 0) const { return this->find(c, from); }
@@ -178,7 +178,7 @@ public:
     for (ContainerSize i = from; i < this->byteCount; ++i)
       if (!StringView::inSet(this->chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find_first_not_of(char c, ContainerSize from = 0) const { return this->find_first_not_of(StringView(&c, 1), from); }
@@ -188,30 +188,30 @@ public:
     return this->find_first_not_of(StringView(set, count), from);
   }
 
-  ContainerSize find_last_of(StringView set, ContainerSize from = npos) const
+  ContainerSize find_last_of(StringView set, ContainerSize from = This::npos) const
   {
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (StringView::inSet(this->chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize find_last_of(char c, ContainerSize from = npos) const { return this->rfind(c, from); }
+  ContainerSize find_last_of(char c, ContainerSize from = This::npos) const { return this->rfind(c, from); }
 
   ContainerSize find_last_of(const char* set, ContainerSize from, ContainerSize count) const
   {
     return this->find_last_of(StringView(set, count), from);
   }
 
-  ContainerSize find_last_not_of(StringView set, ContainerSize from = npos) const
+  ContainerSize find_last_not_of(StringView set, ContainerSize from = This::npos) const
   {
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (!StringView::inSet(this->chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize find_last_not_of(char c, ContainerSize from = npos) const { return this->find_last_not_of(StringView(&c, 1), from); }
+  ContainerSize find_last_not_of(char c, ContainerSize from = This::npos) const { return this->find_last_not_of(StringView(&c, 1), from); }
 
   ContainerSize find_last_not_of(const char* set, ContainerSize from, ContainerSize count) const
   {
@@ -234,7 +234,7 @@ public:
   // otherCount bytes at other; OutOfRange when a position is past its view.
   i32 compare(ContainerSize pos, ContainerSize count, StringView other) const { return this->substr(pos, count).compare(other); }
 
-  i32 compare(ContainerSize pos, ContainerSize count, StringView other, ContainerSize otherPos, ContainerSize otherCount = npos) const
+  i32 compare(ContainerSize pos, ContainerSize count, StringView other, ContainerSize otherPos, ContainerSize otherCount = This::npos) const
   {
     return this->substr(pos, count).compare(other.substr(otherPos, otherCount));
   }

@@ -16,8 +16,8 @@ class String
 public:
   // The object's bytes: the heap fields (a pointer and two sizes) and, after them, the mark byte.
   static const i32 objectBytes = 32;
-  static const ContainerSize smallCapacity = objectBytes - 2;
-  static const i32 markIndex = objectBytes - 1;
+  static const ContainerSize smallCapacity = This::objectBytes - 2;
+  static const i32 markIndex = This::objectBytes - 1;
   static const i32 largeMark = 0x80;
 
   using iterator = char*;
@@ -44,7 +44,7 @@ public:
 
   // Up to count bytes of other from index (all the rest without count); OutOfRange when index >
   // other.size() (std::string's substring constructors).
-  String(const String& other, ContainerSize index, ContainerSize count = npos)
+  String(const String& other, ContainerSize index, ContainerSize count = This::npos)
   {
     if (index > other.size())
       throwOutOfRange("String: position out of range");
@@ -208,7 +208,7 @@ public:
   }
 
   template<typename I> requires (isIntegral<I>)
-  String& erase(I index) { return this->erase(index, npos); }
+  String& erase(I index) { return this->erase(index, This::npos); }
 
   // The range [first, last) of this string's characters (begin()/end() and what find functions
   // return); returns where the character after them is now.
@@ -342,7 +342,7 @@ public:
   ContainerSize find(const char* needle, ContainerSize from) const
   {
     usize count = strlen(needle);
-    return count > (usize)maxContainerSize ? npos : this->findBytes(needle, (ContainerSize)count, from);
+    return count > (usize)maxContainerSize ? This::npos : this->findBytes(needle, (ContainerSize)count, from);
   }
 
   ContainerSize find(const char* needle) const { return this->find(needle, 0); }
@@ -355,10 +355,10 @@ public:
   {
     ContainerSize length = this->size();
     if (from >= length)
-      return npos;
+      return This::npos;
     const char* chars = this->data();
     const char* at = (const char*)memchr(chars + from, c, length - from);
-    return at ? ContainerSize(at - chars) : npos;
+    return at ? ContainerSize(at - chars) : This::npos;
   }
 
   ContainerSize find(char c) const { return this->find(c, 0); }
@@ -368,9 +368,9 @@ public:
   {
     ContainerSize length = this->size();
     if (count == 0)
-      return from <= length ? from : npos;
+      return from <= length ? from : This::npos;
     if (count > length || from > length - count)
-      return npos;
+      return This::npos;
     const char* chars = this->data();
     const char* lastStart = chars + length - count;
     const char* at = chars + from;
@@ -378,12 +378,12 @@ public:
     {
       at = (const char*)memchr(at, needle[0], lastStart - at + 1);
       if (!at)
-        return npos;
+        return This::npos;
       if (memcmp(at + 1, needle + 1, count - 1) == 0)
         return ContainerSize(at - chars);
       ++at;
     }
-    return npos;
+    return This::npos;
   }
 
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos. The
@@ -392,56 +392,56 @@ public:
   {
     ContainerSize length = this->size();
     if (length == 0)
-      return npos;
+      return This::npos;
     const char* chars = this->data();
     for (ContainerSize i = from < length - 1 ? from : length - 1;; --i)
     {
       if (chars[i] == c)
         return i;
       if (i == 0)
-        return npos;
+        return This::npos;
     }
   }
 
-  ContainerSize rfind(char c) const { return this->rfind(c, npos); }
+  ContainerSize rfind(char c) const { return this->rfind(c, This::npos); }
 
   ContainerSize rfindBytes(const char* needle, ContainerSize count, ContainerSize from) const
   {
     ContainerSize length = this->size();
     if (count > length)
-      return npos;
+      return This::npos;
     const char* chars = this->data();
     for (ContainerSize i = from < length - count ? from : length - count;; --i)
     {
       if (memcmp(chars + i, needle, count) == 0)
         return i;
       if (i == 0)
-        return npos;
+        return This::npos;
     }
   }
 
   ContainerSize rfind(const char* needle, ContainerSize from) const
   {
     usize count = strlen(needle);
-    return count > (usize)maxContainerSize ? npos : this->rfindBytes(needle, (ContainerSize)count, from);
+    return count > (usize)maxContainerSize ? This::npos : this->rfindBytes(needle, (ContainerSize)count, from);
   }
 
-  ContainerSize rfind(const char* needle) const { return this->rfind(needle, npos); }
+  ContainerSize rfind(const char* needle) const { return this->rfind(needle, This::npos); }
   ContainerSize rfind(const String& needle, ContainerSize from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
-  ContainerSize rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), npos); }
+  ContainerSize rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), This::npos); }
 
   // The last byte at or before `from` (the whole string without it) that is in set, or npos.
-  ContainerSize find_last_of(const char* set, ContainerSize from = npos) const
+  ContainerSize find_last_of(const char* set, ContainerSize from = This::npos) const
   {
     const char* chars = this->data();
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (String::oneOf(chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize find_last_of(const String& set, ContainerSize from = npos) const { return this->find_last_of(set.c_str(), from); }
-  ContainerSize find_last_of(char c, ContainerSize from = npos) const { return this->rfind(c, from); }
+  ContainerSize find_last_of(const String& set, ContainerSize from = This::npos) const { return this->find_last_of(set.c_str(), from); }
+  ContainerSize find_last_of(char c, ContainerSize from = This::npos) const { return this->rfind(c, from); }
 
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
   u64 copy(char* dest, u64 count, u64 pos = 0) const
@@ -518,13 +518,13 @@ public:
       for (ContainerSize k = 0; k < set.size(); ++k)
         if (chars[i] == set.data()[k])
           return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find_first_of(StringView set) const { return this->find_first_of(set, 0); }
   ContainerSize find_first_of(const String& set) const { return this->find_first_of(set.c_str()); }
   ContainerSize find_first_not_of(const String& set, ContainerSize from = 0) const { return this->find_first_not_of(set.c_str(), from); }
-  ContainerSize find_last_not_of(const String& set, ContainerSize from = npos) const { return this->find_last_not_of(set.c_str(), from); }
+  ContainerSize find_last_not_of(const String& set, ContainerSize from = This::npos) const { return this->find_last_not_of(set.c_str(), from); }
 
   ContainerSize find_first_of(const char* set) const
   {
@@ -533,7 +533,7 @@ public:
     for (ContainerSize i = 0; i < length; ++i)
       if (String::oneOf(chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
   // (from the byte at `from` on: SystemUtil's `find_first_not_of(" \t", prefix.size())`)
@@ -544,7 +544,7 @@ public:
     for (ContainerSize i = from; i < length; ++i)
       if (!String::oneOf(chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
   // The first (last) byte other than c (LocaleStringReplacer's `find_first_not_of('0')`).
@@ -555,25 +555,25 @@ public:
     for (ContainerSize i = from; i < length; ++i)
       if (chars[i] != c)
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize find_last_not_of(char c, ContainerSize from = npos) const
+  ContainerSize find_last_not_of(char c, ContainerSize from = This::npos) const
   {
     const char* chars = this->data();
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (chars[i] != c)
         return i;
-    return npos;
+    return This::npos;
   }
 
-  ContainerSize find_last_not_of(const char* set, ContainerSize from = npos) const
+  ContainerSize find_last_not_of(const char* set, ContainerSize from = This::npos) const
   {
     const char* chars = this->data();
     for (ContainerSize i = this->lastFrom(from); i-- > 0;)
       if (!String::oneOf(chars[i], set))
         return i;
-    return npos;
+    return This::npos;
   }
 
   // Where a backward search from `from` starts: one past the last index it looks at.
@@ -617,8 +617,8 @@ public:
   }
 
   // Byte-wise as <: gives >, <= and >= with a String or a const char* (and `"x" < s` below).
-  strong_ordering operator<=>(const String& other) const { return strong_ordering(signOf(this->compare(other))); }
-  strong_ordering operator<=>(const char* other) const { return strong_ordering(signOf(this->compare(other))); }
+  strong_ordering operator<=>(const String& other) const { return strong_ordering(This::signOf(this->compare(other))); }
+  strong_ordering operator<=>(const char* other) const { return strong_ordering(This::signOf(this->compare(other))); }
   static i8 signOf(i32 compared) { return compared < 0 ? -1 : compared > 0 ? 1 : 0; }
 
   // Makes room for `needed` characters (exactly: growth by appending is geometric); LengthError
@@ -802,7 +802,7 @@ public:
     return String(this->data() + start, count < available ? count : available);
   }
 
-  String substr(ContainerSize start) const { return this->substr(start, npos); }
+  String substr(ContainerSize start) const { return this->substr(start, This::npos); }
   // Empties the string; the capacity stays.
   void clear() { this->setLength(0); }
 

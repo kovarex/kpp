@@ -316,7 +316,7 @@ struct Limits
                                 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 24 : 53) : 0;
   // Decimal digits that survive a round trip through T; for floating point, the digits that
   // print every value of T distinctly.
-  static constexpr i32 digits10 = isIntegral<T> ? digits * 301 / 1000 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 6 : 15) : 0;
+  static constexpr i32 digits10 = isIntegral<T> ? This::digits * 301 / 1000 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 6 : 15) : 0;
   static constexpr i32 max_digits10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 9 : 17) : 0;
   static constexpr i32 min_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? -125 : -1021) : 0;
   static constexpr i32 min_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? -37 : -307) : 0;

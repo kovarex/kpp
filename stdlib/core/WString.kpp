@@ -296,7 +296,7 @@ public:
   ContainerSize find(const wchar_t* needle, ContainerSize from, ContainerSize count) const
   {
     if (count > this->unitCount) // (unitCount - count would wrap)
-      return npos;
+      return This::npos;
     for (ContainerSize i = from; i <= this->unitCount - count; ++i)
     {
       ContainerSize k = 0;
@@ -305,7 +305,7 @@ public:
       if (k == count)
         return i;
     }
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find(const wchar_t* needle, ContainerSize from) const { return this->find(needle, from, WString::lengthOf(needle)); }
@@ -319,17 +319,17 @@ public:
   ContainerSize rfind(wchar_t c, ContainerSize from) const
   {
     if (this->unitCount == 0)
-      return npos;
+      return This::npos;
     for (ContainerSize i = from < this->unitCount - 1 ? from : this->unitCount - 1;; --i) // down to 0, which ends it
     {
       if (this->chars[i] == c)
         return i;
       if (i == 0)
-        return npos;
+        return This::npos;
     }
   }
 
-  ContainerSize rfind(wchar_t c) const { return this->rfind(c, npos); }
+  ContainerSize rfind(wchar_t c) const { return this->rfind(c, This::npos); }
 
   // The first unit at or after from that is in set, or npos.
   ContainerSize find_first_of(const wchar_t* set, ContainerSize from) const
@@ -338,7 +338,7 @@ public:
       for (const wchar_t* s = set; *s; ++s)
         if (this->chars[i] == *s)
           return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find_first_of(const wchar_t* set) const { return this->find_first_of(set, 0); }
@@ -350,7 +350,7 @@ public:
       for (const wchar_t* s = set; *s; ++s)
         if (this->chars[i] == *s)
           return i;
-    return npos;
+    return This::npos;
   }
 
   ContainerSize find_last_of(wchar_t c) const { return this->rfind(c); }
@@ -366,7 +366,7 @@ public:
     return WString(this->c_str() + start, count);
   }
 
-  WString substr(ContainerSize start) const { return this->substr(start, npos); }
+  WString substr(ContainerSize start) const { return this->substr(start, This::npos); }
 
   // Negative, 0 or positive as this sorts before, with or after other, unit by unit.
   i32 compare(const WString& other) const

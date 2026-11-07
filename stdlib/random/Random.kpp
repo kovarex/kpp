@@ -30,7 +30,7 @@ public:
   // (std::default_random_engine's default_seed); RandomDevice is the nondeterministic source.
   static constexpr u64 default_seed = 1;
 
-  DefaultRandomEngine() { this->seed(default_seed); }
+  DefaultRandomEngine() { this->seed(This::default_seed); }
 
   explicit DefaultRandomEngine(u64 seed)
   {

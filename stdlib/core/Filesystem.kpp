@@ -754,13 +754,13 @@ namespace filesystem
 
     filesystem_error(const String& what, const path& path1, ErrorCode code) : SystemError(code, what), path1Value(path1)
     {
-      this->message = what + ": " + code.message() + " [" + shownPath(path1) + "]";
+      this->message = what + ": " + code.message() + " [" + This::shownPath(path1) + "]";
     }
 
     filesystem_error(const String& what, const path& path1, const path& path2, ErrorCode code)
       : SystemError(code, what), path1Value(path1), path2Value(path2)
     {
-      this->message = what + ": " + code.message() + " [" + shownPath(path1) + "] [" + shownPath(path2) + "]";
+      this->message = what + ": " + code.message() + " [" + This::shownPath(path1) + "] [" + This::shownPath(path2) + "]";
     }
 
     const path& path1() const { return this->path1Value; }
