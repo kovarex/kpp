@@ -13,20 +13,19 @@ FinalRelease's factorio-run, appears only as an extra column. Thread H rebuilds 
 converted commit moves (FASTBuild through the coordinator) and keeps its benchmark root,
 `scratch\configs\bench\cppaio`, for every thread's runs.
 
-**Latest** (2026-11-04, Factorio 4c178a5b915), against C++ FinalRelease all-in-one:
+**Latest** (2026-11-07, kpp f8787782, Factorio 4c178a5b915), against C++ FinalRelease all-in-one, every
+build with the same command line (the crash handler on):
 
-| build | performance.zip | modern_playthrough_155 |
-|---|---:|---:|
-| **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.95x** | **0.97x** |
-| kpp release (ThinLTO) | 0.97x | 0.96x |
-| C++ FinalRelease, factorio-run | 1.00x | 1.00x |
+| build | 45 menu maps | performance.zip | modern_playthrough_155 |
+|---|---:|---:|---:|
+| **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.84x** | **0.96x** | **0.97x** |
+| kpp release (ThinLTO) | 0.86x | 0.97x | 0.96x |
 
-These are from the fair benchmark below: the same configuration on both sides (FINAL_RELEASE,
-PACKAGED_BUILD and ALL_IN_ONE).
-
-On the 45 menu maps (2026-11-06, kpp e13691d3, same Factorio commit), against the all-in-one: kpp
-final **0.84x**, kpp release **0.86x**, no map slower than C++ on either
-([the section below](#the-45-menu-maps-against-the-all-in-one-2026-11-06)). The first menu map
+The same configuration on both sides (FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE); no map slower than
+C++ on either ([the section below](#the-rerun-at-f8787782-2026-11-07)). The 2026-11-04 saves (0.95x and
+0.97x for kpp final, [the fair benchmark](#the-fair-benchmark-kpp-final-against-the-all-in-one-2026-11-04))
+and the 2026-11-06 menu maps (0.84x, 0.86x, [below](#the-45-menu-maps-against-the-all-in-one-2026-11-06))
+ran kpp with `--no-crash-handler` and C++ without it. The first menu map
 run, 2026-11-04, had kpp release at 0.87x of C++ FinalRelease's factorio-run (C++ Release: 1.01x;
 [test-matrix.md](test-matrix.md)): another reference and another kpp, so not comparable.
 
@@ -230,6 +229,59 @@ The benchmark root copies it as `bench\cppaio\bin\FinalReleasex64\factorio-run.e
 factorio-run.exe as C++ (without kpp's `--no-crash-handler`), and the game finds its paths from its
 folder, not its name.
 
+## The rerun at f8787782 (2026-11-07)
+
+The 45 menu maps and the two saves again, after J's 89c13a5a and d632e2f5 and D's 2d0f016a, and with one
+command line for every build: kpp's crash handler is on, as C++'s always was.
+
+- **The builds:** the game converted at kpp f8787782 from Factorio 4c178a5b915 (batch: headline 0, tests
+  errors 0, smoke tests, 9,501 of 9,501 game tests; CI green). `kpp factorio final` and `kpp factorio
+  release`, exit 0 (release no longer keeps going past an error: factorio-in-kpp ad50a4763). The
+  all-in-one is the same one, of the same Factorio commit.
+- **The method:** as below, 5 rounds, under the coordinator's quiet window (no other thread's build or
+  run from 11:05:46 to 11:38:36 local). Three maps were run again, one at a time, for other work of
+  10.6-12.6% of the machine (aquilo-send-help and artillery in round 1, platform-messy-nuclear in round 3);
+  every other map's runs saw less than 10%. The saves: `bench.py SAVE 1000 5`, load before 1.9% on
+  average, other work 4.9% at most.
+- **Checksums:** equal on all 45 maps between the builds and rounds; performance.zip 21933964 and
+  modern_playthrough_155 816201650 on every run, as on 2026-11-04.
+
+| build | all 5 rounds (ms) | vs all-in-one | rounds 3-5 (ms) | vs all-in-one |
+|---|---:|---:|---:|---:|
+| C++ FinalRelease all-in-one | 11,985 | 1.00x | 35,874 | 1.00x |
+| **kpp final** | 10,076 | **0.841x** | 30,050 | 0.838x |
+| kpp release | 10,253 | **0.855x** | 30,695 | 0.856x |
+
+(Rounds 3-5: the sum of the three rounds' totals.)
+
+| round | all-in-one | kpp final | kpp release | load before, mean |
+|---|---:|---:|---:|---:|
+| 1 | 11,995 | 10,268 | 10,324 | 5.3% |
+| 2 | 11,999 | 10,129 | 10,318 | 4.7% |
+| 3 | 12,006 | 10,002 | 10,286 | 4.0% |
+| 4 | 11,947 | 10,007 | 10,136 | 2.8% |
+| 5 | 11,921 | 10,041 | 10,273 | 0.8% |
+
+The all-in-one's rounds lie within 0.7% of each other, so all 5 rounds are the figure.
+
+| save, 1000 ticks | all-in-one (ms) | kpp final | kpp release |
+|---|---:|---:|---:|
+| performance.zip | 7,100 | 6,832, **0.962x** | 6,915, 0.974x |
+| kovarex_modern_playthrough_155.zip | 8,238 | 7,998, **0.971x** | 7,888, 0.958x |
+
+- On no map is either kpp build slower than C++: kpp final runs from 0.74x (vulcanus-punishment) to 0.91x
+  (nauvis-biolab), kpp release from 0.79x (burner-city) to 0.96x (nauvis-rocket-factory). kpp final is
+  faster than kpp release on 24 of the 45.
+- **Against e13691d3:** the totals barely moved, 0.845x to 0.841x for kpp final and 0.859x to 0.855x for
+  kpp release (all 5 rounds each), but the two runs differ in two things: the kpp commit and the crash
+  handler, now on in kpp's builds. The handler cost kpp final 4.2% by the sum of medians on 2026-11-06
+  (below). If it costs the same now, kpp f8787782 is about 4% faster than e13691d3; if it costs C++ as
+  much, nothing changed. Neither is measured; one run of e13691d3's final against f8787782's, and of
+  the all-in-one with and without its handler, tells them apart. Map by map, kpp final's ratio moved
+  by a median of -0.4% (faster on 25 maps, slower on 20), single maps by up to 15% either way.
+- **The executables:** kpp final 70.1 MB (69.4 MB at e13691d3), kpp release 73.5 MB (72.1 MB), the
+  all-in-one 49.4 MB.
+
 ## The 45 menu maps against the all-in-one (2026-11-06)
 
 Every menu simulation of the game, kpp e13691d3 against the all-in-one, all from Factorio 4c178a5b915.
@@ -280,7 +332,8 @@ Every menu simulation of the game, kpp e13691d3 against the all-in-one, all from
 - **This figure may move, either way:** it predates 89c13a5a, where up to 923 places in the game's
   generated code went from a move to a copy, as C++ does (candidates in simulation code:
   ShootingTarget, GrowingPlant, TrackingMapPosition, CargoDestination), and a change still to come
-  that removes a move and a destruction per `T a = b + c;`. It is measured again once that has landed.
+  that removes a move and a destruction per `T a = b + c;`. Measured again at f8787782, after both,
+  [above](#the-rerun-at-f8787782-2026-11-07).
 - **The executable:** kpp final is 69.4 MB, 62.9 MB at 6167873d. 2.1 MB of that is a3fe78a4: a global no
   initializer initializes is constant data, here two 1 MiB tables of Colors that were in .bss. The
   rest is .text (+1.7 MB, about 6,600 more functions) and .rdata (+2.6 MB), no one commit shown.
