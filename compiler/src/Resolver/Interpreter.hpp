@@ -499,11 +499,13 @@
 
   // `{1, 2, 3}` for an array: its elements in order, the rest value-initialized; brace elision
   // lets an element that is itself an array or aggregate take several values.
-  std::optional<ConstValue> constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth);
+  // into: the place of the object being initialized (a local's), each element written there once made, so that the
+  // next one reads it (`int arr[3] = {b, arr[0] + 1, b}`, [dcl.init.aggr] 7).
+  std::optional<ConstValue> constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth, const ConstPlace* into = nullptr);
 
   // The object of type t (an array or an aggregate class) that values from next on initialize,
   // as many as it takes (brace elision), next moved past them.
-  std::optional<ConstValue> constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth, const ConstPlace* into = nullptr);
 
   // An aggregate (C++20): a class without user-declared constructors, virtual functions or
   // virtual bases (its bases aggregates too, as far as the interpreter needs). One with an anonymous

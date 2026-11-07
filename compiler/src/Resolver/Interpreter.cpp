@@ -3727,7 +3727,7 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
     if (init->kind == NodeKind::BraceInitExpr)
     {
       auto* b = static_cast<BraceInitExpr*>(init);
-      return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth) : constBraceInit(u, b, ctx, depth, target);
+      return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth, target) : constBraceInit(u, b, ctx, depth, target);
     }
     // `int a[3](1, 2)` (C++20, [dcl.init.general] 16.5): the values as a list's, each one element (the checker refused
     // one that is none), the rest value-initialized.
@@ -3814,7 +3814,7 @@ auto GlobalScope::Impl::constCharArrayFromLiteral(const Ty* t, Expr* init, const
   return ConstValue::object(t->count ? t : types.array(element, uint32_t(count)), std::move(chars));
 }
 
-auto GlobalScope::Impl::constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth, const ConstPlace* into) -> std::optional<ConstValue>
 {
   // `{sizeof(T)..., 0}`: a pack's elements each initialize one element of the array.
   if (std::any_of(values.begin(), values.end(), [](Expr* v) { return constIsExpansion(v); }))
@@ -3837,15 +3837,34 @@ auto GlobalScope::Impl::constArrayInit(const Ty* t, Span<Expr*> values, const Ty
     return ConstValue::object(array->count ? array : types.array(array->inner, uint32_t(count)), std::move(elements));
   }
   size_t next = 0;
-  std::optional<ConstValue> v = constElided(t, values, next, ctx, depth);
+  std::optional<ConstValue> v = constElided(t, values, next, ctx, depth, into);
   if (v && next < values.size())
     return std::nullopt; // more values than the array holds
   return v;
 }
 
-auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth, const ConstPlace* into) -> std::optional<ConstValue>
 {
   t = types.unqualified(types.stripRef(t));
+  // Each element made is written to the object's place, the rest unset, which an element after it reads
+  // ([dcl.init.aggr] 7: `P p{a, p.x * 2}`; an unset one read is no constant, as C++ has it).
+  auto begin = [&](const Ty* whole, const std::vector<const Ty*>& partTypes) {
+    if (!into)
+      return;
+    std::vector<ConstValue> unset;
+    for (const Ty* part : partTypes)
+      unset.push_back(ConstValue::unset(part));
+    constWrite(*into, ConstValue::object(whole, std::move(unset)));
+  };
+  auto made = [&](size_t k, const Ty* part, const ConstValue& value) {
+    if (!into)
+      return;
+    ConstPlace at = *into;
+    at.path.push_back(k);
+    at.type = part;
+    at.bits = 0;
+    constWrite(at, value);
+  };
   if (depth > 64)
     return std::nullopt;
   auto element = [&](const Ty* et) -> std::optional<ConstValue> {
@@ -3871,25 +3890,35 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
     if (!constMayMake(count))
       return std::nullopt;
     std::vector<ConstValue> elements;
+    const Ty* at = t->count ? t : types.array(t->inner, uint32_t(count));
+    if (into)
+      begin(at, std::vector<const Ty*>(count, t->inner));
     for (size_t i = 0; i < count; ++i)
     {
       std::optional<ConstValue> e = element(t->inner);
       if (!e)
         return std::nullopt;
+      made(i, t->inner, *e);
       elements.push_back(*e);
     }
-    const Ty* at = t->count ? t : types.array(t->inner, uint32_t(count));
     return ConstValue::object(at, std::move(elements));
   }
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   if (!layout || !constIsAggregate(t, depth) || !constMayMake(layout->bases.size() + layout->fields.size()))
     return std::nullopt;
   std::vector<ConstValue> parts;
+  if (into)
+  {
+    std::vector<const Ty*> partTypes(layout->bases.begin(), layout->bases.end());
+    partTypes.insert(partTypes.end(), layout->fieldTypes.begin(), layout->fieldTypes.end());
+    begin(t, partTypes);
+  }
   for (const Ty* b : layout->bases)
   {
     std::optional<ConstValue> part = element(b);
     if (!part)
       return std::nullopt;
+    made(parts.size(), b, *part);
     parts.push_back(*part);
   }
   for (size_t i = 0; i < layout->fields.size(); ++i)
@@ -3899,6 +3928,7 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
                                                                   : constFieldDefault(*layout, i, true, depth);
     if (!part)
       return std::nullopt;
+    made(parts.size(), layout->fieldTypes[i], *part);
     parts.push_back(*part);
   }
   constFitBitFields(*layout, parts);
@@ -4037,7 +4067,7 @@ auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const Type
       return constFromObject(types.unqualified(t), values[0], places[0], categories[0], depth);
     }
     if (b->designators.empty())
-      return constArrayInit(t, b->args, ctx, depth);
+      return constArrayInit(t, b->args, ctx, depth, target);
     // `{.x = 1, .z = 3}`: each member its designator names, the rest from their defaults.
     const ConstClassLayout* layout = constLayoutOf(t, depth);
     if (!layout || !layout->bases.empty() || layout->anonymous)
@@ -8642,6 +8672,23 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     env[at].owns = true;     // (the local's object: `this` addressable while the constructor runs)
     ConstPlace target{&env, at, {}, types.unqualified(type)};
     std::optional<ConstValue> made = v->init ? constInitialize(type, v->init, ctx, depth + 1, &target) : constEmpty(type, false, depth + 1, &target);
+    if (!made)
+      return ConstFlow::Failed;
+    env[at].value = *made;
+    env[at].writable = writable;
+    return named(at);
+  }
+  if (type && types.unqualified(type)->kind == TyKind::Array && types.unqualified(type)->count && v->init && v->init->kind == NodeKind::BraceInitExpr)
+  {
+    // `int arr[3] = {b, arr[0] + 1, b}`: the local is its name from its declarator on, each element there once made,
+    // which the next reads ([dcl.init.aggr] 7), as a class's object above.
+    env.push_back(constBinding(symbol, ConstValue::unset(types.unqualified(type)), type));
+    size_t at = env.size() - 1;
+    bool writable = env[at].writable;
+    env[at].writable = true;
+    env[at].owns = true;
+    ConstPlace target{&env, at, {}, types.unqualified(type)};
+    std::optional<ConstValue> made = constInitialize(type, v->init, ctx, depth + 1, &target);
     if (!made)
       return ConstFlow::Failed;
     env[at].value = *made;
