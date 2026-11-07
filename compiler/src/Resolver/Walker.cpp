@@ -7627,8 +7627,19 @@ auto GlobalScope::Impl::Walker::tupleBindings(VariableDecl* v, const Ty* object)
 {
   if (v->structuredBindings.empty() || probesSharedNodes())
     return;
-  for (Expr* b : v->structuredBindings)
-    static_cast<NameExpr*>(b)->resolved = nullptr; // what the template's own walk made (an instance copies it)
+  // The hidden variables an earlier walk of these same nodes made are walked again, not made anew:
+  // a retype in place (GlobalScope::retypeFor, per element of a pack expansion or a `for constexpr`)
+  // walks the body the code generator is emitting, which declared them and names them. (Until
+  // 2026-11-07 it made new ones, and the uses after `T(args...)` named variables of no function.) A
+  // copy's nodes have none (InstanceCopier).
+  std::vector<VariableDecl*> earlier(v->structuredBindings.size(), nullptr);
+  for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+  {
+    auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
+    if (b->resolved && b->resolved->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(b->resolved)->tupleBinding)
+      earlier[i] = static_cast<VariableDecl*>(b->resolved);
+    b->resolved = nullptr; // (named again below, unless the object binds member by member here)
+  }
   const Ty* e = object ? types.unqualified(types.stripRef(object)) : nullptr;
   if (!e || e->kind != TyKind::Class || !e->isKnown() || types.isDependent(e) || Impl::mentionsUnknown(e))
     return;
@@ -7654,6 +7665,15 @@ auto GlobalScope::Impl::Walker::tupleBindings(VariableDecl* v, const Ty* object)
   for (size_t i = 0; i < n; ++i)
   {
     auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
+    if (VariableDecl* again = earlier[i]; again && again->init && again->init->kind == NodeKind::CallExpr &&
+        (static_cast<CallExpr*>(again->init)->callee->kind == NodeKind::MemberExpr) == member)
+    {
+      deducedLocal = nullptr;
+      walkDecl(again);
+      deducedLocal = nullptr;
+      b->resolved = again;
+      continue;
+    }
     auto* hidden = arena.make<NameExpr>();
     hidden->kind = NodeKind::NameExpr;
     hidden->token = b->token;

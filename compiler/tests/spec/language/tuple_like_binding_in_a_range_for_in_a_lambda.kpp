@@ -1,5 +1,4 @@
 // spec: a range-for over tuple-like elements with a structured binding works inside a lambda, as outside one (`9`)
-// pending: "codegen does not support a capture of a variable the function being emitted does not have yet". D; K makes Pair tuple-like once it passes: MainTasks::generateMapPreview loops over a Map's Pairs so in a lambda
 extern "C" int printf(const char* format, ...);
 int main()
 {

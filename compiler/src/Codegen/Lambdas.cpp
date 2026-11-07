@@ -23,6 +23,17 @@ auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, s
     return;
   auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches, bindingUses); };
   auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
+  // A variable declared in the body is no capture, nor are a tuple-like binding's hidden `auto&& a =
+  // get<i>(e)`, which the bindings' names name (Walker::tupleBindings) and no statement lists.
+  auto declared = [&](Decl* d)
+  {
+    inner.insert(d);
+    if (d->kind == NodeKind::VariableDecl)
+      for (Expr* b : static_cast<VariableDecl*>(d)->structuredBindings)
+        if (Decl* own = b && b->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(b)->resolved : nullptr;
+            own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
+          inner.insert(own);
+  };
   switch (n->kind)
   {
     case NodeKind::NameExpr:
@@ -53,14 +64,14 @@ auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, s
       break;
     }
     case NodeKind::VariableDecl: // a condition that declares (`if (auto* p = f())`)
-      inner.insert(static_cast<Decl*>(n));
+      declared(static_cast<Decl*>(n));
       visit(static_cast<VariableDecl*>(n)->init);
       break;
     case NodeKind::DeclStmt:
       for (Decl* d : static_cast<DeclStmt*>(n)->decls)
         if (d->kind == NodeKind::VariableDecl && !(keptBranches && d->whenKnown == 0)) // (a `when` its instance decided false names nothing)
         {
-          inner.insert(d);
+          declared(d);
           visit(static_cast<VariableDecl*>(d)->init);
         }
       break;
@@ -134,7 +145,7 @@ auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, s
     case NodeKind::RangeForStmt:
       visit(static_cast<RangeForStmt*>(n)->range);
       if (Decl* v = static_cast<RangeForStmt*>(n)->var)
-        inner.insert(v);
+        declared(v);
       visit(static_cast<RangeForStmt*>(n)->body);
       break;
     case NodeKind::ForConstexprStmt: visit(static_cast<ForConstexprStmt*>(n)->body); break;

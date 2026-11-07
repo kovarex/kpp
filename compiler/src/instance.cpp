@@ -170,6 +170,13 @@ Decl* InstanceCopier::decl(const Decl* d)
       c->init = expr(c->init);
       c->bitfield = expr(c->bitfield);
       c->structuredBindings = exprs(c->structuredBindings);
+      // A tuple-like binding's hidden `auto&& a = get<i>(e)` belongs to the nodes whose walk made it
+      // (Walker::tupleBindings, which walks it again when it walks them again): the copy's walk
+      // makes its own.
+      for (Expr* b : c->structuredBindings)
+        if (auto* n = static_cast<NameExpr*>(b);
+            n->resolved && n->resolved->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(n->resolved)->tupleBinding)
+          n->resolved = nullptr;
       copy = c;
       break;
     }

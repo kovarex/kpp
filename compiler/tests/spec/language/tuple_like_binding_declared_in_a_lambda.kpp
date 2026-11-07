@@ -1,0 +1,76 @@
+// spec: a tuple-like structured binding declared in a lambda's body is the lambda's own, no capture: in a lambda that captures nothing, by copy, a generic one with a pack, one in another; and bindings of the function around captured by copy and by reference; clang's output for the same program with std::tuple
+extern "C" int printf(const char* format, ...);
+int plainDeclaration()
+{
+  auto run = []
+  {
+    auto [key, value] = Tuple<int, int>(3, 30);
+    return key + value;
+  };
+  return run();
+}
+
+int rangeForByCopy()
+{
+  Tuple<int, int> rows[2] = {Tuple<int, int>(1, 4), Tuple<int, int>(2, 5)};
+  int base = 1000;
+  auto run = [=]
+  {
+    int s = base;
+    for (const auto& [k, v] : rows)
+      s += k * 100 + v;
+    return s;
+  };
+  return run();
+}
+
+int genericLambda()
+{
+  auto g = [](auto... xs)
+  {
+    Tuple<int, double> t(3, 0.5);
+    auto [i, d] = t;
+    return i * (xs + ...) + int(d * 10);
+  };
+  return g(1, 2, 3) * 1000 + g(4);
+}
+
+int capturedBindings()
+{
+  Tuple<int, int> t(7, 8);
+  auto [a, b] = t;
+  auto byCopy = [a, b] { return a * 10 + b; };
+  auto byRef = [&a, &b] { a += 1; b += 2; return a + b; };
+  int first = byCopy();
+  int second = byRef();
+  return first * 1000 + second * 10 + byCopy() % 10;
+}
+
+int nestedLambdas()
+{
+  Tuple<int, int> rows[2] = {Tuple<int, int>(1, 2), Tuple<int, int>(3, 4)};
+  int out = 0;
+  auto outer = [&]
+  {
+    auto inner = [&](int k)
+    {
+      for (const auto& [x, y] : rows)
+        out += x * k + y;
+    };
+    inner(10);
+    auto [p, q] = rows[0];
+    out += p * q;
+  };
+  outer();
+  return out;
+}
+
+int main()
+{
+  printf("%d\n", plainDeclaration());
+  printf("%d\n", rangeForByCopy());
+  printf("%d\n", genericLambda());
+  printf("%d\n", capturedBindings());
+  printf("%d\n", nestedLambdas());
+  return 0;
+}
