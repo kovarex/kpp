@@ -34,6 +34,31 @@ static void frame(HANDLE process, DWORD64 address, int index)
   name = name ? name + 1 : path;
   char text[1400];
   DWORD64 displacement = 0;
+  /* The functions inlined at the address, innermost first, each with its line (the PDB keeps them:
+     a release build's code is mostly inlined, and its frames named only the function it all went
+     into); a caller's address is the return address, so they are the ones of the byte before. */
+  DWORD64 at = index ? address - 1 : address;
+  DWORD inlined = SymAddrIncludeInlineTrace(process, at);
+  DWORD inlineContext = 0, frameIndex = 0;
+  if (inlined && SymQueryInlineTrace(process, at, 0, at, at, &inlineContext, &frameIndex))
+    for (DWORD k = 0; k < inlined; ++k)
+    {
+      DWORD64 inlineDisplacement = 0;
+      if (!SymFromInlineContext(process, at, inlineContext + k, &inlineDisplacement, symbol))
+        continue;
+      snprintf(text, sizeof text, "      %s!%s (inlined)", name, symbol->Name);
+      say(text);
+      IMAGEHLP_LINE64 inlineLine;
+      memset(&inlineLine, 0, sizeof inlineLine);
+      inlineLine.SizeOfStruct = sizeof inlineLine;
+      DWORD inlineLineDisplacement = 0;
+      if (SymGetLineFromInlineContext(process, at, inlineContext + k, 0, &inlineLineDisplacement, &inlineLine))
+      {
+        snprintf(text, sizeof text, "  %s:%lu", inlineLine.FileName, (unsigned long)inlineLine.LineNumber);
+        say(text);
+      }
+      say("\n");
+    }
   if (SymFromAddr(process, address, &displacement, symbol))
     snprintf(text, sizeof text, "  %2d  %s!%s+0x%llx", index, name, symbol->Name, (unsigned long long)displacement);
   else
